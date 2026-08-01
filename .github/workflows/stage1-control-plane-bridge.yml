@@ -6,6 +6,7 @@ on:
       - '.github/workflows/stage1-control-plane-bridge.yml'
       - '.stage1/ready'
       - '.stage1/patch.b64.part*'
+      - '.stage1/fix.b64.part*'
 
 permissions:
   contents: write
@@ -91,6 +92,12 @@ jobs:
           gzip -dc /tmp/stage1.patch.gz > /tmp/stage1.patch
           git apply --check /tmp/stage1.patch
           git apply /tmp/stage1.patch
+          if compgen -G '.stage1/fix.b64.part*' > /dev/null; then
+            cat .stage1/fix.b64.part* | base64 -d > /tmp/stage1-fix.patch.gz
+            gzip -dc /tmp/stage1-fix.patch.gz > /tmp/stage1-fix.patch
+            git apply --check /tmp/stage1-fix.patch
+            git apply /tmp/stage1-fix.patch
+          fi
           test -f .stage1/verify.sh
           chmod +x .stage1/verify.sh
           .stage1/verify.sh
@@ -102,7 +109,7 @@ jobs:
           for path in "${changed[@]}"; do
             test -n "$path" && git add -- "$path"
           done
-          git rm -f .stage1/ready .stage1/patch.b64.part* .stage1/verify.sh .stage1/changed-files.txt
+          git rm -f .stage1/ready .stage1/patch.b64.part* .stage1/fix.b64.part* .stage1/verify.sh .stage1/changed-files.txt
           git rm -f .github/workflows/stage1-control-plane-bridge.yml
           git config user.name "stage1-control-plane-bot"
           git config user.email "stage1-control-plane-bot@users.noreply.github.com"
