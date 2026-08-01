@@ -10,16 +10,24 @@ let source = fs.readFileSync(runnerPath, 'utf8').replace(/\r\n/g, '\n')
 
 source = source.replace(
   "const concurrency = Math.max(1, Number(readArg('--concurrency') || 4))",
-  "const concurrency = Math.min(3, Math.max(1, Number(readArg('--concurrency') || 3)))"
+  "const concurrency = Math.min(2, Math.max(1, Number(readArg('--concurrency') || 2)))"
+)
+source = source.replace(
+  "const concurrency = Math.min(3, Math.max(1, Number(readArg('--concurrency') || 3)))",
+  "const concurrency = Math.min(2, Math.max(1, Number(readArg('--concurrency') || 2)))"
 )
 source = source.replace(
   "const retries = Math.max(0, Number(readArg('--retries') || 0))",
-  "const retries = Math.max(0, Number(readArg('--retries') || 2))"
+  "const retries = Math.max(0, Number(readArg('--retries') || 3))"
 )
-if (!source.includes("const retries = Math.max(0, Number(readArg('--retries') || 2))")) {
+source = source.replace(
+  "const retries = Math.max(0, Number(readArg('--retries') || 2))",
+  "const retries = Math.max(0, Number(readArg('--retries') || 3))"
+)
+if (!source.includes("const retries = Math.max(0, Number(readArg('--retries') || 3))")) {
   source = source.replace(
     "const virtualTimeMs = Math.max(1000, Number(readArg('--virtual-time-ms') || 4500))\nconst smokeCount",
-    "const virtualTimeMs = Math.max(1000, Number(readArg('--virtual-time-ms') || 4500))\nconst retries = Math.max(0, Number(readArg('--retries') || 2))\nconst smokeCount"
+    "const virtualTimeMs = Math.max(1000, Number(readArg('--virtual-time-ms') || 4500))\nconst retries = Math.max(0, Number(readArg('--retries') || 3))\nconst smokeCount"
   )
 }
 
@@ -115,8 +123,8 @@ source = source.replace(
 )
 
 const requiredMarkers = [
-  "const concurrency = Math.min(3, Math.max(1, Number(readArg('--concurrency') || 3)))",
-  "const retries = Math.max(0, Number(readArg('--retries') || 2))",
+  "const concurrency = Math.min(2, Math.max(1, Number(readArg('--concurrency') || 2)))",
+  "const retries = Math.max(0, Number(readArg('--retries') || 3))",
   'const duplicateIdDetails = duplicateIds.map',
   'async function renderAttempt(',
   'const transientIssueCodes = new Set',
