@@ -1,26 +1,44 @@
-schema_version: v6-phase0-1
+schema_version: v6-final-1
 repository: penghaibin9/saas
-frozen_at: '2026-08-01T17:10:00+08:00'
+frozen_at: '2026-08-01T18:19:00+08:00'
 baseline:
   branch: main
   commit: 604eb299bdaf92d81fb31ed5f150bfd583c7189f
   alembic_static_revision: 0154_file_storage_quota_reservation
   alembic_evidence: PR-25-final-acceptance-single-head
-  rule: rerun-alembic-heads-before-every-migration-card
+  rule: rerun-alembic-heads-and-mysql-empty-upgrade-before-every-migration-card
+
 authority:
   canonical_documents:
     - SaaS全局产品审计与商业化运营总控方案_V6唯一代码执行版.md
     - 01_学校系统管理中心_页面施工卡_V6唯一代码执行版.md
     - 02_SaaS平台运营中心_页面施工卡_V6唯一代码执行版.md
     - 03_学校角色权限矩阵_V6唯一代码执行版.md
-  conflict_rule: canonical_markdown_wins
+    - V6控制面施工卡机器索引.yaml
+  execution_order_single_source: true
+  order_must_match_global_control: true
+  order_override_files_allowed: false
+  conflict_rule: latest-main-facts-then-canonical-markdown
   unit: one-card-one-branch-one-draft-pr
-  production_code_changes_in_phase0: false
-coverage_classes:
-  A: existing-production-foundation-enhancement
-  B: legacy-foundation-exists-v6-layer-missing
-  C: common-entry-only-v6-workspace-missing
-  R: legacy-permission-active-migration-required
+  mysql_only: true
+  git_add_all_allowed: false
+  auto_merge_allowed: false
+  production_code_changes_in_pr33: false
+
+phase0_facts:
+  cards_count: 37
+  system_cards_count: 21
+  platform_cards_count: 15
+  special_cards_count: 1
+  production_files_changed: 0
+  migrations_changed: 0
+  routes_changed: 0
+  coverage_classes:
+    A: existing-production-foundation-enhancement
+    B: legacy-foundation-exists-v6-layer-missing
+    C: common-entry-only-v6-workspace-missing
+    R: legacy-permission-active-migration-required
+
 shared_locks:
   migration_head:
     paths: [backend/alembic/versions/]
@@ -45,6 +63,7 @@ shared_locks:
       - frontend/src/config/navPlan.js
       - frontend/src/router/index.js
     mode: reserved-file-lock
+
 protected_pr25_paths:
   - backend/app/services/file_service.py
   - backend/app/services/data_exchange_confirm_service.py
@@ -59,19 +78,22 @@ protected_pr25_paths:
   - docs/architecture/file-capability-inventory.d/
   - .github/workflows/file-capability-inventory.yml
   - .github/workflows/academic-file-exchange-center.yml
+
 execution_order:
-  - PHASE-0
+  - PHASE-0-MAIN-AUDIT-FREEZE
   - SYS-18
   - RBAC-09
+  - PLAT-02
+  - PLAT-15
   - PLAT-03
   - SYS-19
   - SYS-12
   - SYS-04
+  - SYS-11
   - SYS-06
   - SYS-08
   - SYS-09
   - SYS-10
-  - SYS-11
   - SYS-13
   - SYS-03
   - SYS-05
@@ -83,12 +105,10 @@ execution_order:
   - SYS-16
   - PLAT-08
   - SYS-20
+  - PLAT-04
   - PLAT-09
   - PLAT-11
   - SYS-21
-  - PLAT-15
-  - PLAT-02
-  - PLAT-04
   - PLAT-07
   - PLAT-12
   - PLAT-06
@@ -99,6 +119,60 @@ execution_order:
   - PLAT-05
   - PLAT-01
   - GLOBAL-ACCEPTANCE
+
+self_corrections:
+  - PLAT-02-before-PLAT-03-to-unify-effective-tenant-state
+  - PLAT-15-before-platform-high-risk-write-expansion
+  - SYS-11-before-role-scope-activation-chain
+  - PLAT-04-after-service-catalog-school-implementation-and-integration
+  - PLAT-07-code-complete-but-not-activatable-until-PLAT-12-and-real-cos-acceptance
+  - SYS-02-enhance-existing-implementation-foundation-do-not-rebuild
+  - reuse-existing-workflow-todo-message-outbox-audit-models
+
+execution_gates:
+  GATE-A:
+    after: SYS-19
+    checks:
+      - SYS-18_RBAC-09_SYS-19-joint-regression
+      - PLAT-02-tenant-state-consistency
+      - PLAT-03-commercial-school-actual-storage-reconciliation
+      - cross-tenant-isolation-and-file-content-privacy
+  GATE-B:
+    after: SYS-10
+    checks:
+      - two-backend-instances-and-redis
+      - draft-and-review-do-not-change-live-authorization
+      - atomic-activation-and-rollback
+      - cache-invalidation-and-decision-trace
+  GATE-C:
+    after: SYS-02
+    checks:
+      - complete-new-school-bootstrap
+      - org-role-scope-account-module-data-exchange-closure
+      - go-live-acceptance-evidence
+  GATE-D:
+    after: PLAT-04
+    checks:
+      - provisioning-idempotency
+      - failure-resume-and-compensation
+      - no-half-tenant
+      - no-long-lived-plaintext-initial-password
+  GATE-E:
+    after: PLAT-12
+    checks:
+      - mysql-isolated-restore
+      - fileobject-metadata-restore
+      - local-and-cos-byte-sha256
+      - PLAT-07-real-cos-activation-acceptance
+  GATE-F:
+    after: PLAT-01
+    checks:
+      - 3-5-10-tenant-mixed-load
+      - noisy-tenant-does-not-impact-login-or-approval
+      - cross-tenant-privacy
+      - admin-pc-student-pc-h5-wechat-builds
+      - v6-global-acceptance
+
 cards:
   SYS-01:
     route: /admin/system/overview
@@ -144,7 +218,7 @@ cards:
     probe_status: missing
     migration_owner: M-RBAC-01
   SYS-07:
-    route: /admin/system/roles?tab=members
+    route: '/admin/system/roles?tab=members'
     title: 角色成员、自动业务身份与有效期
     coverage: B
     probe: backend/app/services/role_assignment_service.py
@@ -229,10 +303,10 @@ cards:
     migration_owner: none-first
     hard_requirements:
       - independent-summary-api
-      - visibility-own-tenant-module
+      - visibility-own-module-tenant
       - database-side-pagination
       - frontend-idempotency-key
-      - no-window-confirm-prompt
+      - no-window-confirm-or-prompt
       - preserve-import-export-fileobject-authority
   SYS-19:
     route: /admin/system/file-storage-governance
@@ -241,7 +315,7 @@ cards:
     probe: backend/app/services/file_storage_governance_service.py
     probe_status: exists
     migration_owner: none-first-conditional-M-SYS-06
-    hard_dependencies: [RBAC-09, PLAT-03]
+    hard_dependencies: [RBAC-09, PLAT-02, PLAT-03]
   SYS-20:
     route: /admin/system/integrations
     title: 集成连接、同步与失败治理
@@ -281,7 +355,7 @@ cards:
     probe_status: missing
     migration_owner: none
   PLAT-02:
-    route: /admin/platform/tenants/:tenantId
+    route: '/admin/platform/tenants/:tenantId'
     title: 租户学校、生命周期与租户360
     coverage: B
     probe: backend/app/services/tenant_effective_state_service.py
@@ -322,7 +396,7 @@ cards:
     probe: frontend/src/modules/platform/views/control/PlatformControlFileStorage.vue
     probe_status: exists
     migration_owner: M-PLAT-FS-01
-    hard_dependencies: [PLAT-08, PLAT-11, PLAT-12]
+    activation_gate: PLAT-12-and-real-cos-acceptance
   PLAT-08:
     route: /admin/platform/services
     title: 服务目录、依赖与租户影响地图
@@ -379,6 +453,7 @@ cards:
     probe: backend/app/services/platform_access_governance_service.py
     probe_status: missing
     migration_owner: conditional-after-platform-account-inventory
+
 sys18_consumers:
   school_frontend:
     - frontend/src/modules/system/views/SystemDataExchangeView.vue
@@ -397,13 +472,8 @@ sys18_consumers:
     - backend/app/services/identity_import_scan_orchestrator.py
     - backend/app/services/data_exchange_cleanup_service.py
     - backend/app/api/v1/migration.py
-phase0_acceptance:
-  cards_count: 37
-  system_cards_count: 21
-  platform_cards_count: 15
-  special_cards_count: 1
-  production_files_changed: 0
-  migrations_changed: 0
-  routes_changed: 0
-  next_card: SYS-18
-  next_branch: feat/v6-data-exchange-governance
+
+next_action:
+  card: SYS-18
+  branch: feat/v6-data-exchange-governance
+  prerequisite: merge-pr33-and-create-branch-from-latest-main
