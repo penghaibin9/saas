@@ -1,26 +1,24 @@
-# PR #25 final merge audit trigger; no workflow logic change.
-name: File center final merge closeout v3
+name: File center authoritative merge audit
 
 on:
   push:
     branches:
       - audit/file-capability-inventory
-    paths:
-      - .github/workflows/file-center-final-merge-closeout-v3.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
 concurrency:
-  group: file-center-streaming-scan-closeout
+  group: file-center-authoritative-merge-audit
   cancel-in-progress: true
 
 jobs:
-  closeout:
+  audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 90
     services:
       mysql:
         image: mysql:8.0
@@ -41,134 +39,41 @@ jobs:
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
       FAST_TEST_SCHEMA: '1'
       APP_ENV: test
-      SECRET_KEY: file-center-final-merge-closeout-v3-secret
+      SECRET_KEY: file-center-authoritative-merge-audit-secret
       FILE_SCAN_ENABLED: 'false'
       FILE_SCAN_REQUIRED: 'false'
       GH_TOKEN: ${{ github.token }}
+
     steps:
       - uses: actions/checkout@v4
         with:
           ref: audit/file-capability-inventory
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - id: patch
-        name: Apply final production fixes
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          python - <<'PY' > /tmp/patch.log 2>&1
-          from pathlib import Path
-
-          def extract_scripts(path: str) -> list[str]:
-              raw = Path(path).read_text(encoding='utf-8')
-              marker = "          python - <<'PY'\n"
-              end_marker = "\n          PY\n"
-              scripts = []
-              cursor = 0
-              while True:
-                  start = raw.find(marker, cursor)
-                  if start < 0:
-                      break
-                  start += len(marker)
-                  end = raw.find(end_marker, start)
-                  if end < 0:
-                      raise RuntimeError(f'unclosed Python patch in {path}')
-                  lines = raw[start:end].splitlines()
-                  scripts.append("\n".join(
-                      line[10:] if line.startswith("          ") else line
-                      for line in lines
-                  ))
-                  cursor = end + len(end_marker)
-              return scripts
-
-          # Apply the path-based XLSX changes, excluding the old ClamAV anchor section.
-          streaming = extract_scripts('.github/workflows/file-center-streaming-scan-closeout.yml')
-          if not streaming:
-              raise RuntimeError('streaming production patch is missing')
-          streaming_code = streaming[0].split('          # 6) ClamAV protocol response', 1)[0]
-          if streaming_code == streaming[0]:
-              streaming_code = streaming[0].split('# 6) ClamAV protocol response', 1)[0]
-          exec(compile(streaming_code, 'streaming-xlsx-production-patch', 'exec'), {})
-
-          # Replace the complete ClamAV response body by function-range, not a fragile text anchor.
-          clamav_path = Path('backend/app/services/clamav_client.py')
-          clamav = clamav_path.read_text(encoding='utf-8')
-          fn_start = clamav.index('    @staticmethod\n    def _read_response(')
-          fn_end = clamav.index('\n    def command(', fn_start)
-          replacement = '''    @staticmethod
-    def _read_response(sock: socket.socket, limit: int = 64 * 1024) -> str:
-        response = bytearray()
-        while len(response) < limit:
-            try:
-                part = sock.recv(min(4096, limit - len(response)))
-            except OSError as exc:
-                raise ClamAVUnavailable(f"ClamAV read failed: {exc}") from exc
-            if not part:
-                break
-            response.extend(part)
-            if b"\\0" in part or b"\\n" in part:
-                break
-        return response.rstrip(b"\\0\\r\\n").decode("utf-8", errors="replace")
-'''
-          clamav_path.write_text(clamav[:fn_start] + replacement + clamav[fn_end:], encoding='utf-8')
-
-          # Apply the four MySQL root-cause fixes.
-          final_scripts = extract_scripts('.github/workflows/file-center-final-red-closeout.yml')
-          if len(final_scripts) < 2:
-              raise RuntimeError('MySQL root-cause patch is missing')
-          exec(compile(final_scripts[1], 'mysql-production-patch', 'exec'), {})
-
-          # Update the authorization contract checker to follow the authoritative facade + implementation split.
-          checker_path = Path('scripts/check/check-file-client-contract.mjs')
-          checker = checker_path.read_text(encoding='utf-8')
-          old_decl = "const fileService = read('backend/app/services/file_service.py')\n"
-          new_decl = "const fileServiceFacade = read('backend/app/services/file_service.py')\nconst fileServiceImplementation = read('backend/app/services/file_service_legacy.py')\n"
-          if old_decl in checker:
-              checker = checker.replace(old_decl, new_decl, 1)
-          old_assert = "mustInclude(fileService, 'authorize_file_object(', 'legacy file service must delegate DB authorization to resolver registry.')\n"
-          new_assert = "mustInclude(fileServiceFacade, 'from app.services import file_service_legacy as _legacy', 'file service facade must delegate to the frozen implementation.')\nmustInclude(fileServiceFacade, 'with storage_write_scope(biz_type):', 'file service facade must preserve module-scoped quota reservation.')\nmustInclude(fileServiceImplementation, 'authorize_file_object(', 'file service implementation must delegate DB authorization to resolver registry.')\n"
-          if old_assert in checker:
-              checker = checker.replace(old_assert, new_assert, 1)
-          required = [
-              "const fileServiceFacade = read('backend/app/services/file_service.py')",
-              "const fileServiceImplementation = read('backend/app/services/file_service_legacy.py')",
-              "mustInclude(fileServiceImplementation, 'authorize_file_object('",
-          ]
-          missing = [item for item in required if item not in checker]
-          if missing:
-              raise RuntimeError(f'authorization checker update incomplete: {missing}')
-          checker_path.write_text(checker, encoding='utf-8')
-
-          print('all final production patches applied')
-          PY
-          code=$?
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          exit "$code"
-
-      - id: install
+      - id: backend_install
         name: Install backend dependencies
-        if: steps.patch.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set +e
-          (cd backend && pip install -r requirements.txt) > /tmp/install.log 2>&1
+          (cd backend && pip install -r requirements.txt) > /tmp/backend_install.log 2>&1
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
 
       - id: migrate
-        name: Compile and migrate MySQL to 0154
-        if: steps.install.outcome == 'success'
+        name: Compile and migrate real MySQL
+        if: steps.backend_install.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -177,13 +82,13 @@ jobs:
             python -m compileall -q app tests && \
             test "$(alembic heads | wc -l | tr -d ' ')" = "1" && \
             alembic upgrade head && \
-            alembic current | grep -q '0154_file_storage_quota_reservation') > /tmp/migrate.log 2>&1
+            alembic current) > /tmp/migrate.log 2>&1
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
 
       - id: scan
-        name: Run strict scanners and authorization contract
+        name: Run strict inventory and authorization contracts
         if: steps.migrate.outcome == 'success'
         continue-on-error: true
         shell: bash
@@ -198,7 +103,7 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
 
-      - id: tests
+      - id: backend_tests
         name: Run complete stage 6-10 MySQL regression
         if: steps.scan.outcome == 'success'
         continue-on-error: true
@@ -225,76 +130,104 @@ jobs:
             tests/test_file_streaming_archive_cutover.py \
             tests/test_graduation_material_center_phase6.py \
             tests/test_internship_material_center.py && \
-            python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run) > /tmp/tests.log 2>&1
+            python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run) > /tmp/backend_tests.log 2>&1
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
 
-      - name: Commit only after every gate passes
-        id: commit
-        if: steps.patch.outcome == 'success' && steps.install.outcome == 'success' && steps.migrate.outcome == 'success' && steps.scan.outcome == 'success' && steps.tests.outcome == 'success'
+      - id: admin_pc
+        name: Admin PC lint test build
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/file-center-streaming-scan-closeout.yml
-          git rm .github/workflows/file-center-final-red-closeout.yml
-          git rm .github/workflows/file-center-final-red-diagnostic.yml
-          git rm .github/workflows/file-center-final-red-diagnostic-v2.yml
-          git rm .github/workflows/file-center-final-merge-closeout-v3.yml
-          git add -- \
-            backend/app/services/xlsx_util.py \
-            backend/app/services/excel/pipeline.py \
-            backend/app/services/excel/__init__.py \
-            backend/app/services/clamav_client.py \
-            backend/app/services/storage/cos.py \
-            backend/app/services/file_storage_quota_reservation_service.py \
-            backend/app/modules/academic_affairs/services/academic_affairs_service.py \
-            backend/app/modules/academic_affairs/services/academic_file_exchange_service.py \
-            backend/app/modules/academic_affairs/services/academic_export_compat_service.py \
-            backend/tests/graduation_material_center_mysql_acceptance.py \
-            scripts/check/check-file-client-contract.mjs
-          git diff --cached --check
-          git commit -m "fix(file-center): close final merge audit blockers"
-          git push origin HEAD:audit/file-capability-inventory
+          set +e
+          (cd frontend && npm ci && npm run lint && npm test && npm run build) > /tmp/admin_pc.log 2>&1
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - id: student_pc
+        name: Student PC lint test build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          (cd student-portal && npm ci && npm run lint && npm test && npm run build) > /tmp/student_pc.log 2>&1
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - id: miniapp
+        name: Miniapp test H5 and WeChat builds
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          (cd miniapp && npm ci && npm test && npm run build:h5 && npm run build:mp-weixin) > /tmp/miniapp.log 2>&1
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
 
       - name: Report exact result to PR 25
         if: always()
         shell: bash
         env:
-          PATCH: ${{ steps.patch.outcome }}
-          INSTALL: ${{ steps.install.outcome }}
+          BACKEND_INSTALL: ${{ steps.backend_install.outcome }}
           MIGRATE: ${{ steps.migrate.outcome }}
           SCAN: ${{ steps.scan.outcome }}
-          TESTS: ${{ steps.tests.outcome }}
-          COMMIT: ${{ steps.commit.outcome }}
+          BACKEND_TESTS: ${{ steps.backend_tests.outcome }}
+          ADMIN_PC: ${{ steps.admin_pc.outcome }}
+          STUDENT_PC: ${{ steps.student_pc.outcome }}
+          MINIAPP: ${{ steps.miniapp.outcome }}
         run: |
           {
-            echo '<!-- file-center-final-merge-closeout-v3 -->'
-            echo '## 文件中心合并前收口（第三轮）'
+            echo '<!-- file-center-authoritative-merge-audit -->'
+            echo '## PR #25 权威合并前审计'
             echo
-            echo '| 环节 | 结果 |'
+            echo "HEAD: ${GITHUB_SHA}"
+            echo
+            echo '| 门禁 | 结果 |'
             echo '|---|---|'
-            echo "| 应用生产修复 | ${PATCH} |"
-            echo "| 安装依赖 | ${INSTALL} |"
-            echo "| MySQL 升级到 0154 | ${MIGRATE} |"
-            echo "| 严格扫描和授权合同 | ${SCAN} |"
-            echo "| 阶段 6–10 完整测试 | ${TESTS} |"
-            echo "| 全绿后提交代码 | ${COMMIT} |"
+            echo "| 后端依赖 | ${BACKEND_INSTALL} |"
+            echo "| MySQL / Alembic / 编译 | ${MIGRATE} |"
+            echo "| 能力清单 / 严格调用扫描 / 授权合同 | ${SCAN} |"
+            echo "| 阶段 6–10 MySQL 回归 / 治理 worker | ${BACKEND_TESTS} |"
+            echo "| 管理 PC lint / test / build | ${ADMIN_PC} |"
+            echo "| 学生 PC lint / test / build | ${STUDENT_PC} |"
+            echo "| H5 / 微信小程序 test / build | ${MINIAPP} |"
             echo
-            for item in patch install migrate scan tests; do
+            for item in backend_install migrate scan backend_tests admin_pc student_pc miniapp; do
               file="/tmp/${item}.log"
               if [ -s "$file" ]; then
                 echo "<details><summary>${item} 日志末尾</summary>"
                 echo
                 echo '```text'
-                tail -n 120 "$file"
+                tail -n 160 "$file"
                 echo '```'
                 echo '</details>'
               fi
             done
             echo
             echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          } > /tmp/result.md
-          gh pr comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/result.md
+          } > /tmp/pr25-audit.md
+          gh pr comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/pr25-audit.md
+
+      - name: Enforce all gates
+        if: always()
+        shell: bash
+        env:
+          BACKEND_INSTALL: ${{ steps.backend_install.outcome }}
+          MIGRATE: ${{ steps.migrate.outcome }}
+          SCAN: ${{ steps.scan.outcome }}
+          BACKEND_TESTS: ${{ steps.backend_tests.outcome }}
+          ADMIN_PC: ${{ steps.admin_pc.outcome }}
+          STUDENT_PC: ${{ steps.student_pc.outcome }}
+          MINIAPP: ${{ steps.miniapp.outcome }}
+        run: |
+          test "$BACKEND_INSTALL" = success
+          test "$MIGRATE" = success
+          test "$SCAN" = success
+          test "$BACKEND_TESTS" = success
+          test "$ADMIN_PC" = success
+          test "$STUDENT_PC" = success
+          test "$MINIAPP" = success
