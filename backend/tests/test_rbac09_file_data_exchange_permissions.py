@@ -17,6 +17,16 @@ def _user(user_id: int = 41) -> dict:
     }
 
 
+def _binding(subject_type: str, subject_id: str | None = None):
+    return SimpleNamespace(
+        is_deleted=False,
+        status="ACTIVE",
+        subject_type=subject_type,
+        subject_id=subject_id,
+        batch_id=None,
+    )
+
+
 def test_rbac09_bundle_catalog_and_legacy_scope_are_frozen():
     catalog = {item["bundleCode"]: item for item in bundles.permission_bundle_catalog()}
     assert set(catalog) == {
@@ -104,6 +114,31 @@ def test_file_governance_permission_never_bypasses_business_content_relation(mon
     assert file_access._default_resolver(None, ordinary, [], actor, "meta") is False
     assert file_access._default_resolver(None, mental, [], actor, "meta") is False
 
+    # BUSINESS_OBJECT/TENANT 只描述文件归属，不描述当前访问者，不能作为内容授权。
+    assert file_access._default_resolver(
+        None,
+        ordinary,
+        [_binding("BUSINESS_OBJECT")],
+        actor,
+        "meta",
+    ) is False
+    assert file_access._default_resolver(
+        None,
+        ordinary,
+        [_binding("TENANT")],
+        actor,
+        "meta",
+    ) is False
+
+    # 明确指向当前主体的绑定仍然是合法关系。
+    assert file_access._default_resolver(
+        None,
+        ordinary,
+        [_binding("USER", str(actor["userId"]))],
+        actor,
+        "meta",
+    ) is True
+
     owner = _user(88)
     assert file_access._default_resolver(None, ordinary, [], owner, "download") is True
 
@@ -173,6 +208,7 @@ def test_rbac09_source_contract_has_no_governance_content_bypass_and_frontend_is
     assert "systemAdmin.file.manage" not in file_access_source
     assert "_is_file_admin" not in file_access_source
     assert "systemAdmin.audit.sensitive.view" not in data_exchange_source
+    assert 'subject_type in {"BUSINESS_OBJECT", "TENANT"}' in file_access_source
     for code in (
         "systemAdmin.dataExchange.viewOwn",
         "systemAdmin.dataExchange.viewTenant",
