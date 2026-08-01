@@ -111,6 +111,8 @@ def test_file_governance_permission_never_bypasses_business_content_relation(mon
         lambda user, code: code == "systemAdmin.file.manage",
     )
 
+    # 历史导入符号只用于平滑升级，始终拒绝内容管理员旁路。
+    assert file_access._is_file_admin(actor) is False
     assert file_access._default_resolver(None, ordinary, [], actor, "meta") is False
     assert file_access._default_resolver(None, mental, [], actor, "meta") is False
 
@@ -206,7 +208,7 @@ def test_rbac09_source_contract_has_no_governance_content_bypass_and_frontend_is
     ).read_text(encoding="utf-8")
 
     assert "systemAdmin.file.manage" not in file_access_source
-    assert "_is_file_admin" not in file_access_source
+    assert "return False" in file_access_source.split("def _is_file_admin", 1)[1].split("def _binding_subject_allows", 1)[0]
     assert "systemAdmin.audit.sensitive.view" not in data_exchange_source
     assert 'subject_type in {"BUSINESS_OBJECT", "TENANT"}' in file_access_source
     for code in (
