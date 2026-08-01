@@ -209,11 +209,14 @@ def _assert_row_visible(
     module_code: str | None = None,
 ) -> None:
     if visibility is None:
+        # by-id 服务调用先以“任务真实所有者”作为最小边界。数据交换 API 自身仍在
+        # router 层校验动作权限；毕业设计等领域服务则先完成本域范围校验再调用这里。
+        # 这恢复合法的领域导出链，但不会把 operator_id 为空解释成管理员可见。
+        if _row_is_owned(row, user):
+            return
         if _can_view_tenant(user):
             return
         if _can_view_module(user, str(row.module_code or "")):
-            return
-        if _can_view_own(user) and _row_is_owned(row, user):
             return
         raise not_found("数据交换任务不存在")
 
@@ -1051,18 +1054,18 @@ def get_import_job(
     visibility: str | None = None,
     module_code: str | None = None,
 ) -> dict:
+    from app.models.data_exchange import ImportRowError
+
     db = get_sessionmaker()()
     try:
         row = _owned_import(
             db, job_id, user, visibility=visibility, module_code=module_code
         )
         data = _import_row(row)
-        error_count = int(db.scalar(select(func.count()).select_from(
-            __import__("app.models.data_exchange", fromlist=["ImportRowError"]).ImportRowError
-        ).where(
-            __import__("app.models.data_exchange", fromlist=["ImportRowError"]).ImportRowError.tenant_id == _tenant_id(),
-            __import__("app.models.data_exchange", fromlist=["ImportRowError"]).ImportRowError.import_job_id == row.id,
-            __import__("app.models.data_exchange", fromlist=["ImportRowError"]).ImportRowError.is_deleted.is_(False),
+        error_count = int(db.scalar(select(func.count()).select_from(ImportRowError).where(
+            ImportRowError.tenant_id == _tenant_id(),
+            ImportRowError.import_job_id == row.id,
+            ImportRowError.is_deleted.is_(False),
         )) or 0)
         result = dict(row.result_json or {})
         timeline = [
