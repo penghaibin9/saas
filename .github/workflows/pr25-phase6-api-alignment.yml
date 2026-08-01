@@ -1,0 +1,117 @@
+name: PR25 phase6 acceptance API alignment
+
+on:
+  push:
+    branches: [audit/file-capability-inventory]
+    paths: ['.github/workflows/pr25-phase6-api-alignment.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+
+      - name: Rewrite legacy acceptance calls to current service contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          source = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''    rule = catalog.ensure_rules(batch_id, admin_user)\n    assert rule["itemCount"] == 18\n    rule_codes = {item["materialCode"] for item in rule["items"]}\n''',
+                  '''    rules = catalog.list_rules(batch_id, admin_user)\n    rule = next(item for item in rules["items"] if item["status"] == "ENABLED")\n    assert len(rule["items"]) == 18\n    rule_codes = {item["materialCode"] for item in rule["items"]}\n''',
+              ),
+              (
+                  'lambda: catalog.submit_material(student_id, "DESIGN_WORK", pending_file_id, 0, student_user)',
+                  'lambda: catalog.submit_material(student_user, "DESIGN_WORK", pending_file_id, expected_version=0)',
+              ),
+              (
+                  'lambda: catalog.submit_material(student_id, "SOURCE_CODE", infected_file_id, 0, student_user)',
+                  'lambda: catalog.submit_material(student_user, "SOURCE_CODE", infected_file_id, expected_version=0)',
+              ),
+              (
+                  'lambda: catalog.submit_material(student_id, "DESIGN_WORK", cross_tenant_file_id, 0, student_user)',
+                  'lambda: catalog.submit_material(student_user, "DESIGN_WORK", cross_tenant_file_id, expected_version=0)',
+              ),
+              (
+                  'design = catalog.submit_material(student_id, "DESIGN_WORK", clean_design_id, 0, student_user)',
+                  'design = catalog.submit_material(student_user, "DESIGN_WORK", clean_design_id, expected_version=0)',
+              ),
+              (
+                  'source = catalog.submit_material(student_id, "SOURCE_CODE", clean_source_id, 0, student_user)',
+                  'source = catalog.submit_material(student_user, "SOURCE_CODE", clean_source_id, expected_version=0)',
+              ),
+              (
+                  'assert design["version"] == 1 and source["version"] == 1',
+                  'assert design["versionNo"] == 1 and source["versionNo"] == 1',
+              ),
+              (
+                  '''    catalog.review_material(\n        design["materialId"], "APPROVE", "设计作品完整", design["fileVersionId"], teacher_user,\n    )\n    catalog.review_material(\n        source["materialId"], "APPROVE", "源代码归档完整", source["fileVersionId"], teacher_user,\n    )\n''',
+                  '''    catalog.review_material(\n        design["materialId"], design["fileVersionId"], "APPROVE", "设计作品完整", teacher_user,\n    )\n    catalog.review_material(\n        source["materialId"], source["fileVersionId"], "APPROVE", "源代码归档完整", teacher_user,\n    )\n''',
+              ),
+              (
+                  '''    backfill_1 = catalog.backfill_legacy_attachments(\n        admin_user,\n        batch_id=batch_id,\n        page_size=1,\n        dry_run=False,\n        checkpoint_key="phase6-backfill",\n    )\n    backfill_2 = catalog.backfill_legacy_attachments(\n        admin_user,\n        batch_id=batch_id,\n        page_size=20,\n        dry_run=False,\n        checkpoint_key="phase6-backfill",\n    )\n    assert backfill_1["processed"] <= 1\n    assert backfill_2["checkpoint"]["status"] in {"COMPLETED", "PARTIAL_FAILED"}\n    repeat = catalog.backfill_legacy_attachments(\n        admin_user,\n        batch_id=batch_id,\n        page_size=20,\n        dry_run=False,\n        checkpoint_key="phase6-backfill-repeat",\n    )\n    assert repeat["createdBindings"] >= 0\n''',
+                  '''    backfill_1 = catalog.backfill_legacy(\n        admin_user, page_size=1, cursor_model="PROPOSAL",\n        cursor_id=max(0, legacy_proposal_id - 1), dry_run=False,\n    )\n    assert backfill_1["scanned"] == 1\n    assert backfill_1["converted"] + backfill_1["skipped"] >= 1\n    repeat = catalog.backfill_legacy(\n        admin_user, page_size=1, cursor_model="PROPOSAL",\n        cursor_id=max(0, legacy_proposal_id - 1), dry_run=False,\n    )\n    assert repeat["skipped"] >= 1\n''',
+              ),
+              (
+                  '''            GraduationMaterialBackfillCheckpoint.batch_id == batch_id,\n''',
+                  '''            GraduationMaterialBackfillCheckpoint.migration_key == catalog.MIGRATION_KEY,\n''',
+              ),
+              (
+                  '''    policy_v1 = catalog.publish_template_version(\n        template_id,\n        template_file_v1_id,\n        admin_user,\n        batch_id=batch_id,\n        template_code="GD_PROPOSAL_REPORT",\n        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},\n    )\n    policy_v2 = catalog.publish_template_version(\n        template_id,\n        template_file_v2_id,\n        admin_user,\n        batch_id=batch_id,\n        template_code="GD_PROPOSAL_REPORT",\n        variable_schema={"variables": [{"name": "studentName", "type": "string"}]},\n    )\n''',
+                  '''    policy_payload = {\n        "batchId": str(batch_id),\n        "templateCode": "GD_PROPOSAL_REPORT",\n        "variableSchema": {"variables": [{"name": "studentName", "type": "string"}]},\n    }\n    policy_v1 = catalog.publish_template_policy(\n        template_id, template_file_v1_id, policy_payload, admin_user,\n    )\n    policy_v2 = catalog.publish_template_policy(\n        template_id, template_file_v2_id, policy_payload, admin_user,\n    )\n''',
+              ),
+              (
+                  'assert int(policy.current_version_id) == int(policy_v2["fileVersionId"])',
+                  'assert int(policy.current_version_id) == int(policy_v2["versionId"])',
+              ),
+              (
+                  '            status="SCORED",',
+                  '            status="CONFIRMED",',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'exact replacement expected once, found {count}: {old[:90]!r}')
+              source = source.replace(old, new, 1)
+
+          forbidden = (
+              'catalog.ensure_rules(',
+              'catalog.backfill_legacy_attachments(',
+              'catalog.publish_template_version(',
+              'catalog.submit_material(student_id,',
+          )
+          for marker in forbidden:
+              if marker in source:
+                  raise SystemExit(f'legacy phase6 call remains: {marker}')
+          path.write_text(source, encoding='utf-8')
+          PY
+          python -m py_compile backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --check
+
+      - name: Commit aligned fixture and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr25-phase6-api-alignment.yml
+          git add backend/tests/graduation_material_center_mysql_acceptance.py
+          git diff --cached --check
+          git commit -m "test(graduation): align phase6 acceptance with current APIs"
+          git push origin HEAD:audit/file-capability-inventory
