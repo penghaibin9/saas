@@ -117,7 +117,9 @@ def _binding_subject_allows(binding, user: dict) -> bool:
     if batch_id and batch_id not in _actor_batch_values(user):
         return False
     if subject_type in {"BUSINESS_OBJECT", "TENANT"}:
-        return True
+        # 这两类只说明“文件属于哪个对象/租户”，不证明当前访问者与对象有关系。
+        # 必须继续由业务 permission/resolver 判定，不能单独作为内容放行依据。
+        return False
     if subject_type == "USER":
         return bool(subject_id and subject_id == _actor_id(user))
     if subject_type == "STUDENT":
@@ -140,7 +142,8 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
         return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
-    # 上传者/业务 binding 证明直接关系；治理角色不能凭治理权限跳过该关系。
+    # 只有指向当前用户、学生、批次或角色的主体绑定才证明直接关系；
+    # BUSINESS_OBJECT/TENANT 绑定仍必须叠加业务 permission/resolver。
     if active and any(_binding_subject_allows(item, user) for item in active):
         return True
 
