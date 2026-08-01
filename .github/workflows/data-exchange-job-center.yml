@@ -126,7 +126,11 @@ jobs:
           grep -q "ImportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "ExportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
-          ! grep -q "systemAdmin.file.manage" backend/app/services/file_access_service.py
           ! grep -q "systemAdmin.audit.sensitive.view" backend/app/api/v1/data_exchange.py
           grep -q "systemAdmin.fileGovernance.view" frontend/src/modules/system/systemManagementCatalog.js
           grep -q "systemAdmin.dataExchange.download" frontend/src/modules/system/systemManagementCatalog.js
+          cd backend
+          python - <<'PY'
+          from app.services.file_access_service import _is_file_admin
+          assert _is_file_admin({"permissions": ["systemAdmin.file.manage", "*"]}) is False
+          PY
