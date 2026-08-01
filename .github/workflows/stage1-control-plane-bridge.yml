@@ -95,8 +95,8 @@ jobs:
           if compgen -G '.stage1/fix.b64.part*' > /dev/null; then
             cat .stage1/fix.b64.part* | base64 -d > /tmp/stage1-fix.patch.gz
             gzip -dc /tmp/stage1-fix.patch.gz > /tmp/stage1-fix.patch
-            git apply --check /tmp/stage1-fix.patch
-            git apply /tmp/stage1-fix.patch
+            git apply --check --unidiff-zero /tmp/stage1-fix.patch
+            git apply --unidiff-zero /tmp/stage1-fix.patch
           fi
           test -f .stage1/verify.sh
           chmod +x .stage1/verify.sh
