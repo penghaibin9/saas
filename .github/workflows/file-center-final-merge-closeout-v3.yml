@@ -2,8 +2,7 @@ name: PR25 final authoritative merge closeout
 
 on:
   push:
-    branches:
-      - audit/file-capability-inventory
+    branches: [audit/file-capability-inventory]
   workflow_dispatch:
 
 permissions:
@@ -25,8 +24,7 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: student_lifecycle_test
-        ports:
-          - 3306:3306
+        ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
           --health-interval=10s
@@ -56,7 +54,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
+
           set +e
           git merge --no-commit --no-ff origin/main > /tmp/merge.log 2>&1
           merge_code=$?
@@ -105,6 +106,7 @@ jobs:
           PY
           git add -- backend/tests/graduation_material_center_mysql_acceptance.py
           git rm -f .github/workflows/pr25-midterm-fixture-block-fix.yml || true
+          git rm -f .github/workflows/pr25-fix-merge-identity.yml || true
 
           grep -q "path: 'accounts/staff'" frontend/src/modules/system/system.routes.js
           grep -q "path: 'data-exchange'" frontend/src/modules/system/system.routes.js
@@ -132,12 +134,7 @@ jobs:
         name: Install backend dependencies
         if: steps.prepare.outcome == 'success'
         continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          (cd backend && pip install -r requirements.txt) > /tmp/backend_install.log 2>&1
-          code=$?
-          exit "$code"
+        run: (cd backend && pip install -r requirements.txt) > /tmp/backend_install.log 2>&1
 
       - id: migrate
         name: Compile and migrate real MySQL
@@ -145,14 +142,10 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set +e
           (cd backend && \
             python -m compileall -q app tests && \
             test "$(alembic heads | wc -l | tr -d ' ')" = "1" && \
-            alembic upgrade head && \
-            alembic current) > /tmp/migrate.log 2>&1
-          code=$?
-          exit "$code"
+            alembic upgrade head && alembic current) > /tmp/migrate.log 2>&1
 
       - id: scan
         name: Run strict inventory and authorization contracts
@@ -160,14 +153,11 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set +e
           (python scripts/audit_file_capabilities.py --check-schema && \
             python scripts/audit_file_capabilities.py --strict-baseline && \
             python scripts/check_new_file_capabilities.py --base-ref origin/main && \
             python scripts/audit_file_center_calls.py --strict --base-ref origin/main && \
             node scripts/check/check-file-client-contract.mjs) > /tmp/scan.log 2>&1
-          code=$?
-          exit "$code"
 
       - id: backend_tests
         name: Run complete stage 6-10 MySQL regression
@@ -175,7 +165,6 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set +e
           (cd backend && pytest -q -p no:warnings --durations=30 \
             tests/test_academic_export_compat.py \
             tests/test_academic_file_exchange_center.py \
@@ -197,41 +186,24 @@ jobs:
             tests/test_graduation_material_center_phase6.py \
             tests/test_internship_material_center.py && \
             python -m app.workers.file_governance_worker --once --tenant-id 90999 --dry-run) > /tmp/backend_tests.log 2>&1
-          code=$?
-          exit "$code"
 
       - id: admin_pc
         name: Admin PC lint test build
         if: steps.prepare.outcome == 'success'
         continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          (cd frontend && npm ci && npm run lint && npm test && npm run build) > /tmp/admin_pc.log 2>&1
-          code=$?
-          exit "$code"
+        run: (cd frontend && npm ci && npm run lint && npm test && npm run build) > /tmp/admin_pc.log 2>&1
 
       - id: student_pc
         name: Student PC lint test build
         if: steps.prepare.outcome == 'success'
         continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          (cd student-portal && npm ci && npm run lint && npm test && npm run build) > /tmp/student_pc.log 2>&1
-          code=$?
-          exit "$code"
+        run: (cd student-portal && npm ci && npm run lint && npm test && npm run build) > /tmp/student_pc.log 2>&1
 
       - id: miniapp
         name: Miniapp test H5 and WeChat builds
         if: steps.prepare.outcome == 'success'
         continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          (cd miniapp && npm ci && npm test && npm run build:h5 && npm run build:mp-weixin) > /tmp/miniapp.log 2>&1
-          code=$?
-          exit "$code"
+        run: (cd miniapp && npm ci && npm test && npm run build:h5 && npm run build:mp-weixin) > /tmp/miniapp.log 2>&1
 
       - id: commit
         name: Commit only after every gate is green
@@ -247,8 +219,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git status --short
           git commit -m "merge: sync main and close PR25 final audit"
           git push origin HEAD:audit/file-capability-inventory
