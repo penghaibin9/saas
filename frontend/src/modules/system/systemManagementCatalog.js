@@ -34,11 +34,23 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     items: [
       { key: 'sys-staff-accounts', label: '教职工账号', path: '/admin/system/accounts/staff', permissionKey: 'system.user.view', view: 'staff-accounts', actions: [action('user:update', '编辑账号'), action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:assign-role', '分配角色', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
       { key: 'sys-student-accounts', label: '学生账号', path: '/admin/system/accounts/students', permissionKey: 'system.user.view', view: 'student-accounts', actions: [action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
-      /* 学生与教职工拆成两个独立入口：模板字段、结果统计与后续流程完全不同，
-         混在一张表里靠「账号类型」列区分，学校填表极易串列。 */
       { key: 'sys-teacher-import', label: '教职工导入', path: '/admin/system/identity-import/teachers', permissionKey: 'system.user.import', view: 'teacher-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
       { key: 'sys-student-import', label: '学生导入与账号开通', path: '/admin/system/identity-import/students', permissionKey: 'system.user.import', view: 'student-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
-      { key: 'sys-data-exchange', label: '数据交换任务中心', path: '/admin/system/data-exchange', permissionKey: 'system.user.import', view: 'data-exchange', actions: [action('data-exchange:view', '查看任务'), action('data-exchange:confirm', '确认导入', 'HIGH'), action('data-exchange:download', '下载回执', 'HIGH'), action('data-exchange:revoke', '撤销导出', 'HIGH')] },
+      {
+        key: 'sys-data-exchange',
+        label: '数据交换任务中心',
+        path: '/admin/system/data-exchange',
+        permissionKey: 'systemAdmin.dataExchange.viewOwn',
+        view: 'data-exchange',
+        actions: [
+          action('systemAdmin.dataExchange.viewOwn', '查看本人任务'),
+          action('systemAdmin.dataExchange.viewTenant', '查看全校任务', 'HIGH'),
+          action('systemAdmin.dataExchange.confirm', '确认导入', 'HIGH'),
+          action('systemAdmin.dataExchange.download', '下载回执', 'HIGH'),
+          action('systemAdmin.dataExchange.revoke', '撤销导出', 'HIGH'),
+          action('systemAdmin.dataExchange.retry', '重试失败任务', 'HIGH')
+        ]
+      },
       { key: 'sys-account-exceptions', label: '账号异常排查', path: '/admin/system/account-exceptions', permissionKey: 'system.user.exception.view', view: 'account-exceptions', actions: [] },
       { key: 'sys-login-policy', label: '登录与安全策略', path: '/admin/system/login-policy', permissionKey: 'system.security.policy.manage', view: 'login-policy', actions: [action('security:login-policy:update', '修改登录策略', 'HIGH')] }
     ]
@@ -86,7 +98,21 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'system.audit.operation.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
       { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
-      { key: 'sys-file-storage-governance', label: '文件存储治理', path: '/admin/system/file-storage-governance', permissionKey: 'systemAdmin.file.manage', view: 'file-storage-governance', actions: [action('file:storage:view', '查看容量与异常'), action('file:storage:quota', '配置存储配额', 'HIGH'), action('file:storage:cleanup', '执行到期清理', 'HIGH'), action('file:legal-hold', '设置法律保留', 'HIGH')] }
+      {
+        key: 'sys-file-storage-governance',
+        label: '文件存储治理',
+        path: '/admin/system/file-storage-governance',
+        permissionKey: 'systemAdmin.fileGovernance.view',
+        view: 'file-storage-governance',
+        actions: [
+          action('systemAdmin.fileGovernance.view', '查看容量与异常'),
+          action('systemAdmin.fileGovernance.quota.manage', '配置存储配额', 'HIGH'),
+          action('systemAdmin.fileGovernance.retention.manage', '配置保留策略', 'HIGH'),
+          action('systemAdmin.fileGovernance.cleanup.execute', '执行到期清理', 'HIGH'),
+          action('systemAdmin.fileGovernance.legalHold.manage', '设置法律保留', 'HIGH'),
+          action('systemAdmin.fileGovernance.scan.retry', '重试安全扫描', 'HIGH')
+        ]
+      }
     ]
   },
   {
@@ -138,20 +164,12 @@ const ACTION_CODE_OVERRIDES = {
   'role:config': 'systemAdmin.role.config',
   'audit:operation:view': 'systemAdmin.audit.view',
   'audit:login:view': 'systemAdmin.audit.view',
-  'config:brand:update': 'systemAdmin.config.manage',
-  'data-exchange:view': 'systemAdmin.user.import',
-  'data-exchange:confirm': 'systemAdmin.user.import',
-  'data-exchange:download': 'systemAdmin.user.import',
-  'data-exchange:revoke': 'systemAdmin.user.import',
-  'file:storage:view': 'systemAdmin.file.manage',
-  'file:storage:quota': 'systemAdmin.file.manage',
-  'file:storage:cleanup': 'systemAdmin.file.manage',
-  'file:legal-hold': 'systemAdmin.file.manage'
+  'config:brand:update': 'systemAdmin.config.manage'
 }
 
 export const SYSTEM_ACTION_PERMISSION_BY_KEY = Object.fromEntries(
   SYSTEM_MANAGEMENT_ITEMS.flatMap((item) => item.actions.map((entry) => [
     entry.key,
-    ACTION_CODE_OVERRIDES[entry.key] || `systemAdmin.${entry.key.replaceAll(':', '.')}`
+    ACTION_CODE_OVERRIDES[entry.key] || (entry.key.includes('.') ? entry.key : `systemAdmin.${entry.key.replaceAll(':', '.')}`)
   ]))
 )
