@@ -1,0 +1,409 @@
+schema_version: v6-phase0-1
+repository: penghaibin9/saas
+frozen_at: '2026-08-01T17:10:00+08:00'
+baseline:
+  branch: main
+  commit: 604eb299bdaf92d81fb31ed5f150bfd583c7189f
+  alembic_static_revision: 0154_file_storage_quota_reservation
+  alembic_evidence: PR-25-final-acceptance-single-head
+  rule: rerun-alembic-heads-before-every-migration-card
+authority:
+  canonical_documents:
+    - SaaS全局产品审计与商业化运营总控方案_V6唯一代码执行版.md
+    - 01_学校系统管理中心_页面施工卡_V6唯一代码执行版.md
+    - 02_SaaS平台运营中心_页面施工卡_V6唯一代码执行版.md
+    - 03_学校角色权限矩阵_V6唯一代码执行版.md
+  conflict_rule: canonical_markdown_wins
+  unit: one-card-one-branch-one-draft-pr
+  production_code_changes_in_phase0: false
+coverage_classes:
+  A: existing-production-foundation-enhancement
+  B: legacy-foundation-exists-v6-layer-missing
+  C: common-entry-only-v6-workspace-missing
+  R: legacy-permission-active-migration-required
+shared_locks:
+  migration_head:
+    paths: [backend/alembic/versions/]
+    max_concurrent_owner: 1
+  system_api:
+    paths: [backend/app/api/v1/system.py, frontend/src/modules/system/api/system.api.js]
+    mode: exclusive-card-lock
+  platform_api:
+    paths: [backend/app/api/v1/platform.py, frontend/src/modules/platform/api/platformControl.api.js]
+    mode: exclusive-card-lock
+  permission_core:
+    paths: [backend/app/core/permissions.py, backend/app/services/data_scope_service.py]
+    mode: exclusive-rbac-lock
+  route_registry:
+    paths:
+      - backend/app/api/v1/route_registration.py
+      - backend/app/api/v1/router.py
+      - backend/app/models/__init__.py
+      - frontend/src/modules/system/system.routes.js
+      - frontend/src/modules/system/systemManagementCatalog.js
+      - frontend/src/modules/platform/platform.routes.js
+      - frontend/src/config/navPlan.js
+      - frontend/src/router/index.js
+    mode: reserved-file-lock
+protected_pr25_paths:
+  - backend/app/services/file_service.py
+  - backend/app/services/data_exchange_confirm_service.py
+  - backend/app/modules/graduation/services/graduation_material_center_service.py
+  - backend/app/modules/graduation/routers/graduation_material_center.py
+  - backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+  - backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py
+  - backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+  - frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+  - frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+  - docs/architecture/file-capability-inventory.yaml
+  - docs/architecture/file-capability-inventory.d/
+  - .github/workflows/file-capability-inventory.yml
+  - .github/workflows/academic-file-exchange-center.yml
+execution_order:
+  - PHASE-0
+  - SYS-18
+  - RBAC-09
+  - PLAT-03
+  - SYS-19
+  - SYS-12
+  - SYS-04
+  - SYS-06
+  - SYS-08
+  - SYS-09
+  - SYS-10
+  - SYS-11
+  - SYS-13
+  - SYS-03
+  - SYS-05
+  - SYS-07
+  - SYS-02
+  - SYS-17
+  - SYS-14
+  - SYS-15
+  - SYS-16
+  - PLAT-08
+  - SYS-20
+  - PLAT-09
+  - PLAT-11
+  - SYS-21
+  - PLAT-15
+  - PLAT-02
+  - PLAT-04
+  - PLAT-07
+  - PLAT-12
+  - PLAT-06
+  - PLAT-10
+  - PLAT-13
+  - PLAT-14
+  - SYS-01
+  - PLAT-05
+  - PLAT-01
+  - GLOBAL-ACCEPTANCE
+cards:
+  SYS-01:
+    route: /admin/system/overview
+    title: 学校治理总览
+    coverage: B
+    probe: backend/app/services/system_governance_overview_service.py
+    probe_status: missing
+    migration_owner: none
+    depends_on: [SYS-02..SYS-21]
+  SYS-02:
+    route: /admin/system/implementation/overview
+    title: 实施项目、开局、变更与验收
+    coverage: B
+    probe: frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue
+    probe_status: missing
+    migration_owner: reuse-existing-first
+  SYS-03:
+    route: /admin/system/accounts/staff
+    title: 账号、身份绑定与账号异常
+    coverage: B
+    probe: backend/app/services/account_identity_resolution_service.py
+    probe_status: missing
+    migration_owner: reuse-account-identity-tables-first
+  SYS-04:
+    route: /admin/system/org
+    title: 组织结构、任职与未来版本
+    coverage: B
+    probe: backend/app/services/organization_version_service.py
+    probe_status: missing
+    migration_owner: M-SYS-01
+  SYS-05:
+    route: /admin/system/business-relations
+    title: 业务关系中心
+    coverage: B
+    probe: backend/app/services/business_relation_registry.py
+    probe_status: missing
+    migration_owner: none-registry-resolver
+  SYS-06:
+    route: /admin/system/roles
+    title: 角色目录、权限包与自定义角色
+    coverage: B
+    probe: backend/app/services/permission_bundle_service.py
+    probe_status: missing
+    migration_owner: M-RBAC-01
+  SYS-07:
+    route: /admin/system/roles?tab=members
+    title: 角色成员、自动业务身份与有效期
+    coverage: B
+    probe: backend/app/services/role_assignment_service.py
+    probe_status: missing
+    migration_owner: M-RBAC-02
+  SYS-08:
+    route: /admin/system/scopes
+    title: 数据范围、组织安全树与显式DENY
+    coverage: B
+    probe: backend/app/services/scope_policy_service.py
+    probe_status: missing
+    migration_owner: M-RBAC-03
+  SYS-09:
+    route: /admin/system/security-changes
+    title: 安全变更、审核、激活与回滚
+    coverage: B
+    probe: backend/app/services/security_change_service.py
+    probe_status: missing
+    migration_owner: M-RBAC-04
+  SYS-10:
+    route: /admin/system/access-governance
+    title: 访问解释、权限复核、职责分离与紧急访问
+    coverage: B
+    probe: backend/app/services/policy_decision_service.py
+    probe_status: missing
+    migration_owner: M-RBAC-05
+  SYS-11:
+    route: /admin/system/config
+    title: 登录安全、学校配置与有效值
+    coverage: B
+    probe: backend/app/services/effective_config_service.py
+    probe_status: missing
+    migration_owner: M-SYS-02
+  SYS-12:
+    route: /admin/system/academic-calendar
+    title: 学年学期、业务日历与统一切换
+    coverage: B
+    probe: backend/app/services/academic_calendar_service.py
+    probe_status: missing
+    migration_owner: M-SYS-03
+  SYS-13:
+    route: /admin/system/module-entitlements
+    title: 模块商业授权、学校启用与准备度
+    coverage: B
+    probe: backend/app/services/tenant_capability_setting_service.py
+    probe_status: missing
+    migration_owner: M-SYS-04
+  SYS-14:
+    route: /admin/workflow/processes
+    title: 流程定义、流程安全与运行异常
+    coverage: B
+    probe: backend/app/services/workflow_security_policy_service.py
+    probe_status: missing
+    migration_owner: reuse-workflow-conditionally-extend
+  SYS-15:
+    route: /admin/system/communications
+    title: 统一消息、待办与通知治理
+    coverage: B
+    probe: backend/app/services/communication_registry.py
+    probe_status: missing
+    migration_owner: registry-adapter-first
+  SYS-16:
+    route: /admin/system/jobs
+    title: 批处理、调度与后台任务授权
+    coverage: B
+    probe: backend/app/services/job_registry.py
+    probe_status: missing
+    migration_owner: registry-adapter-first
+  SYS-17:
+    route: /admin/system/master-data
+    title: 主数据责任与数据质量
+    coverage: B
+    probe: backend/app/services/master_data_governance_service.py
+    probe_status: missing
+    migration_owner: M-SYS-05
+  SYS-18:
+    route: /admin/system/data-exchange
+    title: 数据交换任务中心增强
+    coverage: A
+    probe: backend/app/services/data_exchange_job_service.py
+    probe_status: exists
+    migration_owner: none-first
+    hard_requirements:
+      - independent-summary-api
+      - visibility-own-tenant-module
+      - database-side-pagination
+      - frontend-idempotency-key
+      - no-window-confirm-prompt
+      - preserve-import-export-fileobject-authority
+  SYS-19:
+    route: /admin/system/file-storage-governance
+    title: 文件存储治理增强
+    coverage: A
+    probe: backend/app/services/file_storage_governance_service.py
+    probe_status: exists
+    migration_owner: none-first-conditional-M-SYS-06
+    hard_dependencies: [RBAC-09, PLAT-03]
+  SYS-20:
+    route: /admin/system/integrations
+    title: 集成连接、同步与失败治理
+    coverage: B
+    probe: backend/app/services/integration_registry.py
+    probe_status: missing
+    migration_owner: adapter-old-json-first
+  SYS-21:
+    route: /admin/system/logs
+    title: 安全审计、敏感操作与证据
+    coverage: B
+    probe: backend/app/services/audit_evidence_service.py
+    probe_status: missing
+    migration_owner: reuse-audit-first
+  RBAC-09:
+    route: /admin/system/roles
+    title: 文件与数据交换权限包迁移
+    coverage: R
+    probe: backend/app/services/file_access_service.py
+    probe_status: legacy-active
+    migration_owner: rbac-serial-if-needed
+    legacy_permissions: [systemAdmin.file.manage, systemAdmin.user.import]
+    migration_sequence:
+      - inventory-consumers
+      - add-new-permissions-and-bundles
+      - dual-permission-compatibility
+      - remove-governance-equals-content-admin
+      - split-data-exchange-actions
+      - activate-role-template-diff
+      - access-explanation-regression
+      - deprecate-old-alias-after-one-release
+  PLAT-01:
+    route: /admin/platform/overview
+    title: 经营、客户成功与运行总览
+    coverage: B
+    probe: backend/app/services/platform_overview_service.py
+    probe_status: missing
+    migration_owner: none
+  PLAT-02:
+    route: /admin/platform/tenants/:tenantId
+    title: 租户学校、生命周期与租户360
+    coverage: B
+    probe: backend/app/services/tenant_effective_state_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-01
+  PLAT-03:
+    route: /admin/platform/commercial-control
+    title: 产品、套餐、合同、授权、配额与计量对账
+    coverage: B
+    probe: backend/app/services/entitlement_reconciliation_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-02-after-reconciliation-service
+  PLAT-04:
+    route: /admin/platform/provisioning
+    title: 租户自动开通、初始化与上线验收
+    coverage: C
+    probe: backend/app/services/tenant_provisioning_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-03
+  PLAT-05:
+    route: /admin/platform/customer-success
+    title: 客户健康、工单、培训与续费
+    coverage: C
+    probe: backend/app/services/customer_health_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-04
+  PLAT-06:
+    route: /admin/platform/foundations
+    title: 公共底座运行中心
+    coverage: C
+    probe: backend/app/services/foundation_operations_service.py
+    probe_status: missing
+    migration_owner: none-readonly-adapter
+  PLAT-07:
+    route: /admin/platform/file-storage
+    title: 文件存储后端、密钥与生产环境验证
+    coverage: A
+    probe: frontend/src/modules/platform/views/control/PlatformControlFileStorage.vue
+    probe_status: exists
+    migration_owner: M-PLAT-FS-01
+    hard_dependencies: [PLAT-08, PLAT-11, PLAT-12]
+  PLAT-08:
+    route: /admin/platform/services
+    title: 服务目录、依赖与租户影响地图
+    coverage: C
+    probe: backend/app/services/service_catalog_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-05
+  PLAT-09:
+    route: /admin/platform/incidents
+    title: 事件、状态页与统一学校通知
+    coverage: C
+    probe: backend/app/services/incident_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-06
+  PLAT-10:
+    route: /admin/platform/problems
+    title: 问题管理、已知错误与事故复盘
+    coverage: C
+    probe: backend/app/services/problem_management_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-07
+  PLAT-11:
+    route: /admin/platform/changes
+    title: 变更、发布、兼容性、灰度与回滚
+    coverage: C
+    probe: backend/app/services/change_management_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-08
+  PLAT-12:
+    route: /admin/platform/disaster-recovery
+    title: 备份、恢复验证与灾备
+    coverage: C
+    probe: backend/app/services/disaster_recovery_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-09
+  PLAT-13:
+    route: /admin/platform/fair-use
+    title: 租户用量、容量、成本与公平使用
+    coverage: C
+    probe: backend/app/services/tenant_metering_service.py
+    probe_status: missing
+    migration_owner: M-PLAT-10
+  PLAT-14:
+    route: /admin/platform/governance
+    title: 数据治理、集成目录与合规证据
+    coverage: C
+    probe: backend/app/services/platform_governance_service.py
+    probe_status: missing
+    migration_owner: reuse-control-tables-first
+  PLAT-15:
+    route: /admin/platform/access
+    title: 平台人员职责、临时提升与受控协助
+    coverage: C
+    probe: backend/app/services/platform_access_governance_service.py
+    probe_status: missing
+    migration_owner: conditional-after-platform-account-inventory
+sys18_consumers:
+  school_frontend:
+    - frontend/src/modules/system/views/SystemDataExchangeView.vue
+    - frontend/src/modules/system/views/SystemStudentImportView.vue
+    - frontend/src/modules/system/views/SystemTeacherImportView.vue
+    - frontend/src/modules/system/views/SystemMigrationView.vue
+    - frontend/src/modules/system/components/ImportDialog.vue
+    - frontend/src/modules/system/api/dataExchange.api.js
+    - frontend/src/modules/system/systemManagementCatalog.js
+  academic_and_shared:
+    - frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+    - frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+    - backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+    - backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+    - backend/app/services/data_exchange_confirm_service.py
+    - backend/app/services/identity_import_scan_orchestrator.py
+    - backend/app/services/data_exchange_cleanup_service.py
+    - backend/app/api/v1/migration.py
+phase0_acceptance:
+  cards_count: 37
+  system_cards_count: 21
+  platform_cards_count: 15
+  special_cards_count: 1
+  production_files_changed: 0
+  migrations_changed: 0
+  routes_changed: 0
+  next_card: SYS-18
+  next_branch: feat/v6-data-exchange-governance
