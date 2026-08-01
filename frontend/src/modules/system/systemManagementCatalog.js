@@ -30,15 +30,16 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   },
   {
     key: 'sys-identity', label: '身份与账号', icon: '☰',
-    description: '师生账号只在统一入口创建，业务模块只能关联既有身份。',
+    description: '账号共用统一认证底座；教职工与学生按不同主数据、角色和操作边界分别管理。',
     items: [
-      { key: 'sys-accounts', label: '师生账号', path: '/admin/system/users', permissionKey: 'system.user.view', view: 'users', actions: [action('user:create', '新增账号', 'HIGH'), action('user:update', '编辑账号'), action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:assign-role', '分配角色', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
-      /* 学生与教师拆成两个独立入口：模板字段、结果统计与后续流程完全不同，
+      { key: 'sys-staff-accounts', label: '教职工账号', path: '/admin/system/accounts/staff', permissionKey: 'system.user.view', view: 'staff-accounts', actions: [action('user:update', '编辑账号'), action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:assign-role', '分配角色', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
+      { key: 'sys-student-accounts', label: '学生账号', path: '/admin/system/accounts/students', permissionKey: 'system.user.view', view: 'student-accounts', actions: [action('user:disable', '停用/启用账号', 'HIGH'), action('user:reset-password', '重置密码', 'HIGH'), action('user:export', '脱敏导出', 'HIGH')] },
+      /* 学生与教职工拆成两个独立入口：模板字段、结果统计与后续流程完全不同，
          混在一张表里靠「账号类型」列区分，学校填表极易串列。 */
+      { key: 'sys-teacher-import', label: '教职工导入', path: '/admin/system/identity-import/teachers', permissionKey: 'system.user.import', view: 'teacher-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
       { key: 'sys-student-import', label: '学生导入与账号开通', path: '/admin/system/identity-import/students', permissionKey: 'system.user.import', view: 'student-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
-      { key: 'sys-teacher-import', label: '教师导入', path: '/admin/system/identity-import/teachers', permissionKey: 'system.user.import', view: 'teacher-import', actions: [action('user:import', '批量创建账号', 'HIGH')] },
       { key: 'sys-data-exchange', label: '数据交换任务中心', path: '/admin/system/data-exchange', permissionKey: 'system.user.import', view: 'data-exchange', actions: [action('data-exchange:view', '查看任务'), action('data-exchange:confirm', '确认导入', 'HIGH'), action('data-exchange:download', '下载回执', 'HIGH'), action('data-exchange:revoke', '撤销导出', 'HIGH')] },
-      { key: 'sys-account-exceptions', label: '账号异常中心', path: '/admin/system/account-exceptions', permissionKey: 'system.user.exception.view', view: 'account-exceptions', actions: [action('user:exception:resolve', '处理账号异常', 'HIGH')] },
+      { key: 'sys-account-exceptions', label: '账号异常排查', path: '/admin/system/account-exceptions', permissionKey: 'system.user.exception.view', view: 'account-exceptions', actions: [] },
       { key: 'sys-login-policy', label: '登录与安全策略', path: '/admin/system/login-policy', permissionKey: 'system.security.policy.manage', view: 'login-policy', actions: [action('security:login-policy:update', '修改登录策略', 'HIGH')] }
     ]
   },
@@ -49,7 +50,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-org-colleges', label: '学院与部门', path: '/admin/system/org?tab=college', permissionKey: 'system.org.view', view: 'org', actions: [action('org:create', '新增组织'), action('org:update', '编辑组织'), action('org:disable', '停用组织', 'HIGH')] },
       { key: 'sys-org-majors', label: '专业管理', path: '/admin/system/org?tab=major', permissionKey: 'system.org.major.manage', view: 'org', actions: [action('org:major:manage', '维护专业')] },
       { key: 'sys-org-classes', label: '年级与班级', path: '/admin/system/org?tab=class', permissionKey: 'system.org.class.manage', view: 'org', actions: [action('org:class:manage', '维护班级')] },
-      { key: 'sys-staff-affiliations', label: '教职工岗位与归属', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [action('org:affiliation:manage', '维护任职关系', 'HIGH')] }
+      { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] }
     ]
   },
   {
@@ -68,18 +69,14 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     description: '学校可在已购范围内启停模块，并维护本校可配置项。',
     items: [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
-      { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
-      { key: 'sys-numbering-rules', label: '编号规则', path: '/admin/system/numbering-rules', permissionKey: 'system.config.numbering.manage', view: 'capability', actions: [action('config:numbering:update', '修改编号规则', 'HIGH')] },
-      { key: 'sys-dictionaries-fields', label: '字典与扩展字段', path: '/admin/system/dictionaries-fields', permissionKey: 'system.config.dictionary.manage', view: 'capability', actions: [action('config:dictionary:manage', '维护字典'), action('config:extension-field:manage', '维护扩展字段', 'HIGH')] }
+      { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] }
     ]
   },
   {
     key: 'sys-workflow', label: '流程配置与运行', icon: '⧉',
     description: '流程只引用系统统一角色；审批任务归工作台。',
     items: [
-      { key: 'sys-process-templates', label: '流程模板', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] },
-      { key: 'sys-process-rules', label: '节点与规则配置', path: '/admin/system/process-rules', permissionKey: 'workflow.rule.manage', view: 'capability', actions: [action('workflow:rule:manage', '维护节点与规则', 'HIGH')] },
-      { key: 'sys-process-monitor', label: '流程运行与异常处理', path: '/admin/system/process-monitor', permissionKey: 'workflow.instance.monitor', view: 'capability', actions: [action('workflow:instance:intervene', '受控干预流程', 'HIGH')] }
+      { key: 'sys-process-templates', label: '流程模板与运行', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] }
     ]
   },
   {
