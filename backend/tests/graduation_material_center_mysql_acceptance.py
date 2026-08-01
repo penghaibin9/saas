@@ -313,9 +313,7 @@ def _seed() -> dict:
                 guidance_date=datetime.utcnow(),
                 content="阶段六指导记录",
                 issues="无",
-                hours=2,
                 attachments_json=[],
-                advisor_name="阶段六指导教师",
             ),
             GraduationMidterm(
                 tenant_id=TENANT_ID,
