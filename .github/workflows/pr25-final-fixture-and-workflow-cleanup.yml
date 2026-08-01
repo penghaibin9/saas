@@ -1,0 +1,63 @@
+name: PR25 final fixture and workflow cleanup
+
+on:
+  push:
+    branches:
+      - audit/file-capability-inventory
+    paths:
+      - .github/workflows/pr25-final-fixture-and-workflow-cleanup.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr25-final-fixture-and-workflow-cleanup
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/file-capability-inventory
+          fetch-depth: 0
+
+      - name: Align GraduationMidterm fixture with current model
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
+          source = path.read_text(encoding='utf-8')
+          for obsolete in (
+              '                progress="80%",\n',
+              '                issues="无",\n',
+              '                next_plan="完成定稿",\n',
+          ):
+              if obsolete not in source:
+                  raise SystemExit(f'obsolete fixture field missing: {obsolete.strip()}')
+              source = source.replace(obsolete, '', 1)
+          path.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Remove obsolete one-time diagnostic workflows
+        run: |
+          rm -f \
+            .github/workflows/file-center-streaming-scan-closeout.yml \
+            .github/workflows/file-center-final-red-closeout.yml \
+            .github/workflows/file-center-final-red-diagnostic.yml \
+            .github/workflows/file-center-final-red-diagnostic-v2.yml
+
+      - name: Commit verified cleanup
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr25-final-fixture-and-workflow-cleanup.yml
+          git add -A -- \
+            backend/tests/graduation_material_center_mysql_acceptance.py \
+            .github/workflows
+          git diff --cached --check
+          git commit -m "test(graduation): align midterm fixture and remove stale closeouts"
+          git push origin HEAD:audit/file-capability-inventory
