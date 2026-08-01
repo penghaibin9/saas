@@ -1,0 +1,49 @@
+name: Retry V6 role document publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v6-role-doc-retry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Materialize exact SHA-verified document
+        run: |
+          python - <<'PY'
+          import ast, base64, gzip, hashlib, re
+          from pathlib import Path
+          source = Path('.github/workflows/publish-v6-role-doc.yml').read_text(encoding='utf-8')
+          def value(name):
+              match = re.search(rf'^\s*{name}:\s*(.+?)\s*$', source, re.M)
+              if not match:
+                  raise SystemExit(f'missing {name}')
+              return ast.literal_eval(match.group(1))
+          raw = gzip.decompress(base64.b64decode(value('PAYLOAD_GZIP_BASE64')))
+          expected = value('EXPECTED_SHA256')
+          actual = hashlib.sha256(raw).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'sha256 mismatch: {actual} != {expected}')
+          target = Path(value('TARGET_PATH'))
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(raw)
+          PY
+      - name: Commit document and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "docs/03-业务模块设计/系统管理中心/03_学校角色权限矩阵_V6唯一代码执行版.md"
+          git rm -- .github/workflows/publish-v6-role-doc.yml .github/workflows/publish-v6-role-doc-pr.yml .github/workflows/publish-v6-role-doc-retry.yml
+          git commit -m "docs: publish V6 role permissions contract"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
