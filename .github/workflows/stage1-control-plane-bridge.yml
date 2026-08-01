@@ -4,7 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/stage1-control-plane-bridge.yml'
-      - '.stage1/stage1.patch'
+      - '.stage1/ready'
+      - '.stage1/patch.b64.part*'
 
 permissions:
   contents: write
@@ -46,11 +47,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Export current card workspace
-        if: ${{ hashFiles('.stage1/stage1.patch') == '' }}
+        if: ${{ hashFiles('.stage1/ready') == '' }}
         run: |
           mkdir -p /tmp/stage1-workspace
           tar -czf /tmp/stage1-workspace/stage1-workspace.tar.gz \
             backend/app/api/v1/platform.py \
+            backend/app/api/v1/file.py \
             backend/app/api/v1/file_governance.py \
             backend/app/core/permissions.py \
             backend/app/core/rbac09_permission_bundles.py \
@@ -76,29 +78,31 @@ jobs:
             frontend/src/config/navPlan.js \
             .github/workflows/data-exchange-job-center.yml
       - uses: actions/upload-artifact@v4
-        if: ${{ hashFiles('.stage1/stage1.patch') == '' }}
+        if: ${{ hashFiles('.stage1/ready') == '' }}
         with:
           name: stage1-workspace
           path: /tmp/stage1-workspace/stage1-workspace.tar.gz
           retention-days: 1
 
       - name: Apply reviewed stage patch
-        if: ${{ hashFiles('.stage1/stage1.patch') != '' }}
+        if: ${{ hashFiles('.stage1/ready') != '' }}
         run: |
-          git apply --check .stage1/stage1.patch
-          git apply .stage1/stage1.patch
+          cat .stage1/patch.b64.part* | base64 -d > /tmp/stage1.patch.gz
+          gzip -dc /tmp/stage1.patch.gz > /tmp/stage1.patch
+          git apply --check /tmp/stage1.patch
+          git apply /tmp/stage1.patch
           test -f .stage1/verify.sh
           chmod +x .stage1/verify.sh
           .stage1/verify.sh
 
       - name: Commit verified stage changes
-        if: ${{ hashFiles('.stage1/stage1.patch') != '' }}
+        if: ${{ hashFiles('.stage1/ready') != '' }}
         run: |
           mapfile -t changed < .stage1/changed-files.txt
           for path in "${changed[@]}"; do
             test -n "$path" && git add -- "$path"
           done
-          git rm -f .stage1/stage1.patch .stage1/verify.sh .stage1/changed-files.txt
+          git rm -f .stage1/ready .stage1/patch.b64.part* .stage1/verify.sh .stage1/changed-files.txt
           git rm -f .github/workflows/stage1-control-plane-bridge.yml
           git config user.name "stage1-control-plane-bot"
           git config user.email "stage1-control-plane-bot@users.noreply.github.com"
