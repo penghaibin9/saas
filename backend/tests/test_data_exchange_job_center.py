@@ -118,6 +118,25 @@ def test_export_projection_marks_expired_output_unavailable():
     assert data["validityHours"] == 24
 
 
+def test_owned_domain_job_is_visible_without_widening_module_or_null_operator_scope():
+    owner = {
+        "userId": 501,
+        "tenantId": TENANT_ID,
+        "currentRoleCode": "GD_MENTOR",
+        "loginName": "graduation_mentor",
+    }
+    owned = SimpleNamespace(operator_id=501, created_by=501, module_code="GRADUATION")
+    jobs._assert_row_visible(owned, owner)
+
+    other_user_job = SimpleNamespace(operator_id=502, created_by=502, module_code="GRADUATION")
+    with pytest.raises(AppException):
+        jobs._assert_row_visible(other_user_job, owner)
+
+    legacy_null_job = SimpleNamespace(operator_id=None, created_by=502, module_code="GRADUATION")
+    with pytest.raises(AppException):
+        jobs._assert_row_visible(legacy_null_job, owner)
+
+
 def _import(
     *,
     tenant_id: int = TENANT_ID,
