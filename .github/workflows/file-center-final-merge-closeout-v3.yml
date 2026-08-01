@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
@@ -49,74 +49,25 @@ jobs:
           fetch-depth: 0
 
       - id: prepare
-        name: Merge latest main and prepare exact audited tree
+        name: Verify latest main ancestry and exact audited tree
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-
-          set +e
-          git merge --no-commit --no-ff origin/main > /tmp/merge.log 2>&1
-          merge_code=$?
-          set -e
-          if [ "$merge_code" -gt 1 ]; then
-            cat /tmp/merge.log
-            exit "$merge_code"
-          fi
-
-          mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
-          for file in "${conflicts[@]}"; do
-            case "$file" in
-              frontend/src/modules/system/components/ImportDialog.vue|\
-              frontend/src/modules/system/system.routes.js|\
-              frontend/src/modules/system/systemManagementCatalog.js|\
-              frontend/src/modules/system/views/SystemStudentImportView.vue|\
-              frontend/src/modules/system/views/SystemTeacherImportView.vue|\
-              student-portal/src/layouts/PortalLayout.vue)
-                git checkout --ours -- "$file"
-                git add -- "$file"
-                ;;
-              *)
-                echo "Unexpected merge conflict: $file"
-                exit 1
-                ;;
-            esac
-          done
+          git merge-base --is-ancestor origin/main HEAD
           test -z "$(git diff --name-only --diff-filter=U)"
-
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('backend/tests/graduation_material_center_mysql_acceptance.py')
-          source = path.read_text(encoding='utf-8')
-          start = source.index('            GraduationMidterm(')
-          end = source.index('            GraduationArchiveRecord(', start)
-          block = source[start:end]
-          for obsolete in (
-              '                progress="80%",\n',
-              '                issues="无",\n',
-              '                next_plan="完成定稿",\n',
-          ):
-              block = block.replace(obsolete, '')
-          source = source[:start] + block + source[end:]
-          path.write_text(source, encoding='utf-8')
-          PY
-          git add -- backend/tests/graduation_material_center_mysql_acceptance.py
-          git rm -f .github/workflows/pr25-midterm-fixture-block-fix.yml || true
-          git rm -f .github/workflows/pr25-fix-merge-identity.yml || true
-
-          grep -q "path: 'accounts/staff'" frontend/src/modules/system/system.routes.js
-          grep -q "path: 'data-exchange'" frontend/src/modules/system/system.routes.js
-          grep -q "path: 'file-storage-governance'" frontend/src/modules/system/system.routes.js
-          grep -q "教职工导入" frontend/src/modules/system/systemManagementCatalog.js
-          grep -q "我的材料库" student-portal/src/layouts/PortalLayout.vue
           ! grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' \
             frontend/src/modules/system student-portal/src/layouts \
             backend/tests/graduation_material_center_mysql_acceptance.py
+          grep -q "path: 'accounts/staff'" frontend/src/modules/system/system.routes.js
+          grep -q "path: 'data-exchange'" frontend/src/modules/system/system.routes.js
+          grep -q "path: 'file-storage-governance'" frontend/src/modules/system/system.routes.js
+          grep -q "数据交换任务中心" frontend/src/modules/system/systemManagementCatalog.js
+          grep -q "我的材料库" student-portal/src/layouts/PortalLayout.vue
+          ! grep -q "history_json=\[\]" <(sed -n '/GraduationArchiveRecord(/,/            ),/p' backend/tests/graduation_material_center_mysql_acceptance.py)
           git diff --check
+          git status --short
 
       - uses: actions/setup-python@v5
         if: steps.prepare.outcome == 'success'
@@ -160,7 +111,7 @@ jobs:
             node scripts/check/check-file-client-contract.mjs) > /tmp/scan.log 2>&1
 
       - id: backend_tests
-        name: Run complete stage 6-10 MySQL regression
+        name: Run complete stage 6-10 MySQL regression and governance worker
         if: steps.scan.outcome == 'success'
         continue-on-error: true
         shell: bash
@@ -205,25 +156,6 @@ jobs:
         continue-on-error: true
         run: (cd miniapp && npm ci && npm test && npm run build:h5 && npm run build:mp-weixin) > /tmp/miniapp.log 2>&1
 
-      - id: commit
-        name: Commit only after every gate is green
-        if: >-
-          steps.prepare.outcome == 'success' &&
-          steps.backend_install.outcome == 'success' &&
-          steps.migrate.outcome == 'success' &&
-          steps.scan.outcome == 'success' &&
-          steps.backend_tests.outcome == 'success' &&
-          steps.admin_pc.outcome == 'success' &&
-          steps.student_pc.outcome == 'success' &&
-          steps.miniapp.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git status --short
-          git commit -m "merge: sync main and close PR25 final audit"
-          git push origin HEAD:audit/file-capability-inventory
-          echo "final_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
       - name: Report exact result to PR 25
         if: always()
         shell: bash
@@ -236,19 +168,16 @@ jobs:
           ADMIN_PC: ${{ steps.admin_pc.outcome }}
           STUDENT_PC: ${{ steps.student_pc.outcome }}
           MINIAPP: ${{ steps.miniapp.outcome }}
-          COMMIT_RESULT: ${{ steps.commit.outcome }}
-          FINAL_SHA: ${{ steps.commit.outputs.final_sha }}
         run: |
-          audited_sha="${FINAL_SHA:-$GITHUB_SHA}"
           {
             echo '<!-- pr25-final-authoritative-merge-closeout -->'
             echo '## PR #25 最终合并前审计'
             echo
-            echo "Audited SHA: ${audited_sha}"
+            echo "Audited SHA: ${GITHUB_SHA}"
             echo
             echo '| 门禁 | 结果 |'
             echo '|---|---|'
-            echo "| 合入最新 main / 精确冲突收口 / 夹具校正 | ${PREPARE} |"
+            echo "| 最新 main 已纳入 / 无冲突标记 / 夹具对齐 | ${PREPARE} |"
             echo "| 后端依赖 | ${BACKEND_INSTALL} |"
             echo "| MySQL / Alembic / 编译 | ${MIGRATE} |"
             echo "| 能力清单 / 严格调用扫描 / 授权合同 | ${SCAN} |"
@@ -256,9 +185,8 @@ jobs:
             echo "| 管理 PC lint / test / build | ${ADMIN_PC} |"
             echo "| 学生 PC lint / test / build | ${STUDENT_PC} |"
             echo "| H5 / 微信小程序 test / build | ${MINIAPP} |"
-            echo "| 全绿后提交合并树 | ${COMMIT_RESULT} |"
             echo
-            for item in merge backend_install migrate scan backend_tests admin_pc student_pc miniapp; do
+            for item in backend_install migrate scan backend_tests admin_pc student_pc miniapp; do
               file="/tmp/${item}.log"
               if [ -s "$file" ]; then
                 echo "<details><summary>${item} 日志末尾</summary>"
@@ -286,7 +214,6 @@ jobs:
           ADMIN_PC: ${{ steps.admin_pc.outcome }}
           STUDENT_PC: ${{ steps.student_pc.outcome }}
           MINIAPP: ${{ steps.miniapp.outcome }}
-          COMMIT_RESULT: ${{ steps.commit.outcome }}
         run: |
           test "$PREPARE" = success
           test "$BACKEND_INSTALL" = success
@@ -296,4 +223,3 @@ jobs:
           test "$ADMIN_PC" = success
           test "$STUDENT_PC" = success
           test "$MINIAPP" = success
-          test "$COMMIT_RESULT" = success
