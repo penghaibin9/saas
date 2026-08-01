@@ -112,12 +112,16 @@ jobs:
           print(f'changed files: {len(changed)}; exact outside-docs allowlist: {sorted(outside)}')
           PY
 
-      - name: Prepare and run prototype consistency gate
+      - name: Prepare truthful manifest and consistency tools
         shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           mkdir -p freeze-artifacts/consistency
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-manifest.mjs
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
           node docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs \
             --report=freeze-artifacts/consistency/report.json
 
@@ -139,7 +143,7 @@ jobs:
           retention-days: 14
 
   materialize-validated-tools:
-    name: 固化已验证冻结工具
+    name: 固化已验证冻结状态与工具
     needs:
       - cross-browser-freeze-acceptance
       - final-full-regression
@@ -155,24 +159,30 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Materialize verified tools
+      - name: Materialize verified manifest and tools
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-manifest.mjs
           node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
           rm -f .github/workflows/pr27-acceptance-runner-repair.yml
 
       - name: Commit only when materialization changed the branch
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ui/teacher-pc-v2-html/prototype-manifest.json
           git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
           git add docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
           git add -u .github/workflows/pr27-acceptance-runner-repair.yml
           if git diff --cached --quiet; then
-            echo 'freeze tools already materialized'
+            echo 'freeze state and tools already materialized'
             exit 0
           fi
-          git commit -m 'fix(prototype): materialize validated freeze tools'
+          git commit -m 'chore(prototype): freeze validated teacher PC V2 library'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
