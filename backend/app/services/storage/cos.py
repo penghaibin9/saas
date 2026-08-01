@@ -92,19 +92,43 @@ class CosStorageBackend:
         return cache if cache.exists() else None
 
     def head_object(self, key: str) -> dict | None:
+        """返回对象元数据；兼容仅实现 object_exists 的轻量 SDK 适配器。
+
+        正式上传完成校验仍优先使用 COS ``head_object`` 的大小、ETag 和加密元数据。
+        历史测试客户端或小型适配器若只提供布尔 ``object_exists``，仅用于普通存在性、
+        拉取缓存和删除兼容，不伪造大小或 ETag。
+        """
+        head = getattr(self._client, "head_object", None)
+        if callable(head):
+            try:
+                response = head(Bucket=self.bucket_name, Key=key) or {}
+            except Exception:  # noqa: BLE001 - 对外统一为不存在/不可核验
+                return None
+            return {
+                "bucketName": self.bucket_name,
+                "objectKey": key,
+                "etag": str(response.get("ETag") or "").strip('"'),
+                "sizeBytes": int(response.get("Content-Length") or response.get("ContentLength") or 0),
+                "lastModified": response.get("Last-Modified") or response.get("LastModified"),
+                "serverSideEncryption": response.get("x-cos-server-side-encryption") or response.get("ServerSideEncryption"),
+            }
+
+        exists = getattr(self._client, "object_exists", None)
+        if not callable(exists):
+            return None
         try:
-            # The official SDK returns metadata. Small test/adaptor clients may
-            # signal a successful HEAD call with no response body.
-            response = self._client.head_object(Bucket=self.bucket_name, Key=key) or {}
-        except Exception:  # noqa: BLE001 - 对外统一为不存在/不可核验
+            present = bool(exists(Bucket=self.bucket_name, Key=key))
+        except Exception:  # noqa: BLE001 - 兼容适配器失败按不可核验处理
+            return None
+        if not present:
             return None
         return {
             "bucketName": self.bucket_name,
             "objectKey": key,
-            "etag": str(response.get("ETag") or "").strip('"'),
-            "sizeBytes": int(response.get("Content-Length") or response.get("ContentLength") or 0),
-            "lastModified": response.get("Last-Modified") or response.get("LastModified"),
-            "serverSideEncryption": response.get("x-cos-server-side-encryption") or response.get("ServerSideEncryption"),
+            "etag": "",
+            "sizeBytes": 0,
+            "lastModified": None,
+            "serverSideEncryption": None,
         }
 
     def presigned_download_url(self, key: str, *, filename: str, expires_seconds: int = 180) -> str:
@@ -125,7 +149,7 @@ class CosStorageBackend:
             Key=target_key,
             CopySource={"Bucket": self.bucket_name, "Region": self.region, "Key": source_key},
             ServerSideEncryption="AES256",
-        )
+        ) or {}
         head = self.head_object(target_key) or {}
         return {
             "bucketName": self.bucket_name,
