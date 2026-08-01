@@ -3,28 +3,36 @@ name: Data exchange job center
 on:
   pull_request:
     paths:
+      - 'backend/app/core/rbac09_permission_bundles.py'
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
+      - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
+      - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
+      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
   push:
     branches:
       - audit/file-capability-inventory
     paths:
+      - 'backend/app/core/rbac09_permission_bundles.py'
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
+      - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
+      - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
+      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
 
@@ -77,27 +85,34 @@ jobs:
         run: |
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head
-      - name: Compile stage 3 backend
+      - name: Compile data exchange and RBAC-09 backend
         working-directory: backend
         run: |
           python -m py_compile \
+            app/core/rbac09_permission_bundles.py \
             app/models/data_exchange.py \
             app/services/data_exchange_job_service.py \
             app/services/data_exchange_confirm_service.py \
             app/services/data_exchange_cleanup_service.py \
+            app/services/file_access_service.py \
             app/api/v1/data_exchange.py \
+            app/api/v1/file_governance.py \
             app/api/v1/migration.py \
             alembic/versions/0147_data_exchange_job_center.py
       - name: Authoritative contract tests
         working-directory: backend
-        run: pytest tests/test_data_exchange_job_center.py -q -p no:warnings
+        run: |
+          pytest \
+            tests/test_data_exchange_job_center.py \
+            tests/test_rbac09_file_data_exchange_permissions.py \
+            -q -p no:warnings
       - name: Frontend lint and build
         working-directory: frontend
         run: |
           npm ci
           npm run lint
           npm run build
-      - name: Reject old confirmation contract in migrated pages
+      - name: Reject old confirmation and overbroad RBAC contracts
         run: |
           ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch\|confirmMigrationBatch" \
             frontend/src/modules/system/views/SystemStudentImportView.vue \
@@ -111,3 +126,7 @@ jobs:
           grep -q "ImportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "ExportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "extra=\"forbid\"" backend/app/api/v1/data_exchange.py
+          ! grep -q "systemAdmin.file.manage" backend/app/services/file_access_service.py
+          ! grep -q "systemAdmin.audit.sensitive.view" backend/app/api/v1/data_exchange.py
+          grep -q "systemAdmin.fileGovernance.view" frontend/src/modules/system/systemManagementCatalog.js
+          grep -q "systemAdmin.dataExchange.download" frontend/src/modules/system/systemManagementCatalog.js
