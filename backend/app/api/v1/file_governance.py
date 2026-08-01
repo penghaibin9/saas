@@ -4,7 +4,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.permissions import require_permission
+from app.core.rbac09_permission_bundles import (
+    FILE_CLEANUP_EXECUTE,
+    FILE_GOVERNANCE_VIEW,
+    FILE_LEGAL_HOLD_MANAGE,
+    FILE_QUOTA_MANAGE,
+    FILE_RETENTION_MANAGE,
+    require_permission_compat,
+)
 from app.core.response import success
 from app.services import file_storage_governance_service as governance
 from app.services.file_storage_cleanup_service import cleanup_expired
@@ -47,7 +54,7 @@ class LegalHoldRequest(BaseModel):
 
 
 @router.get("/overview", summary="租户容量、预留、增长、分区、模块和异常概览")
-def overview(user=Depends(require_permission("systemAdmin.file.manage"))):
+def overview(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     from app.core.context import current_tenant_id
     from app.services.file_storage_quota_reservation_service import held_bytes
 
@@ -68,7 +75,7 @@ def overview(user=Depends(require_permission("systemAdmin.file.manage"))):
 
 
 @router.put("/quota", summary="配置租户总配额和模块配额")
-def set_quota(body: QuotaRequest, user=Depends(require_permission("systemAdmin.file.manage"))):
+def set_quota(body: QuotaRequest, user=Depends(require_permission_compat(FILE_QUOTA_MANAGE))):
     return success(governance.upsert_quota(
         total_quota_bytes=body.totalQuotaBytes,
         warning_percent=body.warningPercent,
@@ -80,19 +87,22 @@ def set_quota(body: QuotaRequest, user=Depends(require_permission("systemAdmin.f
 
 
 @router.get("/retention-policies", summary="列出租户保留策略")
-def retention_policies(user=Depends(require_permission("systemAdmin.file.manage"))):
+def retention_policies(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     return success({"items": governance.list_policies()})
 
 
 @router.post("/retention-policies", summary="新增或更新保留策略")
-def save_retention_policy(body: PolicyRequest, user=Depends(require_permission("systemAdmin.file.manage"))):
+def save_retention_policy(
+    body: PolicyRequest,
+    user=Depends(require_permission_compat(FILE_RETENTION_MANAGE)),
+):
     return success(governance.upsert_policy(body.model_dump(), user=user), message="保留策略已保存")
 
 
 @router.post("/retention/backfill", summary="为历史空值文件补算保留截止")
 def backfill_retention(
     limit: int = Query(500, ge=1, le=5000),
-    user=Depends(require_permission("systemAdmin.file.manage")),
+    user=Depends(require_permission_compat(FILE_RETENTION_MANAGE)),
 ):
     from app.core.context import current_tenant_id
 
@@ -100,7 +110,10 @@ def backfill_retention(
 
 
 @router.post("/cleanup", summary="预演或执行事务安全的两阶段到期清理")
-def cleanup(body: CleanupRequest, user=Depends(require_permission("systemAdmin.file.manage"))):
+def cleanup(
+    body: CleanupRequest,
+    user=Depends(require_permission_compat(FILE_CLEANUP_EXECUTE)),
+):
     from app.core.context import current_tenant_id
 
     return success(cleanup_expired(
@@ -114,7 +127,7 @@ def cleanup(body: CleanupRequest, user=Depends(require_permission("systemAdmin.f
 def legal_hold(
     file_id: str,
     body: LegalHoldRequest,
-    user=Depends(require_permission("systemAdmin.file.manage")),
+    user=Depends(require_permission_compat(FILE_LEGAL_HOLD_MANAGE)),
 ):
     return success(governance.set_legal_hold(
         file_id,
