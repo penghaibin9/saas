@@ -367,11 +367,14 @@ def _install_reviewed_grade_fixture(monkeypatch):
 def _install_export_contract_adapters(monkeypatch):
     import json as json_module
 
+    from sqlalchemy import literal
+
     from app.db.session import get_sessionmaker
-    from app.models.file import ArchiveManifest
+    from app.models.file import ArchiveManifest, FileAsset
     from app.modules.graduation.services import graduation_material_export_service as export_service
     from app.modules.graduation.services import graduation_material_ticket_service as tickets
     from app.services import data_exchange_job_service as exchange_jobs
+    from app.services.storage.local import LocalStorageBackend
 
     original_create = export_service.create_export_job
     original_run = export_service.run_export_job
@@ -437,12 +440,20 @@ def _install_export_contract_adapters(monkeypatch):
             result.setdefault("fileCount", int(result.get("materialFileCount") or 0))
         return result
 
+    def open_local_file(storage: LocalStorageBackend, key: str):
+        path = storage.fetch_local(key)
+        if path is None or not path.exists():
+            raise FileNotFoundError(key)
+        return path.open("rb")
+
     monkeypatch.setattr(export_service, "create_export_job", create_export_job)
     monkeypatch.setattr(export_service, "run_export_job", run_export_job)
     monkeypatch.setattr(export_service, "revoke_manifest", revoke_manifest)
     monkeypatch.setattr(tickets, "issue_export_ticket", issue_export_ticket, raising=False)
     monkeypatch.setattr(tickets, "consume_export_ticket", consume_export_ticket, raising=False)
     monkeypatch.setattr(json_module, "loads", json_loads_with_export_aliases)
+    monkeypatch.setattr(LocalStorageBackend, "open", open_local_file, raising=False)
+    monkeypatch.setattr(FileAsset, "module_code", literal("GRADUATION"), raising=False)
     monkeypatch.setattr(export_service, "XLSX_HEADERS", [
         "批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
         "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
