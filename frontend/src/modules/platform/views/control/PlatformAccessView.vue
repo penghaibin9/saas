@@ -93,7 +93,6 @@ export default {
     return {
       assignments: [], elevations: [], sessions: [], reviews: [], error: '', saving: '',
       dutyOptions: [
-        { value: 'PLATFORM_OWNER', label: '平台负责人' },
         { value: 'PLATFORM_COMMERCIAL', label: '商务' },
         { value: 'PLATFORM_DELIVERY', label: '交付' },
         { value: 'PLATFORM_CUSTOMER_SUCCESS', label: '客户成功' },
