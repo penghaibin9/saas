@@ -23,6 +23,38 @@ def test_platform_duties_are_separate_and_commercial_is_not_technical_admin():
         assert_platform_capability(user, "operations.manage")
 
 
+def test_school_admin_wildcard_never_crosses_into_platform_control_plane():
+    school_admin = {
+        "userId": 7,
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "userType": "ADMIN",
+        "permissions": ["*"],
+    }
+    forged_assignment = {
+        "userId": 7,
+        "dutyCode": "PLATFORM_COMMERCIAL",
+        "status": "ACTIVE",
+    }
+    assert effective_platform_duties(
+        school_admin,
+        assignments=[forged_assignment],
+        elevations=[],
+    ) == set()
+    with pytest.raises(Exception):
+        assert_platform_capability(school_admin, "tenant.view")
+
+
+def test_platform_user_type_is_not_shadowed_by_a_school_current_role():
+    user = {
+        "userId": 8,
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "userType": "PLATFORM_OPERATIONS",
+    }
+    duties = effective_platform_duties(user, assignments=[], elevations=[])
+    assert "operations.manage" in duties
+    assert "commercial.manage" not in duties
+
+
 def test_temporary_elevation_expires_automatically():
     user = {"userId": 9, "currentRoleCode": "PLATFORM_DELIVERY"}
     now = datetime.utcnow()
@@ -46,6 +78,13 @@ def test_support_access_requires_ticket_tenant_scope_and_expiry():
     assert not support_session_allows({**session, "ticketId": None}, user=user, tenant_id=100, scope="file.metadata", now=now)
     assert not support_session_allows(session, user=user, tenant_id=101, scope="file.metadata", now=now)
     assert not support_session_allows(session, user=user, tenant_id=100, scope="file.content", now=now)
+    assert not support_session_allows(
+        session,
+        user={"userId": 8, "currentRoleCode": "SCHOOL_ADMIN"},
+        tenant_id=100,
+        scope="file.metadata",
+        now=now,
+    )
 
 
 def test_stored_assignment_grants_only_its_registered_duty():
@@ -65,6 +104,15 @@ def test_support_scope_never_accepts_wildcard():
         "expiresAt": (now + timedelta(minutes=20)).isoformat(),
     }
     assert support_session_allows(wildcard, user=user, tenant_id=100, scope="file.metadata", now=now) is False
+
+
+def test_root_platform_duties_cannot_be_assigned_through_normal_form():
+    with pytest.raises(AppException):
+        save_access_assignment({
+            "userId": "31",
+            "dutyCode": "PLATFORM_OWNER",
+            "reason": "禁止普通表单授予根平台权限",
+        })
 
 
 def test_access_assignment_requires_auditable_reason_before_storage():
