@@ -175,6 +175,8 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
 from app.models.academic_affairs_registry import *  # noqa: F401,F403
+from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 学期治理投影)
+                                          CalendarTransitionEvent, CalendarWindow)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401

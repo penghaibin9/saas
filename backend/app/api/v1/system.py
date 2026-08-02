@@ -2363,3 +2363,113 @@ def api_overview_board(user=Depends(require_any_permission(
         "pendingItems": todos,
         "goLive": {"canGoLive": checks["canGoLive"], "summary": checks["summary"]},
     })
+
+
+# ═══════════ SYS-12 学年学期、业务日历与统一切换 ═══════════
+# 设计来源：existing_code（t_aa_term 仍是学期事实源）+ V6 SYS-12 卡（治理状态机与唯一 ACTIVE）。
+# 系统管理只做治理与统一读取入口，学期主数据仍由教务维护，避免第二个"当前学期"。
+
+def _calendar_dt(value, field: str, *, required: bool = True):
+    """解析 ISO 时间。前端统一传 ISO8601，服务端按 UTC 存储。"""
+    from app.core.exceptions import AppException
+
+    if value in (None, ""):
+        if required:
+            raise AppException("VALIDATION_ERROR", f"{field} 不能为空")
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo is None else value.astimezone(timezone.utc).replace(tzinfo=None)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AppException("VALIDATION_ERROR", f"{field} 格式不正确，应为 ISO8601") from exc
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+@router.get("/system/academic-calendars", summary="学年学期治理列表与切换影响面")
+def list_academic_calendars(user=Depends(require_permission("systemAdmin.academicCalendar.view"))):
+    from app.services import academic_calendar_service as svc
+
+    return success(svc.list_calendars())
+
+
+@router.get("/system/academic-calendars/current", summary="当前生效学期（全系统唯一读取入口）")
+def current_academic_calendar(
+    module: str | None = None,
+    user=Depends(require_any_permission("systemAdmin.academicCalendar.view", "systemAdmin.dashboard.view")),
+):
+    from app.services import academic_calendar_service as svc
+
+    return success(svc.resolve_current(module_code=module))
+
+
+@router.get("/system/academic-calendars/{term_id}", summary="学期治理详情、阻断项、窗口与切换历史")
+def get_academic_calendar(term_id: int, user=Depends(require_permission("systemAdmin.academicCalendar.view"))):
+    from app.services import academic_calendar_service as svc
+
+    return success(svc.get_calendar(term_id))
+
+
+@router.post("/system/academic-calendars/{term_id}/enroll", summary="把教务已建学期纳入全校治理（幂等）")
+def enroll_academic_calendar(
+    term_id: int,
+    body: dict = Body(default={}),
+    user=Depends(require_permission("systemAdmin.academicCalendar.manage")),
+):
+    from app.services import academic_calendar_service as svc
+
+    return success(svc.enroll_term(term_id, timezone=str(body.get("timezone") or "Asia/Shanghai")))
+
+
+@router.post("/system/academic-calendars/{term_id}/transition", summary="学期状态统一切换（含激活、结期、归档）")
+def transition_academic_calendar(
+    term_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.academicCalendar.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import academic_calendar_service as svc
+
+    target = str(body.get("targetStatus") or "").upper()
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    return success(
+        svc.transition(
+            term_id,
+            target,
+            reason=str(body.get("reason") or ""),
+            expected_version=int(body.get("expectedVersion")),
+            scheduled_at=_calendar_dt(body.get("scheduledAt"), "scheduledAt", required=False),
+            force=bool(body.get("force")),
+        ),
+        message=f"学期状态已变更为 {target}",
+    )
+
+
+@router.get("/system/academic-calendars/{term_id}/closing-blockers", summary="结期阻断项（只读，不代业务确认）")
+def academic_calendar_blockers(term_id: int, user=Depends(require_permission("systemAdmin.academicCalendar.view"))):
+    from app.services import academic_calendar_service as svc
+
+    return success({"items": svc.closing_blockers(term_id)})
+
+
+@router.put("/system/academic-calendars/{term_id}/windows", summary="维护考试/迎新/实习/毕设等业务窗口")
+def upsert_academic_calendar_window(
+    term_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.academicCalendar.manage")),
+):
+    from app.services import academic_calendar_service as svc
+
+    return success(
+        svc.upsert_window(
+            term_id,
+            window_type=str(body.get("windowType") or ""),
+            module_code=str(body.get("moduleCode") or ""),
+            start_at=_calendar_dt(body.get("startAt"), "startAt"),
+            end_at=_calendar_dt(body.get("endAt"), "endAt"),
+            config=body.get("config") or {},
+            expected_version=body.get("expectedVersion"),
+        ),
+        message="业务窗口已保存",
+    )

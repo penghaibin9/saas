@@ -184,6 +184,13 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
+      // SYS-12：全校统一的学年学期与业务日历。学期主数据仍在教务维护，
+      // 这里负责"全校何时切换"以及各模块的业务窗口。
+      path: 'academic-calendar', name: 'system-academic-calendar',
+      component: () => import('@/modules/system/views/SystemAcademicCalendarView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '学年学期与业务日历', requiresAuth: true, permissionKey: 'systemAdmin.academicCalendar.view' }
+    },
+    {
       path: 'numbering-rules', name: 'system-numbering-rules',
       redirect: '/admin/system/config?tab=system'
     },

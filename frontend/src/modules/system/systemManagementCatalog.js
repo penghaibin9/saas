@@ -81,7 +81,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     description: '学校可在已购范围内启停模块，并维护本校可配置项。',
     items: [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
-      { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] }
+      { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
+      { key: 'sys-academic-calendar', label: '学年学期与业务日历', path: '/admin/system/academic-calendar', permissionKey: 'systemAdmin.academicCalendar.view', view: 'academic-calendar', actions: [action('systemAdmin.academicCalendar.manage', '切换全校学期', 'HIGH'), action('systemAdmin.academicCalendar.manage', '维护业务窗口')] }
     ]
   },
   {

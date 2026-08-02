@@ -1050,6 +1050,83 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '敏感审计加载失败')
     }
+  },
+
+  // ── SYS-12 学年学期、业务日历与统一切换 ──────────────────────────────
+  // 学期主数据仍由教务维护；本组接口只做全校统一切换治理与唯一读取入口。
+
+  /** 学期治理列表：含未纳入治理的学期、一致性问题和受影响模块 */
+  async getAcademicCalendars() {
+    try {
+      return ok(await request('/system/academic-calendars'))
+    } catch (error) {
+      return fail(error.message || '学年学期加载失败')
+    }
+  },
+
+  /** 当前生效学期（全系统唯一读取入口，前端不得自行按日期推断） */
+  async getCurrentAcademicCalendar(moduleCode) {
+    try {
+      const query = moduleCode ? `?module=${encodeURIComponent(moduleCode)}` : ''
+      return ok(await request(`/system/academic-calendars/current${query}`))
+    } catch (error) {
+      return fail(error.message || '当前学期加载失败')
+    }
+  },
+
+  /** 学期详情：阻断项、业务窗口与切换历史 */
+  async getAcademicCalendarDetail(termId) {
+    try {
+      return ok(await request(`/system/academic-calendars/${encodeURIComponent(termId)}`))
+    } catch (error) {
+      return fail(error.message || '学期详情加载失败')
+    }
+  },
+
+  /** 把教务已建学期纳入全校治理（幂等） */
+  async enrollAcademicCalendar(termId, { timezone } = {}) {
+    try {
+      return ok(await request(`/system/academic-calendars/${encodeURIComponent(termId)}/enroll`, {
+        method: 'POST', body: { timezone }
+      }))
+    } catch (error) {
+      return fail(error.message || '纳入治理失败')
+    }
+  },
+
+  /**
+   * 学期状态切换。expectedVersion 必传，后端据此做乐观锁；
+   * 结期被阻断时后端返回 409 + blockers，页面必须展示而不是吞掉。
+   */
+  async transitionAcademicCalendar(termId, { targetStatus, reason, expectedVersion, scheduledAt, force } = {}) {
+    try {
+      return ok(await request(`/system/academic-calendars/${encodeURIComponent(termId)}/transition`, {
+        method: 'POST',
+        body: { targetStatus, reason, expectedVersion, scheduledAt, force: !!force }
+      }))
+    } catch (error) {
+      return fail(error.message || '学期状态变更失败')
+    }
+  },
+
+  /** 结期阻断项（只读；系统管理不代业务模块确认业务事实） */
+  async getAcademicCalendarBlockers(termId) {
+    try {
+      return ok(await request(`/system/academic-calendars/${encodeURIComponent(termId)}/closing-blockers`))
+    } catch (error) {
+      return fail(error.message || '阻断项加载失败')
+    }
+  },
+
+  /** 维护考试/迎新/实习/毕设等业务窗口 */
+  async saveAcademicCalendarWindow(termId, payload = {}) {
+    try {
+      return ok(await request(`/system/academic-calendars/${encodeURIComponent(termId)}/windows`, {
+        method: 'PUT', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '业务窗口保存失败')
+    }
   }
 }
 
