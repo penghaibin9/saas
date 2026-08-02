@@ -87,17 +87,55 @@ jobs:
 
       - name: Apply reviewed stage patch
         if: ${{ hashFiles('.stage1/ready') != '' }}
+        shell: bash
         run: |
-          cat .stage1/patch.b64.part* | base64 -d > /tmp/stage1.patch.gz
+          set -Eeuo pipefail
+
+          apply_patch() {
+            local patch_file="$1"
+            shift
+            local -a extra_args=("$@")
+
+            echo "Applying ${patch_file}"
+            git apply --stat "${extra_args[@]}" "$patch_file" || true
+            git apply --summary "${extra_args[@]}" "$patch_file" || true
+
+            if git apply --check --recount "${extra_args[@]}" "$patch_file"; then
+              git apply --recount "${extra_args[@]}" "$patch_file"
+              return 0
+            fi
+
+            echo "Direct apply failed; trying a three-way merge."
+            if git apply --check --3way --recount "${extra_args[@]}" "$patch_file"; then
+              git apply --3way --recount "${extra_args[@]}" "$patch_file"
+              return 0
+            fi
+
+            echo "Three-way apply failed; generating reject files for exact diagnostics."
+            set +e
+            git apply --reject --recount "${extra_args[@]}" "$patch_file"
+            local status=$?
+            set -e
+            find . -type f -name '*.rej' -print -exec sed -n '1,240p' {} \;
+            git status --short
+            return "$status"
+          }
+
+          mapfile -t patch_parts < <(find .stage1 -maxdepth 1 -type f -name 'patch.b64.part*' -print | sort)
+          test "${#patch_parts[@]}" -gt 0
+          cat "${patch_parts[@]}" | base64 --decode > /tmp/stage1.patch.gz
+          gzip -t /tmp/stage1.patch.gz
           gzip -dc /tmp/stage1.patch.gz > /tmp/stage1.patch
-          git apply --check --recount /tmp/stage1.patch
-          git apply --recount /tmp/stage1.patch
-          if compgen -G '.stage1/fix.b64.part*' > /dev/null; then
-            cat .stage1/fix.b64.part* | base64 -d > /tmp/stage1-fix.patch.gz
+          apply_patch /tmp/stage1.patch
+
+          mapfile -t fix_parts < <(find .stage1 -maxdepth 1 -type f -name 'fix.b64.part*' -print | sort)
+          if test "${#fix_parts[@]}" -gt 0; then
+            cat "${fix_parts[@]}" | base64 --decode > /tmp/stage1-fix.patch.gz
+            gzip -t /tmp/stage1-fix.patch.gz
             gzip -dc /tmp/stage1-fix.patch.gz > /tmp/stage1-fix.patch
-            git apply --check --recount --unidiff-zero /tmp/stage1-fix.patch
-            git apply --recount --unidiff-zero /tmp/stage1-fix.patch
+            apply_patch /tmp/stage1-fix.patch --unidiff-zero
           fi
+
           test -f .stage1/verify.sh
           chmod +x .stage1/verify.sh
           .stage1/verify.sh
