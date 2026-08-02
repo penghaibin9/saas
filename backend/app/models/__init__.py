@@ -187,6 +187,8 @@ from app.models.permission_governance import (CustomRoleSource,  # noqa: F401  (
                                               RoleTemplate, WildcardRetirement)
 from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS-08 组织安全树与显式DENY)
                                      ScopePolicyTarget)
+from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-09 安全变更与激活)
+                                       SecurityChangeItem, SecurityChangeSet)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401

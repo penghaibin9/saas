@@ -2855,3 +2855,93 @@ def scope_policy_references(
     from app.services import scope_policy_service as svc
 
     return success(svc.references(role_code))
+
+
+# ═══════════ SYS-09 安全变更：草稿、审核、排期、激活与回滚 ═══════════
+# 草稿/审核/排期期间不写任何目标表——改动只存在变更项里，物理上没碰权限配置。
+# 只有激活才在单事务内应用并产生新的 securityRevision。
+
+@router.get("/system/security-revision", summary="当前安全版本号（客户端据此判断权限快照是否过期）")
+def get_security_revision(user=Depends(require_any_permission(
+        "systemAdmin.security.view", "systemAdmin.role.view", "systemAdmin.dashboard.view"))):
+    from app.services import security_change_service as svc
+
+    return success({"currentRevision": svc.current_revision()})
+
+
+@router.get("/system/security-changes", summary="安全变更列表")
+def list_security_changes(user=Depends(require_any_permission(
+        "systemAdmin.security.view", "systemAdmin.role.view"))):
+    from app.services import security_change_service as svc
+
+    return success(svc.list_change_sets())
+
+
+@router.post("/system/security-changes", summary="创建安全变更草稿（不影响任何人当前权限）")
+def create_security_change(body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))):
+    from app.services import security_change_service as svc
+
+    return success(
+        svc.create_change_set(
+            title=str(body.get("title") or ""),
+            reason=str(body.get("reason") or ""),
+            risk_level=str(body.get("riskLevel") or "NORMAL"),
+        ),
+        message="安全变更草稿已创建",
+    )
+
+
+@router.get("/system/security-changes/{change_set_id}", summary="安全变更详情与变更项")
+def get_security_change(change_set_id: int, user=Depends(require_any_permission(
+        "systemAdmin.security.view", "systemAdmin.role.view"))):
+    from app.services import security_change_service as svc
+
+    return success(svc.get_change_set(change_set_id))
+
+
+@router.post("/system/security-changes/{change_set_id}/items", summary="向草稿追加一条改动")
+def add_security_change_item(
+    change_set_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))
+):
+    from app.services import security_change_service as svc
+
+    return success(
+        svc.add_item(
+            change_set_id,
+            target_type=str(body.get("targetType") or ""),
+            target_id=str(body.get("targetId") or ""),
+            after=body.get("after") or {},
+        ),
+        message="变更项已加入草稿",
+    )
+
+
+@router.post("/system/security-changes/{change_set_id}/transition", summary="提交/审核/排期/激活/回滚")
+def transition_security_change(
+    change_set_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))
+):
+    from app.core.exceptions import AppException
+    from app.services import security_change_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    target = str(body.get("targetStatus") or "").upper()
+    return success(
+        svc.transition(
+            change_set_id,
+            target,
+            reason=str(body.get("reason") or ""),
+            expected_version=int(body.get("expectedVersion")),
+            scheduled_at=_calendar_dt(body.get("scheduledAt"), "scheduledAt", required=False),
+            self_review_ack=body.get("selfReviewAck"),
+        ),
+        message=f"安全变更已变更为 {target}",
+    )
+
+
+@router.get("/system/security-activations", summary="安全激活历史（版本号只进不退）")
+def list_security_activations(user=Depends(require_any_permission(
+        "systemAdmin.security.view", "systemAdmin.audit.view"))):
+    from app.services import security_change_service as svc
+
+    return success(svc.activation_history())

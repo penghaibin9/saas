@@ -73,7 +73,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/roles?tab=members', permissionKey: 'system.role.view', view: 'roles', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
       { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/roles?tab=permissions', permissionKey: 'system.role.permission.manage', view: 'roles', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
       { key: 'sys-data-scopes', label: '数据范围规则', path: '/admin/system/scopes', permissionKey: 'system.scope.view', view: 'scopes', actions: [action('scope:create', '新增数据范围规则', 'HIGH'), action('scope:update', '修改数据范围规则', 'HIGH'), action('scope:deprecate', '停用数据范围规则', 'HIGH')] },
-      { key: 'sys-delegations', label: '临时授权与工作移交', path: '/admin/system/delegations', permissionKey: 'system.delegation.manage', view: 'delegations', actions: [action('delegation:create', '创建临时授权', 'HIGH'), action('delegation:revoke', '提前回收授权', 'HIGH')] }
+      { key: 'sys-delegations', label: '临时授权与工作移交', path: '/admin/system/delegations', permissionKey: 'system.delegation.manage', view: 'delegations', actions: [action('delegation:create', '创建临时授权', 'HIGH'), action('delegation:revoke', '提前回收授权', 'HIGH')] },
+      { key: 'sys-security-changes', label: '安全变更', path: '/admin/system/security-changes', permissionKey: 'systemAdmin.security.view', view: 'security-changes', actions: [action('systemAdmin.security.manage', '提交与激活安全变更', 'HIGH')] }
     ]
   },
   {

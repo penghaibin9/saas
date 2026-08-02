@@ -191,6 +191,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '学年学期与业务日历', requiresAuth: true, permissionKey: 'systemAdmin.academicCalendar.view' }
     },
     {
+      // SYS-09：安全变更的草稿/审核/排期都不改变真实权限，只有激活才生效
+      path: 'security-changes', name: 'system-security-changes',
+      component: () => import('@/modules/system/views/SystemSecurityChangeView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '安全变更', requiresAuth: true, permissionKey: 'systemAdmin.security.view' }
+    },
+    {
       path: 'numbering-rules', name: 'system-numbering-rules',
       redirect: '/admin/system/config?tab=system'
     },

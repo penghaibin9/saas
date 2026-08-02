@@ -1384,6 +1384,79 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '范围模拟失败')
     }
+  },
+
+  // ── SYS-09 安全变更：草稿、审核、排期、激活与回滚 ────────────────────
+  // 草稿/审核/排期期间不写任何权限表；只有激活才生效并产生新的安全版本号。
+
+  /** 当前安全版本号 */
+  async getSecurityRevision() {
+    try {
+      return ok(await request('/system/security-revision'))
+    } catch (error) {
+      return fail(error.message || '安全版本号加载失败')
+    }
+  },
+
+  /** 安全变更列表 */
+  async getSecurityChanges() {
+    try {
+      return ok(await request('/system/security-changes'))
+    } catch (error) {
+      return fail(error.message || '安全变更加载失败')
+    }
+  },
+
+  /** 创建安全变更草稿 */
+  async createSecurityChange({ title, reason, riskLevel } = {}) {
+    try {
+      return ok(await request('/system/security-changes', {
+        method: 'POST', body: { title, reason, riskLevel }
+      }))
+    } catch (error) {
+      return fail(error.message || '安全变更创建失败')
+    }
+  },
+
+  /** 变更详情与变更项 */
+  async getSecurityChangeDetail(changeSetId) {
+    try {
+      return ok(await request(`/system/security-changes/${encodeURIComponent(changeSetId)}`))
+    } catch (error) {
+      return fail(error.message || '变更详情加载失败')
+    }
+  },
+
+  /** 向草稿追加一条改动 */
+  async addSecurityChangeItem(changeSetId, { targetType, targetId, after } = {}) {
+    try {
+      return ok(await request(`/system/security-changes/${encodeURIComponent(changeSetId)}/items`, {
+        method: 'POST', body: { targetType, targetId, after }
+      }))
+    } catch (error) {
+      return fail(error.message || '变更项添加失败')
+    }
+  },
+
+  /** 提交 / 审核 / 排期 / 激活 / 回滚 */
+  async transitionSecurityChange(changeSetId, { targetStatus, reason, expectedVersion, scheduledAt, selfReviewAck } = {}) {
+    try {
+      return ok(await request(`/system/security-changes/${encodeURIComponent(changeSetId)}/transition`, {
+        method: 'POST',
+        body: { targetStatus, reason, expectedVersion, scheduledAt, selfReviewAck }
+      }))
+    } catch (error) {
+      return fail(error.message || '安全变更状态变更失败')
+    }
+  },
+
+  /** 激活历史（版本号只进不退） */
+  async getSecurityActivations() {
+    try {
+      return ok(await request('/system/security-activations'))
+    } catch (error) {
+      return fail(error.message || '激活历史加载失败')
+    }
   }
 }
 
