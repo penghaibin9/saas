@@ -18,7 +18,7 @@ from conftest import make_org_class
 
 def _upload_pdf(client, headers, name="thesis.pdf"):
     files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
-    r = client.post("/api/v1/files/upload", headers=headers, files=files,
+    r = client.post("/api/v1/files", headers=headers, files=files,
                     params={"bizType": "GRADUATION_MATERIAL"})
     assert r.json()["code"] == 0, r.json()
     return r.json()["data"]["fileId"]

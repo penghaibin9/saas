@@ -2,7 +2,7 @@
 
 就业模块现有写入口为管理端（create/update/batch_mark_destination），无学生自助去向登记。
 按"不伪造/不新建重复表"原则：查看复用 employment_my；学生去向登记走通用事务申请通道
-（campus_service_apply serviceKey=EMPLOYMENT_DESTINATION，结构化文本 + 材料另经 /files/upload），
+（campus_service_apply serviceKey=EMPLOYMENT_DESTINATION，结构化文本 + 材料另经 POST /files），
 由就业管理端处理入库。就业协议/回执打印走 common.print_log。
 """
 from __future__ import annotations

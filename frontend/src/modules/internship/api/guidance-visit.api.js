@@ -25,7 +25,7 @@ const B = '/internship'
 
 // 附件：走文件中心真实上传/下载（不伪造）。
 export async function uploadAttachment(file) {
-  try { return ok(await requestUpload('/files/upload', file)) } catch (e) { return toErr(e) }
+  try { return ok(await requestUpload('/files', file)) } catch (e) { return toErr(e) }
 }
 export async function downloadAttachment(fileId, fileName = '附件') {
   const blob = await requestBlob(`/files/download/${fileId}`)

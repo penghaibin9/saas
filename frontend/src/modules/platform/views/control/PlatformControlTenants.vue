@@ -221,13 +221,22 @@ export default {
       this.createResult = null
     },
     async act(row, action, body = {}) {
-      const res = await platformControlApi.tenantAction(row.tenantId, action, body)
-      if (res.code === 0) {
-        toast.success(res.message === 'ok' ? '操作成功' : res.message)
-        this.load()
-      } else {
-        toast.error(res.message)
+      if (action === 'reset-demo-data') {
+        const res = await platformControlApi.tenantAction(row.tenantId, action, body)
+        if (res.code === 0) { toast.success(res.message || '操作成功'); this.load() }
+        else toast.error(res.message)
+        return
       }
+      const reason = window.prompt('请输入本次变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
+      const payload = { ...body, reason: reason.trim(), expectedVersion: Number(row.version || 0) }
+      const preview = await platformControlApi.previewTenantTransition(row.tenantId, action, payload)
+      if (preview.code !== 0) return toast.error(preview.message)
+      const warnings = (preview.data.warnings || []).join('；')
+      if (!window.confirm(`${preview.data.fromStatus} → ${preview.data.toStatus}${warnings ? `\n${warnings}` : ''}\n确认执行？`)) return
+      const res = await platformControlApi.applyTenantTransition(row.tenantId, action, payload)
+      if (res.code === 0) { toast.success('操作成功'); this.load() }
+      else toast.error(res.message)
     },
     async resetSandbox(row) {
       const confirmed = window.confirm(`确认恢复「${row.tenantName}」的演示数据？\n\n现场新增数据会被清理，预置流程数据、账号和权限会恢复。其他学校不受影响。`)
@@ -241,13 +250,7 @@ export default {
       }
     },
     async convert(row) {
-      const res = await platformControlApi.tenantAction(row.tenantId, 'convert-to-paid', { packageCode: 'standard' })
-      if (res.code === 0) {
-        toast.success(`「${row.tenantName}」已转正式（标准版）`)
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      return this.act(row, 'convert-to-paid', { packageCode: 'standard' })
     }
   }
 }

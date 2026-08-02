@@ -1,6 +1,6 @@
 """13A 增强(c) · 统一业务附件授权下载 + 敏感审计（真实 MySQL）。
 
-上传复用 /api/v1/files/upload（真实落盘 t_file_object）；关联/列表/下载走 /student-affairs/attachments，
+上传复用 /api/v1/files（真实落盘 t_file_object）；关联/列表/下载走 /student-affairs/attachments，
 按 biz 细粒度权限门禁；每次授权下载写 t_security_audit_log(SENSITIVE_EXPORT)。
 覆盖：授权关联+列表+下载 200 且审计落库；越权关联 403；越权下载 403。
 """
@@ -17,7 +17,7 @@ def _hdr(client, login):
 
 def _upload(client, hdr) -> str:
     response = client.post(
-        "/api/v1/files/upload",
+        "/api/v1/files",
         headers=hdr,
         files={"file": ("stage.pdf", b"%PDF-1.4 league material bytes", "application/pdf")},
     )

@@ -14,7 +14,7 @@ from app.core.rbac09_permission_bundles import (
 )
 from app.core.response import success
 from app.services import file_storage_governance_service as governance
-from app.services.file_storage_cleanup_service import cleanup_expired
+from app.services.file_storage_cleanup_service import create_cleanup_preview, execute_cleanup_preview
 
 router = APIRouter(prefix="/governance", tags=["文件中心·存储治理"])
 
@@ -26,6 +26,7 @@ class QuotaRequest(BaseModel):
     hardLimitEnabled: bool = True
     moduleQuotaBytes: dict[str, int] = Field(default_factory=dict)
     description: str | None = Field(None, max_length=500)
+    expectedVersion: int = Field(..., ge=0)
 
 
 class PolicyRequest(BaseModel):
@@ -39,18 +40,22 @@ class PolicyRequest(BaseModel):
     priority: int = Field(100, ge=0, le=10000)
     active: bool = True
     description: str | None = Field(None, max_length=500)
+    expectedVersion: int = Field(..., ge=0)
 
 
 class CleanupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     dryRun: bool = True
     limit: int = Field(500, ge=1, le=5000)
+    previewId: str | None = Field(None, min_length=16, max_length=64)
+    candidateHash: str | None = Field(None, min_length=64, max_length=64)
 
 
 class LegalHoldRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
     reason: str = Field(..., min_length=5, max_length=500)
+    expectedVersion: int = Field(..., ge=1)
 
 
 @router.get("/overview", summary="租户容量、预留、增长、分区、模块和异常概览")
@@ -59,6 +64,7 @@ def overview(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     from app.services.file_storage_quota_reservation_service import held_bytes
 
     payload = governance.governance_overview()
+    payload["health"] = governance.operational_health()
     usage = payload.setdefault("usage", {})
     reserved = held_bytes(tenant_id=int(current_tenant_id()))
     usage["reservedBytes"] = reserved
@@ -71,6 +77,10 @@ def overview(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     usage["effectiveUsagePercent"] = effective_percent
     # 现有管理 PC 使用 usagePercent 作为预警依据；必须包含 HELD 预留，避免并发上传时低报。
     usage["usagePercent"] = effective_percent
+    from app.services.entitlement_reconciliation_service import commercial_storage_limit_bytes
+    commercial = commercial_storage_limit_bytes(int(current_tenant_id()))
+    usage["commercialStorageLimitBytes"] = commercial
+    usage["schoolQuotaWithinCommercialLimit"] = not quota or not commercial or quota <= commercial
     return success(payload)
 
 
@@ -83,6 +93,7 @@ def set_quota(body: QuotaRequest, user=Depends(require_permission_compat(FILE_QU
         module_quota_json={str(k).upper(): int(v) for k, v in body.moduleQuotaBytes.items()},
         description=body.description,
         user=user,
+        expected_version=body.expectedVersion,
     ), message="存储配额已更新")
 
 
@@ -96,7 +107,7 @@ def save_retention_policy(
     body: PolicyRequest,
     user=Depends(require_permission_compat(FILE_RETENTION_MANAGE)),
 ):
-    return success(governance.upsert_policy(body.model_dump(), user=user), message="保留策略已保存")
+    return success(governance.upsert_policy(body.model_dump(), user=user, expected_version=body.expectedVersion), message="保留策略已保存")
 
 
 @router.post("/retention/backfill", summary="为历史空值文件补算保留截止")
@@ -116,11 +127,27 @@ def cleanup(
 ):
     from app.core.context import current_tenant_id
 
-    return success(cleanup_expired(
-        tenant_id=int(current_tenant_id()),
-        dry_run=body.dryRun,
-        limit=body.limit,
-    ), message="清理预演完成" if body.dryRun else "到期清理完成")
+    tenant_id = int(current_tenant_id())
+    if body.dryRun:
+        return success(
+            create_cleanup_preview(tenant_id=tenant_id, limit=body.limit),
+            message="清理预演完成",
+        )
+    if not body.previewId or not body.candidateHash:
+        from app.core.exceptions import AppException
+        raise AppException(
+            "CLEANUP_PREVIEW_REQUIRED",
+            "执行清理前必须提交服务器生成且未过期的 previewId 与 candidateHash",
+            http_status=409,
+        )
+    return success(
+        execute_cleanup_preview(
+            tenant_id=tenant_id,
+            preview_id=body.previewId,
+            candidate_hash=body.candidateHash,
+        ),
+        message="到期清理完成",
+    )
 
 
 @router.post("/files/{file_id}/legal-hold", summary="设置或解除法律保留")
@@ -134,4 +161,5 @@ def legal_hold(
         enabled=body.enabled,
         reason=body.reason,
         user=user,
+        expected_version=body.expectedVersion,
     ), message="法律保留状态已更新")

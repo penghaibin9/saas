@@ -395,7 +395,7 @@ export const academicAffairsApi = {
     return callList(`${BASE}/courses/${courseId}/materials`, materialType ? { materialType } : {})
   },
   uploadCourseMaterialFile(file) {
-    return call(() => requestUpload('/files/upload', file))
+    return call(() => requestUpload('/files', file))
   },
   addCourseMaterial(courseId, body) {
     return call(() => request(`${BASE}/courses/${courseId}/materials`, { method: 'POST', body }))

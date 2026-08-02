@@ -177,7 +177,7 @@ def test_c11_student_forbidden_on_new_endpoints(client, db_mode):
 # ═══════════ Tier1 R3 续工：课程大纲 / 考核方式 / 课程材料 / 课程归档 ═══════════
 
 def _upload(client, hdr, name="syllabus.pdf", content=b"%PDF-1.4 course material bytes"):
-    r = client.post("/api/v1/files/upload", headers=hdr,
+    r = client.post("/api/v1/files", headers=hdr,
                     files={"file": (name, content, "application/pdf")})
     assert r.status_code == 200, r.text
     return r.json()["data"]["fileId"]

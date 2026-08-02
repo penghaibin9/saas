@@ -28,6 +28,7 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     key: 'plt-commercial', label: '产品、合同与授权', icon: '❖', description: '产品和套餐定义与学校实际授权分离；订单生效才触发功能开通。',
     items: [
       { key: 'plt-products', label: '产品与增值能力', path: '/admin/platform/products', permissionKey: 'platform.product.view', view: 'capability', actions: [action('product:feature:manage', '维护产品能力', 'HIGH')] },
+      { key: 'plt-commercial-control', label: '商业授权与计量对账', path: '/admin/platform/commercial-control', permissionKey: 'platform.commercial.view', view: 'commercial-control', actions: [action('commercial:reconcile:view', '查看商业对账')] },
       { key: 'plt-packages', label: '套餐与价格版本', path: '/admin/platform/packages', permissionKey: 'platform.package.view', view: 'packages', actions: [action('package:create', '新增套餐', 'HIGH'), action('package:version:publish', '发布价格版本', 'HIGH')] },
       { key: 'plt-orders', label: '合同、订单与续费', path: '/admin/platform/orders', permissionKey: 'platform.order.view', view: 'orders', actions: [action('order:create', '创建订单', 'HIGH'), action('order:activate', '确认并开通订单', 'HIGH'), action('order:void', '作废订单', 'HIGH')] },
       { key: 'plt-entitlements', label: '租户授权、配额与到期策略', path: '/admin/platform/features', permissionKey: 'platform.feature.view', view: 'tenant-features', actions: [action('entitlement:grant', '授予能力', 'HIGH'), action('entitlement:revoke', '回收能力', 'HIGH'), action('quota:adjust', '调整配额', 'HIGH')] }
@@ -69,7 +70,7 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
   {
     key: 'plt-security', label: '安全与合规', icon: '☖', description: '平台人员分权、跨租户审计与安全策略是控制面不可绕过的底座。',
     items: [
-      { key: 'plt-operator-access', label: '平台人员与职责权限', path: '/admin/platform/operator-access', permissionKey: 'platform.operator.access.manage', view: 'capability', actions: [action('platform-role:assign', '分配平台职责', 'HIGH'), action('platform-role:revoke', '回收平台职责', 'HIGH')] },
+      { key: 'plt-operator-access', label: '平台人员与职责权限', path: '/admin/platform/access', permissionKey: 'platform.access.review', view: 'access', actions: [action('platform-role:assign', '分配平台职责', 'HIGH'), action('platform-role:revoke', '回收平台职责', 'HIGH')] },
       { key: 'plt-audit', label: '跨租户审计日志', path: '/admin/platform/audit', permissionKey: 'platform.audit.view', view: 'audit', actions: [action('platform-audit:view', '查看审计'), action('platform-audit:export', '导出审计', 'HIGH')] },
       { key: 'plt-security-policy', label: '安全策略与数据留存', path: '/admin/platform/security', permissionKey: 'platform.security.view', view: 'security', actions: [action('security:policy:update', '更新安全策略', 'HIGH'), action('retention:policy:update', '更新留存策略', 'HIGH')] }
     ]

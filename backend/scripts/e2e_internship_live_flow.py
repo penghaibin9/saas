@@ -173,7 +173,7 @@ def upload_pdf(token: str, name: str = "e2e-ix-agreement.pdf") -> str | None:
         f"\r\n--{boundary}--\r\n"
     ).encode("utf-8")
     req = urllib.request.Request(
-        f"{BASE}/files/upload?bizType=INTERNSHIP",
+        f"{BASE}/files?bizType=INTERNSHIP",
         data=content,
         headers={
             "Authorization": f"Bearer {token}",

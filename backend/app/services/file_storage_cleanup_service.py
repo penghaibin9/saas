@@ -217,3 +217,168 @@ def cleanup_expired(*, tenant_id: int, dry_run: bool = True, limit: int = 500) -
     finally:
         db.close()
     return {"jobId": str(job_id), "dryRun": dry_run, **result}
+
+# ── SYS-19 bound cleanup preview/execution contract ──────────────────────────
+def _candidate_snapshot(*, tenant_id: int, limit: int, now: datetime | None = None) -> dict:
+    """Return a redacted, deterministic snapshot for a later one-time execution."""
+    import hashlib
+    import json
+
+    from app.models.file import FileObject
+
+    now = now or datetime.utcnow()
+    db = get_sessionmaker()()
+    try:
+        rows = db.scalars(select(FileObject).where(
+            FileObject.tenant_id == int(tenant_id),
+            FileObject.is_deleted.is_(False),
+            FileObject.retention_until.is_not(None),
+            FileObject.retention_until <= now,
+        ).order_by(FileObject.retention_until, FileObject.id).limit(max(1, min(int(limit), 5000)))).all()
+        evidence = []
+        items = []
+        for row in rows:
+            decision = _decision(db, row, now)
+            evidence.append({
+                "id": int(row.id),
+                "version": int(row.version or 1),
+                "decision": decision,
+                "size": int(row.size_bytes or 0),
+            })
+            items.append({
+                "fileId": str(row.id),
+                "storageZone": row.storage_zone,
+                "sizeBytes": int(row.size_bytes or 0),
+                "decision": "WOULD_DELETE" if decision == "DELETE" else decision,
+            })
+        blob = json.dumps(evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return {
+            "candidateHash": hashlib.sha256(blob.encode("utf-8")).hexdigest(),
+            "candidateIds": [item["id"] for item in evidence],
+            "candidateCount": len(evidence),
+            "items": items[:200],
+            "skippedLegalHold": sum(1 for item in evidence if item["decision"] == "LEGAL_HOLD"),
+            "skippedReferenced": sum(1 for item in evidence if item["decision"] == "ACTIVE_REFERENCE"),
+        }
+    finally:
+        db.close()
+
+
+def create_cleanup_preview(*, tenant_id: int, limit: int = 500, ttl_seconds: int = 600) -> dict:
+    from datetime import timedelta
+    from app.models.file import FileJob
+
+    now = datetime.utcnow()
+    snapshot = _candidate_snapshot(tenant_id=int(tenant_id), limit=limit, now=now)
+    expires = now + timedelta(seconds=max(60, min(int(ttl_seconds), 1800)))
+    db = get_sessionmaker()()
+    try:
+        preview_id = uuid.uuid4().hex
+        row = FileJob(
+            tenant_id=int(tenant_id),
+            job_type="RETENTION_CLEANUP_PREVIEW",
+            dedupe_key=f"cleanup-preview:{tenant_id}:{preview_id}",
+            status="SUCCEEDED",
+            attempts=1,
+            max_attempts=1,
+            available_at=now,
+            payload_json={
+                "previewId": preview_id,
+                "candidateHash": snapshot["candidateHash"],
+                "candidateIds": snapshot["candidateIds"],
+                "limit": int(limit),
+                "createdAt": now.isoformat(timespec="seconds"),
+                "expiresAt": expires.isoformat(timespec="seconds"),
+                "consumedAt": None,
+                "contractVersion": 3,
+            },
+            result_json={k: v for k, v in snapshot.items() if k != "candidateIds"},
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {
+            "previewId": preview_id,
+            "previewJobId": str(row.id),
+            "candidateHash": snapshot["candidateHash"],
+            "expiresAt": expires.isoformat(timespec="seconds"),
+            **{k: v for k, v in snapshot.items() if k not in {"candidateHash", "candidateIds"}},
+        }
+    finally:
+        db.close()
+
+
+def execute_cleanup_preview(
+    *,
+    tenant_id: int,
+    preview_id: str,
+    candidate_hash: str,
+) -> dict:
+    from app.core.exceptions import AppException
+    from app.models.file import FileJob
+
+    now = datetime.utcnow()
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(FileJob).where(
+            FileJob.tenant_id == int(tenant_id),
+            FileJob.job_type == "RETENTION_CLEANUP_PREVIEW",
+            FileJob.dedupe_key == f"cleanup-preview:{tenant_id}:{preview_id}",
+            FileJob.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not row:
+            raise AppException("CLEANUP_PREVIEW_INVALID", "清理预演不存在", http_status=409)
+        payload = dict(row.payload_json or {})
+        if payload.get("consumedAt") or row.status == "CONSUMED":
+            raise AppException("CLEANUP_PREVIEW_CONSUMED", "清理预演已使用，禁止重放", http_status=409)
+        expires = datetime.fromisoformat(str(payload.get("expiresAt")))
+        if expires <= now:
+            raise AppException("CLEANUP_PREVIEW_EXPIRED", "清理预演已过期，请重新预演", http_status=409)
+        if str(candidate_hash) != str(payload.get("candidateHash")):
+            raise AppException("CLEANUP_PREVIEW_HASH_MISMATCH", "候选摘要不匹配", http_status=409)
+        current = _candidate_snapshot(
+            tenant_id=int(tenant_id), limit=int(payload.get("limit") or 500), now=now
+        )
+        if current["candidateHash"] != payload.get("candidateHash"):
+            raise AppException("CLEANUP_CANDIDATES_CHANGED", "文件状态已变化，请重新预演", http_status=409)
+        # Consume before physical deletion so replay remains denied even if a later
+        # object deletion fails. Failed files retain DELETE_FAILED and are handled
+        # by the recovery queue, never by replaying an old approval.
+        payload["consumedAt"] = now.isoformat(timespec="seconds")
+        row.payload_json = payload
+        row.status = "CONSUMED"
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    deleted = skipped_referenced = skipped_hold = failed = reclaimed = 0
+    items: list[dict[str, Any]] = []
+    for file_id in current["candidateIds"]:
+        decision, item = _mark_pending(tenant_id=int(tenant_id), file_id=int(file_id), now=now)
+        if decision == "LEGAL_HOLD":
+            skipped_hold += 1
+        elif decision == "ACTIVE_REFERENCE":
+            skipped_referenced += 1
+        elif decision == "DELETE":
+            ok, item = _delete_and_finalize(tenant_id=int(tenant_id), file_id=int(file_id), now=now)
+            if ok:
+                deleted += 1
+                reclaimed += int(item.get("sizeBytes") or 0)
+            elif item.get("decision") == "DELETE_FAILED":
+                failed += 1
+        # Never return object keys or filenames from governance execution output.
+        item.pop("objectKey", None)
+        items.append(item)
+    return {
+        "previewId": preview_id,
+        "candidateHash": candidate_hash,
+        "deleted": deleted,
+        "failed": failed,
+        "skippedReferenced": skipped_referenced,
+        "skippedLegalHold": skipped_hold,
+        "bytesReclaimed": reclaimed,
+        "items": items[:200],
+    }

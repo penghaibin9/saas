@@ -91,6 +91,28 @@ _COLLEGE_INTERNSHIP = {
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
+    # PLAT-15: platform duties are deliberately separate from school roles.
+    "PLATFORM_OWNER": {"platform.*"},
+    "PLATFORM_COMMERCIAL": {
+        "platform.commercial.view", "platform.commercial.manage",
+        "platform.tenant.view", "platform.order.manage",
+    },
+    "PLATFORM_DELIVERY": {
+        "platform.tenant.view", "platform.provisioning.manage",
+        "platform.support.request",
+    },
+    "PLATFORM_CUSTOMER_SUCCESS": {
+        "platform.tenant.view", "platform.customerSuccess.manage",
+        "platform.support.request",
+    },
+    "PLATFORM_OPERATIONS": {
+        "platform.tenant.view", "platform.operations.manage",
+        "platform.incident.manage", "platform.support.request",
+    },
+    "PLATFORM_SECURITY_AUDITOR": {
+        "platform.audit.view", "platform.access.review",
+        "platform.security.view",
+    },
     "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
     "SYS_ADMIN": {"systemAdmin.*", "audit.*", *_WORKBENCH_SELF},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",

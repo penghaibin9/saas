@@ -402,7 +402,7 @@ def list_course_materials(course_id, user, material_type=None, page=1, page_size
 
 
 def add_course_material(course_id, user, body) -> dict:
-    """新增课程材料/大纲（附件先经 POST /api/v1/files/upload 得 fileId，本端点只登记回链）。
+    """新增课程材料/大纲（附件先经 POST /api/v1/files 得 fileId，本端点只登记回链）。
     数据范围：与课程本身一致，COLLEGE_ADMIN 只能给本学院开课单位下的课程挂材料。"""
     from app.models import AaCourseMaterial
     mtype = (body.materialType or "OTHER").upper()

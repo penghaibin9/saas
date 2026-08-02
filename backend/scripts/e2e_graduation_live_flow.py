@@ -100,7 +100,7 @@ def upload_pdf(token: str, name: str = "e2e-thesis.pdf") -> str | None:
         f"\r\n--{boundary}--\r\n"
     ).encode("utf-8")
     req = urllib.request.Request(
-        f"{_boot.BASE}/files/upload?bizType=GRADUATION",
+        f"{_boot.BASE}/files?bizType=GRADUATION",
         data=content,
         headers={
             "Authorization": f"Bearer {token}",

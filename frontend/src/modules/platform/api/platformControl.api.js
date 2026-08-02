@@ -60,6 +60,11 @@ export const platformControlApi = {
   resetSandboxData: (id) =>
     real('tenant-reset-sandbox', `/platform/tenants/${id}/reset-sandbox-data`, { method: 'POST', body: {} }),
   getTenantUsage: (id) => real('tenant-usage', `/platform/tenants/${id}/usage`, {}),
+  getTenant360: (id) => real('tenant-360', `/platform/tenants/${id}/360`, {}),
+  previewTenantTransition: (id, action, body = {}) =>
+    real(`tenant-transition-preview-${action}`, `/platform/tenants/${id}/transitions/${action}/preview`, { method: 'POST', body }),
+  applyTenantTransition: (id, action, body) =>
+    real(`tenant-transition-${action}`, `/platform/tenants/${id}/transitions/${action}`, { method: 'POST', body }),
   /* 租户数据迁移进度（老系统数据迁移·跨租户只读聚合；无演示兜底，后端不可达时给空列表） */
   getTenantMigrationProgress: () => real('tenant-migration', '/platform/migration/overview', {}, []),
 
@@ -112,8 +117,8 @@ export const platformControlApi = {
   /* §十一 订单 */
   listOrders: (params = {}) => real('orders', '/platform/orders', { params }, { list: [], total: 0 }),
   createOrder: (body) => real('order-create', '/platform/orders', { method: 'POST', body }),
-  orderAction: (orderNo, action) =>
-    real(`order-${action}`, `/platform/orders/${orderNo}/${action}`, { method: 'POST', body: {} }),
+  orderAction: (orderNo, action, body) =>
+    real(`order-${action}`, `/platform/orders/${orderNo}/${action}`, { method: 'POST', body }),
 
   /* §十二 公告 */
   listNotices: () => real('notices', '/platform/notices', {}, { list: [] }),
@@ -136,5 +141,17 @@ export const platformControlApi = {
   /* 文件存储（本地 / 腾讯云 COS） */
   getFileStorage: () => real('file-storage', '/platform/file-storage', {}),
   putFileStorage: (config) => real('file-storage-put', '/platform/file-storage', { method: 'PUT', body: { config } }),
-  testFileStorage: () => real('file-storage-test', '/platform/file-storage/test', { method: 'POST', body: {} })
+  testFileStorage: () => real('file-storage-test', '/platform/file-storage/test', { method: 'POST', body: {} }),
+
+  /* PLAT-15 平台职责、临时提升与受控协助 */
+  listAccessAssignments: () => real('access-assignments', '/platform/access-assignments', {}),
+  saveAccessAssignment: (body) => real('access-assignment-save', '/platform/access-assignments', { method: 'POST', body }),
+  listElevationSessions: () => real('elevation-sessions', '/platform/elevation-sessions', {}),
+  createElevationSession: (body) => real('elevation-session-create', '/platform/elevation-sessions', { method: 'POST', body }),
+  listSupportSessions: (params = {}) => real('support-sessions', '/platform/support-sessions', { params }),
+  createSupportSession: (body) => real('support-session-create', '/platform/support-sessions', { method: 'POST', body }),
+  listAccessReviews: () => real('access-reviews', '/platform/access-reviews', {}),
+
+  /* PLAT-03 商业授权与真实消费对账 */
+  listReconciliations: (params = {}) => real('reconciliations', '/platform/reconciliations', { params })
 }

@@ -26,7 +26,8 @@ PLATFORM_ROLE = "PLATFORM_SUPER_ADMIN"
 
 def require_platform_super_admin(request: Request, user=Depends(get_current_user)) -> dict:
     """平台总控强校验：角色/用户类型必须是 PLATFORM_SUPER_ADMIN，拒绝即审计。"""
-    if user.get("currentRoleCode") != PLATFORM_ROLE and user.get("userType") != PLATFORM_ROLE:
+    role = user.get("currentRoleCode") or user.get("userType")
+    if role not in {PLATFORM_ROLE, "PLATFORM_OWNER"}:
         audit_log.record("PERMISSION_DENIED", f"platform:{request.url.path}",
                          detail={"path": request.url.path, "method": request.method,
                                  "role": user.get("currentRoleCode"), "userType": user.get("userType")},
@@ -38,6 +39,16 @@ def require_platform_super_admin(request: Request, user=Depends(get_current_user
 def _audit(action: str, resource: str, detail: dict | None = None, *, tenant_id: int | None = None):
     """平台侧审计。tenant_id 传"被操作学校"，使该校自身审计可见平台动作（跨租户责任追溯）。"""
     audit_log.record(action, resource, detail=detail or {}, result="SUCCESS", tenant_id=tenant_id)
+
+
+def _expected_version(body: dict, *, operation: str) -> int:
+    value = body.get("expectedVersion")
+    if value is None:
+        raise AppException("VALIDATION_ERROR", f"{operation}必须提供 expectedVersion")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{operation}的 expectedVersion 必须为整数") from None
 
 
 # ── §二 总览 ──
@@ -66,7 +77,9 @@ def tenant_create(body: dict = Body(...), user=Depends(require_platform_super_ad
 
 @router.get("/tenants/{tenant_id}", summary="租户详情")
 def tenant_get(tenant_id: int, user=Depends(require_platform_super_admin)):
-    return success(svc.get_tenant(tenant_id))
+    from app.services.tenant_effective_state_service import tenant_360
+    legacy = svc.get_tenant(tenant_id)
+    return success({**legacy, "tenant360": tenant_360(tenant_id)})
 
 
 @router.put("/tenants/{tenant_id}", summary="租户基础信息修改")
@@ -83,108 +96,77 @@ def tenant_update(tenant_id: int, body: dict = Body(...), user=Depends(require_p
     return success(out)
 
 
-@router.post("/tenants/{tenant_id}/enable", summary="启用租户")
-def tenant_enable(tenant_id: int, user=Depends(require_platform_super_admin)):
-    before = svc.tenant_meta(tenant_id).get("status")
-    out = svc.update_tenant_meta(tenant_id, {"status": "active"})
-    _audit("PLATFORM_TENANT_ENABLE", str(tenant_id),
-           {"before": {"status": before}, "after": {"status": "active"}}, tenant_id=tenant_id)
+@router.post("/tenants/{tenant_id}/enable", summary="启用租户（原因+版本锁）")
+def tenant_enable(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "enable", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_ENABLE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已启用")
 
-
-@router.post("/tenants/{tenant_id}/disable", summary="停用租户（该校全员即刻无法登录）")
-def tenant_disable(tenant_id: int, user=Depends(require_platform_super_admin)):
-    before = svc.tenant_meta(tenant_id).get("status")
-    out = svc.update_tenant_meta(tenant_id, {"status": "disabled"})
-    _audit("PLATFORM_TENANT_DISABLE", str(tenant_id),
-           {"before": {"status": before}, "after": {"status": "disabled"}}, tenant_id=tenant_id)
+@router.post("/tenants/{tenant_id}/disable", summary="停用租户（原因+版本锁）")
+def tenant_disable(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "disable", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_DISABLE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已停用，该校账号将无法登录")
 
-
-@router.post("/tenants/{tenant_id}/extend-trial", summary="延长试用（days）")
-def tenant_extend_trial(tenant_id: int, body: dict = Body(default={}),
+@router.post("/tenants/{tenant_id}/extend-trial", summary="延长试用（原因+版本锁）")
+def tenant_extend_trial(tenant_id: int, body: dict = Body(...),
                         user=Depends(require_platform_super_admin)):
-    from datetime import datetime, timedelta
-    days = int(body.get("days") or 7)
-    if not 1 <= days <= 365:
-        raise AppException("VALIDATION_ERROR", "延长天数需在 1~365 之间")
-    meta = svc.tenant_meta(tenant_id)
-    base = meta.get("expireAt") or meta.get("trialEndAt")
-    try:
-        start = max(datetime.fromisoformat(base), datetime.now()) if base else datetime.now()
-    except ValueError:
-        start = datetime.now()
-    new_end = (start + timedelta(days=days)).isoformat(timespec="seconds")
-    out = svc.update_tenant_meta(tenant_id, {"trialEndAt": new_end, "expireAt": new_end,
-                                             "status": meta.get("status") if meta.get("status") == "active" else "trial"})
-    _audit("PLATFORM_TENANT_EXTEND_TRIAL", str(tenant_id),
-           {"days": days, "before": {"expireAt": meta.get("expireAt")}, "after": {"expireAt": new_end}},
-           tenant_id=tenant_id)
-    return success(out, message=f"已延长 {days} 天")
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "extend-trial", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户延期"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_EXTEND_TRIAL", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out, message=f"已延长 {int(body.get('days') or 7)} 天")
 
 
-@router.post("/tenants/{tenant_id}/convert-to-paid", summary="试用转正式（packageCode + 时长）")
-def tenant_convert(tenant_id: int, body: dict = Body(default={}),
-                   user=Depends(require_platform_super_admin)):
-    from datetime import datetime, timedelta
-    pkg = svc.get_package(str(body.get("packageCode") or "standard"))
-    days = int(body.get("durationDays") or pkg["durationDays"])
-    before = svc.tenant_meta(tenant_id)
-    new_end = (datetime.now() + timedelta(days=days)).isoformat(timespec="seconds")
-    out = svc.update_tenant_meta(tenant_id, {"status": "active", "packageCode": pkg["packageCode"],
-                                             "expireAt": new_end})
-    _audit("PLATFORM_TENANT_CONVERT_PAID", str(tenant_id),
-           {"before": {"status": before.get("status"), "packageCode": before.get("packageCode")},
-            "after": {"status": "active", "packageCode": pkg["packageCode"], "expireAt": new_end}},
-           tenant_id=tenant_id)
-    return success(out, message=f"已开通 {pkg['packageName']}")
+@router.post("/tenants/{tenant_id}/convert-to-paid", summary="试用转正式（原因+版本锁）")
+def tenant_convert(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "convert-to-paid", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_CONVERT_PAID", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out, message="已转为正式授权")
 
-
-@router.post("/tenants/{tenant_id}/expire", summary="手动标记到期（转只读）")
-def tenant_expire(tenant_id: int, user=Depends(require_platform_super_admin)):
-    from datetime import datetime, timedelta
-    before = svc.tenant_meta(tenant_id)
-    past = (datetime.now() - timedelta(minutes=1)).isoformat(timespec="seconds")
-    out = svc.update_tenant_meta(tenant_id, {"status": "expired", "expireAt": past})
-    _audit("PLATFORM_TENANT_EXPIRE", str(tenant_id),
-           {"before": {"status": before.get("status"), "expireAt": before.get("expireAt")},
-            "after": {"status": "expired", "expireAt": past}}, tenant_id=tenant_id)
+@router.post("/tenants/{tenant_id}/expire", summary="手动标记到期（原因+版本锁）")
+def tenant_expire(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "expire", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_EXPIRE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已标记到期（租户进入只读）")
 
+@router.post("/tenants/{tenant_id}/change-package", summary="变更套餐（原因+版本锁）")
+def tenant_change_package(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "change-package", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_CHANGE_PACKAGE", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out, message="套餐已变更；超额数据不会被静默删除")
 
-@router.post("/tenants/{tenant_id}/change-package", summary="变更套餐")
-def tenant_change_package(tenant_id: int, body: dict = Body(...),
-                          user=Depends(require_platform_super_admin)):
-    pkg = svc.get_package(str(body.get("packageCode") or ""))
-    if pkg["packageCode"] != body.get("packageCode"):
-        raise AppException("VALIDATION_ERROR", "packageCode 不存在")
-    before = svc.tenant_meta(tenant_id).get("packageCode")
-    out = svc.update_tenant_meta(tenant_id, {"packageCode": pkg["packageCode"],
-                                             "maxStudents": None, "maxUsers": None,
-                                             "storageLimitMb": None})
-    _audit("PLATFORM_TENANT_CHANGE_PACKAGE", str(tenant_id),
-           {"before": {"packageCode": before}, "after": {"packageCode": pkg["packageCode"]}},
-           tenant_id=tenant_id)
-    return success(out, message=f"已切换为 {pkg['packageName']}")
-
-
-@router.post("/tenants/{tenant_id}/quota", summary="租户级容量覆盖（maxStudents/maxUsers/storageLimitMb）")
+@router.post("/tenants/{tenant_id}/quota", summary="租户商业容量覆盖（原因+版本锁）")
 def tenant_quota(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
-    patch = {}
-    for k in ("maxStudents", "maxUsers", "storageLimitMb"):
-        if k in body:
-            v = body[k]
-            if not isinstance(v, int) or not 1 <= v <= 1000000:
-                raise AppException("VALIDATION_ERROR", f"{k} 需为 1~1000000 的整数")
-            patch[k] = v
-    if not patch:
-        raise AppException("VALIDATION_ERROR", "至少提供一个容量参数")
-    before = svc.tenant_meta(tenant_id)
-    out = svc.update_tenant_meta(tenant_id, patch)
-    _audit("PLATFORM_TENANT_QUOTA", str(tenant_id),
-           {"before": {k: before.get(k) for k in patch}, "after": patch}, tenant_id=tenant_id)
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, "quota", reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_QUOTA", str(tenant_id), out, tenant_id=tenant_id)
     return success(out)
-
 
 @router.post("/tenants/{tenant_id}/reset-demo-data", summary="重置演示数据（仅 demo-school）")
 def tenant_reset_demo(tenant_id: int, user=Depends(require_platform_super_admin)):
@@ -242,10 +224,13 @@ def package_update(package_code: str, body: dict = Body(...),
                    user=Depends(require_platform_super_admin)):
     if package_code not in D.DEFAULT_PACKAGES:
         raise AppException("VALIDATION_ERROR", "packageCode 不存在")
+    if body.get("expectedVersion") is None or len(str(body.get("reason") or "").strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "套餐变更必须提供 expectedVersion 和至少5个字符的原因")
     cur = svc.get_package(package_code)
     allow = {"packageName", "price", "durationDays", "maxStudents", "maxUsers",
              "storageLimitMb", "features", "enabled", "remark"}
-    merged = {**cur, **{k: v for k, v in body.items() if k in allow},
+    base_cur = {k: v for k, v in cur.items() if k != "version"}
+    merged = {**base_cur, **{k: v for k, v in body.items() if k in allow},
               "packageCode": package_code}
     if isinstance(body.get("features"), dict):
         merged["features"] = {**cur.get("features", {}),
@@ -253,8 +238,8 @@ def package_update(package_code: str, body: dict = Body(...),
     for k in ("durationDays", "maxStudents", "maxUsers", "storageLimitMb"):
         if not isinstance(merged.get(k), int) or merged[k] < 1:
             raise AppException("VALIDATION_ERROR", f"{k} 需为正整数")
-    svc.put_config_json(0, "PACKAGE", package_code, merged)
-    _audit("PLATFORM_PACKAGE_UPDATE", package_code)
+    svc.put_config_json(0, "PACKAGE", package_code, merged, expected_version=_expected_version(body, operation="套餐变更"))
+    _audit("PLATFORM_PACKAGE_UPDATE", package_code, {"reason": str(body["reason"])[:1000]})
     return success(svc.get_package(package_code))
 
 
@@ -456,15 +441,15 @@ def order_create(body: dict = Body(...), user=Depends(require_platform_super_adm
 
 
 @router.post("/orders/{order_no}/mark-paid", summary="标记已支付（自动开通/续期）")
-def order_paid(order_no: str, user=Depends(require_platform_super_admin)):
-    out = svc.order_action(order_no, "mark-paid")
+def order_paid(order_no: str, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    out = svc.order_action(order_no, "mark-paid", expected_version=_expected_version(body, operation="订单变更"), reason=body.get("reason"))
     _audit("PLATFORM_ORDER_PAID", order_no)
     return success(out, message="已入账并开通")
 
 
 @router.post("/orders/{order_no}/cancel", summary="取消订单")
-def order_cancel(order_no: str, user=Depends(require_platform_super_admin)):
-    out = svc.order_action(order_no, "cancel")
+def order_cancel(order_no: str, body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    out = svc.order_action(order_no, "cancel", expected_version=_expected_version(body, operation="订单变更"), reason=body.get("reason"))
     _audit("PLATFORM_ORDER_CANCEL", order_no)
     return success(out)
 
@@ -565,3 +550,113 @@ def file_storage_test(user=Depends(require_platform_super_admin)):
     result = storage_config.test_connection()
     _audit("PLATFORM_FILE_STORAGE_TEST", "global", {"ok": result.get("ok")})
     return success(result)
+
+
+# ── V6 PLAT-02 / PLAT-15 / PLAT-03 canonical control endpoints ──
+
+def require_platform_capability(capability: str):
+    def _dep(user=Depends(get_current_user)):
+        from app.services.platform_access_governance_service import assert_platform_capability
+        return assert_platform_capability(user, capability)
+    return _dep
+
+
+@router.get("/tenants/{tenant_id}/360", summary="租户360与有效状态")
+def tenant_360_get(tenant_id: int, user=Depends(require_platform_capability("tenant.view"))):
+    from app.services.tenant_effective_state_service import tenant_360
+    return success(tenant_360(tenant_id))
+
+
+@router.post("/tenants/{tenant_id}/transitions/{action}/preview", summary="租户生命周期变更影响预览")
+def tenant_transition_preview(tenant_id: int, action: str, body: dict = Body(default={}),
+                              user=Depends(require_platform_capability("tenant.view"))):
+    from app.services.tenant_effective_state_service import preview_transition
+    return success(preview_transition(tenant_id, action, body))
+
+
+@router.post("/tenants/{tenant_id}/transitions/{action}", summary="租户生命周期权威变更")
+def tenant_transition_apply(tenant_id: int, action: str, body: dict = Body(...),
+                            user=Depends(require_platform_capability("commercial.manage"))):
+    from app.services.tenant_effective_state_service import apply_transition
+    out = apply_transition(
+        tenant_id, action, reason=body.get("reason"),
+        expected_version=_expected_version(body, operation="租户变更"), payload=body,
+    )
+    _audit("PLATFORM_TENANT_TRANSITION", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out)
+
+
+@router.get("/access-assignments", summary="平台职责分配")
+def access_assignments(user=Depends(require_platform_capability("access.review"))):
+    from app.services.platform_access_governance_service import ASSIGNMENT, list_records
+    return success({"items": list_records(ASSIGNMENT)})
+
+
+@router.post("/access-assignments", summary="保存平台职责分配")
+def access_assignment_save(body: dict = Body(...), user=Depends(require_platform_capability("access.manage"))):
+    from app.services.platform_access_governance_service import save_access_assignment
+    out = save_access_assignment(body)
+    _audit("PLATFORM_ACCESS_ASSIGNMENT_SAVE", str(out.get("id") or ""), {
+        "targetUserId": out.get("userId"),
+        "dutyCode": out.get("dutyCode"),
+        "reason": out.get("reason"),
+        "expiresAt": out.get("expiresAt"),
+    })
+    return success(out)
+
+
+@router.get("/elevation-sessions", summary="临时权限提升会话")
+def elevation_sessions(user=Depends(require_platform_capability("access.review"))):
+    from app.services.platform_access_governance_service import ELEVATION, list_records
+    return success({"items": list_records(ELEVATION)})
+
+
+@router.post("/elevation-sessions", summary="创建自动到期的临时提升")
+def elevation_session_create(body: dict = Body(...), user=Depends(require_platform_capability("access.manage"))):
+    from app.services.platform_access_governance_service import create_elevation
+    out = create_elevation(body)
+    _audit("PLATFORM_ELEVATION_CREATE", str(out.get("id") or ""), {
+        "targetUserId": out.get("userId"),
+        "capabilities": out.get("capabilities"),
+        "approvedBy": out.get("approvedBy"),
+        "reason": out.get("reason"),
+        "expiresAt": out.get("expiresAt"),
+    })
+    return success(out)
+
+
+@router.get("/support-sessions", summary="受控学校协助会话")
+def support_sessions(tenantId: int | None = Query(default=None),
+                     user=Depends(require_platform_capability("support.request"))):
+    from app.services.platform_access_governance_service import SUPPORT, list_records
+    return success({"items": list_records(SUPPORT, tenant_id=tenantId)})
+
+
+@router.post("/support-sessions", summary="创建绑定工单/事件的受控协助")
+def support_session_create(body: dict = Body(...), user=Depends(require_platform_capability("support.request"))):
+    from app.services.platform_access_governance_service import create_support_session
+    payload = {**body, "operatorUserId": user.get("userId")}
+    out = create_support_session(payload)
+    _audit("PLATFORM_SUPPORT_SESSION_CREATE", str(out.get("id") or ""), {
+        "operatorUserId": out.get("operatorUserId"),
+        "tenantId": out.get("tenantId"),
+        "ticketId": out.get("ticketId"),
+        "incidentId": out.get("incidentId"),
+        "scopes": out.get("scopes"),
+        "reason": out.get("reason"),
+        "expiresAt": out.get("expiresAt"),
+    }, tenant_id=int(out.get("tenantId") or 0))
+    return success(out)
+
+
+@router.get("/access-reviews", summary="平台访问复核")
+def access_reviews(user=Depends(require_platform_capability("access.review"))):
+    from app.services.platform_access_governance_service import REVIEW, list_records
+    return success({"items": list_records(REVIEW)})
+
+
+@router.get("/reconciliations", summary="合同、授权、配额与实际消费只读对账")
+def reconciliations(tenantId: int | None = Query(default=None),
+                    user=Depends(require_platform_capability("commercial.view"))):
+    from app.services.entitlement_reconciliation_service import list_reconciliations
+    return success({"items": list_reconciliations(tenantId)})

@@ -35,7 +35,10 @@
           <ul class="ptd__kv">
             <li><span>学生数</span><b>{{ tenant.studentCount }} / {{ tenant.maxStudents }}</b></li>
             <li><span>账号数</span><b>{{ tenant.userCount }} / {{ tenant.maxUsers }}</b></li>
-            <li><span>存储</span><b>{{ tenant.usedStorageMb }} / {{ tenant.storageLimitMb }} MB</b></li>
+            <li><span>商业存储上限</span><b>{{ formatBytes(tenant360.storage?.commercialStorageLimitBytes) }}</b></li>
+            <li><span>学校治理配额</span><b>{{ formatBytes(tenant360.storage?.schoolGovernanceQuotaBytes) }}</b></li>
+            <li><span>真实占用（文件+预留）</span><b>{{ formatBytes(tenant360.storage?.actualOccupancyBytes) }}</b></li>
+            <li v-if="tenant360.effectiveState?.mismatch"><span>状态一致性</span><b class="ptd__danger">Tenant 与 TENANT_META 不一致</b></li>
           </ul>
           <div class="ptd__quota">
             <label class="ptd__field"><span>学生上限</span><input v-model.number="quota.maxStudents" type="number" class="ptd__input" /></label>
@@ -155,6 +158,7 @@ export default {
       saving: false,
       error: '',
       tenant: null,
+      tenant360: {},
       tab: 'info',
       tabs: [
         { key: 'info', label: '运营与容量' },
@@ -240,6 +244,10 @@ export default {
     fmt(v) {
       return v ? String(v).replace('T', ' ').slice(0, 16) : ''
     },
+    formatBytes(value) {
+      if (value === null || value === undefined) return '未配置'
+      return `${(Number(value || 0) / 1024 / 1024 / 1024).toFixed(2)} GiB`
+    },
     async load() {
       this.loading = true
       const res = await platformControlApi.getTenant(this.tid)
@@ -249,6 +257,7 @@ export default {
         return
       }
       this.tenant = res.data
+      this.tenant360 = res.data.tenant360 || {}
       this.quota = {
         maxStudents: res.data.maxStudents,
         maxUsers: res.data.maxUsers,
@@ -288,35 +297,30 @@ export default {
         else toast.error(res.message)
       }
     },
+    async governedTransition(action, payload = {}) {
+      const reason = window.prompt('请输入本次变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
+      const expectedVersion = Number(this.tenant360.version || this.tenant.version || 0)
+      const body = { ...payload, reason: reason.trim(), expectedVersion }
+      const preview = await platformControlApi.previewTenantTransition(this.tid, action, body)
+      if (preview.code !== 0) return toast.error(preview.message)
+      const warnings = (preview.data.warnings || []).join('；')
+      if (!window.confirm(`${preview.data.fromStatus} → ${preview.data.toStatus}${warnings ? `\n${warnings}` : ''}\n确认执行？`)) return
+      const res = await platformControlApi.applyTenantTransition(this.tid, action, body)
+      if (res.code === 0) { toast.success('变更已生效'); await this.load() }
+      else toast.error(res.message)
+    },
     async act(action, body = {}) {
-      const res = await platformControlApi.tenantAction(this.tid, action, body)
-      if (res.code === 0) {
-        toast.success(res.message === 'ok' ? '操作成功' : res.message)
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      return this.governedTransition(action, body)
     },
     async changePkg() {
       const codes = ['trial', 'basic', 'standard', 'professional', 'private']
       const cur = codes.indexOf(this.tenant.packageCode)
       const next = codes[(cur + 1) % codes.length]
-      const res = await platformControlApi.tenantAction(this.tid, 'change-package', { packageCode: next })
-      if (res.code === 0) {
-        toast.success(res.message)
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      return this.governedTransition('change-package', { packageCode: next })
     },
     async saveQuota() {
-      const res = await platformControlApi.tenantAction(this.tid, 'quota', { ...this.quota })
-      if (res.code === 0) {
-        toast.success('容量已更新')
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      return this.governedTransition('quota', { ...this.quota })
     },
     async saveFeatures() {
       this.saving = true
@@ -428,6 +432,7 @@ export default {
 .ptd__kv b {
   color: var(--t1);
 }
+.ptd__danger { color: var(--danger-600, #b42318) !important; }
 .ptd__ops {
   display: flex;
   gap: var(--space-2);

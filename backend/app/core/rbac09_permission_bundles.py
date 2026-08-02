@@ -191,3 +191,90 @@ def require_any_permission_compat(*permission_codes: str):
         raise no_permission("无权限执行该操作")
 
     return _dep
+
+# ── RBAC-09 service-policy closeout ──────────────────────────────────────────
+# Background workers do not inherit a human role or a wildcard tenant context.
+# Every supported job type is bound to an explicit policy version, exact tenant,
+# payload field allow-list and byte ceiling.  The returned evidence is suitable
+# for audit/event payloads and deliberately contains no token material.
+SERVICE_POLICY_VERSION = "RBAC09-SP-1"
+SERVICE_POLICIES: dict[str, dict] = {
+    "FILE_SCAN": {
+        "allowedFields": {"fileId", "attempt", "requestedAt"},
+        "maxBytes": 16 * 1024,
+    },
+    "FILE_RETENTION_CLEANUP": {
+        "allowedFields": {"previewId", "candidateHash", "limit"},
+        "maxBytes": 64 * 1024,
+    },
+    "DATA_EXCHANGE_IMPORT": {
+        "allowedFields": {"jobId", "specCode", "fileId", "version"},
+        "maxBytes": 128 * 1024,
+    },
+    "DATA_EXCHANGE_EXPORT": {
+        "allowedFields": {"jobId", "specCode", "filterHash", "version"},
+        "maxBytes": 128 * 1024,
+    },
+}
+
+
+def authorize_service_job(
+    service_context: dict,
+    *,
+    job_type: str,
+    tenant_id: int,
+    payload_fields: Iterable[str] = (),
+    payload_bytes: int = 0,
+) -> dict:
+    """Fail-closed worker authorization for RBAC-09 service identities.
+
+    Required context keys: ``subjectType=SERVICE``, ``serviceId``, exact
+    ``tenantId`` and a short-lived ``tokenTtlSeconds``.  Human/user tokens,
+    wildcard tenant scopes, unregistered job types and oversized/unknown fields
+    are rejected.  The caller must persist the returned policy evidence.
+    """
+    import hashlib
+    import uuid
+
+    from app.core.exceptions import AppException
+
+    ctx = dict(service_context or {})
+    policy = SERVICE_POLICIES.get(str(job_type or "").upper())
+    if policy is None:
+        raise AppException("SERVICE_POLICY_DENIED", "未注册的后台任务类型", http_status=403)
+    if str(ctx.get("subjectType") or "").upper() != "SERVICE" or not ctx.get("serviceId"):
+        raise AppException("SERVICE_POLICY_DENIED", "后台任务必须使用服务身份", http_status=403)
+    if ctx.get("userId") or ctx.get("actorUserId"):
+        raise AppException("SERVICE_POLICY_DENIED", "后台任务不得继承人工账号令牌", http_status=403)
+    scoped_tenant = ctx.get("tenantId")
+    if scoped_tenant in (None, "", "*") or int(scoped_tenant) != int(tenant_id):
+        raise AppException("SERVICE_POLICY_DENIED", "服务身份租户范围不匹配", http_status=403)
+    ttl = int(ctx.get("tokenTtlSeconds") or 0)
+    if ttl <= 0 or ttl > 900:
+        raise AppException("SERVICE_POLICY_DENIED", "服务令牌必须短时有效（不超过15分钟）", http_status=403)
+    fields = {str(value) for value in payload_fields}
+    unknown = fields - set(policy["allowedFields"])
+    if unknown:
+        raise AppException(
+            "SERVICE_POLICY_DENIED",
+            "后台任务包含未授权字段",
+            http_status=403,
+            details={"unknownFields": sorted(unknown)},
+        )
+    size = max(0, int(payload_bytes or 0))
+    if size > int(policy["maxBytes"]):
+        raise AppException("SERVICE_POLICY_DENIED", "后台任务载荷超过策略上限", http_status=403)
+    trace_id = str(ctx.get("traceId") or uuid.uuid4().hex)
+    evidence_seed = (
+        f"{SERVICE_POLICY_VERSION}|{job_type.upper()}|{int(tenant_id)}|"
+        f"{ctx['serviceId']}|{','.join(sorted(fields))}|{size}|{trace_id}"
+    )
+    return {
+        "allowed": True,
+        "jobType": str(job_type).upper(),
+        "tenantId": int(tenant_id),
+        "serviceId": str(ctx["serviceId"]),
+        "policyVersion": SERVICE_POLICY_VERSION,
+        "traceId": trace_id,
+        "evidenceHash": hashlib.sha256(evidence_seed.encode("utf-8")).hexdigest(),
+    }

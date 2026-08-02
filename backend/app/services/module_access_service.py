@@ -52,21 +52,25 @@ def module_access_state(tenant_id: int, module_key: str) -> dict[str, Any]:
         school_key = "graduationDesign"
     enabled = bool(school_map.get(school_key, school_map.get(feature_key, True))) if entitled else False
 
-    meta = {}
     try:
-        meta = tenant_meta(int(tenant_id)) or {}
+        from app.services.tenant_effective_state_service import get_effective_state
+        effective_state = get_effective_state(int(tenant_id), strict=True)
+        status = str(effective_state["effectiveStatus"]).upper()
+        state_error = ""
     except Exception:
-        meta = {}
-    status = str(meta.get("status") or meta.get("tenantStatus") or "ACTIVE").upper()
-    expired = status in ("EXPIRED", "SUSPENDED")
-    readonly = status in ("READONLY", "EXPIRED", "SUSPENDED") or bool(meta.get("readonly"))
+        status = "UNRESOLVED"
+        state_error = "租户状态无法确定，已按安全策略拒绝"
+    expired = status in ("EXPIRED", "SUSPENDED", "DISABLED", "ARCHIVED", "UNRESOLVED")
+    readonly = status in ("READONLY", "EXPIRED", "SUSPENDED", "DISABLED", "ARCHIVED", "UNRESOLVED")
 
-    ready = entitled and enabled  # 详细 ready 由上线检查补充
+    ready = entitled and enabled and not state_error  # 详细 ready 由上线检查补充
     healthy = ready
 
-    writable = entitled and enabled and not expired and not readonly
-    reason = ""
-    if not entitled:
+    writable = entitled and enabled and not expired and not readonly and not state_error
+    reason = state_error
+    if state_error:
+        reason = state_error
+    elif not entitled:
         reason = f"模块未购买或未授权：{feature_key}"
     elif not enabled:
         reason = f"学校已停用模块：{school_key}（历史可查，恢复后可写）"

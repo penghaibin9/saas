@@ -231,3 +231,57 @@ def test_rbac09_source_contract_has_no_governance_content_bypass_and_frontend_is
         assert code in catalog_source
     assert "permissionKey: 'systemAdmin.file.manage'" not in catalog_source
     assert "permissionKey: 'system.user.import', view: 'data-exchange'" not in catalog_source
+
+
+def test_service_policy_is_exact_tenant_short_lived_and_evidenced():
+    context = {
+        "subjectType": "SERVICE",
+        "serviceId": "file-scan-worker",
+        "tenantId": 1001,
+        "tokenTtlSeconds": 300,
+        "traceId": "trace-rbac09",
+    }
+    evidence = bundles.authorize_service_job(
+        context,
+        job_type="FILE_SCAN",
+        tenant_id=1001,
+        payload_fields={"fileId", "attempt"},
+        payload_bytes=1024,
+    )
+    assert evidence["allowed"] is True
+    assert evidence["policyVersion"] == bundles.SERVICE_POLICY_VERSION
+    assert evidence["traceId"] == "trace-rbac09"
+    assert len(evidence["evidenceHash"]) == 64
+
+
+def test_service_policy_rejects_human_wildcard_long_token_and_unknown_fields():
+    import pytest
+    from app.core.exceptions import AppException
+
+    valid = {
+        "subjectType": "SERVICE",
+        "serviceId": "cleanup-worker",
+        "tenantId": 7,
+        "tokenTtlSeconds": 600,
+    }
+    rejected = [
+        {**valid, "subjectType": "USER", "userId": 9},
+        {**valid, "tenantId": "*"},
+        {**valid, "tokenTtlSeconds": 3600},
+    ]
+    for context in rejected:
+        with pytest.raises(AppException) as exc:
+            bundles.authorize_service_job(
+                context,
+                job_type="FILE_RETENTION_CLEANUP",
+                tenant_id=7,
+                payload_fields={"previewId"},
+            )
+        assert exc.value.code == "SERVICE_POLICY_DENIED"
+    with pytest.raises(AppException):
+        bundles.authorize_service_job(
+            valid,
+            job_type="FILE_RETENTION_CLEANUP",
+            tenant_id=7,
+            payload_fields={"previewId", "rawSql"},
+        )

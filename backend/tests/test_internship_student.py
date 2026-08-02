@@ -315,7 +315,7 @@ def test_status_machine(client, auth_headers, db_mode):
     # 归档不再走 /status（其 action 校验只放行 READY/ONBOARD/ASSESS），须走正式归档接口；
     # 本用例未凑齐企业评价/学生自评/成绩发布等归档合规材料，走 force 强制归档
     import io
-    up = client.post("/api/v1/files/upload", headers=auth_headers,
+    up = client.post("/api/v1/files", headers=auth_headers,
                      files={"file": ("evidence.txt", io.BytesIO(b"force-archive-evidence"), "text/plain")},
                      data={"bizType": "ATTACHMENT"})
     fid = up.json()["data"]["fileId"]
