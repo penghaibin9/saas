@@ -26,9 +26,11 @@ DUTY_CAPABILITIES = {
     "PLATFORM_SUPER_ADMIN": {"*"},
 }
 
+# Root control-plane identities are provisioned out-of-band and must never be
+# created through the ordinary duty-assignment form.
 ASSIGNABLE_DUTIES = {
     code for code in DUTY_CAPABILITIES
-    if code not in {"PLATFORM_SUPER_ADMIN"}
+    if code not in {"PLATFORM_OWNER", "PLATFORM_SUPER_ADMIN"}
 }
 KNOWN_CAPABILITIES = {
     capability
@@ -54,7 +56,16 @@ def _parse(value: Any) -> datetime | None:
 
 
 def _role(user: dict) -> str:
-    return str(user.get("currentRoleCode") or user.get("userType") or "").upper()
+    """Return only a platform-plane role; school roles never qualify."""
+    for value in (user.get("currentRoleCode"), user.get("userType")):
+        role = str(value or "").strip().upper()
+        if role.startswith("PLATFORM_"):
+            return role
+    return ""
+
+
+def _user_id(user: dict) -> str:
+    return str(user.get("userId") or user.get("id") or "").strip()
 
 
 def _is_active_record(item: dict, *, now: datetime) -> bool:
@@ -69,8 +80,8 @@ def _is_active_record(item: dict, *, now: datetime) -> bool:
 
 
 def _load_user_records(user: dict) -> tuple[list[dict], list[dict]]:
-    user_id = str(user.get("userId") or user.get("id") or "")
-    if not user_id:
+    user_id = _user_id(user)
+    if not user_id or not _role(user):
         return [], []
     try:
         assignments = [item for item in list_records(ASSIGNMENT) if str(item.get("userId")) == user_id]
@@ -90,6 +101,11 @@ def effective_platform_duties(
 ) -> set[str]:
     now = now or _now()
     role = _role(user)
+    if not role:
+        # A school identity may hold school-side "*" but can never consume a
+        # platform assignment/elevation record with a matching numeric user id.
+        return set()
+    user_id = _user_id(user)
     duties = set(DUTY_CAPABILITIES.get(role, set()))
     if assignments is None or elevations is None:
         stored_assignments, stored_elevations = _load_user_records(user)
@@ -98,18 +114,20 @@ def effective_platform_duties(
         if elevations is None:
             elevations = stored_elevations
     for item in assignments or []:
-        if str(item.get("userId")) != str(user.get("userId")) or not _is_active_record(item, now=now):
+        if str(item.get("userId")) != user_id or not _is_active_record(item, now=now):
             continue
         duty_code = str(item.get("dutyCode") or "").upper()
         duties.update(DUTY_CAPABILITIES.get(duty_code, set()))
     for item in elevations or []:
-        if str(item.get("userId")) != str(user.get("userId")) or not _is_active_record(item, now=now):
+        if str(item.get("userId")) != user_id or not _is_active_record(item, now=now):
             continue
         duties.update(str(value) for value in (item.get("capabilities") or []))
     return duties
 
 
 def assert_platform_capability(user: dict, capability: str, *, elevations: list[dict] | None = None) -> dict:
+    if not _role(user):
+        raise no_permission("学校身份禁止访问平台控制面")
     duties = effective_platform_duties(user, elevations=elevations)
     if "*" not in duties and capability not in duties and not has_permission(user, f"platform.{capability}"):
         raise no_permission(f"平台职责不允许执行该操作（{capability}）")
@@ -125,9 +143,11 @@ def support_session_allows(
     now: datetime | None = None,
 ) -> bool:
     now = now or _now()
+    if not _role(user):
+        return False
     if str(session.get("status") or "").upper() != "ACTIVE":
         return False
-    if str(session.get("operatorUserId")) != str(user.get("userId")):
+    if str(session.get("operatorUserId")) != _user_id(user):
         return False
     if int(session.get("tenantId") or 0) != int(tenant_id):
         return False
@@ -237,6 +257,9 @@ def save_access_assignment(payload: dict) -> dict:
 
 
 def create_elevation(payload: dict) -> dict:
+    user_id = str(payload.get("userId") or "").strip()
+    if not user_id:
+        raise AppException("VALIDATION_ERROR", "临时提升必须指定平台用户")
     duration = int(payload.get("durationMinutes") or 0)
     if duration <= 0 or duration > 240:
         raise AppException("VALIDATION_ERROR", "临时提升必须在1-240分钟内")
@@ -248,6 +271,7 @@ def create_elevation(payload: dict) -> dict:
     now = _now()
     return save_record(ELEVATION, {
         **payload,
+        "userId": user_id,
         "capabilities": sorted(capabilities),
         "startsAt": now.isoformat(timespec="seconds"),
         "expiresAt": (now + timedelta(minutes=duration)).isoformat(timespec="seconds"),
@@ -257,8 +281,11 @@ def create_elevation(payload: dict) -> dict:
 
 def create_support_session(payload: dict) -> dict:
     tenant_id = int(payload.get("tenantId") or 0)
+    operator_user_id = str(payload.get("operatorUserId") or "").strip()
     if tenant_id <= 0:
         raise AppException("VALIDATION_ERROR", "受控协助必须绑定学校")
+    if not operator_user_id:
+        raise AppException("VALIDATION_ERROR", "受控协助必须绑定平台操作人")
     if not payload.get("ticketId") and not payload.get("incidentId"):
         raise AppException("VALIDATION_ERROR", "受控协助必须绑定工单或事件")
     if len(str(payload.get("reason") or "").strip()) < 5:
@@ -274,6 +301,7 @@ def create_support_session(payload: dict) -> dict:
     now = _now()
     return save_record(SUPPORT, {
         **payload,
+        "operatorUserId": operator_user_id,
         "scopes": scopes,
         "startedAt": now.isoformat(timespec="seconds"),
         "expiresAt": (now + timedelta(minutes=duration)).isoformat(timespec="seconds"),
