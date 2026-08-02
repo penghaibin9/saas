@@ -25,7 +25,7 @@ def _school_enabled_map(tenant_id: int) -> dict[str, bool]:
 
 def module_access_state(tenant_id: int, module_key: str) -> dict[str, Any]:
     from app.core.module_registry import resolve_feature_key, resolve_module
-    from app.services.platform_service import feature_enabled, tenant_meta
+    from app.services.platform_service import feature_enabled
 
     mod = resolve_module(module_key)
     feature_key = resolve_feature_key(module_key)
@@ -54,9 +54,13 @@ def module_access_state(tenant_id: int, module_key: str) -> dict[str, Any]:
 
     try:
         from app.services.tenant_effective_state_service import get_effective_state
-        effective_state = get_effective_state(int(tenant_id), strict=True)
+
+        # 存量租户可能尚未生成 TENANT_META。此时以关系表硬状态作为兼容权威，
+        # 但未知状态、非法到期时间等解析错误仍必须 fail-closed。
+        effective_state = get_effective_state(int(tenant_id), strict=False)
         status = str(effective_state["effectiveStatus"]).upper()
-        state_error = ""
+        state_errors = list(effective_state.get("errors") or [])
+        state_error = "租户状态无法确定，已按安全策略拒绝" if state_errors else ""
     except Exception:
         status = "UNRESOLVED"
         state_error = "租户状态无法确定，已按安全策略拒绝"
