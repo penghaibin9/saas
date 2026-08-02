@@ -32,3 +32,10 @@ def test_unknown_state_never_defaults_to_active():
     with pytest.raises(AppException) as exc:
         effective_state_from_records(row_status="MYSTERY", meta={"status": "active"})
     assert exc.value.code == "TENANT_STATE_UNRESOLVED"
+
+
+def test_legacy_active_tenant_without_metadata_uses_hard_row_state():
+    result = effective_state_from_records(row_status="ACTIVE", meta=None, strict=True)
+    assert result["effectiveStatus"] == "active"
+    assert result["writable"] is True
+    assert result["errors"] == []
