@@ -19,7 +19,7 @@ def _stu(name):
 
 
 def _upload(client, headers):
-    r = client.post("/api/v1/files/upload", headers=headers,
+    r = client.post("/api/v1/files", headers=headers,
                     files={"file": ("t.pdf", b"%PDF-1.4 x", "application/pdf")},
                     params={"bizType": "GRADUATION_MATERIAL"})
     assert r.json()["code"] == 0

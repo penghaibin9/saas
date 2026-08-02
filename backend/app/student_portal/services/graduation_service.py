@@ -50,7 +50,7 @@ def proposal(user: dict) -> dict:
 def submit_proposal(user: dict, body: dict) -> dict:
     """提交/重交开题报告：长文本正文（研究背景/方案/预期成果）+ 附件 file_id 列表。
 
-    附件先经 /files/upload 得到 file_id，再随本接口以 attachments=[file_id,...] 携带。
+    附件先经 POST /files 得到 file_id，再随本接口以 attachments=[file_id,...] 携带。
     """
     body = body or {}
     background = str(body.get("background") or "").strip()
@@ -91,7 +91,7 @@ def final(user: dict) -> dict:
 
 
 def submit_final(user: dict, body: dict) -> dict:
-    """提交/重交论文成果（初稿/定稿）：必须上传论文附件（大文件走 /files/upload）。
+    """提交/重交论文成果（初稿/定稿）：必须上传论文附件（大文件走 POST /files）。
 
     查重率由服务端产出，客户端不得自报（复用 graduation_submit_final 的服务端逻辑）。
     """

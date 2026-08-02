@@ -131,7 +131,7 @@
       </template>
     </AppDrawer>
 
-    <!-- 课程大纲 / 课程材料：文件清单 + 新增（附件走文件中心，POST /api/v1/files/upload） -->
+    <!-- 课程大纲 / 课程材料：文件清单 + 新增（附件走文件中心，POST /api/v1/files） -->
     <AppDrawer :visible="materialPanel.visible" :title="materialPanelTitle" @update:visible="materialPanel.visible = $event">
       <div class="aacc-form" v-if="materialPanel.course">
         <AppFormItem :label="materialPanel.course.courseName"><span class="mp-note">{{ materialPanel.course.courseCode }}</span></AppFormItem>
@@ -191,7 +191,7 @@
  *
  * Tier1 R3 续工新增（施工记录 2026-07-16）：
  * - 课程大纲 / 课程材料：新增 t_aa_course_material 挂课程级教学资源，附件走既有文件中心
- *   （POST /api/v1/files/upload），materialType=SYLLABUS 即「课程大纲」子集，两个三级菜单共用同一套
+ *   （POST /api/v1/files），materialType=SYLLABUS 即「课程大纲」子集，两个三级菜单共用同一套
  *   Drawer 组件（materialPanel/materialForm），仅 lockedType 不同；
  * - 考核方式：字段（exam_mode）与读写端点此前已存在（Tier1 R2 铺底），本轮只补齐控制台 Tab 入口；
  * - 历史课程（R3 外部核验后由 navPlan 模板占位名「课程归档」改名）：真实教务系统的课程库没有"归档"

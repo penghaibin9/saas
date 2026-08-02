@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: shared-platform
+    client: backend
+    route: /tenants/{tenant_id}/transitions/{action}/preview
+    page: backend/app/api/v1/platform.py
+    action: lifecycle-preflight
+    fileCategory: NOT_A_FILE_CAPABILITY
+    api: POST /api/v1/platform/tenants/{tenant_id}/transitions/{action}/preview
+    backendService: backend/app/services/tenant_effective_state_service.py::preview_transition
+    storageMode: none
+    authMode: platform-super-admin
+    dataScope: single-tenant-control-plane
+    versioned: true
+    scanGated: false
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P2
+    targetPhase: '0'
+    notes: PLAT-02 lifecycle preflight. The route name contains preview but does not access file bytes or file metadata.

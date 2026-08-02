@@ -2001,16 +2001,16 @@ def league_dev_stages(devId: int = Path(...),
 
 
 # ═══════════ 统一业务附件（违纪/送达/申诉/党团/减免贷款回执/家校 材料·授权下载+审计）═══════════
-# 上传字节复用 POST /api/v1/files/upload（真实落盘 + t_file_object），本节只做「关联/列表/授权下载」。
+# 上传字节复用 POST /api/v1/files（真实落盘 + t_file_object），本节只做「关联/列表/授权下载」。
 
 class AttachmentLinkBody(BaseModel):
     bizType: str = Field(..., description="DISCIPLINE/DISCIPLINE_APPEAL/LEAGUE/CLUB/FUNDING/REDUCTION/LOAN/HOME_SCHOOL")
     bizId: int = Field(..., description="业务记录 id")
-    fileId: str = Field(..., min_length=1, description="POST /files/upload 返回的 fileId")
+    fileId: str = Field(..., min_length=1, description="POST /api/v1/files 返回的 fileId")
     note: Optional[str] = None
 
 
-@router.post("/attachments", summary="关联业务材料附件（需对应 biz 管理权限；file 先经 /files/upload 上传）")
+@router.post("/attachments", summary="关联业务材料附件（需对应 biz 管理权限；file 先经 POST /api/v1/files 上传）")
 def attachment_link(body: AttachmentLinkBody, user=Depends(get_current_user)):
     return success(attach_svc.link_attachment(body.bizType, body.bizId, body.fileId, body.note, user),
                    message="已关联")

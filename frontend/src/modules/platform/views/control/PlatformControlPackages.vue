@@ -42,11 +42,14 @@ export default {
       else toast.error(res.message)
     },
     async save(p) {
+      const reason = window.prompt('请输入套餐变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
       const res = await platformControlApi.updatePackage(p.packageCode, {
         price: p.price, durationDays: p.durationDays, maxStudents: p.maxStudents,
-        maxUsers: p.maxUsers, storageLimitMb: p.storageLimitMb
+        maxUsers: p.maxUsers, storageLimitMb: p.storageLimitMb,
+        expectedVersion: Number(p.version || 0), reason: reason.trim()
       })
-      if (res.code === 0) toast.success('「' + p.packageName + '」已保存')
+      if (res.code === 0) { toast.success('「' + p.packageName + '」已保存'); this.load() }
       else toast.error(res.message)
     }
   }

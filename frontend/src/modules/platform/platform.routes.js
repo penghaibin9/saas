@@ -42,6 +42,18 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '订单续费授权', requiresAuth: true, permissionKey: 'platform.order.view' }
     },
     {
+      path: 'commercial-control',
+      name: 'platform-commercial-control',
+      component: () => import('@/modules/platform/views/control/PlatformCommercialControlView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '商业授权与计量对账', requiresAuth: true, permissionKey: 'platform.commercial.view' }
+    },
+    {
+      path: 'access',
+      name: 'platform-access',
+      component: () => import('@/modules/platform/views/control/PlatformAccessView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '平台人员职责与受控协助', requiresAuth: true, permissionKey: 'platform.access.review' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),
@@ -203,8 +215,8 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通', requiresAuth: true, permissionKey: 'platform.customer-health.view', platformCapabilityKey: 'plt-tenant-health' }
     },
     {
-      path: 'operator-access', name: 'platform-operator-access', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '平台人员与职责权限', requiresAuth: true, permissionKey: 'platform.operator.access.manage', platformCapabilityKey: 'plt-operator-access' }
+      path: 'operator-access', name: 'platform-operator-access', redirect: '/admin/platform/access',
+      meta: { moduleCode: 'PLATFORM', title: '平台人员与职责权限', requiresAuth: true, permissionKey: 'platform.access.review' }
     }
   ]
 }

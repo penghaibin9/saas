@@ -28,7 +28,7 @@ async def upload_file(
     user=Depends(get_current_user),
 ):
     # 学生门户旧请求层只支持在 URL 携带附加字段；仍落在同一个权威上传合同，
-    # 不再恢复 /files/upload 兼容路由。Form 字段优先，Query 只作为传输层兼容。
+    # 不再恢复旧普通上传兼容路由。Form 字段优先，Query 只作为传输层兼容。
     effective_biz_type = str(bizTypeQuery or bizType or "ATTACHMENT")
     effective_biz_id = bizIdQuery if bizIdQuery not in (None, "") else bizId
     data = await upload_contract(

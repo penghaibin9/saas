@@ -1,4 +1,4 @@
-"""学校端统一数据交换任务中心 API（SYS-18）。"""
+"""学校端统一数据交换任务中心 API（SYS-18 + RBAC-09）。"""
 from __future__ import annotations
 
 from typing import Literal
@@ -11,6 +11,15 @@ from app.api.v1.file_contract import validated_local_file_response
 from app.core.context import current_tenant_id
 from app.core.exceptions import not_found
 from app.core.permissions import require_any_permission, require_permission
+from app.core.rbac09_permission_bundles import (
+    DATA_EXCHANGE_CONFIRM,
+    DATA_EXCHANGE_DOWNLOAD,
+    DATA_EXCHANGE_RETRY,
+    DATA_EXCHANGE_REVOKE,
+    DATA_EXCHANGE_VIEW_OWN,
+    DATA_EXCHANGE_VIEW_TENANT,
+    require_any_permission_compat,
+)
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.services import data_exchange_job_service as jobs
@@ -21,40 +30,32 @@ from app.services.identity_import_scan_orchestrator import (
 
 router = APIRouter(prefix="/data-exchange", tags=["系统管理·数据交换任务中心"])
 
+# 新的 systemAdmin.dataExchange.* 是终态。systemAdmin.user.import 的兼容映射和弃用审计
+# 由 rbac09_permission_bundles 统一处理；敏感审计查看权不再等于任务操作权。
 VIEW_PERMISSIONS = (
-    "systemAdmin.dataExchange.viewOwn",
-    "systemAdmin.dataExchange.viewTenant",
-    "systemAdmin.user.import",
+    DATA_EXCHANGE_VIEW_OWN,
+    DATA_EXCHANGE_VIEW_TENANT,
     "systemAdmin.migration.view",
-    "systemAdmin.audit.sensitive.view",
     "academicAffairs.roster.import",
     "academicAffairs.grade.import",
     "academicAffairs.schedule.import",
 )
 CONFIRM_PERMISSIONS = (
-    "systemAdmin.dataExchange.confirm",
-    "systemAdmin.user.import",
+    DATA_EXCHANGE_CONFIRM,
     "systemAdmin.migration.import",
     "academicAffairs.roster.import",
     "academicAffairs.grade.import",
     "academicAffairs.schedule.import",
 )
 DOWNLOAD_PERMISSIONS = (
-    "systemAdmin.dataExchange.download",
-    "systemAdmin.user.import",
-    "systemAdmin.audit.sensitive.view",
+    DATA_EXCHANGE_DOWNLOAD,
     "academicAffairs.roster.import",
     "academicAffairs.grade.import",
     "academicAffairs.schedule.import",
 )
-REVOKE_PERMISSIONS = (
-    "systemAdmin.dataExchange.revoke",
-    "systemAdmin.user.import",
-    "systemAdmin.audit.sensitive.view",
-)
+REVOKE_PERMISSIONS = (DATA_EXCHANGE_REVOKE,)
 RETRY_PERMISSIONS = (
-    "systemAdmin.dataExchange.retry",
-    "systemAdmin.user.import",
+    DATA_EXCHANGE_RETRY,
     "systemAdmin.migration.import",
     "academicAffairs.roster.import",
     "academicAffairs.grade.import",
@@ -146,7 +147,7 @@ def confirm_import(
     idempotency_key: str | None = Header(
         None, alias="Idempotency-Key", min_length=16, max_length=200
     ),
-    user=Depends(require_any_permission(*CONFIRM_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*CONFIRM_PERMISSIONS)),
 ):
     from app.services.data_exchange_confirm_service import confirm_import_job
 
@@ -256,7 +257,7 @@ def adopt_excel_job(
 def data_exchange_summary(
     visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
     moduleCode: str = Query("", max_length=64),
-    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*VIEW_PERMISSIONS)),
 ):
     return success(jobs.get_summary(
         user=user,
@@ -274,7 +275,7 @@ def list_data_exchange_jobs(
     moduleCode: str = Query("", max_length=64),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
-    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*VIEW_PERMISSIONS)),
 ):
     return success(jobs.list_jobs(
         user=user,
@@ -293,7 +294,7 @@ def import_job_detail(
     job_id: str,
     visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
     moduleCode: str = Query("", max_length=64),
-    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*VIEW_PERMISSIONS)),
 ):
     refresh_identity_import_job(
         job_id,
@@ -317,7 +318,7 @@ def import_job_errors(
     moduleCode: str = Query("", max_length=64),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=200),
-    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*VIEW_PERMISSIONS)),
 ):
     return success(jobs.get_import_errors(
         job_id,
@@ -333,7 +334,7 @@ def import_job_errors(
 def cancel_import(
     job_id: str,
     body: CancelImportRequest,
-    user=Depends(require_any_permission(*RETRY_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*CONFIRM_PERMISSIONS)),
 ):
     return success(jobs.cancel_import_job(
         job_id,
@@ -347,7 +348,7 @@ def cancel_import(
 def retry_import(
     job_id: str,
     body: RetryImportRequest,
-    user=Depends(require_any_permission(*RETRY_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*RETRY_PERMISSIONS)),
 ):
     item = jobs.retry_import_job(
         job_id,
@@ -363,7 +364,7 @@ def export_job_detail(
     job_id: str,
     visibility: Literal["OWN", "MODULE", "TENANT"] = Query("OWN"),
     moduleCode: str = Query("", max_length=64),
-    user=Depends(require_any_permission(*VIEW_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*VIEW_PERMISSIONS)),
 ):
     return success(jobs.get_export_job(
         job_id,
@@ -377,7 +378,7 @@ def export_job_detail(
 def export_download_ticket(
     job_id: str,
     body: DownloadTicketRequest,
-    user=Depends(require_any_permission(*DOWNLOAD_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*DOWNLOAD_PERMISSIONS)),
 ):
     return success(jobs.create_download_ticket(
         job_id,
@@ -390,7 +391,7 @@ def export_download_ticket(
 def download_export_file(
     job_id: str,
     ticket: str = Query(..., min_length=20),
-    user=Depends(require_any_permission(*DOWNLOAD_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*DOWNLOAD_PERMISSIONS)),
 ):
     path, filename = jobs.consume_download_ticket(job_id, ticket, user=user)
     media_type = (
@@ -411,7 +412,7 @@ def download_export_file(
 def revoke_export_file(
     job_id: str,
     body: RevokeExportRequest,
-    user=Depends(require_any_permission(*REVOKE_PERMISSIONS)),
+    user=Depends(require_any_permission_compat(*REVOKE_PERMISSIONS)),
 ):
     return success(
         jobs.revoke_export_job(

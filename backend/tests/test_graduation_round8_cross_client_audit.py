@@ -42,13 +42,16 @@ def test_mobile_review_routes_are_batch_and_permission_guarded():
 
 def test_generic_file_routes_cannot_bypass_graduation_audit_boundary():
     contract = read("backend/app/api/v1/file_contract.py")
-    files_a = read("backend/app/api/v1/files.py")
-    files_b = read("backend/app/api/v1/file.py")
+    files = read("backend/app/api/v1/files.py")
+    file_ops = read("backend/app/api/v1/file.py")
     assert "_requires_audited_business_download" in contract
     assert '== "GRADUATION_MATERIAL"' in contract
     assert "raise not_found(\"文件不存在\")" in contract
-    assert "download_contract" in files_a
-    assert "download_contract" in files_b
+    # 普通上传/下载只由 canonical files.py 委托权威合同；会话与扫描路由不得复制旁路。
+    assert "download_contract" in files
+    assert "download_contract" not in file_ops
+    assert "create_upload_session" in file_ops
+    assert "scan_retry" in file_ops
 
 
 def test_graduation_batch_safe_routers_precede_legacy_routes():
@@ -81,17 +84,18 @@ def test_reminder_copy_matches_real_message_delivery():
 
 def test_temporary_file_cleanup_is_owner_scoped_and_binding_safe():
     service = read("backend/app/modules/graduation/services/graduation_material_temp_service.py")
-    files_a = read("backend/app/api/v1/files.py")
-    files_b = read("backend/app/api/v1/file.py")
+    files = read("backend/app/api/v1/files.py")
+    file_ops = read("backend/app/api/v1/file.py")
     contract = read("backend/app/api/v1/file_contract.py")
     portal = read("student-portal/src/services/request.js")
     janitor = read("miniapp/src/components/MobileGraduationTempFileJanitor.vue")
     assert "owner_user_id" in service and "_binding" in service
     assert "with_for_update=True" in service
     assert "附件已绑定开题或成果记录" in service
-    # 两套 API 委托统一 upload_contract；清理逻辑只在权威合同执行一次，禁止复制回路由。
-    assert "upload_contract" in files_a
-    assert "upload_contract" in files_b
+    # 唯一普通上传入口委托 upload_contract；会话/扫描路由不得复制上传与清理逻辑。
+    assert "upload_contract" in files
+    assert "upload_contract" not in file_ops
+    assert "upload-sessions" in file_ops
     assert "cleanup_stale_temporary_materials" in contract
     assert "abandonTemporaryGraduationMaterial" in portal
     assert "/mobile/graduation/materials/${fileId}/abandon" in janitor

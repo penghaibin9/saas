@@ -298,7 +298,7 @@ def test_exemption_requires_reason(client, auth_headers, db_mode):
     }).json()
     assert bad["code"] != 0
     import io
-    up = client.post("/api/v1/files/upload", headers=h,
+    up = client.post("/api/v1/files", headers=h,
                      files={"file": ("exempt-evidence.txt", io.BytesIO(b"exemption basis"), "text/plain")},
                      data={"bizType": "ATTACHMENT"})
     fid = up.json()["data"]["fileId"]

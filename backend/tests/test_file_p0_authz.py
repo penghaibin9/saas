@@ -9,6 +9,34 @@ TID = 1000000000000000001
 OTHER_TID = 1000000000000000002
 
 
+@pytest.fixture(autouse=True)
+def _ensure_authoritative_tenant_seed(request):
+    """DB 文件测试必须建立真实租户主记录，不能用孤儿 tenant_id 绕过状态守卫。"""
+    if "db_mode" not in request.fixturenames:
+        yield
+        return
+    request.getfixturevalue("db_mode")
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+
+    db = get_sessionmaker()()
+    try:
+        if db.get(Tenant, TID) is None:
+            db.add(Tenant(
+                id=TID,
+                tenant_code="demo",
+                school_name="测试学校",
+                short_name="测试学校",
+                deploy_mode="SAAS",
+                db_mode="SHARED",
+                status="ACTIVE",
+            ))
+            db.commit()
+    finally:
+        db.close()
+    yield
+
+
 def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
                        json={"loginName": login_name, "password": "any"}).json()["data"]

@@ -9,16 +9,50 @@ MAIN_TID = 1000000000000000001
 def _ensure_main_tenant():
     """db_mode 夹具只种学生数据，这里补主租户行（平台租户接口需要 t_tenant 存在）。"""
     from app.db.session import get_sessionmaker
-    from app.models import Tenant
+    from sqlalchemy import select
+    from app.models import PlatformConfig, Tenant
     db = get_sessionmaker()()
     try:
         if not db.get(Tenant, MAIN_TID):
             db.add(Tenant(id=MAIN_TID, tenant_code="demo", school_name="示范职业技术学院",
                           status="ACTIVE"))
-            db.commit()
+            db.flush()
+        meta = db.scalars(select(PlatformConfig).where(
+            PlatformConfig.tenant_id == MAIN_TID,
+            PlatformConfig.config_type == "TENANT_META",
+            PlatformConfig.config_key == "-",
+            PlatformConfig.is_deleted.is_(False),
+        )).first()
+        if meta is None:
+            db.add(PlatformConfig(
+                tenant_id=MAIN_TID, config_type="TENANT_META", config_key="-",
+                config_json={"status": "active", "packageCode": "professional"}, enabled=True,
+            ))
+        db.commit()
     finally:
         db.close()
 
+
+
+def _seed_main_org_class() -> str:
+    """为需要验证正式建档的测试种一套完整、自洽的学院/专业/班级。"""
+    from app.db.session import get_sessionmaker
+    from app.models.org import College, Major, SchoolClass
+
+    db = get_sessionmaker()()
+    try:
+        col = College(tenant_id=MAIN_TID, college_name="平台测试学院", status="ACTIVE")
+        db.add(col); db.flush()
+        maj = Major(tenant_id=MAIN_TID, college_id=col.id, major_name="平台测试专业", status="ACTIVE")
+        db.add(maj); db.flush()
+        cls = SchoolClass(tenant_id=MAIN_TID, major_id=maj.id, class_name="平台测试2601",
+                          grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(cls); db.flush()
+        class_id = str(cls.id)
+        db.commit()
+        return class_id
+    finally:
+        db.close()
 
 def _owner_headers() -> dict:
     from app.core.security import create_access_token
@@ -29,6 +63,26 @@ def _owner_headers() -> dict:
         "clientType": "PC",
     })
     return {"Authorization": f"Bearer {token}"}
+
+
+def _tenant_version(client, headers: dict, tenant_id: int | str) -> int:
+    detail = client.get(f"/api/v1/platform/tenants/{tenant_id}/360", headers=headers).json()
+    assert detail["code"] == 0, detail
+    return int(detail["data"]["version"])
+
+
+def _tenant_action(client, headers: dict, tenant_id: int | str, action: str, **payload):
+    reason = payload.pop("reason", f"测试执行{action}操作")
+    body = {
+        **payload,
+        "reason": reason,
+        "expectedVersion": _tenant_version(client, headers, tenant_id),
+    }
+    return client.post(
+        f"/api/v1/platform/tenants/{tenant_id}/{action}",
+        headers=headers,
+        json=body,
+    )
 
 
 # ── §一 强校验：非平台超管一律 403，拒绝写审计 ──
@@ -69,23 +123,20 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
                       json={"tenantCode": "t-life", "tenantName": "重复"}).json()
     assert dup["code"] == 409001
 
-    ext = client.post(f"/api/v1/platform/tenants/{tid}/extend-trial", headers=h,
-                      json={"days": 30}).json()
+    ext = _tenant_action(client, h, tid, "extend-trial", days=30).json()
     assert ext["code"] == 0
 
-    paid = client.post(f"/api/v1/platform/tenants/{tid}/convert-to-paid", headers=h,
-                       json={"packageCode": "standard"}).json()
+    paid = _tenant_action(client, h, tid, "convert-to-paid", packageCode="standard").json()
     assert paid["code"] == 0 and paid["data"]["status"] == "active" \
         and paid["data"]["packageCode"] == "standard"
 
-    quota = client.post(f"/api/v1/platform/tenants/{tid}/quota", headers=h,
-                        json={"maxStudents": 500}).json()
+    quota = _tenant_action(client, h, tid, "quota", maxStudents=500).json()
     assert quota["code"] == 0 and quota["data"]["maxStudents"] == 500
 
-    off = client.post(f"/api/v1/platform/tenants/{tid}/disable", headers=h).json()
+    off = _tenant_action(client, h, tid, "disable").json()
     assert off["code"] == 0 and off["data"]["status"] == "disabled"
 
-    exp = client.post(f"/api/v1/platform/tenants/{tid}/expire", headers=h).json()
+    exp = _tenant_action(client, h, tid, "expire").json()
     assert exp["code"] == 0 and exp["data"]["status"] == "expired"
 
 
@@ -104,7 +155,7 @@ def test_disabled_tenant_login_blocked(client, db_mode):
                      json={"loginName": "blocked_admin", "password": pwd}).json()
     assert ok["code"] == 0  # 停用前可登录
 
-    client.post(f"/api/v1/platform/tenants/{created['tenantId']}/disable", headers=h)
+    _tenant_action(client, h, created["tenantId"], "disable")
     blocked = client.post("/api/v1/auth/login",
                           json={"loginName": "blocked_admin", "password": pwd}).json()
     assert blocked["code"] == 403001 and blocked["bizCode"] == "NO_PERMISSION"
@@ -113,7 +164,7 @@ def test_disabled_tenant_login_blocked(client, db_mode):
 def test_expired_tenant_readonly(client, auth_headers, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
-    client.post(f"/api/v1/platform/tenants/{MAIN_TID}/expire", headers=h)
+    _tenant_action(client, h, MAIN_TID, "expire")
 
     read = client.get("/api/v1/students", headers=auth_headers).json()
     assert read["code"] == 0  # 到期后仍可查看
@@ -122,10 +173,11 @@ def test_expired_tenant_readonly(client, auth_headers, db_mode):
                         json={"studentNo": "RO2026001", "realName": "只读测试"}).json()
     assert write["code"] == 403001 and write["bizCode"] == "MODULE_EXPIRED_READONLY"
 
-    client.post(f"/api/v1/platform/tenants/{MAIN_TID}/convert-to-paid", headers=h,
-                json={"packageCode": "professional"})
+    _tenant_action(client, h, MAIN_TID, "convert-to-paid", packageCode="professional")
+    class_id = _seed_main_org_class()
     write2 = client.post("/api/v1/students", headers=auth_headers,
-                         json={"studentNo": "RO2026001", "realName": "只读测试"}).json()
+                         json={"studentNo": "RO2026001", "realName": "只读测试",
+                               "classId": class_id}).json()
     assert write2["code"] == 0
 
 
@@ -182,12 +234,16 @@ def test_rules_reject_reason_min_length(client, auth_headers, db_mode):
                      json={"approval": {"rejectReasonMinLength": 10}}).json()
     assert put["code"] == 0 and put["data"]["rules"]["approval"]["rejectReasonMinLength"] == 10
 
+    task = client.get(f"/api/v1/approvals/tasks/{tid_task}", headers=auth_headers).json()
+    assert task["code"] == 0
+    version = int(task["data"]["version"])
     short = client.post(f"/api/v1/approvals/tasks/{tid_task}/reject", headers=auth_headers,
-                        json={"reason": "材料不符"}).json()
+                        json={"reason": "材料不符", "version": version}).json()
     assert short["code"] == 400001 and "10" in short["message"]
 
     ok = client.post(f"/api/v1/approvals/tasks/{tid_task}/reject", headers=auth_headers,
-                     json={"reason": "材料不清晰且缺少盖章页请重新上传"}).json()
+                     json={"reason": "材料不清晰且缺少盖章页请重新上传",
+                           "version": version}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "REJECTED"
 
 
@@ -217,8 +273,10 @@ def test_packages_default_five(client, db_mode):
     codes = {p["packageCode"] for p in body["data"]["list"]}
     assert codes == {"trial", "basic", "standard", "professional", "private"}
 
+    current = next(item for item in body["data"]["list"] if item["packageCode"] == "trial")
     put = client.put("/api/v1/platform/packages/trial", headers=h,
-                     json={"durationDays": 45}).json()
+                     json={"durationDays": 45, "expectedVersion": current["version"],
+                           "reason": "测试更新试用套餐期限"}).json()
     assert put["code"] == 0 and put["data"]["durationDays"] == 45
 
 
@@ -241,7 +299,10 @@ def test_order_mark_paid_activates_tenant(client, db_mode):
         "tenantCode": "t-order", "tenantName": "订单测试学院", "packageCode": "trial"}).json()["data"]
     o = client.post("/api/v1/platform/orders", headers=h, json={
         "tenantId": t["tenantId"], "packageCode": "standard", "amount": 49800}).json()["data"]
-    paid = client.post(f"/api/v1/platform/orders/{o['orderNo']}/mark-paid", headers=h).json()
+    paid = client.post(
+        f"/api/v1/platform/orders/{o['orderNo']}/mark-paid", headers=h,
+        json={"expectedVersion": o["version"], "reason": "测试确认订单已完成支付"},
+    ).json()
     assert paid["code"] == 0 and paid["data"]["tenantActivated"] is True
 
     got = client.get(f"/api/v1/platform/tenants/{t['tenantId']}", headers=h).json()["data"]

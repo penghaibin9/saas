@@ -284,7 +284,7 @@ export default {
       if (!file) return
       this.fm.uploading = true; this.fm.err = ''
       try {
-        const d = await requestUpload('/files/upload', file)
+        const d = await requestUpload('/files', file)
         this.fm.values.fileId = d.fileId; this.fm.values.fileName = d.fileName || file.name
       } catch (err) {
         this.fm.err = '附件上传失败：' + (err.message || '')

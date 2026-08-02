@@ -295,7 +295,7 @@ class AaCourseMaterial(PKMixin, TenantMixin, CommonMixin, Base):
     对齐《13B-教务中心全业务流程设计总册》§4.7A 教学资源的 V1 轻量路径：
     "V1 教师传课件可临时用现有文件上传能力挂在课程"——本表即该 V1 落地（挂 course_id，不强制挂教学任务）；
     完整版（挂教学任务 + 共享审核 + DRAFT/SUBMITTED/SHARED/ARCHIVED 全流程）留档为后续 P3 教学资源模块欠账。
-    附件字节走既有 t_file_object（file_service 真实上传，POST /api/v1/files/upload），本表只登记
+    附件字节走既有 t_file_object（file_service 真实上传，POST /api/v1/files），本表只登记
     (course_id, file_id) 回链 + 材料类型 + 上传人，模式对齐 t_affairs_class_material。审计=TRAIL；不走审批。"""
     __tablename__ = "t_aa_course_material"
 

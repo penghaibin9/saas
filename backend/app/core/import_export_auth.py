@@ -97,7 +97,21 @@ def enforce_export_perm(user: dict, domain: str) -> DomainAuth:
 
 
 def enforce_student_import(user: dict) -> None:
+    """学生导入同时受精确权限与租户商业特性控制，任一不满足即拒绝。"""
     enforce_import_perm(user, "students")
+    from app.core.context import current_tenant_id
+    from app.services.platform_service import feature_enabled
+
+    try:
+        tenant_id = int(current_tenant_id() or 0)
+    except (TypeError, ValueError):
+        tenant_id = 0
+    if not tenant_id or not feature_enabled(tenant_id, "studentImport"):
+        raise AppException(
+            "MODULE_NOT_AUTHORIZED",
+            "当前学校未开通学生导入能力，请联系平台运营人员调整套餐或特性授权",
+            details={"featureKey": "studentImport", "tenantId": str(tenant_id or "")},
+        )
 
 
 def enforce_student_export(user: dict) -> None:

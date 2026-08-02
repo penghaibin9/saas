@@ -1,7 +1,9 @@
-"""阶段 2：公共文件对象授权 resolver registry 与业务绑定。
+"""公共文件对象授权 resolver registry 与业务绑定。
 
 统一原则：租户、对象关系、数据范围、批次和安全状态必须同时成立；任何失败均向外表现为 404，
 避免通过 403/列表数量/文件名枚举其他学校、其他学生或其他批次的文件。
+
+RBAC-09：文件治理身份只管理容量、策略、扫描和审计元数据，绝不作为文件原文访问依据。
 """
 from __future__ import annotations
 
@@ -13,7 +15,12 @@ from sqlalchemy import select
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import has_permission, is_super_admin
+from app.core.permissions import has_permission
+from app.core.rbac09_permission_bundles import (
+    FILE_GOVERNANCE_VIEW,
+    FILE_SCAN_RETRY,
+    has_permission_compat,
+)
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_content_security import is_downloadable_status
 from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
@@ -94,29 +101,41 @@ def _actor_batch_values(user: dict) -> set[str]:
     return {item for item in values if item}
 
 
+def _can_retry_scan(user: dict) -> bool:
+    return has_permission_compat(user, FILE_SCAN_RETRY)
+
+
+def _can_view_file_audit(user: dict) -> bool:
+    return has_permission_compat(user, FILE_GOVERNANCE_VIEW)
+
+
 def _is_file_admin(user: dict) -> bool:
-    return bool(
-        is_super_admin(user)
-        or has_permission(user, "systemAdmin.file.manage")
-        or has_permission(user, "*")
-    )
+    """历史 resolver 导入兼容符号；RBAC-09 后永远拒绝内容管理员旁路。
+
+    旧 ``file_access_resolvers`` 仍导入该私有函数。保留符号只为平滑升级，不能根据
+    ``systemAdmin.file.manage``、通配符或平台身份返回 True。后续消费者迁移完成后删除。
+    """
+    return False
 
 
 def _binding_subject_allows(binding, user: dict) -> bool:
     subject_type = str(binding.subject_type or "BUSINESS_OBJECT").upper()
     subject_id = str(binding.subject_id or "").strip()
     batch_id = str(binding.batch_id or "").strip()
+    actor_batches = _actor_batch_values(user)
 
-    if batch_id and batch_id not in _actor_batch_values(user):
+    if batch_id and batch_id not in actor_batches:
         return False
     if subject_type in {"BUSINESS_OBJECT", "TENANT"}:
-        return True
+        # 泛对象/租户绑定本身不能授权；但显式 batch_id 命中访问者批次范围时，
+        # 该绑定已具备主体相关的数据范围，继续保留既有合法批次访问合同。
+        return bool(batch_id and batch_id in actor_batches)
     if subject_type == "USER":
         return bool(subject_id and subject_id == _actor_id(user))
     if subject_type == "STUDENT":
         return bool(subject_id and subject_id in _actor_student_values(user))
     if subject_type == "BATCH":
-        return bool(subject_id and subject_id in _actor_batch_values(user))
+        return bool(subject_id and subject_id in actor_batches)
     if subject_type == "ROLE":
         roles = {
             str(user.get("currentRoleCode") or "").upper(),
@@ -131,11 +150,10 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
     owner = str(file_obj.owner_user_id or file_obj.created_by or "").strip()
     if actor_id and owner and actor_id == owner:
         return True
-    if _is_file_admin(user):
-        return True
 
     active = [item for item in bindings if not item.is_deleted and item.status == "ACTIVE"]
-    # 上传者 binding 证明直接关系，但不能遮蔽学生本人或具备业务权限的合法访问。
+    # 只有指向当前用户、学生、批次或角色的主体绑定，或带有命中批次范围的对象绑定，
+    # 才证明直接关系；无范围的 BUSINESS_OBJECT/TENANT 绑定不放行。
     if active and any(_binding_subject_allows(item, user) for item in active):
         return True
 
@@ -317,8 +335,10 @@ def _allowed_actions(file_obj, user: dict, bindings: list[Any], db) -> list[str]
     actions = ["viewMetadata"]
     if authorize_file_object(file_obj, bindings, user, "preview", db=db):
         actions.extend(["preview", "download"])
-    if _is_file_admin(user):
-        actions.extend(["retryScan", "viewAudit"])
+    if _can_retry_scan(user):
+        actions.append("retryScan")
+    if _can_view_file_audit(user):
+        actions.append("viewAudit")
     return actions
 
 

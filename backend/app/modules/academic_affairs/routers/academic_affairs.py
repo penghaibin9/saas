@@ -414,7 +414,7 @@ class RosterCorrectionCreate(BaseModel):
     newValue: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=5, description="更正原因（≥5 字，必填，写审计）")
     materialFileIds: Optional[List[str]] = Field(
-        None, description="证明材料 file_id 列表（先经 POST /api/v1/files/upload 上传）。"
+        None, description="证明材料 file_id 列表（先经 POST /api/v1/files 上传）。"
                           "更正姓名/性别/证件号时**必填**且须户籍/公安部门出具——合规硬要求，"
                           "依据教职成〔2014〕12号第十六条、教育部令41号第三十四条；学号/年级选填。")
 
@@ -1031,12 +1031,12 @@ def course_references(courseId: int = Path(...), user=Depends(_COURSE_VIEW)):
     return success({"items": course_svc.get_course_references(courseId, user)})
 
 
-# ── 课程材料 / 课程大纲（Tier1 R3：附件走 POST /api/v1/files/upload，本端点只登记回链）──
+# ── 课程材料 / 课程大纲（Tier1 R3：附件走 POST /api/v1/files，本端点只登记回链）──
 
 class CourseMaterialCreate(BaseModel):
     materialType: str = Field(..., description="SYLLABUS/COURSEWARE/LESSON_PLAN/EXERCISE/PRACTICE_GUIDE/OTHER")
     title: str = Field(..., min_length=1, max_length=200)
-    fileId: Optional[str] = Field(None, description="先调 POST /api/v1/files/upload 得到的 fileId")
+    fileId: Optional[str] = Field(None, description="先调 POST /api/v1/files 得到的 fileId")
     fileName: Optional[str] = None
     remark: Optional[str] = Field(None, max_length=500)
 

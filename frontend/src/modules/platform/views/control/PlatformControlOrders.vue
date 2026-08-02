@@ -118,7 +118,9 @@ export default {
       }
     },
     async act(row, action) {
-      const res = await platformControlApi.orderAction(row.orderNo, action)
+      const reason = window.prompt('请输入订单变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
+      const res = await platformControlApi.orderAction(row.orderNo, action, { expectedVersion: Number(row.version || 1), reason: reason.trim() })
       if (res.code === 0) {
         toast.success(action === 'mark-paid' ? '已入账并自动开通/续期' : '已取消')
         this.load()

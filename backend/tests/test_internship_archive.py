@@ -129,7 +129,7 @@ def test_archive_requires_complete_or_force(client, db_mode):
                        json={"expectedVersion": 0}, headers=h).status_code == 409
     # force 归档 B → 200，记 missing（强制归档必须提供理由与依据文件）
     import io
-    up = client.post("/api/v1/files/upload", headers=h,
+    up = client.post("/api/v1/files", headers=h,
                      files={"file": ("evidence.txt", io.BytesIO(b"force-archive-evidence"), "text/plain")},
                      data={"bizType": "ATTACHMENT"})
     fid = up.json()["data"]["fileId"]

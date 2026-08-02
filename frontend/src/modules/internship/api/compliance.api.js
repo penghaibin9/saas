@@ -50,7 +50,7 @@ async function uploadEvidence(file, bizType) {
   const form = new FormData()
   form.append('file', file)
   const response = await fetch(
-    `${API_BASE_URL}${API_PREFIX}/files/upload?bizType=${encodeURIComponent(bizType)}`,
+    `${API_BASE_URL}${API_PREFIX}/files?bizType=${encodeURIComponent(bizType)}`,
     { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }
   )
   return parseEnvelope(response, '材料上传失败，请重试')

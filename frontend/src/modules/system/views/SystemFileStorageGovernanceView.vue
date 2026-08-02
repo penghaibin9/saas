@@ -16,7 +16,8 @@
 
       <section class="metric-grid">
         <article><strong>{{ formatGiB(usage.totalBytes) }}</strong><span>已用容量</span></article>
-        <article><strong>{{ usage.quotaBytes ? formatGiB(usage.quotaBytes) : '未配置' }}</strong><span>租户总配额</span></article>
+        <article><strong>{{ usage.commercialStorageLimitBytes ? formatGiB(usage.commercialStorageLimitBytes) : '未授权' }}</strong><span>平台商业上限</span></article>
+        <article><strong>{{ usage.quotaBytes ? formatGiB(usage.quotaBytes) : '未配置' }}</strong><span>学校治理配额</span></article>
         <article><strong>{{ usage.usagePercent == null ? '—' : `${usage.usagePercent}%` }}</strong><span>配额使用率</span></article>
         <article><strong>{{ formatGiB(usage.estimatedNext30DaysGrowthBytes) }}</strong><span>近 30 天增长</span></article>
         <article><strong>{{ usage.totalFiles || 0 }}</strong><span>文件对象</span></article>
@@ -36,6 +37,12 @@
             <label>预警阈值（%）<input v-model.number="quota.warningPercent" type="number" min="1" max="100"></label>
             <label class="check"><input v-model="quota.hardLimitEnabled" type="checkbox">达到配额后拒绝新文件</label>
             <label class="wide">说明<input v-model.trim="quota.description" maxlength="500" placeholder="例如：本学年学校文件总配额"></label>
+          </div>
+          <div class="module-quota-grid">
+            <label v-for="item in moduleQuotaRows" :key="item.moduleCode">
+              {{ item.moduleCode }}（GiB）
+              <input v-model.number="item.gib" type="number" min="0" step="1">
+            </label>
           </div>
           <div class="actions"><button class="primary" :disabled="busy === 'quota'" @click="saveQuota">保存配额</button></div>
           <div class="table-wrap">
@@ -87,9 +94,11 @@
           <div v-if="cleanupPreview" class="result-box">
             候选 {{ cleanupPreview.candidateCount || 0 }}，可删除 {{ cleanupPreview.items?.filter(i => i.decision === 'WOULD_DELETE').length || 0 }}，
             引用保护 {{ cleanupPreview.skippedReferenced || 0 }}，法律保留 {{ cleanupPreview.skippedLegalHold || 0 }}。
+            <div class="muted">预演 {{ cleanupPreview.previewId }} · {{ cleanupPreview.expiresAt }}</div>
           </div>
           <div class="hold-form">
             <input v-model.trim="hold.fileId" placeholder="文件 ID">
+            <input v-model.number="hold.expectedVersion" type="number" min="1" placeholder="当前版本">
             <input v-model.trim="hold.reason" placeholder="法律保留或解除原因（不少于 5 字）">
             <button :disabled="busy === 'hold'" @click="setHold(true)">设置法律保留</button>
             <button :disabled="busy === 'hold'" @click="setHold(false)">解除法律保留</button>
@@ -113,10 +122,11 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, error: '', busy: '', usage: {}, anomalies: {}, policies: [], cleanupPreview: null,
-      quota: { totalQuotaGiB: 100, warningPercent: 80, hardLimitEnabled: true, description: '' },
-      policy: { policyCode: '', storageZone: '', bizType: '', retentionDays: 7, priority: 100 },
-      hold: { fileId: '', reason: '' },
+      loading: false, error: '', busy: '', usage: {}, health: {}, anomalies: {}, policies: [], cleanupPreview: null,
+      quota: { totalQuotaGiB: 100, warningPercent: 80, hardLimitEnabled: true, description: '', expectedVersion: 0 },
+      moduleQuotaRows: [],
+      policy: { policyCode: '', storageZone: '', bizType: '', retentionDays: 7, priority: 100, expectedVersion: 0 },
+      hold: { fileId: '', expectedVersion: 1, reason: '' },
       zones: ['QUARANTINE', 'CLEAN', 'PREVIEW', 'ARCHIVE', 'EXPORT', 'REJECTED', 'TEMP']
     }
   },
@@ -146,7 +156,11 @@ export default {
       this.loading = true; this.error = ''
       try {
         const data = await fileStorageGovernanceApi.overview()
-        this.usage = data.usage || {}; this.anomalies = data.anomalies || {}; this.policies = data.policies || []
+        this.usage = data.usage || {}; this.health = data.health || {}; this.anomalies = data.anomalies || {}; this.policies = data.policies || []
+        this.quota.expectedVersion = Number(this.usage.quotaVersion || 0)
+        const configured = this.usage.moduleQuotaBytes || {}
+        const modules = new Set([...(this.usage.byBizType || []).map(item => item.moduleCode), ...Object.keys(configured)])
+        this.moduleQuotaRows = [...modules].sort().map(moduleCode => ({ moduleCode, gib: Number(configured[moduleCode] || 0) / GIB }))
         if (this.usage.quotaBytes) this.quota.totalQuotaGiB = Math.max(1, Math.round(this.usage.quotaBytes / GIB))
         if (this.usage.warningPercent) this.quota.warningPercent = this.usage.warningPercent
         this.quota.hardLimitEnabled = Boolean(this.usage.hardLimitEnabled)
@@ -160,7 +174,8 @@ export default {
         await fileStorageGovernanceApi.saveQuota({
           totalQuotaBytes: Math.round(Number(this.quota.totalQuotaGiB) * GIB),
           warningPercent: Number(this.quota.warningPercent), hardLimitEnabled: this.quota.hardLimitEnabled,
-          moduleQuotaBytes: {}, description: this.quota.description || null
+          moduleQuotaBytes: Object.fromEntries(this.moduleQuotaRows.map(item => [item.moduleCode, Math.round(Number(item.gib || 0) * GIB)])),
+          description: this.quota.description || null, expectedVersion: Number(this.quota.expectedVersion || 0)
         })
         toast.success('存储配额已保存'); await this.load()
       } catch (error) { toast.error(error.message || '配额保存失败') }
@@ -170,7 +185,7 @@ export default {
       if (!this.policy.policyCode) return toast.warning('请填写策略编码')
       this.busy = 'policy'
       try {
-        await fileStorageGovernanceApi.savePolicy({ ...this.policy, moduleCode: null, cleanupAction: 'DELETE_BYTES', active: true })
+        await fileStorageGovernanceApi.savePolicy({ ...this.policy, moduleCode: null, cleanupAction: 'DELETE_BYTES', active: true, expectedVersion: Number(this.policy.expectedVersion || 0) })
         toast.success('保留策略已保存'); this.policy.policyCode = ''; await this.load()
       } catch (error) { toast.error(error.message || '策略保存失败') }
       finally { this.busy = '' }
@@ -185,7 +200,11 @@ export default {
       if (!dryRun && !window.confirm('只会删除预演中无有效引用、已过保留期且未法律保留的文件。确认执行？')) return
       this.busy = dryRun ? 'preview' : 'cleanup'
       try {
-        const data = await fileStorageGovernanceApi.cleanup({ dryRun, limit: 1000 })
+        const data = await fileStorageGovernanceApi.cleanup({
+          dryRun, limit: 1000,
+          previewId: dryRun ? null : this.cleanupPreview?.previewId,
+          candidateHash: dryRun ? null : this.cleanupPreview?.candidateHash
+        })
         if (dryRun) { this.cleanupPreview = data; toast.success('清理预演完成，请核对结果') }
         else { this.cleanupPreview = null; toast.success(`清理完成，回收 ${this.formatGiB(data.bytesReclaimed)}`) }
         await this.load()
@@ -196,8 +215,8 @@ export default {
       if (!this.hold.fileId || this.hold.reason.length < 5) return toast.warning('请填写文件 ID 和不少于 5 字的原因')
       this.busy = 'hold'
       try {
-        await fileStorageGovernanceApi.setLegalHold(this.hold.fileId, enabled, this.hold.reason)
-        toast.success(enabled ? '已设置法律保留' : '已解除法律保留'); this.hold = { fileId: '', reason: '' }; await this.load()
+        await fileStorageGovernanceApi.setLegalHold(this.hold.fileId, enabled, this.hold.reason, Number(this.hold.expectedVersion))
+        toast.success(enabled ? '已设置法律保留' : '已解除法律保留'); this.hold = { fileId: '', expectedVersion: 1, reason: '' }; await this.load()
       } catch (error) { toast.error(error.message || '法律保留状态更新失败') }
       finally { this.busy = '' }
     }
@@ -214,12 +233,13 @@ h3 { margin: 0 0 6px; } p { margin: 0; color: #646a73; }
 .metric-grid article, .anomaly-grid article { display: grid; gap: 5px; padding: 14px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fafbfc; }
 .metric-grid strong, .anomaly-grid strong { font-size: 24px; }.metric-grid span, .anomaly-grid span { color: #4e5969; }
 .anomaly-grid small { color: #86909c; }.anomaly-grid .danger { border-color: #ffccc7; background: #fff2f0; }
-.form-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
-.form-grid label { display: grid; gap: 6px; font-size: 13px; }.form-grid .wide { grid-column: 1 / -1; }.form-grid .check { display: flex; align-items: center; }
+.form-grid, .module-quota-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
+.form-grid label, .module-quota-grid label { display: grid; gap: 6px; font-size: 13px; }.form-grid .wide { grid-column: 1 / -1; }.form-grid .check { display: flex; align-items: center; }
 input, select, button { min-height: 36px; border: 1px solid #c9cdd4; border-radius: 7px; padding: 0 10px; background: #fff; }
 button { cursor: pointer; } button:disabled { opacity: .55; cursor: not-allowed; }.primary { background: #165dff; border-color: #165dff; color: #fff; }.danger-button { color: #b42318; border-color: #f04438; }
 .actions { justify-content: flex-start; margin-top: 14px; }.table-wrap { overflow: auto; margin-top: 14px; }table { width: 100%; border-collapse: collapse; }th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e6eb; }th { background: #f7f8fa; }.muted { color: #86909c; font-size: 12px; }
-.policy-form, .hold-form { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin-top: 16px; }.hold-form { grid-template-columns: 140px 1fr auto auto; }
+.module-quota-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
+.policy-form, .hold-form { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin-top: 16px; }.hold-form { grid-template-columns: 140px 110px 1fr auto auto; }
 .result-box, .state { margin-top: 14px; padding: 12px; border-radius: 8px; background: #f2f3f5; }.error-state { color: #b42318; background: #fff2f0; }.danger-panel { border-color: #ffd591; }
 @media (max-width: 900px) { .form-grid, .policy-form, .hold-form { grid-template-columns: 1fr; }.hero, .panel header { align-items: flex-start; flex-direction: column; } }
 </style>

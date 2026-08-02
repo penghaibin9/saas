@@ -193,6 +193,8 @@ def usage_snapshot(*, tenant_id: int | None = None) -> dict:
             "usagePercent": usage_percent,
             "warningPercent": int(quota.warning_percent) if quota else None,
             "hardLimitEnabled": bool(quota.hard_limit_enabled) if quota else False,
+            "quotaVersion": int(quota.version) if quota else 0,
+            "moduleQuotaBytes": dict(quota.module_quota_json or {}) if quota else {},
             "estimatedNext30DaysGrowthBytes": recent_bytes,
             "estimatedNext30DaysTotalBytes": used + recent_bytes,
             "byZone": by_zone,
@@ -247,6 +249,7 @@ def upsert_quota(
     module_quota_json: dict | None,
     description: str | None,
     user: dict,
+    expected_version: int | None = None,
 ) -> dict:
     from app.models.file import TenantStorageQuota
 
@@ -259,13 +262,36 @@ def upsert_quota(
     db = get_sessionmaker()()
     try:
         row = _quota_row(db, tenant_id)
+        current_version = int(row.version) if row else 0
+        if expected_version is not None and int(expected_version) != current_version:
+            raise AppException(
+                "DATA_CONFLICT", "存储配额已被其他操作更新，请刷新后重试",
+                http_status=409,
+                details={"expectedVersion": expected_version, "currentVersion": current_version},
+            )
+        module_limits = {str(k).upper(): int(v or 0) for k, v in dict(module_quota_json or {}).items()}
+        if any(value < 0 for value in module_limits.values()):
+            raise AppException("VALIDATION_ERROR", "模块配额不能为负数")
+        if sum(module_limits.values()) > int(total_quota_bytes):
+            raise AppException("VALIDATION_ERROR", "模块配额合计不能超过学校总配额")
+        from app.services.entitlement_reconciliation_service import commercial_storage_limit_bytes
+        commercial_limit = commercial_storage_limit_bytes(tenant_id)
+        if commercial_limit and int(total_quota_bytes) > commercial_limit:
+            raise AppException(
+                "SCHOOL_QUOTA_EXCEEDS_COMMERCIAL",
+                "学校治理配额不能超过平台商业授权上限",
+                http_status=409,
+                details={"commercialLimitBytes": commercial_limit, "requestedBytes": int(total_quota_bytes)},
+            )
         if not row:
             row = TenantStorageQuota(tenant_id=tenant_id, created_by=actor_id)
             db.add(row)
+        else:
+            row.version = current_version + 1
         row.total_quota_bytes = int(total_quota_bytes)
         row.warning_percent = int(warning_percent)
         row.hard_limit_enabled = bool(hard_limit_enabled)
-        row.module_quota_json = dict(module_quota_json or {})
+        row.module_quota_json = module_limits
         row.description = str(description or "")[:500] or None
         row.updated_by = actor_id
         db.commit()
@@ -302,7 +328,7 @@ def list_policies(*, tenant_id: int | None = None) -> list[dict]:
         db.close()
 
 
-def upsert_policy(data: dict, *, user: dict) -> dict:
+def upsert_policy(data: dict, *, user: dict, expected_version: int | None = None) -> dict:
     from app.models.file import FileRetentionPolicy
 
     tenant_id = _tenant_id()
@@ -320,9 +346,14 @@ def upsert_policy(data: dict, *, user: dict) -> dict:
             FileRetentionPolicy.policy_code == code,
             FileRetentionPolicy.is_deleted.is_(False),
         ).with_for_update()).first()
+        current_version = int(row.version) if row else 0
+        if expected_version is not None and int(expected_version) != current_version:
+            raise AppException("DATA_CONFLICT", "保留策略已更新，请刷新后重试", http_status=409)
         if not row:
             row = FileRetentionPolicy(tenant_id=tenant_id, policy_code=code, created_by=actor_id)
             db.add(row)
+        else:
+            row.version = current_version + 1
         row.module_code = str(data.get("moduleCode") or "").upper() or None
         row.biz_type = str(data.get("bizType") or "").upper() or None
         row.storage_zone = str(data.get("storageZone") or "").upper() or None
@@ -339,7 +370,7 @@ def upsert_policy(data: dict, *, user: dict) -> dict:
         db.close()
 
 
-def set_legal_hold(file_id: str, *, enabled: bool, reason: str, user: dict) -> dict:
+def set_legal_hold(file_id: str, *, enabled: bool, reason: str, user: dict, expected_version: int | None = None) -> dict:
     from app.models.file import FileObject
     from app.services import audit_log
 
@@ -353,7 +384,10 @@ def set_legal_hold(file_id: str, *, enabled: bool, reason: str, user: dict) -> d
         ).with_for_update()).first()
         if not row:
             raise not_found("文件不存在")
+        if expected_version is not None and int(expected_version) != int(row.version or 1):
+            raise AppException("DATA_CONFLICT", "法律保留状态已更新，请刷新后重试", http_status=409)
         row.legal_hold = bool(enabled)
+        row.version = int(row.version or 1) + 1
         row.updated_by = _actor_id(user)
         db.commit()
         audit_log.record(
@@ -361,7 +395,7 @@ def set_legal_hold(file_id: str, *, enabled: bool, reason: str, user: dict) -> d
             f"file:{file_id}",
             detail={"reason": str(reason or "")[:500]},
         )
-        return {"fileId": str(file_id), "legalHold": row.legal_hold, "retentionUntil": row.retention_until.isoformat() if row.retention_until else None}
+        return {"fileId": str(file_id), "legalHold": row.legal_hold, "retentionUntil": row.retention_until.isoformat() if row.retention_until else None, "version": int(row.version or 1)}
     finally:
         db.close()
 
@@ -525,3 +559,42 @@ def governance_overview(*, tenant_id: int | None = None) -> dict:
         "policies": list_policies(tenant_id=tenant_id),
         "defaultPolicies": DEFAULT_POLICY_DAYS,
     }
+
+
+def operational_health(*, tenant_id: int | None = None) -> dict:
+    """Operational signals only; no filenames, object keys or content metadata."""
+    from app.models.file import FileJob, FileObject
+    from app.models.file_quota import FileStorageQuotaReservation
+
+    tenant_id = _tenant_id(tenant_id)
+    now = datetime.utcnow()
+    db = get_sessionmaker()()
+    try:
+        return {
+            "tenantId": tenant_id,
+            "scanBacklog": int(db.scalar(select(func.count(FileObject.id)).where(
+                FileObject.tenant_id == tenant_id,
+                FileObject.is_deleted.is_(False),
+                FileObject.scan_status.in_(("PENDING", "PROCESSING")),
+            )) or 0),
+            "failedFileJobs": int(db.scalar(select(func.count(FileJob.id)).where(
+                FileJob.tenant_id == tenant_id,
+                FileJob.is_deleted.is_(False),
+                FileJob.status == "FAILED",
+            )) or 0),
+            "heldReservations": int(db.scalar(select(func.count(FileStorageQuotaReservation.id)).where(
+                FileStorageQuotaReservation.tenant_id == tenant_id,
+                FileStorageQuotaReservation.is_deleted.is_(False),
+                FileStorageQuotaReservation.status == "HELD",
+                FileStorageQuotaReservation.expires_at > now,
+            )) or 0),
+            "expiredHeldReservations": int(db.scalar(select(func.count(FileStorageQuotaReservation.id)).where(
+                FileStorageQuotaReservation.tenant_id == tenant_id,
+                FileStorageQuotaReservation.is_deleted.is_(False),
+                FileStorageQuotaReservation.status == "HELD",
+                FileStorageQuotaReservation.expires_at <= now,
+            )) or 0),
+            "cleanupPreviewContract": "BOUND_ONE_TIME_V3",
+        }
+    finally:
+        db.close()

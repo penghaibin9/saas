@@ -112,14 +112,14 @@ def test_audit_persisted_db(client, auth_headers, db_mode):
 
 def test_p4_upload_real(client, auth_headers, db_mode, tmp_path):
     import io as _io
-    resp = client.post("/api/v1/files/upload", headers=auth_headers,
+    resp = client.post("/api/v1/files", headers=auth_headers,
                        files={"file": ("测试.txt", _io.BytesIO("你好".encode()), "text/plain")}).json()
     assert resp["code"] == 0
     meta = resp["data"]
     assert meta["fileId"].isdigit() and meta["sha256"] and meta["sizeBytes"] > 0
     got = client.get(f"/api/v1/files/meta/{meta['fileId']}", headers=auth_headers).json()["data"]
     assert got["fileName"] == "测试.txt"
-    bad = client.post("/api/v1/files/upload", headers=auth_headers,
+    bad = client.post("/api/v1/files", headers=auth_headers,
                       files={"file": ("evil.exe", _io.BytesIO(b"x"), "application/octet-stream")}).json()
     assert bad["code"] != 0  # 黑名单扩展被拒
 

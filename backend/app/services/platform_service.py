@@ -5,7 +5,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.security import hash_password
@@ -41,14 +41,20 @@ def get_config_json(tenant_id: int, ctype: str, key: str = "-") -> dict | None:
         return dict(row.config_json) if row else None
 
 
-def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled: bool = True) -> dict:
+def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled: bool = True, expected_version: int | None = None) -> dict:
     from app.models import PlatformConfig
     with session() as db:
         row = _get_cfg(db, tenant_id, ctype, key)
+        current_version = int(row.version or 1) if row else 0
+        if expected_version is not None and int(expected_version) != current_version:
+            raise AppException(
+                "DATA_CONFLICT", "平台配置已被其他操作更新，请刷新后重试", http_status=409,
+                details={"expectedVersion": expected_version, "currentVersion": current_version},
+            )
         if row:
             row.config_json = payload
             row.enabled = enabled
-            row.version += 1
+            row.version = current_version + 1
         else:
             row = PlatformConfig(tenant_id=tenant_id, config_type=ctype, config_key=key,
                                  config_json=payload, enabled=enabled)
@@ -74,9 +80,11 @@ def list_configs(ctype: str, tenant_id: int | None = None) -> list[dict]:
 # ═══ 有效配置（三级合并）═══
 
 def get_package(package_code: str) -> dict:
-    stored = get_config_json(0, "PACKAGE", package_code)
     base = D.DEFAULT_PACKAGES.get(package_code, D.DEFAULT_PACKAGES["trial"])
-    return {**base, **(stored or {})}
+    with session() as db:
+        row = _get_cfg(db, 0, "PACKAGE", package_code)
+        stored = dict(row.config_json or {}) if row else {}
+        return {**base, **stored, "version": int(row.version or 1) if row else 0}
 
 
 def tenant_meta(tenant_id: int) -> dict:
@@ -255,22 +263,113 @@ def _tenant_row(db, t, meta: dict) -> dict:
     }
 
 
+def _tenant_row_preloaded(t, meta: dict, *, students: int, users: int,
+                          school_admins: int, teachers: int,
+                          package_overrides: dict[str, dict], feature_override: dict | None) -> dict:
+    if school_admins == 0:
+        onboarding_phase, onboarding_label = "WAITING_ADMIN", "待交付学校管理员"
+    elif users <= school_admins:
+        onboarding_phase, onboarding_label = "WAITING_IDENTITY_IMPORT", "待学校导入师生账号"
+    elif students == 0:
+        onboarding_phase, onboarding_label = "TEACHER_IMPORTED", "已导入教师，待导入学生"
+    else:
+        onboarding_phase, onboarding_label = "READY_FOR_ACCEPTANCE", "师生账号已导入，可上线验收"
+    code = str(meta.get("packageCode") or "professional")
+    pkg = {**D.DEFAULT_PACKAGES.get(code, D.DEFAULT_PACKAGES["trial"]), **package_overrides.get(code, {})}
+    feats = {**D.DEFAULT_FEATURES, **(pkg.get("features") or {}), **(feature_override or {})}
+    from app.services.tenant_effective_state_service import effective_state_from_records
+    state = effective_state_from_records(row_status=t.status, meta=meta, strict=False)
+    return {
+        "tenantId": str(t.id), "tenantCode": t.tenant_code, "tenantName": t.school_name,
+        "schoolType": meta.get("schoolType", "VOCATIONAL"),
+        "province": meta.get("province", ""), "city": meta.get("city", ""),
+        "contactName": meta.get("contactName", ""), "contactPhone": meta.get("contactPhone", ""),
+        "contactWechat": meta.get("contactWechat", ""),
+        "status": state["effectiveStatus"], "stateMismatch": state["mismatch"],
+        "environment": meta.get("environment", "production"),
+        "packageCode": pkg["packageCode"], "packageName": pkg["packageName"],
+        "trialStartAt": meta.get("trialStartAt"), "trialEndAt": meta.get("trialEndAt"),
+        "expireAt": meta.get("expireAt"),
+        "maxStudents": meta.get("maxStudents", pkg["maxStudents"]),
+        "maxUsers": meta.get("maxUsers", pkg["maxUsers"]),
+        "storageLimitMb": meta.get("storageLimitMb", pkg["storageLimitMb"]),
+        "usedStorageMb": meta.get("usedStorageMb", 0),
+        "studentCount": students, "userCount": users,
+        "version": max(int(getattr(t, "version", 1) or 1), int(meta.get("_version") or 1)),
+        "onboarding": {
+            "phase": onboarding_phase, "label": onboarding_label,
+            "schoolAdminCount": school_admins, "teacherAccountCount": teachers,
+            "studentAccountCount": students,
+            "readyForAcceptance": onboarding_phase == "READY_FOR_ACCEPTANCE",
+        },
+        **{f"allow{k[0].upper()}{k[1:]}" if not k.startswith("allow") else k: bool(v)
+           for k, v in {
+               "allowImport": feats.get("studentImport", False), "allowExport": feats.get("studentExport", False),
+               "allowFileUpload": feats.get("fileUpload", False), "allowMiniapp": feats.get("miniapp", False),
+               "allowGraduation": feats.get("graduation", False), "allowInternship": feats.get("internship", False),
+               "allowEmployment": feats.get("employment", False), "allowRiskWarning": feats.get("riskWarning", False),
+               "allowCustomBrand": feats.get("customBrand", False), "allowWorkflowConfig": feats.get("workflowConfig", False),
+               "allowApiAccess": feats.get("apiAccess", False),
+           }.items()},
+        "createdAt": t.created_at.isoformat(timespec="seconds") if t.created_at else None,
+        "updatedAt": t.updated_at.isoformat(timespec="seconds") if t.updated_at else None,
+    }
+
+
 def list_tenants(keyword: str | None = None, status: str | None = None) -> list[dict]:
+    """PLAT-02 constant-query tenant list; no per-tenant sessions or counters."""
     _require_db()
-    from app.models import Tenant
+    from app.models import PlatformConfig, StudentProfile, Tenant, User
     with session() as db:
         rows = db.scalars(select(Tenant).where(Tenant.is_deleted.is_(False)).order_by(Tenant.id)).all()
+        ids = [int(t.id) for t in rows]
+        if not ids:
+            return []
+        student_counts = {int(tid): int(count or 0) for tid, count in db.execute(select(
+            StudentProfile.tenant_id, func.count(StudentProfile.id)
+        ).where(
+            StudentProfile.tenant_id.in_(ids), StudentProfile.is_deleted.is_(False)
+        ).group_by(StudentProfile.tenant_id)).all()}
+        user_rows = db.execute(select(
+            User.tenant_id,
+            func.count(User.id),
+            func.sum(case(((User.user_type == "SCHOOL_ADMIN") & (User.status == "ACTIVE"), 1), else_=0)),
+            func.sum(case((User.user_type.in_(("TEACHER", "STAFF")) & (User.status == "ACTIVE"), 1), else_=0)),
+        ).where(
+            User.tenant_id.in_(ids), User.is_deleted.is_(False)
+        ).group_by(User.tenant_id)).all()
+        user_counts = {int(tid): (int(total or 0), int(admins or 0), int(teachers or 0))
+                       for tid, total, admins, teachers in user_rows}
+        configs = db.scalars(select(PlatformConfig).where(
+            PlatformConfig.is_deleted.is_(False),
+            ((PlatformConfig.tenant_id.in_(ids)) & (PlatformConfig.config_type.in_(("TENANT_META", "FEATURES"))))
+            | ((PlatformConfig.tenant_id == 0) & (PlatformConfig.config_type == "PACKAGE")),
+        )).all()
+        metas, features, packages = {}, {}, {}
+        for row in configs:
+            payload = dict(row.config_json or {})
+            if row.config_type == "TENANT_META":
+                payload["_version"] = int(row.version or 1)
+                metas[int(row.tenant_id)] = payload
+            elif row.config_type == "FEATURES":
+                features[int(row.tenant_id)] = payload
+            elif row.config_type == "PACKAGE":
+                packages[str(row.config_key)] = payload
         out = []
-        for t in rows:
-            meta = tenant_meta(t.id)
-            item = _tenant_row(db, t, meta)
+        for tenant in rows:
+            total, admins, teachers = user_counts.get(int(tenant.id), (0, 0, 0))
+            item = _tenant_row_preloaded(
+                tenant, metas.get(int(tenant.id), {}),
+                students=student_counts.get(int(tenant.id), 0), users=total,
+                school_admins=admins, teachers=teachers,
+                package_overrides=packages, feature_override=features.get(int(tenant.id)),
+            )
             if keyword and keyword not in item["tenantName"] and keyword not in item["tenantCode"]:
                 continue
             if status and item["status"] != status:
                 continue
             out.append(item)
         return out
-
 
 def get_tenant(tenant_id: int) -> dict:
     _require_db()
@@ -347,24 +446,14 @@ def update_tenant_meta(tenant_id: int, patch: dict) -> dict:
 
 
 def tenant_status(tenant_id: int, *, strict: bool = False) -> str:
-    """返回 trial/active/expired/disabled。
-    strict=True 时读取失败抛出，供写守卫 fail-closed；默认兼容旧调用方。"""
+    """Single PLAT-02 effective-state read. Uncertain state never becomes active."""
+    from app.services.tenant_effective_state_service import get_effective_state
     try:
-        meta = tenant_meta(tenant_id)
+        return str(get_effective_state(int(tenant_id), strict=True)["effectiveStatus"])
     except Exception:
         if strict:
             raise
-        return "active"
-    status = meta.get("status", "active")
-    expire = meta.get("expireAt")
-    if status in ("trial", "active") and expire:
-        try:
-            if datetime.fromisoformat(expire) < datetime.now():
-                return "expired"
-        except ValueError:
-            if strict:
-                raise
-    return status
+        return "disabled"
 
 
 def overview() -> dict:
@@ -602,7 +691,7 @@ def list_orders(tenant_id: int | None = None, status: str | None = None) -> list
             "paidAmount": float(r.paid_amount or 0), "status": r.status,
             "startAt": r.start_at.isoformat(timespec="seconds") if r.start_at else None,
             "endAt": r.end_at.isoformat(timespec="seconds") if r.end_at else None,
-            "remark": r.remark or "",
+            "remark": r.remark or "", "version": int(r.version or 1),
             "createdAt": r.created_at.isoformat(timespec="seconds") if r.created_at else None,
         } for r in rows]
 
@@ -624,10 +713,10 @@ def create_order(body: dict) -> dict:
         db.add(o)
         db.commit()
         db.refresh(o)
-        return {"orderId": str(o.id), "orderNo": o.order_no, "status": o.status}
+        return {"orderId": str(o.id), "orderNo": o.order_no, "status": o.status, "version": int(o.version or 1)}
 
 
-def order_action(order_no: str, action: str) -> dict:
+def order_action(order_no: str, action: str, *, expected_version: int, reason: str) -> dict:
     """mark-paid：标记支付并自动开通/续期（试用转正式）；cancel：取消未支付订单。"""
     _require_db()
     from app.models import PlatformOrder
@@ -636,6 +725,10 @@ def order_action(order_no: str, action: str) -> dict:
                                                    PlatformOrder.is_deleted.is_(False))).first()
         if not o:
             raise not_found("订单不存在")
+        if int(expected_version) != int(o.version or 1):
+            raise AppException("DATA_CONFLICT", "订单已更新，请刷新后重试", http_status=409)
+        if len(str(reason or "").strip()) < 5:
+            raise AppException("VALIDATION_ERROR", "订单变更原因至少5个字符")
         if action == "mark-paid":
             if o.status != "unpaid":
                 raise AppException("DATA_CONFLICT", f"订单状态为 {o.status}，不能标记支付")
@@ -644,10 +737,21 @@ def order_action(order_no: str, action: str) -> dict:
             o.version += 1
             db.commit()
             end_at = o.end_at.isoformat(timespec="seconds") if o.end_at else None
-            update_tenant_meta(o.tenant_id, {"status": "active", "packageCode": o.package_code,
-                                             "expireAt": end_at})
-            return {"orderNo": o.order_no, "status": "paid", "tenantActivated": True,
-                    "expireAt": end_at}
+            from app.services.tenant_effective_state_service import get_effective_state, apply_transition
+            state = get_effective_state(int(o.tenant_id), strict=True)
+            try:
+                apply_transition(
+                    int(o.tenant_id), "convert-to-paid", reason=str(reason),
+                    expected_version=int(state["version"]),
+                    payload={"packageCode": o.package_code, "durationDays": max(1, (o.end_at - o.start_at).days) if o.end_at and o.start_at else 365},
+                )
+                activated, repair = True, False
+            except Exception:
+                # Payment truth is not rolled back. Reconciliation exposes a
+                # repairable paid-but-unprovisioned item instead of hiding it.
+                activated, repair = False, True
+            return {"orderNo": o.order_no, "status": "paid", "tenantActivated": activated,
+                    "repairTaskRequired": repair, "expireAt": end_at}
         if action == "cancel":
             if o.status != "unpaid":
                 raise AppException("DATA_CONFLICT", "仅未支付订单可取消")

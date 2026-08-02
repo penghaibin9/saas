@@ -154,7 +154,7 @@ export default {
       if (!file) return
       this.uploading = true
       try {
-        const meta = await requestUpload('/files/upload', file)
+        const meta = await requestUpload('/files', file)
         this.form.attachments.push({ fileId: String(meta.fileId), fileName: meta.fileName || file.name })
       } catch (err) {
         toast.error((err && err.message) || '上传失败')

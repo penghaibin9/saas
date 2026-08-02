@@ -18,13 +18,13 @@ export const fileStorageGovernanceApi = {
   backfill(limit = 500) {
     return request(`${BASE}/retention/backfill`, { method: 'POST', params: { limit } })
   },
-  cleanup({ dryRun = true, limit = 500 } = {}) {
-    return request(`${BASE}/cleanup`, { method: 'POST', body: { dryRun, limit } })
+  cleanup({ dryRun = true, limit = 500, previewId = null, candidateHash = null } = {}) {
+    return request(`${BASE}/cleanup`, { method: 'POST', body: { dryRun, limit, previewId, candidateHash } })
   },
-  setLegalHold(fileId, enabled, reason) {
+  setLegalHold(fileId, enabled, reason, expectedVersion) {
     return request(`${BASE}/files/${encodeURIComponent(fileId)}/legal-hold`, {
       method: 'POST',
-      body: { enabled, reason }
+      body: { enabled, reason, expectedVersion }
     })
   }
 }

@@ -1059,7 +1059,7 @@ export const studentAffairsApi = {
   // ─────────────── 统一业务附件（授权下载 + 敏感审计） ───────────────
   /** 上传附件字节（复用文件中心真实上传，返回 { fileId, fileName, ... }）。 */
   async uploadAttachmentFile(file) {
-    try { return ok(await requestUpload('/files/upload', file)) } catch (e) { return toErr(e) }
+    try { return ok(await requestUpload('/files', file)) } catch (e) { return toErr(e) }
   },
   /** 关联附件到业务记录。body: { bizType, bizId, fileId, note? }（需 biz 管理权限）。 */
   linkAttachment(body) {

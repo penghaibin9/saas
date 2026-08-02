@@ -59,7 +59,7 @@ def _gd_student_with_topic(client, h, no, name, advisor="成果张老师"):
 
 
 def _upload(client, headers):
-    r = client.post(f"{FILES}/upload", headers=headers,
+    r = client.post(FILES, headers=headers,
                     files={"file": ("thesis.pdf", b"%PDF-1.4 real bytes for graduation attachment", "application/pdf")})
     return r.json()["data"]["fileId"]
 

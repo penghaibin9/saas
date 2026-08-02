@@ -10,7 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.v1.file_contract import metadata_contract
 from app.core.config import settings
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import require_permission
+from app.core.rbac09_permission_bundles import (
+    FILE_GOVERNANCE_VIEW,
+    FILE_SCAN_RETRY,
+    require_permission_compat,
+)
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services import audit_log
@@ -151,7 +155,7 @@ def abandon_upload_session(session_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/scan/health", summary="文件扫描服务健康状态")
-def scan_health(user=Depends(require_permission("systemAdmin.file.manage"))):
+def scan_health(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     return success(health_snapshot())
 
 
@@ -172,5 +176,5 @@ def scan_status(file_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/{file_id}/scan-retry", summary="重试失败的文件安全扫描")
-def scan_retry(file_id: str, user=Depends(require_permission("systemAdmin.file.manage"))):
+def scan_retry(file_id: str, user=Depends(require_permission_compat(FILE_SCAN_RETRY))):
     return success(retry_file_scan(file_id, user=user), message="已重新进入扫描队列")
