@@ -153,34 +153,56 @@ def test_t03_wildcards_are_registered_with_expansion(db_mode):
     assert school_admin["expandedCount"] == len(svc.all_known_permission_codes())
     assert school_admin["status"] == "PENDING"
 
-    # 展开是下界这件事必须对使用者写明，不能让人以为是精确全集
-    assert "下界" in queue["disclaimer"]
+    # 展开依据必须对使用者写明来源，不能只甩一个数字让人自己猜准不准
+    assert "四个来源合并" in queue["disclaimer"]
+    assert queue["sourceCount"] == len(svc.all_known_permission_codes())
 
 
-def test_t03_coverage_gap_is_surfaced_not_hidden(db_mode):
-    """展开为 0 的通配必须被显式标成覆盖缺口。
+def test_t03_dead_wildcards_are_identified(db_mode):
+    """展开为 0 的通配必须被判定为死通配并写明依据。
 
-    实测发现 30 个通配里有 10 个展开为 0（``dataCenter.*`` / ``employment.*`` 等），
-    原因是权限目录 SCHOOL_PERMISSION_GROUPS 没覆盖这些域。真实鉴权走前缀匹配、
-    不受影响，所以这些通配其实**照样在放行**，只是治理侧看不见它放开了什么——
-    比普通通配更危险。绝不能因为"展开是 0"就当成无害而放松断言。
+    早期版本里有 10 条通配展开为 0，原因是全集只取了权限目录这一个来源，
+    ``employment.*`` / ``dataCenter.*`` 等真在放行却看不见——那是危险的漏看。
+    合并四个来源后只剩 2 条，且已核实整个仓库都没有对应前缀的权限码，
+    即它们实际未放开任何权限，属可安全退役的死通配。两种情况危险程度相反，
+    结论必须建立在"全集足够大"的前提上，所以这里同时锁住全集规模。
     """
     svc.bootstrap_from_code(tenant_id=TENANT)
     queue = svc.wildcard_queue(tenant_id=TENANT)
     module_wildcards = [i for i in queue["items"] if i["wildcardCode"].endswith(".*")]
     assert module_wildcards
 
-    # 至少要有一部分能正常展开，否则说明权限码来源整个取错了
-    assert any(i["expandedCount"] > 0 for i in module_wildcards)
+    # 全集必须来自四个来源的合并，规模明显大于单一权限目录
+    assert queue["sourceCount"] > 400, "权限码全集偏小，说明某个来源没接上"
 
-    # 展开数与 coverageGap 必须一致，缺口要出现在汇总里
+    # 绝大多数模块通配都应能展开；死通配只应是少数
+    expandable = [i for i in module_wildcards if i["expandedCount"] > 0]
+    assert len(expandable) >= len(module_wildcards) - 3
+
     for item in module_wildcards:
-        assert item["coverageGap"] == (item["expandedCount"] == 0)
-        if item["coverageGap"]:
-            assert "权限目录未覆盖" in (item["note"] or ""), "缺口没有写明原因，运维看不懂"
-            assert item["wildcardCode"] in queue["coverageGaps"]
+        assert item["deadWildcard"] == (item["expandedCount"] == 0)
+        if item["deadWildcard"]:
+            assert "死通配" in (item["note"] or ""), "死通配没写明依据，运维不敢删"
+            assert item["wildcardCode"] in queue["deadWildcards"]
 
-    assert "需先补全权限目录再退役" in queue["disclaimer"]
+    assert "四个来源合并" in queue["disclaimer"]
+
+
+def test_t03_permission_universe_covers_previously_missing_domains(db_mode):
+    """回归锁：曾经完全缺失的域必须真实出现在全集里。
+
+    employment / dataCenter 一度一条权限码都没有，导致相关通配展开为 0，
+    治理侧完全看不见它们放开了什么。这条测试防止某个来源被改掉后又退回去。
+    """
+    universe = svc.all_known_permission_codes()
+    domains = {c.split(".")[0] for c in universe}
+    for domain in ("employment", "dataCenter", "graduationDesign", "internship", "studentAffairs"):
+        assert domain in domains, f"{domain} 域在权限码全集中缺失"
+
+    assert len(svc.expand_wildcard("employment.*")) > 0
+    assert len(svc.expand_wildcard("dataCenter.*")) > 0
+    # f-string 动态生成的权限码只能靠域模块反射拿到，正则扫源码扫不出来
+    assert len(svc.expand_wildcard("graduationDesign.guidance.*")) > 0
 
 
 # ── SYS06-T04：不改动真实鉴权，且租户隔离 ───────────────────────────────────

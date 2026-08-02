@@ -40,7 +40,11 @@
               <tr v-for="w in governance.wildcards" :key="w.roleCode + w.wildcardCode">
                 <td class="is-who">{{ w.roleCode }}</td>
                 <td><code class="rl-code">{{ w.wildcardCode }}</code></td>
-                <td :class="{ 'rl-danger': w.wildcardCode === '*' }">{{ w.expandedCount }}</td>
+                <td :class="{ 'rl-danger': w.wildcardCode === '*' }">
+                  {{ w.expandedCount }}
+                  <!-- 展开为 0 = 全部来源里都没有该前缀的权限码，实际未放开任何东西 -->
+                  <span v-if="w.deadWildcard" class="rl-dead">可安全退役</span>
+                </td>
                 <td><StatusTag :type="w.status === 'RETIRED' ? 'success' : 'warning'" :label="wildcardStatusLabel(w.status)" /></td>
                 <td class="mp-cell-sub">{{ w.note }}</td>
               </tr>
@@ -444,6 +448,14 @@ export default {
 /* SYS-06 通配退役队列 */
 .rl-wildcard {
   border-left: 3px solid var(--warning-500, var(--danger-600));
+}
+.rl-dead {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--fill-secondary);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
 }
 .rl-code {
   padding: 0 var(--space-1);

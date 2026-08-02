@@ -14,6 +14,9 @@
 """
 from __future__ import annotations
 
+import pathlib
+import re
+from functools import lru_cache
 from typing import Iterable
 
 from sqlalchemy import select
@@ -59,33 +62,145 @@ def _role_permissions() -> dict[str, set[str]]:
     return ROLE_PERMISSIONS
 
 
-def all_known_permission_codes() -> set[str]:
-    """全部具体权限码。
+# 权限码形态：至少两段、点分。用于从源码里识别字符串字面量。
+_CODE_LITERAL = re.compile(r"""['"]([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_*]+)+)['"]""")
 
-    直接复用 ``system_admin_catalog_service.collect_concrete_permission_codes``——它才是
-    仓库里权限码的权威全集。曾经想当然地从 ``ROLE_PERMISSIONS`` 的值里筛非通配码，结果
-    ``systemAdmin.*`` 展开出 0 条：因为 SYS_ADMIN 只声明了通配、没有任何具体码，具体码在
-    端点的 require_permission 侧。这类"看起来合理但静默算错"的实现必须避免。
+# 会携带权限码的调用点：端点鉴权依赖、直接判定、以及菜单预设登记。
+# ``_entry`` 是 runtime_preset_install_service 里登记菜单的工厂，dataCenter.dashboard.view
+# 这类"只有菜单、没有端点校验"的权限码只能从这里发现。
+_PERMISSION_CALL = re.compile(
+    r"(?:require_permission|require_any_permission|require_permission_compat"
+    r"|require_any_permission_compat|has_permission|has_any_permission|_entry)\s*\(([^)]*)\)",
+    re.S,
+)
+
+# 明确排除：文档示例里的占位符，以及 mock/演示数据里的假权限码。
+_PLACEHOLDER_CODES = {"module.domain.action", "a.b.xxx", "a.b.c"}
+_EXCLUDED_FILE_HINTS = ("mock_", "_mock", "/tests/", "\\tests\\")
+
+
+# 各业务域自带的权限定义模块。它们用 f-string 等方式动态生成权限码
+# （如 ``{f"graduationDesign.guidance.{x}" for x in (...)}"``），正则扫源码扫不到，
+# 只能在运行时读它们的模块级常量。
+_PERMISSION_MODULES = (
+    "app.core.graduation_permissions",
+    "app.core.domain_request_permissions",
+    "app.core.mobile_graduation_permissions",
+    "app.core.mobile_internship_permission_gate",
+    "app.core.rbac09_permission_bundles",
+)
+
+_CODE_SHAPE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+$")
+
+
+def _iter_code_like(value, depth: int = 0):
+    """从常量里挖出形如 ``a.b.c`` 的权限码，容器最多下钻两层。"""
+    if depth > 2:
+        return
+    if isinstance(value, str):
+        if _CODE_SHAPE.match(value) and value not in _PLACEHOLDER_CODES:
+            yield value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from _iter_code_like(k, depth + 1)
+            yield from _iter_code_like(v, depth + 1)
+    elif isinstance(value, (set, frozenset, list, tuple)):
+        for item in value:
+            yield from _iter_code_like(item, depth + 1)
+
+
+@lru_cache(maxsize=1)
+def discover_domain_module_permission_codes() -> frozenset[str]:
+    """读取各业务域权限模块导出的常量。导入失败的模块跳过，不影响整体。"""
+    import importlib
+
+    codes: set[str] = set()
+    for name in _PERMISSION_MODULES:
+        try:
+            module = importlib.import_module(name)
+        except Exception:  # noqa: BLE001 - 某个域模块不可用不该拖垮权限治理页面
+            continue
+        for attr in dir(module):
+            if attr.startswith("_"):
+                continue
+            try:
+                value = getattr(module, attr)
+            except Exception:  # noqa: BLE001
+                continue
+            codes.update(_iter_code_like(value))
+    return frozenset(codes)
+
+
+@lru_cache(maxsize=1)
+def discover_endpoint_permission_codes() -> frozenset[str]:
+    """扫描源码，找出真实被校验或被菜单登记的权限码。
+
+    为什么必须扫源码：权限目录 ``SCHOOL_PERMISSION_GROUPS`` 是人工维护的，实测发现它
+    完全没覆盖 ``employment`` / ``dataCenter`` 等域。而真实鉴权按前缀放行，不查目录——
+    也就是说这些权限**确实在生效**，只是治理侧看不见。靠人去补目录必然再次滞后，
+    所以这里以代码为准自动发现，新增端点无需再手工登记。
+
+    结果缓存在进程内：源码在运行期不变，扫描一次即可。
+    """
+    root = pathlib.Path(__file__).resolve().parent.parent  # backend/app
+    codes: set[str] = set()
+    for path in root.rglob("*.py"):
+        text = str(path)
+        if any(hint in text.replace("\\", "/") for hint in _EXCLUDED_FILE_HINTS):
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for call in _PERMISSION_CALL.finditer(source):
+            for code in _CODE_LITERAL.findall(call.group(1)):
+                if code in _PLACEHOLDER_CODES:
+                    continue
+                if code == "*" or code.endswith(".*"):
+                    continue
+                codes.add(code)
+    return frozenset(codes)
+
+
+def all_known_permission_codes() -> set[str]:
+    """全部具体权限码 = 权限目录 ∪ 端点/菜单扫描结果 ∪ 角色名单里的具体码。
+
+    三个来源缺一不可：
+    - 权限目录 ``collect_concrete_permission_codes``：带展示名，是页面勾选的基础；
+    - 端点与菜单扫描：目录漏掉的域（employment / dataCenter 等）只能从这里补全；
+    - ``ROLE_PERMISSIONS`` 里的非通配码：少数只在角色名单里出现、没有端点的码。
+
+    曾经只用第一个来源，``systemAdmin.*`` 展开出 0 条——因为具体码在端点侧不在角色侧；
+    也曾想当然地只用角色名单，同样是 0。两次都不报错，静默算错，所以三源合并。
     """
     from app.services.system_admin_catalog_service import \
         collect_concrete_permission_codes
 
-    return set(collect_concrete_permission_codes())
+    codes = set(collect_concrete_permission_codes())
+    codes |= set(discover_endpoint_permission_codes())
+    codes |= set(discover_domain_module_permission_codes())
+    for granted in _role_permissions().values():
+        codes |= {c for c in granted if c != "*" and not c.endswith(".*")}
+    return codes
 
 
 def expand_wildcard(wildcard: str, universe: Iterable[str] | None = None) -> set[str]:
     """把 ``*`` / ``a.b.*`` / ``*.view`` 展开为具体权限码。
 
-    复用既有 ``expand_permission_patterns``，不另写一套匹配规则——它已经处理了前缀通配、
-    后缀通配和精确码三种形态，重写只会产生两套不一致的语义。
+    匹配语义与既有 ``expand_permission_patterns`` 保持一致（前缀通配、后缀通配、精确码），
+    但**不能直接调用它**：它内部把全集写死成权限目录，而目录漏了 employment / dataCenter
+    等域，用它展开会重新掉进"展开 0 条"的坑。这里改为对合并后的全集做同样的匹配。
     """
-    from app.services.system_admin_catalog_service import \
-        expand_permission_patterns
-
-    expanded = expand_permission_patterns({wildcard})
-    if universe is not None:
-        return expanded & set(universe)
-    return expanded
+    codes = set(universe) if universe is not None else all_known_permission_codes()
+    if wildcard == "*":
+        return set(codes)
+    if wildcard.endswith(".*"):
+        prefix = wildcard[:-1]  # 保留末尾的点，"a.b.*" → "a.b."
+        return {c for c in codes if c.startswith(prefix) or c == wildcard[:-2]}
+    if wildcard.startswith("*."):
+        suffix = wildcard[1:]  # "*.view" → ".view"
+        return {c for c in codes if c.endswith(suffix)}
+    return {wildcard} & codes
 
 
 def _domain_of(code: str) -> str:
@@ -191,13 +306,15 @@ def bootstrap_from_code(*, tenant_id: int | None = None) -> dict:
                 if exists_wc:
                     continue
                 expanded = sorted(expand_wildcard(wc, universe))
-                # 展开为 0 不等于"这个通配没用"——真实鉴权走前缀匹配，不依赖权限目录。
-                # 它说明权限目录（SCHOOL_PERMISSION_GROUPS）没覆盖该域，是需要治理的缺口，
-                # 必须显式标出来，否则会被当成"无害通配"而漏掉。
+                # 全集已合并权限目录、端点扫描、域模块常量和角色名单四个来源。
+                # 到这一步仍展开为 0，说明整个仓库都找不到该前缀的具体权限码——
+                # 也就是这条通配实际上什么都没放开，是历史遗留的死通配，可安全退役。
+                # 注意区别于早期版本：那时展开为 0 是因为全集取源不全（真在放行却看不见），
+                # 两者危险程度完全相反，不能用同一句话描述。
                 note = (
-                    "由 SYS-06 自动登记；展开结果只覆盖权限目录中已登记的权限码，是下界"
+                    "由 SYS-06 自动登记；展开结果取自权限目录+端点扫描+域模块常量+角色名单四个来源"
                     if expanded
-                    else "权限目录未覆盖该前缀：真实鉴权仍按前缀放行，但治理侧看不到它到底放开了什么，需先补全权限目录"
+                    else "四个来源中均无该前缀的具体权限码：这条通配实际未放开任何权限，属死通配，可安全退役"
                 )
                 db.add(
                     WildcardRetirement(
@@ -431,20 +548,22 @@ def wildcard_queue(*, tenant_id: int | None = None) -> dict:
                 "roleCode": r.role_code,
                 "wildcardCode": r.wildcard_code,
                 "expandedCount": int(r.expanded_count or 0),
-                # 展开为 0 = 权限目录没覆盖该前缀。真实鉴权仍按前缀放行，
-                # 所以这是"看不清它放开了什么"，比普通通配更危险，不能当成没问题。
-                "coverageGap": int(r.expanded_count or 0) == 0,
+                # 展开为 0 = 四个来源里都找不到该前缀的具体权限码，这条通配实际未放开任何东西。
+                # 这类可以安全退役，风险最低——优先从它们开始清理。
+                "deadWildcard": int(r.expanded_count or 0) == 0,
                 "status": r.status,
                 "note": r.note,
             }
             for r in rows
         ]
-        gaps = sorted({i["wildcardCode"] for i in items if i["coverageGap"]})
+        dead = sorted({i["wildcardCode"] for i in items if i["deadWildcard"]})
         return {
             "items": items,
-            "coverageGaps": gaps,
+            "deadWildcards": dead,
+            "sourceCount": len(all_known_permission_codes()),
             "disclaimer": (
-                "展开结果只覆盖权限目录中已登记的权限码，属于下界；"
-                f"其中 {len(gaps)} 个前缀权限目录完全没覆盖，真实鉴权仍会按前缀放行，需先补全权限目录再退役"
+                f"展开基于 {len(all_known_permission_codes())} 个权限码全集"
+                "（权限目录 + 端点扫描 + 各域权限模块常量 + 角色名单四个来源合并）；"
+                f"其中 {len(dead)} 条通配在四个来源中均无对应权限码，实际未放开任何权限，可优先退役"
             ),
         }
