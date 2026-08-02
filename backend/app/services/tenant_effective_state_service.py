@@ -1,6 +1,6 @@
 """PLAT-02 tenant lifecycle authority and tenant-360 projection.
 
-The relational tenant row is the hard safety state.  Commercial lifecycle data
+The relational tenant row is the hard safety state. Commercial lifecycle data
 remains in TENANT_META until the later data migration, but every read now passes
 through this resolver so disagreement is explicit and write paths are optimistic
 locked rather than last-write-wins.
@@ -17,6 +17,7 @@ from app.db.session import get_sessionmaker
 
 _META_STATES = {"trial", "active", "expired", "disabled", "readonly", "archived", "provisioning"}
 _ROW_STATES = {"PROVISIONING", "ACTIVE", "SUSPENDED", "ARCHIVED"}
+_LEGACY_PACKAGE_CODE = "professional"
 
 
 def _iso(value: Any) -> str | None:
@@ -192,7 +193,8 @@ def tenant_360(tenant_id: int) -> dict:
             "lifecycleConfigMissing": meta_row is None,
             "needsMetadataBackfill": meta_row is None,
         })
-        package = platform_service.get_package(str(meta.get("packageCode") or "trial"))
+        package_code = str(meta.get("packageCode") or _LEGACY_PACKAGE_CODE)
+        package = platform_service.get_package(package_code)
         mismatch_rows = db.scalars(select(PlatformConfig).where(
             PlatformConfig.tenant_id == int(tenant_id),
             PlatformConfig.config_type.in_(("FEATURES", "TENANT_META")),
