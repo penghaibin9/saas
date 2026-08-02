@@ -46,7 +46,7 @@
     </div>
 
     <!-- 新增 / 编辑角色 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑角色' : '新增角色'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑角色' : '新增角色'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">新角色默认无菜单权限，创建后请在「配置权限」中授权；角色编码创建后不可修改。</p>
       <template #footer>
@@ -56,7 +56,7 @@
     </AppDrawer>
 
     <!-- 角色详情 -->
-    <AppDrawer v-model:visible="detail.open" :title="'角色详情 · ' + (detail.data ? detail.data.name : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'角色详情 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">角色编码</span><span class="mp-kv__v">{{ detail.data.code }}</span></div>
@@ -84,13 +84,11 @@
     </AppDrawer>
 
     <!-- 配置权限（菜单 / 按钮 / 数据范围） -->
-    <AppDrawer v-model:visible="perm.open" :title="'配置权限 · ' + perm.name">
+    <AppDrawer v-model:visible="perm.open" :title="'配置权限 · ' + perm.name" mode="modal" size="large">
       <LoadingState v-if="perm.loading" />
       <template v-else>
         <h4 class="rl-sec" style="margin-top: 0">数据范围</h4>
-        <select v-model="perm.scopeCode" class="rl-select">
-          <option v-for="s in ctx.statusOptions.scopeTypes" :key="s.value" :value="s.value">{{ s.label }}</option>
-        </select>
+        <AppSelect v-model="perm.scopeCode" :options="ctx.statusOptions.scopeTypes" />
         <p class="mp-note">数据范围决定该角色能看到哪些学生 / 账号；调整后影响所有成员，将写入审计日志并通知复核。</p>
 
         <h4 class="rl-sec">菜单与按钮权限</h4>
@@ -135,6 +133,7 @@ import {
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppSelect } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import PermissionTreeEditor from '@/modules/system/components/PermissionTreeEditor.vue'
 import { systemApi } from '@/modules/system/api/system.api'
@@ -146,7 +145,7 @@ export default {
   name: 'SystemRoleListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog,
+    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppSelect,
     FormFields, PermissionTreeEditor
   },
   props: { ctx: { type: Object, required: true } },

@@ -225,7 +225,7 @@
     </div>
 
     <!-- 新建 / 编辑 表单 -->
-    <AppDrawer :visible="form.visible" :title="(form.mode === 'create' ? '新建' : '编辑') + tabLabel" @update:visible="form.visible = $event">
+    <AppDrawer :visible="form.visible" :title="(form.mode === 'create' ? '新建' : '编辑') + tabLabel" mode="modal" size="medium" @update:visible="form.visible = $event">
       <div class="aa-form">
         <AppFormItem v-for="f in formFields" :key="f.key" :label="f.label" :required="!!f.required">
           <AppCollegePicker v-if="f.picker === 'college'" v-model="form.model[f.key]" :options="f.options || []" />
@@ -242,7 +242,7 @@
     </AppDrawer>
 
     <!-- 教学秘书绑定 -->
-    <AppDrawer :visible="secretary.visible" :title="'教学秘书绑定 · ' + (secretary.row && secretary.row.collegeName)" @update:visible="secretary.visible = $event">
+    <AppDrawer :visible="secretary.visible" :title="'教学秘书绑定 · ' + (secretary.row && secretary.row.collegeName)" mode="modal" size="small" @update:visible="secretary.visible = $event">
       <div class="aa-form">
         <AppFormItem label="教学秘书">
           <AppTeacherPicker v-model="secretary.secretaryId" placeholder="选择教师；留空为解绑" />
@@ -255,7 +255,7 @@
     </AppDrawer>
 
     <!-- 班级学生抽屉 -->
-    <AppDrawer :visible="students.visible" :title="'班级学生 · ' + students.className" @update:visible="students.visible = $event">
+    <AppDrawer :visible="students.visible" :title="'班级学生 · ' + students.className" mode="modal" size="xlarge" @update:visible="students.visible = $event">
       <LoadingState v-if="students.loading" />
       <EmptyState v-else-if="!students.rows.length" title="该班暂无在册学生" />
       <table v-else class="mp-audit">
@@ -273,7 +273,7 @@
     </AppDrawer>
 
     <!-- 班级调整 -->
-    <AppDrawer :visible="adjust.visible" :title="'班级调整 · ' + (adjust.student && adjust.student.realName)" @update:visible="adjust.visible = $event">
+    <AppDrawer :visible="adjust.visible" :title="'班级调整 · ' + (adjust.student && adjust.student.realName)" mode="modal" size="small" @update:visible="adjust.visible = $event">
       <div class="aa-form">
         <AppFormItem label="目标班级" required>
           <AppClassPicker v-model="adjust.targetClassId" placeholder="请选择目标班级" :options="classOptions" />
@@ -297,7 +297,7 @@
     />
 
     <!-- 专业方向 · 新建/编辑 -->
-    <AppDrawer :visible="directionForm.visible" :title="(directionForm.mode === 'create' ? '新建' : '编辑') + '专业方向'" @update:visible="directionForm.visible = $event">
+    <AppDrawer :visible="directionForm.visible" :title="(directionForm.mode === 'create' ? '新建' : '编辑') + '专业方向'" mode="modal" size="medium" @update:visible="directionForm.visible = $event">
       <div class="aa-form">
         <AppFormItem label="方向名称" required>
           <AppTextInput v-model="directionForm.model.directionName" placeholder="如 Web开发方向" />
@@ -313,7 +313,7 @@
     </AppDrawer>
 
     <!-- 班级调整申请单 · 发起 -->
-    <AppDrawer :visible="adjustCreateForm.visible" title="发起班级调整" @update:visible="adjustCreateForm.visible = $event">
+    <AppDrawer :visible="adjustCreateForm.visible" title="发起班级调整" mode="modal" size="large" @update:visible="adjustCreateForm.visible = $event">
       <div class="aa-form">
         <AppFormItem label="调整类型" required>
           <AppSelect v-model="adjustCreateForm.model.adjustType" :options="[
@@ -337,7 +337,7 @@
     </AppDrawer>
 
     <!-- 班级调整申请单 · 核对结果 -->
-    <AppDrawer :visible="adjustCheckResult.visible" title="核对结果" @update:visible="adjustCheckResult.visible = $event">
+    <AppDrawer :visible="adjustCheckResult.visible" title="核对结果" mode="modal" size="xlarge" @update:visible="adjustCheckResult.visible = $event">
       <template v-if="adjustCheckResult.row && adjustCheckResult.row.checkResult">
         <p>
           阻断状态：

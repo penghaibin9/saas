@@ -21,23 +21,16 @@
       <EmptyState v-if="!rows.length" text="暂无订单" />
     </template>
 
-    <AppDrawer :visible="createVisible" title="人工录入订单" @update:visible="createVisible = $event">
+    <AppDrawer :visible="createVisible" title="人工录入订单" mode="modal" size="large" @update:visible="createVisible = $event">
       <div class="pcod__form">
         <label class="pcod__field"><span>租户</span>
-          <select v-model="form.tenantId" class="pcod__input">
-            <option v-for="t in tenants" :key="t.tenantId" :value="t.tenantId">{{ t.tenantName }}</option>
-          </select>
+          <AppSelect v-model="form.tenantId" :options="tenants" label-key="tenantName" value-key="tenantId" />
         </label>
         <label class="pcod__field"><span>套餐</span>
-          <select v-model="form.packageCode" class="pcod__input">
-            <option value="basic">基础版</option>
-            <option value="standard">标准版</option>
-            <option value="professional">专业版</option>
-            <option value="private">私有化版</option>
-          </select>
+          <AppSelect v-model="form.packageCode" :options="packageOptions" />
         </label>
-        <label class="pcod__field"><span>金额（元）</span><input v-model.number="form.amount" type="number" class="pcod__input" /></label>
-        <label class="pcod__field"><span>备注</span><input v-model.trim="form.remark" class="pcod__input" /></label>
+        <label class="pcod__field"><span>金额（元）</span><AppNumberInput v-model="form.amount" :min="0" :precision="2" /></label>
+        <label class="pcod__field"><span>备注</span><AppTextInput v-model="form.remark" /></label>
         <div class="pcod__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submit">创建（未支付）</AppButton>
           <AppButton @click="createVisible = false">取消</AppButton>
@@ -50,6 +43,7 @@
 <script>
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
+import { AppNumberInput, AppSelect, AppTextInput } from '@/components/common'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
@@ -57,13 +51,19 @@ const STATUS = { unpaid: ['warning', '未支付'], paid: ['success', '已支付'
 
 export default {
   name: 'PlatformControlOrders',
-  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag },
+  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag, AppNumberInput, AppSelect, AppTextInput },
   data() {
     return {
       loading: true,
       saving: false,
       rows: [],
       tenants: [],
+      packageOptions: [
+        { value: 'basic', label: '基础版' },
+        { value: 'standard', label: '标准版' },
+        { value: 'professional', label: '专业版' },
+        { value: 'private', label: '私有化版' }
+      ],
       createVisible: false,
       form: { tenantId: '', packageCode: 'standard', amount: 49800, remark: '' },
       columns: [

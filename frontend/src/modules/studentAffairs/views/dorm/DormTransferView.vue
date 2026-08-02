@@ -69,7 +69,7 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <AppDrawer :visible="dlg.visible" title="发起调宿" @close="closeTransfer">
+    <AppDrawer :visible="dlg.visible" title="发起调宿" mode="modal" size="large" @close="closeTransfer">
       <div class="dr-form">
         <p class="dr-workspace-intro">按“学生 → 楼栋 → 房间 → 空床”顺序选择，提交后进入辅导员和宿管两级审批。</p>
         <AppFormItem label="调宿学生" required><AppStudentPicker v-model="dlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" /></AppFormItem>

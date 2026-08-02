@@ -501,7 +501,7 @@ export default {
     },
     railItems() {
       // 一级图标轨 = adminMenu.js 的 6 个一级模块（工作台已作为第一个分组，
-      // 其首叶「我的工作台」指向 /；不再额外合成 home，避免出现两个「工作台」）。
+      // 其首叶「我的工作台」指向 /workbench；不再额外合成 home，避免出现两个「工作台」）。
       if (!this.ctx) return []
       if (this.isPlatformMode) {
         return [{ key: 'platform', label: '平台运营', path: '/admin/platform/overview' }]

@@ -48,7 +48,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建归档批次" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建归档批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaar-form">
         <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择要归档的学期（一学期一批次）" :disabled="saving" /></AppFormItem>
         <AppInlineAlert type="warning" description="确认归档后该学期将被封存（status→ARCHIVED），此后该学期教务写操作应被拦截；如需修改须走特批解冻。" />

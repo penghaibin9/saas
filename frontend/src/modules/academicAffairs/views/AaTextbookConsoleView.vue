@@ -67,7 +67,7 @@
       </template>
     </template>
 
-    <AppDrawer :visible="tbVisible" title="新增教材" @close="tbVisible = false">
+    <AppDrawer :visible="tbVisible" title="新增教材" mode="modal" size="medium" @close="tbVisible = false">
       <div class="aatb-form">
         <AppFormItem label="教材名称" required><AppTextInput v-model="tbForm.name" :disabled="saving" /></AppFormItem>
         <AppFormItem label="ISBN"><AppTextInput v-model="tbForm.isbn" :disabled="saving" /></AppFormItem>
@@ -81,7 +81,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="arrivalVisible" title="到货登记" @close="arrivalVisible = false">
+    <AppDrawer :visible="arrivalVisible" title="到货登记" mode="modal" size="medium" @close="arrivalVisible = false">
       <div class="aatb-form">
         <AppInlineAlert type="info" description="到货数量是累计值，只能增加且不能超过征订数量。" />
         <EmptyState v-if="!arrivalItems.length" title="无征订明细" description="" />
@@ -97,7 +97,7 @@
       </div>
     </AppDrawer>
 
-    <AppDrawer :visible="partialVisible" title="部分收款" @close="partialVisible = false">
+    <AppDrawer :visible="partialVisible" title="部分收款" mode="modal" size="medium" @close="partialVisible = false">
       <div v-if="partialRow" class="aatb-form">
         <AppFormItem label="教材"><span>{{ partialRow.textbookName }}</span></AppFormItem>
         <AppFormItem label="应收 / 已收"><span>¥{{ partialRow.amount }} / ¥{{ partialRow.paidAmount != null ? partialRow.paidAmount : 0 }}</span></AppFormItem>

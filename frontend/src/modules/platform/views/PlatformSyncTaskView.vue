@@ -77,7 +77,7 @@
     </div>
 
     <!-- 同步任务详情 -->
-    <AppDrawer v-model:visible="detail.open" :title="'同步任务 · ' + (detail.data ? detail.data.name : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'同步任务 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">租户 / 数据源</span><span class="mp-kv__v">{{ detail.data.tenantName }} · {{ detail.data.source }}</span></div>
@@ -122,7 +122,7 @@
     </AppDrawer>
 
     <!-- 平台日志详情 -->
-    <AppDrawer v-model:visible="logDetail.open" title="平台操作日志详情">
+    <AppDrawer v-model:visible="logDetail.open" title="平台操作日志详情" mode="modal" size="large">
       <template v-if="logDetail.row">
         <div class="mp-kv"><span class="mp-kv__k">时间</span><span class="mp-kv__v">{{ logDetail.row.time }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">操作人</span><span class="mp-kv__v">{{ logDetail.row.who }} · {{ logDetail.row.roleName }}</span></div>

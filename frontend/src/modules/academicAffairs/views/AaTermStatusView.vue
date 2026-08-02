@@ -51,7 +51,7 @@
       @confirm="doFreeze"
     />
 
-    <AppDrawer :visible="unfreezeDrawer.visible" title="解冻学期" @close="unfreezeDrawer.visible = false">
+    <AppDrawer :visible="unfreezeDrawer.visible" title="解冻学期" mode="modal" size="small" @close="unfreezeDrawer.visible = false">
       <div class="aa-form">
         <p class="mp-note">解冻「{{ unfreezeDrawer.row && unfreezeDrawer.row.yearCode }} 第 {{ unfreezeDrawer.row && unfreezeDrawer.row.termNo }} 学期」（FROZEN→PUBLISHED），需填写原因（至少 5 字），并留痕审计。</p>
         <AppFormItem label="解冻原因" required>

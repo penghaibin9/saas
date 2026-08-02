@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" :title="title" @update:visible="$emit('update:visible', $event)">
+  <AppDrawer :visible="visible" :title="title" mode="modal" size="large" @update:visible="$emit('update:visible', $event)">
     <div class="exp">
       <div class="exp__sec">
         <div class="exp__sec-t">导出范围</div>

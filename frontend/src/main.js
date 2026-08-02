@@ -2,6 +2,8 @@
 import './styles/tokens.css'
 // Element Plus 主题变量对齐（仅日期选择器使用 el 组件）
 import './styles/element-theme.css'
+// PC 管理端高对比视觉皮肤：只覆盖外观，不改变菜单、路由与业务结构。
+import './styles/high-contrast-skin.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

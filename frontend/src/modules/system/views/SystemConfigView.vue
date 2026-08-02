@@ -86,11 +86,11 @@
     </div>
 
     <!-- 编辑系统参数（原因必填） -->
-    <AppDrawer v-model:visible="cfgEdit.open" :title="'编辑配置 · ' + cfgEdit.name">
+    <AppDrawer v-model:visible="cfgEdit.open" :title="'编辑配置 · ' + cfgEdit.name" mode="modal" size="medium">
       <label class="cf-label">配置值</label>
-      <textarea v-model="cfgEdit.valueText" class="mp-textarea" rows="3" />
+      <AppTextarea v-model="cfgEdit.valueText" :rows="3" />
       <label class="cf-label" style="margin-top: var(--space-3)">变更原因（写入审计）<span style="color: var(--danger-600)">*</span></label>
-      <textarea v-model="cfgEdit.reason" class="mp-textarea" rows="2" placeholder="至少 5 个字，说明为什么调整" />
+      <AppTextarea v-model="cfgEdit.reason" :rows="2" placeholder="至少 5 个字，说明为什么调整" />
       <div v-if="cfgEdit.error" class="mp-form-err">{{ cfgEdit.error }}</div>
       <template #footer>
         <AppButton variant="ghost" @click="cfgEdit.open = false">取消</AppButton>
@@ -133,13 +133,14 @@ import { ModulePageShell, ModuleToolbar, LoadingState, ErrorState } from '@/comp
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppTextarea } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'SystemConfigView',
-  components: { ModulePageShell, ModuleToolbar, LoadingState, ErrorState, AppButton, AppDrawer, AppConfirmDialog, FormFields },
+  components: { ModulePageShell, ModuleToolbar, LoadingState, ErrorState, AppButton, AppDrawer, AppConfirmDialog, AppTextarea, FormFields },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

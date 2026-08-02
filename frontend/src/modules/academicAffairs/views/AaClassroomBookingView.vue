@@ -19,7 +19,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer :visible="bookVisible" title="申请教室预约" @close="bookVisible = false">
+    <AppDrawer :visible="bookVisible" title="申请教室预约" mode="modal" size="medium" @close="bookVisible = false">
       <div class="aacb-form">
         <AppFormItem label="教室" required><AppClassroomPicker v-model="form.classroomId" :disabled="saving" /></AppFormItem>
         <AppFormItem label="日期" required><AppDatePicker v-model="form.bookingDate" :disabled="saving" /></AppFormItem>

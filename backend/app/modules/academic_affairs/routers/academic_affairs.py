@@ -318,7 +318,7 @@ def roster(keyword: Optional[str] = None, status: Optional[str] = None,
 
 # ── 学籍档案 / 学籍状态 / 学籍异动记录（只读展示，复用 status-changes）/ 学籍导入导出（Tier1 R2）──
 # 权限：view=档案详情+状态总览；viewSensitive=证件号完整查看（服务层二次鉴权+SUCCESS/DENY 双向审计）；
-# import=批量建档；export=名册导出。静态子路由（status-summary/export/import/*）必须声明在 /roster/{studentId} 之前，
+# import=批量建档；export=名册导出。静态子路由（status-summary/export/import/*/corrections）必须声明在 /roster/{studentId} 之前，
 # 否则会被路径参数捕获（对齐 gd-students 路由注释的既有约定）。
 _ROSTER_VIEW = "academicAffairs.roster.view"
 _ROSTER_VIEW_SENSITIVE = "academicAffairs.roster.viewSensitive"
@@ -385,24 +385,9 @@ def roster_import_confirm(body: ExcelImportRows, user=Depends(require_permission
     return success(result, message="导入完成")
 
 
-@router.get("/roster/{studentId}", summary="学籍档案详情（主档+组织名称+学籍状态历史，数据范围收敛）")
-def roster_detail(studentId: int = Path(...), user=Depends(require_permission(_ROSTER_VIEW))):
-    return success(svc.roster_detail(studentId, user))
-
-
-class RosterRevealBody(BaseModel):
-    reason: str = Field(..., min_length=5, description="查看理由（≥5 字，必填，写审计）")
-
-
-@router.post("/roster/{studentId}/reveal", summary="查看完整证件号（sensitiveView+强制审计）")
-def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depends(require_staff)):
-    # 粗粒度只挡未登录/非教职工；academicAffairs.roster.viewSensitive 的授权判定与
-    # 「SUCCESS/DENY 双向 SENSITIVE_VIEW 审计」由服务层负责，网关不得在此短路（否则越权 DENY 审计会丢失）。
-    return success(svc.reveal_roster_sensitive(studentId, user, body.reason))
-
-
 # ── 学籍信息更正（Tier1 R3）：区别于「学籍异动」——只纠正学号/姓名/性别/证件号/年级录入错误，
 # 不产生学籍状态迁移；单步审核（PENDING→APPROVED 同步主档 / REJECTED）。
+# 注意：本组静态路由必须位于 /roster/{studentId} 之前，否则 corrections 会被当作 studentId。
 _ROSTER_CORRECTION_APPLY = "academicAffairs.roster.correction.apply"
 _ROSTER_CORRECTION_VIEW = "academicAffairs.roster.correction.view"
 _ROSTER_CORRECTION_REVIEW = "academicAffairs.roster.correction.review"
@@ -443,6 +428,22 @@ def roster_correction_list(status: Optional[str] = None, studentId: Optional[str
 def roster_correction_review(body: RosterCorrectionReview, correctionId: int = Path(...),
                              user=Depends(require_permission(_ROSTER_CORRECTION_REVIEW))):
     return success(svc.review_roster_correction(correctionId, user, body.action, body.note), message="已处理")
+
+
+@router.get("/roster/{studentId}", summary="学籍档案详情（主档+组织名称+学籍状态历史，数据范围收敛）")
+def roster_detail(studentId: int = Path(...), user=Depends(require_permission(_ROSTER_VIEW))):
+    return success(svc.roster_detail(studentId, user))
+
+
+class RosterRevealBody(BaseModel):
+    reason: str = Field(..., min_length=5, description="查看理由（≥5 字，必填，写审计）")
+
+
+@router.post("/roster/{studentId}/reveal", summary="查看完整证件号（sensitiveView+强制审计）")
+def roster_reveal(body: RosterRevealBody, studentId: int = Path(...), user=Depends(require_staff)):
+    # 粗粒度只挡未登录/非教职工；academicAffairs.roster.viewSensitive 的授权判定与
+    # 「SUCCESS/DENY 双向 SENSITIVE_VIEW 审计」由服务层负责，网关不得在此短路（否则越权 DENY 审计会丢失）。
+    return success(svc.reveal_roster_sensitive(studentId, user, body.reason))
 
 
 # ── 入学/学年注册 ──

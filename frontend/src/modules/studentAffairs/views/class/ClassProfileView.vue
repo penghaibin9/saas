@@ -86,7 +86,7 @@
       :danger="confirm.danger" :confirm-text="confirm.confirmText" :submitting="confirm.submitting" @confirm="onConfirm" />
 
     <!-- 表单弹窗（新增材料 / 任命班干部） -->
-    <AppDrawer :visible="fm.visible" :title="fm.title" @update:visible="closeForm">
+    <AppDrawer :visible="fm.visible" :title="fm.title" mode="modal" size="large" @update:visible="closeForm">
       <div class="fm-body">
         <template v-if="fm.kind === 'material'">
           <div class="fm-item">

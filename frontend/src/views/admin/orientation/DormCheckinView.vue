@@ -84,7 +84,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 宿舍入住">
+      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 宿舍入住" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>

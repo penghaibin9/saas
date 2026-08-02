@@ -50,7 +50,7 @@
     </DataTable>
 
     <!-- 生成 -->
-    <AppDrawer :visible="genDlg.visible" title="生成三方协议" @update:visible="genDlg.visible = $event">
+    <AppDrawer :visible="genDlg.visible" title="生成三方协议" mode="modal" size="medium" @update:visible="genDlg.visible = $event">
       <AppFormItem label="实习学生" required>
         <AppInternshipStudentPicker
           v-model="genForm.internshipId"

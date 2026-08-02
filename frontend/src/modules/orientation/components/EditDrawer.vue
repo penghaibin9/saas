@@ -1,29 +1,58 @@
 <template>
-  <AppDrawer :visible="visible" :title="title" @update:visible="$emit('update:visible', $event)">
+  <AppDrawer
+    :visible="visible"
+    :title="title"
+    mode="modal"
+    :size="fields.length > 6 ? 'large' : 'medium'"
+    @update:visible="$emit('update:visible', $event)"
+  >
     <form class="ed" @submit.prevent="onSubmit">
       <label v-for="f in fields" :key="f.key" class="ed__field">
         <span class="ed__label">
           {{ f.label }}<span v-if="f.required" class="ed__required">*</span>
         </span>
-        <select v-if="f.type === 'select'" v-model="form[f.key]" class="ed__control" :disabled="f.disabled">
-          <option value="">请选择</option>
-          <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
-        <textarea
+        <AppSelect
+          v-if="f.type === 'select'"
+          v-model="form[f.key]"
+          :options="f.options || []"
+          :placeholder="f.placeholder || '请选择'"
+          :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
+        />
+        <AppDatePicker
+          v-else-if="f.type === 'date'"
+          v-model="form[f.key]"
+          :disabled="f.disabled"
+          :placeholder="f.placeholder || '请选择日期'"
+        />
+        <AppTextarea
           v-else-if="f.type === 'textarea'"
           v-model="form[f.key]"
-          class="ed__control ed__control--area"
-          rows="3"
+          :rows="f.rows || 3"
           :placeholder="f.placeholder || '请输入'"
           :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
         />
-        <input
+        <AppNumberInput
+          v-else-if="f.type === 'number'"
+          v-model="form[f.key]"
+          :min="f.min ?? -Infinity"
+          :max="f.max ?? Infinity"
+          :step="f.step ?? 1"
+          :precision="f.precision ?? null"
+          :controls="f.controls !== false"
+          :placeholder="f.placeholder || '请输入'"
+          :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
+        />
+        <AppTextInput
           v-else
           v-model="form[f.key]"
-          class="ed__control"
-          :type="f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'"
+          :type="f.type === 'tel' ? 'tel' : 'text'"
           :placeholder="f.placeholder || '请输入'"
           :disabled="f.disabled"
+          :maxlength="f.maxlength || 0"
+          :status="errors[f.key] ? 'error' : 'default'"
         />
         <span v-if="errors[f.key]" class="ed__error">{{ errors[f.key] }}</span>
       </label>
@@ -47,10 +76,11 @@
  * Emits: submit(formData)
  */
 import { AppDrawer, AppButton } from '@/components/ui'
+import { AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea } from '@/components/common'
 
 export default {
   name: 'EditDrawer',
-  components: { AppDrawer, AppButton },
+  components: { AppDrawer, AppButton, AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -108,26 +138,6 @@ export default {
 .ed__required {
   color: var(--danger-600);
   margin-left: 2px;
-}
-.ed__control {
-  height: 36px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: 0 var(--space-2);
-  outline: none;
-}
-.ed__control:focus {
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
-}
-.ed__control--area {
-  height: auto;
-  padding: var(--space-2);
-  resize: vertical;
-  font-family: inherit;
 }
 .ed__error {
   font-size: var(--font-size-xs);

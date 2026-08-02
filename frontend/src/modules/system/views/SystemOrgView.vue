@@ -63,7 +63,7 @@
     </div>
 
     <!-- 新增 / 编辑组织节点 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑组织节点' : '新增下级组织'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑组织节点' : '新增下级组织'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p v-if="form.parentName" class="mp-note" style="margin-top: var(--space-2)">上级组织：{{ form.parentName }}</p>
       <template #footer>

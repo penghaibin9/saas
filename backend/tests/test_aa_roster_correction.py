@@ -57,6 +57,16 @@ def _apply(client, hdr, sid, field_key, new_value, reason="数据录入错误据
     return client.post(f"{BASE}/roster/corrections", headers=hdr, json=body)
 
 
+def test_c0_list_static_route_not_captured_by_student_detail(client, db_mode):
+    """静态 /roster/corrections 必须先于 /roster/{studentId}，不能把 corrections 当整数 ID。"""
+    _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    r = client.get(f"{BASE}/roster/corrections?page=1&pageSize=10", headers=hdr)
+    assert r.status_code == 200, r.text
+    assert r.json()["code"] == 0
+    assert isinstance(r.json()["data"]["items"], list)
+
+
 def test_c1_approve_syncs_profile_and_audits(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")

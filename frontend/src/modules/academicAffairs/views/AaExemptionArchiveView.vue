@@ -32,7 +32,7 @@
       </template>
     </div>
 
-    <AppDrawer :visible="materialsVisible" title="免修材料" @close="materialsVisible = false">
+    <AppDrawer :visible="materialsVisible" title="免修材料" mode="modal" size="medium" @close="materialsVisible = false">
       <AppFileList :files="materialFiles" :previewable="false" :downloadable="false" :removable="false" />
     </AppDrawer>
   </ModulePageShell>

@@ -34,7 +34,7 @@
       </p>
     </div>
 
-    <AppDrawer :visible="reportVisible" title="登记故障报修" @close="reportVisible = false">
+    <AppDrawer :visible="reportVisible" title="登记故障报修" mode="modal" size="medium" @close="reportVisible = false">
       <div class="aarr-form">
         <AppFormItem label="资源类型" required>
           <AppSelect v-model="form.resourceKind" :options="kindOptions.slice(1)" :disabled="saving" @change="onKindChange" />

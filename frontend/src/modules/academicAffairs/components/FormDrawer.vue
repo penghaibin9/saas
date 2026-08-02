@@ -1,5 +1,11 @@
 <template>
-  <AppDrawer :visible="visible" :title="title" @update:visible="onClose">
+  <AppDrawer
+    :visible="visible"
+    :title="title"
+    mode="modal"
+    :size="fields.length > 6 ? 'large' : 'medium'"
+    @update:visible="onClose"
+  >
     <p v-if="note" class="afd-note">{{ note }}</p>
     <div v-for="f in fields" :key="f.key" class="afd-field">
       <label class="afd-label">{{ f.label }}<span v-if="f.required" class="afd-req">*</span></label>
@@ -16,21 +22,37 @@
         :placeholder="f.placeholder || '请选择日期'"
         @update:model-value="update(f.key, $event)"
       />
-      <textarea
+      <AppTextarea
         v-else-if="f.type === 'textarea'"
-        class="afd-control afd-control--area"
-        rows="3"
+        :rows="f.rows || 3"
         :placeholder="f.placeholder || '请输入'"
-        :value="modelValue[f.key] ?? ''"
-        @input="update(f.key, $event.target.value)"
+        :model-value="modelValue[f.key] ?? ''"
+        :disabled="f.disabled"
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
       />
-      <input
-        v-else
-        :type="f.type === 'number' ? 'number' : 'text'"
-        class="afd-control"
+      <AppNumberInput
+        v-else-if="f.type === 'number'"
+        :model-value="modelValue[f.key] ?? null"
+        :min="f.min ?? -Infinity"
+        :max="f.max ?? Infinity"
+        :step="f.step ?? 1"
+        :precision="f.precision ?? null"
+        :controls="f.controls !== false"
         :placeholder="f.placeholder || '请输入'"
-        :value="modelValue[f.key] ?? ''"
-        @input="update(f.key, $event.target.value)"
+        :disabled="f.disabled"
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
+      />
+      <AppTextInput
+        v-else
+        :model-value="modelValue[f.key] ?? ''"
+        :type="f.type === 'tel' ? 'tel' : 'text'"
+        :placeholder="f.placeholder || '请输入'"
+        :disabled="f.disabled"
+        :maxlength="f.maxlength || 0"
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
       />
       <div v-if="errors[f.key]" class="afd-error">{{ errors[f.key] }}</div>
     </div>
@@ -48,11 +70,11 @@
  */
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
-import { AppSelect, AppDatePicker } from '@/components/common'
+import { AppSelect, AppDatePicker, AppTextInput, AppNumberInput, AppTextarea } from '@/components/common'
 
 export default {
   name: 'AcademicFormDrawer',
-  components: { AppDrawer, AppButton, AppSelect, AppDatePicker },
+  components: { AppDrawer, AppButton, AppSelect, AppDatePicker, AppTextInput, AppNumberInput, AppTextarea },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -117,28 +139,6 @@ export default {
 .afd-req {
   color: var(--danger-600);
   margin-left: 2px;
-}
-.afd-control {
-  width: 100%;
-  box-sizing: border-box;
-  height: 36px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: 0 var(--space-3);
-  font-family: var(--font-family-base);
-}
-.afd-control--area {
-  height: auto;
-  padding: var(--space-2) var(--space-3);
-  resize: vertical;
-}
-.afd-control:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
 }
 .afd-error {
   margin-top: var(--space-1);

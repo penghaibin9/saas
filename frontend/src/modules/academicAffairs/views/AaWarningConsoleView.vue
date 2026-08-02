@@ -103,7 +103,7 @@
         <template #cell-ops="{ row }"><button class="mp-link" @click="openFollowup(row.warningId)">处理 →</button></template>
       </DataTable>
 
-      <AppDrawer :visible="detailVisible" title="预警跟进" @close="detailVisible = false">
+      <AppDrawer :visible="detailVisible" title="预警跟进" mode="modal" size="xlarge" @close="detailVisible = false">
         <div v-if="detailLoading" class="mp-note">加载中…</div>
         <ErrorState v-else-if="detailError" :description="detailError" @retry="() => openFollowup(detailId)" />
         <div v-else-if="detail" class="mp-stack">
@@ -142,7 +142,7 @@
         </div>
       </AppDrawer>
 
-      <AppDrawer :visible="assignVisible" title="指派跟进人" @close="assignVisible = false">
+      <AppDrawer :visible="assignVisible" title="指派跟进人" mode="modal" size="small" @close="assignVisible = false">
         <AppFormItem label="跟进人" required><AppTeacherPicker v-model="assignForm.ownerId" placeholder="选择跟进教师" :disabled="acting" @change="onOwnerPicked" /></AppFormItem>
         <template #footer>
           <AppButton variant="ghost" :disabled="acting" @click="assignVisible = false">取消</AppButton>
@@ -150,7 +150,7 @@
         </template>
       </AppDrawer>
 
-      <AppDrawer :visible="followVisible" title="新增跟进记录" @close="followVisible = false">
+      <AppDrawer :visible="followVisible" title="新增跟进记录" mode="modal" size="medium" @close="followVisible = false">
         <AppFormItem label="跟进方式" required>
           <AppSelect v-model="followForm.way" :options="wayOptions" :disabled="acting" />
         </AppFormItem>

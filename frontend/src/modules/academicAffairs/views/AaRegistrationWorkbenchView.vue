@@ -141,7 +141,7 @@
     </div>
 
     <!-- 标记核验不合格 / 转注册异常 -->
-    <AppDrawer :visible="eligDrawer.visible" title="核验不合格" @close="eligDrawer.visible = false">
+    <AppDrawer :visible="eligDrawer.visible" title="核验不合格" mode="modal" size="medium" @close="eligDrawer.visible = false">
       <div class="aarw-form">
         <p class="mp-note">学生：{{ eligDrawer.studentName }}</p>
         <AppFormItem label="异常类型" required>
@@ -160,7 +160,7 @@
     </AppDrawer>
 
     <!-- 申请暂缓注册 -->
-    <AppDrawer :visible="deferDrawer.visible" title="申请暂缓注册" @close="deferDrawer.visible = false">
+    <AppDrawer :visible="deferDrawer.visible" title="申请暂缓注册" mode="modal" size="medium" @close="deferDrawer.visible = false">
       <div class="aarw-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="deferDrawer.studentId" :disabled="deferDrawer.saving" />
@@ -181,7 +181,7 @@
     </AppDrawer>
 
     <!-- 标记注册异常 -->
-    <AppDrawer :visible="excDrawer.visible" title="标记注册异常" @close="excDrawer.visible = false">
+    <AppDrawer :visible="excDrawer.visible" title="标记注册异常" mode="modal" size="medium" @close="excDrawer.visible = false">
       <div class="aarw-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="excDrawer.studentId" :disabled="excDrawer.saving" />

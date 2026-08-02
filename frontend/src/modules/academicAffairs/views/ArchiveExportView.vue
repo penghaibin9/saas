@@ -44,7 +44,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="exportVisible" title="下载归档物料" @close="exportVisible = false">
+    <AppDrawer :visible="exportVisible" title="下载归档物料" mode="modal" size="small" @close="exportVisible = false">
       <div class="aaex-form">
         <AppFormItem label="下载用途" required>
           <AppTextInput v-model="exportPurpose" placeholder="如 上级检查留档核对（≥5字，写审计）" :disabled="exporting" />

@@ -101,7 +101,7 @@
     </template>
 
     <!-- 联系人 新增/编辑 -->
-    <AppDrawer v-model:visible="contactDrawer" :title="editingContact ? '编辑联系人' : '新增联系人 / 企业导师'">
+    <AppDrawer v-model:visible="contactDrawer" :title="editingContact ? '编辑联系人' : '新增联系人 / 企业导师'" mode="modal" size="large">
       <AppForm layout="vertical" :model="cform" @submit="submitContact">
         <AppFormItem label="类型">
           <AppSelect v-model="cform.contactType" :options="contactTypeOptions" />

@@ -47,7 +47,7 @@
       </p>
     </div>
 
-    <AppDrawer :visible="formVisible" :title="editingId ? '编辑设备' : '新建设备'" @close="formVisible = false">
+    <AppDrawer :visible="formVisible" :title="editingId ? '编辑设备' : '新建设备'" mode="modal" size="large" @close="formVisible = false">
       <div class="aaeq-form">
         <AppFormItem label="资产编号" required>
           <AppTextInput v-model="form.equipmentCode" placeholder="如 SB-2026-001" :disabled="saving" />

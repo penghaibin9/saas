@@ -1,11 +1,25 @@
 <template>
   <Teleport to="body">
     <Transition name="drawer-fade" :duration="200">
-      <div v-if="visible" class="app-drawer-mask" @click.self="close">
-        <aside class="app-drawer" role="dialog" aria-modal="true" :aria-label="title">
+      <div
+        v-if="visible"
+        class="app-drawer-mask"
+        :class="`is-${mode}`"
+        @click.self="close"
+      >
+        <aside
+          class="app-drawer"
+          :class="[`is-${mode}`, `is-${size}`]"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="title"
+        >
           <header v-if="title || $slots.header" class="app-drawer__header">
             <slot name="header">
-              <h3>{{ title }}</h3>
+              <div class="app-drawer__heading">
+                <h3>{{ title }}</h3>
+                <p v-if="subtitle">{{ subtitle }}</p>
+              </div>
             </slot>
             <button type="button" class="app-drawer__close" aria-label="关闭" @click="close">×</button>
           </header>
@@ -26,7 +40,18 @@ export default {
   name: 'AppDrawer',
   props: {
     visible: { type: Boolean, default: false },
-    title: { type: String, default: '' }
+    title: { type: String, default: '' },
+    subtitle: { type: String, default: '' },
+    mode: {
+      type: String,
+      default: 'drawer',
+      validator: (value) => ['drawer', 'modal'].includes(value)
+    },
+    size: {
+      type: String,
+      default: 'medium',
+      validator: (value) => ['small', 'medium', 'large', 'xlarge'].includes(value)
+    }
   },
   emits: ['update:visible', 'close'],
   methods: {
@@ -47,6 +72,13 @@ export default {
   display: flex;
   justify-content: flex-end;
 }
+.app-drawer-mask.is-modal {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: var(--z-modal);
+  backdrop-filter: blur(2px);
+}
 .app-drawer {
   width: min(420px, 100vw);
   height: 100%;
@@ -54,6 +86,48 @@ export default {
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
+}
+.app-drawer.is-modal {
+  width: min(720px, calc(100vw - 48px));
+  height: auto;
+  max-height: min(86vh, 900px);
+  border: 1px solid var(--border-base);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
+}
+.app-drawer.is-modal.is-small { width: min(520px, calc(100vw - 48px)); }
+.app-drawer.is-modal.is-large { width: min(880px, calc(100vw - 48px)); }
+.app-drawer.is-modal.is-xlarge { width: min(1040px, calc(100vw - 48px)); }
+.app-drawer.is-modal .app-drawer__header {
+  flex: 0 0 auto;
+  min-height: 72px;
+  padding: 16px 24px 17px;
+  border-top: 4px solid var(--color-primary);
+  background: var(--bg-card);
+}
+.app-drawer.is-modal .app-drawer__header h3 {
+  font-size: 20px;
+}
+.app-drawer__heading { min-width: 0; }
+.app-drawer__heading p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.app-drawer.is-modal .app-drawer__body {
+  min-height: 0;
+  padding: 24px;
+  background: var(--bg-page);
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+.app-drawer.is-modal .app-drawer__footer {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 14px 24px;
+  background: var(--bg-card);
 }
 .app-drawer__header {
   display: flex;
@@ -110,5 +184,25 @@ export default {
 .drawer-fade-enter-from .app-drawer,
 .drawer-fade-leave-to .app-drawer {
   transform: translateX(100%);
+}
+.drawer-fade-enter-active .app-drawer.is-modal,
+.drawer-fade-leave-active .app-drawer.is-modal {
+  transition: transform var(--motion-normal) var(--ease-standard);
+}
+.drawer-fade-enter-from .app-drawer.is-modal,
+.drawer-fade-leave-to .app-drawer.is-modal {
+  transform: translateY(12px) scale(.97);
+}
+@media (max-width: 720px) {
+  .app-drawer-mask.is-modal { padding: 12px; }
+  .app-drawer.is-modal,
+  .app-drawer.is-modal.is-small,
+  .app-drawer.is-modal.is-large,
+  .app-drawer.is-modal.is-xlarge {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    border-radius: 14px;
+  }
+  .app-drawer.is-modal .app-drawer__body { padding: 18px; }
 }
 </style>

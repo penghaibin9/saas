@@ -42,7 +42,7 @@
       <p class="mp-note">导出按当前筛选与数据范围裁剪，Excel 首行含导出人/时间水印，导出行为写审计。请假原因涉隐私，导出仅授权角色可见。</p>
     </div>
 
-    <AppDrawer v-model:visible="detailVisible" :title="detail ? '请假详情 · ' + detail.studentName : '请假详情'">
+    <AppDrawer v-model:visible="detailVisible" :title="detail ? '请假详情 · ' + detail.studentName : '请假详情'" mode="modal" size="medium">
       <template v-if="detail">
         <AppDescriptionList :items="detailItems" :columns="1" />
         <template v-if="detail.extensions && detail.extensions.length">

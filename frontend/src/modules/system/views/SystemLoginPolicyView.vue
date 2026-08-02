@@ -32,11 +32,11 @@
       </section>
     </div>
 
-    <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name">
+    <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name" mode="modal" size="medium">
       <label class="lp-label">配置值</label>
-      <textarea v-model="edit.valueText" class="mp-textarea" rows="2" />
+      <AppTextarea v-model="edit.valueText" :rows="2" />
       <label class="lp-label" style="margin-top: var(--space-3)">变更原因<span style="color: var(--danger-600)">*</span></label>
-      <textarea v-model="edit.reason" class="mp-textarea" rows="2" placeholder="至少 5 个字" />
+      <AppTextarea v-model="edit.reason" :rows="2" placeholder="至少 5 个字" />
       <div v-if="edit.error" class="mp-form-err">{{ edit.error }}</div>
       <template #footer>
         <AppButton variant="ghost" @click="edit.open = false">取消</AppButton>
@@ -50,6 +50,7 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppTextarea } from '@/components/common'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 
@@ -57,7 +58,7 @@ const SEC_KEYS = ['SEC_LOCK_MAX_FAIL', 'SEC_LOCK_MINUTES', 'SEC_PASSWORD_MIN_LEN
 
 export default {
   name: 'SystemLoginPolicyView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppTextarea },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

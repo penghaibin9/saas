@@ -24,7 +24,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑接口连接' : '新建接口连接'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑接口连接' : '新建接口连接'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <template #footer>
         <AppButton variant="ghost" @click="form.open = false">取消</AppButton>
@@ -32,9 +32,9 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="rotate.open" :title="'轮换凭证 · ' + rotate.name">
+    <AppDrawer v-model:visible="rotate.open" :title="'轮换凭证 · ' + rotate.name" mode="modal" size="small">
       <label class="ig-label">新凭证（至少 8 位）</label>
-      <textarea v-model="rotate.credential" class="mp-textarea" rows="2" />
+      <AppTextarea v-model="rotate.credential" :rows="2" />
       <template #footer>
         <AppButton variant="ghost" @click="rotate.open = false">取消</AppButton>
         <AppButton variant="primary" :loading="rotate.submitting" @click="submitRotate">确认轮换</AppButton>
@@ -47,6 +47,7 @@
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppTextarea } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
@@ -55,7 +56,7 @@ export default {
   name: 'SystemIntegrationView',
   components: {
     ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, FormFields
+    AppButton, AppDrawer, AppTextarea, FormFields
   },
   props: { ctx: { type: Object, required: true } },
   data() {

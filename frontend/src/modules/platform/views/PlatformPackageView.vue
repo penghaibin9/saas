@@ -47,7 +47,7 @@
     </div>
 
     <!-- 新增 / 编辑套餐 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑套餐' : '新增套餐'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑套餐' : '新增套餐'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">底座模块（学生主档 / PC 管理端 / 权限与流程 / 集成开放）随任意套餐自动包含，无需勾选。</p>
       <template #footer>
@@ -57,7 +57,7 @@
     </AppDrawer>
 
     <!-- 套餐详情 -->
-    <AppDrawer v-model:visible="detail.open" :title="'套餐详情 · ' + (detail.data ? detail.data.name : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'套餐详情 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">定位</span><span class="mp-kv__v">{{ detail.data.positioning }}</span></div>

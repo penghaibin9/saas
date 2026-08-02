@@ -102,7 +102,7 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <AppDrawer :visible="createDlg.visible" title="新建风险记录" @close="createDlg.visible = false">
+    <AppDrawer :visible="createDlg.visible" title="新建风险记录" mode="modal" size="medium" @close="createDlg.visible = false">
       <div class="sa-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="createDlg.studentId"

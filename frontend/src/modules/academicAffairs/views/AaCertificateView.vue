@@ -39,7 +39,7 @@
       </template>
     </DataTable>
 
-    <AppDrawer :visible="genVisible" title="批量生成证书" @close="genVisible = false">
+    <AppDrawer :visible="genVisible" title="批量生成证书" mode="modal" size="large" @close="genVisible = false">
       <div class="aacert-form">
         <AppFormItem label="毕业审核批次" required><AppGraduationBatchPicker v-model="genForm.batchId" :query="{ status: 'FINALIZED' }" placeholder="选择已终审批次" :disabled="saving" /></AppFormItem>
         <AppFormItem label="编号前缀（学校代码）" required><AppTextInput v-model="genForm.prefix" placeholder="如 13899" :disabled="saving" /></AppFormItem>
@@ -55,7 +55,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="voidVisible" :title="'作废证书 · ' + (voidRow ? voidRow.certNo : '')" @close="voidVisible = false">
+    <AppDrawer :visible="voidVisible" :title="'作废证书 · ' + (voidRow ? voidRow.certNo : '')" mode="modal" size="small" @close="voidVisible = false">
       <div class="aacert-form">
         <AppFormItem label="作废原因（≥5字）" required><AppTextarea v-model="voidReason" placeholder="如：打印信息有误需补发" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="voidError" type="danger" :description="voidError" />

@@ -121,7 +121,7 @@
       </div>
     </div>
 
-    <AppDrawer v-model:visible="batchModal.visible" title="新建归档批次">
+    <AppDrawer v-model:visible="batchModal.visible" title="新建归档批次" mode="modal" size="medium">
       <div class="av-form">
         <div class="av-form__note">批次建立后，按批次圈定学生并生成档案包。批次名称建议包含届别、学年或归档对象。</div>
         <AppFormItem label="批次名称" required>
@@ -138,7 +138,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="collectModal.visible" title="圈定学生生成档案包">
+    <AppDrawer v-model:visible="collectModal.visible" title="圈定学生生成档案包" mode="modal" size="medium">
       <div class="av-form">
         <div class="av-form__note">只选择本批次确需归档的学生。提交后系统为每名学生生成一份独立档案包。</div>
         <AppFormItem label="学生（可多选）" required>

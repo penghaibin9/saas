@@ -11,7 +11,7 @@
         type="button"
         :aria-expanded="open"
         title="查看账号与切换身份"
-        @click="toggleOpen"
+        @click.stop="toggleOpen"
       >
         <span class="uchip__avatar">{{ (user.realName || '?').slice(0, 1) }}</span>
         <span class="uchip__info">
@@ -27,9 +27,9 @@
         type="button"
         :disabled="!!switchingId"
         :title="switchHint"
-        @click="toggleOpen"
+        @click.stop="toggleOpen"
       >
-        切换身份
+        {{ switchButtonLabel }}
       </button>
     </div>
 
@@ -44,7 +44,13 @@
       <div v-if="contextsLoading" class="uchip__hint">正在加载可用身份…</div>
       <div v-else-if="contextsError" class="uchip__hint is-err">{{ contextsError }}</div>
       <template v-else-if="contexts.length">
-        <div class="uchip__sec">可选身份（{{ contexts.length }}）</div>
+        <div class="uchip__identity-head">
+          <div>
+            <strong>身份与工作台</strong>
+            <span>{{ user.realName }}共有 {{ contexts.length }} 个可用身份</span>
+          </div>
+          <span class="uchip__identity-count">{{ contexts.length }}</span>
+        </div>
         <button
           v-for="c in contexts"
           :key="c.contextId"
@@ -58,9 +64,9 @@
             <span class="uchip__ctx-name">{{ contextTitle(c) }}</span>
             <span v-if="contextScope(c)" class="uchip__ctx-scope">{{ contextScope(c) }}</span>
           </span>
-          <span v-if="isActive(c)" class="uchip__badge">当前</span>
+          <span v-if="isActive(c)" class="uchip__badge">当前工作台</span>
           <span v-else-if="switchingId === c.contextId" class="uchip__badge">切换中</span>
-          <span v-else class="uchip__badge is-go">切换</span>
+          <span v-else class="uchip__badge is-go">进入工作台 →</span>
         </button>
         <p v-if="contexts.length < 2" class="uchip__hint">
           本账号目前只有一个可用身份，无法切换。需要多身份请在系统管理里给该账号再挂角色。
@@ -167,7 +173,11 @@ export default {
     switchHint() {
       if (!this.loadedOnce) return '打开身份列表'
       if (this.contexts.length > 1) return `本账号有 ${this.contexts.length} 个身份，点击切换`
-      return '本账号目前只有一个身份'
+      return '查看当前账号的身份与数据范围'
+    },
+    switchButtonLabel() {
+      if (!this.loadedOnce) return '身份列表'
+      return `身份列表 · ${this.contexts.length}`
     }
   },
   watch: {
@@ -231,7 +241,8 @@ export default {
         const name = this.contextTitle(c)
         toast.success(`已切换为「${data.contextName || name}」`)
         this.open = false
-        window.location.reload()
+        // 身份切换后统一进入新身份的工作台，避免停留在旧身份才有权限的业务深页。
+        window.location.replace('/workbench')
       } catch (e) {
         toast.error((e && e.message) || '身份切换失败')
         this.switchingId = ''
@@ -422,6 +433,44 @@ export default {
   font-weight: 600;
   color: #64748b;
   letter-spacing: 0.02em;
+}
+.uchip__identity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 8px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: var(--pri-50, #eff6ff);
+  border: 1px solid var(--pri-100, #dbeafe);
+}
+.uchip__identity-head > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.uchip__identity-head strong {
+  color: var(--t1, #0f172a);
+  font-size: 12.5px;
+}
+.uchip__identity-head span {
+  color: var(--t3, #64748b);
+  font-size: 10.5px;
+}
+.uchip__identity-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 9px;
+  background: var(--pri, #2563eb);
+  color: #fff !important;
+  font-size: 14px !important;
+  font-weight: 800;
 }
 .uchip__ctx {
   display: flex;

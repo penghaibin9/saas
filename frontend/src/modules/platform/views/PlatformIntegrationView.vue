@@ -50,7 +50,7 @@
     </div>
 
     <!-- 新增 / 编辑集成 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑集成' : '新增外部系统接入'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑集成' : '新增外部系统接入'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">
         保存后 AppKey / Secret 通过安全信道一次性下发对接责任人，系统仅存密文；全部对接调用写入调用日志。
@@ -62,7 +62,7 @@
     </AppDrawer>
 
     <!-- 集成详情 -->
-    <AppDrawer v-model:visible="detail.open" :title="'集成详情 · ' + (detail.data ? detail.data.name : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'集成详情 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">租户</span><span class="mp-kv__v">{{ detail.data.tenantName }}</span></div>

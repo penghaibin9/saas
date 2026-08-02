@@ -70,7 +70,7 @@
       />
     </template>
 
-    <AppDrawer v-model:visible="createModal.visible" title="登记家校联系">
+    <AppDrawer v-model:visible="createModal.visible" title="登记家校联系" mode="modal" size="large">
       <div class="fc-form-note">请客观记录联系事由、家长反馈和下一步约定。完整号码只在确有联系需要时查看。</div>
       <AppFormItem label="联系方式" required>
         <AppSelect v-model="createModal.contactType" :options="contactTypeOptions" />

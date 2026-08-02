@@ -77,7 +77,7 @@
     </div>
 
     <!-- 新增 / 编辑租户 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑租户' : '新增租户'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑租户' : '新增租户'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">
         新租户初始为「试用中」；正式开通与有效期以订单授权为准。学校品牌项在租户详情中配置。

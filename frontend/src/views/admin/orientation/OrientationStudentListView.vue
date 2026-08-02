@@ -81,7 +81,7 @@
         :submitting="submitting"
         @confirm="onAssignConfirm"
       >
-        <input v-model="assignCounselor" class="ori-assign-input" placeholder="请输入辅导员姓名" />
+        <AppTextInput v-model="assignCounselor" placeholder="请输入辅导员姓名" />
       </AppConfirmDialog>
 
       <ImportDialog v-model:visible="importVisible" :template="importTemplate" :validate-fn="validateImportFn" :import-fn="confirmImportFn" @imported="load" />
@@ -94,7 +94,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 新生台账">
+      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 新生台账" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>
@@ -108,7 +108,7 @@
  * 导入 / 导出（脱敏+水印+审计确认）/ 操作留痕 / 权限置灰 / 空·加载·异常·无权限状态。
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
-import { AppConfirmDialog } from '@/components/common'
+import { AppConfirmDialog, AppTextInput } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import {
   TableActionColumn,
@@ -140,6 +140,7 @@ export default {
     LoadingState,
     ErrorState,
     AppConfirmDialog,
+    AppTextInput,
     AppDrawer,
     TableActionColumn,
     BatchActionBar,

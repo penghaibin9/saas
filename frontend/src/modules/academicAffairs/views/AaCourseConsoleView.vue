@@ -78,7 +78,7 @@
     </template>
 
     <!-- 调整类别/性质/考核方式 -->
-    <AppDrawer :visible="dimForm.visible" :title="dimFormTitle" @update:visible="dimForm.visible = $event">
+    <AppDrawer :visible="dimForm.visible" :title="dimFormTitle" mode="modal" size="medium" @update:visible="dimForm.visible = $event">
       <div class="aacc-form" v-if="dimForm.row">
         <AppFormItem :label="dimForm.row.courseName"><span class="mp-note">{{ dimForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem v-if="dimForm.dim === 'category'" label="课程类别" required>
@@ -99,7 +99,7 @@
     </AppDrawer>
 
     <!-- 编辑学分学时 -->
-    <AppDrawer :visible="creditForm.visible" title="编辑学分学时" @update:visible="creditForm.visible = $event">
+    <AppDrawer :visible="creditForm.visible" title="编辑学分学时" mode="modal" size="large" @update:visible="creditForm.visible = $event">
       <div class="aacc-form" v-if="creditForm.row">
         <AppFormItem :label="creditForm.row.courseName"><span class="mp-note">{{ creditForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem label="学分" required><AppNumberInput v-model="creditForm.credit" :min="0" :step="0.5" /></AppFormItem>
@@ -117,7 +117,7 @@
     </AppDrawer>
 
     <!-- 指定/更换课程负责人 -->
-    <AppDrawer :visible="ownerForm.visible" title="指定课程负责人" @update:visible="ownerForm.visible = $event">
+    <AppDrawer :visible="ownerForm.visible" title="指定课程负责人" mode="modal" size="medium" @update:visible="ownerForm.visible = $event">
       <div class="aacc-form" v-if="ownerForm.row">
         <AppFormItem :label="ownerForm.row.courseName"><span class="mp-note">{{ ownerForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem label="课程负责人" required hint="须为本校在职教师">
@@ -132,7 +132,7 @@
     </AppDrawer>
 
     <!-- 课程大纲 / 课程材料：文件清单 + 新增（附件走文件中心，POST /api/v1/files/upload） -->
-    <AppDrawer :visible="materialPanel.visible" :title="materialPanelTitle" @update:visible="materialPanel.visible = $event">
+    <AppDrawer :visible="materialPanel.visible" :title="materialPanelTitle" mode="modal" size="large" @update:visible="materialPanel.visible = $event">
       <div class="aacc-form" v-if="materialPanel.course">
         <AppFormItem :label="materialPanel.course.courseName"><span class="mp-note">{{ materialPanel.course.courseCode }}</span></AppFormItem>
 

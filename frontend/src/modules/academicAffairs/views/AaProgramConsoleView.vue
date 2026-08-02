@@ -133,7 +133,7 @@
     </template>
 
     <!-- 新建方案 -->
-    <AppDrawer :visible="createVisible" title="新建培养方案" @update:visible="createVisible = $event">
+    <AppDrawer :visible="createVisible" title="新建培养方案" mode="modal" size="medium" @update:visible="createVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="方案名称" required><AppTextInput v-model="createForm.programName" :disabled="saving" placeholder="如 软件技术2026级培养方案" /></AppFormItem>
         <AppFormItem label="专业"><AppMajorPicker v-model="createForm.majorId" :disabled="saving" placeholder="选择专业（选填）" /></AppFormItem>
@@ -148,7 +148,7 @@
     </AppDrawer>
 
     <!-- 课程模块：新增/编辑 -->
-    <AppDrawer :visible="courseVisible" :title="courseForm.programCourseId ? '编辑课程' : '添加课程'" @update:visible="courseVisible = $event">
+    <AppDrawer :visible="courseVisible" :title="courseForm.programCourseId ? '编辑课程' : '添加课程'" mode="modal" size="medium" @update:visible="courseVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="课程名称" required><AppTextInput v-model="courseForm.courseName" :disabled="saving" /></AppFormItem>
         <AppFormItem label="课程模块"><AppTextInput v-model="courseForm.module" :disabled="saving" placeholder="如 专业核心/实践环节" /></AppFormItem>
@@ -163,7 +163,7 @@
     </AppDrawer>
 
     <!-- 学分要求：新增/编辑模块学分行 -->
-    <AppDrawer :visible="creditVisible" :title="creditForm._editing ? '编辑模块学分' : '添加模块学分'" @update:visible="creditVisible = $event">
+    <AppDrawer :visible="creditVisible" :title="creditForm._editing ? '编辑模块学分' : '添加模块学分'" mode="modal" size="medium" @update:visible="creditVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="课程模块" required><AppTextInput v-model="creditForm.module" :disabled="creditForm._editing" placeholder="如 公共基础/专业核心/顶岗实习" /></AppFormItem>
         <AppFormItem label="学分目标" required><AppNumberInput v-model="creditForm.creditTarget" :min="0" /></AppFormItem>
@@ -177,7 +177,7 @@
     </AppDrawer>
 
     <!-- 毕业要求：新增/编辑 -->
-    <AppDrawer :visible="gradVisible" :title="gradForm.requirementId ? '编辑毕业要求' : '添加毕业要求'" @update:visible="gradVisible = $event">
+    <AppDrawer :visible="gradVisible" :title="gradForm.requirementId ? '编辑毕业要求' : '添加毕业要求'" mode="modal" size="medium" @update:visible="gradVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="分类" required>
           <AppSelect v-model="gradForm.category" :options="gradCategoryOptions" :disabled="saving" />
@@ -193,7 +193,7 @@
     </AppDrawer>
 
     <!-- 方案发布：绑定年级 -->
-    <AppDrawer :visible="bindVisible" title="绑定年级" @update:visible="bindVisible = $event">
+    <AppDrawer :visible="bindVisible" title="绑定年级" mode="modal" size="medium" @update:visible="bindVisible = $event">
       <div class="aapc-form" v-if="bindRow">
         <AppFormItem label="方案"><span>{{ bindRow.programName }}</span></AppFormItem>
         <AppFormItem label="绑定年级" required><AppTextInput v-model="bindForm.gradeYear" placeholder="如 2026" /></AppFormItem>
@@ -207,7 +207,7 @@
     </AppDrawer>
 
     <!-- 方案发布：绑定记录只读 -->
-    <AppDrawer :visible="bindingsVisible" title="绑定记录" @update:visible="bindingsVisible = $event">
+    <AppDrawer :visible="bindingsVisible" title="绑定记录" mode="modal" size="large" @update:visible="bindingsVisible = $event">
       <EmptyState v-if="!bindingRows.length" title="暂无绑定记录" description="" />
       <ul v-else class="aapc-bindings">
         <li v-for="b in bindingRows" :key="b.bindingId">
@@ -218,7 +218,7 @@
     </AppDrawer>
 
     <!-- 实践环节：新增/编辑 -->
-    <AppDrawer :visible="practiceVisible" :title="practiceForm.segmentId ? '编辑实践环节' : '添加实践环节'" @update:visible="practiceVisible = $event">
+    <AppDrawer :visible="practiceVisible" :title="practiceForm.segmentId ? '编辑实践环节' : '添加实践环节'" mode="modal" size="large" @update:visible="practiceVisible = $event">
       <div class="aapc-form">
         <AppFormItem label="实践环节名称" required><AppTextInput v-model="practiceForm.segmentName" :disabled="saving" placeholder="如 认识实习/顶岗实习/毕业设计(论文)" /></AppFormItem>
         <AppFormItem label="类型"><AppSelect v-model="practiceForm.segmentType" :options="practiceSegmentTypeOptions" :disabled="saving" /></AppFormItem>
@@ -237,7 +237,7 @@
     </AppDrawer>
 
     <!-- 方案变更：变更记录只读 -->
-    <AppDrawer :visible="changeLogVisible" :title="'变更记录 · ' + changeLogProgramName" @update:visible="changeLogVisible = $event">
+    <AppDrawer :visible="changeLogVisible" :title="'变更记录 · ' + changeLogProgramName" mode="modal" size="large" @update:visible="changeLogVisible = $event">
       <EmptyState v-if="!changeLogRows.length" title="暂无变更记录" description="" />
       <ul v-else class="aapc-changelog">
         <li v-for="(r, idx) in changeLogRows" :key="idx">

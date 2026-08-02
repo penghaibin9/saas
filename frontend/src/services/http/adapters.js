@@ -150,6 +150,27 @@ export async function enrichContext(mockRes) {
       name: ctx.dataScope.scopeName || data.dataScope.name
     }
   }
+  // BasePortalLayout 的一级菜单直接消费模块 ctx；不能只合并角色和数据范围，
+  // 否则进入学生主档后会因 permissionPatterns 缺失而按 fail-closed 只剩工作台。
+  if (Array.isArray(ctx.permissionPatterns)) {
+    data.permissionPatterns = [...ctx.permissionPatterns]
+  }
+  if (Array.isArray(ctx.moduleEntitlements)) {
+    data.moduleEntitlements = [...ctx.moduleEntitlements]
+  }
+  data.moduleStates = ctx.moduleStates || {}
+  data.moduleAccessHealthy = ctx.moduleAccessHealthy !== false
+  data.moduleAccessError = ctx.moduleAccessError || ''
+  data.readonlyTenant = !!ctx.readonlyTenant
+  data.readonlyReason = ctx.readonlyReason || ''
+  const role = data.currentRole || {}
+  data.ctxKey = [
+    role.contextId || '',
+    role.permissionVersion || '',
+    role.roleCode || '',
+    Array.isArray(data.permissionPatterns) ? [...data.permissionPatterns].sort().join(',') : '',
+    Array.isArray(data.moduleEntitlements) ? [...data.moduleEntitlements].sort().join(',') : ''
+  ].join('|')
   if (todoSummary && typeof todoSummary.pending === 'number') {
     data.pendingCount = todoSummary.pending
   }
@@ -305,4 +326,3 @@ export async function createStudentsExport({ purpose, remark, scopeLabel } = {})
 /* 旧「学生真实文件导入」适配器已删除：/import/students/* 随入口收敛下线。
  * 学生批量导入统一走「系统管理 › 学生导入与账号开通」
  * （systemApi.validateStudentIdentityFile / confirmStudentIdentityBatch）。 */
-

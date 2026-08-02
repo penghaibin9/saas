@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" :title="template ? template.name : '批量导入'" @update:visible="onClose">
+  <AppDrawer :visible="visible" :title="template ? template.name : '批量导入'" mode="modal" size="xlarge" @update:visible="onClose">
     <div v-if="!template" class="aid-note">导入模板加载中…</div>
     <template v-else>
       <AccountImportBoundaryNotice class="aid-boundary" />
@@ -25,7 +25,7 @@
       <section class="aid-sec">
         <div class="aid-sec__title">② 上传并校验</div>
         <div class="aid-file">
-          <input v-model="fileName" type="text" class="aid-input" placeholder="选择文件（演示环境输入文件名模拟上传）" />
+          <AppTextInput v-model="fileName" placeholder="选择文件（演示环境输入文件名模拟上传）" />
           <AppButton variant="primary" :loading="validating" @click="validate">解析校验</AppButton>
         </div>
         <div v-if="preview" class="aid-preview">
@@ -79,11 +79,12 @@
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
 import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
+import { AppTextInput } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AcademicImportDrawer',
-  components: { AppDrawer, AppButton, AccountImportBoundaryNotice },
+  components: { AppDrawer, AppButton, AccountImportBoundaryNotice, AppTextInput },
   props: {
     visible: { type: Boolean, default: false },
     template: { type: Object, default: null },

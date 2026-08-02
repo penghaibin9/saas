@@ -101,7 +101,7 @@
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
 
-      <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" @update:visible="pv.visible = $event">
+      <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" mode="modal" size="xlarge" @update:visible="pv.visible = $event">
         <div class="participant-note">确认名单前请核对报名状态与签到时间；名单确认后会生成正式第二课堂记录。</div>
         <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>

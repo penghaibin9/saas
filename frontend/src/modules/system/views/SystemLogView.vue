@@ -74,7 +74,7 @@
     </div>
 
     <!-- 操作日志详情：前后值对照 -->
-    <AppDrawer v-model:visible="detail.open" title="操作日志详情">
+    <AppDrawer v-model:visible="detail.open" title="操作日志详情" mode="modal" size="xlarge">
       <template v-if="detail.row">
         <div class="mp-kv"><span class="mp-kv__k">时间</span><span class="mp-kv__v">{{ detail.row.time }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">操作人</span><span class="mp-kv__v">{{ detail.row.who }} · {{ detail.row.roleName }}</span></div>

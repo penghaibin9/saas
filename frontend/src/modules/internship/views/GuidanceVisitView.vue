@@ -94,7 +94,7 @@
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="true"
       :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm" />
 
-    <AppDrawer :visible="commDlg.visible" title="登记企业沟通" @update:visible="commDlg.visible = $event">
+    <AppDrawer :visible="commDlg.visible" title="登记企业沟通" mode="modal" size="large" @update:visible="commDlg.visible = $event">
       <AppFormItem label="企业" required>
         <AppInternshipEnterprisePicker v-model="commForm.enterpriseId" placeholder="按企业名称搜索" />
       </AppFormItem>
@@ -115,7 +115,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="planDlg.visible" title="新建巡访计划" @update:visible="planDlg.visible = $event">
+    <AppDrawer :visible="planDlg.visible" title="新建巡访计划" mode="modal" size="medium" @update:visible="planDlg.visible = $event">
       <AppFormItem label="巡访企业">
         <AppInternshipEnterprisePicker v-model="planForm.enterpriseId" placeholder="按企业名称搜索（可留空）"
           @change="onPlanEnterpriseChange" />

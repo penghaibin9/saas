@@ -53,7 +53,7 @@
     </div>
 
     <!-- 新增 / 编辑规则 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑数据范围规则' : '新增数据范围规则'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑数据范围规则' : '新增数据范围规则'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <template #footer>
         <AppButton variant="ghost" @click="form.open = false">取消</AppButton>
@@ -62,7 +62,7 @@
     </AppDrawer>
 
     <!-- 影响用户 -->
-    <AppDrawer v-model:visible="affected.open" :title="'影响用户 · ' + affected.name">
+    <AppDrawer v-model:visible="affected.open" :title="'影响用户 · ' + affected.name" mode="modal" size="large">
       <LoadingState v-if="affected.loading" />
       <EmptyState v-else-if="!affected.list.length" title="暂无影响用户" description="该规则当前没有被任何账号的角色引用" />
       <template v-else>

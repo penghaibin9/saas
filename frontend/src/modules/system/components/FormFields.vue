@@ -5,46 +5,45 @@
         {{ f.label }}<span v-if="f.required" class="ff__req">*</span>
         <span v-if="f.lockNote" class="ff__lock">{{ f.lockNote }}</span>
       </label>
-      <select
+      <AppSelect
         v-if="f.type === 'select'"
-        class="ff__control"
+        :model-value="modelValue[f.key] ?? ''"
+        :options="f.options || []"
+        :placeholder="f.placeholder || '请选择'"
         :disabled="f.disabled"
-        :value="modelValue[f.key] ?? ''"
-        @change="update(f.key, $event.target.value)"
-      >
-        <option value="" disabled>请选择</option>
-        <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
-      </select>
-      <div v-else-if="f.type === 'checkbox-group'" class="ff__checks">
-        <label v-for="o in f.options || []" :key="o.value" class="ff__check">
-          <input
-            type="checkbox"
-            :checked="(modelValue[f.key] || []).includes(o.value)"
-            @change="toggleMulti(f.key, o.value, $event.target.checked)"
-          />
-          {{ o.label }}
-        </label>
-      </div>
-      <textarea
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
+      />
+      <AppCheckboxGroup
+        v-else-if="f.type === 'checkbox-group'"
+        :model-value="modelValue[f.key] || []"
+        :options="f.options || []"
+        :disabled="f.disabled"
+        size="compact"
+        @update:model-value="update(f.key, $event)"
+      />
+      <AppTextarea
         v-else-if="f.type === 'textarea'"
-        class="ff__control ff__control--area"
+        :model-value="modelValue[f.key] ?? ''"
+        :rows="f.rows || 3"
         :disabled="f.disabled"
         :placeholder="f.placeholder || '请输入'"
-        :value="modelValue[f.key] ?? ''"
-        @input="update(f.key, $event.target.value)"
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
       />
       <div v-else-if="f.type === 'color'" class="ff__color">
         <input type="color" :value="modelValue[f.key] || '#2563eb'" :disabled="f.disabled" @input="update(f.key, $event.target.value)" />
         <span class="ff__color-v">{{ modelValue[f.key] }}</span>
       </div>
-      <input
+      <AppTextInput
         v-else
-        type="text"
-        class="ff__control"
+        :model-value="modelValue[f.key] ?? ''"
+        :type="f.type === 'tel' ? 'tel' : 'text'"
         :disabled="f.disabled"
         :placeholder="f.placeholder || '请输入'"
-        :value="modelValue[f.key] ?? ''"
-        @input="update(f.key, $event.target.value)"
+        :maxlength="f.maxlength || 0"
+        :status="errors[f.key] ? 'error' : 'default'"
+        @update:model-value="update(f.key, $event)"
       />
       <div v-if="errors[f.key]" class="ff__err">{{ errors[f.key] }}</div>
       <div v-else-if="f.hint" class="ff__hint">{{ f.hint }}</div>
@@ -53,6 +52,8 @@
 </template>
 
 <script>
+import { AppCheckboxGroup, AppSelect, AppTextInput, AppTextarea } from '@/components/common'
+
 /**
  * FormFields — 系统管理模块局部组件：schema 驱动的表单渲染器。
  * fields: [{ key, label, type: text|select|textarea|checkbox-group|color, options?, required?,
@@ -62,6 +63,7 @@
  */
 export default {
   name: 'SystemFormFields',
+  components: { AppCheckboxGroup, AppSelect, AppTextInput, AppTextarea },
   props: {
     modelValue: { type: Object, required: true },
     fields: { type: Array, default: () => [] },
@@ -71,11 +73,6 @@ export default {
   methods: {
     update(key, value) {
       this.$emit('update:modelValue', { ...this.modelValue, [key]: value })
-    },
-    toggleMulti(key, value, checked) {
-      const cur = [...(this.modelValue[key] || [])]
-      const next = checked ? [...cur, value] : cur.filter((v) => v !== value)
-      this.update(key, next)
     }
   },
   validateRequired(fields, value) {
@@ -118,45 +115,6 @@ export default {
 .ff__lock {
   font-weight: var(--font-weight-normal);
   color: var(--text-tertiary);
-}
-.ff__control {
-  height: 34px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  padding: 0 var(--space-2);
-  outline: none;
-}
-.ff__control:focus {
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
-}
-.ff__control:disabled {
-  background: var(--bg-section-blue);
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-}
-.ff__control--area {
-  height: auto;
-  min-height: 72px;
-  padding: var(--space-2);
-  resize: vertical;
-}
-.ff__checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  padding: var(--space-1) 0;
-}
-.ff__check {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
 }
 .ff__color {
   display: flex;

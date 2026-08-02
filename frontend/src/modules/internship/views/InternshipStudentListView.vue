@@ -53,7 +53,7 @@
     </div>
 
     <!-- 建档 -->
-    <AppDrawer v-model:visible="createVisible" title="实习学生建档">
+    <AppDrawer v-model:visible="createVisible" title="实习学生建档" mode="modal" size="large">
       <form class="ie-form" @submit.prevent="submitCreate">
         <!-- 注意：Picker 不能包在 <label> 里，label 激活会把点击转发给选择器内部按钮（清空/搜索） -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">学生 <i>*</i></span>
@@ -65,7 +65,7 @@
           />
         </div>
         <div class="ie-fld"><span class="ie-lbl">校内指导教师</span><AppInternshipAdvisorPicker v-model="cform.advisorUserId" clearable placeholder="暂不分配" /></div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="cform.remark" class="ie-in" rows="2" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><AppTextarea v-model="cform.remark" :rows="2" /></label>
         <p v-if="cError" class="ie-err">{{ cError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="createVisible = false">取消</button>
@@ -75,7 +75,7 @@
     </AppDrawer>
 
     <!-- 分配岗位（从岗位库选已上架岗位） -->
-    <AppDrawer v-model:visible="assignVisible" :title="assignRow ? `分配岗位 · ${assignRow.name}` : '分配岗位'">
+    <AppDrawer v-model:visible="assignVisible" :title="assignRow ? `分配岗位 · ${assignRow.name}` : '分配岗位'" mode="modal" size="medium">
       <div class="ie-form">
         <p class="ie-hint">仅「已上架」且企业非黑名单、未满员的岗位可选（来自岗位库真实数据）。</p>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">岗位 <i>*</i></span>
@@ -94,11 +94,11 @@
       </div>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="advisorVisible" :title="advisorRow ? `分配指导老师 · ${advisorRow.name}` : '分配指导老师'">
+    <AppDrawer v-model:visible="advisorVisible" :title="advisorRow ? `分配指导老师 · ${advisorRow.name}` : '分配指导老师'" mode="modal" size="medium">
       <div class="ie-form">
         <p class="ie-hint">选择当前租户内启用的教职工账号。变更会写入学生实习档案和审计留痕。</p>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">校内指导教师 <i>*</i></span><AppInternshipAdvisorPicker v-model="advisorAssignmentUserId" /></div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">分配说明</span><textarea v-model.trim="advisorAssignmentReason" class="ie-in" rows="2" placeholder="例如：按专业方向调整指导关系" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">分配说明</span><AppTextarea v-model="advisorAssignmentReason" :rows="2" placeholder="例如：按专业方向调整指导关系" /></label>
         <p v-if="advisorError" class="ie-err">{{ advisorError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="advisorVisible = false">取消</button>
@@ -135,7 +135,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { AppSensitiveText, AppStatusTag, AppExportButton, AppInternshipCandidateStudentPicker, AppInternshipPositionPicker, AppInternshipAdvisorPicker } from '@/components/common'
+import { AppSensitiveText, AppStatusTag, AppExportButton, AppTextarea, AppInternshipCandidateStudentPicker, AppInternshipPositionPicker, AppInternshipAdvisorPicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { TableActionColumn } from '@/modules/internship/components'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
@@ -170,7 +170,7 @@ const PANEL_HINTS = {
 export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState,
-    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppExcelImportDrawer, TableActionColumn, ModuleSummaryStrip,
+    AppDrawer, AppConfirmDialog, AppSensitiveText, AppStatusTag, AppExportButton, AppTextarea, AppExcelImportDrawer, TableActionColumn, ModuleSummaryStrip,
     AppInternshipCandidateStudentPicker, AppInternshipPositionPicker, AppInternshipAdvisorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {

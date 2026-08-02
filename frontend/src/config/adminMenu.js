@@ -36,7 +36,7 @@ function inferModuleCode(groupKey, path) {
   if (p.startsWith('/admin/employment')) return 'EMPLOYMENT'
   if (p.startsWith('/admin/workflow')) return 'WORKFLOW'
   if (p.startsWith('/admin/platform')) return 'PLATFORM'
-  if (p === '/' || p.startsWith('/admin/messages') || p.startsWith('/admin/help')) return 'WORKBENCH'
+  if (p === '/workbench' || p.startsWith('/admin/messages') || p.startsWith('/admin/help')) return 'WORKBENCH'
   const map = {
     workbench: 'WORKBENCH',
     'student-affairs': 'STUDENT',
@@ -108,7 +108,9 @@ const ROLE_MODULE_ALLOW = {
 }
 
 function roleType(ctx) {
-  return (ctx && ctx.currentRole && (ctx.currentRole.roleType || ctx.currentRole.type)) || null
+  return (ctx && ctx.currentRole && (
+    ctx.currentRole.roleType || ctx.currentRole.type || ctx.currentRole.roleCode
+  )) || null
 }
 
 function workbenchOnly(leaf) {
@@ -195,7 +197,7 @@ export const LEGACY_GROUP_KEY_MAP = {
 }
 
 export const SEARCH_ALIASES = [
-  { keywords: ['工作台', '我的工作台', '首页'], path: '/', label: '工作台 / 我的工作台' },
+  { keywords: ['工作台', '我的工作台', '首页'], path: '/workbench', label: '工作台 / 我的工作台' },
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
