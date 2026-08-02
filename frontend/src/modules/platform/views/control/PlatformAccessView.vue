@@ -34,8 +34,8 @@
           <label>平台用户 ID<input v-model.trim="elevationForm.userId" required /></label>
           <label>具体能力<input v-model.trim="elevationForm.capabilities" required placeholder="如 operations.manage, incident.manage" /></label>
           <label>有效分钟<input v-model.number="elevationForm.durationMinutes" type="number" min="1" max="240" required /></label>
-          <label>批准人<input v-model.trim="elevationForm.approvedBy" required /></label>
           <label>原因<input v-model.trim="elevationForm.reason" required minlength="5" /></label>
+          <p class="hint">批准人取当前已鉴权的平台访问管理员，并由安全审计日志固化，页面不可自行填写。</p>
           <AppButton variant="primary" :loading="saving === 'elevation'" type="submit">创建临时提升</AppButton>
         </form>
 
@@ -100,7 +100,7 @@ export default {
         { value: 'PLATFORM_SECURITY_AUDITOR', label: '安全审计' }
       ],
       assignmentForm: { userId: '', dutyCode: 'PLATFORM_COMMERCIAL', reason: '' },
-      elevationForm: { userId: '', capabilities: '', durationMinutes: 60, approvedBy: '', reason: '' },
+      elevationForm: { userId: '', capabilities: '', durationMinutes: 60, reason: '' },
       supportForm: { tenantId: '', ticketId: '', scopes: '', reason: '', durationMinutes: 60 }
     }
   },
@@ -143,7 +143,7 @@ export default {
       this.saving = ''
       if (res.code !== 0) return toast.error(res.message)
       toast.success('临时提升已创建并将在到期后自动失效')
-      this.elevationForm = { userId: '', capabilities: '', durationMinutes: 60, approvedBy: '', reason: '' }
+      this.elevationForm = { userId: '', capabilities: '', durationMinutes: 60, reason: '' }
       await this.load()
     },
     async createSupportSession() {
@@ -170,7 +170,8 @@ export default {
 .hero, .panel, .metrics article { background: var(--surface, #fff); border: 1px solid var(--card-b, #e5e6eb); border-radius: 12px; padding: 18px; }
 .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .hero h3, .panel h3 { margin: 0 0 6px; }
-.hero p { margin: 0; color: var(--text-secondary, #646a73); max-width: 900px; }
+.hero p, .hint { margin: 0; color: var(--text-secondary, #646a73); max-width: 900px; }
+.hint { font-size: 12px; line-height: 1.6; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .metrics article { display: grid; gap: 4px; }
 .metrics strong { font-size: 26px; }
