@@ -10,6 +10,7 @@ on:
       - 'backend/app/models/file.py'
       - 'backend/app/services/file_storage_governance_service.py'
       - 'backend/app/services/file_storage_cleanup_service.py'
+      - 'backend/app/services/file_storage_quota_reservation_service.py'
       - 'backend/app/services/file_upload_session_cleanup_service.py'
       - 'backend/app/services/storage/__init__.py'
       - 'backend/app/services/storage/governed.py'
@@ -31,6 +32,7 @@ on:
       - 'backend/app/models/file.py'
       - 'backend/app/services/file_storage_governance_service.py'
       - 'backend/app/services/file_storage_cleanup_service.py'
+      - 'backend/app/services/file_storage_quota_reservation_service.py'
       - 'backend/app/services/file_upload_session_cleanup_service.py'
       - 'backend/app/services/storage/__init__.py'
       - 'backend/app/services/storage/governed.py'
@@ -110,6 +112,7 @@ jobs:
             app/api/v1/file.py app/api/v1/file_governance.py app/api/v1/files.py \
             app/services/file_storage_governance_service.py \
             app/services/file_storage_cleanup_service.py \
+            app/services/file_storage_quota_reservation_service.py \
             app/services/file_upload_session_cleanup_service.py \
             app/services/storage/__init__.py app/services/storage/governed.py \
             app/workers/file_governance_worker.py
@@ -134,7 +137,9 @@ jobs:
           grep -q 'backend.exists(key)' backend/app/services/file_storage_cleanup_service.py
           grep -q 'EXPIRE_PENDING' backend/app/services/file_upload_session_cleanup_service.py
           grep -q 'assert_quota_available' backend/app/services/storage/governed.py
-          grep -q 'assert_quota_available(body.sizeBytes' backend/app/api/v1/file.py
+          grep -q 'reserve_quota(' backend/app/api/v1/file.py
+          grep -q 'with_for_update()).first()' backend/app/services/file_storage_quota_reservation_service.py
+          grep -q 'actual + held + requested > total_limit' backend/app/services/file_storage_quota_reservation_service.py
           grep -q 'router.include_router(file_governance.router)' backend/app/api/v1/files.py
           grep -q 'SystemFileStorageGovernanceView' frontend/src/modules/system/system.routes.js
           grep -q '平台默认不查看文件内容' frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue
