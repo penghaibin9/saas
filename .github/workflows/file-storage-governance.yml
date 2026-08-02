@@ -136,7 +136,8 @@ jobs:
           grep -q 'DELETE_FAILED' backend/app/services/file_storage_cleanup_service.py
           grep -q 'backend.exists(key)' backend/app/services/file_storage_cleanup_service.py
           grep -q 'EXPIRE_PENDING' backend/app/services/file_upload_session_cleanup_service.py
-          grep -q 'assert_quota_available' backend/app/services/storage/governed.py
+          grep -q 'reserve_quota(' backend/app/services/storage/governed.py
+          grep -q 'release_quota(reservation_key' backend/app/services/storage/governed.py
           grep -q 'reserve_quota(' backend/app/api/v1/file.py
           grep -q 'with_for_update()).first()' backend/app/services/file_storage_quota_reservation_service.py
           grep -q 'actual + held + requested > total_limit' backend/app/services/file_storage_quota_reservation_service.py
