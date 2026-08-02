@@ -125,8 +125,10 @@ def get_effective_state(tenant_id: int, *, strict: bool = True, db=None) -> dict
         if not tenant or tenant.is_deleted:
             raise not_found("租户不存在")
         meta_row = _meta_row(working, int(tenant_id))
-        if strict and meta_row is None:
-            raise AppException("TENANT_STATE_UNRESOLVED", "租户生命周期配置缺失", http_status=409)
+        # 存量租户可能早于 TENANT_META 生命周期配置存在。关系表状态是硬安全状态：
+        # ACTIVE 可兼容解释为 active，SUSPENDED/ARCHIVED/PROVISIONING 仍按硬状态拒绝或只读。
+        # strict 继续约束未知关系表状态、未知元数据状态和非法日期，不能因兼容而放宽。
+        lifecycle_config_missing = meta_row is None
         result = effective_state_from_records(
             row_status=tenant.status,
             meta=dict(meta_row.config_json or {}) if meta_row else {},
@@ -137,6 +139,8 @@ def get_effective_state(tenant_id: int, *, strict: bool = True, db=None) -> dict
             "tenantCode": tenant.tenant_code,
             "tenantName": tenant.school_name,
             "version": _version(tenant, meta_row),
+            "lifecycleConfigMissing": lifecycle_config_missing,
+            "needsMetadataBackfill": lifecycle_config_missing,
         })
         return result
     finally:
@@ -184,6 +188,10 @@ def tenant_360(tenant_id: int) -> dict:
         meta_row = _meta_row(db, int(tenant_id))
         meta = dict(meta_row.config_json or {}) if meta_row else {}
         state = effective_state_from_records(row_status=tenant.status, meta=meta, strict=True)
+        state.update({
+            "lifecycleConfigMissing": meta_row is None,
+            "needsMetadataBackfill": meta_row is None,
+        })
         package = platform_service.get_package(str(meta.get("packageCode") or "trial"))
         mismatch_rows = db.scalars(select(PlatformConfig).where(
             PlatformConfig.tenant_id == int(tenant_id),
