@@ -263,16 +263,26 @@ def create_elevation(payload: dict) -> dict:
     duration = int(payload.get("durationMinutes") or 0)
     if duration <= 0 or duration > 240:
         raise AppException("VALIDATION_ERROR", "临时提升必须在1-240分钟内")
-    if not str(payload.get("reason") or "").strip() or not str(payload.get("approvedBy") or "").strip():
-        raise AppException("VALIDATION_ERROR", "临时提升必须记录原因和批准人")
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "临时提升必须记录至少5个字符的原因")
     capabilities = {str(value) for value in (payload.get("capabilities") or [])}
     if not capabilities or not capabilities.issubset(KNOWN_CAPABILITIES):
         raise AppException("VALIDATION_ERROR", "临时提升只能授予已登记的具体能力，禁止通配")
     now = _now()
+    trusted = {
+        key: value for key, value in payload.items()
+        if key not in {"approvedBy", "approvedByUserId"}
+    }
     return save_record(ELEVATION, {
-        **payload,
+        **trusted,
         "userId": user_id,
+        "reason": reason,
         "capabilities": sorted(capabilities),
+        # The authenticated endpoint and security audit log are the approval
+        # authority. A browser-supplied approver name is deliberately ignored.
+        "approvedBy": "AUTHENTICATED_ACCESS_MANAGER",
+        "approvalEvidence": "SECURITY_AUDIT_CONTEXT",
         "startsAt": now.isoformat(timespec="seconds"),
         "expiresAt": (now + timedelta(minutes=duration)).isoformat(timespec="seconds"),
         "status": "ACTIVE",
