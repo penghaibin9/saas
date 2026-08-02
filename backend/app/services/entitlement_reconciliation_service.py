@@ -10,6 +10,7 @@ from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 
 _MIB = 1024 * 1024
+_LEGACY_PACKAGE_CODE = "professional"
 
 
 def commercial_storage_limit_bytes(
@@ -22,9 +23,13 @@ def commercial_storage_limit_bytes(
     from app.services import platform_service
 
     payload = dict(meta if meta is not None else platform_service.tenant_meta(int(tenant_id)))
-    pkg = dict(package if package is not None else platform_service.get_package(str(payload.get("packageCode") or "trial")))
+    package_code = str(payload.get("packageCode") or _LEGACY_PACKAGE_CODE)
+    pkg = dict(package if package is not None else platform_service.get_package(package_code))
     # Tenant commercial override may lower/raise the package ceiling, but it is
-    # still platform-owned.  School governance quota is a separate lower layer.
+    # still platform-owned. School governance quota is a separate lower layer.
+    # Pre-PLAT-02 tenants had no TENANT_META and historically inherited the
+    # professional capability set; keep their commercial ceiling consistent
+    # instead of silently downgrading them to the 512 MiB trial package.
     mb = int(payload.get("storageLimitMb") or pkg.get("storageLimitMb") or 0)
     return max(0, mb) * _MIB
 
@@ -100,7 +105,7 @@ def reconcile_tenant(tenant_id: int) -> dict:
         if not tenant or tenant.is_deleted:
             raise AppException("NOT_FOUND", "租户不存在", http_status=404)
         meta = platform_service.tenant_meta(int(tenant_id))
-        package = platform_service.get_package(str(meta.get("packageCode") or "trial"))
+        package = platform_service.get_package(str(meta.get("packageCode") or _LEGACY_PACKAGE_CODE))
         commercial = commercial_storage_limit_bytes(int(tenant_id), db=db, meta=meta, package=package)
         quota = db.scalars(select(TenantStorageQuota).where(
             TenantStorageQuota.tenant_id == int(tenant_id),
