@@ -34,8 +34,14 @@ def _tid(*, for_write: bool = False) -> int:
 
 
 def get_int(key: str, fallback: int | None = None) -> int:
-    """当前租户某配置的生效整数值：优先 t_sys_config，缺失回落 DEFAULTS/传入 fallback。
-    供强制层（登录锁定/密码校验）真实读取。任何异常都回落默认，绝不因配置读取失败阻断登录。"""
+    """当前租户某配置的生效整数值。供强制层（登录锁定/密码校验）真实读取。
+
+    SYS-11 起解析顺序为：``t_config_override``（学校/组织/学期分层覆盖，含未来生效与到期）
+    → ``t_sys_config``（既有学校配置）→ ``DEFAULTS``/传入 fallback。
+
+    分层覆盖必须在这里参与，否则页面上配的组织级/学期级阈值不会真正作用于登录强制层，
+    等于做了个看得见摸不着的假功能。任何异常仍然回落默认，绝不因配置读取失败阻断登录。
+    """
     default = fallback if fallback is not None else int(_DEFAULT_MAP.get(key, {}).get("value", 0))
     try:
         from app.db.session import db_enabled, get_sessionmaker
@@ -48,6 +54,9 @@ def get_int(key: str, fallback: int | None = None) -> int:
             tid = _tid()
             if not tid:
                 return default
+            override = _override_int(db, tid, key)
+            if override is not None:
+                return override
             row = db.scalars(select(SysConfig).where(SysConfig.tenant_id == tid,
                              SysConfig.config_key == key, SysConfig.is_deleted.is_(False))).first()
             if row is None or row.value_text is None:
@@ -57,6 +66,45 @@ def get_int(key: str, fallback: int | None = None) -> int:
             db.close()
     except Exception:
         return default
+
+
+def _override_int(db, tenant_id: int, key: str) -> int | None:
+    """读取此刻生效的租户级配置覆盖（SYS-11）。表不存在或无命中时返回 None。
+
+    这里只解析 TENANT 层：登录强制层没有组织/学期上下文，用更细粒度的层会取到
+    不该应用的值。组织级与学期级覆盖由各自带上下文的调用方经 effective_config_service
+    显式解析。
+    """
+    from datetime import datetime
+
+    try:
+        from sqlalchemy import select
+        from app.models.config_governance import (OVERRIDE_STATUS_ACTIVE,
+                                                  SCOPE_TENANT, ConfigOverride)
+    except Exception:
+        return None
+    now = datetime.utcnow()
+    try:
+        rows = db.scalars(select(ConfigOverride).where(
+            ConfigOverride.tenant_id == tenant_id,
+            ConfigOverride.config_key == key,
+            ConfigOverride.scope_type == SCOPE_TENANT,
+            ConfigOverride.status == OVERRIDE_STATUS_ACTIVE,
+            ConfigOverride.effective_at <= now,
+            ConfigOverride.is_deleted.is_(False),
+        )).all()
+    except Exception:
+        # 迁移尚未执行的环境（表不存在）必须静默回落到旧路径，不能影响登录
+        return None
+    live = [r for r in rows if r.expires_at is None or r.expires_at > now]
+    if not live:
+        return None
+    live.sort(key=lambda r: r.effective_at)
+    value = (live[-1].value_json or {}).get("value")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def list_configs() -> list[dict]:

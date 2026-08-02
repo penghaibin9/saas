@@ -10,6 +10,59 @@
     </template>
 
     <div class="mp-stack">
+      <!--
+        SYS-08 显式 DENY。上面的范围规则表达"能看哪些"，这里表达"谁都不许看哪些"。
+        把"某节点不可见"写成"少给一个 ALLOW"是不可靠的：任何人给这个角色配个更大的
+        范围就击穿了。DENY 判定永远最先命中，且不可被任何 ALLOW 覆盖。
+      -->
+      <section class="mp-card ds-deny">
+        <header class="mp-card__head">
+          <span class="mp-card__title">显式禁止（DENY）</span>
+          <span>
+            <span class="mp-note">DENY 优先于一切 ALLOW，含继承</span>
+            <button class="mp-link" @click="denyPanel.open = !denyPanel.open">
+              {{ denyPanel.open ? '收起' : '展开' }}
+            </button>
+          </span>
+        </header>
+        <div v-if="denyPanel.open" class="mp-card__body" style="padding-top: 0">
+          <table class="mp-audit">
+            <thead>
+              <tr>
+                <th style="width: 170px">角色</th>
+                <th style="width: 90px">效果</th>
+                <th style="width: 190px">目标</th>
+                <th style="width: 90px">向下继承</th>
+                <th style="width: 165px">生效期间</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in denyPanel.items" :key="p.policyId">
+                <td class="is-who">{{ p.roleCode }}</td>
+                <td>
+                  <StatusTag :type="p.effect === 'DENY' ? 'danger' : 'success'" :label="p.effect" />
+                </td>
+                <td>{{ p.targetType }}:{{ p.targetId }}</td>
+                <td>{{ p.includeChildren ? '是' : '否' }}</td>
+                <td class="mp-cell-sub">
+                  {{ fmtTime(p.effectiveAt) }} ~ {{ p.expiresAt ? fmtTime(p.expiresAt) : '长期' }}
+                </td>
+                <td class="mp-cell-sub">{{ p.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <EmptyState
+            v-if="!denyPanel.items.length"
+            title="尚未配置任何显式策略"
+            description="需要「某个学院或班级谁都不许看」时在这里配置 DENY；它不会被更大的范围覆盖"
+          />
+          <p class="mp-note" style="margin-top: var(--space-2)">
+            判定顺序：DENY → 继承 DENY → 敏感专项 → 业务关系 → 直接 ALLOW → 继承 ALLOW → 默认拒绝
+          </p>
+        </div>
+      </section>
+
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="load" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -116,6 +169,8 @@ export default {
       loading: true,
       error: '',
       rows: [],
+      // SYS-08 显式 DENY 策略（默认收起，不干扰既有范围规则管理）
+      denyPanel: { open: false, items: [] },
       filters: { keyword: '', status: '' },
       columns: [
         { key: 'rule', title: '规则' },
@@ -239,6 +294,15 @@ export default {
       if (res.code === 0) this.rows = res.data.list
       else this.error = res.message
       this.loading = false
+      this.loadDenyPolicies()
+    },
+
+    fmtTime(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
+
+    /** SYS-08 显式策略。加载失败不阻断既有范围规则列表。 */
+    async loadDenyPolicies() {
+      const res = await systemApi.getScopePolicies()
+      if (res.code === 0) this.denyPanel.items = (res.data || {}).items || []
     }
   }
 }
@@ -251,5 +315,9 @@ export default {
 }
 .mp-link + .mp-link {
   margin-left: var(--space-2);
+}
+/* SYS-08 显式 DENY */
+.ds-deny {
+  border-left: 3px solid var(--danger-600);
 }
 </style>

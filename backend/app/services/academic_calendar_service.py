@@ -65,8 +65,14 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
 WINDOW_TYPES = ("TEACHING", "EXAM", "ORIENTATION", "INTERNSHIP", "GRADUATION", "EMPLOYMENT", "HOLIDAY")
 
 
+def _floor_seconds(value: datetime | None) -> datetime | None:
+    """截断到秒。MySQL DATETIME 会把微秒四舍五入（.9 进位到下一秒），
+    否则刚排期/刚开窗的记录会因"生效时间比现在晚"而被误判为尚未生效。"""
+    return value.replace(microsecond=0) if value else value
+
+
 def _now() -> datetime:
-    return datetime.utcnow()
+    return _floor_seconds(datetime.utcnow())
 
 
 def _tenant_id(value: int | None = None) -> int:
@@ -461,6 +467,7 @@ def transition(
         now = _now()
 
         if target == CALENDAR_STATUS_SCHEDULED:
+            scheduled_at = _floor_seconds(scheduled_at)
             if not scheduled_at:
                 raise AppException("VALIDATION_ERROR", "排期激活必须提供计划时间")
             if scheduled_at <= now:
@@ -611,6 +618,8 @@ def upsert_window(
         raise AppException("VALIDATION_ERROR", f"未知窗口类型：{wtype}", details={"allowed": list(WINDOW_TYPES)})
     if not module_code:
         raise AppException("VALIDATION_ERROR", "窗口必须归属一个模块")
+    start_at = _floor_seconds(start_at)
+    end_at = _floor_seconds(end_at)
     if end_at <= start_at:
         raise AppException("VALIDATION_ERROR", "窗口结束时间必须晚于开始时间")
 

@@ -2473,3 +2473,385 @@ def upsert_academic_calendar_window(
         ),
         message="业务窗口已保存",
     )
+
+
+# ═══════════ SYS-04 组织变更版本与教职工任职 ═══════════
+# 组织仍是 t_college/t_major/t_class 三张实体表；这里只加"未来生效的变更集"和"带有效期的任职"。
+# 既有 /system/org-tree、/system/org-nodes 保持不变，继续服务于当前组织的即时维护。
+
+@router.get("/system/org-versions", summary="组织变更版本列表")
+def list_org_versions(user=Depends(require_permission("systemAdmin.org.view"))):
+    from app.services import organization_version_service as svc
+
+    return success(svc.list_versions())
+
+
+@router.post("/system/org-versions", summary="创建组织变更版本（草稿不影响当前组织）")
+def create_org_version(body: dict = Body(...), user=Depends(require_permission("systemAdmin.org.activate"))):
+    from app.services import organization_version_service as svc
+
+    return success(
+        svc.create_version(version_name=str(body.get("versionName") or ""), reason=str(body.get("reason") or "")),
+        message="组织变更版本已创建",
+    )
+
+
+@router.get("/system/org-versions/{version_id}", summary="组织变更版本详情与变更项")
+def get_org_version(version_id: int, user=Depends(require_permission("systemAdmin.org.view"))):
+    from app.services import organization_version_service as svc
+
+    return success(svc.get_version(version_id))
+
+
+@router.post("/system/org-versions/{version_id}/changes", summary="向草稿版本添加一条组织变更")
+def add_org_version_change(
+    version_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.org.activate"))
+):
+    from app.services import organization_version_service as svc
+
+    return success(
+        svc.add_change(
+            version_id,
+            change_type=str(body.get("changeType") or ""),
+            org_type=str(body.get("orgType") or ""),
+            org_node_id=body.get("orgNodeId"),
+            payload=body.get("payload") or {},
+        ),
+        message="变更项已加入草稿",
+    )
+
+
+@router.post("/system/org-versions/{version_id}/transition", summary="校验/排期/激活/回滚组织变更版本")
+def transition_org_version(
+    version_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.org.activate"))
+):
+    from app.core.exceptions import AppException
+    from app.services import organization_version_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    target = str(body.get("targetStatus") or "").upper()
+    return success(
+        svc.transition_version(
+            version_id,
+            target,
+            reason=str(body.get("reason") or ""),
+            expected_version=int(body.get("expectedVersion")),
+            effective_at=_calendar_dt(body.get("effectiveAt"), "effectiveAt", required=False),
+        ),
+        message=f"组织版本已变更为 {target}",
+    )
+
+
+@router.get("/system/org-nodes/{org_type}/{node_id}/impact", summary="移动或停用该节点会影响谁")
+def org_node_impact(org_type: str, node_id: int, user=Depends(require_permission("systemAdmin.org.view"))):
+    from app.services import organization_version_service as svc
+
+    return success(svc.compute_impact(str(org_type).upper(), node_id))
+
+
+@router.get("/system/staff-assignments", summary="教职工任职（带有效期，默认只返回此刻生效的）")
+def list_staff_assignments(
+    userId: int | None = None,
+    orgType: str | None = None,
+    orgNodeId: int | None = None,
+    includeExpired: bool = False,
+    user=Depends(require_any_permission("systemAdmin.org.affiliation.manage", "systemAdmin.org.view")),
+):
+    from app.services import organization_version_service as svc
+
+    return success(
+        svc.list_assignments(
+            user_id=userId, org_type=orgType, org_node_id=orgNodeId, include_expired=includeExpired
+        )
+    )
+
+
+@router.post("/system/staff-assignments", summary="任命教职工岗位（可指定起止时间）")
+def create_staff_assignment(
+    body: dict = Body(...), user=Depends(require_permission("systemAdmin.org.affiliation.manage"))
+):
+    from app.services import organization_version_service as svc
+
+    return success(
+        svc.create_assignment(
+            user_id=int(body.get("userId")),
+            org_type=str(body.get("orgType") or ""),
+            org_node_id=int(body.get("orgNodeId")),
+            assignment_type=str(body.get("assignmentType") or ""),
+            effective_at=_calendar_dt(body.get("effectiveAt"), "effectiveAt", required=False),
+            expires_at=_calendar_dt(body.get("expiresAt"), "expiresAt", required=False),
+            is_primary=bool(body.get("isPrimary")),
+            reason=str(body.get("reason") or ""),
+        ),
+        message="任职已生效",
+    )
+
+
+@router.post("/system/staff-assignments/{assignment_id}/revoke", summary="撤销任职")
+def revoke_staff_assignment(
+    assignment_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.org.affiliation.manage"))
+):
+    from app.core.exceptions import AppException
+    from app.services import organization_version_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    return success(
+        svc.revoke_assignment(
+            assignment_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
+        ),
+        message="任职已撤销",
+    )
+
+
+# ═══════════ SYS-11 有效配置：定义、分层覆盖与来源解释 ═══════════
+# t_sys_config 继续承载学校既有安全配置且仍被 auth 强制层读取；这里补"平台底线校验、
+# 分层覆盖、未来生效和来源链解释"，解析时把旧表作为 TENANT_LEGACY 层一并合并。
+
+@router.get("/system/config-registry", summary="配置项定义目录")
+def config_registry(user=Depends(require_permission("systemAdmin.config.view"))):
+    from app.services import effective_config_service as svc
+
+    svc.ensure_definitions()
+    return success(svc.resolve_all())
+
+
+@router.get("/system/effective-config", summary="配置最终值与完整来源链")
+def effective_config(
+    configKey: str | None = None,
+    domain: str | None = None,
+    orgUnitId: str | None = None,
+    termId: str | None = None,
+    user=Depends(require_permission("systemAdmin.config.view")),
+):
+    from app.services import effective_config_service as svc
+
+    svc.ensure_definitions()
+    if configKey:
+        return success(svc.resolve(configKey, org_unit_id=orgUnitId, term_id=termId))
+    return success(svc.resolve_all(domain=domain))
+
+
+@router.put("/system/config-overrides", summary="设置学校/组织/学期级配置覆盖")
+def set_config_override(
+    body: dict = Body(...), user=Depends(require_permission("systemAdmin.config.manage"))
+):
+    from app.core.exceptions import AppException
+    from app.services import effective_config_service as svc
+
+    config_key = str(body.get("configKey") or "")
+    if not config_key:
+        raise AppException("VALIDATION_ERROR", "缺少 configKey")
+    svc.ensure_definitions()
+    return success(
+        svc.set_override(
+            config_key,
+            value=body.get("value"),
+            scope_type=str(body.get("scopeType") or "TENANT"),
+            scope_id=str(body.get("scopeId") or ""),
+            effective_at=_calendar_dt(body.get("effectiveAt"), "effectiveAt", required=False),
+            expires_at=_calendar_dt(body.get("expiresAt"), "expiresAt", required=False),
+            reason=str(body.get("reason") or ""),
+            expected_version=body.get("expectedVersion"),
+        ),
+        message="配置已保存",
+    )
+
+
+@router.post("/system/config-overrides/{override_id}/revoke", summary="撤销一层配置覆盖")
+def revoke_config_override(
+    override_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.config.manage"))
+):
+    from app.core.exceptions import AppException
+    from app.services import effective_config_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    return success(
+        svc.revoke_override(
+            override_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
+        ),
+        message="配置覆盖已撤销",
+    )
+
+
+@router.get("/system/config-history/{config_key}", summary="配置变更历史")
+def config_history(config_key: str, user=Depends(require_permission("systemAdmin.config.view"))):
+    from app.services import effective_config_service as svc
+
+    return success(svc.history(config_key))
+
+
+# ═══════════ SYS-06 权限包、交付角色模板与自定义角色 ═══════════
+# 治理层，不接管鉴权：真实鉴权仍读 app.core.permissions.ROLE_PERMISSIONS 常量。
+# 保存自定义角色只写治理表，不改变任何人当前的实际权限。
+
+@router.post("/system/permission-governance/bootstrap", summary="从当前代码固化交付模板与权限包（幂等）")
+def bootstrap_permission_governance(user=Depends(require_permission("systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.bootstrap_from_code(), message="交付模板与权限包已同步")
+
+
+@router.get("/system/permission-bundles", summary="权限包目录")
+def list_permission_bundles(user=Depends(require_any_permission(
+        "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.list_bundles())
+
+
+@router.get("/system/role-templates", summary="交付角色模板（DELIVERED，学校只读）")
+def list_role_templates(user=Depends(require_any_permission(
+        "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.list_templates())
+
+
+@router.get("/system/role-templates/{template_code}", summary="模板权限上限与持有的通配")
+def get_role_template(template_code: str, user=Depends(require_any_permission(
+        "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.get_template(template_code))
+
+
+@router.get("/system/custom-roles", summary="学校自定义角色（含来源模板）")
+def list_custom_roles(user=Depends(require_any_permission(
+        "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.list_custom_roles())
+
+
+@router.post("/system/custom-roles/clone", summary="从交付模板复制出学校自定义角色")
+def clone_custom_role(body: dict = Body(...), user=Depends(require_permission("systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import permission_bundle_service as svc
+
+    template_code = str(body.get("templateCode") or "")
+    new_role_code = str(body.get("roleCode") or "")
+    if not template_code or not new_role_code:
+        raise AppException("VALIDATION_ERROR", "缺少 templateCode 或 roleCode")
+    return success(
+        svc.clone_template(
+            template_code, new_role_code=new_role_code, permission_codes=body.get("permissionCodes")
+        ),
+        message="自定义角色已创建（草稿不改变真实鉴权）",
+    )
+
+
+@router.put("/system/custom-roles/{role_code}", summary="裁剪自定义角色权限（不得超模板上限）")
+def update_custom_role(
+    role_code: str, body: dict = Body(...), user=Depends(require_permission("systemAdmin.role.config"))
+):
+    from app.core.exceptions import AppException
+    from app.services import permission_bundle_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    return success(
+        svc.update_custom_role(
+            role_code,
+            permission_codes=body.get("permissionCodes") or [],
+            expected_version=int(body.get("expectedVersion")),
+        ),
+        message="自定义角色已保存（草稿不改变真实鉴权）",
+    )
+
+
+@router.get("/system/wildcard-retirement", summary="通配权限退役队列")
+def wildcard_retirement_queue(user=Depends(require_any_permission(
+        "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import permission_bundle_service as svc
+
+    return success(svc.wildcard_queue())
+
+
+# ═══════════ SYS-08 组织安全树：显式 DENY、继承与判定解释 ═══════════
+# 既有 t_data_scope_rule 和 data_scope_service 的 provider 继续负责"业务关系"这一层；
+# 这里只补显式 DENY、敏感专项、未来生效，并把整条判定链解释出来。
+
+@router.get("/system/scope-policies", summary="范围策略列表（ALLOW/DENY）")
+def list_scope_policies(
+    roleCode: str | None = None,
+    user=Depends(require_any_permission("systemAdmin.scope.view", "systemAdmin.role.view")),
+):
+    from app.services import scope_policy_service as svc
+
+    return success(svc.list_policies(role_code=roleCode))
+
+
+@router.put("/system/scope-policies", summary="设置角色对某组织节点的 ALLOW 或 DENY")
+def set_scope_policy(body: dict = Body(...), user=Depends(require_permission("systemAdmin.scope.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import scope_policy_service as svc
+
+    role_code = str(body.get("roleCode") or "")
+    if not role_code:
+        raise AppException("VALIDATION_ERROR", "缺少 roleCode")
+    return success(
+        svc.set_policy(
+            role_code,
+            effect=str(body.get("effect") or "ALLOW"),
+            target_type=str(body.get("targetType") or ""),
+            target_id=str(body.get("targetId") or ""),
+            include_children=bool(body.get("includeChildren", True)),
+            sensitive_domain=body.get("sensitiveDomain"),
+            effective_at=_calendar_dt(body.get("effectiveAt"), "effectiveAt", required=False),
+            expires_at=_calendar_dt(body.get("expiresAt"), "expiresAt", required=False),
+            reason=str(body.get("reason") or ""),
+            expected_version=body.get("expectedVersion"),
+        ),
+        message="范围策略已保存",
+    )
+
+
+@router.post("/system/scope-policies/{policy_id}/revoke", summary="撤销一条范围策略")
+def revoke_scope_policy(
+    policy_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.scope.manage"))
+):
+    from app.core.exceptions import AppException
+    from app.services import scope_policy_service as svc
+
+    if "expectedVersion" not in body:
+        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+    return success(
+        svc.revoke_policy(
+            policy_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
+        ),
+        message="范围策略已撤销",
+    )
+
+
+@router.post("/system/scope-policies/simulate", summary="模拟判定：返回完整判定链与原因码")
+def simulate_scope_policy(
+    body: dict = Body(...),
+    user=Depends(require_any_permission("systemAdmin.scope.view", "systemAdmin.role.view")),
+):
+    from app.core.exceptions import AppException
+    from app.services import scope_policy_service as svc
+
+    role_code = str(body.get("roleCode") or "")
+    if not role_code:
+        raise AppException("VALIDATION_ERROR", "缺少 roleCode")
+    return success(
+        svc.decide(
+            role_code,
+            target_type=str(body.get("targetType") or ""),
+            target_id=str(body.get("targetId") or ""),
+            business_relation_allows=body.get("businessRelationAllows"),
+        )
+    )
+
+
+@router.get("/system/scope-policies/references/{role_code}", summary="角色范围引用统计（结构化来源）")
+def scope_policy_references(
+    role_code: str,
+    user=Depends(require_any_permission("systemAdmin.scope.view", "systemAdmin.role.view")),
+):
+    from app.services import scope_policy_service as svc
+
+    return success(svc.references(role_code))

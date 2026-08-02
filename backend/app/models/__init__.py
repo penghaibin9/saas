@@ -177,6 +177,16 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
 from app.models.academic_affairs_registry import *  # noqa: F401,F403
 from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 学期治理投影)
                                           CalendarTransitionEvent, CalendarWindow)
+from app.models.organization_version import (OrgVersion, OrgVersionItem,  # noqa: F401  (SYS-04 组织版本与任职)
+                                             StaffAssignment)
+from app.models.config_governance import (ConfigActivation,  # noqa: F401  (SYS-11 配置治理)
+                                          ConfigDefinition, ConfigOverride)
+from app.models.permission_governance import (CustomRoleSource,  # noqa: F401  (SYS-06 权限包与角色模板)
+                                              PermissionBundle,
+                                              PermissionBundleItem,
+                                              RoleTemplate, WildcardRetirement)
+from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS-08 组织安全树与显式DENY)
+                                     ScopePolicyTarget)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401

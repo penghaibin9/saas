@@ -1127,6 +1127,263 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '业务窗口保存失败')
     }
+  },
+
+  // ── SYS-04 组织变更版本与教职工任职 ──────────────────────────────────
+  // 组织仍是学院/专业/班级三张实体表；这里是"未来生效的变更集"和"带有效期的任职"。
+
+  /** 组织变更版本列表 */
+  async getOrgVersions() {
+    try {
+      return ok(await request('/system/org-versions'))
+    } catch (error) {
+      return fail(error.message || '组织变更版本加载失败')
+    }
+  },
+
+  /** 新建组织变更版本（草稿不影响当前组织） */
+  async createOrgVersion({ versionName, reason } = {}) {
+    try {
+      return ok(await request('/system/org-versions', { method: 'POST', body: { versionName, reason } }))
+    } catch (error) {
+      return fail(error.message || '创建组织变更版本失败')
+    }
+  },
+
+  /** 版本详情与变更项 */
+  async getOrgVersionDetail(versionId) {
+    try {
+      return ok(await request(`/system/org-versions/${encodeURIComponent(versionId)}`))
+    } catch (error) {
+      return fail(error.message || '版本详情加载失败')
+    }
+  },
+
+  /** 向草稿版本添加一条变更 */
+  async addOrgVersionChange(versionId, payload = {}) {
+    try {
+      return ok(await request(`/system/org-versions/${encodeURIComponent(versionId)}/changes`, {
+        method: 'POST', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '添加变更项失败')
+    }
+  },
+
+  /** 校验 / 排期 / 激活 / 回滚组织变更版本 */
+  async transitionOrgVersion(versionId, { targetStatus, reason, expectedVersion, effectiveAt } = {}) {
+    try {
+      return ok(await request(`/system/org-versions/${encodeURIComponent(versionId)}/transition`, {
+        method: 'POST', body: { targetStatus, reason, expectedVersion, effectiveAt }
+      }))
+    } catch (error) {
+      return fail(error.message || '组织版本状态变更失败')
+    }
+  },
+
+  /** 移动或停用某节点会影响多少下级与学生 */
+  async getOrgNodeImpact(orgType, nodeId) {
+    try {
+      return ok(await request(
+        `/system/org-nodes/${encodeURIComponent(orgType)}/${encodeURIComponent(nodeId)}/impact`
+      ))
+    } catch (error) {
+      return fail(error.message || '影响面计算失败')
+    }
+  },
+
+  /** 教职工任职（默认只返回此刻真实生效的） */
+  async listStaffAssignments({ userId, orgType, orgNodeId, includeExpired } = {}) {
+    try {
+      const qs = new URLSearchParams()
+      if (userId) qs.set('userId', userId)
+      if (orgType) qs.set('orgType', orgType)
+      if (orgNodeId) qs.set('orgNodeId', orgNodeId)
+      if (includeExpired) qs.set('includeExpired', 'true')
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return ok(await request(`/system/staff-assignments${suffix}`))
+    } catch (error) {
+      return fail(error.message || '任职记录加载失败')
+    }
+  },
+
+  /** 任命岗位（可指定起止时间；到期后自动失效） */
+  async createStaffAssignment(payload = {}) {
+    try {
+      return ok(await request('/system/staff-assignments', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '任职创建失败')
+    }
+  },
+
+  /** 撤销任职 */
+  async revokeStaffAssignment(assignmentId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/staff-assignments/${encodeURIComponent(assignmentId)}/revoke`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return fail(error.message || '任职撤销失败')
+    }
+  },
+
+  // ── SYS-11 有效配置：来源链与分层覆盖 ────────────────────────────────
+  // 最终值由后端一个 Resolver 算出，前端只展示，不自行推断来源。
+
+  /** 配置最终值与完整来源链（不传 configKey 返回全部） */
+  async getEffectiveConfig({ configKey, domain, orgUnitId, termId } = {}) {
+    try {
+      const qs = new URLSearchParams()
+      if (configKey) qs.set('configKey', configKey)
+      if (domain) qs.set('domain', domain)
+      if (orgUnitId) qs.set('orgUnitId', orgUnitId)
+      if (termId) qs.set('termId', termId)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return ok(await request(`/system/effective-config${suffix}`))
+    } catch (error) {
+      return fail(error.message || '有效配置加载失败')
+    }
+  },
+
+  /** 设置学校/组织/学期级配置覆盖；越过平台底线后端会拒绝 */
+  async setConfigOverride(payload = {}) {
+    try {
+      return ok(await request('/system/config-overrides', { method: 'PUT', body: payload }))
+    } catch (error) {
+      return fail(error.message || '配置保存失败')
+    }
+  },
+
+  /** 撤销一层配置覆盖 */
+  async revokeConfigOverride(overrideId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/config-overrides/${encodeURIComponent(overrideId)}/revoke`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return fail(error.message || '配置撤销失败')
+    }
+  },
+
+  /** 某个配置的变更历史 */
+  async getConfigHistory(configKey) {
+    try {
+      return ok(await request(`/system/config-history/${encodeURIComponent(configKey)}`))
+    } catch (error) {
+      return fail(error.message || '配置历史加载失败')
+    }
+  },
+
+  // ── SYS-06 权限包、交付模板与通配退役 ────────────────────────────────
+  // 治理层：保存自定义角色只写治理表，不改变任何人当前的实际权限。
+
+  /** 从当前代码固化交付模板与权限包（幂等） */
+  async bootstrapPermissionGovernance() {
+    try {
+      return ok(await request('/system/permission-governance/bootstrap', { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '权限治理初始化失败')
+    }
+  },
+
+  /** 交付角色模板（DELIVERED，学校只读） */
+  async getRoleTemplates() {
+    try {
+      return ok(await request('/system/role-templates'))
+    } catch (error) {
+      return fail(error.message || '交付角色模板加载失败')
+    }
+  },
+
+  /** 模板权限上限与其持有的通配 */
+  async getRoleTemplateDetail(templateCode) {
+    try {
+      return ok(await request(`/system/role-templates/${encodeURIComponent(templateCode)}`))
+    } catch (error) {
+      return fail(error.message || '模板详情加载失败')
+    }
+  },
+
+  /** 权限包目录 */
+  async getPermissionBundles() {
+    try {
+      return ok(await request('/system/permission-bundles'))
+    } catch (error) {
+      return fail(error.message || '权限包加载失败')
+    }
+  },
+
+  /** 通配权限退役队列（展开数为下界，见后端 disclaimer） */
+  async getWildcardRetirement() {
+    try {
+      return ok(await request('/system/wildcard-retirement'))
+    } catch (error) {
+      return fail(error.message || '通配退役队列加载失败')
+    }
+  },
+
+  /** 学校自定义角色（含来源模板） */
+  async getCustomRoles() {
+    try {
+      return ok(await request('/system/custom-roles'))
+    } catch (error) {
+      return fail(error.message || '自定义角色加载失败')
+    }
+  },
+
+  /** 从交付模板复制出学校自定义角色；超模板上限后端会 403 */
+  async cloneRoleTemplate({ templateCode, roleCode, permissionCodes } = {}) {
+    try {
+      return ok(await request('/system/custom-roles/clone', {
+        method: 'POST', body: { templateCode, roleCode, permissionCodes }
+      }))
+    } catch (error) {
+      return fail(error.message || '自定义角色创建失败')
+    }
+  },
+
+  // ── SYS-08 组织安全树：显式 DENY 与判定解释 ──────────────────────────
+  // DENY 优先于一切 ALLOW（含继承）；判定链由后端返回，前端只展示不重算。
+
+  /** 范围策略列表（ALLOW / DENY） */
+  async getScopePolicies(roleCode) {
+    try {
+      const suffix = roleCode ? `?roleCode=${encodeURIComponent(roleCode)}` : ''
+      return ok(await request(`/system/scope-policies${suffix}`))
+    } catch (error) {
+      return fail(error.message || '范围策略加载失败')
+    }
+  },
+
+  /** 设置角色对某组织节点的 ALLOW 或 DENY */
+  async setScopePolicy(payload = {}) {
+    try {
+      return ok(await request('/system/scope-policies', { method: 'PUT', body: payload }))
+    } catch (error) {
+      return fail(error.message || '范围策略保存失败')
+    }
+  },
+
+  /** 撤销一条范围策略 */
+  async revokeScopePolicy(policyId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/scope-policies/${encodeURIComponent(policyId)}/revoke`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return fail(error.message || '范围策略撤销失败')
+    }
+  },
+
+  /** 模拟判定：返回完整判定链与原因码（与真实判定同一核心） */
+  async simulateScopePolicy({ roleCode, targetType, targetId, businessRelationAllows } = {}) {
+    try {
+      return ok(await request('/system/scope-policies/simulate', {
+        method: 'POST', body: { roleCode, targetType, targetId, businessRelationAllows }
+      }))
+    } catch (error) {
+      return fail(error.message || '范围模拟失败')
+    }
   }
 }
 

@@ -10,6 +10,45 @@
     </template>
 
     <div class="mp-stack">
+      <!--
+        SYS-06 通配权限退役队列。
+        真实鉴权目前读代码常量 ROLE_PERMISSIONS，里面还有 SCHOOL_ADMIN: {"*"} 这类全权通配。
+        通配不能一夜删掉（删了管理员立刻失去全部权限），所以先让它可见、可排期。
+      -->
+      <section v-if="governance.wildcards.length" class="mp-card rl-wildcard">
+        <header class="mp-card__head">
+          <span class="mp-card__title">通配权限退役队列</span>
+          <span class="mp-card__actions">
+            <span class="mp-note">{{ governance.disclaimer }}</span>
+            <button class="mp-link" @click="governance.expanded = !governance.expanded">
+              {{ governance.expanded ? '收起' : '展开' }}
+            </button>
+          </span>
+        </header>
+        <div v-if="governance.expanded" class="mp-card__body" style="padding-top: 0">
+          <table class="mp-audit">
+            <thead>
+              <tr>
+                <th style="width: 200px">角色</th>
+                <th style="width: 180px">通配权限</th>
+                <th style="width: 130px">覆盖权限码数</th>
+                <th style="width: 100px">状态</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="w in governance.wildcards" :key="w.roleCode + w.wildcardCode">
+                <td class="is-who">{{ w.roleCode }}</td>
+                <td><code class="rl-code">{{ w.wildcardCode }}</code></td>
+                <td :class="{ 'rl-danger': w.wildcardCode === '*' }">{{ w.expandedCount }}</td>
+                <td><StatusTag :type="w.status === 'RETIRED' ? 'success' : 'warning'" :label="wildcardStatusLabel(w.status)" /></td>
+                <td class="mp-cell-sub">{{ w.note }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -156,6 +195,8 @@ export default {
       loading: true,
       error: '',
       rows: [],
+      // SYS-06 权限治理：通配退役队列（默认收起，不干扰既有角色管理）
+      governance: { wildcards: [], disclaimer: '', expanded: false },
       filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
       columns: [
@@ -348,6 +389,30 @@ export default {
         this.error = res.message
       }
       this.loading = false
+      this.loadGovernance()
+    },
+
+    wildcardStatusLabel(s) {
+      return ({ PENDING: '待处理', PLANNED: '已排期', RETIRED: '已退役' })[s] || s
+    },
+
+    /**
+     * SYS-06 通配退役队列。首次访问时先幂等固化交付模板与权限包，
+     * 失败不阻断角色列表——这块是治理增强，不能让它拖垮主功能。
+     */
+    async loadGovernance() {
+      const res = await systemApi.getWildcardRetirement()
+      if (res.code !== 0) return
+      let data = res.data || {}
+      if (!(data.items || []).length) {
+        const boot = await systemApi.bootstrapPermissionGovernance()
+        if (boot.code === 0) {
+          const again = await systemApi.getWildcardRetirement()
+          if (again.code === 0) data = again.data || {}
+        }
+      }
+      this.governance.wildcards = data.items || []
+      this.governance.disclaimer = data.disclaimer || ''
     }
   }
 }
@@ -375,5 +440,15 @@ export default {
 }
 .mp-link + .mp-link {
   margin-left: var(--space-2);
+}
+/* SYS-06 通配退役队列 */
+.rl-wildcard {
+  border-left: 3px solid var(--warning-500, var(--danger-600));
+}
+.rl-code {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--fill-secondary);
+  font-size: var(--font-size-xs);
 }
 </style>
