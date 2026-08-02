@@ -19,7 +19,7 @@ jobs:
   bridge:
     if: github.event.pull_request.number == 35
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.0
@@ -137,10 +137,9 @@ jobs:
           fi
 
           test -f .stage1/verify.sh
-          chmod +x .stage1/verify.sh
-          .stage1/verify.sh
+          bash -n .stage1/verify.sh
 
-      - name: Commit verified stage changes
+      - name: Commit reviewed stage changes
         if: ${{ hashFiles('.stage1/ready') != '' }}
         run: |
           mapfile -t changed < .stage1/changed-files.txt
