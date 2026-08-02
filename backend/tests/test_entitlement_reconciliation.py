@@ -1,4 +1,6 @@
+from app.services import platform_service
 from app.services.entitlement_reconciliation_service import (
+    commercial_storage_limit_bytes,
     downgrade_impact_preview,
     reconcile_snapshot,
 )
@@ -46,3 +48,17 @@ def test_downgrade_preview_never_claims_silent_file_deletion():
     assert preview["overageBytes"] == 30
     assert preview["willDeleteFiles"] is False
     assert preview["requiresRepairPlan"] is True
+
+
+def test_legacy_tenant_without_metadata_keeps_professional_commercial_default(monkeypatch):
+    monkeypatch.setattr(platform_service, "tenant_meta", lambda tenant_id: {})
+    monkeypatch.setattr(
+        platform_service,
+        "get_package",
+        lambda code: {
+            "packageCode": code,
+            "storageLimitMb": 51200 if code == "professional" else 512,
+        },
+    )
+
+    assert commercial_storage_limit_bytes(1001) == 51200 * 1024 * 1024
