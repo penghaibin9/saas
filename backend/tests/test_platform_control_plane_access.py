@@ -3,8 +3,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.core.exceptions import AppException
+from app.services import platform_access_governance_service as access_governance
 from app.services.platform_access_governance_service import (
     assert_platform_capability,
+    create_elevation,
     create_support_session,
     effective_platform_duties,
     save_access_assignment,
@@ -64,6 +66,25 @@ def test_temporary_elevation_expires_automatically():
     expired = {**active, "expiresAt": (now - timedelta(seconds=1)).isoformat()}
     assert "operations.manage" in effective_platform_duties(user, now=now, elevations=[active])
     assert "operations.manage" not in effective_platform_duties(user, now=now, elevations=[expired])
+
+
+def test_browser_cannot_forge_elevation_approver(monkeypatch):
+    monkeypatch.setattr(
+        access_governance,
+        "save_record",
+        lambda config_type, payload, **kwargs: {"configType": config_type, **payload},
+    )
+    result = create_elevation({
+        "userId": "9",
+        "capabilities": ["operations.manage"],
+        "durationMinutes": 30,
+        "reason": "处理生产事件临时提升",
+        "approvedBy": "伪造批准人",
+        "approvedByUserId": "forged-user",
+    })
+    assert result["approvedBy"] == "AUTHENTICATED_ACCESS_MANAGER"
+    assert result["approvalEvidence"] == "SECURITY_AUDIT_CONTEXT"
+    assert result.get("approvedByUserId") is None
 
 
 def test_support_access_requires_ticket_tenant_scope_and_expiry():
