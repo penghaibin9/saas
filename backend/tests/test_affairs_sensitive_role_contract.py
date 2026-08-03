@@ -23,7 +23,7 @@ def test_formal_mental_service_keeps_sa_admin_out_of_raw_detail():
     assert "mental._can_view_detail =" not in guard
     assert "mental._sensitive_view_audit =" not in guard
     assert "fail closed" in source.lower() or "fail-closed" in source.lower()
-    assert "audit_health" in source
+    assert "get_audit_db_health" in source
 
 
 def test_talk_sensitive_role_and_actions_live_in_formal_service():

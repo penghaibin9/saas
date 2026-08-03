@@ -14,7 +14,7 @@ def test_self_scope_is_resolved_server_side_and_only_allows_self():
     assert "resolve_student" in text
     assert 'ctx.scope_source = "ACCOUNT_LINK_SELF" if ctx.self_student_id else "SELF_UNRESOLVED"' in text
     assert 'self.scope_type == "SELF"' in text
-    assert 'int(self.self_student_id) != target_id' in text
+    assert 'int(self.self_student_id) == int(student_id)' in text
     assert "学生只能访问本人数据" in text
     assert "build_affairs_context =" not in guard
 

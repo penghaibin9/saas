@@ -139,3 +139,18 @@ def test_leave_export_worker_keeps_explicit_tenant_ownership():
     assert "int(row.tenant_id) != int(tenant_id)" in source
     assert "previous_tenant = get_tenant()" in source
     assert "set_tenant(previous_tenant)" in source
+
+
+def test_aid_and_funding_appeal_lists_use_true_sql_pagination_without_n_plus_one():
+    for path, marker in (
+        ("backend/app/services/affairs_aid_service.py", "def list_objections"),
+        ("backend/app/services/affairs_funding_service.py", "def list_appeals"),
+    ):
+        source = read(path)
+        block = source[source.index(marker):]
+        next_def = block.find("\ndef ", 1)
+        if next_def > 0:
+            block = block[:next_def]
+        assert "select(func.count())" in block
+        assert ".offset((page - 1) * page_size).limit(page_size)" in block
+        assert "db.get(StudentProfile" not in block

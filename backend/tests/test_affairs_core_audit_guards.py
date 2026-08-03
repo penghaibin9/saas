@@ -45,7 +45,8 @@ def test_counselor_handover_cannot_move_non_affairs_todos():
     guard = read("backend/app/services/affairs_counselor_handover_guard.py")
     assert 'UnifiedTodo.source_module == "student-affairs"' in source
     assert "source_pairs" in source
-    assert "WorkflowInstance.source_biz_type" in source
+    assert "inst.source_biz_type" in source
+    assert "select(WorkflowTask, WorkflowInstance)" in source
     assert "affairs_counselor_service._migrate_class_work =" not in guard
 
 

@@ -127,7 +127,7 @@ def test_mobile_permission_codes_are_all_present_in_pc_catalog():
     )
 
     root = Path(__file__).resolve().parents[2]
-    source = (root / "frontend/src/modules/studentAffairs/config/permissionCatalog.js").read_text(
+    source = (root / "frontend/src/modules/studentAffairs/config/permissionCatalog.generated.js").read_text(
         encoding="utf-8",
     )
     pc_codes = set(re.findall(r'"permissionCode"\s*:\s*"([^"]+)"', source))

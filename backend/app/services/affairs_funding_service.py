@@ -12,7 +12,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -894,23 +894,34 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
 
 
 def list_appeals(user, status=None, page=1, page_size=50):
+    """资助申诉列表在数据库侧完成范围过滤、计数和分页。"""
     from app.models import FundingAppeal, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
+    page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        student_join = and_(
+            StudentProfile.id == FundingAppeal.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
         conds = [FundingAppeal.tenant_id == _tid(), FundingAppeal.is_deleted.is_(False)]
         if status:
             conds.append(FundingAppeal.status == status)
-        rows = db.scalars(select(FundingAppeal).where(*conds).order_by(FundingAppeal.id.desc())).all()
-        out = []
-        for o in rows:
-            s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_appeal_row(o, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        total = int(db.scalar(
+            select(func.count()).select_from(FundingAppeal)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+        ) or 0)
+        rows = db.execute(
+            select(FundingAppeal, StudentProfile)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+            .order_by(FundingAppeal.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_appeal_row(appeal, student) for appeal, student in rows], total
 
 
 def review_appeal(appeal_id, body, user) -> dict:

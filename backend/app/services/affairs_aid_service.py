@@ -12,7 +12,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
@@ -41,6 +41,9 @@ L_AID = {
     "COLLEGE_REVIEW": "学院复审", "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中",
     "APPROVED": "已通过", "REJECTED": "已驳回", "ADJUST_REVIEW": "动态调整审批", "ARCHIVED": "已归档",
 }
+
+_L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
+_L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
 
 
 def _op():
@@ -856,23 +859,34 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
 
 
 def list_objections(user, status=None, page=1, page_size=50):
+    """异议列表使用数据库范围过滤、真计数和真分页，避免全量加载及逐行查学生。"""
     from app.models import AidObjection, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
+    page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        student_join = and_(
+            StudentProfile.id == AidObjection.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
         conds = [AidObjection.tenant_id == _tid(), AidObjection.is_deleted.is_(False)]
         if status:
             conds.append(AidObjection.status == status)
-        rows = db.scalars(select(AidObjection).where(*conds).order_by(AidObjection.id.desc())).all()
-        out = []
-        for o in rows:
-            s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_obj_row(o, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        total = int(db.scalar(
+            select(func.count()).select_from(AidObjection)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+        ) or 0)
+        rows = db.execute(
+            select(AidObjection, StudentProfile)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+            .order_by(AidObjection.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_obj_row(objection, student) for objection, student in rows], total
 
 
 def review_objection(objection_id, body, user) -> dict:

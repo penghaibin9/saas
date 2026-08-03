@@ -41,7 +41,7 @@ def test_appeal_repair_uses_dedicated_job_and_persists_lease(db_mode):
         assert row.source_row_id == 880001
         db.close()
 
-        claimed = repair._claim(10, worker_id="worker-a", lease_seconds=60)
+        claimed = repair._claim(1000, worker_id="worker-a", lease_seconds=60)
         item = next(x for x in claimed if x["rowId"] == 880001)
         assert item["attempts"] == 1
         assert item["leaseOwner"] == "worker-a"

@@ -26,6 +26,8 @@ L_DISC = {
     "CANCELLED": "已撤销", "REMOVE_REVIEW": "解除审批中", "REMOVED": "已解除", "ARCHIVED": "已归档",
 }
 
+_DELIVERY = ("DIRECT", "MAIL", "PUBLIC", "LEAVE")
+
 _L_APPEAL = {
     "SUBMITTED": "待复核", "REVIEWING": "复核中",
     "UPHELD": "维持原决定", "REVISED": "已变更", "REVOKED": "已撤销",

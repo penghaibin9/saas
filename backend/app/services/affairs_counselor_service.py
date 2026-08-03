@@ -190,16 +190,20 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         ).all()
     }
     if source_pairs:
-        tasks = db.scalars(select(WorkflowTask).where(
-            WorkflowTask.tenant_id == _tid(),
-            WorkflowTask.assignee_id == from_uid,
-            WorkflowTask.status == "PENDING",
-            WorkflowTask.is_deleted.is_(False),
-        )).all()
-        for task in tasks:
-            inst = db.get(WorkflowInstance, int(task.instance_id)) if task.instance_id else None
-            if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
-                continue
+        task_rows = db.execute(
+            select(WorkflowTask, WorkflowInstance)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .where(
+                WorkflowTask.tenant_id == _tid(),
+                WorkflowTask.assignee_id == from_uid,
+                WorkflowTask.status == "PENDING",
+                WorkflowTask.is_deleted.is_(False),
+                WorkflowInstance.tenant_id == _tid(),
+                func.replace(WorkflowInstance.source_module, "_", "-") == "student-affairs",
+                WorkflowInstance.is_deleted.is_(False),
+            )
+        ).all()
+        for task, inst in task_rows:
             key = (str(inst.source_biz_type or "").upper(), str(inst.source_biz_id or ""))
             if key not in source_pairs:
                 continue

@@ -416,7 +416,7 @@ def test_l15_ledger_export(client, db_mode):
 
     from app.core.context import set_tenant
     from app.services import affairs_leave_export_service as export_svc
-    set_tenant({"tenantId": str(MAIN_TENANT_ID)})
+    set_tenant({"tenantId": str(TID)})
     try:
         result = export_svc.run_pending(limit=2, worker_id="pytest-leave-export")
     finally:
