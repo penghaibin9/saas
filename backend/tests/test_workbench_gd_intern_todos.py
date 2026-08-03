@@ -19,7 +19,7 @@ def _uid_token(uid: int, role: str, real_name: str = "导师", login_name: str |
 
 
 def test_gd_proposal_todo_upsert_and_done(db_mode):
-    from app.core.context import set_current_user
+    from app.core.context import set_current_user, set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (GraduationMentor, GraduationProposal, GraduationStudent,
                             GraduationTaskBook, UnifiedTodo, User)
@@ -48,52 +48,62 @@ def test_gd_proposal_todo_upsert_and_done(db_mode):
     finally:
         db.close()
 
-    out = gd_svc.submit_proposal(gid, "选题背景说明足够长用于测试",
-                                 "研究方案足够长用于测试十二周", "预期成果系统")
-    pid = int(out["id"])
-
-    db = get_sessionmaker()()
+    # submit_proposal/review_proposal 只按 _tid() 做租户过滤，不接收显式 tenant 参数，
+    # 直接调用（跳过 HTTP 中间件）必须自己把租户上下文设进去，否则写库会被拒绝。
+    set_tenant({"tenantId": str(TID)})
     try:
-        todos = db.query(UnifiedTodo).filter_by(
-            source_module="graduation", source_biz_id=pid,
-            todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).all()
-        assert len(todos) == 1 and todos[0].status == "PENDING"
-        assert "开题待批阅" in todos[0].title
-        p = db.get(GraduationProposal, pid)
-        stu = db.get(GraduationStudent, gid)
-        gd_todo.push_proposal_todo(db, p, stu)
-        db.commit()
-        assert db.query(UnifiedTodo).filter_by(
-            source_module="graduation", source_biz_id=pid,
-            todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).count() == 1
-    finally:
-        db.close()
+        out = gd_svc.submit_proposal(gid, "选题背景说明足够长用于测试",
+                                     "研究方案足够长用于测试十二周", "预期成果系统")
+        pid = int(out["id"])
 
-    set_current_user({
-        "currentRoleCode": "SCHOOL_ADMIN", "userType": "TEACHER",
-        "realName": "校管", "userId": "1", "tenantId": str(TID)})
-    try:
-        gd_svc.review_proposal(pid, "APPROVE", comment=None)
-    finally:
-        set_current_user(None)
+        db = get_sessionmaker()()
+        try:
+            todos = db.query(UnifiedTodo).filter_by(
+                source_module="graduation", source_biz_id=pid,
+                todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).all()
+            assert len(todos) == 1 and todos[0].status == "PENDING"
+            assert "开题待批阅" in todos[0].title
+            p = db.get(GraduationProposal, pid)
+            stu = db.get(GraduationStudent, gid)
+            gd_todo.push_proposal_todo(db, p, stu)
+            db.commit()
+            assert db.query(UnifiedTodo).filter_by(
+                source_module="graduation", source_biz_id=pid,
+                todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).count() == 1
+        finally:
+            db.close()
 
-    db = get_sessionmaker()()
-    try:
-        row = db.query(UnifiedTodo).filter_by(
-            source_module="graduation", source_biz_id=pid,
-            todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).one()
-        assert row.status == "DONE"
+        set_current_user({
+            "currentRoleCode": "SCHOOL_ADMIN", "userType": "TEACHER",
+            "realName": "校管", "userId": "1", "tenantId": str(TID)})
+        try:
+            gd_svc.review_proposal(pid, "APPROVE", comment=None)
+        finally:
+            set_current_user(None)
+
+        db = get_sessionmaker()()
+        try:
+            row = db.query(UnifiedTodo).filter_by(
+                source_module="graduation", source_biz_id=pid,
+                todo_type=gd_todo.TODO_PROPOSAL, assignee_id=mentor_uid).one()
+            assert row.status == "DONE"
+        finally:
+            db.close()
     finally:
-        db.close()
+        set_tenant(None)
 
 
 def test_gd_final_and_topic_change_todo_helper(db_mode):
     """成果与选题变更：helper 写入 PENDING，todo_done 标 DONE，重复 upsert 幂等。"""
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (GraduationFinal, GraduationMentor, GraduationStudent,
                             GraduationTopicChangeRequest, UnifiedTodo, User)
     from app.modules.graduation.services import graduation_todo_helper as gd_todo
 
+    # graduation_todo_helper 的 todo_upsert/todo_done 内部用 _tid() 做租户过滤，
+    # 即便 db session 显式传入也一样，直接调用必须先设租户上下文。
+    set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
     try:
         u = User(tenant_id=TID, login_name="GD-M-P5B", real_name="毕设P5B",
@@ -142,15 +152,18 @@ def test_gd_final_and_topic_change_todo_helper(db_mode):
             todo_type=gd_todo.TODO_TOPIC_CHANGE, source_biz_id=cid).one().status == "DONE"
     finally:
         db.close()
+        set_tenant(None)
 
 
 def test_intern_exception_and_visit_todo_helper(db_mode):
     """打卡异常与巡访整改待办：写入后办结。"""
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (AttendanceException, InternshipRecord, InternshipVisit,
                             StudentProfile, UnifiedTodo, User)
     from app.modules.internship.services import internship_todo_helper as ix_todo
 
+    set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
     try:
         mentor = User(tenant_id=TID, login_name="IX-M-P5B", real_name="实习P5B",
@@ -194,6 +207,7 @@ def test_intern_exception_and_visit_todo_helper(db_mode):
             todo_type=ix_todo.TODO_VISIT_RECTIFY, source_biz_id=vid).one().status == "DONE"
     finally:
         db.close()
+        set_tenant(None)
 
 
 def test_prod_blocks_mock_todo_summary(monkeypatch):
@@ -202,7 +216,10 @@ def test_prod_blocks_mock_todo_summary(monkeypatch):
     from app.core.exceptions import AppException
 
     monkeypatch.setattr(todo_api, "db_enabled", lambda: False)
-    monkeypatch.setattr(todo_api.settings, "APP_ENV", "prod")
+    # settings.is_prod 判的是 APP_ENV == "production"（全称），不是 "prod"；
+    # monkeypatch 直接赋值会绕过 pydantic 校验器，"prod" 不等于 "production"，
+    # is_prod 永远算 False，_use_real_db 就永远不会走到生产禁用分支。
+    monkeypatch.setattr(todo_api.settings, "APP_ENV", "production")
     try:
         todo_api._use_real_db()
         assert False, "should raise"
@@ -212,12 +229,14 @@ def test_prod_blocks_mock_todo_summary(monkeypatch):
 
 
 def test_intern_weekly_and_leave_todo_lifecycle(client, db_mode):
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (InternshipLeave, InternshipRecord, StudentProfile,
                             UnifiedTodo, User, WeeklyReport)
     from app.modules.internship.services import internship_leave_service as leave_svc
     from app.modules.internship.services import internship_todo_helper as ix_todo
 
+    set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
     try:
         mentor = User(tenant_id=TID, login_name="IX-M-P5", real_name="实习P5导师",
@@ -260,13 +279,14 @@ def test_intern_weekly_and_leave_todo_lifecycle(client, db_mode):
 
     h = _uid_token(mentor_uid, "INTERN_MENTOR", "实习P5导师", login_name="IX-M-P5")
     r = client.post(f"/api/v1/internship/reports/{wid}/review",
-                    json={"action": "APPROVE", "comment": ""}, headers=h)
+                    json={"action": "APPROVE", "comment": "", "expectedVersion": 0}, headers=h)
     assert r.status_code == 200 and r.json()["code"] == 0, r.text
 
     leave_svc.review({
         "userId": str(mentor_uid), "realName": "实习P5导师",
         "currentRoleCode": "INTERN_MENTOR", "userType": "TEACHER",
-        "tenantId": str(TID), "loginName": "IX-M-P5"}, lid, "APPROVE", "")
+        "tenantId": str(TID), "loginName": "IX-M-P5"}, lid, "APPROVE", "",
+        expected_version=0)
 
     db = get_sessionmaker()()
     try:
@@ -276,3 +296,4 @@ def test_intern_weekly_and_leave_todo_lifecycle(client, db_mode):
             todo_type=ix_todo.TODO_LEAVE, source_biz_id=lid).one().status == "DONE"
     finally:
         db.close()
+        set_tenant(None)

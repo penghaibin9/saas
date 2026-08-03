@@ -161,10 +161,19 @@ def test_confirm_import_persists_valid():
 # ═══════════ 11. 导入记录写入 MySQL ═══════════
 
 def test_import_job_record_written_to_db(client, auth_headers, db_mode):
+    # record_import 直接调用（不经过 HTTP 中间件），租户上下文不会自动注入；
+    # 缺租户上下文时 _tid() 抛异常，被 record_import 自己的 except Exception 静默吞掉
+    # 变成返回 None，看着像"没接库"，其实是真异常被吃了——这里手动设租户避免误判。
+    from app.core.context import set_tenant
     from app.services.excel import job_service
+    from tests.conftest import MAIN_TENANT_ID
     pre = {"total": 3, "validRows": 3, "invalidRows": 0}
-    row = job_service.record_import("demo", "person", file_name="人员.xlsx",
-                                    pre=pre, result={"created": 3}, status="IMPORTED")
+    set_tenant({"tenantId": str(MAIN_TENANT_ID)})
+    try:
+        row = job_service.record_import("demo", "person", file_name="人员.xlsx",
+                                        pre=pre, result={"created": 3}, status="IMPORTED")
+    finally:
+        set_tenant(None)
     assert row is not None and row["status"] == "IMPORTED" and row["successRows"] == 3
     # 通过通用端点回读
     r = client.get("/api/v1/excel/import-jobs?moduleKey=demo", headers=auth_headers).json()
