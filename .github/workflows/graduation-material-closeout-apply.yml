@@ -70,6 +70,7 @@ jobs:
           set -euo pipefail
           python scripts/apply_graduation_material_closeout_fix.py
           python scripts/patch_graduation_phase6_contract.py
+          python scripts/patch_graduation_closeout_tests.py
           git diff --check
           python -m compileall -q \
             backend/app/api/v1/mobile_graduation_material_center.py \
@@ -106,6 +107,7 @@ jobs:
           rm -f \
             scripts/apply_graduation_material_closeout_fix.py \
             scripts/patch_graduation_phase6_contract.py \
+            scripts/patch_graduation_closeout_tests.py \
             .github/workflows/graduation-material-closeout-apply.yml \
             .github/workflows/graduation-conftest-diagnostic.yml
           git config user.name "graduation-closeout-bot"
@@ -128,6 +130,7 @@ jobs:
             miniapp/src/pages/student/graduation/index.vue \
             scripts/apply_graduation_material_closeout_fix.py \
             scripts/patch_graduation_phase6_contract.py \
+            scripts/patch_graduation_closeout_tests.py \
             .github/workflows/graduation-material-closeout-apply.yml \
             .github/workflows/graduation-conftest-diagnostic.yml
           git diff --cached --check
