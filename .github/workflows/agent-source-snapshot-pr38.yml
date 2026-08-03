@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/main-pytest-fixture-corruption
+  pull_request:
 
 permissions:
   contents: read
