@@ -2,10 +2,8 @@ name: PR37 independent review fixes
 
 on:
   push:
-    branches:
-      - agent/internship-production-hardening-20260803
-    paths:
-      - .github/workflows/pr37-independent-review-fixes.yml
+    branches: [agent/internship-production-hardening-20260803]
+    paths: [.github/workflows/pr37-independent-review-fixes.yml]
 
 permissions:
   contents: write
@@ -20,80 +18,61 @@ jobs:
           ref: agent/internship-production-hardening-20260803
           fetch-depth: 0
 
-      - name: Apply audited fixes and regression tests
+      - name: Apply fixes
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          python - <<'PY'
+          python - <<'PY' >/tmp/pr37-repair.log 2>&1
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
+          def read(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path, text):
+              Path(path).write_text(text, encoding="utf-8")
+
+          def once(text, old, new, label):
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement, found {count}")
-              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+                  raise RuntimeError(f"{label}: expected 1 anchor, got {count}")
+              return text.replace(old, new, 1)
 
-          migration = "backend/alembic/versions/20260803_internship_prod_hardening.py"
-          replace_once(
-              migration,
-              'Revision ID: 20260803_internship_prod_hardening\nRevises: 0161_access_governance',
-              'Revision ID: 20260803_internship_hardening\nRevises: 0164_master_data_governance',
-          )
-          replace_once(
-              migration,
-              'revision = "20260803_internship_prod_hardening"\ndown_revision = "0161_access_governance"',
-              'revision = "20260803_internship_hardening"\ndown_revision = "0164_master_data_governance"',
-          )
+          p = "backend/alembic/versions/20260803_internship_prod_hardening.py"
+          t = read(p)
+          t = once(t, "Revision ID: 20260803_internship_prod_hardening", "Revision ID: 20260803_internship_hardening", "migration doc revision")
+          t = once(t, "Revises: 0161_access_governance", "Revises: 0164_master_data_governance", "migration doc parent")
+          t = once(t, 'revision = "20260803_internship_prod_hardening"', 'revision = "20260803_internship_hardening"', "migration revision")
+          t = once(t, 'down_revision = "0161_access_governance"', 'down_revision = "0164_master_data_governance"', "migration parent")
+          write(p, t)
 
-          score = "backend/app/modules/internship/services/internship_score_service.py"
-          replace_once(
-              score,
-              'from sqlalchemy import func, select\n',
-              'from sqlalchemy import func, select\nfrom sqlalchemy.exc import IntegrityError\n',
-          )
-          replace_once(
-              score,
-              '''        db.flush()
-          _trail(db, c.id, "SAVE_CONFIG", {
-          ''',
-              '''        try:
+          p = "backend/app/modules/internship/services/internship_score_service.py"
+          t = read(p)
+          t = once(t, "from sqlalchemy import func, select\n", "from sqlalchemy import func, select\nfrom sqlalchemy.exc import IntegrityError\n", "score import")
+          anchor = '        db.flush()\n        _trail(db, c.id, "SAVE_CONFIG", {'
+          replacement = '''        try:
               db.flush()
           except IntegrityError as exc:
               db.rollback()
               detail = str(getattr(exc, "orig", exc))
-              if (
-                  "uk_intern_score_cfg_active_scope" in detail
-                  or ("1062" in detail and "active_scope_key" in detail)
-              ):
+              if "uk_intern_score_cfg_active_scope" in detail or ("1062" in detail and "active_scope_key" in detail):
                   raise AppException(
                       "DATA_CONFLICT",
                       "同一评分配置范围正在被其他操作更新，请刷新后重试",
                   ) from None
               raise
-          _trail(db, c.id, "SAVE_CONFIG", {
-          ''',
-          )
+          _trail(db, c.id, "SAVE_CONFIG", {'''
+          t = once(t, anchor, replacement, "score flush")
+          write(p, t)
 
-          change = "backend/app/modules/internship/services/internship_change_service.py"
-          replace_once(
-              change,
-              '''        snapshot = int(change.record_version_snapshot or 0)
-          expected_record = snapshot if record_expected_version is None else extract_expected_version(
-              {"expectedVersion": record_expected_version})
-          if expected_record != snapshot:
-              raise AppException("DATA_CONFLICT", "页面实习记录版本与申请快照不一致，请刷新")
-          if int(record.version or 0) != snapshot:
-              raise AppException(
-                  "DATA_CONFLICT",
-                  "学生实习主记录在申请后已变化，请退回申请并由学生基于最新数据重新提交",
-              )
-          ''',
-              '''        snapshot = int(change.record_version_snapshot or 0)
+          p = "backend/app/modules/internship/services/internship_change_service.py"
+          t = read(p)
+          start = t.index("        snapshot = int(change.record_version_snapshot or 0)\n")
+          end = t.index("\n        before = {", start)
+          old = t[start:end]
+          new = '''        snapshot = int(change.record_version_snapshot or 0)
           if action == "APPROVE":
               expected_record = snapshot if record_expected_version is None else extract_expected_version(
                   {"expectedVersion": record_expected_version})
@@ -104,62 +83,60 @@ jobs:
                       "DATA_CONFLICT",
                       "学生实习主记录在申请后已变化，请退回申请并由学生基于最新数据重新提交",
                   )
-          ''',
-          )
+          '''.rstrip()
+          if "if int(record.version or 0) != snapshot" not in old:
+              raise RuntimeError("change snapshot block not found")
+          write(p, t[:start] + new + t[end:])
 
-          complaint = "backend/app/modules/internship/services/internship_complaint_service.py"
-          replace_once(
-              complaint,
-              '''        try:
-              contact = decrypt_sensitive(
-                  c.complainant_contact_encrypted,
-                  "internship_complaint_contact",
-                  allow_legacy_plaintext=True,
-              ) or ""
-          except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
-              contact_corrupted = True
-              _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
-          ''',
-              '''        try:
-              plain = decrypt_sensitive(
-                  c.complainant_contact_encrypted,
-                  "internship_complaint_contact",
-                  allow_legacy_plaintext=True,
-              )
-              if plain is None:
+          p = "backend/app/modules/internship/services/internship_complaint_service.py"
+          t = read(p)
+          start = t.index("    if c.complainant_contact_encrypted:\n")
+          end = t.index("    confidential =", start)
+          old = t[start:end]
+          new = '''    if c.complainant_contact_encrypted:
+              try:
+                  plain = decrypt_sensitive(
+                      c.complainant_contact_encrypted,
+                      "internship_complaint_contact",
+                      allow_legacy_plaintext=True,
+                  )
+                  if plain is None:
+                      contact_corrupted = True
+                      _logger.error("complaint_contact_decrypt_failed complaint_id=%s", c.id)
+                  else:
+                      contact = plain
+              except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
                   contact_corrupted = True
-                  _logger.error("complaint_contact_decrypt_failed complaint_id=%s", c.id)
-              else:
-                  contact = plain
-          except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
-              contact_corrupted = True
-              _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
-          ''',
-          )
-
-          score_test = Path("backend/tests/test_internship_score_config_scope_static.py")
-          score_text = score_test.read_text(encoding="utf-8")
-          old_asserts = '''    assert "old.active_scope_key = None" in block
-              assert "active_scope_key=scope_key" in block
+                  _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
           '''
-          new_asserts = '''    assert "old.active_scope_key = None" in block
-              assert "active_scope_key=scope_key" in block
+          if "decrypt_sensitive" not in old:
+              raise RuntimeError("complaint decrypt block not found")
+          write(p, t[:start] + new + t[end:])
+
+          p = "backend/tests/test_internship_score_config_scope_static.py"
+          t = read(p)
+          if "test_score_config_first_save_conflict_is_a_business_conflict" not in t:
+              t += '''
+
+          def test_score_config_first_save_conflict_is_a_business_conflict():
+              service = _read("backend/app/modules/internship/services/internship_score_service.py")
+              block = service[service.index("def save_config"):service.index("def _approved_enterprise_eval")]
               assert "IntegrityError" in block
               assert "uk_intern_score_cfg_active_scope" in block
-              assert 'AppException(\n                    "DATA_CONFLICT"' in block
+              assert '"DATA_CONFLICT"' in block
+              assert "请刷新后重试" in block
           '''
-          if old_asserts not in score_text:
-              raise SystemExit("score static test anchor not found")
-          score_test.write_text(score_text.replace(old_asserts, new_asserts, 1), encoding="utf-8")
+          write(p, t)
 
-          hardening_test = Path("backend/tests/test_internship_production_hardening_static.py")
-          hardening_text = hardening_test.read_text(encoding="utf-8")
-          extra_static = '''
+          p = "backend/tests/test_internship_production_hardening_static.py"
+          t = read(p)
+          if "test_internship_migration_extends_latest_main_head" not in t:
+              t += '''
 
-          def test_internship_migration_extends_latest_main_head_and_uses_safe_revision_length():
-              text = _read("backend/alembic/versions/20260803_internship_prod_hardening.py")
-              assert 'revision = "20260803_internship_hardening"' in text
-              assert 'down_revision = "0164_master_data_governance"' in text
+          def test_internship_migration_extends_latest_main_head():
+              migration = _read("backend/alembic/versions/20260803_internship_prod_hardening.py")
+              assert 'revision = "20260803_internship_hardening"' in migration
+              assert 'down_revision = "0164_master_data_governance"' in migration
               assert len("20260803_internship_hardening") <= 32
 
 
@@ -170,16 +147,16 @@ jobs:
               assert '"complainantContactCorrupted": contact_corrupted' in block
               assert '"***" if contact_corrupted' in block
           '''
-          if "test_internship_migration_extends_latest_main_head" not in hardening_text:
-              hardening_test.write_text(hardening_text.rstrip() + extra_static + "\n", encoding="utf-8")
+          write(p, t)
 
-          process_test = Path("backend/tests/test_internship_process_change.py")
-          process_text = process_test.read_text(encoding="utf-8")
-          stale_test = '''
+          p = "backend/tests/test_internship_process_change.py"
+          t = read(p)
+          if "test_stale_change_request_can_still_be_rejected" not in t:
+              t += '''
 
           def test_stale_change_request_can_still_be_rejected(client, db_mode):
               ids = _seed(db_mode)
-              apply = client.post(
+              response = client.post(
                   f"{MOB}/internship/change-request",
                   json={
                       "changeType": "CHANGE_ENTERPRISE",
@@ -191,8 +168,8 @@ jobs:
                   },
                   headers=_student(),
               )
-              assert apply.status_code == 200 and apply.json()["code"] == 0
-              change = apply.json()["data"]
+              assert response.status_code == 200 and response.json()["code"] == 0
+              change = response.json()["data"]
 
               from app.db.session import get_sessionmaker
               from app.models import InternshipRecord
@@ -216,13 +193,21 @@ jobs:
               assert rejected.status_code == 200, rejected.json()
               assert rejected.json()["data"]["status"] == "REJECTED"
           '''
-          if "test_stale_change_request_can_still_be_rejected" not in process_text:
-              marker = "\ndef test_self_eval_enterprise_rating"
-              if marker not in process_text:
-                  raise SystemExit("process test insertion anchor not found")
-              process_test.write_text(process_text.replace(marker, stale_test + marker, 1), encoding="utf-8")
+          write(p, t)
           PY
+          status=$?
 
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/pr37-repair.log .github/pr37-repair-error.txt
+            git rm .github/workflows/pr37-independent-review-fixes.yml
+            git add .github/pr37-repair-error.txt
+            git commit -m "chore: record PR37 repair failure"
+            git push origin HEAD:agent/internship-production-hardening-20260803
+            exit 0
+          fi
+
+          set -e
+          cat /tmp/pr37-repair.log
           python -m py_compile \
             backend/alembic/versions/20260803_internship_prod_hardening.py \
             backend/app/modules/internship/services/internship_score_service.py \
@@ -231,7 +216,6 @@ jobs:
             backend/tests/test_internship_score_config_scope_static.py \
             backend/tests/test_internship_production_hardening_static.py \
             backend/tests/test_internship_process_change.py
-
           git diff --check
           git rm .github/workflows/pr37-independent-review-fixes.yml
           git add \
