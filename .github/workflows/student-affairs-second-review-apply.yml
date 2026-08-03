@@ -26,7 +26,7 @@ jobs:
           set -euo pipefail
           cat .audit/second-review.patch.gz.b64.* > /tmp/second-review.b64
           test "$(wc -c < /tmp/second-review.b64)" -eq 106720
-          echo "f15f04a01b0109c2273ff229f79c4fd7d37e88516a70c647f4dc03cdbe881783  /tmp/second-review.b64" | sha256sum -c -
+          echo "6aa77cd3a184913f0bcad1fe2ddff299865e9695ed81a9143dc1d3654981ff55  /tmp/second-review.b64" | sha256sum -c -
           base64 -d /tmp/second-review.b64 | gzip -d > /tmp/second-review.patch
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
