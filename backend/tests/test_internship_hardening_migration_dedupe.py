@@ -70,6 +70,9 @@ def test_score_dedupe_preserves_rows_audits_and_downgrades(db_mode, monkeypatch)
             "SCORE",
         )
         db.commit()
+        # The migration executes Core SQL directly. Expire ORM identities so assertions
+        # read the actual MySQL values instead of pre-migration objects from the identity map.
+        db.expire_all()
 
         rows = db.scalars(select(InternshipFinalScore).where(
             InternshipFinalScore.id.in_(created_ids),
