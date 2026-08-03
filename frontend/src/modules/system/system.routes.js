@@ -265,6 +265,15 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '敏感与导入导出审计', requiresAuth: true, permissionKey: 'systemAdmin.audit.sensitive.view' }
     },
     {
+      // SYS-21：卡片写的"唯一正式路由"是 /admin/system/logs，但那条路由已经被
+      // 既有、非本卡白名单内的 SystemLogView.vue 占用（操作/登录/敏感三个tab）。
+      // 不覆盖既有页面，挂在 /admin/system/audit-evidence 作为补充：
+      // 高危动作完整性判定 + 证据包导出，这两项是全新能力，原页面没有。
+      path: 'audit-evidence', name: 'system-audit-evidence',
+      component: () => import('@/modules/system/views/SystemAuditView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '安全审计证据与完整性', requiresAuth: true, permissionKey: 'systemAdmin.audit.view' }
+    },
+    {
       path: 'integrations', name: 'system-integrations',
       component: () => import('@/modules/system/views/SystemIntegrationView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '接口、凭证与 Webhook', requiresAuth: true, permissionKey: 'systemAdmin.integration.manage' }
