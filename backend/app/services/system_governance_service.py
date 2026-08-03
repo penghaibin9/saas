@@ -50,17 +50,18 @@ def _empty_document(doc_key: str) -> list | dict:
     return {} if doc_key == DOC_MODULE_FEATURES else []
 
 
-def _load_with_version(doc_key: str) -> tuple[list | dict, int]:
+def _load_with_version(doc_key: str, tenant_id: int | None = None) -> tuple[list | dict, int]:
     from app.models.system_governance import SystemJsonDoc
     from app.db.session import db_enabled
     empty = _empty_document(doc_key)
     if not db_enabled():
         return _MEMORY_DOCS.get(doc_key, empty), int(_MEMORY_DOCS.get(f"{doc_key}__ver") or 0)
+    tid = int(tenant_id) if tenant_id is not None else _tid()
     try:
         db = get_sessionmaker()()
         try:
             row = db.scalars(select(SystemJsonDoc).where(
-                SystemJsonDoc.tenant_id == _tid(), SystemJsonDoc.doc_key == doc_key,
+                SystemJsonDoc.tenant_id == tid, SystemJsonDoc.doc_key == doc_key,
                 SystemJsonDoc.is_deleted.is_(False))).first()
             if row is None or row.payload is None:
                 return empty, 0
@@ -532,88 +533,89 @@ def cancel_sync_job(user: dict, job_id: str, reason: str) -> dict:
 
 # ─── 模块开关 ───────────────────────────────────────────────────────────
 
-def get_module_features() -> dict:
-    base = {
-        "studentAffairs": {"enabled": True, "label": "学工中心", "expiresAt": "", "featureKey": "studentAffairs"},
-        "orientation": {"enabled": True, "label": "数字迎新", "expiresAt": "", "featureKey": "orientation"},
-        "campusService": {"enabled": True, "label": "在校服务", "expiresAt": "", "featureKey": "campusService"},
-        "academicAffairs": {"enabled": True, "label": "教务中心", "expiresAt": "", "featureKey": "academicAffairs"},
-        "graduationDesign": {"enabled": True, "label": "毕业设计中心", "expiresAt": "", "featureKey": "graduation"},
-        "internship": {"enabled": True, "label": "岗位实习中心", "expiresAt": "", "featureKey": "internship"},
-        "employment": {"enabled": True, "label": "就业服务", "expiresAt": "", "featureKey": "employment"},
-        "workbench": {"enabled": True, "label": "工作台", "expiresAt": "", "featureKey": "todoMessage"},
-        "systemAdmin": {"enabled": True, "label": "系统管理", "expiresAt": "", "featureKey": "auditLog"},
-    }
-    # 叠加平台 entitled
-    tid = _tid()
-    if tid:
-        try:
-            from app.services.platform_service import feature_enabled
-            for key, val in base.items():
-                fk = val.get("featureKey") or key
-                val["entitled"] = bool(feature_enabled(tid, fk))
-                if not val["entitled"]:
-                    val["enabled"] = False
-                    val["reason"] = "未购买或未授权"
-        except Exception:
-            pass
-    saved, document_version = _load_with_version(DOC_MODULE_FEATURES)
-    saved = saved or {}
-    if isinstance(saved, dict):
-        for key, val in saved.items():
-            if key in base and isinstance(val, dict):
-                # 学校只能改 enabled，不能伪造成 entitled
-                if "enabled" in val and base[key].get("entitled", True):
-                    base[key]["enabled"] = bool(val["enabled"])
-                if val.get("expiresAt"):
-                    base[key]["expiresAt"] = val["expiresAt"]
-                    if _is_expired(val["expiresAt"]):
-                        base[key]["enabled"] = False
-                        base[key]["reason"] = "学校模块启用期限已到期"
-    for val in base.values():
-        val["version"] = document_version
-    return base
+def load_module_feature_document(tenant_id: int | None = None) -> dict:
+    """SYS-13 兼容读：结构化表出现之前，学校开关存在这份 JSON 里。
+
+    只在**结构化表没有该能力行**时作为默认值兜底，绝不覆盖结构化行——否则升级当天
+    学校原来关掉的模块会被整份还原成默认全开。
+    """
+    saved, _ = _load_with_version(DOC_MODULE_FEATURES, tenant_id=tenant_id)
+    return saved if isinstance(saved, dict) else {}
+
+
+def get_module_features(tenant_id: int | None = None) -> dict:
+    """兼容视图：保持 {capabilityKey: {...}} 形状，数据改由 SYS-13 结构化能力表推导。
+
+    版本号语义同步改成**每个能力一个版本**（原来是整份文档一个版本），这样两个管理员
+    各改一个模块不会互相顶掉。旧的整份保存接口据此逐键校验版本。
+
+    ``tenant_id`` 显式传入时按该租户读取——模块门禁是拿着 tenant_id 调用的，
+    原来这里只读上下文租户，跨租户批处理场景会读错学校的开关。
+    """
+    from app.services import tenant_capability_setting_service as caps
+
+    states = caps.capability_states(_tid() if tenant_id is None else int(tenant_id))
+    out: dict = {}
+    for key, st in states.items():
+        item = {
+            "enabled": bool(st["enabled"]),
+            "label": st["label"],
+            "expiresAt": st["expiresAt"],
+            "featureKey": st["featureKey"],
+            "entitled": bool(st["entitled"]),
+            "ready": bool(st["ready"]),
+            "allowed": bool(st["allowed"]),
+            "reasonCode": st["reasonCode"],
+            "dependencies": list(st["dependencies"]),
+            "dependencyUnmet": list(st["dependencyUnmet"]),
+            "configured": bool(st["configured"]),
+            "version": int(st["version"]),
+        }
+        if st["reasonText"]:
+            item["reason"] = st["reasonText"]
+        out[key] = item
+    return out
+
+
+def _dependency_depth(key: str, states: dict, trail: tuple[str, ...] = ()) -> int:
+    if key in trail:
+        return 0
+    deps = [d for d in (states.get(key, {}).get("dependencies") or []) if d in states]
+    return 1 + max((_dependency_depth(d, states, trail + (key,)) for d in deps), default=-1)
 
 
 def save_module_features(user: dict, body: dict, reason: str,
                          expected_version: int | None = None) -> dict:
+    """兼容入口：整份提交仍受理，但落库改成逐能力单行写（SYS-13）。
+
+    ``expected_version`` 现在按**每个被改动的能力**校验；未改动的键直接跳过，
+    不会因为整份提交把别人刚改的模块顶掉。
+    """
     reason = str(reason or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "调整原因不少于 5 个字")
-    before = get_module_features()
-    saved, current_version = _load_with_version(DOC_MODULE_FEATURES)
-    if expected_version is not None and int(expected_version) != current_version:
-        raise AppException("DATA_CONFLICT", "模块开关已被他人更新，请刷新后重试")
-    current = {
-        key: {
-            "enabled": bool(value.get("enabled", True)),
-            "expiresAt": str(value.get("expiresAt") or ""),
-        }
-        for key, value in (saved or {}).items()
-        if key in before and isinstance(value, dict)
-    }
+    from app.services import tenant_capability_setting_service as caps
+
+    tid = _tid()
+    states = caps.capability_states(tid)
+    changes: list[tuple[str, bool]] = []
     for key, val in (body or {}).items():
-        if key not in before or not isinstance(val, dict):
+        canon = caps._canonical_key(key)
+        if canon is None or not isinstance(val, dict) or "enabled" not in val:
             continue
-        requested_enabled = bool(val.get("enabled")) if "enabled" in val else bool(before[key].get("enabled"))
-        if requested_enabled and not before[key].get("entitled", True):
-            raise AppException("VALIDATION_ERROR", f"未购买模块不可启用：{key}")
-        current.setdefault(key, {
-            "enabled": bool(before[key].get("enabled", True)),
-            "expiresAt": str(before[key].get("expiresAt") or ""),
-        })
-        if "enabled" in val:
-            current[key]["enabled"] = bool(val["enabled"])
-    ver = _save(DOC_MODULE_FEATURES, current, user, expected_version=current_version)
-    # 清缓存：模块清单 / 权限上下文
-    try:
-        from app.core.module_registry import load_module_manifest, module_index
-        load_module_manifest.cache_clear()
-        module_index.cache_clear()
-    except Exception:
-        pass
-    from app.services import audit_log
-    audit_log.record("MODULE_FEATURE_SAVE", "module_features",
-                     detail={"reason": reason, "before": before, "after": current,
-                              "version": ver, "moduleCode": "systemAdmin"})
+        want = bool(val["enabled"])
+        st = states[canon]
+        if want == bool(st["enabled"]) and st["configured"]:
+            continue
+        if want == bool(st["enabled"]) and not st["configured"] and want is True:
+            continue  # 从未表态且仍为默认启用：不产生无意义的行
+        changes.append((canon, want))
+    # 先停用依赖方、再停用被依赖方；启用则相反，避免整份提交时中途卡在依赖校验上
+    changes.sort(key=lambda c: (_dependency_depth(c[0], states), c[0]), reverse=True)
+    enables = sorted([c for c in changes if c[1]],
+                     key=lambda c: (_dependency_depth(c[0], states), c[0]))
+    ordered = [c for c in changes if not c[1]] + enables
+    for canon, want in ordered:
+        caps.set_capability(canon, enabled=want, reason=reason,
+                            expected_version=expected_version, tenant_id=tid, user=user)
     return get_module_features()

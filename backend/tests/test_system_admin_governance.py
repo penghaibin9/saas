@@ -157,7 +157,8 @@ def test_module_storage_failure_never_defaults_enabled(monkeypatch):
     from app.services import module_access_service as access
     from app.services import system_governance_service as gov
 
-    monkeypatch.setattr(gov, "get_module_features", lambda: (_ for _ in ()).throw(
+    # get_module_features 自 SYS-13 起接受可选 tenant_id（模块门禁按租户读取）
+    monkeypatch.setattr(gov, "get_module_features", lambda *_a, **_k: (_ for _ in ()).throw(
         AppException("SERVER_ERROR", "storage down", http_status=503)))
     with pytest.raises(AppException) as caught:
         access._school_enabled_map(1)

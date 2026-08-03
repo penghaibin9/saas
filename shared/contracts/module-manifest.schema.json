@@ -30,6 +30,7 @@
         "additionalProperties": true,
         "properties": {
           "moduleKey": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "label": { "type": "string", "minLength": 1 },
           "schoolGroup": { "type": "string", "minLength": 1 },
           "featureKey": { "type": "string", "minLength": 1 },
           "permissionPrefix": { "type": "string", "minLength": 1 },

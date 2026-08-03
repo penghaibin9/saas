@@ -2295,6 +2295,40 @@ def api_save_module_features(body: dict = Body(...),
         message="业务开关已更新")
 
 
+# ── SYS-13 能力启用（结构化单键写入，取代整份 MODULE_FEATURES 覆盖）─────────────
+@router.get("/system/capability-settings", summary="模块商业授权与学校启用（四态：entitled/enabled/ready/allowed）")
+def api_list_capability_settings(user=Depends(require_any_permission(
+        "systemAdmin.config.feature.view", "systemAdmin.config.view"))):
+    from app.services import tenant_capability_setting_service as caps
+    items = caps.list_capabilities()
+    return success({"list": items, "total": len(items)})
+
+
+@router.get("/system/capability-settings/{capability_key}/impact", summary="停用影响预览")
+def api_capability_impact(capability_key: str, user=Depends(require_any_permission(
+        "systemAdmin.config.feature.view", "systemAdmin.config.view"))):
+    from app.services import tenant_capability_setting_service as caps
+    return success(caps.capability_impact(capability_key))
+
+
+@router.put("/system/capability-settings/{capability_key}", summary="启停单个能力（带 expectedVersion）")
+def api_set_capability_setting(capability_key: str, body: dict = Body(...),
+                               user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import tenant_capability_setting_service as caps
+    payload = body or {}
+    if "enabled" not in payload:
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "缺少 enabled")
+    return success(caps.set_capability(
+        capability_key,
+        enabled=bool(payload.get("enabled")),
+        reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"),
+        expires_at=payload.get("expiresAt"),
+        user=user,
+    ), message="模块开关已更新")
+
+
 @router.post("/system/integrations/{integration_id}/test", summary="测试接口连接（可达性，不伪造成功连接）")
 def api_test_integration(integration_id: str, user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov

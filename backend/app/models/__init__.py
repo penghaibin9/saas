@@ -192,6 +192,7 @@ from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-
 from app.models.access_governance import (AccessDecisionTrace,  # noqa: F401  (SYS-10 访问解释与治理)
                                           AccessReviewCampaign, AccessReviewItem,
                                           EmergencyAccessSession, SodRule, SodViolation)
+from app.models.tenant_capability import TenantCapabilitySetting  # noqa: F401  (SYS-13 学校能力启用)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401

@@ -5,6 +5,7 @@
   "modules": [
     {
       "moduleKey": "workbench",
+      "label": "工作台",
       "schoolGroup": "workbench",
       "featureKey": "todoMessage",
       "permissionPrefix": "workbench",
@@ -19,6 +20,7 @@
     },
     {
       "moduleKey": "approval",
+      "label": "审批中心",
       "schoolGroup": "workbench",
       "featureKey": "approval",
       "permissionPrefix": "approval",
@@ -33,6 +35,7 @@
     },
     {
       "moduleKey": "messages",
+      "label": "消息中心",
       "schoolGroup": "workbench",
       "featureKey": "todoMessage",
       "permissionPrefix": "workbench.message",
@@ -47,6 +50,7 @@
     },
     {
       "moduleKey": "dataCenter",
+      "label": "数据中心",
       "schoolGroup": "workbench",
       "featureKey": "dataExport",
       "permissionPrefix": "dataCenter",
@@ -61,6 +65,7 @@
     },
     {
       "moduleKey": "studentProfile",
+      "label": "学生档案",
       "schoolGroup": "studentAffairs",
       "featureKey": "studentProfile",
       "permissionPrefix": "student.profile",
@@ -75,6 +80,7 @@
     },
     {
       "moduleKey": "orientation",
+      "label": "数字迎新",
       "schoolGroup": "studentAffairs",
       "featureKey": "orientation",
       "permissionPrefix": "orientation",
@@ -89,6 +95,7 @@
     },
     {
       "moduleKey": "campusService",
+      "label": "在校服务",
       "schoolGroup": "studentAffairs",
       "featureKey": "campusService",
       "permissionPrefix": "campusService",
@@ -103,6 +110,7 @@
     },
     {
       "moduleKey": "studentAffairs",
+      "label": "学工中心",
       "schoolGroup": "studentAffairs",
       "featureKey": "studentAffairs",
       "permissionPrefix": "studentAffairs",
@@ -117,6 +125,7 @@
     },
     {
       "moduleKey": "academicLegacy",
+      "label": "教务旧入口",
       "schoolGroup": "academicAffairs",
       "featureKey": "academicAffairs",
       "permissionPrefix": "academicAffairs",
@@ -132,6 +141,7 @@
     },
     {
       "moduleKey": "academicAffairs",
+      "label": "教务中心",
       "schoolGroup": "academicAffairs",
       "featureKey": "academicAffairs",
       "permissionPrefix": "academicAffairs",
@@ -146,6 +156,7 @@
     },
     {
       "moduleKey": "graduationDesign",
+      "label": "毕业设计中心",
       "schoolGroup": "graduationDesign",
       "featureKey": "graduation",
       "permissionPrefix": "graduationDesign",
@@ -161,6 +172,7 @@
     },
     {
       "moduleKey": "internship",
+      "label": "岗位实习中心",
       "schoolGroup": "internship",
       "featureKey": "internship",
       "permissionPrefix": "internship",
@@ -175,6 +187,7 @@
     },
     {
       "moduleKey": "employment",
+      "label": "就业服务",
       "schoolGroup": "internship",
       "featureKey": "employment",
       "permissionPrefix": "employment",
@@ -190,6 +203,7 @@
     },
     {
       "moduleKey": "systemAdmin",
+      "label": "系统管理",
       "schoolGroup": "systemAdmin",
       "featureKey": "auditLog",
       "permissionPrefix": "systemAdmin",
@@ -204,6 +218,7 @@
     },
     {
       "moduleKey": "platform",
+      "label": "平台运营",
       "schoolGroup": "platform",
       "featureKey": "apiAccess",
       "permissionPrefix": "platform",

@@ -1035,6 +1035,34 @@ export const systemApi = {
     }
   },
 
+  // SYS-13：能力四态与单键启停（整份 module-features 覆盖已退役为兼容入口）
+  async listCapabilitySettings() {
+    try {
+      return ok(await request('/system/capability-settings'))
+    } catch (error) {
+      return fail(error.message || '模块授权加载失败')
+    }
+  },
+
+  async getCapabilityImpact(key) {
+    try {
+      return ok(await request(`/system/capability-settings/${encodeURIComponent(key)}/impact`))
+    } catch (error) {
+      return fail(error.message || '影响预览加载失败')
+    }
+  },
+
+  async setCapabilitySetting(key, { enabled, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/capability-settings/${encodeURIComponent(key)}`, {
+        method: 'PUT', body: { enabled, reason, expectedVersion }
+      }))
+    } catch (error) {
+      // 保留 bizCode：页面据此区分"版本冲突需刷新"与普通失败
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async listSensitiveLogs(params = {}) {
     try {
       return ok(await request('/system/sensitive-logs', {
