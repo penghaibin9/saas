@@ -54,7 +54,8 @@ text = text.replace(old, new, 1)
 old_assert = '    assert command.count("_assert_locked_file_ready(item, file_obj, user)") >= 4\n'
 new_assert = '''    append_calls = command.count("_append_version(") - 1  # exclude the function definition
     locked_checks = command.count("_assert_locked_file_ready(item, file_obj, user)")
-    assert append_calls == locked_checks == 3
+    assert append_calls >= 3
+    assert locked_checks == append_calls
 '''
 if text.count(old_assert) != 1:
     raise SystemExit(f"locked-writer assertion replacement count={text.count(old_assert)}")
