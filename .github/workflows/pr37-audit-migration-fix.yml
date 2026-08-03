@@ -1,0 +1,65 @@
+name: PR37 Audit Migration Fix
+
+on:
+  push:
+    branches:
+      - agent/internship-production-hardening-20260803
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr37-audit-migration-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/internship-production-hardening-20260803
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Align dedupe audit insert with append-only schema
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/alembic/versions/20260803_internship_prod_hardening.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        "INSERT INTO t_internship_audit_trail "
+                  "(tenant_id, target_id, target_type, action, operator_name, detail_json, "
+                  "occurred_at, created_at, updated_at, is_deleted) "
+                  "VALUES (:tenant_id, :target_id, :target_type, 'MIGRATION_DEDUPLICATE', "
+                  ":operator_name, :detail_json, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), 0)"
+          '''
+          new = '''        "INSERT INTO t_internship_audit_trail "
+                  "(tenant_id, target_id, target_type, action, operator_name, detail_json, "
+                  "occurred_at, created_at) "
+                  "VALUES (:tenant_id, :target_id, :target_type, 'MIGRATION_DEDUPLICATE', "
+                  ":operator_name, :detail_json, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+          '''
+          if old not in text:
+              if '"occurred_at, created_at) "' in text and 'updated_at, is_deleted' not in text:
+                  print('audit insert already corrected')
+              else:
+                  raise SystemExit('dedupe audit SQL anchor missing')
+          else:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m py_compile backend/alembic/versions/20260803_internship_prod_hardening.py
+          git diff --check
+      - name: Commit schema correction
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/alembic/versions/20260803_internship_prod_hardening.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'fix: align internship dedupe audit with append-only schema'
+          git push origin HEAD:agent/internship-production-hardening-20260803
