@@ -226,14 +226,14 @@ jobs:
 
   pr37-closeout-apply:
     name: PR37 一次性修复落地
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/internship-production-hardening-20260803'
+    if: (github.event_name == 'pull_request' && github.head_ref == 'agent/internship-production-hardening-20260803') || (github.event_name == 'push' && github.ref_name == 'agent/internship-production-hardening-20260803')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@v5
@@ -384,4 +384,4 @@ def test_score_config_unique_race_returns_business_conflict():
             exit 0
           fi
           git commit -m 'fix: close PR37 migration and portal review failures'
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
