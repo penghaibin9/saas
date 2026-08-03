@@ -82,9 +82,10 @@ def _write_dedup_audit(
 ) -> None:
     bind.execute(sa.text(
         "INSERT INTO t_internship_audit_trail "
-        "(tenant_id, target_id, target_type, action, operator_name, detail_json, occurred_at) "
+        "(tenant_id, target_id, target_type, action, operator_name, detail_json, "
+        "occurred_at, created_at, updated_at, is_deleted) "
         "VALUES (:tenant_id, :target_id, :target_type, 'MIGRATION_DEDUPLICATE', "
-        ":operator_name, :detail_json, UTC_TIMESTAMP())"
+        ":operator_name, :detail_json, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), 0)"
     ), {
         "tenant_id": tenant_id,
         "target_id": target_id,
@@ -255,6 +256,7 @@ def _normalize_score_config_scopes(bind) -> None:
         "UPDATE t_internship_score_config SET active_scope_key=NULL "
         "WHERE status<>'ACTIVE' OR is_deleted<>0"
     ))
+
 
 def upgrade() -> None:
     bind = op.get_bind()
