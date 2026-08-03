@@ -60,7 +60,7 @@ jobs:
           )
           func = text.index('def test_complete_archive_is_idempotent_and_archives_student_atomically')
           start = text.index('    db = get_sessionmaker()\n', func)
-          end = text.index('    db.add(final)\n', start)
+          end = text.index('    db.add_all([\n', start)
           replacement = '''    uploaded = graduation_client.post(
               "/api/v1/files", headers=h,
               files={"file": (
@@ -77,6 +77,8 @@ jobs:
               version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
               plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_id)],
           )
+          db.add(final)
+          db.flush()
           '''
           path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
           PY
