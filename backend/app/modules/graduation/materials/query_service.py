@@ -34,7 +34,9 @@ from app.models.graduation_material import (
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
 
-from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, STAGE_GROUPS
+from .definitions import (
+    MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, REVIEW_PERMISSION_BY_CODE, STAGE_GROUPS,
+)
 
 
 FULL_SCOPE_ROLES = {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN", "GD_GRADE_ADMIN"}
@@ -221,20 +223,32 @@ def _facts(base_students, material_filters: dict[str, str] | None = None):
     base = base_students.with_only_columns(
         GraduationStudent.id.label("gd_student_id"),
         GraduationStudent.batch_id.label("batch_id"),
+        GraduationStudent.stage.label("student_stage"),
     ).subquery()
     rule = aliased(GraduationMaterialRule)
-    rule_latest = aliased(GraduationMaterialRule)
+    active_rule_row = aliased(GraduationMaterialRule)
+    archived_material = aliased(GraduationStudentMaterial)
     item = aliased(GraduationMaterialItem)
     material = aliased(GraduationStudentMaterial)
     version = aliased(FileVersion)
     file_obj = aliased(FileObject)
-    latest_version = select(func.max(rule_latest.rule_version)).where(
-        rule_latest.tenant_id == _tid(),
-        rule_latest.batch_id == base.c.batch_id,
-        rule_latest.status == "ENABLED",
-        rule_latest.enabled.is_(True),
-        rule_latest.is_deleted.is_(False),
+    active_rule_id = select(active_rule_row.id).where(
+        active_rule_row.tenant_id == _tid(),
+        active_rule_row.batch_id == base.c.batch_id,
+        active_rule_row.status == "ENABLED",
+        active_rule_row.enabled.is_(True),
+        active_rule_row.is_deleted.is_(False),
+    ).order_by(active_rule_row.rule_version.desc(), active_rule_row.id.desc()).limit(1).correlate(base).scalar_subquery()
+    archived_rule_id = select(func.max(archived_material.rule_id)).where(
+        archived_material.tenant_id == _tid(),
+        archived_material.gd_student_id == base.c.gd_student_id,
+        archived_material.archive_status.in_(("FROZEN", "ARCHIVED")),
+        archived_material.is_deleted.is_(False),
     ).correlate(base).scalar_subquery()
+    effective_rule_id = case(
+        (func.upper(func.coalesce(base.c.student_stage, "")) == "ARCHIVED", archived_rule_id),
+        else_=active_rule_id,
+    )
     stmt = select(
         base.c.gd_student_id,
         item.material_code,
@@ -249,11 +263,8 @@ def _facts(base_students, material_filters: dict[str, str] | None = None):
         file_obj.status.label("file_status"),
     ).select_from(base).join(rule, and_(
         rule.tenant_id == _tid(),
-        rule.batch_id == base.c.batch_id,
-        rule.status == "ENABLED",
-        rule.enabled.is_(True),
+        rule.id == effective_rule_id,
         rule.is_deleted.is_(False),
-        rule.rule_version == latest_version,
     )).join(item, and_(
         item.tenant_id == _tid(),
         item.rule_id == rule.id,
@@ -263,6 +274,7 @@ def _facts(base_students, material_filters: dict[str, str] | None = None):
         material.tenant_id == _tid(),
         material.batch_id == base.c.batch_id,
         material.gd_student_id == base.c.gd_student_id,
+        material.rule_id == rule.id,
         material.material_code == item.material_code,
         material.is_deleted.is_(False),
     )).outerjoin(version, and_(
@@ -503,9 +515,8 @@ def files(user: dict, *, batch_id: int, page: int = 1, page_size: int = 20, **fi
         for student, material, asset, version, file_obj in rows:
             ready = bool(file_obj and file_obj.status == "AVAILABLE" and str(file_obj.scan_status or "").upper() in SAFE_SCAN)
             actions = ["viewMetadata"] + (["preview", "download"] if ready else [])
-            if material.review_status == "PENDING" and any(has_permission(user or {}, code) for code in (
-                "graduationDesign.proposal.review", "graduationDesign.final.review", "graduationDesign.review.submit",
-            )):
+            review_permission = REVIEW_PERMISSION_BY_CODE.get(str(material.material_code or "").upper())
+            if material.review_status == "PENDING" and review_permission and has_permission(user or {}, review_permission):
                 actions.append("review")
             items.append({
                 "materialId": str(material.id),
@@ -565,6 +576,35 @@ def _version_dto(version: FileVersion, file_obj: FileObject, *, student_mode: bo
     }
 
 
+def _rule_for_student(db, student: GraduationStudent) -> GraduationMaterialRule:
+    if str(student.stage or "").upper() == "ARCHIVED":
+        rule_ids = set(db.scalars(select(GraduationStudentMaterial.rule_id).where(
+            GraduationStudentMaterial.tenant_id == _tid(),
+            GraduationStudentMaterial.gd_student_id == int(student.id),
+            GraduationStudentMaterial.archive_status.in_(("FROZEN", "ARCHIVED")),
+            GraduationStudentMaterial.rule_id.is_not(None),
+            GraduationStudentMaterial.is_deleted.is_(False),
+        ).distinct()).all())
+        if len(rule_ids) != 1:
+            raise AppException("MATERIAL_RULE_CONFLICT", "已归档材料缺少唯一冻结规则")
+        rule = db.scalars(select(GraduationMaterialRule).where(
+            GraduationMaterialRule.tenant_id == _tid(),
+            GraduationMaterialRule.id == int(next(iter(rule_ids))),
+            GraduationMaterialRule.is_deleted.is_(False),
+        )).first()
+    else:
+        rule = db.scalars(select(GraduationMaterialRule).where(
+            GraduationMaterialRule.tenant_id == _tid(),
+            GraduationMaterialRule.batch_id == int(student.batch_id or 0),
+            GraduationMaterialRule.status == "ENABLED",
+            GraduationMaterialRule.enabled.is_(True),
+            GraduationMaterialRule.is_deleted.is_(False),
+        ).order_by(GraduationMaterialRule.rule_version.desc(), GraduationMaterialRule.id.desc())).first()
+    if not rule:
+        raise AppException("MATERIAL_RULE_NOT_INITIALIZED", "学生材料规则不存在")
+    return rule
+
+
 def student_library(gd_student_id: int | None, user: dict, *, include_history: bool = True) -> dict:
     with session() as db:
         if _role(user) == "STUDENT":
@@ -584,15 +624,7 @@ def student_library(gd_student_id: int | None, user: dict, *, include_history: b
             if not student or student.tenant_id != _tid() or student.is_deleted:
                 raise not_found("毕业设计材料库不存在")
             assert_student_access(db, student, "material.library")
-        rule = db.scalars(select(GraduationMaterialRule).where(
-            GraduationMaterialRule.tenant_id == _tid(),
-            GraduationMaterialRule.batch_id == int(student.batch_id or 0),
-            GraduationMaterialRule.status == "ENABLED",
-            GraduationMaterialRule.enabled.is_(True),
-            GraduationMaterialRule.is_deleted.is_(False),
-        ).order_by(GraduationMaterialRule.rule_version.desc(), GraduationMaterialRule.id.desc())).first()
-        if not rule:
-            raise AppException("MATERIAL_RULE_NOT_INITIALIZED", "当前批次尚未初始化材料规则")
+        rule = _rule_for_student(db, student)
         rows = db.execute(select(GraduationMaterialItem, GraduationStudentMaterial).outerjoin(
             GraduationStudentMaterial,
             and_(

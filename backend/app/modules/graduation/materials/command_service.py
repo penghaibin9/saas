@@ -23,7 +23,7 @@ from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRE
 from app.services.file_scan_service import assert_file_ready_for_business
 from app.services.message_identity import resolve_message_user_id
 
-from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE
+from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, REVIEW_PERMISSION_BY_CODE
 from .rule_service import active_rule, rule_item, rule_items
 
 
@@ -39,26 +39,8 @@ _OWNER_ROLES = {
     "SYSTEM": {"SYSTEM"},
 }
 
-
-_REVIEW_PERMISSION_BY_CODE = {
-    "TOPIC_ATTACHMENT": "graduationDesign.topic.review",
-    "TASKBOOK": "graduationDesign.taskbook.update",
-    "PROPOSAL_REPORT": "graduationDesign.proposal.review",
-    "PROPOSAL_DEFENSE": "graduationDesign.proposal.review",
-    "MIDTERM_REPORT": "graduationDesign.midterm.review",
-    "THESIS_DRAFT": "graduationDesign.final.review",
-    "THESIS_FINAL": "graduationDesign.final.review",
-    "DESIGN_WORK": "graduationDesign.final.review",
-    "SOURCE_CODE": "graduationDesign.final.review",
-    "WORK_DESCRIPTION": "graduationDesign.final.review",
-    "PLAGIARISM_REPORT": "graduationDesign.plagiarism.result",
-    "REVIEW_ATTACHMENT": "graduationDesign.review.submit",
-    "DEFENSE_SIGNED_SHEET": "graduationDesign.defense.scoreConfirm",
-}
-
-
 def review_permission_code(material_code: str) -> str:
-    code = _REVIEW_PERMISSION_BY_CODE.get(str(material_code or "").strip().upper())
+    code = REVIEW_PERMISSION_BY_CODE.get(str(material_code or "").strip().upper())
     if not code:
         raise AppException("NO_PERMISSION", "该材料未配置审核动作权限，系统已拒绝操作", http_status=403)
     return code
@@ -157,16 +139,27 @@ def _new_material(student: GraduationStudent, item: GraduationMaterialItem, rule
 
 
 def initialize_student_materials_in_session(db, gd_student_id: int, user: dict | None = None) -> dict:
-    """Idempotently materialize the enabled rule for one active student."""
+    """Idempotently materialize the enabled rule without mutating archived evidence."""
     student = _student_for_update(db, int(gd_student_id))
-    rule = active_rule(db, int(student.batch_id), lock=True)
-    items = rule_items(db, int(rule.id), lock=True)
-    existing = {row.material_code: row for row in db.scalars(select(GraduationStudentMaterial).where(
+    existing_rows = list(db.scalars(select(GraduationStudentMaterial).where(
         GraduationStudentMaterial.tenant_id == _tid(),
         GraduationStudentMaterial.batch_id == int(student.batch_id),
         GraduationStudentMaterial.gd_student_id == int(student.id),
         GraduationStudentMaterial.is_deleted.is_(False),
-    ).with_for_update()).all()}
+    ).with_for_update()).all())
+    if str(student.stage or "").upper() == "ARCHIVED":
+        rule_ids = {int(row.rule_id) for row in existing_rows if row.rule_id}
+        rule_versions = {int(row.rule_version) for row in existing_rows if row.rule_version}
+        if len(rule_ids) != 1 or len(rule_versions) != 1:
+            raise AppException("MATERIAL_RULE_CONFLICT", "已归档学生材料缺少唯一冻结规则，禁止补写目录")
+        return {
+            "gdStudentId": str(student.id), "ruleId": str(next(iter(rule_ids))),
+            "ruleVersion": next(iter(rule_versions)), "created": 0,
+            "total": len(existing_rows), "preservedArchived": True,
+        }
+    rule = active_rule(db, int(student.batch_id), lock=True)
+    items = rule_items(db, int(rule.id), lock=True)
+    existing = {row.material_code: row for row in existing_rows}
     created = 0
     for item in items:
         if item.material_code in existing:
@@ -177,6 +170,7 @@ def initialize_student_materials_in_session(db, gd_student_id: int, user: dict |
     return {
         "gdStudentId": str(student.id), "ruleId": str(rule.id),
         "ruleVersion": int(rule.rule_version), "created": created, "total": len(items),
+        "preservedArchived": False,
     }
 
 
@@ -193,7 +187,9 @@ def initialize_batch_materials_in_session(db, batch_id: int, user: dict | None =
     active_rule(db, int(batch_id), lock=True)
     student_ids = list(db.scalars(select(GraduationStudent.id).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
-        GraduationStudent.record_status == "ACTIVE", GraduationStudent.is_deleted.is_(False),
+        GraduationStudent.record_status == "ACTIVE",
+        func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.id).with_for_update()).all())
     created = 0
     for gd_student_id in student_ids:
@@ -216,7 +212,9 @@ def repair_material_catalog(batch_id: int, user: dict | None = None) -> dict:
         definitions = {row.material_code: row for row in rule_items(db, int(rule.id), lock=True)}
         student_ids = list(db.scalars(select(GraduationStudent.id).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
-            GraduationStudent.record_status == "ACTIVE", GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
         ).order_by(GraduationStudent.id).with_for_update()).all())
         created = updated = preserved = 0
         for gd_student_id in student_ids:

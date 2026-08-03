@@ -12,7 +12,7 @@ from app.models.graduation_material import GraduationMaterialItem, GraduationMat
 from app.services.db_service import _tid, session
 from app.services.message_identity import resolve_message_user_id
 
-from .definitions import DEFAULT_MATERIAL_DEFINITIONS
+from .definitions import DEFAULT_MATERIAL_DEFINITIONS, REVIEW_PERMISSION_BY_CODE
 
 
 def _actor_id(user: dict | None) -> int | None:
@@ -77,6 +77,12 @@ def _normalize_item(raw: dict[str, Any], sort_no: int) -> dict[str, Any]:
         raise AppException("VALIDATION_ERROR", f"材料规则第 {sort_no} 项缺少 code/name/stage/ownerRole")
     if not extensions or max_size <= 0:
         raise AppException("VALIDATION_ERROR", f"材料 {code} 缺少允许扩展名或大小限制")
+    review_required = bool(raw.get("reviewRequired", True))
+    if review_required and code not in REVIEW_PERMISSION_BY_CODE:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"材料 {code} 要求人工审核，但未登记受支持的原子审核权限",
+        )
     return {
         "material_code": code,
         "material_name": name[:200],
@@ -87,7 +93,7 @@ def _normalize_item(raw: dict[str, Any], sort_no: int) -> dict[str, Any]:
         "max_files": max(1, int(raw.get("maxFileCount") or raw.get("maxFiles") or 1)),
         "max_size_bytes": max_size,
         "version_policy": str(raw.get("versionPolicy") or "IMMUTABLE_APPEND").upper()[:40],
-        "review_required": bool(raw.get("reviewRequired", True)),
+        "review_required": review_required,
         "archive_required": bool(raw.get("archiveRequired", True)),
         "sensitivity_level": str(raw.get("sensitivityLevel") or "SENSITIVE").upper()[:30],
         "applicable_major_id": str(raw.get("applicableMajor") or "")[:64] or None,
