@@ -1,0 +1,63 @@
+name: Agent Diagnose Main CI Regressions
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.head_ref == 'fix/graduation-material-closeout-p0-review' }}
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/graduation-material-closeout-p0-review
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Print authoritative file-center architecture
+        run: |
+          echo '=== AFFAIRS_ARCHIVE ==='
+          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'AFFAIRS_ARCHIVE' backend/app | head -80 || true
+          echo '=== MATERIAL_REQUIREMENT ==='
+          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'MATERIAL_REQUIREMENT' backend/app | head -80 || true
+          echo '=== file-object remark ==='
+          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'file-object:' backend/app | head -80 || true
+          echo '=== router guard installs ==='
+          grep -n 'install_.*guard\|install_affairs_operations' backend/app/api/v1/router.py || true
+      - name: Print teacher graduation error payload
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_mobile.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()\n    assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]\n'
+          new = '    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()\n    print("GD_RESPONSE_PAYLOAD=", gd, flush=True)\n    assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]\n'
+          if old not in text:
+              raise SystemExit('mobile assertion anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          pytest tests/test_mobile.py::test_teacher_domain_pages_structure -vv -s -p no:warnings
