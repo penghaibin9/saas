@@ -108,6 +108,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/tests/test_mobile.py .github/workflows/agent-diagnose-main-ci-regressions.yml
+          git add -A
           git commit -m 'test(mobile): require explicit graduation batch context'
           git push origin HEAD:fix/graduation-material-closeout-p0-review
