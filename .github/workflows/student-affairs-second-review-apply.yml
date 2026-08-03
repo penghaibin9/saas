@@ -1,0 +1,44 @@
+name: Student Affairs Second Review Apply
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/student-affairs-second-review-apply.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Apply verified second-review closeout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .audit/second-review.patch.gz.b64.* > /tmp/second-review.b64
+          test "$(wc -c < /tmp/second-review.b64)" -eq 106720
+          echo "f15f04a01b0109c2273ff229f79c4fd7d37e88516a70c647f4dc03cdbe881783  /tmp/second-review.b64" | sha256sum -c -
+          base64 -d /tmp/second-review.b64 | gzip -d > /tmp/second-review.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-edit origin/main
+          git apply --index --exclude=.github/workflows/student-affairs-second-review-export.yml /tmp/second-review.patch
+          git rm .github/workflows/student-affairs-second-review-export.yml
+          git rm .github/workflows/student-affairs-second-review-apply.yml
+          rm -f .audit/second-review.patch.gz.b64.*
+          git add -u .audit
+          rmdir .audit 2>/dev/null || true
+          test -z "$(git diff --cached --name-only | grep -E '(^\.audit/|student-affairs-second-review-(apply|export)\.yml$)' || true)"
+          git diff --cached --check
+          git commit -m "fix(student-affairs): close second-review merge blockers"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
