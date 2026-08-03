@@ -30,5 +30,6 @@ from app.models import excel_import_job as _excel_import_job  # noqa: F401
 from app.models import internship_agreement_template as _internship_agreement_template  # noqa: F401
 from app.models import service_catalog as _service_catalog  # noqa: F401  (PLAT-08·服务目录)
 from app.models import tenant_provisioning as _tenant_provisioning  # noqa: F401  (PLAT-04·租户开通)
+from app.models import incident as _incident  # noqa: F401  (PLAT-09·事件)
 
 metadata = Base.metadata
