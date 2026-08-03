@@ -67,6 +67,19 @@ def _account_type_of(account, db=None, roles: list | None = None) -> str:
     return "STUDENT" if _is_student_account(db, account, roles) else "STAFF"
 
 
+def _check_account_version(account, expected_version) -> None:
+    """SYS-03：账号写操作的乐观锁。不传视为老客户端（放行），传了就必须对得上。"""
+    from app.core.exceptions import AppException
+    if expected_version in (None, ""):
+        return
+    try:
+        expected = int(expected_version)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+    if expected != int(account.version or 0):
+        raise AppException("DATA_CONFLICT", "账号已被他人更新，请刷新后重试")
+
+
 def _account_type_condition(User, account_type: str, tenant_id: int):
     """数据库层使用同一分类规则，确保列表、批量操作、异常与导出边界一致。"""
     from app.models import Role, StudentAccountLink, UserRole
@@ -291,6 +304,8 @@ def _user_row(account, roles: list, db=None) -> dict:
         "orgId": org_id, "orgName": org_name, "roles": [r.role_code for r in roles],
         "roleNames": [r.role_name for r in roles], "phone": phone_masked, "email": "",
         "mustChangePassword": bool(getattr(account, "must_change_password", False)),
+        # SYS-03：写操作要带 expectedVersion，列表/详情必须把当前版本给出去
+        "version": int(getattr(account, "version", 0) or 0),
         "status": "ACTIVE" if status == "ACTIVE" else status,
         "statusLabel": {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}.get(status, "待激活"),
         "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
@@ -528,6 +543,7 @@ def update_system_user(user_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "账号不存在")
         if _account_type_of(account, db) == "STUDENT" and name != account.real_name:
             raise AppException("VALIDATION_ERROR", "学生姓名属于学生主档，请到学生主档办理更正")
+        _check_account_version(account, (body or {}).get("expectedVersion"))
         before = {"name": account.real_name, "phone": _mask_user_phone(account.phone_encrypted)}
         account.real_name = name
         if phone:
@@ -600,9 +616,11 @@ def batch_set_system_user_status(body: dict = Body(...),
                 )
                 stmt = stmt.where(User.id.in_(profile_users))
             accounts = db.scalars(stmt).all()
+            disabled_ids = []
             for account in accounts:
                 account.status = "DISABLED"
                 account.version = int(account.version or 0) + 1
+                disabled_ids.append(int(account.id))
             db.commit()
             count = len(accounts)
         except Exception:
@@ -610,6 +628,15 @@ def batch_set_system_user_status(body: dict = Body(...),
             raise
         finally:
             db.close()
+
+        # 单个停用会清主体缓存，按范围批量停用原来没清：被停用的学生在缓存 TTL 内
+        # 仍然带着旧令牌照常访问。逐个清掉，让停用立刻生效。
+        from app.services.auth_service_db import invalidate_subject_cache
+        for uid in disabled_ids:
+            try:
+                invalidate_subject_cache(f"db-{uid}", tenant_id)
+            except Exception:  # noqa: BLE001
+                pass
 
         from app.services import audit_log
         scope_label = {
@@ -643,16 +670,23 @@ def batch_set_system_user_status(body: dict = Body(...),
     self_id = _acting_db_id(user)
     count = 0
     errors = []
+    results = []  # SYS03-T04：逐项结果，不能只回一个总数让管理员猜哪一条没成
     for uid in ids:
         if action == "DISABLE" and self_id == uid:
             errors.append({"id": uid, "message": "不能停用本人"})
+            results.append({"id": str(uid), "status": "FAILED", "message": "不能停用本人"})
             continue
         try:
             set_system_user_status(uid, {"action": action, "reason": reason}, user=user)
             count += 1
+            results.append({"id": str(uid), "status": "OK",
+                            "message": "已停用" if action == "DISABLE" else "已启用"})
         except Exception as exc:  # noqa: BLE001
-            errors.append({"id": uid, "message": getattr(exc, "message", None) or str(exc)})
-    return success({"count": count, "errors": errors},
+            message = getattr(exc, "message", None) or str(exc)
+            errors.append({"id": uid, "message": message})
+            results.append({"id": str(uid), "status": "FAILED", "message": message})
+    return success({"count": count, "errors": errors, "results": results,
+                    "total": len(results), "succeeded": count, "failed": len(errors)},
                    message=f"已处理 {count} 个账号" + (f"，{len(errors)} 个失败" if errors else ""))
 
 
@@ -701,6 +735,60 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
                         "accountType": normalized_type or "MIXED_LEGACY"})
     finally:
         db.close()
+
+
+# ── SYS-03 稳定主体解析与绑定修复 ────────────────────────────────────────────
+@router.get("/system/accounts/identity-issues", summary="身份绑定异常队列（学号改名/未绑定/同名同手机号）")
+def api_identity_issues(issue_code: str = "", page: int = 1, page_size: int = 50,
+                        user=Depends(require_any_permission(
+                            "systemAdmin.user.exception.view", "systemAdmin.user.view",
+                            "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    return success(ident.identity_issues(issue_code=issue_code, page=page, page_size=page_size))
+
+
+@router.get("/system/accounts/{user_id}/effective-identity", summary="账号的稳定主体解析（userId/studentId/staffId）")
+def api_effective_identity(user_id: int, user=Depends(require_any_permission(
+        "systemAdmin.user.view", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    return success(ident.effective_identity(user_id))
+
+
+@router.post("/system/accounts/{user_id}/repair-binding", summary="修复身份绑定（登录名兜底转结构化绑定）")
+def api_repair_binding(user_id: int, body: dict = Body(...),
+                       user=Depends(require_any_permission(
+                           "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    student_id = str(payload.get("studentId") or "").strip()
+    if not student_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "studentId 必须是学籍主档主键")
+    return success(ident.repair_binding(
+        user_id, student_id=int(student_id), reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="绑定已修复")
+
+
+@router.post("/system/accounts/{user_id}/unbind", summary="解除身份绑定（历史留痕，不物理删除）")
+def api_unbind_identity(user_id: int, body: dict = Body(...),
+                        user=Depends(require_any_permission(
+                            "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    return success(ident.unbind(
+        user_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="绑定已解除")
+
+
+@router.post("/system/accounts/batch-repair-binding", summary="批量修复绑定（逐项返回结果）")
+def api_batch_repair_binding(body: dict = Body(...),
+                             user=Depends(require_any_permission(
+                                 "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    return success(ident.batch_repair(payload.get("items") or [],
+                                      reason=payload.get("reason") or "", user=user),
+                   message="批量修复已完成，请逐项查看结果")
 
 
 @router.get("/system/staff-affiliations", summary="教职工岗位与归属（班级辅导员/班主任 + 教师范围）")
@@ -1434,6 +1522,7 @@ def set_system_user_status(user_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "账号不存在")
         if action == "DISABLE" and _is_last_active_school_admin(db, tenant_id, account.id):
             raise AppException("VALIDATION_ERROR", "不能停用本校最后一名启用中的学校管理员")
+        _check_account_version(account, (body or {}).get("expectedVersion"))
         before = str(account.status or "").upper()
         account.status = "DISABLED" if action == "DISABLE" else "ACTIVE"
         account.version = int(account.version or 0) + 1
@@ -1458,7 +1547,7 @@ def set_system_user_status(user_id: int, body: dict = Body(...),
 
 
 @router.post("/system/users/{user_id}/reset-password", summary="重置学校账号密码（生成临时密码，强制首登改密）")
-def reset_system_user_password(user_id: int,
+def reset_system_user_password(user_id: int, body: dict | None = Body(default=None),
                                user=Depends(require_permission("systemAdmin.user.manage"))):
     from app.core.exceptions import AppException
     from app.core.security import hash_password
@@ -1470,6 +1559,8 @@ def reset_system_user_password(user_id: int,
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在")
+        # 本函数也被内部直接调用（此时 body 还是 Body() 标记对象，不是 dict），故显式判类型
+        _check_account_version(account, (body if isinstance(body, dict) else {}).get("expectedVersion"))
         temp_password = "Tmp" + secrets.token_urlsafe(6)  # 一次性临时密码，仅本次返回给管理员转交
         account.password_hash = hash_password(temp_password)
         account.must_change_password = True

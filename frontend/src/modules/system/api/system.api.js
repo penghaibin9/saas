@@ -238,29 +238,73 @@ export const systemApi = {
         body: payload
       }))
     } catch (error) {
-      return fail(error.message || '账号更新失败')
+      // 保留 bizCode：DATA_CONFLICT 时页面要提示刷新而不是笼统报错
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  // SYS-03：稳定主体解析与身份绑定修复
+  async getEffectiveIdentity(userId) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/effective-identity`))
+    } catch (error) {
+      return fail(error.message || '身份解析加载失败')
+    }
+  },
+
+  async listIdentityIssues(params = {}) {
+    try {
+      return ok(await request('/system/accounts/identity-issues', {
+        params: {
+          issue_code: params.issueCode || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '身份绑定异常加载失败')
+    }
+  },
+
+  async repairIdentityBinding(userId, { studentId, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/repair-binding`, {
+        method: 'POST', body: { studentId, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async unbindIdentity(userId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/unbind`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
   /** 停用/启用（真实库：更新 t_user.status，写审计。停用原因必填 ≥5 字，后端最终校验） */
-  async setUserStatus(id, { action, reason }) {
+  async setUserStatus(id, { action, reason, expectedVersion } = {}) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/status`, {
-        method: 'PUT', body: { action, reason }
+        method: 'PUT', body: { action, reason, expectedVersion }
       }))
     } catch (error) {
-      return fail(error.message || '账号状态更新失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
   /** 重置密码（真实库：生成一次性临时密码，password_hash 更新 + 强制首登改密。临时密码仅本次随响应返回） */
-  async resetUserPassword(id) {
+  async resetUserPassword(id, { expectedVersion } = {}) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/reset-password`, {
-        method: 'POST'
+        method: 'POST', body: { expectedVersion }
       }))
     } catch (error) {
-      return fail(error.message || '重置密码失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
