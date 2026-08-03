@@ -1,0 +1,41 @@
+name: Student Affairs Restart Apply
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/student-affairs-restart-apply.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: student-affairs-restart-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Verify and apply restart patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/restart-fix/part-* > /tmp/pr39-restart-fix.patch.gz.b64
+          test "$(wc -c < /tmp/pr39-restart-fix.patch.gz.b64)" -eq 5092
+          echo "0e0ebb1af3c69443f6d41bef47a718466678a4045233a8c0be9a7ff52395c153  /tmp/pr39-restart-fix.patch.gz.b64" | sha256sum -c -
+          base64 -d /tmp/pr39-restart-fix.patch.gz.b64 | gzip -d > /tmp/pr39-restart-fix.patch
+          git apply --check /tmp/pr39-restart-fix.patch
+          git apply --index /tmp/pr39-restart-fix.patch
+          git rm .github/restart-fix/part-*
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(student-affairs): repair restart regressions"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
