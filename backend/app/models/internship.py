@@ -536,6 +536,8 @@ class InternshipChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
     target_position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     target_enterprise_name: Mapped[str | None] = mapped_column(String(200))
     target_position_name: Mapped[str | None] = mapped_column(String(100))
+    record_version_snapshot: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, comment="申请时实习主记录版本")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
                                         comment="PENDING/APPROVED/REJECTED")
     review_comment: Mapped[str | None] = mapped_column(String(500))

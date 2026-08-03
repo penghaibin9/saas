@@ -38,7 +38,18 @@ def upgrade() -> None:
     op.add_column("t_risk_record", sa.Column("source_version", sa.Integer(), nullable=True))
     op.create_index("ix_risk_source", "t_risk_record", ["tenant_id", "source_type", "source_id"])
 
+    op.add_column("t_internship_change_request", sa.Column(
+        "record_version_snapshot", sa.Integer(), nullable=True))
+
     bind = op.get_bind()
+    bind.execute(sa.text(
+        "UPDATE t_internship_change_request c "
+        "JOIN t_internship_record r ON r.id=c.internship_id AND r.tenant_id=c.tenant_id "
+        "SET c.record_version_snapshot=COALESCE(r.version, 0) "
+        "WHERE c.record_version_snapshot IS NULL"
+    ))
+    op.alter_column("t_internship_change_request", "record_version_snapshot",
+                    existing_type=sa.Integer(), nullable=False, server_default="0")
     complaints = bind.execute(sa.text(
         "SELECT id, student_id, batch_id, complainant_contact_encrypted "
         "FROM t_internship_complaint"
@@ -90,6 +101,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("t_internship_change_request", "record_version_snapshot")
     op.drop_constraint("uk_risk_source", "t_risk_record", type_="unique")
     op.drop_constraint("uk_internship_archive_record", "t_internship_archive", type_="unique")
     op.drop_constraint("uk_internship_final_score_record", "t_internship_final_score", type_="unique")

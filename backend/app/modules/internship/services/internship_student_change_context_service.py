@@ -89,6 +89,7 @@ def apply(user: dict, body: dict) -> dict:
             target_position_name=(
                 str(payload.get("targetPositionName") or "").strip() or None
             ),
+            record_version_snapshot=int(record.version or 0),
             status="PENDING",
         )
         db.add(row)
