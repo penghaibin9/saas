@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
@@ -104,11 +104,13 @@ def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
             "contact_phone": phone or None, "evidence_file_id": file_id}
 
 
-def _row(db, app: InternshipApplication, rec=None, stu=None) -> dict:
+def _row(db, app: InternshipApplication, rec=None, stu=None, *,
+         pos=None, company=None, preloaded: bool = False) -> dict:
     rec = rec or db.get(InternshipRecord, app.record_id)
     stu = stu or db.get(StudentProfile, app.student_id)
-    pos = db.get(InternshipPosition, app.position_id) if app.position_id else None
-    company = db.get(EmpCompany, pos.company_id) if pos else None
+    if not preloaded:
+        pos = db.get(InternshipPosition, app.position_id) if app.position_id else None
+        company = db.get(EmpCompany, pos.company_id) if pos else None
     return {
         "id": str(app.id), "recordId": str(app.record_id), "studentId": str(app.student_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -261,38 +263,65 @@ def my_applications(user: dict) -> list[dict]:
 
 def list_applications(page: int, page_size: int, status=None, application_type=None, keyword=None,
                       batch_id=None, user: dict | None = None) -> tuple[list[dict], int]:
-    from app.modules.internship.services.internship_batch_context import batch_record_ids
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
     with session() as db:
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipApplication).where(
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        query = select(
+            InternshipApplication, InternshipRecord, StudentProfile,
+            InternshipPosition, EmpCompany,
+        ).join(
+            InternshipRecord, InternshipRecord.id == InternshipApplication.record_id
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipApplication.student_id
+        ).outerjoin(
+            InternshipPosition, InternshipPosition.id == InternshipApplication.position_id
+        ).outerjoin(
+            EmpCompany, EmpCompany.id == InternshipPosition.company_id
+        ).where(
             InternshipApplication.tenant_id == _tid(),
             InternshipApplication.is_deleted.is_(False),
-            InternshipApplication.record_id.in_(record_ids),
+            InternshipApplication.record_id.in_(select(scoped.c.id)),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
         )
         if status:
-            q = q.where(InternshipApplication.status == status)
+            query = query.where(InternshipApplication.status == status)
         if application_type:
-            q = q.where(InternshipApplication.application_type == application_type)
-        rows = db.scalars(q.order_by(InternshipApplication.submitted_at.desc(), InternshipApplication.id.desc())).all()
-        from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-        scope = _current_scope(user)
-        items = []
-        for app in rows:
-            rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
-            if not rec or not stu:
-                continue
-            if not _rec_in_scope(scope, db, rec, stu):
-                continue
-            item = _row(db, app, rec, stu)
-            if keyword and keyword.strip().lower() not in (
-                    item["studentName"] + item["studentNo"] + item["companyName"] + item["positionName"]).lower():
-                continue
-            items.append(item)
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+            query = query.where(InternshipApplication.application_type == application_type)
+        term = str(keyword or "").strip()
+        if term:
+            like = f"%{term}%"
+            query = query.where(or_(
+                StudentProfile.real_name.like(like),
+                StudentProfile.student_no.like(like),
+                InternshipApplication.company_name.like(like),
+                InternshipApplication.position_name.like(like),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = max(0, int(page_size or 0))
+        if size == 0:
+            return [], total
+        rows = db.execute(
+            query.order_by(
+                InternshipApplication.submitted_at.desc(),
+                InternshipApplication.id.desc(),
+            ).offset((max(1, int(page or 1)) - 1) * size).limit(size)
+        ).all()
+        return [
+            _row(db, application, record, student,
+                 pos=position, company=company, preloaded=True)
+            for application, record, student, position, company in rows
+        ], total
 
 
 def get_application(app_id, user: dict | None = None) -> dict:

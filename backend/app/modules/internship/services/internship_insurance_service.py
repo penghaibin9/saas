@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipInsurance, InternshipRecord, StudentProfile
@@ -86,31 +86,50 @@ def _validate_dates(effective, expiry):
 
 
 def list_insurances(page, page_size, status=None, keyword=None, batch_id=None, user=None):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        query = select(InternshipInsurance).where(
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        query = select(InternshipInsurance, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipInsurance.internship_id
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipInsurance.student_id
+        ).where(
             InternshipInsurance.tenant_id == _tid(),
             InternshipInsurance.is_deleted.is_(False),
-            InternshipInsurance.internship_id.in_(record_ids))
+            InternshipInsurance.internship_id.in_(select(scoped.c.id)),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
         if status:
             query = query.where(InternshipInsurance.status == status)
-        rows = db.scalars(query.order_by(InternshipInsurance.id.desc())).all()
-        scope, in_scope = _scope(user)
-        items = []
-        for ins in rows:
-            rec = db.get(InternshipRecord, ins.internship_id)
-            stu = db.get(StudentProfile, ins.student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not in_scope(scope, db, rec, stu):
-                continue
-            items.append(_row(ins, rec, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        term = str(keyword or "").strip()
+        if term:
+            like = f"%{term}%"
+            query = query.where(or_(
+                StudentProfile.real_name.like(like),
+                StudentProfile.student_no.like(like),
+                InternshipInsurance.policy_no.like(like),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = max(0, int(page_size or 0))
+        if size == 0:
+            return [], total
+        rows = db.execute(
+            query.order_by(InternshipInsurance.id.desc())
+            .offset((max(1, int(page or 1)) - 1) * size).limit(size)
+        ).all()
+        return [_row(insurance, record, student)
+                for insurance, record, student in rows], total
 
 
 def student_submit(user, body) -> dict:

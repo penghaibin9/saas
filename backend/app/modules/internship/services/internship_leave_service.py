@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
@@ -137,8 +137,11 @@ def _evidence_viewed(db, lv: InternshipLeave, user) -> bool:
     return False
 
 
-def _row(lv: InternshipLeave, rec, stu, *, db=None, user=None) -> dict:
-    previous = _previous_rejection(db, lv) if db is not None else None
+def _row(lv: InternshipLeave, rec, stu, *, db=None, user=None,
+         previous=None, evidence_viewed=None, preloaded: bool = False) -> dict:
+    if not preloaded:
+        previous = _previous_rejection(db, lv) if db is not None else None
+        evidence_viewed = _evidence_viewed(db, lv, user) if db is not None and user else False
     return {
         "id": str(lv.id), "internId": str(lv.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -155,13 +158,11 @@ def _row(lv: InternshipLeave, rec, stu, *, db=None, user=None) -> dict:
         "evidenceFileId": lv.file_id or "", "hasEvidence": bool(lv.file_id),
         "evidenceRequired": _evidence_required(lv.leave_type, lv.days),
         "evidenceRequirementLabel": _evidence_requirement_label(lv.leave_type, lv.days),
-        "evidenceViewed": _evidence_viewed(db, lv, user) if db is not None and user else False,
+        "evidenceViewed": bool(evidence_viewed),
         "previousReviewComment": previous.review_comment or "" if previous else "",
         "previousReviewAt": _iso(previous.review_at) or "" if previous else "",
     }
 
-
-# ═══════════ 学生本人（移动端） ═══════════
 
 def apply(user, body) -> dict:
     b = body or {}
@@ -271,31 +272,100 @@ def my_leaves(user) -> list[dict]:
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
 
 def list_leaves(page, page_size, status=None, keyword=None, batch_id=None, user=None) -> tuple[list[dict], int]:
-    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipLeave).where(InternshipLeave.tenant_id == _tid(),
-                                          InternshipLeave.is_deleted.is_(False),
-                                          InternshipLeave.internship_id.in_(record_ids))
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        query = select(InternshipLeave, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipLeave.internship_id
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipLeave.student_id
+        ).where(
+            InternshipLeave.tenant_id == _tid(),
+            InternshipLeave.is_deleted.is_(False),
+            InternshipLeave.internship_id.in_(select(scoped.c.id)),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
         if status:
-            q = q.where(InternshipLeave.status == status)
-        rows = db.scalars(q.order_by(InternshipLeave.id.desc())).all()
-        scope = _current_scope(user)
-        items = []
-        for lv in rows:
-            rec = db.get(InternshipRecord, lv.internship_id)
-            stu = db.get(StudentProfile, lv.student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not _rec_in_scope(scope, db, rec, stu):
-                continue
-            items.append(_row(lv, rec, stu, db=db, user=user))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+            query = query.where(InternshipLeave.status == status)
+        term = str(keyword or "").strip()
+        if term:
+            like = f"%{term}%"
+            query = query.where(or_(
+                StudentProfile.real_name.like(like),
+                StudentProfile.student_no.like(like),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = max(0, int(page_size or 0))
+        if size == 0:
+            return [], total
+        rows = db.execute(
+            query.order_by(InternshipLeave.id.desc())
+            .offset((max(1, int(page or 1)) - 1) * size).limit(size)
+        ).all()
+        leaves = [item[0] for item in rows]
+        ids = [item.id for item in leaves]
+        previous_map = {}
+        if leaves:
+            internship_ids = {item.internship_id for item in leaves}
+            rejected = db.scalars(select(InternshipLeave).where(
+                InternshipLeave.tenant_id == _tid(),
+                InternshipLeave.internship_id.in_(internship_ids),
+                InternshipLeave.status == "REJECTED",
+                InternshipLeave.is_deleted.is_(False),
+            ).order_by(InternshipLeave.id.desc())).all()
+            for item in rejected:
+                key = (item.internship_id, item.leave_type, item.start_date, item.end_date)
+                previous_map.setdefault(key, item)
+        viewed_ids = set()
+        if ids and user:
+            actor_id = _actor_id(user)
+            operator = _op_name(user)
+            trails = db.scalars(select(InternshipAuditTrail).where(
+                InternshipAuditTrail.tenant_id == _tid(),
+                InternshipAuditTrail.target_type == "LEAVE",
+                InternshipAuditTrail.target_id.in_(ids),
+                InternshipAuditTrail.action == "EVIDENCE_VIEW",
+            ).order_by(InternshipAuditTrail.id.desc())).all()
+            by_id = {item.id: item for item in leaves}
+            for trail in trails:
+                leave = by_id.get(trail.target_id)
+                if not leave or not leave.file_id:
+                    continue
+                detail = trail.detail_json or {}
+                try:
+                    same_version = int(detail.get("version")) == int(leave.version or 0)
+                except (TypeError, ValueError):
+                    same_version = False
+                same_file = str(detail.get("evidenceFileId") or "") == str(leave.file_id)
+                same_actor = (
+                    str(detail.get("operatorUserId") or "") == actor_id
+                    if actor_id else (trail.operator_name or "") == operator
+                )
+                if same_version and same_file and same_actor:
+                    viewed_ids.add(leave.id)
+        result = []
+        for leave, record, student in rows:
+            key = (leave.internship_id, leave.leave_type, leave.start_date, leave.end_date)
+            previous = previous_map.get(key)
+            if previous and previous.id == leave.id:
+                previous = None
+            result.append(_row(
+                leave, record, student, db=db, user=user,
+                previous=previous, evidence_viewed=leave.id in viewed_ids,
+                preloaded=True,
+            ))
+        return result, total
 
 
 def get_leave(leave_id, user=None) -> dict:
