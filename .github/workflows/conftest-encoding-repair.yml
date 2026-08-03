@@ -59,7 +59,7 @@ jobs:
               break
           if not chosen or chosen_text is None:
               raise SystemExit('no valid historical conftest.py found')
-          canonical = chosen_text.replace('\r\n', '\n').replace('\r', '\n')
+          canonical = chosen_text.replace('\r\n', '\n').replace('\r', '\n').rstrip() + '\n'
           path.write_text(canonical, encoding='utf-8', newline='\n')
           print(f'restored conftest.py from valid commit {chosen}')
           PY
