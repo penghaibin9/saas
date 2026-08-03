@@ -1,0 +1,56 @@
+name: Internship Import Upload Agent
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: internship-import-upload-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply import upload hardening
+        run: python scripts/agent/apply_internship_import_upload_hardening.py
+      - name: Validate patched files
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/services/internship_import_upload.py \
+            backend/app/modules/internship/routers/internship_position.py \
+            backend/app/modules/internship/routers/internship_student.py \
+            backend/app/modules/internship/routers/internship_match.py \
+            backend/app/modules/internship/routers/internship.py \
+            backend/tests/test_internship_import_upload_security.py \
+            scripts/check/check-internship-production-contracts.py
+          python scripts/check/check-internship-production-contracts.py
+          git diff --check
+      - name: Commit business changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/agent/apply_internship_import_upload_hardening.py
+          git add -u
+          git add \
+            backend/app/modules/internship/services/internship_import_upload.py \
+            backend/tests/test_internship_import_upload_security.py
+          if git diff --cached --quiet; then
+            echo 'import upload hardening already committed'
+            exit 0
+          fi
+          git commit -m 'security: harden internship Excel imports'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
