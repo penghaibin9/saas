@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.internship.services.internship_import_upload import read_safe_xlsx_upload
 from app.modules.internship.schemas.internship_position import (PositionCreate, PositionImport, PositionImportErrors,
                                              PositionRiskRequest, PositionStatusAction, PositionUpdate)
 from app.services import audit_log
@@ -92,7 +93,7 @@ def position_import_template(user=Depends(require_permission(_P_MANAGE))):
 
 @router.post("/positions/import/xlsx", summary="岗位库导入·上传 Excel 解析+预校验")
 async def position_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_P_MANAGE))):
-    content = await file.read()
+    content = await read_safe_xlsx_upload(file)
     rows = xlsx_util.read_xlsx(content, _POS_XLSX_MAP)
     dry = pos.import_dry_run(rows, "POSITION_IMPORT_V2")
     return success({"templateVersion": "POSITION_IMPORT_V2", "rows": rows, **dry})

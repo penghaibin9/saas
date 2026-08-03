@@ -96,10 +96,10 @@ export const internshipCoreApi = {
     return request(`/portal/internship/enterprises${query}`)
   },
   uploadApplicationEvidence(file) {
-    return uploadFile('/files/upload?bizType=INTERNSHIP_APPLICATION_EVIDENCE', file)
+    return uploadFile('/files?bizType=INTERNSHIP_APPLICATION_EVIDENCE', file)
   },
   uploadInsurancePolicy(file) {
-    return uploadFile('/files/upload?bizType=INTERNSHIP_INSURANCE_POLICY', file)
+    return uploadFile('/files?bizType=INTERNSHIP_INSURANCE_POLICY', file)
   },
   insurance() {
     return request('/portal/internship/insurance')

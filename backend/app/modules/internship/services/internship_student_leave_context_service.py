@@ -173,6 +173,8 @@ def ack_overdue_return(user: dict, leave_id, body: dict) -> dict:
         risks = db.scalars(select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(),
             RiskRecord.internship_id == row.internship_id,
+            RiskRecord.source_type == "LEAVE",
+            RiskRecord.source_id == row.id,
             RiskRecord.risk_code == "INT-R06",
             RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
             RiskRecord.is_deleted.is_(False),

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipMakeup,
@@ -134,9 +134,16 @@ def _evidence_viewed(db, m: InternshipMakeup, user, evidence_file_id: str | None
     return False
 
 
-def _row(m: InternshipMakeup, rec, stu, *, db=None, user=None) -> dict:
-    evidence_file_id = _evidence_file_id(db, m) if db is not None else ""
-    previous = _previous_rejection(db, m) if db is not None else None
+def _row(m: InternshipMakeup, rec, stu, *, db=None, user=None,
+         evidence_file_id=None, previous=None, evidence_viewed=None,
+         preloaded: bool = False) -> dict:
+    if not preloaded:
+        evidence_file_id = _evidence_file_id(db, m) if db is not None else ""
+        previous = _previous_rejection(db, m) if db is not None else None
+        evidence_viewed = (
+            _evidence_viewed(db, m, user, evidence_file_id)
+            if db is not None and user else False)
+    evidence_file_id = str(evidence_file_id or "")
     return {
         "id": str(m.id), "internId": str(m.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -150,13 +157,11 @@ def _row(m: InternshipMakeup, rec, stu, *, db=None, user=None) -> dict:
         "evidenceFileId": evidence_file_id, "hasEvidence": bool(evidence_file_id),
         "evidenceRequired": _evidence_required(m.makeup_type),
         "evidenceRequirementLabel": _evidence_requirement_label(m.makeup_type),
-        "evidenceViewed": _evidence_viewed(db, m, user, evidence_file_id) if db is not None and user else False,
+        "evidenceViewed": bool(evidence_viewed),
         "previousReviewComment": previous.review_comment or "" if previous else "",
         "previousReviewAt": _iso(previous.review_at) or "" if previous else "",
     }
 
-
-# ═══════════ 学生本人（移动端） ═══════════
 
 def my_makeups(user) -> dict:
     """本人补卡申请列表。"""
@@ -226,31 +231,104 @@ def withdraw(user, makeup_id) -> dict:
 # ═══════════ 指导教师 / 管理员（PC 管理端，owner + 数据范围） ═══════════
 
 def list_makeups(page, page_size, status=None, batch_id=None, user=None) -> tuple[list[dict], int]:
-    from app.modules.internship.services.internship_batch_context import batch_record_ids
-    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
     with session() as db:
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipMakeup).where(
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        query = select(InternshipMakeup, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipMakeup.internship_id
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipMakeup.student_id
+        ).where(
             InternshipMakeup.tenant_id == _tid(),
             InternshipMakeup.is_deleted.is_(False),
-            InternshipMakeup.internship_id.in_(record_ids),
+            InternshipMakeup.internship_id.in_(select(scoped.c.id)),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
         )
         if status:
-            q = q.where(InternshipMakeup.status == status)
-        rows = db.scalars(q.order_by(InternshipMakeup.id.desc())).all()
-        scope = _current_scope(user)
-        items = []
-        for m in rows:
-            rec = db.get(InternshipRecord, m.internship_id)
-            stu = db.get(StudentProfile, m.student_id)
-            if not _rec_in_scope(scope, db, rec, stu):
-                continue
-            items.append(_row(m, rec, stu, db=db, user=user))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+            query = query.where(InternshipMakeup.status == status)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = max(0, int(page_size or 0))
+        if size == 0:
+            return [], total
+        rows = db.execute(
+            query.order_by(InternshipMakeup.id.desc())
+            .offset((max(1, int(page or 1)) - 1) * size).limit(size)
+        ).all()
+        makeups = [item[0] for item in rows]
+        ids = [item.id for item in makeups]
+        evidence_map = {}
+        viewed_ids = set()
+        if ids:
+            trails = db.scalars(select(InternshipAuditTrail).where(
+                InternshipAuditTrail.tenant_id == _tid(),
+                InternshipAuditTrail.target_type == "MAKEUP",
+                InternshipAuditTrail.target_id.in_(ids),
+                InternshipAuditTrail.action.in_((*_EVIDENCE_ACTIONS, "EVIDENCE_VIEW")),
+            ).order_by(InternshipAuditTrail.id.desc())).all()
+            actor_id = _actor_id(user) if user else ""
+            operator = _op_name(user) if user else ""
+            by_id = {item.id: item for item in makeups}
+            for trail in trails:
+                detail = trail.detail_json or {}
+                if trail.action in _EVIDENCE_ACTIONS:
+                    file_id = str(detail.get("evidenceFileId") or detail.get("fileId") or "").strip()
+                    if file_id:
+                        evidence_map.setdefault(trail.target_id, file_id)
+            for trail in trails:
+                if trail.action != "EVIDENCE_VIEW" or not user:
+                    continue
+                makeup = by_id.get(trail.target_id)
+                file_id = evidence_map.get(trail.target_id, "")
+                if not makeup or not file_id:
+                    continue
+                detail = trail.detail_json or {}
+                try:
+                    same_version = int(detail.get("version")) == int(makeup.version or 0)
+                except (TypeError, ValueError):
+                    same_version = False
+                same_file = str(detail.get("evidenceFileId") or "") == file_id
+                same_actor = (
+                    str(detail.get("operatorUserId") or "") == actor_id
+                    if actor_id else (trail.operator_name or "") == operator
+                )
+                if same_version and same_file and same_actor:
+                    viewed_ids.add(makeup.id)
+        previous_map = {}
+        if makeups:
+            internship_ids = {item.internship_id for item in makeups}
+            rejected = db.scalars(select(InternshipMakeup).where(
+                InternshipMakeup.tenant_id == _tid(),
+                InternshipMakeup.internship_id.in_(internship_ids),
+                InternshipMakeup.status == "REJECTED",
+                InternshipMakeup.is_deleted.is_(False),
+            ).order_by(InternshipMakeup.id.desc())).all()
+            for item in rejected:
+                key = (item.internship_id, item.checkin_date, item.makeup_type)
+                previous_map.setdefault(key, item)
+        result = []
+        for makeup, record, student in rows:
+            key = (makeup.internship_id, makeup.checkin_date, makeup.makeup_type)
+            previous = previous_map.get(key)
+            if previous and previous.id == makeup.id:
+                previous = None
+            result.append(_row(
+                makeup, record, student, db=db, user=user,
+                evidence_file_id=evidence_map.get(makeup.id, ""),
+                previous=previous, evidence_viewed=makeup.id in viewed_ids,
+                preloaded=True,
+            ))
+        return result, total
 
 
 def get_makeup(makeup_id, user=None) -> dict:

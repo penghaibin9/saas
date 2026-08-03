@@ -7,18 +7,22 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import and_, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.field_crypto import decrypt_sensitive, encrypt_sensitive, hash_sensitive
 from app.models import (InternshipAuditTrail, InternshipComplaint, InternshipRecord, RiskRecord,
                         StudentProfile)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"RECEIVED": "已登记", "ACCEPTED": "已受理", "INVESTIGATING": "调查中",
                 "RESOLVED": "已办结", "REJECTED": "不成立", "WITHDRAWN": "已撤回", "CLOSED": "已关闭"}
+_logger = logging.getLogger("app.internship.complaint")
+
 _TRANSITIONS = {
     "ACCEPT": (("RECEIVED",), "ACCEPTED"),
     "INVESTIGATE": (("ACCEPTED",), "INVESTIGATING"),
@@ -55,8 +59,27 @@ def _mask(value: str) -> str:
 
 def _row(c, user=None, student_name: str = ""):
     from app.core.permissions import has_permission
+
     can_sensitive = has_permission(user or {}, "internship.complaint.sensitive")
-    contact = c.complainant_contact_encrypted or ""
+    contact = ""
+    contact_corrupted = False
+    if c.complainant_contact_encrypted:
+        try:
+            plain = decrypt_sensitive(
+                c.complainant_contact_encrypted,
+                "internship_complaint_contact",
+                allow_legacy_plaintext=True,
+            )
+            if plain is None:
+                contact_corrupted = True
+                _logger.error("complaint_contact_decrypt_failed complaint_id=%s", c.id)
+            else:
+                contact = plain
+        except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
+            contact_corrupted = True
+            _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
+    confidential = str(c.confidential_level or "NORMAL").upper() != "NORMAL"
+    hide_business_detail = confidential and not can_sensitive
     return {
         "id": str(c.id), "complaintNo": c.complaint_no or "", "source": c.source,
         "targetType": c.target_type or "",
@@ -65,14 +88,21 @@ def _row(c, user=None, student_name: str = ""):
         "studentName": student_name or ("企业投诉" if not c.student_id else ""),
         "batchId": str(c.batch_id) if c.batch_id else "",
         "category": c.category or "", "severity": c.severity,
-        "content": c.content or "", "evidenceFileId": c.evidence_file_id or "",
-        "complainantContact": contact if can_sensitive else _mask(contact),
-        "complainantContactMasked": not can_sensitive,
+        "content": "" if hide_business_detail else (c.content or ""),
+        "evidenceFileId": "" if hide_business_detail else (c.evidence_file_id or ""),
+        "contentMasked": hide_business_detail,
+        "evidenceMasked": hide_business_detail,
+        "complainantContact": (
+            "***" if contact_corrupted else (contact if can_sensitive else _mask(contact))
+        ),
+        "complainantContactMasked": (not can_sensitive) or contact_corrupted,
+        "complainantContactCorrupted": contact_corrupted,
         "confidentialLevel": c.confidential_level,
         "status": c.status, "statusLabel": STATUS_LABEL.get(c.status, c.status),
         "acceptedByName": c.accepted_by_name or "", "ownerName": c.owner_name or "",
         "acceptDeadline": c.accept_deadline or "", "resolveDeadline": c.resolve_deadline or "",
-        "conclusion": c.conclusion or "", "followupResult": c.followup_result or "",
+        "conclusion": "" if hide_business_detail else (c.conclusion or ""),
+        "followupResult": "" if hide_business_detail else (c.followup_result or ""),
         "riskId": str(c.risk_id) if c.risk_id else "", "createdAt": _iso(c.created_at) or "",
     }
 
@@ -87,27 +117,43 @@ def _assert_complaint_writable(db, c, user, msg: str = "该投诉不在你的可
 
 
 def _complaint_in_scope(db, c, user) -> bool:
-    """投诉数据范围：有关联学生时按学生/实习记录收敛；纯企业投诉仅 ADMIN_TENANT 可见。"""
+    """投诉范围使用明确 internship_id/batch_id；禁止按学生最新实习记录猜测。"""
     from app.modules.internship.services.internship_service import (
         _current_scope, _rec_in_scope, assert_student_in_scope)
-    from app.models import StudentProfile
+
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return True
     if not c.student_id:
         return False
-    stu = db.get(StudentProfile, c.student_id)
-    rec = None
-    if c.batch_id:
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
-            InternshipRecord.batch_id == c.batch_id, InternshipRecord.is_deleted.is_(False))).first()
-    if rec is None:
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
-            InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
-    if rec is not None:
-        return _rec_in_scope(scope, db, rec, stu)
+    student = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == c.student_id,
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if not student:
+        return False
+    record = None
+    if c.internship_id:
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == c.internship_id,
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.student_id == c.student_id,
+            InternshipRecord.is_deleted.is_(False),
+        ))
+        if record is None:
+            return False
+    elif c.batch_id:
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.student_id == c.student_id,
+            InternshipRecord.batch_id == c.batch_id,
+            InternshipRecord.is_deleted.is_(False),
+        ))
+        if record is None:
+            return False
+    if record is not None:
+        return _rec_in_scope(scope, db, record, student)
     try:
         assert_student_in_scope(db, c.student_id, user)
         return True
@@ -191,8 +237,38 @@ def create_complaint(body, user=None):
     severity = (body.get("severity") or "MEDIUM").upper()
     if severity not in ("LOW", "MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "严重级别不合法")
+    contact_plain = str(body.get("complainantContact") or "").strip()
+    confidential_level = str(body.get("confidentialLevel") or "NORMAL").strip().upper()
+    if confidential_level not in ("NORMAL", "CONFIDENTIAL", "RESTRICTED"):
+        raise AppException("VALIDATION_ERROR", "保密级别不合法")
     with session() as db:
+        internship_id = int(body["internshipId"]) if body.get("internshipId") else None
         student_id = int(body["studentId"]) if body.get("studentId") else None
+        batch_id = int(body["batchId"]) if body.get("batchId") else None
+        rec = None
+        if internship_id:
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.id == internship_id,
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.is_deleted.is_(False)))
+            if not rec:
+                raise not_found("关联实习记录不存在或不在当前租户")
+            if student_id and rec.student_id != student_id:
+                raise AppException("DATA_CONFLICT", "投诉学生与实习记录不一致")
+            if batch_id and rec.batch_id != batch_id:
+                raise AppException("DATA_CONFLICT", "投诉批次与实习记录不一致")
+            student_id, batch_id = rec.student_id, rec.batch_id
+        elif student_id:
+            if not batch_id:
+                raise AppException("VALIDATION_ERROR", "关联学生投诉必须明确 internshipId 或 batchId")
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.student_id == student_id,
+                InternshipRecord.batch_id == batch_id,
+                InternshipRecord.is_deleted.is_(False)))
+            if not rec:
+                raise not_found("该学生在所选批次下无实习记录")
+            internship_id = rec.id
         if student_id:
             from app.modules.internship.services.internship_service import assert_student_in_scope
             assert_student_in_scope(db, student_id, user, "该学生不在你的数据范围内，无法登记投诉")
@@ -200,20 +276,27 @@ def create_complaint(body, user=None):
             from app.modules.internship.services.internship_service import assert_admin_tenant
             assert_admin_tenant(user, "登记无关联学生的企业投诉")
         c = InternshipComplaint(
-            tenant_id=_tid(), source=source, target_type=(body.get("targetType") or "").upper() or None,
+            tenant_id=_tid(), source=source,
+            target_type=(body.get("targetType") or "").upper() or None,
             enterprise_id=int(body["enterpriseId"]) if body.get("enterpriseId") else None,
             position_id=int(body["positionId"]) if body.get("positionId") else None,
-            student_id=student_id,
-            batch_id=int(body["batchId"]) if body.get("batchId") else None,
-            category=(body.get("category") or "").strip() or None, severity=severity,
-            content=content, evidence_file_id=(body.get("evidenceFileId") or "").strip() or None,
-            complainant_contact_encrypted=(body.get("complainantContact") or "").strip() or None,
-            confidential_level=(body.get("confidentialLevel") or "NORMAL").upper(),
+            student_id=student_id, internship_id=internship_id, batch_id=batch_id,
+            category=(body.get("category") or "").strip() or None,
+            severity=severity, content=content,
+            evidence_file_id=(body.get("evidenceFileId") or "").strip() or None,
+            complainant_contact_encrypted=encrypt_sensitive(
+                contact_plain, "internship_complaint_contact") if contact_plain else None,
+            complainant_contact_hash=hash_sensitive(
+                contact_plain, "internship_complaint_contact") if contact_plain else None,
+            confidential_level=confidential_level,
             status="RECEIVED", created_by=None)
         db.add(c)
         db.flush()
         c.complaint_no = f"CPL-{datetime.utcnow():%Y%m}-{c.id:05d}"
-        _trail(db, c.id, "CREATE", {"source": source, "severity": severity}, user)
+        _trail(db, c.id, "CREATE", {
+            "source": source, "severity": severity,
+            "internshipId": str(internship_id or ""), "contactEncrypted": bool(contact_plain),
+        }, user)
         db.commit()
         return _row(c, user)
 
@@ -248,7 +331,12 @@ def transition(cid, action, body=None, user=None):
 
 def to_risk(cid, user=None):
     with session() as db:
-        c = _get(db, cid)
+        c = db.scalar(select(InternshipComplaint).where(
+            InternshipComplaint.id == _as_id(cid),
+            InternshipComplaint.tenant_id == _tid(),
+            InternshipComplaint.is_deleted.is_(False)).with_for_update())
+        if not c:
+            raise not_found("投诉不存在或不在当前数据范围内")
         _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
         if c.risk_id:
             raise AppException("DATA_CONFLICT", "该投诉已转风险单")
@@ -256,23 +344,51 @@ def to_risk(cid, user=None):
             raise AppException("DATA_CONFLICT", "已撤回/关闭/不成立的投诉不可转风险")
         if not c.student_id:
             raise AppException("DATA_CONFLICT", "仅关联学生的投诉可转风险单")
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
-            InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
+        rec = None
+        if c.internship_id:
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.id == c.internship_id,
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.student_id == c.student_id,
+                InternshipRecord.is_deleted.is_(False)).with_for_update())
+        elif c.batch_id:
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.student_id == c.student_id,
+                InternshipRecord.batch_id == c.batch_id,
+                InternshipRecord.is_deleted.is_(False)).with_for_update())
+            if rec:
+                c.internship_id = rec.id
         if not rec:
-            raise not_found("关联学生无实习档案，无法转风险单")
-        risk = RiskRecord(tenant_id=_tid(), internship_id=rec.id,
-                          risk_code=f"INT-CPL-{c.id}",
-                          risk_title=f"企业投诉转风险：{c.category or '企业投诉'}",
-                          risk_level=c.severity or "MEDIUM", source_module="manual",
-                          owner_name=c.owner_name or _op_name(user), status="PENDING_HANDLE")
+            raise not_found("投诉未精确关联实习记录，禁止按学生最新记录猜测转风险")
+        risk_code = f"INT-CPL-{c.id}"
+        existing = db.scalar(select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(),
+            RiskRecord.source_type == "COMPLAINT",
+            RiskRecord.source_id == c.id,
+            RiskRecord.risk_code == risk_code,
+            RiskRecord.is_deleted.is_(False)).with_for_update())
+        if existing:
+            c.risk_id = existing.id
+            db.commit()
+            return _row(c, user)
+        risk = RiskRecord(
+            tenant_id=_tid(), internship_id=rec.id, risk_code=risk_code,
+            risk_title=f"企业投诉转风险：{c.category or '企业投诉'}",
+            risk_level=c.severity or "MEDIUM", source_module="complaint",
+            source_type="COMPLAINT", source_id=c.id,
+            source_version=int(c.version or 0),
+            owner_name=c.owner_name or _op_name(user), status="PENDING_HANDLE")
         db.add(risk)
         db.flush()
         c.risk_id = risk.id
         if c.status in ("RECEIVED", "ACCEPTED"):
             c.status = "INVESTIGATING"
         c.version = int(c.version or 0) + 1
-        _trail(db, c.id, "TO_RISK", {"riskId": str(risk.id)}, user)
+        _trail(db, c.id, "TO_RISK", {
+            "riskId": str(risk.id), "internshipId": str(rec.id),
+            "sourceVersion": int(risk.source_version or 0),
+        }, user)
         db.commit()
         return _row(c, user)
 

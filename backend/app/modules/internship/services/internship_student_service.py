@@ -517,56 +517,82 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
     return r
 
 
+
+def _assert_direct_position_change_allowed(record: InternshipRecord) -> None:
+    if record.status in ("ONBOARD", "ASSESSING"):
+        raise AppException(
+            "DATA_CONFLICT",
+            "在岗或考核中的学生禁止直接换岗/退岗，请通过实习变更申请审批流程办理",
+        )
+
+
 def assign_position(rec_id, position_id, expected_version=None, user=None) -> dict:
     """锁学生记录后，在一个事务中完成岗位占用、释放、主档更新和审计。"""
     with session() as db:
-        r = db.scalar(select(InternshipRecord).where(
+        record = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == _as_id(rec_id),
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False),
         ).with_for_update())
-        if not r:
+        if not record:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
-        assign_position_in_tx(db, r, position_id, expected_version, user)
+        _assert_direct_position_change_allowed(record)
+        assign_position_in_tx(db, record, position_id, expected_version, user)
         db.commit()
-        return _row_of(db, r)
+        return _row_of(db, record)
+
+
+def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
+                            reason: str = "", user=None, *, next_status: str | None = None):
+    """Within the caller transaction, release the current position and clear destination fields."""
+    from sqlalchemy import text
+    from app.modules.internship.services.internship_version import extract_expected_version
+
+    ver = extract_expected_version({"expectedVersion": expected_version})
+    if int(record.version or 0) != ver:
+        raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
+    _assert_write_scope(db, record, user)
+    if not record.position_id:
+        raise AppException("DATA_CONFLICT", "该学生未分配岗位")
+    old_id = record.position_id
+    locked = db.execute(text(
+        "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
+        "AND is_deleted = 0 FOR UPDATE"
+    ), {"pid": old_id, "tid": _tid()}).first()
+    if not locked:
+        raise AppException("DATA_CONFLICT", "原岗位不存在或已删除，无法安全释放名额")
+    db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
+    record.position_id = None
+    record.enterprise_id = None
+    record.mentor_contact_id = None
+    record.position_name = None
+    record.enterprise_name = None
+    record.enterprise_mentor_name = None
+    record.destination_type = "NONE"
+    if next_status:
+        record.status = next_status
+    record.version = ver + 1
+    _trail(db, record.id, "UNASSIGN_POSITION", {
+        "reason": reason, "fromPositionId": str(old_id),
+        "recordVersion": int(record.version or 0), "nextStatus": next_status or record.status,
+    })
+    return record
 
 
 def unassign_position(rec_id, reason: str = "", expected_version=None, user=None) -> dict:
-    from sqlalchemy import text
-    from app.modules.internship.services.internship_version import extract_expected_version
     with session() as db:
-        r = db.scalar(select(InternshipRecord).where(
-            InternshipRecord.id == _as_id(rec_id), InternshipRecord.tenant_id == _tid(),
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(rec_id),
+            InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False)).with_for_update())
-        if not r:
+        if not record:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
-        ver = extract_expected_version({"expectedVersion": expected_version})
-        if int(r.version or 0) != ver:
-            raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
-        _assert_write_scope(db, r, user)
-        if not r.position_id:
-            raise AppException("DATA_CONFLICT", "该学生未分配岗位")
-        old_id = r.position_id
-        db.execute(text(
-            "SELECT id FROM t_internship_position WHERE id = :pid AND tenant_id = :tid "
-            "AND is_deleted = 0 FOR UPDATE"
-        ), {"pid": old_id, "tid": _tid()})
-        db.execute(text(_RELEASE_SQL), {"pid": old_id, "tid": _tid()})
-        r.position_id = None
-        r.enterprise_id = None
-        r.mentor_contact_id = None
-        r.position_name = None
-        r.enterprise_name = None
-        r.enterprise_mentor_name = None
-        r.destination_type = "NONE"
-        r.version = ver + 1
-        _trail(db, r.id, "UNASSIGN_POSITION", {"reason": reason})
+        _assert_direct_position_change_allowed(record)
+        unassign_position_in_tx(
+            db, record, expected_version, reason, user=user)
         db.commit()
-        return _row_of(db, r)
+        return _row_of(db, record)
 
-
-# ═══════════ 状态机 / 资格 / 去向 ═══════════
 
 def _onboard_rules(db, r: InternshipRecord) -> dict:
     """取该记录所属批次的上岗前置规则；批次未配置时用系统默认（全部要求）。"""
