@@ -18,23 +18,23 @@ def _stu(name):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
-def _upload(client, headers):
-    r = client.post("/api/v1/files", headers=headers,
+def _upload(graduation_client, headers):
+    r = graduation_client.post("/api/v1/files", headers=headers,
                     files={"file": ("t.pdf", b"%PDF-1.4 x", "application/pdf")},
                     params={"bizType": "GRADUATION_MATERIAL"})
     assert r.json()["code"] == 0
     return r.json()["data"]["fileId"]
 
 
-def test_final_requires_attachment(client, auth_headers, db_mode):
+def test_final_requires_attachment(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm, GraduationStudent, GraduationTaskBook
     from datetime import datetime
 
     h = auth_headers
     name = "强制附件生"
-    sid = client.post(STU, headers=h, json={"studentNo": "ATT-REQ-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": "ATT-REQ-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
     stu.stage = "FINAL_CHECK"
@@ -48,23 +48,23 @@ def test_final_requires_attachment(client, auth_headers, db_mode):
     db.commit()
     db.close()
     sh = _stu(name)
-    empty = client.post(f"{MOBILE}/graduation/final", headers=sh,
+    empty = graduation_client.post(f"{MOBILE}/graduation/final", headers=sh,
                         json={"finalType": "初稿", "attachments": []}).json()
     assert empty["code"] != 0
     assert "附件" in (empty.get("message") or "")
-    ok = client.post(f"{MOBILE}/graduation/final", headers=sh,
-                     json={"finalType": "初稿", "attachments": [_upload(client, sh)]}).json()
+    ok = graduation_client.post(f"{MOBILE}/graduation/final", headers=sh,
+                     json={"finalType": "初稿", "attachments": [_upload(graduation_client, sh)]}).json()
     assert ok["code"] == 0, ok
 
 
-def test_proposal_can_submit_requires_topic_id(client, auth_headers, db_mode):
+def test_proposal_can_submit_requires_topic_id(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent, GraduationTaskBook
 
     h = auth_headers
     name = "开题提示生"
-    sid = client.post(STU, headers=h, json={"studentNo": "PROP-TOPIC-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": "PROP-TOPIC-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
     stu.stage = "GUIDING"  # 阶段已过选题，但无 topic_id
@@ -74,20 +74,20 @@ def test_proposal_can_submit_requires_topic_id(client, auth_headers, db_mode):
     db.commit()
     db.close()
     sh = _stu(name)
-    view = client.get(f"{MOBILE}/graduation/proposal", headers=sh).json()
+    view = graduation_client.get(f"{MOBILE}/graduation/proposal", headers=sh).json()
     assert view["code"] == 0
     assert view["data"]["canSubmit"] is False
     assert "选题" in (view["data"].get("reason") or "")
 
 
-def test_grade_exposes_appeal_pending(client, auth_headers, db_mode):
+def test_grade_exposes_appeal_pending(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationGrade, GraduationGradeAppeal, GraduationStudent
 
     h = auth_headers
     name = "申诉态生"
-    sid = client.post(STU, headers=h, json={"studentNo": "APPEAL-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": "APPEAL-01", "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
     db.add(GraduationGrade(tenant_id=stu.tenant_id, gd_student_id=stu.id,
@@ -98,7 +98,7 @@ def test_grade_exposes_appeal_pending(client, auth_headers, db_mode):
     db.commit()
     db.close()
     sh = _stu(name)
-    g = client.get(f"{MOBILE}/graduation/grade", headers=sh).json()
+    g = graduation_client.get(f"{MOBILE}/graduation/grade", headers=sh).json()
     assert g["code"] == 0
     assert g["data"]["published"] is True
     assert g["data"]["canAppeal"] is False

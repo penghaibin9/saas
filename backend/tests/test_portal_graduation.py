@@ -127,7 +127,7 @@ def test_view_and_submit_proposal(client, db_mode):
     assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmit"] is True
     r = client.post(f"{PORTAL}/proposal/submit", headers=h, json={
         "background": "本课题研究XX系统，背景意义……（长文本）",
-        "plan": "需求分析→设计→实现→测试", "outcome": "系统+论文", "attachments": []}).json()
+        "plan": "需求分析→设计→实现→测试", "outcome": "系统+论文", "attachments": [], "expectedVersion": 0}).json()
     assert r["code"] == 0 and r["data"].get("id")
 
 
@@ -136,14 +136,14 @@ def test_submit_proposal_empty_rejected(client, db_mode):
     _seed_gd_ready_for_proposal("GD-P-102", "开题二")
     h = _stu_token("开题二", "GD-P-102")
     assert client.post(f"{PORTAL}/proposal/submit", headers=h,
-                       json={"background": "", "plan": "", "outcome": ""}).json()["code"] != 0
+                       json={"background": "", "plan": "", "outcome": "", "expectedVersion": 0}).json()["code"] != 0
 
 
 def test_submit_proposal_no_gd_record(client, db_mode):
     _seed_student("GD-P-103", "开题三")  # 无毕设记录
     h = _stu_token("开题三", "GD-P-103")
     assert client.post(f"{PORTAL}/proposal/submit", headers=h,
-                       json={"background": "x内容"}).json()["code"] != 0
+                       json={"background": "x内容", "expectedVersion": 0}).json()["code"] != 0
 
 
 def _seed_gd_midterm_rectifying(no, name):
@@ -224,7 +224,7 @@ def test_view_and_submit_final(client, db_mode):
     v = client.get(f"{PORTAL}/final", headers=h).json()
     assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmitDraft"] is True
     r = client.post(f"{PORTAL}/final/submit", headers=h,
-                    json={"finalType": "初稿", "attachments": [fid]}).json()
+                    json={"finalType": "初稿", "attachments": [fid], "expectedVersion": 0}).json()
     assert r["code"] == 0 and r["data"].get("id")
 
 
@@ -233,9 +233,9 @@ def test_submit_final_requires_attachment(client, db_mode):
     _seed_gd_for_final("GD-P-302", "成果二")
     h = _stu_token("成果二", "GD-P-302")
     assert client.post(f"{PORTAL}/final/submit", headers=h,
-                       json={"finalType": "初稿", "attachments": []}).json()["code"] != 0
+                       json={"finalType": "初稿", "attachments": [], "expectedVersion": 0}).json()["code"] != 0
     assert client.post(f"{PORTAL}/final/submit", headers=h,
-                       json={"finalType": "xyz", "attachments": ["f1"]}).json()["code"] != 0
+                       json={"finalType": "xyz", "attachments": ["f1"], "expectedVersion": 0}).json()["code"] != 0
 
 
 def _seed_gd_published_grade(no, name):
