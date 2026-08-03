@@ -38,9 +38,9 @@ jobs:
           test "$(wc -c < /tmp/student-affairs-closeout.patch.gz.b64)" -eq 89064
           echo "cf5227c6ce6a272cd68ef92fac7384312182384af424408aecf61c56b5f32855  /tmp/student-affairs-closeout.patch.gz.b64" | sha256sum -c -
           base64 -d /tmp/student-affairs-closeout.patch.gz.b64 | gzip -d > /tmp/student-affairs-closeout.patch
-          git apply --check /tmp/student-affairs-closeout.patch
-          git apply --index /tmp/student-affairs-closeout.patch
-          git rm .github/closeout-patch/part-* .github/workflows/student-affairs-apply-closeout.yml
+          git apply --exclude='.github/workflows/*' --check /tmp/student-affairs-closeout.patch
+          git apply --exclude='.github/workflows/*' --index /tmp/student-affairs-closeout.patch
+          git rm .github/closeout-patch/part-*
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix(student-affairs): close P0/P1 audit findings"
