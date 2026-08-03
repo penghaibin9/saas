@@ -46,13 +46,13 @@ jobs:
             backend/alembic/versions/20260803_internship_prod_hardening.py
           python scripts/check/check-internship-production-contracts.py
           git diff --check
-      - name: Commit generated hardening changes
+      - name: Commit generated business hardening
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -- .github/workflows/ci.yml
           rm -f scripts/agent/apply_internship_production_hardening.py
           rm -f scripts/agent/fix_internship_hardening_generator.py
-          rm -f .github/workflows/internship-production-hardening-agent.yml
           git add -u
           git add \
             backend/alembic/versions/20260803_internship_prod_hardening.py \
