@@ -40,6 +40,7 @@ def test_appeal_repair_uses_dedicated_job_and_persists_lease(db_mode):
         assert row.state == "PENDING"
         assert row.attempts == 0
         assert row.source_row_id == 880001
+        assert row.next_run_at <= datetime.utcnow()
         db.close()
 
         claimed = repair._claim(10, worker_id="worker-a", lease_seconds=60)
