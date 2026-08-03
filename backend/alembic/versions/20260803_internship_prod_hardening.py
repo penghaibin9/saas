@@ -5,6 +5,8 @@ Revises: 0161_access_governance
 """
 from __future__ import annotations
 
+import json
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
@@ -13,6 +15,8 @@ revision = "20260803_internship_prod_hardening"
 down_revision = "0161_access_governance"
 branch_labels = None
 depends_on = None
+
+_MIGRATION_ACTOR = "20260803_internship_prod_hardening"
 
 
 def _columns(bind, table: str) -> dict[str, dict]:
@@ -68,17 +72,160 @@ def _constraint_names(bind, table: str) -> set[str]:
     return names
 
 
-def _soft_delete_duplicates(table: str) -> None:
+def _write_dedup_audit(
+    bind,
+    *,
+    tenant_id: int,
+    target_id: int,
+    target_type: str,
+    detail: dict,
+) -> None:
+    bind.execute(sa.text(
+        "INSERT INTO t_internship_audit_trail "
+        "(tenant_id, target_id, target_type, action, operator_name, detail_json, occurred_at) "
+        "VALUES (:tenant_id, :target_id, :target_type, 'MIGRATION_DEDUPLICATE', "
+        ":operator_name, :detail_json, UTC_TIMESTAMP())"
+    ), {
+        "tenant_id": tenant_id,
+        "target_id": target_id,
+        "target_type": target_type,
+        "operator_name": _MIGRATION_ACTOR,
+        "detail_json": json.dumps(detail, ensure_ascii=False),
+    })
+
+
+def _normalize_record_duplicates(table: str, target_type: str) -> None:
+    """Preserve duplicate rows while freeing the natural key for a real DB unique constraint.
+
+    Soft-deleting a duplicate is not sufficient because MySQL unique indexes still include
+    soft-deleted rows. The retained row keeps the real internship_id; historical duplicates
+    keep their stable primary keys and payloads but receive a unique negative tombstone key.
+    An append-only audit row stores the original key and deletion flag for a reversible downgrade.
+    """
     bind = op.get_bind()
-    rows = bind.execute(sa.text(
-        f"SELECT tenant_id, internship_id, MAX(id) AS keep_id FROM {table} "
-        "WHERE is_deleted = 0 GROUP BY tenant_id, internship_id HAVING COUNT(*) > 1"
+    groups = bind.execute(sa.text(
+        f"SELECT tenant_id, internship_id, "
+        "COALESCE(MAX(CASE WHEN is_deleted=0 THEN id END), MAX(id)) AS keep_id "
+        f"FROM {table} GROUP BY tenant_id, internship_id HAVING COUNT(*) > 1"
     )).mappings().all()
-    for row in rows:
+    for group in groups:
+        duplicates = bind.execute(sa.text(
+            f"SELECT id, is_deleted FROM {table} "
+            "WHERE tenant_id=:tenant_id AND internship_id=:internship_id AND id<>:keep_id "
+            "ORDER BY id"
+        ), dict(group)).mappings().all()
+        for row in duplicates:
+            _write_dedup_audit(
+                bind,
+                tenant_id=int(group["tenant_id"]),
+                target_id=int(row["id"]),
+                target_type=target_type,
+                detail={
+                    "table": table,
+                    "originalInternshipId": int(group["internship_id"]),
+                    "originalIsDeleted": bool(row["is_deleted"]),
+                    "keptId": int(group["keep_id"]),
+                    "tombstoneInternshipId": -int(row["id"]),
+                },
+            )
+            bind.execute(sa.text(
+                f"UPDATE {table} SET internship_id=:tombstone_id, is_deleted=1 "
+                "WHERE tenant_id=:tenant_id AND id=:id"
+            ), {
+                "tenant_id": int(group["tenant_id"]),
+                "id": int(row["id"]),
+                "tombstone_id": -int(row["id"]),
+            })
+
+
+def _normalize_risk_source_duplicates() -> None:
+    bind = op.get_bind()
+    groups = bind.execute(sa.text(
+        "SELECT tenant_id, source_type, source_id, risk_code, "
+        "COALESCE(MAX(CASE WHEN is_deleted=0 THEN id END), MAX(id)) AS keep_id "
+        "FROM t_risk_record "
+        "WHERE source_type IS NOT NULL AND source_id IS NOT NULL "
+        "GROUP BY tenant_id, source_type, source_id, risk_code HAVING COUNT(*) > 1"
+    )).mappings().all()
+    for group in groups:
+        duplicates = bind.execute(sa.text(
+            "SELECT id, is_deleted FROM t_risk_record "
+            "WHERE tenant_id=:tenant_id AND source_type=:source_type "
+            "AND source_id=:source_id AND risk_code=:risk_code AND id<>:keep_id "
+            "ORDER BY id"
+        ), dict(group)).mappings().all()
+        for row in duplicates:
+            _write_dedup_audit(
+                bind,
+                tenant_id=int(group["tenant_id"]),
+                target_id=int(row["id"]),
+                target_type="RISK",
+                detail={
+                    "table": "t_risk_record",
+                    "originalSourceType": str(group["source_type"]),
+                    "originalSourceId": int(group["source_id"]),
+                    "riskCode": str(group["risk_code"]),
+                    "originalIsDeleted": bool(row["is_deleted"]),
+                    "keptId": int(group["keep_id"]),
+                    "tombstoneSourceId": -int(row["id"]),
+                },
+            )
+            bind.execute(sa.text(
+                "UPDATE t_risk_record SET source_id=:tombstone_id, is_deleted=1 "
+                "WHERE tenant_id=:tenant_id AND id=:id"
+            ), {
+                "tenant_id": int(group["tenant_id"]),
+                "id": int(row["id"]),
+                "tombstone_id": -int(row["id"]),
+            })
+
+
+def _restore_deduplicated_rows(bind, table: str, target_type: str) -> None:
+    audits = bind.execute(sa.text(
+        "SELECT target_id, detail_json FROM t_internship_audit_trail "
+        "WHERE target_type=:target_type AND action='MIGRATION_DEDUPLICATE' "
+        "AND operator_name=:operator_name ORDER BY id"
+    ), {
+        "target_type": target_type,
+        "operator_name": _MIGRATION_ACTOR,
+    }).mappings().all()
+    for audit in audits:
+        detail = audit["detail_json"] or {}
+        if isinstance(detail, str):
+            detail = json.loads(detail)
+        if detail.get("table") != table:
+            continue
         bind.execute(sa.text(
-            f"UPDATE {table} SET is_deleted = 1 WHERE tenant_id = :tenant_id "
-            "AND internship_id = :internship_id AND id <> :keep_id AND is_deleted = 0"
-        ), dict(row))
+            f"UPDATE {table} SET internship_id=:internship_id, is_deleted=:is_deleted "
+            "WHERE id=:id"
+        ), {
+            "internship_id": int(detail["originalInternshipId"]),
+            "is_deleted": bool(detail.get("originalIsDeleted")),
+            "id": int(audit["target_id"]),
+        })
+
+
+def _restore_risk_source_duplicates(bind) -> None:
+    audits = bind.execute(sa.text(
+        "SELECT target_id, detail_json FROM t_internship_audit_trail "
+        "WHERE target_type='RISK' AND action='MIGRATION_DEDUPLICATE' "
+        "AND operator_name=:operator_name ORDER BY id"
+    ), {"operator_name": _MIGRATION_ACTOR}).mappings().all()
+    for audit in audits:
+        detail = audit["detail_json"] or {}
+        if isinstance(detail, str):
+            detail = json.loads(detail)
+        if detail.get("table") != "t_risk_record":
+            continue
+        bind.execute(sa.text(
+            "UPDATE t_risk_record SET source_type=:source_type, source_id=:source_id, "
+            "is_deleted=:is_deleted WHERE id=:id"
+        ), {
+            "source_type": str(detail["originalSourceType"]),
+            "source_id": int(detail["originalSourceId"]),
+            "is_deleted": bool(detail.get("originalIsDeleted")),
+            "id": int(audit["target_id"]),
+        })
 
 
 def upgrade() -> None:
@@ -202,8 +349,9 @@ def upgrade() -> None:
         "source_module='complaint' WHERE risk_code LIKE 'INT-CPL-%' AND source_id IS NULL"
     ))
 
-    _soft_delete_duplicates("t_internship_final_score")
-    _soft_delete_duplicates("t_internship_archive")
+    _normalize_record_duplicates("t_internship_final_score", "SCORE")
+    _normalize_record_duplicates("t_internship_archive", "ARCHIVE")
+    _normalize_risk_source_duplicates()
     _ensure_unique(
         bind,
         "uk_internship_final_score_record",
@@ -234,6 +382,10 @@ def downgrade() -> None:
     ):
         if name in _constraint_names(bind, table):
             op.drop_constraint(name, table, type_="unique")
+
+    _restore_risk_source_duplicates(bind)
+    _restore_deduplicated_rows(bind, "t_internship_archive", "ARCHIVE")
+    _restore_deduplicated_rows(bind, "t_internship_final_score", "SCORE")
 
     if "ix_risk_source" in _constraint_names(bind, "t_risk_record"):
         op.drop_index("ix_risk_source", table_name="t_risk_record")
