@@ -373,6 +373,12 @@ def create_student_record(body) -> dict:
         except IntegrityError as exc:
             db.rollback()
             raise AppException("DATA_CONFLICT", "该学生在此批次已有毕设记录") from exc
+        if batch_id and b.status == "RUNNING":
+            # Joining a running batch materializes its frozen rule in the same
+            # transaction. Missing rule/catalog state rolls back the new record.
+            from app.modules.graduation.materials.command_service import initialize_student_materials_in_session
+
+            initialize_student_materials_in_session(db, int(s.id))
         _audit(db, s.id, "CREATE", f"学号 {stu.student_no}")
         db.commit()
         return _row_of(db, s)

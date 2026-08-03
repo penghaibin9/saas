@@ -285,6 +285,13 @@ def activate_batch(bid) -> dict:
         if b.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅「草稿」批次可启用")
         _transition(db, b, "RUNNING")
+        # Batch activation is the explicit, atomic material-domain bootstrap.
+        # The code catalog is only a seed; all runtime decisions use this rule.
+        from app.modules.graduation.materials.command_service import initialize_batch_materials_in_session
+        from app.modules.graduation.materials.rule_service import initialize_default_rule_in_session
+
+        initialize_default_rule_in_session(db, int(b.id))
+        initialize_batch_materials_in_session(db, int(b.id))
         _audit(db, b.id, "ACTIVATE")
         db.commit()
         return _row(b)

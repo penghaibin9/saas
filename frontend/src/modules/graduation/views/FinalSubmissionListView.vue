@@ -462,7 +462,12 @@ export default {
         return
       }
       this.submitting = true
-      const res = await graduationApi.reviewFinal(this.selectedRow.id, { action, comment: this.comment })
+      const res = await graduationApi.reviewFinal(this.selectedRow.id, {
+        action,
+        comment: this.comment,
+        expectedVersion: this.finalDetail.materialVersion,
+        fileVersionId: this.finalDetail.fileVersionId
+      })
       this.submitting = false
       if (res.code === 0) {
         toast.success(`批阅完成：${res.data.statusLabel}，已锁定当前安全版本并同步学生端`)

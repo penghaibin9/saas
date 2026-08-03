@@ -12,6 +12,7 @@ from sqlalchemy import and_, case, exists, false, func, literal, or_, select, tr
 from sqlalchemy.orm import aliased
 
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import has_permission
 from app.models import (
     GraduationDefenseGroup,
     GraduationDefenseScore,
@@ -40,6 +41,16 @@ FULL_SCOPE_ROLES = {"PLATFORM_SUPER_ADMIN", "SCHOOL_ADMIN", "GRADUATION_ADMIN", 
 COLLEGE_SCOPE_ROLES = {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN"}
 MAJOR_SCOPE_ROLES = {"GD_MAJOR_ADMIN"}
 SAFE_SCAN = {"CLEAN", "PASSED", "NOT_REQUIRED"}
+
+
+def current_student_id(user: dict) -> int:
+    from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+
+    with session() as db:
+        student = resolve_current_gd_student(db, user)
+        if not student:
+            raise not_found("毕业设计材料不存在")
+        return int(student.id)
 
 
 def _role(user: dict) -> str:
@@ -273,7 +284,12 @@ def _facts(base_students, material_filters: dict[str, str] | None = None):
     if filters.get("archive_status"):
         stmt = stmt.where(material.archive_status == filters["archive_status"].upper())
     if filters.get("scan_status"):
-        stmt = stmt.where(file_obj.scan_status == filters["scan_status"].upper())
+        wanted_scan = filters["scan_status"].upper()
+        stmt = stmt.where(
+            or_(file_obj.status.is_(None), file_obj.status != "AVAILABLE",
+                func.upper(func.coalesce(file_obj.scan_status, "")).not_in(SAFE_SCAN))
+            if wanted_scan == "ABNORMAL" else file_obj.scan_status == wanted_scan
+        )
     if filters.get("missing_status", "").upper() == "MISSING":
         stmt = stmt.where(or_(material.id.is_(None), material.business_status == "MISSING"))
     return stmt
@@ -465,7 +481,12 @@ def files(user: dict, *, batch_id: int, page: int = 1, page_size: int = 20, **fi
         if filters.get("archive_status"):
             stmt = stmt.where(GraduationStudentMaterial.archive_status == filters["archive_status"].upper())
         if filters.get("scan_status"):
-            stmt = stmt.where(FileObject.scan_status == filters["scan_status"].upper())
+            wanted_scan = filters["scan_status"].upper()
+            stmt = stmt.where(
+                or_(FileObject.status != "AVAILABLE",
+                    func.upper(func.coalesce(FileObject.scan_status, "")).not_in(SAFE_SCAN))
+                if wanted_scan == "ABNORMAL" else FileObject.scan_status == wanted_scan
+            )
         count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
         total = int(db.scalar(count_stmt) or 0)
         rows = db.execute(stmt.order_by(
@@ -478,6 +499,11 @@ def files(user: dict, *, batch_id: int, page: int = 1, page_size: int = 20, **fi
         items = []
         for student, material, asset, version, file_obj in rows:
             ready = bool(file_obj and file_obj.status == "AVAILABLE" and str(file_obj.scan_status or "").upper() in SAFE_SCAN)
+            actions = ["viewMetadata"] + (["preview", "download"] if ready else [])
+            if material.review_status == "PENDING" and any(has_permission(user or {}, code) for code in (
+                "graduationDesign.proposal.review", "graduationDesign.final.review", "graduationDesign.review.submit",
+            )):
+                actions.append("review")
             items.append({
                 "materialId": str(material.id),
                 "gdStudentId": str(student.id),
@@ -492,6 +518,7 @@ def files(user: dict, *, batch_id: int, page: int = 1, page_size: int = 20, **fi
                 "stage": material.biz_stage,
                 "materialCode": material.material_code,
                 "materialName": material.material_name,
+                "version": int(material.version or 0),
                 "fileId": str(file_obj.id if file_obj else ""),
                 "fileName": file_obj.file_name if file_obj else "",
                 "assetId": str(asset.id if asset else ""),
@@ -506,7 +533,7 @@ def files(user: dict, *, batch_id: int, page: int = 1, page_size: int = 20, **fi
                 "archiveStatus": material.archive_status,
                 "businessStatus": material.business_status,
                 "readyForBusiness": ready,
-                "allowedActions": ["viewMetadata"] + (["preview", "download"] if ready else []),
+                "allowedActions": actions,
             })
         return {"items": items, "total": total, "page": page, "pageSize": page_size}
 
@@ -661,27 +688,53 @@ def record_versions(record_type: str, record_id: int, user: dict, *, student_mod
             raise not_found("毕业设计记录不存在")
         student = db.get(GraduationStudent, int(record.gd_student_id))
         assert_student_access(db, student, "material.versions")
-        stmt = select(FileBinding).where(
-            FileBinding.tenant_id == _tid(),
-            FileBinding.module_code == "graduation",
-            FileBinding.biz_type == "GRADUATION_MATERIAL",
-            FileBinding.biz_id == str(record_id),
-            FileBinding.relation_type == relation,
-            FileBinding.is_deleted.is_(False),
+        materials = list(db.scalars(select(GraduationStudentMaterial).where(
+            GraduationStudentMaterial.tenant_id == _tid(),
+            GraduationStudentMaterial.gd_student_id == int(record.gd_student_id),
+            GraduationStudentMaterial.source_record_type == normalized,
+            GraduationStudentMaterial.source_record_id == str(record_id),
+            GraduationStudentMaterial.is_deleted.is_(False),
+        )).all())
+        asset_ids = {int(row.asset_id) for row in materials if row.asset_id}
+        version_stmt = select(FileVersion).where(
+            FileVersion.tenant_id == _tid(),
+            FileVersion.asset_id.in_(asset_ids or {-1}),
+            FileVersion.is_deleted.is_(False),
         )
         if not include_history:
-            stmt = stmt.where(FileBinding.is_current.is_(True))
-        bindings = list(db.scalars(stmt.order_by(FileBinding.version_no, FileBinding.id)).all())
-        versions = {int(row.id): row for row in db.scalars(select(FileVersion).where(
-            FileVersion.tenant_id == _tid(),
-            FileVersion.id.in_({int(row.version_id) for row in bindings if row.version_id} or {-1}),
-            FileVersion.is_deleted.is_(False),
-        )).all()}
+            version_stmt = version_stmt.where(FileVersion.is_current.is_(True))
+        versions = {int(row.id): row for row in db.scalars(version_stmt).all()}
+        bindings = list(db.scalars(select(FileBinding).where(
+            FileBinding.tenant_id == _tid(),
+            FileBinding.module_code == "graduation",
+            FileBinding.version_id.in_(set(versions) or {-1}),
+            FileBinding.is_deleted.is_(False),
+        ).order_by(FileBinding.version_no, FileBinding.id)).all())
+
+        # Compatibility-only fallback for historical records not yet backfilled.
+        if not bindings:
+            legacy_stmt = select(FileBinding).where(
+                FileBinding.tenant_id == _tid(),
+                FileBinding.module_code == "graduation",
+                FileBinding.biz_type == "GRADUATION_MATERIAL",
+                FileBinding.biz_id == str(record_id),
+                FileBinding.relation_type == relation,
+                FileBinding.is_deleted.is_(False),
+            )
+            if not include_history:
+                legacy_stmt = legacy_stmt.where(FileBinding.is_current.is_(True))
+            bindings = list(db.scalars(legacy_stmt.order_by(FileBinding.version_no, FileBinding.id)).all())
+            versions = {int(row.id): row for row in db.scalars(select(FileVersion).where(
+                FileVersion.tenant_id == _tid(),
+                FileVersion.id.in_({int(row.version_id) for row in bindings if row.version_id} or {-1}),
+                FileVersion.is_deleted.is_(False),
+            )).all()}
         file_rows = {int(row.id): row for row in db.scalars(select(FileObject).where(
             FileObject.tenant_id == _tid(),
             FileObject.id.in_({int(row.file_id) for row in bindings} or {-1}),
             FileObject.is_deleted.is_(False),
         )).all()}
+        material_by_asset = {int(row.asset_id): row for row in materials if row.asset_id}
         result = []
         for binding in bindings:
             version = versions.get(int(binding.version_id or 0))
@@ -689,12 +742,15 @@ def record_versions(record_type: str, record_id: int, user: dict, *, student_mod
             if not version or not file_obj:
                 continue
             row = _version_dto(version, file_obj, student_mode=student_mode)
+            material = material_by_asset.get(int(version.asset_id))
             row.update({
                 "bindingId": str(binding.id),
                 "isCurrent": bool(version.is_current and binding.is_current),
                 "bindingStatus": binding.status,
-                "materialCode": (binding.scope_json or {}).get("materialCode") or "GRADUATION_MATERIAL",
-                "materialName": (binding.scope_json or {}).get("materialName") or file_obj.file_name,
+                "materialCode": material.material_code if material else (binding.scope_json or {}).get("materialCode") or "GRADUATION_MATERIAL",
+                "materialName": material.material_name if material else (binding.scope_json or {}).get("materialName") or file_obj.file_name,
+                "materialId": str(material.id) if material else None,
+                "materialVersion": int(material.version or 0) if material else None,
             })
             result.append(row)
         return sorted(result, key=lambda row: (row["versionNo"], row["versionId"]))
@@ -710,13 +766,13 @@ def _review_detail(record_type: str, record_id: int, user: dict) -> dict:
         else graduation_service.get_final_detail(int(record_id))
     )
     versions = record_versions(normalized, int(record_id), user, include_history=False)
-    prefix = "PROPOSAL_ATTACHMENT" if normalized == "PROPOSAL" else "FINAL_APPROVED_ATTACHMENT"
     attachments = [{
         "fileId": row["fileId"], "fileName": row["fileName"],
         "sizeBytes": row["sizeBytes"], "scanStatus": row["scanStatus"],
         "readyForBusiness": row["readyForBusiness"], "allowedActions": row["allowedActions"],
         "previewUrl": row["previewUrl"], "downloadUrl": row["downloadUrl"],
-    } for row in versions if str(row.get("materialCode") or "").startswith(prefix)]
+    } for row in versions]
+    primary = next((row for row in versions if row.get("isCurrent")), None)
     detail.update({
         "currentSafeVersions": versions,
         "currentVersionCount": len({row["versionId"] for row in versions}),
@@ -724,6 +780,9 @@ def _review_detail(record_type: str, record_id: int, user: dict) -> dict:
         "migrationRequired": not bool(versions),
         "attachments": len(attachments),
         "attachmentsList": attachments,
+        "materialId": primary.get("materialId") if primary else None,
+        "materialVersion": primary.get("materialVersion") if primary else None,
+        "fileVersionId": primary.get("versionId") if primary else None,
     })
     return detail
 

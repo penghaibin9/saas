@@ -17,7 +17,8 @@ export const teacherApi = {
   getApprovals: () => realFirst('teacher.approvals', () => real.teacherApprovalsReal(M.approvals), () => mockRequest(M.approvals)),
   actApproval: (id, type, reason) => real.actApproval(id, type, reason),
   reviewWeekly: (id, action, comment) => real.reviewWeeklyReal(id, action, comment),
-  reviewProposal: (id, action, comment) => real.reviewProposalReal(id, action, comment),
+  reviewProposal: (id, action, comment, expectedVersion, fileVersionId) =>
+    real.reviewProposalReal(id, action, comment, expectedVersion, fileVersionId),
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
   handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
   remindWeekly: (id) => real.remindWeeklyReal(id),
@@ -60,7 +61,8 @@ export const teacherApi = {
     realRequest(`/mobile/graduation/material-center/materials/${encodeURIComponent(materialId)}/review`, {
       method: 'POST', data: body
     }),
-  reviewFinal: (id, action, comment) => real.gdTeacherFinalReview(id, action, comment),
+  reviewFinal: (id, action, comment, expectedVersion, fileVersionId) =>
+    real.gdTeacherFinalReview(id, action, comment, expectedVersion, fileVersionId),
   getGraduationMidtermQueue: () => real.gdTeacherMidtermQueue(),
   getGraduationMidtermDetail: (id) => real.gdTeacherMidtermDetail(id),
   midtermCheck: (id, conclusion, comment, deadline) => real.gdTeacherMidtermCheck(id, conclusion, comment, deadline),

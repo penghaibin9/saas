@@ -37,6 +37,7 @@ from app.modules.graduation.schemas.graduation_review import (
     ReviewSubmitRequest,
 )
 from app.schemas.excel import ExcelImportRows
+from app.modules.graduation.materials import manifest_service as material_manifests
 from app.modules.graduation.services import (
     graduation_archive_service as archive,
     graduation_defense_score_service as defense,
@@ -394,9 +395,9 @@ def archive_file_batch(
     batchId: int = Query(..., ge=1), body: dict = Body(...),
     user=Depends(get_current_user),
 ):
-    result = archive.batch_file(
+    result = material_manifests.batch_file(
         (body or {}).get("archiveBatchNo"), batch_id=batchId,
-        preview_token=(body or {}).get("previewToken"),
+        preview_token=(body or {}).get("previewToken"), user=user,
     )
     return success(result, message=f"已备案 {result['filed']} 份")
 

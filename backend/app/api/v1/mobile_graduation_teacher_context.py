@@ -246,7 +246,10 @@ def teacher_proposal_detail(proposal_id: str, batchId: int = Query(..., ge=1), u
 @router.post("/proposal/{proposal_id}/review")
 def teacher_proposal_review(proposal_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     _material_student(GraduationProposal, proposal_id, batchId)
-    return success(tea.proposal_review(user, proposal_id, str(body.get("action") or "").upper(), body.get("comment") or ""), message="批阅完成")
+    return success(tea.proposal_review(
+        user, proposal_id, str(body.get("action") or "").upper(), body.get("comment") or "",
+        body.get("expectedVersion"), body.get("fileVersionId"),
+    ), message="批阅完成")
 
 
 @router.get("/final/{final_id}")
@@ -258,7 +261,10 @@ def teacher_final_detail(final_id: str, batchId: int = Query(..., ge=1), user=De
 @router.post("/final/{final_id}/review")
 def teacher_final_review(final_id: str, body: dict = Body(...), batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     _material_student(GraduationFinal, final_id, batchId)
-    return success(tea.final_review(user, final_id, str(body.get("action") or "").upper(), body.get("comment") or ""), message="批阅完成")
+    return success(tea.final_review(
+        user, final_id, str(body.get("action") or "").upper(), body.get("comment") or "",
+        body.get("expectedVersion"), body.get("fileVersionId"),
+    ), message="批阅完成")
 
 
 @router.get("/midterm/queue")

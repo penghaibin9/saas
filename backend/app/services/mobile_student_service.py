@@ -1216,9 +1216,8 @@ def graduation_submit_proposal(user: dict, body: dict) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
-    from app.modules.graduation.services import graduation_service as gd_svc
-    result = gd_svc.submit_proposal(g.id, body.get("background") or "", body.get("plan") or "",
-                                    body.get("outcome") or "", body.get("attachments") or [])
+    from app.modules.graduation.materials import record_service as material_records
+    result = material_records.submit_proposal(user, body or {})
     audit_log.record("学生提交开题报告", f"graduation-proposal:{result['id']}",
                      detail={"studentName": u.get("realName"), "version": result.get("version")})
     return result
@@ -1284,6 +1283,11 @@ def graduation_submit_final(user: dict, body: dict) -> dict:
         g = _resolve_gd_student(db, u)
     if not g:
         raise AppException("VALIDATION_ERROR", "未找到你的毕设学生档案，请联系毕设管理员")
+    from app.modules.graduation.materials import record_service as material_records
+    result = material_records.submit_final(user, body or {})
+    audit_log.record("学生提交论文成果", f"graduation-final:{result['id']}",
+                     detail={"studentName": u.get("realName"), "finalType": result.get("finalType")})
+    return result
     from app.modules.graduation.services import graduation_service as gd_svc
     # The client must never be allowed to declare its own plagiarism result.
     result = gd_svc.submit_final(

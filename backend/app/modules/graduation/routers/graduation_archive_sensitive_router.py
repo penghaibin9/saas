@@ -9,8 +9,9 @@ from app.core.exceptions import AppException
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest, ArchiveRejectRequest
+from app.modules.graduation.materials import manifest_service as manifests
 from app.modules.graduation.services import graduation_archive_service as svc
-from app.modules.graduation.services import graduation_material_center_service as material_center
+material_center = manifests  # compatibility name; V2 manifest service is the only writer
 from app.modules.graduation.services.graduation_batch_context import load_student_in_batch, require_batch_id
 from app.services.db_service import session
 
@@ -91,7 +92,7 @@ def batch_file(
     user=Depends(get_current_user),
 ):
     archive_no = str((body or {}).get("archiveBatchNo") or "").strip() or None
-    result = material_center.batch_file(
+    result = manifests.batch_file(
         archive_no, require_batch_id(batchId), _preview_token(body), user,
     )
     return success(result, message=f"已备案 {result['filed']} 份")

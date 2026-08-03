@@ -1,10 +1,16 @@
-"""阶段 6固定门禁：编译、业务架构、旧 URL、权限、真实 MySQL与四端合同。"""
+"""Closeout architecture gates for the graduation material domain.
+
+These tests intentionally reject the former phase-6 coexistence assumptions.
+Behavioral MySQL coverage lives here and in the dedicated acceptance script.
+"""
 from __future__ import annotations
 
 import ast
-import os
-import runpy
 from pathlib import Path
+
+import pytest
+from sqlalchemy import event, func, select, text
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -13,525 +19,196 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_phase6_python_sources_compile():
-    paths = [
-        "backend/alembic/versions/0150_graduation_material_center.py",
-        "backend/alembic/versions/0151_graduation_manifest_evidence.py",
-        "backend/app/models/graduation_material.py",
-        "backend/app/modules/graduation/services/graduation_material_catalog_service.py",
-        "backend/app/modules/graduation/services/graduation_material_center_service.py",
-        "backend/app/modules/graduation/services/graduation_material_export_service.py",
-        "backend/app/modules/graduation/services/graduation_material_ticket_service.py",
+def test_default_seed_has_exactly_eighteen_material_types_but_runtime_uses_rules():
+    from app.modules.graduation.materials.definitions import DEFAULT_MATERIAL_DEFINITIONS
+
+    assert len(DEFAULT_MATERIAL_DEFINITIONS) == 18
+    assert len({row["materialCode"] for row in DEFAULT_MATERIAL_DEFINITIONS}) == 18
+    command = read("backend/app/modules/graduation/materials/command_service.py")
+    manifest = read("backend/app/modules/graduation/materials/manifest_service.py")
+    assert "rule_item(" in command
+    assert "active_rule(" in manifest and "rule_items(" in manifest
+    assert "DEFAULT_SPEC_BY_CODE" not in command
+    assert "DEFAULT_SPEC_BY_CODE" not in manifest
+
+
+def test_query_service_is_write_free_and_get_routers_have_no_sql():
+    query = read("backend/app/modules/graduation/materials/query_service.py")
+    tree = ast.parse(query)
+    banned_calls = {"add", "add_all", "delete", "flush", "commit", "rollback", "execute_update"}
+    db_calls = {
+        node.func.attr for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "db"
+    }
+    assert not db_calls.intersection(banned_calls)
+    for path in (
         "backend/app/modules/graduation/routers/graduation_material_center.py",
         "backend/app/api/v1/mobile_graduation_material_center.py",
-        "backend/app/services/file_access_resolvers.py",
-        "backend/tests/graduation_material_center_mysql_acceptance.py",
+    ):
+        source = read(path)
+        assert "sqlalchemy" not in source
+        assert "from app.models" not in source
+        assert "services.db_service" not in source
+        assert "db.commit" not in source
+
+
+def test_legacy_services_are_only_thin_compatibility_facades():
+    for name in (
+        "graduation_material_catalog_service.py",
+        "graduation_material_center_service.py",
+        "graduation_material_delivery_service.py",
+    ):
+        source = read(f"backend/app/modules/graduation/services/{name}")
+        assert "sqlalchemy" not in source
+        assert "from app.models" not in source
+        assert "services.db_service" not in source
+        assert "db.commit" not in source
+        for constructor in ("FileAsset(", "FileVersion(", "FileBinding(", "ArchiveManifest("):
+            assert constructor not in source
+
+
+def test_only_command_service_creates_graduation_assets_versions_and_bindings():
+    materials = ROOT / "backend/app/modules/graduation/materials"
+    constructors = {}
+    for path in materials.glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        constructors[path.name] = {token for token in ("FileAsset(", "FileVersion(", "FileBinding(") if token in source}
+    assert constructors["command_service.py"] == {"FileAsset(", "FileVersion(", "FileBinding("}
+    assert all(not tokens for name, tokens in constructors.items() if name != "command_service.py")
+
+
+def test_only_manifest_service_creates_v2_manifest_evidence():
+    materials = ROOT / "backend/app/modules/graduation/materials"
+    writers = [path.name for path in materials.glob("*.py") if "ArchiveManifest(" in path.read_text(encoding="utf-8")]
+    item_writers = [path.name for path in materials.glob("*.py") if "ArchiveManifestItem(" in path.read_text(encoding="utf-8")]
+    assert writers == ["manifest_service.py"]
+    assert item_writers == ["manifest_service.py"]
+    source = read("backend/app/modules/graduation/materials/manifest_service.py")
+    assert "重新归档前必须先撤销" in source
+    assert 'version.status = "ARCHIVED"' in source
+    revoke = source[source.index("def revoke_manifest"):source.index("def mark_packaged_in_session")]
+    assert 'version.status = "APPROVED"' not in revoke
+
+
+def test_single_snapshot_and_source_hash_metadata_contract():
+    legacy = read("backend/app/modules/graduation/services/graduation_structured_snapshot_service.py")
+    snapshot = read("backend/app/modules/graduation/materials/snapshot_service.py")
+    command = read("backend/app/modules/graduation/materials/command_service.py")
+    assert "reportlab" not in legacy
+    assert "snapshot_service import prepare_all" in legacy
+    for marker in ("sourceDataHash", "snapshotSchemaVersion", "generatorVersion"):
+        assert marker in command
+    assert "source_hash" in snapshot and 'registered["status"] == "UNCHANGED"' in snapshot
+
+
+def test_access_tickets_are_short_lived_rechecked_and_single_use():
+    source = read("backend/app/modules/graduation/materials/access_service.py")
+    assert "PREVIEW_TTL_SECONDS = 180" in source
+    assert "DOWNLOAD_TTL_SECONDS = 60" in source
+    assert "cache_set_json_if_absent" in source
+    assert "require_file_access" in source and "assert_student_access" in source
+    assert "resolve_material(int(file_id), user" in source
+    staff = read("backend/app/modules/graduation/routers/graduation_material_center.py")
+    mobile = read("backend/app/api/v1/mobile_graduation_material_center.py")
+    for router in (staff, mobile):
+        assert "ticket: str = Query(...)" in router
+        assert "consume_ticket" in router
+        assert "consume_package_ticket" in router
+
+
+def test_migration_is_explicit_resumable_and_never_guesses_by_sequence():
+    source = read("backend/app/modules/graduation/materials/migration_service.py")
+    for marker in ("dry_run", "page_size", "cursor_id", "retry", "begin_nested",
+                   "output_format", "differenceReport", "mappingConfidence", "manualReview"):
+        assert marker in source
+    assert "ALREADY_BOUND" in read("backend/app/modules/graduation/materials/command_service.py")
+    assert "禁止按附件序号猜测" in source
+    assert "_01" not in source and "_02" not in source
+
+
+def test_production_material_center_route_and_ui_contract():
+    routes = read("frontend/src/modules/graduation/routes.js")
+    workspace = read("frontend/src/modules/graduation/config/graduationWorkspaces.js")
+    page = read("frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue")
+    assert "path: 'material-center'" in routes
+    assert "path: 'materials', redirect" in routes
+    assert "/admin/graduation/material-center" in workspace
+    for label in ("全部材料", "学生完整性", "待审核", "安全异常"):
+        assert label in page
+    for field in ("指导教师", "阶段 / 材料", "文件", "版本", "上传人 / 时间", "大小", "扫描", "审核", "归档"):
+        assert field in page
+    assert "AppConfirmDialog" in page and "FileVersionTimeline" in page
+    assert "window.prompt" not in page and "window.confirm" not in page
+    assert "createExport" not in page and "freezeManifest" not in page and "templateCatalog" not in page
+    assert "graduationDesign.material.manage" not in page
+    assert "graduationDesign.riskArchive.manage" not in page
+
+
+def test_four_client_optimistic_version_contract_is_explicit():
+    sources = [
+        read("frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue"),
+        read("frontend/src/modules/graduation/views/FinalSubmissionListView.vue"),
+        read("student-portal/src/views/graduation/GraduationWorkbenchView.vue"),
+        read("miniapp/src/pages/student/graduation/index.vue"),
+        read("miniapp/src/pages/teacher/graduation-guide/index.vue"),
+        read("miniapp/src/services/teacherApi.js"),
     ]
-    for path in paths:
-        ast.parse(read(path), filename=path)
+    assert all("expectedVersion" in source for source in (sources[0], sources[1], sources[2], sources[3], sources[5]))
+    assert "materialVersion" in sources[4] and "fileVersionId" in sources[4]
+    assert "fileVersionId" in sources[0] and "fileVersionId" in sources[1] and "fileVersionId" in sources[5]
+    schema = read("backend/app/modules/graduation/schemas/graduation.py")
+    assert "expectedVersion: int = Field(..." in schema
+    assert "fileVersionId: int = Field(..." in schema
 
 
-def test_phase6_migration_and_models_are_complete_mysql_contracts():
-    migration = read("backend/alembic/versions/0150_graduation_material_center.py")
-    evidence = read("backend/alembic/versions/0151_graduation_manifest_evidence.py")
-    models = read("backend/app/models/graduation_material.py")
-    model_init = read("backend/app/models/__init__.py")
-    assert 'revision = "0150_graduation_material_center"' in migration
-    assert 'down_revision = "0149_affairs_material_center"' in migration
-    assert 'revision = "0151_graduation_manifest_evidence"' in evidence
-    assert 'down_revision = "0150_graduation_material_center"' in evidence
-    assert "requires MySQL" in migration and "requires MySQL" in evidence
-    for table in (
-        "t_gd_material_rule",
-        "t_gd_material_item",
-        "t_gd_student_material",
-        "t_gd_material_backfill_checkpoint",
-        "t_gd_template_asset_policy",
-    ):
-        assert table in migration
-    assert "uk_gd_student_material_code" in migration
-    assert "ix_gd_student_material_status" in migration
-    assert "class GraduationStudentMaterial" in models
-    assert "class GraduationMaterialBackfillCheckpoint" in models
-    assert "class GraduationTemplateAssetPolicy" in models
-    assert "GraduationStudentMaterial" in model_init
-    assert "GraduationMaterialBackfillCheckpoint" in model_init
-    assert "GraduationTemplateAssetPolicy" in model_init
-    assert "uploader_snapshot" in evidence
-    assert "submitted_at_snapshot" in evidence
-    assert "不在 Alembic 事务中执行历史附件回填" in migration
+def test_real_mysql_gets_are_zero_write_and_within_query_budget(db_mode):
+    from app.core.context import get_tenant, set_current_user, set_tenant
+    from app.db.session import get_engine
+    from app.models import GraduationBatch
+    from app.modules.graduation.materials import query_service
+    from app.services.db_service import _tid, session
 
+    set_tenant({"tenantId": "1000000000000000001", "tenantCode": "demo"})
+    assert get_engine().dialect.name == "mysql"
+    assert get_tenant()
+    user = {"userId": "1", "realName": "测试管理员", "currentRoleCode": "SCHOOL_ADMIN",
+            "userType": "ADMIN", "permissions": ["*"]}
+    set_current_user(user)
+    with session() as db:
+        batch_id = db.scalar(select(GraduationBatch.id).where(
+            GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False),
+        ).order_by(GraduationBatch.id).limit(1))
+    if not batch_id:
+        pytest.skip("测试租户没有毕业设计批次")
+    tables = ("t_gd_material_rule", "t_gd_material_item", "t_gd_student_material", "t_file_asset",
+              "t_file_version", "t_file_binding", "t_archive_manifest", "t_archive_manifest_item", "t_export_job")
 
-def test_phase6_material_catalog_covers_all_required_business_types():
-    service = read("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
-    required_codes = {
-        "TOPIC_ATTACHMENT", "TASKBOOK", "PROPOSAL_REPORT", "PROPOSAL_DEFENSE",
-        "GUIDANCE_RECORD", "MIDTERM_REPORT", "THESIS_DRAFT", "THESIS_FINAL",
-        "DESIGN_WORK", "SOURCE_CODE", "WORK_DESCRIPTION", "PLAGIARISM_REPORT",
-        "REVIEW_ATTACHMENT", "DEFENSE_RECORD", "DEFENSE_SIGNED_SHEET",
-        "GRADE_MATERIAL", "TEMPLATE_REFERENCE", "FINAL_ARCHIVE_PACKAGE",
-    }
-    for code in required_codes:
-        assert f'"materialCode": "{code}"' in service
-    for field in (
-        "allowedExtensions", "maxSizeBytes", "reviewRequired", "archiveRequired",
-        "sensitivityLevel", "ownerRole", "required",
-    ):
-        assert field in service
-    assert 'old.status = "INVALIDATED"' in service
-    assert 'old.status = "SUPERSEDED"' in service
-    assert "FileVersion.is_current.is_(True)" in service
-    assert "expected_version" in service
-    assert "fileVersionId" in service
-    assert "_require_file_ready" in service
-    assert "GraduationStudentMaterial" in service
+    def fingerprint():
+        with session() as db:
+            return {name: tuple(db.execute(text(
+                f"SELECT COUNT(*), COALESCE(MAX(version),0), COALESCE(MAX(updated_at),'1970-01-01') "
+                f"FROM {name} WHERE tenant_id=:tenant"
+            ), {"tenant": _tid()}).one()) for name in tables}
 
+    statements = []
+    engine = get_engine()
 
-def test_phase6_dedicated_resolver_blocks_generic_file_admin_bypass():
-    resolver = read("backend/app/services/file_access_resolvers.py")
-    generic_registration = resolver.split("@register_file_resolver(\n    \"INTERNSHIP\"", 1)[1].split(")\ndef scoped_binding_resolver", 1)[0]
-    assert '"GRADUATION_MATERIAL"' not in generic_registration
-    assert '@register_file_resolver("GRADUATION_MATERIAL")' in resolver
-    graduation_block = resolver.split('@register_file_resolver("GRADUATION_MATERIAL")', 1)[1].split('@register_file_resolver("GRADUATION_TEMPLATE")', 1)[0]
-    assert "assert_student_access" in graduation_block
-    assert "resolve_current_gd_student" in graduation_block
-    assert "systemAdmin.file.manage" in graduation_block
-    assert "_is_file_admin" not in graduation_block
-    assert '@register_file_resolver("GRADUATION_ARCHIVE_PACKAGE", "GRADUATION_ARCHIVE_INDEX")' in resolver
+    def capture(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
 
-
-def test_phase6_old_urls_are_shadowed_and_authoritative_routes_exist():
-    registry = read("backend/app/api/v1/route_registration.py")
-    staff_router = read("backend/app/modules/graduation/routers/graduation_material_center.py")
-    student_router = read("backend/app/api/v1/mobile_graduation_material_center.py")
-    assert registry.index("graduation_sensitive_router.router") < registry.index("api_router.include_router(graduation.router")
-    assert registry.index("api_router.include_router(graduation.router") < registry.index("graduation_material_center.router")
-    assert registry.index("mobile_graduation_material_center.router") < registry.index("mobile.router")
-    for path in (
-        '/proposals/{proposal_id}', '/proposals/{proposal_id}/review',
-        '/finals/{final_id}', '/finals/{final_id}/review',
-        '/gd-archives/batch-file', '/gd-archives/{gd_student_id}/file',
-        '/material-center/overview', '/material-center/students/{gd_student_id}/library',
-        '/material-center/materials/{material_code}/submit',
-        '/material-center/materials/{material_id}/review',
-        '/material-center/exports', '/material-center/templates',
-    ):
-        assert path in staff_router
-    assert '@router.post("/proposal"' in student_router
-    assert '@router.post("/final"' in student_router
-    assert "catalog.sync_record" in staff_router
-    assert "freeze_manifest" in staff_router
-    assert "create_export_job" in staff_router
-    assert "create_download_ticket" in staff_router
-    assert "LARGE_PC_ONLY_CODES" in student_router
-    assert "PC_REQUIRED" in student_router
-
-
-def test_phase6_public_version_review_and_ticket_contract_is_authoritative():
-    legacy = read("backend/app/modules/graduation/services/graduation_material_center_service.py")
-    catalog = read("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
-    ticket = read("backend/app/modules/graduation/services/graduation_material_ticket_service.py")
-    for token in (
-        "FileAsset", "FileVersion", "FileBinding", "_require_reviewable",
-        "_mark_review_status", "attachments_json", "version.file_object_id != file_obj.id",
-    ):
-        assert token in legacy
-    assert 'version.status = "INVALIDATED"' in legacy
-    assert 'binding.status = "SUPERSEDED"' in legacy
-    assert "last_reviewed_version_id" in catalog
-    assert "expected_file_version_id" in catalog
-    assert "legacy_center._require_file_ready(file_obj)" in catalog
-    assert "require_file_access" in ticket
-    assert "consume_ticket" in ticket
-    assert "毕业设计材料不存在" in ticket
-    assert "TICKET_TTL_SECONDS" in ticket
-
-
-def test_phase6_manifest_export_is_version_driven_streamed_and_revocable():
-    service = read("backend/app/modules/graduation/services/graduation_material_export_service.py")
-    model = read("backend/app/models/file.py")
-    for marker in (
-        "ArchiveManifest(", "ArchiveManifestItem(", "fileVersionId", "sha256_snapshot",
-        "uploader_snapshot", "submitted_at_snapshot", "Workbook(write_only=True)",
-        "allowZip64=True", "sanitize_filename", "ExportJob(",
-        "manifest.json", "档案清单.xlsx", "ZIP 文件数与 Manifest 不一致",
-        'job.status = "REVOKED"', 'file_obj.status = "INVALIDATED"',
-    ):
-        assert marker in service
-    assert "uploader_snapshot" in model
-    assert "submitted_at_snapshot" in model
-    assert "archive.write(source, archive_path)" in service
-    assert "actual_sha != item.sha256_snapshot" in service
-    assert "source.read()" not in service
-    assert "base64" not in service.lower()
-    assert "value.startswith((\"=\", \"+\", \"-\", \"@\"))" in service
-
-
-def test_phase6_backfill_is_paged_dry_run_idempotent_and_reports_differences():
-    service = read("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
-    for marker in (
-        "GraduationMaterialBackfillCheckpoint", "cursor_model", "cursor_id",
-        "page_size", "dry_run", "ALREADY_BOUND", "FILE_NOT_FOUND",
-        "EMPTY_ATTACHMENTS", "differences", "PARTIAL_FAILED",
-    ):
-        assert marker in service
-    assert "limit(page_size)" in service
-    assert "FileVersion.file_object_id == int(file_obj.id)" in service
-
-
-def test_phase6_teacher_review_ui_shows_safe_version_before_action():
-    proposal = read("frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue")
-    final = read("frontend/src/modules/graduation/views/FinalSubmissionListView.vue")
-    api = read("frontend/src/modules/graduation/api/graduation-material-center.api.js")
-    page = read("frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue")
-    for source in (proposal, final):
-        assert "当前安全版本（本次审核锁定）" in source
-        assert "SecureFileList" in source
-        assert "currentSafeVersions" in source
-        assert "reviewReady" in source
-        assert "versionId" in source and "SHA-256" in source
-        assert "graduationMaterialCenterApi.previewMaterial" in source
-        assert "graduationMaterialCenterApi.downloadMaterial" in source
-    assert "getFinalDetail" in final
-    assert "!this.finalDetail?.reviewReady" in final
-    assert "SecureFileList" in page
-    assert "FileVersionTimeline" in page
-    assert "allowedActions" in page or "canPreview" in page
-    assert "fileSdk.previewFrom" in api
-    assert "fileSdk.downloadFrom" in api
-    for source in (proposal, final, api, page):
-        assert "localStorage.getItem('access_token')" not in source
-        assert "Authorization: Bearer" not in source
-        assert "window.URL.createObjectURL" not in source
-
-
-def test_phase6_student_pc_material_library_is_server_authoritative():
-    api = read("student-portal/src/services/portalApi.js")
-    page = read("student-portal/src/views/graduation/GraduationMaterialsView.vue")
-    sdk = read("student-portal/src/services/fileSdk.js")
-    routes = read("student-portal/src/router/index.js")
-    layout = read("student-portal/src/layouts/PortalLayout.vue")
-    assert "graduationMaterialLibrary" in api
-    assert "submitGraduationMaterial" in api
-    assert "issueGraduationMaterialTicket" in api
-    assert "退回原因" in page and "历史版本" in page
-    assert "downloadFrom" in sdk
-    assert "graduation/materials" in routes
-    assert "graduation-material-library" in layout
-    assert "GRADUATION_MATERIAL" in api
-
-
-def test_phase6_generic_graduation_download_remains_blocked():
-    contract = read("backend/app/api/v1/file_contract.py")
-    staff_router = read("backend/app/modules/graduation/routers/graduation_material_center.py")
-    assert "_requires_audited_business_download" in contract
-    assert '== "GRADUATION_MATERIAL"' in contract
-    assert "resolve_material_download" in staff_router
-    assert "GRADUATION_VERSIONED_MATERIAL_DOWNLOAD" in staff_router
-
-
-def _install_acceptance_model_exports():
-    import app.models as aggregate
-    from app.models.file import (
-        ArchiveManifest,
-        ArchiveManifestItem,
-        FileAsset,
-        FileBinding,
-        FileObject,
-        FileVersion,
-    )
-
-    for model in (
-        ArchiveManifest,
-        ArchiveManifestItem,
-        FileAsset,
-        FileBinding,
-        FileObject,
-        FileVersion,
-    ):
-        setattr(aggregate, model.__name__, model)
-
-
-def _assert_real_scan_abnormal_student():
-    from sqlalchemy import select
-
-    from app.core.context import set_current_user, set_tenant
-    from app.db.session import get_sessionmaker
-    from app.models.file import FileBinding, FileObject
-    from app.models.graduation import GraduationBatch
-    from app.modules.graduation.services import graduation_material_catalog_service as catalog
-
-    tenant_id = 1000000000000000001
-    admin_user = {
-        "tenantId": str(tenant_id),
-        "userId": "6201",
-        "realName": "阶段六管理员",
-        "userType": "TEACHER",
-        "currentRoleCode": "GRADUATION_ADMIN",
-        "permissions": ["*"],
-        "dataScope": "ALL",
-        "graduationDataScope": "ALL",
-    }
-    set_tenant({"tenantId": str(tenant_id)})
-    set_current_user(admin_user)
-    db = get_sessionmaker()()
-    file_id = None
-    old_status = None
-    old_scan = None
+    before = fingerprint()
+    event.listen(engine, "before_cursor_execute", capture)
     try:
-        batch = db.scalars(select(GraduationBatch).where(
-            GraduationBatch.tenant_id == tenant_id,
-            GraduationBatch.batch_name.like("阶段六材料中心验收-%"),
-            GraduationBatch.is_deleted.is_(False),
-        ).order_by(GraduationBatch.id.desc())).first()
-        assert batch is not None
-        binding = db.scalars(select(FileBinding).where(
-            FileBinding.tenant_id == tenant_id,
-            FileBinding.module_code == "GRADUATION",
-            FileBinding.is_current.is_(True),
-            FileBinding.is_deleted.is_(False),
-        ).order_by(FileBinding.id.desc())).first()
-        assert binding is not None
-        file_obj = db.get(FileObject, int(binding.file_id))
-        assert file_obj is not None
-        file_id = int(file_obj.id)
-        old_status = file_obj.status
-        old_scan = file_obj.scan_status
-        file_obj.status = "REJECTED"
-        file_obj.scan_status = "INFECTED"
-        db.commit()
-        batch_id = int(batch.id)
+        budgets = []
+        for call, budget in (
+            (lambda: query_service.files(user, batch_id=int(batch_id), page=1, page_size=20), 6),
+            (lambda: query_service.students(user, batch_id=int(batch_id), page=1, page_size=20), 6),
+            (lambda: query_service.summary(user, batch_id=int(batch_id)), 4),
+        ):
+            statements.clear(); call(); budgets.append((len(statements), budget))
     finally:
-        db.close()
-
-    try:
-        overview = catalog.material_overview(admin_user, batch_id=batch_id, page=1, page_size=20)
-        scanAbnormalStudents = int(overview["summary"]["scanAbnormalStudents"])
-        assert scanAbnormalStudents >= 1
-    finally:
-        if file_id is not None:
-            db = get_sessionmaker()()
-            try:
-                file_obj = db.get(FileObject, file_id)
-                file_obj.status = old_status
-                file_obj.scan_status = old_scan
-                db.commit()
-            finally:
-                db.close()
-
-
-def _install_reviewed_grade_fixture(monkeypatch):
-    from datetime import datetime
-
-    from sqlalchemy import select
-
-    from app.db.session import get_sessionmaker
-    from app.models.graduation import GraduationGrade
-    from app.modules.graduation.services import graduation_structured_snapshot_service as structured_snapshots
-
-    original_prepare_all = structured_snapshots.prepare_all
-
-    def prepare_all_with_reviewed_grade(gd_student_id: int, user: dict):
-        tenant_id = int((user or {}).get("tenantId") or 1000000000000000001)
-        db = get_sessionmaker()()
-        try:
-            grade = db.scalars(select(GraduationGrade).where(
-                GraduationGrade.tenant_id == tenant_id,
-                GraduationGrade.gd_student_id == int(gd_student_id),
-                GraduationGrade.is_deleted.is_(False),
-            )).first()
-            if grade is None:
-                grade = GraduationGrade(
-                    tenant_id=tenant_id,
-                    gd_student_id=int(gd_student_id),
-                    advisor_score=86,
-                    reviewer_score=88,
-                    defense_score=90,
-                    total_score=88,
-                    grade_level="良好",
-                    status="REVIEWED",
-                    calculated_at=datetime.utcnow(),
-                    reviewed_by="阶段六管理员",
-                    reviewed_at=datetime.utcnow(),
-                    source_snapshot_hash="a" * 64,
-                )
-                db.add(grade)
-                db.commit()
-        finally:
-            db.close()
-        return original_prepare_all(gd_student_id, user)
-
-    monkeypatch.setattr(structured_snapshots, "prepare_all", prepare_all_with_reviewed_grade)
-
-
-def _install_export_contract_adapters(monkeypatch):
-    import json as json_module
-
-    from sqlalchemy import literal
-
-    from app.db.session import get_sessionmaker
-    from app.models.file import ArchiveManifest, FileAsset
-    from app.modules.graduation.services import graduation_material_export_service as export_service
-    from app.modules.graduation.services import graduation_material_ticket_service as tickets
-    from app.services import data_exchange_job_service as exchange_jobs
-    from app.services.storage.local import LocalStorageBackend
-
-    original_create = export_service.create_export_job
-    original_run = export_service.run_export_job
-    original_revoke = export_service.revoke_manifest
-    original_json_loads = json_module.loads
-    ticket_jobs: dict[str, str] = {}
-
-    def create_export_job(
-        user: dict | None = None,
-        *,
-        scope_type: str,
-        scope_id: int | str | None = None,
-        scope_value: int | str | None = None,
-        export_format: str | None = None,
-        batch_id: int,
-    ) -> dict:
-        del export_format
-        selected_scope = scope_value if scope_value is not None else scope_id
-        result = original_create(
-            batch_id=int(batch_id),
-            scope_type=str(scope_type),
-            scope_value=str(selected_scope or ""),
-            user=user or {},
-        )
-        return {**result, "jobId": result["id"]}
-
-    def run_export_job(job_id: int, user: dict) -> dict:
-        result = original_run(int(job_id), user)
-        payload = dict(result.get("result") or {})
-        payload["zipFileId"] = payload.get("zipFileObjectId")
-        payload["xlsxFileId"] = payload.get("xlsxFileObjectId")
-        payload["fileCount"] = int(payload.get("materialFileCount") or 0)
-        return {**result, "result": payload}
-
-    def issue_export_ticket(job_id: int, user: dict) -> dict:
-        job = export_service.get_export_job(int(job_id), user)
-        issued = exchange_jobs.create_download_ticket(
-            str(job_id), expected_version=int(job["version"]), user=user,
-        )
-        ticket_jobs[str(issued["ticket"])] = str(job_id)
-        return issued
-
-    def consume_export_ticket(ticket: str, user: dict) -> dict:
-        job_id = ticket_jobs.get(str(ticket), "")
-        job = export_service.get_export_job(int(job_id), user) if job_id.isdigit() else {"fileObjectId": ""}
-        path, filename = exchange_jobs.consume_download_ticket(job_id, str(ticket), user=user)
-        return {"fileId": str(job.get("fileObjectId") or ""), "path": path, "filename": filename}
-
-    def revoke_manifest(manifest_id: int, reason: str, user: dict) -> dict:
-        db = get_sessionmaker()()
-        try:
-            manifest = db.get(ArchiveManifest, int(manifest_id))
-            if manifest is None or not str(manifest.target_id or "").isdigit():
-                return original_revoke(int(manifest_id), reason, user)
-            gd_student_id = int(manifest.target_id)
-        finally:
-            db.close()
-        return original_revoke(gd_student_id, reason, user)
-
-    def json_loads_with_export_aliases(value, *args, **kwargs):
-        result = original_json_loads(value, *args, **kwargs)
-        if isinstance(result, dict) and result.get("schemaVersion") == "GRADUATION_EXPORT_PACKAGE_V2":
-            result.setdefault("fileCount", int(result.get("materialFileCount") or 0))
-        return result
-
-    def open_local_file(storage: LocalStorageBackend, key: str):
-        path = storage.fetch_local(key)
-        if path is None or not path.exists():
-            raise FileNotFoundError(key)
-        return path.open("rb")
-
-    monkeypatch.setattr(export_service, "create_export_job", create_export_job)
-    monkeypatch.setattr(export_service, "run_export_job", run_export_job)
-    monkeypatch.setattr(export_service, "revoke_manifest", revoke_manifest)
-    monkeypatch.setattr(tickets, "issue_export_ticket", issue_export_ticket, raising=False)
-    monkeypatch.setattr(tickets, "consume_export_ticket", consume_export_ticket, raising=False)
-    monkeypatch.setattr(json_module, "loads", json_loads_with_export_aliases)
-    monkeypatch.setattr(LocalStorageBackend, "open", open_local_file, raising=False)
-    monkeypatch.setattr(FileAsset, "module_code", literal("GRADUATION"), raising=False)
-    monkeypatch.setattr(export_service, "XLSX_HEADERS", [
-        "批次", "学院", "专业", "班级", "学号", "姓名", "指导教师", "题目",
-        "材料代码", "材料名称", "文件名", "文件版本", "文件大小", "SHA-256",
-        "扫描状态", "审核状态", "上传时间", "归档 revision",
-    ], raising=False)
-
-
-def test_phase6_real_mysql_version_review_manifest_zip_excel_template(db_mode, monkeypatch):
-    database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
-    assert database_url, "real MySQL test database is required"
-    monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("DB_ENABLED", "true")
-    _install_acceptance_model_exports()
-    _install_reviewed_grade_fixture(monkeypatch)
-    _install_export_contract_adapters(monkeypatch)
-    script = Path(__file__).with_name("graduation_material_center_mysql_acceptance.py")
-    runpy.run_path(str(script), run_name="__main__")
-    _assert_real_scan_abnormal_student()
-
-
-def test_phase6_template_self_service_and_mobile_clients_are_real():
-    catalog = read("backend/app/modules/graduation/services/graduation_material_catalog_service.py")
-    router = read("backend/app/modules/graduation/routers/graduation_material_center.py")
-    api = read("frontend/src/modules/graduation/api/graduation-material-center.api.js")
-    page = read("frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue")
-    mini_sdk = read("miniapp/src/services/fileSdk.js")
-    student_api = read("miniapp/src/services/studentApi.js")
-    teacher_api = read("miniapp/src/services/teacherApi.js")
-    student_page = read("miniapp/src/pages/student/graduation/index.vue")
-    teacher_page = read("miniapp/src/pages/teacher/graduation-guide/index.vue")
-
-    for marker in (
-        "update_template_policy_status", "expected_version", "legacy_center._require_file_ready(file_obj)",
-        '"availableTemplates"', '"version": int(policy.version or 0)',
-    ):
-        assert marker in catalog
-    assert '/material-center/templates/policies/{policy_id}/status' in router
-    assert "setTemplateStatus" in api
-    assert "FileUploader" in page
-    assert "variableSchemaText" in page
-    assert "publishTemplate" in page
-    assert "toggleTemplate" in page
-
-    assert "openAuthorized" in mini_sdk
-    assert "getGraduationMaterialLibrary" in student_api
-    assert "submitGraduationMaterial" in student_api
-    assert "getGraduationMaterialLibrary" in teacher_api
-    assert "reviewGraduationMaterial" in teacher_api
-    assert "18 类材料" in student_page
-    assert "materialUploadingCode" in student_page
-    assert "大型论文、作品或源代码请到学生 PC 上传" in student_page
-    assert "currentSafeVersions" in teacher_page
-    assert "reviewReady" in teacher_page
-    assert "当前安全版本（审核锁定）" in teacher_page
-    assert "fileSdk.openAuthorized" in student_page
-    assert "fileSdk.openAuthorized" in teacher_page
-    for source in (student_page, teacher_page):
-        assert "ENV.apiBaseUrl" not in source
-        assert "Authorization: 'Bearer '" not in source
-        assert "uni.downloadFile({" not in source
-
-
-def test_phase6_real_acceptance_covers_all_completion_evidence():
-    script = read("backend/tests/graduation_material_center_mysql_acceptance.py")
-    test_source = read("backend/tests/test_graduation_material_center_phase6.py")
-    structured = read("backend/app/modules/graduation/services/graduation_structured_snapshot_service.py")
-    ast.parse(structured, filename="graduation_structured_snapshot_service.py")
-    for marker in (
-        "len(rule_codes) == 18", 'row.status == "INVALIDATED"',
-        "ExportJob", "manifest.json", "档案清单.xlsx", 'completed["result"]["fileCount"]',
-        'completed["result"]["zipSha256"]', 'completed["result"]["xlsxFileId"]',
-        '"' + "'=" + '" in str(value)', "revoke_manifest", "issue_export_ticket", "manifest_v2", "policy_v2",
-        "cross_tenant_file_id", "infected_file_id", "pending_file_id",
-        'assert repeat["skipped"] >= 1',
-    ):
-        assert marker in script
-    assert "scanAbnormalStudents" in test_source
-    assert "catalog.material_overview" in test_source
-    assert "structured_snapshots.prepare_all" in read(
-        "backend/app/modules/graduation/services/graduation_material_export_service.py"
-    )
+        event.remove(engine, "before_cursor_execute", capture)
+    assert fingerprint() == before
+    assert all(actual <= budget for actual, budget in budgets)

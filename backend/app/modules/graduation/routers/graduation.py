@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.core.permissions import has_permission, require_permission
 from app.modules.graduation.schemas.graduation import (AssignStudentsBody, DefenseGroupBody,  # noqa: F401
                                     ProposalSubmitBody, RemindBody, ReviewBody)
+from app.modules.graduation.materials import record_service as material_records
 from app.services import audit_log
 from app.modules.graduation.services import graduation_service as svc
 from app.modules.graduation.services.graduation_scope_service import has_full_scope, org_scope_status
@@ -135,16 +136,15 @@ def proposal_stats(batchId: int | None = Query(default=None, ge=1),
 
 @router.get("/proposals/{pid}", summary="开题批阅详情")
 def proposal_detail(pid: str, user=Depends(get_current_user)):
-    from app.modules.graduation.services import graduation_material_center_service as material_center
-    return success(material_center.proposal_detail(int(pid)))
+    return success(material_records.proposal_detail(int(pid), user))
 
 
 @router.post("/proposals/{pid}/review", summary="批阅开题（驳回原因≥5字）")
 def proposal_review(pid: str, body: ReviewBody, user=Depends(require_permission("graduationDesign.proposal.review"))):
-    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
-    from app.modules.graduation.services import graduation_material_center_service as material_center
-    result = material_center.review_proposal(int(pid), body.action, body.comment, user)
-    material_catalog.sync_record("PROPOSAL", int(pid), user)
+    result = material_records.review_proposal(
+        int(pid), body.action, body.comment, user,
+        expected_version=body.expectedVersion, expected_file_version_id=body.fileVersionId,
+    )
     return success(result, message="已批阅")
 
 
@@ -184,10 +184,10 @@ def finals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 
 @router.post("/finals/{fid}/review", summary="批阅成果（退回原因≥5字；查重超标 GD-R09 不可直接通过）")
 def final_review(fid: str, body: ReviewBody, user=Depends(get_current_user)):
-    from app.modules.graduation.services import graduation_material_catalog_service as material_catalog
-    from app.modules.graduation.services import graduation_material_center_service as material_center
-    result = material_center.review_final(int(fid), body.action, body.comment, user)
-    material_catalog.sync_record("FINAL", int(fid), user)
+    result = material_records.review_final(
+        int(fid), body.action, body.comment, user,
+        expected_version=body.expectedVersion, expected_file_version_id=body.fileVersionId,
+    )
     return success(result, message="已批阅")
 
 

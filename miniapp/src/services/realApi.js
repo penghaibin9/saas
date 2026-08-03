@@ -54,9 +54,9 @@ export const reviewWeeklyReal = (reportId, action, comment) =>
     { method: 'POST', data: { action, comment: comment || '' } })
 
 /** 毕设开题批阅：action=APPROVE/REJECT（驳回需 comment ≥5 字） */
-export const reviewProposalReal = (proposalId, action, comment) =>
+export const reviewProposalReal = (proposalId, action, comment, expectedVersion, fileVersionId) =>
   realRequest(`/mobile/teacher/graduation/proposal/${proposalId}/review`,
-    { method: 'POST', data: { action, comment: comment || '' } })
+    { method: 'POST', data: { action, comment: comment || '', expectedVersion, fileVersionId } })
 
 /** 打卡异常处理：action=REASONABLE/ABNORMAL/TO_RISK（意见 ≥5 字） */
 export const handleCheckinReal = (exceptionId, action, comment) =>
@@ -610,8 +610,10 @@ export const gdTeacherProposalDetail = (proposalId) =>
 /** 教师·成果详情 + 批阅（类型/版本/查重/真实附件；查重超标 GD-R09 不可直接通过） */
 export const gdTeacherFinalDetail = (finalId) =>
   realRequest(`/mobile/teacher/graduation/final/${finalId}`)
-export const gdTeacherFinalReview = (finalId, action, comment) =>
-  realRequest(`/mobile/teacher/graduation/final/${finalId}/review`, { method: 'POST', data: { action, comment: comment || '' } })
+export const gdTeacherFinalReview = (finalId, action, comment, expectedVersion, fileVersionId) =>
+  realRequest(`/mobile/teacher/graduation/final/${finalId}/review`, {
+    method: 'POST', data: { action, comment: comment || '', expectedVersion, fileVersionId }
+  })
 /** 教师·中期检查：待办队列 / 详情 / 结论 PASS-RECTIFY-FAIL / 复核整改 */
 export const gdTeacherMidtermQueue = () => realRequest('/mobile/teacher/graduation/midterm/queue')
 export const gdTeacherMidtermDetail = (gdStudentId) => realRequest(`/mobile/teacher/graduation/midterm/${gdStudentId}`)
