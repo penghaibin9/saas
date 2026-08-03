@@ -193,12 +193,19 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     ).order_by(GraduationMaterialRule.rule_version.desc())).first()
     current_items = {row.material_code: row for row in rule_items(db, int(current.id))} if current else {}
     changed = sorted(code for code in candidate_items.keys() & current_items.keys() if any((
+        candidate_items[code].material_name != current_items[code].material_name,
+        candidate_items[code].biz_stage != current_items[code].biz_stage,
+        candidate_items[code].owner_role != current_items[code].owner_role,
         candidate_items[code].required != current_items[code].required,
         candidate_items[code].review_required != current_items[code].review_required,
         candidate_items[code].archive_required != current_items[code].archive_required,
-        candidate_items[code].owner_role != current_items[code].owner_role,
         candidate_items[code].allowed_ext_json != current_items[code].allowed_ext_json,
+        candidate_items[code].max_files != current_items[code].max_files,
         candidate_items[code].max_size_bytes != current_items[code].max_size_bytes,
+        candidate_items[code].version_policy != current_items[code].version_policy,
+        candidate_items[code].sensitivity_level != current_items[code].sensitivity_level,
+        candidate_items[code].applicable_major_id != current_items[code].applicable_major_id,
+        candidate_items[code].applicable_topic_type != current_items[code].applicable_topic_type,
     )))
     affected_students = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(candidate.batch_id),
@@ -234,19 +241,28 @@ def get_impact(rule_id: int, user: dict | None = None) -> dict:
 
 def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: dict) -> dict:
     items = {row.material_code: row for row in rule_items(db, int(candidate.id), lock=True)}
+    archived_student_ids = set(db.scalars(select(GraduationStudent.id).where(
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.batch_id == int(candidate.batch_id),
+        GraduationStudent.stage == "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
+    ).with_for_update()).all())
     rows = list(db.scalars(select(GraduationStudentMaterial).where(
         GraduationStudentMaterial.tenant_id == _tid(),
         GraduationStudentMaterial.batch_id == int(candidate.batch_id),
         GraduationStudentMaterial.is_deleted.is_(False),
     ).with_for_update()).all())
-    migrated = removed_empty = 0
+    migrated = removed_empty = preserved_archived = 0
     for material in rows:
+        if int(material.gd_student_id or 0) in archived_student_ids or material.archive_status in {"FROZEN", "ARCHIVED"}:
+            preserved_archived += 1
+            continue
         item = items.get(material.material_code)
         if not item:
-            if material.current_version_id or material.archive_status in {"FROZEN", "ARCHIVED"}:
+            if material.current_version_id:
                 raise AppException(
                     "MATERIAL_RULE_REMOVAL_CONFLICT",
-                    f"材料 {material.material_code} 已有文件或归档证据，不能从新规则移除",
+                    f"材料 {material.material_code} 已有文件，不能从新规则移除",
                 )
             material.is_deleted = True
             material.updated_by = _actor_id(user)
@@ -261,7 +277,7 @@ def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: d
         material.sensitivity_level = item.sensitivity_level
         material.updated_by = _actor_id(user)
         migrated += 1
-    return {"migrated": migrated, "removedEmpty": removed_empty}
+    return {"migrated": migrated, "removedEmpty": removed_empty, "preservedArchived": preserved_archived}
 
 
 def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = False) -> dict:
@@ -289,7 +305,7 @@ def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = Fa
             GraduationMaterialRule.status == "ENABLED", GraduationMaterialRule.enabled.is_(True),
             GraduationMaterialRule.is_deleted.is_(False),
         ).with_for_update()).all())
-        migration = {"migrated": 0, "removedEmpty": 0}
+        migration = {"migrated": 0, "removedEmpty": 0, "preservedArchived": 0}
         if impact["requiresCatalogRepair"]:
             migration = _migrate_catalog_to_candidate(db, candidate, user)
         for row in current:
