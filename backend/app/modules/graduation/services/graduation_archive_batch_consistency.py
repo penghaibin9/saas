@@ -1,20 +1,23 @@
 """批量归档预览令牌绑定最终备案批次号。"""
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import re
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.core.exceptions import AppException
 from app.models import GraduationArchiveRecord, GraduationStudent
 from app.services.db_service import session
 
+
 def _archive_no(value) -> str:
-    text = str(value or "").strip()
-    if not text:
-        text = f"GDARCH-{datetime.now():%Y%m%d}"
-    if len(text) > 100:
-        raise AppException("VALIDATION_ERROR", "归档批次号不得超过 100 字符")
-    if any(ord(ch) < 32 for ch in text):
-        raise AppException("VALIDATION_ERROR", "归档批次号包含非法控制字符")
+    text = str(value or f"GDARCH-{datetime.now(timezone.utc):%Y%m%d}").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{2,99}", text):
+        raise AppException("VALIDATION_ERROR", "archiveBatchNo 格式不正确")
     return text
 
 
@@ -50,6 +53,57 @@ def preview_batch_file(batch_id=None, archive_batch_no: str | None = None) -> di
             "expiresInSeconds": 600,
             "generatedAt": datetime.now(timezone.utc).isoformat(),
         }
+
+
+def _token_archive_no(preview_token: str | None) -> str:
+    if not preview_token or "." not in preview_token:
+        raise AppException("VALIDATION_ERROR", "执行前必须先完成归档预览")
+    try:
+        encoded, supplied = preview_token.split(".", 1)
+        expected = base64.urlsafe_b64encode(hmac.new(
+            settings.jwt_secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256,
+        ).digest()).rstrip(b"=").decode()
+        if not hmac.compare_digest(supplied, expected):
+            raise ValueError("signature")
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raise AppException("VALIDATION_ERROR", "归档预览凭证无效，请重新预览") from None
+    return _archive_no(payload.get("archiveBatchNo"))
+
+
+def verify_batch_file_preview(batch_id, preview_token: str) -> dict:
+    """Verify exactly the snapshot shape produced by ``preview_batch_file``."""
+    from app.modules.graduation.services import graduation_archive_consistency as consistency
+    from app.modules.graduation.services import graduation_archive_service as service
+
+    archive_no = _token_archive_no(preview_token)
+    with session() as db:
+        batch = service._require_batch(db, batch_id)
+        snapshot = consistency._snapshot(db, batch, "FILE", lock=True)
+        snapshot["archiveBatchNo"] = archive_no
+        consistency._verify_token(
+            preview_token, consistency._token_payload("FILE", batch, snapshot)
+        )
+        return {**snapshot, "batchId": str(batch.id), "batchName": batch.batch_name}
+
+
+def _install_consistency_bridge() -> None:
+    """Keep V2 manifest execution on the same token contract as its preview."""
+    from app.modules.graduation.services import graduation_archive_consistency as consistency
+
+    original = consistency._token_payload
+    if not getattr(original, "_archive_batch_no_bound", False):
+        def token_payload(mode, batch, snapshot):
+            payload = original(mode, batch, snapshot)
+            payload["archiveBatchNo"] = str(snapshot.get("archiveBatchNo") or "")
+            return payload
+
+        token_payload._archive_batch_no_bound = True
+        consistency._token_payload = token_payload
+    consistency.verify_batch_file_preview = verify_batch_file_preview
+
+
+_install_consistency_bridge()
 
 
 def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token: str | None = None) -> dict:

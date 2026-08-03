@@ -27,17 +27,17 @@ def test_midterm_allows_final_submit_ignores_lone_conclusion():
     assert midterm_allows_final_submit(SimpleNamespace(status="RECTIFIED_PASS", conclusion="RECTIFY")) is True
 
 
-def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+def _gd_student(graduation_client, h, no, name):
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    return graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
-def test_proposal_approve_does_not_skip_taskbook(client, auth_headers, db_mode):
+def test_proposal_approve_does_not_skip_taskbook(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationProposal, GraduationStudent, GraduationTaskBook
 
     h = auth_headers
-    gid = _gd_student(client, h, "RV-TB-01", "任务书门禁生")
+    gid = _gd_student(graduation_client, h, "RV-TB-01", "任务书门禁生")
     # 直接造：选题已定、任务书未确认、开题待审
     db = get_sessionmaker()()
     try:
@@ -61,7 +61,7 @@ def test_proposal_approve_does_not_skip_taskbook(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    ok = client.post(f"/api/v1/graduation/proposals/{pid}/review", headers=h,
+    ok = graduation_client.post(f"/api/v1/graduation/proposals/{pid}/review", headers=h,
                      json={"action": "APPROVE", "comment": ""}).json()
     assert ok["code"] == 0
 
@@ -73,12 +73,12 @@ def test_proposal_approve_does_not_skip_taskbook(client, auth_headers, db_mode):
         db.close()
 
 
-def test_advance_taskbook_requires_confirmed(client, auth_headers, db_mode):
+def test_advance_taskbook_requires_confirmed(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
 
     h = auth_headers
-    gid = _gd_student(client, h, "RV-ADV-01", "推进门禁生")
+    gid = _gd_student(graduation_client, h, "RV-ADV-01", "推进门禁生")
     db = get_sessionmaker()()
     try:
         s = db.get(GraduationStudent, int(gid))
@@ -88,16 +88,16 @@ def test_advance_taskbook_requires_confirmed(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    bad = client.post(f"{GD_STU}/{gid}/stage", headers=h, json={"action": "ADVANCE", "reason": "跳过确认"}).json()
+    bad = graduation_client.post(f"{GD_STU}/{gid}/stage", headers=h, json={"action": "ADVANCE", "reason": "跳过确认"}).json()
     assert bad["code"] != 0
 
 
-def test_midterm_blocked_in_guiding(client, auth_headers, db_mode):
+def test_midterm_blocked_in_guiding(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
 
     h = auth_headers
-    gid = _gd_student(client, h, "RV-MID-01", "中期门禁生")
+    gid = _gd_student(graduation_client, h, "RV-MID-01", "中期门禁生")
     db = get_sessionmaker()()
     try:
         s = db.get(GraduationStudent, int(gid))
@@ -107,17 +107,17 @@ def test_midterm_blocked_in_guiding(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    bad = client.post(f"/api/v1/graduation/gd-midterms/{gid}/check", headers=h,
+    bad = graduation_client.post(f"/api/v1/graduation/gd-midterms/{gid}/check", headers=h,
                       json={"conclusion": "PASS", "comment": "提前中期"}).json()
     assert bad["code"] != 0
 
 
-def test_grad_qual_blocked_when_archived(client, auth_headers, db_mode):
+def test_grad_qual_blocked_when_archived(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
 
     h = auth_headers
-    gid = _gd_student(client, h, "RV-GQ-01", "资格归档生")
+    gid = _gd_student(graduation_client, h, "RV-GQ-01", "资格归档生")
     db = get_sessionmaker()()
     try:
         s = db.get(GraduationStudent, int(gid))
@@ -126,6 +126,6 @@ def test_grad_qual_blocked_when_archived(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    bad = client.post(f"{GD_STU}/{gid}/grad-qual", headers=h,
+    bad = graduation_client.post(f"{GD_STU}/{gid}/grad-qual", headers=h,
                       json={"status": "PASS", "note": "归档后改", "reason": "不应允许"}).json()
     assert bad["code"] != 0

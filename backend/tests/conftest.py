@@ -804,7 +804,14 @@ class GraduationBatchAwareClient:
 
 
 @pytest.fixture()
-def client() -> GraduationBatchAwareClient:
+def client() -> TestClient:
+    """通用 HTTP 客户端：不得自动补参数、改身份或写业务数据。"""
+    return TestClient(app)
+
+
+@pytest.fixture()
+def graduation_client() -> GraduationBatchAwareClient:
+    """毕业设计旧测试显式使用的兼容客户端；禁止其他业务测试隐式继承。"""
     return GraduationBatchAwareClient(TestClient(app))
 
 

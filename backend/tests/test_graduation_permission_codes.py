@@ -62,19 +62,19 @@ def test_request_permission_resolver_is_fail_closed_for_writes():
     ) == "graduationDesign.plagiarism.disputeReview"
 
 
-def test_unassigned_staff_is_denied_graduation_center(client):
-    response = client.get("/api/v1/graduation/dashboard", headers=_headers("STAFF"))
+def test_unassigned_staff_is_denied_graduation_center(graduation_client):
+    response = graduation_client.get("/api/v1/graduation/dashboard", headers=_headers("STAFF"))
     assert response.status_code == 403
 
 
-def test_mentor_can_view_but_cannot_publish_defense(client):
+def test_mentor_can_view_but_cannot_publish_defense(graduation_client):
     headers = _headers("GD_MENTOR")
     assert has_permission(
         {"currentRoleCode": "GD_MENTOR", "userType": "TEACHER"},
         "graduationDesign.dashboard.view",
     )
 
-    response = client.post(
+    response = graduation_client.post(
         "/api/v1/graduation/defense-groups/nonexistent/publish",
         headers=headers,
         json={},
@@ -82,8 +82,8 @@ def test_mentor_can_view_but_cannot_publish_defense(client):
     assert response.status_code == 403
 
 
-def test_mentor_cannot_call_unclassified_management_write(client):
-    response = client.post(
+def test_mentor_cannot_call_unclassified_management_write(graduation_client):
+    response = graduation_client.post(
         "/api/v1/graduation/batches",
         headers=_headers("GD_MENTOR"),
         json={},
@@ -91,23 +91,23 @@ def test_mentor_cannot_call_unclassified_management_write(client):
     assert response.status_code == 403
 
 
-def test_mentor_cannot_read_graduation_configuration_ledgers(client):
+def test_mentor_cannot_read_graduation_configuration_ledgers(graduation_client):
     headers = _headers("GD_MENTOR")
-    assert client.get("/api/v1/graduation/batches", headers=headers).status_code == 403
-    assert client.get("/api/v1/graduation/gd-mentors", headers=headers).status_code == 403
-    assert client.get("/api/v1/graduation/gd-defense-experts", headers=headers).status_code == 403
+    assert graduation_client.get("/api/v1/graduation/batches", headers=headers).status_code == 403
+    assert graduation_client.get("/api/v1/graduation/gd-mentors", headers=headers).status_code == 403
+    assert graduation_client.get("/api/v1/graduation/gd-defense-experts", headers=headers).status_code == 403
 
 
-def test_organization_admin_without_verified_scope_claim_is_denied(client):
-    response = client.get(
+def test_organization_admin_without_verified_scope_claim_is_denied(graduation_client):
+    response = graduation_client.get(
         "/api/v1/graduation/dashboard",
         headers=_headers("GD_COLLEGE_ADMIN"),
     )
     assert response.status_code == 403
 
 
-def test_organization_admin_context_allows_missing_claim_with_hint(client):
-    response = client.get(
+def test_organization_admin_context_allows_missing_claim_with_hint(graduation_client):
+    response = graduation_client.get(
         "/api/v1/graduation/context",
         headers=_headers("GD_COLLEGE_ADMIN"),
     )
@@ -120,7 +120,7 @@ def test_organization_admin_context_allows_missing_claim_with_hint(client):
     assert "学院" in (data.get("scopeHint") or "")
 
 
-def test_organization_admin_with_verified_scope_claim_passes_gate(client):
+def test_organization_admin_with_verified_scope_claim_passes_gate(graduation_client):
     """有 collegeId claim 时不再被组织范围门禁挡下；/context 不依赖业务库。"""
     token = create_access_token({
         "userId": "test-GD_COLLEGE_ADMIN",
@@ -134,7 +134,7 @@ def test_organization_admin_with_verified_scope_claim_passes_gate(client):
         "collegeId": "1001",
         "collegeIds": ["1001"],
     })
-    response = client.get(
+    response = graduation_client.get(
         "/api/v1/graduation/context",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -145,7 +145,7 @@ def test_organization_admin_with_verified_scope_claim_passes_gate(client):
     assert not (data.get("scopeHint") or "").strip()
 
 
-def test_school_admin_retains_tenant_scoped_full_access(client):
+def test_school_admin_retains_tenant_scoped_full_access(graduation_client):
     admin = {"currentRoleCode": "SCHOOL_ADMIN", "userType": "ADMIN"}
     assert has_permission(admin, "graduationDesign.dashboard.view")
     assert has_permission(admin, "graduationDesign.grade.publish")
