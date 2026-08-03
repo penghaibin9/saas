@@ -187,5 +187,21 @@ export const platformControlApi = {
   transitionIncidentStatus: (incidentId, status) => real('incident-status', `/platform/incidents/${incidentId}/status`, { method: 'POST', body: { status } }),
   addIncidentUpdate: (incidentId, body) => real('incident-update-add', `/platform/incidents/${incidentId}/updates`, { method: 'POST', body }),
   publishIncidentUpdate: (incidentId, updateId) => real('incident-update-publish', `/platform/incidents/${incidentId}/updates/${updateId}/publish`, { method: 'POST', body: {} }),
-  requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} })
+  requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} }),
+
+  /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
+  getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),
+  listChanges: (params = {}) => real('changes-list', '/platform/changes', { params }),
+  getChange: (changeId) => real('change-get', `/platform/changes/${changeId}`, {}),
+  createChange: (body) => real('change-create', '/platform/changes', { method: 'POST', body }),
+  assessChange: (changeId) => real('change-assess', `/platform/changes/${changeId}/assess`, { method: 'POST', body: {} }),
+  approveChange: (changeId, reason) => real('change-approve', `/platform/changes/${changeId}/approve`, { method: 'POST', body: { reason } }),
+  scheduleChange: (changeId, scheduledAt) => real('change-schedule', `/platform/changes/${changeId}/schedule`, { method: 'POST', body: { scheduledAt } }),
+  startChangeWave: (changeId, waveNo, tenantIds) => real('change-wave-start', `/platform/changes/${changeId}/start-wave`, { method: 'POST', body: { waveNo, tenantIds } }),
+  reportChangeWave: (changeId, waveNo, status, error) => real('change-wave-report', `/platform/changes/${changeId}/waves/${waveNo}/report`, { method: 'POST', body: { status, error } }),
+  verifyChange: (changeId) => real('change-verify', `/platform/changes/${changeId}/verify`, { method: 'POST', body: {} }),
+  failChange: (changeId, reason) => real('change-fail', `/platform/changes/${changeId}/fail`, { method: 'POST', body: { reason } }),
+  rollbackChange: (changeId, reason) => real('change-rollback', `/platform/changes/${changeId}/rollback`, { method: 'POST', body: { reason } }),
+  listMaintenanceWindows: () => real('maintenance-windows-list', '/platform/maintenance-windows', {}),
+  createMaintenanceWindow: (body) => real('maintenance-window-create', '/platform/maintenance-windows', { method: 'POST', body })
 }

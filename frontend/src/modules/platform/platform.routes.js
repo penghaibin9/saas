@@ -212,6 +212,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', platformCapabilityKey: 'plt-releases' }
     },
     {
+      // PLAT-11：卡片唯一正式路由是 /admin/platform/changes，与上面的 releases 占位页
+      // 是不同路由，不合并；变更评估/审批/排期/灰度/回滚在这里，releases 留给其它范围。
+      path: 'changes', name: 'platform-changes',
+      component: () => import('@/modules/platform/views/control/PlatformChangeView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '变更、发布、兼容性、灰度与回滚', requiresAuth: true, permissionKey: 'platform.change.manage' }
+    },
+    {
       path: 'support-tickets', name: 'platform-support-tickets', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '工单与服务请求', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', platformCapabilityKey: 'plt-support-tickets' }
     },

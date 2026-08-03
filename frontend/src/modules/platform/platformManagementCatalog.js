@@ -49,7 +49,8 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     items: [
       { key: 'plt-role-templates', label: '平台角色模板', path: '/admin/platform/role-templates', permissionKey: 'platform.role-template.manage', view: 'capability', actions: [action('role-template:publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-global-rules', label: '全局字典与规则', path: '/admin/platform/dictionaries', permissionKey: 'platform.dict.view', view: 'dictionaries', actions: [action('rule:global:update', '更新全局规则', 'HIGH')] },
-      { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] }
+      { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] },
+      { key: 'plt-changes', label: '变更、发布、兼容性、灰度与回滚', path: '/admin/platform/changes', permissionKey: 'platform.change.manage', view: 'changes', actions: [action('change:approve', '审批变更', 'HIGH'), action('change:schedule', '排期变更', 'HIGH'), action('change:rollback', '回滚变更', 'HIGH')] }
     ]
   },
   {

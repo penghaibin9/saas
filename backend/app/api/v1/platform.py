@@ -883,3 +883,124 @@ def incident_request_problem(incident_id: int, user=Depends(require_platform_cap
     out = inc.request_problem_conversion(incident_id, user=user)
     _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {})
     return success(out, message="已登记转Problem申请")
+
+
+# ── PLAT-11 变更、发布、兼容性、灰度与回滚 ───────────────────────────────────
+@router.get("/changes/overview", summary="变更治理首屏结论")
+def changes_overview(user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    return success(chg.governance_overview())
+
+
+@router.get("/changes", summary="变更列表")
+def changes_list(status: Optional[str] = Query(default=None),
+                 user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    items = chg.list_changes(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/changes", summary="创建变更请求（DRAFT）")
+def changes_create(body: dict = Body(...), user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.create_change(user, body)
+    _audit("PLATFORM_CHANGE_CREATE", out["changeId"], {"title": out["title"], "changeType": out["changeType"]})
+    return success(out, message="变更请求已创建")
+
+
+@router.get("/changes/{change_id}", summary="变更详情")
+def change_get(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    return success(chg.get_change(change_id))
+
+
+@router.post("/changes/{change_id}/assess", summary="评估变更（计算受影响服务与租户快照）")
+def change_assess(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.assess(change_id, user=user)
+    _audit("PLATFORM_CHANGE_ASSESS", str(change_id), {"affectedTenants": len(out.get("affectedTenants", []))})
+    return success(out, message="已评估")
+
+
+@router.post("/changes/{change_id}/approve", summary="审批变更（须与发起人不同）")
+def change_approve(change_id: int, body: dict = Body(...),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.approve(change_id, user=user, reason=body.get("reason") or "")
+    _audit("PLATFORM_CHANGE_APPROVE", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已审批通过")
+
+
+@router.post("/changes/{change_id}/schedule", summary="排期（冻结窗口冲突时拒绝）")
+def change_schedule(change_id: int, body: dict | None = Body(default=None),
+                    user=Depends(require_platform_capability("operations.manage"))):
+    from datetime import datetime as _dt
+
+    from app.services import change_management_service as chg
+    payload = body if isinstance(body, dict) else {}
+    scheduled_at = _dt.fromisoformat(payload["scheduledAt"]) if payload.get("scheduledAt") else None
+    out = chg.schedule(change_id, user=user, scheduled_at=scheduled_at)
+    _audit("PLATFORM_CHANGE_SCHEDULE", str(change_id), {"scheduledAt": out["scheduledAt"]})
+    return success(out, message="已排期")
+
+
+@router.post("/changes/{change_id}/start-wave", summary="开始一个灰度批次")
+def change_start_wave(change_id: int, body: dict = Body(...),
+                      user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.start_wave(change_id, wave_no=int(body.get("waveNo") or 1),
+                         tenant_ids=body.get("tenantIds") or [], user=user)
+    _audit("PLATFORM_CHANGE_WAVE_START", str(change_id), out)
+    return success(out, message="灰度批次已开始")
+
+
+@router.post("/changes/{change_id}/waves/{wave_no}/report", summary="上报灰度批次结果（失败即停止扩展并回滚）")
+def change_wave_report(change_id: int, wave_no: int, body: dict = Body(...),
+                       user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.report_wave_result(change_id, wave_no, status=body.get("status") or "",
+                                 error=body.get("error"), user=user)
+    _audit("PLATFORM_CHANGE_WAVE_REPORT", str(change_id), out)
+    return success(out, message="已记录批次结果")
+
+
+@router.post("/changes/{change_id}/verify", summary="验证通过（全部灰度批次成功后才允许）")
+def change_verify(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.verify(change_id, user=user)
+    _audit("PLATFORM_CHANGE_VERIFY", str(change_id), {})
+    return success(out, message="已验证通过")
+
+
+@router.post("/changes/{change_id}/fail", summary="标记变更失败")
+def change_fail(change_id: int, body: dict = Body(...),
+                user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.fail(change_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_CHANGE_FAIL", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已标记失败")
+
+
+@router.post("/changes/{change_id}/rollback", summary="回滚变更（高危）")
+def change_rollback(change_id: int, body: dict = Body(...),
+                    user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.rollback(change_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_CHANGE_ROLLBACK", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已回滚")
+
+
+@router.get("/maintenance-windows", summary="平台全局冻结期列表")
+def maintenance_windows_list(user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    items = chg.list_maintenance_windows()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/maintenance-windows", summary="登记平台全局冻结期")
+def maintenance_windows_create(body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.upsert_maintenance_window(user, body)
+    _audit("PLATFORM_MAINTENANCE_WINDOW_CREATE", out["id"], out)
+    return success(out, message="冻结期已登记")
