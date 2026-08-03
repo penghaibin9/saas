@@ -31,5 +31,6 @@ from app.models import internship_agreement_template as _internship_agreement_te
 from app.models import service_catalog as _service_catalog  # noqa: F401  (PLAT-08·服务目录)
 from app.models import tenant_provisioning as _tenant_provisioning  # noqa: F401  (PLAT-04·租户开通)
 from app.models import incident as _incident  # noqa: F401  (PLAT-09·事件)
+from app.models import change_management as _change_management  # noqa: F401  (PLAT-11·变更管理)
 
 metadata = Base.metadata
