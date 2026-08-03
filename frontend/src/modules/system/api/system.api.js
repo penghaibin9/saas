@@ -244,6 +244,96 @@ export const systemApi = {
   },
 
   // SYS-17：主数据责任与数据质量
+  // SYS-14：流程节点动作与版本策略、人工推进
+  async getWorkflowGovernanceOverview() {
+    try {
+      return ok(await request('/system/workflow-governance/overview'))
+    } catch (error) {
+      return fail(error.message || '流程治理概览加载失败')
+    }
+  },
+
+  async listWorkflowPolicies(workflowCode) {
+    try {
+      return ok(await request('/system/workflow-security-policies', {
+        params: { workflow_code: workflowCode || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '流程策略加载失败')
+    }
+  },
+
+  async getWorkflowPolicyDraft(workflowCode, { nodeCode, policyType } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(workflowCode)}/draft`, {
+        params: { node_code: nodeCode || undefined, policy_type: policyType || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '策略草稿加载失败')
+    }
+  },
+
+  async saveWorkflowPolicyDraft(workflowCode, { nodeCode, policyType, actionPermissionCode, versionStrategy, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(workflowCode)}/draft`, {
+        method: 'PUT',
+        body: { nodeCode, policyType, actionPermissionCode, versionStrategy, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async submitWorkflowPolicy(policyId, { expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/submit`, {
+        method: 'POST', body: { expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async activateWorkflowPolicy(policyId, { reason, selfReviewAck, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/activate`, {
+        method: 'POST', body: { reason, selfReviewAck, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async retireWorkflowPolicy(policyId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/retire`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async simulateWorkflowPolicy(payload) {
+    try {
+      return ok(await request('/system/workflow-security-policies/simulate', {
+        method: 'POST', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '策略推演失败')
+    }
+  },
+
+  async forceAdvanceWorkflowTask(taskId, { action, reason } = {}) {
+    try {
+      return ok(await request(`/system/workflow-tasks/${encodeURIComponent(taskId)}/force-advance`, {
+        method: 'POST', body: { action, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async listMasterDataDomains() {
     try {
       return ok(await request('/system/master-data/domains'))

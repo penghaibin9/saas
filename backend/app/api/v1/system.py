@@ -737,6 +737,100 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
         db.close()
 
 
+# ── SYS-14 流程定义、流程安全与运行异常 ──────────────────────────────────────
+@router.get("/system/workflow-governance/overview", summary="流程治理首屏结论")
+def api_workflow_governance_overview(user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.dashboard.view"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.governance_overview())
+
+
+@router.get("/system/workflow-security-policies", summary="流程节点动作与版本策略列表")
+def api_list_workflow_policies(workflow_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.dashboard.view"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.list_policies(workflow_code=workflow_code))
+
+
+@router.get("/system/workflow-security-policies/{workflow_code}/draft", summary="取某流程的策略草稿")
+def api_get_workflow_policy_draft(workflow_code: str, node_code: str = "",
+                                  policy_type: str = "NODE_ACTION",
+                                  user=Depends(require_any_permission(
+                                      "systemAdmin.workflow.view", "systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.get_draft(workflow_code, node_code=node_code, policy_type=policy_type))
+
+
+@router.put("/system/workflow-security-policies/{workflow_code}/draft", summary="保存流程策略草稿")
+def api_save_workflow_policy_draft(workflow_code: str, body: dict = Body(...),
+                                   user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.save_draft(
+        workflow_code, node_code=payload.get("nodeCode") or "",
+        policy_type=payload.get("policyType") or "NODE_ACTION",
+        action_permission_code=payload.get("actionPermissionCode"),
+        version_strategy=payload.get("versionStrategy") or "DYNAMIC",
+        reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="草稿已保存")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/submit", summary="提交策略草稿待复核")
+def api_submit_workflow_policy(policy_id: int, body: dict | None = Body(default=None),
+                               user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body if isinstance(body, dict) else {}
+    return success(wsp.submit_for_review(
+        policy_id, expected_version=payload.get("expectedVersion"), user=user), message="已提交复核")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/activate", summary="激活策略（自复核 fail-closed）")
+def api_activate_workflow_policy(policy_id: int, body: dict = Body(...),
+                                 user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.activate(
+        policy_id, reason=payload.get("reason") or "",
+        self_review_ack=payload.get("selfReviewAck") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="策略已激活")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/retire", summary="下线策略")
+def api_retire_workflow_policy(policy_id: int, body: dict = Body(...),
+                               user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.retire(
+        policy_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="策略已下线")
+
+
+@router.post("/system/workflow-security-policies/simulate", summary="节点动作权限推演（只读）")
+def api_simulate_workflow_policy(body: dict = Body(...), user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.workflow.manage"))):
+    from app.core.permissions import get_effective_permission_patterns
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    actor = {"userId": payload.get("actorUserId") or "", "currentRoleCode": payload.get("actorRoleCode") or "",
+             "tenantId": str(current_tenant_id() or "")}
+    patterns = list(get_effective_permission_patterns(actor)) if payload.get("actorRoleCode") else \
+        list(payload.get("actorPermissions") or [])
+    return success(wsp.simulate(
+        payload.get("workflowCode") or "", payload.get("nodeCode") or "",
+        actor_user_id=payload.get("actorUserId") or "", actor_permissions=patterns,
+        task_assignee_id=payload.get("taskAssigneeId") or ""))
+
+
+@router.post("/system/workflow-tasks/{task_id}/force-advance", summary="人工推进卡住的审批任务（须留理由与审计）")
+def api_force_advance_workflow_task(task_id: int, body: dict = Body(...),
+                                    user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.force_advance_task(
+        task_id, action=payload.get("action") or "", reason=payload.get("reason") or "",
+        user=user), message="已人工推进")
+
+
 # ── SYS-17 主数据责任与数据质量 ──────────────────────────────────────────────
 @router.get("/system/master-data/domains", summary="数据域目录、责任人与质量分")
 def api_master_data_domains(user=Depends(require_any_permission(
