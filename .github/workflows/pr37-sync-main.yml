@@ -1,0 +1,73 @@
+name: PR37 guarded main sync
+
+on:
+  push:
+    branches:
+      - agent/internship-production-hardening-20260803
+    paths:
+      - .github/workflows/pr37-sync-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/internship-production-hardening-20260803
+          fetch-depth: 0
+
+      - name: Merge latest main and resolve only audited overlaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+
+          # 毕业设计兼容与测试造数已经由最新 main 权威收口；岗位实习 PR 不再携带这些分支副本。
+          git checkout origin/main -- \
+            backend/conftest.py \
+            backend/tests/conftest.py \
+            backend/tests/test_file_streaming_archive_cutover.py \
+            backend/tests/test_graduation.py \
+            backend/tests/test_graduation_review.py
+
+          # 保留本 PR 的学生门户主题持久化复审修正。
+          git checkout HEAD -- student-portal/review/v5-full-review.mjs
+
+          git add \
+            backend/conftest.py \
+            backend/tests/conftest.py \
+            backend/tests/test_file_streaming_archive_cutover.py \
+            backend/tests/test_graduation.py \
+            backend/tests/test_graduation_review.py \
+            student-portal/review/v5-full-review.mjs
+
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$unresolved" ]; then
+            echo "存在未审计冲突，拒绝自动猜测："
+            echo "$unresolved"
+            exit 1
+          fi
+
+          git rm .github/workflows/pr37-sync-main.yml
+          git commit -m "chore: sync latest main and isolate internship changes"
+
+          polluted="$(git diff --name-only origin/main...HEAD | grep -E '^(backend/conftest\.py|backend/tests/conftest\.py|backend/tests/test_file_streaming_archive_cutover\.py|backend/tests/test_graduation.*\.py)$' || true)"
+          if [ -n "$polluted" ]; then
+            echo "毕业设计/共享测试污染仍存在，拒绝推送："
+            echo "$polluted"
+            exit 1
+          fi
+
+          echo "initial merge status: $merge_status"
+          git push origin HEAD:agent/internship-production-hardening-20260803
