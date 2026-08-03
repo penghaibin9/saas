@@ -1,15 +1,19 @@
-name: Agent Diagnose Main CI Regressions
+name: Agent Apply Mobile Graduation Batch Contract
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: agent-mobile-graduation-batch-pr36
+  cancel-in-progress: false
 
 jobs:
-  diagnose:
+  patch:
     if: ${{ github.head_ref == 'fix/graduation-material-closeout-p0-review' }}
     runs-on: ubuntu-latest
     services:
@@ -31,54 +35,79 @@ jobs:
         with:
           ref: fix/graduation-material-closeout-p0-review
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Print authoritative file-center architecture
-        run: |
-          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'register_file_resolver("AFFAIRS_ARCHIVE\|register_file_resolver("MATERIAL_REQUIREMENT\|file-object:' backend/app | head -100 || true
-      - name: Print matching routes from inside failing pytest fixture
-        working-directory: backend
+
+      - name: Apply explicit batch contract
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('tests/test_mobile.py')
+
+          path = Path('backend/tests/test_mobile.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
-              assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
-          '''
-          new = '''    import inspect
-              target = "/api/v1/mobile/teacher/graduation"
-              for app_name, route_app in (("CLIENT", client.app),):
-                  for index, route in enumerate(route_app.routes):
-                      regex = getattr(route, "path_regex", None)
-                      if regex is not None and regex.fullmatch(target):
-                          endpoint = getattr(route, "endpoint", None)
-                          print(
-                              "TEST_ROUTE_MATCH", app_name, index, getattr(route, "path", None),
-                              endpoint.__module__, endpoint.__name__, inspect.signature(endpoint),
-                              flush=True,
-                          )
-                          dependant = getattr(route, "dependant", None)
-                          print(
-                              "QUERY_PARAMS",
-                              [(p.name, p.required, p.default) for p in (getattr(dependant, "query_params", None) or [])],
-                              flush=True,
-                          )
-                          print(
-                              "DEPENDENCIES",
-                              [getattr(d.call, "__name__", repr(d.call)) for d in (getattr(dependant, "dependencies", None) or [])],
-                              flush=True,
-                          )
+          old = '''def test_teacher_domain_pages_structure(client, db_mode):
+              _seed_rich(db_mode)
+              admin_headers = _teacher_token(role="SCHOOL_ADMIN")
+              it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
+              assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
               gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
-              print("GD_RESPONSE_PAYLOAD=", gd, flush=True)
               assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
           '''
-          if old not in text:
-              raise SystemExit('mobile assertion anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          new = '''def test_teacher_domain_pages_structure(client, db_mode):
+              _seed_rich(db_mode)
+              from app.db.session import get_sessionmaker
+              from app.models import GraduationBatch
+
+              db = get_sessionmaker()()
+              try:
+                  batch = GraduationBatch(
+                      tenant_id=MAIN, batch_name="移动端结构测试批次", batch_no="MOBILE-STRUCTURE-001",
+                      planned_count=2, status="RUNNING", archive_status="NOT_ARCHIVED",
+                  )
+                  db.add(batch)
+                  db.flush()
+                  batch_id = int(batch.id)
+                  db.commit()
+              finally:
+                  db.close()
+
+              admin_headers = _teacher_token(role="SCHOOL_ADMIN")
+              it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
+              assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
+              gd = client.get(
+                  "/api/v1/mobile/teacher/graduation", headers=admin_headers, params={"batchId": batch_id}
+              ).json()
+              assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
+          '''
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          elif 'params={"batchId": batch_id}' not in text:
+              raise SystemExit('mobile graduation assertion anchor not found')
           PY
-          pytest tests/test_mobile.py::test_teacher_domain_pages_structure -vv -s -p no:warnings
+          python -m py_compile backend/tests/test_mobile.py
+          git diff --check
+
+      - name: Verify focused regression
+        working-directory: backend
+        run: pytest tests/test_mobile.py::test_teacher_domain_pages_structure -q -p no:warnings
+
+      - name: Remove temporary workflow and commit
+        run: |
+          git rm -f .github/workflows/agent-diagnose-main-ci-regressions.yml || true
+          if git diff --quiet; then
+            echo 'No changes required'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/tests/test_mobile.py .github/workflows/agent-diagnose-main-ci-regressions.yml
+          git commit -m 'test(mobile): require explicit graduation batch context'
+          git push origin HEAD:fix/graduation-material-closeout-p0-review
