@@ -1,0 +1,49 @@
+name: Internship Evidence Contract Agent
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: internship-evidence-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Remove fake evidence package field
+        run: python scripts/agent/remove_internship_evidence_fake_field.py
+      - name: Validate evidence package contract
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/services/__init__.py \
+            backend/app/modules/internship/services/internship_evidence_package_service.py \
+            backend/tests/test_internship_evidence_package_contract_static.py
+          git diff --check
+      - name: Commit evidence package cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/agent/remove_internship_evidence_fake_field.py
+          git add -u
+          git add backend/tests/test_internship_evidence_package_contract_static.py
+          if git diff --cached --quiet; then
+            echo 'evidence package cleanup already committed'
+            exit 0
+          fi
+          git commit -m 'fix: remove non-persistent evidence package field'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
