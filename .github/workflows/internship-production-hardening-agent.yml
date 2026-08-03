@@ -27,7 +27,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply audited production hardening
-        run: python scripts/agent/apply_internship_production_hardening.py
+        run: |
+          python scripts/agent/fix_internship_hardening_generator.py
+          python scripts/agent/apply_internship_production_hardening.py
       - name: Validate generated Python and static contracts
         run: |
           python -m compileall -q backend/app backend/tests scripts/check
@@ -38,6 +40,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -f scripts/agent/apply_internship_production_hardening.py
+          rm -f scripts/agent/fix_internship_hardening_generator.py
           rm -f .github/workflows/internship-production-hardening-agent.yml
           git add \
             student-portal/src/services/internshipCoreApi.js \
@@ -55,6 +58,7 @@ jobs:
             backend/alembic/versions \
             backend/migrations/versions \
             scripts/agent/apply_internship_production_hardening.py \
+            scripts/agent/fix_internship_hardening_generator.py \
             .github/workflows/internship-production-hardening-agent.yml 2>/dev/null || true
           if git diff --cached --quiet; then
             echo 'No generated changes to commit'
