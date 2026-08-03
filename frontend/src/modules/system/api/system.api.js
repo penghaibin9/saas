@@ -1457,6 +1457,124 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '激活历史加载失败')
     }
+  },
+
+  // ── SYS-10 访问解释、职责分离、紧急访问与权限复核 ────────────────────
+  // 解释结论由后端真实鉴权核心给出，前端只展示判定链，不自行推断。
+
+  /** 解释某人对某动作的判定，逐层给出 PASS/FAIL */
+  async explainAccess({ actionCode, resourceType, resourceId, scopeTargetType, scopeTargetId } = {}) {
+    try {
+      return ok(await request('/system/access-explanations', {
+        method: 'POST',
+        body: { actionCode, resourceType, resourceId, scopeTargetType, scopeTargetId }
+      }))
+    } catch (error) {
+      return fail(error.message || '访问解释失败')
+    }
+  },
+
+  /** 按 traceId 复现当时的判定链 */
+  async getAccessTrace(traceId) {
+    try {
+      return ok(await request(`/system/access-explanations/${encodeURIComponent(traceId)}`))
+    } catch (error) {
+      return fail(error.message || '判定记录加载失败')
+    }
+  },
+
+  /** 最近的拒绝记录 */
+  async getAccessDenials() {
+    try {
+      return ok(await request('/system/access-denials'))
+    } catch (error) {
+      return fail(error.message || '拒绝记录加载失败')
+    }
+  },
+
+  /** 职责分离规则与已检出冲突 */
+  async getSodRules() {
+    try {
+      return ok(await request('/system/sod'))
+    } catch (error) {
+      return fail(error.message || '职责分离规则加载失败')
+    }
+  },
+
+  /** 新增职责分离规则 */
+  async createSodRule(payload = {}) {
+    try {
+      return ok(await request('/system/sod/rules', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '规则创建失败')
+    }
+  },
+
+  /** 紧急访问会话列表 */
+  async getEmergencySessions() {
+    try {
+      return ok(await request('/system/emergency-sessions'))
+    } catch (error) {
+      return fail(error.message || '紧急访问加载失败')
+    }
+  },
+
+  /** 开通紧急访问（必须有工单号，最长 8 小时） */
+  async grantEmergencySession(payload = {}) {
+    try {
+      return ok(await request('/system/emergency-sessions', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '紧急访问开通失败')
+    }
+  },
+
+  /** 提前收回紧急访问 */
+  async revokeEmergencySession(sessionCode, { reason } = {}) {
+    try {
+      return ok(await request(`/system/emergency-sessions/${encodeURIComponent(sessionCode)}/revoke`, {
+        method: 'POST', body: { reason }
+      }))
+    } catch (error) {
+      return fail(error.message || '紧急访问收回失败')
+    }
+  },
+
+  /** 权限复核活动列表 */
+  async getAccessReviews() {
+    try {
+      return ok(await request('/system/access-reviews'))
+    } catch (error) {
+      return fail(error.message || '复核活动加载失败')
+    }
+  },
+
+  /** 复核活动详情 */
+  async getAccessReviewDetail(campaignId) {
+    try {
+      return ok(await request(`/system/access-reviews/${encodeURIComponent(campaignId)}`))
+    } catch (error) {
+      return fail(error.message || '复核详情加载失败')
+    }
+  },
+
+  /** 发起一轮权限复核 */
+  async createAccessReview(payload = {}) {
+    try {
+      return ok(await request('/system/access-reviews', { method: 'POST', body: payload }))
+    } catch (error) {
+      return fail(error.message || '复核活动创建失败')
+    }
+  },
+
+  /** 给出复核结论；调整或回收必须关联安全变更 */
+  async decideAccessReviewItem(itemId, payload = {}) {
+    try {
+      return ok(await request(`/system/access-reviews/items/${encodeURIComponent(itemId)}/decide`, {
+        method: 'POST', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '复核结论提交失败')
+    }
   }
 }
 

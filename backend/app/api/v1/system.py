@@ -2945,3 +2945,191 @@ def list_security_activations(user=Depends(require_any_permission(
     from app.services import security_change_service as svc
 
     return success(svc.activation_history())
+
+
+# ═══════════ SYS-10 访问解释、权限复核、职责分离与紧急访问 ═══════════
+# 解释器只展开真实鉴权函数的中间量，最终结论以 has_permission 为准；
+# 资源标识一律以摘要出现，避免这个接口变成对象枚举器。
+
+@router.post("/system/access-explanations", summary="解释某人对某动作的判定，逐层给出 PASS/FAIL")
+def create_access_explanation(
+    body: dict = Body(...),
+    user=Depends(require_any_permission("systemAdmin.access.explain", "systemAdmin.audit.view")),
+):
+    from app.core.exceptions import AppException
+    from app.services import policy_decision_service as svc
+
+    action_code = str(body.get("actionCode") or "")
+    if not action_code:
+        raise AppException("VALIDATION_ERROR", "缺少 actionCode")
+    # 默认解释当前登录者；解释他人需要更高权限，避免变成探测工具
+    subject = body.get("subject") or user
+    return success(
+        svc.explain(
+            subject,
+            action_code=action_code,
+            resource_type=body.get("resourceType"),
+            resource_id=body.get("resourceId"),
+            scope_target_type=body.get("scopeTargetType"),
+            scope_target_id=body.get("scopeTargetId"),
+        )
+    )
+
+
+@router.get("/system/access-explanations/{trace_id}", summary="按 traceId 复现当时的判定链")
+def get_access_explanation(
+    trace_id: str,
+    user=Depends(require_any_permission("systemAdmin.access.explain", "systemAdmin.audit.view")),
+):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.get_trace(trace_id))
+
+
+@router.get("/system/access-denials", summary="最近的拒绝记录")
+def list_access_denials(user=Depends(require_any_permission(
+        "systemAdmin.access.explain", "systemAdmin.audit.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.list_denials())
+
+
+@router.get("/system/sod", summary="职责分离规则与已检出冲突")
+def list_sod_rules(user=Depends(require_any_permission(
+        "systemAdmin.access.explain", "systemAdmin.role.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.list_sod())
+
+
+@router.post("/system/sod/rules", summary="新增职责分离规则")
+def create_sod_rule(body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.add_sod_rule(
+            rule_code=str(body.get("ruleCode") or ""),
+            role_a=str(body.get("roleA") or ""),
+            role_b=str(body.get("roleB") or ""),
+            reason=str(body.get("reason") or ""),
+            severity=str(body.get("severity") or "HIGH"),
+        ),
+        message="职责分离规则已创建",
+    )
+
+
+@router.post("/system/sod/check", summary="检查一组角色是否触犯职责分离")
+def check_sod_conflict(body: dict = Body(...), user=Depends(require_any_permission(
+        "systemAdmin.access.explain", "systemAdmin.role.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.check_sod(int(body.get("subjectUserId") or 0), body.get("roleCodes") or [])
+    )
+
+
+@router.get("/system/emergency-sessions", summary="紧急访问会话列表")
+def list_emergency_sessions(user=Depends(require_any_permission(
+        "systemAdmin.security.view", "systemAdmin.audit.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.list_emergency())
+
+
+@router.post("/system/emergency-sessions", summary="开通紧急访问（必须有工单号与到期时间）")
+def grant_emergency_session(
+    body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))
+):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.grant_emergency(
+            subject_user_id=int(body.get("subjectUserId") or 0),
+            granted_role_code=str(body.get("grantedRole") or ""),
+            ticket_ref=str(body.get("ticketRef") or ""),
+            reason=str(body.get("reason") or ""),
+            minutes=int(body.get("minutes") or 60),
+        ),
+        message="紧急访问已开通，到期自动失效",
+    )
+
+
+@router.post("/system/emergency-sessions/{session_code}/revoke", summary="提前收回紧急访问")
+def revoke_emergency_session(
+    session_code: str, body: dict = Body(default={}),
+    user=Depends(require_permission("systemAdmin.security.manage")),
+):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.revoke_emergency(session_code, reason=str(body.get("reason") or "")), message="紧急访问已收回"
+    )
+
+
+@router.get("/system/access-reviews", summary="权限复核活动列表")
+def list_access_reviews(user=Depends(require_any_permission(
+        "systemAdmin.access.explain", "systemAdmin.role.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.list_campaigns())
+
+
+@router.post("/system/access-reviews", summary="发起一轮权限复核")
+def create_access_review(body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.create_campaign(
+            title=str(body.get("title") or ""),
+            role_codes=body.get("roleCodes") or [],
+            due_at=_calendar_dt(body.get("dueAt"), "dueAt", required=False),
+        ),
+        message="复核活动已创建",
+    )
+
+
+@router.get("/system/access-reviews/{campaign_id}", summary="复核活动详情与明细")
+def get_access_review(campaign_id: int, user=Depends(require_any_permission(
+        "systemAdmin.access.explain", "systemAdmin.role.view"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.get_campaign(campaign_id))
+
+
+@router.post("/system/access-reviews/{campaign_id}/items", summary="向复核活动追加待复核条目")
+def add_access_review_item(
+    campaign_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))
+):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.add_review_item(
+            campaign_id,
+            subject_user_id=int(body.get("subjectUserId") or 0),
+            role_code=str(body.get("roleCode") or ""),
+        )
+    )
+
+
+@router.post("/system/access-reviews/items/{item_id}/decide", summary="给出复核结论（调整/回收须关联安全变更）")
+def decide_access_review_item(
+    item_id: int, body: dict = Body(...), user=Depends(require_permission("systemAdmin.security.manage"))
+):
+    from app.services import policy_decision_service as svc
+
+    return success(
+        svc.decide_review_item(
+            item_id,
+            decision=str(body.get("decision") or ""),
+            note=str(body.get("note") or ""),
+            follow_up_change_set_id=body.get("followUpChangeSetId"),
+        ),
+        message="复核结论已记录",
+    )
+
+
+@router.post("/system/access-reviews/{campaign_id}/close", summary="关闭复核（有未处理条目时拒绝）")
+def close_access_review(campaign_id: int, user=Depends(require_permission("systemAdmin.security.manage"))):
+    from app.services import policy_decision_service as svc
+
+    return success(svc.close_campaign(campaign_id), message="复核已关闭")

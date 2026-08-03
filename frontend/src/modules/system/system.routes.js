@@ -191,6 +191,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '学年学期与业务日历', requiresAuth: true, permissionKey: 'systemAdmin.academicCalendar.view' }
     },
     {
+      // SYS-10：解释为什么能/不能访问。结论来自真实鉴权核心，页面不重算
+      path: 'access-governance', name: 'system-access-governance',
+      component: () => import('@/modules/system/views/SystemAccessGovernanceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '访问治理', requiresAuth: true, permissionKey: 'systemAdmin.access.explain' }
+    },
+    {
       // SYS-09：安全变更的草稿/审核/排期都不改变真实权限，只有激活才生效
       path: 'security-changes', name: 'system-security-changes',
       component: () => import('@/modules/system/views/SystemSecurityChangeView.vue'),

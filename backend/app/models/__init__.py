@@ -189,6 +189,9 @@ from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS
                                      ScopePolicyTarget)
 from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-09 安全变更与激活)
                                        SecurityChangeItem, SecurityChangeSet)
+from app.models.access_governance import (AccessDecisionTrace,  # noqa: F401  (SYS-10 访问解释与治理)
+                                          AccessReviewCampaign, AccessReviewItem,
+                                          EmergencyAccessSession, SodRule, SodViolation)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
