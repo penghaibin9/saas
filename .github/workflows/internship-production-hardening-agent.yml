@@ -1,0 +1,64 @@
+name: Internship Production Hardening Agent
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: internship-production-hardening-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply audited production hardening
+        run: python scripts/agent/apply_internship_production_hardening.py
+      - name: Validate generated Python and static contracts
+        run: |
+          python -m compileall -q backend/app backend/tests scripts/check
+          python scripts/check/check-internship-production-contracts.py
+          git diff --check
+      - name: Commit generated hardening changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/agent/apply_internship_production_hardening.py
+          rm -f .github/workflows/internship-production-hardening-agent.yml
+          git add \
+            student-portal/src/services/internshipCoreApi.js \
+            backend/app/models/internship.py \
+            backend/app/modules/internship/services/internship_complaint_service.py \
+            backend/app/modules/internship/services/internship_position_service.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_change_service.py \
+            backend/app/modules/internship/services/internship_leave_service.py \
+            backend/app/modules/internship/services/internship_student_leave_context_service.py \
+            backend/app/modules/internship/services/internship_score_service.py \
+            backend/tests/test_internship_production_hardening_static.py \
+            scripts/check/check-internship-production-contracts.py \
+            .github/workflows/ci.yml \
+            backend/alembic/versions \
+            backend/migrations/versions \
+            scripts/agent/apply_internship_production_hardening.py \
+            .github/workflows/internship-production-hardening-agent.yml 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit'
+            exit 1
+          fi
+          git commit -m 'fix: harden internship data correctness and security'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
