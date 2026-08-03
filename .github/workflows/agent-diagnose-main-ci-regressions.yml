@@ -39,40 +39,44 @@ jobs:
         run: pip install -r requirements.txt
       - name: Print authoritative file-center architecture
         run: |
-          echo '=== AFFAIRS_ARCHIVE ==='
-          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'AFFAIRS_ARCHIVE' backend/app | head -80 || true
-          echo '=== MATERIAL_REQUIREMENT ==='
-          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'MATERIAL_REQUIREMENT' backend/app | head -80 || true
-          echo '=== file-object remark ==='
-          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'file-object:' backend/app | head -80 || true
-          echo '=== router guard installs ==='
-          grep -n 'install_.*guard\|install_affairs_operations' backend/app/api/v1/router.py || true
-      - name: Inspect every matching route registration
-        working-directory: backend
-        run: |
-          python - <<'PY'
-          import inspect
-          from app.main import app
-          target = '/api/v1/mobile/teacher/graduation'
-          for index, route in enumerate(app.routes):
-              regex = getattr(route, 'path_regex', None)
-              if regex is not None and regex.fullmatch(target):
-                  endpoint = getattr(route, 'endpoint', None)
-                  print(
-                      'ROUTE_MATCH', index, getattr(route, 'path', None),
-                      endpoint.__module__, endpoint.__name__, inspect.signature(endpoint),
-                      flush=True,
-                  )
-          PY
-      - name: Print teacher graduation error payload
+          grep -R -n --exclude-dir=.git --exclude='*.pyc' 'register_file_resolver("AFFAIRS_ARCHIVE\|register_file_resolver("MATERIAL_REQUIREMENT\|file-object:' backend/app | head -100 || true
+      - name: Print matching routes from inside failing pytest fixture
         working-directory: backend
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('tests/test_mobile.py')
           text = path.read_text(encoding='utf-8')
-          old = '    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()\n    assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]\n'
-          new = '    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()\n    print("GD_RESPONSE_PAYLOAD=", gd, flush=True)\n    assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]\n'
+          old = '''    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
+              assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
+          '''
+          new = '''    import inspect
+              target = "/api/v1/mobile/teacher/graduation"
+              for app_name, route_app in (("CLIENT", client.app),):
+                  for index, route in enumerate(route_app.routes):
+                      regex = getattr(route, "path_regex", None)
+                      if regex is not None and regex.fullmatch(target):
+                          endpoint = getattr(route, "endpoint", None)
+                          print(
+                              "TEST_ROUTE_MATCH", app_name, index, getattr(route, "path", None),
+                              endpoint.__module__, endpoint.__name__, inspect.signature(endpoint),
+                              flush=True,
+                          )
+                          dependant = getattr(route, "dependant", None)
+                          print(
+                              "QUERY_PARAMS",
+                              [(p.name, p.required, p.default) for p in (getattr(dependant, "query_params", None) or [])],
+                              flush=True,
+                          )
+                          print(
+                              "DEPENDENCIES",
+                              [getattr(d.call, "__name__", repr(d.call)) for d in (getattr(dependant, "dependencies", None) or [])],
+                              flush=True,
+                          )
+              gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
+              print("GD_RESPONSE_PAYLOAD=", gd, flush=True)
+              assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
+          '''
           if old not in text:
               raise SystemExit('mobile assertion anchor not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
