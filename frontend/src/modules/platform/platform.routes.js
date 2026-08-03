@@ -174,8 +174,9 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '租户生命周期看板', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.view', platformCapabilityKey: 'plt-lifecycle-board' }
     },
     {
-      path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view', platformCapabilityKey: 'plt-incidents' }
+      // PLAT-09：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/control/PlatformIncidentView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view' }
     },
     {
       path: 'tenant-transitions', name: 'platform-tenant-transitions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),

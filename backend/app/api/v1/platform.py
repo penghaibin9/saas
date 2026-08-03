@@ -808,3 +808,78 @@ def provisioning_job_cancel(job_id: int, body: dict = Body(...),
     out = prov.cancel_job(job_id, reason=body.get("reason") or "", user=user)
     _audit("PLATFORM_PROVISIONING_CANCEL", str(job_id), {"reason": body.get("reason")})
     return success(out, message="已取消")
+
+
+# ── PLAT-09 事件、状态页与统一学校通知 ───────────────────────────────────────
+@router.get("/incidents/overview", summary="事件治理首屏结论")
+def incidents_overview(user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    return success(inc.governance_overview())
+
+
+@router.get("/incidents", summary="事件列表")
+def incidents_list(status: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    items = inc.list_incidents(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/incidents", summary="创建事件（受影响租户按当前依赖图快照一次）")
+def incidents_create(body: dict = Body(...), user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.create_incident(user, body)
+    _audit("PLATFORM_INCIDENT_CREATE", out["incidentId"],
+          {"title": out["title"], "severity": out["severity"],
+           "affectedServiceCodes": out["affectedServiceCodes"]})
+    return success(out, message="事件已登记")
+
+
+@router.get("/incidents/{incident_id}", summary="事件详情（含内部时间线，仅平台侧可见）")
+def incident_get(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    return success(inc.get_incident(incident_id, include_internal=True))
+
+
+@router.get("/incidents/{incident_id}/affected-tenants", summary="受影响租户快照")
+def incident_affected_tenants(incident_id: int,
+                              user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    detail = inc.get_incident(incident_id, include_internal=False)
+    return success({"items": detail.get("affectedTenants", [])})
+
+
+@router.post("/incidents/{incident_id}/status", summary="推进事件状态（不可倒退）")
+def incident_transition(incident_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.transition_status(incident_id, body.get("status") or "", user=user)
+    _audit("PLATFORM_INCIDENT_STATUS", str(incident_id), {"status": out["status"]})
+    return success(out, message="状态已更新")
+
+
+@router.post("/incidents/{incident_id}/updates", summary="新增一条事件更新（草稿，未发布）")
+def incident_add_update(incident_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.add_update(incident_id, body, user=user)
+    _audit("PLATFORM_INCIDENT_UPDATE_DRAFT", str(incident_id), {"updateId": out["updateId"]})
+    return success(out, message="更新已保存")
+
+
+@router.post("/incidents/{incident_id}/updates/{update_id}/publish", summary="发布更新并通知受影响租户")
+def incident_publish_update(incident_id: int, update_id: int,
+                            user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.publish_update(incident_id, update_id, user=user)
+    _audit("PLATFORM_INCIDENT_PUBLISH", str(incident_id),
+          {"updateId": out["updateId"], "result": out["notificationResult"]})
+    return success(out, message="已发布通知")
+
+
+@router.post("/incidents/{incident_id}/request-problem-conversion", summary="RESOLVED事件申请转Problem")
+def incident_request_problem(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.request_problem_conversion(incident_id, user=user)
+    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {})
+    return success(out, message="已登记转Problem申请")

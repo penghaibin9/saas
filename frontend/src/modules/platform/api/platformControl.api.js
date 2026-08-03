@@ -176,5 +176,16 @@ export const platformControlApi = {
   retryProvisioningStep: (jobId, stepCode) => real('provisioning-job-retry-step', `/platform/provisioning-jobs/${jobId}/retry-step`, { method: 'POST', body: { stepCode } }),
   compensateProvisioningStep: (jobId, stepCode, reason) => real('provisioning-job-compensate', `/platform/provisioning-jobs/${jobId}/compensate`, { method: 'POST', body: { stepCode, reason } }),
   flagProvisioningManualReview: (jobId, stepCode, reason) => real('provisioning-job-flag-manual', `/platform/provisioning-jobs/${jobId}/flag-manual-review`, { method: 'POST', body: { stepCode, reason } }),
-  cancelProvisioningJob: (jobId, reason) => real('provisioning-job-cancel', `/platform/provisioning-jobs/${jobId}/cancel`, { method: 'POST', body: { reason } })
+  cancelProvisioningJob: (jobId, reason) => real('provisioning-job-cancel', `/platform/provisioning-jobs/${jobId}/cancel`, { method: 'POST', body: { reason } }),
+
+  /* PLAT-09 事件、状态页与统一学校通知（新页面，无演示兜底） */
+  getIncidentsOverview: () => real('incidents-overview', '/platform/incidents/overview', {}),
+  listIncidents: (params = {}) => real('incidents-list', '/platform/incidents', { params }),
+  getIncident: (incidentId) => real('incident-get', `/platform/incidents/${incidentId}`, {}),
+  createIncident: (body) => real('incident-create', '/platform/incidents', { method: 'POST', body }),
+  getIncidentAffectedTenants: (incidentId) => real('incident-affected-tenants', `/platform/incidents/${incidentId}/affected-tenants`, {}),
+  transitionIncidentStatus: (incidentId, status) => real('incident-status', `/platform/incidents/${incidentId}/status`, { method: 'POST', body: { status } }),
+  addIncidentUpdate: (incidentId, body) => real('incident-update-add', `/platform/incidents/${incidentId}/updates`, { method: 'POST', body }),
+  publishIncidentUpdate: (incidentId, updateId) => real('incident-update-publish', `/platform/incidents/${incidentId}/updates/${updateId}/publish`, { method: 'POST', body: {} }),
+  requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} })
 }

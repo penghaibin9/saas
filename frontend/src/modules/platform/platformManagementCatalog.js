@@ -13,7 +13,7 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
       { key: 'plt-overview', label: '平台经营总览', path: '/admin/platform/overview', permissionKey: 'platform.control.view', view: 'overview', actions: [action('platform:overview:view', '查看平台总览')] },
       { key: 'plt-service-catalog', label: '服务目录、依赖与租户影响地图', path: '/admin/platform/services', permissionKey: 'platform.control.view', view: 'services', actions: [action('service:manage', '维护服务目录/依赖', 'HIGH')] },
       { key: 'plt-lifecycle-board', label: '租户生命周期看板', path: '/admin/platform/tenant-lifecycle', permissionKey: 'platform.tenant.lifecycle.view', view: 'capability', actions: [action('tenant:lifecycle:view', '查看生命周期')] },
-      { key: 'plt-incidents', label: '告警与事件中心', path: '/admin/platform/incidents', permissionKey: 'platform.incident.view', view: 'capability', actions: [action('incident:acknowledge', '确认告警'), action('incident:resolve', '关闭事件', 'HIGH')] }
+      { key: 'plt-incidents', label: '告警与事件中心', path: '/admin/platform/incidents', permissionKey: 'platform.incident.view', view: 'incidents', actions: [action('incident:acknowledge', '确认告警'), action('incident:resolve', '关闭事件', 'HIGH'), action('incident:publish', '发布通知', 'HIGH')] }
     ]
   },
   {
