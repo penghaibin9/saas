@@ -1,5 +1,6 @@
 name: Internship Score Config Conflict Agent
 
+# One-shot branch-local construction workflow; removed after the generated patch commits.
 on:
   pull_request:
     branches: [main]
