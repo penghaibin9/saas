@@ -200,7 +200,10 @@ def compute(user, body) -> dict:
              "school_score": _score_or_none(b.get("schoolScore"))}
     scope, in_scope = _scope_ctx(user)
     with session() as db:
-        rec = db.get(InternshipRecord, _as_id(iid))
+        rec = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(iid),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
         stu = db.get(StudentProfile, rec.student_id)

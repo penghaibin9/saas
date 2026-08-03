@@ -517,7 +517,16 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
     return r
 
 
-def assign_position(rec_id, position_id, expected_version=None, user=None) -> dict:
+
+def _assert_direct_position_change_allowed(record: InternshipRecord, *, allow_active_change: bool) -> None:
+    if record.status in ("ONBOARD", "ASSESSING") and not allow_active_change:
+        raise AppException(
+            "DATA_CONFLICT",
+            "在岗或考核中的学生禁止直接换岗/退岗，请通过实习变更申请审批流程办理",
+        )
+
+
+def assign_position(rec_id, position_id, expected_version=None, user=None, *, allow_active_change=False) -> dict:
     """锁学生记录后，在一个事务中完成岗位占用、释放、主档更新和审计。"""
     with session() as db:
         r = db.scalar(select(InternshipRecord).where(
@@ -527,12 +536,14 @@ def assign_position(rec_id, position_id, expected_version=None, user=None) -> di
         ).with_for_update())
         if not r:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
+        _assert_direct_position_change_allowed(
+            r, allow_active_change=bool(allow_active_change))
         assign_position_in_tx(db, r, position_id, expected_version, user)
         db.commit()
         return _row_of(db, r)
 
 
-def unassign_position(rec_id, reason: str = "", expected_version=None, user=None) -> dict:
+def unassign_position(rec_id, reason: str = "", expected_version=None, user=None, *, allow_active_change=False) -> dict:
     from sqlalchemy import text
     from app.modules.internship.services.internship_version import extract_expected_version
     with session() as db:
@@ -541,6 +552,8 @@ def unassign_position(rec_id, reason: str = "", expected_version=None, user=None
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not r:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
+        _assert_direct_position_change_allowed(
+            r, allow_active_change=bool(allow_active_change))
         ver = extract_expected_version({"expectedVersion": expected_version})
         if int(r.version or 0) != ver:
             raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")

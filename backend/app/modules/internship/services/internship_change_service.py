@@ -235,9 +235,11 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
         try:
             if ctype == "WITHDRAW_POST":
                 # 退岗：释放岗位占用（成熟产品独立类型，对应 unassign）
-                stu_svc.unassign_position(rid, reason or "退岗审核通过", user=user)
+                stu_svc.unassign_position(
+                    rid, reason or "退岗审核通过", user=user, allow_active_change=True)
             elif ctype == "CHANGE_POSITION":
-                stu_svc.assign_position(rid, str(tpid), user=user)
+                stu_svc.assign_position(
+                    rid, str(tpid), user=user, allow_active_change=True)
             elif ctype in ("CHANGE_ENTERPRISE", "SELF_ARRANGED"):
                 if ctype == "SELF_ARRANGED":
                     stu_svc.set_destination(rid, "SELF_ARRANGED", reason, user=user)

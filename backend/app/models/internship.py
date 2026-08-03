@@ -337,6 +337,9 @@ class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
     状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
     缺项(incomplete)不得发布。"""
     __tablename__ = "t_internship_final_score"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "internship_id", name="uk_internship_final_score_record"),
+    )
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -422,6 +425,11 @@ class WeeklyReport(PKMixin, TenantMixin, CommonMixin, Base):
 class RiskRecord(PKMixin, TenantMixin, CommonMixin, Base):
     """t_risk_record 实习风险单（系统预警或人工创建）。"""
     __tablename__ = "t_risk_record"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_type", "source_id", "risk_code",
+                         name="uk_risk_source"),
+        Index("ix_risk_source", "tenant_id", "source_type", "source_id"),
+    )
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     risk_code: Mapped[str] = mapped_column(String(50), nullable=False, comment="如 INT-R07")
@@ -429,7 +437,13 @@ class RiskRecord(PKMixin, TenantMixin, CommonMixin, Base):
     risk_level: Mapped[str] = mapped_column(String(50), nullable=False, default="MEDIUM",
                                             comment="HIGH/MEDIUM/LOW")
     source_module: Mapped[str] = mapped_column(String(50), nullable=False, default="system",
-                                               comment="system/manual")
+                                               comment="system/manual/complaint/internship_leave")
+    source_type: Mapped[str | None] = mapped_column(
+        String(50), index=True, comment="来源单据类型，如 COMPLAINT/LEAVE")
+    source_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="来源单据主键")
+    source_version: Mapped[int | None] = mapped_column(
+        Integer, comment="创建风险时来源单据版本")
     owner_name: Mapped[str | None] = mapped_column(String(100), comment="跟进责任人")
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_HANDLE",
@@ -458,6 +472,9 @@ class InternshipAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
 class InternshipArchive(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_archive 实习归档快照（P3-A，迁移 0035）。一名学生一实习一条。"""
     __tablename__ = "t_internship_archive"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "internship_id", name="uk_internship_archive_record"),
+    )
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -672,12 +689,17 @@ class InternshipComplaint(PKMixin, TenantMixin, CommonMixin, Base):
     enterprise_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     position_id: Mapped[int | None] = mapped_column(BigInteger)
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    internship_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="投诉明确关联的实习主记录；禁止按最新记录猜测")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     category: Mapped[str | None] = mapped_column(String(50), comment="投诉分类")
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM", comment="LOW/MEDIUM/HIGH")
     content: Mapped[str | None] = mapped_column(Text, comment="投诉内容")
     evidence_file_id: Mapped[str | None] = mapped_column(String(64))
-    complainant_contact_encrypted: Mapped[str | None] = mapped_column(String(200), comment="投诉人联系方式(敏感,密文)")
+    complainant_contact_encrypted: Mapped[str | None] = mapped_column(
+        String(500), comment="投诉人联系方式(敏感,Fernet密文)")
+    complainant_contact_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True, comment="投诉人联系方式HMAC检索摘要")
     confidential_level: Mapped[str] = mapped_column(String(20), nullable=False, default="NORMAL",
                                                     comment="NORMAL/CONFIDENTIAL")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="RECEIVED", index=True,

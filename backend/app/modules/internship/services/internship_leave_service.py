@@ -432,6 +432,7 @@ def ack_overdue_return(user, leave_id, note: str = "") -> dict:
         closed = 0
         risks = db.scalars(select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == lv.internship_id,
+            RiskRecord.source_type == "LEAVE", RiskRecord.source_id == lv.id,
             RiskRecord.risk_code == "INT-R06",
             RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
             RiskRecord.is_deleted.is_(False))).all()
@@ -477,12 +478,14 @@ def refresh_overdue(reference_date: date | None = None, user=None, system: bool 
             marked += 1
             existing = db.scalars(select(RiskRecord).where(
                 RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == lv.internship_id,
+                RiskRecord.source_type == "LEAVE", RiskRecord.source_id == lv.id,
                 RiskRecord.risk_code == "INT-R06", RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
                 RiskRecord.is_deleted.is_(False))).first()
             if not existing:
                 db.add(RiskRecord(tenant_id=_tid(), internship_id=lv.internship_id, risk_code="INT-R06",
                                   risk_title="实习请假超期未销假", risk_level="MEDIUM",
-                                  source_module="internship_leave", status="PENDING_HANDLE",
+                                  source_module="internship_leave", source_type="LEAVE", source_id=lv.id,
+                                  source_version=int(lv.version or 0), status="PENDING_HANDLE",
                                   last_follow_note=f"请假至 {lv.end_date}，截至 {today.isoformat()} 未销假"))
                 risks_created += 1
         db.commit()

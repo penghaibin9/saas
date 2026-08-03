@@ -372,6 +372,15 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
                 raise AppException("DATA_CONFLICT", "仅「已上架」岗位可暂停")
             p.status = "SUSPENDED"
         elif action == "ARCHIVE":
+            active_count = int(db.scalar(select(func.count()).select_from(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.position_id == p.id,
+                InternshipRecord.status.in_(("PREPARING", "READY", "ONBOARD", "ASSESSING")),
+                InternshipRecord.is_deleted.is_(False))) or 0)
+            if int(p.allocated_count or 0) > 0 or active_count > 0:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"岗位仍有 {max(int(p.allocated_count or 0), active_count)} 名有效学生，不可归档；请先完成正式调岗/退岗")
             p.status = "ARCHIVED"
             p.archived_at = datetime.utcnow()
             p.archived_by = _op_name()
