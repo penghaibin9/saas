@@ -982,3 +982,4 @@ def db_mode(tmp_path, request):
         # setup 失败也必须还原，避免污染后续 mock 测试（503 / 误走真库）
         settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
         reset_state()
+
