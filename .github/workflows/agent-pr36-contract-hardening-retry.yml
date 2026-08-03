@@ -1,0 +1,121 @@
+name: Agent PR36 Contract Hardening Retry
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-pr36-contract-hardening-retry-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: ${{ github.head_ref == 'fix/graduation-material-closeout-p0-review' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/graduation-material-closeout-p0-review
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply reviewed contract patch from the first workflow
+        run: |
+          python - <<'PY'
+          import base64
+          import re
+          import subprocess
+          import zlib
+          from pathlib import Path
+
+          source = Path('.github/workflows/agent-pr36-contract-hardening.yml').read_text(encoding='utf-8')
+          match = re.search(r'^\s*PATCH_B64:\s*([A-Za-z0-9+/=]+)\s*$', source, re.MULTILINE)
+          if not match:
+              raise SystemExit('PATCH_B64 not found in first workflow')
+          patch = zlib.decompress(base64.b64decode(match.group(1)))
+          Path('/tmp/pr36-hardening.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '/tmp/pr36-hardening.patch'], check=True)
+          subprocess.run(['git', 'apply', '/tmp/pr36-hardening.patch'], check=True)
+          PY
+
+      - name: Repair archive test through public file upload
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/test_graduation_risk_archive_stats.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'from app.models import (FileObject, GraduationDefenseScore, GraduationFinal, GraduationGrade,',
+              'from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,',
+              1,
+          )
+          func = text.index('def test_complete_archive_is_idempotent_and_archives_student_atomically')
+          start = text.index('    db = get_sessionmaker()\n', func)
+          end = text.index('    db.add(final)\n', start)
+          replacement = '''    uploaded = graduation_client.post(
+              "/api/v1/files", headers=h,
+              files={"file": (
+                  "final.pdf", b"%PDF-1.4 graduation final document", "application/pdf",
+              )},
+              params={"bizType": "GRADUATION_FINAL", "bizId": str(gid)},
+          ).json()
+          assert uploaded["code"] == 0, uploaded
+          file_id = int(uploaded["data"]["fileId"])
+
+          db = get_sessionmaker()()
+          final = GraduationFinal(
+              tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
+              version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
+              plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_id)],
+          )
+          '''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+
+      - name: Validate syntax and whitespace
+        run: |
+          python -m py_compile \
+            backend/app/api/v1/mobile_graduation_material_center.py \
+            backend/app/modules/graduation/materials/command_service.py \
+            backend/app/modules/graduation/materials/rule_service.py \
+            backend/app/modules/graduation/routers/graduation_material_center.py \
+            backend/app/modules/graduation/schemas/graduation.py \
+            backend/tests/test_graduation_material_archived_rule_resolution.py \
+            backend/tests/test_graduation_material_closeout_regressions.py \
+            backend/tests/test_graduation_material_dynamic_permission_inventory.py \
+            backend/tests/test_graduation_material_rule_archive_invariants.py \
+            backend/tests/test_graduation_risk_archive_stats.py
+          node --check frontend/src/modules/graduation/api/graduation-material-center.api.js
+          git diff --check
+
+      - name: Commit focused repair and remove construction workflows
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm \
+            .github/workflows/agent-pr36-contract-hardening.yml \
+            .github/workflows/agent-pr36-contract-hardening-retry.yml
+          git add \
+            .github/workflows/graduation-targeted-repair.yml \
+            backend/app/api/v1/mobile_graduation_material_center.py \
+            backend/app/modules/graduation/materials/command_service.py \
+            backend/app/modules/graduation/materials/rule_service.py \
+            backend/app/modules/graduation/routers/graduation_material_center.py \
+            backend/app/modules/graduation/schemas/graduation.py \
+            backend/tests/test_graduation_material_archived_rule_resolution.py \
+            backend/tests/test_graduation_material_closeout_regressions.py \
+            backend/tests/test_graduation_material_dynamic_permission_inventory.py \
+            backend/tests/test_graduation_material_rule_archive_invariants.py \
+            backend/tests/test_graduation_risk_archive_stats.py \
+            frontend/src/modules/graduation/api/graduation-material-center.api.js
+          git commit -m 'fix(graduation): close version permission and archive contracts'
+          git push origin HEAD:fix/graduation-material-closeout-p0-review
