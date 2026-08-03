@@ -1288,14 +1288,6 @@ def graduation_submit_final(user: dict, body: dict) -> dict:
     audit_log.record("学生提交论文成果", f"graduation-final:{result['id']}",
                      detail={"studentName": u.get("realName"), "finalType": result.get("finalType")})
     return result
-    from app.modules.graduation.services import graduation_service as gd_svc
-    # The client must never be allowed to declare its own plagiarism result.
-    result = gd_svc.submit_final(
-        g.id, body.get("finalType") or "初稿", attachments=body.get("attachments") or []
-    )
-    audit_log.record("学生提交论文成果", f"graduation-final:{result['id']}",
-                     detail={"studentName": u.get("realName"), "finalType": result.get("finalType")})
-    return result
 
 
 def graduation_taskbook(user: dict) -> dict:

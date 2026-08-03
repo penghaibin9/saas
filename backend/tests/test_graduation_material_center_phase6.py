@@ -162,6 +162,19 @@ def test_four_client_optimistic_version_contract_is_explicit():
     assert "fileVersionId: int = Field(..." in schema
 
 
+def test_sensitive_detail_routes_are_reads_and_review_routes_use_concurrency_contract():
+    source = read("backend/app/modules/graduation/routers/graduation_material_sensitive_router.py")
+    proposal_detail = source[source.index("def proposal_detail"):source.index("def proposal_review")]
+    proposal_review = source[source.index("def proposal_review"):source.index("def proposal_defense")]
+    final_detail = source[source.index("def final_detail"):source.index("def final_review")]
+    final_review = source[source.index("def final_review"):source.index("def final_remind")]
+    assert "svc.get_proposal_detail" in proposal_detail and "material_records.review" not in proposal_detail
+    assert "svc.get_final_detail" in final_detail and "material_records.review" not in final_detail
+    for review in (proposal_review, final_review):
+        assert "material_records.review" in review
+        assert "body.expectedVersion" in review and "body.fileVersionId" in review
+
+
 def test_real_mysql_gets_are_zero_write_and_within_query_budget(db_mode):
     from app.core.context import get_tenant, set_current_user, set_tenant
     from app.db.session import get_engine
