@@ -1,0 +1,27 @@
+name: Student Affairs Source Export
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-p0-p1-closeout-20260803
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package repository with git metadata
+        run: tar -czf /tmp/saas-repository.tgz --exclude='./.git/hooks' .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: saas-repository-${{ github.sha }}
+          path: /tmp/saas-repository.tgz
+          retention-days: 1
+          if-no-files-found: error
