@@ -272,15 +272,16 @@ async function inspectFunctionalFlows(page) {
 
   await page.goto(`${baseUrl}/academic/grades`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const purple = page.locator('.sp-theme__item[title="科技紫"]')
-  await purple.click()
+  const persistenceTheme = config.themes.find((theme) => theme.key !== 'blue') || config.themes[0]
+  if (!persistenceTheme?.key) throw new Error('review theme configuration is empty')
+  await setTheme(page, persistenceTheme.key)
   await page.reload({ waitUntil: 'domcontentloaded' })
   await waitStable(page)
   const persistedTheme = await page.evaluate(() => document.documentElement.dataset.spTheme || '')
   report.functionalChecks.push({
     name: '主题切换后刷新保持',
-    passed: persistedTheme === 'purple',
-    actual: { persistedTheme },
+    passed: persistedTheme === persistenceTheme.key,
+    actual: { persistedTheme, expectedTheme: persistenceTheme.key },
     screenshot: await capture(page, outputDir, 'functional-theme-persistence', false)
   })
   await setTheme(page, 'blue')
