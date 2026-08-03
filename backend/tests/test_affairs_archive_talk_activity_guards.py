@@ -9,16 +9,17 @@ def read(path: str) -> str:
 
 
 def test_archive_is_real_scoped_and_not_placeholder_success():
-    archive = read("backend/app/services/affairs_archive_guard.py")
-    file_guard = read("backend/app/services/affairs_archive_file_guard.py")
+    archive = read("backend/app/services/affairs_archive_service.py")
+    resolvers = read("backend/app/services/file_access_resolvers.py")
     assert 'context.require_student(db, student_id)' in archive
     assert 'str(action or "").upper() != "APPROVE"' in archive
     assert 'package.status = "SUBMITTED"' in archive
     assert 'status="SUCCESS"' in archive
     assert 'file_hash=digest' in archive
-    assert 'biz_type = "AFFAIRS_ARCHIVE"' in file_guard
-    assert 'studentAffairs.archive.view' in file_guard
-    assert 'require_student(db, int(student_id))' in file_guard
+    assert 'file_obj.biz_type = "AFFAIRS_ARCHIVE"' in archive
+    assert '@register_file_resolver("AFFAIRS_ARCHIVE")' in resolvers
+    assert 'studentAffairs.archive.view' in resolvers
+    assert 'require_student(db, int(student_id))' in resolvers
 
 
 def test_talk_actions_are_backend_guarded_and_auditable():
@@ -43,7 +44,7 @@ def test_second_class_uses_append_only_difference_adjustments():
 
 def test_activity_and_volunteer_dtos_return_actions_and_scope():
     text = read("backend/app/services/affairs_activity_accounting_guard.py")
-    assert '"PENDING": ["CONFIRM", "REJECT"]' not in text  # actions are emitted directly, not a dead mapping
+    assert '"PENDING": ["CONFIRM", "REJECT"]' not in text
     assert '"allowedActions": ["CONFIRM", "REJECT"] if row.status == "PENDING" else []' in text
     assert '"version": int(row.version or 0)' in text
     assert 'build_affairs_context(user, db).require_student(db, sid)' in text
