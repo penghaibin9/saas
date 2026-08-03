@@ -1,0 +1,56 @@
+name: Student Affairs Repair Due Boundary
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/student-affairs-repair-due-boundary.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Make freshly enqueued repair jobs unambiguously due
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/app/services/affairs_appeal_repair_service.py')
+          text = path.read_text(encoding='utf-8')
+          old = text
+          text = text.replace(
+              '    now = datetime.utcnow()\n    dedup_key = _key(todo_type, row_id, stage)',
+              '    now = datetime.utcnow()\n    # MySQL DATETIME precision and small clock skew must not delay a job declared runnable now.\n    run_at = now - timedelta(seconds=1)\n    dedup_key = _key(todo_type, row_id, stage)',
+              1,
+          )
+          text = text.replace(
+              '                    row.next_run_at = now\n                    row.lease_owner = None',
+              '                    row.next_run_at = run_at\n                    row.lease_owner = None',
+              1,
+          )
+          text = text.replace(
+              '                state="PENDING", attempts=0, next_run_at=now,',
+              '                state="PENDING", attempts=0, next_run_at=run_at,',
+              1,
+          )
+          if text == old or text.count('run_at = now - timedelta(seconds=1)') != 1:
+              raise SystemExit('expected enqueue patch points not found')
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git add backend/app/services/affairs_appeal_repair_service.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(student-affairs): stabilize immediate repair claims"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
