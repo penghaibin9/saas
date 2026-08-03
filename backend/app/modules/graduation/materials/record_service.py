@@ -61,7 +61,7 @@ def _one_attachment(body: dict, *, required: bool) -> int | None:
     if len(ids) > 1:
         raise AppException("VALIDATION_ERROR", "兼容提交一次仅接收一个主文档；其他成果请按材料代码分别提交")
     if required and not ids:
-        raise AppException("VALIDATION_ERROR", "成果主文档不能为空")
+        raise AppException("VALIDATION_ERROR", "成果主文档附件不能为空")
     return ids[0] if ids else None
 
 

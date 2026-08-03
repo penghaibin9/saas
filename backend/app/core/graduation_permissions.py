@@ -203,6 +203,7 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_material_center.preview_material": "graduationDesign.student.view",
     "graduation_material_center.download_material": "graduationDesign.student.view",
     "graduation_material_center.download_package": "graduationDesign.archive.view",
+    "graduation_material_center.package_ticket": "graduationDesign.archive.view",
     "graduation_material_center.proposal_detail": "graduationDesign.proposal.view",
     "graduation_material_center.review_proposal": "graduationDesign.proposal.review",
     "graduation_material_center.final_detail": "graduationDesign.final.view",

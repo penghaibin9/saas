@@ -24,6 +24,7 @@ from app.core.rbac09_permission_bundles import (
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.file_content_security import is_downloadable_status
 from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
+from app.services.message_identity import resolve_message_user_id
 
 Resolver = Callable[[Any, Any, list[Any], dict, str], bool]
 _RESOLVERS: dict[str, Resolver] = {}
@@ -77,7 +78,7 @@ def resolver_registry_snapshot() -> dict[str, str]:
 
 
 def _actor_id(user: dict) -> str:
-    value = user.get("userId") or user.get("id") or ""
+    value = resolve_message_user_id(user) or user.get("userId") or user.get("id") or ""
     return str(value).strip()
 
 
