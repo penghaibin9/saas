@@ -28,7 +28,7 @@ def _seed(_db_mode, stage="FINAL_CHECK", taskbook=False, final_status="PENDING_R
     db = get_sessionmaker()()
     try:
         batch = GraduationBatch(tenant_id=MAIN_TID, batch_name="种子批次", batch_no="GD-SEED-1",
-                                grade_year="2026届", planned_count=10, status="ACTIVE")
+                                grade_year="2026届", planned_count=10, status="IN_PROGRESS")
         db.add(batch)
         db.flush()
         s = GraduationStudent(tenant_id=MAIN_TID, batch_id=batch.id, name="毕设甲", student_no="S2026-999001",
@@ -91,6 +91,10 @@ def _seed(_db_mode, stage="FINAL_CHECK", taskbook=False, final_status="PENDING_R
                                       student_count=0, conflict="评委含指导教师本人", published=False)
         db.add_all([p, f, gok, gbad])
         db.flush()
+        # File readiness is verified through the production file service, which
+        # intentionally opens its own transaction.  Persist the authoritative
+        # rows before adopting them into immutable material file versions.
+        db.commit()
         initialize_default_rule_in_session(db, int(batch.id), actor)
         adopt_legacy_file_in_session(
             db, s, "PROPOSAL_REPORT", int(proposal_file.id), source_record_type="PROPOSAL",
