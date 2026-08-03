@@ -1,0 +1,62 @@
+name: Conftest Encoding Repair
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: conftest-encoding-repair-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Repair invalid bytes and verify syntax
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('backend/tests/conftest.py')
+          raw = path.read_bytes()
+          null_count = raw.count(b'\x00')
+          cleaned = raw.replace(b'\x00', b'')
+          try:
+              text = cleaned.decode('utf-8')
+              replacement_count = 0
+          except UnicodeDecodeError as exc:
+              print(f'invalid UTF-8 at {exc.start}:{exc.end}: {cleaned[exc.start-24:exc.end+24].hex()}')
+              text = cleaned.decode('utf-8', errors='replace')
+              replacement_count = text.count('\ufffd')
+          ast.parse(text, filename=str(path))
+          canonical = text.replace('\r\n', '\n').replace('\r', '\n')
+          path.write_text(canonical, encoding='utf-8', newline='\n')
+          print(f'conftest repaired: null_bytes={null_count}, replacement_chars={replacement_count}')
+          PY
+          python -m py_compile backend/tests/conftest.py
+          git diff --check
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/tests/conftest.py
+          if git diff --cached --quiet; then
+            echo 'conftest already clean'
+            exit 0
+          fi
+          git commit -m 'fix: repair pytest conftest encoding corruption'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
