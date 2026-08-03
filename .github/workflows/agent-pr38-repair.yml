@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - fix/main-pytest-fixture-corruption
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: ${{ !startsWith(github.event.head_commit.message, 'test: make graduation fixture explicit') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +37,6 @@ jobs:
           git config user.email 'agent@openai.local'
           rm .github/workflows/agent-pr38-repair.yml scripts/maintenance/agent_pr38_repair.py
           git add backend/tests/conftest.py backend/tests/test_graduation*.py backend/tests/test_portal_graduation.py backend/tests/test_pytest_client_contract.py
-          git rm --cached .github/workflows/agent-pr38-repair.yml scripts/maintenance/agent_pr38_repair.py
+          git add -u .github/workflows/agent-pr38-repair.yml scripts/maintenance/agent_pr38_repair.py
           git commit -m 'test: make graduation fixture explicit and honor version contract'
           git push origin HEAD:fix/main-pytest-fixture-corruption
