@@ -25,6 +25,7 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent, indent
 
           def read(path):
               return Path(path).read_text(encoding="utf-8")
@@ -50,7 +51,8 @@ jobs:
           t = read(p)
           t = once(t, "from sqlalchemy import func, select\n", "from sqlalchemy import func, select\nfrom sqlalchemy.exc import IntegrityError\n", "score import")
           anchor = '        db.flush()\n        _trail(db, c.id, "SAVE_CONFIG", {'
-          replacement = '''        try:
+          replacement = indent(dedent('''\
+          try:
               db.flush()
           except IntegrityError as exc:
               db.rollback()
@@ -61,7 +63,7 @@ jobs:
                       "同一评分配置范围正在被其他操作更新，请刷新后重试",
                   ) from None
               raise
-          _trail(db, c.id, "SAVE_CONFIG", {'''
+          _trail(db, c.id, "SAVE_CONFIG", {'''), "        ")
           t = once(t, anchor, replacement, "score flush")
           write(p, t)
 
@@ -70,7 +72,8 @@ jobs:
           start = t.index("        snapshot = int(change.record_version_snapshot or 0)\n")
           end = t.index("\n        before = {", start)
           old = t[start:end]
-          new = '''        snapshot = int(change.record_version_snapshot or 0)
+          new = indent(dedent('''\
+          snapshot = int(change.record_version_snapshot or 0)
           if action == "APPROVE":
               expected_record = snapshot if record_expected_version is None else extract_expected_version(
                   {"expectedVersion": record_expected_version})
@@ -81,7 +84,7 @@ jobs:
                       "DATA_CONFLICT",
                       "学生实习主记录在申请后已变化，请退回申请并由学生基于最新数据重新提交",
                   )
-          '''.rstrip()
+          '''), "        ").rstrip()
           if "if int(record.version or 0) != snapshot" not in old:
               raise RuntimeError("change snapshot block not found")
           write(p, t[:start] + new + t[end:])
@@ -91,7 +94,8 @@ jobs:
           start = t.index("    if c.complainant_contact_encrypted:\n")
           end = t.index("    confidential =", start)
           old = t[start:end]
-          new = '''    if c.complainant_contact_encrypted:
+          new = indent(dedent('''\
+          if c.complainant_contact_encrypted:
               try:
                   plain = decrypt_sensitive(
                       c.complainant_contact_encrypted,
@@ -106,7 +110,7 @@ jobs:
               except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
                   contact_corrupted = True
                   _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
-          '''
+          '''), "    ")
           if "decrypt_sensitive" not in old:
               raise RuntimeError("complaint decrypt block not found")
           write(p, t[:start] + new + t[end:])
@@ -114,8 +118,7 @@ jobs:
           p = "backend/tests/test_internship_score_config_scope_static.py"
           t = read(p)
           if "test_score_config_first_save_conflict_is_a_business_conflict" not in t:
-              t += '''
-
+              t = t.rstrip() + "\n\n" + dedent('''\
           def test_score_config_first_save_conflict_is_a_business_conflict():
               service = _read("backend/app/modules/internship/services/internship_score_service.py")
               block = service[service.index("def save_config"):service.index("def _approved_enterprise_eval")]
@@ -123,14 +126,13 @@ jobs:
               assert "uk_intern_score_cfg_active_scope" in block
               assert '"DATA_CONFLICT"' in block
               assert "请刷新后重试" in block
-          '''
+          ''')
           write(p, t)
 
           p = "backend/tests/test_internship_production_hardening_static.py"
           t = read(p)
           if "test_internship_migration_extends_latest_main_head" not in t:
-              t += '''
-
+              t = t.rstrip() + "\n\n" + dedent('''\
           def test_internship_migration_extends_latest_main_head():
               migration = _read("backend/alembic/versions/20260803_internship_prod_hardening.py")
               assert 'revision = "20260803_internship_hardening"' in migration
@@ -144,14 +146,13 @@ jobs:
               assert "if plain is None" in block
               assert '"complainantContactCorrupted": contact_corrupted' in block
               assert '"***" if contact_corrupted' in block
-          '''
+          ''')
           write(p, t)
 
           p = "backend/tests/test_internship_process_change.py"
           t = read(p)
           if "test_stale_change_request_can_still_be_rejected" not in t:
-              t += '''
-
+              t = t.rstrip() + "\n\n" + dedent('''\
           def test_stale_change_request_can_still_be_rejected(client, db_mode):
               ids = _seed(db_mode)
               response = client.post(
@@ -190,12 +191,12 @@ jobs:
               )
               assert rejected.status_code == 200, rejected.json()
               assert rejected.json()["data"]["status"] == "REJECTED"
-          '''
+          ''')
           write(p, t)
           PY
 
-          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git rm -f .github/workflows/pr37-independent-review-fixes.yml
+          git show 8206d5209ee93225ecbc7284ad7bda6308cd860a:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git rm -f --ignore-unmatch .github/workflows/pr37-independent-review-fixes.yml
           rm -f .github/pr37-repair-error.txt
 
           python -m py_compile \
