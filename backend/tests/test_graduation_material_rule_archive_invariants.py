@@ -7,8 +7,9 @@ ROOT = Path(__file__).resolve().parents[2]
 RULE_SERVICE = ROOT / "backend/app/modules/graduation/materials/rule_service.py"
 
 
-def source() -> str:
-    return RULE_SERVICE.read_text(encoding="utf-8")
+def source(path: str | None = None) -> str:
+    target = ROOT / path if path else RULE_SERVICE
+    return target.read_text(encoding="utf-8")
 
 
 def test_rule_impact_covers_all_material_policy_dimensions():
@@ -62,9 +63,9 @@ def test_rule_activation_reports_preserved_archive_evidence():
 
 
 def test_rule_activation_requires_expected_version_and_increments_touched_rows():
-    text = src("backend/app/modules/graduation/materials/rule_service.py")
-    activation = text[text.index("def activate_rule"): ]
-    router = src("backend/app/modules/graduation/routers/graduation_material_center.py")
+    text = source("backend/app/modules/graduation/materials/rule_service.py")
+    activation = text[text.index("def activate_rule"):]
+    router = source("backend/app/modules/graduation/routers/graduation_material_center.py")
     assert "expected_version: int" in activation
     assert "check_version(int(candidate.version or 0), expected_version)" in activation
     assert "candidate.version = int(candidate.version or 0) + 1" in activation
