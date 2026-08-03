@@ -83,9 +83,9 @@ def _write_dedup_audit(
     bind.execute(sa.text(
         "INSERT INTO t_internship_audit_trail "
         "(tenant_id, target_id, target_type, action, operator_name, detail_json, "
-        "occurred_at, created_at, updated_at, is_deleted) "
+        "occurred_at, created_at) "
         "VALUES (:tenant_id, :target_id, :target_type, 'MIGRATION_DEDUPLICATE', "
-        ":operator_name, :detail_json, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), 0)"
+        ":operator_name, :detail_json, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
     ), {
         "tenant_id": tenant_id,
         "target_id": target_id,
