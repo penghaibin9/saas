@@ -38,7 +38,9 @@ jobs:
           rm -f .audit/second-review.patch.gz.b64.*
           git add -u .audit
           rmdir .audit 2>/dev/null || true
-          test -z "$(git diff --cached --name-only | grep -E '(^\.audit/|student-affairs-second-review-(apply|export)\.yml$)' || true)"
+          test ! -e .github/workflows/student-affairs-second-review-export.yml
+          test ! -e .github/workflows/student-affairs-second-review-apply.yml
+          test ! -d .audit
           git diff --cached --check
           git commit -m "fix(student-affairs): close second-review merge blockers"
           git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
