@@ -243,6 +243,33 @@ export const systemApi = {
     }
   },
 
+  // SYS-05：业务关系注册表与缺口（只读发现，编辑仍回业务模块）
+  async listBusinessRelationTypes() {
+    try {
+      return ok(await request('/system/business-relations/types'))
+    } catch (error) {
+      return fail(error.message || '业务关系注册表加载失败')
+    }
+  },
+
+  async listBusinessRelationIssues() {
+    try {
+      return ok(await request('/system/business-relations/issues'))
+    } catch (error) {
+      return fail(error.message || '业务关系缺口加载失败')
+    }
+  },
+
+  async validateBusinessRelation(relationType) {
+    try {
+      return ok(await request(`/system/business-relations/${encodeURIComponent(relationType)}/validate`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return fail(error.message || '业务关系校验失败')
+    }
+  },
+
   // SYS-03：稳定主体解析与身份绑定修复
   async getEffectiveIdentity(userId) {
     try {

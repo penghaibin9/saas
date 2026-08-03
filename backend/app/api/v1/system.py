@@ -737,6 +737,28 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
         db.close()
 
 
+# ── SYS-05 业务关系中心（只发现与治理，不复制业务关系数据）────────────────────
+@router.get("/system/business-relations/types", summary="业务关系注册表（owner/resolver/测试真实校验）")
+def api_business_relation_types(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view", "systemAdmin.dashboard.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.list_types())
+
+
+@router.get("/system/business-relations/issues", summary="业务关系缺口（按业务权威表实时统计）")
+def api_business_relation_issues(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view", "systemAdmin.dashboard.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.list_issues())
+
+
+@router.post("/system/business-relations/{relation_type}/validate", summary="校验单个业务关系类型")
+def api_validate_business_relation(relation_type: str, user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.validate_type(relation_type))
+
+
 # ── SYS-03 稳定主体解析与绑定修复 ────────────────────────────────────────────
 @router.get("/system/accounts/identity-issues", summary="身份绑定异常队列（学号改名/未绑定/同名同手机号）")
 def api_identity_issues(issue_code: str = "", page: int = 1, page_size: int = 50,

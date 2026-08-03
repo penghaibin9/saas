@@ -1,0 +1,123 @@
+# SYS-05 业务关系注册表（权威目录，不是权威数据）
+#
+# 规矩：
+# - 这里只登记"有哪些业务关系、谁是 owner、真实数据在哪张表哪个字段、用哪个 resolver
+#   解析数据范围、有效期怎么判、被哪个测试锁住"。
+# - **关系数据本身仍然只存在业务表里**，系统管理不复制一份、也不写业务终态。
+# - 每条登记都会被 backend/app/services/business_relation_registry.py 拿去做真实校验：
+#   模型能不能导入、字段在不在、resolver 存不存在、测试文件在不在。登记假的会直接暴露。
+#
+# subjectKeyKind 说明（关系"人"这一侧用什么键）：
+#   USER_ID       = t_user.id，稳定
+#   DOMAIN_ID     = 业务域自己的主键（如 t_gd_mentor.id），稳定但需再映射到账号
+#   NAME_TEXT     = 姓名/文本键，**不稳定**，改名即失联，属于待整改项
+version: 1
+
+relations:
+  - relationType: COUNSELOR_CLASS
+    label: 辅导员-班级
+    ownerModule: studentAffairs
+    sourceModel: app.models.org.SchoolClass
+    subjectField: counselor_id
+    subjectKeyKind: USER_ID
+    objectKind: CLASS
+    validity:
+      kind: STATUS
+      field: status
+      activeValues: [ACTIVE]
+    resolver: app.services.data_scope_service._provider_counselor_classes
+    scopeType: COUNSELOR_CLASSES
+    test: backend/tests/test_business_relation_registry.py
+    notes: 班级只有一个当前辅导员；解除后数据范围立即失效。
+
+  - relationType: HEAD_TEACHER_CLASS
+    label: 班主任-班级
+    ownerModule: studentAffairs
+    sourceModel: app.models.org.SchoolClass
+    subjectField: head_teacher_id
+    subjectKeyKind: USER_ID
+    objectKind: CLASS
+    validity:
+      kind: STATUS
+      field: status
+      activeValues: [ACTIVE]
+    resolver: app.services.data_scope_service._provider_counselor_classes
+    scopeType: COUNSELOR_CLASSES
+    test: backend/tests/test_business_relation_registry.py
+    notes: 与辅导员共用同一个 resolver（provider 内同时比对两个字段）。
+
+  - relationType: GD_MENTOR_STUDENT
+    label: 毕设导师-学生
+    ownerModule: graduationDesign
+    sourceModel: app.models.graduation.GraduationStudent
+    subjectField: mentor_id
+    subjectKeyKind: DOMAIN_ID
+    subjectDomainModel: app.models.graduation.GraduationMentor
+    objectKind: STUDENT
+    validity:
+      kind: STATUS
+      field: record_status
+      activeValues: [ACTIVE]
+    resolver: app.services.data_scope_service._provider_gd_students
+    scopeType: GD_STUDENTS
+    test: backend/tests/test_business_relation_registry.py
+    notes: >
+      导师侧是 t_gd_mentor.id，不是 t_user.id，落到账号还要靠 teacher_no 再映射一次。
+      resolver 当前读的是 mentor_user_id / mentor_no / teacher_no，这三个字段在
+      GraduationStudent 上都不存在——注册表校验会把它标成 RESOLVER_FIELD_MISSING。
+
+  - relationType: INTERNSHIP_ADVISOR_STUDENT
+    label: 实习校内指导教师-学生
+    ownerModule: internship
+    sourceModel: app.models.internship.InternshipRecord
+    subjectField: advisor_user_id
+    subjectKeyKind: USER_ID
+    legacySubjectField: advisor_name
+    objectKind: STUDENT
+    validity:
+      kind: STATUS
+      field: status
+      activeValues: [ONGOING, PENDING, APPROVED, NORMAL]
+    resolver: app.services.data_scope_service._provider_intern_students
+    scopeType: INTERN_STUDENTS
+    test: backend/tests/test_business_relation_registry.py
+    notes: advisor_name 是历史姓名键，只有 advisor_user_id 才稳定；两者不一致要治理。
+
+  - relationType: TEACHING_CLASS_TEACHER
+    label: 任课教师-教学班
+    ownerModule: academicAffairs
+    sourceModel: app.models.academic_affairs_teaching_class.AaTeachingClassTeacher
+    subjectField: teacher_id
+    subjectKeyKind: USER_ID
+    objectKind: TEACHING_CLASS
+    validity:
+      kind: STATUS
+      field: status
+      activeValues: [ACTIVE]
+    resolver: app.services.data_scope_service._provider_course
+    scopeType: COURSE
+    test: backend/tests/test_business_relation_registry.py
+    notes: >
+      任课关系存在 t_aa_teaching_class_teacher 这张关联表上（不是教学班主表）。
+      因此通用扫描只能查出"关联行里 teacher_id 为空/账号已停用"；
+      "某个教学班一个任课教师都没有"这类缺口要由教务模块提供专门 resolver，暂未登记。
+      COURSE resolver 读的是登录上下文里的 courseIds，不直接查教学班表。
+
+  - relationType: DORM_MANAGER_BUILDING
+    label: 宿管-楼栋
+    ownerModule: studentAffairs
+    sourceModel: app.models.affairs_dorm.DormBuilding
+    subjectField: manager_teacher_key
+    subjectKeyKind: NAME_TEXT
+    objectKind: DORM_BUILDING
+    validity:
+      kind: STATUS
+      field: status
+      activeValues: [ENABLED]
+    resolver: null
+    scopeType: DORM_BUILDING
+    test: backend/tests/test_business_relation_registry.py
+    notes: >
+      manager_teacher_key 是文本键（可能是工号也可能是姓名），且 simulate_access 的
+      providers 里没有 DORM_BUILDING 提供器——落到"未知数据范围默认拒绝"。
+      两项都是待整改缺口，不是本卡能在白名单内修的。

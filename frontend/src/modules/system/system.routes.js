@@ -184,6 +184,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
+      // SYS-05：业务关系只在这里"发现与治理"，真实编辑仍回各业务模块（本页不写业务终态）
+      path: 'business-relations', name: 'system-business-relations',
+      component: () => import('@/modules/system/views/SystemBusinessRelationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '业务关系中心', requiresAuth: true, permissionKey: 'systemAdmin.org.view' }
+    },
+    {
       // SYS-12：全校统一的学年学期与业务日历。学期主数据仍在教务维护，
       // 这里负责"全校何时切换"以及各模块的业务窗口。
       path: 'academic-calendar', name: 'system-academic-calendar',

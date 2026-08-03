@@ -20,3 +20,5 @@ redis[hiredis]>=5.0,<7.0
 cos-python-sdk-v5>=1.9,<2.0
 # 腾讯云官方 COS STS SDK：只下发精确 objectKey、短时、最小动作的临时凭证。
 qcloud-python-sts>=3.1,<4.0
+# SYS-05 业务关系注册表（docs/architecture/business-relation-registry.yaml）解析。
+PyYAML>=6.0,<7.0

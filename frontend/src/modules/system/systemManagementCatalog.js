@@ -62,7 +62,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-org-colleges', label: '学院与部门', path: '/admin/system/org?tab=college', permissionKey: 'system.org.view', view: 'org', actions: [action('org:create', '新增组织'), action('org:update', '编辑组织'), action('org:disable', '停用组织', 'HIGH')] },
       { key: 'sys-org-majors', label: '专业管理', path: '/admin/system/org?tab=major', permissionKey: 'system.org.major.manage', view: 'org', actions: [action('org:major:manage', '维护专业')] },
       { key: 'sys-org-classes', label: '年级与班级', path: '/admin/system/org?tab=class', permissionKey: 'system.org.class.manage', view: 'org', actions: [action('org:class:manage', '维护班级')] },
-      { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] }
+      { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] },
+      { key: 'sys-business-relations', label: '业务关系中心', path: '/admin/system/business-relations', permissionKey: 'system.org.view', view: 'business-relations', actions: [] }
     ]
   },
   {
