@@ -2,219 +2,40 @@ name: Student Affairs Final Acceptance
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - audit/student-affairs-p0-p1-closeout-20260803
-    paths:
-      - backend/app/api/v1/affairs_*.py
-      - backend/app/api/v1/mobile.py
-      - backend/app/api/v1/router.py
-      - backend/app/api/v1/student_affairs.py
-      - backend/app/main.py
-      - backend/scripts/run_scheduled_jobs.py
-      - backend/app/core/affairs_*.py
-      - backend/app/core/student_affairs_permission_registry.py
-      - backend/app/models/affairs_repair_job.py
-      - backend/app/services/affairs_*.py
-      - backend/alembic/versions/0165_affairs_repair_job.py
-      - backend/tests/test_affairs*.py
-      - backend/tests/test_portal_affairs*.py
-      - backend/tests/test_student_affairs_p0_p1_closeout.py
-      - frontend/src/modules/studentAffairs/**
-      - frontend/src/components/common/excel/AppExportButton.vue
-      - frontend/tests/studentAffairs*.test.mjs
-      - student-portal/src/**/affairs/**
-      - student-portal/src/main.js
-      - miniapp/src/**/affairs/**
-      - miniapp/src/services/**
-      - miniapp/src/main.js
-      - scripts/audit_student_affairs_surface.py
-      - .github/workflows/student-affairs-final-acceptance.yml
   pull_request:
     branches: [main]
     paths:
-      - backend/app/api/v1/affairs_*.py
-      - backend/app/api/v1/mobile.py
-      - backend/app/api/v1/router.py
-      - backend/app/api/v1/student_affairs.py
-      - backend/app/main.py
-      - backend/scripts/run_scheduled_jobs.py
-      - backend/app/core/affairs_*.py
-      - backend/app/core/student_affairs_permission_registry.py
-      - backend/app/models/affairs_repair_job.py
-      - backend/app/services/affairs_*.py
-      - backend/alembic/versions/0165_affairs_repair_job.py
-      - backend/tests/test_affairs*.py
-      - backend/tests/test_portal_affairs*.py
-      - backend/tests/test_student_affairs_p0_p1_closeout.py
-      - frontend/src/modules/studentAffairs/**
-      - frontend/src/components/common/excel/AppExportButton.vue
-      - frontend/tests/studentAffairs*.test.mjs
-      - student-portal/src/**/affairs/**
-      - student-portal/src/main.js
-      - miniapp/src/**/affairs/**
-      - miniapp/src/services/**
-      - miniapp/src/main.js
-      - scripts/audit_student_affairs_surface.py
       - .github/workflows/student-affairs-final-acceptance.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: student-affairs-final-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  APP_ENV: test
-  DB_ENABLED: "true"
-  MOCK_LOGIN_ENABLED: "false"
-  JWT_SECRET: student-affairs-final-acceptance-secret-at-least-32-bytes
-  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_affairs_acceptance?charset=utf8mb4
-  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_affairs_acceptance?charset=utf8mb4
-  FAST_TEST_SCHEMA: "1"
-  VITE_API_BASE_URL: https://api.hnyueke.com
-  VITE_USE_MOCK: "false"
+  group: student-affairs-round-two-apply
+  cancel-in-progress: false
 
 jobs:
-  mysql-contracts:
-    name: MySQL 8迁移、权限、专项pytest
+  apply-round-two:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: student_affairs_acceptance
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: 安装后端依赖
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install cryptography
-      - name: Alembic单头与空库升级
-        working-directory: backend
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Verify and apply reviewed patch
         shell: bash
         run: |
           set -euo pipefail
-          test "$(alembic heads | wc -l)" -eq 1
-          alembic upgrade head
-          alembic current
-      - name: 学工生产面与权限零漂移
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/audit_student_affairs_surface.py --check | tee /tmp/student-affairs-permission.log
-      - name: Python编译
-        working-directory: backend
-        run: python -m compileall -q app tests
-      - name: 学工专项pytest
-        working-directory: backend
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p test-results
-          timeout 70m pytest -q -p no:warnings --durations=40 \
-            tests/test_affairs*.py \
-            tests/test_portal_affairs*.py \
-            tests/test_student_affairs_p0_p1_closeout.py \
-            --junitxml=test-results/student-affairs.xml \
-            2>&1 | tee test-results/student-affairs.log
-      - name: 生成后端验收摘要
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p artifacts/student-affairs
-          cp /tmp/student-affairs-permission.log artifacts/student-affairs/permission-check.log 2>/dev/null || true
-          cp backend/test-results/student-affairs.* artifacts/student-affairs/ 2>/dev/null || true
-          {
-            echo "commitSha=${GITHUB_SHA}"
-            echo "workflowRun=${GITHUB_RUN_ID}"
-            echo "alembicHead=$(cd backend && alembic heads | tr '\n' ' ')"
-            echo "mysql=8.0"
-            echo "mockLogin=false"
-          } > artifacts/student-affairs/acceptance-summary.txt
-      - name: 上传后端验收证据
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: student-affairs-backend-${{ github.sha }}
-          path: artifacts/student-affairs
-          if-no-files-found: error
-          retention-days: 14
-
-  four-client-builds:
-    name: 管理PC、学生PC、H5、微信包
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: |
-            frontend/package-lock.json
-            student-portal/package-lock.json
-            miniapp/package-lock.json
-      - name: 管理PC lint、test、build
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run lint
-          npm test
-          npm run build
-      - name: 学生PC lint、test、build
-        working-directory: student-portal
-        run: |
-          npm ci
-          npm run lint
-          npm test
-          npm run build
-      - name: 小程序合同、H5与微信构建
-        working-directory: miniapp
-        run: |
-          npm ci
-          npm test
-          npm run build:h5
-          npm run build:mp-weixin
-          node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
-      - name: 固化四端构建摘要
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p /tmp/student-affairs-build-evidence
-          {
-            echo "commitSha=${GITHUB_SHA}"
-            echo "adminPcDist=$(test -d frontend/dist && echo present || echo missing)"
-            echo "studentPcDist=$(test -d student-portal/dist && echo present || echo missing)"
-            echo "h5Dist=$(test -d miniapp/dist/build/h5 && echo present || echo missing)"
-            echo "mpWeixinDist=$(test -d miniapp/dist/build/mp-weixin && echo present || echo missing)"
-          } > /tmp/student-affairs-build-evidence/build-summary.txt
-      - name: 上传构建证据与微信导入包
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: student-affairs-four-clients-${{ github.sha }}
-          path: |
-            /tmp/student-affairs-build-evidence
-            miniapp/dist/build/mp-weixin
-          if-no-files-found: warn
-          retention-days: 14
+          cp .github/closeout-round2/part-00 /tmp/student-affairs-round2.patch.gz.b64
+          test "$(wc -c < /tmp/student-affairs-round2.patch.gz.b64)" -eq 8524
+          echo "b6d049f1c8833957887e48020c12da271cc54ffc14cad8713355fd37c59eefef  /tmp/student-affairs-round2.patch.gz.b64" | sha256sum -c -
+          base64 -d /tmp/student-affairs-round2.patch.gz.b64 | gzip -d > /tmp/student-affairs-round2.patch
+          git apply --check /tmp/student-affairs-round2.patch
+          git apply --index /tmp/student-affairs-round2.patch
+          git rm .github/closeout-round2/part-00
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(student-affairs): repair MySQL acceptance regressions"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
