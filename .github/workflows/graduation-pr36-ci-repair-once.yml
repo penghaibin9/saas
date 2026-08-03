@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - fix/graduation-material-closeout-p0-review
-    paths:
-      - .github/workflows/graduation-pr36-ci-repair-once.yml
 
 permissions:
   contents: write
@@ -24,53 +22,18 @@ jobs:
           ref: fix/graduation-material-closeout-p0-review
           fetch-depth: 0
 
-      - name: Restore clean fixture and harden browser review
+      - name: Restore clean pytest fixture
         run: |
           set -euo pipefail
           git fetch origin feat/graduation-material-center
           git show origin/feat/graduation-material-center:backend/tests/conftest.py > backend/tests/conftest.py
           python - <<'PY'
           from pathlib import Path
-
           fixture = Path('backend/tests/conftest.py')
           raw = fixture.read_bytes()
           if b'\0' in raw:
               raise SystemExit('restored conftest.py still contains NUL bytes')
           compile(raw.decode('utf-8'), str(fixture), 'exec')
-
-          review = Path('student-portal/review/v5-full-review.mjs')
-          text = review.read_text(encoding='utf-8')
-          old = '''  const purple = page.locator('.sp-theme__item[title="科技紫"]')
-          await purple.click()
-          await page.reload({ waitUntil: 'domcontentloaded' })
-          await waitStable(page)
-          const persistedTheme = await page.evaluate(() => document.documentElement.dataset.spTheme || '')
-          report.functionalChecks.push({
-            name: '主题切换后刷新保持',
-            passed: persistedTheme === 'purple',
-            actual: { persistedTheme },
-            screenshot: await capture(page, outputDir, 'functional-theme-persistence', false)
-          })
-          await setTheme(page, 'blue')
-          '''
-          new = '''  await setTheme(page, 'purple')
-          await page.reload({ waitUntil: 'domcontentloaded' })
-          await waitStable(page)
-          const persistedTheme = await page.evaluate(() => ({
-            dataset: document.documentElement.dataset.spTheme || '',
-            storage: localStorage.getItem('student-portal-theme') || ''
-          }))
-          report.functionalChecks.push({
-            name: '主题设置刷新后保持',
-            passed: persistedTheme.dataset === 'purple' && persistedTheme.storage === 'purple',
-            actual: persistedTheme,
-            screenshot: await capture(page, outputDir, 'functional-theme-persistence', false)
-          })
-          await setTheme(page, 'blue')
-          '''
-          if old not in text:
-              raise SystemExit('theme persistence block not found')
-          review.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
           rm .github/workflows/graduation-pr36-ci-repair-once.yml
           python -m py_compile backend/tests/conftest.py
@@ -81,6 +44,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/tests/conftest.py student-portal/review/v5-full-review.mjs .github/workflows/graduation-pr36-ci-repair-once.yml
-          git commit -m "fix(ci): restore clean pytest fixture and stable theme review"
+          git add backend/tests/conftest.py .github/workflows/graduation-pr36-ci-repair-once.yml
+          git commit -m "fix(ci): restore clean pytest fixture"
           git push origin HEAD:fix/graduation-material-closeout-p0-review
