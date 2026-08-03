@@ -1,0 +1,49 @@
+name: Student Affairs Second Review Export
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-p0-p1-closeout-20260803
+    paths:
+      - .github/workflows/student-affairs-second-review-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Build latest-main merge workspace
+        shell: bash
+        run: |
+          set -uo pipefail
+          git fetch origin main
+          git config user.name "audit-export"
+          git config user.email "audit-export@users.noreply.github.com"
+          git merge --no-commit --no-edit origin/main || true
+          mkdir -p /tmp/second-review
+          git status --porcelain=v1 > /tmp/second-review/status.txt
+          git diff --name-only --diff-filter=U > /tmp/second-review/conflicts.txt
+          git log --oneline --decorate -30 > /tmp/second-review/log.txt
+          git bundle create /tmp/second-review/repo.bundle --all
+          tar \
+            --exclude='.git/objects/pack' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            -czf /tmp/second-review/workspace.tar.gz .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: student-affairs-second-review-workspace-${{ github.sha }}
+          path: /tmp/second-review
+          retention-days: 2
+          if-no-files-found: error
