@@ -201,6 +201,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '统一消息、待办与通知治理', requiresAuth: true, permissionKey: 'systemAdmin.communication.view' }
     },
     {
+      // SYS-16：批处理/调度/后台任务治理面板。跨5张既有任务表只读聚合 + 有限重试/取消
+      path: 'jobs', name: 'system-jobs',
+      component: () => import('@/modules/system/views/SystemJobCenterView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '批处理与后台任务', requiresAuth: true, permissionKey: 'systemAdmin.job.view' }
+    },
+    {
       // SYS-17：数据域责任人、质量规则、问题闭环与合并预览（不代业务部门确认业务事实）
       path: 'master-data', name: 'system-master-data',
       component: () => import('@/modules/system/views/SystemMasterDataView.vue'),

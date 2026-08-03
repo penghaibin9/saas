@@ -1,0 +1,88 @@
+# SYS-16 批处理、调度与后台任务授权注册表（权威目录，不是权威数据）
+#
+# 规矩：
+# - 不新建统一任务大表。权威数据仍是既有 5 张表：t_import_job / t_export_job /
+#   t_file_job / t_excel_import_job / t_affairs_batch_job（都已有 PKMixin+TenantMixin+
+#   CommonMixin：created_by/updated_by/version/is_deleted 天然可用，本注册表直接复用
+#   这些字段当 initiator/revision/乐观锁，不重复发明。
+# - 本卡"精确施工白名单"排除了这 5 张表各自的创建方（file_service.py /
+#   data_exchange_confirm_service.py / graduation_material_center_service.py /
+#   academic_file_exchange_service.py 等），所以 job_registry/job_authorization_service
+#   只做只读治理列表 + 有限的通用管理动作（retry/cancel），不代替业务模块做校验、
+#   不重放业务创建逻辑。
+# - retryable：只在通用、无业务副作用风险的字段翻转范围内开放（状态机简单、
+#   FAILED→重新可执行不涉及重放文件解析/业务写入）。没登记 retryable 的 kind，
+#   retry 接口返回明确的"请到所属模块处理"错误，不假装能重试。
+# - cancellable：只允许在业务动作尚未开始（初始状态）时取消，不中断已在途的业务流程。
+version: 1
+
+kinds:
+  - kind: IMPORT
+    table: t_import_job
+    model: ImportJob
+    module: app.models.data_exchange
+    ownerModule: dataExchange
+    statusField: status
+    initialStatus: VALIDATED
+    cancellableFrom: [VALIDATED]
+    retryableFrom: []
+    scopeSnapshotField: source_snapshot_json
+    revisionField: template_version
+    currentRevision: null   # 未登记当前版本 = 不做 revision 门禁，只透传
+    notes: 导入确认执行在 data_exchange_confirm_service.py（不在本卡白名单），不代其重试。
+
+  - kind: EXPORT
+    table: t_export_job
+    model: ExportJob
+    module: app.models.data_exchange
+    ownerModule: dataExchange
+    statusField: status
+    initialStatus: CREATED
+    cancellableFrom: [CREATED]
+    retryableFrom: []
+    scopeSnapshotField: data_scope_snapshot_json
+    revisionField: null
+    currentRevision: null
+    notes: 导出生成在各业务模块（不在本卡白名单），不代其重试。
+
+  - kind: FILE_JOB
+    table: t_file_job
+    model: FileJob
+    module: app.models.file
+    ownerModule: fileStorage
+    statusField: status
+    initialStatus: PENDING
+    cancellableFrom: [PENDING]
+    retryableFrom: [FAILED]
+    scopeSnapshotField: null
+    revisionField: null
+    currentRevision: null
+    notes: 通用队列任务（文件扫描等），字段设计本就是给外部调度重试用的（attempts/locked_by/available_at）。
+
+  - kind: EXCEL_IMPORT
+    table: t_excel_import_job
+    model: ExcelImportJob
+    module: app.models.excel_import_job
+    ownerModule: dataExchange
+    statusField: status
+    initialStatus: UPLOADED
+    cancellableFrom: [UPLOADED, VALIDATED]
+    retryableFrom: [FAILED]
+    scopeSnapshotField: data_scope_snapshot
+    revisionField: template_version
+    currentRevision: v1     # 本注册表登记的治理口径版本，不读业务模块内部模板注册表
+    notes: 重试前校验 template_version 是否等于本注册表登记的 currentRevision；不等则拒绝，提示回所属模块重新校验。
+
+  - kind: AFFAIRS_BATCH
+    table: t_affairs_batch_job
+    model: AffairsBatchJob
+    module: app.models.affairs_operations
+    ownerModule: studentAffairs
+    statusField: status
+    initialStatus: PENDING
+    cancellableFrom: [PENDING]
+    retryableFrom: []
+    scopeSnapshotField: null
+    revisionField: null
+    currentRevision: null
+    notes: 已有 retry_of_id 语义（新建行重试），执行方在 affairs_operations_service.py（不在白名单），本卡不重复实现，只做只读治理展示。

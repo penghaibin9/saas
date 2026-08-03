@@ -391,6 +391,59 @@ export const systemApi = {
     }
   },
 
+  // SYS-16：批处理、调度与后台任务授权
+  async getJobOverview() {
+    try {
+      return ok(await request('/system/jobs/overview'))
+    } catch (error) {
+      return fail(error.message || '任务治理概览加载失败')
+    }
+  },
+
+  async getJobTypes() {
+    try {
+      return ok(await request('/system/job-types'))
+    } catch (error) {
+      return fail(error.message || '任务类型加载失败')
+    }
+  },
+
+  async listJobs({ kind = '', status = '', page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/jobs', {
+        params: { kind: kind || undefined, status: status || undefined, page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '任务列表加载失败')
+    }
+  },
+
+  async getJobAuthorizationEvidence(jobId) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/authorization-evidence`))
+    } catch (error) {
+      return fail(error.message || '授权证据加载失败')
+    }
+  },
+
+  async retryJob(jobId) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async cancelJob(jobId, { reason } = {}) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        method: 'POST', body: { reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async listMasterDataDomains() {
     try {
       return ok(await request('/system/master-data/domains'))
