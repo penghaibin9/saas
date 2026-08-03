@@ -309,6 +309,9 @@ def batch_file(archive_batch_no: str | None, batch_id: int, preview_token: str, 
     errors: list[dict] = []
     for row in snapshot["rows"]:
         gd_student_id = int(row["studentId"])
+        if row.get("missing") or int(row.get("openRisks") or 0) > 0:
+            skipped += 1
+            continue
         try:
             result = file_archive(gd_student_id, requested, user)
             manifests.append(result["manifestId"])
