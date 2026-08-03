@@ -20,6 +20,9 @@ TEST_TENANT_ID = 1000000000000000001
 # tokens into legacy test requests.  Dedicated material-contract tests are
 # intentionally excluded so missing/stale-token assertions remain effective.
 _LEGACY_GRADUATION_SUITES = {
+    "test_graduation.py",
+    "test_graduation_batch9.py",
+    "test_graduation_e2e_acceptance_gates.py",
     "test_graduation_final.py",
     "test_graduation_mobile_final.py",
     "test_graduation_mobile_review.py",
@@ -42,11 +45,80 @@ def _json_data(response) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _ensure_student_material_catalog(headers: dict) -> None:
+    """Run the real rule/catalog initializers for a legacy test student.
+
+    Old suites create ad-hoc graduation batches directly or through the legacy
+    batch helper.  The production clients initialize a frozen material rule and
+    student catalog before opening the library.  Reproduce that prerequisite in
+    the harness instead of inventing lock tokens or bypassing validation.
+    """
+    auth = str((headers or {}).get("Authorization") or (headers or {}).get("authorization") or "")
+    if not auth.startswith("Bearer "):
+        return
+
+    from sqlalchemy import or_, select
+
+    from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
+    from app.core.security import decode_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+    from app.modules.graduation.materials.command_service import initialize_student_materials_in_session
+    from app.modules.graduation.materials.rule_service import initialize_default_rule_in_session
+
+    try:
+        claims = decode_token(auth[7:]) or {}
+    except Exception:
+        return
+    if str(claims.get("userType") or claims.get("currentRoleCode") or "").upper() != "STUDENT":
+        return
+
+    student_no = str(claims.get("studentNo") or "").strip()
+    profile_id = str(claims.get("studentId") or claims.get("studentProfileId") or "").strip()
+    real_name = str(claims.get("realName") or "").strip()
+    clauses = []
+    if student_no:
+        clauses.append(GraduationStudent.student_no == student_no)
+    if profile_id.isdigit():
+        clauses.append(GraduationStudent.student_id == int(profile_id))
+    if real_name:
+        clauses.append(GraduationStudent.name == real_name)
+    if not clauses:
+        return
+
+    previous_tenant = get_tenant()
+    previous_user = get_current_user_ctx()
+    db = get_sessionmaker()()
+    try:
+        set_tenant({"tenantId": str(TEST_TENANT_ID), "tenantCode": "demo"})
+        set_current_user(claims)
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == TEST_TENANT_ID,
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.is_deleted.is_(False),
+            or_(*clauses),
+        ).order_by(GraduationStudent.id.desc()).limit(1)).first()
+        if not student or not student.batch_id:
+            return
+        initialize_default_rule_in_session(db, int(student.batch_id), claims)
+        initialize_student_materials_in_session(db, int(student.id), claims)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+        set_current_user(previous_user)
+        set_tenant(previous_tenant)
+
+
 def _student_material_snapshot(original_request, kwargs, material_code: str) -> dict:
+    headers = kwargs.get("headers") or {}
+    _ensure_student_material_catalog(headers)
     response = original_request(
         "GET",
         "/api/v1/mobile/graduation/material-center/library",
-        headers=kwargs.get("headers") or {},
+        headers=headers,
     )
     data = _json_data(response)
     for item in data.get("items") or []:
