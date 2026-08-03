@@ -1,21 +1,29 @@
 """Create the real default material rule for explicit legacy graduation tests.
 
-This plugin never touches the shared ``client`` fixture. It only completes the
-setup performed by ``graduation_client``: every test batch becomes RUNNING and
-has one enabled, versioned material rule before material endpoints are used.
+This plugin never touches the shared ``client`` fixture. It seeds the rule on
+test batches while preserving their DRAFT state; material submission adapters
+may transition a batch to RUNNING only when that workflow is actually tested.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 from sqlalchemy import select
 
 MAIN_TENANT_ID = 1000000000000000001
+_REVIEW_PATH = re.compile(
+    r"^/api/v1/(?:graduation/(?:proposals|finals)|mobile/teacher/graduation/(?:proposal|final))/(\d+)/review$"
+)
+_MATERIAL_PATHS = {
+    "/api/v1/mobile/graduation/proposal",
+    "/api/v1/mobile/graduation/final",
+}
 
 
-def _ensure_batch_rule(batch_id) -> None:
+def _ensure_batch_rule(batch_id, *, make_running: bool = False) -> None:
     try:
         bid = int(batch_id)
     except (TypeError, ValueError):
@@ -34,7 +42,7 @@ def _ensure_batch_rule(batch_id) -> None:
         ).with_for_update()).first()
         if not batch:
             return
-        if batch.status == "DRAFT":
+        if make_running and batch.status == "DRAFT":
             batch.status = "RUNNING"
             batch.last_transition_at = datetime.utcnow()
             batch.last_transition_by = "legacy-graduation-test-adapter"
@@ -110,6 +118,18 @@ def _response_batch_id(response):
         return None
 
 
+def _request_batch_id(client, url, kwargs):
+    parsed = urlsplit(str(url))
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    params = kwargs.get("params") or {}
+    value = params.get("batchId") if isinstance(params, dict) else None
+    value = value or query.get("batchId") or getattr(client, "_active_batch_id", None)
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 @pytest.fixture(autouse=True)
 def _explicit_graduation_batch_rule(request):
     if "graduation_client" not in request.fixturenames:
@@ -126,12 +146,15 @@ def _explicit_graduation_batch_rule(request):
         return batch_id
 
     def request_with_rule(method, url, **kwargs):
-        response = original_request(method, url, **kwargs)
         path = urlsplit(str(url)).path or str(url)
+        batch_id = _request_batch_id(client, url, kwargs)
+        if batch_id and (path in _MATERIAL_PATHS or _REVIEW_PATH.match(path)):
+            _ensure_batch_rule(batch_id)
+        response = original_request(method, url, **kwargs)
         if str(method).upper() == "POST" and path == "/api/v1/graduation/batches":
-            batch_id = _response_batch_id(response)
-            if batch_id:
-                _ensure_batch_rule(batch_id)
+            created_batch_id = _response_batch_id(response)
+            if created_batch_id:
+                _ensure_batch_rule(created_batch_id)
         return response
 
     client._create_default_batch = create_default_batch
