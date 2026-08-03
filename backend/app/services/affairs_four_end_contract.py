@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -247,62 +246,6 @@ def _patch_teacher_permission() -> None:
     aff.teacher_affairs = teacher_affairs
 
 
-def _patch_student_scope() -> None:
-    from app.core import affairs_security
-
-    original = affairs_security.build_affairs_context
-    _ORIGINALS["build_affairs_context"] = original
-
-    def build_affairs_context(user, db=None):
-        ctx = original(user, db)
-        if (
-            ctx.scope_type == "CLASS"
-            and ctx.student_ids
-            and not ctx.class_ids
-            and not ctx.college_ids
-        ):
-            ctx.scope_type = "STUDENT"
-            ctx.is_scope_configured = True
-            ctx.scope_source = "SCOPE_TABLE_STUDENT"
-        return ctx
-
-    affairs_security.build_affairs_context = build_affairs_context
-    for module in list(sys.modules.values()):
-        if module is not None and getattr(module, "build_affairs_context", None) is original:
-            module.build_affairs_context = build_affairs_context
-
-
-def _strict_sensitive_view_audit(student_id, reason: str, resource: str) -> None:
-    """强敏感详情必须先成功写审计，审计不可用则拒绝返回明文。"""
-    from app.services import audit_log
-
-    try:
-        audit_log.record(
-            "SENSITIVE_VIEW",
-            resource,
-            detail={
-                "domain": "MENTAL",
-                "studentId": str(student_id),
-                "reason": str(reason)[:200],
-            },
-            result="SUCCESS",
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise AppException(
-            "SERVER_ERROR",
-            "敏感信息访问审计暂不可用，已拒绝返回心理明细",
-            http_status=503,
-        ) from exc
-
-
-def _patch_mental_audit() -> None:
-    from app.services import affairs_mental_service as mental
-
-    _ORIGINALS["mental_sensitive_view_audit"] = mental._sensitive_view_audit
-    mental._sensitive_view_audit = _strict_sensitive_view_audit
-
-
-
 def _patch_student_views() -> None:
     from app.services import mobile_affairs_service as aff
 
@@ -517,8 +460,6 @@ def install() -> None:
     _patch_request_context()
     _patch_optimistic_lock()
     _patch_teacher_permission()
-    _patch_student_scope()
-    _patch_mental_audit()
     _patch_student_dorm_scope()
     _patch_student_views()
     _patch_insecure_activity_checkin()

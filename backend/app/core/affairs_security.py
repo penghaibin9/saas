@@ -327,7 +327,11 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
         ctx.scope_type = "COLLEGE"
         ctx.is_scope_configured = bool(ctx.college_ids)
         ctx.scope_source = "SCOPE_TABLE_COLLEGE"
-    elif ctx.class_ids or ctx.college_ids or ctx.student_ids:
+    elif ctx.student_ids and not ctx.class_ids and not ctx.college_ids:
+        ctx.scope_type = "STUDENT"
+        ctx.is_scope_configured = True
+        ctx.scope_source = "SCOPE_TABLE_STUDENT"
+    elif ctx.class_ids or ctx.college_ids:
         ctx.scope_type = "CLASS"
         ctx.is_scope_configured = True
         ctx.scope_source = "SCOPE_TABLE_CLASS"

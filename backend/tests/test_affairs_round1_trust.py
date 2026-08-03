@@ -82,10 +82,12 @@ def test_todo_filter_semantics_pending_maps_to_review():
     assert mapping["REMOVE_PENDING"][0] == "REMOVE_REVIEW"
 
 
-def test_dashboard_module_cards_live_not_pending():
+def test_dashboard_module_cards_are_derived_from_permission_and_scope_health():
     src = (_APP / "services" / "affairs_dashboard_service.py").read_text(encoding="utf-8")
-    assert '("psy", "心理关注", "LIVE")' in src
-    assert '("activity", "学生活动", "LIVE")' in src
+    assert '("psy", "心理关注", "studentAffairs.mental.manage")' in src
+    assert '("activity", "学生活动", "studentAffairs.activity.view")' in src
+    assert 'status = "LOCKED" if not permitted else ("DEGRADED" if no_scope else "LIVE")' in src
+    assert '"empty": status != "LIVE"' in src
     assert '("psy", "心理关注", "PENDING")' not in src
     assert '("activity", "学生活动", "PENDING")' not in src
 

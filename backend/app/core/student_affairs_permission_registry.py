@@ -160,6 +160,24 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
         "studentAffairs.discipline.appeal.review",
         "studentAffairs.activity.confirm",
     ),
+    "/api/v1/mobile/teacher/affairs/appeals/repair/metrics": (
+        "studentAffairs.aid.approve",
+        "studentAffairs.funding.publicity.manage",
+        "studentAffairs.discipline.appeal.review",
+        "studentAffairs.activity.confirm",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/repair/jobs": (
+        "studentAffairs.aid.approve",
+        "studentAffairs.funding.publicity.manage",
+        "studentAffairs.discipline.appeal.review",
+        "studentAffairs.activity.confirm",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/repair/jobs/{job_id}/requeue": (
+        "studentAffairs.aid.approve",
+        "studentAffairs.funding.publicity.manage",
+        "studentAffairs.discipline.appeal.review",
+        "studentAffairs.activity.confirm",
+    ),
 }
 
 def export_catalog() -> list[dict]:

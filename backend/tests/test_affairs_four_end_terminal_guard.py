@@ -130,7 +130,7 @@ def test_mobile_permission_codes_are_all_present_in_pc_catalog():
     source = (root / "frontend/src/modules/studentAffairs/config/permissionCatalog.js").read_text(
         encoding="utf-8",
     )
-    pc_codes = set(re.findall(r"permission\('([^']+)'", source))
+    pc_codes = set(re.findall(r'"permissionCode"\s*:\s*"([^"]+)"', source))
     direct_codes = {code for codes in _DIRECT_PERMISSION_CODES.values() for code in codes}
 
     assert _MOBILE_CATALOG_CODES <= pc_codes

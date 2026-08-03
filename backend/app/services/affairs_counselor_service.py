@@ -178,7 +178,7 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
     moved_tasks = 0
     from app.models import WorkflowInstance
     # 以学工 UnifiedTodo 的学生归属作为跨域权威映射，覆盖请假、奖助、处分、宿舍等。
-    source_keys = {
+    source_pairs = {
         (str(biz_type or "").upper(), str(biz_id or ""))
         for biz_type, biz_id in db.execute(
             select(UnifiedTodo.source_biz_type, UnifiedTodo.source_biz_id).where(
@@ -189,7 +189,7 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
             )
         ).all()
     }
-    if source_keys:
+    if source_pairs:
         tasks = db.scalars(select(WorkflowTask).where(
             WorkflowTask.tenant_id == _tid(),
             WorkflowTask.assignee_id == from_uid,
@@ -201,7 +201,7 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
             if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
                 continue
             key = (str(inst.source_biz_type or "").upper(), str(inst.source_biz_id or ""))
-            if key not in source_keys:
+            if key not in source_pairs:
                 continue
             task.assignee_id = to_uid
             task.version = int(task.version or 0) + 1

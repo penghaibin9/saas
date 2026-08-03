@@ -12,7 +12,7 @@ import uuid
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.services.db_service import _tid, session
@@ -146,7 +146,6 @@ def _finish(record_id: int, ok: bool, error: str = "", *, lease_owner: str | Non
 
 
 def repair_metrics() -> dict:
-    from sqlalchemy import func
     from app.models import AffairsRepairJob
 
     now = datetime.utcnow()
@@ -168,6 +167,78 @@ def repair_metrics() -> dict:
             "processing": int(grouped.get("PROCESSING", 0) or 0),
             "dead": int(grouped.get("DEAD", 0) or 0),
             "oldestAgeSeconds": max(0, int((now - oldest).total_seconds())) if oldest else 0,
+        }
+
+
+def list_jobs(*, state: str = "", page: int = 1, page_size: int = 20) -> dict:
+    """维护台分页查看任务；仅返回补偿元数据，不返回申诉正文。"""
+    from app.models import AffairsRepairJob
+
+    normalized = str(state or "").strip().upper()
+    allowed = {"PENDING", "FAILED", "PROCESSING", "DEAD", "COMPLETED"}
+    if normalized and normalized not in allowed:
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "补偿任务状态非法")
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
+    with session() as db:
+        conds = [
+            AffairsRepairJob.tenant_id == _tid(),
+            AffairsRepairJob.is_deleted.is_(False),
+        ]
+        if normalized:
+            conds.append(AffairsRepairJob.state == normalized)
+        total = int(db.scalar(select(func.count()).select_from(AffairsRepairJob).where(*conds)) or 0)
+        rows = db.scalars(
+            select(AffairsRepairJob).where(*conds)
+            .order_by(AffairsRepairJob.next_run_at, AffairsRepairJob.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return {
+            "page": page, "pageSize": page_size, "total": total,
+            "hasMore": page * page_size < total,
+            "items": [{
+                "jobId": str(row.id), "todoType": row.todo_type,
+                "sourceRowId": str(row.source_row_id), "stage": row.stage,
+                "state": row.state, "attempts": int(row.attempts or 0),
+                "nextRunAt": row.next_run_at.isoformat() if row.next_run_at else None,
+                "leaseOwner": row.lease_owner,
+                "leaseUntil": row.lease_until.isoformat() if row.lease_until else None,
+                "lastError": row.last_error or "",
+                "version": int(row.version or 0),
+            } for row in rows],
+        }
+
+
+def requeue_dead(record_id: int, *, expected_version: int) -> dict:
+    """人工重投 DEAD 任务；通过版本锁防止覆盖其他管理员的处理。"""
+    from app.core.exceptions import AppException, not_found
+    from app.models import AffairsRepairJob
+
+    now = datetime.utcnow()
+    with session() as db:
+        row = db.scalars(select(AffairsRepairJob).where(
+            AffairsRepairJob.id == int(record_id),
+            AffairsRepairJob.tenant_id == _tid(),
+            AffairsRepairJob.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not row:
+            raise not_found("补偿任务不存在")
+        if int(row.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "补偿任务已被其他管理员处理，请刷新后重试")
+        if row.state != "DEAD":
+            raise AppException("DATA_CONFLICT", "只有 DEAD 任务可以人工重投")
+        row.state = "PENDING"
+        row.attempts = 0
+        row.next_run_at = now
+        row.lease_owner = None
+        row.lease_until = None
+        row.last_error = None
+        row.version = int(row.version or 0) + 1
+        db.commit()
+        return {
+            "jobId": str(row.id), "state": row.state, "attempts": row.attempts,
+            "nextRunAt": row.next_run_at.isoformat(), "version": int(row.version or 0),
         }
 
 def _ensure_bindings() -> None:

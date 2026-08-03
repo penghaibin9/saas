@@ -91,3 +91,44 @@ def test_expired_processing_is_reclaimed_and_old_worker_cannot_finish(db_mode):
         db.close()
     finally:
         _clear_context()
+
+def test_dead_job_can_be_listed_and_manually_requeued_with_version_lock(db_mode):
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRepairJob
+    from app.services import affairs_appeal_repair_service as repair
+
+    _set_context()
+    try:
+        now = datetime.utcnow()
+        db = get_sessionmaker()()
+        job = AffairsRepairJob(
+            tenant_id=TID, dedup_key=repair._key("DISCIPLINE_APPEAL_REVIEW", 880003, "RESULT_NOTICE"),
+            todo_type="DISCIPLINE_APPEAL_REVIEW", source_row_id=880003, stage="RESULT_NOTICE",
+            state="DEAD", attempts=8, next_run_at=now, last_error="RuntimeError", version=3,
+        )
+        db.add(job); db.commit(); job_id = int(job.id); db.close()
+
+        page = repair.list_jobs(state="DEAD", page=1, page_size=20)
+        listed = next(item for item in page["items"] if int(item["jobId"]) == job_id)
+        assert listed["attempts"] == 8
+        assert listed["version"] == 3
+
+        try:
+            repair.requeue_dead(job_id, expected_version=2)
+            assert False, "stale version must fail"
+        except AppException as exc:
+            assert exc.code == "DATA_CONFLICT"
+
+        result = repair.requeue_dead(job_id, expected_version=3)
+        assert result["state"] == "PENDING"
+        assert result["attempts"] == 0
+        assert result["version"] == 4
+
+        db = get_sessionmaker()(); row = db.get(AffairsRepairJob, job_id)
+        assert row.state == "PENDING"
+        assert row.attempts == 0
+        assert row.lease_owner is None and row.lease_until is None
+        db.close()
+    finally:
+        _clear_context()

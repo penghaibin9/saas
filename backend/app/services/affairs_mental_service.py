@@ -48,7 +48,7 @@ def _biz_audit(db, biz_id, action, detail=""):
 
 
 def _sensitive_view_audit(student_id, reason: str, resource: str) -> None:
-    """心理原文明细审计必须成功；审计故障时以 503 失败关闭。"""
+    """心理原文明细审计必须成功；审计故障时 fail-closed，并以 503 拒绝明文。"""
     from app.services import audit_log
 
     before = audit_log.get_audit_db_health()
