@@ -40,6 +40,20 @@ positions = (ROOT / "backend/app/modules/internship/services/internship_position
 if "请先完成正式调岗/退岗" not in positions:
     errors.append("occupied positions can still be archived")
 
+router_root = ROOT / "backend/app/modules/internship/routers"
+for path in router_root.glob("*.py"):
+    if "await file.read()" in path.read_text(encoding="utf-8"):
+        errors.append(f"{path.relative_to(ROOT)}: bypasses safe import upload reader")
+
+upload_guard = ROOT / "backend/app/modules/internship/services/internship_import_upload.py"
+if not upload_guard.exists():
+    errors.append("internship safe import upload guard is missing")
+else:
+    guard_text = upload_guard.read_text(encoding="utf-8")
+    for token in ("IMPORT_XLSX_MAX_BYTES", "validate_content", "ClamAVClient"):
+        if token not in guard_text:
+            errors.append(f"internship import upload guard missing: {token}")
+
 if errors:
     raise SystemExit("\n".join(f"ERROR: {item}" for item in errors))
 print("internship production contracts: OK")

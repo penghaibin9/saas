@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.response import paginate, success
+from app.modules.internship.services.internship_import_upload import read_safe_xlsx_upload
 from app.core.permissions import require_permission
 from app.modules.internship.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
                                      ContactUpdate, CoopActionRequest, EnterpriseCreate,
@@ -804,7 +805,7 @@ def enterprise_import_template(user=Depends(require_permission("internship.enter
 
 @router.post("/enterprises/import/xlsx", summary="企业库导入·上传 Excel 解析+预校验（不写库，返回行数据供确认）")
 async def enterprise_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission("internship.enterprise.manage"))):
-    content = await file.read()
+    content = await read_safe_xlsx_upload(file)
     rows = ent.import_read(content)          # 底座表头映射
     dry = ent.import_dry_run(rows)           # 底座统一预校验
     return success({"rows": rows, **dry})
