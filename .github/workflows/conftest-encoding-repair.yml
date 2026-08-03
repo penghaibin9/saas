@@ -25,27 +25,43 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Repair invalid bytes and verify syntax
+      - name: Restore latest valid historical conftest
         run: |
           python - <<'PY'
           import ast
+          import subprocess
           from pathlib import Path
 
-          path = Path('backend/tests/conftest.py')
-          raw = path.read_bytes()
-          null_count = raw.count(b'\x00')
-          cleaned = raw.replace(b'\x00', b'')
+          rel = 'backend/tests/conftest.py'
+          path = Path(rel)
+          current = path.read_bytes()
           try:
-              text = cleaned.decode('utf-8')
-              replacement_count = 0
-          except UnicodeDecodeError as exc:
-              print(f'invalid UTF-8 at {exc.start}:{exc.end}: {cleaned[exc.start-24:exc.end+24].hex()}')
-              text = cleaned.decode('utf-8', errors='replace')
-              replacement_count = text.count('\ufffd')
-          ast.parse(text, filename=str(path))
-          canonical = text.replace('\r\n', '\n').replace('\r', '\n')
+              ast.parse(current.decode('utf-8'), filename=rel)
+              print('current conftest is already valid')
+              raise SystemExit(0)
+          except (UnicodeDecodeError, SyntaxError):
+              pass
+
+          commits = subprocess.check_output(
+              ['git', 'rev-list', 'HEAD', '--', rel], text=True
+          ).splitlines()
+          chosen = None
+          chosen_text = None
+          for commit in commits[1:]:
+              try:
+                  raw = subprocess.check_output(['git', 'show', f'{commit}:{rel}'])
+                  text = raw.decode('utf-8')
+                  ast.parse(text, filename=f'{commit}:{rel}')
+              except (subprocess.CalledProcessError, UnicodeDecodeError, SyntaxError):
+                  continue
+              chosen = commit
+              chosen_text = text
+              break
+          if not chosen or chosen_text is None:
+              raise SystemExit('no valid historical conftest.py found')
+          canonical = chosen_text.replace('\r\n', '\n').replace('\r', '\n')
           path.write_text(canonical, encoding='utf-8', newline='\n')
-          print(f'conftest repaired: null_bytes={null_count}, replacement_chars={replacement_count}')
+          print(f'restored conftest.py from valid commit {chosen}')
           PY
           python -m py_compile backend/tests/conftest.py
           git diff --check
@@ -58,5 +74,5 @@ jobs:
             echo 'conftest already clean'
             exit 0
           fi
-          git commit -m 'fix: repair pytest conftest encoding corruption'
+          git commit -m 'fix: restore valid pytest conftest'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
