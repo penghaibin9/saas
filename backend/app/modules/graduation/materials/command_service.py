@@ -961,7 +961,7 @@ def update_template_policy_status(policy_id: int, enabled: bool, expected_versio
         if not policy:
             raise not_found("毕业设计模板策略不存在")
         if int(policy.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "模板策略版本已变化，请刷新后重试")
+            raise AppException("APPROVAL_VERSION_CONFLICT", "模板策略版本已变化，请刷新后重试")
         if enabled:
             version = db.scalars(select(FileVersion).where(
                 FileVersion.tenant_id == _tid(), FileVersion.id == int(policy.current_version_id or 0),

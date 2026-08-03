@@ -16,6 +16,7 @@ from app.modules.graduation.materials import command_service as commands
 from app.modules.graduation.materials import access_service as tickets
 from app.modules.graduation.materials import query_service as queries
 from app.modules.graduation.materials import record_service as records
+from app.modules.graduation.schemas.graduation import MaterialSubmitBody, MaterialTicketBody, ReviewBody
 
 router = APIRouter(
     prefix="/mobile/graduation",
@@ -59,19 +60,14 @@ def submit_final(
 
 @router.post("/material-center/materials/{material_code}/submit", summary="小型材料补交")
 def submit_material(
-    material_code: str, body: dict = Body(...),
+    material_code: str, body: MaterialSubmitBody,
     batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user),
 ):
     code = str(material_code or "").upper()
-    if str((body or {}).get("clientSurface") or "").upper() in {"MINIAPP", "MP_WEIXIN"} and code in LARGE_PC_ONLY_CODES:
+    if str(body.clientSurface or "").upper() in {"MINIAPP", "MP_WEIXIN"} and code in LARGE_PC_ONLY_CODES:
         raise AppException("PC_REQUIRED", "论文、作品、源代码等大型材料请使用学生 PC 上传")
-    file_id = (body or {}).get("fileId")
-    if not str(file_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "fileId 不能为空")
-    expected = (body or {}).get("expectedVersion")
     result = commands.submit_material(
-        _with_batch(user, batchId), code, int(file_id),
-        expected_version=int(expected) if str(expected or "").isdigit() else None,
+        _with_batch(user, batchId), code, body.fileId, expected_version=body.expectedVersion,
     )
     return success(result, message="材料新版本已提交")
 
@@ -89,15 +85,11 @@ def material_library(
 
 @router.post("/material-center/materials/{material_id}/review", summary="教师小程序审核或退回具体版本")
 def review_material(
-    material_id: int, body: dict = Body(...), user=Depends(require_staff),
+    material_id: int, body: ReviewBody, user=Depends(require_staff),
 ):
-    version_id = (body or {}).get("fileVersionId") or (body or {}).get("versionId")
-    if not str(version_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "fileVersionId 不能为空")
     return success(commands.review_material(
-        material_id, int(version_id), str((body or {}).get("action") or ""),
-        (body or {}).get("comment"), user,
-        expected_version=int((body or {}).get("expectedVersion")) if str((body or {}).get("expectedVersion") or "").isdigit() else None,
+        material_id, body.fileVersionId, body.action, body.comment, user,
+        expected_version=body.expectedVersion,
     ), message="材料版本已审核")
 
 
@@ -110,8 +102,8 @@ def material_manifest(
 
 
 @router.post("/material-center/files/{file_id}/ticket", summary="签发小型材料预览/下载票据")
-def material_ticket(file_id: int, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tickets.issue_ticket(file_id, str((body or {}).get("action") or "preview"), user))
+def material_ticket(file_id: int, body: MaterialTicketBody, user=Depends(get_current_user)):
+    return success(tickets.issue_ticket(file_id, body.action, user))
 
 
 @router.get("/material-center/files/{file_id}/preview", summary="使用票据预览小型 PDF/图片")

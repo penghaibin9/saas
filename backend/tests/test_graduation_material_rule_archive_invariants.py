@@ -59,3 +59,14 @@ def test_rule_activation_reports_preserved_archive_evidence():
     activation = text[text.index("def activate_rule"):]
     assert '"preservedArchived": 0' in activation
     assert '"catalogMigration": {**migration, **initialized}' in activation
+
+
+def test_rule_activation_requires_expected_version_and_increments_touched_rows():
+    text = src("backend/app/modules/graduation/materials/rule_service.py")
+    activation = text[text.index("def activate_rule"): ]
+    router = src("backend/app/modules/graduation/routers/graduation_material_center.py")
+    assert "expected_version: int" in activation
+    assert "check_version(int(candidate.version or 0), expected_version)" in activation
+    assert "candidate.version = int(candidate.version or 0) + 1" in activation
+    assert "row.version = int(row.version or 0) + 1" in activation
+    assert "body.expectedVersion" in router

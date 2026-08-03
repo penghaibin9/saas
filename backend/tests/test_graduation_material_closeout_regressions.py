@@ -171,3 +171,72 @@ def test_version_writers_revalidate_locked_security_facts():
     locked_checks = command.count("_assert_locked_file_ready(item, file_obj, user)")
     assert append_calls >= 3
     assert locked_checks == append_calls
+
+
+def test_material_mutation_routes_share_strict_request_dtos():
+    from typing import get_type_hints
+
+    from app.api.v1 import mobile_graduation_material_center as mobile
+    from app.modules.graduation.routers import graduation_material_center as staff
+    from app.modules.graduation.routers import graduation_material_sensitive_router as sensitive
+    from app.modules.graduation.schemas.graduation import (
+        ExpectedVersionBody, ExportRevokeBody, MaterialSubmitBody, MaterialTicketBody,
+        ReviewBody, RuleActivationBody,
+    )
+
+    assert get_type_hints(staff.submit_material)["body"] is MaterialSubmitBody
+    assert get_type_hints(mobile.submit_material)["body"] is MaterialSubmitBody
+    assert get_type_hints(staff.review_material_item)["body"] is ReviewBody
+    assert get_type_hints(mobile.review_material)["body"] is ReviewBody
+    assert get_type_hints(sensitive.proposal_review)["body"] is ReviewBody
+    assert get_type_hints(sensitive.final_review)["body"] is ReviewBody
+    assert get_type_hints(staff.archive_export_ticket)["body"] is ExpectedVersionBody
+    assert get_type_hints(staff.revoke_archive_export)["body"] is ExportRevokeBody
+    assert get_type_hints(staff.material_file_ticket)["body"] is MaterialTicketBody
+    assert get_type_hints(mobile.material_ticket)["body"] is MaterialTicketBody
+    assert get_type_hints(staff.activate_material_rule)["body"] is RuleActivationBody
+
+
+def test_missing_expected_version_is_validation_error_before_service(monkeypatch):
+    from app.core.security import get_current_user
+    from app.main import app as production_app
+    from app.modules.graduation.routers import graduation_material_center as staff
+
+    monkeypatch.setattr(staff.commands, "submission_spec", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("validation must run before service")
+    ))
+    production_app.dependency_overrides[get_current_user] = _admin
+    try:
+        with TestClient(production_app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
+                json={"fileId": 1},
+            )
+    finally:
+        production_app.dependency_overrides.pop(get_current_user, None)
+    assert response.status_code == 400
+    assert "expectedVersion" in response.text
+
+
+def test_stale_expected_version_keeps_one_409_error_contract(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.core.security import get_current_user
+    from app.main import app as production_app
+    from app.modules.graduation.routers import graduation_material_center as staff
+
+    monkeypatch.setattr(staff.commands, "submission_spec", lambda *_args, **_kwargs: {"ownerRole": "STUDENT"})
+    monkeypatch.setattr(staff.commands, "submit_material", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AppException("APPROVAL_VERSION_CONFLICT", "材料状态已变化，请刷新后重试")
+    ))
+    production_app.dependency_overrides[get_current_user] = _admin
+    try:
+        with TestClient(production_app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
+                json={"fileId": 1, "expectedVersion": 0},
+            )
+    finally:
+        production_app.dependency_overrides.pop(get_current_user, None)
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["message"] == "材料状态已变化，请刷新后重试"

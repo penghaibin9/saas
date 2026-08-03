@@ -16,7 +16,10 @@ from app.modules.graduation.materials import migration_service as migrations
 from app.modules.graduation.materials import query_service as queries
 from app.modules.graduation.materials import record_service as records
 from app.modules.graduation.materials import rule_service as rules
-from app.modules.graduation.schemas.graduation import ReviewBody
+from app.modules.graduation.schemas.graduation import (
+    ExpectedVersionBody, ExportRevokeBody, MaterialSubmitBody, MaterialTicketBody,
+    ReviewBody, RuleActivationBody,
+)
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest
 from app.services.data_exchange_job_service import create_download_ticket, revoke_export_job
 
@@ -43,11 +46,12 @@ def material_rule_impact(
 
 @router.post("/material-center/rules/{rule_id}/activate", summary="确认迁移目录并启用毕业设计材料规则")
 def activate_material_rule(
-    rule_id: int, body: dict = Body(default={}),
+    rule_id: int, body: RuleActivationBody,
     user=Depends(require_permission("graduationDesign.student.manage")),
 ):
     result = rules.activate_rule(
-        rule_id, user, confirm_catalog_repair=bool((body or {}).get("confirmCatalogRepair", False)),
+        rule_id, user, expected_version=body.expectedVersion,
+        confirm_catalog_repair=body.confirmCatalogRepair,
     )
     return success(result, message="材料规则已启用")
 
@@ -151,36 +155,27 @@ def material_library(
 
 @router.post("/material-center/materials/{material_code}/submit", summary="学生提交或重交材料新版本")
 def submit_material(
-    material_code: str, body: dict = Body(...), user=Depends(get_current_user),
+    material_code: str, body: MaterialSubmitBody, user=Depends(get_current_user),
 ):
     spec = commands.submission_spec(user, material_code)
     if not spec:
         raise AppException("VALIDATION_ERROR", "未知毕业设计材料代码")
     if str((user or {}).get("userType") or "").upper() == "STUDENT" and spec["ownerRole"] != "STUDENT":
         raise not_found("毕业设计材料不存在")
-    file_id = (body or {}).get("fileId")
-    if not str(file_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "fileId 不能为空")
-    expected = (body or {}).get("expectedVersion")
     result = commands.submit_material(
-        user, material_code, int(file_id),
-        expected_version=int(expected) if str(expected or "").isdigit() else None,
+        user, material_code, body.fileId, expected_version=body.expectedVersion,
     )
     return success(result, message="材料新版本已提交")
 
 
 @router.post("/material-center/materials/{material_id}/review", summary="审核具体文件版本")
 def review_material_item(
-    material_id: int, body: dict = Body(...),
+    material_id: int, body: ReviewBody,
     user=Depends(get_current_user),
 ):
-    version_id = (body or {}).get("fileVersionId") or (body or {}).get("versionId")
-    if not str(version_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "fileVersionId 不能为空")
     result = commands.review_material(
-        material_id, int(version_id), str((body or {}).get("action") or ""),
-        (body or {}).get("comment"), user,
-        expected_version=int((body or {}).get("expectedVersion")) if str((body or {}).get("expectedVersion") or "").isdigit() else None,
+        material_id, body.fileVersionId, body.action, body.comment, user,
+        expected_version=body.expectedVersion,
     )
     return success(result, message="材料版本已审核")
 
@@ -274,19 +269,18 @@ def retry_archive_export(job_id: int, user=Depends(require_permission("graduatio
 
 
 @router.post("/material-center/exports/{job_id}/ticket", summary="创建短时一次性导出下载票据")
-def archive_export_ticket(job_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+def archive_export_ticket(job_id: int, body: ExpectedVersionBody, user=Depends(get_current_user)):
     return success(create_download_ticket(
-        str(job_id), expected_version=int((body or {}).get("expectedVersion") or -1), user=user,
+        str(job_id), expected_version=body.expectedVersion, user=user,
     ))
 
 
 @router.post("/material-center/exports/{job_id}/revoke", summary="撤销毕业设计导出任务")
 def revoke_archive_export(
-    job_id: int, body: dict = Body(...), user=Depends(require_permission("graduationDesign.archive.export")),
+    job_id: int, body: ExportRevokeBody, user=Depends(require_permission("graduationDesign.archive.export")),
 ):
     return success(revoke_export_job(
-        str(job_id), expected_version=int((body or {}).get("expectedVersion") or -1),
-        reason=str((body or {}).get("reason") or ""), user=user,
+        str(job_id), expected_version=body.expectedVersion, reason=body.reason, user=user,
     ), message="导出任务已撤销")
 
 
@@ -303,8 +297,8 @@ def batch_archive_package(batch_id: int, user=Depends(require_permission("gradua
 
 
 @router.post("/material-center/files/{file_id}/ticket", summary="签发毕业设计材料预览/下载票据")
-def material_file_ticket(file_id: int, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tickets.issue_ticket(file_id, str((body or {}).get("action") or "preview"), user))
+def material_file_ticket(file_id: int, body: MaterialTicketBody, user=Depends(get_current_user)):
+    return success(tickets.issue_ticket(file_id, body.action, user))
 
 
 @router.get("/material-center/files/{file_id}/preview", summary="使用短时票据预览当前安全材料")

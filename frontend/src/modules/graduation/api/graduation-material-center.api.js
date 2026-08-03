@@ -17,9 +17,9 @@ export const graduationMaterialCenterApi = {
   ruleImpact(ruleId) {
     return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/impact`)
   },
-  activateRule(ruleId, { confirmCatalogRepair = false } = {}) {
+  activateRule(ruleId, { confirmCatalogRepair = false, expectedVersion } = {}) {
     return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/activate`, {
-      method: 'POST', data: { confirmCatalogRepair }
+      method: 'POST', data: { confirmCatalogRepair, expectedVersion }
     })
   },
   overview(params = {}) {

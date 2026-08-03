@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.models import GraduationBatch, GraduationStudent
 from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule, GraduationStudentMaterial
 from app.services.db_service import _tid, session
@@ -224,6 +224,7 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     return {
         "previousRuleId": str(current.id) if current else "",
         "candidateRuleId": str(candidate.id),
+        "candidateVersion": int(candidate.version or 0),
         "affectedStudents": affected_students,
         "existingMaterialRows": material_rows,
         "addedCodes": sorted(candidate_items.keys() - current_items.keys()),
@@ -286,7 +287,9 @@ def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: d
     return {"migrated": migrated, "removedEmpty": removed_empty, "preservedArchived": preserved_archived}
 
 
-def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = False) -> dict:
+def activate_rule(
+    rule_id: int, user: dict, *, expected_version: int, confirm_catalog_repair: bool = False,
+) -> dict:
     with session() as db:
         candidate = db.scalars(select(GraduationMaterialRule).where(
             GraduationMaterialRule.tenant_id == _tid(), GraduationMaterialRule.id == int(rule_id),
@@ -294,6 +297,7 @@ def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = Fa
         ).with_for_update()).first()
         if not candidate:
             raise not_found("材料规则不存在")
+        check_version(int(candidate.version or 0), expected_version)
         if candidate.status == "ENABLED" and candidate.enabled:
             return {"id": str(candidate.id), "status": candidate.status, "impactAnalysis": impact_analysis(db, candidate)}
         if candidate.status != "DRAFT":
@@ -317,10 +321,13 @@ def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = Fa
         for row in current:
             row.status = "DISABLED"
             row.enabled = False
+            row.version = int(row.version or 0) + 1
+            row.updated_by = _actor_id(user)
         candidate.status = "ENABLED"
         candidate.enabled = True
         candidate.effective_at = datetime.utcnow()
         candidate.updated_by = _actor_id(user)
+        candidate.version = int(candidate.version or 0) + 1
         from .command_service import initialize_batch_materials_in_session
 
         initialized = initialize_batch_materials_in_session(db, int(candidate.batch_id), user)
