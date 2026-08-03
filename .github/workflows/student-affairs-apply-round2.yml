@@ -1,0 +1,40 @@
+name: Apply Student Affairs Round Two
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/student-affairs-apply-round2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-student-affairs-round-two
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+      - name: Verify and apply round-two patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/closeout-round2/part-00 /tmp/student-affairs-round2.patch.gz.b64
+          test "$(wc -c < /tmp/student-affairs-round2.patch.gz.b64)" -eq 8524
+          echo "b6d049f1c8833957887e48020c12da271cc54ffc14cad8713355fd37c59eefef  /tmp/student-affairs-round2.patch.gz.b64" | sha256sum -c -
+          base64 -d /tmp/student-affairs-round2.patch.gz.b64 | gzip -d > /tmp/student-affairs-round2.patch
+          git apply --check /tmp/student-affairs-round2.patch
+          git apply --index /tmp/student-affairs-round2.patch
+          git rm .github/closeout-round2/part-00
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(student-affairs): repair MySQL acceptance regressions"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
