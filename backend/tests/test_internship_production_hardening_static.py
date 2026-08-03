@@ -27,8 +27,13 @@ def test_complaint_contact_is_encrypted_and_risk_source_is_exact():
 def test_active_students_cannot_bypass_change_workflow():
     text = _read("backend/app/modules/internship/services/internship_student_service.py")
     assert "在岗或考核中的学生禁止直接换岗/退岗" in text
+    assert "def assign_position_in_tx" in text
+    assert "def unassign_position_in_tx" in text
     change = _read("backend/app/modules/internship/services/internship_change_service.py")
-    assert change.count("allow_active_change=True") >= 2
+    assert "assign_position_in_tx" in change
+    assert "unassign_position_in_tx" in change
+    assert "_rollback_approved_change" not in change
+    assert '"atomic": True' in change
 
 
 def test_leave_risks_are_bound_to_leave_id():
