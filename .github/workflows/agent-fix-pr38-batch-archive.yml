@@ -74,3 +74,5 @@ jobs:
           git add backend/app/modules/graduation/materials/manifest_service.py
           git commit -m 'fix(graduation): count ineligible batch archive rows as skipped [agent-fix-pr38]'
           git push origin HEAD:fix/main-pytest-fixture-corruption
+
+      # This comment makes the workflow pre-exist before the triggering push.
