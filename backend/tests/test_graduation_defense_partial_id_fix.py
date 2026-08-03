@@ -25,26 +25,26 @@ def _uniq(prefix="FIX"):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _batch(client, h):
-    return client.post(BATCH, headers=h, json={
+def _batch(graduation_client, h):
+    return graduation_client.post(BATCH, headers=h, json={
         "batchName": _uniq("批"), "batchNo": _uniq("BN"),
         "gradeYear": "2026届", "plannedCount": 20,
     }).json()["data"]["id"]
 
 
-def _mentor(client, h, teacher_no, teacher_name):
-    mid = client.post(GD_MENTOR, headers=h, json={
+def _mentor(graduation_client, h, teacher_no, teacher_name):
+    mid = graduation_client.post(GD_MENTOR, headers=h, json={
         "teacherNo": teacher_no, "teacherName": teacher_name, "maxCapacity": 8,
     }).json()["data"]["id"]
-    client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
     return mid
 
 
-def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mode):
+def test_update_without_ids_preserves_name_snapshots(graduation_client, auth_headers, db_mode):
     """编辑时未传 mentorId：保留原姓名快照，不清空。"""
     h = auth_headers
-    bid = _batch(client, h)
-    created = client.post(DG, headers=h, params={"batchId": bid}, json={
+    bid = _batch(graduation_client, h)
+    created = graduation_client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("名组"), "batchId": bid, "location": "C101",
         "chair": "历史主席", "secretary": "历史秘书", "members": ["历史评委甲", "历史评委乙"],
     }).json()
@@ -54,7 +54,7 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     assert created["data"]["secretary"] == "历史秘书"
 
     # 仅改地点 / 组名；不传 ID、不传姓名字段（或传 null ID）
-    updated = client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
+    updated = graduation_client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
         "groupName": created["data"]["groupName"],
         "location": "C202",
         "chairMentorId": None,
@@ -67,13 +67,13 @@ def test_update_without_ids_preserves_name_snapshots(client, auth_headers, db_mo
     assert "历史评委甲" in names and "历史评委乙" in names
 
 
-def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, auth_headers, db_mode):
+def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(graduation_client, auth_headers, db_mode):
     """组内部分席位有 ID、主席仅姓名：姓名只是快照，不产生授权关系。"""
     h = auth_headers
-    bid = _batch(client, h)
+    bid = _batch(graduation_client, h)
     no_m = _uniq("TM")
-    mid = _mentor(client, h, no_m, "有ID评委")
-    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
+    mid = _mentor(graduation_client, h, no_m, "有ID评委")
+    grp = graduation_client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("混组"), "batchId": bid, "location": "D1",
         "chair": "仅姓名主席", "memberMentorIds": [int(mid)],
         "secretary": "秘书快照",
@@ -82,8 +82,8 @@ def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, a
     assert grp["chairMentorId"] in (None, "")
     assert any(str(m.get("mentorId")) == str(mid) for m in grp.get("memberDetails", []))
 
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生", "classId": make_org_class()}).json()["data"]["id"]
-    gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "混组生", "classId": make_org_class()}).json()["data"]["id"]
+    gsid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     try:
         stu = db.get(GraduationStudent, int(gsid))
@@ -115,18 +115,18 @@ def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(client, a
         db.close()
 
 
-def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(client, auth_headers, db_mode):
+def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(graduation_client, auth_headers, db_mode):
     """部分席位有 ID 时：确认使用稳定导师 ID 评分行覆盖席位。"""
     h = auth_headers
-    bid = _batch(client, h)
-    chair_mid = _mentor(client, h, _uniq("TC"), "姓名主席")
-    mid = _mentor(client, h, _uniq("TJ"), "ID评委")
-    grp = client.post(DG, headers=h, params={"batchId": bid}, json={
+    bid = _batch(graduation_client, h)
+    chair_mid = _mentor(graduation_client, h, _uniq("TC"), "姓名主席")
+    mid = _mentor(graduation_client, h, _uniq("TJ"), "ID评委")
+    grp = graduation_client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("确认组"), "batchId": bid,
         "chairMentorId": int(chair_mid), "memberMentorIds": [int(mid)],
     }).json()["data"]
-    sid = client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生", "classId": make_org_class()}).json()["data"]["id"]
-    gsid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": _uniq("S"), "realName": "确认生", "classId": make_org_class()}).json()["data"]["id"]
+    gsid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
 
     db = get_sessionmaker()()
     try:
@@ -147,17 +147,17 @@ def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(client, auth_h
     finally:
         db.close()
 
-    ok = client.post(f"{GD_SCORE}/{gsid}/confirm", headers=h, params={"batchId": bid}).json()
+    ok = graduation_client.post(f"{GD_SCORE}/{gsid}/confirm", headers=h, params={"batchId": bid}).json()
     assert ok["code"] == 0, ok
     assert ok["data"]["judgeCount"] == 2
 
 
-def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mode):
+def test_mixed_panel_update_keeps_name_only_members(graduation_client, auth_headers, db_mode):
     """部分评委已绑 ID、部分仅姓名：再保存（只带 memberMentorIds）不得丢掉姓名席位。"""
     h = auth_headers
-    bid = _batch(client, h)
-    mid = _mentor(client, h, _uniq("TMIX"), "ID评委")
-    created = client.post(DG, headers=h, params={"batchId": bid}, json={
+    bid = _batch(graduation_client, h)
+    mid = _mentor(graduation_client, h, _uniq("TMIX"), "ID评委")
+    created = graduation_client.post(DG, headers=h, params={"batchId": bid}, json={
         "groupName": _uniq("混存组"), "batchId": bid,
         "chair": "混存主席",
         "members": ["仅姓名评委", {"mentorId": int(mid), "name": "ID评委"}],
@@ -165,7 +165,7 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     assert created["code"] == 0, created
     gid_ = created["data"]["id"]
     # 模拟前端只传已选 ID（旧行为会清空仅姓名评委）
-    updated = client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
+    updated = graduation_client.put(f"{DG}/{gid_}", headers=h, params={"batchId": bid}, json={
         "groupName": created["data"]["groupName"],
         "location": "E101",
         "memberMentorIds": [int(mid)],
@@ -185,9 +185,9 @@ def test_mixed_panel_update_keeps_name_only_members(client, auth_headers, db_mod
     assert str(mid) in ids
 
 
-def test_stats_endpoints_accept_batch_id(client, auth_headers, db_mode):
+def test_stats_endpoints_accept_batch_id(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid = _batch(client, h)
+    bid = _batch(graduation_client, h)
     paths = [
         "/api/v1/graduation/gd-guidances/stats",
         "/api/v1/graduation/gd-midterms/stats",
@@ -198,7 +198,7 @@ def test_stats_endpoints_accept_batch_id(client, auth_headers, db_mode):
         "/api/v1/graduation/gd-peer-reviews/stats",
     ]
     for path in paths:
-        r = client.get(path, headers=h, params={"batchId": bid}).json()
+        r = graduation_client.get(path, headers=h, params={"batchId": bid}).json()
         assert r["code"] == 0, (path, r)
         assert r["data"].get("batchId") == str(bid), (path, r["data"])
 

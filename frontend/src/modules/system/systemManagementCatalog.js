@@ -62,7 +62,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-org-colleges', label: '学院与部门', path: '/admin/system/org?tab=college', permissionKey: 'system.org.view', view: 'org', actions: [action('org:create', '新增组织'), action('org:update', '编辑组织'), action('org:disable', '停用组织', 'HIGH')] },
       { key: 'sys-org-majors', label: '专业管理', path: '/admin/system/org?tab=major', permissionKey: 'system.org.major.manage', view: 'org', actions: [action('org:major:manage', '维护专业')] },
       { key: 'sys-org-classes', label: '年级与班级', path: '/admin/system/org?tab=class', permissionKey: 'system.org.class.manage', view: 'org', actions: [action('org:class:manage', '维护班级')] },
-      { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] }
+      { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] },
+      { key: 'sys-business-relations', label: '业务关系中心', path: '/admin/system/business-relations', permissionKey: 'system.org.view', view: 'business-relations', actions: [] }
     ]
   },
   {
@@ -71,6 +72,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     items: [
       { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/roles?tab=templates', permissionKey: 'system.role.template.view', view: 'roles', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
       { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/roles?tab=members', permissionKey: 'system.role.view', view: 'roles', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
+      { key: 'sys-role-assignments', label: '角色成员与业务身份', path: '/admin/system/role-assignments', permissionKey: 'system.role.view', view: 'role-assignments', actions: [] },
       { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/roles?tab=permissions', permissionKey: 'system.role.permission.manage', view: 'roles', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
       { key: 'sys-data-scopes', label: '数据范围规则', path: '/admin/system/scopes', permissionKey: 'system.scope.view', view: 'scopes', actions: [action('scope:create', '新增数据范围规则', 'HIGH'), action('scope:update', '修改数据范围规则', 'HIGH'), action('scope:deprecate', '停用数据范围规则', 'HIGH')] },
       { key: 'sys-delegations', label: '临时授权与工作移交', path: '/admin/system/delegations', permissionKey: 'system.delegation.manage', view: 'delegations', actions: [action('delegation:create', '创建临时授权', 'HIGH'), action('delegation:revoke', '提前回收授权', 'HIGH')] },
@@ -84,6 +86,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     items: [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
+      { key: 'sys-master-data', label: '主数据责任与数据质量', path: '/admin/system/master-data', permissionKey: 'system.config.view', view: 'master-data', actions: [] },
       { key: 'sys-academic-calendar', label: '学年学期与业务日历', path: '/admin/system/academic-calendar', permissionKey: 'systemAdmin.academicCalendar.view', view: 'academic-calendar', actions: [action('systemAdmin.academicCalendar.manage', '切换全校学期', 'HIGH'), action('systemAdmin.academicCalendar.manage', '维护业务窗口')] }
     ]
   },

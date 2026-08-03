@@ -44,9 +44,12 @@ def test_xlsx_import_export_prevents_formula_and_path_injection():
     assert "target.unlink(missing_ok=True)" in domain_export
 
 
-def test_router_installs_publicity_before_archive_and_stats():
+def test_router_installs_publicity_before_stats_and_archive_is_direct_service():
     source = read("backend/app/api/v1/router.py")
+    archive = read("backend/app/services/affairs_archive_service.py")
     publicity = source.index("install_publicity_guard()")
-    archive = source.index("install_archive_guard()")
     stats = source.index("install_stats_integrity_guard()")
-    assert publicity < archive < stats
+    assert publicity < stats
+    assert "install_archive_guard()" not in source
+    assert "公共版本与 Manifest" in archive
+    assert "AFFAIRS_ARCHIVE_MANIFEST" in archive

@@ -30,14 +30,14 @@ def _teacher_token(real_name):
         "currentRoleCode": "GD_MENTOR", "clientType": "MP"})}
 
 
-def _gd_student_with_topic(client, h, no, name, advisor="成果张老师"):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
-    tid = client.post(GD_TOPIC, headers=h, json={
+def _gd_student_with_topic(graduation_client, h, no, name, advisor="成果张老师"):
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    tid = graduation_client.post(GD_TOPIC, headers=h, json={
         "title": f"{name}的毕设题目", "sourceType": "TEACHER", "advisorName": advisor,
         "capacity": 1, "submitReview": True}).json()["data"]["id"]
-    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
-    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    graduation_client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     from datetime import datetime
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm, GraduationStudent, GraduationTaskBook
@@ -58,80 +58,80 @@ def _gd_student_with_topic(client, h, no, name, advisor="成果张老师"):
     return gid
 
 
-def _upload(client, headers):
-    r = client.post(FILES, headers=headers,
+def _upload(graduation_client, headers):
+    r = graduation_client.post(FILES, headers=headers,
                     files={"file": ("thesis.pdf", b"%PDF-1.4 real bytes for graduation attachment", "application/pdf")})
     return r.json()["data"]["fileId"]
 
 
-def test_final_review_and_real_attachments(client, auth_headers, db_mode):
+def test_final_review_and_real_attachments(graduation_client, auth_headers, db_mode):
     h = auth_headers
     name = "成果详情生"
-    _gd_student_with_topic(client, h, "FN001", name)
+    _gd_student_with_topic(graduation_client, h, "FN001", name)
     sh = _stu_token(name)
 
     # 学生带真实附件提交开题 → 教师开题详情能解析出可下载附件
-    fid1 = _upload(client, sh)
-    client.post(f"{MOBILE}/graduation/proposal", headers=sh, json={
+    fid1 = _upload(graduation_client, sh)
+    graduation_client.post(f"{MOBILE}/graduation/proposal", headers=sh, json={
         "background": "背景真实内容", "plan": "方案真实内容", "outcome": "成果真实内容",
         "attachments": [fid1]})
-    pid = client.get(f"{MOBILE}/graduation/proposal", headers=sh).json()["data"]["latest"]["id"]
-    pdetail = client.get(f"{MOBILE}/teacher/graduation/proposal/{pid}", headers=h).json()["data"]
+    pid = graduation_client.get(f"{MOBILE}/graduation/proposal", headers=sh).json()["data"]["latest"]["id"]
+    pdetail = graduation_client.get(f"{MOBILE}/teacher/graduation/proposal/{pid}", headers=h).json()["data"]
     assert len(pdetail["attachmentsList"]) == 1
     att = pdetail["attachmentsList"][0]
     assert att["fileId"] == str(fid1)
     assert att["fileName"] == "thesis.pdf"
     assert att["downloadUrl"] == f"/api/v1/graduation/materials/{fid1}/download"
     # 真实下载走鉴权+审计接口，返回 200
-    dl = client.get(att["downloadUrl"], headers=h)
+    dl = graduation_client.get(att["downloadUrl"], headers=h)
     assert dl.status_code == 200
-    assert client.get(f"/api/v1/files/download/{fid1}", headers=h).status_code == 404
+    assert graduation_client.get(f"/api/v1/files/download/{fid1}", headers=h).status_code == 404
 
     # 学生带附件提交成果初稿（无查重率）
-    fid2 = _upload(client, sh)
-    client.post(f"{MOBILE}/graduation/final", headers=sh,
+    fid2 = _upload(graduation_client, sh)
+    graduation_client.post(f"{MOBILE}/graduation/final", headers=sh,
                 json={"finalType": "初稿", "attachments": [fid2]})
-    students = client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]
+    students = graduation_client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]
     finals = students.get("finalDetail") or []
     assert any(f["studentName"] == name for f in finals)
     myfinal = next(f for f in finals if f["studentName"] == name)
     fdid = myfinal["id"]
 
     # 教师成果详情：真实类型/版本 + 解析出的附件
-    fdetail = client.get(f"{MOBILE}/teacher/graduation/final/{fdid}", headers=h).json()["data"]
+    fdetail = graduation_client.get(f"{MOBILE}/teacher/graduation/final/{fdid}", headers=h).json()["data"]
     assert fdetail["type"] == "初稿"
     assert fdetail["studentName"] == name
     assert len(fdetail["attachmentsList"]) == 1
     assert fdetail["attachmentsList"][0]["fileId"] == str(fid2)
 
     # SCOPED 非本人指导教师 → 403
-    outsider = client.get(f"{MOBILE}/teacher/graduation/final/{fdid}", headers=_teacher_token("成果范围外老师"))
+    outsider = graduation_client.get(f"{MOBILE}/teacher/graduation/final/{fdid}", headers=_teacher_token("成果范围外老师"))
     assert outsider.json()["code"] != 0
     # 不存在 → 404
-    assert client.get(f"{MOBILE}/teacher/graduation/final/999999", headers=h).json()["code"] != 0
+    assert graduation_client.get(f"{MOBILE}/teacher/graduation/final/999999", headers=h).json()["code"] != 0
 
     # 教师批阅通过（无查重超标）
-    ok = client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
+    ok = graduation_client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
                      json={"action": "APPROVE"})
     assert ok.json()["code"] == 0
     assert ok.json()["data"]["status"] == "APPROVED"
 
 
-def test_final_review_reject_needs_reason(client, auth_headers, db_mode):
+def test_final_review_reject_needs_reason(graduation_client, auth_headers, db_mode):
     h = auth_headers
     name = "成果退回生"
-    _gd_student_with_topic(client, h, "FN002", name, advisor="成果李老师")
+    _gd_student_with_topic(graduation_client, h, "FN002", name, advisor="成果李老师")
     sh = _stu_token(name)
-    fid = _upload(client, sh)
-    client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [fid]})
-    finals = client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]["finalDetail"]
+    fid = _upload(graduation_client, sh)
+    graduation_client.post(f"{MOBILE}/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [fid]})
+    finals = graduation_client.get(f"{MOBILE}/teacher/graduation", headers=h).json()["data"]["finalDetail"]
     fdid = next(f["id"] for f in finals if f["studentName"] == name)
     # 退回不填原因 → 校验失败
-    bad = client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
+    bad = graduation_client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
                       json={"action": "REJECT", "comment": "短"})
     assert bad.json()["code"] != 0
     # 退回填足原因 → 成功，状态 REJECTED
-    ok = client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
+    ok = graduation_client.post(f"{MOBILE}/teacher/graduation/final/{fdid}/review", headers=h,
                      json={"action": "REJECT", "comment": "论文结构不完整，请补充实验章节后重交"})
     assert ok.json()["code"] == 0
     assert ok.json()["data"]["status"] == "REJECTED"

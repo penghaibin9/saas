@@ -168,8 +168,8 @@ def test_sensitive_detail_routes_are_reads_and_review_routes_use_concurrency_con
     proposal_review = source[source.index("def proposal_review"):source.index("def proposal_defense")]
     final_detail = source[source.index("def final_detail"):source.index("def final_review")]
     final_review = source[source.index("def final_review"):source.index("def final_remind")]
-    assert "svc.get_proposal_detail" in proposal_detail and "material_records.review" not in proposal_detail
-    assert "svc.get_final_detail" in final_detail and "material_records.review" not in final_detail
+    assert "material_queries.proposal_detail" in proposal_detail and "material_records.review" not in proposal_detail
+    assert "material_queries.final_detail" in final_detail and "material_records.review" not in final_detail
     for review in (proposal_review, final_review):
         assert "material_records.review" in review
         assert "body.expectedVersion" in review and "body.fileVersionId" in review

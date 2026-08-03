@@ -14,6 +14,22 @@ MANIFEST_SCHEMA_VERSION = "GRADUATION_MATERIAL_MANIFEST_V2"
 SNAPSHOT_SCHEMA_VERSION = "GRADUATION_STRUCTURED_SNAPSHOT_V1"
 SNAPSHOT_GENERATOR_VERSION = "graduation-material-closeout/1"
 
+REVIEW_PERMISSION_BY_CODE = {
+    "TOPIC_ATTACHMENT": "graduationDesign.topic.review",
+    "TASKBOOK": "graduationDesign.taskbook.update",
+    "PROPOSAL_REPORT": "graduationDesign.proposal.review",
+    "PROPOSAL_DEFENSE": "graduationDesign.proposal.review",
+    "MIDTERM_REPORT": "graduationDesign.midterm.review",
+    "THESIS_DRAFT": "graduationDesign.final.review",
+    "THESIS_FINAL": "graduationDesign.final.review",
+    "DESIGN_WORK": "graduationDesign.final.review",
+    "SOURCE_CODE": "graduationDesign.final.review",
+    "WORK_DESCRIPTION": "graduationDesign.final.review",
+    "PLAGIARISM_REPORT": "graduationDesign.plagiarism.result",
+    "REVIEW_ATTACHMENT": "graduationDesign.review.submit",
+    "DEFENSE_SIGNED_SHEET": "graduationDesign.defense.scoreConfirm",
+}
+
 
 DEFAULT_MATERIAL_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {"materialCode": "TOPIC_ATTACHMENT", "materialName": "题目附件", "stage": "TOPIC", "ownerRole": "MENTOR", "required": False, "allowedExtensions": ["pdf", "doc", "docx", "ppt", "pptx"], "maxSizeBytes": 50 * 1024**2, "reviewRequired": True, "archiveRequired": True, "sensitivityLevel": "SENSITIVE"},

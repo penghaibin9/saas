@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent, GraduationTemplate
 from app.models.file import ArchiveManifest, FileAsset, FileBinding, FileObject, FileVersion
 from app.models.graduation_material import (
@@ -17,10 +18,12 @@ from app.models.graduation_material import (
 )
 from app.services.db_service import _iso, _tid, session
 from app.services.file_access_service import require_file_access
+from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
 from app.services.file_scan_service import assert_file_ready_for_business
 from app.services.message_identity import resolve_message_user_id
 
-from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE
+from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, REVIEW_PERMISSION_BY_CODE
 from .rule_service import active_rule, rule_item, rule_items
 
 
@@ -35,6 +38,20 @@ _OWNER_ROLES = {
     },
     "SYSTEM": {"SYSTEM"},
 }
+
+def review_permission_code(material_code: str) -> str:
+    code = REVIEW_PERMISSION_BY_CODE.get(str(material_code or "").strip().upper())
+    if not code:
+        raise AppException("NO_PERMISSION", "该材料未配置审核动作权限，系统已拒绝操作", http_status=403)
+    return code
+
+
+def _enforce_review_permission(user: dict, material_code: str) -> str:
+    if str((user or {}).get("userType") or "").strip().upper() == "STUDENT":
+        raise AppException("NO_PERMISSION", "学生不能审核毕业设计材料", http_status=403)
+    code = review_permission_code(material_code)
+    enforce_permission(user or {}, code)
+    return code
 
 
 def _actor_id(user: dict | None) -> int | None:
@@ -122,16 +139,27 @@ def _new_material(student: GraduationStudent, item: GraduationMaterialItem, rule
 
 
 def initialize_student_materials_in_session(db, gd_student_id: int, user: dict | None = None) -> dict:
-    """Idempotently materialize the enabled rule for one active student."""
+    """Idempotently materialize the enabled rule without mutating archived evidence."""
     student = _student_for_update(db, int(gd_student_id))
-    rule = active_rule(db, int(student.batch_id), lock=True)
-    items = rule_items(db, int(rule.id), lock=True)
-    existing = {row.material_code: row for row in db.scalars(select(GraduationStudentMaterial).where(
+    existing_rows = list(db.scalars(select(GraduationStudentMaterial).where(
         GraduationStudentMaterial.tenant_id == _tid(),
         GraduationStudentMaterial.batch_id == int(student.batch_id),
         GraduationStudentMaterial.gd_student_id == int(student.id),
         GraduationStudentMaterial.is_deleted.is_(False),
-    ).with_for_update()).all()}
+    ).with_for_update()).all())
+    if str(student.stage or "").upper() == "ARCHIVED":
+        rule_ids = {int(row.rule_id) for row in existing_rows if row.rule_id}
+        rule_versions = {int(row.rule_version) for row in existing_rows if row.rule_version}
+        if len(rule_ids) != 1 or len(rule_versions) != 1:
+            raise AppException("MATERIAL_RULE_CONFLICT", "已归档学生材料缺少唯一冻结规则，禁止补写目录")
+        return {
+            "gdStudentId": str(student.id), "ruleId": str(next(iter(rule_ids))),
+            "ruleVersion": next(iter(rule_versions)), "created": 0,
+            "total": len(existing_rows), "preservedArchived": True,
+        }
+    rule = active_rule(db, int(student.batch_id), lock=True)
+    items = rule_items(db, int(rule.id), lock=True)
+    existing = {row.material_code: row for row in existing_rows}
     created = 0
     for item in items:
         if item.material_code in existing:
@@ -142,6 +170,7 @@ def initialize_student_materials_in_session(db, gd_student_id: int, user: dict |
     return {
         "gdStudentId": str(student.id), "ruleId": str(rule.id),
         "ruleVersion": int(rule.rule_version), "created": created, "total": len(items),
+        "preservedArchived": False,
     }
 
 
@@ -158,7 +187,9 @@ def initialize_batch_materials_in_session(db, batch_id: int, user: dict | None =
     active_rule(db, int(batch_id), lock=True)
     student_ids = list(db.scalars(select(GraduationStudent.id).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
-        GraduationStudent.record_status == "ACTIVE", GraduationStudent.is_deleted.is_(False),
+        GraduationStudent.record_status == "ACTIVE",
+        func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.id).with_for_update()).all())
     created = 0
     for gd_student_id in student_ids:
@@ -181,7 +212,9 @@ def repair_material_catalog(batch_id: int, user: dict | None = None) -> dict:
         definitions = {row.material_code: row for row in rule_items(db, int(rule.id), lock=True)}
         student_ids = list(db.scalars(select(GraduationStudent.id).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
-            GraduationStudent.record_status == "ACTIVE", GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
         ).order_by(GraduationStudent.id).with_for_update()).all())
         created = updated = preserved = 0
         for gd_student_id in student_ids:
@@ -253,6 +286,18 @@ def _validate_file(item: GraduationMaterialItem, file_obj: FileObject) -> None:
         raise AppException("FILE_TYPE_NOT_ALLOWED", f"{item.material_name} 不允许 .{ext or '未知'} 文件")
     if int(file_obj.size_bytes or 0) > int(item.max_size_bytes or 0):
         raise AppException("FILE_TOO_LARGE", f"{item.material_name} 超过允许大小")
+
+
+def _assert_locked_file_ready(item: GraduationMaterialItem, file_obj: FileObject, user: dict) -> None:
+    """Re-check authorization and immutable security facts after SELECT ... FOR UPDATE."""
+    _validate_file(item, file_obj)
+    require_file_access(str(file_obj.id), user=user, action="bind")
+    scan = str(file_obj.scan_status or SCAN_NOT_REQUIRED).upper()
+    if not is_downloadable_status(file_obj.status) or scan not in READY_SCAN_STATES:
+        raise AppException("FILE_NOT_READY", "文件安全状态已变化，请重新上传或等待扫描完成", http_status=409)
+    digest = str(file_obj.sha256 or "")
+    if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+        raise AppException("FILE_HASH_MISSING", "文件缺少可信 SHA-256，禁止登记材料版本", http_status=409)
 
 
 def _ensure_asset(db, student: GraduationStudent, material: GraduationStudentMaterial, user: dict) -> FileAsset:
@@ -427,7 +472,7 @@ def submit_material(user: dict, material_code: str, file_id: int, *, gd_student_
         ).with_for_update()).first()
         if not file_obj:
             raise not_found("文件不存在")
-        _validate_file(item, file_obj)
+        _assert_locked_file_ready(item, file_obj, user)
         version = _append_version(
             db, student, material, item, file_obj, user, source_channel=source_channel,
             source_record_type=source_record_type, source_record_id=source_record_id, comment=comment,
@@ -493,7 +538,7 @@ def submit_material_in_session(
     ).with_for_update()).first()
     if not file_obj:
         raise not_found("文件不存在")
-    _validate_file(item, file_obj)
+    _assert_locked_file_ready(item, file_obj, user)
     version = _append_version(
         db, student, material, item, file_obj, user, source_channel=source_channel,
         source_record_type=source_record_type, source_record_id=source_record_id, comment=comment,
@@ -528,6 +573,7 @@ def review_material(material_id: int, expected_file_version_id: int, action: str
         assert_student_access(db, student, "material.review")
         _assert_not_archived(db, student)
         _, item = rule_item(db, int(student.batch_id), material.material_code, lock=True)
+        _enforce_review_permission(user, material.material_code)
         if not item.review_required:
             raise AppException("DATA_CONFLICT", "该材料按批次规则无需人工审核")
         if int(material.version or 0) != int(expected_version):
@@ -606,6 +652,7 @@ def review_material_in_session(
     assert_student_access(db, student, "material.review")
     _assert_not_archived(db, student)
     _, item = rule_item(db, int(student.batch_id), material.material_code, lock=True)
+    _enforce_review_permission(user, material.material_code)
     if not item.review_required:
         raise AppException("DATA_CONFLICT", "该材料按批次规则无需人工审核")
     if int(material.version or 0) != int(expected_version):
@@ -694,11 +741,20 @@ def register_generated_snapshot(
                 GraduationStudentMaterial.material_code == item.material_code,
                 GraduationStudentMaterial.is_deleted.is_(False),
             ).with_for_update()).first()
+        current_version = db.scalars(select(FileVersion).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id or 0),
+            FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
+        ).with_for_update()).first()
         current_binding = db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == _tid(), FileBinding.version_id == int(material.current_version_id or 0),
             FileBinding.module_code == MODULE_CODE, FileBinding.is_current.is_(True),
             FileBinding.is_deleted.is_(False),
         ).with_for_update()).first()
+        if current_version and str(current_version.source_channel or "").upper() != "SYSTEM_GENERATED":
+            return {
+                "status": "PRESERVED_UPLOAD", "materialId": str(material.id),
+                "fileVersionId": str(material.current_version_id),
+            }
         if current_binding and (current_binding.scope_json or {}).get("sourceDataHash") == source_data_hash:
             return {
                 "status": "UNCHANGED", "materialId": str(material.id),
@@ -710,7 +766,7 @@ def register_generated_snapshot(
         ).with_for_update()).first()
         if not file_obj:
             raise not_found("结构化快照文件不存在")
-        _validate_file(item, file_obj)
+        _assert_locked_file_ready(item, file_obj, user)
         version = _append_version(
             db, student, material, item, file_obj, user,
             source_channel="SYSTEM_GENERATED", source_record_type=source_record_type,
@@ -753,7 +809,7 @@ def adopt_legacy_file_in_session(
     file_obj = db.scalars(select(FileObject).where(
         FileObject.tenant_id == _tid(), FileObject.id == int(file_id),
         FileObject.is_deleted.is_(False),
-    )).first()
+    ).with_for_update()).first()
     if not file_obj:
         raise not_found("历史附件文件不存在")
     if material.asset_id:
@@ -763,8 +819,7 @@ def adopt_legacy_file_in_session(
         )).first()
         if existing:
             return {"status": "SKIPPED", "reason": "ALREADY_BOUND", "fileVersionId": str(existing.id)}
-    _validate_file(item, file_obj)
-    assert_file_ready_for_business(str(file_obj.id), user=user)
+    _assert_locked_file_ready(item, file_obj, user)
     version = _append_version(
         db, student, material, item, file_obj, user,
         source_channel="BACKFILL", source_record_type=source_record_type,
@@ -906,7 +961,7 @@ def update_template_policy_status(policy_id: int, enabled: bool, expected_versio
         if not policy:
             raise not_found("毕业设计模板策略不存在")
         if int(policy.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "模板策略版本已变化，请刷新后重试")
+            raise AppException("APPROVAL_VERSION_CONFLICT", "模板策略版本已变化，请刷新后重试")
         if enabled:
             version = db.scalars(select(FileVersion).where(
                 FileVersion.tenant_id == _tid(), FileVersion.id == int(policy.current_version_id or 0),

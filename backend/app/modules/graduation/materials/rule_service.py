@@ -6,13 +6,13 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, not_found
 from app.models import GraduationBatch, GraduationStudent
 from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule, GraduationStudentMaterial
 from app.services.db_service import _tid, session
 from app.services.message_identity import resolve_message_user_id
 
-from .definitions import DEFAULT_MATERIAL_DEFINITIONS
+from .definitions import DEFAULT_MATERIAL_DEFINITIONS, REVIEW_PERMISSION_BY_CODE
 
 
 def _actor_id(user: dict | None) -> int | None:
@@ -77,6 +77,12 @@ def _normalize_item(raw: dict[str, Any], sort_no: int) -> dict[str, Any]:
         raise AppException("VALIDATION_ERROR", f"材料规则第 {sort_no} 项缺少 code/name/stage/ownerRole")
     if not extensions or max_size <= 0:
         raise AppException("VALIDATION_ERROR", f"材料 {code} 缺少允许扩展名或大小限制")
+    review_required = bool(raw.get("reviewRequired", True))
+    if review_required and code not in REVIEW_PERMISSION_BY_CODE:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"材料 {code} 要求人工审核，但未登记受支持的原子审核权限",
+        )
     return {
         "material_code": code,
         "material_name": name[:200],
@@ -87,7 +93,7 @@ def _normalize_item(raw: dict[str, Any], sort_no: int) -> dict[str, Any]:
         "max_files": max(1, int(raw.get("maxFileCount") or raw.get("maxFiles") or 1)),
         "max_size_bytes": max_size,
         "version_policy": str(raw.get("versionPolicy") or "IMMUTABLE_APPEND").upper()[:40],
-        "review_required": bool(raw.get("reviewRequired", True)),
+        "review_required": review_required,
         "archive_required": bool(raw.get("archiveRequired", True)),
         "sensitivity_level": str(raw.get("sensitivityLevel") or "SENSITIVE").upper()[:30],
         "applicable_major_id": str(raw.get("applicableMajor") or "")[:64] or None,
@@ -193,12 +199,19 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     ).order_by(GraduationMaterialRule.rule_version.desc())).first()
     current_items = {row.material_code: row for row in rule_items(db, int(current.id))} if current else {}
     changed = sorted(code for code in candidate_items.keys() & current_items.keys() if any((
+        candidate_items[code].material_name != current_items[code].material_name,
+        candidate_items[code].biz_stage != current_items[code].biz_stage,
+        candidate_items[code].owner_role != current_items[code].owner_role,
         candidate_items[code].required != current_items[code].required,
         candidate_items[code].review_required != current_items[code].review_required,
         candidate_items[code].archive_required != current_items[code].archive_required,
-        candidate_items[code].owner_role != current_items[code].owner_role,
         candidate_items[code].allowed_ext_json != current_items[code].allowed_ext_json,
+        candidate_items[code].max_files != current_items[code].max_files,
         candidate_items[code].max_size_bytes != current_items[code].max_size_bytes,
+        candidate_items[code].version_policy != current_items[code].version_policy,
+        candidate_items[code].sensitivity_level != current_items[code].sensitivity_level,
+        candidate_items[code].applicable_major_id != current_items[code].applicable_major_id,
+        candidate_items[code].applicable_topic_type != current_items[code].applicable_topic_type,
     )))
     affected_students = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(candidate.batch_id),
@@ -211,6 +224,7 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     return {
         "previousRuleId": str(current.id) if current else "",
         "candidateRuleId": str(candidate.id),
+        "candidateVersion": int(candidate.version or 0),
         "affectedStudents": affected_students,
         "existingMaterialRows": material_rows,
         "addedCodes": sorted(candidate_items.keys() - current_items.keys()),
@@ -220,7 +234,62 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     }
 
 
-def activate_rule(rule_id: int, user: dict) -> dict:
+def get_impact(rule_id: int, user: dict | None = None) -> dict:
+    del user
+    with session() as db:
+        candidate = db.scalars(select(GraduationMaterialRule).where(
+            GraduationMaterialRule.tenant_id == _tid(), GraduationMaterialRule.id == int(rule_id),
+            GraduationMaterialRule.is_deleted.is_(False),
+        )).first()
+        if not candidate:
+            raise not_found("材料规则不存在")
+        return impact_analysis(db, candidate)
+
+
+def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: dict) -> dict:
+    items = {row.material_code: row for row in rule_items(db, int(candidate.id), lock=True)}
+    archived_student_ids = set(db.scalars(select(GraduationStudent.id).where(
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.batch_id == int(candidate.batch_id),
+        GraduationStudent.stage == "ARCHIVED",
+        GraduationStudent.is_deleted.is_(False),
+    ).with_for_update()).all())
+    rows = list(db.scalars(select(GraduationStudentMaterial).where(
+        GraduationStudentMaterial.tenant_id == _tid(),
+        GraduationStudentMaterial.batch_id == int(candidate.batch_id),
+        GraduationStudentMaterial.is_deleted.is_(False),
+    ).with_for_update()).all())
+    migrated = removed_empty = preserved_archived = 0
+    for material in rows:
+        if int(material.gd_student_id or 0) in archived_student_ids or material.archive_status in {"FROZEN", "ARCHIVED"}:
+            preserved_archived += 1
+            continue
+        item = items.get(material.material_code)
+        if not item:
+            if material.current_version_id:
+                raise AppException(
+                    "MATERIAL_RULE_REMOVAL_CONFLICT",
+                    f"材料 {material.material_code} 已有文件，不能从新规则移除",
+                )
+            material.is_deleted = True
+            material.updated_by = _actor_id(user)
+            removed_empty += 1
+            continue
+        material.rule_id = int(candidate.id)
+        material.rule_version = int(candidate.rule_version)
+        material.material_name = item.material_name
+        material.biz_stage = item.biz_stage
+        material.owner_role = item.owner_role
+        material.required_status = "REQUIRED" if item.required else "OPTIONAL"
+        material.sensitivity_level = item.sensitivity_level
+        material.updated_by = _actor_id(user)
+        migrated += 1
+    return {"migrated": migrated, "removedEmpty": removed_empty, "preservedArchived": preserved_archived}
+
+
+def activate_rule(
+    rule_id: int, user: dict, *, expected_version: int, confirm_catalog_repair: bool = False,
+) -> dict:
     with session() as db:
         candidate = db.scalars(select(GraduationMaterialRule).where(
             GraduationMaterialRule.tenant_id == _tid(), GraduationMaterialRule.id == int(rule_id),
@@ -228,23 +297,43 @@ def activate_rule(rule_id: int, user: dict) -> dict:
         ).with_for_update()).first()
         if not candidate:
             raise not_found("材料规则不存在")
+        check_version(int(candidate.version or 0), expected_version)
         if candidate.status == "ENABLED" and candidate.enabled:
             return {"id": str(candidate.id), "status": candidate.status, "impactAnalysis": impact_analysis(db, candidate)}
         if candidate.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿规则可启用")
         impact = impact_analysis(db, candidate)
+        if impact["requiresCatalogRepair"] and not confirm_catalog_repair:
+            raise AppException(
+                "MATERIAL_RULE_REPAIR_REQUIRED",
+                "规则变更会影响现有学生材料目录；请先查看影响分析并显式确认目录迁移",
+                http_status=409,
+            )
         current = list(db.scalars(select(GraduationMaterialRule).where(
             GraduationMaterialRule.tenant_id == _tid(),
             GraduationMaterialRule.batch_id == int(candidate.batch_id),
             GraduationMaterialRule.status == "ENABLED", GraduationMaterialRule.enabled.is_(True),
             GraduationMaterialRule.is_deleted.is_(False),
         ).with_for_update()).all())
+        migration = {"migrated": 0, "removedEmpty": 0, "preservedArchived": 0}
+        if impact["requiresCatalogRepair"]:
+            migration = _migrate_catalog_to_candidate(db, candidate, user)
         for row in current:
             row.status = "DISABLED"
             row.enabled = False
+            row.version = int(row.version or 0) + 1
+            row.updated_by = _actor_id(user)
         candidate.status = "ENABLED"
         candidate.enabled = True
         candidate.effective_at = datetime.utcnow()
         candidate.updated_by = _actor_id(user)
+        candidate.version = int(candidate.version or 0) + 1
+        from .command_service import initialize_batch_materials_in_session
+
+        initialized = initialize_batch_materials_in_session(db, int(candidate.batch_id), user)
         db.commit()
-        return {"id": str(candidate.id), "status": candidate.status, "ruleVersion": int(candidate.rule_version), "impactAnalysis": impact}
+        return {
+            "id": str(candidate.id), "status": candidate.status,
+            "ruleVersion": int(candidate.rule_version), "impactAnalysis": impact,
+            "catalogMigration": {**migration, **initialized},
+        }

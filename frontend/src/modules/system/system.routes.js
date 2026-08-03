@@ -119,9 +119,11 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.migration.view' }
     },
     {
+      // SYS-02：唯一正式实施入口。项目阶段/未确认政策/未安装对象/上线阻断/验收证据
+      // 收在这一个工作区里；下面的分步页面保留为作业入口，不再各自当总览。
       path: 'implementation/overview', name: 'system-implementation-overview',
-      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '实施总览', requiresAuth: true, permissionKey: 'systemAdmin.implementation.view', implementationPageKey: 'overview' }
+      component: () => import('@/modules/system/views/SystemImplementationWorkspaceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '实施项目工作区', requiresAuth: true, permissionKey: 'systemAdmin.implementation.view', implementationPageKey: 'overview' }
     },
     {
       path: 'implementation/wizard', name: 'system-implementation-wizard',
@@ -182,6 +184,24 @@ const systemRoutes = {
       path: 'module-entitlements', name: 'system-module-entitlements',
       component: () => import('@/modules/system/views/SystemModuleFeatureView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
+    },
+    {
+      // SYS-17：数据域责任人、质量规则、问题闭环与合并预览（不代业务部门确认业务事实）
+      path: 'master-data', name: 'system-master-data',
+      component: () => import('@/modules/system/views/SystemMasterDataView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '主数据责任与数据质量', requiresAuth: true, permissionKey: 'systemAdmin.config.view' }
+    },
+    {
+      // SYS-07：固定角色成员的有效期/来源/复核，以及由业务表实时计算的自动业务身份
+      path: 'role-assignments', name: 'system-role-assignments',
+      component: () => import('@/modules/system/views/SystemRoleAssignmentView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '角色成员与业务身份', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
+    },
+    {
+      // SYS-05：业务关系只在这里"发现与治理"，真实编辑仍回各业务模块（本页不写业务终态）
+      path: 'business-relations', name: 'system-business-relations',
+      component: () => import('@/modules/system/views/SystemBusinessRelationView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '业务关系中心', requiresAuth: true, permissionKey: 'systemAdmin.org.view' }
     },
     {
       // SYS-12：全校统一的学年学期与业务日历。学期主数据仍在教务维护，

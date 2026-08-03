@@ -307,22 +307,105 @@ def save_section(user: dict, project_id: int, code: str, body: dict) -> dict:
     finally: db.close()
 
 
+# SYS-02：实施里勾选的模块 ≠ 平台已售出的能力。安装前必须拿这张表去查真实商业授权，
+# 否则学校可以在实施向导里把没买的模块一路装到底、装完才发现接口全是 403。
+IMPLEMENTATION_MODULE_TO_CAPABILITY = {
+    "ORIENTATION": "orientation",
+    "STUDENT_AFFAIRS": "studentAffairs",
+    "ACADEMIC_AFFAIRS": "academicAffairs",
+    "INTERNSHIP": "internship",
+    "GRADUATION": "graduationDesign",
+    "EMPLOYMENT": "employment",
+    "CAMPUS_SERVICE": "campusService",
+}
+
+
+def _entitlement_report(sections, tenant_id: int) -> dict:
+    """把实施选择逐个映射到 SYS-13 能力，查真实 entitled 状态。读不到时 fail-closed。"""
+    config = next((x.config_json for x in sections if x.section_code == "module_business"), {}) or {}
+    selected = [str(m).upper() for m in (config.get("modules") or [])]
+    rows: list[dict] = []
+    try:
+        from app.services import tenant_capability_setting_service as caps
+
+        states = caps.capability_states(tenant_id)
+    except Exception as exc:  # 授权读不出来就不许安装，绝不默认放行
+        return {"selected": selected, "items": [], "blocked": bool(selected),
+                "blockedModules": selected,
+                "error": f"平台授权状态读取失败，已按安全策略拒绝安装：{exc}"}
+    for module in selected:
+        capability = IMPLEMENTATION_MODULE_TO_CAPABILITY.get(module)
+        state = states.get(capability) if capability else None
+        if state is None:
+            rows.append({"module": module, "capabilityKey": capability or "",
+                         "entitled": False, "reason": "实施模块没有对应的平台能力键，无法核对授权"})
+            continue
+        rows.append({"module": module, "capabilityKey": capability,
+                     "entitled": bool(state["entitled"]),
+                     "reason": "" if state["entitled"] else state["reasonText"] or "当前套餐未授权"})
+    blocked = [r["module"] for r in rows if not r["entitled"]]
+    return {"selected": selected, "items": rows, "blocked": bool(blocked),
+            "blockedModules": blocked, "error": ""}
+
+
+def _impact_preview(db, tenant_id: int, sections) -> dict:
+    """应用会动到什么：数量、对象类型和幂等口径，全部来自真实预设与真实库计数。"""
+    from app.models import RoleWorkbenchConfig, WorkflowDefinition
+    from app.services.runtime_preset_install_service import (WORKBENCH_PRESETS, _expanded_workflows,
+                                                             _modules)
+
+    modules = _modules(sections)
+    planned_workflows = [p["code"] for p in _expanded_workflows()
+                         if not modules or p["module"] in modules]
+    existing_workflows = {row.workflow_code for row in db.scalars(select(WorkflowDefinition).where(
+        WorkflowDefinition.tenant_id == tenant_id, WorkflowDefinition.is_deleted.is_(False)))}
+    existing_workbenches = {row.role_code for row in db.scalars(select(RoleWorkbenchConfig).where(
+        RoleWorkbenchConfig.tenant_id == tenant_id, RoleWorkbenchConfig.is_deleted.is_(False)))}
+    planned_workbenches = [item[0] for item in WORKBENCH_PRESETS]
+    return {
+        "workflows": {"planned": len(planned_workflows),
+                      "toCreate": sorted(set(planned_workflows) - existing_workflows),
+                      "alreadyInstalled": sorted(set(planned_workflows) & existing_workflows)},
+        "workbenches": {"planned": len(planned_workbenches),
+                        "toCreate": sorted(set(planned_workbenches) - existing_workbenches),
+                        "alreadyInstalled": sorted(set(planned_workbenches) & existing_workbenches)},
+        "selectedModules": sorted(modules),
+        "note": "已存在的对象只跳过、不覆盖；重复应用同一快照不会产生第二份安装。",
+    }
+
+
+def _reject_if_sealed(project) -> None:
+    """SYS-02 T04：验收封板后，任何普通修改都必须被拒绝，只能另开变更项目。"""
+    if project.status == "ACCEPTED":
+        raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
+
+
 def preview_project(user: dict, project_id: int) -> dict:
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
         project = _project(db, project_id, tenant_id)
+        if project.status == "ACCEPTED":
+            raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
         if project.status not in {"DRAFT", "CONFIGURING", "PREVIEW_READY"}:
             raise AppException("DATA_CONFLICT", "当前状态不能预览")
         sections = _sections(db, project.id, tenant_id); missing = SECTION_CODES - {x.section_code for x in sections}
+        entitlement = _entitlement_report(sections, tenant_id)
+        impact = _impact_preview(db, tenant_id, sections)
         preview = {"profileCode": project.profile_code, "presetVersion": "2026.1",
-                   "missingSections": sorted(missing), "blocked": bool(missing),
+                   "missingSections": sorted(missing),
+                   "blocked": bool(missing) or entitlement["blocked"],
+                   "entitlement": entitlement, "impact": impact,
                    "snapshot": {x.section_code: x.config_json for x in sections},
                    "note": "配置快照与真实师生数据分离；组织和角色须经匹配确认后安装。"}
         project.preview_json = preview; project.preview_hash = _digest(preview); project.status = "PREVIEW_READY"
         project.version += 1; project.updated_by = _actor(user); db.commit()
         audit_log.record("IMPLEMENTATION_PREVIEW_CREATED", f"implementation-project:{project.id}",
-                         {"previewHash": project.preview_hash, "blocked": bool(missing)})
-        return {"preview": preview, "previewHash": project.preview_hash, "project": current_project()}
+                         {"previewHash": project.preview_hash, "blocked": bool(preview["blocked"]),
+                          "blockedModules": entitlement["blockedModules"]})
+        return {"preview": preview, "previewHash": project.preview_hash,
+                # 幂等键=快照哈希：客户端原样回传，服务端据此判断"是不是同一次应用"
+                "idempotencyKey": project.preview_hash,
+                "project": current_project()}
     except Exception:
         db.rollback(); raise
     finally: db.close()
@@ -333,15 +416,51 @@ def apply_snapshot(user: dict, project_id: int, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "请输入“确认应用”")
     reason = str(body.get("reason") or "").strip()
     if len(reason) < 2: raise AppException("VALIDATION_ERROR", "请填写应用原因")
+    expected_hash = str(body.get("expectedPreviewHash") or body.get("idempotencyKey") or "").strip()
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
         project = _project(db, project_id, tenant_id)
+        if project.status == "ACCEPTED":
+            raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
         if project.status == "APPLIED":
             from app.services.runtime_preset_install_service import status as runtime_status
-            return {"idempotent": True, "snapshotOnly": False, "runtime": runtime_status(project_id)}
+            existing = db.scalars(select(SystemPresetInstallation).where(
+                SystemPresetInstallation.tenant_id == tenant_id,
+                SystemPresetInstallation.project_id == project.id,
+                SystemPresetInstallation.snapshot_hash == project.preview_hash,
+                SystemPresetInstallation.is_deleted.is_(False))).first()
+            if expected_hash and project.preview_hash and expected_hash != project.preview_hash:
+                raise AppException("DATA_CONFLICT", "快照已变化，请重新预览后再应用")
+            return {"idempotent": True, "snapshotOnly": False,
+                    "id": str(existing.id) if existing else "",
+                    "installationNo": existing.installation_no if existing else "",
+                    "snapshotHash": project.preview_hash,
+                    "runtime": runtime_status(project_id)}
         if project.status != "PREVIEW_READY" or not project.preview_json or project.preview_json.get("blocked"):
             raise AppException("DATA_CONFLICT", "预览未就绪或有阻断项")
+        if expected_hash and expected_hash != (project.preview_hash or ""):
+            raise AppException("DATA_CONFLICT", "快照已变化，请重新预览后再应用")
+        # 应用前重算一次商业授权：预览到应用之间套餐可能已经变了
+        sections_now = _sections(db, project.id, tenant_id)
+        entitlement = _entitlement_report(sections_now, tenant_id)
+        if entitlement["blocked"]:
+            raise AppException(
+                "VALIDATION_ERROR",
+                "以下模块未获得平台商业授权，不能安装启用："
+                + "、".join(entitlement["blockedModules"])
+                + (f"（{entitlement['error']}）" if entitlement["error"] else ""))
         now = datetime.utcnow(); actor = _actor(user)
+        # 同一快照哈希只允许存在一份安装：重放（网络重试、双击）直接返回上一次的结果
+        replay = db.scalars(select(SystemPresetInstallation).where(
+            SystemPresetInstallation.tenant_id == tenant_id,
+            SystemPresetInstallation.snapshot_hash == project.preview_hash,
+            SystemPresetInstallation.status == "APPLIED",
+            SystemPresetInstallation.is_deleted.is_(False))).first()
+        if replay is not None:
+            from app.services.runtime_preset_install_service import status as runtime_status
+            return {"idempotent": True, "snapshotOnly": False, "id": str(replay.id),
+                    "installationNo": replay.installation_no,
+                    "snapshotHash": replay.snapshot_hash, "runtime": runtime_status(project_id)}
         active = db.scalars(select(SystemPresetInstallation).where(
             SystemPresetInstallation.tenant_id == tenant_id,
             SystemPresetInstallation.status == "APPLIED",
@@ -493,7 +612,7 @@ def confirm_mapping(user: dict, project_id: int, body: dict) -> dict:
 
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _project(db, project_id, tenant_id); _reject_if_sealed(project)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新候选")
         section = _mapping_section(db, project.id, tenant_id)
@@ -559,7 +678,7 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
     if len(reason) < 2: raise AppException("VALIDATION_ERROR", "请填写安装原因")
     tenant_id = _tid(); db = get_sessionmaker()(); entry = None; config = None
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _project(db, project_id, tenant_id); _reject_if_sealed(project)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新")
         section = _mapping_section(db, project.id, tenant_id)
@@ -850,6 +969,7 @@ def run_checks(user: dict, project_id: int) -> dict:
             SystemBusinessRelationInstallItem.project_id == project.id,
             SystemBusinessRelationInstallItem.status == "APPLIED",
             SystemBusinessRelationInstallItem.is_deleted.is_(False))) or 0)
+        entitlement = _entitlement_report(sections, tenant_id)
         real = {
             "school_opening": (bool(opening.get("schoolLevel") and opening.get("deliveryMode") and opening.get("targetDays")),
                                {"schoolLevel": opening.get("schoolLevel"), "deliveryMode": opening.get("deliveryMode"), "targetDays": opening.get("targetDays")}),
@@ -870,11 +990,18 @@ def run_checks(user: dict, project_id: int) -> dict:
                                {"firstLoginChangePassword": security.get("firstLoginChangePassword"), "exportWatermark": security.get("exportWatermark"), "sessionMinutes": security.get("sessionMinutes")}),
             "menu_workbench": (count(RoleWorkbenchConfig) > 0, {"roleWorkbenches": count(RoleWorkbenchConfig)}),
             "message_notification": (count(NotificationTemplate) > 0, {"templates": count(NotificationTemplate)}),
-            "module_business": (bool(modules.get("modules")) and modules.get("includeProfessionalStandards") is True,
-                                {"modules": modules.get("modules") or [], "includeProfessionalStandards": modules.get("includeProfessionalStandards")}),
+            "module_business": (bool(modules.get("modules")) and modules.get("includeProfessionalStandards") is True
+                                and not entitlement["blocked"],
+                                {"modules": modules.get("modules") or [],
+                                 "includeProfessionalStandards": modules.get("includeProfessionalStandards"),
+                                 "entitlement": entitlement}),
         }
         checks = []; actor = _actor(user)
         manual_codes = {"school_opening", "dictionary_numbering", "security_audit", "module_business"}
+        # 商业授权不是学校能"责任确认"掉的事：一旦有未授权模块，module_business 升为阻断项，
+        # 不允许走人工确认绕过。
+        if entitlement["blocked"]:
+            manual_codes = manual_codes - {"module_business"}
         for code, name, _defaults in SECTION_DEFINITIONS:
             if code == "go_live_check":
                 passed = bool(checks) and all(item["result"] == "PASS" for item in checks)

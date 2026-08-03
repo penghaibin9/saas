@@ -13,6 +13,29 @@ class ReviewBody(BaseModel):
     comment: Optional[str] = Field(default="", description="驳回时必填≥5字")
 
 
+class MaterialSubmitBody(BaseModel):
+    """公共材料中心提交/重交合同；四端必须携带当前材料版本。"""
+    fileId: int = Field(..., ge=1)
+    expectedVersion: int = Field(..., ge=0)
+    clientSurface: Optional[Literal["PC", "STUDENT_PC", "TEACHER_PC", "H5", "MINIAPP", "MP_WEIXIN"]] = None
+
+
+class MaterialTicketBody(BaseModel):
+    action: Literal["preview", "download"] = "preview"
+
+
+class ExpectedVersionBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+
+
+class ExportRevokeBody(ExpectedVersionBody):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class RuleActivationBody(ExpectedVersionBody):
+    confirmCatalogRepair: bool = False
+
+
 class RemindBody(BaseModel):
     gdStudentId: str = Field(..., description="毕设学生 t_gd_student.id")
     channel: Optional[str] = Field(default="站内消息", description="催办渠道")

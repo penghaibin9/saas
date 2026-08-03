@@ -18,27 +18,27 @@ def _uniq(prefix="B3"):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _batch(client, h, name=None):
+def _batch(graduation_client, h, name=None):
     body = {
         "batchName": name or _uniq("答辩批次"),
         "batchNo": _uniq("BN"),
         "gradeYear": "2026届",
         "plannedCount": 20,
     }
-    return client.post(BATCH, headers=h, json=body).json()["data"]["id"]
+    return graduation_client.post(BATCH, headers=h, json=body).json()["data"]["id"]
 
 
-def _student(client, h, no=None, name="生"):
-    return client.post(STU, headers=h, json={
+def _student(graduation_client, h, no=None, name="生"):
+    return graduation_client.post(STU, headers=h, json={
         "studentNo": no or _uniq("S"), "realName": name, "classId": make_org_class(),
     }).json()["data"]["id"]
 
 
-def _record(client, h, sid, bid):
-    return client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+def _record(graduation_client, h, sid, bid):
+    return graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
 
 
-def _group(client, h, bid, name=None, **extra):
+def _group(graduation_client, h, bid, name=None, **extra):
     body = {
         "groupName": name or _uniq("组"),
         "batchId": bid,
@@ -48,53 +48,53 @@ def _group(client, h, bid, name=None, **extra):
         "secretary": "秘书",
     }
     body.update(extra)
-    return client.post(DG, headers=h, params={"batchId": bid}, json=body)
+    return graduation_client.post(DG, headers=h, params={"batchId": bid}, json=body)
 
 
-def test_create_requires_batch_id(client, auth_headers, db_mode):
+def test_create_requires_batch_id(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bad = client.post(DG, headers=h, json={"groupName": _uniq("无批组")})
+    bad = graduation_client.post(DG, headers=h, json={"groupName": _uniq("无批组")})
     assert bad.json()["code"] != 0
     assert "批次" in (bad.json().get("message") or "")
 
 
-def test_same_name_ok_across_batches_dup_in_batch(client, auth_headers, db_mode):
+def test_same_name_ok_across_batches_dup_in_batch(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
     name = "第一答辩组"
-    a = _group(client, h, b1, name=name)
+    a = _group(graduation_client, h, b1, name=name)
     assert a.json()["code"] == 0, a.json()
-    b = _group(client, h, b2, name=name)
+    b = _group(graduation_client, h, b2, name=name)
     assert b.json()["code"] == 0, b.json()
-    dup = _group(client, h, b1, name=name)
+    dup = _group(graduation_client, h, b1, name=name)
     assert dup.json()["code"] != 0
 
 
-def test_empty_group_only_shows_in_own_batch(client, auth_headers, db_mode):
+def test_empty_group_only_shows_in_own_batch(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
-    g1 = _group(client, h, b1, name=_uniq("空一组")).json()["data"]["id"]
-    g2 = _group(client, h, b2, name=_uniq("空二组")).json()["data"]["id"]
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
+    g1 = _group(graduation_client, h, b1, name=_uniq("空一组")).json()["data"]["id"]
+    g2 = _group(graduation_client, h, b2, name=_uniq("空二组")).json()["data"]["id"]
 
-    lst1 = client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
+    lst1 = graduation_client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
     ids1 = {x["id"] for x in lst1["data"]["items"]}
     assert g1 in ids1
     assert g2 not in ids1
 
-    lst2 = client.get(DG, headers=h, params={"batchId": b2, "pageSize": 100}).json()
+    lst2 = graduation_client.get(DG, headers=h, params={"batchId": b2, "pageSize": 100}).json()
     ids2 = {x["id"] for x in lst2["data"]["items"]}
     assert g2 in ids2
     assert g1 not in ids2
 
 
-def test_cross_batch_assign_rejected(client, auth_headers, db_mode):
+def test_cross_batch_assign_rejected(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
 
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
-    gid = _group(client, h, b1).json()["data"]["id"]
-    sid = _record(client, h, _student(client, h, name="跨批生"), b2)
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
+    gid = _group(graduation_client, h, b1).json()["data"]["id"]
+    sid = _record(graduation_client, h, _student(graduation_client, h, name="跨批生"), b2)
 
     db = get_sessionmaker()()
     try:
@@ -104,50 +104,50 @@ def test_cross_batch_assign_rejected(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    bad = client.post(f"{DG}/{gid}/assign", headers=h, params={"batchId": b1}, json={"studentIds": [sid]})
+    bad = graduation_client.post(f"{DG}/{gid}/assign", headers=h, params={"batchId": b1}, json={"studentIds": [sid]})
     assert bad.json()["code"] != 0
     assert "批次" in (bad.json().get("message") or "")
 
 
-def test_export_only_current_batch(client, auth_headers, db_mode):
+def test_export_only_current_batch(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
-    _group(client, h, b1, name=_uniq("导一组"))
-    _group(client, h, b2, name=_uniq("导二组"))
-    exp = client.post(f"{DG}/export", headers=h, params={"batchId": b1}).json()
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
+    _group(graduation_client, h, b1, name=_uniq("导一组"))
+    _group(graduation_client, h, b2, name=_uniq("导二组"))
+    exp = graduation_client.post(f"{DG}/export", headers=h, params={"batchId": b1}).json()
     assert exp["code"] == 0, exp
-    lst = client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
+    lst = graduation_client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
     assert exp["data"]["rowCount"] == lst["data"]["total"]
     assert exp["data"].get("batchId") == str(b1)
 
 
-def test_same_student_same_batch_once_different_batches_ok(client, auth_headers, db_mode):
+def test_same_student_same_batch_once_different_batches_ok(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
-    sid = _student(client, h, name="多届生")
-    r1 = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b1})
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
+    sid = _student(graduation_client, h, name="多届生")
+    r1 = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b1})
     assert r1.json()["code"] == 0, r1.json()
-    dup = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b1})
+    dup = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b1})
     assert dup.json()["code"] != 0
-    r2 = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b2})
+    r2 = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": b2})
     assert r2.json()["code"] == 0, r2.json()
 
 
-def test_cross_batch_topic_assign_rejected(client, auth_headers, db_mode):
+def test_cross_batch_topic_assign_rejected(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, b2 = _batch(client, h), _batch(client, h)
-    sid = _record(client, h, _student(client, h, name="选题跨批"), b1)
-    tid = client.post(GD_TOPIC, headers=h, json={
+    b1, b2 = _batch(graduation_client, h), _batch(graduation_client, h)
+    sid = _record(graduation_client, h, _student(graduation_client, h, name="选题跨批"), b1)
+    tid = graduation_client.post(GD_TOPIC, headers=h, json={
         "title": _uniq("跨批题"), "sourceType": "TEACHER", "advisorName": "李老师",
         "capacity": 1, "submitReview": True, "batchId": b2,
     }).json()["data"]["id"]
-    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
-    bad = client.post(f"{GD_STU}/{sid}/assign-topic", headers=h, json={"topicId": tid})
+    graduation_client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    bad = graduation_client.post(f"{GD_STU}/{sid}/assign-topic", headers=h, json={"topicId": tid})
     assert bad.json()["code"] != 0
     assert "批次" in (bad.json().get("message") or "")
 
 
-def test_schema_has_defense_batch_and_student_uk(client, auth_headers, db_mode):
+def test_schema_has_defense_batch_and_student_uk(graduation_client, auth_headers, db_mode):
     """db_mode create_all 后模型约束已落地（batch_id 列 + 两处唯一约束）。"""
     from app.db.session import get_engine
 

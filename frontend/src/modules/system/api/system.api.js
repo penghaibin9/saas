@@ -238,29 +238,282 @@ export const systemApi = {
         body: payload
       }))
     } catch (error) {
-      return fail(error.message || '账号更新失败')
+      // 保留 bizCode：DATA_CONFLICT 时页面要提示刷新而不是笼统报错
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  // SYS-17：主数据责任与数据质量
+  async listMasterDataDomains() {
+    try {
+      return ok(await request('/system/master-data/domains'))
+    } catch (error) {
+      return fail(error.message || '数据域加载失败')
+    }
+  },
+
+  async listMasterDataRules(domainCode) {
+    try {
+      return ok(await request('/system/master-data/rules', {
+        params: { domain_code: domainCode || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '质量规则加载失败')
+    }
+  },
+
+  async listMasterDataIssues(params = {}) {
+    try {
+      return ok(await request('/system/master-data/issues', {
+        params: {
+          domain_code: params.domainCode || undefined,
+          status: params.status || undefined,
+          severity: params.severity || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '数据质量问题加载失败')
+    }
+  },
+
+  async scanMasterData(ruleCode) {
+    try {
+      return ok(await request('/system/master-data/scan', {
+        method: 'POST', body: { ruleCode }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async setMasterDataOwner(domainCode, { ownerUserId, reason, ownerRoleCode, expiresAt } = {}) {
+    try {
+      return ok(await request(`/system/master-data/domains/${encodeURIComponent(domainCode)}/owner`, {
+        method: 'PUT', body: { ownerUserId, reason, ownerRoleCode, expiresAt }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async assignMasterDataIssue(issueId, { ownerUserId, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/assign`, {
+        method: 'POST', body: { ownerUserId, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async resolveMasterDataIssue(issueId, { note, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/resolve`, {
+        method: 'POST', body: { note, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async verifyMasterDataIssue(issueId) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/verify`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async exceptMasterDataIssue(issueId, { reason, until, approvedBy, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/except`, {
+        method: 'POST', body: { reason, until, approvedBy, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async previewMasterDataMerge({ domainCode, primaryObjectId, mergedObjectId, reason } = {}) {
+    try {
+      return ok(await request('/system/master-data/merge-preview', {
+        method: 'POST', body: { domainCode, primaryObjectId, mergedObjectId, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  // SYS-07：角色成员有效期与自动业务身份
+  async listRoleAssignments(params = {}) {
+    try {
+      return ok(await request('/system/role-assignments', {
+        params: {
+          role_code: params.roleCode || undefined,
+          bucket: params.bucket || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '角色成员加载失败')
+    }
+  },
+
+  async grantRoleAssignment({ userId, roleCode, reason, effectiveAt, expiresAt, sourceType } = {}) {
+    try {
+      return ok(await request('/system/role-assignments', {
+        method: 'POST', body: { userId, roleCode, reason, effectiveAt, expiresAt, sourceType }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async revokeRoleAssignment(id, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async transferRoleAssignment(id, { toUserId, reason, expiresAt, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/transfer`, {
+        method: 'POST', body: { toUserId, reason, expiresAt, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async reviewRoleAssignment(id, { term, reason } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/review`, {
+        method: 'POST', body: { term, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async sweepExpiredAssignments() {
+    try {
+      return ok(await request('/system/role-assignments/sweep-expired', { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '到期回收执行失败')
+    }
+  },
+
+  async listBusinessIdentities(params = {}) {
+    try {
+      return ok(await request('/system/business-identities', {
+        params: {
+          identity_type: params.identityType || undefined,
+          user_id: params.userId || undefined
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '业务身份加载失败')
+    }
+  },
+
+  // SYS-05：业务关系注册表与缺口（只读发现，编辑仍回业务模块）
+  async listBusinessRelationTypes() {
+    try {
+      return ok(await request('/system/business-relations/types'))
+    } catch (error) {
+      return fail(error.message || '业务关系注册表加载失败')
+    }
+  },
+
+  async listBusinessRelationIssues() {
+    try {
+      return ok(await request('/system/business-relations/issues'))
+    } catch (error) {
+      return fail(error.message || '业务关系缺口加载失败')
+    }
+  },
+
+  async validateBusinessRelation(relationType) {
+    try {
+      return ok(await request(`/system/business-relations/${encodeURIComponent(relationType)}/validate`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return fail(error.message || '业务关系校验失败')
+    }
+  },
+
+  // SYS-03：稳定主体解析与身份绑定修复
+  async getEffectiveIdentity(userId) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/effective-identity`))
+    } catch (error) {
+      return fail(error.message || '身份解析加载失败')
+    }
+  },
+
+  async listIdentityIssues(params = {}) {
+    try {
+      return ok(await request('/system/accounts/identity-issues', {
+        params: {
+          issue_code: params.issueCode || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '身份绑定异常加载失败')
+    }
+  },
+
+  async repairIdentityBinding(userId, { studentId, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/repair-binding`, {
+        method: 'POST', body: { studentId, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async unbindIdentity(userId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/accounts/${encodeURIComponent(userId)}/unbind`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
   /** 停用/启用（真实库：更新 t_user.status，写审计。停用原因必填 ≥5 字，后端最终校验） */
-  async setUserStatus(id, { action, reason }) {
+  async setUserStatus(id, { action, reason, expectedVersion } = {}) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/status`, {
-        method: 'PUT', body: { action, reason }
+        method: 'PUT', body: { action, reason, expectedVersion }
       }))
     } catch (error) {
-      return fail(error.message || '账号状态更新失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
   /** 重置密码（真实库：生成一次性临时密码，password_hash 更新 + 强制首登改密。临时密码仅本次随响应返回） */
-  async resetUserPassword(id) {
+  async resetUserPassword(id, { expectedVersion } = {}) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/reset-password`, {
-        method: 'POST'
+        method: 'POST', body: { expectedVersion }
       }))
     } catch (error) {
-      return fail(error.message || '重置密码失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
@@ -1032,6 +1285,34 @@ export const systemApi = {
       }))
     } catch (error) {
       return fail(error.message || '业务开关保存失败')
+    }
+  },
+
+  // SYS-13：能力四态与单键启停（整份 module-features 覆盖已退役为兼容入口）
+  async listCapabilitySettings() {
+    try {
+      return ok(await request('/system/capability-settings'))
+    } catch (error) {
+      return fail(error.message || '模块授权加载失败')
+    }
+  },
+
+  async getCapabilityImpact(key) {
+    try {
+      return ok(await request(`/system/capability-settings/${encodeURIComponent(key)}/impact`))
+    } catch (error) {
+      return fail(error.message || '影响预览加载失败')
+    }
+  },
+
+  async setCapabilitySetting(key, { enabled, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/capability-settings/${encodeURIComponent(key)}`, {
+        method: 'PUT', body: { enabled, reason, expectedVersion }
+      }))
+    } catch (error) {
+      // 保留 bizCode：页面据此区分"版本冲突需刷新"与普通失败
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 

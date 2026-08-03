@@ -17,7 +17,8 @@ test('implementation center exposes eight real menu leaves and routes', () => {
 
   const pageKeys = ['overview', 'wizard', 'presets', 'standards', 'data-mapping', 'installed', 'changes', 'acceptance']
   for (const key of pageKeys) assert.match(routes, new RegExp(`implementation/${key}`))
-  assert.equal((routes.match(/SystemImplementationView\.vue/g) || []).length, 7)
+  assert.equal((routes.match(/SystemImplementationWorkspaceView\.vue/g) || []).length, 1)
+  assert.equal((routes.match(/SystemImplementationView\.vue/g) || []).length, 6)
   assert.equal((routes.match(/NationalStandardsView\.vue/g) || []).length, 1)
 })
 
@@ -25,4 +26,3 @@ test('all implementation routes have backend permission keys', () => {
   const permissionMatches = routes.match(/systemAdmin\.implementation\.[a-z.]+/g) || []
   assert.equal(new Set(permissionMatches).size >= 7, true)
 })
-

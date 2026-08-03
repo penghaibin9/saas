@@ -804,7 +804,14 @@ class GraduationBatchAwareClient:
 
 
 @pytest.fixture()
-def client() -> GraduationBatchAwareClient:
+def client() -> TestClient:
+    """通用 HTTP 客户端：不得自动补参数、改身份或写业务数据。"""
+    return TestClient(app)
+
+
+@pytest.fixture()
+def graduation_client() -> GraduationBatchAwareClient:
+    """毕业设计旧测试显式使用的兼容客户端；禁止其他业务测试隐式继承。"""
     return GraduationBatchAwareClient(TestClient(app))
 
 
@@ -982,3 +989,4 @@ def db_mode(tmp_path, request):
         # setup 失败也必须还原，避免污染后续 mock 测试（503 / 误走真库）
         settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
         reset_state()
+

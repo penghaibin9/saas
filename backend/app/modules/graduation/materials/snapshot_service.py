@@ -24,7 +24,7 @@ from app.models import (
     GraduationStudent,
     GraduationTaskBook,
 )
-from app.models.file import FileBinding
+from app.models.file import FileBinding, FileVersion
 from app.models.graduation_material import GraduationStudentMaterial
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services import file_service
@@ -206,7 +206,7 @@ def _collect(gd_student_id: int, user: dict) -> tuple[dict, list[SnapshotSpec]]:
         }, specs
 
 
-def _current_source_hash(gd_student_id: int, material_code: str) -> str | None:
+def _current_version_state(gd_student_id: int, material_code: str) -> dict | None:
     with session() as db:
         material = db.scalars(select(GraduationStudentMaterial).where(
             GraduationStudentMaterial.tenant_id == _tid(),
@@ -216,12 +216,20 @@ def _current_source_hash(gd_student_id: int, material_code: str) -> str | None:
         )).first()
         if not material or not material.current_version_id:
             return None
+        version = db.scalars(select(FileVersion).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id),
+            FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
+        )).first()
         binding = db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == _tid(), FileBinding.version_id == int(material.current_version_id),
             FileBinding.module_code == MODULE_CODE, FileBinding.is_current.is_(True),
             FileBinding.is_deleted.is_(False),
         )).first()
-        return str((binding.scope_json or {}).get("sourceDataHash") or "") or None if binding else None
+        return {
+            "versionId": str(material.current_version_id),
+            "sourceChannel": str(version.source_channel or "").upper() if version else "",
+            "sourceDataHash": str((binding.scope_json or {}).get("sourceDataHash") or "") if binding else "",
+        }
 
 
 def render_fields_pdf(title: str, fields: tuple[tuple[str, Any], ...]) -> bytes:
@@ -260,10 +268,14 @@ def _pdf_bytes(spec: SnapshotSpec) -> bytes:
 def prepare_all(gd_student_id: int, user: dict) -> dict:
     """Three phases: read source, persist bytes, register immutable version."""
     student, specs = _collect(int(gd_student_id), user)
-    result = {"created": [], "unchanged": [], "pendingReview": []}
+    result = {"created": [], "unchanged": [], "preservedUploads": [], "pendingReview": []}
     for spec in specs:
         source_hash = spec.source_hash(int(student["id"]))
-        if _current_source_hash(int(student["id"]), spec.material_code) == source_hash:
+        current = _current_version_state(int(student["id"]), spec.material_code)
+        if current and current["sourceChannel"] != "SYSTEM_GENERATED":
+            result["preservedUploads"].append(spec.material_code)
+            continue
+        if current and current["sourceDataHash"] == source_hash:
             result["unchanged"].append(spec.material_code)
             continue
         meta = file_service.store_bytes(
@@ -278,7 +290,10 @@ def prepare_all(gd_student_id: int, user: dict) -> dict:
             source_data_hash=source_hash, snapshot_schema_version=SNAPSHOT_SCHEMA_VERSION,
             generator_version=SNAPSHOT_GENERATOR_VERSION, approved=spec.approved, user=user,
         )
-        result["unchanged" if registered["status"] == "UNCHANGED" else "created"].append(spec.material_code)
+        if registered["status"] == "PRESERVED_UPLOAD":
+            result["preservedUploads"].append(spec.material_code)
+        else:
+            result["unchanged" if registered["status"] == "UNCHANGED" else "created"].append(spec.material_code)
         if not spec.approved:
             result["pendingReview"].append(spec.material_code)
     return result

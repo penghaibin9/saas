@@ -67,6 +67,19 @@ def _account_type_of(account, db=None, roles: list | None = None) -> str:
     return "STUDENT" if _is_student_account(db, account, roles) else "STAFF"
 
 
+def _check_account_version(account, expected_version) -> None:
+    """SYS-03：账号写操作的乐观锁。不传视为老客户端（放行），传了就必须对得上。"""
+    from app.core.exceptions import AppException
+    if expected_version in (None, ""):
+        return
+    try:
+        expected = int(expected_version)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+    if expected != int(account.version or 0):
+        raise AppException("DATA_CONFLICT", "账号已被他人更新，请刷新后重试")
+
+
 def _account_type_condition(User, account_type: str, tenant_id: int):
     """数据库层使用同一分类规则，确保列表、批量操作、异常与导出边界一致。"""
     from app.models import Role, StudentAccountLink, UserRole
@@ -291,6 +304,8 @@ def _user_row(account, roles: list, db=None) -> dict:
         "orgId": org_id, "orgName": org_name, "roles": [r.role_code for r in roles],
         "roleNames": [r.role_name for r in roles], "phone": phone_masked, "email": "",
         "mustChangePassword": bool(getattr(account, "must_change_password", False)),
+        # SYS-03：写操作要带 expectedVersion，列表/详情必须把当前版本给出去
+        "version": int(getattr(account, "version", 0) or 0),
         "status": "ACTIVE" if status == "ACTIVE" else status,
         "statusLabel": {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}.get(status, "待激活"),
         "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
@@ -528,6 +543,7 @@ def update_system_user(user_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "账号不存在")
         if _account_type_of(account, db) == "STUDENT" and name != account.real_name:
             raise AppException("VALIDATION_ERROR", "学生姓名属于学生主档，请到学生主档办理更正")
+        _check_account_version(account, (body or {}).get("expectedVersion"))
         before = {"name": account.real_name, "phone": _mask_user_phone(account.phone_encrypted)}
         account.real_name = name
         if phone:
@@ -600,9 +616,11 @@ def batch_set_system_user_status(body: dict = Body(...),
                 )
                 stmt = stmt.where(User.id.in_(profile_users))
             accounts = db.scalars(stmt).all()
+            disabled_ids = []
             for account in accounts:
                 account.status = "DISABLED"
                 account.version = int(account.version or 0) + 1
+                disabled_ids.append(int(account.id))
             db.commit()
             count = len(accounts)
         except Exception:
@@ -610,6 +628,15 @@ def batch_set_system_user_status(body: dict = Body(...),
             raise
         finally:
             db.close()
+
+        # 单个停用会清主体缓存，按范围批量停用原来没清：被停用的学生在缓存 TTL 内
+        # 仍然带着旧令牌照常访问。逐个清掉，让停用立刻生效。
+        from app.services.auth_service_db import invalidate_subject_cache
+        for uid in disabled_ids:
+            try:
+                invalidate_subject_cache(f"db-{uid}", tenant_id)
+            except Exception:  # noqa: BLE001
+                pass
 
         from app.services import audit_log
         scope_label = {
@@ -643,16 +670,23 @@ def batch_set_system_user_status(body: dict = Body(...),
     self_id = _acting_db_id(user)
     count = 0
     errors = []
+    results = []  # SYS03-T04：逐项结果，不能只回一个总数让管理员猜哪一条没成
     for uid in ids:
         if action == "DISABLE" and self_id == uid:
             errors.append({"id": uid, "message": "不能停用本人"})
+            results.append({"id": str(uid), "status": "FAILED", "message": "不能停用本人"})
             continue
         try:
             set_system_user_status(uid, {"action": action, "reason": reason}, user=user)
             count += 1
+            results.append({"id": str(uid), "status": "OK",
+                            "message": "已停用" if action == "DISABLE" else "已启用"})
         except Exception as exc:  # noqa: BLE001
-            errors.append({"id": uid, "message": getattr(exc, "message", None) or str(exc)})
-    return success({"count": count, "errors": errors},
+            message = getattr(exc, "message", None) or str(exc)
+            errors.append({"id": uid, "message": message})
+            results.append({"id": str(uid), "status": "FAILED", "message": message})
+    return success({"count": count, "errors": errors, "results": results,
+                    "total": len(results), "succeeded": count, "failed": len(errors)},
                    message=f"已处理 {count} 个账号" + (f"，{len(errors)} 个失败" if errors else ""))
 
 
@@ -701,6 +735,311 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
                         "accountType": normalized_type or "MIXED_LEGACY"})
     finally:
         db.close()
+
+
+# ── SYS-17 主数据责任与数据质量 ──────────────────────────────────────────────
+@router.get("/system/master-data/domains", summary="数据域目录、责任人与质量分")
+def api_master_data_domains(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.org.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_domains())
+
+
+@router.post("/system/master-data/bootstrap", summary="装入内置数据域与质量规则")
+def api_master_data_bootstrap(user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import master_data_governance_service as md
+    return success(md.bootstrap_defaults(), message="内置数据域与规则已就位")
+
+
+@router.put("/system/master-data/domains/{domain_code}/owner", summary="指定数据域责任人")
+def api_set_master_data_owner(domain_code: str, body: dict = Body(...),
+                              user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    owner_id = str(payload.get("ownerUserId") or "").strip()
+    if not owner_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+    return success(md.set_domain_owner(
+        domain_code, owner_user_id=int(owner_id), reason=payload.get("reason") or "",
+        owner_role_code=payload.get("ownerRoleCode"),
+        is_primary=bool(payload.get("isPrimary", True)),
+        expires_at=payload.get("expiresAt"), user=user), message="责任人已指定")
+
+
+@router.get("/system/master-data/rules", summary="数据质量规则")
+def api_master_data_rules(domain_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_rules(domain_code=domain_code))
+
+
+@router.post("/system/master-data/scan", summary="执行质量扫描（真查业务权威表）")
+def api_master_data_scan(body: dict | None = Body(default=None),
+                         user=Depends(require_any_permission(
+                             "systemAdmin.config.manage", "systemAdmin.org.view"))):
+    from app.services import master_data_governance_service as md
+    payload = body if isinstance(body, dict) else {}
+    return success(md.scan(rule_code=payload.get("ruleCode") or "", user=user),
+                   message="扫描已完成")
+
+
+@router.get("/system/master-data/issues", summary="数据质量问题队列")
+def api_master_data_issues(domain_code: str = "", status: str = "", severity: str = "",
+                           page: int = 1, page_size: int = 50,
+                           user=Depends(require_any_permission(
+                               "systemAdmin.dashboard.view", "systemAdmin.org.view",
+                               "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_issues(domain_code=domain_code, status=status,
+                                  severity=severity, page=page, page_size=page_size))
+
+
+@router.post("/system/master-data/issues/{issue_id}/assign", summary="指派问题责任人")
+def api_master_data_assign(issue_id: int, body: dict = Body(...),
+                           user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    owner_id = str(payload.get("ownerUserId") or "").strip()
+    if not owner_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+    return success(md.assign_issue(issue_id, owner_user_id=int(owner_id),
+                                   reason=payload.get("reason") or "",
+                                   expected_version=payload.get("expectedVersion"),
+                                   user=user), message="已指派")
+
+
+@router.post("/system/master-data/issues/{issue_id}/resolve", summary="登记处理结果（待复扫验证）")
+def api_master_data_resolve(issue_id: int, body: dict = Body(...),
+                            user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    return success(md.resolve_issue(issue_id, note=payload.get("note") or "",
+                                    expected_version=payload.get("expectedVersion"),
+                                    user=user),
+                   message="已登记处理结果，仍需复扫验证")
+
+
+@router.post("/system/master-data/issues/{issue_id}/verify", summary="复扫验证（问题还在会打回）")
+def api_master_data_verify(issue_id: int, user=Depends(require_any_permission(
+        "systemAdmin.config.manage", "systemAdmin.org.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.verify_issue(issue_id, user=user), message="复扫完成")
+
+
+@router.post("/system/master-data/issues/{issue_id}/except", summary="登记例外（必须有期限与审批人）")
+def api_master_data_except(issue_id: int, body: dict = Body(...),
+                           user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    approver = str(payload.get("approvedBy") or "").strip()
+    if not approver.isdigit():
+        raise AppException("VALIDATION_ERROR", "例外必须记录审批人 approvedBy")
+    return success(md.except_issue(issue_id, reason=payload.get("reason") or "",
+                                   until=payload.get("until") or "",
+                                   approved_by=int(approver),
+                                   expected_version=payload.get("expectedVersion"),
+                                   user=user), message="例外已登记")
+
+
+@router.post("/system/master-data/merge-preview", summary="合并预览：列出被并方的全部引用")
+def api_master_data_merge_preview(body: dict = Body(...),
+                                  user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    domain_code = str(payload.get("domainCode") or "").strip()
+    primary = str(payload.get("primaryObjectId") or "").strip()
+    merged = str(payload.get("mergedObjectId") or "").strip()
+    if not domain_code or not primary or not merged:
+        raise AppException("VALIDATION_ERROR", "domainCode / primaryObjectId / mergedObjectId 必填")
+    return success(md.merge_preview(domain_code, primary_object_id=primary,
+                                    merged_object_id=merged,
+                                    reason=payload.get("reason") or "", user=user),
+                   message="合并预览已生成，系统管理不代业务部门执行合并")
+
+
+@router.get("/system/master-data/merge-events", summary="合并预览留痕")
+def api_master_data_merge_events(domain_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_merge_events(domain_code=domain_code))
+
+
+# ── SYS-07 角色成员有效期与自动业务身份 ──────────────────────────────────────
+@router.get("/system/role-assignments", summary="角色成员与有效期（进页面先跑一次到期回收）")
+def api_list_role_assignments(role_code: str = "", bucket: str = "", page: int = 1,
+                              page_size: int = 50,
+                              user=Depends(require_any_permission(
+                                  "systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.services import role_assignment_service as ras
+    return success(ras.list_assignments(role_code=role_code, bucket=bucket,
+                                        page=page, page_size=page_size))
+
+
+@router.post("/system/role-assignments", summary="授予角色并登记有效期与来源")
+def api_grant_role_assignment(body: dict = Body(...),
+                              user=Depends(require_any_permission(
+                                  "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    user_id = str(payload.get("userId") or "").strip()
+    if not user_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+    return success(ras.grant_assignment(
+        int(user_id), payload.get("roleCode") or "", reason=payload.get("reason") or "",
+        effective_at=payload.get("effectiveAt"), expires_at=payload.get("expiresAt"),
+        source_type=payload.get("sourceType") or "MANUAL", user=user), message="角色已授予")
+
+
+@router.post("/system/role-assignments/{assignment_id}/revoke", summary="回收角色授权")
+def api_revoke_role_assignment(assignment_id: int, body: dict = Body(...),
+                               user=Depends(require_any_permission(
+                                   "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    return success(ras.revoke_assignment(
+        assignment_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="授权已回收")
+
+
+@router.post("/system/role-assignments/{assignment_id}/transfer", summary="工作转交（旧人立即失效）")
+def api_transfer_role_assignment(assignment_id: int, body: dict = Body(...),
+                                 user=Depends(require_any_permission(
+                                     "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    to_user = str(payload.get("toUserId") or "").strip()
+    if not to_user.isdigit():
+        raise AppException("VALIDATION_ERROR", "toUserId 必须是账号主键")
+    return success(ras.transfer_assignment(
+        assignment_id, to_user_id=int(to_user), reason=payload.get("reason") or "",
+        expires_at=payload.get("expiresAt"),
+        expected_version=payload.get("expectedVersion"), user=user), message="工作已转交")
+
+
+@router.post("/system/role-assignments/{assignment_id}/review", summary="跨学期复核长期授权")
+def api_review_role_assignment(assignment_id: int, body: dict = Body(...),
+                               user=Depends(require_any_permission(
+                                   "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    return success(ras.review_assignment(
+        assignment_id, term=payload.get("term") or "",
+        reason=payload.get("reason") or "", user=user), message="已记录复核结论")
+
+
+@router.post("/system/role-assignments/sweep-expired", summary="立即执行到期回收（定时任务同一入口）")
+def api_sweep_expired_assignments(user=Depends(require_any_permission(
+        "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    return success(ras.sweep_expired(), message="到期回收已执行")
+
+
+@router.get("/system/business-identities", summary="自动业务身份（由业务权威表实时计算）")
+def api_list_business_identities(identity_type: str = "", user_id: str = "",
+                                 user=Depends(require_any_permission(
+                                     "systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.services import business_identity_service as bis
+    return success(bis.list_business_identities(
+        identity_type=identity_type,
+        user_id=int(user_id) if str(user_id).isdigit() else None))
+
+
+@router.post("/system/business-identities/request", summary="申请应急业务身份（只生成安全变更，不授权）")
+def api_request_business_identity(body: dict = Body(...),
+                                  user=Depends(require_any_permission(
+                                      "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import business_identity_service as bis
+    payload = body or {}
+    user_id = str(payload.get("userId") or "").strip()
+    if not user_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+    return success(bis.request_manual_identity(
+        identity_type=payload.get("identityType") or "", user_id=int(user_id),
+        reason=payload.get("reason") or "", expires_at=payload.get("expiresAt"),
+        user=user), message="已登记安全变更申请，尚未授予任何权限")
+
+
+# ── SYS-05 业务关系中心（只发现与治理，不复制业务关系数据）────────────────────
+@router.get("/system/business-relations/types", summary="业务关系注册表（owner/resolver/测试真实校验）")
+def api_business_relation_types(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view", "systemAdmin.dashboard.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.list_types())
+
+
+@router.get("/system/business-relations/issues", summary="业务关系缺口（按业务权威表实时统计）")
+def api_business_relation_issues(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view", "systemAdmin.dashboard.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.list_issues())
+
+
+@router.post("/system/business-relations/{relation_type}/validate", summary="校验单个业务关系类型")
+def api_validate_business_relation(relation_type: str, user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.role.view"))):
+    from app.services import business_relation_registry as registry
+    return success(registry.validate_type(relation_type))
+
+
+# ── SYS-03 稳定主体解析与绑定修复 ────────────────────────────────────────────
+@router.get("/system/accounts/identity-issues", summary="身份绑定异常队列（学号改名/未绑定/同名同手机号）")
+def api_identity_issues(issue_code: str = "", page: int = 1, page_size: int = 50,
+                        user=Depends(require_any_permission(
+                            "systemAdmin.user.exception.view", "systemAdmin.user.view",
+                            "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    return success(ident.identity_issues(issue_code=issue_code, page=page, page_size=page_size))
+
+
+@router.get("/system/accounts/{user_id}/effective-identity", summary="账号的稳定主体解析（userId/studentId/staffId）")
+def api_effective_identity(user_id: int, user=Depends(require_any_permission(
+        "systemAdmin.user.view", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    return success(ident.effective_identity(user_id))
+
+
+@router.post("/system/accounts/{user_id}/repair-binding", summary="修复身份绑定（登录名兜底转结构化绑定）")
+def api_repair_binding(user_id: int, body: dict = Body(...),
+                       user=Depends(require_any_permission(
+                           "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    student_id = str(payload.get("studentId") or "").strip()
+    if not student_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "studentId 必须是学籍主档主键")
+    return success(ident.repair_binding(
+        user_id, student_id=int(student_id), reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="绑定已修复")
+
+
+@router.post("/system/accounts/{user_id}/unbind", summary="解除身份绑定（历史留痕，不物理删除）")
+def api_unbind_identity(user_id: int, body: dict = Body(...),
+                        user=Depends(require_any_permission(
+                            "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    return success(ident.unbind(
+        user_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="绑定已解除")
+
+
+@router.post("/system/accounts/batch-repair-binding", summary="批量修复绑定（逐项返回结果）")
+def api_batch_repair_binding(body: dict = Body(...),
+                             user=Depends(require_any_permission(
+                                 "systemAdmin.user.bind", "systemAdmin.user.manage"))):
+    from app.services import account_identity_resolution_service as ident
+    payload = body or {}
+    return success(ident.batch_repair(payload.get("items") or [],
+                                      reason=payload.get("reason") or "", user=user),
+                   message="批量修复已完成，请逐项查看结果")
 
 
 @router.get("/system/staff-affiliations", summary="教职工岗位与归属（班级辅导员/班主任 + 教师范围）")
@@ -1434,6 +1773,7 @@ def set_system_user_status(user_id: int, body: dict = Body(...),
             raise AppException("DATA_NOT_FOUND", "账号不存在")
         if action == "DISABLE" and _is_last_active_school_admin(db, tenant_id, account.id):
             raise AppException("VALIDATION_ERROR", "不能停用本校最后一名启用中的学校管理员")
+        _check_account_version(account, (body or {}).get("expectedVersion"))
         before = str(account.status or "").upper()
         account.status = "DISABLED" if action == "DISABLE" else "ACTIVE"
         account.version = int(account.version or 0) + 1
@@ -1458,7 +1798,7 @@ def set_system_user_status(user_id: int, body: dict = Body(...),
 
 
 @router.post("/system/users/{user_id}/reset-password", summary="重置学校账号密码（生成临时密码，强制首登改密）")
-def reset_system_user_password(user_id: int,
+def reset_system_user_password(user_id: int, body: dict | None = Body(default=None),
                                user=Depends(require_permission("systemAdmin.user.manage"))):
     from app.core.exceptions import AppException
     from app.core.security import hash_password
@@ -1470,6 +1810,8 @@ def reset_system_user_password(user_id: int,
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在")
+        # 本函数也被内部直接调用（此时 body 还是 Body() 标记对象，不是 dict），故显式判类型
+        _check_account_version(account, (body if isinstance(body, dict) else {}).get("expectedVersion"))
         temp_password = "Tmp" + secrets.token_urlsafe(6)  # 一次性临时密码，仅本次返回给管理员转交
         account.password_hash = hash_password(temp_password)
         account.must_change_password = True
@@ -2293,6 +2635,40 @@ def api_save_module_features(body: dict = Body(...),
     return success(gov.save_module_features(
         user, features, reason, expected_version=(body or {}).get("expectedVersion")),
         message="业务开关已更新")
+
+
+# ── SYS-13 能力启用（结构化单键写入，取代整份 MODULE_FEATURES 覆盖）─────────────
+@router.get("/system/capability-settings", summary="模块商业授权与学校启用（四态：entitled/enabled/ready/allowed）")
+def api_list_capability_settings(user=Depends(require_any_permission(
+        "systemAdmin.config.feature.view", "systemAdmin.config.view"))):
+    from app.services import tenant_capability_setting_service as caps
+    items = caps.list_capabilities()
+    return success({"list": items, "total": len(items)})
+
+
+@router.get("/system/capability-settings/{capability_key}/impact", summary="停用影响预览")
+def api_capability_impact(capability_key: str, user=Depends(require_any_permission(
+        "systemAdmin.config.feature.view", "systemAdmin.config.view"))):
+    from app.services import tenant_capability_setting_service as caps
+    return success(caps.capability_impact(capability_key))
+
+
+@router.put("/system/capability-settings/{capability_key}", summary="启停单个能力（带 expectedVersion）")
+def api_set_capability_setting(capability_key: str, body: dict = Body(...),
+                               user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import tenant_capability_setting_service as caps
+    payload = body or {}
+    if "enabled" not in payload:
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "缺少 enabled")
+    return success(caps.set_capability(
+        capability_key,
+        enabled=bool(payload.get("enabled")),
+        reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"),
+        expires_at=payload.get("expiresAt"),
+        user=user,
+    ), message="模块开关已更新")
 
 
 @router.post("/system/integrations/{integration_id}/test", summary="测试接口连接（可达性，不伪造成功连接）")
