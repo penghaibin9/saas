@@ -737,6 +737,137 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
         db.close()
 
 
+# ── SYS-17 主数据责任与数据质量 ──────────────────────────────────────────────
+@router.get("/system/master-data/domains", summary="数据域目录、责任人与质量分")
+def api_master_data_domains(user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.org.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_domains())
+
+
+@router.post("/system/master-data/bootstrap", summary="装入内置数据域与质量规则")
+def api_master_data_bootstrap(user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import master_data_governance_service as md
+    return success(md.bootstrap_defaults(), message="内置数据域与规则已就位")
+
+
+@router.put("/system/master-data/domains/{domain_code}/owner", summary="指定数据域责任人")
+def api_set_master_data_owner(domain_code: str, body: dict = Body(...),
+                              user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    owner_id = str(payload.get("ownerUserId") or "").strip()
+    if not owner_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+    return success(md.set_domain_owner(
+        domain_code, owner_user_id=int(owner_id), reason=payload.get("reason") or "",
+        owner_role_code=payload.get("ownerRoleCode"),
+        is_primary=bool(payload.get("isPrimary", True)),
+        expires_at=payload.get("expiresAt"), user=user), message="责任人已指定")
+
+
+@router.get("/system/master-data/rules", summary="数据质量规则")
+def api_master_data_rules(domain_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_rules(domain_code=domain_code))
+
+
+@router.post("/system/master-data/scan", summary="执行质量扫描（真查业务权威表）")
+def api_master_data_scan(body: dict | None = Body(default=None),
+                         user=Depends(require_any_permission(
+                             "systemAdmin.config.manage", "systemAdmin.org.view"))):
+    from app.services import master_data_governance_service as md
+    payload = body if isinstance(body, dict) else {}
+    return success(md.scan(rule_code=payload.get("ruleCode") or "", user=user),
+                   message="扫描已完成")
+
+
+@router.get("/system/master-data/issues", summary="数据质量问题队列")
+def api_master_data_issues(domain_code: str = "", status: str = "", severity: str = "",
+                           page: int = 1, page_size: int = 50,
+                           user=Depends(require_any_permission(
+                               "systemAdmin.dashboard.view", "systemAdmin.org.view",
+                               "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_issues(domain_code=domain_code, status=status,
+                                  severity=severity, page=page, page_size=page_size))
+
+
+@router.post("/system/master-data/issues/{issue_id}/assign", summary="指派问题责任人")
+def api_master_data_assign(issue_id: int, body: dict = Body(...),
+                           user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    owner_id = str(payload.get("ownerUserId") or "").strip()
+    if not owner_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+    return success(md.assign_issue(issue_id, owner_user_id=int(owner_id),
+                                   reason=payload.get("reason") or "",
+                                   expected_version=payload.get("expectedVersion"),
+                                   user=user), message="已指派")
+
+
+@router.post("/system/master-data/issues/{issue_id}/resolve", summary="登记处理结果（待复扫验证）")
+def api_master_data_resolve(issue_id: int, body: dict = Body(...),
+                            user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    return success(md.resolve_issue(issue_id, note=payload.get("note") or "",
+                                    expected_version=payload.get("expectedVersion"),
+                                    user=user),
+                   message="已登记处理结果，仍需复扫验证")
+
+
+@router.post("/system/master-data/issues/{issue_id}/verify", summary="复扫验证（问题还在会打回）")
+def api_master_data_verify(issue_id: int, user=Depends(require_any_permission(
+        "systemAdmin.config.manage", "systemAdmin.org.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.verify_issue(issue_id, user=user), message="复扫完成")
+
+
+@router.post("/system/master-data/issues/{issue_id}/except", summary="登记例外（必须有期限与审批人）")
+def api_master_data_except(issue_id: int, body: dict = Body(...),
+                           user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    approver = str(payload.get("approvedBy") or "").strip()
+    if not approver.isdigit():
+        raise AppException("VALIDATION_ERROR", "例外必须记录审批人 approvedBy")
+    return success(md.except_issue(issue_id, reason=payload.get("reason") or "",
+                                   until=payload.get("until") or "",
+                                   approved_by=int(approver),
+                                   expected_version=payload.get("expectedVersion"),
+                                   user=user), message="例外已登记")
+
+
+@router.post("/system/master-data/merge-preview", summary="合并预览：列出被并方的全部引用")
+def api_master_data_merge_preview(body: dict = Body(...),
+                                  user=Depends(require_permission("systemAdmin.config.manage"))):
+    from app.core.exceptions import AppException
+    from app.services import master_data_governance_service as md
+    payload = body or {}
+    domain_code = str(payload.get("domainCode") or "").strip()
+    primary = str(payload.get("primaryObjectId") or "").strip()
+    merged = str(payload.get("mergedObjectId") or "").strip()
+    if not domain_code or not primary or not merged:
+        raise AppException("VALIDATION_ERROR", "domainCode / primaryObjectId / mergedObjectId 必填")
+    return success(md.merge_preview(domain_code, primary_object_id=primary,
+                                    merged_object_id=merged,
+                                    reason=payload.get("reason") or "", user=user),
+                   message="合并预览已生成，系统管理不代业务部门执行合并")
+
+
+@router.get("/system/master-data/merge-events", summary="合并预览留痕")
+def api_master_data_merge_events(domain_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.dashboard.view", "systemAdmin.config.view"))):
+    from app.services import master_data_governance_service as md
+    return success(md.list_merge_events(domain_code=domain_code))
+
+
 # ── SYS-07 角色成员有效期与自动业务身份 ──────────────────────────────────────
 @router.get("/system/role-assignments", summary="角色成员与有效期（进页面先跑一次到期回收）")
 def api_list_role_assignments(role_code: str = "", bucket: str = "", page: int = 1,

@@ -194,6 +194,9 @@ from app.models.access_governance import (AccessDecisionTrace,  # noqa: F401  (S
                                           EmergencyAccessSession, SodRule, SodViolation)
 from app.models.tenant_capability import TenantCapabilitySetting  # noqa: F401  (SYS-13 学校能力启用)
 from app.models.role_assignment import RoleAssignmentValidity  # noqa: F401  (SYS-07 角色成员有效期)
+from app.models.master_data_governance import (DataDomain,  # noqa: F401  (SYS-17 主数据治理)
+                                               DataOwner, DataQualityIssue,
+                                               DataQualityRule, MasterMergeEvent)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401

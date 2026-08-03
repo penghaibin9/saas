@@ -243,6 +243,111 @@ export const systemApi = {
     }
   },
 
+  // SYS-17：主数据责任与数据质量
+  async listMasterDataDomains() {
+    try {
+      return ok(await request('/system/master-data/domains'))
+    } catch (error) {
+      return fail(error.message || '数据域加载失败')
+    }
+  },
+
+  async listMasterDataRules(domainCode) {
+    try {
+      return ok(await request('/system/master-data/rules', {
+        params: { domain_code: domainCode || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '质量规则加载失败')
+    }
+  },
+
+  async listMasterDataIssues(params = {}) {
+    try {
+      return ok(await request('/system/master-data/issues', {
+        params: {
+          domain_code: params.domainCode || undefined,
+          status: params.status || undefined,
+          severity: params.severity || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '数据质量问题加载失败')
+    }
+  },
+
+  async scanMasterData(ruleCode) {
+    try {
+      return ok(await request('/system/master-data/scan', {
+        method: 'POST', body: { ruleCode }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async setMasterDataOwner(domainCode, { ownerUserId, reason, ownerRoleCode, expiresAt } = {}) {
+    try {
+      return ok(await request(`/system/master-data/domains/${encodeURIComponent(domainCode)}/owner`, {
+        method: 'PUT', body: { ownerUserId, reason, ownerRoleCode, expiresAt }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async assignMasterDataIssue(issueId, { ownerUserId, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/assign`, {
+        method: 'POST', body: { ownerUserId, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async resolveMasterDataIssue(issueId, { note, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/resolve`, {
+        method: 'POST', body: { note, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async verifyMasterDataIssue(issueId) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/verify`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async exceptMasterDataIssue(issueId, { reason, until, approvedBy, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/master-data/issues/${encodeURIComponent(issueId)}/except`, {
+        method: 'POST', body: { reason, until, approvedBy, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async previewMasterDataMerge({ domainCode, primaryObjectId, mergedObjectId, reason } = {}) {
+    try {
+      return ok(await request('/system/master-data/merge-preview', {
+        method: 'POST', body: { domainCode, primaryObjectId, mergedObjectId, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   // SYS-07：角色成员有效期与自动业务身份
   async listRoleAssignments(params = {}) {
     try {

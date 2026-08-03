@@ -186,6 +186,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
+      // SYS-17：数据域责任人、质量规则、问题闭环与合并预览（不代业务部门确认业务事实）
+      path: 'master-data', name: 'system-master-data',
+      component: () => import('@/modules/system/views/SystemMasterDataView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '主数据责任与数据质量', requiresAuth: true, permissionKey: 'systemAdmin.config.view' }
+    },
+    {
       // SYS-07：固定角色成员的有效期/来源/复核，以及由业务表实时计算的自动业务身份
       path: 'role-assignments', name: 'system-role-assignments',
       component: () => import('@/modules/system/views/SystemRoleAssignmentView.vue'),
