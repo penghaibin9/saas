@@ -1,0 +1,51 @@
+name: Internship Score Config Scope Agent
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: internship-score-config-scope-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply score configuration scope hardening
+        run: python scripts/agent/apply_internship_score_config_scope.py
+      - name: Validate changed score contracts
+        run: |
+          python -m py_compile \
+            backend/app/models/internship.py \
+            backend/alembic/versions/20260803_internship_prod_hardening.py \
+            backend/app/modules/internship/services/internship_score_service.py \
+            backend/app/modules/internship/routers/internship.py \
+            backend/tests/test_internship_score_config_scope_static.py
+          git diff --check
+      - name: Commit score configuration hardening
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/agent/apply_internship_score_config_scope.py
+          git add -u
+          git add backend/tests/test_internship_score_config_scope_static.py
+          if git diff --cached --quiet; then
+            echo 'score configuration hardening already committed'
+            exit 0
+          fi
+          git commit -m 'fix: make internship score configuration batch-consistent'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
