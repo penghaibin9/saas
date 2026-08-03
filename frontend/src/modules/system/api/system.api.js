@@ -243,6 +243,83 @@ export const systemApi = {
     }
   },
 
+  // SYS-07：角色成员有效期与自动业务身份
+  async listRoleAssignments(params = {}) {
+    try {
+      return ok(await request('/system/role-assignments', {
+        params: {
+          role_code: params.roleCode || undefined,
+          bucket: params.bucket || undefined,
+          page: params.page || 1,
+          page_size: params.pageSize || 50
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '角色成员加载失败')
+    }
+  },
+
+  async grantRoleAssignment({ userId, roleCode, reason, effectiveAt, expiresAt, sourceType } = {}) {
+    try {
+      return ok(await request('/system/role-assignments', {
+        method: 'POST', body: { userId, roleCode, reason, effectiveAt, expiresAt, sourceType }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async revokeRoleAssignment(id, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async transferRoleAssignment(id, { toUserId, reason, expiresAt, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/transfer`, {
+        method: 'POST', body: { toUserId, reason, expiresAt, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async reviewRoleAssignment(id, { term, reason } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/${encodeURIComponent(id)}/review`, {
+        method: 'POST', body: { term, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async sweepExpiredAssignments() {
+    try {
+      return ok(await request('/system/role-assignments/sweep-expired', { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '到期回收执行失败')
+    }
+  },
+
+  async listBusinessIdentities(params = {}) {
+    try {
+      return ok(await request('/system/business-identities', {
+        params: {
+          identity_type: params.identityType || undefined,
+          user_id: params.userId || undefined
+        }
+      }))
+    } catch (error) {
+      return fail(error.message || '业务身份加载失败')
+    }
+  },
+
   // SYS-05：业务关系注册表与缺口（只读发现，编辑仍回业务模块）
   async listBusinessRelationTypes() {
     try {

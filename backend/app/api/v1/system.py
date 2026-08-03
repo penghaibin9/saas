@@ -737,6 +737,104 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
         db.close()
 
 
+# ── SYS-07 角色成员有效期与自动业务身份 ──────────────────────────────────────
+@router.get("/system/role-assignments", summary="角色成员与有效期（进页面先跑一次到期回收）")
+def api_list_role_assignments(role_code: str = "", bucket: str = "", page: int = 1,
+                              page_size: int = 50,
+                              user=Depends(require_any_permission(
+                                  "systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.services import role_assignment_service as ras
+    return success(ras.list_assignments(role_code=role_code, bucket=bucket,
+                                        page=page, page_size=page_size))
+
+
+@router.post("/system/role-assignments", summary="授予角色并登记有效期与来源")
+def api_grant_role_assignment(body: dict = Body(...),
+                              user=Depends(require_any_permission(
+                                  "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    user_id = str(payload.get("userId") or "").strip()
+    if not user_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+    return success(ras.grant_assignment(
+        int(user_id), payload.get("roleCode") or "", reason=payload.get("reason") or "",
+        effective_at=payload.get("effectiveAt"), expires_at=payload.get("expiresAt"),
+        source_type=payload.get("sourceType") or "MANUAL", user=user), message="角色已授予")
+
+
+@router.post("/system/role-assignments/{assignment_id}/revoke", summary="回收角色授权")
+def api_revoke_role_assignment(assignment_id: int, body: dict = Body(...),
+                               user=Depends(require_any_permission(
+                                   "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    return success(ras.revoke_assignment(
+        assignment_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="授权已回收")
+
+
+@router.post("/system/role-assignments/{assignment_id}/transfer", summary="工作转交（旧人立即失效）")
+def api_transfer_role_assignment(assignment_id: int, body: dict = Body(...),
+                                 user=Depends(require_any_permission(
+                                     "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    to_user = str(payload.get("toUserId") or "").strip()
+    if not to_user.isdigit():
+        raise AppException("VALIDATION_ERROR", "toUserId 必须是账号主键")
+    return success(ras.transfer_assignment(
+        assignment_id, to_user_id=int(to_user), reason=payload.get("reason") or "",
+        expires_at=payload.get("expiresAt"),
+        expected_version=payload.get("expectedVersion"), user=user), message="工作已转交")
+
+
+@router.post("/system/role-assignments/{assignment_id}/review", summary="跨学期复核长期授权")
+def api_review_role_assignment(assignment_id: int, body: dict = Body(...),
+                               user=Depends(require_any_permission(
+                                   "systemAdmin.role.view", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    payload = body or {}
+    return success(ras.review_assignment(
+        assignment_id, term=payload.get("term") or "",
+        reason=payload.get("reason") or "", user=user), message="已记录复核结论")
+
+
+@router.post("/system/role-assignments/sweep-expired", summary="立即执行到期回收（定时任务同一入口）")
+def api_sweep_expired_assignments(user=Depends(require_any_permission(
+        "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.services import role_assignment_service as ras
+    return success(ras.sweep_expired(), message="到期回收已执行")
+
+
+@router.get("/system/business-identities", summary="自动业务身份（由业务权威表实时计算）")
+def api_list_business_identities(identity_type: str = "", user_id: str = "",
+                                 user=Depends(require_any_permission(
+                                     "systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.services import business_identity_service as bis
+    return success(bis.list_business_identities(
+        identity_type=identity_type,
+        user_id=int(user_id) if str(user_id).isdigit() else None))
+
+
+@router.post("/system/business-identities/request", summary="申请应急业务身份（只生成安全变更，不授权）")
+def api_request_business_identity(body: dict = Body(...),
+                                  user=Depends(require_any_permission(
+                                      "systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.core.exceptions import AppException
+    from app.services import business_identity_service as bis
+    payload = body or {}
+    user_id = str(payload.get("userId") or "").strip()
+    if not user_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+    return success(bis.request_manual_identity(
+        identity_type=payload.get("identityType") or "", user_id=int(user_id),
+        reason=payload.get("reason") or "", expires_at=payload.get("expiresAt"),
+        user=user), message="已登记安全变更申请，尚未授予任何权限")
+
+
 # ── SYS-05 业务关系中心（只发现与治理，不复制业务关系数据）────────────────────
 @router.get("/system/business-relations/types", summary="业务关系注册表（owner/resolver/测试真实校验）")
 def api_business_relation_types(user=Depends(require_any_permission(

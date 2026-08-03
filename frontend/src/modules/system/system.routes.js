@@ -184,6 +184,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
+      // SYS-07：固定角色成员的有效期/来源/复核，以及由业务表实时计算的自动业务身份
+      path: 'role-assignments', name: 'system-role-assignments',
+      component: () => import('@/modules/system/views/SystemRoleAssignmentView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '角色成员与业务身份', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
+    },
+    {
       // SYS-05：业务关系只在这里"发现与治理"，真实编辑仍回各业务模块（本页不写业务终态）
       path: 'business-relations', name: 'system-business-relations',
       component: () => import('@/modules/system/views/SystemBusinessRelationView.vue'),
