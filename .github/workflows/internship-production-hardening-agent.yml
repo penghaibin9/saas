@@ -53,24 +53,11 @@ jobs:
           rm -f scripts/agent/apply_internship_production_hardening.py
           rm -f scripts/agent/fix_internship_hardening_generator.py
           rm -f .github/workflows/internship-production-hardening-agent.yml
+          git add -u
           git add \
-            student-portal/src/services/internshipCoreApi.js \
-            backend/app/models/internship.py \
-            backend/app/modules/internship/services/internship_complaint_service.py \
-            backend/app/modules/internship/services/internship_position_service.py \
-            backend/app/modules/internship/services/internship_student_service.py \
-            backend/app/modules/internship/services/internship_change_service.py \
-            backend/app/modules/internship/services/internship_leave_service.py \
-            backend/app/modules/internship/services/internship_student_leave_context_service.py \
-            backend/app/modules/internship/services/internship_score_service.py \
+            backend/alembic/versions/20260803_internship_prod_hardening.py \
             backend/tests/test_internship_production_hardening_static.py \
-            scripts/check/check-internship-production-contracts.py \
-            .github/workflows/ci.yml \
-            backend/alembic/versions \
-            backend/migrations/versions \
-            scripts/agent/apply_internship_production_hardening.py \
-            scripts/agent/fix_internship_hardening_generator.py \
-            .github/workflows/internship-production-hardening-agent.yml 2>/dev/null || true
+            scripts/check/check-internship-production-contracts.py
           if git diff --cached --quiet; then
             echo 'No generated changes to commit'
             exit 1
