@@ -17,9 +17,11 @@ def test_graduation_legacy_packages_delegate_to_authoritative_export_job():
     source = _read(
         "backend/app/modules/graduation/services/graduation_material_center_service.py"
     )
-    assert "graduation_material_delivery_service as delivery" in source
-    assert "delivery.create_export_job(" in source
-    assert "delivery.run_export_job(" in source
+    assert "from app.modules.graduation.materials import" in source
+    assert "export_service" in source
+    assert "export_service.create_student_export_job(" in source
+    assert "export_service.create_export_job(" in source
+    assert source.count("export_service.run_export_job(") >= 2
     assert ".read_bytes(" not in source
     assert "io.BytesIO()" not in source
 
