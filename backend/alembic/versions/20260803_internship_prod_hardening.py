@@ -228,6 +228,34 @@ def _restore_risk_source_duplicates(bind) -> None:
         })
 
 
+def _score_scope_key(batch_id) -> str:
+    return f"BATCH:{int(batch_id)}" if batch_id is not None else "TENANT_DEFAULT"
+
+
+def _normalize_score_config_scopes(bind) -> None:
+    rows = bind.execute(sa.text(
+        "SELECT id, tenant_id, batch_id FROM t_internship_score_config "
+        "WHERE status='ACTIVE' AND is_deleted=0 "
+        "ORDER BY tenant_id, batch_id, id DESC"
+    )).mappings().all()
+    kept: set[tuple[int, int | None]] = set()
+    for row in rows:
+        group = (int(row["tenant_id"]), int(row["batch_id"]) if row["batch_id"] is not None else None)
+        if group in kept:
+            bind.execute(sa.text(
+                "UPDATE t_internship_score_config SET status='RETIRED', "
+                "active_scope_key=NULL WHERE id=:id"
+            ), {"id": int(row["id"])})
+            continue
+        kept.add(group)
+        bind.execute(sa.text(
+            "UPDATE t_internship_score_config SET active_scope_key=:scope_key WHERE id=:id"
+        ), {"scope_key": _score_scope_key(row["batch_id"]), "id": int(row["id"])})
+    bind.execute(sa.text(
+        "UPDATE t_internship_score_config SET active_scope_key=NULL "
+        "WHERE status<>'ACTIVE' OR is_deleted<>0"
+    ))
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -276,6 +304,15 @@ def upgrade() -> None:
 
     _ensure_column(bind, "t_internship_change_request", sa.Column(
         "record_version_snapshot", sa.Integer(), nullable=True))
+    _ensure_column(bind, "t_internship_score_config", sa.Column(
+        "active_scope_key", sa.String(80), nullable=True))
+    _normalize_score_config_scopes(bind)
+    _ensure_unique(
+        bind,
+        "uk_intern_score_cfg_active_scope",
+        "t_internship_score_config",
+        ["tenant_id", "active_scope_key"],
+    )
     bind.execute(sa.text(
         "UPDATE t_internship_change_request c "
         "JOIN t_internship_record r ON r.id=c.internship_id AND r.tenant_id=c.tenant_id "
@@ -374,6 +411,17 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+
+    if "uk_intern_score_cfg_active_scope" in _constraint_names(
+        bind, "t_internship_score_config"
+    ):
+        op.drop_constraint(
+            "uk_intern_score_cfg_active_scope",
+            "t_internship_score_config",
+            type_="unique",
+        )
+    if "active_scope_key" in _columns(bind, "t_internship_score_config"):
+        op.drop_column("t_internship_score_config", "active_scope_key")
 
     for table, name in (
         ("t_risk_record", "uk_risk_source"),

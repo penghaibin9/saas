@@ -78,31 +78,62 @@ def _scope_ctx(user):
 
 # ═══════════ 权重配置 ═══════════
 
-def _active_config(db, batch_id=None):
-    """Batch-specific active config wins; each save creates a new immutable active snapshot."""
-    base = [InternshipScoreConfig.tenant_id == _tid(), InternshipScoreConfig.status == "ACTIVE",
-            InternshipScoreConfig.is_deleted.is_(False)]
-    if batch_id:
-        batch = db.scalars(select(InternshipScoreConfig).where(
-            *base, InternshipScoreConfig.batch_id == int(batch_id)).order_by(InternshipScoreConfig.id.desc())).first()
-        if batch:
-            return batch
-    return db.scalars(select(InternshipScoreConfig).where(
-        *base, InternshipScoreConfig.batch_id.is_(None)).order_by(InternshipScoreConfig.id.desc())).first()
+def _config_scope_key(batch_id=None) -> str:
+    return f"BATCH:{int(batch_id)}" if batch_id not in (None, "") else "TENANT_DEFAULT"
 
 
-def get_config(user=None) -> dict:
+def _active_config(db, batch_id=None, *, lock=False):
+    """Batch-specific ACTIVE config wins; tenant default is the explicit fallback."""
+    query = select(InternshipScoreConfig).where(
+        InternshipScoreConfig.tenant_id == _tid(),
+        InternshipScoreConfig.status == "ACTIVE",
+        InternshipScoreConfig.is_deleted.is_(False),
+        InternshipScoreConfig.active_scope_key == _config_scope_key(batch_id),
+    ).order_by(InternshipScoreConfig.id.desc())
+    row = db.scalars(query.with_for_update() if lock else query).first()
+    if row or batch_id in (None, ""):
+        return row
+    fallback = select(InternshipScoreConfig).where(
+        InternshipScoreConfig.tenant_id == _tid(),
+        InternshipScoreConfig.status == "ACTIVE",
+        InternshipScoreConfig.is_deleted.is_(False),
+        InternshipScoreConfig.active_scope_key == "TENANT_DEFAULT",
+    ).order_by(InternshipScoreConfig.id.desc())
+    return db.scalars(fallback.with_for_update() if lock else fallback).first()
+
+
+def get_config(user=None, batch_id=None) -> dict:
     with session() as db:
-        c = _active_config(db, batch_id=None)
-        if not c:
-            return {**{k: v for k, v in DEFAULT_CFG.items()},
-                    "checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
-                    "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60.0, "isDefault": True,
-                    "configId": "", "configVersion": 0}
-        return {"checkinWeight": c.checkin_weight, "weeklyWeight": c.weekly_weight,
-                "monthlyWeight": c.monthly_weight, "enterpriseWeight": c.enterprise_weight,
-                "schoolWeight": c.school_weight, "passLine": c.pass_line, "isDefault": False,
-                "configId": str(c.id), "configVersion": int(c.version or 0)}
+        requested_batch_id = int(batch_id) if batch_id not in (None, "") else None
+        if requested_batch_id is not None:
+            from app.models import InternshipBatch
+            batch = db.get(InternshipBatch, requested_batch_id)
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("实习批次不存在")
+        config = _active_config(db, batch_id=requested_batch_id)
+        if not config:
+            return {
+                "checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
+                "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60.0,
+                "isDefault": True, "configId": "", "configVersion": 0,
+                "requestedBatchId": str(requested_batch_id) if requested_batch_id else "",
+                "configBatchId": "", "scope": "BUILTIN_DEFAULT",
+            }
+        config_batch_id = int(config.batch_id) if config.batch_id is not None else None
+        return {
+            "checkinWeight": config.checkin_weight,
+            "weeklyWeight": config.weekly_weight,
+            "monthlyWeight": config.monthly_weight,
+            "enterpriseWeight": config.enterprise_weight,
+            "schoolWeight": config.school_weight,
+            "passLine": config.pass_line,
+            "isDefault": config_batch_id is None,
+            "configId": str(config.id),
+            "configVersion": int(config.version or 0),
+            "requestedBatchId": str(requested_batch_id) if requested_batch_id else "",
+            "configBatchId": str(config_batch_id) if config_batch_id else "",
+            "scope": "BATCH" if config_batch_id is not None else "TENANT_DEFAULT",
+        }
 
 
 def save_config(user, body) -> dict:
@@ -138,18 +169,29 @@ def save_config(user, body) -> dict:
                 raise not_found("实习批次不存在")
             if batch.status != "DRAFT":
                 raise AppException("DATA_CONFLICT", "运行中的批次不可替换评分规则，请创建新批次版本")
-        old = _active_config(db, batch_id=batch_id)
-        if old and old.batch_id == (int(batch_id) if batch_id else None):
+        normalized_batch_id = int(batch_id) if batch_id else None
+        scope_key = _config_scope_key(normalized_batch_id)
+        old_rows = db.scalars(select(InternshipScoreConfig).where(
+            InternshipScoreConfig.tenant_id == _tid(),
+            InternshipScoreConfig.status == "ACTIVE",
+            InternshipScoreConfig.is_deleted.is_(False),
+            InternshipScoreConfig.active_scope_key == scope_key,
+        ).with_for_update()).all()
+        for old in old_rows:
             old.status = "RETIRED"
-        c = InternshipScoreConfig(tenant_id=_tid(), batch_id=int(batch_id) if batch_id else None,
-                                  status="ACTIVE")
+            old.active_scope_key = None
+        c = InternshipScoreConfig(
+            tenant_id=_tid(), batch_id=normalized_batch_id,
+            active_scope_key=scope_key, status="ACTIVE")
         db.add(c)
         for k, v in parsed.items():
             setattr(c, k, v)
         c.pass_line = pass_line
         c.version = (c.version or 0) + 1
         db.flush()
-        _trail(db, c.id, "SAVE_CONFIG", {**parsed, "passLine": pass_line}, operator=_op_name(user))
+        _trail(db, c.id, "SAVE_CONFIG", {
+            **parsed, "passLine": pass_line, "scopeKey": scope_key,
+        }, operator=_op_name(user))
         db.commit()
         return {"ok": True, "configId": str(c.id), "configVersion": int(c.version or 0),
                 "batchId": str(c.batch_id) if c.batch_id else ""}

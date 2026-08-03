@@ -321,8 +321,14 @@ class InternshipStudentEval(PKMixin, TenantMixin, CommonMixin, Base):
 class InternshipScoreConfig(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_score_config 实习成绩权重配置（五项权重，和须=100）。batch_id 空=租户默认。"""
     __tablename__ = "t_internship_score_config"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "active_scope_key",
+                         name="uk_intern_score_cfg_active_scope"),
+    )
 
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    active_scope_key: Mapped[str | None] = mapped_column(
+        String(80), index=True, comment="ACTIVE 配置唯一作用域；历史 RETIRED 置空")
     checkin_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=20, comment="打卡权重")
     weekly_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=20, comment="周报权重")
     monthly_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=10, comment="月报/总结权重")

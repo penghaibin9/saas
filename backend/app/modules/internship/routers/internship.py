@@ -607,8 +607,9 @@ def student_eval_review(eval_id: str, body: dict = Body(...), user=Depends(requi
 # ═══════════ 实习成绩五项权重（P2-D：权重配置 + 加权核算 + 复核发布，owner + 数据范围）═══════════
 
 @router.get("/scores/config", summary="成绩权重配置（五项权重，和=100）")
-def score_config_get(user=Depends(require_permission("internship.score.view"))):
-    return success(score.get_config(user=user))
+def score_config_get(batchId: Optional[str] = None,
+                     user=Depends(require_permission("internship.score.view"))):
+    return success(score.get_config(user=user, batch_id=batchId))
 
 
 @router.post("/scores/config", summary="保存成绩权重配置（校验权重和=100）")
