@@ -153,5 +153,55 @@ export const platformControlApi = {
   listAccessReviews: () => real('access-reviews', '/platform/access-reviews', {}),
 
   /* PLAT-03 商业授权与真实消费对账 */
-  listReconciliations: (params = {}) => real('reconciliations', '/platform/reconciliations', { params })
+  listReconciliations: (params = {}) => real('reconciliations', '/platform/reconciliations', { params }),
+
+  /* PLAT-08 服务目录、依赖与租户影响地图（新页面，无演示兜底，后端不可达直接报错） */
+  getServiceCatalogOverview: () => real('service-catalog-overview', '/platform/services/overview', {}),
+  bootstrapServiceCatalog: () => real('service-catalog-bootstrap', '/platform/services/bootstrap', { method: 'POST', body: {} }),
+  listServices: () => real('services-list', '/platform/services', {}),
+  saveService: (body) => real('service-save', '/platform/services', { method: 'POST', body }),
+  listServiceDependencies: (serviceCode) =>
+    real('service-dependencies', '/platform/service-dependencies', { params: serviceCode ? { serviceCode } : {} }),
+  addServiceDependency: (body) => real('service-dependency-add', '/platform/service-dependencies', { method: 'POST', body }),
+  removeServiceDependency: (id) => real('service-dependency-remove', `/platform/service-dependencies/${id}`, { method: 'DELETE' }),
+  getServiceImpact: (serviceCode, releaseId) =>
+    real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } }),
+
+  /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
+  getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
+  listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),
+  getProvisioningJob: (jobId) => real('provisioning-job-get', `/platform/provisioning-jobs/${jobId}`, {}),
+  startProvisioningJob: (body) => real('provisioning-job-start', '/platform/provisioning-jobs', { method: 'POST', body }),
+  resumeProvisioningJob: (jobId) => real('provisioning-job-resume', `/platform/provisioning-jobs/${jobId}/resume`, { method: 'POST', body: {} }),
+  retryProvisioningStep: (jobId, stepCode) => real('provisioning-job-retry-step', `/platform/provisioning-jobs/${jobId}/retry-step`, { method: 'POST', body: { stepCode } }),
+  compensateProvisioningStep: (jobId, stepCode, reason) => real('provisioning-job-compensate', `/platform/provisioning-jobs/${jobId}/compensate`, { method: 'POST', body: { stepCode, reason } }),
+  flagProvisioningManualReview: (jobId, stepCode, reason) => real('provisioning-job-flag-manual', `/platform/provisioning-jobs/${jobId}/flag-manual-review`, { method: 'POST', body: { stepCode, reason } }),
+  cancelProvisioningJob: (jobId, reason) => real('provisioning-job-cancel', `/platform/provisioning-jobs/${jobId}/cancel`, { method: 'POST', body: { reason } }),
+
+  /* PLAT-09 事件、状态页与统一学校通知（新页面，无演示兜底） */
+  getIncidentsOverview: () => real('incidents-overview', '/platform/incidents/overview', {}),
+  listIncidents: (params = {}) => real('incidents-list', '/platform/incidents', { params }),
+  getIncident: (incidentId) => real('incident-get', `/platform/incidents/${incidentId}`, {}),
+  createIncident: (body) => real('incident-create', '/platform/incidents', { method: 'POST', body }),
+  getIncidentAffectedTenants: (incidentId) => real('incident-affected-tenants', `/platform/incidents/${incidentId}/affected-tenants`, {}),
+  transitionIncidentStatus: (incidentId, status) => real('incident-status', `/platform/incidents/${incidentId}/status`, { method: 'POST', body: { status } }),
+  addIncidentUpdate: (incidentId, body) => real('incident-update-add', `/platform/incidents/${incidentId}/updates`, { method: 'POST', body }),
+  publishIncidentUpdate: (incidentId, updateId) => real('incident-update-publish', `/platform/incidents/${incidentId}/updates/${updateId}/publish`, { method: 'POST', body: {} }),
+  requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} }),
+
+  /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
+  getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),
+  listChanges: (params = {}) => real('changes-list', '/platform/changes', { params }),
+  getChange: (changeId) => real('change-get', `/platform/changes/${changeId}`, {}),
+  createChange: (body) => real('change-create', '/platform/changes', { method: 'POST', body }),
+  assessChange: (changeId) => real('change-assess', `/platform/changes/${changeId}/assess`, { method: 'POST', body: {} }),
+  approveChange: (changeId, reason) => real('change-approve', `/platform/changes/${changeId}/approve`, { method: 'POST', body: { reason } }),
+  scheduleChange: (changeId, scheduledAt) => real('change-schedule', `/platform/changes/${changeId}/schedule`, { method: 'POST', body: { scheduledAt } }),
+  startChangeWave: (changeId, waveNo, tenantIds) => real('change-wave-start', `/platform/changes/${changeId}/start-wave`, { method: 'POST', body: { waveNo, tenantIds } }),
+  reportChangeWave: (changeId, waveNo, status, error) => real('change-wave-report', `/platform/changes/${changeId}/waves/${waveNo}/report`, { method: 'POST', body: { status, error } }),
+  verifyChange: (changeId) => real('change-verify', `/platform/changes/${changeId}/verify`, { method: 'POST', body: {} }),
+  failChange: (changeId, reason) => real('change-fail', `/platform/changes/${changeId}/fail`, { method: 'POST', body: { reason } }),
+  rollbackChange: (changeId, reason) => real('change-rollback', `/platform/changes/${changeId}/rollback`, { method: 'POST', body: { reason } }),
+  listMaintenanceWindows: () => real('maintenance-windows-list', '/platform/maintenance-windows', {}),
+  createMaintenanceWindow: (body) => real('maintenance-window-create', '/platform/maintenance-windows', { method: 'POST', body })
 }

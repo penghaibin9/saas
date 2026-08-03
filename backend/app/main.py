@@ -153,7 +153,11 @@ async def lifespan(app: FastAPI):
             from app.core.context import set_tenant
             from app.db.session import get_sessionmaker
             from app.models import Tenant
-            from app.services import affairs_appeal_repair_service, affairs_leave_export_service
+            from app.services import (
+                affairs_appeal_repair_service,
+                affairs_archive_service,
+                affairs_leave_export_service,
+            )
 
             db = get_sessionmaker()()
             try:
@@ -169,6 +173,7 @@ async def lifespan(app: FastAPI):
                     affairs_leave_export_service.run_pending(
                         limit=2, worker_id=f"web-affairs:{tenant_id}",
                     )
+                    affairs_archive_service.run_pending_packages(limit=2)
                 except Exception:  # noqa: BLE001
                     logging.getLogger("app.affairs").exception(
                         "student affairs background job failed tenant=%s", tenant_id,

@@ -11,8 +11,9 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     key: 'plt-command', label: '平台总控', icon: '◎', description: '经营、租户生命周期和运行事件的跨租户总览。',
     items: [
       { key: 'plt-overview', label: '平台经营总览', path: '/admin/platform/overview', permissionKey: 'platform.control.view', view: 'overview', actions: [action('platform:overview:view', '查看平台总览')] },
+      { key: 'plt-service-catalog', label: '服务目录、依赖与租户影响地图', path: '/admin/platform/services', permissionKey: 'platform.control.view', view: 'services', actions: [action('service:manage', '维护服务目录/依赖', 'HIGH')] },
       { key: 'plt-lifecycle-board', label: '租户生命周期看板', path: '/admin/platform/tenant-lifecycle', permissionKey: 'platform.tenant.lifecycle.view', view: 'capability', actions: [action('tenant:lifecycle:view', '查看生命周期')] },
-      { key: 'plt-incidents', label: '告警与事件中心', path: '/admin/platform/incidents', permissionKey: 'platform.incident.view', view: 'capability', actions: [action('incident:acknowledge', '确认告警'), action('incident:resolve', '关闭事件', 'HIGH')] }
+      { key: 'plt-incidents', label: '告警与事件中心', path: '/admin/platform/incidents', permissionKey: 'platform.incident.view', view: 'incidents', actions: [action('incident:acknowledge', '确认告警'), action('incident:resolve', '关闭事件', 'HIGH'), action('incident:publish', '发布通知', 'HIGH')] }
     ]
   },
   {
@@ -38,7 +39,7 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     key: 'plt-delivery', label: '自动交付', icon: '⇪', description: '订单确认后自动初始化学校，减少实施人员逐校配置。',
     items: [
       { key: 'plt-init-templates', label: '初始化模板', path: '/admin/platform/init-templates', permissionKey: 'platform.provision.template.manage', view: 'capability', actions: [action('provision:template:publish', '发布初始化模板', 'HIGH')] },
-      { key: 'plt-provisioning', label: '自动开通任务', path: '/admin/platform/provisioning', permissionKey: 'platform.provision.run.view', view: 'capability', actions: [action('provision:run:retry', '重试开通任务', 'HIGH')] },
+      { key: 'plt-provisioning', label: '自动开通任务', path: '/admin/platform/provisioning', permissionKey: 'platform.provision.run.view', view: 'provisioning', actions: [action('provision:run:retry', '重试开通任务', 'HIGH'), action('provision:run:compensate', '发起补偿', 'HIGH'), action('provision:run:cancel', '取消开通任务', 'HIGH')] },
       { key: 'plt-onboarding-check', label: '学校开通与首次开户', path: '/admin/platform/onboarding-check', permissionKey: 'platform.onboarding.view', view: 'onboarding', actions: [action('onboarding:check:run', '查看开通进度'), action('onboarding:accept', '确认上线验收', 'HIGH')] },
       { key: 'plt-tenant-migration', label: '租户数据迁移进度', path: '/admin/platform/tenant-migration', permissionKey: 'platform.tenant.migration.view', view: 'tenant-migration', actions: [action('tenant:migration:view', '查看迁移进度')] }
     ]
@@ -48,7 +49,8 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     items: [
       { key: 'plt-role-templates', label: '平台角色模板', path: '/admin/platform/role-templates', permissionKey: 'platform.role-template.manage', view: 'capability', actions: [action('role-template:publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-global-rules', label: '全局字典与规则', path: '/admin/platform/dictionaries', permissionKey: 'platform.dict.view', view: 'dictionaries', actions: [action('rule:global:update', '更新全局规则', 'HIGH')] },
-      { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] }
+      { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] },
+      { key: 'plt-changes', label: '变更、发布、兼容性、灰度与回滚', path: '/admin/platform/changes', permissionKey: 'platform.change.manage', view: 'changes', actions: [action('change:approve', '审批变更', 'HIGH'), action('change:schedule', '排期变更', 'HIGH'), action('change:rollback', '回滚变更', 'HIGH')] }
     ]
   },
   {

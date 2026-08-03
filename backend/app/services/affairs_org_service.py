@@ -159,27 +159,52 @@ def dismiss(position_id, user, *, expected_version=None) -> dict:
 
 
 def student_resume(student_id, user):
-    """干部履历：union 组织任职（org_position）+ 班级班干部（class_cadre）。倒序。"""
-    from app.models import (AffairsClassCadre, AffairsOrgPosition, AffairsStudentOrg,
-                            SchoolClass)
+    """干部履历：组织和班级名称批量加载，避免逐任职查询。"""
+    from app.models import AffairsClassCadre, AffairsOrgPosition, AffairsStudentOrg, SchoolClass
+
     sid = int(student_id)
     with session() as db:
+        positions = db.scalars(select(AffairsOrgPosition).where(
+            AffairsOrgPosition.tenant_id == _tid(), AffairsOrgPosition.student_id == sid,
+            AffairsOrgPosition.is_deleted.is_(False),
+        )).all()
+        cadres = db.scalars(select(AffairsClassCadre).where(
+            AffairsClassCadre.tenant_id == _tid(), AffairsClassCadre.student_id == sid,
+            AffairsClassCadre.is_deleted.is_(False),
+        )).all()
+        org_ids = {int(position.org_id) for position in positions if position.org_id}
+        class_ids = {int(cadre.class_id) for cadre in cadres if getattr(cadre, "class_id", None)}
+        orgs = {
+            int(org.id): org
+            for org in db.scalars(select(AffairsStudentOrg).where(
+                AffairsStudentOrg.tenant_id == _tid(),
+                AffairsStudentOrg.id.in_(org_ids) if org_ids else AffairsStudentOrg.id == -1,
+                AffairsStudentOrg.is_deleted.is_(False),
+            )).all()
+        }
+        classes = {
+            int(row.id): row
+            for row in db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(),
+                SchoolClass.id.in_(class_ids) if class_ids else SchoolClass.id == -1,
+            )).all()
+        }
         out = []
-        for p in db.scalars(select(AffairsOrgPosition).where(
-                AffairsOrgPosition.tenant_id == _tid(), AffairsOrgPosition.student_id == sid,
-                AffairsOrgPosition.is_deleted.is_(False))).all():
-            org = db.get(AffairsStudentOrg, int(p.org_id))
-            out.append({"source": "ORG", "scope": org.org_name if org else "组织",
-                        "position": p.position, "termCode": p.term_code or "",
-                        "status": p.status, "appointedAt": _iso(p.appointed_at),
-                        "removedAt": _iso(p.removed_at)})
-        for c in db.scalars(select(AffairsClassCadre).where(
-                AffairsClassCadre.tenant_id == _tid(), AffairsClassCadre.student_id == sid,
-                AffairsClassCadre.is_deleted.is_(False))).all():
-            k = db.get(SchoolClass, int(c.class_id)) if getattr(c, "class_id", None) else None
-            out.append({"source": "CLASS", "scope": (k.class_name if k else "班级"),
-                        "position": c.position, "termCode": getattr(c, "term_code", "") or "",
-                        "status": c.status, "appointedAt": _iso(getattr(c, "appointed_at", None)),
-                        "removedAt": _iso(getattr(c, "removed_at", None))})
-        out.sort(key=lambda x: x["appointedAt"] or "", reverse=True)
+        for position in positions:
+            org = orgs.get(int(position.org_id)) if position.org_id else None
+            out.append({
+                "source": "ORG", "scope": org.org_name if org else "组织",
+                "position": position.position, "termCode": position.term_code or "",
+                "status": position.status, "appointedAt": _iso(position.appointed_at),
+                "removedAt": _iso(position.removed_at),
+            })
+        for cadre in cadres:
+            klass = classes.get(int(cadre.class_id)) if getattr(cadre, "class_id", None) else None
+            out.append({
+                "source": "CLASS", "scope": klass.class_name if klass else "班级",
+                "position": cadre.position, "termCode": getattr(cadre, "term_code", "") or "",
+                "status": cadre.status, "appointedAt": _iso(getattr(cadre, "appointed_at", None)),
+                "removedAt": _iso(getattr(cadre, "removed_at", None)),
+            })
+        out.sort(key=lambda row: row["appointedAt"] or "", reverse=True)
         return out

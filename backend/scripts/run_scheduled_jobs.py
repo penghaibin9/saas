@@ -180,8 +180,9 @@ def job_expire_and_nudge() -> None:
 
 
 def job_student_affairs_background() -> None:
-    """学工高频后台任务：申诉补偿租约恢复与请假异步导出。"""
+    """学工高频后台任务：申诉补偿、请假导出与档案包异步生成。"""
     from app.services import affairs_appeal_repair_service as repair
+    from app.services import affairs_archive_service as archive
     from app.services import affairs_leave_export_service as leave_export
 
     for tenant_id in _schedulable_tenant_ids():
@@ -194,6 +195,10 @@ def job_student_affairs_background() -> None:
             _run_isolated(
                 f"affairs_leave_export:{tenant_id}",
                 lambda: leave_export.run_pending(limit=2, worker_id=f"scheduler-affairs:{tenant_id}"),
+            )
+            _run_isolated(
+                f"affairs_archive_package:{tenant_id}",
+                lambda: archive.run_pending_packages(limit=2),
             )
         finally:
             set_tenant(None)

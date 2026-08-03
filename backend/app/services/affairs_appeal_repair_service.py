@@ -232,7 +232,7 @@ def requeue_dead(record_id: int, *, expected_version: int) -> dict:
             raise AppException("DATA_CONFLICT", "只有 DEAD 任务可以人工重投")
         row.state = "PENDING"
         row.attempts = 0
-        row.next_run_at = now
+        row.next_run_at = now - timedelta(seconds=1)
         row.lease_owner = None
         row.lease_until = None
         row.last_error = None

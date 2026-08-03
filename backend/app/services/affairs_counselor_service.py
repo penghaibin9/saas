@@ -153,14 +153,18 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == from_uid,
         UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
         UnifiedTodo.student_id.in_(student_ids))).all()
+    source_biz_ids = {int(todo.source_biz_id) for todo in todos if todo.source_biz_id}
+    target_rows = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == to_uid,
+        UnifiedTodo.source_biz_id.in_(source_biz_ids) if source_biz_ids else UnifiedTodo.source_biz_id == -1,
+        UnifiedTodo.is_deleted.is_(False),
+    )).all()
+    target_map = {
+        (row.source_module, int(row.source_biz_id or 0), row.todo_type): row
+        for row in target_rows
+    }
     for todo in todos:
-        clash = db.scalars(select(UnifiedTodo).where(
-            UnifiedTodo.tenant_id == _tid(),
-            UnifiedTodo.source_module == todo.source_module,
-            UnifiedTodo.source_biz_id == todo.source_biz_id,
-            UnifiedTodo.todo_type == todo.todo_type,
-            UnifiedTodo.assignee_id == to_uid,
-            UnifiedTodo.is_deleted.is_(False))).first()
+        clash = target_map.get((todo.source_module, int(todo.source_biz_id or 0), todo.todo_type))
         if clash:
             if clash.status != "PENDING":
                 clash.status = "PENDING"

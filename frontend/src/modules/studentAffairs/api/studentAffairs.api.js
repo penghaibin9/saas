@@ -154,7 +154,7 @@ export const studentAffairsApi = {
 
   /** 学工风险责任人候选；后端按可处置权限和数据范围收敛。 */
   async searchRiskOwners(keyword) {
-    const data = await request('/student-affairs/risk/owner-candidates', { params: { keyword } })
+    const data = await request('/student-affairs/risk/owner-candidates', { params: { keyword, page: 1, pageSize: 50 } })
     return (data.items || []).map((user) => ({
       value: String(user.id), label: user.name || user.loginName, desc: user.loginName || ''
     }))
@@ -510,15 +510,15 @@ export const studentAffairsApi = {
   },
 
   // ─────────────── 奖助扩展：勤工/贷款/减免（/work-study /loans /fee-reductions） ───────────────
-  getWorkStudyPosts({ status = '' } = {}) {
-    const params = {}; if (status) params.status = status
+  getWorkStudyPosts({ status = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }; if (status) params.status = status
     return callStrict(() => request('/student-affairs/work-study/posts', { params }))
   },
   createWorkStudyPost(body) {
     return callStrict(() => request('/student-affairs/work-study/posts', { method: 'POST', body }))
   },
-  getWorkStudyRecords({ postId = '', status = '' } = {}) {
-    const params = {}; if (postId) params.postId = postId; if (status) params.status = status
+  getWorkStudyRecords({ postId = '', status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }; if (postId) params.postId = postId; if (status) params.status = status
     return callStrict(() => request('/student-affairs/work-study/records', { params }))
   },
   applyWorkStudy(postId, studentId) {
@@ -534,8 +534,8 @@ export const studentAffairsApi = {
   addWorkStudyMonthly(recordId, body) {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`, { method: 'POST', body }))
   },
-  getLoans({ status = '' } = {}) {
-    const params = {}; if (status) params.status = status
+  getLoans({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }; if (status) params.status = status
     return callStrict(() => request('/student-affairs/loans', { params }))
   },
   registerLoan(body) {
@@ -544,8 +544,8 @@ export const studentAffairsApi = {
   advanceLoan(loanId, version) {
     return callStrict(() => request(`/student-affairs/loans/${loanId}/advance`, { method: 'POST', body: { version } }))
   },
-  getFeeReductions({ itemType = '', status = '' } = {}) {
-    const params = {}; if (itemType) params.itemType = itemType; if (status) params.status = status
+  getFeeReductions({ itemType = '', status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }; if (itemType) params.itemType = itemType; if (status) params.status = status
     return callStrict(() => request('/student-affairs/fee-reductions', { params }))
   },
   submitFeeReduction(body) {

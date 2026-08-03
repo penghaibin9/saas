@@ -42,7 +42,7 @@ def test_pc_and_mobile_dorm_approval_require_source_target_and_version():
 
 
 def test_credit_appeal_contract_matches_backend_numeric_rules():
-    backend = _read("backend/app/services/affairs_credit_appeal_reliability.py")
+    backend = _read("backend/app/services/affairs_activity_service.py")
     portal = _read("student-portal/src/views/affairs/AffairsFourEndView.vue")
     mini = _read("miniapp/src/pages/student/affairs/activity.vue")
     pc = _read("frontend/src/modules/studentAffairs/views/activity/CreditAppealView.vue")
@@ -81,7 +81,8 @@ def test_mental_allowed_actions_are_centralized_and_match_backend_transitions():
     assert "危机升级依据需5-300字" in service
     assert ':pagination="pagination"' in pc
     assert 'Array.isArray(row.allowedActions)' in pc
-    assert "ESCALATED: ['CLOSE']" in pc
+    assert "Array.isArray(row.allowedActions) ? row.allowedActions : []" in pc
+    assert "ESCALATED: ['CLOSE']" not in pc
 
 
 def test_date_only_leave_range_is_inclusive_and_same_day_is_valid():

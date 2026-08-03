@@ -11,7 +11,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.affairs_dashboard_service import (_allowed_class_ids, _audit,
@@ -56,71 +56,94 @@ def _college_major_maps(db):
 # ═══════════ 班级列表（增强：名称 + 指标 + 筛选）═══════════
 
 def class_list(user, college_id=None, major_id=None, grade=None, keyword=None, page=1, page_size=20):
-    from app.models import AffairsRiskRecord, CsLeave, SchoolClass, StudentProfile
+    from app.models import AffairsRiskRecord, College, CsLeave, Major, SchoolClass, StudentProfile, User
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        q = select(SchoolClass).where(SchoolClass.tenant_id == _tid(),
-                                      SchoolClass.is_deleted.is_(False))
+        conds = [SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)]
         if allowed is not None:
-            q = q.where(SchoolClass.id.in_(allowed or {-1}))
-        classes = db.scalars(q.order_by(SchoolClass.id)).all()
-        majors, colleges = _college_major_maps(db)
-        # 学院筛选：解析该学院下的专业
-        college_major_ids = None
+            conds.append(SchoolClass.id.in_(allowed or {-1}))
+        if major_id:
+            conds.append(SchoolClass.major_id == int(major_id))
+        if grade:
+            conds.append(SchoolClass.grade == grade)
+        if keyword:
+            conds.append(SchoolClass.class_name.ilike(f"%{str(keyword).strip()}%"))
         if college_id:
-            college_major_ids = {mid for mid, m in majors.items() if str(m.college_id) == str(college_id)}
-        # 先过滤
-        rows = []
-        for c in classes:
-            if major_id and str(c.major_id) != str(major_id):
-                continue
-            if college_major_ids is not None and c.major_id not in college_major_ids:
-                continue
-            if grade and (c.grade or "") != grade:
-                continue
-            if keyword and keyword not in (c.class_name or ""):
-                continue
-            rows.append(c)
-        class_ids = [c.id for c in rows]
-        # 指标：学生数（group by）、在假数、在办风险数（经 student→class 映射）
-        stu_count, stu_class = {}, {}
+            conds.append(Major.college_id == int(college_id))
+
+        base = select(SchoolClass, Major, College).outerjoin(
+            Major,
+            and_(Major.id == SchoolClass.major_id, Major.tenant_id == _tid()),
+        ).outerjoin(
+            College,
+            and_(College.id == Major.college_id, College.tenant_id == _tid()),
+        ).where(*conds)
+        total = int(db.scalar(select(func.count()).select_from(
+            base.with_only_columns(SchoolClass.id).order_by(None).subquery()
+        )) or 0)
+        rows = db.execute(base.order_by(SchoolClass.id).offset(
+            (page - 1) * page_size).limit(page_size)).all()
+        classes = [row[0] for row in rows]
+        class_ids = [int(row.id) for row in classes]
+        teacher_ids = {
+            int(uid) for row in classes for uid in (row.counselor_id, row.head_teacher_id) if uid
+        }
+        teacher_names = {
+            int(uid): (name or "")
+            for uid, name in db.execute(select(User.id, User.real_name).where(
+                User.tenant_id == _tid(), User.id.in_(teacher_ids or {-1}), User.is_deleted.is_(False),
+            )).all()
+        }
+        student_count = {}
+        student_class = {}
         if class_ids:
-            for cid, cnt in db.execute(select(StudentProfile.class_id, func.count()).where(
+            student_count = {
+                int(cid): int(count or 0)
+                for cid, count in db.execute(select(StudentProfile.class_id, func.count()).where(
                     StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
-                    StudentProfile.class_id.in_(class_ids)).group_by(StudentProfile.class_id)).all():
-                stu_count[cid] = cnt
-            for sid, cid in db.execute(select(StudentProfile.id, StudentProfile.class_id).where(
+                    StudentProfile.class_id.in_(class_ids),
+                ).group_by(StudentProfile.class_id)).all()
+            }
+            student_class = {
+                int(sid): int(cid)
+                for sid, cid in db.execute(select(StudentProfile.id, StudentProfile.class_id).where(
                     StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
-                    StudentProfile.class_id.in_(class_ids))).all():
-                stu_class[sid] = cid
-        leave_by_class, risk_by_class = {}, {}
-        if stu_class:
-            all_sids = list(stu_class.keys())
-            for (sid,) in db.execute(select(CsLeave.student_id).where(
-                    CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
-                    CsLeave.student_id.in_(all_sids), CsLeave.affairs_status.in_(_LEAVE_ACTIVE))).all():
-                leave_by_class[stu_class.get(sid)] = leave_by_class.get(stu_class.get(sid), 0) + 1
-            for (sid,) in db.execute(select(AffairsRiskRecord.student_id).where(
-                    AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False),
-                    AffairsRiskRecord.student_id.in_(all_sids),
-                    AffairsRiskRecord.status.notin_(["CLOSED"]))).all():
-                risk_by_class[stu_class.get(sid)] = risk_by_class.get(stu_class.get(sid), 0) + 1
-        out = []
-        for c in rows:
-            m = majors.get(c.major_id)
-            out.append({
-                "classId": str(c.id), "className": c.class_name, "grade": c.grade or "",
-                "majorId": str(c.major_id), "majorName": m.major_name if m else "",
-                "collegeName": colleges.get(m.college_id, "") if m else "",
-                "counselorName": _teacher_name(db, c.counselor_id),
-                "headTeacherName": _teacher_name(db, c.head_teacher_id),
-                "studentCount": stu_count.get(c.id, 0),
-                "currentLeave": leave_by_class.get(c.id, 0),
-                "riskOpen": risk_by_class.get(c.id, 0),
+                    StudentProfile.class_id.in_(class_ids),
+                )).all()
+            }
+        leave_by_class = {}
+        risk_by_class = {}
+        if student_class:
+            student_ids = list(student_class)
+            for student_id, count in db.execute(select(CsLeave.student_id, func.count()).where(
+                CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+                CsLeave.student_id.in_(student_ids), CsLeave.affairs_status.in_(_LEAVE_ACTIVE),
+            ).group_by(CsLeave.student_id)).all():
+                cid = student_class.get(int(student_id))
+                leave_by_class[cid] = leave_by_class.get(cid, 0) + int(count or 0)
+            for student_id, count in db.execute(select(AffairsRiskRecord.student_id, func.count()).where(
+                AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False),
+                AffairsRiskRecord.student_id.in_(student_ids), AffairsRiskRecord.status != "CLOSED",
+            ).group_by(AffairsRiskRecord.student_id)).all():
+                cid = student_class.get(int(student_id))
+                risk_by_class[cid] = risk_by_class.get(cid, 0) + int(count or 0)
+        result = []
+        for school_class, major, college in rows:
+            result.append({
+                "classId": str(school_class.id), "className": school_class.class_name,
+                "grade": school_class.grade or "", "majorId": str(school_class.major_id or ""),
+                "majorName": major.major_name if major else "",
+                "collegeName": college.college_name if college else "",
+                "counselorName": teacher_names.get(int(school_class.counselor_id), "") if school_class.counselor_id else "",
+                "headTeacherName": teacher_names.get(int(school_class.head_teacher_id), "") if school_class.head_teacher_id else "",
+                "studentCount": student_count.get(int(school_class.id), 0),
+                "currentLeave": leave_by_class.get(int(school_class.id), 0),
+                "riskOpen": risk_by_class.get(int(school_class.id), 0),
             })
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return result, total
 
 
 # ═══════════ 班级画像（360 聚合）═══════════
@@ -221,18 +244,21 @@ def _material_row(x) -> dict:
 
 def list_materials(class_id, user, material_type=None, page=1, page_size=20):
     from app.models import AffairsClassMaterial
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
         _class_in_scope_or_403(db, class_id, user)
-        q = select(AffairsClassMaterial).where(
-            AffairsClassMaterial.tenant_id == _tid(), AffairsClassMaterial.class_id == int(class_id),
-            AffairsClassMaterial.status == "ACTIVE", AffairsClassMaterial.is_deleted.is_(False))
+        conds = [
+            AffairsClassMaterial.tenant_id == _tid(),
+            AffairsClassMaterial.class_id == int(class_id),
+            AffairsClassMaterial.status == "ACTIVE", AffairsClassMaterial.is_deleted.is_(False),
+        ]
         if material_type:
-            q = q.where(AffairsClassMaterial.material_type == material_type)
-        rows = db.scalars(q.order_by(AffairsClassMaterial.id.desc())).all()
-        out = [_material_row(x) for x in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+            conds.append(AffairsClassMaterial.material_type == material_type)
+        total = int(db.scalar(select(func.count()).select_from(AffairsClassMaterial).where(*conds)) or 0)
+        rows = db.scalars(select(AffairsClassMaterial).where(*conds).order_by(
+            AffairsClassMaterial.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+        return [_material_row(row) for row in rows], total
 
 
 def add_material(class_id, user, body) -> dict:
@@ -351,76 +377,198 @@ def _auto_score(metrics: dict) -> float:
     return round(min(100.0, 60.0 + min(40, load)), 1)
 
 
+def _allowed_counselor_ids(db, user):
+    from app.models import SchoolClass
+    allowed, _ = _allowed_class_ids(db, user)
+    if allowed is None:
+        return None
+    return {
+        int(value)
+        for value in db.scalars(select(SchoolClass.counselor_id).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(allowed or {-1}),
+            SchoolClass.counselor_id.is_not(None), SchoolClass.is_deleted.is_(False),
+        )).all()
+    }
+
+
 def collect_assessments(period_id, user, expected_version=None) -> dict:
-    """按数据范围内班级的辅导员自动生成考评行（幂等：已存在则更新指标）。"""
-    from app.models import (AffairsClassMaterial, AffairsCounselorAssessment,
-                            AffairsCounselorAssessmentPeriod, AffairsRiskRecord, CsLeave,
-                            SchoolClass, StudentProfile)
+    """按数据范围生成辅导员考评行；所有工作量指标按辅导员批量聚合。"""
+    from app.models import (
+        AffairsClassMaterial,
+        AffairsCounselorAssessment,
+        AffairsCounselorAssessmentPeriod,
+        AffairsRiskRecord,
+        CsLeave,
+        SchoolClass,
+        StudentProfile,
+        User,
+    )
+
     with session() as db:
         p = db.get(AffairsCounselorAssessmentPeriod, int(period_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("考评周期不存在")
         if p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可重新生成")
+        if expected_version is None:
+            expected_version = int(p.version or 0)
         atomic_claim_version(db, p, expected_version)
+
         allowed, _ = _allowed_class_ids(db, user)
-        q = select(SchoolClass).where(SchoolClass.tenant_id == _tid(),
-                                      SchoolClass.is_deleted.is_(False),
-                                      SchoolClass.counselor_id.is_not(None))
+        class_conditions = [
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.is_deleted.is_(False),
+            SchoolClass.counselor_id.is_not(None),
+        ]
         if allowed is not None:
-            q = q.where(SchoolClass.id.in_(allowed or {-1}))
-        classes = db.scalars(q).all()
-        # 按辅导员分组
-        by_counselor: dict = {}
-        for c in classes:
-            by_counselor.setdefault(c.counselor_id, []).append(c)
-        count = 0
-        for counselor_id, cls in by_counselor.items():
-            cids = [c.id for c in cls]
-            sids = [s for (s,) in db.execute(select(StudentProfile.id).where(
-                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
-                StudentProfile.class_id.in_(cids))).all()]
-            closed_leave = 0
-            risk_closed = 0
-            if sids:
-                closed_leave = db.scalar(select(func.count()).select_from(CsLeave).where(
-                    CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
-                    CsLeave.student_id.in_(sids), CsLeave.affairs_status == "CLOSED")) or 0
-                risk_closed = db.scalar(select(func.count()).select_from(AffairsRiskRecord).where(
-                    AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False),
-                    AffairsRiskRecord.student_id.in_(sids), AffairsRiskRecord.status == "CLOSED")) or 0
-            material_cnt = db.scalar(select(func.count()).select_from(AffairsClassMaterial).where(
-                AffairsClassMaterial.tenant_id == _tid(), AffairsClassMaterial.class_id.in_(cids),
-                AffairsClassMaterial.status == "ACTIVE", AffairsClassMaterial.is_deleted.is_(False))) or 0
-            metrics = {"classCount": len(cids), "studentCount": len(sids),
-                       "closedLeave": closed_leave, "riskClosed": risk_closed,
-                       "materialCount": material_cnt}
-            auto = _auto_score(metrics)
-            row = db.scalars(select(AffairsCounselorAssessment).where(
+            class_conditions.append(SchoolClass.id.in_(allowed or {-1}))
+        classes = db.execute(select(SchoolClass.id, SchoolClass.counselor_id).where(*class_conditions)).all()
+        counselor_ids = {int(counselor_id) for _, counselor_id in classes if counselor_id is not None}
+        class_ids = [int(class_id) for class_id, _ in classes]
+        class_count = {}
+        for _, counselor_id in classes:
+            counselor_id = int(counselor_id)
+            class_count[counselor_id] = class_count.get(counselor_id, 0) + 1
+
+        student_count = {}
+        closed_leave = {}
+        risk_closed = {}
+        material_count = {}
+        if class_ids:
+            student_count = {
+                int(counselor_id): int(count or 0)
+                for counselor_id, count in db.execute(
+                    select(SchoolClass.counselor_id, func.count(StudentProfile.id))
+                    .join(
+                        StudentProfile,
+                        and_(
+                            StudentProfile.class_id == SchoolClass.id,
+                            StudentProfile.tenant_id == _tid(),
+                            StudentProfile.is_deleted.is_(False),
+                        ),
+                    )
+                    .where(*class_conditions)
+                    .group_by(SchoolClass.counselor_id)
+                ).all()
+            }
+            closed_leave = {
+                int(counselor_id): int(count or 0)
+                for counselor_id, count in db.execute(
+                    select(SchoolClass.counselor_id, func.count(CsLeave.id))
+                    .join(
+                        StudentProfile,
+                        and_(
+                            StudentProfile.class_id == SchoolClass.id,
+                            StudentProfile.tenant_id == _tid(),
+                            StudentProfile.is_deleted.is_(False),
+                        ),
+                    )
+                    .join(
+                        CsLeave,
+                        and_(
+                            CsLeave.student_id == StudentProfile.id,
+                            CsLeave.tenant_id == _tid(),
+                            CsLeave.is_deleted.is_(False),
+                            CsLeave.affairs_status == "CLOSED",
+                        ),
+                    )
+                    .where(*class_conditions)
+                    .group_by(SchoolClass.counselor_id)
+                ).all()
+            }
+            risk_closed = {
+                int(counselor_id): int(count or 0)
+                for counselor_id, count in db.execute(
+                    select(SchoolClass.counselor_id, func.count(AffairsRiskRecord.id))
+                    .join(
+                        StudentProfile,
+                        and_(
+                            StudentProfile.class_id == SchoolClass.id,
+                            StudentProfile.tenant_id == _tid(),
+                            StudentProfile.is_deleted.is_(False),
+                        ),
+                    )
+                    .join(
+                        AffairsRiskRecord,
+                        and_(
+                            AffairsRiskRecord.student_id == StudentProfile.id,
+                            AffairsRiskRecord.tenant_id == _tid(),
+                            AffairsRiskRecord.is_deleted.is_(False),
+                            AffairsRiskRecord.status == "CLOSED",
+                        ),
+                    )
+                    .where(*class_conditions)
+                    .group_by(SchoolClass.counselor_id)
+                ).all()
+            }
+            material_count = {
+                int(counselor_id): int(count or 0)
+                for counselor_id, count in db.execute(
+                    select(SchoolClass.counselor_id, func.count(AffairsClassMaterial.id))
+                    .join(
+                        AffairsClassMaterial,
+                        and_(
+                            AffairsClassMaterial.class_id == SchoolClass.id,
+                            AffairsClassMaterial.tenant_id == _tid(),
+                            AffairsClassMaterial.status == "ACTIVE",
+                            AffairsClassMaterial.is_deleted.is_(False),
+                        ),
+                    )
+                    .where(*class_conditions)
+                    .group_by(SchoolClass.counselor_id)
+                ).all()
+            }
+
+        existing = {
+            int(row.counselor_id): row
+            for row in db.scalars(select(AffairsCounselorAssessment).where(
                 AffairsCounselorAssessment.tenant_id == _tid(),
                 AffairsCounselorAssessment.period_id == int(period_id),
-                AffairsCounselorAssessment.counselor_id == counselor_id,
-                AffairsCounselorAssessment.is_deleted.is_(False))).first()
+                AffairsCounselorAssessment.counselor_id.in_(counselor_ids or {-1}),
+                AffairsCounselorAssessment.is_deleted.is_(False),
+            ).with_for_update()).all()
+        }
+        counselor_names = {
+            int(uid): (name or "")
+            for uid, name in db.execute(select(User.id, User.real_name).where(
+                User.tenant_id == _tid(), User.id.in_(counselor_ids or {-1}),
+                User.is_deleted.is_(False),
+            )).all()
+        }
+
+        for counselor_id in sorted(counselor_ids):
+            metrics = {
+                "classCount": class_count.get(counselor_id, 0),
+                "studentCount": student_count.get(counselor_id, 0),
+                "closedLeave": closed_leave.get(counselor_id, 0),
+                "riskClosed": risk_closed.get(counselor_id, 0),
+                "materialCount": material_count.get(counselor_id, 0),
+            }
+            auto = _auto_score(metrics)
+            row = existing.get(counselor_id)
             if row:
-                row.class_count, row.student_count = len(cids), len(sids)
-                row.metrics_json, row.auto_score = json.dumps(metrics, ensure_ascii=False), auto
+                row.class_count = metrics["classCount"]
+                row.student_count = metrics["studentCount"]
+                row.metrics_json = json.dumps(metrics, ensure_ascii=False)
+                row.auto_score = auto
                 if row.college_score is not None:
                     row.total_score = round(float(auto) * 0.6 + float(row.college_score) * 0.4, 1)
-                row.version += 1
+                row.version = int(row.version or 0) + 1
             else:
                 db.add(AffairsCounselorAssessment(
                     tenant_id=_tid(), period_id=int(period_id), counselor_id=counselor_id,
-                    counselor_name=_teacher_name(db, counselor_id), class_count=len(cids),
-                    student_count=len(sids), metrics_json=json.dumps(metrics, ensure_ascii=False),
-                    auto_score=auto, status="PENDING"))
-            count += 1
+                    counselor_name=counselor_names.get(counselor_id, ""),
+                    class_count=metrics["classCount"], student_count=metrics["studentCount"],
+                    metrics_json=json.dumps(metrics, ensure_ascii=False), auto_score=auto,
+                    status="PENDING",
+                ))
         if p.status == "DRAFT":
             p.status = "COLLECTED"
-            p.version += 1
+            p.version = int(p.version or 0) + 1
         _recompute_ranks(db, int(period_id))
-        _audit(db, "COUNSELOR_EVAL", p.id, "COLLECT", f"counselors={count}")
+        _audit(db, "COUNSELOR_EVAL", p.id, "COLLECT", f"counselors={len(counselor_ids)}")
         db.commit()
-        return {"periodId": str(period_id), "counselors": count, "version": p.version}
+        return {"periodId": str(period_id), "counselors": len(counselor_ids), "version": p.version}
 
 
 def _recompute_ranks(db, period_id):
@@ -440,12 +588,19 @@ def _recompute_ranks(db, period_id):
 def list_assessments(period_id, user):
     from app.models import AffairsCounselorAssessment
     with session() as db:
-        rows = db.scalars(select(AffairsCounselorAssessment).where(
+        permitted = _allowed_counselor_ids(db, user)
+        conds = [
             AffairsCounselorAssessment.tenant_id == _tid(),
             AffairsCounselorAssessment.period_id == int(period_id),
-            AffairsCounselorAssessment.is_deleted.is_(False)).order_by(
-            AffairsCounselorAssessment.rank_no.is_(None), AffairsCounselorAssessment.rank_no)).all()
-        return [_assess_row(a) for a in rows]
+            AffairsCounselorAssessment.is_deleted.is_(False),
+        ]
+        if permitted is not None:
+            conds.append(AffairsCounselorAssessment.counselor_id.in_(permitted or {-1}))
+        rows = db.scalars(select(AffairsCounselorAssessment).where(*conds).order_by(
+            AffairsCounselorAssessment.rank_no.is_(None),
+            AffairsCounselorAssessment.rank_no,
+        )).all()
+        return [_assess_row(row) for row in rows]
 
 
 def score_assessment(assessment_id, user, college_score, expected_version=None) -> dict:
@@ -460,6 +615,9 @@ def score_assessment(assessment_id, user, college_score, expected_version=None) 
         a = db.get(AffairsCounselorAssessment, int(assessment_id))
         if not a or a.is_deleted or a.tenant_id != _tid():
             raise not_found("考评记录不存在")
+        permitted = _allowed_counselor_ids(db, user)
+        if permitted is not None and int(a.counselor_id or 0) not in permitted:
+            raise AppException("NO_DATA_SCOPE", "该辅导员不在您的学院或班级数据范围内")
         p = db.get(AffairsCounselorAssessmentPeriod, int(a.period_id))
         if p and p.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "考评已发布，不可再评分")
@@ -482,18 +640,30 @@ def score_assessment(assessment_id, user, college_score, expected_version=None) 
 
 
 def publish_period(period_id, user, expected_version=None) -> dict:
-    from app.models import AffairsCounselorAssessmentPeriod
+    from app.core.affairs_security import build_affairs_context
+    from app.models import AffairsCounselorAssessment, AffairsCounselorAssessmentPeriod
     with session() as db:
+        if build_affairs_context(user, db).scope_type != "TENANT_ALL":
+            raise AppException("NO_PERMISSION", "仅学校/学工处全域管理员可发布全校辅导员考评")
         p = db.get(AffairsCounselorAssessmentPeriod, int(period_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("考评周期不存在")
         if p.status not in ("COLLECTED", "SCORING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已生成/评分中的考评可发布")
+        rows = db.scalars(select(AffairsCounselorAssessment).where(
+            AffairsCounselorAssessment.tenant_id == _tid(),
+            AffairsCounselorAssessment.period_id == int(period_id),
+            AffairsCounselorAssessment.is_deleted.is_(False),
+        ).with_for_update()).all()
+        if not rows:
+            raise AppException("DATA_CONFLICT", "考评周期尚未生成任何辅导员记录")
+        pending = [row for row in rows if row.status != "SCORED" or row.college_score is None]
+        if pending:
+            raise AppException("DATA_CONFLICT", f"仍有{len(pending)}名辅导员未完成学院评分，不能发布")
         atomic_claim_version(db, p, expected_version)
         p.status = "PUBLISHED"
-        p.version += 1
+        p.version = int(p.version or 0) + 1
         _recompute_ranks(db, int(period_id))
         _audit(db, "COUNSELOR_EVAL", p.id, "PUBLISH")
-        db.commit()
-        db.refresh(p)
+        db.commit(); db.refresh(p)
         return _period_row(p)

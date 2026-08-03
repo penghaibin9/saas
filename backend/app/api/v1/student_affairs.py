@@ -842,8 +842,11 @@ class FeeReviewBody(BaseModel):
 
 # —— 勤工助学 ——
 @router.get("/work-study/posts", summary="勤工助学岗位列表")
-def ws_posts(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_posts(user, status)})
+def ws_posts(status: Optional[str] = None, page: int = Query(1, ge=1),
+             pageSize: int = Query(50, ge=1, le=200),
+             user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total = fext_svc.list_posts(user, status, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.post("/work-study/posts", summary="发布勤工岗位")
@@ -853,8 +856,11 @@ def ws_post_create(body: WsPostBody, user=Depends(require_permission("studentAff
 
 @router.get("/work-study/records", summary="勤工上岗记录（数据范围）")
 def ws_records(postId: Optional[int] = None, status: Optional[str] = None,
+               page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_ws_records(user, postId, status)})
+    items, total, status_counts = fext_svc.list_ws_records(user, postId, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/work-study/posts/{postId}/apply", summary="学生申请勤工岗位（代录）")
@@ -892,8 +898,12 @@ def ws_monthly_add(body: WsMonthlyBody, recordId: int = Path(...),
 
 # —— 助学贷款 ——
 @router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
-def loans(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_loans(user, status)})
+def loans(status: Optional[str] = None, page: int = Query(1, ge=1),
+          pageSize: int = Query(50, ge=1, le=200),
+          user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total, status_counts = fext_svc.list_loans(user, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/loans", summary="登记助学贷款")
@@ -910,8 +920,11 @@ def loan_advance(body: VersionOnlyBody, loanId: int = Path(...),
 # —— 减免与临时补助 ——
 @router.get("/fee-reductions", summary="减免/临补台账（数据范围）")
 def fee_reductions(itemType: Optional[str] = None, status: Optional[str] = None,
+                   page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                    user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_reductions(user, itemType, status)})
+    items, total, status_counts = fext_svc.list_reductions(user, itemType, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/fee-reductions", summary="申请学费减免/临时补助（理由≥5字）")
@@ -1119,9 +1132,14 @@ def risk_handles(riskId: int = Path(...),
 
 
 @router.get("/risk/owner-candidates", summary="可分派的风险责任人（在职+持学工风险处置角色）")
-def risk_owner_candidates(keyword: Optional[str] = None,
-                          user=Depends(require_permission("studentAffairs.risk.assign"))):
-    return success({"items": risk_svc.list_owner_candidates(keyword)})
+def risk_owner_candidates(
+    keyword: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.risk.assign")),
+):
+    items, total = risk_svc.list_owner_candidates(keyword, page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.post("/risk/records/{riskId}/assign", summary="分派责任人")

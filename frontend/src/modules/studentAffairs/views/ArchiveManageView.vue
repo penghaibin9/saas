@@ -178,7 +178,10 @@ const FLOW = [
   { key: 'ARCHIVED', label: '已归档' }
 ]
 const STATUS_TYPE = { DRAFT: 'default', COLLECTING: 'processing', COLLEGE_REVIEW: 'warning', SA_CONFIRM: 'warning', ARCHIVED: 'success' }
-const PKG_STATUS = { PENDING_GEN: '待生成', GENERATED: '已生成', ARCHIVED: '已归档' }
+const PKG_STATUS = {
+  PENDING_GEN: '排队生成', GENERATING: '生成中', PENDING_SUPPLEMENT: '生成失败，待处理',
+  SUBMITTED: '已生成', RETURNED: '已退回', ARCHIVED: '已归档'
+}
 
 export default {
   name: 'ArchiveManageView',
@@ -288,7 +291,7 @@ export default {
       const res = await studentAffairsApi.collectArchive(this.current.batchId, ids, this.current.version)
       this.acting = false
       if (res.code === 0) {
-        toast.success(`已生成 ${res.data.packagesCreated} 个档案包`)
+        toast.success(`已提交 ${res.data.packagesQueued ?? res.data.packagesCreated ?? 0} 个档案包生成任务`)
         this.collectModal.visible = false
         this.reload()
       } else {
@@ -354,8 +357,9 @@ export default {
 .av-pkg { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: var(--radius-md); font-size: var(--font-size-sm); color: var(--text-primary); }
 .av-pkg__student { font-weight: 600; }
 .av-pkg__status { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.av-pkg__status.is-generated, .av-pkg__status.is-archived { color: var(--success-700, #15803d); }
-.av-pkg__status.is-pending_gen { color: var(--warning-700, #b45309); }
+.av-pkg__status.is-submitted, .av-pkg__status.is-archived { color: var(--success-700, #15803d); }
+.av-pkg__status.is-pending_gen, .av-pkg__status.is-generating { color: var(--warning-700, #b45309); }
+.av-pkg__status.is-pending_supplement, .av-pkg__status.is-returned { color: var(--danger-700, #b91c1c); }
 .av-pkg__task { margin-left: auto; font-size: var(--font-size-xs); color: var(--primary-600); }
 .av-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .av-form__note { padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }

@@ -26,6 +26,19 @@ FUND_NODES = ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"GRANTED", "REJECTED", "CANCELLED", "ARCHIVED"}
 _AMOUNT_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER"}
 
+_DEFAULT_ELIGIBILITY = {
+    "version": "2026.1",
+    "SCHOLARSHIP": {
+        "requireActiveStatus": True,
+        "requireNoActiveDiscipline": True,
+        "requireNoFailedGrade": True,
+    },
+    "GRANT": {
+        "requireDifficultLibrary": True,
+        "allowedAidLevels": [],
+    },
+}
+
 L_FUND = {
     "DRAFT": "草稿", "SUBMITTED": "已提交", "COUNSELOR_REVIEW": "辅导员初审",
     "COLLEGE_REVIEW": "学院评审", "SCHOOL_REVIEW": "学校审批", "PUBLICITY": "公示中",
@@ -204,42 +217,106 @@ def _check_fund_review_node(db, x, user):
 
 # ── 资格硬校验链（跨域只读，快照入 check_snapshot_json）──
 
-def _check_scholarship(db, student_id) -> dict:
-    """奖学金：学籍在籍 + 无未解除处分 + 无挂科。返回快照 dict（含 ok 与各项）。"""
+def _eligibility_rules(project_type: str, project=None) -> dict:
+    project_type = str(project_type or "").upper()
+    configured = _DEFAULT_ELIGIBILITY
+    source = "PACKAGE_DEFAULT"
+    chain = []
+    try:
+        from app.services import effective_config_service
+        resolved = effective_config_service.resolve("AFFAIRS_FUNDING_ELIGIBILITY_JSON")
+        if isinstance(resolved.get("value"), dict):
+            configured = resolved["value"]
+            source = resolved.get("sourceLayer") or "PACKAGE_DEFAULT"
+            chain = resolved.get("chain") or []
+    except Exception:
+        pass
+    defaults = dict(_DEFAULT_ELIGIBILITY.get(project_type) or {})
+    rules = dict(defaults)
+    configured_rules = configured.get(project_type) if isinstance(configured, dict) else None
+    if isinstance(configured_rules, dict):
+        rules.update({key: value for key, value in configured_rules.items() if key in defaults})
+    project_rules = {}
+    if project is not None and getattr(project, "condition_json", None):
+        try:
+            parsed = json.loads(project.condition_json)
+            if isinstance(parsed, dict):
+                candidate = parsed.get("eligibility") or parsed.get(project_type) or parsed
+                if isinstance(candidate, dict):
+                    project_rules = {key: value for key, value in candidate.items() if key in defaults}
+                    rules.update(project_rules)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            project_rules = {}
+    version = str((configured or {}).get("version") or _DEFAULT_ELIGIBILITY["version"])
+    return {
+        "version": version, "source": source, "sourceChain": chain, "rules": rules,
+        "projectId": str(getattr(project, "id", "") or ""),
+        "projectOverrides": project_rules,
+    }
+
+
+def _check_scholarship(db, student_id, project=None) -> dict:
+    """奖学金资格按学校有效配置与项目覆盖执行，并冻结规则版本和事实快照。"""
     from app.models import (AcademicGrade, AcademicStudent, CsDiscipline,
                             CsServiceStudent, StudentProfile)
+    contract = _eligibility_rules("SCHOLARSHIP", project)
+    rules = contract["rules"]
     s = db.get(StudentProfile, int(student_id))
-    status_ok = bool(s and (s.student_status in (None, "NORMAL", "在籍", "ACTIVE")))
-    # 处分：映射到在校服务台账 → 未解除(record_status=ACTIVE)
-    discipline_ok = True
+    status_fact = bool(s and (s.student_status in (None, "NORMAL", "在籍", "ACTIVE")))
+    discipline_fact = True
     cs = db.scalars(select(CsServiceStudent).where(
         CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == int(student_id),
         CsServiceStudent.is_deleted.is_(False))).first()
     if cs:
-        cnt = db.scalar(select(CsDiscipline).where(
+        exists = db.scalar(select(CsDiscipline.id).where(
             CsDiscipline.tenant_id == _tid(), CsDiscipline.cs_student_id == cs.id,
-            CsDiscipline.record_status == "ACTIVE", CsDiscipline.is_deleted.is_(False)))
-        discipline_ok = cnt is None
-    # 成绩：映射到学业台账 → 无挂科(pass_status=FAILED)
-    grade_ok = True
+            CsDiscipline.record_status == "ACTIVE", CsDiscipline.is_deleted.is_(False)).limit(1))
+        discipline_fact = exists is None
+    grade_fact = True
     acad = db.scalars(select(AcademicStudent).where(
         AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == int(student_id),
         AcademicStudent.is_deleted.is_(False))).first()
     if acad:
-        fail = db.scalar(select(AcademicGrade).where(
+        failed = db.scalar(select(AcademicGrade.id).where(
             AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
             AcademicGrade.pass_status == "FAILED", AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False)))
-        grade_ok = fail is None
-    return {"type": "SCHOLARSHIP", "statusOk": status_ok, "disciplineOk": discipline_ok,
-            "gradeOk": grade_ok, "ok": status_ok and discipline_ok and grade_ok}
+            AcademicGrade.is_deleted.is_(False)).limit(1))
+        grade_fact = failed is None
+    status_ok = status_fact or not bool(rules.get("requireActiveStatus", True))
+    discipline_ok = discipline_fact or not bool(rules.get("requireNoActiveDiscipline", True))
+    grade_ok = grade_fact or not bool(rules.get("requireNoFailedGrade", True))
+    return {
+        "type": "SCHOLARSHIP", "statusOk": status_ok, "disciplineOk": discipline_ok,
+        "gradeOk": grade_ok, "facts": {
+            "activeStatus": status_fact, "noActiveDiscipline": discipline_fact,
+            "noFailedGrade": grade_fact,
+        },
+        "ruleVersion": contract["version"], "ruleSource": contract["source"],
+        "ruleSourceChain": contract["sourceChain"], "projectId": contract["projectId"],
+        "projectOverrides": contract["projectOverrides"], "rules": rules,
+        "evaluatedAt": datetime.utcnow().isoformat(),
+        "ok": status_ok and discipline_ok and grade_ok,
+    }
 
 
-def _check_grant(db, student_id) -> dict:
-    """助学金：必须在困难库（认定通过）。"""
+def _check_grant(db, student_id, project=None) -> dict:
+    """助学金资格按困难库事实、允许等级和项目覆盖执行，并冻结规则版本。"""
     from app.services.affairs_aid_service import is_in_difficult_library
+    contract = _eligibility_rules("GRANT", project)
+    rules = contract["rules"]
     level = is_in_difficult_library(db, student_id)
-    return {"type": "GRANT", "aidLevel": level, "inDifficultLibrary": bool(level), "ok": bool(level)}
+    in_library = bool(level)
+    allowed_levels = [str(value) for value in (rules.get("allowedAidLevels") or []) if str(value)]
+    library_ok = in_library or not bool(rules.get("requireDifficultLibrary", True))
+    level_ok = not allowed_levels or str(level or "") in allowed_levels
+    return {
+        "type": "GRANT", "aidLevel": level, "inDifficultLibrary": in_library,
+        "aidLevelAllowed": level_ok, "ruleVersion": contract["version"],
+        "ruleSource": contract["source"], "ruleSourceChain": contract["sourceChain"],
+        "projectId": contract["projectId"], "projectOverrides": contract["projectOverrides"],
+        "rules": rules, "evaluatedAt": datetime.utcnow().isoformat(),
+        "ok": library_ok and level_ok,
+    }
 
 
 def _reject_reason(snap: dict) -> str:
@@ -338,6 +415,8 @@ def create_project(body, user) -> dict:
 
 
 def list_projects(user, project_type=None, status=None, page=1, page_size=20):
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
         from app.models import FundingProject
         conds = [FundingProject.tenant_id == _tid(), FundingProject.is_deleted.is_(False)]
@@ -345,14 +424,26 @@ def list_projects(user, project_type=None, status=None, page=1, page_size=20):
             conds.append(FundingProject.project_type == project_type)
         if status:
             conds.append(FundingProject.status == status)
-        rows = db.scalars(select(FundingProject).where(*conds).order_by(FundingProject.id.desc())).all()
-        out = [_project_row(p) for p in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        total = int(db.scalar(select(func.count()).select_from(FundingProject).where(*conds)) or 0)
+        rows = db.scalars(select(FundingProject).where(*conds).order_by(
+            FundingProject.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+        return [_project_row(row) for row in rows], total
 
 
 def create_batch(body, user) -> dict:
+    from app.services.affairs_publicity_rules import publicity_days, school_year, validate_dates
+    body.schoolYear = school_year(getattr(body, "schoolYear", None))
+    body.publicityDays = publicity_days(getattr(body, "publicityDays", None))
+    validate_dates(_parse_dt, body)
+    quota = getattr(body, "quota", None)
+    if quota not in (None, ""):
+        try:
+            quota = int(quota)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "资助名额必须为整数") from exc
+        if quota < 1 or quota > 100000:
+            raise AppException("VALIDATION_ERROR", "资助名额应为1-100000")
+        body.quota = quota
     with session() as db:
         from app.models import FundingBatch, FundingProject
         p = db.get(FundingProject, int(body.projectId))
@@ -374,6 +465,8 @@ def create_batch(body, user) -> dict:
 
 
 def list_batches(user, project_id=None, status=None, page=1, page_size=20):
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
         from app.models import FundingBatch
         conds = [FundingBatch.tenant_id == _tid(), FundingBatch.is_deleted.is_(False)]
@@ -381,11 +474,10 @@ def list_batches(user, project_id=None, status=None, page=1, page_size=20):
             conds.append(FundingBatch.project_id == int(project_id))
         if status:
             conds.append(FundingBatch.status == status)
-        rows = db.scalars(select(FundingBatch).where(*conds).order_by(FundingBatch.id.desc())).all()
-        out = [_batch_row(b) for b in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        total = int(db.scalar(select(func.count()).select_from(FundingBatch).where(*conds)) or 0)
+        rows = db.scalars(select(FundingBatch).where(*conds).order_by(
+            FundingBatch.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+        return [_batch_row(row) for row in rows], total
 
 
 # ═══════════ 申请（含资格硬校验）═══════════
@@ -393,7 +485,7 @@ def list_batches(user, project_id=None, status=None, page=1, page_size=20):
 def apply(body, user, *, skip_scope_check: bool = False) -> dict:
     student_id = _req_int(getattr(body, "studentId", None), "学生")
     with session() as db:
-        from app.models import FundingApplication, FundingBatch, StudentProfile
+        from app.models import FundingApplication, FundingBatch, FundingProject, StudentProfile
         s = db.get(StudentProfile, student_id)
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
@@ -412,22 +504,27 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
             FundingApplication.student_id == student_id, FundingApplication.is_deleted.is_(False))).first()
         if dup and dup.status not in _TERMINAL:
             raise AppException("DATA_CONFLICT", "该生在本批次已有在途申请，不可重复提交")
-        # 资格硬校验链
-        snap = _check_grant(db, student_id) if b.project_type == "GRANT" else _check_scholarship(db, student_id)
+        project = db.get(FundingProject, int(b.project_id)) if b.project_id else None
+        if not project or project.is_deleted or project.tenant_id != _tid():
+            raise not_found("资助项目不存在")
+        project_type = str(b.project_type or project.project_type or "").upper()
+        # 资格硬校验链：学校有效配置 + 项目条件覆盖，并将规则版本冻结进申请快照。
+        snap = (_check_grant(db, student_id, project) if project_type == "GRANT"
+                else _check_scholarship(db, student_id, project))
         if not snap["ok"]:
             raise AppException("DATA_CONFLICT", _reject_reason(snap))
         first = FUND_NODES[0]
         x = FundingApplication(tenant_id=_tid(), batch_id=b.id, student_id=student_id,
-                               apply_source=(body.applySource or "SELF"), project_type=b.project_type,
+                               apply_source=(body.applySource or "SELF"), project_type=project_type,
                                amount=body.amount, statement=(body.statement or ""),
                                check_snapshot_json=json.dumps(snap, ensure_ascii=False), status=first)
         db.add(x)
         db.flush()
         assignee = _assignee_for(db, first, student_id)
-        inst = _open_wf(db, x.id, b.project_type, student_id, f"{s.real_name} {b.project_type}", first, assignee)
+        inst = _open_wf(db, x.id, project_type, student_id, f"{s.real_name} {project_type}", first, assignee)
         x.workflow_instance_id = inst.id
         _todo_upsert(db, x.id, assignee, student_id, f"资助申请待审：{s.real_name}")
-        _audit(db, x.id, "APPLY", b.project_type)
+        _audit(db, x.id, "APPLY", f"{project_type};rule={snap.get('ruleVersion')};source={snap.get('ruleSource')}")
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
@@ -534,25 +631,35 @@ def scan_publicity() -> dict:
         rows = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.status == "PUBLICITY",
             FundingApplication.publicity_at.is_not(None),
-            FundingApplication.is_deleted.is_(False))).all()
-        pending = _pending_appeal_ids(db, [x.id for x in rows])
-        cnt = skipped = 0
-        for x in rows:
-            if int(x.id) in pending:
+            FundingApplication.is_deleted.is_(False),
+        ).order_by(FundingApplication.id).limit(200).with_for_update(skip_locked=True)).all()
+        pending = _pending_appeal_ids(db, [row.id for row in rows])
+        batch_ids = {int(row.batch_id) for row in rows if row.batch_id}
+        batches = {
+            int(batch.id): batch
+            for batch in db.scalars(select(FundingBatch).where(
+                FundingBatch.tenant_id == _tid(),
+                FundingBatch.id.in_(batch_ids) if batch_ids else FundingBatch.id == -1,
+                FundingBatch.is_deleted.is_(False),
+            )).all()
+        }
+        confirmed = skipped = invalid = 0
+        for row in rows:
+            if int(row.id) in pending:
                 skipped += 1
                 continue
-            b = db.get(FundingBatch, int(x.batch_id))
-            days = (b.publicity_days if b and b.publicity_days is not None else 5)
-            if x.publicity_at + timedelta(days=days) <= now:
-                # 再断言一次，避免扫描窗口内新提交申诉
-                if int(x.id) in _pending_appeal_ids(db, [x.id]):
-                    skipped += 1
-                    continue
-                _grant_one(db, x)
-                cnt += 1
+            batch = batches.get(int(row.batch_id)) if row.batch_id else None
+            if not batch:
+                invalid += 1
+                continue
+            due = row.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
+            if due > now:
+                continue
+            _grant_one(db, row)
+            confirmed += 1
         db.commit()
-        _drain_message_outbox()
-        return {"count": cnt, "skippedAppeal": skipped}
+    _drain_message_outbox()
+    return {"count": confirmed, "skippedAppeal": skipped, "invalidBatch": invalid}
 
 
 def confirm_publicity(app_id, user, expected_version=None) -> dict:
@@ -701,17 +808,21 @@ def generate_disbursements(batch_id, user) -> dict:
         apps = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == int(batch_id),
             FundingApplication.status == "GRANTED", FundingApplication.is_deleted.is_(False))).all()
+        application_ids = {int(application.id) for application in apps}
+        existing_ids = set(db.scalars(select(FundingDisbursement.application_id).where(
+            FundingDisbursement.tenant_id == _tid(),
+            FundingDisbursement.application_id.in_(application_ids) if application_ids else FundingDisbursement.application_id == -1,
+            FundingDisbursement.is_deleted.is_(False),
+        )).all())
         made = 0
-        for a in apps:
-            dup = db.scalars(select(FundingDisbursement).where(
-                FundingDisbursement.tenant_id == _tid(),
-                FundingDisbursement.application_id == a.id,
-                FundingDisbursement.is_deleted.is_(False))).first()
-            if dup:
+        for application in apps:
+            if int(application.id) in existing_ids:
                 continue
-            db.add(FundingDisbursement(tenant_id=_tid(), application_id=a.id, batch_id=a.batch_id,
-                                       student_id=a.student_id, project_type=a.project_type,
-                                       amount=a.amount, bank_status="PENDING", created_by=_disb_uid(user)))
+            db.add(FundingDisbursement(
+                tenant_id=_tid(), application_id=application.id, batch_id=application.batch_id,
+                student_id=application.student_id, project_type=application.project_type,
+                amount=application.amount, bank_status="PENDING", created_by=_disb_uid(user),
+            ))
             made += 1
         if made:
             _audit(db, int(batch_id), "FUNDING_DISBURSE_GENERATE", f"{made}条")

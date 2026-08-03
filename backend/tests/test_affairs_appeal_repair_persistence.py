@@ -131,6 +131,7 @@ def test_dead_job_can_be_listed_and_manually_requeued_with_version_lock(db_mode)
         assert row.state == "PENDING"
         assert row.attempts == 0
         assert row.lease_owner is None and row.lease_until is None
+        assert row.next_run_at <= datetime.utcnow()
         db.close()
     finally:
         _clear_context()

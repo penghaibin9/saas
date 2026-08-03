@@ -82,6 +82,14 @@ def test_f1_scholarship_apply_creates_workflow(client, db_mode):
     r = _fund_apply(client, hdr, bid, ids["sa"]).json()
     assert r["code"] == 0
     assert r["data"]["status"] == "COUNSELOR_REVIEW"
+    detail = client.get(
+        f"{BASE}/funding/applications/{r['data']['applicationId']}", headers=hdr
+    ).json()["data"]
+    snapshot = detail["checkSnapshot"]
+    assert snapshot["ruleVersion"] == "2026.1"
+    assert snapshot["ruleSource"]
+    assert snapshot["rules"]["requireActiveStatus"] is True
+    assert snapshot["projectId"]
     from app.db.session import get_sessionmaker
     from app.models import WorkflowInstance
     db = get_sessionmaker()()

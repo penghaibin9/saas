@@ -105,13 +105,6 @@ const FOLLOW_COLUMNS = [
   { key: 'actions', title: '操作', align: 'right', width: '250px' }
 ]
 const CHANNELS = ['校内咨询', '校医院', '专业机构', '家长'].map((value) => ({ value, label: value }))
-const FALLBACK_ACTIONS = {
-  REFERRED: ['FOLLOW', 'ESCALATE', 'CLOSE'],
-  FOLLOWING: ['FOLLOW', 'ESCALATE', 'CLOSE'],
-  ESCALATED: ['CLOSE'],
-  CLOSED: []
-}
-
 export default {
   name: 'MentalReferralFollowView',
   props: { ctx: { type: Object, default: null } },
@@ -146,7 +139,7 @@ export default {
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row && row.version !== undefined && row.version !== null && row.version !== '' },
-    allowed(row) { return Array.isArray(row.allowedActions) ? row.allowedActions : (FALLBACK_ACTIONS[row.status] || []) },
+    allowed(row) { return Array.isArray(row.allowedActions) ? row.allowedActions : [] },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {

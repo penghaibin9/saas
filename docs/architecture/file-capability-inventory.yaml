@@ -446,11 +446,11 @@ entries:
 - module: archive
   client: backend
   route: inventory://archive/backend
-  page: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
+  page: backend/app/services/affairs_archive_service.py
   action: import+export
   fileCategory: MIXED
   api: multiple; see notes
-  backendService: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py
+  backendService: backend/app/services/affairs_archive_service.py
   storageMode: mixed
   authMode: existing endpoint guard; verify in target phase
   dataScope: existing business scope; verify in target phase
@@ -464,7 +464,7 @@ entries:
   status: needs-verification
   risk: P0
   targetPhase: '4'
-  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_guard.py; backend/app/services/affairs_archive_service.py. representative routes: -'
+  notes: 'Stage 0 exhaustive source group. sources: backend/app/services/affairs_archive_service.py. representative routes: -'
 - module: file-center
   client: admin-pc
   route: inventory://file-center/admin-pc

@@ -19,7 +19,7 @@ def test_router_installs_guards_after_existing_four_end_contract():
     assert contract < data < terminal
     assert "install_counselor_handover_guard()" not in source
     assert "install_risk_evidence_guard()" in source
-    assert "install_counselor_eval_guard()" in source
+    assert "install_counselor_eval_guard()" not in source
 
 
 def test_student_overview_and_profile_do_not_emit_false_current_state():
@@ -58,7 +58,7 @@ def test_risk_high_impact_actions_require_auditable_evidence():
 
 
 def test_counselor_evaluation_scope_and_publish_preconditions():
-    source = read("backend/app/services/affairs_counselor_eval_guard.py")
+    source = read("backend/app/services/affairs_class_service.py")
     assert "expected_version = int(period.version or 0)" in source
     assert 'raise AppException("NO_DATA_SCOPE"' in source
     assert 'scope_type != "TENANT_ALL"' in source

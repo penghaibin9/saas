@@ -1,5 +1,23 @@
 import { realDownload, realRequest, realUpload } from '@/services/request'
 
+async function loadAllTransferPages(path) {
+  const pageSize = 200
+  let page = 1
+  let first = null
+  const items = []
+  while (true) {
+    const separator = path.includes('?') ? '&' : '?'
+    const data = await realRequest(`${path}${separator}page=${page}&pageSize=${pageSize}`)
+    if (!first) first = data || {}
+    items.push(...((data && data.items) || []))
+    const total = Number((data && data.total) || items.length)
+    if (!(data && data.hasMore) && items.length >= total) break
+    if (!data || !data.items || data.items.length === 0) break
+    page += 1
+  }
+  return { ...(first || {}), items, total: Number((first && first.total) || items.length), page: 1, pageSize: items.length, hasMore: false }
+}
+
 /**
  * 学工四端专用契约。
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
@@ -35,8 +53,8 @@ export const affairsContractApi = {
   downloadMaterialFile: (fileId) => realDownload(`/files/download/${fileId}`),
 
   // 宿舍正式调宿
-  getDormTransferOptions: () => realRequest('/mobile/affairs/dorm/transfer-options'),
-  getDormTransferRooms: (buildingId) => realRequest(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
+  getDormTransferOptions: () => loadAllTransferPages('/mobile/affairs/dorm/transfer-options'),
+  getDormTransferRooms: (buildingId) => loadAllTransferPages(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
   getDormTransferBeds: (roomId) => realRequest(`/mobile/affairs/dorm/transfer-rooms/${roomId}/beds`),
   submitDormTransfer: (toBedId, reason) => realRequest('/mobile/affairs/dorm/transfers', {
     method: 'POST', data: { toBedId, reason }

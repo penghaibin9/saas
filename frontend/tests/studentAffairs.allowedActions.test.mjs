@@ -38,3 +38,20 @@ test('student clients use the server allowedActions contract without runtime ada
     assert.doesNotMatch(source, /canResubmit|canObject|canAppeal/)
   }
 })
+
+
+test('admin student-affairs actions fail closed when allowedActions is absent', () => {
+  const workStudy = read('frontend/src/modules/studentAffairs/views/funding/WorkStudyView.vue')
+  const loan = read('frontend/src/modules/studentAffairs/views/funding/StudentLoanView.vue')
+  const fee = read('frontend/src/modules/studentAffairs/views/funding/FeeReductionView.vue')
+  const dorm = read('frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue')
+  const mental = read('frontend/src/modules/studentAffairs/views/mental/MentalReferralFollowView.vue')
+  assert.match(workStudy, /Array\.isArray\(row\?\.allowedActions\) \? row\.allowedActions : \[\]/)
+  assert.match(loan, /Array\.isArray\(row\?\.allowedActions\) && row\.allowedActions\.includes\('ADVANCE'\)/)
+  assert.match(fee, /Array\.isArray\(row\?\.allowedActions\) && row\.allowedActions\.includes\(action\)/)
+  assert.match(dorm, /Array\.isArray\(row\.allowedActions\) && row\.allowedActions\.includes\(action\)/)
+  assert.match(mental, /Array\.isArray\(row\.allowedActions\) \? row\.allowedActions : \[\]/)
+  for (const source of [workStudy, loan, fee, dorm, mental]) {
+    assert.doesNotMatch(source, /FALLBACK_ACTIONS/)
+  }
+})

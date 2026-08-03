@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -133,16 +132,6 @@ def _mask_credential(credential: str) -> str:
 def _encrypt_credential(credential: str) -> str:
     from app.core.field_crypto import encrypt_field
     return encrypt_field(credential) or ""
-
-
-def _validate_endpoint(endpoint: str) -> None:
-    parsed = urlparse(str(endpoint or "").strip())
-    if parsed.scheme not in ("https", "http"):
-        raise AppException("VALIDATION_ERROR", "接口地址必须是 http/https URL")
-    if not parsed.netloc:
-        raise AppException("VALIDATION_ERROR", "接口地址缺少主机名")
-    if parsed.scheme == "http" and "localhost" not in parsed.netloc and "127.0.0.1" not in parsed.netloc:
-        raise AppException("VALIDATION_ERROR", "非本地环境禁止明文 http，请使用 https")
 
 
 def _permission_pattern_covered(target: str, grantors: set[str]) -> bool:
@@ -322,11 +311,13 @@ def list_integrations() -> list[dict]:
 
 
 def save_integration(user: dict, body: dict) -> dict:
+    from app.services import integration_security_service as isec
+
     name = str(body.get("name") or "").strip()
     endpoint = str(body.get("endpoint") or "").strip()
     if len(name) < 2 or not endpoint:
         raise AppException("VALIDATION_ERROR", "请填写连接名称与接口地址")
-    _validate_endpoint(endpoint)
+    isec.validate_endpoint_ssrf_safe(endpoint)
     items = list(_load(DOC_INTEGRATIONS) or [])
     row_id = str(body.get("id") or "")
     credential = str(body.get("credential") or "").strip()
@@ -390,21 +381,19 @@ def rotate_integration_credential(user: dict, integration_id: str, credential: s
 
 
 def test_integration_connection(user: dict, integration_id: str, timeout_sec: float = 5.0) -> dict:
-    """连接测试：仅做 URL 可达性探测；无业务适配器时不标记 CONNECTED。"""
-    import socket
-    from urllib.parse import urlparse as _up
+    """连接测试：仅做 URL 可达性探测；无业务适配器时不标记 CONNECTED。
+
+    每次探测都重新做 SSRF 安全解析+校验再连接（不复用保存时的旧解析结果），
+    这就是阻断 DNS 重绑定的关键——校验和连接必须是同一次解析。"""
+    from app.services import integration_security_service as isec
 
     items = list(_load(DOC_INTEGRATIONS) or [])
     hit = next((x for x in items if x.get("id") == integration_id), None)
     if hit is None:
         raise AppException("DATA_NOT_FOUND", "接口连接不存在")
     endpoint = hit.get("endpoint") or ""
-    _validate_endpoint(endpoint)
-    parsed = _up(endpoint)
-    host = parsed.hostname or ""
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        sock = socket.create_connection((host, port), timeout=timeout_sec)
+        sock = isec.connect_ssrf_safe(endpoint, timeout=timeout_sec)
         sock.close()
         hit["lastTestAt"] = _now()
         hit["lastError"] = ""
@@ -412,11 +401,11 @@ def test_integration_connection(user: dict, integration_id: str, timeout_sec: fl
         hit["status"] = "CONFIGURED"
         hit["statusLabel"] = "主机可达（配置登记）"
         message = "主机端口可达；尚未配置业务适配器，不能称为已连接"
-    except OSError as exc:
+    except AppException as exc:
         hit["lastTestAt"] = _now()
-        hit["lastError"] = str(exc)[:200]
+        hit["lastError"] = str(exc.message)[:200]
         hit["lastTestResult"] = "UNREACHABLE"
-        message = f"连接测试失败：{exc}"
+        message = f"连接测试失败：{exc.message}"
     _save(DOC_INTEGRATIONS, items, user)
     from app.services import audit_log
     audit_log.record("INTEGRATION_TEST", f"integration:{integration_id}",

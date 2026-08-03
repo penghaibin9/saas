@@ -235,3 +235,64 @@ def test_portal_leave_resubmit_self_only(client, db_mode):
     deny = client.post(f"{PORTAL}/leave/{leave_id}/resubmit", headers=other_h,
                        json={"reason": "他人冒充重交应当失败", "version": leave_version + 1}).json()
     assert deny["code"] in (403001, 403002) or deny.get("bizCode") in ("NO_PERMISSION", "NO_DATA_SCOPE")
+
+
+def test_applications_query_count_does_not_grow_per_leave(client, db_mode):
+    """回归 P1-04：申请聚合不得为每条记录分别查流程、时间线、材料。"""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import event, select
+
+    from app.db.session import get_engine, get_sessionmaker
+    from app.models import CsLeave, StudentProfile
+
+    no = "SA-N1-001"
+    _seed(no, "聚合查询生")
+    db = get_sessionmaker()()
+    student = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == TID, StudentProfile.student_no == no,
+    )).one()
+    db.add(CsLeave(
+        tenant_id=TID, student_id=student.id, cs_student_id=0, leave_type="PERSONAL",
+        start_time=datetime(2026, 8, 1), end_time=datetime(2026, 8, 2), days=1,
+        reason="查询次数基线请假", affairs_status="RETURNED", status="RETURNED",
+    ))
+    db.commit(); db.close()
+    headers = _stu_token("聚合查询生", no)
+
+    # 先预热路由/模型初始化，计数只覆盖稳定业务查询。
+    assert client.get(f"{PORTAL}/applications", headers=headers).json()["code"] == 0
+
+    def measured_selects():
+        count = 0
+
+        def before_cursor_execute(_conn, _cursor, statement, _params, _context, _many):
+            nonlocal count
+            if statement.lstrip().upper().startswith("SELECT"):
+                count += 1
+
+        engine = get_engine()
+        event.listen(engine, "before_cursor_execute", before_cursor_execute)
+        try:
+            response = client.get(f"{PORTAL}/applications", headers=headers).json()
+            assert response["code"] == 0
+        finally:
+            event.remove(engine, "before_cursor_execute", before_cursor_execute)
+        return count
+
+    baseline = measured_selects()
+    db = get_sessionmaker()()
+    student = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == TID, StudentProfile.student_no == no,
+    )).one()
+    for index in range(25):
+        db.add(CsLeave(
+            tenant_id=TID, student_id=student.id, cs_student_id=0, leave_type="PERSONAL",
+            start_time=datetime(2026, 8, 3) + timedelta(days=index),
+            end_time=datetime(2026, 8, 4) + timedelta(days=index), days=1,
+            reason=f"查询次数扩容请假{index}", affairs_status="RETURNED", status="RETURNED",
+        ))
+    db.commit(); db.close()
+
+    expanded = measured_selects()
+    assert expanded <= baseline + 2, (baseline, expanded)

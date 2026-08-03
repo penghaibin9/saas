@@ -1436,6 +1436,14 @@ export const systemApi = {
     }
   },
 
+  async testIntegration(id) {
+    try {
+      return ok(await request(`/system/integrations/${encodeURIComponent(id)}/test`, { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '测试连接失败')
+    }
+  },
+
   async listSyncJobs() {
     try {
       return ok(await request('/system/sync-jobs'))
@@ -2055,6 +2063,39 @@ export const systemApi = {
       }))
     } catch (error) {
       return fail(error.message || '复核结论提交失败')
+    }
+  },
+
+  // SYS-21：安全审计、敏感操作与证据
+  async getAuditOverview() {
+    try {
+      return ok(await request('/system/audit/overview'))
+    } catch (error) {
+      return fail(error.message || '审计首屏加载失败')
+    }
+  },
+
+  async getAuditEvidence(params = {}) {
+    try {
+      return ok(await request('/system/audit/evidence', { params }))
+    } catch (error) {
+      return fail(error.message || '证据查询失败')
+    }
+  },
+
+  async createAuditEvidencePack(body = {}) {
+    try {
+      return ok(await request('/system/audit/evidence-pack-jobs', { method: 'POST', body }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async getAuditEvidencePackScope(jobId) {
+    try {
+      return ok(await request(`/system/audit/evidence-pack-jobs/${encodeURIComponent(jobId)}`))
+    } catch (error) {
+      return fail(error.message || '证据包范围加载失败')
     }
   }
 }

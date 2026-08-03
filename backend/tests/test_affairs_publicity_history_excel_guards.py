@@ -9,13 +9,16 @@ def read(path: str) -> str:
 
 
 def test_publicity_has_formal_duration_and_serialized_scans():
-    text = read("backend/app/services/affairs_publicity_guard.py")
-    assert "正式公示天数应为1-30天" in text
-    assert "学年格式应为YYYY-YYYY" in text
-    assert text.count("with_for_update(skip_locked=True)") == 2
-    assert text.count("timedelta(days=max(1") == 2
-    assert "_pending_objection_ids" in text
-    assert "_pending_appeal_ids" in text
+    rules = read("backend/app/services/affairs_publicity_rules.py")
+    aid = read("backend/app/services/affairs_aid_service.py")
+    funding = read("backend/app/services/affairs_funding_service.py")
+    assert "正式公示天数应为1-30天" in rules
+    assert "学年格式应为YYYY-YYYY" in rules
+    assert aid.count("with_for_update(skip_locked=True)") >= 1
+    assert funding.count("with_for_update(skip_locked=True)") >= 1
+    assert "timedelta(days=max(1" in aid and "timedelta(days=max(1" in funding
+    assert "_pending_objection_ids" in aid
+    assert "_pending_appeal_ids" in funding
 
 
 def test_history_import_is_shared_locked_and_full_side_effect():
@@ -47,9 +50,8 @@ def test_xlsx_import_export_prevents_formula_and_path_injection():
 def test_router_installs_publicity_before_stats_and_archive_is_direct_service():
     source = read("backend/app/api/v1/router.py")
     archive = read("backend/app/services/affairs_archive_service.py")
-    publicity = source.index("install_publicity_guard()")
-    stats = source.index("install_stats_integrity_guard()")
-    assert publicity < stats
+    assert "install_publicity_guard()" not in source
+    assert "install_stats_integrity_guard()" in source
     assert "install_archive_guard()" not in source
     assert "公共版本与 Manifest" in archive
     assert "AFFAIRS_ARCHIVE_MANIFEST" in archive

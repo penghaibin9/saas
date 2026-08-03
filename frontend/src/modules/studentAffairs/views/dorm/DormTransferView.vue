@@ -195,7 +195,7 @@ export default {
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row && row.version !== undefined && row.version !== null && row.version !== '' },
-    canAction(row, action) { return Array.isArray(row.allowedActions) ? row.allowedActions.includes(action) : (this.isPending(row.status) && ['APPROVE', 'REJECT'].includes(action)) },
+    canAction(row, action) { return Array.isArray(row.allowedActions) && row.allowedActions.includes(action) },
     fallbackBed(row, side) {
       const prefix = side === 'from' ? 'from' : 'to'
       return [row[`${prefix}BuildingName`], row[`${prefix}RoomNo`] && `${row[`${prefix}RoomNo`]}室`, row[`${prefix}BedNo`] && `${row[`${prefix}BedNo`]}床`].filter(Boolean).join(' / ') || (row[`${prefix}BedId`] ? `床位 #${row[`${prefix}BedId`]}` : '未记录')

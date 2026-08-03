@@ -40,14 +40,25 @@ def _json_object(value) -> dict:
 
 
 def _tenant_json(key: str, fallback_text: str = "") -> dict:
-    """读取当前租户生效 JSON；配置缺失/表未迁移时安全回落环境默认。"""
+    """读取有效配置来源链；未登记/未迁移时回落既有 t_sys_config 与环境默认。"""
+    package_default = None
+    try:
+        from app.services import effective_config_service
+        resolved = effective_config_service.resolve(key)
+        value = resolved.get("value")
+        if isinstance(value, dict):
+            if resolved.get("sourceLayer") not in (None, "PACKAGE_DEFAULT"):
+                return value
+            package_default = value
+    except Exception:
+        pass
     try:
         from sqlalchemy import select
         from app.db.session import db_enabled, get_sessionmaker
         from app.models import SysConfig
         from app.services.db_service import _tid
         if not db_enabled():
-            return _json_object(fallback_text)
+            return _json_object(fallback_text) or package_default or {}
         db = get_sessionmaker()()
         try:
             row = db.scalars(select(SysConfig).where(
@@ -55,11 +66,11 @@ def _tenant_json(key: str, fallback_text: str = "") -> dict:
                 SysConfig.config_key == key,
                 SysConfig.is_deleted.is_(False),
             )).first()
-            return _json_object(row.value_text if row and row.value_text else fallback_text)
+            return _json_object(row.value_text if row and row.value_text else fallback_text) or package_default or {}
         finally:
             db.close()
     except Exception:
-        return _json_object(fallback_text)
+        return _json_object(fallback_text) or package_default or {}
 
 
 def _risk_unknown_fallback() -> dict:

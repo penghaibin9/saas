@@ -301,6 +301,13 @@ def _assert_no_open_objection(db, apply_id):
 
 
 def create_batch(body, user) -> dict:
+    from app.services.affairs_publicity_rules import publicity_days, school_year, validate_dates
+    body.batchName = str(getattr(body, "batchName", None) or "").strip()
+    if not 2 <= len(body.batchName) <= 200:
+        raise AppException("VALIDATION_ERROR", "认定批次名称需2-200字")
+    body.schoolYear = school_year(getattr(body, "schoolYear", None))
+    body.publicityDays = publicity_days(getattr(body, "publicityDays", None))
+    validate_dates(_parse_dt, body)
     with session() as db:
         from app.models import AidBatch
         publish = bool(getattr(body, "publish", False))
@@ -526,25 +533,35 @@ def scan_publicity() -> dict:
     with session() as db:
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.status == "PUBLICITY",
-            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False))).all()
-        pending = _pending_objection_ids(db, [x.id for x in rows])
-        cnt = skipped = 0
-        for x in rows:
-            if int(x.id) in pending:
+            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False),
+        ).order_by(AidApply.id).limit(200).with_for_update(skip_locked=True)).all()
+        pending = _pending_objection_ids(db, [row.id for row in rows])
+        batch_ids = {int(row.batch_id) for row in rows if row.batch_id}
+        batches = {
+            int(batch.id): batch
+            for batch in db.scalars(select(AidBatch).where(
+                AidBatch.tenant_id == _tid(),
+                AidBatch.id.in_(batch_ids) if batch_ids else AidBatch.id == -1,
+                AidBatch.is_deleted.is_(False),
+            )).all()
+        }
+        confirmed = skipped = invalid = 0
+        for row in rows:
+            if int(row.id) in pending:
                 skipped += 1
                 continue
-            b = db.get(AidBatch, int(x.batch_id))
-            days = (b.publicity_days if b and b.publicity_days is not None else 5)
-            due = x.publicity_at + timedelta(days=days)
-            if due <= now + timedelta(seconds=2):
-                if int(x.id) in _pending_objection_ids(db, [x.id]):
-                    skipped += 1
-                    continue
-                _confirm_one(db, x)
-                cnt += 1
+            batch = batches.get(int(row.batch_id)) if row.batch_id else None
+            if not batch:
+                invalid += 1
+                continue
+            due = row.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
+            if due > now:
+                continue
+            _confirm_one(db, row)
+            confirmed += 1
         db.commit()
-        _drain_message_outbox()
-        return {"count": cnt, "skippedObjection": skipped}
+    _drain_message_outbox()
+    return {"count": confirmed, "skippedObjection": skipped, "invalidBatch": invalid}
 
 
 def confirm_publicity(apply_id, user, expected_version=None) -> dict:

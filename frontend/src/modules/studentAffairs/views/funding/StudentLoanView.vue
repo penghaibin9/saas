@@ -116,7 +116,7 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
-    allowsAdvance(row) { return Array.isArray(row?.allowedActions) ? row.allowedActions.includes('ADVANCE') : Object.prototype.hasOwnProperty.call(NEXT, row?.status) },
+    allowsAdvance(row) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes('ADVANCE') },
     async load() {
       this.loading = true; this.errorMessage = ''
       const response = await studentAffairsApi.getLoans({ page: this.pagination.page, pageSize: this.pagination.pageSize })

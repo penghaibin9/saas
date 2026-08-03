@@ -137,5 +137,15 @@ def require_assignee_id(db, node: str, *, student_id=None) -> int:
         )
         .group_by(UnifiedTodo.assignee_id)
     ).all())
-    # 最小负载优先，同负载按 user_id 稳定排序；不再隐式取第一个。
+    strategy = "LEAST_PENDING"
+    try:
+        from app.services import effective_config_service
+        configured = effective_config_service.resolve("AFFAIRS_ASSIGNEE_STRATEGY").get("value")
+        if str(configured or "").upper() in {"LEAST_PENDING", "FIRST_ACTIVE"}:
+            strategy = str(configured).upper()
+    except Exception:
+        pass
+    if strategy == "FIRST_ACTIVE":
+        return min(ids)
+    # 默认最小负载优先，同负载按 user_id 稳定排序。
     return min(ids, key=lambda uid: (int(loads.get(uid, 0)), int(uid)))

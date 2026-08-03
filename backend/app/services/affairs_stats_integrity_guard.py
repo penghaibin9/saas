@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.services.db_service import _iso, _tid, session
 
@@ -53,8 +53,23 @@ def install() -> None:
             )
             if scope_cond is not None:
                 activity_conds.append(scope_cond)
-            activities = db.scalars(select(AffairsActivity).where(*activity_conds)).all()
-            activity_ids = {int(row.id) for row in activities}
+
+            scoped_activity_ids = select(AffairsActivity.id).where(*activity_conds)
+            total_activities = int(db.scalar(
+                select(func.count()).select_from(AffairsActivity).where(*activity_conds)
+            ) or 0)
+            by_type_rows = db.execute(
+                select(AffairsActivity.activity_type, func.count())
+                .where(*activity_conds)
+                .group_by(AffairsActivity.activity_type)
+                .order_by(AffairsActivity.activity_type)
+            ).all()
+            by_status_rows = db.execute(
+                select(AffairsActivity.status, func.count())
+                .where(*activity_conds)
+                .group_by(AffairsActivity.status)
+                .order_by(AffairsActivity.status)
+            ).all()
 
             from app.services.affairs_dashboard_service import _allowed_class_ids
             allowed_classes, _ = _allowed_class_ids(db, user)
@@ -64,10 +79,33 @@ def install() -> None:
             if allowed_classes is not None:
                 student_conds.append(StudentProfile.class_id.in_(allowed_classes or {-1}))
 
-            credit_stmt = select(AffairsActivityCredit).join(
-                StudentProfile, StudentProfile.id == AffairsActivityCredit.student_id,
-            ).where(AffairsActivityCredit.tenant_id == _tid(), *student_conds)
-            credits = db.scalars(credit_stmt).all()
+            credit_students = int(db.scalar(
+                select(func.count(func.distinct(AffairsActivityCredit.student_id)))
+                .select_from(AffairsActivityCredit)
+                .join(StudentProfile, StudentProfile.id == AffairsActivityCredit.student_id)
+                .where(AffairsActivityCredit.tenant_id == _tid(), *student_conds)
+            ) or 0)
+            credit_type_rows = db.execute(
+                select(AffairsActivityCredit.credit_type, func.coalesce(func.sum(AffairsActivityCredit.credit_value), 0))
+                .select_from(AffairsActivityCredit)
+                .join(StudentProfile, StudentProfile.id == AffairsActivityCredit.student_id)
+                .where(AffairsActivityCredit.tenant_id == _tid(), *student_conds)
+                .group_by(AffairsActivityCredit.credit_type)
+                .order_by(AffairsActivityCredit.credit_type)
+            ).all()
+            credit_category_rows = db.execute(
+                select(AffairsActivityCredit.category_code, func.coalesce(func.sum(AffairsActivityCredit.credit_value), 0))
+                .select_from(AffairsActivityCredit)
+                .join(StudentProfile, StudentProfile.id == AffairsActivityCredit.student_id)
+                .where(
+                    AffairsActivityCredit.tenant_id == _tid(),
+                    AffairsActivityCredit.category_code.is_not(None),
+                    AffairsActivityCredit.category_code != "",
+                    *student_conds,
+                )
+                .group_by(AffairsActivityCredit.category_code)
+                .order_by(AffairsActivityCredit.category_code)
+            ).all()
 
             signup_conds = [
                 AffairsActivitySignup.tenant_id == _tid(),
@@ -76,34 +114,32 @@ def install() -> None:
                 *student_conds,
             ]
             if not tenant_all:
-                signup_conds.append(AffairsActivitySignup.activity_id.in_(activity_ids or {-1}))
-            signup_base = select(func.count()).select_from(AffairsActivitySignup).join(
-                StudentProfile, StudentProfile.id == AffairsActivitySignup.student_id,
-            ).where(*signup_conds)
-            signups = int(db.scalar(signup_base) or 0)
-            checkins = int(db.scalar(signup_base.where(
+                signup_conds.append(AffairsActivitySignup.activity_id.in_(scoped_activity_ids))
+            signup_from = (
+                select(func.count())
+                .select_from(AffairsActivitySignup)
+                .join(StudentProfile, StudentProfile.id == AffairsActivitySignup.student_id)
+                .where(*signup_conds)
+            )
+            signups = int(db.scalar(signup_from) or 0)
+            checkins = int(db.scalar(signup_from.where(
                 AffairsActivitySignup.signup_status.in_(("CHECKED_IN", "CONFIRMED")),
             )) or 0)
 
-            by_type, by_status = {}, {}
-            for row in activities:
-                by_type[row.activity_type] = by_type.get(row.activity_type, 0) + 1
-                by_status[row.status] = by_status.get(row.status, 0) + 1
-            credit_by_type, credit_by_category = {}, {}
-            for row in credits:
-                value = float(row.credit_value or 0)
-                credit_by_type[row.credit_type] = round(credit_by_type.get(row.credit_type, 0) + value, 2)
-                if row.category_code:
-                    credit_by_category[row.category_code] = round(
-                        credit_by_category.get(row.category_code, 0) + value, 2,
-                    )
+            def _number(value) -> float:
+                return float(Decimal(str(value or 0)).quantize(Decimal("0.01")))
+
             return {
-                "totalActivities": len(activities), "totalSignups": signups,
-                "totalCheckins": checkins, "creditStudents": len({row.student_id for row in credits}),
-                "byType": [{"key": key, "count": value} for key, value in by_type.items()],
-                "byStatus": [{"key": key, "count": value} for key, value in by_status.items()],
-                "creditByType": [{"key": key, "value": value} for key, value in credit_by_type.items()],
-                "creditByCategory": [{"key": key, "value": value} for key, value in credit_by_category.items()],
+                "totalActivities": total_activities,
+                "totalSignups": signups,
+                "totalCheckins": checkins,
+                "creditStudents": credit_students,
+                "byType": [{"key": key, "count": int(count or 0)} for key, count in by_type_rows],
+                "byStatus": [{"key": key, "count": int(count or 0)} for key, count in by_status_rows],
+                "creditByType": [{"key": key, "value": _number(value)} for key, value in credit_type_rows],
+                "creditByCategory": [
+                    {"key": key, "value": _number(value)} for key, value in credit_category_rows
+                ],
             }
 
     def safe_domain(key, label, route, fn, user, *, total_key="total", highlight_from=None,
@@ -129,24 +165,32 @@ def install() -> None:
     def disbursement_stats(user):
         with session() as db:
             _allowed, student_conds = _scoped_student_conds(db, user)
-            rows = db.scalars(select(FundingDisbursement).join(
-                StudentProfile, StudentProfile.id == FundingDisbursement.student_id,
-            ).where(
-                FundingDisbursement.tenant_id == _tid(),
-                FundingDisbursement.is_deleted.is_(False),
-                *student_conds,
-            )).all()
-        by_status: dict[str, int] = {}
-        issued_total = Decimal("0.00")
-        for row in rows:
-            by_status[row.bank_status] = by_status.get(row.bank_status, 0) + 1
-            if row.bank_status == "ISSUED":
-                issued_total += Decimal(str(row.amount or 0))
+            rows = db.execute(
+                select(
+                    FundingDisbursement.bank_status,
+                    func.count(),
+                    func.coalesce(func.sum(FundingDisbursement.amount), 0),
+                )
+                .select_from(FundingDisbursement)
+                .join(StudentProfile, StudentProfile.id == FundingDisbursement.student_id)
+                .where(
+                    FundingDisbursement.tenant_id == _tid(),
+                    FundingDisbursement.is_deleted.is_(False),
+                    *student_conds,
+                )
+                .group_by(FundingDisbursement.bank_status)
+                .order_by(FundingDisbursement.bank_status)
+            ).all()
+        total = sum(int(count or 0) for _status, count, _amount in rows)
+        issued_total = sum(
+            (Decimal(str(amount or 0)) for status, _count, amount in rows if status == "ISSUED"),
+            Decimal("0.00"),
+        )
         result = {
-            "total": len(rows),
+            "total": total,
             "byStatus": [
-                {"key": key, "label": funding._L_BANK.get(key, key), "count": value}
-                for key, value in by_status.items()
+                {"key": status, "label": funding._L_BANK.get(status, status), "count": int(count or 0)}
+                for status, count, _amount in rows
             ],
         }
         if (user or {}).get("currentRoleCode") in funding._AMOUNT_ROLES:
@@ -172,55 +216,77 @@ def install() -> None:
         with session() as db:
             allowed, student_conds = _scoped_student_conds(db, user)
 
-            package_stmt = select(ArchivePackage).join(
-                StudentProfile, StudentProfile.id == ArchivePackage.student_id,
-            ).where(
-                ArchivePackage.tenant_id == _tid(), ArchivePackage.is_deleted.is_(False),
-                *student_conds,
-            )
-            packages = db.scalars(package_stmt).all()
+            package_total, scoped_batches, archive_pending = db.execute(
+                select(
+                    func.count(ArchivePackage.id),
+                    func.count(func.distinct(ArchivePackage.batch_id)),
+                    func.coalesce(func.sum(case((ArchivePackage.status != "ARCHIVED", 1), else_=0)), 0),
+                )
+                .select_from(ArchivePackage)
+                .join(StudentProfile, StudentProfile.id == ArchivePackage.student_id)
+                .where(
+                    ArchivePackage.tenant_id == _tid(), ArchivePackage.is_deleted.is_(False),
+                    *student_conds,
+                )
+            ).one()
+            package_total = int(package_total or 0)
+            archive_pending = int(archive_pending or 0)
             if allowed is None:
                 archive_batches = int(db.scalar(select(func.count()).select_from(ArchiveBatch).where(
                     ArchiveBatch.tenant_id == _tid(), ArchiveBatch.is_deleted.is_(False),
                 )) or 0)
             else:
-                archive_batches = len({row.batch_id for row in packages})
-            archive_pending = sum(1 for row in packages if row.status != "ARCHIVED")
+                archive_batches = int(scoped_batches or 0)
             _replace_domain(result, {
                 "key": "archive", "label": "学工归档", "status": "OK",
-                "metrics": {"total": len(packages), "batches": archive_batches,
+                "metrics": {"total": package_total, "batches": archive_batches,
                             "pending": archive_pending},
-                "total": len(packages), "highlight": archive_pending,
+                "total": package_total, "highlight": archive_pending,
                 "highlightLabel": "未归档档案包", "message": "", "updatedAt": now,
                 "route": "/admin/student-affairs/archive",
             })
 
-            work_stmt = select(WorkStudyRecord).join(
-                StudentProfile, StudentProfile.id == WorkStudyRecord.student_id,
-            ).where(
-                WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.is_deleted.is_(False),
-                *student_conds,
-            )
-            work_rows = db.scalars(work_stmt).all()
-            work_pending = sum(1 for row in work_rows if row.status == "APPLIED")
+            work_total, work_pending, work_onboard = db.execute(
+                select(
+                    func.count(WorkStudyRecord.id),
+                    func.coalesce(func.sum(case((WorkStudyRecord.status == "APPLIED", 1), else_=0)), 0),
+                    func.coalesce(func.sum(case((WorkStudyRecord.status == "ONBOARD", 1), else_=0)), 0),
+                )
+                .select_from(WorkStudyRecord)
+                .join(StudentProfile, StudentProfile.id == WorkStudyRecord.student_id)
+                .where(
+                    WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.is_deleted.is_(False),
+                    *student_conds,
+                )
+            ).one()
+            work_total = int(work_total or 0)
+            work_pending = int(work_pending or 0)
+            work_onboard = int(work_onboard or 0)
             _replace_domain(result, {
                 "key": "workStudy", "label": "勤工助学", "status": "OK",
-                "metrics": {"total": len(work_rows), "pending": work_pending,
-                            "onboard": sum(1 for row in work_rows if row.status == "ONBOARD")},
-                "total": len(work_rows), "highlight": work_pending,
+                "metrics": {"total": work_total, "pending": work_pending, "onboard": work_onboard},
+                "total": work_total, "highlight": work_pending,
                 "highlightLabel": "待审核", "message": "", "updatedAt": now,
                 "route": "/admin/student-affairs/funding/work-study",
             })
 
-            family_stmt = select(FamilyContactLog).join(
-                StudentProfile, StudentProfile.id == FamilyContactLog.student_id,
-            ).where(FamilyContactLog.tenant_id == _tid(), *student_conds)
-            family_rows = db.scalars(family_stmt).all()
-            pending_receipts = sum(1 for row in family_rows if (row.receipt_status or "PENDING") == "PENDING")
+            family_total, pending_receipts = db.execute(
+                select(
+                    func.count(FamilyContactLog.id),
+                    func.coalesce(func.sum(case((
+                        func.coalesce(FamilyContactLog.receipt_status, "PENDING") == "PENDING", 1
+                    ), else_=0)), 0),
+                )
+                .select_from(FamilyContactLog)
+                .join(StudentProfile, StudentProfile.id == FamilyContactLog.student_id)
+                .where(FamilyContactLog.tenant_id == _tid(), *student_conds)
+            ).one()
+            family_total = int(family_total or 0)
+            pending_receipts = int(pending_receipts or 0)
             _replace_domain(result, {
                 "key": "family", "label": "家校联系", "status": "OK",
-                "metrics": {"total": len(family_rows), "pendingReceipt": pending_receipts},
-                "total": len(family_rows), "highlight": pending_receipts,
+                "metrics": {"total": family_total, "pendingReceipt": pending_receipts},
+                "total": family_total, "highlight": pending_receipts,
                 "highlightLabel": "待回执", "message": "", "updatedAt": now,
                 "route": "/admin/student-affairs/family",
             })

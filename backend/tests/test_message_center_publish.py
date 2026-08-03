@@ -39,7 +39,13 @@ def _seed(db_mode):
         db.close()
 
 
-def test_class_publish_delivers_to_student(client, db_mode):
+def test_class_publish_delivers_to_student(client, db_mode, monkeypatch):
+    # 静默时段（默认 22:00-07:00 本地）会把发布自动改判 SCHEDULED，这是真实的业务规则，
+    # 不是 bug；测试断言的是"立即发布"路径，必须让判定与墙钟时间无关，否则在静默时段
+    # 运行就会必然失败（此前正是在此处翻车）。
+    from app.services import message_governance_service as gov
+    monkeypatch.setattr(gov, "is_in_quiet_hours", lambda *a, **k: False)
+
     class_id = _seed(db_mode)
     h = _token(CA_UID, "counselorA")
 
@@ -97,11 +103,16 @@ def test_class_publish_delivers_to_student(client, db_mode):
 
     hs = _token(stu_id, "MSGSTU001", role="STUDENT", user_type="STUDENT")
     # 学生走 student-mini 或 admin 都会按 user_id 收敛；此处用 admin 路径需 staff——改用 teacher 不合适
-    # 直接查 service
+    # 直接查 service：绕过了 HTTP 请求中间件，租户上下文不会自动注入，须手动设置
+    from app.core.context import set_tenant
     from app.services import message_center_service as mc
-    items, total = mc.list_messages(
-        {"userId": f"u_{stu_id}", "userType": "STUDENT", "currentRoleCode": "STUDENT",
-         "activeContextId": "ctx"},
-        page=1, page_size=20)
+    set_tenant({"tenantId": str(MAIN)})
+    try:
+        items, total = mc.list_messages(
+            {"userId": f"u_{stu_id}", "userType": "STUDENT", "currentRoleCode": "STUDENT",
+             "activeContextId": "ctx"},
+            page=1, page_size=20)
+    finally:
+        set_tenant(None)
     assert total >= 1
     assert any(x["title"] == "本班周报提醒通知" for x in items)

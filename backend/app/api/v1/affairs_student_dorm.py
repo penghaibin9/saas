@@ -55,17 +55,24 @@ def _eligible_building(db, building_id: int, student):
 
 
 @router.get("/mobile/affairs/dorm/transfer-options", summary="本人调宿可选楼栋")
-def transfer_options(user=Depends(get_current_user)):
+def transfer_options(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(get_current_user),
+):
     from app.services import affairs_dorm_service as dorm
     with session() as db:
         student = _student(db, user)
         current = _require_existing_bed(db, student.id)
         gender = student.gender
         current_id = int(current.id)
-    buildings, total = dorm.list_buildings(user, gender=gender, page=1, page_size=200)
+    buildings, total = dorm.list_buildings(user, gender=gender, page=page, page_size=pageSize)
     return success({
         "items": buildings,
         "total": total,
+        "page": page,
+        "pageSize": pageSize,
+        "hasMore": page * pageSize < total,
         "currentBedId": str(current_id),
         "notice": "选择目标床位后提交调宿申请，原床将在辅导员和宿管审批完成后才释放。",
     })
@@ -75,6 +82,8 @@ def transfer_options(user=Depends(get_current_user)):
 def transfer_rooms(
     building_id: int = Path(...),
     floor: int | None = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
     user=Depends(get_current_user),
 ):
     from app.services import affairs_dorm_service as dorm
@@ -82,8 +91,11 @@ def transfer_rooms(
         student = _student(db, user)
         _require_existing_bed(db, student.id)
         _eligible_building(db, building_id, student)
-    items, total = dorm.list_rooms(building_id, user, floor=floor, page=1, page_size=200)
-    return success({"items": items, "total": total})
+    items, total = dorm.list_rooms(building_id, user, floor=floor, page=page, page_size=pageSize)
+    return success({
+        "items": items, "total": total, "page": page, "pageSize": pageSize,
+        "hasMore": page * pageSize < total,
+    })
 
 
 @router.get("/mobile/affairs/dorm/transfer-rooms/{room_id}/beds", summary="本人调宿可选床位")
