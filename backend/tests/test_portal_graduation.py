@@ -26,6 +26,24 @@ def _admin(client):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _running_batch(client, suffix: str) -> int:
+    """Create and activate a real batch so material rules are bootstrapped explicitly."""
+    headers = _admin(client)
+    created = client.post("/api/v1/graduation/batches", headers=headers, json={
+        "batchName": f"门户毕业设计测试-{suffix}",
+        "batchNo": f"PORTAL-{suffix}",
+        "gradeYear": "2026届",
+        "plannedCount": 10,
+    }).json()
+    assert created["code"] == 0, created
+    batch_id = int(created["data"]["id"])
+    activated = client.post(
+        f"/api/v1/graduation/batches/{batch_id}/activate", headers=headers
+    ).json()
+    assert activated["code"] == 0, activated
+    return batch_id
+
+
 def _seed_student(no, name):
     from app.db.session import get_sessionmaker
     from app.models import StudentProfile
@@ -100,12 +118,12 @@ def test_print_log(client, db_mode):
     assert r["code"] == 0 and r["data"]["watermark"] == "毕四"
 
 
-def _seed_gd_ready_for_proposal(no, name):
+def _seed_gd_ready_for_proposal(no, name, batch_id):
     """建毕设学生（选题+任务书已确认，可提交开题）。"""
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent, GraduationTaskBook
     db = get_sessionmaker()()
-    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+    g = GraduationStudent(tenant_id=TID, batch_id=batch_id, student_no=no, name=name, advisor_name="王导师",
                              topic_id=1, topic_title="XX系统的设计与实现", stage="GUIDING",
                              risk_level="LOW", eligibility_status="PENDING",
                              grad_qual_status="PENDING", record_status="ACTIVE")
@@ -121,29 +139,31 @@ def _seed_gd_ready_for_proposal(no, name):
 
 def test_view_and_submit_proposal(client, db_mode):
     _seed_student("GD-P-101", "开题一")
-    _seed_gd_ready_for_proposal("GD-P-101", "开题一")
+    batch_id = _running_batch(client, "P101")
+    _seed_gd_ready_for_proposal("GD-P-101", "开题一", batch_id)
     h = _stu_token("开题一", "GD-P-101")
     v = client.get(f"{PORTAL}/proposal", headers=h).json()
     assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmit"] is True
     r = client.post(f"{PORTAL}/proposal/submit", headers=h, json={
         "background": "本课题研究XX系统，背景意义……（长文本）",
-        "plan": "需求分析→设计→实现→测试", "outcome": "系统+论文", "attachments": []}).json()
+        "plan": "需求分析→设计→实现→测试", "outcome": "系统+论文", "attachments": [], "expectedVersion": 0}).json()
     assert r["code"] == 0 and r["data"].get("id")
 
 
 def test_submit_proposal_empty_rejected(client, db_mode):
     _seed_student("GD-P-102", "开题二")
-    _seed_gd_ready_for_proposal("GD-P-102", "开题二")
+    batch_id = _running_batch(client, "P102")
+    _seed_gd_ready_for_proposal("GD-P-102", "开题二", batch_id)
     h = _stu_token("开题二", "GD-P-102")
     assert client.post(f"{PORTAL}/proposal/submit", headers=h,
-                       json={"background": "", "plan": "", "outcome": ""}).json()["code"] != 0
+                       json={"background": "", "plan": "", "outcome": "", "expectedVersion": 0}).json()["code"] != 0
 
 
 def test_submit_proposal_no_gd_record(client, db_mode):
     _seed_student("GD-P-103", "开题三")  # 无毕设记录
     h = _stu_token("开题三", "GD-P-103")
     assert client.post(f"{PORTAL}/proposal/submit", headers=h,
-                       json={"background": "x内容"}).json()["code"] != 0
+                       json={"background": "x内容", "expectedVersion": 0}).json()["code"] != 0
 
 
 def _seed_gd_midterm_rectifying(no, name):
@@ -180,11 +200,11 @@ def test_midterm_rectify_empty_rejected(client, db_mode):
     assert client.post(f"{PORTAL}/midterm/rectify", headers=h, json={"content": "  "}).json()["code"] != 0
 
 
-def _seed_gd_for_final(no, name):
+def _seed_gd_for_final(no, name, batch_id):
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm, GraduationStudent
     db = get_sessionmaker()()
-    g = GraduationStudent(tenant_id=TID, student_no=no, name=name, advisor_name="王导师",
+    g = GraduationStudent(tenant_id=TID, batch_id=batch_id, student_no=no, name=name, advisor_name="王导师",
                              topic_id=1, topic_title="XX系统的设计与实现", stage="FINAL_CHECK",
                              risk_level="LOW", eligibility_status="PENDING",
                              grad_qual_status="PENDING", record_status="ACTIVE")
@@ -198,44 +218,39 @@ def _seed_gd_for_final(no, name):
     db.close()
 
 
-def _seed_pdf_file(student_no):
-    """建一个真实 pdf 文件对象（论文附件校验要求真实 file_id + ext∈pdf/doc/docx/zip）。
-
-    biz_id 绑定学号：文件授权 _student_owns_file 要求 biz_id == studentNo 才认定本人可访问。
-    """
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    f = FileObject(tenant_id=TID, file_key="test/thesis-1.pdf", file_name="毕业论文.pdf",
-                   ext="pdf", size_bytes=1024, biz_type="GRADUATION_MATERIAL", biz_id=student_no,
-                   status="CONFIRMED")
-    db.add(f)
-    db.commit()
-    fid = str(f.id)
-    db.close()
-    return fid
+def _seed_pdf_file(client, headers):
+    """Upload through the public file API so ownership, SHA-256 and scan state are real."""
+    response = client.post(
+        "/api/v1/files", headers=headers,
+        files={"file": ("毕业论文.pdf", b"%PDF-1.4 portal graduation test", "application/pdf")},
+        params={"bizType": "GRADUATION_MATERIAL"},
+    ).json()
+    assert response["code"] == 0, response
+    return str(response["data"]["fileId"])
 
 
 def test_view_and_submit_final(client, db_mode):
     _seed_student("GD-P-301", "成果一")
-    _seed_gd_for_final("GD-P-301", "成果一")
-    fid = _seed_pdf_file("GD-P-301")
+    batch_id = _running_batch(client, "P301")
+    _seed_gd_for_final("GD-P-301", "成果一", batch_id)
     h = _stu_token("成果一", "GD-P-301")
+    fid = _seed_pdf_file(client, h)
     v = client.get(f"{PORTAL}/final", headers=h).json()
     assert v["code"] == 0 and v["data"]["hasData"] is True and v["data"]["canSubmitDraft"] is True
     r = client.post(f"{PORTAL}/final/submit", headers=h,
-                    json={"finalType": "初稿", "attachments": [fid]}).json()
+                    json={"finalType": "初稿", "attachments": [fid], "expectedVersion": 0}).json()
     assert r["code"] == 0 and r["data"].get("id")
 
 
 def test_submit_final_requires_attachment(client, db_mode):
     _seed_student("GD-P-302", "成果二")
-    _seed_gd_for_final("GD-P-302", "成果二")
+    batch_id = _running_batch(client, "P302")
+    _seed_gd_for_final("GD-P-302", "成果二", batch_id)
     h = _stu_token("成果二", "GD-P-302")
     assert client.post(f"{PORTAL}/final/submit", headers=h,
-                       json={"finalType": "初稿", "attachments": []}).json()["code"] != 0
+                       json={"finalType": "初稿", "attachments": [], "expectedVersion": 0}).json()["code"] != 0
     assert client.post(f"{PORTAL}/final/submit", headers=h,
-                       json={"finalType": "xyz", "attachments": ["f1"]}).json()["code"] != 0
+                       json={"finalType": "xyz", "attachments": ["f1"], "expectedVersion": 0}).json()["code"] != 0
 
 
 def _seed_gd_published_grade(no, name):
@@ -254,7 +269,8 @@ def _seed_gd_published_grade(no, name):
 
 def test_defense_and_grade_view(client, db_mode):
     _seed_student("GD-P-401", "答辩一")
-    _seed_gd_ready_for_proposal("GD-P-401", "答辩一")  # 有毕设记录即可
+    batch_id = _running_batch(client, "P401")
+    _seed_gd_ready_for_proposal("GD-P-401", "答辩一", batch_id)  # 有毕设记录即可
     h = _stu_token("答辩一", "GD-P-401")
     assert client.get(f"{PORTAL}/defense", headers=h).json()["code"] == 0
     assert client.get(f"{PORTAL}/grade", headers=h).json()["code"] == 0
@@ -273,7 +289,8 @@ def test_grade_appeal(client, db_mode):
 
 def test_grade_appeal_without_published(client, db_mode):
     _seed_student("GD-P-403", "答辩三")
-    _seed_gd_ready_for_proposal("GD-P-403", "答辩三")  # 有毕设但成绩未发布
+    batch_id = _running_batch(client, "P403")
+    _seed_gd_ready_for_proposal("GD-P-403", "答辩三", batch_id)  # 有毕设但成绩未发布
     h = _stu_token("答辩三", "GD-P-403")
     r = client.post(f"{PORTAL}/grade/appeal", headers=h,
                     json={"reason": "申请复核成绩明细内容。"}).json()

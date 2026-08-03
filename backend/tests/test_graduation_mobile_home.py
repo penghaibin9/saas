@@ -28,17 +28,17 @@ def _teacher_token(real_name):
         "currentRoleCode": "GD_MENTOR", "clientType": "MP"})}
 
 
-def test_graduation_my_real_nodes_stage_and_guide_logs(client, auth_headers, db_mode):
+def test_graduation_my_real_nodes_stage_and_guide_logs(graduation_client, auth_headers, db_mode):
     h = auth_headers
     student_no, student_name = "HM001", "主页测试生"
-    sid = client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name, "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
-    mid = client.post(GD_MENTOR, headers=h, json={"teacherNo": "HMT1", "teacherName": "主页导师"}).json()["data"]["id"]
-    client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
-    client.post(f"{GD_ASSIGN}/assign", headers=h, json={"gdStudentId": gid, "mentorId": mid})
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": student_no, "realName": student_name, "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    mid = graduation_client.post(GD_MENTOR, headers=h, json={"teacherNo": "HMT1", "teacherName": "主页导师"}).json()["data"]["id"]
+    graduation_client.post(f"{GD_MENTOR}/{mid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_ASSIGN}/assign", headers=h, json={"gdStudentId": gid, "mentorId": mid})
 
     sh = _stu_token(student_name)
-    g0 = client.get(f"{MOBILE}/graduation/my", headers=sh).json()["data"]
+    g0 = graduation_client.get(f"{MOBILE}/graduation/my", headers=sh).json()["data"]
     assert g0["hasData"] is True
     # 真实派生节点：8 个阶段节点（含 DEFENSE 与 ARCHIVED 之间新增的 COMPLETED），且恰有一个 current
     assert isinstance(g0["nodes"], list) and len(g0["nodes"]) == 8
@@ -49,12 +49,12 @@ def test_graduation_my_real_nodes_stage_and_guide_logs(client, auth_headers, db_
 
     # 教师新增一条真实指导记录
     th = _teacher_token("主页导师")
-    add = client.post(f"{MOBILE}/teacher/graduation/{gid}/guidance", headers=th,
+    add = graduation_client.post(f"{MOBILE}/teacher/graduation/{gid}/guidance", headers=th,
                       json={"content": "主页指导记录真实内容", "method": "ONLINE", "issues": "注意进度"})
     assert add.json()["code"] == 0
 
     # 学生主页 guideLogs 必须出现该真实记录（内容、from=导师、issues 透出）
-    g1 = client.get(f"{MOBILE}/graduation/my", headers=sh).json()["data"]
+    g1 = graduation_client.get(f"{MOBILE}/graduation/my", headers=sh).json()["data"]
     assert len(g1["guideLogs"]) == 1
     log = g1["guideLogs"][0]
     assert log["text"] == "主页指导记录真实内容"

@@ -15,23 +15,23 @@ GD_TOPIC = "/api/v1/graduation/topics"
 STU = "/api/v1/students"
 
 
-def _student(client, h, no, name="毕设测试学生"):
-    return client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+def _student(graduation_client, h, no, name="毕设测试学生"):
+    return graduation_client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
 
 
-def _batch(client, h, no="GD-STU-B1"):
-    return client.post(GD_BATCH, headers=h, json={
+def _batch(graduation_client, h, no="GD-STU-B1"):
+    return graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "2026届毕设", "batchNo": no, "gradeYear": "2026届", "plannedCount": 50
     }).json()["data"]["id"]
 
 
-def _topic(client, h, title="测试课题A", capacity=2):
+def _topic(graduation_client, h, title="测试课题A", capacity=2):
   # topics are seeded via graduation API list - we need to create via DB seed or use existing endpoint
   # graduation topics don't have POST in API - seed directly in test via client get after _seed_topic helper
     from app.db.session import get_sessionmaker
     from app.models import GraduationTopic
     MAIN_TID = 1000000000000000001
-    bid = getattr(client, "_active_batch_id", None) or _batch(client, h, f"GD-STU-TOP-{uuid4().hex[:8]}")
+    bid = getattr(graduation_client, "_active_batch_id", None) or _batch(graduation_client, h, f"GD-STU-TOP-{uuid4().hex[:8]}")
     db = get_sessionmaker()()
     try:
         t = GraduationTopic(tenant_id=MAIN_TID, batch_id=int(bid), title=title, source="教师申报", source_type="TEACHER",
@@ -45,65 +45,65 @@ def _topic(client, h, title="测试课题A", capacity=2):
         db.close()
 
 
-def _record(client, h, sid, batch_id=None):
+def _record(graduation_client, h, sid, batch_id=None):
     body = {"studentId": sid}
     if batch_id:
         body["batchId"] = batch_id
-    return client.post(GD_STU, headers=h, json=body).json()["data"]["id"]
+    return graduation_client.post(GD_STU, headers=h, json=body).json()["data"]["id"]
 
 
-def test_create_and_list(client, auth_headers, db_mode):
-    sid = _student(client, auth_headers, "S-GDS-001")
-    bid = _batch(client, auth_headers, "GD-STU-L1")
-    r = client.post(GD_STU, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()
+def test_create_and_list(graduation_client, auth_headers, db_mode):
+    sid = _student(graduation_client, auth_headers, "S-GDS-001")
+    bid = _batch(graduation_client, auth_headers, "GD-STU-L1")
+    r = graduation_client.post(GD_STU, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()
     assert r["code"] == 0
     d = r["data"]
     assert d["stage"] == "TOPIC_SELECTING" and d["batchId"] == bid and d["topicId"] == ""
-    lst = client.get(GD_STU, headers=auth_headers).json()
+    lst = graduation_client.get(GD_STU, headers=auth_headers).json()
     assert lst["code"] == 0 and lst["data"]["total"] >= 1
-    assert client.post(GD_STU, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()["code"] != 0
+    assert graduation_client.post(GD_STU, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()["code"] != 0
 
 
-def test_assign_topic_updates_selected(client, auth_headers, db_mode):
-    tid = _topic(client, auth_headers, "选题分配测试", capacity=2)
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-010"))
-    a = client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()
+def test_assign_topic_updates_selected(graduation_client, auth_headers, db_mode):
+    tid = _topic(graduation_client, auth_headers, "选题分配测试", capacity=2)
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-010"))
+    a = graduation_client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()
     assert a["code"] == 0
     assert a["data"]["topicId"] == tid and a["data"]["stage"] == "TASKBOOK_CONFIRM"
     assert a["data"]["topicTitle"] and a["data"]["advisorName"]
-    topics = client.get(GD_TOPIC, headers=auth_headers).json()["data"]["items"]
+    topics = graduation_client.get(GD_TOPIC, headers=auth_headers).json()["data"]["items"]
     row = [t for t in topics if t["id"] == tid][0]
     assert row["selected"] == 1
 
 
-def test_assign_full_rejected(client, auth_headers, db_mode):
-    tid = _topic(client, auth_headers, "满员选题", capacity=1)
-    r1 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-020"))
-    assert client.post(f"{GD_STU}/{r1}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()["code"] == 0
-    r2 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-021"))
-    assert client.post(f"{GD_STU}/{r2}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()["code"] != 0
+def test_assign_full_rejected(graduation_client, auth_headers, db_mode):
+    tid = _topic(graduation_client, auth_headers, "满员选题", capacity=1)
+    r1 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-020"))
+    assert graduation_client.post(f"{GD_STU}/{r1}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()["code"] == 0
+    r2 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-021"))
+    assert graduation_client.post(f"{GD_STU}/{r2}/assign-topic", headers=auth_headers, json={"topicId": tid}).json()["code"] != 0
 
 
-def test_unassign_releases(client, auth_headers, db_mode):
-    tid = _topic(client, auth_headers, "退选测试", capacity=2)
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-030"))
-    client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
-    u = client.post(f"{GD_STU}/{rid}/unassign-topic", headers=auth_headers, json={"reason": "学生申请退选"}).json()
+def test_unassign_releases(graduation_client, auth_headers, db_mode):
+    tid = _topic(graduation_client, auth_headers, "退选测试", capacity=2)
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-030"))
+    graduation_client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
+    u = graduation_client.post(f"{GD_STU}/{rid}/unassign-topic", headers=auth_headers, json={"reason": "学生申请退选"}).json()
     assert u["code"] == 0 and u["data"]["topicId"] == "" and u["data"]["stage"] == "TOPIC_SELECTING"
-    topics = client.get(GD_TOPIC, headers=auth_headers).json()["data"]["items"]
+    topics = graduation_client.get(GD_TOPIC, headers=auth_headers).json()["data"]["items"]
     assert [t for t in topics if t["id"] == tid][0]["selected"] == 0
 
 
-def test_stage_machine(client, auth_headers, db_mode):
+def test_stage_machine(graduation_client, auth_headers, db_mode):
     from datetime import datetime
     from app.db.session import get_sessionmaker
     from app.models import GraduationArchiveRecord, GraduationProposal, GraduationRiskCase, GraduationTaskBook
 
-    tid = _topic(client, auth_headers, "状态机测试", capacity=2)
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-040"))
-    assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["code"] != 0
-    client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
-    client.post(f"{GD_STU}/{rid}/assign-advisor", headers=auth_headers, json={"advisorName": "李老师"})
+    tid = _topic(graduation_client, auth_headers, "状态机测试", capacity=2)
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-040"))
+    assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["code"] != 0
+    graduation_client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
+    graduation_client.post(f"{GD_STU}/{rid}/assign-advisor", headers=auth_headers, json={"advisorName": "李老师"})
     db = get_sessionmaker()()
     try:
         db.add(GraduationTaskBook(
@@ -121,8 +121,8 @@ def test_stage_machine(client, auth_headers, db_mode):
         db.commit()
     finally:
         db.close()
-    assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "GUIDING"
-    assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "MIDTERM"
+    assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "GUIDING"
+    assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "MIDTERM"
     db = get_sessionmaker()()
     try:
         for risk in db.scalars(select(GraduationRiskCase).where(
@@ -133,44 +133,44 @@ def test_stage_machine(client, auth_headers, db_mode):
         db.commit()
     finally:
         db.close()
-    assert client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ARCHIVE"}).json()["data"]["stage"] == "ARCHIVED"
-    assert client.put(f"{GD_STU}/{rid}", headers=auth_headers, json={"advisorName": "x"}).json()["code"] != 0
+    assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ARCHIVE"}).json()["data"]["stage"] == "ARCHIVED"
+    assert graduation_client.put(f"{GD_STU}/{rid}", headers=auth_headers, json={"advisorName": "x"}).json()["code"] != 0
 
 
-def test_risk_and_stats(client, auth_headers, db_mode):
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-050"))
-    r = client.post(f"{GD_STU}/{rid}/risk", headers=auth_headers, json={"riskLevel": "HIGH", "reason": "进度滞后"}).json()
+def test_risk_and_stats(graduation_client, auth_headers, db_mode):
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-050"))
+    r = graduation_client.post(f"{GD_STU}/{rid}/risk", headers=auth_headers, json={"riskLevel": "HIGH", "reason": "进度滞后"}).json()
     assert r["code"] == 0 and r["data"]["riskLevel"] == "HIGH"
-    s = client.get(f"{GD_STU}/stats", headers=auth_headers).json()
+    s = graduation_client.get(f"{GD_STU}/stats", headers=auth_headers).json()
     assert s["code"] == 0 and s["data"]["total"] >= 1 and s["data"]["highRisk"] >= 1
 
 
-def test_export_xlsx(client, auth_headers, db_mode):
-    _record(client, auth_headers, _student(client, auth_headers, "S-GDS-060"))
-    ex = client.post(f"{GD_STU}/export", headers=auth_headers).json()
+def test_export_xlsx(graduation_client, auth_headers, db_mode):
+    _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-060"))
+    ex = graduation_client.post(f"{GD_STU}/export", headers=auth_headers).json()
     assert ex["code"] == 0 and ex["data"]["rowCount"] >= 1
     raw = base64.b64decode(ex["data"]["contentBase64"])
     assert raw[:2] == b"PK"
 
 
-def test_import(client, auth_headers, db_mode):
-    _student(client, auth_headers, "S-GDS-100", "导入学生甲")
-    bid = _batch(client, auth_headers, "GD-STU-IMP1")
-    batch_no = client.get(f"{GD_BATCH}/{bid}", headers=auth_headers).json()["data"]["batchNo"]
+def test_import(graduation_client, auth_headers, db_mode):
+    _student(graduation_client, auth_headers, "S-GDS-100", "导入学生甲")
+    bid = _batch(graduation_client, auth_headers, "GD-STU-IMP1")
+    batch_no = graduation_client.get(f"{GD_BATCH}/{bid}", headers=auth_headers).json()["data"]["batchNo"]
     rows = [{"studentNo": "S-GDS-100", "batchNo": batch_no, "advisorName": "王芳"},
             {"studentNo": ""}, {"studentNo": "S-NOEXIST"}]
-    dry = client.post(f"{GD_STU}/import/dry-run", headers=auth_headers, json={"rows": rows}).json()
+    dry = graduation_client.post(f"{GD_STU}/import/dry-run", headers=auth_headers, json={"rows": rows}).json()
     assert dry["code"] == 0 and dry["data"]["invalidRows"] == 2
     ok_rows = [{"studentNo": "S-GDS-100", "batchNo": batch_no, "advisorName": "王芳"}]
-    dry2 = client.post(f"{GD_STU}/import/dry-run", headers=auth_headers, json={"rows": ok_rows}).json()
+    dry2 = graduation_client.post(f"{GD_STU}/import/dry-run", headers=auth_headers, json={"rows": ok_rows}).json()
     assert dry2["data"]["validRows"] == 1
-    imp = client.post(f"{GD_STU}/import/confirm", headers=auth_headers, json={"rows": ok_rows}).json()
+    imp = graduation_client.post(f"{GD_STU}/import/confirm", headers=auth_headers, json={"rows": ok_rows}).json()
     assert imp["code"] == 0 and imp["data"]["created"] == 1
 
 
-def test_detail(client, auth_headers, db_mode):
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-070"))
-    d = client.get(f"{GD_STU}/{rid}", headers=auth_headers).json()
+def test_detail(graduation_client, auth_headers, db_mode):
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-070"))
+    d = graduation_client.get(f"{GD_STU}/{rid}", headers=auth_headers).json()
     assert d["code"] == 0 and d["data"]["name"] and "stateFlow" in d["data"] and "auditTrail" in d["data"]
 
 
@@ -198,14 +198,14 @@ def _defense_group(db_mode, name="测试答辩组", batch_id=None):
         db.close()
 
 
-def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_mode):
+def test_subpanels_eligibility_group_defense_grad_qual(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
-    rid = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-080"))
-    e = client.post(f"{GD_STU}/{rid}/eligibility", headers=auth_headers,
+    rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-080"))
+    e = graduation_client.post(f"{GD_STU}/{rid}/eligibility", headers=auth_headers,
                     json={"status": "QUALIFIED", "reason": "学籍正常"}).json()
     assert e["code"] == 0 and e["data"]["eligibilityStatus"] == "QUALIFIED"
-    g = client.post(f"{GD_STU}/{rid}/group", headers=auth_headers,
+    g = graduation_client.post(f"{GD_STU}/{rid}/group", headers=auth_headers,
                     json={"groupName": "第1组", "reason": "过程分组"}).json()
     assert g["code"] == 0 and g["data"]["studentGroup"] == "第1组"
     gid, bid = _defense_group(db_mode)
@@ -217,26 +217,26 @@ def test_subpanels_eligibility_group_defense_grad_qual(client, auth_headers, db_
         db.commit()
     finally:
         db.close()
-    d = client.post(f"{GD_STU}/{rid}/defense-group", headers=auth_headers,
+    d = graduation_client.post(f"{GD_STU}/{rid}/defense-group", headers=auth_headers,
                     json={"defenseGroupId": gid, "reason": "安排答辩"}).json()
     assert d["code"] == 0 and d["data"]["defenseGroupId"] == gid
-    q = client.post(f"{GD_STU}/{rid}/grad-qual", headers=auth_headers,
+    q = graduation_client.post(f"{GD_STU}/{rid}/grad-qual", headers=auth_headers,
                     json={"status": "PASS", "note": "教务预审通过", "reason": "联动"}).json()
     assert q["code"] != 0 and "不再直接裁决" in q["message"]
-    client._active_batch_id = str(bid)
-    lst = client.get(f"{GD_STU}", headers=auth_headers, params={"eligibility": "QUALIFIED"}).json()
+    graduation_client._active_batch_id = str(bid)
+    lst = graduation_client.get(f"{GD_STU}", headers=auth_headers, params={"eligibility": "QUALIFIED"}).json()
     assert lst["code"] == 0 and any(x["id"] == rid for x in lst["data"]["items"])
-    groups = client.get(f"{GD_STU}/groups", headers=auth_headers).json()
+    groups = graduation_client.get(f"{GD_STU}/groups", headers=auth_headers).json()
     assert groups["code"] == 0 and "第1组" in groups["data"]
 
 
-def test_batch_group_and_archive(client, auth_headers, db_mode):
+def test_batch_group_and_archive(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationArchiveRecord
 
-    r1 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-081"))
-    r2 = _record(client, auth_headers, _student(client, auth_headers, "S-GDS-082"))
-    bg = client.post(f"{GD_STU}/batch-group", headers=auth_headers,
+    r1 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-081"))
+    r2 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-082"))
+    bg = graduation_client.post(f"{GD_STU}/batch-group", headers=auth_headers,
                      json={"recordIds": [r1, r2], "groupName": "批量组A", "reason": "批量"}).json()
     assert bg["code"] == 0 and bg["data"]["updated"] == 2
     db = get_sessionmaker()()
@@ -248,8 +248,8 @@ def test_batch_group_and_archive(client, auth_headers, db_mode):
         db.commit()
     finally:
         db.close()
-    ba = client.post(f"{GD_STU}/batch-archive", headers=auth_headers,
+    ba = graduation_client.post(f"{GD_STU}/batch-archive", headers=auth_headers,
                      json={"recordIds": [r1], "reason": "结业归档"}).json()
     assert ba["code"] == 0 and ba["data"]["archived"] == 1
-    archived = client.get(f"{GD_STU}", headers=auth_headers, params={"archiveView": "archived"}).json()
+    archived = graduation_client.get(f"{GD_STU}", headers=auth_headers, params={"archiveView": "archived"}).json()
     assert any(x["id"] == r1 for x in archived["data"]["items"])

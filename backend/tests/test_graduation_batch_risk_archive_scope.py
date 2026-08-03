@@ -24,8 +24,8 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _batch(client, h):
-    r = client.post(GD_BATCH, headers=h, json={
+def _batch(graduation_client, h):
+    r = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": _uniq("批次"), "batchNo": _uniq("GD-B2"),
         "gradeYear": "2026届", "plannedCount": 50,
     }).json()
@@ -33,9 +33,9 @@ def _batch(client, h):
     return r["data"]["id"], r["data"]["batchName"]
 
 
-def _student(client, h, name=None):
+def _student(graduation_client, h, name=None):
     sno = _uniq("S")
-    r = client.post(STU, headers=h, json={
+    r = graduation_client.post(STU, headers=h, json={
         "studentNo": sno, "realName": name or f"学生{sno[-4:]}",
         "classId": make_org_class(),
     }).json()
@@ -43,8 +43,8 @@ def _student(client, h, name=None):
     return r["data"]["id"]
 
 
-def _record(client, h, sid, batch_id, college_id=None):
-    r = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": batch_id}).json()
+def _record(graduation_client, h, sid, batch_id, college_id=None):
+    r = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": batch_id}).json()
     assert r["code"] == 0, r
     gid = r["data"]["id"]
     if college_id is not None:
@@ -76,20 +76,20 @@ def _college_headers(college_id="10"):
     })}
 
 
-def test_scan_requires_batch_id(client, auth_headers, db_mode):
-    r = client.post(f"{GD_RISK}/scan", headers=auth_headers).json()
+def test_scan_requires_batch_id(graduation_client, auth_headers, db_mode):
+    r = graduation_client.post(f"{GD_RISK}/scan", headers=auth_headers).json()
     assert r["code"] != 0
-    bad = client.post(f"{GD_RISK}/scan", headers=auth_headers, params={"batchId": "abc"})
+    bad = graduation_client.post(f"{GD_RISK}/scan", headers=auth_headers, params={"batchId": "abc"})
     assert bad.status_code != 500
     assert bad.status_code == 422 or bad.json().get("code") == 422001
 
 
-def test_scan_2026_does_not_create_2025_risks(client, auth_headers, db_mode):
+def test_scan_2026_does_not_create_2025_risks(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b2026, name2026 = _batch(client, h)
-    b2025, _ = _batch(client, h)
-    g26 = _record(client, h, _student(client, h, "扫描2026生"), b2026, college_id=None)
-    g25 = _record(client, h, _student(client, h, "扫描2025生"), b2025, college_id=None)
+    b2026, name2026 = _batch(graduation_client, h)
+    b2025, _ = _batch(graduation_client, h)
+    g26 = _record(graduation_client, h, _student(graduation_client, h, "扫描2026生"), b2026, college_id=None)
+    g25 = _record(graduation_client, h, _student(graduation_client, h, "扫描2025生"), b2025, college_id=None)
 
     # 确保两人都是未选题
     from app.db.session import get_sessionmaker
@@ -104,7 +104,7 @@ def test_scan_2026_does_not_create_2025_risks(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": b2026}).json()
+    scan = graduation_client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": b2026}).json()
     assert scan["code"] == 0, scan
     assert scan["data"]["batchId"] == str(b2026)
     assert scan["data"]["batchName"] == name2026
@@ -128,11 +128,11 @@ def test_scan_2026_does_not_create_2025_risks(client, auth_headers, db_mode):
         db.close()
 
 
-def test_college_admin_scan_does_not_create_other_college_risks(client, auth_headers, db_mode):
+def test_college_admin_scan_does_not_create_other_college_risks(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid, _ = _batch(client, h)
-    g_in = _record(client, h, _student(client, h, "本院生"), bid, college_id=10)
-    g_out = _record(client, h, _student(client, h, "外院生"), bid, college_id=99)
+    bid, _ = _batch(graduation_client, h)
+    g_in = _record(graduation_client, h, _student(graduation_client, h, "本院生"), bid, college_id=10)
+    g_out = _record(graduation_client, h, _student(graduation_client, h, "外院生"), bid, college_id=99)
 
     from app.db.session import get_sessionmaker
     from app.models import GraduationRiskCase, GraduationStudent
@@ -147,7 +147,7 @@ def test_college_admin_scan_does_not_create_other_college_risks(client, auth_hea
         db.close()
 
     ch = _college_headers("10")
-    scan = client.post(f"{GD_RISK}/scan", headers=ch, params={"batchId": bid}).json()
+    scan = graduation_client.post(f"{GD_RISK}/scan", headers=ch, params={"batchId": bid}).json()
     assert scan["code"] == 0, scan
     assert scan["data"]["scannedStudents"] == 1, scan["data"]
     assert scan["data"]["skippedStudents"] >= 1, scan["data"]
@@ -165,7 +165,7 @@ def test_college_admin_scan_does_not_create_other_college_risks(client, auth_hea
         db.close()
 
 
-def test_batch_ops_require_batch_id(client, auth_headers, db_mode):
+def test_batch_ops_require_batch_id(graduation_client, auth_headers, db_mode):
     h = auth_headers
     for path in (
         f"{GD_ARCHIVE}/batch-generate",
@@ -173,18 +173,18 @@ def test_batch_ops_require_batch_id(client, auth_headers, db_mode):
         f"{GD_ARCHIVE}/batch-generate/preview",
         f"{GD_ARCHIVE}/batch-file/preview",
     ):
-        r = client.post(path, headers=h).json()
+        r = graduation_client.post(path, headers=h).json()
         assert r["code"] != 0, path
 
 
-def test_batch_generate_only_current_batch_and_preview_matches(client, auth_headers, db_mode):
+def test_batch_generate_only_current_batch_and_preview_matches(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1, name1 = _batch(client, h)
-    b2, _ = _batch(client, h)
-    g1 = _record(client, h, _student(client, h, "归档甲"), b1)
-    g2 = _record(client, h, _student(client, h, "归档乙"), b2)
+    b1, name1 = _batch(graduation_client, h)
+    b2, _ = _batch(graduation_client, h)
+    g1 = _record(graduation_client, h, _student(graduation_client, h, "归档甲"), b1)
+    g2 = _record(graduation_client, h, _student(graduation_client, h, "归档乙"), b2)
 
-    prev = client.post(f"{GD_ARCHIVE}/batch-generate/preview", headers=h,
+    prev = graduation_client.post(f"{GD_ARCHIVE}/batch-generate/preview", headers=h,
                        params={"batchId": b1}).json()
     assert prev["code"] == 0, prev
     assert prev["data"]["batchId"] == str(b1)
@@ -196,7 +196,7 @@ def test_batch_generate_only_current_batch_and_preview_matches(client, auth_head
     reasons = {x["reason"]: x["count"] for x in prev["data"]["skipReasons"]}
     assert reasons.get("missing_materials", 0) >= 1
 
-    gen = client.post(f"{GD_ARCHIVE}/batch-generate", headers=h, params={"batchId": b1}).json()
+    gen = graduation_client.post(f"{GD_ARCHIVE}/batch-generate", headers=h, params={"batchId": b1}).json()
     assert gen["code"] == 0, gen
     assert gen["data"]["batchId"] == str(b1)
     assert gen["data"]["skipped"] == prev["data"]["skippedCount"]
@@ -219,13 +219,13 @@ def test_batch_generate_only_current_batch_and_preview_matches(client, auth_head
         db.close()
 
 
-def test_batch_file_preview_matches_and_skips_open_risk(client, auth_headers, db_mode):
+def test_batch_file_preview_matches_and_skips_open_risk(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationArchiveRecord, GraduationRiskCase, GraduationStudent
 
     h = auth_headers
-    bid, bname = _batch(client, h)
-    gid = _record(client, h, _student(client, h, "备案风险生"), bid)
+    bid, bname = _batch(graduation_client, h)
+    gid = _record(graduation_client, h, _student(graduation_client, h, "备案风险生"), bid)
 
     db = get_sessionmaker()()
     try:
@@ -245,7 +245,7 @@ def test_batch_file_preview_matches_and_skips_open_risk(client, auth_headers, db
     finally:
         db.close()
 
-    prev = client.post(f"{GD_ARCHIVE}/batch-file/preview", headers=h,
+    prev = graduation_client.post(f"{GD_ARCHIVE}/batch-file/preview", headers=h,
                        params={"batchId": bid}).json()
     assert prev["code"] == 0, prev
     assert prev["data"]["batchName"] == bname
@@ -254,7 +254,7 @@ def test_batch_file_preview_matches_and_skips_open_risk(client, auth_headers, db
     reasons = {x["reason"]: x["count"] for x in prev["data"]["skipReasons"]}
     assert reasons.get("open_risks", 0) >= 1
 
-    filed = client.post(f"{GD_ARCHIVE}/batch-file", headers=h,
+    filed = graduation_client.post(f"{GD_ARCHIVE}/batch-file", headers=h,
                         params={"batchId": bid}, json={}).json()
     assert filed["code"] == 0
     assert filed["data"]["filed"] == prev["data"]["executableCount"]
@@ -270,10 +270,10 @@ def test_batch_file_preview_matches_and_skips_open_risk(client, auth_headers, db
         db.close()
 
 
-def test_scan_audit_contains_batch_and_counts(client, auth_headers, db_mode):
+def test_scan_audit_contains_batch_and_counts(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid, bname = _batch(client, h)
-    _record(client, h, _student(client, h, "审计扫描生"), bid)
+    bid, bname = _batch(graduation_client, h)
+    _record(graduation_client, h, _student(graduation_client, h, "审计扫描生"), bid)
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
     db = get_sessionmaker()()
@@ -288,7 +288,7 @@ def test_scan_audit_contains_batch_and_counts(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    scan = client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid}).json()
+    scan = graduation_client.post(f"{GD_RISK}/scan", headers=h, params={"batchId": bid}).json()
     assert scan["code"] == 0
     assert scan["data"]["batchId"] == str(bid)
     assert scan["data"]["batchName"] == bname
@@ -299,7 +299,7 @@ def test_scan_audit_contains_batch_and_counts(client, auth_headers, db_mode):
     assert scan["data"]["operator"]
     assert scan["data"]["scopeSummary"]
 
-    audit = client.get("/api/v1/graduation/audit-logs", headers=h,
+    audit = graduation_client.get("/api/v1/graduation/audit-logs", headers=h,
                        params={"bizType": "RISK", "pageSize": 20}).json()
     assert audit["code"] == 0
     hit = next((x for x in audit["data"]["items"]

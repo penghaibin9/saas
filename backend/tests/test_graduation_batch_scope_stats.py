@@ -26,21 +26,21 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _batch(client, h, no=None):
+def _batch(graduation_client, h, no=None):
     body = {
         "batchName": _uniq("批次"),
         "batchNo": no or _uniq("GD-B1"),
         "gradeYear": "2026届",
         "plannedCount": 50,
     }
-    r = client.post(GD_BATCH, headers=h, json=body).json()
+    r = graduation_client.post(GD_BATCH, headers=h, json=body).json()
     assert r["code"] == 0, r
     return r["data"]["id"]
 
 
-def _student(client, h, no=None, name=None):
+def _student(graduation_client, h, no=None, name=None):
     sno = no or _uniq("S")
-    r = client.post(STU, headers=h, json={
+    r = graduation_client.post(STU, headers=h, json={
         "studentNo": sno, "realName": name or f"学生{sno[-4:]}",
         "classId": make_org_class(),
     }).json()
@@ -48,8 +48,8 @@ def _student(client, h, no=None, name=None):
     return r["data"]["id"]
 
 
-def _record(client, h, sid, batch_id):
-    r = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": batch_id}).json()
+def _record(graduation_client, h, sid, batch_id):
+    r = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": batch_id}).json()
     assert r["code"] == 0, r
     return r["data"]["id"]
 
@@ -100,7 +100,7 @@ def _status_count(stats, status):
     return next((x["count"] for x in stats.get("byStatus", []) if x["status"] == status), 0)
 
 
-def test_illegal_batch_id_returns_422(client, auth_headers, db_mode):
+def test_illegal_batch_id_returns_422(graduation_client, auth_headers, db_mode):
     """非法 batchId 不得落入 service 导致 500；须为校验失败（HTTP 422 或业务码 422001）。"""
     h = auth_headers
 
@@ -123,122 +123,122 @@ def test_illegal_batch_id_returns_422(client, auth_headers, db_mode):
         f"{STATS}/college-comparison",
         DASH,
     ):
-        _assert_validation(client.get(path, headers=h, params={"batchId": "abc"}), path)
+        _assert_validation(graduation_client.get(path, headers=h, params={"batchId": "abc"}), path)
     _assert_validation(
-        client.post(f"{DG}/export", headers=h, params={"batchId": "abc"}),
+        graduation_client.post(f"{DG}/export", headers=h, params={"batchId": "abc"}),
         f"{DG}/export",
     )
 
 
-def test_proposal_stats_no_error_and_matches_list(client, auth_headers, db_mode):
+def test_proposal_stats_no_error_and_matches_list(graduation_client, auth_headers, db_mode):
     """开题统计接口可用；列表页签数量与统计一致；两批次互不混合。"""
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
-    g1 = _record(client, h, _student(client, h, name="开题批次甲"), b1)
-    g2 = _record(client, h, _student(client, h, name="开题批次乙"), b2)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
+    g1 = _record(graduation_client, h, _student(graduation_client, h, name="开题批次甲"), b1)
+    g2 = _record(graduation_client, h, _student(graduation_client, h, name="开题批次乙"), b2)
     _insert_proposal(g1, "PENDING_REVIEW")
     _insert_proposal(g2, "APPROVED")
 
     # 统计不再因未定义 batch_id 报错
-    st1 = client.get(f"{PROP}/stats", headers=h, params={"batchId": b1}).json()
+    st1 = graduation_client.get(f"{PROP}/stats", headers=h, params={"batchId": b1}).json()
     assert st1["code"] == 0, st1
     assert st1["data"]["batchId"] == str(b1)
     assert _status_count(st1["data"], "PENDING_REVIEW") >= 1
     assert _status_count(st1["data"], "APPROVED") == 0
 
-    st2 = client.get(f"{PROP}/stats", headers=h, params={"batchId": b2}).json()
+    st2 = graduation_client.get(f"{PROP}/stats", headers=h, params={"batchId": b2}).json()
     assert st2["code"] == 0
     assert _status_count(st2["data"], "APPROVED") >= 1
     assert _status_count(st2["data"], "PENDING_REVIEW") == 0
 
-    lst1 = client.get(PROP, headers=h, params={"batchId": b1, "status": "PENDING_REVIEW"}).json()
+    lst1 = graduation_client.get(PROP, headers=h, params={"batchId": b1, "status": "PENDING_REVIEW"}).json()
     assert lst1["code"] == 0
     assert lst1["data"]["total"] == _status_count(st1["data"], "PENDING_REVIEW")
 
 
-def test_final_stats_matches_list_and_batch_isolated(client, auth_headers, db_mode):
+def test_final_stats_matches_list_and_batch_isolated(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
-    g1 = _record(client, h, _student(client, h, name="成果批次甲"), b1)
-    g2 = _record(client, h, _student(client, h, name="成果批次乙"), b2)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
+    g1 = _record(graduation_client, h, _student(graduation_client, h, name="成果批次甲"), b1)
+    g2 = _record(graduation_client, h, _student(graduation_client, h, name="成果批次乙"), b2)
     _insert_final(g1, "PENDING_REVIEW", plagiarism_rate="35%")
     _insert_final(g2, "APPROVED", plagiarism_rate="10%")
 
-    st1 = client.get(f"{FINAL}/stats", headers=h, params={"batchId": b1}).json()
+    st1 = graduation_client.get(f"{FINAL}/stats", headers=h, params={"batchId": b1}).json()
     assert st1["code"] == 0, st1
     assert st1["data"]["plagiarismOver"] >= 1
     assert _status_count(st1["data"], "PENDING_REVIEW") >= 1
     assert _status_count(st1["data"], "APPROVED") == 0
 
-    lst1 = client.get(FINAL, headers=h, params={"batchId": b1, "status": "PENDING_REVIEW"}).json()
+    lst1 = graduation_client.get(FINAL, headers=h, params={"batchId": b1, "status": "PENDING_REVIEW"}).json()
     assert lst1["data"]["total"] == _status_count(st1["data"], "PENDING_REVIEW")
 
-    st2 = client.get(f"{FINAL}/stats", headers=h, params={"batchId": b2}).json()
+    st2 = graduation_client.get(f"{FINAL}/stats", headers=h, params={"batchId": b2}).json()
     assert _status_count(st2["data"], "APPROVED") >= 1
     assert st2["data"]["plagiarismOver"] == 0
 
 
-def test_topic_stats_matches_list(client, auth_headers, db_mode):
+def test_topic_stats_matches_list(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
     for i, bid in enumerate((b1, b1, b2)):
-        r = client.post(GD_TOPIC, headers=h, json={
+        r = graduation_client.post(GD_TOPIC, headers=h, json={
             "title": _uniq(f"题{i}"), "sourceType": "TEACHER", "advisorName": "王老师",
             "batchId": bid, "capacity": 1, "category": "软件" if i < 2 else "硬件",
         }).json()
         assert r["code"] == 0, r
 
-    lst = client.get(GD_TOPIC, headers=h, params={"batchId": b1, "pageSize": 100}).json()
-    st = client.get(f"{GD_TOPIC}/stats", headers=h, params={"batchId": b1}).json()
+    lst = graduation_client.get(GD_TOPIC, headers=h, params={"batchId": b1, "pageSize": 100}).json()
+    st = graduation_client.get(f"{GD_TOPIC}/stats", headers=h, params={"batchId": b1}).json()
     assert lst["code"] == 0 and st["code"] == 0
     # 列表可能含已归档过滤差异；未归档口径与 stats.total 对齐
     assert st["data"]["total"] == lst["data"]["total"]
     assert st["data"]["batchId"] == str(b1)
 
-    cat = client.get(f"{GD_TOPIC}/category-stats", headers=h, params={"batchId": b1}).json()
+    cat = graduation_client.get(f"{GD_TOPIC}/category-stats", headers=h, params={"batchId": b1}).json()
     assert cat["code"] == 0
     assert sum(x["count"] for x in cat["data"]) == st["data"]["total"]
 
 
-def test_overview_and_college_only_current_batch(client, auth_headers, db_mode):
+def test_overview_and_college_only_current_batch(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
-    _record(client, h, _student(client, h, name="总览甲1"), b1)
-    _record(client, h, _student(client, h, name="总览甲2"), b1)
-    _record(client, h, _student(client, h, name="总览乙"), b2)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
+    _record(graduation_client, h, _student(graduation_client, h, name="总览甲1"), b1)
+    _record(graduation_client, h, _student(graduation_client, h, name="总览甲2"), b1)
+    _record(graduation_client, h, _student(graduation_client, h, name="总览乙"), b2)
 
-    ov1 = client.get(f"{STATS}/overview", headers=h, params={"batchId": b1}).json()
-    ov2 = client.get(f"{STATS}/overview", headers=h, params={"batchId": b2}).json()
+    ov1 = graduation_client.get(f"{STATS}/overview", headers=h, params={"batchId": b1}).json()
+    ov2 = graduation_client.get(f"{STATS}/overview", headers=h, params={"batchId": b2}).json()
     assert ov1["code"] == 0 and ov2["code"] == 0
     assert ov1["data"]["batchId"] == str(b1)
     assert ov1["data"]["studentTotal"] == 2
     assert ov2["data"]["studentTotal"] == 1
 
-    col = client.get(f"{STATS}/college-comparison", headers=h, params={"batchId": b1}).json()
+    col = graduation_client.get(f"{STATS}/college-comparison", headers=h, params={"batchId": b1}).json()
     assert col["code"] == 0
     assert sum(x["total"] for x in col["data"]) == 2
 
 
-def test_defense_list_export_same_batch(client, auth_headers, db_mode):
+def test_defense_list_export_same_batch(graduation_client, auth_headers, db_mode):
     """答辩列表与导出同批次口径（直接挂学生到组，绕过阶段门禁）。"""
     from app.db.session import get_sessionmaker
     from app.models import GraduationDefenseGroup, GraduationStudent
 
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
-    g1 = _record(client, h, _student(client, h, name="答辩甲"), b1)
-    g2 = _record(client, h, _student(client, h, name="答辩乙"), b2)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
+    g1 = _record(graduation_client, h, _student(graduation_client, h, name="答辩甲"), b1)
+    g2 = _record(graduation_client, h, _student(graduation_client, h, name="答辩乙"), b2)
 
-    d1 = client.post(DG, headers=h, params={"batchId": b1}, json={
+    d1 = graduation_client.post(DG, headers=h, params={"batchId": b1}, json={
         "groupName": _uniq("一组"), "batchId": b1, "chair": "组长A", "members": ["评委1"], "secretary": "秘书A",
     }).json()
     assert d1["code"] == 0, d1
-    d2 = client.post(DG, headers=h, params={"batchId": b2}, json={
+    d2 = graduation_client.post(DG, headers=h, params={"batchId": b2}, json={
         "groupName": _uniq("二组"), "batchId": b2, "chair": "组长B", "members": ["评委2"], "secretary": "秘书B",
     }).json()
     assert d2["code"] == 0, d2
@@ -257,28 +257,28 @@ def test_defense_list_export_same_batch(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    lst = client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
+    lst = graduation_client.get(DG, headers=h, params={"batchId": b1, "pageSize": 100}).json()
     assert lst["code"] == 0
     ids = {x["id"] for x in lst["data"]["items"]}
     assert id1 in ids
     assert id2 not in ids
 
-    exp = client.post(f"{DG}/export", headers=h, params={"batchId": b1}).json()
+    exp = graduation_client.post(f"{DG}/export", headers=h, params={"batchId": b1}).json()
     assert exp["code"] == 0, exp
     assert exp["data"]["rowCount"] == lst["data"]["total"]
     assert exp["data"].get("batchId") == str(b1)
 
 
-def test_dashboard_batch_scoped_counts(client, auth_headers, db_mode):
+def test_dashboard_batch_scoped_counts(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    b1 = _batch(client, h)
-    b2 = _batch(client, h)
-    g1 = _record(client, h, _student(client, h, name="看板甲"), b1)
-    g2 = _record(client, h, _student(client, h, name="看板乙"), b2)
+    b1 = _batch(graduation_client, h)
+    b2 = _batch(graduation_client, h)
+    g1 = _record(graduation_client, h, _student(graduation_client, h, name="看板甲"), b1)
+    g2 = _record(graduation_client, h, _student(graduation_client, h, name="看板乙"), b2)
     _insert_proposal(g1, "PENDING_REVIEW")
     _insert_proposal(g2, "PENDING_REVIEW")
 
-    d1 = client.get(DASH, headers=h, params={"batchId": b1}).json()
+    d1 = graduation_client.get(DASH, headers=h, params={"batchId": b1}).json()
     assert d1["code"] == 0, d1
     assert d1["data"]["batchId"] == str(b1)
     prop_stat = next(s for s in d1["data"]["stats"] if s["label"] == "开题待审阅")
