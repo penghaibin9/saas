@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: backend
+    route: internal://internship/safe-xlsx-upload
+    page: backend/app/modules/internship/services/internship_import_upload.py
+    action: upload+import
+    fileCategory: INTERNSHIP_IMPORT_XLSX
+    api: POST /api/v1/internship/*/import/xlsx
+    backendService: backend/app/modules/internship/services/internship_import_upload.py::read_safe_xlsx_upload
+    storageMode: ephemeral-memory+temporary-scan-file
+    authMode: authenticated+internship-route-permission
+    dataScope: tenant+route-business-scope
+    versioned: false
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '1'
+    notes: 统一覆盖企业、岗位、学生、匹配意向四类 XLSX 解析入口；分块读取，10MB 压缩前限额，复用公共 OOXML/ZIP 条目数、解压体积、压缩比、路径穿越和 MIME/magic 校验；生产扫描必需但不可用时 fail-closed，启用 ClamAV 时同步扫描后才进入解析。源码 backend/app/modules/internship/services/internship_import_upload.py

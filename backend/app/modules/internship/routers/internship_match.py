@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.internship.services.internship_import_upload import read_safe_xlsx_upload
 from app.modules.internship.schemas.internship_match import (BatchMatchBody, IntentionCreate, IntentionImport,
                                           IntentionImportErrors, IntentionUpdate, ManualMatchBody,
                                           MatchActionBody)
@@ -77,7 +78,7 @@ def intention_template(user=Depends(require_permission(_P_INT_MANAGE))):
 @router.post("/intentions/import/xlsx", summary="意向导入·上传 Excel 预校验")
 async def intention_import_xlsx(file: UploadFile = File(...), batchId: Optional[str] = None,
                                 user=Depends(require_permission(_P_INT_MANAGE))):
-    content = await file.read()
+    content = await read_safe_xlsx_upload(file)
     rows = xlsx_util.read_xlsx(content, _INT_MAP)
     dry = svc.intention_import_dry_run(rows, batch_id=batchId)
     return success({"rows": rows, **dry})

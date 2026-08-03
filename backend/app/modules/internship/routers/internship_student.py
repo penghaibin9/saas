@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.internship.services.internship_import_upload import read_safe_xlsx_upload
 from app.modules.internship.schemas.internship_student import (AdvisorAssignmentRequest, AssignPositionRequest, DestinationRequest,
                                             EligibilityRequest, StudentImport,
                                             StudentRecordCreate, StudentRecordUpdate,
@@ -101,7 +102,7 @@ def intern_import_template(user=Depends(require_permission(_P_MANAGE))):
 @router.post("/intern-students/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
 async def intern_import_xlsx(file: UploadFile = File(...), batchId: Optional[str] = Query(None),
                              user=Depends(require_permission(_P_MANAGE))):
-    content = await file.read()
+    content = await read_safe_xlsx_upload(file)
     rows = xlsx_util.read_xlsx(content, svc.IMPORT_HEADER_MAP)
     return success({**svc.import_dry_run(rows, batch_id=batchId), "rows": rows})
 

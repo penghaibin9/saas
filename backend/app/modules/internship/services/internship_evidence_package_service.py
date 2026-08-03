@@ -334,7 +334,6 @@ def generate(package_type, target_id, user=None):
             target_id=_as_id(target_id), package_version=latest + 1,
             status="FAILED", generated_by_name=(user or {}).get("realName") or "系统",
             generated_at=datetime.utcnow(), row_count=len(records), file_count=0,
-            source_module="system",
         )
         db.add(package)
         try:
