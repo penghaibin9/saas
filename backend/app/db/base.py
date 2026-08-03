@@ -28,5 +28,6 @@ from app.models import teacher_scope as _teacher_scope  # noqa: F401
 from app.models import affairs as _affairs  # noqa: F401
 from app.models import excel_import_job as _excel_import_job  # noqa: F401
 from app.models import internship_agreement_template as _internship_agreement_template  # noqa: F401
+from app.models import service_catalog as _service_catalog  # noqa: F401  (PLAT-08·服务目录)
 
 metadata = Base.metadata
