@@ -1,0 +1,26 @@
+name: Agent Source Snapshot
+
+on:
+  push:
+    branches:
+      - fix/graduation-material-closeout-p0-review
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pack source
+        run: |
+          tar --exclude=.git --exclude='**/node_modules' --exclude='**/dist' -czf /tmp/saas-pr36-source.tar.gz .
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: saas-pr36-source
+          path: /tmp/saas-pr36-source.tar.gz
+          retention-days: 1
