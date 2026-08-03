@@ -44,7 +44,38 @@ jobs:
       - name: Apply archived-rule closeout patch
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_graduation_archived_rule_closeout.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('if text.count(old_filter) != 2:', 'if text.count(old_filter) != 1:')
+          text = text.replace('expected two active-student filters', 'expected active-student filter')
+          path.write_text(text, encoding='utf-8')
+          PY
           python scripts/apply_graduation_archived_rule_closeout.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/app/modules/graduation/materials/command_service.py')
+          text = path.read_text(encoding='utf-8')
+          start_names = ('def initialize_batch_materials_in_session', 'def repair_material_catalog')
+          end_names = ('def initialize_batch_materials(', 'def _assert_owner_role')
+          old = '        GraduationStudent.record_status == "ACTIVE", GraduationStudent.is_deleted.is_(False),\n'
+          new = ('        GraduationStudent.record_status == "ACTIVE",\n'
+                 '        func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",\n'
+                 '        GraduationStudent.is_deleted.is_(False),\n')
+          for start_name, end_name in zip(start_names, end_names):
+              start = text.index(start_name)
+              end = text.index(end_name, start)
+              segment = text[start:end]
+              if 'func.coalesce(GraduationStudent.stage, "") != "ARCHIVED"' not in segment:
+                  if segment.count(old) != 1:
+                      raise SystemExit(f'{start_name}: archived filter insertion mismatch')
+                  segment = segment.replace(old, new, 1)
+                  text = text[:start] + segment + text[end:]
+          path.write_text(text, encoding='utf-8')
+          compile(text, str(path), 'exec')
+          assert text.count('func.coalesce(GraduationStudent.stage, "") != "ARCHIVED"') == 2
+          PY
           git diff --check
           python -m compileall -q \
             backend/app/modules/graduation/materials/definitions.py \
