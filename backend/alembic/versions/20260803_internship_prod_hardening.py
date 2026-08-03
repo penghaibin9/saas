@@ -54,15 +54,31 @@ def upgrade() -> None:
         "SELECT id, student_id, batch_id, complainant_contact_encrypted "
         "FROM t_internship_complaint"
     )).mappings().all()
-    from app.core.field_crypto import encrypt_sensitive, hash_sensitive, looks_like_fernet
+    from app.core.field_crypto import (
+        decrypt_sensitive,
+        encrypt_sensitive,
+        hash_sensitive,
+        looks_like_fernet,
+    )
     for row in complaints:
         values = {}
         contact = row["complainant_contact_encrypted"]
         if contact:
-            plain = str(contact)
-            if not looks_like_fernet(plain):
-                values["encrypted"] = encrypt_sensitive(plain, "internship_complaint_contact")
-            values["contact_hash"] = hash_sensitive(plain, "internship_complaint_contact")
+            stored = str(contact)
+            plain = decrypt_sensitive(
+                stored,
+                "internship_complaint_contact",
+                allow_legacy_plaintext=True,
+            )
+            if plain is None:
+                raise RuntimeError(
+                    f"cannot decrypt complaint contact during migration: complaint_id={row['id']}"
+                )
+            if not looks_like_fernet(stored):
+                values["encrypted"] = encrypt_sensitive(
+                    plain, "internship_complaint_contact")
+            values["contact_hash"] = hash_sensitive(
+                plain, "internship_complaint_contact")
         if row["student_id"] and row["batch_id"]:
             rec = bind.execute(sa.text(
                 "SELECT id FROM t_internship_record WHERE tenant_id = "
