@@ -37,3 +37,11 @@ def test_score_config_save_retires_locked_scope_before_insert():
     assert ".with_for_update()" in block
     assert "old.active_scope_key = None" in block
     assert "active_scope_key=scope_key" in block
+
+def test_score_config_first_save_conflict_is_a_business_conflict():
+    service = _read("backend/app/modules/internship/services/internship_score_service.py")
+    block = service[service.index("def save_config"):service.index("def _approved_enterprise_eval")]
+    assert "IntegrityError" in block
+    assert "uk_intern_score_cfg_active_scope" in block
+    assert '"DATA_CONFLICT"' in block
+    assert "请刷新后重试" in block

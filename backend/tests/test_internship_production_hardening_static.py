@@ -49,3 +49,17 @@ def test_core_database_invariants_are_declared():
     assert "uk_risk_source" in model
     assert "uk_internship_final_score_record" in model
     assert "uk_internship_archive_record" in model
+
+def test_internship_migration_extends_latest_main_head():
+    migration = _read("backend/alembic/versions/20260803_internship_prod_hardening.py")
+    assert 'revision = "20260803_internship_hardening"' in migration
+    assert 'down_revision = "0164_master_data_governance"' in migration
+    assert len("20260803_internship_hardening") <= 32
+
+
+def test_complaint_corrupted_ciphertext_is_explicitly_fail_closed():
+    text = _read("backend/app/modules/internship/services/internship_complaint_service.py")
+    block = text[text.index("def _row"):text.index("def _trail")]
+    assert "if plain is None" in block
+    assert '"complainantContactCorrupted": contact_corrupted' in block
+    assert '"***" if contact_corrupted' in block

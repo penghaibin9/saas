@@ -172,3 +172,42 @@ def test_self_eval_enterprise_rating(client, db_mode):
     got = client.get(f"{MOB}/internship/self-eval", headers=_student())
     assert got.json()["data"]["enterpriseRating"] == 4
     assert got.json()["data"]["positionRating"] == 5
+
+def test_stale_change_request_can_still_be_rejected(client, db_mode):
+    ids = _seed(db_mode)
+    response = client.post(
+        f"{MOB}/internship/change-request",
+        json={
+            "changeType": "CHANGE_ENTERPRISE",
+            "reason": "企业经营调整需变更单位",
+            "targetEnterpriseId": ids["target_company_id"],
+            "targetPositionId": ids["target_position_id"],
+            "targetEnterpriseName": "新企业A",
+            "targetPositionName": "新岗位B",
+        },
+        headers=_student(),
+    )
+    assert response.status_code == 200 and response.json()["code"] == 0
+    change = response.json()["data"]
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord
+    db = get_sessionmaker()()
+    try:
+        record = db.get(InternshipRecord, ids["rec_id"])
+        record.version = int(record.version or 0) + 1
+        db.commit()
+    finally:
+        db.close()
+
+    rejected = client.post(
+        f"{INT}/change-requests/{change['id']}/review",
+        json={
+            "action": "REJECT",
+            "comment": "主记录已变化，请重新提交申请",
+            "expectedVersion": int(change.get("version") or 0),
+        },
+        headers=_mentor("刘强"),
+    )
+    assert rejected.status_code == 200, rejected.json()
+    assert rejected.json()["data"]["status"] == "REJECTED"

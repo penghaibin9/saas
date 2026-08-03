@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
@@ -188,7 +189,17 @@ def save_config(user, body) -> dict:
             setattr(c, k, v)
         c.pass_line = pass_line
         c.version = (c.version or 0) + 1
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            detail = str(getattr(exc, "orig", exc))
+            if "uk_intern_score_cfg_active_scope" in detail or ("1062" in detail and "active_scope_key" in detail):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "同一评分配置范围正在被其他操作更新，请刷新后重试",
+                ) from None
+            raise
         _trail(db, c.id, "SAVE_CONFIG", {
             **parsed, "passLine": pass_line, "scopeKey": scope_key,
         }, operator=_op_name(user))

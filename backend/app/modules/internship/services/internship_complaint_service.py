@@ -65,11 +65,16 @@ def _row(c, user=None, student_name: str = ""):
     contact_corrupted = False
     if c.complainant_contact_encrypted:
         try:
-            contact = decrypt_sensitive(
+            plain = decrypt_sensitive(
                 c.complainant_contact_encrypted,
                 "internship_complaint_contact",
                 allow_legacy_plaintext=True,
-            ) or ""
+            )
+            if plain is None:
+                contact_corrupted = True
+                _logger.error("complaint_contact_decrypt_failed complaint_id=%s", c.id)
+            else:
+                contact = plain
         except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
             contact_corrupted = True
             _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)

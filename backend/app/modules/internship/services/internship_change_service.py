@@ -249,16 +249,16 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
             raise no_permission("不在数据范围内")
 
         snapshot = int(change.record_version_snapshot or 0)
-        expected_record = snapshot if record_expected_version is None else extract_expected_version(
-            {"expectedVersion": record_expected_version})
-        if expected_record != snapshot:
-            raise AppException("DATA_CONFLICT", "页面实习记录版本与申请快照不一致，请刷新")
-        if int(record.version or 0) != snapshot:
-            raise AppException(
-                "DATA_CONFLICT",
-                "学生实习主记录在申请后已变化，请退回申请并由学生基于最新数据重新提交",
-            )
-
+        if action == "APPROVE":
+            expected_record = snapshot if record_expected_version is None else extract_expected_version(
+                {"expectedVersion": record_expected_version})
+            if expected_record != snapshot:
+                raise AppException("DATA_CONFLICT", "页面实习记录版本与申请快照不一致，请刷新")
+            if int(record.version or 0) != snapshot:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "学生实习主记录在申请后已变化，请退回申请并由学生基于最新数据重新提交",
+                )
         before = {
             "recordVersion": int(record.version or 0),
             "positionId": str(record.position_id or ""),

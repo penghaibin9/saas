@@ -1,7 +1,7 @@
 """internship production data invariants and sensitive-field hardening.
 
-Revision ID: 20260803_internship_prod_hardening
-Revises: 0161_access_governance
+Revision ID: 20260803_internship_hardening
+Revises: 0164_master_data_governance
 """
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
-revision = "20260803_internship_prod_hardening"
-down_revision = "0161_access_governance"
+revision = "20260803_internship_hardening"
+down_revision = "0164_master_data_governance"
 branch_labels = None
 depends_on = None
 
