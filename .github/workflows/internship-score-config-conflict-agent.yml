@@ -1,0 +1,105 @@
+name: Internship Score Config Conflict Agent
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: internship-score-config-conflict-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/internship-production-hardening-20260803'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Harden concurrent score configuration save
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/modules/internship/services/internship_score_service.py')
+          text = path.read_text(encoding='utf-8')
+          old_import = 'from sqlalchemy import func, select\n'
+          new_import = 'from sqlalchemy import func, select\nfrom sqlalchemy.exc import IntegrityError\n'
+          if new_import not in text:
+              if old_import not in text:
+                  raise SystemExit('score service sqlalchemy import anchor missing')
+              text = text.replace(old_import, new_import, 1)
+
+          old = '''        db.flush()
+        _trail(db, c.id, "SAVE_CONFIG", {
+            **parsed, "passLine": pass_line, "scopeKey": scope_key,
+        }, operator=_op_name(user))
+        db.commit()
+        return {"ok": True, "configId": str(c.id), "configVersion": int(c.version or 0),
+                "batchId": str(c.batch_id) if c.batch_id else ""}
+'''
+          new = '''        try:
+            db.flush()
+            _trail(db, c.id, "SAVE_CONFIG", {
+                **parsed, "passLine": pass_line, "scopeKey": scope_key,
+            }, operator=_op_name(user))
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT",
+                "同一批次的成绩配置已被其他管理员更新，请刷新后重试",
+            ) from exc
+        return {"ok": True, "configId": str(c.id), "configVersion": int(c.version or 0),
+                "batchId": str(c.batch_id) if c.batch_id else ""}
+'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif '同一批次的成绩配置已被其他管理员更新' not in text:
+              raise SystemExit('score config save anchor missing')
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('backend/tests/test_internship_score_config_conflict_static.py')
+          test.write_text('''from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_score_config_unique_race_returns_business_conflict():
+    source = (ROOT / "backend/app/modules/internship/services/internship_score_service.py").read_text(encoding="utf-8")
+    block = source[source.index("def save_config"):source.index("def _approved_enterprise_eval")]
+    assert "from sqlalchemy.exc import IntegrityError" in source
+    assert "except IntegrityError as exc" in block
+    assert "db.rollback()" in block
+    assert '"DATA_CONFLICT"' in block
+    assert "同一批次的成绩配置已被其他管理员更新" in block
+''', encoding='utf-8')
+          PY
+      - name: Validate score conflict handling
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/services/internship_score_service.py \
+            backend/tests/test_internship_score_config_conflict_static.py
+          git diff --check
+      - name: Commit score conflict handling
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            backend/app/modules/internship/services/internship_score_service.py \
+            backend/tests/test_internship_score_config_conflict_static.py
+          if git diff --cached --quiet; then
+            echo 'score configuration conflict handling already committed'
+            exit 0
+          fi
+          git commit -m 'fix: handle concurrent internship score configuration saves'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
