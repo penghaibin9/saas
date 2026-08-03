@@ -334,6 +334,63 @@ export const systemApi = {
     }
   },
 
+  // SYS-15：统一消息、待办与通知治理
+  async getCommunicationGovernanceOverview() {
+    try {
+      return ok(await request('/system/communication-governance/overview'))
+    } catch (error) {
+      return fail(error.message || '消息治理概览加载失败')
+    }
+  },
+
+  async getCommunicationRegistry() {
+    try {
+      return ok(await request('/system/communication-governance/registry'))
+    } catch (error) {
+      return fail(error.message || '注册表加载失败')
+    }
+  },
+
+  async listTodoBacklog({ page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/communication-governance/todo-backlog', {
+        params: { page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '待办台账加载失败')
+    }
+  },
+
+  async closeTodoWithEvidence(todoId, { evidence } = {}) {
+    try {
+      return ok(await request(`/system/communication-governance/todos/${encodeURIComponent(todoId)}/close`, {
+        method: 'POST', body: { evidence }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async listDeadOutbox({ page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/communication-governance/dead-outbox', {
+        params: { page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '死信台账加载失败')
+    }
+  },
+
+  async retryDeadOutbox(outboxId) {
+    try {
+      return ok(await request(`/system/communication-governance/outbox/${encodeURIComponent(outboxId)}/retry`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async listMasterDataDomains() {
     try {
       return ok(await request('/system/master-data/domains'))

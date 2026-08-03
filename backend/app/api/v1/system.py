@@ -831,6 +831,63 @@ def api_force_advance_workflow_task(task_id: int, body: dict = Body(...),
         user=user), message="已人工推进")
 
 
+# ── SYS-15 统一消息、待办与通知治理 ──────────────────────────────────────────
+@router.get("/system/communication-governance/overview", summary="消息/待办/通知治理首屏结论")
+def api_communication_governance_overview(user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import communication_registry as cr
+    return success(cr.governance_overview())
+
+
+@router.get("/system/communication-governance/registry", summary="事件/待办类型/渠道注册表与代码交叉校验")
+def api_communication_registry(user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import communication_registry as cr
+    return success({**cr.list_registry(), "validation": cr.validate_registry()})
+
+
+@router.get("/system/communication-governance/todo-backlog", summary="积压待办台账")
+def api_todo_backlog(page: int = 1, pageSize: int = 50, user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import todo_task_service as tts
+    items, total = tts.list_backlog(page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/system/communication-governance/todos/{todo_id}/close", summary="带完成证据关闭待办")
+def api_close_todo(todo_id: int, body: dict = Body(...), user=Depends(
+        require_permission("systemAdmin.communication.manage"))):
+    from app.db.session import get_sessionmaker
+    from app.services import todo_task_service as tts
+    payload = body or {}
+    db = get_sessionmaker()()
+    try:
+        row = tts.close_todo_with_evidence(
+            db, todo_id=todo_id, evidence=payload.get("evidence") or "", actor=user)
+        db.commit()
+        return success({"todoId": row.id, "status": row.status}, message="待办已关闭")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.get("/system/communication-governance/dead-outbox", summary="死信事件台账")
+def api_list_dead_outbox(page: int = 1, pageSize: int = 50, user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services.message_event_outbox_service import list_dead_outbox
+    items, total = list_dead_outbox(page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/system/communication-governance/outbox/{outbox_id}/retry", summary="死信事件重新入队（不重复业务动作）")
+def api_retry_dead_outbox(outbox_id: int, user=Depends(
+        require_permission("systemAdmin.communication.manage"))):
+    from app.services.message_event_outbox_service import retry_dead_outbox
+    return success(retry_dead_outbox(outbox_id), message="已重新入队")
+
+
 # ── SYS-17 主数据责任与数据质量 ──────────────────────────────────────────────
 @router.get("/system/master-data/domains", summary="数据域目录、责任人与质量分")
 def api_master_data_domains(user=Depends(require_any_permission(

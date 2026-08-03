@@ -195,6 +195,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '流程安全与运行治理', requiresAuth: true, permissionKey: 'systemAdmin.workflow.view' }
     },
     {
+      // SYS-15：消息/待办/通知注册表治理（第一阶段只做只读注册表 + adapter，不建统一大表）
+      path: 'communications', name: 'system-communications',
+      component: () => import('@/modules/system/views/SystemCommunicationGovernanceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '统一消息、待办与通知治理', requiresAuth: true, permissionKey: 'systemAdmin.communication.view' }
+    },
+    {
       // SYS-17：数据域责任人、质量规则、问题闭环与合并预览（不代业务部门确认业务事实）
       path: 'master-data', name: 'system-master-data',
       component: () => import('@/modules/system/views/SystemMasterDataView.vue'),
