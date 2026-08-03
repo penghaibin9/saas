@@ -370,7 +370,8 @@ export default {
       this.proposalSubmitting = true
       studentApi.submitGraduationProposal({
         background: f.background.trim(), plan: f.plan.trim(), outcome: f.outcome.trim(),
-        attachments: this.propAtts.map((a) => a.fileId)
+        attachments: this.propAtts.map((a) => a.fileId),
+        expectedVersion: this.materialVersion('PROPOSAL_REPORT')
       }).then(() => {
         uni.showToast({ title: '开题报告已提交', icon: 'success' })
         this.showProposalForm = false
@@ -396,7 +397,11 @@ export default {
       if (this.finalSubmitting) return
       if (!this.finalAtts.length) { toast('请先上传论文附件（PDF/Word/ZIP）'); return }
       this.finalSubmitting = true
-      studentApi.submitGraduationFinal({ finalType, attachments: this.finalAtts.map((a) => a.fileId) }).then(() => {
+      studentApi.submitGraduationFinal({
+        finalType,
+        attachments: this.finalAtts.map((a) => a.fileId),
+        expectedVersion: this.materialVersion(finalType === '定稿' ? 'THESIS_FINAL' : 'THESIS_DRAFT')
+      }).then(() => {
         uni.showToast({ title: finalType + '已提交', icon: 'success' })
         this.finalAtts = []
         this.loadProcess()
@@ -422,6 +427,10 @@ export default {
     removeAtt(target, i) {
       const arr = target === 'prop' ? 'propAtts' : 'finalAtts'
       this[arr].splice(i, 1)
+    },
+    materialVersion(code) {
+      const row = ((this.materials && this.materials.items) || []).find((item) => item.materialCode === code)
+      return Number((row && row.version) || 0)
     },
     async downloadAtt(a) {
       const fileId = a && a.fileId

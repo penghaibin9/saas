@@ -428,8 +428,8 @@ export default {
       if (!this.canAct) return
       const id = this.curId()
       const submit = (c) => this.reviewKind === 'final'
-        ? teacherApi.reviewFinal(id, type === 'pass' ? 'APPROVE' : 'REJECT', c)
-        : teacherApi.reviewProposal(id, type === 'pass' ? 'APPROVE' : 'REJECT', c)
+        ? teacherApi.reviewFinal(id, type === 'pass' ? 'APPROVE' : 'REJECT', c, this.detail.materialVersion, this.detail.fileVersionId)
+        : teacherApi.reviewProposal(id, type === 'pass' ? 'APPROVE' : 'REJECT', c, this.detail.materialVersion, this.detail.fileVersionId)
       if (type === 'pass') {
         this.acting = true
         submit('').then(() => { toast('已通过'); this.afterAction() })

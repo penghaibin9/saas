@@ -329,6 +329,22 @@ def preview_batch_file(batch_id=None) -> dict:
     return _preview("FILE", batch_id)
 
 
+def verify_batch_file_preview(batch_id, preview_token: str) -> dict:
+    """Public read/lock boundary used by the V2 manifest batch command."""
+    from app.models import GraduationBatch
+
+    with session() as db:
+        batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == _tid(), GraduationBatch.id == int(batch_id),
+            GraduationBatch.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not batch:
+            raise not_found("毕业设计批次不存在")
+        snapshot = _snapshot(db, batch, "FILE", lock=True)
+        _verify_token(preview_token, _token_payload("FILE", batch, snapshot))
+        return {**snapshot, "batchId": str(batch.id), "batchName": batch.batch_name}
+
+
 def batch_generate_submit(batch_id=None, preview_token: str | None = None) -> dict:
     from app.modules.graduation.services import graduation_archive_service as svc
     with session() as db:

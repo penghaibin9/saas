@@ -12,10 +12,10 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
-from app.modules.graduation.services import graduation_material_catalog_service as catalog
-from app.modules.graduation.services import graduation_material_center_service as center
-from app.modules.graduation.services import graduation_material_export_service as archive_export
-from app.modules.graduation.services import graduation_material_ticket_service as tickets
+from app.modules.graduation.materials import command_service as commands
+from app.modules.graduation.materials import access_service as tickets
+from app.modules.graduation.materials import query_service as queries
+from app.modules.graduation.materials import record_service as records
 
 router = APIRouter(
     prefix="/mobile/graduation",
@@ -34,17 +34,7 @@ def _with_batch(user: dict, batch_id: int | None) -> dict:
 
 
 def _current_student_id(user: dict) -> int:
-    from app.db.session import get_sessionmaker
-    from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
-
-    db = get_sessionmaker()()
-    try:
-        student = resolve_current_gd_student(db, user)
-        if not student:
-            raise not_found("毕业设计材料不存在")
-        return int(student.id)
-    finally:
-        db.close()
+    return queries.current_student_id(user)
 
 
 @router.post("/proposal", summary="开题·本人提交/重交并生成公共文件版本")
@@ -53,9 +43,7 @@ def submit_proposal(
     user=Depends(get_current_user),
 ):
     scoped = _with_batch(user, batchId)
-    result = center.submit_proposal(scoped, body or {})
-    if str(result.get("id") or "").isdigit():
-        catalog.sync_record("PROPOSAL", int(result["id"]), scoped)
+    result = records.submit_proposal(scoped, body or {})
     return success(result, message="开题报告已提交")
 
 
@@ -65,9 +53,7 @@ def submit_final(
     user=Depends(get_current_user),
 ):
     scoped = _with_batch(user, batchId)
-    result = center.submit_final(scoped, body or {})
-    if str(result.get("id") or "").isdigit():
-        catalog.sync_record("FINAL", int(result["id"]), scoped)
+    result = records.submit_final(scoped, body or {})
     return success(result, message="论文成果已提交")
 
 
@@ -83,7 +69,7 @@ def submit_material(
     if not str(file_id or "").isdigit():
         raise AppException("VALIDATION_ERROR", "fileId 不能为空")
     expected = (body or {}).get("expectedVersion")
-    result = catalog.submit_material(
+    result = commands.submit_material(
         _with_batch(user, batchId), code, int(file_id),
         expected_version=int(expected) if str(expected or "").isdigit() else None,
     )
@@ -98,7 +84,7 @@ def material_library(
 ):
     scoped = _with_batch(user, batchId)
     target = gdStudentId if str((user or {}).get("userType") or "").upper() != "STUDENT" else None
-    return success(catalog.student_library(target, scoped, include_history=includeHistory))
+    return success(queries.student_library(target, scoped, include_history=includeHistory))
 
 
 @router.post("/material-center/materials/{material_id}/review", summary="教师小程序审核或退回具体版本")
@@ -108,9 +94,10 @@ def review_material(
     version_id = (body or {}).get("fileVersionId") or (body or {}).get("versionId")
     if not str(version_id or "").isdigit():
         raise AppException("VALIDATION_ERROR", "fileVersionId 不能为空")
-    return success(catalog.review_material(
+    return success(commands.review_material(
         material_id, int(version_id), str((body or {}).get("action") or ""),
         (body or {}).get("comment"), user,
+        expected_version=int((body or {}).get("expectedVersion")) if str((body or {}).get("expectedVersion") or "").isdigit() else None,
     ), message="材料版本已审核")
 
 
@@ -119,7 +106,7 @@ def material_manifest(
     batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user),
 ):
     scoped = _with_batch(user, batchId)
-    return success(archive_export.latest_manifest(_current_student_id(scoped), scoped))
+    return success(queries.latest_manifest(_current_student_id(scoped), scoped))
 
 
 @router.post("/material-center/files/{file_id}/ticket", summary="签发小型材料预览/下载票据")
@@ -142,12 +129,9 @@ def preview_material(file_id: int, ticket: str = Query(...), user=Depends(get_cu
 
 @router.get("/material-center/files/{file_id}/download", summary="下载本人当前或历史毕业设计材料版本")
 def download_material(
-    file_id: int, ticket: str = Query(default=""), user=Depends(get_current_user),
+    file_id: int, ticket: str = Query(...), user=Depends(get_current_user),
 ):
-    path, filename = (
-        tickets.consume_ticket(file_id, "download", ticket, user)
-        if ticket else center.resolve_material_download(file_id, user, student_mode=True)
-    )
+    path, filename = tickets.consume_ticket(file_id, "download", ticket, user)
     return validated_local_file_response(
         path,
         filename=filename,
@@ -157,9 +141,14 @@ def download_material(
     )
 
 
-@router.get("/material-center/packages/{file_id}/download", summary="下载本人旧毕业设计归档包")
-def download_package(file_id: int, user=Depends(get_current_user)):
-    path, filename = center.resolve_package_download(file_id, user)
+@router.post("/material-center/packages/{file_id}/ticket", summary="签发本人归档包短时单次票据")
+def package_ticket(file_id: int, user=Depends(get_current_user)):
+    return success(tickets.issue_package_ticket(file_id, user))
+
+
+@router.get("/material-center/packages/{file_id}/download", summary="使用票据下载本人毕业设计归档包")
+def download_package(file_id: int, ticket: str = Query(...), user=Depends(get_current_user)):
+    path, filename = tickets.consume_package_ticket(file_id, ticket, user)
     return validated_local_file_response(
         path,
         filename=filename,

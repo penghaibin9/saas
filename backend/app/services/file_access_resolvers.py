@@ -202,19 +202,22 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
 
 
 def _graduation_student_ids(bindings: list[Any]) -> set[int]:
-    result: set[int] = set()
+    explicit: set[int] = set()
+    legacy: set[int] = set()
     for binding in bindings:
         if binding.is_deleted:
             continue
         scope = binding.scope_json or {}
-        for value in (
-            scope.get("gdStudentId"),
-            getattr(binding, "student_id", None),
-        ):
-            raw = str(value or "").strip()
-            if raw.isdigit():
-                result.add(int(raw))
-    return result
+        gd_student_id = str(scope.get("gdStudentId") or "").strip()
+        if gd_student_id.isdigit():
+            explicit.add(int(gd_student_id))
+            continue
+        student_id = str(getattr(binding, "student_id", None) or "").strip()
+        if student_id.isdigit():
+            legacy.add(int(student_id))
+    # Current bindings carry both GraduationStudent.id in scope_json and the
+    # StudentProfile.id column. They are different namespaces, so never mix them.
+    return explicit or legacy
 
 
 def _graduation_staff_permission(user: dict, action: str) -> bool:
@@ -237,9 +240,14 @@ def graduation_material_resolver(db, file_obj, bindings: list[Any], user: dict, 
     """毕业设计材料必须同时满足租户文件授权与具体学生/导师/组织范围。"""
     if db is None:
         return False
+    # A new upload has no business binding until its first material submission.
+    # Only that uploader may cross this narrow bind/submit bridge; all later
+    # access continues through the authoritative Asset/Version binding below.
+    if not bindings and action in {"bind", "submit"}:
+        return _owner_allows(file_obj, user or {})
     valid = [
         item for item in bindings
-        if not item.is_deleted and item.module_code == "graduation"
+        if not item.is_deleted and str(item.module_code or "").upper() == "GRADUATION"
         and item.status in {"ACTIVE", "SUPERSEDED", "ARCHIVED"}
         and item.version_id and item.asset_id
     ]

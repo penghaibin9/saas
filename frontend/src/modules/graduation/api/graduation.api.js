@@ -155,9 +155,9 @@ export const graduationApi = {
   getProposalReviewDetail(id, params = {}) {
     return callStrict(() => request(`/graduation/proposals/${id}`, { params: withBatch(params) }))
   },
-  reviewProposal(id, { action, comment }) {
+  reviewProposal(id, { action, comment, expectedVersion, fileVersionId }) {
     return callStrict(() => request(`/graduation/proposals/${id}/review`, {
-      method: 'POST', params: withBatch(), body: { action, comment }
+      method: 'POST', params: withBatch(), body: { action, comment, expectedVersion, fileVersionId }
     }))
   },
   holdProposalDefense(id, { result, comment }) {
@@ -184,9 +184,9 @@ export const graduationApi = {
   getFinalDetail(id, params = {}) {
     return callStrict(() => request(`/graduation/finals/${id}`, { params: withBatch(params) }))
   },
-  reviewFinal(id, { action, comment }) {
+  reviewFinal(id, { action, comment, expectedVersion, fileVersionId }) {
     return callStrict(() => request(`/graduation/finals/${id}/review`, {
-      method: 'POST', params: withBatch(), body: { action, comment }
+      method: 'POST', params: withBatch(), body: { action, comment, expectedVersion, fileVersionId }
     }))
   },
   remindFinal(gdStudentId, channel = '站内消息') {

@@ -208,6 +208,7 @@ const taskbook = ref({})
 const proposal = ref({})
 const midterm = ref({})
 const final = ref({})
+const materials = ref({ items: [] })
 const defense = ref({})
 const grade = ref({})
 const archive = ref({})
@@ -345,6 +346,11 @@ function attachmentText(kind) {
   return list.length ? `已上传 ${list.length} 个附件：${list.map((item) => item.fileName || item.name).join('、')}` : '尚未上传附件'
 }
 
+function materialVersion(code) {
+  const row = (materials.value.items || []).find((item) => item.materialCode === code)
+  return Number(row?.version || 0)
+}
+
 function choiceStatusLabel(status) {
   return CHOICE_STATUS[status] || status || '—'
 }
@@ -359,6 +365,7 @@ const sections = {
   proposal: async () => { proposal.value = await portalApi.graduationProposal() },
   midterm: async () => { midterm.value = await portalApi.graduationMidterm() },
   final: async () => { final.value = await portalApi.graduationFinal() },
+  materials: async () => { materials.value = await portalApi.graduationMaterialLibrary() || { items: [] } },
   defense: async () => { defense.value = await portalApi.graduationDefense() },
   grade: async () => { grade.value = await portalApi.graduationGrade() },
   archive: async () => { archive.value = await portalApi.graduationArchive() },
@@ -494,7 +501,11 @@ async function submitProposal() {
   if (!proposalForm.background || !proposalForm.plan) return
   busy.value = true
   try {
-    await portalApi.submitGraduationProposal({ ...proposalForm, attachments: attachments.proposal.map((item) => item.fileId) })
+    await portalApi.submitGraduationProposal({
+      ...proposalForm,
+      attachments: attachments.proposal.map((item) => item.fileId),
+      expectedVersion: materialVersion('PROPOSAL_REPORT')
+    })
     ui.notify('开题报告已提交，等待指导教师审阅'); expanded.value = ''; await afterAction(['proposal', 'my'])
   } catch (e) { ui.notify(e?.message || '开题报告提交失败') } finally { busy.value = false }
 }
@@ -507,7 +518,12 @@ async function submitRectify() {
 async function submitFinal() {
   busy.value = true
   try {
-    await portalApi.submitGraduationFinal({ finalType: final.value.canSubmitFinal ? '定稿' : '初稿', attachments: attachments.final.map((item) => item.fileId) })
+    const isFinal = final.value.canSubmitFinal
+    await portalApi.submitGraduationFinal({
+      finalType: isFinal ? '定稿' : '初稿',
+      attachments: attachments.final.map((item) => item.fileId),
+      expectedVersion: materialVersion(isFinal ? 'THESIS_FINAL' : 'THESIS_DRAFT')
+    })
     ui.notify('论文成果已提交，等待审阅'); expanded.value = ''; await afterAction(['final', 'my'])
   } catch (e) { ui.notify(e?.message || '论文提交失败') } finally { busy.value = false }
 }

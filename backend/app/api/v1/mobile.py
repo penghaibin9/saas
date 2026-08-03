@@ -1365,8 +1365,10 @@ def teacher_proposal_detail(proposal_id: str, batchId: int | None = None, user=D
              summary="教师·毕设开题批阅（APPROVE/REJECT，范围校验+审计）")
 def teacher_proposal_review(proposal_id: str, body: dict = Body(...),
                             batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.proposal_review(_with_gd_batch(user, batchId), proposal_id, str(body.get("action") or "").upper(),
-                                       body.get("comment") or ""), message="批阅完成")
+    return success(tea.proposal_review(
+        _with_gd_batch(user, batchId), proposal_id, str(body.get("action") or "").upper(),
+        body.get("comment") or "", body.get("expectedVersion"), body.get("fileVersionId"),
+    ), message="批阅完成")
 
 
 @router.get("/teacher/graduation/final/{final_id}",
@@ -1379,8 +1381,10 @@ def teacher_final_detail(final_id: str, batchId: int | None = None, user=Depends
              summary="教师·毕设成果批阅（APPROVE/REJECT，查重超标不可通过，范围校验+审计）")
 def teacher_final_review(final_id: str, body: dict = Body(...),
                          batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.final_review(_with_gd_batch(user, batchId), final_id, str(body.get("action") or "").upper(),
-                                    body.get("comment") or ""), message="批阅完成")
+    return success(tea.final_review(
+        _with_gd_batch(user, batchId), final_id, str(body.get("action") or "").upper(),
+        body.get("comment") or "", body.get("expectedVersion"), body.get("fileVersionId"),
+    ), message="批阅完成")
 
 
 # ── 中期检查（教师移动端）──

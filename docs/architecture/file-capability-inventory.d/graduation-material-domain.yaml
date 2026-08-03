@@ -1,0 +1,90 @@
+version: file-capability-inventory/v1
+entries:
+  - module: graduation
+    client: backend
+    route: /api/v1/graduation/material-center/exports
+    page: backend/app/modules/graduation/materials/export_service.py
+    action: export+archive+download
+    fileCategory: XLSX_ZIP_EXPORT
+    api: POST /api/v1/graduation/material-center/exports
+    backendService: backend/app/modules/graduation/materials/export_service.py
+    storageMode: frozen-manifest-to-streaming-zip-and-xlsx-file-object
+    authMode: graduationDesign.archive.export+one-time-package-ticket
+    dataScope: tenant+operator+graduation-batch-or-student+frozen-v2-manifest
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 只打包既有不可变 V2 Manifest；逐项复核 SHA-256 与大小，ZIP、XLSX、manifest.json 口径一致。
+  - module: graduation
+    client: backend
+    route: graduation legacy attachment backfill
+    page: backend/app/modules/graduation/materials/migration_service.py
+    action: import+export
+    fileCategory: XLSX_MIGRATION_DIFFERENCE_REPORT
+    api: internal resumable migration service
+    backendService: backend/app/modules/graduation/materials/migration_service.py
+    storageMode: in-memory-write-only-report
+    authMode: explicit-administrative-migration-command
+    dataScope: tenant+checkpoint+legacy-source-record
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 回填仅自动处理语义唯一的单附件，差异报告支持 JSON/XLSX，禁止按附件序号猜测材料类型。
+  - module: graduation
+    client: backend
+    route: graduation proposal generated attachment
+    page: backend/app/modules/graduation/materials/record_service.py
+    action: upload+export
+    fileCategory: GENERATED_PROPOSAL_PDF
+    api: POST /api/v1/mobile/graduation/proposal
+    backendService: backend/app/modules/graduation/materials/record_service.py
+    storageMode: generated-pdf-to-file-object
+    authMode: authenticated-student+current-graduation-record
+    dataScope: tenant+student-self+graduation-batch
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 开题无附件时根据权威结构化字段生成 PDF，并与业务记录和材料版本保持同一事务登记。
+  - module: graduation
+    client: backend
+    route: graduation structured evidence snapshots
+    page: backend/app/modules/graduation/materials/snapshot_service.py
+    action: upload+export+archive
+    fileCategory: GENERATED_STRUCTURED_SNAPSHOT_PDF
+    api: internal pre-archive snapshot service
+    backendService: backend/app/modules/graduation/materials/snapshot_service.py
+    storageMode: generated-pdf-to-file-object
+    authMode: graduationDesign.archive.file+student-scope
+    dataScope: tenant+graduation-student+source-record-hash
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 快照包含 sourceDataHash、schema 与 generator 版本；相同源数据哈希幂等复用。

@@ -17,6 +17,7 @@ from app.models import (
     GraduationStudent,
 )
 from app.modules.graduation.schemas.graduation import AssignStudentsBody, DefenseGroupBody, RemindBody, ReviewBody
+from app.modules.graduation.materials import record_service as material_records
 from app.modules.graduation.schemas.graduation_extra import ProposalDefenseBody
 from app.modules.graduation.services import graduation_service as svc
 from app.modules.graduation.services import graduation_student_service as student_svc
@@ -117,7 +118,10 @@ def proposal_review(
     user=Depends(get_current_user),
 ):
     _record_student(GraduationProposal, proposal_id, batchId)
-    return success(svc.review_proposal(proposal_id, body.action, body.comment), message="已批阅")
+    return success(material_records.review_proposal(
+        int(proposal_id), body.action, body.comment, user,
+        expected_version=body.expectedVersion, expected_file_version_id=body.fileVersionId,
+    ), message="已批阅")
 
 
 @router.post("/proposals/{proposal_id}/defense")
@@ -176,7 +180,10 @@ def final_review(
     user=Depends(get_current_user),
 ):
     _record_student(GraduationFinal, final_id, batchId)
-    return success(svc.review_final(final_id, body.action, body.comment), message="已批阅")
+    return success(material_records.review_final(
+        int(final_id), body.action, body.comment, user,
+        expected_version=body.expectedVersion, expected_file_version_id=body.fileVersionId,
+    ), message="已批阅")
 
 
 @router.post("/finals/remind")

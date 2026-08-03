@@ -1,272 +1,111 @@
 <template>
-  <section class="gm-page">
-    <header class="gm-hero">
-      <div>
-        <span class="gm-eyebrow">毕业设计材料中心</span>
-        <h2>{{ batchStore.selectedBatchName || '当前批次' }}材料与归档</h2>
-        <p>先处理扫描异常、缺材料和待审核，再冻结真实版本 Manifest 并生成 ZIP/XLSX 归档任务。</p>
-      </div>
-      <div class="gm-hero__actions">
-        <button class="gm-btn" :disabled="loading" @click="loadAll">刷新</button>
-        <button class="gm-btn gm-btn--primary" :disabled="!batchId || exporting" @click="createBatchExport">
-          {{ exporting ? '正在生成…' : '生成批次 ZIP/XLSX' }}
-        </button>
-      </div>
+  <section class="mc-page">
+    <header class="mc-hero">
+      <div><span>毕业设计材料中心</span><h2>{{ batchStore.selectedBatchName || '当前批次' }}</h2><p>统一查看真实材料、完整性、待审核与文件安全异常。</p></div>
+      <button type="button" :disabled="loading" @click="load">{{ loading ? '刷新中…' : '刷新数据' }}</button>
     </header>
 
-    <div v-if="error" class="gm-alert gm-alert--danger">
-      <strong>材料中心加载失败</strong><span>{{ error }}</span><button @click="loadAll">重试</button>
-    </div>
-    <div v-else-if="!batchId" class="gm-alert">
-      <strong>请先选择毕业设计批次</strong><span>顶部批次条选择后，系统才会按真实数据范围统计材料。</span>
-    </div>
-
+    <div v-if="error" class="mc-error"><strong>加载失败</strong><span>{{ error }}</span><button type="button" @click="load">重试</button></div>
+    <div v-else-if="!batchId" class="mc-empty">请先在顶部选择毕业设计批次。</div>
     <template v-else>
-      <section class="gm-summary" aria-label="材料业务结论">
-        <article v-for="card in summaryCards" :key="card.key" :class="['gm-summary__card', `is-${card.tone}`]">
-          <span>{{ card.label }}</span><strong>{{ card.value }}</strong><small>{{ card.hint }}</small>
-        </article>
+      <section class="mc-summary">
+        <article v-for="card in cards" :key="card.label"><span>{{ card.label }}</span><strong>{{ card.value }}</strong><small>{{ card.hint }}</small></article>
       </section>
 
-      <section class="gm-panel gm-filters">
-        <label>关键词<input v-model.trim="filters.keyword" placeholder="姓名/学号/题目" @keyup.enter="search" /></label>
-        <label>材料阶段
-          <select v-model="filters.stage">
-            <option value="">全部阶段</option><option value="TOPIC">题目</option><option value="TASKBOOK">任务书</option>
-            <option value="PROPOSAL">开题</option><option value="GUIDANCE">指导</option><option value="MIDTERM">中期</option>
-            <option value="FINAL_DRAFT">初稿</option><option value="FINAL_APPROVED">定稿与成果</option>
-            <option value="PLAGIARISM">查重</option><option value="REVIEW">评阅</option>
-            <option value="DEFENSE">答辩</option><option value="GRADE">成绩</option><option value="ARCHIVE">归档</option>
-          </select>
-        </label>
-        <label>审核状态
-          <select v-model="filters.reviewStatus"><option value="">全部</option><option value="PENDING">待审核</option><option value="RETURNED">已退回</option><option value="APPROVED">已通过</option></select>
-        </label>
-        <label>扫描状态
-          <select v-model="filters.scanStatus"><option value="">全部</option><option value="PENDING">等待扫描</option><option value="RUNNING">扫描中</option><option value="ERROR">扫描失败</option><option value="INFECTED">感染</option><option value="CLEAN">安全可用</option></select>
-        </label>
-        <label>归档状态
-          <select v-model="filters.archiveStatus"><option value="">全部</option><option value="ELIGIBLE">可归档</option><option value="FROZEN">已冻结</option><option value="ARCHIVED">已归档</option></select>
-        </label>
-        <label class="gm-check"><input v-model="missingOnly" type="checkbox" /> 只看缺材料</label>
-        <div class="gm-filters__actions"><button class="gm-btn gm-btn--primary" @click="search">查询</button><button class="gm-btn" @click="resetFilters">重置</button></div>
+      <nav class="mc-tabs" aria-label="材料视图">
+        <button v-for="item in tabs" :key="item.key" type="button" :class="{ active: tab === item.key }" @click="changeTab(item.key)">{{ item.label }}</button>
+      </nav>
+
+      <section class="mc-filters">
+        <label>关键词<input v-model.trim="filters.keyword" placeholder="姓名、学号、题目或文件名" @keyup.enter="search" /></label>
+        <label>材料阶段<select v-model="filters.stage"><option value="">全部</option><option v-for="stage in stages" :key="stage" :value="stage">{{ stage }}</option></select></label>
+        <label>审核状态<select v-model="filters.reviewStatus" :disabled="tab === 'pending'"><option value="">全部</option><option value="PENDING">待审核</option><option value="RETURNED">已退回</option><option value="APPROVED">已通过</option><option value="NOT_REQUIRED">无需审核</option></select></label>
+        <label>扫描状态<select v-model="filters.scanStatus" :disabled="tab === 'security'"><option value="">全部</option><option value="CLEAN">安全</option><option value="PENDING">待扫描</option><option value="ERROR">失败</option><option value="INFECTED">感染</option></select></label>
+        <div><button type="button" class="primary" @click="search">查询</button><button type="button" @click="reset">重置</button></div>
       </section>
 
-      <div class="gm-workspace">
-        <section class="gm-panel gm-queue">
-          <header><div><strong>学生材料队列</strong><span>共 {{ overview.total || 0 }} 人</span></div></header>
-          <div v-if="loading" class="gm-state">正在按数据范围加载…</div>
-          <div v-else-if="!overview.items?.length" class="gm-state">当前筛选下没有学生</div>
-          <button v-for="student in overview.items || []" :key="student.gdStudentId" type="button"
-            :class="['gm-student', { 'is-active': selectedId === student.gdStudentId }]" @click="selectStudent(student)">
-            <span class="gm-student__name"><strong>{{ student.studentName }}</strong><small>{{ student.studentNo }}</small></span>
-            <span class="gm-student__status">
-              <b v-if="student.missingCount" class="is-danger">缺 {{ student.missingCount }}</b>
-              <b v-if="student.pendingReviewCount" class="is-warning">待审 {{ student.pendingReviewCount }}</b>
-              <b v-if="student.returnedCount" class="is-danger">退回 {{ student.returnedCount }}</b>
-              <b v-if="student.archiveReady" class="is-success">可归档</b>
-            </span>
-            <small>{{ student.className || '未设置班级' }} · {{ student.advisorName || '未分配导师' }}</small>
-          </button>
-          <footer class="gm-pagination">
-            <button class="gm-btn" :disabled="page <= 1" @click="changePage(page - 1)">上一页</button>
-            <span>第 {{ page }} 页</span>
-            <button class="gm-btn" :disabled="page * pageSize >= Number(overview.total || 0)" @click="changePage(page + 1)">下一页</button>
-          </footer>
-        </section>
-
-        <section class="gm-panel gm-detail">
-          <div v-if="libraryLoading" class="gm-state">正在加载学生材料版本…</div>
-          <div v-else-if="!library" class="gm-state">从左侧选择学生，查看材料状态、当前版本和历史版本</div>
-          <template v-else>
-            <header class="gm-detail__head">
-              <div><strong>{{ library.studentName }} · {{ library.studentNo }}</strong><span>{{ library.topicTitle || '未分配题目' }} · {{ library.advisorName || '未分配导师' }}</span></div>
-              <div class="gm-detail__actions">
-                <button class="gm-btn" @click="openStudentDetail">学生档案</button>
-                <button class="gm-btn" @click="loadManifest">查看 Manifest</button>
-                <button class="gm-btn gm-btn--primary" @click="freezeManifest">冻结当前版本</button>
-              </div>
-            </header>
-
-            <section v-for="group in library.groups || []" :key="group.name" class="gm-group">
-              <h3>{{ group.name }} <span>{{ group.items.length }} 项</span></h3>
-              <article v-for="material in group.items" :key="material.materialId" class="gm-material">
-                <header>
-                  <div><strong>{{ material.materialName }}</strong><span>{{ material.materialCode }} · {{ material.required ? '必交' : '选交' }}</span></div>
-                  <div class="gm-tags"><b :class="statusTone(material.businessStatus)">{{ statusText(material.businessStatus) }}</b><b>{{ material.reviewStatus }}</b><b>{{ material.archiveStatus }}</b></div>
-                </header>
-                <p v-if="material.rejectReason" class="gm-reject">退回原因：{{ material.rejectReason }}</p>
-                <div class="gm-meta">
-                  <span>Asset ID：{{ material.assetId || '-' }}</span><span>当前 FileVersion ID：{{ material.currentVersionId || '-' }}</span>
-                  <span>审核人：{{ material.reviewer || '-' }}</span><span>审核时间：{{ material.reviewedAt || '-' }}</span>
-                </div>
-                <SecureFileList :items="normalizedFiles(material)" empty-text="当前尚未提交文件" @preview="previewFile" @download="downloadFile" @refresh="refreshLibrary" />
-                <details v-if="material.versions?.length" class="gm-history">
-                  <summary>历史版本（{{ material.versions.length }}）</summary>
-                  <FileVersionTimeline :items="timelineItems(material)" @select="selectHistory" />
-                </details>
-                <div v-if="material.currentVersionId && material.reviewStatus === 'PENDING' && (material.allowedActions || []).includes('review')" class="gm-review-actions">
-                  <button class="gm-btn gm-btn--primary" @click="reviewMaterial(material, 'APPROVE')">通过当前版本</button>
-                  <button class="gm-btn gm-btn--danger" @click="reviewMaterial(material, 'REJECT')">退回当前版本</button>
-                </div>
-              </article>
-            </section>
-          </template>
-        </section>
-      </div>
-
-      <section class="gm-bottom-grid">
-        <article class="gm-panel">
-          <header class="gm-section-head"><div><strong>真实归档 Manifest</strong><span>冻结文件名、大小、SHA-256、扫描与审核结论</span></div></header>
-          <div v-if="!manifest" class="gm-state">选择学生后点击“查看 Manifest”</div>
-          <template v-else>
-            <div class="gm-manifest-head"><b>revision {{ manifest.revision }}</b><span>{{ manifest.status }}</span><code>{{ manifest.manifestSha256 }}</code></div>
-            <div class="gm-table-wrap"><table><thead><tr><th>材料</th><th>文件</th><th>版本</th><th>大小</th><th>SHA-256</th><th>扫描</th><th>审核</th></tr></thead>
-              <tbody><tr v-for="item in manifest.items || []" :key="item.fileVersionId"><td>{{ item.materialCode }}</td><td>{{ item.fileName }}</td><td>{{ item.fileVersionId }}</td><td>{{ sizeText(item.sizeBytes) }}</td><td><code>{{ item.sha256 }}</code></td><td>{{ item.scanResult }}</td><td>{{ item.reviewStatus }}</td></tr></tbody>
-            </table></div>
-          </template>
-        </article>
-
-        <article class="gm-panel">
-          <header class="gm-section-head"><div><strong>归档导出任务</strong><span>刷新后仍可查询，过期或撤销后不可下载</span></div></header>
-          <div v-if="!exportJob" class="gm-state">尚未创建本次归档任务</div>
-          <div v-else class="gm-job">
-            <div><strong>{{ exportJob.status }}</strong><span>进度 {{ exportJob.progress }}% · {{ exportJob.rowCount }} 条材料</span></div>
-            <code>{{ exportJob.result?.zipSha256 || '-' }}</code>
-            <div><button class="gm-btn" @click="refreshJob">刷新状态</button><button class="gm-btn gm-btn--primary" :disabled="exportJob.status !== 'SUCCEEDED'" @click="downloadJob">下载 ZIP</button><button class="gm-btn gm-btn--danger" :disabled="['REVOKED','EXPIRED'].includes(exportJob.status)" @click="revokeJob">撤销任务</button></div>
-          </div>
-        </article>
-      </section>
-
-      <section class="gm-panel gm-templates">
-        <header class="gm-section-head"><div><strong>模板资产与版本</strong><span>学校管理员自助上传、配置变量并启停；更新只新增 FileVersion</span></div><button class="gm-btn" @click="loadTemplates">刷新模板</button></header>
-        <form class="gm-template-form" @submit.prevent="publishTemplate">
-          <label>模板<select v-model="templateForm.templateId" required><option value="">请选择</option><option v-for="item in templateOptions" :key="item.templateId" :value="item.templateId">{{ item.templateType }} · {{ item.templateName }}</option></select></label>
-          <label>模板代码<input v-model.trim="templateForm.templateCode" required placeholder="如 GD_PROPOSAL" /></label>
-          <label>学院范围<input v-model.trim="templateForm.collegeId" placeholder="留空为全校" /></label>
-          <label>专业范围<input v-model.trim="templateForm.majorId" placeholder="留空为全部专业" /></label>
-          <label class="gm-template-form__schema">变量 Schema<textarea v-model="templateForm.variableSchemaText" rows="4" spellcheck="false" /></label>
-          <div class="gm-template-form__upload">
-            <FileUploader biz-type="GRADUATION_TEMPLATE" :biz-id="templateForm.templateId || 'new'" accept=".docx,.pdf,.xlsx,.pptx" button-text="上传模板新版本" @uploaded="onTemplateUploaded" />
-            <span>{{ templateForm.fileName || '尚未上传文件' }}</span>
-          </div>
-          <button class="gm-btn gm-btn--primary" type="submit" :disabled="templateBusy || !templateForm.fileId">{{ templateBusy ? '发布中…' : '发布模板版本' }}</button>
-        </form>
-        <div v-if="!templates.length" class="gm-state">当前批次尚未发布公共模板资产</div>
-        <div v-else class="gm-table-wrap"><table><thead><tr><th>模板代码</th><th>模板名称</th><th>范围</th><th>状态</th><th>当前版本</th><th>历史版本</th><th>操作</th></tr></thead>
-          <tbody><tr v-for="item in templates" :key="item.policyId"><td><code>{{ item.templateCode }}</code></td><td>{{ item.templateName }}</td><td>{{ item.collegeId || '全校' }} / {{ item.majorId || '全部专业' }}</td><td>{{ item.status }}</td><td>{{ item.currentVersionId || '-' }}</td><td>{{ item.versions?.length || 0 }}</td><td><button class="gm-btn" @click="toggleTemplate(item)">{{ item.enabled ? '停用' : '启用' }}</button></td></tr></tbody>
-        </table></div>
+      <section class="mc-panel">
+        <div v-if="loading" class="mc-empty">正在加载真实材料数据…</div>
+        <div v-else-if="!rows.length" class="mc-empty">当前筛选下没有数据。</div>
+        <div v-else class="mc-table-wrap">
+          <table v-if="tab !== 'students'">
+            <thead><tr><th>学生 / 学号</th><th>学院 / 专业 / 班级</th><th>指导教师</th><th>阶段 / 材料</th><th>文件</th><th>版本</th><th>上传人 / 时间</th><th>大小</th><th>扫描</th><th>审核</th><th>归档</th><th>操作</th></tr></thead>
+            <tbody><tr v-for="row in rows" :key="row.materialId">
+              <td><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }}</small></td>
+              <td><span>{{ row.collegeId || '-' }} / {{ row.majorId || '-' }}</span><small>{{ row.className || row.classId || '-' }}</small></td>
+              <td>{{ row.advisorName || '-' }}</td>
+              <td><span>{{ row.stage }}</span><strong>{{ row.materialName }}</strong><small>{{ row.materialCode }}</small></td>
+              <td :title="row.fileName">{{ row.fileName || '尚未提交' }}</td>
+              <td><strong>v{{ row.currentVersion || 0 }}</strong><small>历史 {{ row.historyVersionCount || 0 }}</small></td>
+              <td><span>{{ row.uploader || '-' }}</span><small>{{ row.uploadedAt || '-' }}</small></td>
+              <td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ row.scanStatus }}</b></td>
+              <td>{{ row.reviewStatus }}</td><td>{{ row.archiveStatus }}</td>
+              <td class="actions"><button v-if="row.readyForBusiness" type="button" @click="preview(row)">预览</button><button v-if="row.readyForBusiness" type="button" @click="download(row)">下载</button><button type="button" @click="history(row)">版本</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReview(row)">通过</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReject(row)">退回</button></td>
+            </tr></tbody>
+          </table>
+          <table v-else>
+            <thead><tr><th>学生 / 学号</th><th>学院 / 专业 / 班级</th><th>指导教师</th><th>题目</th><th>应交</th><th>缺失</th><th>待审</th><th>退回</th><th>安全异常</th><th>归档结论</th><th>操作</th></tr></thead>
+            <tbody><tr v-for="row in rows" :key="row.gdStudentId"><td><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }}</small></td><td><span>{{ row.collegeId || '-' }} / {{ row.majorId || '-' }}</span><small>{{ row.className || row.classId || '-' }}</small></td><td>{{ row.advisorName || '-' }}</td><td>{{ row.topicTitle || '-' }}</td><td>{{ row.requiredCount }}</td><td>{{ row.missingCount }}</td><td>{{ row.pendingReviewCount }}</td><td>{{ row.returnedCount }}</td><td>{{ row.scanAbnormalCount }}</td><td><b :class="row.archiveReady ? 'ok' : 'warn'">{{ row.archiveReady ? '可归档' : '未齐全' }}</b></td><td class="actions"><button type="button" @click="router.push(`/admin/graduation/students/${row.gdStudentId}`)">学生档案</button></td></tr></tbody>
+          </table>
+        </div>
+        <footer class="mc-pagebar"><span>共 {{ result.total || 0 }} 条</span><button type="button" :disabled="page <= 1" @click="goto(page - 1)">上一页</button><b>第 {{ page }} 页</b><button type="button" :disabled="page * pageSize >= Number(result.total || 0)" @click="goto(page + 1)">下一页</button></footer>
       </section>
     </template>
+
+    <div v-if="historyVisible" class="mc-modal-mask" @click.self="historyVisible = false"><section class="mc-modal" role="dialog" aria-modal="true"><header><div><strong>{{ historyTitle }}</strong><span>不可变文件版本时间线</span></div><button type="button" @click="historyVisible = false">关闭</button></header><FileVersionTimeline :items="historyItems" @select="preview($event.file)" /></section></div>
+    <AppConfirmDialog v-model:visible="reviewVisible" title="审核当前材料版本" :message="reviewMessage" confirm-text="通过当前版本" cancel-text="取消" :submitting="reviewing" @confirm="confirmReview('APPROVE', $event)" />
+    <AppConfirmDialog v-model:visible="rejectVisible" title="退回当前材料版本" :message="reviewMessage" danger require-reason reason-label="退回原因" confirm-text="退回材料" :submitting="reviewing" @confirm="confirmReview('REJECT', $event)" />
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useGraduationBatchStore } from '@/stores/graduationBatch'
-import SecureFileList from '@/components/file/SecureFileList.vue'
+import { useRoute, useRouter } from 'vue-router'
+import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import FileVersionTimeline from '@/components/file/FileVersionTimeline.vue'
-import FileUploader from '@/components/file/FileUploader.vue'
 import { normalizeFile } from '@/services/file/fileSdk'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { graduationMaterialCenterApi as api } from '@/modules/graduation/api/graduation-material-center.api'
 
-const router = useRouter()
-const batchStore = useGraduationBatchStore()
+const route = useRoute(); const router = useRouter(); const batchStore = useGraduationBatchStore()
 const batchId = computed(() => batchStore.selectedBatchId)
-const loading = ref(false); const libraryLoading = ref(false); const exporting = ref(false); const error = ref('')
-const overview = ref({ summary: {}, items: [], total: 0 }); const library = ref(null); const manifest = ref(null)
-const selectedId = ref(''); const templates = ref([]); const templateOptions = ref([]); const exportJob = ref(null)
-const templateBusy = ref(false)
-const templateForm = reactive({
-  templateId: '', templateCode: '', collegeId: '', majorId: '', fileId: '', fileName: '',
-  variableSchemaText: JSON.stringify({ variables: [{ name: 'studentName', type: 'string' }, { name: 'topicTitle', type: 'string' }] }, null, 2)
-})
-const page = ref(1); const pageSize = 20; const missingOnly = ref(false)
-const filters = reactive({ keyword: '', stage: '', reviewStatus: '', scanStatus: '', archiveStatus: '' })
+const tabs = [{ key: 'files', label: '全部材料' }, { key: 'students', label: '学生完整性' }, { key: 'pending', label: '待审核' }, { key: 'security', label: '安全异常' }]
+const stages = ['TOPIC','TASKBOOK','PROPOSAL','GUIDANCE','MIDTERM','FINAL_DRAFT','FINAL_APPROVED','PLAGIARISM','REVIEW','DEFENSE','GRADE','ARCHIVE']
+const tab = ref(tabs.some(x => x.key === route.query.tab) ? route.query.tab : 'files')
+const loading = ref(false); const error = ref(''); const result = ref({ items: [], total: 0 }); const summary = ref({ filteredSummary: {}, archiveSummary: {} })
+const page = ref(Math.max(1, Number(route.query.page || 1))); const pageSize = 20
+const filters = reactive({ keyword: String(route.query.keyword || ''), stage: String(route.query.stage || ''), reviewStatus: String(route.query.reviewStatus || ''), scanStatus: String(route.query.scanStatus || '') })
+const historyVisible = ref(false); const historyTitle = ref(''); const historyItems = ref([])
+const reviewVisible = ref(false); const rejectVisible = ref(false); const reviewRow = ref(null); const reviewing = ref(false)
+const rows = computed(() => result.value.items || [])
+const effective = computed(() => ({ ...filters, reviewStatus: tab.value === 'pending' ? 'PENDING' : filters.reviewStatus, scanStatus: tab.value === 'security' ? 'ABNORMAL' : filters.scanStatus }))
+const cards = computed(() => { const f = summary.value.filteredSummary || {}; const a = summary.value.archiveSummary || {}; return [
+  { label: '筛选学生', value: f.expectedStudents || 0, hint: '随当前条件变化' }, { label: '缺材料', value: f.missingStudents || 0, hint: '筛选口径' },
+  { label: '待审核', value: f.pendingReviewStudents || 0, hint: '筛选口径' }, { label: '安全异常', value: f.scanAbnormalStudents || 0, hint: '筛选口径' },
+  { label: '全规则可归档', value: a.archiveReadyStudents || 0, hint: '不受材料筛选污染' }, { label: '已归档', value: a.archivedStudents || 0, hint: '完整冻结规则口径' }
+] })
+const reviewMessage = computed(() => reviewRow.value ? `${reviewRow.value.studentName} · ${reviewRow.value.materialName} · v${reviewRow.value.currentVersion}` : '')
 
-const summaryCards = computed(() => {
-  const s = overview.value.summary || {}
-  return [
-    ['expected', '应交学生', s.expectedStudents || 0, '当前数据范围', 'normal'],
-    ['complete', '已齐全', s.completeStudents || 0, '无缺项与待处理', 'success'],
-    ['missing', '缺材料', s.missingStudents || 0, '优先催交', 'danger'],
-    ['scan', '安全异常', s.scanAbnormalStudents || 0, '不可审核或归档', 'danger'],
-    ['pending', '待审核', s.pendingReviewStudents || 0, '逐版本处理', 'warning'],
-    ['returned', '被退回', s.returnedStudents || 0, '等待学生重交', 'warning'],
-    ['ready', '可归档', s.archiveReadyStudents || 0, '可冻结 Manifest', 'success'],
-    ['archived', '已归档', s.archivedStudents || 0, '版本证据已冻结', 'normal']
-  ].map(([key, label, value, hint, tone]) => ({ key, label, value, hint, tone }))
-})
-
-function params() { return { batchId: batchId.value, page: page.value, pageSize, keyword: filters.keyword, stage: filters.stage, reviewStatus: filters.reviewStatus, scanStatus: filters.scanStatus, archiveStatus: filters.archiveStatus, missingStatus: missingOnly.value ? 'MISSING' : '' } }
-async function loadOverview() { if (!batchId.value) return; overview.value = await api.overview(params()) }
-async function loadTemplates() {
-  if (!batchId.value) return
-  const data = await api.templateCatalog(batchId.value)
-  templates.value = data.items || []
-  templateOptions.value = data.availableTemplates || []
-}
-function onTemplateUploaded(file) { templateForm.fileId = file.fileId; templateForm.fileName = file.fileName || '' }
-async function publishTemplate() {
-  templateBusy.value = true; error.value = ''
-  try {
-    const variableSchema = JSON.parse(templateForm.variableSchemaText || '{}')
-    await api.publishTemplateAsset(templateForm.templateId, templateForm.fileId, {
-      templateCode: templateForm.templateCode, batchId: batchId.value,
-      collegeId: templateForm.collegeId, majorId: templateForm.majorId, variableSchema
-    })
-    templateForm.fileId = ''; templateForm.fileName = ''
-    await loadTemplates()
-  } catch (e) { error.value = e instanceof SyntaxError ? '变量 Schema 不是有效 JSON' : (e?.message || '模板发布失败') }
-  finally { templateBusy.value = false }
-}
-async function toggleTemplate(item) {
-  try { await api.setTemplateStatus(item.policyId, !item.enabled, item.version); await loadTemplates() }
-  catch (e) { error.value = e?.message || '模板状态更新失败' }
-}
-async function loadAll() { loading.value = true; error.value = ''; try { await Promise.all([loadOverview(), loadTemplates()]); if (selectedId.value) await refreshLibrary() } catch (e) { error.value = e?.message || '材料中心加载失败' } finally { loading.value = false } }
-async function selectStudent(student) { selectedId.value = String(student.gdStudentId); manifest.value = null; await refreshLibrary() }
-async function refreshLibrary() { if (!selectedId.value) return; libraryLoading.value = true; try { library.value = await api.studentLibrary(selectedId.value, true) } catch (e) { error.value = e?.message || '学生材料加载失败' } finally { libraryLoading.value = false } }
-function search() { page.value = 1; loadOverview() }
-function resetFilters() { Object.assign(filters, { keyword: '', stage: '', reviewStatus: '', scanStatus: '', archiveStatus: '' }); missingOnly.value = false; search() }
-function changePage(next) { page.value = next; loadOverview() }
-function normalizedFiles(material) { return (material.currentVersion ? [{ ...material.currentVersion, allowedActions: material.currentVersion.allowedActions || material.allowedActions || [] }] : []).map(normalizeFile) }
-function timelineItems(material) { return (material.versions || []).map(v => ({ bindingId: v.bindingId || v.fileVersionId, versionNo: v.versionNo, isCurrent: v.isCurrent, boundAt: v.submittedAt, file: normalizeFile(v) })) }
-function selectHistory(item) { if (item?.file) previewFile(item.file) }
-async function previewFile(item) { try { await api.previewMaterial(item) } catch (e) { error.value = e?.message || '文件暂不可预览' } }
-async function downloadFile(item) { try { await api.downloadMaterial(item) } catch (e) { error.value = e?.message || '文件暂不可下载' } }
-async function reviewMaterial(material, action) { let comment = ''; if (action === 'REJECT') { comment = window.prompt('请输入不少于5字的退回原因') || ''; if (comment.trim().length < 5) return } try { await api.reviewMaterial(material.materialId, { fileVersionId: material.currentVersionId, action, comment }); await Promise.all([refreshLibrary(), loadOverview()]) } catch (e) { error.value = e?.message || '审核失败' } }
-async function loadManifest() { if (!selectedId.value) return; try { manifest.value = await api.manifest(selectedId.value) } catch (e) { error.value = e?.message || '尚未生成 Manifest' } }
-async function freezeManifest() { if (!selectedId.value) return; const archiveNo = window.prompt('请输入归档批次号', `GDARCH-${batchId.value}`); if (!archiveNo) return; try { manifest.value = await api.freezeManifest(selectedId.value, archiveNo); await refreshLibrary() } catch (e) { error.value = e?.message || 'Manifest 冻结失败' } }
-async function createBatchExport() { exporting.value = true; try { exportJob.value = await api.createExport({ batchId: batchId.value, scopeType: 'BATCH', scopeValue: '' }) } catch (e) { error.value = e?.message || '归档任务生成失败' } finally { exporting.value = false } }
-async function refreshJob() { if (exportJob.value?.id) exportJob.value = await api.exportJob(exportJob.value.id) }
-async function downloadJob() { try { await api.downloadExport(exportJob.value) } catch (e) { error.value = e?.message || '归档包不可下载' } }
-async function revokeJob() { const reason = window.prompt('请输入不少于5字的撤销原因') || ''; if (reason.trim().length < 5) return; try { exportJob.value = await api.revokeExport(exportJob.value.id, exportJob.value.version, reason) } catch (e) { error.value = e?.message || '撤销失败' } }
-function openStudentDetail() { if (selectedId.value) router.push(`/admin/graduation/students/${selectedId.value}`) }
-function sizeText(value) { const n = Number(value || 0); return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B` }
-function statusText(value) { return ({ MISSING: '缺失', SUBMITTED: '已提交', RETURNED: '已退回', APPROVED: '已通过', ARCHIVED: '已归档', SCANNING: '扫描中' })[value] || value || '未知' }
-function statusTone(value) { return { 'is-danger': ['MISSING', 'RETURNED'].includes(value), 'is-warning': ['SUBMITTED', 'SCANNING'].includes(value), 'is-success': ['APPROVED', 'ARCHIVED'].includes(value) } }
-watch(batchId, () => { page.value = 1; selectedId.value = ''; library.value = null; manifest.value = null; loadAll() })
-onMounted(async () => { await batchStore.ensureLoaded(); await loadAll() })
+function params() { return { batchId: batchId.value, page: page.value, pageSize, ...effective.value } }
+function syncUrl() { router.replace({ query: { tab: tab.value, page: page.value > 1 ? page.value : undefined, keyword: filters.keyword || undefined, stage: filters.stage || undefined, reviewStatus: filters.reviewStatus || undefined, scanStatus: filters.scanStatus || undefined } }) }
+async function load() { if (!batchId.value) return; loading.value = true; error.value = ''; try { const p = params(); const request = tab.value === 'students' ? api.students(p) : api.files(p); [result.value, summary.value] = await Promise.all([request, api.summary(p)]); syncUrl() } catch (e) { error.value = e?.message || '材料中心加载失败' } finally { loading.value = false } }
+function changeTab(value) { tab.value = value; page.value = 1; load() }
+function search() { page.value = 1; load() }
+function reset() { Object.assign(filters, { keyword: '', stage: '', reviewStatus: '', scanStatus: '' }); search() }
+function goto(value) { page.value = value; load() }
+function sizeText(value) { const n = Number(value || 0); return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B` }
+function tone(value) { return ['CLEAN','PASSED','NOT_REQUIRED'].includes(String(value).toUpperCase()) ? 'ok' : 'danger' }
+function fileRow(row) { return normalizeFile({ fileId: row.fileId, fileName: row.fileName, sizeBytes: row.sizeBytes, scanStatus: row.scanStatus, readyForBusiness: row.readyForBusiness, allowedActions: row.allowedActions || [] }) }
+async function preview(row) { try { await api.previewMaterial(row.file ? row.file : fileRow(row)) } catch (e) { error.value = e?.message || '预览失败' } }
+async function download(row) { try { await api.downloadMaterial(fileRow(row)) } catch (e) { error.value = e?.message || '下载失败' } }
+async function history(row) { try { const library = await api.studentLibrary(row.gdStudentId, true); const material = (library.items || []).find(item => item.materialId === row.materialId); historyTitle.value = `${row.studentName} · ${row.materialName}`; historyItems.value = (material?.versions || []).map(v => ({ bindingId: v.bindingId || v.versionId, versionNo: v.versionNo, isCurrent: v.isCurrent, boundAt: v.submittedAt, file: normalizeFile(v) })); historyVisible.value = true } catch (e) { error.value = e?.message || '版本历史加载失败' } }
+function openReview(row) { reviewRow.value = row; reviewVisible.value = true }
+function openReject(row) { reviewRow.value = row; rejectVisible.value = true }
+async function confirmReview(action, payload) { if (!reviewRow.value) return; reviewing.value = true; try { await api.reviewMaterial(reviewRow.value.materialId, { fileVersionId: reviewRow.value.currentVersionId, expectedVersion: reviewRow.value.version, action, comment: payload?.reason || '' }); reviewVisible.value = false; rejectVisible.value = false; await load() } catch (e) { error.value = e?.message || '审核失败' } finally { reviewing.value = false } }
+watch(batchId, () => { page.value = 1; load() })
+onMounted(async () => { await batchStore.ensureLoaded(); await load() })
 </script>
 
 <style scoped>
-.gm-page { display: grid; gap: 16px; min-width: 0; }
-.gm-hero, .gm-panel { background: #fff; border: 1px solid #dfe7f3; border-radius: 16px; }
-.gm-hero { display: flex; justify-content: space-between; gap: 24px; padding: 22px 24px; background: linear-gradient(135deg,#f7fbff,#eef5ff); }
-.gm-eyebrow { color: #1769e0; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
-.gm-hero h2 { margin: 6px 0; color: #18253a; }.gm-hero p,.gm-section-head span,.gm-student small,.gm-detail__head span { margin: 0; color: #69768b; }
-.gm-hero__actions,.gm-detail__actions,.gm-review-actions,.gm-filters__actions,.gm-job>div:last-child { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.gm-btn { border:1px solid #ccd8e8; background:#fff; color:#29415f; border-radius:9px; padding:8px 13px; cursor:pointer; }.gm-btn:disabled{opacity:.5;cursor:not-allowed}.gm-btn--primary{background:#1769e0;border-color:#1769e0;color:#fff}.gm-btn--danger{border-color:#fecaca;color:#b42318;background:#fff7f7}
-.gm-summary { display:grid; grid-template-columns:repeat(8,minmax(110px,1fr)); gap:10px; }.gm-summary__card{display:grid;gap:5px;padding:15px;border:1px solid #e2e8f2;border-radius:13px;background:#fff}.gm-summary__card strong{font-size:25px}.gm-summary__card small{color:#7b8798}.gm-summary__card.is-danger strong{color:#c53030}.gm-summary__card.is-warning strong{color:#b7791f}.gm-summary__card.is-success strong{color:#17834a}
-.gm-alert{display:flex;gap:12px;align-items:center;padding:14px 16px;border-radius:12px;background:#fff7e6;color:#7a4d00}.gm-alert--danger{background:#fff1f1;color:#a61b1b}.gm-alert button{margin-left:auto}
-.gm-filters{padding:14px;display:grid;grid-template-columns:1.4fr repeat(4,1fr) auto auto;gap:10px;align-items:end}.gm-filters label{display:grid;gap:5px;color:#526176;font-size:13px}.gm-filters input,.gm-filters select{min-width:0;border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.gm-check{display:flex!important;align-items:center;gap:6px;padding-bottom:8px}
-.gm-workspace{display:grid;grid-template-columns:minmax(260px,330px) minmax(0,1fr);gap:16px}.gm-queue,.gm-detail{min-width:0;overflow:hidden}.gm-queue>header,.gm-detail__head,.gm-section-head{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 18px;border-bottom:1px solid #edf1f7}.gm-queue>header div,.gm-section-head div,.gm-detail__head>div:first-child{display:grid;gap:4px}.gm-queue>header span{color:#7b8798;font-size:13px}
-.gm-student{display:grid;width:100%;gap:7px;padding:14px 16px;border:0;border-bottom:1px solid #edf1f7;background:#fff;text-align:left;cursor:pointer}.gm-student:hover,.gm-student.is-active{background:#f1f7ff}.gm-student__name,.gm-student__status{display:flex;justify-content:space-between;gap:8px}.gm-student__status{justify-content:flex-start;flex-wrap:wrap}.gm-student__status b,.gm-tags b{font-size:12px;padding:2px 7px;border-radius:999px;background:#eef2f7;color:#526176}.is-danger{color:#b42318!important;background:#fff0f0!important}.is-warning{color:#9a5b00!important;background:#fff7df!important}.is-success{color:#137a43!important;background:#eafaf1!important}.gm-pagination{display:flex;justify-content:center;align-items:center;gap:10px;padding:12px}
-.gm-template-form{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;padding:16px;border-bottom:1px solid #edf1f7}.gm-template-form label{display:grid;gap:5px;color:#526176;font-size:13px}.gm-template-form input,.gm-template-form select,.gm-template-form textarea{border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.gm-template-form__schema{grid-column:span 2}.gm-template-form__upload{grid-column:span 3;display:flex;align-items:center;gap:12px;color:#69768b;font-size:13px}
-.gm-detail{max-height:1200px;overflow:auto}.gm-group{padding:0 18px 18px}.gm-group h3{display:flex;justify-content:space-between;margin:18px 0 10px;color:#253550}.gm-group h3 span{font-size:12px;color:#7b8798}.gm-material{border:1px solid #e2e8f2;border-radius:12px;padding:14px;margin-bottom:12px}.gm-material>header{display:flex;justify-content:space-between;gap:10px;margin-bottom:10px}.gm-material>header>div:first-child{display:grid;gap:3px}.gm-material>header span,.gm-meta{color:#7b8798;font-size:12px}.gm-tags{display:flex;gap:5px;flex-wrap:wrap}.gm-meta{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.gm-reject{padding:9px 11px;border-radius:8px;background:#fff3f3;color:#a61b1b}.gm-history{margin-top:10px}.gm-history summary{cursor:pointer;color:#1769e0;margin-bottom:10px}.gm-review-actions{margin-top:10px}
-.gm-bottom-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,.6fr);gap:16px}.gm-manifest-head,.gm-job{display:grid;gap:10px;padding:16px}.gm-manifest-head code,.gm-job code,.gm-table-wrap code{font-size:11px;word-break:break-all}.gm-table-wrap{overflow:auto;padding:0 16px 16px}.gm-table-wrap table{width:100%;border-collapse:collapse;min-width:760px}.gm-table-wrap th,.gm-table-wrap td{padding:10px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top;font-size:13px}.gm-table-wrap th{position:sticky;top:0;background:#f7f9fc;color:#526176}.gm-state{padding:30px;text-align:center;color:#7b8798}.gm-templates{overflow:hidden}
-@media(max-width:1200px){.gm-summary{grid-template-columns:repeat(4,1fr)}.gm-filters{grid-template-columns:repeat(3,1fr)}.gm-workspace{grid-template-columns:1fr}.gm-queue{max-height:420px;overflow:auto}.gm-bottom-grid{grid-template-columns:1fr}}
-@media(max-width:720px){.gm-hero{display:grid}.gm-summary{grid-template-columns:repeat(2,1fr)}.gm-filters{grid-template-columns:1fr}.gm-material>header,.gm-detail__head{display:grid}}
+.mc-page{display:grid;gap:16px;min-width:0}.mc-hero,.mc-panel,.mc-filters{background:#fff;border:1px solid #dfe7f3;border-radius:14px}.mc-hero{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;background:linear-gradient(135deg,#f7fbff,#eef5ff)}.mc-hero span{color:#1769e0;font-size:12px;font-weight:700;letter-spacing:.1em}.mc-hero h2{margin:5px 0}.mc-hero p{margin:0;color:#69768b}.mc-page button{border:1px solid #ccd8e8;border-radius:8px;background:#fff;color:#29415f;padding:7px 11px;cursor:pointer}.mc-page button:disabled{opacity:.45}.mc-page .primary{background:#1769e0;border-color:#1769e0;color:#fff}.mc-error,.mc-empty{padding:24px;text-align:center;color:#69768b}.mc-error{display:flex;gap:12px;align-items:center;text-align:left;border-radius:12px;background:#fff1f1;color:#a61b1b}.mc-error button{margin-left:auto}.mc-summary{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));gap:10px}.mc-summary article{display:grid;gap:4px;padding:14px;border:1px solid #e2e8f2;border-radius:12px;background:#fff}.mc-summary strong{font-size:24px}.mc-summary small,td small{display:block;color:#7b8798}.mc-tabs{display:flex;gap:4px;border-bottom:1px solid #dfe7f3}.mc-tabs button{border:0;border-radius:8px 8px 0 0;padding:10px 18px}.mc-tabs button.active{background:#1769e0;color:#fff}.mc-filters{display:grid;grid-template-columns:1.6fr repeat(3,1fr) auto;gap:12px;align-items:end;padding:14px}.mc-filters label{display:grid;gap:5px;color:#526176;font-size:13px}.mc-filters input,.mc-filters select{min-width:0;border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.mc-filters>div{display:flex;gap:7px}.mc-panel{overflow:hidden}.mc-table-wrap{overflow:auto;max-height:66vh}table{width:100%;min-width:1480px;border-collapse:collapse}th,td{padding:10px 12px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top;font-size:13px}th{position:sticky;top:0;z-index:1;background:#f7f9fc;color:#526176;white-space:nowrap}td strong,td span{display:block}.actions{white-space:nowrap}.actions button{border:0;padding:4px 6px;color:#1769e0}.ok,.warn,.danger{display:inline-block!important;padding:2px 7px;border-radius:999px}.ok{color:#137a43;background:#eafaf1}.warn{color:#9a5b00;background:#fff7df}.danger{color:#b42318;background:#fff0f0}.mc-pagebar{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 16px}.mc-pagebar span{margin-right:auto;color:#69768b}.mc-modal-mask{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.42)}.mc-modal{width:min(680px,100%);max-height:80vh;overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 18px 60px rgba(15,23,42,.2)}.mc-modal>header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.mc-modal>header div{display:grid;gap:4px}.mc-modal>header span{color:#69768b;font-size:13px}@media(max-width:1100px){.mc-summary{grid-template-columns:repeat(3,1fr)}.mc-filters{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.mc-hero{display:grid;gap:12px}.mc-summary{grid-template-columns:repeat(2,1fr)}.mc-filters{grid-template-columns:1fr}.mc-tabs{overflow:auto}}
 </style>

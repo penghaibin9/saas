@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 class ReviewBody(BaseModel):
     action: Literal["APPROVE", "REJECT"]
+    expectedVersion: int = Field(..., ge=0)
+    fileVersionId: int = Field(..., ge=1)
     comment: Optional[str] = Field(default="", description="驳回时必填≥5字")
 
 

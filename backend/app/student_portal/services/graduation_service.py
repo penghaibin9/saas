@@ -64,7 +64,8 @@ def submit_proposal(user: dict, body: dict) -> dict:
     if not isinstance(attachments, list):
         raise AppException("VALIDATION_ERROR", "附件格式不正确")
     return stu.graduation_submit_proposal(user, {
-        "background": background, "plan": plan, "outcome": outcome, "attachments": attachments})
+        "background": background, "plan": plan, "outcome": outcome, "attachments": attachments,
+        "expectedVersion": body.get("expectedVersion")})
 
 
 # ── 中期检查：批注对照与整改（复用现有 mobile 中期流程） ──
@@ -102,7 +103,10 @@ def submit_final(user: dict, body: dict) -> dict:
     attachments = body.get("attachments") or []
     if not isinstance(attachments, list) or not attachments:
         raise AppException("VALIDATION_ERROR", "请先上传论文/成果附件再提交")
-    return stu.graduation_submit_final(user, {"finalType": final_type, "attachments": attachments})
+    return stu.graduation_submit_final(user, {
+        "finalType": final_type, "attachments": attachments,
+        "expectedVersion": body.get("expectedVersion"),
+    })
 
 
 # ── 答辩安排 + 成绩 + 成绩申诉（复用现有 mobile 流程） ──

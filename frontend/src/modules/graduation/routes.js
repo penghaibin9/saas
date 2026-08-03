@@ -119,11 +119,12 @@ const graduationRoutes = {
     { path: 'grade-ledger', name: 'graduation-grade-ledger', component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'), meta: { moduleCode: 'GRADUATION', title: '成绩台账', defaultPanel: 'grade', requiresAuth: true, permissionKey: 'graduationDesign.grade.view' } },
     { path: 'audit-logs', name: 'graduation-audit-logs', component: () => import('@/modules/graduation/views/GraduationAuditLogView.vue'), meta: { moduleCode: 'GRADUATION', title: '毕设操作日志', requiresAuth: true, permissionKey: 'graduationDesign.audit.view' } },
     {
-      path: 'materials',
+      path: 'material-center',
       name: 'graduation-material-center',
       component: () => import('@/modules/graduation/views/GraduationMaterialCenterView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '毕业设计材料与档案中心', requiresAuth: true, permissionKey: 'graduationDesign.riskArchive.manage', hiddenFromMenu: true }
+      meta: { moduleCode: 'GRADUATION', title: '毕设材料中心', requiresAuth: true, permissionKey: 'graduationDesign.student.view' }
     },
+    { path: 'materials', redirect: { name: 'graduation-material-center' }, meta: { moduleCode: 'GRADUATION', requiresAuth: true, permissionKey: 'graduationDesign.student.view', hiddenFromMenu: true } },
     { path: 'risk-archive', name: 'graduation-risk-archive', component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'), meta: { moduleCode: 'GRADUATION', title: '问题预警/毕设归档/毕设统计', requiresAuth: true, permissionKey: 'graduationDesign.riskArchive.manage' } }
   ]
 }

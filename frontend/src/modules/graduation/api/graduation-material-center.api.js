@@ -20,6 +20,15 @@ export const graduationMaterialCenterApi = {
   overview(params = {}) {
     return request('/graduation/material-center/overview', { params })
   },
+  files(params = {}) {
+    return request('/graduation/material-center/files', { params })
+  },
+  students(params = {}) {
+    return request('/graduation/material-center/students', { params })
+  },
+  summary(params = {}) {
+    return request('/graduation/material-center/summary', { params })
+  },
   backfill({ pageSize = 200, cursorModel = 'PROPOSAL', cursorId = 0, dryRun = false } = {}) {
     return request('/graduation/material-center/backfill', {
       method: 'POST', data: { pageSize, cursorModel, cursorId, dryRun }
@@ -35,9 +44,9 @@ export const graduationMaterialCenterApi = {
       method: 'POST', data: { fileId, expectedVersion }
     })
   },
-  reviewMaterial(materialId, { fileVersionId, action, comment } = {}) {
+  reviewMaterial(materialId, { fileVersionId, expectedVersion, action, comment } = {}) {
     return request(`/graduation/material-center/materials/${encodeURIComponent(materialId)}/review`, {
-      method: 'POST', data: { fileVersionId, action, comment }
+      method: 'POST', data: { fileVersionId, expectedVersion, action, comment }
     })
   },
   proposalVersions(proposalId) {
@@ -124,10 +133,10 @@ export const graduationMaterialCenterApi = {
     return fileSdk.downloadFrom(ticketPath(ticket), job?.result?.zipFileName || '毕业设计归档包.zip')
   },
   async downloadPackage(fileId, fileName) {
-    return fileSdk.downloadFrom(
-      `/graduation/material-center/packages/${encodeURIComponent(fileId)}/download`,
-      fileName
-    )
+    const ticket = await request(`/graduation/material-center/packages/${encodeURIComponent(fileId)}/ticket`, {
+      method: 'POST'
+    })
+    return fileSdk.downloadFrom(ticketPath(ticket), fileName)
   }
 }
 

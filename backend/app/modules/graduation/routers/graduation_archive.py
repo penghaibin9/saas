@@ -9,6 +9,7 @@ from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest, ArchiveRejectRequest
+from app.modules.graduation.materials import manifest_service as manifests
 from app.services import audit_log
 from app.modules.graduation.services import graduation_archive_service as svc
 
@@ -45,7 +46,10 @@ def gd_archive_batch_file_preview(batchId: int | None = Query(default=None, ge=1
 def gd_archive_batch_file(batchId: int | None = Query(default=None, ge=1),
                           body: dict = Body(default={}),
                           user=Depends(get_current_user)):
-    result = svc.batch_file((body or {}).get("archiveBatchNo"), batch_id=batchId)
+    result = manifests.batch_file(
+        (body or {}).get("archiveBatchNo"), batch_id=batchId,
+        preview_token=str((body or {}).get("previewToken") or ""), user=user,
+    )
     audit_log.record("批量核验归档", "graduation-archive:batch-file", detail=result)
     return success(result, message=f"已备案 {result['filed']} 份")
 
@@ -88,7 +92,7 @@ def gd_archive_submit(gd_student_id: str, user=Depends(require_permission("gradu
 
 @router.post("/gd-archives/{gd_student_id}/file", summary="核验归档（已提交→已备案）")
 def gd_archive_file(gd_student_id: str, body: ArchiveFileRequest, user=Depends(get_current_user)):
-    result = svc.verify_and_file(gd_student_id, body.archiveBatchNo)
+    result = manifests.file_archive(int(gd_student_id), body.archiveBatchNo, user)
     audit_log.record("核验归档", f"graduation-archive:{gd_student_id}")
     return success(result, message="已归档")
 

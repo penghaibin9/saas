@@ -107,14 +107,13 @@ def _material_student(db, model, record_id, user: dict) -> GraduationStudent:
 def _proposal_detail(user: dict, proposal_id: str) -> dict:
     with session() as db:
         _material_student(db, GraduationProposal, proposal_id, user)
-    from app.modules.graduation.services import graduation_material_center_service as center
-    detail = center.proposal_detail(int(proposal_id))
+    from app.modules.graduation.materials import query_service as queries
+    detail = queries.proposal_detail(int(proposal_id), user)
     content = detail.get("content") or {}
     safe_versions = detail.get("currentSafeVersions") or []
     attachments = [
         {**item, "downloadUrl": f"/api/v1/graduation/materials/{item['fileId']}/download"}
         for item in safe_versions
-        if str(item.get("materialCode") or "").startswith("PROPOSAL_ATTACHMENT_")
     ]
     return {
         "id": str(detail.get("id") or proposal_id), "studentName": detail.get("studentName") or "",
@@ -127,21 +126,27 @@ def _proposal_detail(user: dict, proposal_id: str) -> dict:
         "attachments": len(attachments), "attachmentsList": attachments,
         "versions": detail.get("versions") or [], "currentSafeVersions": safe_versions,
         "reviewReady": bool(detail.get("reviewReady")),
+        "materialId": detail.get("materialId"), "materialVersion": detail.get("materialVersion"),
+        "fileVersionId": detail.get("fileVersionId"),
     }
 
 
-def _proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
+def _proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None,
+                     expected_version: int | None = None, file_version_id: int | None = None) -> dict:
     with session() as db:
         _material_student(db, GraduationProposal, proposal_id, user)
-    from app.modules.graduation.services import graduation_material_center_service as center
-    return center.review_proposal(int(proposal_id), action, comment, user)
+    from app.modules.graduation.materials import record_service as records
+    return records.review_proposal(
+        int(proposal_id), action, comment, user,
+        expected_version=expected_version, expected_file_version_id=file_version_id,
+    )
 
 
 def _final_detail(user: dict, final_id: str) -> dict:
     with session() as db:
         _material_student(db, GraduationFinal, final_id, user)
-    from app.modules.graduation.services import graduation_material_center_service as center
-    detail = center.final_detail(int(final_id))
+    from app.modules.graduation.materials import query_service as queries
+    detail = queries.final_detail(int(final_id), user)
     safe_versions = detail.get("currentSafeVersions") or []
     attachments = [
         {**item, "downloadUrl": f"/api/v1/graduation/materials/{item['fileId']}/download"}
@@ -158,14 +163,20 @@ def _final_detail(user: dict, final_id: str) -> dict:
         "reviewComment": detail.get("reviewComment") or "",
         "attachmentsList": attachments, "versions": detail.get("versions") or [],
         "currentSafeVersions": safe_versions, "reviewReady": bool(detail.get("reviewReady")),
+        "materialId": detail.get("materialId"), "materialVersion": detail.get("materialVersion"),
+        "fileVersionId": detail.get("fileVersionId"),
     }
 
 
-def _final_review(user: dict, final_id: str, action: str, comment: str | None = None) -> dict:
+def _final_review(user: dict, final_id: str, action: str, comment: str | None = None,
+                  expected_version: int | None = None, file_version_id: int | None = None) -> dict:
     with session() as db:
         _material_student(db, GraduationFinal, final_id, user)
-    from app.modules.graduation.services import graduation_material_center_service as center
-    return center.review_final(int(final_id), action, comment, user)
+    from app.modules.graduation.materials import record_service as records
+    return records.review_final(
+        int(final_id), action, comment, user,
+        expected_version=expected_version, expected_file_version_id=file_version_id,
+    )
 
 
 def _choices_pending(user: dict) -> list:

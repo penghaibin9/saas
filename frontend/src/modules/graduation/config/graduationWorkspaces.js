@@ -63,6 +63,7 @@ export const GRADUATION_WORKSPACES = [
     children: [
       { label: '开题报告批阅', path: '/admin/graduation/proposals', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
       { label: '成果提交与批阅', path: '/admin/graduation/finals', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
+      { label: '毕设材料中心', path: '/admin/graduation/material-center', permissionKey: 'graduationDesign.student.view', entryType: 'WORKBENCH' },
       { label: '查重记录', path: '/admin/graduation/plagiarism-ledger', permissionKey: 'graduationDesign.plagiarism.view', entryType: 'TASK_QUEUE' },
       { label: '教师评阅', path: '/admin/graduation/review-tasks', permissionKey: 'graduationDesign.review.view', entryType: 'TASK_QUEUE' },
       { label: '成果互查整改', path: '/admin/graduation/more?panel=peer', permissionKey: 'graduationDesign.more.manage', entryType: 'TASK_QUEUE' }
