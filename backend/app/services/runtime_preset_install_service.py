@@ -378,6 +378,15 @@ def update_workflow(user: dict, project_id: int, workflow_code: str, body: dict)
         elif body.get("status") not in (None, ""):
             raise AppException("VALIDATION_ERROR", "启用流程必须走学校政策确认，修改接口只允许停用")
         if changed_policy:
+            # SYS-14：结构性改动前先看这条流程有没有在途实例、按 SYS-14 的版本策略决定放行/拒绝/留痕。
+            # 同一 db 会话内调用，SNAPSHOT 拒绝时抛的异常会被下面 except 统一回滚，不产生半截改动。
+            from app.services import workflow_security_policy_service as wsp
+
+            wsp.guard_definition_change(
+                db, tenant_id, workflow_code,
+                reason=f"修改流程定义：{', '.join(sorted(set(body) - {'projectVersion'}))}",
+                from_version=row.definition_version, to_version=row.definition_version,
+                actor=actor)
             row.status = "PENDING_CONFIRMATION"; row.policy_confirmed = False
             row.policy_confirmed_by = None; row.policy_confirmed_at = None; row.policy_snapshot_json = {}
         row.version += 1; row.updated_by = actor; project.version += 1; project.updated_by = actor

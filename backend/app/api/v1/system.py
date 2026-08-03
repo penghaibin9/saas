@@ -737,6 +737,230 @@ def list_account_exceptions(account_type: str = "", page: int = 1, page_size: in
         db.close()
 
 
+# ── SYS-14 流程定义、流程安全与运行异常 ──────────────────────────────────────
+@router.get("/system/workflow-governance/overview", summary="流程治理首屏结论")
+def api_workflow_governance_overview(user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.dashboard.view"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.governance_overview())
+
+
+@router.get("/system/workflow-security-policies", summary="流程节点动作与版本策略列表")
+def api_list_workflow_policies(workflow_code: str = "", user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.dashboard.view"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.list_policies(workflow_code=workflow_code))
+
+
+@router.get("/system/workflow-security-policies/{workflow_code}/draft", summary="取某流程的策略草稿")
+def api_get_workflow_policy_draft(workflow_code: str, node_code: str = "",
+                                  policy_type: str = "NODE_ACTION",
+                                  user=Depends(require_any_permission(
+                                      "systemAdmin.workflow.view", "systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    return success(wsp.get_draft(workflow_code, node_code=node_code, policy_type=policy_type))
+
+
+@router.put("/system/workflow-security-policies/{workflow_code}/draft", summary="保存流程策略草稿")
+def api_save_workflow_policy_draft(workflow_code: str, body: dict = Body(...),
+                                   user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.save_draft(
+        workflow_code, node_code=payload.get("nodeCode") or "",
+        policy_type=payload.get("policyType") or "NODE_ACTION",
+        action_permission_code=payload.get("actionPermissionCode"),
+        version_strategy=payload.get("versionStrategy") or "DYNAMIC",
+        reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="草稿已保存")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/submit", summary="提交策略草稿待复核")
+def api_submit_workflow_policy(policy_id: int, body: dict | None = Body(default=None),
+                               user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body if isinstance(body, dict) else {}
+    return success(wsp.submit_for_review(
+        policy_id, expected_version=payload.get("expectedVersion"), user=user), message="已提交复核")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/activate", summary="激活策略（自复核 fail-closed）")
+def api_activate_workflow_policy(policy_id: int, body: dict = Body(...),
+                                 user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.activate(
+        policy_id, reason=payload.get("reason") or "",
+        self_review_ack=payload.get("selfReviewAck") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="策略已激活")
+
+
+@router.post("/system/workflow-security-policies/{policy_id}/retire", summary="下线策略")
+def api_retire_workflow_policy(policy_id: int, body: dict = Body(...),
+                               user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.retire(
+        policy_id, reason=payload.get("reason") or "",
+        expected_version=payload.get("expectedVersion"), user=user), message="策略已下线")
+
+
+@router.post("/system/workflow-security-policies/simulate", summary="节点动作权限推演（只读）")
+def api_simulate_workflow_policy(body: dict = Body(...), user=Depends(require_any_permission(
+        "systemAdmin.workflow.view", "systemAdmin.workflow.manage"))):
+    from app.core.permissions import get_effective_permission_patterns
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    actor = {"userId": payload.get("actorUserId") or "", "currentRoleCode": payload.get("actorRoleCode") or "",
+             "tenantId": str(current_tenant_id() or "")}
+    patterns = list(get_effective_permission_patterns(actor)) if payload.get("actorRoleCode") else \
+        list(payload.get("actorPermissions") or [])
+    return success(wsp.simulate(
+        payload.get("workflowCode") or "", payload.get("nodeCode") or "",
+        actor_user_id=payload.get("actorUserId") or "", actor_permissions=patterns,
+        task_assignee_id=payload.get("taskAssigneeId") or ""))
+
+
+@router.post("/system/workflow-tasks/{task_id}/force-advance", summary="人工推进卡住的审批任务（须留理由与审计）")
+def api_force_advance_workflow_task(task_id: int, body: dict = Body(...),
+                                    user=Depends(require_permission("systemAdmin.workflow.manage"))):
+    from app.services import workflow_security_policy_service as wsp
+    payload = body or {}
+    return success(wsp.force_advance_task(
+        task_id, action=payload.get("action") or "", reason=payload.get("reason") or "",
+        user=user), message="已人工推进")
+
+
+# ── SYS-15 统一消息、待办与通知治理 ──────────────────────────────────────────
+@router.get("/system/communication-governance/overview", summary="消息/待办/通知治理首屏结论")
+def api_communication_governance_overview(user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import communication_registry as cr
+    return success(cr.governance_overview())
+
+
+@router.get("/system/communication-governance/registry", summary="事件/待办类型/渠道注册表与代码交叉校验")
+def api_communication_registry(user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import communication_registry as cr
+    return success({**cr.list_registry(), "validation": cr.validate_registry()})
+
+
+@router.get("/system/communication-governance/todo-backlog", summary="积压待办台账")
+def api_todo_backlog(page: int = 1, pageSize: int = 50, user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services import todo_task_service as tts
+    items, total = tts.list_backlog(page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/system/communication-governance/todos/{todo_id}/close", summary="带完成证据关闭待办")
+def api_close_todo(todo_id: int, body: dict = Body(...), user=Depends(
+        require_permission("systemAdmin.communication.manage"))):
+    from app.db.session import get_sessionmaker
+    from app.services import todo_task_service as tts
+    payload = body or {}
+    db = get_sessionmaker()()
+    try:
+        row = tts.close_todo_with_evidence(
+            db, todo_id=todo_id, evidence=payload.get("evidence") or "", actor=user)
+        db.commit()
+        return success({"todoId": row.id, "status": row.status}, message="待办已关闭")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.get("/system/communication-governance/dead-outbox", summary="死信事件台账")
+def api_list_dead_outbox(page: int = 1, pageSize: int = 50, user=Depends(require_any_permission(
+        "systemAdmin.communication.view", "systemAdmin.dashboard.view"))):
+    from app.services.message_event_outbox_service import list_dead_outbox
+    items, total = list_dead_outbox(page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/system/communication-governance/outbox/{outbox_id}/retry", summary="死信事件重新入队（不重复业务动作）")
+def api_retry_dead_outbox(outbox_id: int, user=Depends(
+        require_permission("systemAdmin.communication.manage"))):
+    from app.services.message_event_outbox_service import retry_dead_outbox
+    return success(retry_dead_outbox(outbox_id), message="已重新入队")
+
+
+# ── SYS-16 批处理、调度与后台任务授权 ────────────────────────────────────────
+@router.get("/system/jobs/overview", summary="任务治理首屏结论")
+def api_job_overview(user=Depends(require_any_permission(
+        "systemAdmin.job.view", "systemAdmin.dashboard.view"))):
+    from app.services import job_registry as jr
+    return success(jr.job_overview())
+
+
+@router.get("/system/job-types", summary="任务类型（kind）注册表")
+def api_job_types(user=Depends(require_any_permission(
+        "systemAdmin.job.view", "systemAdmin.dashboard.view"))):
+    from app.services import job_registry as jr
+    return success({"kinds": jr.list_kinds()})
+
+
+@router.get("/system/jobs", summary="任务列表（跨既有5张任务表聚合，只读）")
+def api_list_jobs(kind: str = "", status: str = "", page: int = 1, pageSize: int = 50,
+                  user=Depends(require_any_permission(
+                      "systemAdmin.job.view", "systemAdmin.dashboard.view"))):
+    from app.db.session import get_sessionmaker
+    from app.services import job_registry as jr
+    db = get_sessionmaker()()
+    try:
+        items, total = jr.list_jobs(db, kind=kind or None, status=status or None,
+                                    page=page, page_size=pageSize)
+        return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+    finally:
+        db.close()
+
+
+@router.get("/system/jobs/{job_id}/authorization-evidence", summary="任务授权证据")
+def api_job_authorization_evidence(job_id: str, user=Depends(require_any_permission(
+        "systemAdmin.job.view", "systemAdmin.dashboard.view"))):
+    from app.db.session import get_sessionmaker
+    from app.services import job_registry as jr
+    db = get_sessionmaker()()
+    try:
+        return success(jr.authorization_evidence(db, job_id, actor=user))
+    finally:
+        db.close()
+
+
+@router.post("/system/jobs/{job_id}/retry", summary="重试任务（仅注册表登记为可重试的类型）")
+def api_retry_job(job_id: str, user=Depends(require_permission("systemAdmin.job.manage"))):
+    from app.db.session import get_sessionmaker
+    from app.services import job_registry as jr
+    db = get_sessionmaker()()
+    try:
+        return success(jr.retry_job(db, job_id, actor=user), message="已重新排队")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/system/jobs/{job_id}/cancel", summary="取消任务（仅未开始处理时可取消）")
+def api_cancel_job(job_id: str, body: dict | None = Body(default=None),
+                   user=Depends(require_permission("systemAdmin.job.manage"))):
+    from app.db.session import get_sessionmaker
+    from app.services import job_registry as jr
+    payload = body if isinstance(body, dict) else {}
+    db = get_sessionmaker()()
+    try:
+        return success(jr.cancel_job(db, job_id, actor=user, reason=payload.get("reason") or ""),
+                       message="已取消")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 # ── SYS-17 主数据责任与数据质量 ──────────────────────────────────────────────
 @router.get("/system/master-data/domains", summary="数据域目录、责任人与质量分")
 def api_master_data_domains(user=Depends(require_any_permission(

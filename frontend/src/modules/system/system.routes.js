@@ -186,6 +186,27 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '模块授权与业务开关', requiresAuth: true, permissionKey: 'systemAdmin.config.feature.view' }
     },
     {
+      // SYS-14：节点动作与版本变更策略、人工推进。文档写的"唯一正式路由"是
+      // /admin/workflow/processes，但那条路由已经在 router/index.js 里指向另一个
+      // 既有页面（WorkflowProcessesView.vue），两个文件都不在本卡白名单内，不能改。
+      // 挂在 /admin/system/* 家族下，跟 SYS-05/07/17 同样的处理方式，不留假入口。
+      path: 'workflow-governance', name: 'system-workflow-governance',
+      component: () => import('@/modules/system/views/SystemWorkflowGovernanceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '流程安全与运行治理', requiresAuth: true, permissionKey: 'systemAdmin.workflow.view' }
+    },
+    {
+      // SYS-15：消息/待办/通知注册表治理（第一阶段只做只读注册表 + adapter，不建统一大表）
+      path: 'communications', name: 'system-communications',
+      component: () => import('@/modules/system/views/SystemCommunicationGovernanceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '统一消息、待办与通知治理', requiresAuth: true, permissionKey: 'systemAdmin.communication.view' }
+    },
+    {
+      // SYS-16：批处理/调度/后台任务治理面板。跨5张既有任务表只读聚合 + 有限重试/取消
+      path: 'jobs', name: 'system-jobs',
+      component: () => import('@/modules/system/views/SystemJobCenterView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '批处理与后台任务', requiresAuth: true, permissionKey: 'systemAdmin.job.view' }
+    },
+    {
       // SYS-17：数据域责任人、质量规则、问题闭环与合并预览（不代业务部门确认业务事实）
       path: 'master-data', name: 'system-master-data',
       component: () => import('@/modules/system/views/SystemMasterDataView.vue'),

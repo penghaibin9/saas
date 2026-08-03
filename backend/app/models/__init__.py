@@ -197,6 +197,8 @@ from app.models.role_assignment import RoleAssignmentValidity  # noqa: F401  (SY
 from app.models.master_data_governance import (DataDomain,  # noqa: F401  (SYS-17 主数据治理)
                                                DataOwner, DataQualityIssue,
                                                DataQualityRule, MasterMergeEvent)
+from app.models.workflow_security_policy import (WorkflowActionPolicy,  # noqa: F401  (SYS-14 流程安全策略)
+                                                 WorkflowVersionMigrationEvent)
 from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
 from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
