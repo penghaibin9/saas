@@ -22,6 +22,7 @@ on:
       - backend/tests/test_student_affairs_p0_p1_closeout.py
       - frontend/src/modules/studentAffairs/**
       - frontend/src/components/common/excel/AppExportButton.vue
+      - frontend/tests/studentAffairs*.test.mjs
       - student-portal/src/**/affairs/**
       - student-portal/src/main.js
       - miniapp/src/**/affairs/**
@@ -48,6 +49,7 @@ on:
       - backend/tests/test_student_affairs_p0_p1_closeout.py
       - frontend/src/modules/studentAffairs/**
       - frontend/src/components/common/excel/AppExportButton.vue
+      - frontend/tests/studentAffairs*.test.mjs
       - student-portal/src/**/affairs/**
       - student-portal/src/main.js
       - miniapp/src/**/affairs/**
