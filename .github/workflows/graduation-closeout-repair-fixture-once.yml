@@ -1,0 +1,52 @@
+name: Graduation closeout repair fixture once
+
+on:
+  push:
+    branches:
+      - fix/graduation-material-closeout-p0-review
+    paths:
+      - .github/workflows/graduation-closeout-repair-fixture-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: graduation-closeout-repair-fixture-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/graduation-material-closeout-p0-review
+          fetch-depth: 0
+
+      - name: Restore authoritative test fixture and register dynamic endpoint
+        run: |
+          git fetch origin main
+          git checkout origin/main -- backend/tests/conftest.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/app/core/graduation_permissions.py')
+          s = p.read_text(encoding='utf-8')
+          marker = '    "graduation_material_center.submit_material": "graduationDesign.student.manage",\n'
+          addition = marker + '    "graduation_material_center.review_material_item": "graduationDesign.review.submit",\n'
+          if '"graduation_material_center.review_material_item"' not in s:
+              if marker not in s:
+                  raise SystemExit('permission insertion marker not found')
+              s = s.replace(marker, addition, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          rm .github/workflows/graduation-closeout-repair-fixture-once.yml
+          git diff --check
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/tests/conftest.py backend/app/core/graduation_permissions.py .github/workflows/graduation-closeout-repair-fixture-once.yml
+          git commit -m "fix(graduation): restore production contract test baseline"
+          git push origin HEAD:fix/graduation-material-closeout-p0-review
