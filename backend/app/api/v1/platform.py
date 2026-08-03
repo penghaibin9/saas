@@ -660,3 +660,72 @@ def reconciliations(tenantId: int | None = Query(default=None),
                     user=Depends(require_platform_capability("commercial.view"))):
     from app.services.entitlement_reconciliation_service import list_reconciliations
     return success({"items": list_reconciliations(tenantId)})
+
+
+# ── PLAT-08 服务目录、依赖与租户影响地图 ────────────────────────────────────
+# 注：细粒度 capability（如 service.view/service.manage）需要在
+# platform_access_governance_service.py 的 DUTY_CAPABILITIES 里登记，
+# 该文件不在本卡白名单内；沿用现有 require_platform_super_admin 硬门槛，
+# 与本文件里未接入 capability 系统的大多数路由口径一致。
+
+@router.get("/services/overview", summary="服务目录治理首屏结论")
+def service_catalog_overview(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    return success(svcat.governance_overview())
+
+
+@router.post("/services/bootstrap", summary="幂等登记首版默认服务（API/PC/门户/小程序/MySQL/Redis/Worker/COS/ClamAV/短信）")
+def service_catalog_bootstrap(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    created = svcat.bootstrap_default_services()
+    _audit("PLATFORM_SERVICE_CATALOG_BOOTSTRAP", "bootstrap", {"created": created})
+    return success({"created": created}, message="默认服务已登记")
+
+
+@router.get("/services", summary="服务目录列表")
+def services_list(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    items = svcat.list_services()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/services", summary="新建/更新服务条目")
+def services_upsert(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.upsert_service(body, expected_version=body.get("expectedVersion"))
+    _audit("PLATFORM_SERVICE_CATALOG_UPSERT", out["serviceCode"], out)
+    return success(out, message="服务条目已保存")
+
+
+@router.get("/service-dependencies", summary="服务依赖边列表")
+def service_dependencies_list(serviceCode: Optional[str] = Query(default=None),
+                              user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    items = svcat.list_dependencies(serviceCode)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/service-dependencies", summary="新增服务依赖（拒绝成环）")
+def service_dependencies_add(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.add_dependency(body.get("serviceCode"), body.get("dependsOnServiceCode"),
+                               dependency_type=body.get("dependencyType") or "HARD")
+    _audit("PLATFORM_SERVICE_DEPENDENCY_ADD", f"{out['serviceCode']}->{out['dependsOnServiceCode']}", out)
+    return success(out, message="依赖已登记")
+
+
+@router.delete("/service-dependencies/{dependency_id}", summary="删除服务依赖")
+def service_dependencies_remove(dependency_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    svcat.remove_dependency(dependency_id)
+    _audit("PLATFORM_SERVICE_DEPENDENCY_REMOVE", str(dependency_id), {})
+    return success({"dependencyId": str(dependency_id)}, message="依赖已删除")
+
+
+@router.get("/service-impact", summary="故障影响面：直接/间接受影响租户与服务")
+def service_impact(serviceCode: str = Query(...), releaseId: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.compute_service_impact(serviceCode)
+    out["releaseId"] = releaseId
+    return success(out)

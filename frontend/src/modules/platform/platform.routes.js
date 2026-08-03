@@ -54,6 +54,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '平台人员职责与受控协助', requiresAuth: true, permissionKey: 'platform.access.review' }
     },
     {
+      // PLAT-08：服务目录、依赖与租户影响地图
+      path: 'services',
+      name: 'platform-services',
+      component: () => import('@/modules/platform/views/control/PlatformServiceCatalogView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '服务目录、依赖与租户影响地图', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),

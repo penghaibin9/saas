@@ -153,5 +153,17 @@ export const platformControlApi = {
   listAccessReviews: () => real('access-reviews', '/platform/access-reviews', {}),
 
   /* PLAT-03 商业授权与真实消费对账 */
-  listReconciliations: (params = {}) => real('reconciliations', '/platform/reconciliations', { params })
+  listReconciliations: (params = {}) => real('reconciliations', '/platform/reconciliations', { params }),
+
+  /* PLAT-08 服务目录、依赖与租户影响地图（新页面，无演示兜底，后端不可达直接报错） */
+  getServiceCatalogOverview: () => real('service-catalog-overview', '/platform/services/overview', {}),
+  bootstrapServiceCatalog: () => real('service-catalog-bootstrap', '/platform/services/bootstrap', { method: 'POST', body: {} }),
+  listServices: () => real('services-list', '/platform/services', {}),
+  saveService: (body) => real('service-save', '/platform/services', { method: 'POST', body }),
+  listServiceDependencies: (serviceCode) =>
+    real('service-dependencies', '/platform/service-dependencies', { params: serviceCode ? { serviceCode } : {} }),
+  addServiceDependency: (body) => real('service-dependency-add', '/platform/service-dependencies', { method: 'POST', body }),
+  removeServiceDependency: (id) => real('service-dependency-remove', `/platform/service-dependencies/${id}`, { method: 'DELETE' }),
+  getServiceImpact: (serviceCode, releaseId) =>
+    real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } })
 }
