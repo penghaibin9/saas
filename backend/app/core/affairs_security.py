@@ -134,6 +134,10 @@ class StudentAffairsSecurityContext:
         allowed = self.allowed_class_ids(db)
         if allowed is None:
             return s
+        if self.scope_type == "SELF":
+            if self.self_student_id and int(self.self_student_id) == int(student_id):
+                return s
+            raise no_data_scope("学生只能访问本人数据")
         if self.scope_type == "STUDENT":  # 心理/点名：按学生集合判定
             if int(student_id) in (self.psychology_student_ids | self.student_ids):
                 return s
@@ -224,9 +228,23 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     # 学生 → SELF
     if (u.get("userType") or "").upper() == "STUDENT" or role == "STUDENT":
         ctx.scope_type = "SELF"
-        ctx.self_student_id = u.get("studentId") or u.get("studentProfileId")
-        ctx.scope_source = "SELF"
-        ctx.is_scope_configured = True
+        raw_self_id = u.get("studentId") or u.get("studentProfileId")
+        try:
+            ctx.self_student_id = int(raw_self_id) if raw_self_id else None
+        except (TypeError, ValueError):
+            ctx.self_student_id = None
+        if not ctx.self_student_id:
+            from app.services.mobile_student_service import resolve_student
+            if db is not None:
+                student = resolve_student(db, u)
+            else:
+                from app.services.db_service import session as _sess
+                with _sess() as own_db:
+                    student = resolve_student(own_db, u)
+            if student:
+                ctx.self_student_id = int(student.id)
+        ctx.scope_source = "ACCOUNT_LINK_SELF" if ctx.self_student_id else "SELF_UNRESOLVED"
+        ctx.is_scope_configured = bool(ctx.self_student_id)
         return ctx
 
     # TENANT_ALL（按角色，绝不按 userType==ADMIN 兜底）

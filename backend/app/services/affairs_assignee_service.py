@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
@@ -125,4 +125,17 @@ def require_assignee_id(db, node: str, *, student_id=None) -> int:
             "ASSIGNEE_NOT_CONFIGURED",
             f"未配置受理人：{node}。请在组织任职/临时代办配置中指定有效用户",
         )
-    return ids[0]
+    from app.models import UnifiedTodo
+    loads = dict(db.execute(
+        select(UnifiedTodo.assignee_id, func.count(UnifiedTodo.id))
+        .where(
+            UnifiedTodo.tenant_id == _tid(),
+            UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.assignee_id.in_(ids),
+            UnifiedTodo.status == "PENDING",
+            UnifiedTodo.is_deleted.is_(False),
+        )
+        .group_by(UnifiedTodo.assignee_id)
+    ).all())
+    # 最小负载优先，同负载按 user_id 稳定排序；不再隐式取第一个。
+    return min(ids, key=lambda uid: (int(loads.get(uid, 0)), int(uid)))

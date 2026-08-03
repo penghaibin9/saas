@@ -23,7 +23,7 @@ export const teacherApi = {
   handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
   remindWeekly: (id) => real.remindWeeklyReal(id),
   createFollowup: (body) => real.createFollowupReal(body),
-  getAffairs: () => real.teacherAffairs(),
+  getAffairs: (page = 1, pageSize = 20) => real.teacherAffairs(page, pageSize),
   getMySchedule: () => real.acadTeacherScheduleMy(),
   getRiskStudentsPage: (level = 'all', page = 1, pageSize = 20) =>
     realFirstStrict('teacher.risk.page',

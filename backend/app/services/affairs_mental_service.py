@@ -48,17 +48,31 @@ def _biz_audit(db, biz_id, action, detail=""):
 
 
 def _sensitive_view_audit(student_id, reason: str, resource: str) -> None:
-    """心理明细查看 → t_security_audit_log(SENSITIVE_VIEW)。审计绝不阻塞主流程。"""
-    try:
-        from app.services import audit_log
+    """心理原文明细审计必须成功；审计故障时以 503 失败关闭。"""
+    from app.services import audit_log
 
-        audit_log.record(
-            "SENSITIVE_VIEW", resource,
-            detail={"domain": "MENTAL", "studentId": str(student_id), "reason": str(reason)[:200]},
-            result="SUCCESS",
+    before = audit_log.get_audit_db_health()
+    entry = audit_log.record(
+        "SENSITIVE_VIEW",
+        resource,
+        detail={
+            "domain": "MENTAL",
+            "studentId": str(student_id),
+            "reason": str(reason)[:200],
+        },
+        result="SUCCESS",
+    )
+    after = audit_log.get_audit_db_health()
+    if (
+        not entry
+        or int(after.get("consecutiveFailures") or 0)
+        > int(before.get("consecutiveFailures") or 0)
+    ):
+        raise AppException(
+            "SERVER_ERROR",
+            "敏感信息访问审计暂不可用，已拒绝返回心理明细",
+            http_status=503,
         )
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def psy_scope_ids(db, user):

@@ -485,38 +485,57 @@ def create_category(body, user) -> dict:
 
 
 def activity_stats(user):
-    """活动统计（08 卡）：活动按类型/状态计数 + 二课学分按类型/类目汇总 + 报名签到概览。仅聚合。"""
+    """活动统计：活动、报名和学分全部使用数据库聚合。"""
     from app.models import AffairsActivity, AffairsActivityCredit, AffairsActivitySignup
     with session() as db:
-        acts = db.scalars(select(AffairsActivity).where(
-            AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False))).all()
-        by_type, by_status = {}, {}
-        for a in acts:
-            by_type[a.activity_type] = by_type.get(a.activity_type, 0) + 1
-            by_status[a.status] = by_status.get(a.status, 0) + 1
-        creds = db.scalars(select(AffairsActivityCredit).where(
-            AffairsActivityCredit.tenant_id == _tid())).all()
-        credit_by_type, credit_by_cat = {}, {}
-        for c in creds:
-            v = float(c.credit_value or 0)
-            credit_by_type[c.credit_type] = round(credit_by_type.get(c.credit_type, 0) + v, 2)
-            if c.category_code:
-                credit_by_cat[c.category_code] = round(credit_by_cat.get(c.category_code, 0) + v, 2)
-        signups = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+        type_rows = db.execute(
+            select(AffairsActivity.activity_type, func.count(AffairsActivity.id))
+            .where(AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False))
+            .group_by(AffairsActivity.activity_type)
+        ).all()
+        status_rows = db.execute(
+            select(AffairsActivity.status, func.count(AffairsActivity.id))
+            .where(AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False))
+            .group_by(AffairsActivity.status)
+        ).all()
+        credit_type_rows = db.execute(
+            select(AffairsActivityCredit.credit_type, func.sum(AffairsActivityCredit.credit_value))
+            .where(AffairsActivityCredit.tenant_id == _tid())
+            .group_by(AffairsActivityCredit.credit_type)
+        ).all()
+        credit_category_rows = db.execute(
+            select(AffairsActivityCredit.category_code, func.sum(AffairsActivityCredit.credit_value))
+            .where(
+                AffairsActivityCredit.tenant_id == _tid(),
+                AffairsActivityCredit.category_code.is_not(None),
+            ).group_by(AffairsActivityCredit.category_code)
+        ).all()
+        signups = int(db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
             AffairsActivitySignup.tenant_id == _tid(),
             AffairsActivitySignup.signup_status != "CANCELLED",
-            AffairsActivitySignup.is_deleted.is_(False))) or 0
-        checkins = db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
+            AffairsActivitySignup.is_deleted.is_(False),
+        )) or 0)
+        checkins = int(db.scalar(select(func.count()).select_from(AffairsActivitySignup).where(
             AffairsActivitySignup.tenant_id == _tid(),
             AffairsActivitySignup.signup_status.in_(("CHECKED_IN", "CONFIRMED")),
-            AffairsActivitySignup.is_deleted.is_(False))) or 0
-        return {"totalActivities": len(acts), "totalSignups": int(signups), "totalCheckins": int(checkins),
-                "creditStudents": len({c.student_id for c in creds}),
-                "byType": [{"key": k, "count": v} for k, v in by_type.items()],
-                "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
-                "creditByType": [{"key": k, "value": v} for k, v in credit_by_type.items()],
-                "creditByCategory": [{"key": k, "value": v} for k, v in credit_by_cat.items()]}
-
+            AffairsActivitySignup.is_deleted.is_(False),
+        )) or 0)
+        credit_students = int(db.scalar(select(func.count(func.distinct(AffairsActivityCredit.student_id))).where(
+            AffairsActivityCredit.tenant_id == _tid(),
+        )) or 0)
+        by_type = {str(key or ""): int(count or 0) for key, count in type_rows}
+        by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
+        credit_by_type = {str(key or ""): round(float(value or 0), 2) for key, value in credit_type_rows}
+        credit_by_cat = {str(key or ""): round(float(value or 0), 2) for key, value in credit_category_rows}
+        return {
+            "totalActivities": sum(by_status.values()),
+            "totalSignups": signups, "totalCheckins": checkins,
+            "creditStudents": credit_students,
+            "byType": [{"key": key, "count": count} for key, count in by_type.items()],
+            "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
+            "creditByType": [{"key": key, "value": value} for key, value in credit_by_type.items()],
+            "creditByCategory": [{"key": key, "value": value} for key, value in credit_by_cat.items()],
+        }
 
 def _parse(v):
     if not v:
@@ -695,6 +714,8 @@ def submit_credit_appeal(body, user) -> dict:
         s = db.get(StudentProfile, sid) if sid else None
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        appeal_todo.require_submission_assignee(db, "SECOND_CLASS_APPEAL_REVIEW", sid)
         a = AffairsCreditAppeal(tenant_id=_tid(), student_id=sid,
                                 activity_id=getattr(body, "activityId", None),
                                 appeal_type=atype,
@@ -704,7 +725,8 @@ def submit_credit_appeal(body, user) -> dict:
         db.add(a); db.flush()
         _audit(db, a.id, "CREDIT_APPEAL_SUBMIT", atype)
         db.commit(); db.refresh(a)
-        return _cappeal_row(a, s)
+        result_row = _cappeal_row(a, s)
+        return appeal_todo.sync_after_submit("SECOND_CLASS_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
 def list_credit_appeals(user, status=None, page=1, page_size=50):
@@ -774,4 +796,6 @@ def review_credit_appeal(appeal_id, body, user) -> dict:
         _audit(db, a.id, "CREDIT_APPEAL_REVIEW", action)
         db.commit(); db.refresh(a)
         s = db.get(StudentProfile, int(a.student_id))
-        return _cappeal_row(a, s)
+        result_row = _cappeal_row(a, s)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        return appeal_todo.sync_after_review("SECOND_CLASS_APPEAL_REVIEW", int(appeal_id), result_row)

@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import has_permission
 from app.services.db_service import _iso, _tid, session
 
 # 角色 → 学工首页视图（P0 §6 权限矩阵角色口径）
@@ -20,22 +21,39 @@ _COLLEGE_ROLES = {"COLLEGE_ADMIN", "COLLEGE_SA"}
 
 _VIEW_LABEL = {"SA_ADMIN": "学工处（全校）", "COLLEGE_SA": "学院学工（本院）", "COUNSELOR": "辅导员（本班）"}
 
-# 13A 13 个业务模块卡（P1 仅班级 LIVE，其余各阶段上线，先渲染空态）
+# 首页能力卡由真实权限与数据范围动态生成，禁止把所有模块固定标为 LIVE。
 _MODULE_CARDS = [
-    ("class", "班级管理", "LIVE"),
-    ("leave", "请假销假", "LIVE"),
-    ("aid", "困难认定", "LIVE"),
-    ("funding", "奖助管理", "LIVE"),
-    ("discipline", "违纪处分", "LIVE"),
-    ("risk", "风险预警", "LIVE"),
-    ("talk", "谈心谈话", "LIVE"),
-    ("family", "家校联系", "LIVE"),
-    ("dorm", "宿舍管理", "LIVE"),
-    ("archive", "学工归档", "LIVE"),
-    ("profile", "学生画像", "LIVE"),
-    ("psy", "心理关注", "LIVE"),
-    ("activity", "学生活动", "LIVE"),
+    ("class", "班级管理", "studentAffairs.class.view"),
+    ("leave", "请假销假", "studentAffairs.leave.view"),
+    ("aid", "困难认定", "studentAffairs.aid.view"),
+    ("funding", "奖助管理", "studentAffairs.funding.view"),
+    ("discipline", "违纪处分", "studentAffairs.discipline.view"),
+    ("risk", "风险预警", "studentAffairs.risk.view"),
+    ("talk", "谈心谈话", "studentAffairs.talk.view"),
+    ("family", "家校联系", "studentAffairs.homeSchool.view"),
+    ("dorm", "宿舍管理", "studentAffairs.dorm.view"),
+    ("archive", "学工归档", "studentAffairs.archive.view"),
+    ("profile", "学生画像", "studentAffairs.student.view"),
+    ("psy", "心理关注", "studentAffairs.mental.manage"),
+    ("activity", "学生活动", "studentAffairs.activity.view"),
 ]
+
+
+def _module_cards(user: dict, scope: dict) -> list[dict]:
+    cards = []
+    no_scope = scope.get("scopeType") == "NONE"
+    for key, label, permission in _MODULE_CARDS:
+        permitted = has_permission(user, permission)
+        status = "LOCKED" if not permitted else ("DEGRADED" if no_scope else "LIVE")
+        hint = "当前角色未授权" if not permitted else (
+            "当前角色尚未配置数据范围" if no_scope else ""
+        )
+        cards.append({
+            "key": key, "label": label, "status": status,
+            "permissionCode": permission, "empty": status != "LIVE", "emptyHint": hint,
+        })
+    return cards
+
 
 
 def _resolve_view(user: dict) -> str:
@@ -199,12 +217,7 @@ def get_dashboard(user: dict) -> dict:
                 "criticalCount": critical_count,
                 "topRiskLevel": top_risk_level,
             },
-            "moduleCards": [
-                {"key": k, "label": label, "status": st,
-                 "empty": st != "LIVE",
-                 "emptyHint": "" if st == "LIVE" else "当前暂无相关记录"}
-                for k, label, st in _MODULE_CARDS
-            ],
+            "moduleCards": _module_cards(user, scope),
         }
 
 

@@ -14,6 +14,10 @@ from __future__ import annotations
 from fastapi.routing import APIRoute
 
 from app.core.exceptions import no_permission
+from app.core.student_affairs_permission_registry import (
+    STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS,
+    STUDENT_AFFAIRS_PERMISSION_CODES,
+)
 
 _INSTALLED = False
 _SENTINEL = "__AFFAIRS_MOBILE_WRITE_NOT_REGISTERED__"  # 兼容既有测试名，实际覆盖未知读写
@@ -28,76 +32,12 @@ _TEACHER_PREFIXES = (
     "/api/v1/mobile/teacher/mental",
 )
 
-_MOBILE_CATALOG_CODES = {
-    "studentAffairs.dashboard.view",
-    "studentAffairs.stats.view",
-    "studentAffairs.talk.view",
-    "studentAffairs.talk.create",
-    "studentAffairs.mental.manage",
-    "studentAffairs.risk.psyDetail.view",
-    "studentAffairs.homeSchool.view",
-    "studentAffairs.homeSchool.record.create",
-    "studentAffairs.leave.view",
-    "studentAffairs.leave.approve",
-    "studentAffairs.leave.cancelLeaveConfirm",
-    "studentAffairs.leave.overdue.handle",
-    "studentAffairs.leave.extension.approve",
-    "studentAffairs.aid.view",
-    "studentAffairs.aid.approve",
-    "studentAffairs.aid.counselorReview",
-    "studentAffairs.funding.view",
-    "studentAffairs.funding.approve",
-    "studentAffairs.funding.publicity.manage",
-    "studentAffairs.discipline.view",
-    "studentAffairs.discipline.approve",
-    "studentAffairs.discipline.appeal.review",
-    "studentAffairs.risk.view",
-    "studentAffairs.risk.handle",
-    "studentAffairs.risk.close",
-    "studentAffairs.dorm.view",
-    "studentAffairs.dorm.allocation.manage",
-    "studentAffairs.dorm.transfer.approve",
-    "studentAffairs.dorm.exception.handle",
-    "studentAffairs.class.view",
-    "studentAffairs.class.create",
-    "studentAffairs.class.cadre.manage",
-    "studentAffairs.activity.publish",
-    "studentAffairs.activity.confirm",
-}
+_MOBILE_CATALOG_CODES = STUDENT_AFFAIRS_PERMISSION_CODES
+
 
 # 以下端点在自身 Depends/函数体内执行更精确的业务分支校验。这里记录其真实 PC 权限，
 # 运行时先做同源预检，端点内再按 purpose/kind 做最终校验，禁止退化成 dashboard.view。
-_DIRECT_PERMISSION_CODES: dict[str, tuple[str, ...]] = {
-    "/api/v1/mobile/teacher/affairs/student-candidates": (
-        "studentAffairs.talk.create",
-        "studentAffairs.mental.manage",
-        "studentAffairs.risk.psyDetail.view",
-    ),
-    "/api/v1/mobile/teacher/affairs/activities/ongoing": (
-        "studentAffairs.activity.publish",
-    ),
-    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token": (
-        "studentAffairs.activity.publish",
-    ),
-    "/api/v1/mobile/teacher/affairs/appeals/{kind}": (
-        "studentAffairs.aid.approve",
-        "studentAffairs.funding.publicity.manage",
-        "studentAffairs.discipline.appeal.review",
-        "studentAffairs.activity.confirm",
-    ),
-    "/api/v1/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review": (
-        "studentAffairs.aid.approve",
-        "studentAffairs.funding.publicity.manage",
-        "studentAffairs.discipline.appeal.review",
-        "studentAffairs.activity.confirm",
-    ),
-    "/api/v1/mobile/teacher/affairs/appeals/repair": (
-        "studentAffairs.aid.approve",
-        "studentAffairs.funding.publicity.manage",
-        "studentAffairs.discipline.appeal.review",
-        "studentAffairs.activity.confirm",
-    ),
-}
+_DIRECT_PERMISSION_CODES = STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS
 
 
 def _strict_self_student(db, user):

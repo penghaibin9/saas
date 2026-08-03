@@ -339,10 +339,9 @@ def _patch_student_views() -> None:
         for item in data.get("items", []):
             aid = int(item["applyId"]) if str(item.get("applyId", "")).isdigit() else 0
             item["version"] = versions.get(aid, 0)
-            item["canResubmit"] = item.get("status") == "RETURNED"
             item["allowedActions"] = (
-                ["EDIT_RETURNED", "RESUBMIT"] if item["canResubmit"] else
-                (["SUBMIT_OBJECTION"] if item.get("canObject") else [])
+                ["EDIT_RETURNED", "RESUBMIT"] if item.get("status") == "RETURNED" else
+                (["SUBMIT_OBJECTION"] if item.get("hasPendingObjection") is False and item.get("status") == "PUBLICITY" else [])
             )
         return data
 
@@ -367,10 +366,9 @@ def _patch_student_views() -> None:
         for item in data.get("items", []):
             app_id = int(item["applicationId"]) if str(item.get("applicationId", "")).isdigit() else 0
             item["version"] = versions.get(app_id, 0)
-            item["canResubmit"] = item.get("status") == "RETURNED"
             item["allowedActions"] = (
-                ["EDIT_RETURNED", "RESUBMIT"] if item["canResubmit"] else
-                (["SUBMIT_APPEAL"] if item.get("canAppeal") else [])
+                ["EDIT_RETURNED", "RESUBMIT"] if item.get("status") == "RETURNED" else
+                (["SUBMIT_APPEAL"] if item.get("hasPendingAppeal") is False and item.get("status") == "PUBLICITY" else [])
             )
         return data
 

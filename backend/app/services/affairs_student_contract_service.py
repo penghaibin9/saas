@@ -450,7 +450,7 @@ def _patch_discipline_actions() -> None:
         for item in data.get("items", []):
             case_id = int(item["caseId"]) if str(item.get("caseId") or "").isdigit() else 0
             item["version"] = versions.get(case_id, 0)
-            item["allowedActions"] = ["SUBMIT_APPEAL"] if item.get("canAppeal") else []
+            item["allowedActions"] = _safe_actions(item.get("allowedActions"))
             item["actionKey"] = "AFFAIRS_DISCIPLINE"
             item["actionParams"] = {"bizType": "DISCIPLINE", "recordId": str(case_id)}
         return data

@@ -24,10 +24,10 @@ _STOP = threading.Event()
 
 
 def _ensure_contracts_installed() -> None:
-    """加载API聚合器，初始化申诉同步、通知与补偿函数绑定。"""
-    from app.api.v1 import router as _router  # noqa: F401
+    """显式绑定权威函数引用；不依赖 API router 导入顺序或 monkey-patch。"""
     from app.services import affairs_appeal_repair_service as repair
 
+    repair._ensure_bindings()
     if repair._RAW_SYNC is None or repair._RAW_NOTICE is None:
         raise RuntimeError("学工申诉补偿契约未完成初始化")
 

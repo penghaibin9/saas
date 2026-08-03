@@ -65,7 +65,14 @@ def _package_bytes(student_id: int, user) -> bytes:
     from app.services import affairs_profile_service as profile
 
     data = profile.get_profile(student_id, user)
-    timeline, _total = profile.get_timeline(student_id, user, page=1, page_size=200)
+    timeline: list[dict] = []
+    page = 1
+    while True:
+        rows, total = profile.get_timeline(student_id, user, page=page, page_size=200)
+        timeline.extend(rows)
+        if not rows or len(timeline) >= int(total or 0):
+            break
+        page += 1
     workbook = Workbook()
     summary = workbook.active
     summary.title = "学工档案摘要"

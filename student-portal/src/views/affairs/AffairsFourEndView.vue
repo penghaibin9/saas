@@ -26,7 +26,7 @@
           <StateBlock v-if="!(leave.items || []).length" type="empty" text="暂无请假记录" />
           <article v-for="item in (leave.items || [])" :key="item.leaveId" class="record">
             <div class="record-head"><div><strong>{{ enumText(item.leaveTypeLabel || item.leaveType) }}</strong><div class="sp-muted">{{ fmt(item.startTime) }} 至 {{ fmt(item.endTime) }} · {{ item.days }}天</div><div v-if="item.returnReason" class="warn">退回意见：{{ item.returnReason }}</div></div><StatusTag :text="item.affairsStatusLabel || item.statusLabel || item.status" tone="default" /></div>
-            <div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editLeave(item)">修改后重提</button><button v-if="item.canCancel" class="sp-btn" :disabled="busy" @click="cancelLeave(item)">申请销假</button><button v-if="item.canExtend" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openExtend(item)">申请续假</button></div>
+            <div class="actions"><button v-if="allows(item, 'EDIT_RETURNED') || allows(item, 'RESUBMIT')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editLeave(item)">修改后重提</button><button v-if="allows(item, 'SUBMIT_CANCEL')" class="sp-btn" :disabled="busy" @click="cancelLeave(item)">申请销假</button><button v-if="allows(item, 'SUBMIT_EXTENSION')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openExtend(item)">申请续假</button></div>
             <div v-if="extendId === item.leaveId" class="inline-form">
               <label><span>原结束日期</span><strong>{{ fmt(item.endTime) }}</strong></label>
               <label><span>新结束日期</span><input v-model="extendForm.newEndTime" type="date" class="sp-inp" :min="dayAfter(fmt(item.endTime))" /></label>
@@ -56,8 +56,8 @@
         <StateBlock v-if="!(aid.items || []).length" type="empty" text="暂无认定记录" />
         <article v-for="item in (aid.items || [])" :key="item.applyId" class="record">
           <div class="record-head"><div><strong>申请等级：{{ enumText(item.applyLevel) }}</strong><div class="sp-muted">{{ enumText(item.statusLabel || item.status) }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div>
-          <div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editAid(item)">修改后重提</button></div>
-          <div v-if="item.canObject" class="inline-form"><textarea v-model.trim="aidObjections[item.applyId]" maxlength="500" class="sp-inp" placeholder="公示异议理由（5-500字）" /><button class="sp-btn" :disabled="busy || !validReason(aidObjections[item.applyId], 5, 500)" @click="submitAidObjection(item)">提交异议</button></div>
+          <div class="actions"><button v-if="allows(item, 'EDIT_RETURNED') || allows(item, 'RESUBMIT')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editAid(item)">修改后重提</button></div>
+          <div v-if="allows(item, 'SUBMIT_OBJECTION')" class="inline-form"><textarea v-model.trim="aidObjections[item.applyId]" maxlength="500" class="sp-inp" placeholder="公示异议理由（5-500字）" /><button class="sp-btn" :disabled="busy || !validReason(aidObjections[item.applyId], 5, 500)" @click="submitAidObjection(item)">提交异议</button></div>
           <div v-if="item.hasPendingObjection" class="sp-muted">异议已进入具体老师待办，等待复核。</div>
         </article>
       </section>
@@ -70,7 +70,7 @@
         <button class="sp-btn" :disabled="busy || !validFunding" @click="submitFunding">提交申请</button>
         <div class="section-title">我的奖助记录</div>
         <StateBlock v-if="!(funding.items || []).length" type="empty" text="暂无奖助记录" />
-        <article v-for="item in (funding.items || [])" :key="item.applicationId" class="record"><div class="record-head"><div><strong>{{ fundingLabel(item.projectType) }}</strong><div class="sp-muted">{{ enumText(item.statusLabel || item.status) }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.hasPendingAppeal ? '申诉待复核' : (item.statusLabel || item.status)" :tone="item.hasPendingAppeal ? 'warn' : 'default'" /></div><div class="actions"><button v-if="item.canResubmit" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editFunding(item)">修改后重提</button></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="fundAppeals[item.applicationId]" maxlength="1000" class="sp-inp" placeholder="公示申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(fundAppeals[item.applicationId], 5, 1000)" @click="submitFundingAppeal(item)">提交申诉</button></div></article>
+        <article v-for="item in (funding.items || [])" :key="item.applicationId" class="record"><div class="record-head"><div><strong>{{ fundingLabel(item.projectType) }}</strong><div class="sp-muted">{{ enumText(item.statusLabel || item.status) }}</div><div v-if="item.returnReason" class="warn">意见：{{ item.returnReason }}</div></div><StatusTag :text="item.hasPendingAppeal ? '申诉待复核' : (item.statusLabel || item.status)" :tone="item.hasPendingAppeal ? 'warn' : 'default'" /></div><div class="actions"><button v-if="allows(item, 'EDIT_RETURNED') || allows(item, 'RESUBMIT')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editFunding(item)">修改后重提</button></div><div v-if="allows(item, 'SUBMIT_APPEAL')" class="inline-form"><textarea v-model.trim="fundAppeals[item.applicationId]" maxlength="1000" class="sp-inp" placeholder="公示申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(fundAppeals[item.applicationId], 5, 1000)" @click="submitFundingAppeal(item)">提交申诉</button></div></article>
       </section>
 
       <section v-else-if="tab === 'dorm'" class="sp-card">
@@ -96,7 +96,7 @@
       <section v-else-if="tab === 'discipline'" class="sp-card">
         <div class="sp-panel__head">处分申诉</div><p class="sp-muted">本入口用于处分生效后的申诉，不冒充处分决定前的陈述申辩。具体期限以学校处分决定书与规章为准。</p>
         <StateBlock v-if="!discipline.activeCount" type="empty" text="暂无生效处分记录" />
-        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="appealLabel(item.appealStatus)" tone="default" /></div><div v-if="item.canAppeal" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
+        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="appealLabel(item.appealStatus)" tone="default" /></div><div v-if="allows(item, 'SUBMIT_APPEAL')" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
       </section>
 
       <div v-else-if="tab === 'psy'" class="two"><section class="sp-card"><div class="sp-panel__head">心理健康自评</div><p class="sp-muted">结果仅本人与心理中心按授权查看，系统不作自动诊断。</p><StateBlock v-if="!(psy.questions || []).length" type="empty" text="暂无自评问卷" /><div v-for="(q, index) in (psy.questions || [])" :key="q.key" class="question"><strong>{{ index + 1 }}. {{ q.text }}</strong><div class="options"><button v-for="(option, oi) in q.options" :key="oi" class="seg" :class="{ on: psyAnswers[q.key] === oi }" @click="psyAnswers[q.key] = oi">{{ option }}</button></div></div><button class="sp-btn" :disabled="busy || !psyComplete" @click="submitPsy">提交自评</button></section><section class="sp-card"><div class="sp-panel__head">历史测评</div><AutoTable :rows="psyHistory.items || []" empty="暂无测评记录" /></section></div>
@@ -135,6 +135,7 @@ import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const allows = (item, action) => Array.isArray(item?.allowedActions) && item.allowedActions.includes(action)
 const tabs = [{ key: 'leave', label: '请假销假' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖学金与助学金' }, { key: 'dorm', label: '我的宿舍' }, { key: 'discipline', label: '处分申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动与第二课堂' }, { key: 'talk', label: '谈心谈话' }]
 const tab = ref('leave')
 const busy = ref(false)

@@ -17,7 +17,7 @@ def test_router_installs_guards_after_existing_four_end_contract():
     data = source.index("install_data_integrity_guard()")
     terminal = source.index("install_affairs_four_end_terminal_guard(api_router)")
     assert contract < data < terminal
-    assert "install_counselor_handover_guard()" in source
+    assert "install_counselor_handover_guard()" not in source
     assert "install_risk_evidence_guard()" in source
     assert "install_counselor_eval_guard()" in source
 
@@ -41,10 +41,12 @@ def test_decimal_14_2_overflow_is_rejected_before_mysql_commit():
 
 
 def test_counselor_handover_cannot_move_non_affairs_todos():
-    source = read("backend/app/services/affairs_counselor_handover_guard.py")
+    source = read("backend/app/services/affairs_counselor_service.py")
+    guard = read("backend/app/services/affairs_counselor_handover_guard.py")
     assert 'UnifiedTodo.source_module == "student-affairs"' in source
-    assert "UnifiedTodo.source_biz_type == todo.source_biz_type" in source
-    assert '(instance.source_biz_type or "").upper() != "LEAVE"' in source
+    assert "source_pairs" in source
+    assert "WorkflowInstance.source_biz_type" in source
+    assert "affairs_counselor_service._migrate_class_work =" not in guard
 
 
 def test_risk_high_impact_actions_require_auditable_evidence():
