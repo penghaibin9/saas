@@ -10,58 +10,58 @@ GD_STU = "/api/v1/graduation/gd-students"
 STU = "/api/v1/students"
 
 
-def _batch(client, h, no="GD-RND-B1"):
-    return client.post(GD_BATCH, headers=h, json={
+def _batch(graduation_client, h, no="GD-RND-B1"):
+    return graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "2026届毕设", "batchNo": no, "gradeYear": "2026届", "plannedCount": 50
     }).json()["data"]["id"]
 
 
-def _approved_topic(client, h, title="轮次测试题", capacity=2):
-    r = client.post(GD_TOPIC, headers=h, json={
+def _approved_topic(graduation_client, h, title="轮次测试题", capacity=2):
+    r = graduation_client.post(GD_TOPIC, headers=h, json={
         "title": title, "sourceType": "TEACHER", "advisorName": "王老师", "capacity": capacity, "submitReview": True
     }).json()
     tid = r["data"]["id"]
-    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
     return tid
 
 
-def _gd_student(client, h, no="S-GD-RND-01"):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": "轮次测", "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
-    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+def _gd_student(graduation_client, h, no="S-GD-RND-01"):
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": no, "realName": "轮次测", "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    graduation_client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "E2E测试认定合格",
     })
     return gid
 
 
-def test_round_create_open_submit_match(client, auth_headers, db_mode):
-    bid = _batch(client, auth_headers, "GD-RND-F1")
-    tid = _approved_topic(client, auth_headers)
-    gid = _gd_student(client, auth_headers)
-    cr = client.post(GD_ROUND, headers=auth_headers, json={
+def test_round_create_open_submit_match(graduation_client, auth_headers, db_mode):
+    bid = _batch(graduation_client, auth_headers, "GD-RND-F1")
+    tid = _approved_topic(graduation_client, auth_headers)
+    gid = _gd_student(graduation_client, auth_headers)
+    cr = graduation_client.post(GD_ROUND, headers=auth_headers, json={
         "roundName": "第一轮选题", "batchId": bid, "maxChoices": 2
     }).json()
     assert cr["code"] == 0
     rid = cr["data"]["id"]
-    assert client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers).json()["data"]["status"] == "OPEN"
-    sub = client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
+    assert graduation_client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers).json()["data"]["status"] == "OPEN"
+    sub = graduation_client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
         "gdStudentId": gid, "choices": [{"topicId": tid, "choiceOrder": 1}]
     }).json()
     assert sub["code"] == 0
-    ch = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()
+    ch = graduation_client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()
     assert len(ch["data"]) == 1
-    m = client.post(f"{GD_ROUND}/{rid}/match", headers=auth_headers).json()
+    m = graduation_client.post(f"{GD_ROUND}/{rid}/match", headers=auth_headers).json()
     assert m["code"] == 0 and m["data"]["matched"] == 1
-    stu = client.get(f"{GD_STU}/{gid}", headers=auth_headers).json()
+    stu = graduation_client.get(f"{GD_STU}/{gid}", headers=auth_headers).json()
     assert stu["data"]["topicId"] == tid
 
 
-def test_submit_requires_open_round(client, auth_headers, db_mode):
-    cr = client.post(GD_ROUND, headers=auth_headers, json={"roundName": "草稿轮次"}).json()
+def test_submit_requires_open_round(graduation_client, auth_headers, db_mode):
+    cr = graduation_client.post(GD_ROUND, headers=auth_headers, json={"roundName": "草稿轮次"}).json()
     rid = cr["data"]["id"]
-    gid = _gd_student(client, auth_headers, "S-GD-RND-02")
-    tid = _approved_topic(client, auth_headers, "题B")
-    bad = client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
+    gid = _gd_student(graduation_client, auth_headers, "S-GD-RND-02")
+    tid = _approved_topic(graduation_client, auth_headers, "题B")
+    bad = graduation_client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
         "gdStudentId": gid, "choices": [{"topicId": tid, "choiceOrder": 1}]
     }).json()
     assert bad["code"] != 0
@@ -79,53 +79,53 @@ def test_plan_matches_unit():
     assert winners[0]["gd_student_id"] == 10 and winners[0]["topic_id"] == 100
 
 
-def test_round_export_and_choice_import(client, auth_headers, db_mode):
+def test_round_export_and_choice_import(graduation_client, auth_headers, db_mode):
     import base64
-    bid = _batch(client, auth_headers, "GD-RND-X1")
-    tid = _approved_topic(client, auth_headers, "导出导入题")
-    gid = _gd_student(client, auth_headers, "S-GD-RND-X1")
-    cr = client.post(GD_ROUND, headers=auth_headers, json={"roundName": "Excel轮次", "batchId": bid}).json()
+    bid = _batch(graduation_client, auth_headers, "GD-RND-X1")
+    tid = _approved_topic(graduation_client, auth_headers, "导出导入题")
+    gid = _gd_student(graduation_client, auth_headers, "S-GD-RND-X1")
+    cr = graduation_client.post(GD_ROUND, headers=auth_headers, json={"roundName": "Excel轮次", "batchId": bid}).json()
     rid = cr["data"]["id"]
-    client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers)
-    ex = client.post(f"{GD_ROUND}/export", headers=auth_headers).json()
+    graduation_client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers)
+    ex = graduation_client.post(f"{GD_ROUND}/export", headers=auth_headers).json()
     assert ex["code"] == 0 and base64.b64decode(ex["data"]["contentBase64"])[:2] == b"PK"
-    tpl = client.get(f"{GD_ROUND}/{rid}/choices/import/template", headers=auth_headers)
+    tpl = graduation_client.get(f"{GD_ROUND}/{rid}/choices/import/template", headers=auth_headers)
     assert tpl.status_code == 200 and tpl.content[:2] == b"PK"
-    topic = client.get(f"{GD_TOPIC}/{tid}", headers=auth_headers).json()["data"]
+    topic = graduation_client.get(f"{GD_TOPIC}/{tid}", headers=auth_headers).json()["data"]
     rows = [{"studentNo": "S-GD-RND-X1", "topicTitle": topic["title"], "choiceOrder": "1"}]
-    imp = client.post(f"{GD_ROUND}/{rid}/choices/import/confirm", headers=auth_headers, json={"rows": rows}).json()
+    imp = graduation_client.post(f"{GD_ROUND}/{rid}/choices/import/confirm", headers=auth_headers, json={"rows": rows}).json()
     assert imp["code"] == 0 and imp["data"].get("created", 0) >= 1, imp
-    ch = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()
+    ch = graduation_client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()
     assert len(ch["data"]) >= 1
-    cex = client.post(f"{GD_ROUND}/{rid}/choices/export", headers=auth_headers).json()
+    cex = graduation_client.post(f"{GD_ROUND}/{rid}/choices/export", headers=auth_headers).json()
     assert cex["code"] == 0 and cex["data"]["rowCount"] >= 1
 
 
-def test_confirm_choice_is_atomic_when_topic_capacity_is_exhausted(client, auth_headers, db_mode):
-    tid = _approved_topic(client, auth_headers, "容量并发保护题", capacity=1)
-    gid1 = _gd_student(client, auth_headers, "S-GD-LOCK-01")
-    gid2 = _gd_student(client, auth_headers, "S-GD-LOCK-02")
-    rid = client.post(GD_ROUND, headers=auth_headers, json={"roundName": "容量锁测试"}).json()["data"]["id"]
-    client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers)
+def test_confirm_choice_is_atomic_when_topic_capacity_is_exhausted(graduation_client, auth_headers, db_mode):
+    tid = _approved_topic(graduation_client, auth_headers, "容量并发保护题", capacity=1)
+    gid1 = _gd_student(graduation_client, auth_headers, "S-GD-LOCK-01")
+    gid2 = _gd_student(graduation_client, auth_headers, "S-GD-LOCK-02")
+    rid = graduation_client.post(GD_ROUND, headers=auth_headers, json={"roundName": "容量锁测试"}).json()["data"]["id"]
+    graduation_client.post(f"{GD_ROUND}/{rid}/open", headers=auth_headers)
     for gid in (gid1, gid2):
-        response = client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
+        response = graduation_client.post(f"{GD_ROUND}/{rid}/choices", headers=auth_headers, json={
             "gdStudentId": gid, "choices": [{"topicId": tid, "choiceOrder": 1}],
         })
         assert response.status_code == 200
 
-    choices = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
+    choices = graduation_client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
     by_student = {row["gdStudentId"]: row for row in choices}
-    first = client.post(
+    first = graduation_client.post(
         f"{GD_ROUND}/choices/{by_student[gid1]['id']}/confirm", headers=auth_headers,
     )
     assert first.status_code == 200
-    second = client.post(
+    second = graduation_client.post(
         f"{GD_ROUND}/choices/{by_student[gid2]['id']}/confirm", headers=auth_headers,
     )
     assert second.status_code == 409
 
-    after = client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
+    after = graduation_client.get(f"{GD_ROUND}/{rid}/choices", headers=auth_headers).json()["data"]
     after_by_student = {row["gdStudentId"]: row for row in after}
     assert after_by_student[gid1]["status"] == "CONFIRMED"
     assert after_by_student[gid2]["status"] == "PENDING"
-    assert client.get(f"{GD_STU}/{gid2}", headers=auth_headers).json()["data"]["topicId"] == ""
+    assert graduation_client.get(f"{GD_STU}/{gid2}", headers=auth_headers).json()["data"]["topicId"] == ""

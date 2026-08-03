@@ -20,18 +20,18 @@ def _uniq(prefix="B5"):
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _batch(client, h):
-    return client.post(BATCH, headers=h, json={
+def _batch(graduation_client, h):
+    return graduation_client.post(BATCH, headers=h, json={
         "batchName": _uniq("批"), "batchNo": _uniq("BN"),
         "gradeYear": "2026届", "plannedCount": 50,
     }).json()["data"]["id"]
 
 
-def _gd_student(client, h, bid, stage="TOPIC_SELECTING"):
-    sid = client.post(STU, headers=h, json={
+def _gd_student(graduation_client, h, bid, stage="TOPIC_SELECTING"):
+    sid = graduation_client.post(STU, headers=h, json={
         "studentNo": _uniq("S"), "realName": _uniq("生"), "classId": make_org_class(),
     }).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     try:
         s = db.get(GraduationStudent, int(gid))
@@ -43,12 +43,12 @@ def _gd_student(client, h, bid, stage="TOPIC_SELECTING"):
     return gid
 
 
-def test_scan_creates_and_reopens_same_uk_row(client, auth_headers, db_mode):
+def test_scan_creates_and_reopens_same_uk_row(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid = _batch(client, h)
-    gid = _gd_student(client, h, bid, stage="TOPIC_SELECTING")
+    bid = _batch(graduation_client, h)
+    gid = _gd_student(graduation_client, h, bid, stage="TOPIC_SELECTING")
 
-    r1 = client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
+    r1 = graduation_client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
     assert r1.json()["code"] == 0, r1.json()
     assert r1.json()["data"]["newCasesCreated"] >= 1
 
@@ -69,7 +69,7 @@ def test_scan_creates_and_reopens_same_uk_row(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    r2 = client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
+    r2 = graduation_client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
     assert r2.json()["code"] == 0, r2.json()
     assert r2.json()["data"]["reopenedCases"] >= 1
 
@@ -88,17 +88,17 @@ def test_scan_creates_and_reopens_same_uk_row(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    last = client.get(f"{RISK}/last-scan", headers=h, params={"batchId": bid})
+    last = graduation_client.get(f"{RISK}/last-scan", headers=h, params={"batchId": bid})
     assert last.json()["code"] == 0
     assert last.json()["data"]["lastScanAt"]
 
 
-def test_scan_uses_batch_queries_not_per_student_n_plus_one(client, auth_headers, db_mode):
+def test_scan_uses_batch_queries_not_per_student_n_plus_one(graduation_client, auth_headers, db_mode):
     """十余名学生扫描时，附属表应聚合查询，而非每生一遍。"""
     h = auth_headers
-    bid = _batch(client, h)
+    bid = _batch(graduation_client, h)
     for _ in range(12):
-        _gd_student(client, h, bid, stage="TOPIC_SELECTING")
+        _gd_student(graduation_client, h, bid, stage="TOPIC_SELECTING")
 
     db = get_sessionmaker()()
     bind = db.get_bind()
@@ -111,7 +111,7 @@ def test_scan_uses_batch_queries_not_per_student_n_plus_one(client, auth_headers
 
     event.listen(bind, "before_cursor_execute", before_cursor_execute)
     try:
-        r = client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
+        r = graduation_client.post(f"{RISK}/scan", headers=h, params={"batchId": bid})
         assert r.json()["code"] == 0, r.json()
         data = r.json()["data"]
         assert data["scannedStudents"] >= 12

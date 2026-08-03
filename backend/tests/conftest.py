@@ -70,7 +70,6 @@ class GraduationBatchAwareClient:
         self._wrapped = wrapped
         self._active_batch_id: str | None = None
         self._archive_previews: dict[tuple[str, str], dict] = {}
-        self._staff_headers: dict[str, str] = {}
 
     def __getattr__(self, name):
         return getattr(self._wrapped, name)
@@ -89,31 +88,10 @@ class GraduationBatchAwareClient:
 
     def request(self, method, url, **kwargs):
         method = method.upper()
-        self._remember_staff_headers(kwargs)
         self._prepare_batch(method, url, kwargs)
         response = self._wrapped.request(method, url, **kwargs)
         self._remember_batch(method, url, kwargs, response)
         return response
-
-    def _remember_staff_headers(self, kwargs) -> None:
-        """记住最近一次教职工请求头，供需要管理员身份的兜底逻辑复用。
-
-        来自 a6aa869a，该提交写 conftest.py 时文件损坏（46751B -> 30011B 乱码），
-        这里按其可读部分的原意恢复。
-        """
-        headers = kwargs.get("headers") or {}
-        auth = headers.get("Authorization") or headers.get("authorization")
-        if not auth or not str(auth).startswith("Bearer "):
-            return
-        try:
-            from app.core.security import decode_token
-
-            claims = decode_token(str(auth)[7:])
-            role = str(claims.get("currentRoleCode") or claims.get("userType") or "").upper()
-            if role not in {"STUDENT", "GUARDIAN"}:
-                self._staff_headers = dict(headers)
-        except Exception:
-            return
 
     def _path_and_query(self, url) -> tuple[str, dict]:
         parts = urlsplit(str(url))
@@ -826,7 +804,14 @@ class GraduationBatchAwareClient:
 
 
 @pytest.fixture()
-def client() -> GraduationBatchAwareClient:
+def client() -> TestClient:
+    """通用 HTTP 客户端：不得自动补参数、改身份或写业务数据。"""
+    return TestClient(app)
+
+
+@pytest.fixture()
+def graduation_client() -> GraduationBatchAwareClient:
+    """毕业设计旧测试显式使用的兼容客户端；禁止其他业务测试隐式继承。"""
     return GraduationBatchAwareClient(TestClient(app))
 
 

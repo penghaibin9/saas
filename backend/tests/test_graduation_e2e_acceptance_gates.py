@@ -16,9 +16,9 @@ from __future__ import annotations
 from conftest import make_org_class
 
 
-def _upload_pdf(client, headers, name="thesis.pdf"):
+def _upload_pdf(graduation_client, headers, name="thesis.pdf"):
     files = {"file": (name, b"%PDF-1.4 test", "application/pdf")}
-    r = client.post("/api/v1/files", headers=headers, files=files,
+    r = graduation_client.post("/api/v1/files", headers=headers, files=files,
                     params={"bizType": "GRADUATION_MATERIAL"})
     assert r.json()["code"] == 0, r.json()
     return r.json()["data"]["fileId"]
@@ -36,18 +36,18 @@ GD_RISK = "/api/v1/graduation/gd-risks"
 STU = "/api/v1/students"
 
 
-def _gd_student(client, h, no, name):
-    sid = client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    return client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+def _gd_student(graduation_client, h, no, name):
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": no, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    return graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
 
 
-def _approved_topic(client, h, title, capacity=1):
-    r = client.post(GD_TOPIC, headers=h, json={
+def _approved_topic(graduation_client, h, title, capacity=1):
+    r = graduation_client.post(GD_TOPIC, headers=h, json={
         "title": title, "sourceType": "TEACHER", "advisorName": "E2E导师",
         "capacity": capacity, "submitReview": True,
     }).json()
     tid = r["data"]["id"]
-    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
     return tid
 
 
@@ -96,35 +96,35 @@ def _seed_archive_ready(db, gid: int, *, with_open_risk: bool = False):
     db.add_all(rows)
 
 
-def test_unqualified_student_cannot_be_assigned_topic(client, auth_headers, db_mode):
+def test_unqualified_student_cannot_be_assigned_topic(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    gid = _gd_student(client, h, "E2E-ELIG-01", "资格拦截生")
-    tid = _approved_topic(client, h, "资格拦截题")
+    gid = _gd_student(graduation_client, h, "E2E-ELIG-01", "资格拦截生")
+    tid = _approved_topic(graduation_client, h, "资格拦截题")
     # PENDING 可由学院管理员分配（运营补录）；UNQUALIFIED 必须拦截
-    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+    graduation_client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "UNQUALIFIED", "reason": "学分未达毕业设计准入要求",
     })
-    blocked = client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    blocked = graduation_client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     assert blocked.json()["code"] != 0
-    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+    graduation_client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "补修完成，予以认定",
     })
-    ok = client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    ok = graduation_client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     assert ok.json()["code"] == 0
     assert ok.json()["data"]["topicId"] == tid
 
 
-def test_batch_rules_reject_non_100_percent_weights(client, auth_headers, db_mode):
+def test_batch_rules_reject_non_100_percent_weights(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid = client.post(GD_BATCH, headers=h, json={
+    bid = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "E2E权重校验批", "batchNo": "E2E-W-1", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    bad = client.post(f"{GD_BATCH}/{bid}/rules", headers=h, json={
+    bad = graduation_client.post(f"{GD_BATCH}/{bid}/rules", headers=h, json={
         "rules": {"score": {"advisorWeight": 0.5, "reviewerWeight": 0.3, "defenseWeight": 0.3}},
     }).json()
     assert bad["code"] != 0
     assert "100%" in (bad.get("message") or "")
-    ok = client.post(f"{GD_BATCH}/{bid}/rules", headers=h, json={
+    ok = graduation_client.post(f"{GD_BATCH}/{bid}/rules", headers=h, json={
         "rules": {"score": {"advisorWeight": 0.4, "reviewerWeight": 0.3, "defenseWeight": 0.3},
                   "plagiarism": {"thresholdPercent": 25}},
     }).json()
@@ -132,26 +132,26 @@ def test_batch_rules_reject_non_100_percent_weights(client, auth_headers, db_mod
     assert ok["data"]["rules"]["plagiarism"]["thresholdPercent"] == 25
 
 
-def test_batch_stages_reject_reversed_dates(client, auth_headers, db_mode):
+def test_batch_stages_reject_reversed_dates(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bid = client.post(GD_BATCH, headers=h, json={
+    bid = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "E2E阶段校验批", "batchNo": "E2E-S-1", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    bad = client.post(f"{GD_BATCH}/{bid}/stages", headers=h, json={"stages": [
+    bad = graduation_client.post(f"{GD_BATCH}/{bid}/stages", headers=h, json={"stages": [
         {"code": "TOPIC", "name": "选题", "startDate": "2025-10-01", "endDate": "2025-10-31"},
         {"code": "PROPOSAL", "name": "开题", "startDate": "2025-09-01", "endDate": "2025-09-30"},
     ]}).json()
     assert bad["code"] != 0
-    ok = client.post(f"{GD_BATCH}/{bid}/stages", headers=h, json={"stages": [
+    ok = graduation_client.post(f"{GD_BATCH}/{bid}/stages", headers=h, json={"stages": [
         {"code": "TOPIC", "name": "选题", "startDate": "2025-09-01", "endDate": "2025-09-30"},
         {"code": "PROPOSAL", "name": "开题", "startDate": "2025-10-01", "endDate": "2025-10-31"},
     ]}).json()
     assert ok["code"] == 0
 
 
-def test_create_batch_rejects_invalid_stages_and_weights(client, auth_headers, db_mode):
+def test_create_batch_rejects_invalid_stages_and_weights(graduation_client, auth_headers, db_mode):
     h = auth_headers
-    bad_stages = client.post(GD_BATCH, headers=h, json={
+    bad_stages = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "创建阶段非法批", "batchNo": "E2E-CREATE-S1", "gradeYear": "2026届",
         "stages": [
             {"code": "TOPIC", "name": "选题", "startDate": "2025-10-01", "endDate": "2025-10-31"},
@@ -159,7 +159,7 @@ def test_create_batch_rejects_invalid_stages_and_weights(client, auth_headers, d
         ],
     }).json()
     assert bad_stages["code"] != 0
-    bad_weights = client.post(GD_BATCH, headers=h, json={
+    bad_weights = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "创建权重非法批", "batchNo": "E2E-CREATE-W1", "gradeYear": "2026届",
         "rules": {"score": {"advisorWeight": 0.5, "reviewerWeight": 0.3, "defenseWeight": 0.3}},
     }).json()
@@ -167,48 +167,48 @@ def test_create_batch_rejects_invalid_stages_and_weights(client, auth_headers, d
     assert "100%" in (bad_weights.get("message") or "")
 
 
-def test_open_risk_blocks_archive_submit(client, auth_headers, db_mode):
+def test_open_risk_blocks_archive_submit(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
 
     h = auth_headers
-    gid = _gd_student(client, h, "E2E-RISK-ARCH-01", "风险归档生")
+    gid = _gd_student(graduation_client, h, "E2E-RISK-ARCH-01", "风险归档生")
     db = get_sessionmaker()()
     _seed_archive_ready(db, int(gid), with_open_risk=True)
     db.commit()
     db.close()
 
-    gen = client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h).json()["data"]
+    gen = graduation_client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h).json()["data"]
     assert gen["missingItems"] == []
-    blocked = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()
+    blocked = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()
     assert blocked["code"] != 0
     assert "未关闭风险" in (blocked.get("message") or "")
 
     # close risk then submit OK
-    risks = client.get(GD_RISK, headers=h, params={"gdStudentId": gid}).json()["data"]["items"]
+    risks = graduation_client.get(GD_RISK, headers=h, params={"gdStudentId": gid}).json()["data"]["items"]
     rid = risks[0]["id"]
-    client.post(f"{GD_RISK}/{rid}/accept", headers=h, json={})
-    client.post(f"{GD_RISK}/{rid}/close", headers=h, json={"reason": "E2E风险已处理关闭"})
-    ok = client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()
+    graduation_client.post(f"{GD_RISK}/{rid}/accept", headers=h, json={})
+    graduation_client.post(f"{GD_RISK}/{rid}/close", headers=h, json={"reason": "E2E风险已处理关闭"})
+    ok = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()
     assert ok["code"] == 0
     assert ok["data"]["status"] == "SUBMITTED"
 
 
-def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, db_mode):
+def test_open_risk_skips_batch_archive_generate_and_file(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationArchiveRecord, GraduationStudent
 
     h = auth_headers
-    bid = client.post(GD_BATCH, headers=h, json={
+    bid = graduation_client.post(GD_BATCH, headers=h, json={
         "batchName": "E2E批量风险批", "batchNo": "E2E-RISK-BATCH-B", "gradeYear": "2026届", "plannedCount": 10,
     }).json()["data"]["id"]
-    sid = client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生", "classId": make_org_class()}).json()["data"]["id"]
-    gid = client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": "E2E-RISK-BATCH-01", "realName": "批量风险归档生", "classId": make_org_class()}).json()["data"]["id"]
+    gid = graduation_client.post(GD_STU, headers=h, json={"studentId": sid, "batchId": bid}).json()["data"]["id"]
     db = get_sessionmaker()()
     _seed_archive_ready(db, int(gid), with_open_risk=True)
     db.commit()
     db.close()
 
-    gen = client.post(f"{GD_ARCHIVE}/batch-generate", headers=h, params={"batchId": bid}).json()
+    gen = graduation_client.post(f"{GD_ARCHIVE}/batch-generate", headers=h, params={"batchId": bid}).json()
     assert gen["code"] == 0
     assert gen["data"]["skipped"] >= 1
 
@@ -226,7 +226,7 @@ def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, d
     db.commit()
     db.close()
 
-    filed = client.post(f"{GD_ARCHIVE}/batch-file", headers=h, params={"batchId": bid}, json={}).json()
+    filed = graduation_client.post(f"{GD_ARCHIVE}/batch-file", headers=h, params={"batchId": bid}, json={}).json()
     assert filed["code"] == 0
     assert filed["data"]["skipped"] >= 1
 
@@ -240,19 +240,19 @@ def test_open_risk_skips_batch_archive_generate_and_file(client, auth_headers, d
     db.close()
 
 
-def test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank(client, auth_headers, db_mode):
+def test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank(graduation_client, auth_headers, db_mode):
     """SoD 不得仅依赖 student.advisor_name；题目指导教师也必须回避。"""
     h = auth_headers
-    gid = _gd_student(client, h, "SOD-ADV-01", "SoD回避生")
-    tid = client.post(GD_TOPIC, headers=h, json={
+    gid = _gd_student(graduation_client, h, "SOD-ADV-01", "SoD回避生")
+    tid = graduation_client.post(GD_TOPIC, headers=h, json={
         "title": "SoD回避题-专名", "sourceType": "TEACHER", "advisorName": "张回避导师",
         "capacity": 1, "submitReview": True,
     }).json()["data"]["id"]
-    client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
-    client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
+    graduation_client.post(f"{GD_TOPIC}/{tid}/review", headers=h, json={"action": "APPROVE"})
+    graduation_client.post(f"{GD_STU}/{gid}/eligibility", headers=h, json={
         "status": "QUALIFIED", "reason": "SoD测试资格合格",
     })
-    client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
+    graduation_client.post(f"{GD_STU}/{gid}/assign-topic", headers=h, json={"topicId": tid})
     from app.db.session import get_sessionmaker
     from app.models import GraduationStudent
     db = get_sessionmaker()()
@@ -260,25 +260,25 @@ def test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank(client,
     stu.advisor_name = None
     db.commit()
     db.close()
-    conflict = client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
+    conflict = graduation_client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
         "gdStudentId": gid, "reviewerName": "张回避导师",
     }).json()
     assert conflict["code"] != 0
     assert "SoD" in (conflict.get("message") or "") or "指导教师" in (conflict.get("message") or "")
-    ok = client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
+    ok = graduation_client.post("/api/v1/graduation/gd-reviews/assign", headers=h, json={
         "gdStudentId": gid, "reviewerName": "独立评阅人李",
     }).json()
     assert ok["code"] == 0
 
 
-def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
+def test_final_blocked_while_midterm_rectifying(graduation_client, auth_headers, db_mode):
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm
 
     h = auth_headers
     name = "中期整改生"
-    gid = _gd_student(client, h, "MT-FIN-01", name)
+    gid = _gd_student(graduation_client, h, "MT-FIN-01", name)
     db = get_sessionmaker()()
     db.add(GraduationMidterm(
         tenant_id=1000000000000000001, gd_student_id=int(gid),
@@ -292,12 +292,12 @@ def test_final_blocked_while_midterm_rectifying(client, auth_headers, db_mode):
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
-    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
+    blocked = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(graduation_client, sh)]}).json()
     assert blocked["code"] != 0
     assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))
 
 
-def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mode):
+def test_final_allowed_after_midterm_rectified_pass(graduation_client, auth_headers, db_mode):
     """整改复核通过后 status=RECTIFIED_PASS（conclusion 应写为 PASS）须允许提交成果。"""
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
@@ -305,7 +305,7 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
 
     h = auth_headers
     name = "中期整改通过生"
-    gid = _gd_student(client, h, "MT-FIN-PASS-01", name)
+    gid = _gd_student(graduation_client, h, "MT-FIN-PASS-01", name)
     db = get_sessionmaker()()
     from app.models import GraduationStudent
     stu = db.get(GraduationStudent, int(gid))
@@ -325,34 +325,34 @@ def test_final_allowed_after_midterm_rectified_pass(client, auth_headers, db_mod
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
-    view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
+    view = graduation_client.get("/api/v1/mobile/graduation/final", headers=sh).json()
     assert view["code"] == 0
     assert view["data"]["canSubmitDraft"] is True
     assert view["data"]["midtermPassed"] is True
-    fid = _upload_pdf(client, sh)
-    ok = client.post("/api/v1/mobile/graduation/final", headers=sh, json={
+    fid = _upload_pdf(graduation_client, sh)
+    ok = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={
         "finalType": "初稿", "attachments": [fid],
     }).json()
     assert ok["code"] == 0, ok
 
 
-def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode):
+def test_final_blocked_without_or_pending_midterm(graduation_client, auth_headers, db_mode):
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
     from app.models import GraduationMidterm
 
     h = auth_headers
     name = "无中期生"
-    gid = _gd_student(client, h, "MT-FIN-NONE-01", name)
+    gid = _gd_student(graduation_client, h, "MT-FIN-NONE-01", name)
     sh = {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP",
     })}
-    missing = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
+    missing = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(graduation_client, sh)]}).json()
     assert missing["code"] != 0
     assert ("中期" in (missing.get("message") or "")) or ("阶段" in (missing.get("message") or ""))
-    view = client.get("/api/v1/mobile/graduation/final", headers=sh).json()
+    view = graduation_client.get("/api/v1/mobile/graduation/final", headers=sh).json()
     assert view["code"] == 0
     assert view["data"]["canSubmitDraft"] is False
     assert view["data"]["midtermPassed"] is False
@@ -363,17 +363,17 @@ def test_final_blocked_without_or_pending_midterm(client, auth_headers, db_mode)
     ))
     db.commit()
     db.close()
-    pending = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
+    pending = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(graduation_client, sh)]}).json()
     assert pending["code"] != 0
     assert ("中期" in (pending.get("message") or "")) or ("阶段" in (pending.get("message") or ""))
 
 
-def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode):
+def test_review_rectification_sets_conclusion_pass(graduation_client, auth_headers, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import GraduationBatch, GraduationMidterm, GraduationStudent
 
     h = auth_headers
-    gid = _gd_student(client, h, "MT-CONCL-01", "整改结论生")
+    gid = _gd_student(graduation_client, h, "MT-CONCL-01", "整改结论生")
     db = get_sessionmaker()()
     db.add(GraduationMidterm(
         tenant_id=1000000000000000001, gd_student_id=int(gid),
@@ -383,7 +383,7 @@ def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode
     ))
     db.commit()
     db.close()
-    ok = client.post(f"/api/v1/graduation/gd-midterms/{gid}/rectify/review", headers=h, json={
+    ok = graduation_client.post(f"/api/v1/graduation/gd-midterms/{gid}/rectify/review", headers=h, json={
         "action": "PASS", "comment": "整改材料齐全，予以通过",
     }).json()
     assert ok["code"] == 0, ok
@@ -396,7 +396,7 @@ def test_review_rectification_sets_conclusion_pass(client, auth_headers, db_mode
     db.close()
 
 
-def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth_headers, db_mode):
+def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(graduation_client, auth_headers, db_mode):
     """摘要接口与提交门禁同一解析；学生详情中期读真实行。"""
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
@@ -405,8 +405,8 @@ def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth
     h = auth_headers
     name = "摘要一致生"
     sno = "MT-MY-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    old = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     old_row = db.get(GraduationStudent, int(old))
     old_row.topic_title = "旧批次题目"
@@ -433,26 +433,26 @@ def test_graduation_my_and_detail_use_live_midterm_and_latest_batch(client, auth
     ))
     db.commit()
     db.close()
-    client._active_batch_id = str(batch.id)
+    graduation_client._active_batch_id = str(batch.id)
 
     sh = {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno, "studentId": str(sid),
     })}
-    my = client.get("/api/v1/mobile/graduation/my", headers=sh).json()
+    my = graduation_client.get("/api/v1/mobile/graduation/my", headers=sh).json()
     assert my["code"] == 0
     assert my["data"]["topicTitle"] == "新批次题目"
     assert my["data"]["stage"] == "FINAL_CHECK"
 
-    detail = client.get(f"{GD_STU}/{new}", headers=h).json()
+    detail = graduation_client.get(f"{GD_STU}/{new}", headers=h).json()
     assert detail["code"] == 0
     assert detail["data"]["midterm"]["conclusion"] == "通过"
     assert detail["data"]["midterm"]["status"] == "CHECKED_PASS"
     assert detail["data"]["midterm"]["statusLabel"] == "已通过"
 
 
-def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_headers, db_mode):
+def test_mobile_resolve_prefers_latest_non_archived_gd_student(graduation_client, auth_headers, db_mode):
     """多批次档案时，学生端须命中最近未归档档案，否则门禁会落在旧批次。"""
     from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
@@ -461,8 +461,8 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
     h = auth_headers
     name = "多批次命中生"
     sno = "MT-MULTI-01"
-    sid = client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
-    old = client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    old = graduation_client.post(GD_STU, headers=h, json={"studentId": sid}).json()["data"]["id"]
     db = get_sessionmaker()()
     # 业务接口对同生重复建档会 409；用第二行模拟历史多批次并存
     row = GraduationStudent(
@@ -485,6 +485,6 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(client, auth_head
         "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
         "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": sno,
     })}
-    blocked = client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(client, sh)]}).json()
+    blocked = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(graduation_client, sh)]}).json()
     assert blocked["code"] != 0
     assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))

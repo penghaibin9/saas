@@ -281,8 +281,15 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
 
         todo.todo_done(db, biz_id=proposal.id, todo_type=todo.TODO_PROPOSAL)
         if target == "APPROVED" and student.stage in {"TOPIC_SELECTING", "TASKBOOK_CONFIRM"}:
-            student.stage = "GUIDING"
-            student.version = int(student.version or 0) + 1
+            confirmed_taskbook = db.scalars(select(GraduationTaskBook).where(
+                GraduationTaskBook.tenant_id == _tid(),
+                GraduationTaskBook.gd_student_id == int(student.id),
+                GraduationTaskBook.status == "CONFIRMED",
+                GraduationTaskBook.is_deleted.is_(False),
+            ).limit(1)).first()
+            if confirmed_taskbook:
+                student.stage = "GUIDING"
+                student.version = int(student.version or 0) + 1
         db.commit()
         return {"id": str(proposal.id), "status": target, "material": reviewed}
 

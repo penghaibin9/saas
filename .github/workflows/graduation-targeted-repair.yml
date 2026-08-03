@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: graduation-targeted-validation
+  group: graduation-targeted-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -179,7 +179,33 @@ jobs:
 
       - name: Graduation 定向 pytest
         working-directory: backend
-        run: timeout 35m pytest tests/test_graduation*.py -q -p no:warnings --durations=30
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          timeout 35m pytest tests/test_graduation*.py -q -p no:warnings --durations=30 \
+            --junitxml=test-results/graduation.xml 2>&1 | tee test-results/graduation.log
+
+      - name: 汇总 Graduation pytest 结果
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo "## Graduation 定向 pytest"
+            echo '```text'
+            tail -n 120 test-results/graduation.log 2>/dev/null || echo "pytest 日志未生成"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 Graduation pytest 证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-pytest-evidence
+          path: |
+            backend/test-results/graduation.xml
+            backend/test-results/graduation.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - uses: actions/setup-node@v4
         with:
