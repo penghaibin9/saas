@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/graduation-material-closeout-p0-review
+  pull_request:
 
 permissions:
   contents: read
