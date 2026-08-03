@@ -20,8 +20,23 @@
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openForm(row)">编辑</button>
           <button class="mp-link" @click="openRotate(row)">轮换凭证</button>
+          <button class="mp-link" @click="testConnection(row)">测试连接</button>
         </template>
       </DataTable>
+    </div>
+
+    <div class="mp-stack ig-sync">
+      <h3 class="ig-sync__title">同步任务</h3>
+      <DataTable v-if="syncJobs.length" :columns="syncColumns" :rows="syncJobs" row-key="id">
+        <template #cell-status="{ row }">
+          <StatusTag :type="syncStatusTone(row.status)" :label="row.statusLabel || row.status" dot />
+        </template>
+        <template #cell-actions="{ row }">
+          <button v-if="row.status === 'FAILED'" class="mp-link" @click="retrySync(row)">重试</button>
+          <button v-if="row.status !== 'CANCELLED' && row.status !== 'SUCCESS'" class="mp-link" @click="cancelSync(row)">取消</button>
+        </template>
+      </DataTable>
+      <EmptyState v-else title="暂无同步任务" description="" />
     </div>
 
     <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑接口连接' : '新建接口连接'">
@@ -73,7 +88,15 @@ export default {
         { key: 'actions', title: '操作', width: '140px' }
       ],
       form: { open: false, id: '', value: {}, errors: {}, submitting: false },
-      rotate: { open: false, id: '', name: '', credential: '', submitting: false }
+      rotate: { open: false, id: '', name: '', credential: '', submitting: false },
+      syncJobs: [],
+      syncColumns: [
+        { key: 'name', title: '任务名称' },
+        { key: 'adapterCode', title: '适配器' },
+        { key: 'status', title: '状态' },
+        { key: 'message', title: '说明' },
+        { key: 'actions', title: '操作', width: '120px' }
+      ]
     }
   },
   computed: {
@@ -132,6 +155,29 @@ export default {
         toast.error(res.message)
       }
     },
+    syncStatusTone(s) {
+      return { PENDING: 'default', RUNNING: 'warning', SUCCESS: 'success', FAILED: 'danger', CANCELLED: 'default' }[s] || 'default'
+    },
+    async testConnection(row) {
+      const res = await systemApi.testIntegration(row.id)
+      if (res.code === 0) toast.success(res.data?.message || '测试完成')
+      else toast.error(res.message)
+      this.load()
+    },
+    async retrySync(row) {
+      const res = await systemApi.retrySyncJob(row.id)
+      if (res.code === 0) { toast.success('已重试'); this.loadSyncJobs() }
+      else toast.error(res.message)
+    },
+    async cancelSync(row) {
+      const res = await systemApi.cancelSyncJob(row.id, { reason: '管理员在接口治理页取消' })
+      if (res.code === 0) { toast.success('已取消'); this.loadSyncJobs() }
+      else toast.error(res.message)
+    },
+    async loadSyncJobs() {
+      const res = await systemApi.listSyncJobs()
+      if (res.code === 0) this.syncJobs = res.data.list || res.data.items || []
+    },
     async load() {
       this.loading = true
       this.error = ''
@@ -139,6 +185,7 @@ export default {
       if (res.code === 0) this.rows = res.data.list || []
       else this.error = res.message
       this.loading = false
+      await this.loadSyncJobs()
     }
   }
 }

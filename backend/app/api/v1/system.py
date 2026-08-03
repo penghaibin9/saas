@@ -2247,6 +2247,41 @@ def list_operation_logs(keyword: str = "", result: str = "", action: str = "", m
     return success(_audit_page(False, keyword, result, action, module, page, page_size, date_from, date_to))
 
 
+# ── SYS-21 安全审计、敏感操作与证据 ──────────────────────────────────────────
+@router.get("/system/audit/overview", summary="安全审计首屏结论")
+def api_audit_overview(user=Depends(require_permission("systemAdmin.audit.view"))):
+    from app.services import audit_evidence_service as evid
+    return success(evid.governance_overview())
+
+
+@router.get("/system/audit/evidence", summary="证据查询（含高危动作完整性判定）")
+def api_audit_evidence(action: str = "", operator: str = "", date_from: str = "", date_to: str = "",
+                       page: int = 1, pageSize: int = 50,
+                       user=Depends(require_permission("systemAdmin.audit.view"))):
+    from app.services import audit_evidence_service as evid
+    return success(evid.get_evidence(action=action or None, operator=operator or None,
+                                     date_from=date_from or None, date_to=date_to or None,
+                                     page=page, page_size=pageSize))
+
+
+@router.post("/system/audit/evidence-pack-jobs", summary="登记证据包导出任务（范围按操作者权限收敛）")
+def api_audit_evidence_pack_create(body: dict = Body(...),
+                                   user=Depends(require_permission("systemAdmin.audit.view"))):
+    from app.services import audit_evidence_service as evid
+    out = evid.create_evidence_pack_job(user, body or {})
+    from app.services import audit_log
+    audit_log.record("AUDIT_EVIDENCE_PACK_EXPORT", f"exportJob:{out['jobId']}",
+                     detail={"reason": (body or {}).get("purpose") or "安全审计证据导出",
+                             "scopeSnapshot": out["scopeSnapshot"], "moduleCode": "systemAdmin"})
+    return success(out, message="证据包任务已登记")
+
+
+@router.get("/system/audit/evidence-pack-jobs/{job_id}", summary="查看证据包任务的范围快照")
+def api_audit_evidence_pack_get(job_id: int, user=Depends(require_permission("systemAdmin.audit.view"))):
+    from app.services import audit_evidence_service as evid
+    return success(evid.get_evidence_pack_scope(job_id))
+
+
 @router.get("/system/sensitive-logs", summary="敏感与导入导出审计")
 def list_sensitive_logs(keyword: str = "", result: str = "", page: int = 1, page_size: int = 20,
                         date_from: str = "", date_to: str = "",

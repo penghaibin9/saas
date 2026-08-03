@@ -54,6 +54,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '平台人员职责与受控协助', requiresAuth: true, permissionKey: 'platform.access.review' }
     },
     {
+      // PLAT-08：服务目录、依赖与租户影响地图
+      path: 'services',
+      name: 'platform-services',
+      component: () => import('@/modules/platform/views/control/PlatformServiceCatalogView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '服务目录、依赖与租户影响地图', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),
@@ -167,8 +174,9 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '租户生命周期看板', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.view', platformCapabilityKey: 'plt-lifecycle-board' }
     },
     {
-      path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view', platformCapabilityKey: 'plt-incidents' }
+      // PLAT-09：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/control/PlatformIncidentView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view' }
     },
     {
       path: 'tenant-transitions', name: 'platform-tenant-transitions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
@@ -187,8 +195,9 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '初始化模板', requiresAuth: true, permissionKey: 'platform.provision.template.manage', platformCapabilityKey: 'plt-init-templates' }
     },
     {
-      path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view', platformCapabilityKey: 'plt-provisioning' }
+      // PLAT-04：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/control/PlatformProvisioningView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view' }
     },
     {
       path: 'onboarding-check', name: 'platform-onboarding-check', component: () => import('@/modules/platform/views/PlatformOnboardingCheckView.vue'),
@@ -201,6 +210,13 @@ const platformRoutes = {
     {
       path: 'releases', name: 'platform-releases', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', platformCapabilityKey: 'plt-releases' }
+    },
+    {
+      // PLAT-11：卡片唯一正式路由是 /admin/platform/changes，与上面的 releases 占位页
+      // 是不同路由，不合并；变更评估/审批/排期/灰度/回滚在这里，releases 留给其它范围。
+      path: 'changes', name: 'platform-changes',
+      component: () => import('@/modules/platform/views/control/PlatformChangeView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '变更、发布、兼容性、灰度与回滚', requiresAuth: true, permissionKey: 'platform.change.manage' }
     },
     {
       path: 'support-tickets', name: 'platform-support-tickets', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),

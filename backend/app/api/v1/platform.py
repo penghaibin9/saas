@@ -660,3 +660,347 @@ def reconciliations(tenantId: int | None = Query(default=None),
                     user=Depends(require_platform_capability("commercial.view"))):
     from app.services.entitlement_reconciliation_service import list_reconciliations
     return success({"items": list_reconciliations(tenantId)})
+
+
+# ── PLAT-08 服务目录、依赖与租户影响地图 ────────────────────────────────────
+# 注：细粒度 capability（如 service.view/service.manage）需要在
+# platform_access_governance_service.py 的 DUTY_CAPABILITIES 里登记，
+# 该文件不在本卡白名单内；沿用现有 require_platform_super_admin 硬门槛，
+# 与本文件里未接入 capability 系统的大多数路由口径一致。
+
+@router.get("/services/overview", summary="服务目录治理首屏结论")
+def service_catalog_overview(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    return success(svcat.governance_overview())
+
+
+@router.post("/services/bootstrap", summary="幂等登记首版默认服务（API/PC/门户/小程序/MySQL/Redis/Worker/COS/ClamAV/短信）")
+def service_catalog_bootstrap(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    created = svcat.bootstrap_default_services()
+    _audit("PLATFORM_SERVICE_CATALOG_BOOTSTRAP", "bootstrap", {"created": created})
+    return success({"created": created}, message="默认服务已登记")
+
+
+@router.get("/services", summary="服务目录列表")
+def services_list(user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    items = svcat.list_services()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/services", summary="新建/更新服务条目")
+def services_upsert(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.upsert_service(body, expected_version=body.get("expectedVersion"))
+    _audit("PLATFORM_SERVICE_CATALOG_UPSERT", out["serviceCode"], out)
+    return success(out, message="服务条目已保存")
+
+
+@router.get("/service-dependencies", summary="服务依赖边列表")
+def service_dependencies_list(serviceCode: Optional[str] = Query(default=None),
+                              user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    items = svcat.list_dependencies(serviceCode)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/service-dependencies", summary="新增服务依赖（拒绝成环）")
+def service_dependencies_add(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.add_dependency(body.get("serviceCode"), body.get("dependsOnServiceCode"),
+                               dependency_type=body.get("dependencyType") or "HARD")
+    _audit("PLATFORM_SERVICE_DEPENDENCY_ADD", f"{out['serviceCode']}->{out['dependsOnServiceCode']}", out)
+    return success(out, message="依赖已登记")
+
+
+@router.delete("/service-dependencies/{dependency_id}", summary="删除服务依赖")
+def service_dependencies_remove(dependency_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    svcat.remove_dependency(dependency_id)
+    _audit("PLATFORM_SERVICE_DEPENDENCY_REMOVE", str(dependency_id), {})
+    return success({"dependencyId": str(dependency_id)}, message="依赖已删除")
+
+
+@router.get("/service-impact", summary="故障影响面：直接/间接受影响租户与服务")
+def service_impact(serviceCode: str = Query(...), releaseId: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import service_catalog_service as svcat
+    out = svcat.compute_service_impact(serviceCode)
+    out["releaseId"] = releaseId
+    return success(out)
+
+
+# ── PLAT-04 租户自动开通、初始化与上线验收 ───────────────────────────────────
+@router.get("/provisioning-jobs/overview", summary="开通治理首屏结论")
+def provisioning_overview(user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    return success(prov.governance_overview())
+
+
+@router.get("/provisioning-jobs", summary="开通任务列表")
+def provisioning_jobs_list(user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    items = prov.list_jobs()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/provisioning-jobs", summary="发起/续跑开通任务（按idempotencyKey幂等）")
+def provisioning_jobs_create(body: dict = Body(...),
+                             user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.start_provisioning_job(user, body)
+    _audit("PLATFORM_PROVISIONING_START", out["jobId"],
+          {"tenantCode": out["tenantCode"], "status": out["status"]})
+    return success(out, message="开通任务已受理")
+
+
+@router.get("/provisioning-jobs/{job_id}", summary="开通任务详情")
+def provisioning_job_get(job_id: int, user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    return success(prov.get_job(job_id))
+
+
+@router.post("/provisioning-jobs/{job_id}/resume", summary="续跑开通任务")
+def provisioning_job_resume(job_id: int, user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.run_provisioning_job(job_id, user=user)
+    _audit("PLATFORM_PROVISIONING_RESUME", str(job_id), {"status": out["status"]})
+    return success(out, message="已续跑")
+
+
+@router.post("/provisioning-jobs/{job_id}/retry-step", summary="重试指定失败步骤")
+def provisioning_job_retry_step(job_id: int, body: dict = Body(...),
+                                user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.retry_step(job_id, body.get("stepCode") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_RETRY_STEP", str(job_id),
+          {"stepCode": body.get("stepCode"), "status": out["status"]})
+    return success(out, message="已重试")
+
+
+@router.post("/provisioning-jobs/{job_id}/compensate", summary="对失败步骤发起补偿（高危，需理由）")
+def provisioning_job_compensate(job_id: int, body: dict = Body(...),
+                                user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.compensate_step(job_id, body.get("stepCode") or "",
+                               reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_COMPENSATE", str(job_id),
+          {"stepCode": body.get("stepCode"), "reason": body.get("reason")})
+    return success(out, message="补偿已执行")
+
+
+@router.post("/provisioning-jobs/{job_id}/flag-manual-review", summary="转人工队列（补偿也解决不了）")
+def provisioning_job_flag_manual(job_id: int, body: dict = Body(...),
+                                 user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.flag_manual_review(job_id, body.get("stepCode") or "",
+                                  reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_MANUAL_REVIEW", str(job_id),
+          {"stepCode": body.get("stepCode"), "reason": body.get("reason")})
+    return success(out, message="已转人工队列")
+
+
+@router.post("/provisioning-jobs/{job_id}/cancel", summary="取消开通任务（高危，需理由）")
+def provisioning_job_cancel(job_id: int, body: dict = Body(...),
+                            user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.cancel_job(job_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_CANCEL", str(job_id), {"reason": body.get("reason")})
+    return success(out, message="已取消")
+
+
+# ── PLAT-09 事件、状态页与统一学校通知 ───────────────────────────────────────
+@router.get("/incidents/overview", summary="事件治理首屏结论")
+def incidents_overview(user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    return success(inc.governance_overview())
+
+
+@router.get("/incidents", summary="事件列表")
+def incidents_list(status: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    items = inc.list_incidents(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/incidents", summary="创建事件（受影响租户按当前依赖图快照一次）")
+def incidents_create(body: dict = Body(...), user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.create_incident(user, body)
+    _audit("PLATFORM_INCIDENT_CREATE", out["incidentId"],
+          {"title": out["title"], "severity": out["severity"],
+           "affectedServiceCodes": out["affectedServiceCodes"]})
+    return success(out, message="事件已登记")
+
+
+@router.get("/incidents/{incident_id}", summary="事件详情（含内部时间线，仅平台侧可见）")
+def incident_get(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    return success(inc.get_incident(incident_id, include_internal=True))
+
+
+@router.get("/incidents/{incident_id}/affected-tenants", summary="受影响租户快照")
+def incident_affected_tenants(incident_id: int,
+                              user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    detail = inc.get_incident(incident_id, include_internal=False)
+    return success({"items": detail.get("affectedTenants", [])})
+
+
+@router.post("/incidents/{incident_id}/status", summary="推进事件状态（不可倒退）")
+def incident_transition(incident_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.transition_status(incident_id, body.get("status") or "", user=user)
+    _audit("PLATFORM_INCIDENT_STATUS", str(incident_id), {"status": out["status"]})
+    return success(out, message="状态已更新")
+
+
+@router.post("/incidents/{incident_id}/updates", summary="新增一条事件更新（草稿，未发布）")
+def incident_add_update(incident_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.add_update(incident_id, body, user=user)
+    _audit("PLATFORM_INCIDENT_UPDATE_DRAFT", str(incident_id), {"updateId": out["updateId"]})
+    return success(out, message="更新已保存")
+
+
+@router.post("/incidents/{incident_id}/updates/{update_id}/publish", summary="发布更新并通知受影响租户")
+def incident_publish_update(incident_id: int, update_id: int,
+                            user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.publish_update(incident_id, update_id, user=user)
+    _audit("PLATFORM_INCIDENT_PUBLISH", str(incident_id),
+          {"updateId": out["updateId"], "result": out["notificationResult"]})
+    return success(out, message="已发布通知")
+
+
+@router.post("/incidents/{incident_id}/request-problem-conversion", summary="RESOLVED事件申请转Problem")
+def incident_request_problem(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import incident_service as inc
+    out = inc.request_problem_conversion(incident_id, user=user)
+    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {})
+    return success(out, message="已登记转Problem申请")
+
+
+# ── PLAT-11 变更、发布、兼容性、灰度与回滚 ───────────────────────────────────
+@router.get("/changes/overview", summary="变更治理首屏结论")
+def changes_overview(user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    return success(chg.governance_overview())
+
+
+@router.get("/changes", summary="变更列表")
+def changes_list(status: Optional[str] = Query(default=None),
+                 user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    items = chg.list_changes(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/changes", summary="创建变更请求（DRAFT）")
+def changes_create(body: dict = Body(...), user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.create_change(user, body)
+    _audit("PLATFORM_CHANGE_CREATE", out["changeId"], {"title": out["title"], "changeType": out["changeType"]})
+    return success(out, message="变更请求已创建")
+
+
+@router.get("/changes/{change_id}", summary="变更详情")
+def change_get(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    return success(chg.get_change(change_id))
+
+
+@router.post("/changes/{change_id}/assess", summary="评估变更（计算受影响服务与租户快照）")
+def change_assess(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.assess(change_id, user=user)
+    _audit("PLATFORM_CHANGE_ASSESS", str(change_id), {"affectedTenants": len(out.get("affectedTenants", []))})
+    return success(out, message="已评估")
+
+
+@router.post("/changes/{change_id}/approve", summary="审批变更（须与发起人不同）")
+def change_approve(change_id: int, body: dict = Body(...),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.approve(change_id, user=user, reason=body.get("reason") or "")
+    _audit("PLATFORM_CHANGE_APPROVE", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已审批通过")
+
+
+@router.post("/changes/{change_id}/schedule", summary="排期（冻结窗口冲突时拒绝）")
+def change_schedule(change_id: int, body: dict | None = Body(default=None),
+                    user=Depends(require_platform_capability("operations.manage"))):
+    from datetime import datetime as _dt
+
+    from app.services import change_management_service as chg
+    payload = body if isinstance(body, dict) else {}
+    scheduled_at = _dt.fromisoformat(payload["scheduledAt"]) if payload.get("scheduledAt") else None
+    out = chg.schedule(change_id, user=user, scheduled_at=scheduled_at)
+    _audit("PLATFORM_CHANGE_SCHEDULE", str(change_id), {"scheduledAt": out["scheduledAt"]})
+    return success(out, message="已排期")
+
+
+@router.post("/changes/{change_id}/start-wave", summary="开始一个灰度批次")
+def change_start_wave(change_id: int, body: dict = Body(...),
+                      user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.start_wave(change_id, wave_no=int(body.get("waveNo") or 1),
+                         tenant_ids=body.get("tenantIds") or [], user=user)
+    _audit("PLATFORM_CHANGE_WAVE_START", str(change_id), out)
+    return success(out, message="灰度批次已开始")
+
+
+@router.post("/changes/{change_id}/waves/{wave_no}/report", summary="上报灰度批次结果（失败即停止扩展并回滚）")
+def change_wave_report(change_id: int, wave_no: int, body: dict = Body(...),
+                       user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.report_wave_result(change_id, wave_no, status=body.get("status") or "",
+                                 error=body.get("error"), user=user)
+    _audit("PLATFORM_CHANGE_WAVE_REPORT", str(change_id), out)
+    return success(out, message="已记录批次结果")
+
+
+@router.post("/changes/{change_id}/verify", summary="验证通过（全部灰度批次成功后才允许）")
+def change_verify(change_id: int, user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.verify(change_id, user=user)
+    _audit("PLATFORM_CHANGE_VERIFY", str(change_id), {})
+    return success(out, message="已验证通过")
+
+
+@router.post("/changes/{change_id}/fail", summary="标记变更失败")
+def change_fail(change_id: int, body: dict = Body(...),
+                user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    out = chg.fail(change_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_CHANGE_FAIL", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已标记失败")
+
+
+@router.post("/changes/{change_id}/rollback", summary="回滚变更（高危）")
+def change_rollback(change_id: int, body: dict = Body(...),
+                    user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.rollback(change_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_CHANGE_ROLLBACK", str(change_id), {"reason": body.get("reason")})
+    return success(out, message="已回滚")
+
+
+@router.get("/maintenance-windows", summary="平台全局冻结期列表")
+def maintenance_windows_list(user=Depends(require_platform_capability("operations.manage"))):
+    from app.services import change_management_service as chg
+    items = chg.list_maintenance_windows()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/maintenance-windows", summary="登记平台全局冻结期")
+def maintenance_windows_create(body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import change_management_service as chg
+    out = chg.upsert_maintenance_window(user, body)
+    _audit("PLATFORM_MAINTENANCE_WINDOW_CREATE", out["id"], out)
+    return success(out, message="冻结期已登记")

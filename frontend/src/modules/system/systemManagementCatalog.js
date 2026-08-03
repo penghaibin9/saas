@@ -107,6 +107,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'system.audit.operation.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
       { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
+      { key: 'sys-audit-evidence', label: '安全审计证据与完整性', path: '/admin/system/audit-evidence', permissionKey: 'systemAdmin.audit.view', view: 'audit-evidence', actions: [action('audit:evidence:export', '导出证据包', 'HIGH')] },
       {
         key: 'sys-file-storage-governance',
         label: '文件存储治理',
