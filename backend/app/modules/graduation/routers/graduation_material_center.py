@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Query
-from sqlalchemy import select
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission, require_permission
 from app.core.response import success
 from app.core.security import get_current_user
-from app.models import GraduationArchiveRecord, GraduationStudent
+from app.modules.graduation.materials import query_service as queries
 from app.modules.graduation.schemas.graduation import ReviewBody
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest
 from app.modules.graduation.services import graduation_material_catalog_service as catalog
@@ -17,7 +16,6 @@ from app.modules.graduation.services import graduation_material_center_service a
 from app.modules.graduation.services import graduation_material_delivery_service as archive_export
 from app.modules.graduation.services import graduation_material_ticket_service as tickets
 from app.services.data_exchange_job_service import create_download_ticket, revoke_export_job
-from app.services.db_service import _tid, session
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-材料版本中心"])
 
@@ -48,7 +46,7 @@ def _require_material_reviewer(user=Depends(get_current_user)):
 
 @router.get("/material-center/rules", summary="毕业设计材料规则与材料项")
 def material_rules(batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user)):
-    return success(catalog.list_rules(batch_id=batchId, user=user))
+    return success(queries.list_rules(batch_id=batchId, user=user))
 
 
 @router.post("/material-center/rules", summary="创建毕业设计材料规则新版本")
@@ -74,7 +72,63 @@ def material_overview(
     reviewStatus: str = Query(default=""), archiveStatus: str = Query(default=""),
     user=Depends(get_current_user),
 ):
-    return success(catalog.material_overview(
+    return success(queries.students(
+        user, batch_id=batchId, page=page, page_size=pageSize,
+        college_id=collegeId, major_id=majorId, class_id=classId,
+        advisor=advisor, keyword=keyword, stage=stage, material_code=materialCode,
+        missing_status=missingStatus, scan_status=scanStatus,
+        review_status=reviewStatus, archive_status=archiveStatus,
+    ))
+
+
+@router.get("/material-center/files", summary="毕业设计全部材料文件")
+def material_files(
+    batchId: int = Query(..., ge=1), page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100), collegeId: str = Query(default=""),
+    majorId: str = Query(default=""), classId: str = Query(default=""),
+    advisor: str = Query(default=""), keyword: str = Query(default=""),
+    stage: str = Query(default=""), materialCode: str = Query(default=""),
+    scanStatus: str = Query(default=""), reviewStatus: str = Query(default=""),
+    archiveStatus: str = Query(default=""), user=Depends(get_current_user),
+):
+    return success(queries.files(
+        user, batch_id=batchId, page=page, page_size=pageSize,
+        college_id=collegeId, major_id=majorId, class_id=classId,
+        advisor=advisor, keyword=keyword, stage=stage, material_code=materialCode,
+        scan_status=scanStatus, review_status=reviewStatus, archive_status=archiveStatus,
+    ))
+
+
+@router.get("/material-center/summary", summary="毕业设计材料筛选与归档汇总")
+def material_summary(
+    batchId: int = Query(..., ge=1), collegeId: str = Query(default=""),
+    majorId: str = Query(default=""), classId: str = Query(default=""),
+    advisor: str = Query(default=""), keyword: str = Query(default=""),
+    stage: str = Query(default=""), materialCode: str = Query(default=""),
+    missingStatus: str = Query(default=""), scanStatus: str = Query(default=""),
+    reviewStatus: str = Query(default=""), archiveStatus: str = Query(default=""),
+    user=Depends(get_current_user),
+):
+    return success(queries.summary(
+        user, batch_id=batchId, college_id=collegeId, major_id=majorId,
+        class_id=classId, advisor=advisor, keyword=keyword, stage=stage,
+        material_code=materialCode, missing_status=missingStatus,
+        scan_status=scanStatus, review_status=reviewStatus, archive_status=archiveStatus,
+    ))
+
+
+@router.get("/material-center/students", summary="毕业设计学生材料完整性")
+def material_students(
+    batchId: int = Query(..., ge=1), page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100), collegeId: str = Query(default=""),
+    majorId: str = Query(default=""), classId: str = Query(default=""),
+    advisor: str = Query(default=""), keyword: str = Query(default=""),
+    stage: str = Query(default=""), materialCode: str = Query(default=""),
+    missingStatus: str = Query(default=""), scanStatus: str = Query(default=""),
+    reviewStatus: str = Query(default=""), archiveStatus: str = Query(default=""),
+    user=Depends(get_current_user),
+):
+    return success(queries.students(
         user, batch_id=batchId, page=page, page_size=pageSize,
         college_id=collegeId, major_id=majorId, class_id=classId,
         advisor=advisor, keyword=keyword, stage=stage, material_code=materialCode,
@@ -99,7 +153,7 @@ def material_library(
     gd_student_id: int, includeHistory: bool = Query(default=True),
     user=Depends(get_current_user),
 ):
-    return success(catalog.student_library(gd_student_id, user, include_history=includeHistory))
+    return success(queries.student_library(gd_student_id, user, include_history=includeHistory))
 
 
 @router.post("/material-center/materials/{material_code}/submit", summary="学生提交或重交材料新版本")
@@ -139,19 +193,19 @@ def review_material_item(
 
 @router.get("/material-center/proposals/{proposal_id}/versions", summary="开题公共版本时间线")
 def proposal_versions(proposal_id: int, user=Depends(get_current_user)):
-    items = center.record_versions("PROPOSAL", proposal_id)
+    items = queries.record_versions("PROPOSAL", proposal_id, user)
     return success({"items": items, "total": len(items)})
 
 
 @router.get("/material-center/finals/{final_id}/versions", summary="成果公共版本时间线")
 def final_versions(final_id: int, user=Depends(get_current_user)):
-    items = center.record_versions("FINAL", final_id)
+    items = queries.record_versions("FINAL", final_id, user)
     return success({"items": items, "total": len(items)})
 
 
 @router.get("/material-center/templates", summary="毕业设计模板资产与版本目录")
 def template_catalog(batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user)):
-    return success(catalog.template_catalog(user, batch_id=batchId))
+    return success(queries.template_catalog(user, batch_id=batchId))
 
 
 @router.post("/material-center/templates/{template_id}/asset", summary="发布模板文件资产新版本")
@@ -178,12 +232,12 @@ def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(
 
 @router.get("/material-center/templates/{template_id}/versions", summary="模板资产版本历史")
 def template_versions(template_id: int, user=Depends(get_current_user)):
-    return success(center.template_versions(template_id))
+    return success(queries.template_versions(template_id, user))
 
 
 @router.get("/material-center/archives/{gd_student_id}/manifest", summary="毕业设计真实归档 Manifest")
 def archive_manifest(gd_student_id: int, user=Depends(get_current_user)):
-    return success(archive_export.latest_manifest(gd_student_id, user))
+    return success(queries.latest_manifest(gd_student_id, user))
 
 
 @router.post("/material-center/archives/{gd_student_id}/manifest", summary="冻结毕业设计完整真实版本 Manifest")
@@ -217,7 +271,7 @@ def create_archive_export(body: dict = Body(...), user=Depends(_require_material
 
 @router.get("/material-center/exports/{job_id}", summary="查询毕业设计归档任务")
 def archive_export_job(job_id: int, user=Depends(get_current_user)):
-    return success(archive_export.get_export_job(job_id, user))
+    return success(queries.get_export_job(job_id, user))
 
 
 @router.post("/material-center/exports/{job_id}/retry", summary="执行或重试毕业设计归档任务")
@@ -244,14 +298,7 @@ def revoke_archive_export(
 
 @router.post("/material-center/archives/{gd_student_id}/package", summary="创建单学生 ExportJob 归档包")
 def archive_package(gd_student_id: int, user=Depends(_require_material_manager)):
-    with session() as db:
-        student = db.get(GraduationStudent, int(gd_student_id))
-        if not student or student.tenant_id != _tid() or student.is_deleted:
-            raise not_found("毕业设计学生不存在")
-        batch_id = int(student.batch_id or 0)
-    job = archive_export.create_export_job(
-        batch_id=batch_id, scope_type="STUDENT", scope_value=str(gd_student_id), user=user,
-    )
+    job = archive_export.create_student_export_job(gd_student_id, user)
     return success(job, message="学生归档任务已创建")
 
 
@@ -311,7 +358,7 @@ def download_package(file_id: int, user=Depends(get_current_user)):
 # 下列同 URL 路由必须先于旧 Router 注册，使正式审核和备案直接受公共版本门禁保护。
 @router.get("/proposals/{proposal_id}", summary="开题批阅详情（含当前安全公共版本）")
 def proposal_detail(proposal_id: int, user=Depends(get_current_user)):
-    return success(center.proposal_detail(proposal_id))
+    return success(queries.proposal_detail(proposal_id, user))
 
 
 @router.post("/proposals/{proposal_id}/review", summary="批阅开题（锁定当前安全版本）")
@@ -326,7 +373,7 @@ def review_proposal(
 
 @router.get("/finals/{final_id}", summary="成果批阅详情（含当前安全公共版本）")
 def final_detail(final_id: int, user=Depends(get_current_user)):
-    return success(center.final_detail(final_id))
+    return success(queries.final_detail(final_id, user))
 
 
 @router.post("/finals/{final_id}/review", summary="批阅成果（锁定当前安全版本）")

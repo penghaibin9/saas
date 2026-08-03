@@ -359,6 +359,27 @@ def create_export_job(*, batch_id: int, scope_type: str, scope_value: str, user:
                 "studentCount": len(students), "expiresAt": _iso(row.expires_at)}
 
 
+def create_student_export_job(gd_student_id: int, user: dict) -> dict:
+    """Resolve the student batch inside the command boundary, keeping routers SQL-free."""
+    with session() as db:
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.id == int(gd_student_id),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+        )).first()
+        if not student:
+            raise not_found("毕业设计学生不存在")
+        assert_student_access(db, student, "archive.export")
+        batch_id = int(student.batch_id or 0)
+    return create_export_job(
+        batch_id=batch_id,
+        scope_type="STUDENT",
+        scope_value=str(gd_student_id),
+        user=user,
+    )
+
+
 def _job(db, job_id: int, user: dict, *, lock: bool = False) -> ExportJob:
     stmt = select(ExportJob).where(
         ExportJob.tenant_id == _tid(), ExportJob.id == int(job_id),

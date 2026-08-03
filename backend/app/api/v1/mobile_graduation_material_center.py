@@ -12,6 +12,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
+from app.modules.graduation.materials import query_service as queries
 from app.modules.graduation.services import graduation_material_catalog_service as catalog
 from app.modules.graduation.services import graduation_material_center_service as center
 from app.modules.graduation.services import graduation_material_export_service as archive_export
@@ -98,7 +99,7 @@ def material_library(
 ):
     scoped = _with_batch(user, batchId)
     target = gdStudentId if str((user or {}).get("userType") or "").upper() != "STUDENT" else None
-    return success(catalog.student_library(target, scoped, include_history=includeHistory))
+    return success(queries.student_library(target, scoped, include_history=includeHistory))
 
 
 @router.post("/material-center/materials/{material_id}/review", summary="教师小程序审核或退回具体版本")
@@ -119,7 +120,7 @@ def material_manifest(
     batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user),
 ):
     scoped = _with_batch(user, batchId)
-    return success(archive_export.latest_manifest(_current_student_id(scoped), scoped))
+    return success(queries.latest_manifest(_current_student_id(scoped), scoped))
 
 
 @router.post("/material-center/files/{file_id}/ticket", summary="签发小型材料预览/下载票据")

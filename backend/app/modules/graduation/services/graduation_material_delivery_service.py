@@ -13,5 +13,6 @@ def freeze_manifest(gd_student_id: int, archive_batch_no: str, user: dict) -> di
 latest_manifest = exports.latest_manifest
 revoke_manifest = exports.revoke_manifest
 create_export_job = exports.create_export_job
+create_student_export_job = exports.create_student_export_job
 get_export_job = exports.get_export_job
 run_export_job = exports.run_export_job
