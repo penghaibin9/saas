@@ -34,6 +34,8 @@ def enqueue(todo_type: str, row_id: int, stage: str, exc: Exception | None = Non
     from app.models import AffairsRepairJob
 
     now = datetime.utcnow()
+    # MySQL DATETIME precision and small clock skew must not delay a job declared runnable now.
+    run_at = now - timedelta(seconds=1)
     dedup_key = _key(todo_type, row_id, stage)
     try:
         with session() as db:
@@ -48,7 +50,7 @@ def enqueue(todo_type: str, row_id: int, stage: str, exc: Exception | None = Non
                     row.source_row_id = int(row_id)
                     row.stage = str(stage)
                     row.state = "PENDING"
-                    row.next_run_at = now
+                    row.next_run_at = run_at
                     row.lease_owner = None
                     row.lease_until = None
                     row.last_error = type(exc).__name__ if exc else None
@@ -58,7 +60,7 @@ def enqueue(todo_type: str, row_id: int, stage: str, exc: Exception | None = Non
             db.add(AffairsRepairJob(
                 tenant_id=_tid(), dedup_key=dedup_key,
                 todo_type=str(todo_type), source_row_id=int(row_id), stage=str(stage),
-                state="PENDING", attempts=0, next_run_at=now,
+                state="PENDING", attempts=0, next_run_at=run_at,
                 last_error=type(exc).__name__ if exc else None,
                 payload_json={"todoType": str(todo_type), "rowId": int(row_id), "stage": str(stage)},
             ))
