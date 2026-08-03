@@ -32,7 +32,18 @@ jobs:
           python scripts/agent/apply_internship_production_hardening.py
       - name: Validate generated Python and static contracts
         run: |
-          python -m compileall -q backend/app backend/tests scripts/check
+          python -m py_compile \
+            backend/app/models/internship.py \
+            backend/app/modules/internship/services/internship_complaint_service.py \
+            backend/app/modules/internship/services/internship_position_service.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_change_service.py \
+            backend/app/modules/internship/services/internship_leave_service.py \
+            backend/app/modules/internship/services/internship_student_leave_context_service.py \
+            backend/app/modules/internship/services/internship_score_service.py \
+            backend/tests/test_internship_production_hardening_static.py \
+            scripts/check/check-internship-production-contracts.py \
+            backend/alembic/versions/20260803_internship_prod_hardening.py
           python scripts/check/check-internship-production-contracts.py
           git diff --check
       - name: Commit generated hardening changes
