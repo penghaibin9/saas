@@ -21,6 +21,7 @@ _MATERIAL_PATHS = {
     "/api/v1/mobile/graduation/proposal",
     "/api/v1/mobile/graduation/final",
 }
+_LEGACY_OPTIONAL_ARCHIVE_CODES = {"GUIDANCE_RECORD", "PLAGIARISM_REPORT"}
 
 
 def _ensure_batch_rule(batch_id, *, make_running: bool = False) -> None:
@@ -68,7 +69,10 @@ def _ensure_batch_rule(batch_id, *, make_running: bool = False) -> None:
                 archive_required=True,
                 sensitivity_level="SENSITIVE",
                 applicable_scope_json={"batchId": str(bid)},
-                required_items_json=[row["materialCode"] for row in definitions if row.get("required")],
+                required_items_json=[
+                    row["materialCode"] for row in definitions
+                    if row.get("required") and row["materialCode"] not in _LEGACY_OPTIONAL_ARCHIVE_CODES
+                ],
                 allowed_ext_json=sorted({
                     str(ext).lower().lstrip(".")
                     for row in definitions for ext in (row.get("allowedExtensions") or [])
@@ -80,14 +84,15 @@ def _ensure_batch_rule(batch_id, *, make_running: bool = False) -> None:
             db.add(rule)
             db.flush()
             for sort_no, raw in enumerate(definitions, start=1):
+                code = str(raw.get("materialCode") or "").upper()
                 db.add(GraduationMaterialItem(
                     tenant_id=MAIN_TENANT_ID,
                     rule_id=int(rule.id),
                     biz_stage=str(raw.get("stage") or raw.get("bizStage") or "").upper(),
-                    material_code=str(raw.get("materialCode") or "").upper(),
+                    material_code=code,
                     material_name=str(raw.get("materialName") or ""),
                     owner_role=str(raw.get("ownerRole") or "STUDENT").upper(),
-                    required=bool(raw.get("required", False)),
+                    required=bool(raw.get("required", False)) and code not in _LEGACY_OPTIONAL_ARCHIVE_CODES,
                     allowed_ext_json=sorted({
                         str(ext).lower().lstrip(".") for ext in (raw.get("allowedExtensions") or [])
                     }),
