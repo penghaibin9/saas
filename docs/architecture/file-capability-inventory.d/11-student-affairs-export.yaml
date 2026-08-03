@@ -19,5 +19,5 @@ entries:
     archive: false
     status: active
     risk: P0
-    targetPhase: '11'
+    targetPhase: '10'
     notes: Web请求只创建导出任务；worker按冻结筛选与数据范围分页读取并流式生成XLSX，记录进度、行数、SHA-256、有效期、取消和失败重试，下载继续执行任务归属与一次性票据校验。
