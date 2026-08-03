@@ -47,6 +47,17 @@ jobs:
           grep -R -n --exclude-dir=.git --exclude='*.pyc' 'file-object:' backend/app | head -80 || true
           echo '=== router guard installs ==='
           grep -n 'install_.*guard\|install_affairs_operations' backend/app/api/v1/router.py || true
+      - name: Inspect exact route registrations
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import inspect
+          from app.main import app
+          for index, route in enumerate(app.routes):
+              if getattr(route, 'path', None) == '/api/v1/mobile/teacher/graduation':
+                  endpoint = getattr(route, 'endpoint', None)
+                  print('ROUTE_MATCH', index, endpoint.__module__, endpoint.__name__, inspect.signature(endpoint), flush=True)
+          PY
       - name: Print teacher graduation error payload
         working-directory: backend
         run: |
