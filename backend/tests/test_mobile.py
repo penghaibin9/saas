@@ -265,10 +265,28 @@ def test_teacher_student_detail_cross_tenant_not_found(client, db_mode):
 
 def test_teacher_domain_pages_structure(client, db_mode):
     _seed_rich(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationBatch
+
+    db = get_sessionmaker()()
+    try:
+        batch = GraduationBatch(
+            tenant_id=MAIN, batch_name="移动端结构测试批次", batch_no="MOBILE-STRUCTURE-001",
+            planned_count=2, status="RUNNING", archive_status="NOT_ARCHIVED",
+        )
+        db.add(batch)
+        db.flush()
+        batch_id = int(batch.id)
+        db.commit()
+    finally:
+        db.close()
+
     admin_headers = _teacher_token(role="SCHOOL_ADMIN")
     it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
     assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
-    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_headers).json()
+    gd = client.get(
+        "/api/v1/mobile/teacher/graduation", headers=admin_headers, params={"batchId": batch_id}
+    ).json()
     assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
     em = client.get("/api/v1/mobile/teacher/employment", headers=admin_headers).json()
     assert em["code"] == 0 and "students" in em["data"] and "jobPool" in em["data"]

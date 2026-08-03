@@ -40,9 +40,12 @@ def test_disbursement_statistics_follow_student_scope():
     assert "StudentProfile.tenant_id == _tid()" in text
 
 
-def test_router_installs_batch_guard_before_archive_and_stats():
+def test_router_installs_batch_guard_before_stats_and_archive_is_direct_service():
     source = read("backend/app/api/v1/router.py")
+    archive = read("backend/app/services/affairs_archive_service.py")
     batch = source.index("install_batch_job_guard()")
-    archive = source.index("install_archive_guard()")
     stats = source.index("install_stats_integrity_guard()")
-    assert batch < archive < stats
+    assert batch < stats
+    assert "install_archive_guard()" not in source
+    assert "不再由 guard monkey-patch" in archive
+    assert "def collect(" in archive and "def advance(" in archive

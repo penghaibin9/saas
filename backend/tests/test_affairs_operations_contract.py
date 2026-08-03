@@ -14,6 +14,8 @@ def test_operations_python_sources_are_parseable():
         "backend/app/models/affairs_operations.py",
         "backend/app/services/affairs_operations_service.py",
         "backend/app/services/affairs_operations_final_guard.py",
+        "backend/app/modules/student_affairs/services/affairs_material_center_service.py",
+        "backend/app/services/file_access_resolvers.py",
         "backend/app/api/v1/affairs_operations_api.py",
         "backend/alembic/versions/0127_affairs_material_batch_ops.py",
     ):
@@ -39,17 +41,22 @@ def test_material_and_batch_schema_is_persistent_and_on_single_chain():
 
 
 def test_material_supplement_is_versioned_and_object_scoped():
-    service = _read("backend/app/services/affairs_operations_service.py")
+    legacy = _read("backend/app/services/affairs_operations_service.py")
+    center = _read("backend/app/modules/student_affairs/services/affairs_material_center_service.py")
     guard = _read("backend/app/services/affairs_operations_final_guard.py")
+    resolvers = _read("backend/app/services/file_access_resolvers.py")
 
-    assert 'latest.status = "SUPERSEDED"' in service
-    assert "version_no = int(latest.version_no if latest else 0) + 1" in service
-    assert 'file.biz_type = "MATERIAL_REQUIREMENT"' in service
-    assert 'file.visibility = "STUDENT_SELF"' in service
-    assert "只能提交本人上传的文件" in service
-    assert "operations._require_student_scope" in guard
-    assert "MATERIAL_REQUIREMENT" in guard
-    assert "文件授权必须 fail-closed" in guard
+    assert 'latest.status = "SUPERSEDED"' in legacy
+    assert "version_no = int(latest.version_no if latest else 0) + 1" in legacy
+    assert 'file.biz_type = "MATERIAL_REQUIREMENT"' in legacy
+    assert 'file.visibility = "STUDENT_SELF"' in legacy
+    assert "只能提交本人上传的文件" in legacy
+    assert "FileAsset" in center and "FileVersion" in center and "FileBinding" in center
+    assert "_require_file_ready(file_obj)" in center
+    assert '@register_file_resolver("MATERIAL_REQUIREMENT")' in resolvers
+    assert "center._has_biz_permission" in resolvers
+    assert "center._require_student_scope" in resolvers
+    assert "MATERIAL_REQUIREMENT 已由 resolver registry 授权" in guard
     assert "row.current_submission_id = None" in guard
 
 
@@ -111,12 +118,15 @@ def test_dorm_exception_returns_risk_responsibility_and_actions_without_auto_clo
     assert "risk_service.close" not in service
 
 
-def test_install_order_preserves_student_contract_security_and_final_file_guard():
+def test_router_mounts_authoritative_material_center_before_legacy_operations_api():
     router = _read("backend/app/api/v1/router.py")
+    api = _read("backend/app/api/v1/affairs_operations_api.py")
+    mount_block = router.split("for supplemental_router in (", 1)[1].split("):", 1)[0]
 
-    assert router.index("install_student_contract_security_guard()") < router.index("install_affairs_operations()")
-    assert router.index("install_affairs_operations()") < router.index("install_affairs_operations_final_guard()")
-    assert "affairs_operations_router" in router
+    assert mount_block.index("affairs_material_center_router") < mount_block.index("affairs_operations_router")
+    assert "affairs_material_center_service as operations" in api
+    assert "install_affairs_operations()" not in router
+    assert "install_affairs_operations_final_guard()" not in router
 
 
 def test_student_portal_has_real_material_upload_versions_and_notice_deep_link():
@@ -146,7 +156,8 @@ def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():
     assert "reviewRequirement" in api
     assert "createBatchJob" in api
     assert "retryFailed" in api
-    assert "逐条校验权限、范围、状态和版本" in page
+    assert "后端先按业务权限、班级/学院范围与强敏感逐生授权过滤" in page
+    assert "row.allowedActions" in page and "row.version" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "/admin/student-affairs/material-operations" in routes
 
@@ -182,7 +193,6 @@ def test_teacher_miniapp_has_inline_review_safe_batch_and_todo_focus():
     assert "逐条校验权限、范围、状态和版本" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "重试失败项" in page
-    # 复用已注册的学工首页，不为本轮新增 pages.json 路由，降低小程序页面清单变更风险。
     assert "pages/student/affairs/index" in _read("miniapp/src/pages.json")
     assert "pages/teacher/affairs/index" in _read("miniapp/src/pages.json")
 

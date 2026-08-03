@@ -272,15 +272,17 @@ async function inspectFunctionalFlows(page) {
 
   await page.goto(`${baseUrl}/academic/grades`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const purple = page.locator('.sp-theme__item[title="科技紫"]')
-  await purple.click()
+  await setTheme(page, 'purple')
   await page.reload({ waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const persistedTheme = await page.evaluate(() => document.documentElement.dataset.spTheme || '')
+  const persistedTheme = await page.evaluate(() => ({
+    dataset: document.documentElement.dataset.spTheme || '',
+    storage: localStorage.getItem('student-portal-theme') || ''
+  }))
   report.functionalChecks.push({
-    name: '主题切换后刷新保持',
-    passed: persistedTheme === 'purple',
-    actual: { persistedTheme },
+    name: '主题设置刷新后保持',
+    passed: persistedTheme.dataset === 'purple' && persistedTheme.storage === 'purple',
+    actual: persistedTheme,
     screenshot: await capture(page, outputDir, 'functional-theme-persistence', false)
   })
   await setTheme(page, 'blue')

@@ -21,6 +21,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import GraduationBatch, GraduationStudent
 from app.models.data_exchange import ExportJob
 from app.models.file import ArchiveManifest, ArchiveManifestItem, FileObject
+from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
 from app.services.file_content_security import sanitize_filename
@@ -30,7 +31,6 @@ from app.services.storage import get_backend
 
 from .definitions import MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE
 from .query_service import student_scope_predicate
-from .rule_service import active_rule, rule_items
 
 
 EXPORT_TTL_HOURS = 24
@@ -201,6 +201,37 @@ def _latest_manifests(db, students: list[GraduationStudent]) -> list[tuple[Gradu
     return [(student, by_student[str(student.id)]) for student in students]
 
 
+def _frozen_rule_names(db, pairs: list[tuple[GraduationStudent, ArchiveManifest]]) -> dict[int, dict[str, str]]:
+    cache: dict[tuple[int, str, int], dict[str, str]] = {}
+    result: dict[int, dict[str, str]] = {}
+    for student, manifest in pairs:
+        raw = str(manifest.rule_version or "")
+        rule_code, separator, version_text = raw.rpartition(":v")
+        if not separator or not version_text.isdigit():
+            raise AppException("DATA_CONFLICT", f"Manifest {manifest.id} 缺少可解析的冻结规则版本")
+        key = (int(student.batch_id or 0), rule_code, int(version_text))
+        if key not in cache:
+            rule = db.scalars(select(GraduationMaterialRule).where(
+                GraduationMaterialRule.tenant_id == _tid(),
+                GraduationMaterialRule.batch_id == key[0],
+                GraduationMaterialRule.rule_code == key[1],
+                GraduationMaterialRule.rule_version == key[2],
+                GraduationMaterialRule.is_deleted.is_(False),
+            )).first()
+            if not rule:
+                raise AppException("DATA_CONFLICT", f"Manifest {manifest.id} 的冻结规则已缺失")
+            cache[key] = {
+                item.material_code: item.material_name
+                for item in db.scalars(select(GraduationMaterialItem).where(
+                    GraduationMaterialItem.tenant_id == _tid(),
+                    GraduationMaterialItem.rule_id == int(rule.id),
+                    GraduationMaterialItem.is_deleted.is_(False),
+                )).all()
+            }
+        result[int(manifest.id)] = cache[key]
+    return result
+
+
 def _write_xlsx(path: Path, rows: list[dict]) -> None:
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("毕业设计档案清单")
@@ -244,8 +275,7 @@ def run_export_job(job_id: int, user: dict) -> dict:
                 FileObject.id.in_({int(item.file_object_id) for item in items} or {-1}),
                 FileObject.status == "AVAILABLE", FileObject.is_deleted.is_(False),
             )).all()}
-            rule = active_rule(db, int(snapshot.get("batchId")))
-            names = {item.material_code: item.material_name for item in rule_items(db, int(rule.id))}
+            names_by_manifest = _frozen_rule_names(db, pairs)
             manifests = {int(manifest.id): (student, manifest) for student, manifest in pairs}
             batch = db.get(GraduationBatch, int(snapshot.get("batchId")))
             backend = get_backend()
@@ -286,7 +316,8 @@ def run_export_job(job_id: int, user: dict) -> dict:
                         "college": student.college_id or "", "major": student.major_id or "",
                         "class": student.class_name or student.class_id or "", "studentNo": student.student_no or "",
                         "studentName": student.name, "advisor": student.advisor_name or "", "topic": student.topic_title or "",
-                        "materialCode": item.material_code, "materialName": names.get(item.material_code, item.material_code),
+                        "materialCode": item.material_code,
+                        "materialName": names_by_manifest[int(manifest.id)].get(item.material_code, item.material_code),
                         "fileName": item.file_name_snapshot, "fileVersion": str(item.version_id),
                         "fileSize": int(item.size_snapshot or 0), "sha256": item.sha256_snapshot,
                         "scanStatus": item.scan_result, "reviewStatus": item.review_status or "",

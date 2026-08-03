@@ -80,24 +80,27 @@ def test_archive_generate_blocks_submit_until_complete_then_files(graduation_cli
 def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode):
     from datetime import datetime
     from app.db.session import get_sessionmaker
-    from app.models import (FileObject, GraduationDefenseScore, GraduationFinal, GraduationGrade,
+    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
                             GraduationMidterm, GraduationProposal, GraduationReview,
                             GraduationStudent, GraduationTaskBook, PortalSignRecord)
     h = auth_headers
     gid = _gd_student(graduation_client, h, "AR-COMPLETE-01", "完整归档测试生")
+    uploaded = graduation_client.post(
+        "/api/v1/files", headers=h,
+        files={"file": (
+            "final.pdf", b"%PDF-1.4 graduation final document",
+            "application/pdf",
+        )},
+        params={"bizType": "GRADUATION_FINAL", "bizId": str(gid)},
+    ).json()
+    assert uploaded["code"] == 0, uploaded
+    file_id = int(uploaded["data"]["fileId"])
+
     db = get_sessionmaker()()
-    file_obj = FileObject(
-        tenant_id=1000000000000000001, file_key=f"test/final-{gid}.docx",
-        file_name="final.docx", ext="docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        size_bytes=128, sha256=f"{int(gid):064x}"[-64:], biz_type="GRADUATION_FINAL", biz_id=str(gid),
-        visibility="BIZ_SCOPED", status="AVAILABLE",
-    )
-    db.add(file_obj)
-    db.flush()
     final = GraduationFinal(
         tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
         version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
-        plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_obj.id)],
+        plagiarism_status="已检测", status="APPROVED", attachments_json=[str(file_id)],
     )
     db.add(final)
     db.flush()

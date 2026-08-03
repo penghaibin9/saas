@@ -1,6 +1,6 @@
 """13A-P6 学工归档 · 端到端（真实 DB 模式）。
 
-批次→收集真实档案包→逐级流转→ARCHIVED，并登记真实归档清单导出任务。
+批次→收集真实档案包→逐级流转→ARCHIVED，并登记公共文件对象承载的归档清单导出任务。
 """
 from __future__ import annotations
 
@@ -82,6 +82,8 @@ def test_archive_full_flow(client, db_mode):
 
     from app.db.session import get_sessionmaker
     from app.models import ExportTask
+    from app.models.file import FileObject
+
     db = get_sessionmaker()()
     task = db.query(ExportTask).filter_by(
         module_code="student-affairs", export_mode="ARCHIVE_MANIFEST",
@@ -89,7 +91,13 @@ def test_archive_full_flow(client, db_mode):
     assert task.status == "SUCCESS"
     assert task.row_count == 2
     assert task.file_hash and len(task.file_hash) == 64
-    assert task.remark and task.remark.endswith(".xlsx")
+    assert task.remark and task.remark.startswith("file-object:")
+    file_id = int(task.remark.split(":", 1)[1])
+    file_obj = db.get(FileObject, file_id)
+    assert file_obj is not None
+    assert file_obj.file_name.endswith(".xlsx")
+    assert file_obj.biz_type == "AFFAIRS_ARCHIVE_MANIFEST"
+    assert file_obj.sha256 == task.file_hash
     db.close()
 
 
