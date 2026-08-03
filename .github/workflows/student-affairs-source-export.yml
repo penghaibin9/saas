@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - audit/student-affairs-p0-p1-closeout-20260803
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
