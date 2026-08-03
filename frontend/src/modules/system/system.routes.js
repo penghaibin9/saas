@@ -119,9 +119,11 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.migration.view' }
     },
     {
+      // SYS-02：唯一正式实施入口。项目阶段/未确认政策/未安装对象/上线阻断/验收证据
+      // 收在这一个工作区里；下面的分步页面保留为作业入口，不再各自当总览。
       path: 'implementation/overview', name: 'system-implementation-overview',
-      component: () => import('@/modules/system/views/SystemImplementationView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '实施总览', requiresAuth: true, permissionKey: 'systemAdmin.implementation.view', implementationPageKey: 'overview' }
+      component: () => import('@/modules/system/views/SystemImplementationWorkspaceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '实施项目工作区', requiresAuth: true, permissionKey: 'systemAdmin.implementation.view', implementationPageKey: 'overview' }
     },
     {
       path: 'implementation/wizard', name: 'system-implementation-wizard',
