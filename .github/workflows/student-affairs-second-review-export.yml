@@ -1,9 +1,9 @@
 name: Student Affairs Second Review Export
 
 on:
-  push:
+  pull_request:
     branches:
-      - audit/student-affairs-p0-p1-closeout-20260803
+      - main
     paths:
       - .github/workflows/student-affairs-second-review-export.yml
   workflow_dispatch:
