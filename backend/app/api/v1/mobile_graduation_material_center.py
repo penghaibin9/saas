@@ -11,7 +11,7 @@ from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import require_module
 from app.core.response import success
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_staff
 from app.modules.graduation.materials import command_service as commands
 from app.modules.graduation.materials import access_service as tickets
 from app.modules.graduation.materials import query_service as queries
@@ -89,7 +89,7 @@ def material_library(
 
 @router.post("/material-center/materials/{material_id}/review", summary="教师小程序审核或退回具体版本")
 def review_material(
-    material_id: int, body: dict = Body(...), user=Depends(get_current_user),
+    material_id: int, body: dict = Body(...), user=Depends(require_staff),
 ):
     version_id = (body or {}).get("fileVersionId") or (body or {}).get("versionId")
     if not str(version_id or "").isdigit():

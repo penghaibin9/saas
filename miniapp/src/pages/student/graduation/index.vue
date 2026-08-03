@@ -67,7 +67,7 @@
             <textarea class="gd__reason" v-model="propForm.outcome" :maxlength="2000" placeholder="预期成果（选填）" placeholder-class="wr__ph" />
             <view class="gd__atts">
               <text v-for="(a, i) in propAtts" :key="a.fileId" class="gd__att gd__att--pending">📎 {{ a.fileName }}<text class="gd__att-x" @click.stop="removeAtt('prop', i)"> ×</text></text>
-              <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('prop')">{{ uploading ? '上传中…' : '+ 添加附件' }}</button>
+              <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('prop')">{{ uploading ? '上传中…' : (propAtts.length ? '更换开题主文档' : '+ 上传开题主文档') }}</button>
             </view>
             <button class="btn btn-primary" :disabled="!propForm.background.trim() || !propForm.plan.trim() || proposalSubmitting" @click="submitProposal">
               {{ proposalSubmitting ? '提交中…' : '提交开题报告' }}
@@ -116,7 +116,7 @@
           <text class="gd__hint">{{ final.hint }}</text>
           <view v-if="final.canSubmitDraft || final.canSubmitFinal" class="gd__atts">
             <text v-for="(a, i) in finalAtts" :key="a.fileId" class="gd__att gd__att--pending">📎 {{ a.fileName }}<text class="gd__att-x" @click.stop="removeAtt('final', i)"> ×</text></text>
-            <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('final')">{{ uploading ? '上传中…' : '+ 添加论文附件' }}</button>
+            <button class="btn btn-ghost gd__att-add" :disabled="uploading" @click="pickUpload('final')">{{ uploading ? '上传中…' : (finalAtts.length ? '更换论文主文档' : '+ 上传论文主文档') }}</button>
           </view>
           <button v-if="final.canSubmitDraft" class="btn btn-primary" :disabled="finalSubmitting || !finalAtts.length" @click="submitFinal('初稿')">
             {{ finalSubmitting ? '提交中…' : '提交论文初稿' }}
@@ -420,7 +420,9 @@ export default {
         const selected = await fileSdk.choose()
         if (!selected) return
         const uploaded = await fileSdk.upload(selected, { bizType: 'GRADUATION_MATERIAL' })
-        this[arr].push({ fileId: uploaded.fileId, fileName: uploaded.fileName || selected.name || '附件' })
+        this[arr].splice(0, this[arr].length, {
+          fileId: uploaded.fileId, fileName: uploaded.fileName || selected.name || '主文档'
+        })
       } catch (e) { toast(normalizeError(e).text || '上传失败') }
       finally { this.uploading = false }
     },

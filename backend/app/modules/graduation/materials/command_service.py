@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent, GraduationTemplate
 from app.models.file import ArchiveManifest, FileAsset, FileBinding, FileObject, FileVersion
 from app.models.graduation_material import (
@@ -17,6 +18,8 @@ from app.models.graduation_material import (
 )
 from app.services.db_service import _iso, _tid, session
 from app.services.file_access_service import require_file_access
+from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
 from app.services.file_scan_service import assert_file_ready_for_business
 from app.services.message_identity import resolve_message_user_id
 
@@ -35,6 +38,38 @@ _OWNER_ROLES = {
     },
     "SYSTEM": {"SYSTEM"},
 }
+
+
+_REVIEW_PERMISSION_BY_CODE = {
+    "TOPIC_ATTACHMENT": "graduationDesign.topic.review",
+    "TASKBOOK": "graduationDesign.taskbook.update",
+    "PROPOSAL_REPORT": "graduationDesign.proposal.review",
+    "PROPOSAL_DEFENSE": "graduationDesign.proposal.review",
+    "MIDTERM_REPORT": "graduationDesign.midterm.review",
+    "THESIS_DRAFT": "graduationDesign.final.review",
+    "THESIS_FINAL": "graduationDesign.final.review",
+    "DESIGN_WORK": "graduationDesign.final.review",
+    "SOURCE_CODE": "graduationDesign.final.review",
+    "WORK_DESCRIPTION": "graduationDesign.final.review",
+    "PLAGIARISM_REPORT": "graduationDesign.plagiarism.result",
+    "REVIEW_ATTACHMENT": "graduationDesign.review.submit",
+    "DEFENSE_SIGNED_SHEET": "graduationDesign.defense.scoreConfirm",
+}
+
+
+def review_permission_code(material_code: str) -> str:
+    code = _REVIEW_PERMISSION_BY_CODE.get(str(material_code or "").strip().upper())
+    if not code:
+        raise AppException("NO_PERMISSION", "该材料未配置审核动作权限，系统已拒绝操作", http_status=403)
+    return code
+
+
+def _enforce_review_permission(user: dict, material_code: str) -> str:
+    if str((user or {}).get("userType") or "").strip().upper() == "STUDENT":
+        raise AppException("NO_PERMISSION", "学生不能审核毕业设计材料", http_status=403)
+    code = review_permission_code(material_code)
+    enforce_permission(user or {}, code)
+    return code
 
 
 def _actor_id(user: dict | None) -> int | None:
@@ -255,6 +290,18 @@ def _validate_file(item: GraduationMaterialItem, file_obj: FileObject) -> None:
         raise AppException("FILE_TOO_LARGE", f"{item.material_name} 超过允许大小")
 
 
+def _assert_locked_file_ready(item: GraduationMaterialItem, file_obj: FileObject, user: dict) -> None:
+    """Re-check authorization and immutable security facts after SELECT ... FOR UPDATE."""
+    _validate_file(item, file_obj)
+    require_file_access(str(file_obj.id), user=user, action="bind")
+    scan = str(file_obj.scan_status or SCAN_NOT_REQUIRED).upper()
+    if not is_downloadable_status(file_obj.status) or scan not in READY_SCAN_STATES:
+        raise AppException("FILE_NOT_READY", "文件安全状态已变化，请重新上传或等待扫描完成", http_status=409)
+    digest = str(file_obj.sha256 or "")
+    if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+        raise AppException("FILE_HASH_MISSING", "文件缺少可信 SHA-256，禁止登记材料版本", http_status=409)
+
+
 def _ensure_asset(db, student: GraduationStudent, material: GraduationStudentMaterial, user: dict) -> FileAsset:
     code = f"GD:{_tid()}:{student.id}:{material.material_code}"
     row = db.scalars(select(FileAsset).where(
@@ -427,7 +474,7 @@ def submit_material(user: dict, material_code: str, file_id: int, *, gd_student_
         ).with_for_update()).first()
         if not file_obj:
             raise not_found("文件不存在")
-        _validate_file(item, file_obj)
+        _assert_locked_file_ready(item, file_obj, user)
         version = _append_version(
             db, student, material, item, file_obj, user, source_channel=source_channel,
             source_record_type=source_record_type, source_record_id=source_record_id, comment=comment,
@@ -493,7 +540,7 @@ def submit_material_in_session(
     ).with_for_update()).first()
     if not file_obj:
         raise not_found("文件不存在")
-    _validate_file(item, file_obj)
+    _assert_locked_file_ready(item, file_obj, user)
     version = _append_version(
         db, student, material, item, file_obj, user, source_channel=source_channel,
         source_record_type=source_record_type, source_record_id=source_record_id, comment=comment,
@@ -528,6 +575,7 @@ def review_material(material_id: int, expected_file_version_id: int, action: str
         assert_student_access(db, student, "material.review")
         _assert_not_archived(db, student)
         _, item = rule_item(db, int(student.batch_id), material.material_code, lock=True)
+        _enforce_review_permission(user, material.material_code)
         if not item.review_required:
             raise AppException("DATA_CONFLICT", "该材料按批次规则无需人工审核")
         if int(material.version or 0) != int(expected_version):
@@ -606,6 +654,7 @@ def review_material_in_session(
     assert_student_access(db, student, "material.review")
     _assert_not_archived(db, student)
     _, item = rule_item(db, int(student.batch_id), material.material_code, lock=True)
+    _enforce_review_permission(user, material.material_code)
     if not item.review_required:
         raise AppException("DATA_CONFLICT", "该材料按批次规则无需人工审核")
     if int(material.version or 0) != int(expected_version):
@@ -694,11 +743,20 @@ def register_generated_snapshot(
                 GraduationStudentMaterial.material_code == item.material_code,
                 GraduationStudentMaterial.is_deleted.is_(False),
             ).with_for_update()).first()
+        current_version = db.scalars(select(FileVersion).where(
+            FileVersion.tenant_id == _tid(), FileVersion.id == int(material.current_version_id or 0),
+            FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
+        ).with_for_update()).first()
         current_binding = db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == _tid(), FileBinding.version_id == int(material.current_version_id or 0),
             FileBinding.module_code == MODULE_CODE, FileBinding.is_current.is_(True),
             FileBinding.is_deleted.is_(False),
         ).with_for_update()).first()
+        if current_version and str(current_version.source_channel or "").upper() != "SYSTEM_GENERATED":
+            return {
+                "status": "PRESERVED_UPLOAD", "materialId": str(material.id),
+                "fileVersionId": str(material.current_version_id),
+            }
         if current_binding and (current_binding.scope_json or {}).get("sourceDataHash") == source_data_hash:
             return {
                 "status": "UNCHANGED", "materialId": str(material.id),
@@ -710,7 +768,7 @@ def register_generated_snapshot(
         ).with_for_update()).first()
         if not file_obj:
             raise not_found("结构化快照文件不存在")
-        _validate_file(item, file_obj)
+        _assert_locked_file_ready(item, file_obj, user)
         version = _append_version(
             db, student, material, item, file_obj, user,
             source_channel="SYSTEM_GENERATED", source_record_type=source_record_type,
@@ -753,7 +811,7 @@ def adopt_legacy_file_in_session(
     file_obj = db.scalars(select(FileObject).where(
         FileObject.tenant_id == _tid(), FileObject.id == int(file_id),
         FileObject.is_deleted.is_(False),
-    )).first()
+    ).with_for_update()).first()
     if not file_obj:
         raise not_found("历史附件文件不存在")
     if material.asset_id:
@@ -763,8 +821,7 @@ def adopt_legacy_file_in_session(
         )).first()
         if existing:
             return {"status": "SKIPPED", "reason": "ALREADY_BOUND", "fileVersionId": str(existing.id)}
-    _validate_file(item, file_obj)
-    assert_file_ready_for_business(str(file_obj.id), user=user)
+    _assert_locked_file_ready(item, file_obj, user)
     version = _append_version(
         db, student, material, item, file_obj, user,
         source_channel="BACKFILL", source_record_type=source_record_type,

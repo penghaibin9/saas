@@ -167,6 +167,11 @@ GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     **_group("graduationDesign.audit.view", "audit_logs"),
 }
 
+GRADUATION_DYNAMIC_PERMISSION_ENDPOINTS = {
+    "graduation_material_center.review_material_item",
+}
+
+
 GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_batch.batch_archive": "graduationDesign.batch.archive",
     "graduation_student.batch_archive": "graduationDesign.student.manage",
@@ -175,6 +180,7 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_material_center.material_rules": "graduationDesign.student.view",
     "graduation_material_center.create_material_rule": "graduationDesign.student.manage",
     "graduation_material_center.activate_material_rule": "graduationDesign.student.manage",
+    "graduation_material_center.material_rule_impact": "graduationDesign.student.manage",
     "graduation_material_center.material_overview": "graduationDesign.student.view",
     "graduation_material_center.material_files": "graduationDesign.student.view",
     "graduation_material_center.material_summary": "graduationDesign.student.view",
@@ -182,7 +188,6 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_material_center.backfill_materials": "graduationDesign.student.manage",
     "graduation_material_center.material_library": "graduationDesign.student.view",
     "graduation_material_center.submit_material": "graduationDesign.student.manage",
-    "graduation_material_center.review_material_item": "graduationDesign.review.submit",
     "graduation_material_center.proposal_versions": "graduationDesign.proposal.view",
     "graduation_material_center.final_versions": "graduationDesign.final.view",
     "graduation_material_center.template_catalog": "graduationDesign.template.view",
@@ -349,6 +354,12 @@ def require_graduation_request_permission(
     if role == "GD_MAJOR_ADMIN" and not is_context:
         if not (user.get("majorId") or user.get("majorIds")):
             raise no_permission("缺少专业数据范围（majorId），请配置后重新登录。")
+
+    module_name = getattr(endpoint, "__module__", "").rsplit(".", 1)[-1]
+    qualified_name = f"{module_name}.{endpoint_name}"
+    if qualified_name in GRADUATION_DYNAMIC_PERMISSION_ENDPOINTS:
+        request.state.permission_code = "graduationDesign.material.review.dynamic"
+        return user
 
     code = graduation_permission_for_endpoint(endpoint)
     if not code:

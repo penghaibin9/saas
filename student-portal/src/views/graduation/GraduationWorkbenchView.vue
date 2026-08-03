@@ -135,7 +135,7 @@
                 <label>选题背景与研究依据<textarea v-model.trim="proposalForm.background" placeholder="说明研究背景、问题与依据" /></label>
                 <label>研究方案与进度计划<textarea v-model.trim="proposalForm.plan" placeholder="说明技术路线、实施计划和阶段安排" /></label>
                 <label>预期成果<textarea v-model.trim="proposalForm.outcome" placeholder="可填写预期成果、交付形式等" /></label>
-                <label>附件（PDF / Word / ZIP，最多 10 个）<input type="file" accept=".pdf,.doc,.docx,.zip" multiple @change="pickFiles('proposal', $event)" /></label>
+                <label>开题主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('proposal', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('proposal') }}</p>
                 <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan" @click="submitProposal">提交开题报告</button>
               </template>
@@ -147,7 +147,7 @@
 
               <template v-else-if="step.key === 'final'">
                 <p class="sp-muted">本次将提交：{{ final.canSubmitFinal ? '定稿' : '初稿' }}。文件上传后由系统生成材料记录，查重结果不能由学生自行填写。</p>
-                <label>论文附件（PDF / Word / ZIP，最多 10 个）<input type="file" accept=".pdf,.doc,.docx,.zip" multiple @change="pickFiles('final', $event)" /></label>
+                <label>论文主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('final', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('final') }}</p>
                 <button class="sp-btn" :disabled="busy || !attachments.final.length" @click="submitFinal">提交论文成果</button>
               </template>
@@ -479,22 +479,14 @@ async function submitTopicChange() {
 }
 
 async function pickFiles(kind, event) {
-  const files = Array.from(event.target.files || [])
-  if (!files.length) return
-  const remaining = 10 - attachments[kind].length
-  if (remaining <= 0) {
-    ui.notify('每个种类最多上传 10 个附件')
-    event.target.value = ''
-    return
-  }
-  const toUpload = files.slice(0, remaining)
-  if (files.length > remaining) ui.notify(`最多 10 个附件，已截取前 ${remaining} 个`)
+  const file = Array.from(event.target.files || [])[0]
+  if (!file) return
   busy.value = true
   try {
-    const uploaded = await Promise.all(toUpload.map((file) => portalApi.uploadGraduationMaterial(file)))
-    attachments[kind].push(...uploaded)
-    ui.notify(`已上传 ${uploaded.length} 个附件`)
-  } catch (e) { ui.notify(e?.message || '附件上传失败') } finally { busy.value = false; event.target.value = '' }
+    const uploaded = await portalApi.uploadGraduationMaterial(file)
+    attachments[kind].splice(0, attachments[kind].length, uploaded)
+    ui.notify('主文档已上传；重新选择会替换本次待提交文件')
+  } catch (e) { ui.notify(e?.message || '主文档上传失败') } finally { busy.value = false; event.target.value = '' }
 }
 
 async function submitProposal() {

@@ -308,11 +308,14 @@ def _student_aggregate(facts):
         fact.c.gd_student_id,
         func.sum(case((required_archive, 1), else_=0)).label("required_count"),
         func.sum(case((and_(required_archive, missing), 1), else_=0)).label("missing_count"),
-        func.sum(case((fact.c.review_status == "PENDING", 1), else_=0)).label("pending_count"),
-        func.sum(case((fact.c.review_status == "RETURNED", 1), else_=0)).label("returned_count"),
+        func.sum(case((and_(fact.c.archive_required.is_(True), fact.c.current_version_id.is_not(None),
+                                  fact.c.review_status == "PENDING"), 1), else_=0)).label("pending_count"),
+        func.sum(case((and_(fact.c.archive_required.is_(True), fact.c.current_version_id.is_not(None),
+                                  fact.c.review_status == "RETURNED"), 1), else_=0)).label("returned_count"),
         func.sum(case((and_(required_archive, fact.c.review_status.in_(("APPROVED", "NOT_REQUIRED"))), 1), else_=0)).label("approved_count"),
-        func.sum(case((and_(fact.c.current_version_id.is_not(None), unsafe), 1), else_=0)).label("scan_abnormal_count"),
-        func.sum(case((fact.c.archive_status.in_(("FROZEN", "ARCHIVED")), 1), else_=0)).label("archived_count"),
+        func.sum(case((and_(fact.c.archive_required.is_(True), fact.c.current_version_id.is_not(None), unsafe), 1), else_=0)).label("scan_abnormal_count"),
+        func.sum(case((and_(fact.c.archive_required.is_(True),
+                                  fact.c.archive_status.in_(("FROZEN", "ARCHIVED"))), 1), else_=0)).label("archived_count"),
     ).group_by(fact.c.gd_student_id)
 
 

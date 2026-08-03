@@ -14,8 +14,13 @@ export const graduationMaterialCenterApi = {
   createRule(payload) {
     return request('/graduation/material-center/rules', { method: 'POST', data: payload })
   },
-  activateRule(ruleId) {
-    return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/activate`, { method: 'POST' })
+  ruleImpact(ruleId) {
+    return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/impact`)
+  },
+  activateRule(ruleId, { confirmCatalogRepair = false } = {}) {
+    return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/activate`, {
+      method: 'POST', data: { confirmCatalogRepair }
+    })
   },
   overview(params = {}) {
     return request('/graduation/material-center/overview', { params })

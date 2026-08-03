@@ -17,6 +17,7 @@ from app.models import (
     GraduationStudent,
 )
 from app.modules.graduation.schemas.graduation import AssignStudentsBody, DefenseGroupBody, RemindBody, ReviewBody
+from app.modules.graduation.materials import query_service as material_queries
 from app.modules.graduation.materials import record_service as material_records
 from app.modules.graduation.schemas.graduation_extra import ProposalDefenseBody
 from app.modules.graduation.services import graduation_service as svc
@@ -109,7 +110,7 @@ def proposal_detail(
     proposal_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _record_student(GraduationProposal, proposal_id, batchId)
-    return success(svc.get_proposal_detail(proposal_id))
+    return success(material_queries.proposal_detail(int(proposal_id), user))
 
 
 @router.post("/proposals/{proposal_id}/review")
@@ -171,7 +172,7 @@ def final_detail(
     final_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
     _record_student(GraduationFinal, final_id, batchId)
-    return success(svc.get_final_detail(final_id))
+    return success(material_queries.final_detail(int(final_id), user))
 
 
 @router.post("/finals/{final_id}/review")

@@ -220,7 +220,51 @@ def impact_analysis(db, candidate: GraduationMaterialRule) -> dict:
     }
 
 
-def activate_rule(rule_id: int, user: dict) -> dict:
+def get_impact(rule_id: int, user: dict | None = None) -> dict:
+    del user
+    with session() as db:
+        candidate = db.scalars(select(GraduationMaterialRule).where(
+            GraduationMaterialRule.tenant_id == _tid(), GraduationMaterialRule.id == int(rule_id),
+            GraduationMaterialRule.is_deleted.is_(False),
+        )).first()
+        if not candidate:
+            raise not_found("材料规则不存在")
+        return impact_analysis(db, candidate)
+
+
+def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: dict) -> dict:
+    items = {row.material_code: row for row in rule_items(db, int(candidate.id), lock=True)}
+    rows = list(db.scalars(select(GraduationStudentMaterial).where(
+        GraduationStudentMaterial.tenant_id == _tid(),
+        GraduationStudentMaterial.batch_id == int(candidate.batch_id),
+        GraduationStudentMaterial.is_deleted.is_(False),
+    ).with_for_update()).all())
+    migrated = removed_empty = 0
+    for material in rows:
+        item = items.get(material.material_code)
+        if not item:
+            if material.current_version_id or material.archive_status in {"FROZEN", "ARCHIVED"}:
+                raise AppException(
+                    "MATERIAL_RULE_REMOVAL_CONFLICT",
+                    f"材料 {material.material_code} 已有文件或归档证据，不能从新规则移除",
+                )
+            material.is_deleted = True
+            material.updated_by = _actor_id(user)
+            removed_empty += 1
+            continue
+        material.rule_id = int(candidate.id)
+        material.rule_version = int(candidate.rule_version)
+        material.material_name = item.material_name
+        material.biz_stage = item.biz_stage
+        material.owner_role = item.owner_role
+        material.required_status = "REQUIRED" if item.required else "OPTIONAL"
+        material.sensitivity_level = item.sensitivity_level
+        material.updated_by = _actor_id(user)
+        migrated += 1
+    return {"migrated": migrated, "removedEmpty": removed_empty}
+
+
+def activate_rule(rule_id: int, user: dict, *, confirm_catalog_repair: bool = False) -> dict:
     with session() as db:
         candidate = db.scalars(select(GraduationMaterialRule).where(
             GraduationMaterialRule.tenant_id == _tid(), GraduationMaterialRule.id == int(rule_id),
@@ -233,12 +277,21 @@ def activate_rule(rule_id: int, user: dict) -> dict:
         if candidate.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿规则可启用")
         impact = impact_analysis(db, candidate)
+        if impact["requiresCatalogRepair"] and not confirm_catalog_repair:
+            raise AppException(
+                "MATERIAL_RULE_REPAIR_REQUIRED",
+                "规则变更会影响现有学生材料目录；请先查看影响分析并显式确认目录迁移",
+                http_status=409,
+            )
         current = list(db.scalars(select(GraduationMaterialRule).where(
             GraduationMaterialRule.tenant_id == _tid(),
             GraduationMaterialRule.batch_id == int(candidate.batch_id),
             GraduationMaterialRule.status == "ENABLED", GraduationMaterialRule.enabled.is_(True),
             GraduationMaterialRule.is_deleted.is_(False),
         ).with_for_update()).all())
+        migration = {"migrated": 0, "removedEmpty": 0}
+        if impact["requiresCatalogRepair"]:
+            migration = _migrate_catalog_to_candidate(db, candidate, user)
         for row in current:
             row.status = "DISABLED"
             row.enabled = False
@@ -246,5 +299,12 @@ def activate_rule(rule_id: int, user: dict) -> dict:
         candidate.enabled = True
         candidate.effective_at = datetime.utcnow()
         candidate.updated_by = _actor_id(user)
+        from .command_service import initialize_batch_materials_in_session
+
+        initialized = initialize_batch_materials_in_session(db, int(candidate.batch_id), user)
         db.commit()
-        return {"id": str(candidate.id), "status": candidate.status, "ruleVersion": int(candidate.rule_version), "impactAnalysis": impact}
+        return {
+            "id": str(candidate.id), "status": candidate.status,
+            "ruleVersion": int(candidate.rule_version), "impactAnalysis": impact,
+            "catalogMigration": {**migration, **initialized},
+        }

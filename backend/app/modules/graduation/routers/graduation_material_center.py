@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import has_permission, require_permission
+from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.graduation.materials import command_service as commands
@@ -23,39 +23,32 @@ from app.services.data_exchange_job_service import create_download_ticket, revok
 router = APIRouter(prefix="/graduation", tags=["毕业设计-材料版本中心"])
 
 
-def _require_material_manager(user=Depends(get_current_user)):
-    if not any(has_permission(user or {}, code) for code in (
-        "graduationDesign.template.manage",
-        "graduationDesign.archive.file",
-    )):
-        raise not_found("毕业设计材料不存在")
-    return user
-
-
-def _require_material_reviewer(user=Depends(get_current_user)):
-    if not any(has_permission(user or {}, code) for code in (
-        "graduationDesign.proposal.review",
-        "graduationDesign.final.review",
-        "graduationDesign.review.submit",
-    )):
-        raise not_found("毕业设计材料不存在")
-    return user
-
-
 @router.get("/material-center/rules", summary="毕业设计材料规则与材料项")
 def material_rules(batchId: int | None = Query(default=None, ge=1), user=Depends(get_current_user)):
     return success(queries.list_rules(batch_id=batchId, user=user))
 
 
 @router.post("/material-center/rules", summary="创建毕业设计材料规则新版本")
-def create_material_rule(body: dict = Body(...), user=Depends(_require_material_manager)):
+def create_material_rule(body: dict = Body(...), user=Depends(require_permission("graduationDesign.student.manage"))):
     result = rules.create_rule(body or {}, user)
     return success(result, message="材料规则草稿已创建")
 
 
-@router.post("/material-center/rules/{rule_id}/activate", summary="启用毕业设计材料规则")
-def activate_material_rule(rule_id: int, user=Depends(_require_material_manager)):
-    result = rules.activate_rule(rule_id, user)
+@router.get("/material-center/rules/{rule_id}/impact", summary="查看规则切换对现有材料目录的影响")
+def material_rule_impact(
+    rule_id: int, user=Depends(require_permission("graduationDesign.student.manage")),
+):
+    return success(rules.get_impact(rule_id, user))
+
+
+@router.post("/material-center/rules/{rule_id}/activate", summary="确认迁移目录并启用毕业设计材料规则")
+def activate_material_rule(
+    rule_id: int, body: dict = Body(default={}),
+    user=Depends(require_permission("graduationDesign.student.manage")),
+):
+    result = rules.activate_rule(
+        rule_id, user, confirm_catalog_repair=bool((body or {}).get("confirmCatalogRepair", False)),
+    )
     return success(result, message="材料规则已启用")
 
 
@@ -136,7 +129,7 @@ def material_students(
 
 
 @router.post("/material-center/backfill", summary="分页回填旧毕业设计 attachments_json")
-def backfill_materials(body: dict = Body(default={}), user=Depends(_require_material_manager)):
+def backfill_materials(body: dict = Body(default={}), user=Depends(require_permission("graduationDesign.student.manage"))):
     payload = body or {}
     result = migrations.backfill_legacy(
         user, page_size=int(payload.get("pageSize") or payload.get("limit") or 200),
@@ -179,7 +172,7 @@ def submit_material(
 @router.post("/material-center/materials/{material_id}/review", summary="审核具体文件版本")
 def review_material_item(
     material_id: int, body: dict = Body(...),
-    user=Depends(_require_material_reviewer),
+    user=Depends(get_current_user),
 ):
     version_id = (body or {}).get("fileVersionId") or (body or {}).get("versionId")
     if not str(version_id or "").isdigit():
@@ -211,7 +204,7 @@ def template_catalog(batchId: int | None = Query(default=None, ge=1), user=Depen
 
 @router.post("/material-center/templates/{template_id}/asset", summary="发布模板文件资产新版本")
 def publish_template_asset(
-    template_id: int, body: dict = Body(default={}), user=Depends(_require_material_manager),
+    template_id: int, body: dict = Body(default={}), user=Depends(require_permission("graduationDesign.template.manage")),
 ):
     raw = (body or {}).get("fileId")
     file_id = int(raw) if str(raw or "").isdigit() else None
@@ -221,7 +214,7 @@ def publish_template_asset(
 
 
 @router.post("/material-center/templates/policies/{policy_id}/status", summary="启用或停用模板资产策略")
-def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(_require_material_manager)):
+def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(require_permission("graduationDesign.template.manage"))):
     enabled = bool((body or {}).get("enabled"))
     expected = (body or {}).get("expectedVersion")
     if not str(expected or "").isdigit():
@@ -243,7 +236,7 @@ def archive_manifest(gd_student_id: int, user=Depends(get_current_user)):
 
 @router.post("/material-center/archives/{gd_student_id}/manifest", summary="冻结毕业设计完整真实版本 Manifest")
 def freeze_archive_manifest(
-    gd_student_id: int, body: dict = Body(default={}), user=Depends(_require_material_manager),
+    gd_student_id: int, body: dict = Body(default={}), user=Depends(require_permission("graduationDesign.archive.file")),
 ):
     archive_no = str((body or {}).get("archiveBatchNo") or f"GDARCH-{gd_student_id}").strip()
     return success(manifests.file_archive(gd_student_id, archive_no, user), message="真实版本 Manifest 已冻结")
@@ -251,14 +244,14 @@ def freeze_archive_manifest(
 
 @router.post("/material-center/archives/{gd_student_id}/revoke", summary="撤销归档并失效旧导出任务")
 def revoke_archive_manifest(
-    gd_student_id: int, body: dict = Body(...), user=Depends(_require_material_manager),
+    gd_student_id: int, body: dict = Body(...), user=Depends(require_permission("graduationDesign.archive.file")),
 ):
     return success(manifests.revoke_manifest(gd_student_id, str((body or {}).get("reason") or ""), user),
                    message="归档已撤销，旧 ZIP 和票据已失效")
 
 
 @router.post("/material-center/exports", summary="创建毕业设计 ZIP/XLSX 导出任务")
-def create_archive_export(body: dict = Body(...), user=Depends(_require_material_manager)):
+def create_archive_export(body: dict = Body(...), user=Depends(require_permission("graduationDesign.archive.export"))):
     payload = body or {}
     batch_id = payload.get("batchId")
     if not str(batch_id or "").isdigit():
@@ -276,7 +269,7 @@ def archive_export_job(job_id: int, user=Depends(get_current_user)):
 
 
 @router.post("/material-center/exports/{job_id}/retry", summary="执行或重试毕业设计归档任务")
-def retry_archive_export(job_id: int, user=Depends(_require_material_manager)):
+def retry_archive_export(job_id: int, user=Depends(require_permission("graduationDesign.archive.export"))):
     return success(archive_export.run_export_job(job_id, user), message="归档任务已执行")
 
 
@@ -289,7 +282,7 @@ def archive_export_ticket(job_id: int, body: dict = Body(...), user=Depends(get_
 
 @router.post("/material-center/exports/{job_id}/revoke", summary="撤销毕业设计导出任务")
 def revoke_archive_export(
-    job_id: int, body: dict = Body(...), user=Depends(_require_material_manager),
+    job_id: int, body: dict = Body(...), user=Depends(require_permission("graduationDesign.archive.export")),
 ):
     return success(revoke_export_job(
         str(job_id), expected_version=int((body or {}).get("expectedVersion") or -1),
@@ -298,13 +291,13 @@ def revoke_archive_export(
 
 
 @router.post("/material-center/archives/{gd_student_id}/package", summary="创建单学生 ExportJob 归档包")
-def archive_package(gd_student_id: int, user=Depends(_require_material_manager)):
+def archive_package(gd_student_id: int, user=Depends(require_permission("graduationDesign.archive.export"))):
     job = archive_export.create_student_export_job(gd_student_id, user)
     return success(job, message="学生归档任务已创建")
 
 
 @router.post("/material-center/batches/{batch_id}/package", summary="创建批次 ExportJob ZIP 与 XLSX")
-def batch_archive_package(batch_id: int, user=Depends(_require_material_manager)):
+def batch_archive_package(batch_id: int, user=Depends(require_permission("graduationDesign.archive.export"))):
     job = archive_export.create_export_job(batch_id=batch_id, scope_type="BATCH", scope_value="", user=user)
     return success(job, message="批次归档任务已创建")
 
@@ -397,7 +390,7 @@ def review_final(
 @router.post("/gd-archives/batch-file", summary="批量备案并冻结完整真实文件版本 Manifest")
 def batch_file(
     batchId: int = Query(..., ge=1), body: dict = Body(...),
-    user=Depends(_require_material_manager),
+    user=Depends(require_permission("graduationDesign.archive.file")),
 ):
     archive_no = str((body or {}).get("archiveBatchNo") or "").strip()
     preview_token = str((body or {}).get("previewToken") or "").strip()
@@ -412,7 +405,7 @@ def batch_file(
 @router.post("/gd-archives/{gd_student_id}/file", summary="核验备案并冻结完整真实版本 Manifest")
 def file_archive(
     gd_student_id: int, body: ArchiveFileRequest,
-    batchId: int = Query(..., ge=1), user=Depends(_require_material_manager),
+    batchId: int = Query(..., ge=1), user=Depends(require_permission("graduationDesign.archive.file")),
 ):
     result = manifests.file_archive(gd_student_id, body.archiveBatchNo, user)
     return success(result, message="已备案并冻结完整真实版本清单")
