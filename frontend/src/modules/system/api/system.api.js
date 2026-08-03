@@ -1436,6 +1436,14 @@ export const systemApi = {
     }
   },
 
+  async testIntegration(id) {
+    try {
+      return ok(await request(`/system/integrations/${encodeURIComponent(id)}/test`, { method: 'POST' }))
+    } catch (error) {
+      return fail(error.message || '测试连接失败')
+    }
+  },
+
   async listSyncJobs() {
     try {
       return ok(await request('/system/sync-jobs'))
