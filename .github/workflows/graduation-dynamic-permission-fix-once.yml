@@ -1,0 +1,44 @@
+name: Graduation dynamic permission fix once
+
+on:
+  push:
+    branches:
+      - fix/graduation-material-closeout-p0-review
+    paths:
+      - .github/workflows/graduation-dynamic-permission-fix-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/graduation-material-closeout-p0-review
+          fetch-depth: 0
+      - name: Register dynamic review endpoint in permission inventory
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/app/core/graduation_permissions.py')
+          s = p.read_text(encoding='utf-8')
+          exact = '    "graduation_material_center.review_material_item": "graduationDesign.review.submit",\n'
+          marker = '    "graduation_material_center.submit_material": "graduationDesign.student.manage",\n'
+          if exact not in s:
+              if marker not in s:
+                  raise SystemExit('permission insertion marker not found')
+              s = s.replace(marker, marker + exact, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          rm .github/workflows/graduation-dynamic-permission-fix-once.yml
+          git diff --check
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/core/graduation_permissions.py .github/workflows/graduation-dynamic-permission-fix-once.yml
+          git commit -m "fix(graduation): register dynamic material review permission"
+          git push origin HEAD:fix/graduation-material-closeout-p0-review
