@@ -53,12 +53,15 @@ jobs:
       - name: Restore last valid pytest fixture
         run: |
           set -euo pipefail
-          git show a17551eb2847e5eea2bbf8f2620d50fdbae57330:backend/tests/conftest.py > backend/tests/conftest.py
+          git show a17551eb2847e5eea2bbf8f2620d50fdbae57330:backend/tests/conftest.py > /tmp/conftest-valid.py
           python - <<'PY'
           from pathlib import Path
-          data = Path('backend/tests/conftest.py').read_bytes()
+          source = Path('/tmp/conftest-valid.py').read_text(encoding='utf-8')
+          target = Path('backend/tests/conftest.py')
+          target.write_text(source.rstrip() + '\n', encoding='utf-8')
+          data = target.read_bytes()
           assert b'\x00' not in data
-          compile(data.decode('utf-8'), 'backend/tests/conftest.py', 'exec')
+          compile(data.decode('utf-8'), str(target), 'exec')
           print('restored conftest bytes=', len(data))
           PY
 
