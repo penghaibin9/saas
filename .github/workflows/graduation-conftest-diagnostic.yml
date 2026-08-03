@@ -1,0 +1,61 @@
+name: Graduation Conftest Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.head_ref == 'fix/graduation-material-closeout-p0-review'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect bytes and mixed encodings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/tests/conftest.py')
+          data = p.read_bytes()
+          print('bytes=', len(data), 'nul_count=', data.count(b'\x00'))
+          for bom in (b'\xff\xfe', b'\xfe\xff', b'\xef\xbb\xbf'):
+              positions = [i for i in range(len(data)) if data.startswith(bom, i)]
+              print('bom', bom.hex(), positions[:50], 'count=', len(positions))
+          nul = [i for i, b in enumerate(data) if b == 0]
+          print('nul_first=', nul[:80])
+          print('nul_last=', nul[-80:])
+          try:
+              data.decode('utf-8')
+              print('utf8=strict-ok')
+          except UnicodeDecodeError as exc:
+              print('utf8_error=', exc.start, exc.end, exc.reason)
+              lo, hi = max(0, exc.start - 200), min(len(data), exc.end + 400)
+              print('hex_context=', data[lo:hi].hex())
+              print('replace_context=', repr(data[lo:hi].decode('utf-8', errors='replace')))
+          # Identify contiguous regions containing NUL bytes.
+          regions = []
+          if nul:
+              start = prev = nul[0]
+              for value in nul[1:]:
+                  if value - prev > 8:
+                      regions.append((start, prev))
+                      start = value
+                  prev = value
+              regions.append((start, prev))
+          print('nul_regions=', regions[:100])
+          # Show whether the historical parent is valid.
+          base = Path('/tmp/conftest-parent.py')
+          PY
+          git show a17551eb2847e5eea2bbf8f2620d50fdbae57330:backend/tests/conftest.py > /tmp/conftest-parent.py
+          python - <<'PY'
+          from pathlib import Path
+          data = Path('/tmp/conftest-parent.py').read_bytes()
+          print('parent_bytes=', len(data), 'parent_nul=', data.count(b'\x00'))
+          data.decode('utf-8')
+          print('parent_utf8=strict-ok')
+          PY
