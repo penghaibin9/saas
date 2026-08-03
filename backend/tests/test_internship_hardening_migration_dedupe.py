@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 
 from app.db.session import get_sessionmaker
 from app.models import InternshipAuditTrail, InternshipFinalScore
@@ -109,14 +109,19 @@ def test_score_dedupe_preserves_rows_audits_and_downgrades(db_mode, monkeypatch)
         assert all(row.is_deleted is False for row in restored)
     finally:
         if created_ids:
-            db.execute(text(
+            audit_delete = text(
                 "DELETE FROM t_internship_audit_trail "
                 "WHERE tenant_id=:tenant_id AND target_type='SCORE' "
                 "AND target_id IN :target_ids AND action='MIGRATION_DEDUPLICATE'"
-            ).bindparams(target_ids=tuple(created_ids)), {"tenant_id": TENANT_ID})
-            db.execute(text(
+            ).bindparams(bindparam("target_ids", expanding=True))
+            score_delete = text(
                 "DELETE FROM t_internship_final_score WHERE id IN :target_ids"
-            ).bindparams(target_ids=tuple(created_ids)))
+            ).bindparams(bindparam("target_ids", expanding=True))
+            db.execute(audit_delete, {
+                "tenant_id": TENANT_ID,
+                "target_ids": created_ids,
+            })
+            db.execute(score_delete, {"target_ids": created_ids})
             db.commit()
         if not _has_unique(db):
             db.execute(text(
