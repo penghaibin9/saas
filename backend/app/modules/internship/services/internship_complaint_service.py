@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import and_, or_, select
@@ -20,6 +21,8 @@ from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"RECEIVED": "已登记", "ACCEPTED": "已受理", "INVESTIGATING": "调查中",
                 "RESOLVED": "已办结", "REJECTED": "不成立", "WITHDRAWN": "已撤回", "CLOSED": "已关闭"}
+_logger = logging.getLogger("app.internship.complaint")
+
 _TRANSITIONS = {
     "ACCEPT": (("RECEIVED",), "ACCEPTED"),
     "INVESTIGATE": (("ACCEPTED",), "INVESTIGATING"),
@@ -56,10 +59,22 @@ def _mask(value: str) -> str:
 
 def _row(c, user=None, student_name: str = ""):
     from app.core.permissions import has_permission
+
     can_sensitive = has_permission(user or {}, "internship.complaint.sensitive")
-    contact = decrypt_sensitive(
-        c.complainant_contact_encrypted, "internship_complaint_contact",
-        allow_legacy_plaintext=True) or ""
+    contact = ""
+    contact_corrupted = False
+    if c.complainant_contact_encrypted:
+        try:
+            contact = decrypt_sensitive(
+                c.complainant_contact_encrypted,
+                "internship_complaint_contact",
+                allow_legacy_plaintext=True,
+            ) or ""
+        except Exception:  # noqa: BLE001 - 列表展示必须 fail-closed，解密错误已记录
+            contact_corrupted = True
+            _logger.exception("complaint_contact_decrypt_failed complaint_id=%s", c.id)
+    confidential = str(c.confidential_level or "NORMAL").upper() != "NORMAL"
+    hide_business_detail = confidential and not can_sensitive
     return {
         "id": str(c.id), "complaintNo": c.complaint_no or "", "source": c.source,
         "targetType": c.target_type or "",
@@ -68,14 +83,21 @@ def _row(c, user=None, student_name: str = ""):
         "studentName": student_name or ("企业投诉" if not c.student_id else ""),
         "batchId": str(c.batch_id) if c.batch_id else "",
         "category": c.category or "", "severity": c.severity,
-        "content": c.content or "", "evidenceFileId": c.evidence_file_id or "",
-        "complainantContact": contact if can_sensitive else _mask(contact),
-        "complainantContactMasked": not can_sensitive,
+        "content": "" if hide_business_detail else (c.content or ""),
+        "evidenceFileId": "" if hide_business_detail else (c.evidence_file_id or ""),
+        "contentMasked": hide_business_detail,
+        "evidenceMasked": hide_business_detail,
+        "complainantContact": (
+            "***" if contact_corrupted else (contact if can_sensitive else _mask(contact))
+        ),
+        "complainantContactMasked": (not can_sensitive) or contact_corrupted,
+        "complainantContactCorrupted": contact_corrupted,
         "confidentialLevel": c.confidential_level,
         "status": c.status, "statusLabel": STATUS_LABEL.get(c.status, c.status),
         "acceptedByName": c.accepted_by_name or "", "ownerName": c.owner_name or "",
         "acceptDeadline": c.accept_deadline or "", "resolveDeadline": c.resolve_deadline or "",
-        "conclusion": c.conclusion or "", "followupResult": c.followup_result or "",
+        "conclusion": "" if hide_business_detail else (c.conclusion or ""),
+        "followupResult": "" if hide_business_detail else (c.followup_result or ""),
         "riskId": str(c.risk_id) if c.risk_id else "", "createdAt": _iso(c.created_at) or "",
     }
 
@@ -90,27 +112,43 @@ def _assert_complaint_writable(db, c, user, msg: str = "该投诉不在你的可
 
 
 def _complaint_in_scope(db, c, user) -> bool:
-    """投诉数据范围：有关联学生时按学生/实习记录收敛；纯企业投诉仅 ADMIN_TENANT 可见。"""
+    """投诉范围使用明确 internship_id/batch_id；禁止按学生最新实习记录猜测。"""
     from app.modules.internship.services.internship_service import (
         _current_scope, _rec_in_scope, assert_student_in_scope)
-    from app.models import StudentProfile
+
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return True
     if not c.student_id:
         return False
-    stu = db.get(StudentProfile, c.student_id)
-    rec = None
-    if c.batch_id:
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
-            InternshipRecord.batch_id == c.batch_id, InternshipRecord.is_deleted.is_(False))).first()
-    if rec is None:
-        rec = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == c.student_id,
-            InternshipRecord.is_deleted.is_(False)).order_by(InternshipRecord.id.desc())).first()
-    if rec is not None:
-        return _rec_in_scope(scope, db, rec, stu)
+    student = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == c.student_id,
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if not student:
+        return False
+    record = None
+    if c.internship_id:
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == c.internship_id,
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.student_id == c.student_id,
+            InternshipRecord.is_deleted.is_(False),
+        ))
+        if record is None:
+            return False
+    elif c.batch_id:
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.student_id == c.student_id,
+            InternshipRecord.batch_id == c.batch_id,
+            InternshipRecord.is_deleted.is_(False),
+        ))
+        if record is None:
+            return False
+    if record is not None:
+        return _rec_in_scope(scope, db, record, student)
     try:
         assert_student_in_scope(db, c.student_id, user)
         return True
@@ -195,6 +233,9 @@ def create_complaint(body, user=None):
     if severity not in ("LOW", "MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "严重级别不合法")
     contact_plain = str(body.get("complainantContact") or "").strip()
+    confidential_level = str(body.get("confidentialLevel") or "NORMAL").strip().upper()
+    if confidential_level not in ("NORMAL", "CONFIDENTIAL", "RESTRICTED"):
+        raise AppException("VALIDATION_ERROR", "保密级别不合法")
     with session() as db:
         internship_id = int(body["internshipId"]) if body.get("internshipId") else None
         student_id = int(body["studentId"]) if body.get("studentId") else None
@@ -242,7 +283,7 @@ def create_complaint(body, user=None):
                 contact_plain, "internship_complaint_contact") if contact_plain else None,
             complainant_contact_hash=hash_sensitive(
                 contact_plain, "internship_complaint_contact") if contact_plain else None,
-            confidential_level=(body.get("confidentialLevel") or "NORMAL").upper(),
+            confidential_level=confidential_level,
             status="RECEIVED", created_by=None)
         db.add(c)
         db.flush()

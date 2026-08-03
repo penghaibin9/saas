@@ -518,29 +518,28 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
 
 
 
-def _assert_direct_position_change_allowed(record: InternshipRecord, *, allow_active_change: bool) -> None:
-    if record.status in ("ONBOARD", "ASSESSING") and not allow_active_change:
+def _assert_direct_position_change_allowed(record: InternshipRecord) -> None:
+    if record.status in ("ONBOARD", "ASSESSING"):
         raise AppException(
             "DATA_CONFLICT",
             "在岗或考核中的学生禁止直接换岗/退岗，请通过实习变更申请审批流程办理",
         )
 
 
-def assign_position(rec_id, position_id, expected_version=None, user=None, *, allow_active_change=False) -> dict:
+def assign_position(rec_id, position_id, expected_version=None, user=None) -> dict:
     """锁学生记录后，在一个事务中完成岗位占用、释放、主档更新和审计。"""
     with session() as db:
-        r = db.scalar(select(InternshipRecord).where(
+        record = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == _as_id(rec_id),
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False),
         ).with_for_update())
-        if not r:
+        if not record:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
-        _assert_direct_position_change_allowed(
-            r, allow_active_change=bool(allow_active_change))
-        assign_position_in_tx(db, r, position_id, expected_version, user)
+        _assert_direct_position_change_allowed(record)
+        assign_position_in_tx(db, record, position_id, expected_version, user)
         db.commit()
-        return _row_of(db, r)
+        return _row_of(db, record)
 
 
 def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
@@ -580,8 +579,7 @@ def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
     return record
 
 
-def unassign_position(rec_id, reason: str = "", expected_version=None, user=None,
-                      *, allow_active_change=False) -> dict:
+def unassign_position(rec_id, reason: str = "", expected_version=None, user=None) -> dict:
     with session() as db:
         record = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == _as_id(rec_id),
@@ -589,8 +587,7 @@ def unassign_position(rec_id, reason: str = "", expected_version=None, user=None
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not record:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
-        _assert_direct_position_change_allowed(
-            record, allow_active_change=bool(allow_active_change))
+        _assert_direct_position_change_allowed(record)
         unassign_position_in_tx(
             db, record, expected_version, reason, user=user)
         db.commit()

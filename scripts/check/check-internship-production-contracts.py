@@ -35,6 +35,8 @@ for token in (
 students = (ROOT / "backend/app/modules/internship/services/internship_student_service.py").read_text(encoding="utf-8")
 if "在岗或考核中的学生禁止直接换岗/退岗" not in students:
     errors.append("direct active-position mutation is not blocked")
+if "allow_active_change" in students:
+    errors.append("active-position bypass parameter remains in public service")
 
 positions = (ROOT / "backend/app/modules/internship/services/internship_position_service.py").read_text(encoding="utf-8")
 if "请先完成正式调岗/退岗" not in positions:
