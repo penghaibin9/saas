@@ -1,20 +1,21 @@
 name: Agent Fix PR38 Batch Archive
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/main-pytest-fixture-corruption
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 concurrency:
-  group: agent-fix-pr38-batch-archive
+  group: agent-fix-pr38-batch-archive-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[agent-fix-pr38]') }}
+    if: ${{ github.head_ref == 'fix/main-pytest-fixture-corruption' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +57,8 @@ jobs:
                   failed += 1
                   errors.append({"gdStudentId": str(gd_student_id), "code": exc.code, "message": exc.message})
           '''
+          if new in text:
+              raise SystemExit(0)
           if old not in text:
               raise SystemExit('expected batch_file block not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
@@ -74,5 +77,3 @@ jobs:
           git add backend/app/modules/graduation/materials/manifest_service.py
           git commit -m 'fix(graduation): count ineligible batch archive rows as skipped [agent-fix-pr38]'
           git push origin HEAD:fix/main-pytest-fixture-corruption
-
-      # This comment makes the workflow pre-exist before the triggering push.
