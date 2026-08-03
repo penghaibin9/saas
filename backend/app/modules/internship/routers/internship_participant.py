@@ -2,7 +2,7 @@
 
 用组织范围选人替代反复导 Excel 名单。权限复用批次口径：
 查看 internship.batch.view；改规则/预览/冻结/增减 internship.batch.manage。
-不新增权限码——选人本就是"管这个批次"的一部分，另立门户会让学校要重配一遍角色。
+不新增权限码——选人本就是“管这个批次”的一部分，另立门户会让学校要重配一遍角色。
 """
 from __future__ import annotations
 
@@ -16,9 +16,6 @@ from app.core.response import paginate, success
 from app.modules.internship.services import internship_participant_service as svc
 
 router = APIRouter(prefix="/internship/batches", tags=["岗位实习-批次参与人"])
-
-_VIEW = require_permission("internship.batch.view")
-_MANAGE = require_permission("internship.batch.manage")
 
 
 class ScopeRuleBody(BaseModel):
@@ -51,42 +48,56 @@ class RemoveParticipantBody(BaseModel):
 
 
 @router.get("/{batchId}/participants/rule", summary="读取批次选人规则")
-def get_rule(batchId: str = Path(...), user=Depends(_VIEW)):
+def get_rule(batchId: str = Path(...),
+             user=Depends(require_permission("internship.batch.view"))):
     return success(svc.get_rule(batchId))
 
 
 @router.post("/{batchId}/participants/preview", summary="按规则预览名单（不写名单）")
-def preview(body: ScopeRuleBody, batchId: str = Path(...), user=Depends(_MANAGE)):
+def preview(body: ScopeRuleBody, batchId: str = Path(...),
+            user=Depends(require_permission("internship.batch.manage"))):
     return success(svc.preview(batchId, body.model_dump(), user))
 
 
 @router.post("/{batchId}/participants/freeze", summary="冻结名单（幂等建实习记录，批次转进行中）")
-def freeze(body: FreezeBody, batchId: str = Path(...), user=Depends(_MANAGE)):
+def freeze(body: FreezeBody, batchId: str = Path(...),
+           user=Depends(require_permission("internship.batch.manage"))):
     payload = {"rule": body.rule.model_dump() if body.rule else None}
     return success(svc.freeze(batchId, payload, user), message="名单已冻结")
 
 
 @router.get("/{batchId}/participants", summary="批次参与人名单")
-def list_participants(batchId: str = Path(...), page: int = Query(1, ge=1),
-                      pageSize: int = Query(20, ge=1, le=200), keyword: Optional[str] = None,
-                      includeRemoved: bool = False, user=Depends(_VIEW)):
+def list_participants(
+    batchId: str = Path(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: Optional[str] = None,
+    includeRemoved: bool = False,
+    user=Depends(require_permission("internship.batch.view")),
+):
     items, total = svc.list_participants(batchId, page, pageSize, keyword, includeRemoved)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/{batchId}/participants/summary", summary="参与人概览")
-def participant_summary(batchId: str = Path(...), user=Depends(_VIEW)):
+def participant_summary(batchId: str = Path(...),
+                        user=Depends(require_permission("internship.batch.view"))):
     return success(svc.summary(batchId))
 
 
 @router.post("/{batchId}/participants/add", summary="人工补录参与人")
-def add_participants(body: AddParticipantsBody, batchId: str = Path(...), user=Depends(_MANAGE)):
+def add_participants(body: AddParticipantsBody, batchId: str = Path(...),
+                     user=Depends(require_permission("internship.batch.manage"))):
     return success(svc.add_participants(batchId, body.studentIds, user, body.reason or ""),
                    message="已补录")
 
 
 @router.post("/{batchId}/participants/{participantId}/remove", summary="移出参与人（保留追溯）")
-def remove_participant(body: RemoveParticipantBody, batchId: str = Path(...),
-                       participantId: str = Path(...), user=Depends(_MANAGE)):
+def remove_participant(
+    body: RemoveParticipantBody,
+    batchId: str = Path(...),
+    participantId: str = Path(...),
+    user=Depends(require_permission("internship.batch.manage")),
+):
     return success(svc.remove_participant(batchId, participantId, body.reason, body.version),
                    message="已移出")
