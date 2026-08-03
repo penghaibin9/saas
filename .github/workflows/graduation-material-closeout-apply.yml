@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: graduation-material-closeout-apply
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-and-validate:
@@ -50,26 +50,16 @@ jobs:
           ref: fix/graduation-material-closeout-p0-review
           fetch-depth: 0
 
-      - name: Diagnose inherited conftest encoding corruption
+      - name: Restore last valid pytest fixture
         run: |
+          set -euo pipefail
+          git show a17551eb2847e5eea2bbf8f2620d50fdbae57330:backend/tests/conftest.py > backend/tests/conftest.py
           python - <<'PY'
           from pathlib import Path
-          p = Path('backend/tests/conftest.py')
-          data = p.read_bytes()
-          print('bytes=', len(data), 'nul_count=', data.count(b'\x00'))
-          for bom in (b'\xff\xfe', b'\xfe\xff', b'\xef\xbb\xbf'):
-              positions = [i for i in range(len(data)) if data.startswith(bom, i)]
-              print('bom', bom.hex(), positions[:20], 'count=', len(positions))
-          nul = [i for i, b in enumerate(data) if b == 0]
-          print('nul_first=', nul[:40], 'nul_last=', nul[-40:])
-          try:
-              data.decode('utf-8')
-              print('utf8=strict-ok')
-          except UnicodeDecodeError as exc:
-              print('utf8_error=', exc.start, exc.end, exc.reason)
-              lo, hi = max(0, exc.start - 120), min(len(data), exc.end + 240)
-              print('hex_context=', data[lo:hi].hex())
-              print('replace_context=', data[lo:hi].decode('utf-8', errors='replace'))
+          data = Path('backend/tests/conftest.py').read_bytes()
+          assert b'\x00' not in data
+          compile(data.decode('utf-8'), 'backend/tests/conftest.py', 'exec')
+          print('restored conftest bytes=', len(data))
           PY
 
       - name: Apply audited graduation material fixes
@@ -84,6 +74,7 @@ jobs:
             backend/app/modules/graduation/materials \
             backend/app/modules/graduation/routers/graduation_material_center.py \
             backend/app/modules/graduation/routers/graduation_material_sensitive_router.py \
+            backend/tests/conftest.py \
             backend/tests/test_graduation_material_closeout_regressions.py
 
       - uses: actions/setup-python@v5
@@ -112,7 +103,8 @@ jobs:
           rm -f \
             scripts/apply_graduation_material_closeout_fix.py \
             scripts/patch_graduation_phase6_contract.py \
-            .github/workflows/graduation-material-closeout-apply.yml
+            .github/workflows/graduation-material-closeout-apply.yml \
+            .github/workflows/graduation-conftest-diagnostic.yml
           git config user.name "graduation-closeout-bot"
           git config user.email "graduation-closeout-bot@users.noreply.github.com"
           git add -- \
@@ -125,6 +117,7 @@ jobs:
             backend/app/modules/graduation/materials/snapshot_service.py \
             backend/app/modules/graduation/routers/graduation_material_center.py \
             backend/app/modules/graduation/routers/graduation_material_sensitive_router.py \
+            backend/tests/conftest.py \
             backend/tests/test_graduation_material_center_phase6.py \
             backend/tests/test_graduation_material_closeout_regressions.py \
             frontend/src/modules/graduation/api/graduation-material-center.api.js \
@@ -132,7 +125,8 @@ jobs:
             miniapp/src/pages/student/graduation/index.vue \
             scripts/apply_graduation_material_closeout_fix.py \
             scripts/patch_graduation_phase6_contract.py \
-            .github/workflows/graduation-material-closeout-apply.yml
+            .github/workflows/graduation-material-closeout-apply.yml \
+            .github/workflows/graduation-conftest-diagnostic.yml
           git diff --cached --check
           git commit -m "fix(graduation): close material security and archive regressions"
           git push origin HEAD:fix/graduation-material-closeout-p0-review
