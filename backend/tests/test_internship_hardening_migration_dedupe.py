@@ -108,6 +108,9 @@ def test_score_dedupe_preserves_rows_audits_and_downgrades(db_mode, monkeypatch)
         ]
         assert all(row.is_deleted is False for row in restored)
     finally:
+        # Any failed DDL/DML assertion can leave the SQLAlchemy session in a failed
+        # transaction. Roll it back before attempting deterministic cleanup and index restore.
+        db.rollback()
         if created_ids:
             audit_delete = text(
                 "DELETE FROM t_internship_audit_trail "
