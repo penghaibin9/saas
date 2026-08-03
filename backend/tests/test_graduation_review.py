@@ -7,7 +7,10 @@ from conftest import make_org_class
 GD_PLAG = "/api/v1/graduation/gd-plagiarism"
 GD_REVIEW = "/api/v1/graduation/gd-reviews"
 GD_STU = "/api/v1/graduation/gd-students"
+GD_TOPIC = "/api/v1/graduation/gd-topics"
+FINAL = "/api/v1/graduation/finals"
 STU = "/api/v1/students"
+MAIN = 1000000000000000001
 
 
 def _gd_student(client, h, no, name, advisor=None):
@@ -16,6 +19,93 @@ def _gd_student(client, h, no, name, advisor=None):
     if advisor:
         client.post(f"{GD_STU}/{gid}/assign-advisor", headers=h, json={"advisorName": advisor})
     return gid
+
+
+def _student_token(student_no, real_name):
+    from app.core.security import create_access_token
+
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{student_no}", "realName": real_name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": str(MAIN), "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP", "studentNo": student_no,
+    })}
+
+
+def _upload_pdf(client, headers, name):
+    response = client.post(
+        "/api/v1/files",
+        headers=headers,
+        files={"file": (name, b"%PDF-1.4 canonical graduation material", "application/pdf")},
+        params={"bizType": "GRADUATION_MATERIAL"},
+    )
+    assert response.json()["code"] == 0, response.json()
+    return response.json()["data"]["fileId"]
+
+
+def _pending_final_id(client, headers, student_name):
+    rows = client.get(FINAL, headers=headers, params={"status": "PENDING_REVIEW"}).json()["data"]["items"]
+    return str(next(row for row in rows if row["studentName"] == student_name)["id"])
+
+
+def _canonical_final(client, headers, student_no, student_name):
+    """通过真实材料主档、真实文件版本和学生端接口创建可查重的定稿。"""
+    from datetime import datetime
+
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMidterm, GraduationStudent, GraduationTaskBook
+
+    gid = _gd_student(client, headers, student_no, student_name)
+    topic_id = client.post(GD_TOPIC, headers=headers, json={
+        "title": f"{student_name}的毕设题目",
+        "sourceType": "TEACHER",
+        "advisorName": "指导李老师",
+        "capacity": 1,
+        "submitReview": True,
+    }).json()["data"]["id"]
+    client.post(f"{GD_TOPIC}/{topic_id}/review", headers=headers, json={"action": "APPROVE"})
+    client.post(f"{GD_STU}/{gid}/assign-topic", headers=headers, json={"topicId": topic_id})
+
+    db = get_sessionmaker()()
+    student = db.get(GraduationStudent, int(gid))
+    student.stage = "FINAL_CHECK"
+    db.add(GraduationTaskBook(
+        tenant_id=student.tenant_id,
+        gd_student_id=student.id,
+        taskbook_version=1,
+        status="CONFIRMED",
+        objective="目标",
+        content="内容",
+        history_json=[],
+    ))
+    db.add(GraduationMidterm(
+        tenant_id=student.tenant_id,
+        gd_student_id=student.id,
+        status="CHECKED_PASS",
+        conclusion="PASS",
+        check_comment="中期通过",
+        checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+
+    student_headers = _student_token(student_no, student_name)
+    draft = client.post(
+        "/api/v1/mobile/graduation/final",
+        headers=student_headers,
+        json={"finalType": "初稿", "attachments": [_upload_pdf(client, student_headers, "plagiarism-draft.pdf")]},
+    )
+    assert draft.json()["code"] == 0, draft.json()
+    draft_id = _pending_final_id(client, headers, student_name)
+    draft_review = client.post(f"{FINAL}/{draft_id}/review", headers=headers, json={"action": "APPROVE"})
+    assert draft_review.status_code == 200, draft_review.json()
+
+    final = client.post(
+        "/api/v1/mobile/graduation/final",
+        headers=student_headers,
+        json={"finalType": "定稿", "attachments": [_upload_pdf(client, student_headers, "plagiarism-final.pdf")]},
+    )
+    assert final.json()["code"] == 0, final.json()
+    return gid, _pending_final_id(client, headers, student_name)
 
 
 def _reviewer_token(real_name):
@@ -33,20 +123,7 @@ def _reviewer_token(real_name):
 
 def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
     h = auth_headers
-    gid = _gd_student(client, h, "PL001", "查重测试生")
-    from datetime import datetime
-    from app.db.session import get_sessionmaker
-    from app.models import GraduationFinal
-    db = get_sessionmaker()()
-    final = GraduationFinal(
-        tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
-        version="v1", submit_at=datetime.utcnow(), status="PENDING_REVIEW",
-        plagiarism_status="未检测", attachments_json=["bound-thesis-file"],
-    )
-    db.add(final)
-    db.commit()
-    final_id = str(final.id)
-    db.close()
+    gid, final_id = _canonical_final(client, h, "PL001", "查重测试生")
 
     submit = client.post(f"{GD_PLAG}/{gid}/submit", headers=h, json={"gdFinalId": final_id})
     assert submit.json()["data"]["status"] == "CHECKING"
@@ -71,7 +148,7 @@ def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
     assert body["overThreshold"] is True
 
     blocked_review = client.post(
-        f"/api/v1/graduation/finals/{final_id}/review", headers=h, json={"action": "APPROVE"},
+        f"{FINAL}/{final_id}/review", headers=h, json={"action": "APPROVE"},
     )
     assert blocked_review.status_code == 409
 
@@ -89,9 +166,12 @@ def test_plagiarism_submit_result_dispute(client, auth_headers, db_mode):
     assert recheck_result.json()["data"]["overThreshold"] is False
 
     approved_exception = client.post(
-        f"/api/v1/graduation/finals/{final_id}/review", headers=h, json={"action": "APPROVE"},
+        f"{FINAL}/{final_id}/review", headers=h, json={"action": "APPROVE"},
     )
     assert approved_exception.status_code == 200
+
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationFinal
 
     db = get_sessionmaker()()
     refreshed = db.get(GraduationFinal, int(final_id))
