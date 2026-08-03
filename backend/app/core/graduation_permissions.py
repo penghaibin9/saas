@@ -188,6 +188,7 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_material_center.backfill_materials": "graduationDesign.student.manage",
     "graduation_material_center.material_library": "graduationDesign.student.view",
     "graduation_material_center.submit_material": "graduationDesign.student.manage",
+    "graduation_material_center.review_material_item": "graduationDesign.review.submit",
     "graduation_material_center.proposal_versions": "graduationDesign.proposal.view",
     "graduation_material_center.final_versions": "graduationDesign.final.view",
     "graduation_material_center.template_catalog": "graduationDesign.template.view",
