@@ -39,7 +39,7 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
     key: 'plt-delivery', label: '自动交付', icon: '⇪', description: '订单确认后自动初始化学校，减少实施人员逐校配置。',
     items: [
       { key: 'plt-init-templates', label: '初始化模板', path: '/admin/platform/init-templates', permissionKey: 'platform.provision.template.manage', view: 'capability', actions: [action('provision:template:publish', '发布初始化模板', 'HIGH')] },
-      { key: 'plt-provisioning', label: '自动开通任务', path: '/admin/platform/provisioning', permissionKey: 'platform.provision.run.view', view: 'capability', actions: [action('provision:run:retry', '重试开通任务', 'HIGH')] },
+      { key: 'plt-provisioning', label: '自动开通任务', path: '/admin/platform/provisioning', permissionKey: 'platform.provision.run.view', view: 'provisioning', actions: [action('provision:run:retry', '重试开通任务', 'HIGH'), action('provision:run:compensate', '发起补偿', 'HIGH'), action('provision:run:cancel', '取消开通任务', 'HIGH')] },
       { key: 'plt-onboarding-check', label: '学校开通与首次开户', path: '/admin/platform/onboarding-check', permissionKey: 'platform.onboarding.view', view: 'onboarding', actions: [action('onboarding:check:run', '查看开通进度'), action('onboarding:accept', '确认上线验收', 'HIGH')] },
       { key: 'plt-tenant-migration', label: '租户数据迁移进度', path: '/admin/platform/tenant-migration', permissionKey: 'platform.tenant.migration.view', view: 'tenant-migration', actions: [action('tenant:migration:view', '查看迁移进度')] }
     ]

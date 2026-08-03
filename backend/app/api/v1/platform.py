@@ -729,3 +729,82 @@ def service_impact(serviceCode: str = Query(...), releaseId: Optional[str] = Que
     out = svcat.compute_service_impact(serviceCode)
     out["releaseId"] = releaseId
     return success(out)
+
+
+# ── PLAT-04 租户自动开通、初始化与上线验收 ───────────────────────────────────
+@router.get("/provisioning-jobs/overview", summary="开通治理首屏结论")
+def provisioning_overview(user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    return success(prov.governance_overview())
+
+
+@router.get("/provisioning-jobs", summary="开通任务列表")
+def provisioning_jobs_list(user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    items = prov.list_jobs()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/provisioning-jobs", summary="发起/续跑开通任务（按idempotencyKey幂等）")
+def provisioning_jobs_create(body: dict = Body(...),
+                             user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.start_provisioning_job(user, body)
+    _audit("PLATFORM_PROVISIONING_START", out["jobId"],
+          {"tenantCode": out["tenantCode"], "status": out["status"]})
+    return success(out, message="开通任务已受理")
+
+
+@router.get("/provisioning-jobs/{job_id}", summary="开通任务详情")
+def provisioning_job_get(job_id: int, user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import tenant_provisioning_service as prov
+    return success(prov.get_job(job_id))
+
+
+@router.post("/provisioning-jobs/{job_id}/resume", summary="续跑开通任务")
+def provisioning_job_resume(job_id: int, user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.run_provisioning_job(job_id, user=user)
+    _audit("PLATFORM_PROVISIONING_RESUME", str(job_id), {"status": out["status"]})
+    return success(out, message="已续跑")
+
+
+@router.post("/provisioning-jobs/{job_id}/retry-step", summary="重试指定失败步骤")
+def provisioning_job_retry_step(job_id: int, body: dict = Body(...),
+                                user=Depends(require_platform_capability("provisioning.manage"))):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.retry_step(job_id, body.get("stepCode") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_RETRY_STEP", str(job_id),
+          {"stepCode": body.get("stepCode"), "status": out["status"]})
+    return success(out, message="已重试")
+
+
+@router.post("/provisioning-jobs/{job_id}/compensate", summary="对失败步骤发起补偿（高危，需理由）")
+def provisioning_job_compensate(job_id: int, body: dict = Body(...),
+                                user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.compensate_step(job_id, body.get("stepCode") or "",
+                               reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_COMPENSATE", str(job_id),
+          {"stepCode": body.get("stepCode"), "reason": body.get("reason")})
+    return success(out, message="补偿已执行")
+
+
+@router.post("/provisioning-jobs/{job_id}/flag-manual-review", summary="转人工队列（补偿也解决不了）")
+def provisioning_job_flag_manual(job_id: int, body: dict = Body(...),
+                                 user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.flag_manual_review(job_id, body.get("stepCode") or "",
+                                  reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_MANUAL_REVIEW", str(job_id),
+          {"stepCode": body.get("stepCode"), "reason": body.get("reason")})
+    return success(out, message="已转人工队列")
+
+
+@router.post("/provisioning-jobs/{job_id}/cancel", summary="取消开通任务（高危，需理由）")
+def provisioning_job_cancel(job_id: int, body: dict = Body(...),
+                            user=Depends(require_platform_super_admin)):
+    from app.services import tenant_provisioning_service as prov
+    out = prov.cancel_job(job_id, reason=body.get("reason") or "", user=user)
+    _audit("PLATFORM_PROVISIONING_CANCEL", str(job_id), {"reason": body.get("reason")})
+    return success(out, message="已取消")

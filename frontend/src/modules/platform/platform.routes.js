@@ -194,8 +194,9 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '初始化模板', requiresAuth: true, permissionKey: 'platform.provision.template.manage', platformCapabilityKey: 'plt-init-templates' }
     },
     {
-      path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view', platformCapabilityKey: 'plt-provisioning' }
+      // PLAT-04：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/control/PlatformProvisioningView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view' }
     },
     {
       path: 'onboarding-check', name: 'platform-onboarding-check', component: () => import('@/modules/platform/views/PlatformOnboardingCheckView.vue'),

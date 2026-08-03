@@ -165,5 +165,16 @@ export const platformControlApi = {
   addServiceDependency: (body) => real('service-dependency-add', '/platform/service-dependencies', { method: 'POST', body }),
   removeServiceDependency: (id) => real('service-dependency-remove', `/platform/service-dependencies/${id}`, { method: 'DELETE' }),
   getServiceImpact: (serviceCode, releaseId) =>
-    real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } })
+    real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } }),
+
+  /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
+  getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
+  listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),
+  getProvisioningJob: (jobId) => real('provisioning-job-get', `/platform/provisioning-jobs/${jobId}`, {}),
+  startProvisioningJob: (body) => real('provisioning-job-start', '/platform/provisioning-jobs', { method: 'POST', body }),
+  resumeProvisioningJob: (jobId) => real('provisioning-job-resume', `/platform/provisioning-jobs/${jobId}/resume`, { method: 'POST', body: {} }),
+  retryProvisioningStep: (jobId, stepCode) => real('provisioning-job-retry-step', `/platform/provisioning-jobs/${jobId}/retry-step`, { method: 'POST', body: { stepCode } }),
+  compensateProvisioningStep: (jobId, stepCode, reason) => real('provisioning-job-compensate', `/platform/provisioning-jobs/${jobId}/compensate`, { method: 'POST', body: { stepCode, reason } }),
+  flagProvisioningManualReview: (jobId, stepCode, reason) => real('provisioning-job-flag-manual', `/platform/provisioning-jobs/${jobId}/flag-manual-review`, { method: 'POST', body: { stepCode, reason } }),
+  cancelProvisioningJob: (jobId, reason) => real('provisioning-job-cancel', `/platform/provisioning-jobs/${jobId}/cancel`, { method: 'POST', body: { reason } })
 }
