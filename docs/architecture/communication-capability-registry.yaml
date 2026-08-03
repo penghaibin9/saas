@@ -1,0 +1,53 @@
+# SYS-15 统一消息、待办与通知治理注册表（权威目录，不是权威数据）
+#
+# 规矩：
+# - 权威数据仍在既有表里：t_message_event_outbox（含 dedup_key 唯一约束）、
+#   t_unified_todo（含 uk_todo_dedup 唯一约束）、t_notification_template/task/log、
+#   t_message_delivery_job。系统管理不复制一份、也不重建一套"统一大表"。
+# - 事件码的第一权威源是 app.services.message_event_outbox_service._EVENT_TEMPLATES
+#   （真正拦截未登记事件码的地方）；本注册表只登记它没有的治理元数据（谁负责、
+#   待办 SLA、渠道健康期望），并与 _EVENT_TEMPLATES 交叉校验，不重复定义事件码存不存在。
+# - 待办 dedupeKey 靠 t_unified_todo 自己的唯一约束
+#   (tenant_id, source_module, source_biz_id, todo_type, assignee_id)；
+#   业务模块新增一种 todo_type 时必须在这里登记 owner，否则治理面板会把它扔进
+#   "无责任人"异常队列——这不是阻断业务写入，只是让遗漏被看见。
+version: 1
+
+events:
+  - eventCode: LEAVE.APPROVED
+    ownerModule: studentAffairs
+    description: 请假审批通过通知
+    todoTypeCreated: null
+  - eventCode: LEAVE.REJECTED
+    ownerModule: studentAffairs
+    description: 请假审批驳回通知
+    todoTypeCreated: null
+  - eventCode: LEAVE.RETURNED
+    ownerModule: studentAffairs
+    description: 请假被退回通知
+    todoTypeCreated: null
+  - eventCode: LEAVE.OVERDUE
+    ownerModule: studentAffairs
+    description: 请假逾期提醒
+    todoTypeCreated: null
+
+todoTypes:
+  - todoType: APPROVAL
+    ownerModule: workbench
+    label: 通用审批待办
+    slaHours: 48
+    deepLinkPattern: /admin/approval/tasks/{sourceBizId}
+    completionEvidence: MANUAL
+    notes: >
+      通用审批待办；t_unified_todo 目前没有 deep_link/完成证据 结构化字段（模型文件
+      app/models/approval.py 不在本卡白名单内，不能加列）。deepLinkPattern 是本注册表
+      登记的约定，前端按 sourceModule+sourceBizType+sourceBizId 自己拼；完成证据走
+      todo_task_service.close_todo_with_evidence 写审计留痕，不落在 todo 行本身。
+
+channels:
+  - channel: SMS
+    provider: mock
+    description: 短信通道，当前默认 mock provider，不真实发送
+  - channel: WECHAT
+    provider: mock
+    description: 微信通道，当前默认 mock provider，不真实发送

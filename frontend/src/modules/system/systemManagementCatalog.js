@@ -94,7 +94,10 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     key: 'sys-workflow', label: '流程配置与运行', icon: '⧉',
     description: '流程只引用系统统一角色；审批任务归工作台。',
     items: [
-      { key: 'sys-process-templates', label: '流程模板与运行', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] }
+      { key: 'sys-process-templates', label: '流程模板与运行', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] },
+      { key: 'sys-workflow-governance', label: '流程安全与运行治理', path: '/admin/system/workflow-governance', permissionKey: 'systemAdmin.workflow.view', view: 'workflow-governance', actions: [action('systemAdmin.workflow.manage', '维护节点动作与版本策略', 'HIGH')] },
+      { key: 'sys-communications', label: '统一消息、待办与通知治理', path: '/admin/system/communications', permissionKey: 'systemAdmin.communication.view', view: 'communications', actions: [action('systemAdmin.communication.manage', '关闭待办 / 重试死信事件', 'HIGH')] },
+      { key: 'sys-jobs', label: '批处理与后台任务', path: '/admin/system/jobs', permissionKey: 'systemAdmin.job.view', view: 'jobs', actions: [action('systemAdmin.job.manage', '重试 / 取消任务', 'HIGH')] }
     ]
   },
   {

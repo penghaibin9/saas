@@ -406,15 +406,37 @@ def _approval_actor_id(user: dict | None) -> int:
     return resolve_message_user_id(user or get_current_user_ctx() or {})
 
 
-def _can_manage_all_approvals(user: dict | None) -> bool:
+def _can_manage_all_approvals(user: dict | None, *, workflow_code: str | None = None,
+                              node_code: str | None = None) -> bool:
+    """SYS-14：``*``（真超管）永远放行；``approval.manage``（普通页面权限）默认也放行，
+    但如果这个具体 (workflow_code, node_code) 有一条 ACTIVE 的 SYS-14 节点动作策略，
+    就必须额外持有该策略要求的 action_permission_code 才算数——页面权限不再等于
+    流程动作权限。没有激活策略时行为跟以前完全一样（向后兼容，默认不收紧）。"""
     from app.core.context import get_current_user_ctx
     from app.core.permissions import has_permission
     u = user or get_current_user_ctx() or {}
-    return has_permission(u, "*") or has_permission(u, "approval.manage")
+    if has_permission(u, "*"):
+        return True
+    if not has_permission(u, "approval.manage"):
+        return False
+    if workflow_code and node_code:
+        try:
+            from app.services.workflow_security_policy_service import action_permission_required
+            required = action_permission_required(workflow_code, node_code)
+        except Exception:
+            required = None
+        if required:
+            return has_permission(u, required)
+    return True
 
 
-def _assert_task_assignee(t: WorkflowTask, user: dict | None) -> None:
-    if _can_manage_all_approvals(user):
+def _assert_task_assignee(db, t: WorkflowTask, user: dict | None) -> None:
+    workflow_code = None
+    if t.node_code:
+        inst = db.scalars(select(WorkflowInstance.workflow_code).where(
+            WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid())).first()
+        workflow_code = inst
+    if _can_manage_all_approvals(user, workflow_code=workflow_code, node_code=t.node_code):
         return
     uid = _approval_actor_id(user)
     if not uid or int(t.assignee_id) != int(uid):
@@ -469,7 +491,7 @@ def get_task(task_id, user: dict | None = None) -> dict:
             WorkflowTask.is_deleted.is_(False))).first()
         if not t:
             raise not_found("审批任务不存在")
-        _assert_task_assignee(t, user)
+        _assert_task_assignee(db, t, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
             WorkflowInstance.is_deleted.is_(False))).first()
@@ -493,7 +515,7 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
             WorkflowTask.is_deleted.is_(False))).first()
         if not t:
             raise not_found("审批任务不存在")
-        _assert_task_assignee(t, user)
+        _assert_task_assignee(db, t, user)
         values = {
             "status": action,
             "acted_at": datetime.utcnow(),

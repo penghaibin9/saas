@@ -244,6 +244,206 @@ export const systemApi = {
   },
 
   // SYS-17：主数据责任与数据质量
+  // SYS-14：流程节点动作与版本策略、人工推进
+  async getWorkflowGovernanceOverview() {
+    try {
+      return ok(await request('/system/workflow-governance/overview'))
+    } catch (error) {
+      return fail(error.message || '流程治理概览加载失败')
+    }
+  },
+
+  async listWorkflowPolicies(workflowCode) {
+    try {
+      return ok(await request('/system/workflow-security-policies', {
+        params: { workflow_code: workflowCode || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '流程策略加载失败')
+    }
+  },
+
+  async getWorkflowPolicyDraft(workflowCode, { nodeCode, policyType } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(workflowCode)}/draft`, {
+        params: { node_code: nodeCode || undefined, policy_type: policyType || undefined }
+      }))
+    } catch (error) {
+      return fail(error.message || '策略草稿加载失败')
+    }
+  },
+
+  async saveWorkflowPolicyDraft(workflowCode, { nodeCode, policyType, actionPermissionCode, versionStrategy, reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(workflowCode)}/draft`, {
+        method: 'PUT',
+        body: { nodeCode, policyType, actionPermissionCode, versionStrategy, reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async submitWorkflowPolicy(policyId, { expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/submit`, {
+        method: 'POST', body: { expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async activateWorkflowPolicy(policyId, { reason, selfReviewAck, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/activate`, {
+        method: 'POST', body: { reason, selfReviewAck, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async retireWorkflowPolicy(policyId, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/workflow-security-policies/${encodeURIComponent(policyId)}/retire`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async simulateWorkflowPolicy(payload) {
+    try {
+      return ok(await request('/system/workflow-security-policies/simulate', {
+        method: 'POST', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '策略推演失败')
+    }
+  },
+
+  async forceAdvanceWorkflowTask(taskId, { action, reason } = {}) {
+    try {
+      return ok(await request(`/system/workflow-tasks/${encodeURIComponent(taskId)}/force-advance`, {
+        method: 'POST', body: { action, reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  // SYS-15：统一消息、待办与通知治理
+  async getCommunicationGovernanceOverview() {
+    try {
+      return ok(await request('/system/communication-governance/overview'))
+    } catch (error) {
+      return fail(error.message || '消息治理概览加载失败')
+    }
+  },
+
+  async getCommunicationRegistry() {
+    try {
+      return ok(await request('/system/communication-governance/registry'))
+    } catch (error) {
+      return fail(error.message || '注册表加载失败')
+    }
+  },
+
+  async listTodoBacklog({ page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/communication-governance/todo-backlog', {
+        params: { page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '待办台账加载失败')
+    }
+  },
+
+  async closeTodoWithEvidence(todoId, { evidence } = {}) {
+    try {
+      return ok(await request(`/system/communication-governance/todos/${encodeURIComponent(todoId)}/close`, {
+        method: 'POST', body: { evidence }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async listDeadOutbox({ page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/communication-governance/dead-outbox', {
+        params: { page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '死信台账加载失败')
+    }
+  },
+
+  async retryDeadOutbox(outboxId) {
+    try {
+      return ok(await request(`/system/communication-governance/outbox/${encodeURIComponent(outboxId)}/retry`, {
+        method: 'POST'
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  // SYS-16：批处理、调度与后台任务授权
+  async getJobOverview() {
+    try {
+      return ok(await request('/system/jobs/overview'))
+    } catch (error) {
+      return fail(error.message || '任务治理概览加载失败')
+    }
+  },
+
+  async getJobTypes() {
+    try {
+      return ok(await request('/system/job-types'))
+    } catch (error) {
+      return fail(error.message || '任务类型加载失败')
+    }
+  },
+
+  async listJobs({ kind = '', status = '', page = 1, pageSize = 50 } = {}) {
+    try {
+      return ok(await request('/system/jobs', {
+        params: { kind: kind || undefined, status: status || undefined, page, pageSize }
+      }))
+    } catch (error) {
+      return fail(error.message || '任务列表加载失败')
+    }
+  },
+
+  async getJobAuthorizationEvidence(jobId) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/authorization-evidence`))
+    } catch (error) {
+      return fail(error.message || '授权证据加载失败')
+    }
+  },
+
+  async retryJob(jobId) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async cancelJob(jobId, { reason } = {}) {
+    try {
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        method: 'POST', body: { reason }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async listMasterDataDomains() {
     try {
       return ok(await request('/system/master-data/domains'))
