@@ -403,20 +403,47 @@ def test_l14_ledger_scope_403_and_stats(client, db_mode):
 
 
 def test_l15_ledger_export(client, db_mode):
-    """请假台账导出：返回 xlsx（base64 + 水印 + 行数），写导出审计。"""
+    """请假大导出必须异步：请求只建任务，worker 分页生成，再用一次性票据下载。"""
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     _approved_leave(client, hdr, ids["sa"])
-    r = client.post("/api/v1/student-affairs/leave/export", headers=hdr).json()
-    assert r["code"] == 0
-    d = r["data"]
-    assert d["rowCount"] == 1 and d["contentBase64"] and d["filename"].endswith(".xlsx")
-    # 导出审计已落 t_affairs_audit_trail
+    response = client.post("/api/v1/student-affairs/leave/export", headers=hdr)
+    assert response.status_code == 200
+    d = response.json()["data"]
+    assert d["status"] == "CREATED" and d["queued"] is True
+    assert d["rowCount"] == 1 and d["jobId"]
+    assert "contentBase64" not in d
+
+    from app.core.context import set_tenant
+    from app.services import affairs_leave_export_service as export_svc
+    set_tenant({"tenantId": str(MAIN_TENANT_ID)})
+    try:
+        result = export_svc.run_pending(limit=2, worker_id="pytest-leave-export")
+    finally:
+        set_tenant(None)
+    assert result == {"claimed": 1, "succeeded": 1, "failed": 0}
+
+    detail = client.get(
+        f"/api/v1/student-affairs/leave/export-jobs/{d['jobId']}", headers=hdr,
+    ).json()["data"]
+    assert detail["status"] == "SUCCEEDED" and detail["downloadable"] is True
+    ticket = client.post(
+        f"/api/v1/student-affairs/leave/export-jobs/{d['jobId']}/download-ticket",
+        headers=hdr, json={"expectedVersion": detail["version"]},
+    ).json()["data"]
+    file_response = client.get(ticket["downloadUrl"], headers=hdr)
+    assert file_response.status_code == 200
+    assert file_response.content[:2] == b"PK"
+
     from app.db.session import get_sessionmaker
     from app.models import AffairsAuditTrail
     db = get_sessionmaker()()
-    assert db.query(AffairsAuditTrail).filter_by(biz_type="LEAVE", action="EXPORT").count() >= 1
-    db.close()
+    try:
+        assert db.query(AffairsAuditTrail).filter_by(
+            biz_type="LEAVE", action="EXPORT_REQUESTED",
+        ).count() >= 1
+    finally:
+        db.close()
 
 
 def test_l16_proxy_cancel_cross_class_403(client, db_mode):

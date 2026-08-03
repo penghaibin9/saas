@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -78,20 +77,23 @@ def issue_activity_token(activity_id: int, user: dict) -> dict:
 
 
 def _register_attempt(activity_id: int, user: dict, credential: str) -> None:
-    """使用现有持久化幂等表记录尝试，多worker共享限制，不依赖进程内缓存。"""
-    from app.models import AffairsActivity, AffairsActivitySignup, IdempotencyRecord
+    """独立安全审计计数；锁活动行保证多 worker 下 count+insert 原子。"""
+    from app.models import AffairsActivity, AffairsActivitySignup, SecurityAuditLog
     from app.services.mobile_student_service import _require_student, resolve_student
 
     _require_student(user)
     now = datetime.utcnow()
     window_start = now - timedelta(seconds=_WINDOW_SECONDS)
-    operation = f"AFFAIRS_ACTIVITY_CHECKIN_ATTEMPT:{int(activity_id)}"
     with session() as db:
         student = resolve_student(db, user)
         if not student:
             raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
-        activity = db.get(AffairsActivity, int(activity_id))
-        if not activity or activity.is_deleted or activity.tenant_id != _tid():
+        activity = db.scalars(select(AffairsActivity).where(
+            AffairsActivity.id == int(activity_id),
+            AffairsActivity.tenant_id == _tid(),
+            AffairsActivity.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not activity:
             raise AppException("DATA_NOT_FOUND", "活动不存在")
         signup = db.scalars(select(AffairsActivitySignup).where(
             AffairsActivitySignup.tenant_id == _tid(),
@@ -102,11 +104,13 @@ def _register_attempt(activity_id: int, user: dict, credential: str) -> None:
         )).first()
         if not signup:
             raise AppException("DATA_CONFLICT", "未报名或状态异常，不能签到")
-        count = int(db.scalar(select(func.count()).select_from(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == _tid(),
-            IdempotencyRecord.user_id == str(student.id),
-            IdempotencyRecord.operation == operation,
-            IdempotencyRecord.created_at >= window_start,
+        action = "AFFAIRS_ACTIVITY_CHECKIN_ATTEMPT"
+        count = int(db.scalar(select(func.count()).select_from(SecurityAuditLog).where(
+            SecurityAuditLog.tenant_id == _tid(),
+            SecurityAuditLog.operator_id == int(student.id),
+            SecurityAuditLog.action == action,
+            SecurityAuditLog.resource_id == str(activity_id),
+            SecurityAuditLog.created_at >= window_start,
         )) or 0)
         if count >= _MAX_ATTEMPTS_PER_WINDOW:
             raise AppException(
@@ -114,14 +118,18 @@ def _register_attempt(activity_id: int, user: dict, credential: str) -> None:
                 "签到码尝试次数过多，请稍后再试或联系现场老师",
                 http_status=429,
             )
-        fingerprint = hashlib.sha256(str(credential or "").encode("utf-8")).hexdigest()
-        db.add(IdempotencyRecord(
-            tenant_id=_tid(), user_id=str(student.id), operation=operation,
-            key_hash=hashlib.sha256(
-                f"{student.id}:{activity_id}:{time.time_ns()}:{secrets.token_hex(8)}".encode("utf-8")
-            ).hexdigest(),
-            fingerprint=fingerprint, state="ATTEMPT",
-            expires_at=now + timedelta(seconds=_WINDOW_SECONDS * 2),
+        db.add(SecurityAuditLog(
+            tenant_id=_tid(), operator_id=int(student.id),
+            operator_name=student.real_name or student.student_no or "学生",
+            current_role="STUDENT", data_scope="SELF",
+            action=action, resource="AFFAIRS_ACTIVITY", resource_id=str(activity_id),
+            result="ATTEMPT", detail_json={
+                "credentialSha256": hashlib.sha256(
+                    str(credential or "").encode("utf-8")
+                ).hexdigest(),
+                "windowSeconds": _WINDOW_SECONDS,
+            },
+            created_by=int(student.id),
         ))
         db.commit()
 

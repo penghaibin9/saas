@@ -27,16 +27,15 @@ def test_external_worker_refuses_to_run_without_database(monkeypatch):
         worker.run_once()
 
 
-def test_external_worker_detects_uninitialized_repair_contract(monkeypatch):
-    import pytest
+def test_external_worker_recovers_bindings_without_router_import(monkeypatch):
     from app import affairs_appeal_repair_worker as worker
     from app.services import affairs_appeal_repair_service as repair
 
-    # router模块已在测试应用初始化；这里只模拟绑定被意外清空后的fail-closed结果。
     monkeypatch.setattr(repair, "_RAW_SYNC", None)
     monkeypatch.setattr(repair, "_RAW_NOTICE", None)
-    with pytest.raises(RuntimeError, match="补偿契约未完成初始化"):
-        worker._ensure_contracts_installed()
+    worker._ensure_contracts_installed()
+    assert repair._RAW_SYNC is not None
+    assert repair._RAW_NOTICE is not None
 
 
 def test_external_worker_once_cli_exits_successfully(monkeypatch):

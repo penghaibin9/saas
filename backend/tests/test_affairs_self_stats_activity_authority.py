@@ -9,12 +9,14 @@ def read(path: str) -> str:
 
 
 def test_self_scope_is_resolved_server_side_and_only_allows_self():
-    text = read("backend/app/services/affairs_self_scope_guard.py")
+    text = read("backend/app/core/affairs_security.py")
+    guard = read("backend/app/services/affairs_self_scope_guard.py")
     assert "resolve_student" in text
-    assert 'context.scope_source = "ACCOUNT_LINK_SELF"' in text
-    assert 'self.scope_type != "SELF"' in text
+    assert 'ctx.scope_source = "ACCOUNT_LINK_SELF" if ctx.self_student_id else "SELF_UNRESOLVED"' in text
+    assert 'self.scope_type == "SELF"' in text
     assert 'int(self.self_student_id) != target_id' in text
     assert "学生只能访问本人数据" in text
+    assert "build_affairs_context =" not in guard
 
 
 def test_statistics_are_scoped_and_missing_metrics_are_not_fake_zero():
@@ -48,3 +50,11 @@ def test_router_installs_authority_before_final_review_guards():
     stats = source.index("install_stats_integrity_guard()")
     review = source.index("install_affairs_four_end_review_guard()")
     assert authority < stats < review
+
+
+def test_four_end_contract_no_longer_replaces_scope_or_mental_audit():
+    contract = read("backend/app/services/affairs_four_end_contract.py")
+    assert "def _patch_student_scope" not in contract
+    assert "def _patch_mental_audit" not in contract
+    assert "mental._sensitive_view_audit =" not in contract
+    assert "sys.modules" not in contract

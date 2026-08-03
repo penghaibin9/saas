@@ -26,13 +26,8 @@ from app.services.affairs_activity_authority_guard import install as install_act
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reconfirm_guard import install as install_activity_reconfirm_guard
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
-from app.services.affairs_aid_list_argument_guard import install as install_aid_list_argument_guard
-from app.services.affairs_appeal_repair_scheduler import install as install_appeal_repair_scheduler
-from app.services.affairs_appeal_repair_service import install as install_appeal_repair
-from app.services.affairs_appeal_todo_service import install as install_appeal_todo_reconciliation
 from app.services.affairs_batch_job_guard import install as install_batch_job_guard
 from app.services.affairs_counselor_eval_guard import install as install_counselor_eval_guard
-from app.services.affairs_counselor_handover_guard import install as install_counselor_handover_guard
 from app.services.affairs_credit_appeal_reliability import install as install_credit_appeal_reliability
 from app.services.affairs_data_integrity_guard import install as install_data_integrity_guard
 from app.services.affairs_discipline_integrity_guard import install as install_discipline_integrity_guard
@@ -52,8 +47,6 @@ from app.services.affairs_publicity_guard import install as install_publicity_gu
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_risk_transfer_guard import install as install_risk_transfer_guard
-from app.services.affairs_self_scope_guard import install as install_self_scope_guard
-from app.services.affairs_sensitive_audit_guard import install as install_sensitive_audit_guard
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
 from app.services.affairs_student_application_lock import install as install_student_application_lock
 from app.services.affairs_student_atomic_service import install as install_atomic_student_applications
@@ -61,7 +54,6 @@ from app.services.affairs_student_contract_security_guard import install as inst
 from app.services.affairs_student_contract_service import install as install_student_contract
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
-from app.services.affairs_teacher_workbench_guard import install as install_teacher_workbench_guard
 
 
 def _route_signature(route) -> tuple[str, frozenset[str]]:
@@ -96,8 +88,6 @@ for supplemental_router in (
     _mount_supplemental_router(api_router, supplemental_router)
 
 install_affairs_four_end_contract()
-install_aid_list_argument_guard()
-install_sensitive_audit_guard()
 install_returned_view_projection()
 install_activity_checkin_code()
 install_activity_reliability()
@@ -107,11 +97,7 @@ install_dorm_projection()
 install_dorm_checkout_guard()
 install_atomic_student_applications()
 install_student_application_lock()
-install_appeal_todo_reconciliation()
-install_appeal_repair()
-install_self_scope_guard()
 install_data_integrity_guard()
-install_counselor_handover_guard()
 install_risk_evidence_guard()
 install_risk_transfer_guard()
 install_counselor_eval_guard()
@@ -133,6 +119,4 @@ install_dorm_node_guard()
 install_dorm_transfer_scope_guard()
 install_student_contract()
 install_student_contract_security_guard()
-install_teacher_workbench_guard()
 install_affairs_four_end_terminal_guard(api_router)
-install_appeal_repair_scheduler()

@@ -19,6 +19,9 @@ test('teacher affairs page renders real todo rows before category cards', () => 
 test('teacher affairs page keeps category navigation and no mock fallback', () => {
   const source = read('miniapp/src/pages/teacher/affairs/index.vue')
   assert.match(source, /按业务分类/)
-  assert.match(source, /teacherApi\.getAffairs\(\)/)
+  assert.match(source, /teacherApi\.getAffairs\(1,\s*20\)/)
+  assert.match(source, /teacherApi\.getAffairs\(next,\s*20\)/)
+  assert.match(source, /todoHasMore/)
+  assert.match(source, /继续加载待办/)
   assert.doesNotMatch(source, /mockRequest/)
 })

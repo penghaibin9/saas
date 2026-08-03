@@ -1138,10 +1138,10 @@ export const affairsDormRooms = (buildingId, floor) =>
   realRequest(`/mobile/affairs/dorm/buildings/${buildingId}/rooms${floor ? '?floor=' + floor : ''}`)
 export const affairsDormBeds = (roomId) =>
   realRequest(`/mobile/affairs/dorm/rooms/${roomId}/beds`)
-export const teacherAffairs = () => realRequest('/mobile/teacher/affairs')
+export const teacherAffairs = (page = 1, pageSize = 20) => realRequest(`/mobile/teacher/affairs?page=${page}&pageSize=${pageSize}`)
 
 /** 学生活动与第二课堂（真实接口，无 mock 兜底） */
-export const affairsMyActivities = () => realRequest('/mobile/affairs/my-activities')
+export const affairsMyActivities = (page = 1, pageSize = 20) => realRequest(`/mobile/affairs/my-activities?page=${page}&pageSize=${pageSize}`)
 export const affairsActivityEnroll = (activityId, action) =>
   realRequest(`/mobile/affairs/activities/${activityId}/enroll`, { method: 'POST', data: { action: action || 'ENROLL' } })
 export const affairsActivityCheckin = (activityId, method) =>

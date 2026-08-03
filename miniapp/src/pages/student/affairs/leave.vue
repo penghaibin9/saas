@@ -13,9 +13,9 @@
               <text class="lv__reason lv__opinion" v-if="x.returnReason || x.rejectReason">处理意见：{{ x.returnReason || x.rejectReason }}</text>
             </view>
             <MobileStatusTag :label="statusText(x.status)" :type="badgeType(x.status)" />
-            <button v-if="x.canResubmit" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="editReturned(x)">修改后重提</button>
-            <button v-if="x.canCancel" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="cancelLeave(x)">申请销假</button>
-            <button v-if="x.canExtend" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="openExtend(x)">申请续假</button>
+            <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="editReturned(x)">修改后重提</button>
+            <button v-if="allows(x, 'SUBMIT_CANCEL')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="cancelLeave(x)">申请销假</button>
+            <button v-if="allows(x, 'SUBMIT_EXTENSION')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="openExtend(x)">申请续假</button>
           </view>
         </view>
       </view>
@@ -119,6 +119,7 @@ export default {
   },
   onLoad() { this.load() },
   methods: {
+    allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     load() {
       this.state = 'loading'
       studentApi.getMyLeaves().then((d) => { this.items = (d && d.items) || []; this.state = 'ready' })

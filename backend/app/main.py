@@ -146,6 +146,54 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(_sandbox_loop(), name="sandbox-midnight-reset"))
 
+    if db_enabled():
+        def _student_affairs_background_once():
+            from sqlalchemy import select
+
+            from app.core.context import set_tenant
+            from app.db.session import get_sessionmaker
+            from app.models import Tenant
+            from app.services import affairs_appeal_repair_service, affairs_leave_export_service
+
+            db = get_sessionmaker()()
+            try:
+                tenant_ids = list(db.scalars(select(Tenant.id).where(
+                    Tenant.status.in_(("ACTIVE", "TRIAL", "active", "trial")),
+                )))
+            finally:
+                db.close()
+            for tenant_id in tenant_ids:
+                try:
+                    set_tenant({"tenantId": str(tenant_id)})
+                    affairs_appeal_repair_service.repair_pending(limit=100)
+                    affairs_leave_export_service.run_pending(
+                        limit=2, worker_id=f"web-affairs:{tenant_id}",
+                    )
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "student affairs background job failed tenant=%s", tenant_id,
+                    )
+                finally:
+                    set_tenant(None)
+
+        async def _student_affairs_background_loop():
+            from anyio import to_thread
+            while True:
+                try:
+                    await to_thread.run_sync(_student_affairs_background_once)
+                    await asyncio.sleep(60)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.affairs").exception(
+                        "student affairs background scheduler failed",
+                    )
+                    await asyncio.sleep(60)
+
+        tasks.append(asyncio.create_task(
+            _student_affairs_background_loop(), name="student-affairs-background",
+        ))
+
     if settings.INTERNSHIP_OVERDUE_AUTO_SCAN and db_enabled():
         def _internship_once():
             from sqlalchemy import select

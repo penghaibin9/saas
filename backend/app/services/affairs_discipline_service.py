@@ -26,6 +26,11 @@ L_DISC = {
     "CANCELLED": "已撤销", "REMOVE_REVIEW": "解除审批中", "REMOVED": "已解除", "ARCHIVED": "已归档",
 }
 
+_L_APPEAL = {
+    "SUBMITTED": "待复核", "REVIEWING": "复核中",
+    "UPHELD": "维持原决定", "REVISED": "已变更", "REVOKED": "已撤销",
+}
+
 
 def _students_by_ids(db, rows, attr="student_id"):
     """批量取回 rows 涉及的学生档案 {id: StudentProfile}，替代列表循环内逐行 db.get（消 N+1）。"""
@@ -562,36 +567,37 @@ def projection_reconcile() -> dict:
 
 
 def discipline_stats(user) -> dict:
-    """处分统计（按处分类型/状态聚合 + 投影对账）；数据范围与列表一致（辅导员限本班）。"""
+    """处分统计：数据库按处分类型/状态聚合，数据范围与列表一致。"""
     from app.models import DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(DisciplineCase).where(
-            DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False))).all()
-        students = _students_by_ids(db, rows)
-        by_type: dict[str, int] = {}
-        by_status: dict[str, int] = {}
-        total = 0
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            total += 1
-            by_type[x.disc_type] = by_type.get(x.disc_type, 0) + 1
-            by_status[x.status] = by_status.get(x.status, 0) + 1
-    return {"total": total,
-            "byType": [{"key": k, "count": v} for k, v in by_type.items()],
-            "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
-            "reconcile": projection_reconcile()}
-
-
-# ═══════════ 送达与申诉（C 包·决定与送达 / 申诉复核）═══════════
-
-_DELIVERY = ("DIRECT", "MAIL", "PUBLIC", "LEAVE")
-_L_APPEAL = {"SUBMITTED": "已提交", "REVIEWING": "复核中", "UPHELD": "维持原处分",
-             "REVISED": "变更处分", "REVOKED": "撤销处分", "WITHDRAWN": "已撤回"}
-
+        base = [
+            DisciplineCase.tenant_id == _tid(),
+            DisciplineCase.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if allowed is not None:
+            base.append(StudentProfile.class_id.in_(allowed or {-1}))
+        type_rows = db.execute(
+            select(DisciplineCase.disc_type, func.count(DisciplineCase.id))
+            .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
+            .where(*base).group_by(DisciplineCase.disc_type)
+        ).all()
+        status_rows = db.execute(
+            select(DisciplineCase.status, func.count(DisciplineCase.id))
+            .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
+            .where(*base).group_by(DisciplineCase.status)
+        ).all()
+        by_type = {str(key or ""): int(count or 0) for key, count in type_rows}
+        by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
+    return {
+        "total": sum(by_status.values()),
+        "byType": [{"key": key, "count": count} for key, count in by_type.items()],
+        "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
+        "reconcile": projection_reconcile(),
+    }
 
 def deliver_case(case_id, body, user) -> dict:
     """登记决定书送达（仅 EFFECTIVE 处分可送达；记方式/时间）。"""
@@ -635,6 +641,8 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
             _scope_or_403(db, x.student_id, user)
         if x.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        appeal_todo.require_submission_assignee(db, "DISCIPLINE_APPEAL_REVIEW", int(x.student_id))
         # 一案一诉：已有任何申诉（含已结案）不得再提，避免结案后反复申诉绕过复核结论。
         prior = db.scalars(select(DisciplineAppeal).where(
             DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.case_id == int(case_id),
@@ -648,7 +656,8 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
         db.commit(); db.refresh(a)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(x.student_id))
-        return _appeal_row(a, s)
+        result_row = _appeal_row(a, s)
+        return appeal_todo.sync_after_submit("DISCIPLINE_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
 def list_appeals(user, status=None, page=1, page_size=50):
@@ -713,4 +722,6 @@ def review_appeal(appeal_id, body, user) -> dict:
         db.commit(); db.refresh(a)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
-        return _appeal_row(a, s)
+        result_row = _appeal_row(a, s)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        return appeal_todo.sync_after_review("DISCIPLINE_APPEAL_REVIEW", int(appeal_id), result_row)

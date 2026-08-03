@@ -54,9 +54,6 @@ def leave_my(user) -> dict:
                 "returnReason": getattr(x, "return_reason", None) or "",
                 "version": int(x.version or 0),
                 "allowedActions": actions,
-                "canResubmit": "RESUBMIT" in actions,
-                "canCancel": "SUBMIT_CANCEL" in actions,
-                "canExtend": "SUBMIT_EXTENSION" in actions,
             })
         return {"items": items}
 
@@ -83,7 +80,8 @@ def aid_my(user) -> dict:
                 "finalLevel": x.final_level, "status": x.status,
                 "statusLabel": L.get(x.status, x.status),
                 "returnReason": getattr(x, "return_reason", None) or "",
-                "canObject": x.status == "PUBLICITY" and not pending,
+                "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status == "RETURNED" else [])
+                    + (["SUBMIT_OBJECTION"] if x.status == "PUBLICITY" and not pending else []),
                 "hasPendingObjection": pending,
             })
         return {"currentLevel": (approved.final_level if approved else None), "items": items}
@@ -110,7 +108,8 @@ def funding_my(user) -> dict:
                 "applicationId": str(x.id), "projectType": x.project_type,
                 "status": x.status, "statusLabel": L.get(x.status, x.status),
                 "returnReason": x.return_reason or "",
-                "canAppeal": x.status == "PUBLICITY" and not pending,
+                "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status == "RETURNED" else [])
+                    + (["SUBMIT_APPEAL"] if x.status == "PUBLICITY" and not pending else []),
                 "hasPendingAppeal": pending,
             })
         return {"items": items}
@@ -145,7 +144,7 @@ def discipline_my(user) -> dict:
                 "appealResult": ap.result if ap else None,
                 "appealReviewOpinion": ap.review_opinion if ap else "",
                 # 一案一诉：只要曾提交过申诉（含已结案）即不可再申
-                "canAppeal": ap is None,
+                "allowedActions": ["SUBMIT_APPEAL"] if ap is None else [],
             })
         return {"activeCount": len(rows), "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员",
                "items": items}

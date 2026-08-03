@@ -176,21 +176,32 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         moved_todos += 1
 
     moved_tasks = 0
-    from app.models import CsLeave, WorkflowInstance
-    leave_ids = set(db.scalars(select(CsLeave.id).where(
-        CsLeave.tenant_id == _tid(),
-        CsLeave.student_id.in_(student_ids),
-        CsLeave.is_deleted.is_(False))).all())
-    if leave_ids:
-        for task in db.scalars(select(WorkflowTask).where(
-                WorkflowTask.tenant_id == _tid(), WorkflowTask.assignee_id == from_uid,
-                WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False))).all():
+    from app.models import WorkflowInstance
+    # 以学工 UnifiedTodo 的学生归属作为跨域权威映射，覆盖请假、奖助、处分、宿舍等。
+    source_pairs = {
+        (str(biz_type or "").upper(), str(biz_id or ""))
+        for biz_type, biz_id in db.execute(
+            select(UnifiedTodo.source_biz_type, UnifiedTodo.source_biz_id).where(
+                UnifiedTodo.tenant_id == _tid(),
+                UnifiedTodo.source_module == "student-affairs",
+                UnifiedTodo.student_id.in_(student_ids),
+                UnifiedTodo.is_deleted.is_(False),
+            )
+        ).all()
+    }
+    if source_pairs:
+        tasks = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.assignee_id == from_uid,
+            WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False),
+        )).all()
+        for task in tasks:
             inst = db.get(WorkflowInstance, int(task.instance_id)) if task.instance_id else None
             if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
                 continue
-            if (inst.source_biz_type or "").upper() != "LEAVE":
-                continue
-            if int(inst.source_biz_id or 0) not in leave_ids:
+            key = (str(inst.source_biz_type or "").upper(), str(inst.source_biz_id or ""))
+            if key not in source_pairs:
                 continue
             task.assignee_id = to_uid
             task.version = int(task.version or 0) + 1

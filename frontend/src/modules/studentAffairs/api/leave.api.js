@@ -51,8 +51,14 @@ export const leaveApi = {
   overdueHandle(id, body) { return call(() => request(`${B}/leave/${id}/overdue-handle`, { method: 'POST', body })) },
   /** 逾期扫描（手动触发，幂等） */
   scanOverdue() { return call(() => request(`${B}/leave/scan-overdue`, { method: 'POST' })) },
-  /** 请假台账导出（xlsx 水印 + 导出留痕），返回 { filename, contentBase64, mediaType, rowCount } */
-  exportLedger(params = {}) { return call(() => request(`${B}/leave/export`, { method: 'POST', params })) }
+  /** 创建请假台账异步导出任务，立即返回 jobId。 */
+  exportLedger(params = {}) { return call(() => request(`${B}/leave/export`, { method: 'POST', params })) },
+  exportJob(jobId) { return call(() => request(`${B}/leave/export-jobs/${jobId}`)) },
+  exportTicket(jobId, expectedVersion) {
+    return call(() => request(`${B}/leave/export-jobs/${jobId}/download-ticket`, {
+      method: 'POST', body: { expectedVersion }
+    }))
+  }
 }
 
 export default leaveApi

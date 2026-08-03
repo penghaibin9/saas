@@ -757,37 +757,46 @@ def is_in_difficult_library(db, student_id) -> str | None:
 
 
 def aid_stats(user):
+    """困难认定统计：在数据库侧按状态/等级聚合，口径与范围列表一致。"""
     from app.models import AidApply, AidBatch, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(AidApply).where(
-            AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
-        students = _students_by_ids(db, rows)
-        by_status, by_level, total = {}, {}, 0
-        for x in rows:
-            if allowed is not None:
-                s = students.get(int(x.student_id)) if x.student_id else None
-                if not s or s.class_id not in allowed:
-                    continue
-            total += 1
-            by_status[x.status] = by_status.get(x.status, 0) + 1
-            if x.status == "APPROVED" and x.final_level:
-                by_level[x.final_level] = by_level.get(x.final_level, 0) + 1
+        base = [
+            AidApply.tenant_id == _tid(),
+            AidApply.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if allowed is not None:
+            base.append(StudentProfile.class_id.in_(allowed or {-1}))
+        status_rows = db.execute(
+            select(AidApply.status, func.count(AidApply.id))
+            .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+            .where(*base).group_by(AidApply.status)
+        ).all()
+        level_rows = db.execute(
+            select(AidApply.final_level, func.count(AidApply.id))
+            .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+            .where(*base, AidApply.status == "APPROVED", AidApply.final_level.is_not(None))
+            .group_by(AidApply.final_level)
+        ).all()
+        by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
+        by_level = {str(key or ""): int(count or 0) for key, count in level_rows}
+        total = sum(by_status.values())
         approved = by_status.get("APPROVED", 0)
-        batches = db.scalars(select(AidBatch).where(
-            AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False))).all()
-        return {"total": total, "approved": approved,
-                "publicity": by_status.get("PUBLICITY", 0), "rejected": by_status.get("REJECTED", 0),
-                "batchCount": len(batches),
-                "approvalRate": round(approved / total, 3) if total else 0.0,
-                "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
-                "byLevel": [{"key": k, "count": v} for k, v in by_level.items()]}
-
-
-_L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
-_L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
-
+        batch_count = int(db.scalar(select(func.count()).select_from(AidBatch).where(
+            AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False),
+        )) or 0)
+        return {
+            "total": total, "approved": approved,
+            "publicity": by_status.get("PUBLICITY", 0),
+            "rejected": by_status.get("REJECTED", 0),
+            "batchCount": batch_count,
+            "approvalRate": round(approved / total, 3) if total else 0.0,
+            "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
+            "byLevel": [{"key": key, "count": count} for key, count in by_level.items()],
+        }
 
 def _obj_row(o, s=None) -> dict:
     return {
@@ -819,6 +828,8 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
             _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("DATA_CONFLICT", "仅公示中的申请可提异议")
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        appeal_todo.require_submission_assignee(db, "AID_OBJECTION_REVIEW", int(x.student_id))
         dup = db.scalars(select(AidObjection).where(
             AidObjection.tenant_id == _tid(), AidObjection.apply_id == int(apply_id),
             AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).first()
@@ -840,7 +851,8 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
         db.commit(); db.refresh(o)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-        return _obj_row(o, s)
+        result = _obj_row(o, s)
+        return appeal_todo.sync_after_submit("AID_OBJECTION_REVIEW", result, "objectionId", "id")
 
 
 def list_objections(user, status=None, page=1, page_size=50):
@@ -915,4 +927,6 @@ def review_objection(objection_id, body, user) -> dict:
         db.commit(); db.refresh(o)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-        return _obj_row(o, s)
+        result_row = _obj_row(o, s)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        return appeal_todo.sync_after_review("AID_OBJECTION_REVIEW", int(objection_id), result_row)

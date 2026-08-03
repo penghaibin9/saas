@@ -183,24 +183,6 @@ def _dorm_scope_building_ids(db, user):
         return set(scope_ctx.dorm_building_ids)
     return set()
 
-    from app.core.permissions import is_super_admin
-    from app.models import DormBuilding
-    u = user or {}
-    role = (u.get("currentRoleCode") or "").upper()
-    if is_super_admin(user) or role != "DORM_MANAGER":
-        return None  # 非宿管（学工处/学院/超管）按自身权限全楼可见
-    uid = str(u.get("userId") or "")
-    ctx = str(u.get("activeContextId") or "")
-    name = u.get("realName") or ""
-    login = str(u.get("loginName") or u.get("username") or "")
-    keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "",
-                        uid[3:] if uid.startswith("db-") else "",
-                        ctx[4:] if ctx.startswith("ctx_") else "", name, login) if k}
-    rows = db.scalars(select(DormBuilding).where(
-        DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
-        DormBuilding.manager_teacher_key.in_(keys))).all()
-    return {b.id for b in rows}
-
 
 # ═══════════ 楼栋 ═══════════
 

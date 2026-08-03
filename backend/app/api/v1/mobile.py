@@ -1706,9 +1706,13 @@ def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
 
 
 # ── 学生端·学生活动（D 包波次1，本人报名/签到）──
-@router.get("/affairs/my-activities", summary="学工·我的活动（可报名+已报名）")
-def affairs_my_activities(user=Depends(get_current_user)):
-    return success(activity_svc.my_activities(user))
+@router.get("/affairs/my-activities", summary="学工·我的活动（可报名+已报名，真分页）")
+def affairs_my_activities(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(get_current_user),
+):
+    return success(activity_svc.my_activities(user, page=page, page_size=pageSize))
 
 
 @router.post("/affairs/activities/{activity_id}/enroll", summary="学工·活动报名/取消（本人）")
@@ -1743,9 +1747,14 @@ def teacher_affairs_dorm_exception_handle(exception_id: str, body: dict = Body(.
     return success(tea.affairs_dorm_exception_handle(
         user, exception_id, body.get("note") or ""), message="已处置")
 
-@router.get("/teacher/affairs", summary="教师·学工待办卡（本校按类型聚合）")
-def teacher_affairs(user=Depends(get_current_user)):
-    return success(aff.teacher_affairs(user))
+@router.get("/teacher/affairs", summary="教师·学工待办（真分页与全量统计）")
+def teacher_affairs(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(get_current_user),
+):
+    from app.services.affairs_teacher_workbench_service import teacher_affairs as query_workbench
+    return success(query_workbench(user, page=page, page_size=pageSize))
 
 
 # ── 13B 教务中心·学生自视图（P7 多端收口，本人只读 + 异动申请）──

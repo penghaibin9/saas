@@ -629,32 +629,38 @@ def list_applications(user, batch_id=None, project_type=None, status=None, page=
 
 
 def funding_stats(user) -> dict:
-    """奖助统计（按状态/项目类型聚合，计数口径不含金额明细，规避金额脱敏）；数据范围与列表一致。"""
+    """奖助统计：数据库按状态/项目类型聚合，数据范围与列表一致。"""
     from app.models import FundingApplication, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(FundingApplication).where(
-            FundingApplication.tenant_id == _tid(), FundingApplication.is_deleted.is_(False))).all()
-        # 消 N+1：批量取学生档案用于数据范围判定（统计遍历全量，逐行 db.get 放大更明显）。
-        sids = {int(x.student_id) for x in rows if x.student_id}
-        students = {s.id: s for s in db.scalars(select(StudentProfile).where(
-            StudentProfile.id.in_(sids))).all()} if sids else {}
-        by_status: dict[str, int] = {}
-        by_type: dict[str, int] = {}
-        total = 0
-        for x in rows:
-            s = students.get(int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            total += 1
-            by_status[x.status] = by_status.get(x.status, 0) + 1
-            if x.project_type:
-                by_type[x.project_type] = by_type.get(x.project_type, 0) + 1
-    return {"total": total, "granted": by_status.get("GRANTED", 0),
-            "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
-            "byType": [{"key": k, "count": v} for k, v in by_type.items()]}
-
+        base = [
+            FundingApplication.tenant_id == _tid(),
+            FundingApplication.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if allowed is not None:
+            base.append(StudentProfile.class_id.in_(allowed or {-1}))
+        status_rows = db.execute(
+            select(FundingApplication.status, func.count(FundingApplication.id))
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .where(*base).group_by(FundingApplication.status)
+        ).all()
+        type_rows = db.execute(
+            select(FundingApplication.project_type, func.count(FundingApplication.id))
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .where(*base, FundingApplication.project_type.is_not(None))
+            .group_by(FundingApplication.project_type)
+        ).all()
+        by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
+        by_type = {str(key or ""): int(count or 0) for key, count in type_rows}
+        return {
+            "total": sum(by_status.values()),
+            "granted": by_status.get("GRANTED", 0),
+            "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
+            "byType": [{"key": key, "count": count} for key, count in by_type.items()],
+        }
 
 def get_application(app_id, user) -> dict:
     with session() as db:
@@ -858,6 +864,8 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
             raise AppException("DATA_CONFLICT", "仅公示中的资助申请可申诉")
         if not skip_scope_check:
             _scope_or_403(db, x.student_id, user)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        appeal_todo.require_submission_assignee(db, "FUNDING_APPEAL_REVIEW", int(x.student_id))
         dup = db.scalars(select(FundingAppeal).where(
             FundingAppeal.tenant_id == _tid(), FundingAppeal.application_id == int(app_id),
             FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).first()
@@ -881,7 +889,8 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
         _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-        return _appeal_row(o, s)
+        result_row = _appeal_row(o, s)
+        return appeal_todo.sync_after_submit("FUNDING_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
 def list_appeals(user, status=None, page=1, page_size=50):
@@ -957,4 +966,6 @@ def review_appeal(appeal_id, body, user) -> dict:
         _drain_message_outbox()
         db.refresh(o)
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-        return _appeal_row(o, s)
+        result_row = _appeal_row(o, s)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        return appeal_todo.sync_after_review("FUNDING_APPEAL_REVIEW", int(appeal_id), result_row)
