@@ -6,6 +6,12 @@ on:
       - fix/graduation-material-closeout-p0-review
     paths:
       - .github/workflows/graduation-material-closeout-apply.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
 
 permissions:
   contents: write
@@ -16,6 +22,7 @@ concurrency:
 
 jobs:
   apply-and-validate:
+    if: github.head_ref == 'fix/graduation-material-closeout-p0-review' || github.ref_name == 'fix/graduation-material-closeout-p0-review'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
