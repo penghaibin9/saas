@@ -73,26 +73,24 @@ def test_t01_every_relation_declares_owner_resolver_and_test(db_mode):
         assert registry.CHECK_TEST_MISSING not in codes, row
 
 
-def test_t01b_registry_surfaces_known_broken_resolvers(db_mode):
-    """登记不是走过场：它必须能自己指出哪几条关系当前是坏的。
-
-    这两条是本卡体检出来的真实缺口，都不在 SYS-05 的施工白名单内，故只登记不改：
-    - GD_STUDENTS 的 resolver 读的 mentor_user_id/mentor_no/teacher_no 在
-      GraduationStudent 上全都不存在 → 该数据范围恒为拒绝；
-    - DORM_BUILDING 既没有 resolver，关系键还是文本。
-    """
+def test_t01b_registry_locks_the_repaired_resolvers(db_mode):
+    """这两条曾经是坏的（毕设范围恒拒绝、宿管没有 provider），修好后由注册表锁住不许回退。"""
     rows = {r["relationType"]: r for r in registry.validate_registry()}
 
     gd_codes = {c["code"] for c in rows["GD_MENTOR_STUDENT"]["checks"]}
-    assert registry.CHECK_RESOLVER_FIELD_MISSING in gd_codes
+    assert registry.CHECK_RESOLVER_FIELD_MISSING not in gd_codes
+    assert registry.CHECK_RESOLVER_MISSING not in gd_codes
 
     from app.models.graduation import GraduationStudent
 
+    # 真实字段仍是 mentor_id；哪天有人补了 mentor_user_id，请同步 resolver 与注册表
+    assert hasattr(GraduationStudent, "mentor_id")
     for field in ("mentor_user_id", "mentor_no", "teacher_no"):
-        assert not hasattr(GraduationStudent, field), f"{field} 已补上，请同步更新注册表与本断言"
+        assert not hasattr(GraduationStudent, field), f"{field} 已补上，请同步更新注册表与 resolver"
 
     dorm_codes = {c["code"] for c in rows["DORM_MANAGER_BUILDING"]["checks"]}
-    assert registry.CHECK_RESOLVER_MISSING in dorm_codes
+    assert registry.CHECK_RESOLVER_MISSING not in dorm_codes
+    # 文本键仍未整改，这一条必须继续暴露，不许因为补了 resolver 就当没问题
     assert registry.CHECK_UNSTABLE_KEY in dorm_codes
 
 

@@ -63,8 +63,9 @@ relations:
     test: backend/tests/test_business_relation_registry.py
     notes: >
       导师侧是 t_gd_mentor.id，不是 t_user.id，落到账号还要靠 teacher_no 再映射一次。
-      resolver 当前读的是 mentor_user_id / mentor_no / teacher_no，这三个字段在
-      GraduationStudent 上都不存在——注册表校验会把它标成 RESOLVER_FIELD_MISSING。
+      resolver 曾经读 mentor_user_id / mentor_no / teacher_no（这三个字段在
+      GraduationStudent 上都不存在，导致该范围恒为拒绝），已改为与毕设域一致的判定：
+      t_gd_mentor.teacher_no == loginName → t_gd_student.mentor_id。
 
   - relationType: INTERNSHIP_ADVISOR_STUDENT
     label: 实习校内指导教师-学生
@@ -114,10 +115,11 @@ relations:
       kind: STATUS
       field: status
       activeValues: [ENABLED]
-    resolver: null
+    resolver: app.services.data_scope_service._provider_dorm_building
     scopeType: DORM_BUILDING
     test: backend/tests/test_business_relation_registry.py
     notes: >
-      manager_teacher_key 是文本键（可能是工号也可能是姓名），且 simulate_access 的
-      providers 里没有 DORM_BUILDING 提供器——落到"未知数据范围默认拒绝"。
-      两项都是待整改缺口，不是本卡能在白名单内修的。
+      manager_teacher_key 仍是文本键（可能是工号也可能是姓名），改名即失联，这一条待整改。
+      resolver 已补：委托 app.core.affairs_security.build_affairs_context——真实鉴权用的
+      就是它，模拟器不另发明规则。原先 providers 里没有 DORM_BUILDING，落到
+      "未知数据范围默认拒绝"，宿管在模拟器里永远看不到自己的楼栋。

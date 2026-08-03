@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
@@ -187,6 +187,7 @@ def simulate_access(user: dict, *, resource_type: str, resource: dict,
         "CUSTOM": _provider_custom,
         "TENANT": lambda *_a, **_k: True,
         "COURSE": _provider_course,
+        "DORM_BUILDING": _provider_dorm_building,
     }
     checker = providers.get(scope)
     if checker is None:
@@ -247,30 +248,40 @@ def _provider_counselor_classes(user, resource_type, resource) -> bool:
 
 
 def _provider_gd_students(user, resource_type, resource) -> bool:
+    """毕设导师范围：直接复用毕设域的权威判定，不在这里另发明一套规则。
+
+    改造前这里读的是 ``mentor_user_id`` / ``mentor_no`` / ``teacher_no``——这三个字段
+    在 ``GraduationStudent`` 上**一个都不存在**（真实字段是 ``mentor_id`` → t_gd_mentor.id），
+    所以恒为 False：模拟器对着任何导师都回答"不在范围内"。它又只扫前 500 行，
+    学生一多连命中都靠运气。现在按毕设域自己的规则判：
+    ``t_gd_mentor.teacher_no == loginName`` → ``t_gd_student.mentor_id == mentor.id``。
+    """
     student_id = resource.get("studentId")
     if not student_id:
         return False
     try:
-        from app.models import GraduationStudent
+        from app.models import GraduationMentor, GraduationStudent
         tid = int(current_tenant_id() or user.get("tenantId") or 0)
-        mentor_key = str(user.get("loginName") or "")
+        login = str(user.get("loginName") or "").strip()
+        if not tid or not login:
+            return False
         db = get_sessionmaker()()
         try:
-            # 兼容不同字段命名
-            q = select(GraduationStudent).where(
+            mentor = db.scalars(select(GraduationMentor).where(
+                GraduationMentor.tenant_id == tid,
+                GraduationMentor.teacher_no == login,
+                GraduationMentor.is_deleted.is_(False)).limit(1)).first()
+            if mentor is None:
+                return False
+            # studentId 既可能是毕设台账主键，也可能是学籍主档 id，两种都认，但都必须同租户同导师
+            target = str(student_id)
+            row = db.scalars(select(GraduationStudent).where(
                 GraduationStudent.tenant_id == tid,
                 GraduationStudent.is_deleted.is_(False),
-            )
-            rows = db.scalars(q.limit(500)).all()
-            for r in rows:
-                sid = getattr(r, "student_id", None) or getattr(r, "id", None)
-                mentor = getattr(r, "mentor_user_id", None) or getattr(r, "mentor_no", None) \
-                    or getattr(r, "teacher_no", None)
-                if str(sid) == str(student_id) and str(mentor) in {
-                    mentor_key, str(user.get("userId") or "").replace("db-", "")
-                }:
-                    return True
-            return False
+                GraduationStudent.mentor_id == int(mentor.id),
+                or_(GraduationStudent.id == target, GraduationStudent.student_id == target),
+            ).limit(1)).first()
+            return row is not None
         finally:
             db.close()
     except Exception:
@@ -278,28 +289,50 @@ def _provider_gd_students(user, resource_type, resource) -> bool:
 
 
 def _provider_intern_students(user, resource_type, resource) -> bool:
+    """实习指导教师范围：只认稳定的 advisor_user_id，并且直接按条件查，不再扫前 500 行。"""
     student_id = resource.get("studentId")
     if not student_id:
         return False
     try:
         from app.models import InternshipRecord
         tid = int(current_tenant_id() or user.get("tenantId") or 0)
-        mentor_key = str(user.get("loginName") or "")
-        uid = str(user.get("userId") or "").replace("db-", "")
+        uid = str(user.get("userId") or "").replace("db-", "").strip()
+        if not tid or not uid.isdigit():
+            return False
         db = get_sessionmaker()()
         try:
-            rows = db.scalars(select(InternshipRecord).where(
+            target = str(student_id)
+            row = db.scalars(select(InternshipRecord).where(
                 InternshipRecord.tenant_id == tid,
                 InternshipRecord.is_deleted.is_(False),
-            ).limit(500)).all()
-            for r in rows:
-                sid = getattr(r, "student_id", None) or getattr(r, "id", None)
-                mentor = getattr(r, "advisor_user_id", None) or getattr(r, "teacher_no", None) \
-                    or getattr(r, "mentor_no", None) or getattr(r, "school_teacher_id", None) \
-                    or getattr(r, "teacher_user_id", None)
-                if str(sid) == str(student_id) and str(mentor) in {mentor_key, uid}:
-                    return True
-            return False
+                InternshipRecord.advisor_user_id == int(uid),
+                or_(InternshipRecord.student_id == target, InternshipRecord.id == target),
+            ).limit(1)).first()
+            return row is not None
+        finally:
+            db.close()
+    except Exception:
+        return False
+
+
+def _provider_dorm_building(user, resource_type, resource) -> bool:
+    """宿管楼栋范围：委托给学工安全上下文（真实鉴权用的就是它），只做一次归属比对。
+
+    改造前 providers 里根本没有 DORM_BUILDING，落到"未知数据范围默认拒绝"——
+    宿管在模拟器里永远是"看不到任何楼栋"。
+    """
+    building_id = resource.get("buildingId") or resource.get("dormBuildingId")
+    if not building_id:
+        return False
+    try:
+        from app.core.affairs_security import build_affairs_context
+        db = get_sessionmaker()()
+        try:
+            ctx = build_affairs_context(user, db)
+            if str(getattr(ctx, "scope_type", "")).upper() != "DORM_BUILDING":
+                return False
+            allowed = {str(x) for x in (getattr(ctx, "dorm_building_ids", None) or [])}
+            return str(building_id) in allowed
         finally:
             db.close()
     except Exception:
