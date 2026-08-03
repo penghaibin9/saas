@@ -1,0 +1,76 @@
+name: Agent Fix PR38 Batch Archive
+
+on:
+  push:
+    branches:
+      - fix/main-pytest-fixture-corruption
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-fix-pr38-batch-archive
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[agent-fix-pr38]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/main-pytest-fixture-corruption
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Patch V2 batch archive accounting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/modules/graduation/materials/manifest_service.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    for row in snapshot["rows"]:
+              gd_student_id = int(row["studentId"])
+              try:
+                  result = file_archive(gd_student_id, requested, user)
+                  manifests.append(result["manifestId"])
+                  filed += 1
+              except AppException as exc:
+                  failed += 1
+                  errors.append({"gdStudentId": str(gd_student_id), "code": exc.code, "message": exc.message})
+          '''
+          new = '''    for row in snapshot["rows"]:
+              gd_student_id = int(row["studentId"])
+              if row.get("missing") or int(row.get("openRisks") or 0) > 0:
+                  skipped += 1
+                  continue
+              try:
+                  result = file_archive(gd_student_id, requested, user)
+                  manifests.append(result["manifestId"])
+                  filed += 1
+              except AppException as exc:
+                  failed += 1
+                  errors.append({"gdStudentId": str(gd_student_id), "code": exc.code, "message": exc.message})
+          '''
+          if old not in text:
+              raise SystemExit('expected batch_file block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m py_compile backend/app/modules/graduation/materials/manifest_service.py
+          git diff --check
+
+      - name: Commit focused fix
+        run: |
+          if git diff --quiet -- backend/app/modules/graduation/materials/manifest_service.py; then
+            echo 'No change required'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/modules/graduation/materials/manifest_service.py
+          git commit -m 'fix(graduation): count ineligible batch archive rows as skipped [agent-fix-pr38]'
+          git push origin HEAD:fix/main-pytest-fixture-corruption
