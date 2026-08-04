@@ -31,6 +31,8 @@ L_STATUS = {"DRAFT": "草稿", "PUBLISHED": "报名中", "ENROLL_CLOSED": "报�
 L_TYPE = {"ACTIVITY": "活动", "VOLUNTEER": "志愿服务", "LECTURE": "讲座报告",
           "COMPETITION": "竞赛", "PRACTICE": "社会实践"}
 _MAX_CREDIT = Decimal("9999.99")
+_VOL_LABEL = {"PENDING": "待认定", "CONFIRMED": "已认定", "REJECTED": "已驳回"}
+VOL_CATEGORY = "ZHIYUAN"
 
 
 def _decimal(value, label: str, *, positive: bool = True) -> Decimal:

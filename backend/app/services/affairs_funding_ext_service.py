@@ -20,6 +20,8 @@ from app.services.db_service import _iso, _tid, session
 
 
 _MAX_AMOUNT = Decimal("999999999999.99")
+_L_LOAN = {"REGISTERED": "已登记", "RECEIPT": "回执已传", "VERIFIED": "已核对", "CONFIRMED": "已确认"}
+_LOAN_NEXT = {"REGISTERED": "RECEIPT", "RECEIPT": "VERIFIED", "VERIFIED": "CONFIRMED"}
 
 
 def _money(value, label: str, *, required: bool = False) -> Decimal | None:
