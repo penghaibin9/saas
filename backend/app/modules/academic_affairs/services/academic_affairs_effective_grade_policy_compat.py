@@ -73,6 +73,19 @@ def _term_key(term):
     )
 
 
+def _mapping_term_key(row):
+    start = row.get("start_date")
+    if start is not None:
+        return (2, start, "", 0, int(row.get("id") or 0))
+    return (
+        1,
+        datetime.min,
+        str(row.get("year_code") or ""),
+        int(row.get("term_no") or 0),
+        int(row.get("id") or 0),
+    )
+
+
 def _policy_key(row, terms):
     term_id = getattr(row, "effective_from_term_id", None)
     if term_id in (None, ""):
@@ -182,6 +195,14 @@ def _chronological_before_grade_insert(_mapper, connection, target) -> None:
         term_table.c.is_deleted.is_(False),
     )).mappings().all()
     terms = {int(row["id"]): row for row in term_rows}
+    missing_term_refs = sorted(term_ids - set(terms))
+    if missing_term_refs:
+        raise AppException(
+            "DATA_CONFLICT",
+            "有效成绩策略引用的生效学期不存在，禁止写入正式成绩",
+            details={"termIds": [str(value) for value in missing_term_refs]},
+            http_status=409,
+        )
 
     term_text = str(getattr(target, "term", None) or "").strip()
     target_term = None
@@ -197,11 +218,11 @@ def _chronological_before_grade_insert(_mapper, connection, target) -> None:
     if target_term is None:
         eligible = [row for row in policies if row["effective_from_term_id"] is None]
     else:
-        target_key = _term_key(type("TermRow", (), target_term)())
+        target_key = _mapping_term_key(target_term)
         eligible = [
             row for row in policies
             if row["effective_from_term_id"] is None
-            or _term_key(type("TermRow", (), terms[int(row["effective_from_term_id"])])()) <= target_key
+            or _mapping_term_key(terms[int(row["effective_from_term_id"])]) <= target_key
         ]
     if not eligible:
         return
@@ -209,7 +230,7 @@ def _chronological_before_grade_insert(_mapper, connection, target) -> None:
         key=lambda row: (
             (0, datetime.min, "", 0, 0)
             if row["effective_from_term_id"] is None
-            else _term_key(type("TermRow", (), terms[int(row["effective_from_term_id"])])()),
+            else _mapping_term_key(terms[int(row["effective_from_term_id"])]),
             int(row["policy_version"] or 1),
             int(row["id"] or 0),
         ),
