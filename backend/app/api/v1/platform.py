@@ -53,9 +53,10 @@ def _expected_version(body: dict, *, operation: str) -> int:
 
 # ── §二 总览 ──
 
-@router.get("/overview", summary="平台经营总览")
+@router.get("/overview", summary="平台经营、客户成功与运行总览")
 def overview(user=Depends(require_platform_super_admin)):
-    return success(svc.overview())
+    from app.services.platform_overview_service import overview as gov_overview
+    return success(gov_overview())
 
 
 # ── §三 租户全托管 ──
