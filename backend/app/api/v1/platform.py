@@ -1305,3 +1305,50 @@ def fair_use_violations(tenantId: Optional[str] = Query(default=None),
     from app.services import fair_use_service as fu
     items = fu.list_violations(int(tenantId) if tenantId else None, days=days)
     return success({"items": items, "total": len(items)})
+
+
+# ── PLAT-12 备份恢复验证与灾备（证据元数据；真正的备份/恢复工具属于部署环境）──
+
+@router.get("/disaster-recovery/overview", summary="备份/恢复演练治理首屏结论")
+def disaster_recovery_overview(user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    return success(dr.governance_overview())
+
+
+@router.get("/backup-evidence", summary="备份证据列表")
+def backup_evidence_list(backupType: Optional[str] = Query(default=None),
+                         user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    items = dr.list_backup_evidence(backup_type=backupType)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/backup-evidence", summary="人工登记备份证据")
+def backup_evidence_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    out = dr.record_backup_evidence(user, body)
+    _audit("PLATFORM_BACKUP_EVIDENCE_RECORD", out["id"], out)
+    return success(out, message="备份证据已登记")
+
+
+@router.post("/disaster-recovery/schema-check", summary="运行数据库表结构完整性自检（只读，立即可跑）")
+def disaster_recovery_schema_check(user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    out = dr.run_schema_integrity_check(user)
+    _audit("PLATFORM_SCHEMA_INTEGRITY_CHECK", out["id"], {"status": out["status"]})
+    return success(out)
+
+
+@router.get("/restore-drills", summary="恢复演练证据列表")
+def restore_drills_list(user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    items = dr.list_restore_drills()
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/restore-drills", summary="人工登记恢复演练证据")
+def restore_drills_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import disaster_recovery_service as dr
+    out = dr.record_restore_drill(user, body)
+    _audit("PLATFORM_RESTORE_DRILL_RECORD", out["id"], out)
+    return success(out, message="恢复演练证据已登记")
