@@ -40,10 +40,16 @@
   gap: var(--space-2);
 }
 
+/* 只用「类名」和「后代空格」选择器：微信 WXSS 解析器既不支持省略元素名的
+   `> :first-child`（报 error at token `:`），也不支持通配符 `> *:first-child`
+   （报 error at token `*`），命中任一都会让 app.wxss 整体编译失败、小程序白屏。
+   .gd__choice-row 的首个子元素在模板中恒为 .gd__choice-title 或 .flex-1，
+   直接按类名命中，等效且安全（2026-08-04 微信开发者工具真机联调定位）。 */
 .gg .flex-1,
 .gt .flex-1,
 .ds .flex-1,
-.gd__choice-row > :first-child {
+.gd__choice-row .flex-1,
+.gd__choice-row .gd__choice-title {
   min-width: 0;
 }
 

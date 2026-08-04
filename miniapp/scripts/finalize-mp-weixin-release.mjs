@@ -143,6 +143,27 @@ async function main() {
     fail(`构建产物包含非本机 HTTP 明文地址：${[...new Set(cleartextApiFiles)].join(', ')}`)
   }
 
+  // WXSS 解析器既不支持省略元素名的伪类（`> :first-child` → error at token `:`），
+  // 也不支持通配符（`> *:first-child` / `* {}` → error at token `*`）。命中任一都会让
+  // 整份样式编译失败、小程序白屏，而 uni-app 构建阶段完全不报错——必须发布前拦下
+  // （2026-08-04 微信开发者工具真机踩坑，两种写法先后各踩一次）。
+  const wxssFiles = files.filter((file) => file.endsWith('.wxss'))
+  const badSelectorFiles = []
+  for (const file of wxssFiles) {
+    const text = await fs.readFile(file, 'utf8')
+    // 去掉注释后再判断，避免注释里的示例文字造成误报
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '')
+    if (/>\s*:[a-zA-Z-]/.test(code) || /[>,{]\s*\*/.test(code) || /^\s*\*\s*[,{]/m.test(code)) {
+      badSelectorFiles.push(normalizeRelative(file))
+    }
+  }
+  if (badSelectorFiles.length) {
+    fail(
+      '以下 WXSS 含微信不支持的选择器（">" 后直接跟伪类，或使用通配符 "*"）；' +
+      `请改写为具体类名选择器：${badSelectorFiles.join(', ')}`
+    )
+  }
+
   const subPackageRoots = subPackages
     .map((item) => String(item.root || '').replace(/^\/+|\/+$/g, ''))
     .filter(Boolean)
