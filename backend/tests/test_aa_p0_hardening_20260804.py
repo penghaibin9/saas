@@ -48,6 +48,17 @@ def test_prerequisite_loader_normalizes_and_rejects_corruption():
         raise AssertionError("损坏先修 JSON 必须失败关闭")
 
 
+def test_pending_lottery_record_never_consumes_or_releases_capacity():
+    from app.modules.academic_affairs.services.academic_affairs_selection_service import (
+        _counts_toward_capacity,
+    )
+
+    assert _counts_toward_capacity("SELECTED") is True
+    assert _counts_toward_capacity("LOCKED") is True
+    assert _counts_toward_capacity("PENDING") is False
+    assert _counts_toward_capacity("DROPPED") is False
+
+
 def test_tenant_effective_grade_policy_matrix():
     from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_compat  # noqa: F401
     from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import resolve_effective_grade
