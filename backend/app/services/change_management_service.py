@@ -375,10 +375,16 @@ def governance_overview() -> dict:
         pending_approval = [c for c in changes if c.status == "ASSESSED"]
         high_risk = [c for c in changes if c.is_irreversible or c.change_type in ("MIGRATION", "HOTFIX")]
         failed = [c for c in changes if c.status in ("FAILED", "ROLLED_BACK")]
-        freeze_conflicts = check_freeze_conflicts(
-            [i.tenant_id for c in changes for i in
-             db.scalars(select(ChangeImpact).where(ChangeImpact.change_id == c.id)).all()
-             if c.status in ("APPROVED", "SCHEDULED")])
+        # 复审：原写法把 status 过滤放在两层 for 之后，等价于对每个 change 都先跑一次
+        # ChangeImpact 查询、事后再按 status 丢弃结果——多余的 N 次查询。先筛 change 再
+        # 一次性按 change_id IN (...) 批量查，避免为不相关的 change 也打一次数据库。
+        pending_change_ids = [c.id for c in changes if c.status in ("APPROVED", "SCHEDULED")]
+        freeze_conflicts = []
+        if pending_change_ids:
+            impact_tenant_ids = db.scalars(select(ChangeImpact.tenant_id).where(
+                ChangeImpact.change_id.in_(pending_change_ids),
+                ChangeImpact.is_deleted.is_(False))).all()
+            freeze_conflicts = check_freeze_conflicts([int(t) for t in impact_tenant_ids])
         return {
             "todayChangeCount": len(today_changes), "pendingApprovalCount": len(pending_approval),
             "highRiskCount": len(high_risk), "freezeConflictCount": len(freeze_conflicts),
