@@ -240,13 +240,18 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
     if max_credit > 0 and projected_credit > max_credit:
         raise _core._invalid("超过本轮选课最大学分限制")
 
-    for item in active_selected:
-        if item.weekday != course.weekday or item.start_slot is None or item.end_slot is None:
-            continue
-        if _weeks_overlap(item.teaching_weeks_json, course.teaching_weeks_json) and not (
-            int(item.end_slot) < int(course.start_slot) or int(course.end_slot) < int(item.start_slot)
-        ):
-            raise _core._invalid(f"与已选课程{item.course_name}上课时间冲突")
+    target_slots = _core._task_slots(db, course.teaching_task_id)
+    if target_slots:
+        for item in active_selected:
+            selected_slots = _core._task_slots(db, item.teaching_task_id)
+            for (w1, s1, sw1, ew1, p1) in selected_slots:
+                for (w2, s2, sw2, ew2, p2) in target_slots:
+                    if w1 == w2 and s1 == s2 and _weeks_overlap(
+                        sw1, ew1, p1, sw2, ew2, p2
+                    ):
+                        raise _core._invalid(
+                            f"与已选课程{item.course_name or ''}上课时间冲突"
+                        )
 
     if int(course.selected_count or 0) >= int(course.capacity or 0):
         raise _core._invalid("课程容量已满")
