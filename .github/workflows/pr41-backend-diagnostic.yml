@@ -16,7 +16,7 @@ jobs:
   academic-affairs-diagnostic:
     name: 教务系统专项测试
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.0
@@ -56,10 +56,14 @@ jobs:
         run: |
           mkdir -p /tmp/pr41-diagnostic
           CANDIDATES=(
-            tests/unit/test_academic_affairs_models.py
-            tests/unit/test_academic_affairs_service.py
-            tests/test_department_permissions.py
-            tests/test_user_pagination.py
+            tests/test_aa_effective_grade_active_only.py
+            tests/test_aa_effective_grade_policy_snapshot.py
+            tests/test_aa_effective_policy_current_term_real.py
+            tests/test_aa_effective_policy_term_order_real.py
+            tests/test_aa_p0_hardening_20260804.py
+            tests/test_aa_prerequisite_api_real.py
+            tests/test_aa_prerequisite_old_version_api.py
+            tests/test_aa_task_projection_rollback_real.py
           )
           TARGETS=()
           for target in "${CANDIDATES[@]}"; do
@@ -68,8 +72,8 @@ jobs:
             fi
           done
           printf '%s\n' "${TARGETS[@]}" | tee /tmp/pr41-diagnostic/targets.txt
-          if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No PR41 academic-affairs tests found" | tee /tmp/pr41-diagnostic/pytest.log
+          if [ "${#TARGETS[@]}" -ne "${#CANDIDATES[@]}" ]; then
+            echo "Expected ${#CANDIDATES[@]} PR41 tests, found ${#TARGETS[@]}" | tee /tmp/pr41-diagnostic/pytest.log
             echo 2 > /tmp/pr41-diagnostic/pytest-exit
             exit 0
           fi
