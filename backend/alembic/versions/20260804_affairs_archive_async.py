@@ -1,7 +1,7 @@
 """Add lease metadata for asynchronous student-affairs archive package generation.
 
 Revision ID: 20260804_affairs_archive_async
-Revises: 20260804_affairs_second_review_merge
+Revises: 20260804_affairs_r2_merge
 Create Date: 2026-08-04
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260804_affairs_archive_async"
-down_revision = "20260804_affairs_second_review_merge"
+down_revision = "20260804_affairs_r2_merge"
 branch_labels = None
 depends_on = None
 
