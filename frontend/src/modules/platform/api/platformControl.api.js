@@ -228,6 +228,14 @@ export const platformControlApi = {
   evaluateTenantFairUse: (tenantId) => real('tenant-fair-use-evaluate', `/platform/tenants/${tenantId}/fair-use/evaluate`, { method: 'POST', body: {} }),
   listFairUseViolations: (params = {}) => real('fair-use-violations', '/platform/fair-use/violations', { params }),
 
+  /* PLAT-12 备份恢复验证与灾备（新页面，无演示兜底） */
+  getDisasterRecoveryOverview: () => real('disaster-recovery-overview', '/platform/disaster-recovery/overview', {}),
+  listBackupEvidence: (params = {}) => real('backup-evidence-list', '/platform/backup-evidence', { params }),
+  createBackupEvidence: (body) => real('backup-evidence-create', '/platform/backup-evidence', { method: 'POST', body }),
+  runSchemaIntegrityCheck: () => real('schema-integrity-check', '/platform/disaster-recovery/schema-check', { method: 'POST', body: {} }),
+  listRestoreDrills: () => real('restore-drills-list', '/platform/restore-drills', {}),
+  createRestoreDrill: (body) => real('restore-drill-create', '/platform/restore-drills', { method: 'POST', body }),
+
   /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
   getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),
   listChanges: (params = {}) => real('changes-list', '/platform/changes', { params }),
