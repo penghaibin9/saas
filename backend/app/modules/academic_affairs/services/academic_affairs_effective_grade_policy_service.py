@@ -189,6 +189,9 @@ def resolve_effective_grade(rows, strategy=None):
     grouped = {}
     legacy = []
     for row in rows or []:
+        record_status = str(getattr(row, "record_status", None) or "ACTIVE").upper()
+        if record_status != "ACTIVE":
+            continue
         key = grade_identity_key(row)
         if len(key) > 1 and key[1] == "LEGACY_NAME_KEY":
             legacy.append(row)
@@ -197,9 +200,7 @@ def resolve_effective_grade(rows, strategy=None):
     selected = list(legacy)
     if legacy:
         _LOG.warning("effective grade kept %s LEGACY_NAME_KEY rows separate", len(legacy))
-    for group in grouped.values():
-        active = [row for row in group if str(getattr(row, "record_status", None) or "ACTIVE").upper() == "ACTIVE"]
-        candidates = active or group
+    for candidates in grouped.values():
         group_strategy = _group_strategy(candidates, strategy)
         if group_strategy == "SINGLE_RECORD":
             selected.append(candidates[0])
