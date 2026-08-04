@@ -194,7 +194,7 @@ def test_funding_eligibility_has_versioned_tenant_and_project_rule_contract():
 
 def test_second_review_alembic_merge_is_single_declared_head():
     migration = read("backend/alembic/versions/20260804_merge_affairs_second_review_heads.py")
-    assert 'revision = "20260804_affairs_second_review_merge"' in migration
+    assert 'revision = "20260804_affairs_r2_merge"' in migration
     assert 'down_revision = ("0169_change_management", "20260804_affairs_final_merge")' in migration
 
 
@@ -231,7 +231,7 @@ def test_archive_queries_are_paginated_and_batch_loaded():
 def test_archive_async_migration_follows_second_review_merge():
     migration = read("backend/alembic/versions/20260804_affairs_archive_async.py")
     assert 'revision = "20260804_affairs_archive_async"' in migration
-    assert 'down_revision = "20260804_affairs_second_review_merge"' in migration
+    assert 'down_revision = "20260804_affairs_r2_merge"' in migration
 
 
 def test_second_review_pagination_actions_and_reconfirm_are_fail_closed():
