@@ -70,7 +70,6 @@
 
 <script>
 import { tenantBrandConfig, ROLE } from '@/config'
-import { ENV } from '@/config/env'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
 import { clearTokens, realRequest, setRefreshToken, setToken } from '@/services/request'
@@ -235,12 +234,10 @@ export default {
     },
     focusAccount() { toast('请使用学校分配的学号和密码登录办理迎新事项') },
     switchEntry() { relaunch('/pages/login/index') },
+    // 正文已内置在小程序包内（见 config/legalDocs.js），无需依赖外链和业务域名配置，
+    // 因此任何环境下都能打开，不会再出现"未配置链接"的死路。
     openDoc(kind) {
-      const isTerms = kind === 'terms'
-      const url = isTerms ? ENV.termsUrl : ENV.privacyUrl
-      const title = isTerms ? '用户协议' : '隐私政策'
-      if (!url) { toast('学校暂未配置该文档链接，请联系管理员'); return }
-      go(`/pages/common/legal-doc/index?title=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`)
+      go(`/pages/common/legal-doc/index?kind=${kind === 'terms' ? 'terms' : 'privacy'}`)
     }
   }
 }

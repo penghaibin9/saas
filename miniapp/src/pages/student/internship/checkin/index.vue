@@ -28,6 +28,8 @@
         </view>
       </view>
     </MobileGlobalState>
+    <!-- 打卡会调用 wx.getLocation：用户尚未同意隐私协议时由本组件弹出微信要求的授权按钮 -->
+    <MobilePrivacyGate />
   </view>
 </template>
 
@@ -96,31 +98,41 @@ export default {
             type: 'gcj02',
             success: (p) => submit({ lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }),
             fail: (err) => {
-              const denied = /auth|permission|privacy/i.test(String((err && err.errMsg) || ''))
-              if (!denied) {
-                // 确实取不到定位（无信号/设备未开启定位服务）：按既有契约无定位打卡
-                submit({})
+              const msg = String((err && err.errMsg) || '')
+              // 隐私协议未同意（errno 112）：由 MobilePrivacyGate 弹微信授权按钮处理；
+              // 走到这里说明用户点了拒绝。openSetting 对这种情况无效，不要误导用户去设置。
+              if (/privacy/i.test(msg) || Number(err && err.errno) === 112) {
+                uni.showModal({
+                  title: '未同意隐私协议',
+                  content: '你拒绝了隐私协议，无法获取定位。可以继续无定位打卡，但该记录会标记为异常，需要指导老师人工核实。',
+                  confirmText: '无定位打卡',
+                  cancelText: '取消',
+                  success: (choice) => { if (choice.confirm) submit({}); else this.checkingIn = false }
+                })
                 return
               }
-              uni.showModal({
-                title: '未获得定位权限',
-                content: '打卡需要一次定位来核验是否在实习单位范围内。你可以去设置里开启定位权限；也可以坚持无定位打卡，但该记录会标记为异常，需要指导老师人工核实。',
-                confirmText: '去设置',
-                cancelText: '无定位打卡',
-                success: (choice) => {
-                  if (!choice.confirm) { submit({}); return }
-                  uni.openSetting({
-                    success: (res) => {
-                      if (res && res.authSetting && res.authSetting['scope.userLocation']) {
-                        tryLocate()
-                      } else {
-                        submit({})
-                      }
-                    },
-                    fail: () => submit({})
-                  })
-                }
-              })
+              // 系统定位权限被拒：可以通过 openSetting 重新开启
+              if (/auth\s*deny|authorize|permission/i.test(msg)) {
+                uni.showModal({
+                  title: '未获得定位权限',
+                  content: '打卡需要一次定位来核验是否在实习单位范围内。你可以去设置里开启定位权限；也可以坚持无定位打卡，但该记录会标记为异常，需要指导老师人工核实。',
+                  confirmText: '去设置',
+                  cancelText: '无定位打卡',
+                  success: (choice) => {
+                    if (!choice.confirm) { submit({}); return }
+                    uni.openSetting({
+                      success: (res) => {
+                        if (res && res.authSetting && res.authSetting['scope.userLocation']) tryLocate()
+                        else submit({})
+                      },
+                      fail: () => submit({})
+                    })
+                  }
+                })
+                return
+              }
+              // 确实取不到定位（无信号/设备未开启定位服务）：按既有契约无定位打卡
+              submit({})
             }
           })
           tryLocate()

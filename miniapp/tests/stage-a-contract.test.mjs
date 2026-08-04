@@ -115,6 +115,19 @@ test('read state is only ever set locally for messages that can actually persist
   }
 })
 
+test('release script never writes an empty appid and can resolve it from .env.production', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  // 曾经的真实缺陷：未配置 WECHAT_APPID 时直接 projectConfig.appid = ''，
+  // 空 appid 会让微信开发者工具导入即报错，比保留 touristappid 更糟。
+  assert.doesNotMatch(release, /projectConfig\.appid = appid\s*$/m)
+  assert.match(release, /appid \|\| String\(projectConfig\.appid \|\| ''\)\.trim\(\) \|\| TOURIST_APPID/)
+  // 非技术使用者只改 .env.production 一个文件就能打出可上传的包
+  assert.match(release, /VITE_WECHAT_APPID/)
+  assert.match(release, /uploadReady/)
+  // AppID 必须校验格式，避免把错值写进产物后到工具里才发现
+  assert.match(release, /APPID_PATTERN = \/\^wx\[0-9a-fA-F\]\{16\}\$\//)
+})
+
 test('release build fails at the proactive 1.80 MiB split threshold', () => {
   const main = read('src/main.js')
   const release = read('scripts/finalize-mp-weixin-release.mjs')
