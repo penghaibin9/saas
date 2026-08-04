@@ -68,6 +68,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '公共底座运行中心', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
+      // PLAT-14：数据治理、集成目录与合规证据（跨租户聚合）
+      path: 'governance',
+      name: 'platform-governance',
+      component: () => import('@/modules/platform/views/control/PlatformGovernanceView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '数据治理、集成目录与合规证据', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),

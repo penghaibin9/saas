@@ -67,6 +67,14 @@ def foundations_overview(user=Depends(require_platform_super_admin)):
     return success(foundation_overview())
 
 
+# ── PLAT-14 数据治理、集成目录与合规证据（跨租户聚合）──
+
+@router.get("/governance/overview", summary="数据治理、集成目录与合规证据")
+def governance_overview_endpoint(user=Depends(require_platform_super_admin)):
+    from app.services.platform_governance_service import governance_overview
+    return success(governance_overview())
+
+
 # ── §三 租户全托管 ──
 
 @router.get("/tenants", summary="租户列表（keyword/status 过滤）")

@@ -170,6 +170,9 @@ export const platformControlApi = {
   /* PLAT-06 公共底座运行中心（新页面，无演示兜底） */
   getFoundationOverview: () => real('foundation-overview', '/platform/foundations/overview', {}),
 
+  /* PLAT-14 数据治理、集成目录与合规证据（新页面，无演示兜底） */
+  getPlatformGovernanceOverview: () => real('governance-overview', '/platform/governance/overview', {}),
+
   /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
   getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
   listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),
