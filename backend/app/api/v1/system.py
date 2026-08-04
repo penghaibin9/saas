@@ -2970,33 +2970,25 @@ def api_capability_map(user=Depends(require_any_permission(
                     "capabilities": data.get("capabilities") or []})
 
 
+# ═══════════ SYS-01 学校治理总览（只读聚合 SYS-02～SYS-20，不做第二数据源）═══════════
+
 @router.get("/system/overview-board", summary="系统总览第一屏：健康/缺口/同步失败/安全风险/待办")
 def api_overview_board(user=Depends(require_any_permission(
         "systemAdmin.dashboard.view", "systemAdmin.implementation.view"))):
-    from app.services import system_governance_service as gov
-    from app.services.go_live_check_service import run_go_live_checks
-    from app.services.module_access_service import module_access_state
+    from app.services.system_governance_overview_service import governance_overview
 
-    tid = int(current_tenant_id() or 0)
-    checks = run_go_live_checks(tid)
-    jobs = gov.list_sync_jobs()
-    failed = [j for j in jobs if j.get("status") == "FAILED"]
-    modules = {}
-    for mk in ("studentAffairs", "academicAffairs", "graduationDesign", "internship", "employment", "orientation"):
-        modules[mk] = module_access_state(tid, mk) if tid else {"entitled": False, "enabled": False}
-    risks = []
-    if checks["summary"]["blocker"]:
-        risks.append({"level": "HIGH", "text": f"{checks['summary']['blocker']} 项阻断上线检查未通过"})
-    if failed:
-        risks.append({"level": "MEDIUM", "text": f"{len(failed)} 个同步任务失败"})
-    todos = [c for c in checks["items"] if c["status"] in ("BLOCKER", "ADVISORY")][:12]
+    board = governance_overview()
     return success({
-        "moduleHealth": modules,
-        "configGaps": [c for c in checks["items"] if c["status"] in ("BLOCKER", "ADVISORY")],
-        "syncFailures": failed[:20],
-        "securityRisks": risks,
-        "pendingItems": todos,
-        "goLive": {"canGoLive": checks["canGoLive"], "summary": checks["summary"]},
+        "moduleHealth": board["moduleHealth"],
+        "configGaps": board["configGaps"],
+        "syncFailures": board["syncFailures"],
+        "securityRisks": board["securityRisks"],
+        "pendingItems": board["pendingItems"][:12],
+        "goLive": board["goLive"],
+        "integrationsRegistered": board["integrationsRegistered"],
+        "securityChangeGovernance": board["securityChangeGovernance"],
+        "masterDataGovernance": board["masterDataGovernance"],
+        "auditGovernance": board["auditGovernance"],
     })
 
 
