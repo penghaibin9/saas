@@ -61,6 +61,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '服务目录、依赖与租户影响地图', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
+      // PLAT-06：公共底座运行中心（跨租户聚合 PR#25 文件底座 + PLAT-08 服务目录）
+      path: 'foundations',
+      name: 'platform-foundations',
+      component: () => import('@/modules/platform/views/control/PlatformFoundationOpsView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '公共底座运行中心', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),

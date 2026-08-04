@@ -167,6 +167,9 @@ export const platformControlApi = {
   getServiceImpact: (serviceCode, releaseId) =>
     real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } }),
 
+  /* PLAT-06 公共底座运行中心（新页面，无演示兜底） */
+  getFoundationOverview: () => real('foundation-overview', '/platform/foundations/overview', {}),
+
   /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
   getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
   listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),

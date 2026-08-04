@@ -59,6 +59,14 @@ def overview(user=Depends(require_platform_super_admin)):
     return success(gov_overview())
 
 
+# ── PLAT-06 公共底座运行中心（跨租户聚合 PR#25 文件底座 + PLAT-08 服务目录）──
+
+@router.get("/foundations/overview", summary="公共底座运行中心：跨租户文件底座 + 服务目录")
+def foundations_overview(user=Depends(require_platform_super_admin)):
+    from app.services.foundation_operations_service import foundation_overview
+    return success(foundation_overview())
+
+
 # ── §三 租户全托管 ──
 
 @router.get("/tenants", summary="租户列表（keyword/status 过滤）")
