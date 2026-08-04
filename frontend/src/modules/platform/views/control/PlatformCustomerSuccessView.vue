@@ -64,8 +64,8 @@
 
 <script>
 /** PLAT-05 客户健康、工单、培训与续费：健康分只读展示 + 工单闭环操作。 */
-import { AppCard, AppSectionHeader, DataTable } from '@/components/ui'
-import { EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
+import { AppCard, AppSectionHeader } from '@/components/ui'
+import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 

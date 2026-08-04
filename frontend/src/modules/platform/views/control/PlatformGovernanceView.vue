@@ -43,8 +43,8 @@
 
 <script>
 /** PLAT-14 数据治理、集成目录与合规证据：跨租户只读聚合，纯只读页面。 */
-import { AppCard, AppSectionHeader, DataTable } from '@/components/ui'
-import { EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar } from '@/components/business'
+import { AppCard, AppSectionHeader } from '@/components/ui'
+import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 
 export default {

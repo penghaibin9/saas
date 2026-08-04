@@ -57,8 +57,8 @@
 
 <script>
 /** PLAT-06 公共底座运行中心：跨租户聚合 PR#25 文件底座 + PLAT-08 服务目录，纯只读。 */
-import { AppCard, AppSectionHeader, DataTable } from '@/components/ui'
-import { EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
+import { AppCard, AppSectionHeader } from '@/components/ui'
+import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 
 export default {
