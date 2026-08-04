@@ -98,7 +98,7 @@
     {"path": "pages/teacher/student-detail/index", "style": {"navigationBarTitleText": "学生详情", "navigationStyle": "custom"}},
     {"path": "pages/teacher/my-classes/index", "style": {"navigationBarTitleText": "我的班级", "navigationStyle": "custom"}},
     {"path": "pages/teacher/my-students/index", "style": {"navigationBarTitleText": "我的学生", "navigationStyle": "custom"}},
-    {"path": "pages/teacher/internship-review/index", "style": {"navigationBarTitleText": "实习周报批阅"}},
+    {"path": "pages/teacher/internship-review/index", "style": {"navigationBarTitleText": "实习周报批阅", "navigationStyle": "custom"}},
     {"path": "pages/teacher/graduation-guide/index", "style": {"navigationBarTitleText": "毕设指导"}},
     {"path": "pages/teacher/graduation-topics/index", "style": {"navigationBarTitleText": "毕设选题审核", "navigationStyle": "custom"}},
     {"path": "pages/teacher/academic-warning/index", "style": {"navigationBarTitleText": "学业预警待处理", "navigationStyle": "custom"}},

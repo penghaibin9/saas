@@ -88,12 +88,42 @@ export default {
               }
             }).finally(() => { this.checkingIn = false })
           }
-          // 定位失败不阻断打卡：无定位则只记录时间（后端 result=NO_LOCATION）
-          uni.getLocation({
+          // 定位失败不阻断打卡：无定位则只记录时间（后端 result=NO_LOCATION，生成
+          // MISSING 异常交教师人工复核，不作作弊认定）。但"用户拒绝授权"是可恢复的，
+          // 不应静默产生一条需要老师额外处理的异常记录——先引导去设置里重新授权，
+          // 学生仍可选择坚持无定位打卡（2026-08-04 复审补全授权闭环）。
+          const tryLocate = () => uni.getLocation({
             type: 'gcj02',
             success: (p) => submit({ lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }),
-            fail: () => submit({})
+            fail: (err) => {
+              const denied = /auth|permission|privacy/i.test(String((err && err.errMsg) || ''))
+              if (!denied) {
+                // 确实取不到定位（无信号/设备未开启定位服务）：按既有契约无定位打卡
+                submit({})
+                return
+              }
+              uni.showModal({
+                title: '未获得定位权限',
+                content: '打卡需要一次定位来核验是否在实习单位范围内。你可以去设置里开启定位权限；也可以坚持无定位打卡，但该记录会标记为异常，需要指导老师人工核实。',
+                confirmText: '去设置',
+                cancelText: '无定位打卡',
+                success: (choice) => {
+                  if (!choice.confirm) { submit({}); return }
+                  uni.openSetting({
+                    success: (res) => {
+                      if (res && res.authSetting && res.authSetting['scope.userLocation']) {
+                        tryLocate()
+                      } else {
+                        submit({})
+                      }
+                    },
+                    fail: () => submit({})
+                  })
+                }
+              })
+            }
           })
+          tryLocate()
         }
       })
     }

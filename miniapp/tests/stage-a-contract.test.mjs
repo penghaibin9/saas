@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-const read = (relative) => fs.readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
+// 统一规范化换行：本仓库在 Windows 检出为 CRLF、Linux CI 为 LF，而下方多处断言按
+// 源码缩进结构匹配多行片段并硬编码 \n。不归一化会导致同一份代码在 Linux 全绿、在
+// Windows 开发机上假失败（2026-08-04 复审定位：这正是此前"1 项失败"的真实原因，
+// 属测试可移植性缺陷，不是被测代码的问题）。
+const read = (relative) =>
+  fs.readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 test('student home uses one aggregate request and lightweight message summary', () => {
   const page = read('src/pages/student/home/index.vue')
@@ -87,6 +92,27 @@ test('mark-all-read collapses synchronous row updates into batched requests capp
   // 否则未读超过 100 条时一次性发送会被后端整批拒绝（2026-08-04 复审修复）。
   assert.match(installer, /READ_BATCH_LIMIT = 100/)
   assert.match(installer, /messageIds\.slice\(i, i \+ READ_BATCH_LIMIT\)/)
+})
+
+test('read state is only ever set locally for messages that can actually persist it', () => {
+  // 「待办/服务进度」「学生动态/风险预警」的已读态由后端派生自真实业务记录，客户端标记
+  // 无法持久化，刷新即回弹。因此每个页面的所有标已读入口（点开/去处理/全部已读）都必须
+  // 统一走 _markRead()，由 _canPersistRead() 把关，不允许任何入口直接写 read = true。
+  // （2026-08-04 复审二次收口：此前只有 markAllRead 做了过滤，open/handle 仍无条件置 true。）
+  for (const page of [
+    'src/pages/student/messages/index.vue',
+    'src/pages/teacher/messages/index.vue'
+  ]) {
+    const source = read(page)
+    assert.match(source, /_canPersistRead\(/, `${page} 必须定义可持久化判定`)
+    assert.match(source, /_markRead\(/, `${page} 必须统一经 _markRead 标已读`)
+    const assignments = source.match(/^\s*(message|m)\.read = true$/gm) || []
+    assert.equal(assignments.length, 1,
+      `${page} 只允许 _markRead() 内部一处写 read = true，实际 ${assignments.length} 处`)
+    // 失败必须回滚乐观状态，否则界面显示已读但服务端仍未读
+    assert.match(source, /_synced = false; (message|m)\.read = false/,
+      `${page} 已读同步失败必须回滚 read`)
+  }
 })
 
 test('release build fails at the proactive 1.80 MiB split threshold', () => {

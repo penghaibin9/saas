@@ -170,18 +170,23 @@ export default {
     },
     // 「待办/服务进度」的已读态由后端派生自真实业务状态（如请假是否仍 PENDING_REVIEW），
     // 不是可持久化的已读标记；本地伪装已读只会刷新前误导"事项已处理"，刷新后又会恢复，
-    // 制造状态闪烁。全部已读只对真正可持久化的「通知」(kind=UNIFIED_MESSAGE) 生效。
-    markAllRead() {
-      this.list.forEach((message) => {
-        if (!message.read && message.kind === 'UNIFIED_MESSAGE') {
-          message.read = true
-          this._syncRead(message)
-        }
-      })
+    // 制造状态闪烁。因此所有标已读入口（全部已读/点开/去处理）都必须先过 _canPersistRead()，
+    // 不可持久化的类型一律不动 read 字段（2026-08-04 复审二次收口：此前只在 markAllRead
+    // 做了过滤，open/handle 仍无条件本地置 true，与本注释自相矛盾）。
+    _canPersistRead(message) {
+      if (!message || message.kind !== 'UNIFIED_MESSAGE') return false
+      return /^\d+$/.test(String(message.messageId || message.id || '').replace('msg-', ''))
     },
-    open(message) {
+    _markRead(message) {
+      if (!this._canPersistRead(message) || message.read) return
       message.read = true
       this._syncRead(message)
+    },
+    markAllRead() {
+      this.list.forEach((message) => this._markRead(message))
+    },
+    open(message) {
+      this._markRead(message)
       stashDetail(message)
       go('/pages/common/message-detail/index')
     },
@@ -191,17 +196,14 @@ export default {
     },
     _syncRead(message) {
       if (message._synced) return
-      const raw = String(message.messageId || message.id || '').replace('msg-', '')
-      const isUnified = message.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(raw)
-      if (!isUnified) return
       message._synced = true
+      const raw = String(message.messageId || message.id || '').replace('msg-', '')
       // 失败时连同本地乐观的 read=true 一并回滚：只清 _synced 会让"已读"勾选留在界面上，
       // 却从未真正持久化，刷新前后不一致（2026-08-04 复审新增发现）。
       studentApi.markMessageRead(raw).catch(() => { message._synced = false; message.read = false })
     },
     handle(message) {
-      message.read = true
-      this._syncRead(message)
+      this._markRead(message)
       if (message.status === 'RETURNED') return go('/pages/student/my-applications/index')
       go('/pages/student/campus-service/index')
     }
