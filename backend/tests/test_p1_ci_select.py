@@ -32,3 +32,29 @@ def test_workbench_snapshot_change_selects_snapshot_contract():
     mod = _load()
     targets = mod.select(["backend/app/services/workbench_snapshot_service.py"])
     assert "tests/test_workbench_snapshot.py" in targets
+
+
+def test_changed_backend_test_is_selected_exactly():
+    mod = _load()
+    targets = mod.select(["backend/tests/test_aa_prerequisite_api_real.py"])
+    assert "tests/test_aa_prerequisite_api_real.py" in targets
+
+
+def test_academic_change_runs_stable_gate_and_changed_regression_only():
+    mod = _load()
+    targets = mod.select([
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py",
+        "backend/tests/test_aa_prerequisite_api_real.py",
+    ])
+    assert "tests/test_aa_p0_authz.py" in targets
+    assert "tests/test_aa_prerequisite_api_real.py" in targets
+    assert "tests/test_aa_*.py" not in targets
+    assert "tests/test_portal_academic*.py" not in targets
+
+
+def test_academic_source_only_still_runs_permission_gate():
+    mod = _load()
+    targets = mod.select([
+        "backend/app/modules/academic_affairs/routers/stats_snapshot_router.py",
+    ])
+    assert targets == ["tests/test_aa_p0_authz.py"]
