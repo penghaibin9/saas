@@ -95,11 +95,46 @@ def test_model_registers_named_same_transaction_listeners_once_and_filters_irrel
     assert "lambda _m, conn, target" not in source
     assert "history.has_changes()" in source
     assert "connection.execute(table.insert().values" in source
-    assert 'event_key = f"{event_type}:{source_biz_type}:{int(source_biz_id)}"' in source
+    assert 'return f"CHANGE:ACADEMIC_GRADE:{int(grade_id)}:{policy_hash[:16]}"' in source
+    assert 'return f"{event_type}:{source_biz_type}:{int(source_biz_id)}"' in source
     assert "policy_hash" in source
     assert "LEGACY_NAME_KEY" in source
     assert 'event.remove(AcademicGrade, "before_insert", _grade_model._before_grade_insert)' in compat
     assert 'event.listen(AcademicGrade, "before_insert", _chronological_before_grade_insert)' in compat
+
+
+def test_update_snapshot_key_supports_repeated_recheck_chain():
+    from app.models.academic_affairs_effective_grade import _snapshot_event_key
+
+    insert_key = _snapshot_event_key(
+        operation="INSERT",
+        event_type="RECHECK",
+        source_biz_type="RECHECK",
+        source_biz_id=17,
+        grade_id=88,
+        policy_hash="a" * 64,
+    )
+    first_update = _snapshot_event_key(
+        operation="UPDATE",
+        event_type="RECHECK",
+        source_biz_type="RECHECK",
+        source_biz_id=17,
+        grade_id=88,
+        policy_hash="b" * 64,
+    )
+    repeated_update = _snapshot_event_key(
+        operation="UPDATE",
+        event_type="RECHECK",
+        source_biz_type="RECHECK",
+        source_biz_id=17,
+        grade_id=88,
+        policy_hash="c" * 64,
+    )
+
+    assert insert_key == "RECHECK:RECHECK:17"
+    assert first_update == "CHANGE:ACADEMIC_GRADE:88:bbbbbbbbbbbbbbbb"
+    assert repeated_update == "CHANGE:ACADEMIC_GRADE:88:cccccccccccccccc"
+    assert len({insert_key, first_update, repeated_update}) == 3
 
 
 def test_migration_chains_after_r11_without_historical_guessing():
