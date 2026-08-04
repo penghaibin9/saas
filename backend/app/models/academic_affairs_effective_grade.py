@@ -94,6 +94,26 @@ def _canonical(payload) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def _snapshot_event_key(
+    *,
+    operation: str,
+    event_type: str,
+    source_biz_type: str,
+    source_biz_id: int,
+    grade_id: int,
+    policy_hash: str,
+) -> str:
+    """插入沿用业务事件幂等键；更新按成绩状态哈希生成追加式事件键。
+
+    已更正成绩再次被更正时，其 ``source`` 仍为 RECHECK。若更新继续复用
+    ``RECHECK:RECHECK:<首次复查ID>``，会与首次插入快照冲突并阻断合法的
+    多级更正链。状态哈希让同一更新重试保持幂等，不同状态则追加新快照。
+    """
+    if operation == "UPDATE":
+        return f"CHANGE:ACADEMIC_GRADE:{int(grade_id)}:{policy_hash[:16]}"[:160]
+    return f"{event_type}:{source_biz_type}:{int(source_biz_id)}"[:160]
+
+
 _GRADE_SNAPSHOT_FIELDS = {
     "acad_student_id",
     "course_id",
@@ -133,8 +153,6 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
         return
     identity = identity_snapshot(target)
     event_type = str(getattr(target, "source", None) or operation or "CHANGE").upper()
-    if operation == "UPDATE" and event_type not in {"RECHECK", "CHANGE", "MAKEUP", "CLEARANCE", "RETAKE", "DEFERRED"}:
-        event_type = "CHANGE"
     source_biz_type = str(
         getattr(target, "source_biz_type", None)
         or ("GRADE_RECORD" if getattr(target, "grade_record_id", None) else event_type)
@@ -162,7 +180,18 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
     policy_hash = hashlib.sha256(
         _canonical({"policy": policy, "decision": decision}).encode("utf-8")
     ).hexdigest()
-    event_key = f"{event_type}:{source_biz_type}:{int(source_biz_id)}"[:160]
+    event_key = _snapshot_event_key(
+        operation=operation,
+        event_type=event_type,
+        source_biz_type=source_biz_type,
+        source_biz_id=int(source_biz_id),
+        grade_id=int(target.id),
+        policy_hash=policy_hash,
+    )
+    if operation == "UPDATE":
+        event_type = "CHANGE"
+        source_biz_type = "ACADEMIC_GRADE"
+        source_biz_id = int(target.id)
 
     table = AaEffectiveGradePolicySnapshot.__table__
     existing = connection.execute(select(
@@ -244,6 +273,7 @@ def _before_grade_insert(_mapper, connection, target) -> None:
     target.effective_policy_code = row.policy_code
     target.effective_policy_version = row.policy_version
     target.effective_attempt_strategy = row.attempt_strategy
+
 
 def _after_grade_insert(_mapper, connection, target) -> None:
     _write_snapshot(connection, target, operation="INSERT")
