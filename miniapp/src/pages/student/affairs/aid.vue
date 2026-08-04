@@ -32,9 +32,9 @@
               <view class="flex-1"><text class="t-md">申请等级：{{ x.applyLevel || '—' }}</text><text class="aid__sub" v-if="x.finalLevel">认定等级：{{ x.finalLevel }}</text><text class="aid__sub aid__return" v-if="x.returnReason">退回意见：{{ x.returnReason }}</text></view>
               <MobileStatusTag :status="x.statusLabel || x.status" />
             </view>
-            <button v-if="x.canResubmit" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
+            <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
             <text v-if="x.hasPendingObjection" class="hint">异议处理中</text>
-            <template v-if="x.canObject"><textarea class="ta" maxlength="500" v-model="reasons[x.applyId]" placeholder="对公示认定结果有异议（5-500字）" /><button class="btn" :disabled="busy || (reasons[x.applyId] || '').trim().length < 5" @click="object(x)">提交公示异议</button></template>
+            <template v-if="allows(x, 'SUBMIT_OBJECTION')"><textarea class="ta" maxlength="500" v-model="reasons[x.applyId]" placeholder="对公示认定结果有异议（5-500字）" /><button class="btn" :disabled="busy || (reasons[x.applyId] || '').trim().length < 5" @click="object(x)">提交公示异议</button></template>
           </view>
         </view>
         <MobileGlobalState v-else state="empty" title="暂无困难认定申请记录" description="开放批次后可在上方直接申请。" />
@@ -85,6 +85,7 @@ export default {
   },
   onLoad() { this.load() },
   methods: {
+    allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
     numberOrNull(value) {
       if (value === '' || value === null || value === undefined) return null

@@ -56,21 +56,32 @@ def _owner_role_user_ids(db) -> set[int]:
     return eligible
 
 
-def list_owner_candidates(keyword: str | None = None) -> list[dict]:
-    """可分派的风险责任人（在职 + 同租户 + 可处置风险）。供前端责任人选择器远程搜索。"""
+def list_owner_candidates(
+    keyword: str | None = None, page: int = 1, page_size: int = 50,
+) -> tuple[list[dict], int]:
+    """可分派风险责任人真分页；远程搜索不再静默截断前 200 人。"""
     from app.models import User
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 100))
     with session() as db:
         eligible = _owner_role_user_ids(db)
         if not eligible:
-            return []
-        q = select(User).where(User.tenant_id == _tid(), User.is_deleted.is_(False),
-                               User.status == "ACTIVE", User.id.in_(eligible))
+            return [], 0
+        conditions = [
+            User.tenant_id == _tid(), User.is_deleted.is_(False),
+            User.status == "ACTIVE", User.id.in_(eligible),
+        ]
         if keyword:
             like = f"%{keyword.strip()}%"
-            q = q.where((User.real_name.like(like)) | (User.login_name.like(like)))
-        rows = db.scalars(q.order_by(User.real_name, User.id).limit(200)).all()
-        return [{"id": str(u.id), "name": u.real_name, "loginName": u.login_name,
-                 "userType": u.user_type} for u in rows]
+            conditions.append(or_(User.real_name.like(like), User.login_name.like(like)))
+        total = int(db.scalar(select(func.count()).select_from(User).where(*conditions)) or 0)
+        rows = db.scalars(
+            select(User).where(*conditions).order_by(User.real_name, User.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return ([{"id": str(u.id), "name": u.real_name, "loginName": u.login_name,
+                  "userType": u.user_type} for u in rows], total)
 
 
 def _validate_owner(db, owner_id, student_id=None) -> int:
@@ -636,14 +647,32 @@ def scan_timeout() -> dict:
                 break
             cursor = int(new_rows[-1].id)
             eligible_owners = _owner_role_user_ids(db)
+            student_ids = {int(row.student_id) for row in new_rows if row.student_id}
+            students = {
+                int(student.id): student
+                for student in db.scalars(select(StudentProfile).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.id.in_(student_ids) if student_ids else StudentProfile.id == -1,
+                    StudentProfile.is_deleted.is_(False),
+                )).all()
+            }
+            class_ids = {int(student.class_id) for student in students.values() if student.class_id}
+            classes = {
+                int(row.id): row
+                for row in db.scalars(select(SchoolClass).where(
+                    SchoolClass.tenant_id == _tid(),
+                    SchoolClass.id.in_(class_ids) if class_ids else SchoolClass.id == -1,
+                    SchoolClass.is_deleted.is_(False),
+                )).all()
+            }
             for x in new_rows:
-                counselor_id = None
-                if x.student_id:
-                    s = db.get(StudentProfile, int(x.student_id))
-                    if s and s.class_id:
-                        c = db.get(SchoolClass, int(s.class_id))
-                        if c and c.counselor_id and int(c.counselor_id) in eligible_owners:
-                            counselor_id = int(c.counselor_id)
+                student = students.get(int(x.student_id)) if x.student_id else None
+                klass = classes.get(int(student.class_id)) if student and student.class_id else None
+                counselor_id = (
+                    int(klass.counselor_id)
+                    if klass and klass.counselor_id and int(klass.counselor_id) in eligible_owners
+                    else None
+                )
                 if not counselor_id:
                     continue
                 x.owner_id, x.status, x.assigned_at, x.version = \

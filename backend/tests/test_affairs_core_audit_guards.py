@@ -17,9 +17,9 @@ def test_router_installs_guards_after_existing_four_end_contract():
     data = source.index("install_data_integrity_guard()")
     terminal = source.index("install_affairs_four_end_terminal_guard(api_router)")
     assert contract < data < terminal
-    assert "install_counselor_handover_guard()" in source
+    assert "install_counselor_handover_guard()" not in source
     assert "install_risk_evidence_guard()" in source
-    assert "install_counselor_eval_guard()" in source
+    assert "install_counselor_eval_guard()" not in source
 
 
 def test_student_overview_and_profile_do_not_emit_false_current_state():
@@ -41,10 +41,13 @@ def test_decimal_14_2_overflow_is_rejected_before_mysql_commit():
 
 
 def test_counselor_handover_cannot_move_non_affairs_todos():
-    source = read("backend/app/services/affairs_counselor_handover_guard.py")
+    source = read("backend/app/services/affairs_counselor_service.py")
+    guard = read("backend/app/services/affairs_counselor_handover_guard.py")
     assert 'UnifiedTodo.source_module == "student-affairs"' in source
-    assert "UnifiedTodo.source_biz_type == todo.source_biz_type" in source
-    assert '(instance.source_biz_type or "").upper() != "LEAVE"' in source
+    assert "source_pairs" in source
+    assert "inst.source_biz_type" in source
+    assert "select(WorkflowTask, WorkflowInstance)" in source
+    assert "affairs_counselor_service._migrate_class_work =" not in guard
 
 
 def test_risk_high_impact_actions_require_auditable_evidence():
@@ -55,8 +58,29 @@ def test_risk_high_impact_actions_require_auditable_evidence():
 
 
 def test_counselor_evaluation_scope_and_publish_preconditions():
-    source = read("backend/app/services/affairs_counselor_eval_guard.py")
-    assert "expected_version = int(period.version or 0)" in source
+    source = read("backend/app/services/affairs_class_service.py")
+    assert "atomic_claim_version(db, p, expected_version)" in source
     assert 'raise AppException("NO_DATA_SCOPE"' in source
     assert 'scope_type != "TENANT_ALL"' in source
     assert 'row.status != "SCORED" or row.college_score is None' in source
+
+
+def test_archive_async_migration_handles_metadata_created_fresh_database():
+    source = read("backend/alembic/versions/20260804_affairs_archive_async.py")
+    assert "sa.inspect(op.get_bind())" in source
+    assert "if name not in columns" in source
+    assert "if name not in indexes" in source
+    assert "must exist before applying" in source
+    assert "op.add_column(_TABLE, column)" in source
+
+
+def test_volunteer_and_loan_status_contracts_are_formal_and_singular():
+    activity = read("backend/app/services/affairs_activity_service.py")
+    funding = read("backend/app/services/affairs_funding_ext_service.py")
+    assert activity.count("_VOL_LABEL = {") == 1
+    assert activity.count('VOL_CATEGORY = "ZHIYUAN"') == 1
+    assert funding.count("_L_LOAN = {") == 1
+    assert funding.count("_LOAN_NEXT = {") == 1
+    assert not (ROOT / ".github/workflows/pr39-restore-status-contracts.yml").exists()
+    assert not (ROOT / ".github/workflows/pr39-sync-latest-main.yml").exists()
+    assert not (ROOT / ".github/workflows/pr39-fix-revision-contract.yml").exists()

@@ -141,7 +141,7 @@ export default {
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
-    rowActions(row) { return Array.isArray(row?.allowedActions) ? row.allowedActions : ({ APPLIED: ['APPROVE', 'REJECT'], APPROVED: ['ONBOARD', 'TERMINATE'], ONBOARD: ['TERMINATE'] })[row?.status] || [] },
+    rowActions(row) { return Array.isArray(row?.allowedActions) ? row.allowedActions : [] },
     allows(row, action) { return this.rowActions(row).includes(action) },
     statusCount(key) { return this.statusCounts === null ? '—' : Number(this.statusCounts[key] || 0) },
     postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位#${id}` },

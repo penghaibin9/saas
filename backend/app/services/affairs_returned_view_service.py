@@ -13,7 +13,6 @@ def install() -> None:
         for item in data.get("items", []):
             if item.get("status") == "DRAFT":
                 item["statusLabel"] = "已退回待修改"
-                item["canResubmit"] = True
                 item["allowedActions"] = ["EDIT_RETURNED", "RESUBMIT"]
         return data
 

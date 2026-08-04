@@ -199,6 +199,191 @@ def _materials(db, *, biz_types: Iterable[str], biz_id: int, status: str) -> dic
     }
 
 
+
+def _empty_workflow_context() -> dict:
+    return {
+        "workflowId": "", "workflowStatus": "", "currentNode": "",
+        "currentNodeLabel": "", "handlerId": "", "handler": "待分配", "dueAt": None,
+    }
+
+
+def _batch_workflow_contexts(db, specs: list[dict]) -> dict[str, dict]:
+    """批量解析流程、待办和责任人，查询次数不随申请条数增长。"""
+    from app.models import UnifiedTodo, User, WorkflowInstance, WorkflowTask
+
+    if not specs:
+        return {}
+    tenant_id = _tid()
+    direct_ids = {int(spec["workflow_id"]) for spec in specs if spec.get("workflow_id")}
+    workflows_by_id = {}
+    if direct_ids:
+        workflows_by_id = {
+            int(row.id): row for row in db.scalars(select(WorkflowInstance).where(
+                WorkflowInstance.tenant_id == tenant_id,
+                WorkflowInstance.id.in_(direct_ids),
+                WorkflowInstance.is_deleted.is_(False),
+            )).all()
+        }
+
+    unresolved_ids = {int(spec["biz_id"]) for spec in specs if not workflows_by_id.get(int(spec.get("workflow_id") or 0))}
+    fallback_rows = []
+    if unresolved_ids:
+        fallback_rows = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.tenant_id == tenant_id,
+            WorkflowInstance.source_module == "student-affairs",
+            WorkflowInstance.source_biz_id.in_(unresolved_ids),
+            WorkflowInstance.is_deleted.is_(False),
+        ).order_by(WorkflowInstance.id.desc())).all()
+
+    workflows: dict[str, Any] = {}
+    for spec in specs:
+        workflow = workflows_by_id.get(int(spec.get("workflow_id") or 0))
+        if workflow is None:
+            wanted_type = _biz(spec["biz_type"])
+            wanted_id = int(spec["biz_id"])
+            workflow = next((row for row in fallback_rows if int(row.source_biz_id) == wanted_id
+                             and _biz(row.source_biz_type) == wanted_type), None)
+        workflows[spec["key"]] = workflow
+
+    workflow_ids = {int(row.id) for row in workflows.values() if row is not None}
+    task_by_instance = {}
+    if workflow_ids:
+        for row in db.scalars(select(WorkflowTask).where(
+            WorkflowTask.tenant_id == tenant_id,
+            WorkflowTask.instance_id.in_(workflow_ids),
+            WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False),
+        ).order_by(WorkflowTask.id.desc())).all():
+            task_by_instance.setdefault(int(row.instance_id), row)
+
+    biz_ids = {int(spec["biz_id"]) for spec in specs}
+    todo_rows = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == tenant_id,
+        UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id.in_(biz_ids),
+        UnifiedTodo.status == "PENDING",
+        UnifiedTodo.is_deleted.is_(False),
+    ).order_by(UnifiedTodo.id.desc())).all()
+    todo_by_key = {}
+    for spec in specs:
+        wanted = (_biz(spec["biz_type"]), int(spec["biz_id"]))
+        todo_by_key[spec["key"]] = next((row for row in todo_rows
+                                         if (_biz(row.source_biz_type), int(row.source_biz_id)) == wanted), None)
+
+    assignee_ids = set()
+    for spec in specs:
+        workflow = workflows.get(spec["key"])
+        task = task_by_instance.get(int(workflow.id)) if workflow else None
+        todo = todo_by_key.get(spec["key"])
+        assignee_id = int((task.assignee_id if task else None) or (todo.assignee_id if todo else 0) or 0)
+        if assignee_id:
+            assignee_ids.add(assignee_id)
+    users = {}
+    if assignee_ids:
+        users = {int(row.id): row for row in db.scalars(select(User).where(
+            User.tenant_id == tenant_id, User.id.in_(assignee_ids), User.is_deleted.is_(False),
+        )).all()}
+
+    result = {}
+    for spec in specs:
+        workflow = workflows.get(spec["key"])
+        task = task_by_instance.get(int(workflow.id)) if workflow else None
+        todo = todo_by_key.get(spec["key"])
+        assignee_id = int((task.assignee_id if task else None) or (todo.assignee_id if todo else 0) or 0)
+        assignee = users.get(assignee_id)
+        node = (workflow.current_node if workflow else None) or (task.node_code if task else None) or ""
+        due_at = (task.deadline_at if task else None) or (todo.due_at if todo else None)
+        result[spec["key"]] = {
+            "workflowId": str(workflow.id) if workflow else "",
+            "workflowStatus": workflow.status if workflow else "",
+            "currentNode": node, "currentNodeLabel": _NODE_LABELS.get(node, node),
+            "handlerId": str(assignee_id) if assignee_id else "",
+            "handler": (assignee.real_name if assignee else "") or "待分配",
+            "dueAt": _iso(due_at),
+        }
+    return result
+
+
+def _batch_timelines(db, specs: list[dict]) -> dict[str, list[dict]]:
+    from app.models import AffairsAuditTrail
+
+    if not specs:
+        return {}
+    biz_ids = {int(spec["biz_id"]) for spec in specs}
+    biz_types = {_biz(spec["biz_type"]) for spec in specs}
+    rows = db.scalars(select(AffairsAuditTrail).where(
+        AffairsAuditTrail.tenant_id == _tid(),
+        AffairsAuditTrail.biz_id.in_(biz_ids),
+        AffairsAuditTrail.biz_type.in_(biz_types),
+    ).order_by(AffairsAuditTrail.occurred_at, AffairsAuditTrail.id)).all()
+    grouped: dict[tuple[str, int], list] = {}
+    for row in rows:
+        grouped.setdefault((_biz(row.biz_type), int(row.biz_id)), []).append(row)
+    result = {}
+    for spec in specs:
+        key_rows = grouped.get((_biz(spec["biz_type"]), int(spec["biz_id"])), [])
+        items = []
+        created_at = spec.get("created_at")
+        if created_at and (not key_rows or created_at < key_rows[0].occurred_at):
+            items.append({
+                "eventId": f"created-{spec['biz_type']}-{spec['biz_id']}",
+                "action": "CREATED", "actionLabel": "申请创建", "operator": "学生本人",
+                "role": "STUDENT", "occurredAt": _iso(created_at), "description": "申请已创建",
+                "fromStatus": "", "toStatus": "", "attachments": [],
+            })
+        for row in key_rows:
+            items.append({
+                "eventId": str(row.id), "action": row.action,
+                "actionLabel": _ACTION_LABELS.get(row.action, row.action),
+                "operator": row.operator or "系统", "role": row.role_name or "",
+                "occurredAt": _iso(row.occurred_at), "description": row.detail or "",
+                "fromStatus": row.before_val or "", "toStatus": row.after_val or "", "attachments": [],
+            })
+        result[spec["key"]] = items
+    return result
+
+
+def _material_contract_from_rows(rows: list, status: str) -> dict:
+    data = [{
+        "attachmentId": str(row.id), "fileId": str(row.file_id) if not row.is_deleted else "",
+        "fileName": row.file_name or "材料附件", "note": row.note or "",
+        "version": int(row.version or 0), "uploadedAt": _iso(row.created_at),
+        "active": not bool(row.is_deleted), "downloadable": not bool(row.is_deleted),
+    } for row in rows]
+    current = [item for item in data if item["active"]]
+    history = [item for item in data if not item["active"]]
+    returned = str(status or "").upper() in {"DRAFT", "RETURNED"}
+    return {
+        "current": current, "history": history, "currentCount": len(current),
+        "historyCount": len(history), "missingItems": [], "missingItemsKnown": False,
+        "supplementStatus": "PENDING_STUDENT_EDIT" if returned else "NOT_PENDING",
+    }
+
+
+def _batch_materials(db, specs: list[dict]) -> dict[str, dict]:
+    from app.models import AffairsAttachment
+
+    if not specs:
+        return {}
+    biz_ids = {int(spec["biz_id"]) for spec in specs}
+    biz_types = {_biz(value) for spec in specs for value in spec["biz_types"]}
+    rows = db.scalars(select(AffairsAttachment).where(
+        AffairsAttachment.tenant_id == _tid(),
+        AffairsAttachment.biz_id.in_(biz_ids),
+        AffairsAttachment.biz_type.in_(biz_types),
+    ).order_by(AffairsAttachment.created_at.desc(), AffairsAttachment.id.desc())).all()
+    grouped: dict[tuple[str, int], list] = {}
+    for row in rows:
+        grouped.setdefault((_biz(row.biz_type), int(row.biz_id)), []).append(row)
+    result = {}
+    for spec in specs:
+        selected = []
+        for biz_type in spec["biz_types"]:
+            selected.extend(grouped.get((_biz(biz_type), int(spec["biz_id"])), []))
+        selected.sort(key=lambda row: (row.created_at, row.id), reverse=True)
+        result[spec["key"]] = _material_contract_from_rows(selected, spec["status"])
+    return result
+
 def _merge_materials(*contracts: dict) -> dict:
     current, history = [], []
     for contract in contracts:
@@ -279,6 +464,27 @@ def _build_my_applications(user: dict, original) -> dict:
     _require_student(user)
     legacy = original(user) or {}
     applications: list[dict] = []
+    descriptors: list[dict] = []
+
+    def queue(*, workflow_biz_type: str, workflow_id: int | None, timeline_biz_type: str,
+              timeline_biz_id: int, created_at, material_refs: list[tuple[tuple[str, ...], int, str]],
+              application: dict) -> None:
+        key = f"application-{len(descriptors)}"
+        material_specs = []
+        for index, (biz_types, biz_id, status) in enumerate(material_refs):
+            material_specs.append({
+                "key": f"{key}-material-{index}", "biz_types": biz_types,
+                "biz_id": int(biz_id), "status": status,
+            })
+        descriptors.append({
+            "key": key,
+            "workflow": {"key": key, "biz_type": workflow_biz_type,
+                         "biz_id": int(application["record_id"]), "workflow_id": workflow_id},
+            "timeline": {"key": key, "biz_type": timeline_biz_type,
+                         "biz_id": int(timeline_biz_id), "created_at": created_at},
+            "materials": material_specs, "application": application,
+        })
+
     with session() as db:
         student = resolve_student(db, user)
         if not student:
@@ -286,49 +492,57 @@ def _build_my_applications(user: dict, original) -> dict:
         sid = int(student.id)
 
         leave_view = aff.leave_my(user)
-        leave_ids = {int(x["leaveId"]) for x in leave_view.get("items", []) if str(x.get("leaveId") or "").isdigit()}
+        leave_ids = {int(x["leaveId"]) for x in leave_view.get("items", [])
+                     if str(x.get("leaveId") or "").isdigit()}
         leaves = {int(x.id): x for x in db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.id.in_(leave_ids or {-1}), CsLeave.is_deleted.is_(False))).all()}
+            CsLeave.tenant_id == _tid(), CsLeave.id.in_(leave_ids or {-1}),
+            CsLeave.is_deleted.is_(False))).all()}
         for item in leave_view.get("items", []):
             row = leaves.get(int(item["leaveId"]))
             if not row:
                 continue
             status = item.get("status") or row.affairs_status or row.status
-            wf = _workflow_context(db, biz_type="LEAVE", biz_id=row.id,
-                                   workflow_id=getattr(row, "workflow_instance_id", None))
-            applications.append(_application(
-                biz_type="LEAVE", record_id=row.id, no=row.code or f"LV{row.id}",
-                title=f"学生请假（{item.get('leaveTypeLabel') or item.get('leaveType') or ''}）",
-                status=status, status_label=item.get("statusLabel") or status,
-                submitted_at=row.apply_time or row.created_at, version=item.get("version") or row.version,
-                actions=item.get("allowedActions") or [], workflow=wf,
-                timeline=_timeline(db, biz_type="LEAVE", biz_id=row.id, created_at=row.created_at),
-                materials=_materials(db, biz_types=("LEAVE",), biz_id=row.id, status=status),
-                last_opinion=item.get("returnReason") or "", department="学工处",
-            ))
+            queue(
+                workflow_biz_type="LEAVE", workflow_id=getattr(row, "workflow_instance_id", None),
+                timeline_biz_type="LEAVE", timeline_biz_id=row.id, created_at=row.created_at,
+                material_refs=[(("LEAVE",), row.id, status)],
+                application=dict(
+                    biz_type="LEAVE", record_id=row.id, no=row.code or f"LV{row.id}",
+                    title=f"学生请假（{item.get('leaveTypeLabel') or item.get('leaveType') or ''}）",
+                    status=status, status_label=item.get("statusLabel") or status,
+                    submitted_at=row.apply_time or row.created_at, version=item.get("version") or row.version,
+                    actions=item.get("allowedActions") or [], last_opinion=item.get("returnReason") or "",
+                    department="学工处",
+                ),
+            )
 
         aid_view = aff.aid_my(user)
-        aid_ids = {int(x["applyId"]) for x in aid_view.get("items", []) if str(x.get("applyId") or "").isdigit()}
+        aid_ids = {int(x["applyId"]) for x in aid_view.get("items", [])
+                   if str(x.get("applyId") or "").isdigit()}
         aids = {int(x.id): x for x in db.scalars(select(AidApply).where(
-            AidApply.tenant_id == _tid(), AidApply.id.in_(aid_ids or {-1}), AidApply.is_deleted.is_(False))).all()}
+            AidApply.tenant_id == _tid(), AidApply.id.in_(aid_ids or {-1}),
+            AidApply.is_deleted.is_(False))).all()}
         for item in aid_view.get("items", []):
             row = aids.get(int(item["applyId"]))
             if not row:
                 continue
             status = item.get("status") or row.status
-            wf = _workflow_context(db, biz_type="AID", biz_id=row.id, workflow_id=row.workflow_instance_id)
-            applications.append(_application(
-                biz_type="AID", record_id=row.id, no=f"AID{row.id}", title="家庭经济困难认定",
-                status=status, status_label=item.get("statusLabel") or status,
-                submitted_at=row.created_at, version=item.get("version") or row.version,
-                actions=item.get("allowedActions") or [], workflow=wf,
-                timeline=_timeline(db, biz_type="AID", biz_id=row.id, created_at=row.created_at),
-                materials=_materials(db, biz_types=("AID",), biz_id=row.id, status=status),
-                last_opinion=item.get("returnReason") or "", department="资助中心",
-            ))
+            queue(
+                workflow_biz_type="AID", workflow_id=row.workflow_instance_id,
+                timeline_biz_type="AID", timeline_biz_id=row.id, created_at=row.created_at,
+                material_refs=[(("AID",), row.id, status)],
+                application=dict(
+                    biz_type="AID", record_id=row.id, no=f"AID{row.id}",
+                    title="家庭经济困难认定", status=status,
+                    status_label=item.get("statusLabel") or status, submitted_at=row.created_at,
+                    version=item.get("version") or row.version, actions=item.get("allowedActions") or [],
+                    last_opinion=item.get("returnReason") or "", department="资助中心",
+                ),
+            )
 
         funding_view = aff.funding_my(user)
-        funding_ids = {int(x["applicationId"]) for x in funding_view.get("items", []) if str(x.get("applicationId") or "").isdigit()}
+        funding_ids = {int(x["applicationId"]) for x in funding_view.get("items", [])
+                       if str(x.get("applicationId") or "").isdigit()}
         fundings = {int(x.id): x for x in db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.id.in_(funding_ids or {-1}),
             FundingApplication.is_deleted.is_(False))).all()}
@@ -337,16 +551,18 @@ def _build_my_applications(user: dict, original) -> dict:
             if not row:
                 continue
             status = item.get("status") or row.status
-            wf = _workflow_context(db, biz_type="FUNDING", biz_id=row.id, workflow_id=row.workflow_instance_id)
-            applications.append(_application(
-                biz_type="FUNDING", record_id=row.id, no=f"FUND{row.id}", title="奖助申请",
-                status=status, status_label=item.get("statusLabel") or status,
-                submitted_at=row.created_at, version=item.get("version") or row.version,
-                actions=item.get("allowedActions") or [], workflow=wf,
-                timeline=_timeline(db, biz_type="FUNDING", biz_id=row.id, created_at=row.created_at),
-                materials=_materials(db, biz_types=("FUNDING",), biz_id=row.id, status=status),
-                last_opinion=item.get("returnReason") or "", department="资助中心",
-            ))
+            queue(
+                workflow_biz_type="FUNDING", workflow_id=row.workflow_instance_id,
+                timeline_biz_type="FUNDING", timeline_biz_id=row.id, created_at=row.created_at,
+                material_refs=[(("FUNDING",), row.id, status)],
+                application=dict(
+                    biz_type="FUNDING", record_id=row.id, no=f"FUND{row.id}", title="奖助申请",
+                    status=status, status_label=item.get("statusLabel") or status,
+                    submitted_at=row.created_at, version=item.get("version") or row.version,
+                    actions=item.get("allowedActions") or [], last_opinion=item.get("returnReason") or "",
+                    department="资助中心",
+                ),
+            )
 
         cases = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.student_id == sid,
@@ -364,24 +580,24 @@ def _build_my_applications(user: dict, original) -> dict:
             record = appeal or case
             status = appeal.status if appeal else case.status
             actions = [] if appeal else ["SUBMIT_APPEAL"]
-            wf = _workflow_context(db, biz_type="DISCIPLINE_APPEAL" if appeal else "DISCIPLINE",
-                                   biz_id=record.id,
-                                   workflow_id=getattr(record, "workflow_instance_id", None))
-            applications.append(_application(
-                biz_type="DISCIPLINE_APPEAL", record_id=record.id,
-                no=case.doc_no or f"DISC{case.id}",
-                title=f"处分申诉（{disc_labels.get(case.disc_type, case.disc_type)}）",
-                status=status, status_label=status, submitted_at=record.created_at,
-                version=record.version, actions=actions, workflow=wf,
-                timeline=_timeline(db, biz_type="DISCIPLINE", biz_id=case.id, created_at=case.created_at),
-                materials=_merge_materials(
-                    _materials(db, biz_types=("DISCIPLINE",), biz_id=case.id, status=case.status),
-                    _materials(db, biz_types=("DISCIPLINE_APPEAL",), biz_id=appeal.id, status=status)
-                    if appeal else {"current": [], "history": [], "supplementStatus": "NOT_PENDING"},
+            material_refs = [(("DISCIPLINE",), case.id, case.status)]
+            if appeal:
+                material_refs.append((("DISCIPLINE_APPEAL",), appeal.id, status))
+            queue(
+                workflow_biz_type="DISCIPLINE_APPEAL" if appeal else "DISCIPLINE",
+                workflow_id=getattr(record, "workflow_instance_id", None),
+                timeline_biz_type="DISCIPLINE", timeline_biz_id=case.id, created_at=case.created_at,
+                material_refs=material_refs,
+                application=dict(
+                    biz_type="DISCIPLINE_APPEAL", record_id=record.id,
+                    no=case.doc_no or f"DISC{case.id}",
+                    title=f"处分申诉（{disc_labels.get(case.disc_type, case.disc_type)}）",
+                    status=status, status_label=status, submitted_at=record.created_at,
+                    version=record.version, actions=actions,
+                    last_opinion=(appeal.review_opinion if appeal else case.return_reason) or "",
+                    department="学工处",
                 ),
-                last_opinion=(appeal.review_opinion if appeal else case.return_reason) or "",
-                department="学工处",
-            ))
+            )
 
         transfers = db.scalars(select(DormTransfer).where(
             DormTransfer.tenant_id == _tid(), DormTransfer.student_id == sid,
@@ -392,31 +608,51 @@ def _build_my_applications(user: dict, original) -> dict:
                        "EXECUTED": "已完成调宿"}
         for row in transfers:
             actions = ["EDIT_RETURNED", "RESUBMIT"] if row.status == "RETURNED" else []
-            wf = _workflow_context(db, biz_type="DORM_TRANSFER", biz_id=row.id,
-                                   workflow_id=row.workflow_instance_id)
-            applications.append(_application(
-                biz_type="DORM_TRANSFER", record_id=row.id, no=f"DORM{row.id}", title="调宿申请",
-                status=row.status, status_label=dorm_labels.get(row.status, row.status),
-                submitted_at=row.created_at, version=row.version, actions=actions, workflow=wf,
-                timeline=_timeline(db, biz_type="DORM_TRANSFER", biz_id=row.id, created_at=row.created_at),
-                materials=_materials(db, biz_types=("DORM", "DORM_TRANSFER"), biz_id=row.id, status=row.status),
-                last_opinion=row.return_reason or "", department="宿舍管理",
-            ))
+            queue(
+                workflow_biz_type="DORM_TRANSFER", workflow_id=row.workflow_instance_id,
+                timeline_biz_type="DORM_TRANSFER", timeline_biz_id=row.id, created_at=row.created_at,
+                material_refs=[(("DORM", "DORM_TRANSFER"), row.id, row.status)],
+                application=dict(
+                    biz_type="DORM_TRANSFER", record_id=row.id, no=f"DORM{row.id}", title="调宿申请",
+                    status=row.status, status_label=dorm_labels.get(row.status, row.status),
+                    submitted_at=row.created_at, version=row.version, actions=actions,
+                    last_opinion=row.return_reason or "", department="宿舍管理",
+                ),
+            )
 
         credits = db.scalars(select(AffairsCreditAppeal).where(
             AffairsCreditAppeal.tenant_id == _tid(), AffairsCreditAppeal.student_id == sid,
             AffairsCreditAppeal.is_deleted.is_(False)).order_by(AffairsCreditAppeal.id.desc())).all()
         credit_labels = {"SUBMITTED": "已提交", "APPROVED": "已通过", "REJECTED": "已驳回"}
         for row in credits:
-            wf = _workflow_context(db, biz_type="SECOND_CLASS_APPEAL", biz_id=row.id)
+            queue(
+                workflow_biz_type="SECOND_CLASS_APPEAL", workflow_id=None,
+                timeline_biz_type="CREDIT_APPEAL", timeline_biz_id=row.id, created_at=row.created_at,
+                material_refs=[(("CREDIT_APPEAL", "SECOND_CLASS_APPEAL"), row.id, row.status)],
+                application=dict(
+                    biz_type="CREDIT_APPEAL", record_id=row.id, no=f"SC{row.id}",
+                    title="第二课堂积分申诉", status=row.status,
+                    status_label=credit_labels.get(row.status, row.status), submitted_at=row.created_at,
+                    version=row.version, actions=[], last_opinion=row.review_opinion or "",
+                    department="第二课堂中心",
+                ),
+            )
+
+        workflow_specs = [descriptor["workflow"] for descriptor in descriptors]
+        timeline_specs = [descriptor["timeline"] for descriptor in descriptors]
+        material_specs = [spec for descriptor in descriptors for spec in descriptor["materials"]]
+        workflow_map = _batch_workflow_contexts(db, workflow_specs)
+        timeline_map = _batch_timelines(db, timeline_specs)
+        material_map = _batch_materials(db, material_specs)
+        for descriptor in descriptors:
+            contracts = [material_map.get(spec["key"], _material_contract_from_rows([], spec["status"]))
+                         for spec in descriptor["materials"]]
+            materials = contracts[0] if len(contracts) == 1 else _merge_materials(*contracts)
             applications.append(_application(
-                biz_type="CREDIT_APPEAL", record_id=row.id, no=f"SC{row.id}", title="第二课堂积分申诉",
-                status=row.status, status_label=credit_labels.get(row.status, row.status),
-                submitted_at=row.created_at, version=row.version, actions=[], workflow=wf,
-                timeline=_timeline(db, biz_type="CREDIT_APPEAL", biz_id=row.id, created_at=row.created_at),
-                materials=_materials(db, biz_types=("CREDIT_APPEAL", "SECOND_CLASS_APPEAL"),
-                                     biz_id=row.id, status=row.status),
-                last_opinion=row.review_opinion or "", department="第二课堂中心",
+                **descriptor["application"],
+                workflow=workflow_map.get(descriptor["key"], _empty_workflow_context()),
+                timeline=timeline_map.get(descriptor["key"], []),
+                materials=materials,
             ))
 
     for item in legacy.get("applications") or []:
@@ -450,7 +686,7 @@ def _patch_discipline_actions() -> None:
         for item in data.get("items", []):
             case_id = int(item["caseId"]) if str(item.get("caseId") or "").isdigit() else 0
             item["version"] = versions.get(case_id, 0)
-            item["allowedActions"] = ["SUBMIT_APPEAL"] if item.get("canAppeal") else []
+            item["allowedActions"] = _safe_actions(item.get("allowedActions"))
             item["actionKey"] = "AFFAIRS_DISCIPLINE"
             item["actionParams"] = {"bizType": "DISCIPLINE", "recordId": str(case_id)}
         return data

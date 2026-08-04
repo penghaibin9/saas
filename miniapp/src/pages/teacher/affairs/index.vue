@@ -26,6 +26,7 @@
             <text class="ta__go">›</text>
           </view>
         </view>
+        <button v-if="todoHasMore" class="btn btn-secondary ta__load-more" :disabled="todoLoading" @click="loadMoreTodos">{{ todoLoading ? '加载中…' : '继续加载待办' }}</button>
 
         <view class="section-head ta__section">
           <text class="section-head__title">材料补交审核</text>
@@ -75,6 +76,7 @@
             </view>
           </view>
         </view>
+        <button v-if="materialHasMore" class="btn btn-secondary ta__load-more" :disabled="materialLoading" @click="loadMoreMaterials">{{ materialLoading ? '加载中…' : '继续加载材料' }}</button>
         <button v-if="selectedMaterialIds.length" class="btn btn-primary ta__batch-btn" :disabled="batchBusy" @click="createReminderBatch">
           {{ batchBusy ? '逐条校验中…' : `批量提醒已选 ${selectedMaterialIds.length} 项` }}
         </button>
@@ -89,6 +91,7 @@
             <text v-else class="ta__go">›</text>
           </view>
         </view>
+        <button v-if="batchHasMore" class="btn btn-secondary ta__load-more" :disabled="batchLoading" @click="loadMoreBatches">{{ batchLoading ? '加载中…' : '继续加载批次' }}</button>
         <view v-if="activeBatch" class="card ta__batch-detail">
           <text class="ta__label">{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || activeBatch.status }}</text>
           <view v-for="detail in (activeBatch.items || [])" :key="detail.itemId" class="ta__batch-item">
@@ -176,7 +179,16 @@ export default {
       batchJobs: [],
       activeBatch: null,
       batchBusy: false,
-      focusMaterialId: ''
+      focusMaterialId: '',
+      todoPage: 1,
+      todoHasMore: false,
+      todoLoading: false,
+      materialPage: 1,
+      materialHasMore: false,
+      materialLoading: false,
+      batchPage: 1,
+      batchHasMore: false,
+      batchLoading: false
     }
   },
   computed: { todoItems() { return (this.data && Array.isArray(this.data.items)) ? this.data.items : [] } },
@@ -191,13 +203,14 @@ export default {
     allows(item, action) { return (item.allowedActions || []).includes(action) },
     canRemind(item) { return ['MISSING', 'RETURNED'].includes(item.status) && item.version !== undefined && item.version !== null },
     load() {
-      this.state = 'loading'; this.activityError = ''
+      this.state = 'loading'; this.activityError = ''; this.todoPage = 1
       Promise.all([
-        teacherApi.getAffairs(),
-        this.loadMaterials(false),
-        this.loadBatches(false)
+        teacherApi.getAffairs(1, 20),
+        this.loadMaterials(false, true),
+        this.loadBatches(false, true)
       ]).then(([d]) => {
         this.data = d
+        this.todoHasMore = Boolean(d && d.hasMore)
         this.state = 'ready'
         this.scrollToMaterial()
       }).catch((e) => { this.state = 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
@@ -208,10 +221,13 @@ export default {
           else { this.activityVisible = true; this.activityError = n.text || '活动数据加载失败，请稍后重试' }
         })
     },
-    loadMaterials(showToast = true) {
+    loadMaterials(showToast = true, reset = true) {
       this.materialError = ''
-      return affairsContractApi.getMaterialRequirements().then((d) => {
-        this.materials = (d && d.items) || []
+      if (reset) this.materialPage = 1
+      return affairsContractApi.getMaterialRequirements('', this.materialPage, 20).then((d) => {
+        const rows = (d && d.items) || []
+        this.materials = reset ? rows : [...this.materials, ...rows]
+        this.materialHasMore = this.materialPage * 20 < Number((d && d.total) || 0)
         const visible = new Set(this.materials.map((x) => String(x.requirementId)))
         this.selectedMaterialIds = this.selectedMaterialIds.filter((id) => visible.has(String(id)))
         this.scrollToMaterial()
@@ -221,12 +237,41 @@ export default {
         if (n.kind === 'forbidden') { this.materials = []; return [] }
         this.materialError = n.text || '材料队列加载失败'
         if (showToast) toast(this.materialError)
-        return []
+        return null
       })
     },
-    loadBatches(showToast = true) {
-      return affairsContractApi.getMaterialBatchJobs().then((d) => { this.batchJobs = (d && d.items) || []; return this.batchJobs })
-        .catch((e) => { if (showToast && normalizeError(e).kind !== 'forbidden') toast(normalizeError(e).text || '批次列表加载失败'); this.batchJobs = []; return [] })
+    loadBatches(showToast = true, reset = true) {
+      if (reset) this.batchPage = 1
+      return affairsContractApi.getMaterialBatchJobs(this.batchPage, 20).then((d) => {
+        const rows = (d && d.items) || []
+        this.batchJobs = reset ? rows : [...this.batchJobs, ...rows]
+        this.batchHasMore = this.batchPage * 20 < Number((d && d.total) || 0)
+        return this.batchJobs
+      }).catch((e) => { if (showToast && normalizeError(e).kind !== 'forbidden') toast(normalizeError(e).text || '批次列表加载失败'); if (reset) this.batchJobs = []; return null })
+    },
+    loadMoreTodos() {
+      if (this.todoLoading || !this.todoHasMore) return
+      this.todoLoading = true
+      const next = this.todoPage + 1
+      teacherApi.getAffairs(next, 20).then((d) => {
+        this.todoPage = next
+        this.data = { ...this.data, ...d, items: [...this.todoItems, ...((d && d.items) || [])] }
+        this.todoHasMore = Boolean(d && d.hasMore)
+      }).catch((e) => toast(normalizeError(e).text || '待办加载失败')).finally(() => { this.todoLoading = false })
+    },
+    loadMoreMaterials() {
+      if (this.materialLoading || !this.materialHasMore) return
+      const previous = this.materialPage
+      this.materialLoading = true; this.materialPage = previous + 1
+      this.loadMaterials(true, false).then((result) => { if (result === null) this.materialPage = previous })
+        .finally(() => { this.materialLoading = false })
+    },
+    loadMoreBatches() {
+      if (this.batchLoading || !this.batchHasMore) return
+      const previous = this.batchPage
+      this.batchLoading = true; this.batchPage = previous + 1
+      this.loadBatches(true, false).then((result) => { if (result === null) this.batchPage = previous })
+        .finally(() => { this.batchLoading = false })
     },
     scrollToMaterial() {
       if (!this.focusMaterialId) return
@@ -377,6 +422,7 @@ export default {
 .ta__return-box { margin-top: 10px; padding: 10px; background: var(--bg-page); border-radius: 8px; }
 .ta__return-box textarea { width: 100%; min-height: 72px; padding: 8px; box-sizing: border-box; background: #fff; border-radius: 7px; }
 .ta__return-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.ta__load-more { width: 100%; margin-top: 12px; }
 .ta__batch-btn { position: sticky; bottom: 12px; z-index: 20; width: 100%; margin-top: 12px; }
 .ta__batch-detail { margin-top: 12px; }
 .ta__batch-item { display: flex; padding: 10px 0; border-top: 1px solid var(--border-light); }

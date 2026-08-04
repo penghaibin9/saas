@@ -10,7 +10,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -960,95 +960,124 @@ def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
 
 
 def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
-    """请假统计：人数/天数/在假/待审/待销假/逾期/已销假 + 按班级/类型/状态下钻。契约 #27。"""
+    """请假统计：数据库聚合，SQL 数量不随记录数增长。"""
     from app.models import CsLeave, SchoolClass, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
     gb = (group_by or "CLASS").upper()
     if gb not in ("CLASS", "TYPE", "STATUS"):
         gb = "CLASS"
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
-            CsLeave.affairs_status.is_not(None))).all()
         ds, de = _parse_dt(date_start), _parse_dt(date_end)
         now = datetime.utcnow()
-        stu_cache: dict = {}
-
-        def _stu(sid):
-            if sid not in stu_cache:
-                stu_cache[sid] = db.get(StudentProfile, int(sid)) if sid else None
-            return stu_cache[sid]
-
-        students, total_days = set(), 0.0
-        m = {"pendingReview": 0, "waitCancel": 0, "overdue": 0, "closed": 0, "onLeave": 0,
-             "pendingApprovalOverdue": 0, "nearDue": 0}
         leave_sla = get_leave_sla()
-        buckets: dict = {}
-        for x in rows:
-            s = _stu(x.student_id)
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            if ds and x.start_time and x.start_time < ds:
-                continue
-            if de and x.start_time and x.start_time > de:
-                continue
-            aff = x.affairs_status
-            if x.student_id:
-                students.add(x.student_id)
-            if aff in ("APPROVED", "CLOSED", "ARCHIVED", "OVERDUE", "WAIT_CANCEL_LEAVE", "EXTENSION_REVIEW"):
-                total_days += float(x.days or 0)
-            if aff in _REVIEW_NODES:
-                m["pendingReview"] += 1
-                if leave_is_pending_approval_overdue(x, now):
-                    m["pendingApprovalOverdue"] += 1
-            elif aff == "WAIT_CANCEL_LEAVE":
-                m["waitCancel"] += 1
-            elif aff == "OVERDUE":
-                m["overdue"] += 1
-            elif aff == "CLOSED":
-                m["closed"] += 1
-            if aff == "APPROVED" and x.start_time and x.end_time and x.start_time <= now <= x.end_time:
-                m["onLeave"] += 1
-            if (aff in ("APPROVED", "WAIT_CANCEL_LEAVE")
-                    and x.expected_return_at and now <= x.expected_return_at
-                    <= now + timedelta(hours=leave_sla["nearDueHours"])):
-                m["nearDue"] += 1
-            key = (str(s.class_id or "") if s else "") if gb == "CLASS" else (
-                (x.leave_type or "OTHER") if gb == "TYPE" else (aff or ""))
-            b = buckets.setdefault(key, {"count": 0, "days": 0.0, "students": set()})
-            b["count"] += 1
-            b["days"] += float(x.days or 0)
-            if x.student_id:
-                b["students"].add(x.student_id)
-        cls_names = {}
+        conds = [
+            CsLeave.tenant_id == _tid(),
+            CsLeave.is_deleted.is_(False),
+            CsLeave.affairs_status.is_not(None),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        if ds:
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time >= ds))
+        if de:
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time <= de))
+
+        active_day_states = (
+            "APPROVED", "CLOSED", "ARCHIVED", "OVERDUE",
+            "WAIT_CANCEL_LEAVE", "EXTENSION_REVIEW",
+        )
+        overdue_before = now - timedelta(hours=leave_sla["approvalHours"])
+        near_due_until = now + timedelta(hours=leave_sla["nearDueHours"])
+        metric_row = db.execute(select(
+            func.count(func.distinct(CsLeave.student_id)),
+            func.coalesce(func.sum(case(
+                (CsLeave.affairs_status.in_(active_day_states), CsLeave.days), else_=0,
+            )), 0),
+            func.coalesce(func.sum(case((and_(
+                CsLeave.affairs_status == "APPROVED",
+                CsLeave.start_time <= now, CsLeave.end_time >= now,
+            ), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((CsLeave.affairs_status.in_(_REVIEW_NODES), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((and_(
+                CsLeave.affairs_status.in_(_REVIEW_NODES),
+                CsLeave.created_at <= overdue_before,
+            ), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((and_(
+                CsLeave.affairs_status.in_(("APPROVED", "WAIT_CANCEL_LEAVE")),
+                CsLeave.expected_return_at >= now,
+                CsLeave.expected_return_at <= near_due_until,
+            ), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((CsLeave.affairs_status == "WAIT_CANCEL_LEAVE", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((CsLeave.affairs_status == "OVERDUE", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((CsLeave.affairs_status == "CLOSED", 1), else_=0)), 0),
+        ).select_from(CsLeave).join(
+            StudentProfile, StudentProfile.id == CsLeave.student_id,
+        ).where(*conds)).one()
+
         if gb == "CLASS":
-            cls_names = {str(c.id): c.class_name for c in db.scalars(
-                select(SchoolClass).where(SchoolClass.tenant_id == _tid())).all()}
+            key_expr = StudentProfile.class_id
+        elif gb == "TYPE":
+            key_expr = CsLeave.leave_type
+        else:
+            key_expr = CsLeave.affairs_status
+        grouped = db.execute(select(
+            key_expr.label("bucket"),
+            func.count(CsLeave.id),
+            func.coalesce(func.sum(CsLeave.days), 0),
+            func.count(func.distinct(CsLeave.student_id)),
+        ).select_from(CsLeave).join(
+            StudentProfile, StudentProfile.id == CsLeave.student_id,
+        ).where(*conds).group_by(key_expr).order_by(func.count(CsLeave.id).desc())).all()
+
+        class_names = {}
+        if gb == "CLASS":
+            class_ids = [int(row.bucket) for row in grouped if row.bucket]
+            if class_ids:
+                class_names = dict(db.execute(select(
+                    SchoolClass.id, SchoolClass.class_name,
+                ).where(
+                    SchoolClass.tenant_id == _tid(),
+                    SchoolClass.id.in_(class_ids),
+                    SchoolClass.is_deleted.is_(False),
+                )).all())
 
         def _label(key):
             if gb == "CLASS":
-                return cls_names.get(key, f"班级{key}" if key else "未分班")
+                return class_names.get(int(key), f"班级{key}") if key else "未分班"
             if gb == "TYPE":
-                return L_TYPE.get(key, key or "其他")
-            return L_AFF.get(key, key)
+                return L_TYPE.get(str(key or "OTHER"), str(key or "其他"))
+            return L_AFF.get(str(key or ""), str(key or ""))
 
         breakdown = [{
-            "key": k, "label": _label(k), "count": v["count"],
-            "days": round(v["days"], 1), "studentCount": len(v["students"]),
-        } for k, v in sorted(buckets.items(), key=lambda kv: -kv[1]["count"])]
+            "key": str(row.bucket or ""),
+            "label": _label(row.bucket),
+            "count": int(row[1] or 0),
+            "days": round(float(row[2] or 0), 1),
+            "studentCount": int(row[3] or 0),
+        } for row in grouped]
+        values = [int(metric_row[0] or 0), round(float(metric_row[1] or 0), 1)] + [
+            int(value or 0) for value in metric_row[2:]
+        ]
+        keys = (
+            ("leaveStudentCount", "请假人数", "人"),
+            ("totalDays", "请假总天数", "天"),
+            ("onLeave", "当前在假", "人次"),
+            ("pendingReview", "待审批", "件"),
+            ("pendingApprovalOverdue", "审批超时", "件"),
+            ("nearDue", "临近返校", "件"),
+            ("waitCancel", "待销假", "件"),
+            ("overdue", "逾期未销", "件"),
+            ("closed", "已销假", "件"),
+        )
         return {
             "groupBy": gb,
             "metrics": [
-                {"key": "leaveStudentCount", "label": "请假人数", "value": len(students), "unit": "人"},
-                {"key": "totalDays", "label": "请假总天数", "value": round(total_days, 1), "unit": "天"},
-                {"key": "onLeave", "label": "当前在假", "value": m["onLeave"], "unit": "人次"},
-                {"key": "pendingReview", "label": "待审批", "value": m["pendingReview"], "unit": "件"},
-                {"key": "pendingApprovalOverdue", "label": "审批超时", "value": m["pendingApprovalOverdue"], "unit": "件"},
-                {"key": "nearDue", "label": "临近返校", "value": m["nearDue"], "unit": "件"},
-                {"key": "waitCancel", "label": "待销假", "value": m["waitCancel"], "unit": "件"},
-                {"key": "overdue", "label": "逾期未销", "value": m["overdue"], "unit": "件"},
-                {"key": "closed", "label": "已销假", "value": m["closed"], "unit": "件"},
+                {"key": key, "label": label, "value": value, "unit": unit}
+                for (key, label, unit), value in zip(keys, values)
             ],
             "breakdown": breakdown,
         }
@@ -1056,56 +1085,13 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
 
 def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
                   date_start=None, date_end=None, followup_only=False, student_id=None) -> dict:
-    """请假台账导出（xlsx，水印 + 导出留痕）。契约 §16.2 affairs_leave 导出。"""
-    from app.services import excel
-    items_all, _ = list_leaves(user, status, leave_type, class_id, keyword,
-                               date_start, date_end, followup_only=followup_only,
-                               page=1, page_size=1_000_000,
-                               student_id=student_id)
-    export_items = [{
-        "studentNo": it.get("studentNo", ""),
-        "studentName": it.get("studentName", ""),
-        "className": it.get("className", ""),
-        "leaveType": it.get("leaveTypeLabel", ""),
-        "days": it.get("days", 0),
-        "startTime": it.get("startTime", ""),
-        "endTime": it.get("endTime", ""),
-        "expectedReturnAt": it.get("expectedReturnAt", ""),
-        "actualReturnAt": it.get("actualReturnAt", ""),
-        "statusLabel": it.get("affairsStatusLabel", ""),
-        "reason": it.get("reason", ""),
-    } for it in items_all]
-    spec = excel.ExportSpec(
-        module_key="student-affairs", biz_type="leave", sheet_title="请假台账",
-        columns=[
-            excel.ColumnSpec("studentNo", "学号"),
-            excel.ColumnSpec("studentName", "姓名"),
-            excel.ColumnSpec("className", "班级"),
-            excel.ColumnSpec("leaveType", "请假类型"),
-            excel.ColumnSpec("days", "天数"),
-            excel.ColumnSpec("startTime", "开始时间"),
-            excel.ColumnSpec("endTime", "结束时间"),
-            excel.ColumnSpec("expectedReturnAt", "应返校时间"),
-            excel.ColumnSpec("actualReturnAt", "实际返校时间"),
-            excel.ColumnSpec("statusLabel", "状态"),
-            excel.ColumnSpec("reason", "事由"),
-        ],
-        file_name="请假台账.xlsx",
+    """兼容入口：创建正式异步导出任务，不在 Web 请求内生成百万行 XLSX。"""
+    from app.services.affairs_leave_export_service import create_job
+
+    return create_job(
+        user, status, leave_type, class_id, keyword, date_start, date_end,
+        followup_only=followup_only, student_id=student_id,
     )
-    n, _r, _u = _op()
-    packed = excel.build_export(spec, export_items, operator_name=n, tenant_label=str(_tid()))
-    with session() as db:
-        _audit(db, None, "EXPORT", f"rows={packed.get('rowCount', len(export_items))}")
-        db.commit()
-    # 敏感导出安全审计（t_security_audit_log）：导出含学号/事由等个人信息，落 SENSITIVE_EXPORT。
-    from app.services.db_service import audit_insert
-    audit_insert("SENSITIVE_EXPORT", "leave_ledger",
-                 {"rows": packed.get("rowCount", len(export_items)),
-                  "filters": {"status": status, "leaveType": leave_type, "classId": class_id,
-                              "studentId": student_id, "keyword": keyword,
-                              "dateStart": date_start, "dateEnd": date_end,
-                              "followupOnly": bool(followup_only)}}, "SUCCESS")
-    return packed
 
 
 def list_pending(user, page=1, page_size=20):

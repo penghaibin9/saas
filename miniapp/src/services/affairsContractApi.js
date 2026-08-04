@@ -1,12 +1,30 @@
 import { realDownload, realRequest, realUpload } from '@/services/request'
 
+async function loadAllTransferPages(path) {
+  const pageSize = 200
+  let page = 1
+  let first = null
+  const items = []
+  while (true) {
+    const separator = path.includes('?') ? '&' : '?'
+    const data = await realRequest(`${path}${separator}page=${page}&pageSize=${pageSize}`)
+    if (!first) first = data || {}
+    items.push(...((data && data.items) || []))
+    const total = Number((data && data.total) || items.length)
+    if (!(data && data.hasMore) && items.length >= total) break
+    if (!data || !data.items || data.items.length === 0) break
+    page += 1
+  }
+  return { ...(first || {}), items, total: Number((first && first.total) || items.length), page: 1, pageSize: items.length, hasMore: false }
+}
+
 /**
  * 学工四端专用契约。
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
  */
 export const affairsContractApi = {
-  getStudentCandidates: (purpose = 'TALK') =>
-    realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}`),
+  getStudentCandidates: (purpose = 'TALK', q = '', page = 1, pageSize = 20) =>
+    realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}&q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
 
   // 学生请假
   getReturnedLeave: (leaveId) => realRequest(`/mobile/affairs/leave/${leaveId}/editable`),
@@ -35,8 +53,8 @@ export const affairsContractApi = {
   downloadMaterialFile: (fileId) => realDownload(`/files/download/${fileId}`),
 
   // 宿舍正式调宿
-  getDormTransferOptions: () => realRequest('/mobile/affairs/dorm/transfer-options'),
-  getDormTransferRooms: (buildingId) => realRequest(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
+  getDormTransferOptions: () => loadAllTransferPages('/mobile/affairs/dorm/transfer-options'),
+  getDormTransferRooms: (buildingId) => loadAllTransferPages(`/mobile/affairs/dorm/transfer-buildings/${buildingId}/rooms`),
   getDormTransferBeds: (roomId) => realRequest(`/mobile/affairs/dorm/transfer-rooms/${roomId}/beds`),
   submitDormTransfer: (toBedId, reason) => realRequest('/mobile/affairs/dorm/transfers', {
     method: 'POST', data: { toBedId, reason }
@@ -88,8 +106,8 @@ export const affairsContractApi = {
   }),
 
   // 教师材料审核和安全批量提醒
-  getMaterialRequirements: (status = '') => realRequest('/student-affairs/material-requirements', {
-    data: { status, page: 1, pageSize: 100 }
+  getMaterialRequirements: (status = '', page = 1, pageSize = 20) => realRequest('/student-affairs/material-requirements', {
+    data: { status, page, pageSize }
   }),
   reviewMaterialRequirement: (requirementId, action, reason, version) =>
     realRequest(`/student-affairs/material-requirements/${requirementId}/review`, {
@@ -99,8 +117,8 @@ export const affairsContractApi = {
     method: 'POST',
     data: { jobType: 'MATERIAL_REMIND', idempotencyKey, items }
   }),
-  getMaterialBatchJobs: () => realRequest('/student-affairs/batch-jobs', {
-    data: { page: 1, pageSize: 50 }
+  getMaterialBatchJobs: (page = 1, pageSize = 20) => realRequest('/student-affairs/batch-jobs', {
+    data: { page, pageSize }
   }),
   getMaterialBatchJob: (jobId) => realRequest(`/student-affairs/batch-jobs/${jobId}`),
   retryMaterialBatchFailed: (jobId) => realRequest(`/student-affairs/batch-jobs/${jobId}/retry-failed`, {

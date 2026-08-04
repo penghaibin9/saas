@@ -22,9 +22,9 @@
           <view v-for="x in d.items" :key="x.applicationId" class="list-row col">
             <view class="row-between"><text class="flex-1 t-md">{{ typeLabel(x.projectType) }}</text><MobileStatusTag :status="x.statusLabel || x.status" /></view>
             <text v-if="x.returnReason" class="hint warn">退回/驳回：{{ x.returnReason }}</text>
-            <button v-if="x.canResubmit" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
+            <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
             <text v-if="x.hasPendingAppeal" class="hint">申诉处理中，请等待复核</text>
-            <template v-if="x.canAppeal"><textarea class="ta" v-model="reasons[x.applicationId]" placeholder="对公示结果有异议，请填写申诉理由（≥5字）" /><button class="btn" :disabled="busy" @click="appeal(x)">提交公示申诉</button></template>
+            <template v-if="allows(x, 'SUBMIT_APPEAL')"><textarea class="ta" v-model="reasons[x.applicationId]" placeholder="对公示结果有异议，请填写申诉理由（≥5字）" /><button class="btn" :disabled="busy" @click="appeal(x)">提交公示申诉</button></template>
           </view>
         </view>
         <MobileGlobalState v-else state="empty" title="暂无奖助申请记录" description="开放批次后可在上方申请奖学金/助学金。" />
@@ -65,6 +65,7 @@ export default {
   watch: { fundType() { this.batchIndex = 0 }, batchesForType() { if (this.batchIndex >= this.batchesForType.length) this.batchIndex = 0 } },
   onLoad() { this.load() },
   methods: {
+    allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' })[t] || t || '奖助' },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
     load() {

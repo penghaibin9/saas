@@ -12,7 +12,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
@@ -41,6 +41,9 @@ L_AID = {
     "COLLEGE_REVIEW": "学院复审", "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中",
     "APPROVED": "已通过", "REJECTED": "已驳回", "ADJUST_REVIEW": "动态调整审批", "ARCHIVED": "已归档",
 }
+
+_L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
+_L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
 
 
 def _op():
@@ -298,6 +301,13 @@ def _assert_no_open_objection(db, apply_id):
 
 
 def create_batch(body, user) -> dict:
+    from app.services.affairs_publicity_rules import publicity_days, school_year, validate_dates
+    body.batchName = str(getattr(body, "batchName", None) or "").strip()
+    if not 2 <= len(body.batchName) <= 200:
+        raise AppException("VALIDATION_ERROR", "认定批次名称需2-200字")
+    body.schoolYear = school_year(getattr(body, "schoolYear", None))
+    body.publicityDays = publicity_days(getattr(body, "publicityDays", None))
+    validate_dates(_parse_dt, body)
     with session() as db:
         from app.models import AidBatch
         publish = bool(getattr(body, "publish", False))
@@ -523,25 +533,35 @@ def scan_publicity() -> dict:
     with session() as db:
         rows = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.status == "PUBLICITY",
-            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False))).all()
-        pending = _pending_objection_ids(db, [x.id for x in rows])
-        cnt = skipped = 0
-        for x in rows:
-            if int(x.id) in pending:
+            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False),
+        ).order_by(AidApply.id).limit(200).with_for_update(skip_locked=True)).all()
+        pending = _pending_objection_ids(db, [row.id for row in rows])
+        batch_ids = {int(row.batch_id) for row in rows if row.batch_id}
+        batches = {
+            int(batch.id): batch
+            for batch in db.scalars(select(AidBatch).where(
+                AidBatch.tenant_id == _tid(),
+                AidBatch.id.in_(batch_ids) if batch_ids else AidBatch.id == -1,
+                AidBatch.is_deleted.is_(False),
+            )).all()
+        }
+        confirmed = skipped = invalid = 0
+        for row in rows:
+            if int(row.id) in pending:
                 skipped += 1
                 continue
-            b = db.get(AidBatch, int(x.batch_id))
-            days = (b.publicity_days if b and b.publicity_days is not None else 5)
-            due = x.publicity_at + timedelta(days=days)
-            if due <= now + timedelta(seconds=2):
-                if int(x.id) in _pending_objection_ids(db, [x.id]):
-                    skipped += 1
-                    continue
-                _confirm_one(db, x)
-                cnt += 1
+            batch = batches.get(int(row.batch_id)) if row.batch_id else None
+            if not batch:
+                invalid += 1
+                continue
+            due = row.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
+            if due > now:
+                continue
+            _confirm_one(db, row)
+            confirmed += 1
         db.commit()
-        _drain_message_outbox()
-        return {"count": cnt, "skippedObjection": skipped}
+    _drain_message_outbox()
+    return {"count": confirmed, "skippedObjection": skipped, "invalidBatch": invalid}
 
 
 def confirm_publicity(apply_id, user, expected_version=None) -> dict:
@@ -757,37 +777,46 @@ def is_in_difficult_library(db, student_id) -> str | None:
 
 
 def aid_stats(user):
+    """困难认定统计：在数据库侧按状态/等级聚合，口径与范围列表一致。"""
     from app.models import AidApply, AidBatch, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(AidApply).where(
-            AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False))).all()
-        students = _students_by_ids(db, rows)
-        by_status, by_level, total = {}, {}, 0
-        for x in rows:
-            if allowed is not None:
-                s = students.get(int(x.student_id)) if x.student_id else None
-                if not s or s.class_id not in allowed:
-                    continue
-            total += 1
-            by_status[x.status] = by_status.get(x.status, 0) + 1
-            if x.status == "APPROVED" and x.final_level:
-                by_level[x.final_level] = by_level.get(x.final_level, 0) + 1
+        base = [
+            AidApply.tenant_id == _tid(),
+            AidApply.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if allowed is not None:
+            base.append(StudentProfile.class_id.in_(allowed or {-1}))
+        status_rows = db.execute(
+            select(AidApply.status, func.count(AidApply.id))
+            .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+            .where(*base).group_by(AidApply.status)
+        ).all()
+        level_rows = db.execute(
+            select(AidApply.final_level, func.count(AidApply.id))
+            .join(StudentProfile, StudentProfile.id == AidApply.student_id)
+            .where(*base, AidApply.status == "APPROVED", AidApply.final_level.is_not(None))
+            .group_by(AidApply.final_level)
+        ).all()
+        by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
+        by_level = {str(key or ""): int(count or 0) for key, count in level_rows}
+        total = sum(by_status.values())
         approved = by_status.get("APPROVED", 0)
-        batches = db.scalars(select(AidBatch).where(
-            AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False))).all()
-        return {"total": total, "approved": approved,
-                "publicity": by_status.get("PUBLICITY", 0), "rejected": by_status.get("REJECTED", 0),
-                "batchCount": len(batches),
-                "approvalRate": round(approved / total, 3) if total else 0.0,
-                "byStatus": [{"key": k, "count": v} for k, v in by_status.items()],
-                "byLevel": [{"key": k, "count": v} for k, v in by_level.items()]}
-
-
-_L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
-_L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
-
+        batch_count = int(db.scalar(select(func.count()).select_from(AidBatch).where(
+            AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False),
+        )) or 0)
+        return {
+            "total": total, "approved": approved,
+            "publicity": by_status.get("PUBLICITY", 0),
+            "rejected": by_status.get("REJECTED", 0),
+            "batchCount": batch_count,
+            "approvalRate": round(approved / total, 3) if total else 0.0,
+            "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
+            "byLevel": [{"key": key, "count": count} for key, count in by_level.items()],
+        }
 
 def _obj_row(o, s=None) -> dict:
     return {
@@ -819,6 +848,8 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
             _scope_or_403(db, x.student_id, user)
         if x.status != "PUBLICITY":
             raise AppException("DATA_CONFLICT", "仅公示中的申请可提异议")
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        appeal_todo.require_submission_assignee(db, "AID_OBJECTION_REVIEW", int(x.student_id))
         dup = db.scalars(select(AidObjection).where(
             AidObjection.tenant_id == _tid(), AidObjection.apply_id == int(apply_id),
             AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).first()
@@ -840,27 +871,39 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
         db.commit(); db.refresh(o)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-        return _obj_row(o, s)
+        result = _obj_row(o, s)
+        return appeal_todo.sync_after_submit("AID_OBJECTION_REVIEW", result, "objectionId", "id")
 
 
 def list_objections(user, status=None, page=1, page_size=50):
+    """异议列表使用数据库范围过滤、真计数和真分页，避免全量加载及逐行查学生。"""
     from app.models import AidObjection, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
+    page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        student_join = and_(
+            StudentProfile.id == AidObjection.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
         conds = [AidObjection.tenant_id == _tid(), AidObjection.is_deleted.is_(False)]
         if status:
             conds.append(AidObjection.status == status)
-        rows = db.scalars(select(AidObjection).where(*conds).order_by(AidObjection.id.desc())).all()
-        out = []
-        for o in rows:
-            s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_obj_row(o, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        total = int(db.scalar(
+            select(func.count()).select_from(AidObjection)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+        ) or 0)
+        rows = db.execute(
+            select(AidObjection, StudentProfile)
+            .outerjoin(StudentProfile, student_join).where(*conds)
+            .order_by(AidObjection.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_obj_row(objection, student) for objection, student in rows], total
 
 
 def review_objection(objection_id, body, user) -> dict:
@@ -915,4 +958,6 @@ def review_objection(objection_id, body, user) -> dict:
         db.commit(); db.refresh(o)
         _drain_message_outbox()
         s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
-        return _obj_row(o, s)
+        result_row = _obj_row(o, s)
+        from app.services import affairs_appeal_todo_service as appeal_todo
+        return appeal_todo.sync_after_review("AID_OBJECTION_REVIEW", int(objection_id), result_row)

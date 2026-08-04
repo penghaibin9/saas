@@ -1,28 +1,33 @@
-"""异议/申诉补偿定时触发目标测试。"""
+"""异议/申诉补偿显式调度目标测试。"""
 from __future__ import annotations
 
 import inspect
 
 
-def test_periodic_affairs_scans_are_wrapped_for_appeal_repair():
-    from app.services import affairs_counselor_service, affairs_leave_service, affairs_risk_service
+def test_router_no_longer_installs_periodic_monkey_patch():
+    from app.api.v1 import router
 
-    assert getattr(affairs_leave_service.scan_overdue, "_affairs_appeal_repair_scheduled", False)
-    assert getattr(affairs_risk_service.scan_timeout, "_affairs_appeal_repair_scheduled", False)
-    assert getattr(affairs_counselor_service.scan_expired_temps, "_affairs_appeal_repair_scheduled", False)
+    source = inspect.getsource(router)
+    assert "install_appeal_repair_scheduler" not in source
+    assert "install_appeal_repair" not in source
 
 
-def test_default_web_scheduler_enables_all_wrapped_affairs_scans():
-    from app.core.config import Settings
+def test_web_scheduler_calls_repair_and_async_export_explicitly():
     from app import main
 
     source = inspect.getsource(main.lifespan)
-    assert Settings.model_fields["AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN"].default is True
-    assert Settings.model_fields["AFFAIRS_RISK_TIMEOUT_AUTO_SCAN"].default is True
-    assert Settings.model_fields["AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN"].default is True
-    assert "affairs_leave_service.scan_overdue()" in source
-    assert "affairs_risk_service.scan_timeout()" in source
-    assert "affairs_counselor_service.scan_expired_temps()" in source
+    assert "affairs_appeal_repair_service.repair_pending" in source
+    assert "affairs_leave_export_service.run_pending" in source
+    assert 'name="student-affairs-background"' in source
+
+
+def test_external_scheduler_calls_repair_and_async_export_explicitly():
+    from scripts import run_scheduled_jobs
+
+    source = inspect.getsource(run_scheduled_jobs.job_student_affairs_background)
+    assert "repair.repair_pending" in source
+    assert "leave_export.run_pending" in source
+    assert "TRIAL" in inspect.getsource(run_scheduled_jobs._schedulable_tenant_ids)
 
 
 def test_run_due_executes_persisted_repair_queue(monkeypatch):
@@ -41,11 +46,8 @@ def test_run_due_executes_persisted_repair_queue(monkeypatch):
 
     assert calls == [100]
     assert result == {
-        "tenantId": "tenant-1",
-        "skipped": False,
-        "claimed": 3,
-        "repaired": 2,
-        "failed": 1,
+        "tenantId": "tenant-1", "skipped": False,
+        "claimed": 3, "repaired": 2, "failed": 1,
     }
 
 
@@ -66,19 +68,3 @@ def test_repair_throttle_is_isolated_per_tenant(monkeypatch):
     current["key"] = "tenant-b"
     assert scheduler.run_due()["skipped"] is False
     assert calls == ["tenant-a", "tenant-b"]
-
-
-def test_scheduled_repair_failure_does_not_break_other_periodic_jobs(monkeypatch):
-    from app.services import affairs_appeal_repair_scheduler as scheduler
-    from app.services import affairs_appeal_repair_service as repair
-
-    def broken_repair(limit=20):
-        raise RuntimeError("repair unavailable")
-
-    monkeypatch.setattr(repair, "repair_pending", broken_repair)
-    monkeypatch.setattr(scheduler, "_tenant_key", lambda: "tenant-error")
-    result = scheduler.run_due(force=True)
-
-    assert result["tenantId"] == "tenant-error"
-    assert result["failed"] == 1
-    assert result["errorType"] == "RuntimeError"

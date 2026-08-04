@@ -113,13 +113,26 @@ def test_activity_unconfirm_no_duplicate_credit(client, db_mode):
     ).json()
     assert c2["code"] == 0 and c2["data"]["creditsGranted"] == 1
     from app.db.session import get_sessionmaker
-    from app.models import AffairsActivityCredit
+    from app.models import AffairsActivityCredit, StudentStageEvent
     from sqlalchemy import func, select
     db = get_sessionmaker()()
     n = db.scalar(select(func.count()).select_from(AffairsActivityCredit).where(
         AffairsActivityCredit.tenant_id == TID, AffairsActivityCredit.activity_id == int(aid)))
+    adjustments = db.scalars(select(AffairsActivityCredit).where(
+        AffairsActivityCredit.tenant_id == TID,
+        AffairsActivityCredit.student_id == sid,
+        AffairsActivityCredit.source == "MANUAL_ADJUST",
+        AffairsActivityCredit.remark.like(f"活动#{aid}%"),
+    ).order_by(AffairsActivityCredit.id)).all()
+    reconfirm_events = db.scalar(select(func.count()).select_from(StudentStageEvent).where(
+        StudentStageEvent.tenant_id == TID,
+        StudentStageEvent.student_id == sid,
+        StudentStageEvent.to_stage == "ACTIVITY_RECONFIRMED",
+    )) or 0
     db.close()
-    assert n == 1  # append-only：原活动流水仍只 1 条，撤销和恢复以独立调整流水留痕
+    assert n == 1  # 原始活动流水不可删除或重复创建
+    assert [float(row.credit_value) for row in adjustments] == [-4.0, 4.0]
+    assert reconfirm_events >= 1
 
 
 def test_activity_validation_and_state(client, db_mode):

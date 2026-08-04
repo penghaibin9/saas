@@ -72,6 +72,69 @@ SEED_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "risk_level": "HIGH",
         "consumer_json": {"items": ["auth_service_db.change_password"]},
     },
+    {
+        "config_key": "AFFAIRS_RISK_SLA_JSON",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "学工风险分级处置时效",
+        "value_type": "JSON",
+        "default_json": {"value": {
+            "CRITICAL": {"assignHours": 1, "processHours": 24, "followHours": 24},
+            "HIGH": {"assignHours": 2, "processHours": 48, "followHours": 48},
+            "MEDIUM": {"assignHours": 4, "processHours": 72, "followHours": 72},
+            "LOW": {"assignHours": 8, "processHours": 120, "followHours": 120}
+        }},
+        "platform_floor_json": {},
+        "school_editable": True,
+        "risk_level": "HIGH",
+        "consumer_json": {"items": ["affairs_sla.get_risk_sla"]},
+    },
+    {
+        "config_key": "AFFAIRS_LEAVE_SLA_JSON",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "学生请假审批与销假时效",
+        "value_type": "JSON",
+        "default_json": {"value": {
+            "approvalHours": 24, "nearDueHours": 12,
+            "cancelHours": 24, "extensionApprovalHours": 24
+        }},
+        "platform_floor_json": {},
+        "school_editable": True,
+        "risk_level": "HIGH",
+        "consumer_json": {"items": ["affairs_sla.get_leave_sla"]},
+    },
+    {
+        "config_key": "AFFAIRS_ASSIGNEE_STRATEGY",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "学工共享审批池分派策略",
+        "value_type": "STRING",
+        "default_json": {"value": "LEAST_PENDING"},
+        "platform_floor_json": {"enum": ["LEAST_PENDING", "FIRST_ACTIVE"]},
+        "school_editable": True,
+        "risk_level": "MEDIUM",
+        "consumer_json": {"items": ["affairs_assignee_service.require_assignee_id"]},
+    },
+    {
+        "config_key": "AFFAIRS_FUNDING_ELIGIBILITY_JSON",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "奖助申请资格规则",
+        "value_type": "JSON",
+        "default_json": {"value": {
+            "version": "2026.1",
+            "SCHOLARSHIP": {
+                "requireActiveStatus": True,
+                "requireNoActiveDiscipline": True,
+                "requireNoFailedGrade": True
+            },
+            "GRANT": {
+                "requireDifficultLibrary": True,
+                "allowedAidLevels": []
+            }
+        }},
+        "platform_floor_json": {},
+        "school_editable": True,
+        "risk_level": "HIGH",
+        "consumer_json": {"items": ["affairs_funding_service.apply"]},
+    },
 )
 
 

@@ -98,7 +98,7 @@ if (!legacyFacade.includes('file_service_legacy as _legacy')) {
 if (!legacyImplementation.includes('authorize_file_object(')) {
   throw new Error('file service DB authorization implementation must delegate to resolver registry')
 }
-const archiveGenerator = read('backend/app/services/affairs_archive_guard.py')
+const archiveGenerator = read('backend/app/services/affairs_archive_service.py')
 if (!archiveGenerator.includes('biz_type="AFFAIRS_ARCHIVE"')) {
   throw new Error('student-affairs archive generation must declare AFFAIRS_ARCHIVE explicitly')
 }

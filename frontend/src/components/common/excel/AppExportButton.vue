@@ -50,9 +50,14 @@ export default {
       try {
         const res = await this.exportFn()
         if (res?.code === 0) {
-          downloadXlsxFromApi(res.data)
-          toast.success('导出成功，已写入审计')
-          this.$emit('exported', res.data)
+          const data = res.data || {}
+          if (data.jobId || data.queued) {
+            toast.success('导出任务已创建，可继续使用系统')
+          } else {
+            downloadXlsxFromApi(data)
+            toast.success('导出成功，已写入审计')
+          }
+          this.$emit('exported', data)
         } else {
           toast.error(res?.message || '导出失败')
         }

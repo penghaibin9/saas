@@ -52,16 +52,15 @@
           <template #cell-status="{ row }"><StatusTag :type="frType(row.status)" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-actions="{ row }">
             <div class="fr-ops">
-              <template v-if="row.status==='SUBMITTED'">
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="review(row,'APPROVE')">批准</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(row,'REJECT')">驳回</AppPermissionButton>
-              </template>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.funding.reduction.manage')" v-else-if="row.status==='APPROVED'" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="issue(row)">发放</AppPermissionButton>
-              <span v-else class="fr-muted">—</span>
+              <AppPermissionButton v-if="allows(row, 'APPROVE')" :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="review(row,'APPROVE')">批准</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'REJECT')" :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" variant="secondary" danger @click="review(row,'REJECT')">驳回</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'ISSUE')" :allowed="canBtn('studentAffairs.funding.reduction.manage')" code="studentAffairs.funding.reduction.manage" size="sm" :loading="acting===row.feeId" @click="issue(row)">发放</AppPermissionButton>
+              <span v-if="!row.allowedActions || !row.allowedActions.length" class="fr-muted">—</span>
             </div>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前筛选下暂无减免或临时补助记录。</p>
+        <AppPagination v-if="pagination.total > pagination.pageSize" v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
 
@@ -78,7 +77,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -102,14 +101,14 @@ export default {
   name: 'FeeReductionView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
       feeColumns: FEE_COLUMNS,
       loading: true, acting: '', errorMessage: '', items: [], statusCounts: null, activeType: '', typeFilters: TYPE_FILTERS,
-      formVisible: false, form: this.blank(), rejDlg: { visible: false, feeId: '' }
+      formVisible: false, form: this.blank(), pagination: { page: 1, pageSize: 50, total: 0 }, rejDlg: { visible: false, feeId: '' }
     }
   },
   computed: {
@@ -128,17 +127,19 @@ export default {
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     blank() { return { studentId: '', itemType: 'REDUCTION', amount: null, reason: '', error: '' } },
+    allows(row, action) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes(action) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType })
+      const res = await studentAffairsApi.getFeeReductions({ itemType: this.activeType, page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
         this.statusCounts = res.data.statusCounts || null
+        this.pagination.total = res.data.total != null ? res.data.total : this.items.length
       }
       else this.errorMessage = res.message || '加载失败'
       this.loading = false
     },
-    setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
+    setType(k) { if (this.activeType === k) return; this.activeType = k; this.pagination.page = 1; this.load() },
     async submit() {
       const f = this.form
       const reason = (f.reason || '').trim()

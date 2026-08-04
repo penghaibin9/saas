@@ -10,7 +10,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
@@ -183,24 +183,6 @@ def _dorm_scope_building_ids(db, user):
         return set(scope_ctx.dorm_building_ids)
     return set()
 
-    from app.core.permissions import is_super_admin
-    from app.models import DormBuilding
-    u = user or {}
-    role = (u.get("currentRoleCode") or "").upper()
-    if is_super_admin(user) or role != "DORM_MANAGER":
-        return None  # 非宿管（学工处/学院/超管）按自身权限全楼可见
-    uid = str(u.get("userId") or "")
-    ctx = str(u.get("activeContextId") or "")
-    name = u.get("realName") or ""
-    login = str(u.get("loginName") or u.get("username") or "")
-    keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "",
-                        uid[3:] if uid.startswith("db-") else "",
-                        ctx[4:] if ctx.startswith("ctx_") else "", name, login) if k}
-    rows = db.scalars(select(DormBuilding).where(
-        DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
-        DormBuilding.manager_teacher_key.in_(keys))).all()
-    return {b.id for b in rows}
-
 
 # ═══════════ 楼栋 ═══════════
 
@@ -276,77 +258,120 @@ def generate_layout(building_id, user, floors, rooms_per_floor, beds_per_room) -
 
 
 def list_buildings(user, gender=None, page=1, page_size=50):
-    """楼栋列表（gender 传入时按性别过滤——学生自选床位用）。附空床/总床数。"""
+    """楼栋真分页，床位统计一次聚合，避免逐楼两次 count。"""
     from app.models import DormBed, DormBuilding
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 200))
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
-        conds = [DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
-                 DormBuilding.status == "ENABLED"]
-        rows = db.scalars(select(DormBuilding).where(*conds).order_by(DormBuilding.id)).all()
-        out = []
-        for b in rows:
-            if scope is not None and b.id not in scope:  # 宿管仅本人负责楼栋
-                continue
-            if gender and not _gender_ok(b.gender_limit, gender):
-                continue
-            total = db.scalar(select(func.count()).select_from(DormBed).where(
-                DormBed.tenant_id == _tid(), DormBed.building_id == b.id,
-                DormBed.is_deleted.is_(False))) or 0
-            vacant = db.scalar(select(func.count()).select_from(DormBed).where(
-                DormBed.tenant_id == _tid(), DormBed.building_id == b.id,
-                DormBed.status == "VACANT", DormBed.is_deleted.is_(False))) or 0
-            out.append(_building_row(b, vacant, total))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        conds = [
+            DormBuilding.tenant_id == _tid(), DormBuilding.is_deleted.is_(False),
+            DormBuilding.status == "ENABLED",
+        ]
+        if scope is not None:
+            if not scope:
+                return [], 0
+            conds.append(DormBuilding.id.in_(scope))
+        normalized_gender = (gender or "").upper()
+        if normalized_gender in ("M", "MALE", "男", "1"):
+            conds.append(or_(DormBuilding.gender_limit.in_(("MALE", "MIXED")), DormBuilding.gender_limit.is_(None)))
+        elif normalized_gender in ("F", "FEMALE", "女", "2"):
+            conds.append(or_(DormBuilding.gender_limit.in_(("FEMALE", "MIXED")), DormBuilding.gender_limit.is_(None)))
+        total = int(db.scalar(select(func.count()).select_from(DormBuilding).where(*conds)) or 0)
+        bed_stats = (
+            select(
+                DormBed.building_id.label("building_id"),
+                func.count(DormBed.id).label("bed_total"),
+                func.sum(case((DormBed.status == "VACANT", 1), else_=0)).label("vacant_total"),
+            )
+            .where(DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False))
+            .group_by(DormBed.building_id)
+            .subquery()
+        )
+        rows = db.execute(
+            select(
+                DormBuilding,
+                func.coalesce(bed_stats.c.vacant_total, 0),
+                func.coalesce(bed_stats.c.bed_total, 0),
+            )
+            .outerjoin(bed_stats, bed_stats.c.building_id == DormBuilding.id)
+            .where(*conds)
+            .order_by(DormBuilding.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [
+            _building_row(building, int(vacant or 0), int(bed_total or 0))
+            for building, vacant, bed_total in rows
+        ], total
 
 
 def list_rooms(building_id, user, floor=None, page=1, page_size=100):
-    """房间列表（级联第2级：选层后列房，带空床数）。"""
+    """房间真分页，空床数一次聚合。"""
     from app.models import DormBed, DormRoom
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 100), 200))
     with session() as db:
         _require_dorm_scope(db, int(building_id), user)
-        conds = [DormRoom.tenant_id == _tid(), DormRoom.building_id == int(building_id),
-                 DormRoom.is_deleted.is_(False)]
+        conds = [
+            DormRoom.tenant_id == _tid(), DormRoom.building_id == int(building_id),
+            DormRoom.is_deleted.is_(False),
+        ]
         if floor is not None:
             conds.append(DormRoom.floor_no == int(floor))
-        rows = db.scalars(select(DormRoom).where(*conds).order_by(DormRoom.floor_no, DormRoom.room_no)).all()
-        out = []
-        for r in rows:
-            vacant = db.scalar(select(func.count()).select_from(DormBed).where(
-                DormBed.tenant_id == _tid(), DormBed.room_id == r.id,
-                DormBed.status == "VACANT", DormBed.is_deleted.is_(False))) or 0
-            out.append({"roomId": str(r.id), "buildingId": str(r.building_id), "floorNo": r.floor_no,
-                        "roomNo": r.room_no, "capacity": r.capacity, "roomType": r.room_type or "",
-                        "status": r.status, "vacantBeds": vacant})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        total = int(db.scalar(select(func.count()).select_from(DormRoom).where(*conds)) or 0)
+        vacant_counts = (
+            select(DormBed.room_id.label("room_id"), func.count(DormBed.id).label("vacant_count"))
+            .where(
+                DormBed.tenant_id == _tid(), DormBed.status == "VACANT",
+                DormBed.is_deleted.is_(False),
+            )
+            .group_by(DormBed.room_id)
+            .subquery()
+        )
+        rows = db.execute(
+            select(DormRoom, func.coalesce(vacant_counts.c.vacant_count, 0))
+            .outerjoin(vacant_counts, vacant_counts.c.room_id == DormRoom.id)
+            .where(*conds)
+            .order_by(DormRoom.floor_no, DormRoom.room_no)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [{
+            "roomId": str(room.id), "buildingId": str(room.building_id), "floorNo": room.floor_no,
+            "roomNo": room.room_no, "capacity": room.capacity, "roomType": room.room_type or "",
+            "status": room.status, "vacantBeds": int(vacant or 0),
+        } for room, vacant in rows], total
 
 
 def list_beds(room_id, user):
-    """床位列表（级联第3级：选房后列床，标空/已住）。"""
+    """床位列表；入住学生一次批量加载。"""
     from app.models import DormBed, DormRoom, StudentProfile
+
     with session() as db:
         room = db.get(DormRoom, int(room_id))
         if room:
             _require_dorm_scope(db, room.building_id, user)
         rows = db.scalars(select(DormBed).where(
             DormBed.tenant_id == _tid(), DormBed.room_id == int(room_id),
-            DormBed.is_deleted.is_(False)).order_by(DormBed.bed_no)).all()
-        out = []
-        for x in rows:
-            occ = None
-            if x.student_id:
-                s = db.get(StudentProfile, int(x.student_id))
-                occ = s.real_name if s else str(x.student_id)
-            out.append({"bedId": str(x.id), "roomId": str(x.room_id), "bedNo": x.bed_no,
-                        "status": x.status, "studentId": str(x.student_id or ""),
-                        "occupantName": occ, "occupiedAt": _iso(x.occupied_at)})
-        return out
+            DormBed.is_deleted.is_(False),
+        ).order_by(DormBed.bed_no)).all()
+        student_ids = {int(bed.student_id) for bed in rows if bed.student_id}
+        students = {
+            int(student.id): student
+            for student in db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.id.in_(student_ids) if student_ids else StudentProfile.id == -1,
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+        }
+        return [{
+            "bedId": str(bed.id), "roomId": str(bed.room_id), "bedNo": bed.bed_no,
+            "status": bed.status, "studentId": str(bed.student_id or ""),
+            "occupantName": students[int(bed.student_id)].real_name if bed.student_id and int(bed.student_id) in students else None,
+            "occupiedAt": _iso(bed.occupied_at),
+        } for bed in rows]
 
-
-# ═══════════ 入住 / 退宿（回写 t_cs_dorm_record）═══════════
 
 def _writeback_dorm_record(db, student_id, building, room, bed) -> int:
     """事务内回写 t_cs_dorm_record（既有"我的宿舍"读链路零改动）。返回记录 id。"""
@@ -728,58 +753,101 @@ def list_transfers(user, status=None, page=1, page_size=50, student_id=None):
 
 def list_check_tasks(user, status=None, page=1, page_size=50):
     from app.models import DormBuilding, DormCheckTask
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 200))
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds = [DormCheckTask.tenant_id == _tid(), DormCheckTask.is_deleted.is_(False)]
         if status:
             conds.append(DormCheckTask.status == status)
-        rows = db.scalars(select(DormCheckTask).where(*conds).order_by(DormCheckTask.id.desc())).all()
-        out = []
-        for t in rows:
-            if scope is not None and (t.building_id is None or t.building_id not in scope):
-                continue
-            b = db.get(DormBuilding, int(t.building_id)) if t.building_id else None
-            out.append({"taskId": str(t.id), "taskName": t.task_name, "checkType": t.check_type,
-                        "buildingId": str(t.building_id or ""), "buildingName": b.building_name if b else "",
-                        "status": t.status, "createdAt": _iso(t.created_at)})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if scope is not None:
+            if not scope:
+                return [], 0
+            conds.append(DormCheckTask.building_id.in_(scope))
+        total = int(db.scalar(select(func.count()).select_from(DormCheckTask).where(*conds)) or 0)
+        rows = db.execute(
+            select(DormCheckTask, DormBuilding)
+            .outerjoin(
+                DormBuilding,
+                and_(
+                    DormBuilding.tenant_id == _tid(), DormBuilding.id == DormCheckTask.building_id,
+                    DormBuilding.is_deleted.is_(False),
+                ),
+            )
+            .where(*conds).order_by(DormCheckTask.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [{
+            "taskId": str(task.id), "taskName": task.task_name, "checkType": task.check_type,
+            "buildingId": str(task.building_id or ""),
+            "buildingName": building.building_name if building else "",
+            "status": task.status, "createdAt": _iso(task.created_at),
+        } for task, building in rows], total
 
 
 def list_check_records(task_id, user, page=1, page_size=100):
-    import json
     from app.models import DormCheckRecord, DormCheckTask, DormRoom, StudentProfile
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 100), 200))
     with session() as db:
         task = db.get(DormCheckTask, int(task_id))
         if not task or task.is_deleted or task.tenant_id != _tid():
             raise not_found("查寝任务不存在")
         _require_dorm_scope(db, task.building_id, user)
-        rows = db.scalars(select(DormCheckRecord).where(
+        conds = [
             DormCheckRecord.tenant_id == _tid(), DormCheckRecord.task_id == int(task_id),
-            DormCheckRecord.is_deleted.is_(False)).order_by(DormCheckRecord.id.desc())).all()
+            DormCheckRecord.is_deleted.is_(False),
+        ]
+        total = int(db.scalar(select(func.count()).select_from(DormCheckRecord).where(*conds)) or 0)
+        rows = db.scalars(
+            select(DormCheckRecord).where(*conds).order_by(DormCheckRecord.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        room_ids = {int(record.room_id) for record in rows if record.room_id}
+        rooms = {
+            int(room.id): room
+            for room in db.scalars(select(DormRoom).where(
+                DormRoom.tenant_id == _tid(),
+                DormRoom.id.in_(room_ids) if room_ids else DormRoom.id == -1,
+                DormRoom.is_deleted.is_(False),
+            )).all()
+        }
+        record_student_ids: dict[int, list[int]] = {}
+        all_student_ids: set[int] = set()
+        for record in rows:
+            try:
+                ids = [int(value) for value in (json.loads(record.student_ids_json or "[]") or [])]
+            except (ValueError, TypeError):
+                ids = []
+            record_student_ids[int(record.id)] = ids
+            all_student_ids.update(ids)
+        students = {
+            int(student.id): student
+            for student in db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.id.in_(all_student_ids) if all_student_ids else StudentProfile.id == -1,
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+        }
         out = []
-        for r in rows:
-            room = db.get(DormRoom, int(r.room_id)) if r.room_id else None
-            students = []
-            if r.student_ids_json:
-                try:
-                    for sid in json.loads(r.student_ids_json) or []:
-                        s = db.get(StudentProfile, int(sid))
-                        if s:
-                            students.append({"studentId": str(s.id), "realName": s.real_name,
-                                            "studentNo": s.student_no})
-                except (ValueError, TypeError):
-                    pass
-            out.append({"recordId": str(r.id), "taskId": str(r.task_id), "roomId": str(r.room_id or ""),
-                        "roomNo": room.room_no if room else "", "result": r.result,
-                        "issueType": r.issue_type or "", "detail": r.detail or "", "status": r.status,
-                        "students": students,
-                        "relatedRiskId": str(r.related_risk_id or ""),
-                        "relatedExceptionId": str(r.related_exception_id or "")})
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        for record in rows:
+            room = rooms.get(int(record.room_id)) if record.room_id else None
+            related_students = [students[sid] for sid in record_student_ids[int(record.id)] if sid in students]
+            out.append({
+                "recordId": str(record.id), "taskId": str(record.task_id),
+                "roomId": str(record.room_id or ""), "roomNo": room.room_no if room else "",
+                "result": record.result, "issueType": record.issue_type or "",
+                "detail": record.detail or "", "status": record.status,
+                "students": [{
+                    "studentId": str(student.id), "realName": student.real_name,
+                    "studentNo": student.student_no,
+                } for student in related_students],
+                "relatedRiskId": str(record.related_risk_id or ""),
+                "relatedExceptionId": str(record.related_exception_id or ""),
+            })
+        return out, total
 
 
 def _resolve_exception_student(db, exception_id, cs_student_id):

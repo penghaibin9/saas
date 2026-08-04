@@ -23,6 +23,7 @@
               <MobileStatusTag v-else :label="signupLabel(a.mySignupStatus)" :type="signupTag(a.mySignupStatus)" />
             </view>
           </view>
+          <button v-if="d.availableHasMore" class="btn btn-ghost ac__more" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '继续加载' }}</button>
         </template>
 
         <template v-else-if="tab === 'mine'">
@@ -37,6 +38,7 @@
               <button v-if="a.status === 'ONGOING' && a.mySignupStatus === 'ENROLLED'" class="btn btn-primary ac__btn" :disabled="acting === a.activityId" @click="openCheckin(a)">输入签到码</button>
             </view>
           </view>
+          <button v-if="d.mineHasMore" class="btn btn-ghost ac__more" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '继续加载' }}</button>
         </template>
 
         <template v-else>
@@ -122,6 +124,7 @@ export default {
   data() {
     return {
       d: null, state: 'loading', tab: 'available', acting: null, checkinTarget: null, checkinCode: '',
+      page: 1, loadingMore: false,
       report: null, reportState: 'idle', appeals: [], appealError: '', appealVisible: false, appealSubmitting: false,
       appealForm: { appealType: 'MISSING', activityId: '', activityName: '', claimCreditType: 'SECOND_CLASS', claimValue: '', reason: '' },
       creditOptions: Object.entries(CREDIT_TYPE).map(([value, label]) => ({ value, label }))
@@ -146,7 +149,20 @@ export default {
     creditTypeLabel(s) { return CREDIT_TYPE[s] || s || '积分' }, appealTag(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
     canEnroll(a) { return !a.mySignupStatus || a.mySignupStatus === 'CANCELLED' }, canCancel(a) { return ['ENROLLED', 'WAITLIST'].includes(a.mySignupStatus) },
     showError(e, fallback) { toast(normalizeError(e).text || (e && e.message) || fallback) },
-    load() { this.state = 'loading'; studentApi.getMyActivities().then((d) => { this.d = d || { available: [], mine: [] }; this.state = 'ready' }).catch((e) => { this.state = 'error'; this.showError(e, '活动加载失败') }) },
+    load() { this.state = 'loading'; this.page = 1; studentApi.getMyActivities(1, 20).then((d) => { this.d = d || { available: [], mine: [] }; this.state = 'ready' }).catch((e) => { this.state = 'error'; this.showError(e, '活动加载失败') }) },
+    loadMore() {
+      if (this.loadingMore) return
+      const next = this.page + 1
+      this.loadingMore = true
+      studentApi.getMyActivities(next, 20).then((d) => {
+        this.page = next
+        this.d = {
+          ...this.d, ...d,
+          available: [...((this.d && this.d.available) || []), ...((d && d.available) || [])],
+          mine: [...((this.d && this.d.mine) || []), ...((d && d.mine) || [])]
+        }
+      }).catch((e) => this.showError(e, '活动加载失败')).finally(() => { this.loadingMore = false })
+    },
     enroll(a) { if (this.acting) return; this.acting = a.activityId; studentApi.enrollActivity(a.activityId, 'ENROLL').then(() => { toast('报名成功'); this.load() }).catch((e) => this.showError(e, '报名失败')).finally(() => { this.acting = null }) },
     cancelEnroll(a) {
       if (this.acting) return
@@ -198,6 +214,7 @@ export default {
 .ac__tab.is-active { color: var(--brand-primary); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--brand-primary); }
 .ac__row { align-items: center; }.ac__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.ac__btn { flex-shrink: 0; min-height: 32px; padding: 0 var(--space-3); font-size: var(--font-size-sm); margin-left: var(--space-2); }
 .ac__score { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: center; }.ac__score-label { display: block; font-size: 12px; color: var(--text-tertiary); }.ac__score-value { display: block; font-size: 26px; font-weight: 800; color: var(--brand-primary); margin-top: 4px; }
+.ac__more { width: 100%; margin-top: 12px; }
 .ac__missing-btn { width: 100%; margin-top: 10px; }.ac__summary-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-light); }.ac__muted { color: var(--text-tertiary); font-size: 13px; }.ac__credit { font-weight: 700; color: #16a34a; }.ac__credit-row { flex-wrap: wrap; }.ac__appeal-btn { font-size: 12px; padding: 0 8px; }
 .ac__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; }.ac__sheet { width: 100%; border-radius: 18px 18px 0 0; padding: 20px; }.ac__tip { display: block; margin: 10px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }.ac__code-input { height: 54px; border: 1px solid var(--border-base); border-radius: 10px; padding: 0 14px; font-size: 26px; letter-spacing: 8px; text-align: center; }.ac__sheet-actions { display: flex; gap: 12px; margin-top: 16px; }.ac__picker { height: 42px; line-height: 42px; border: 1px solid var(--border-base); border-radius: 8px; padding: 0 10px; margin-top: 10px; }.ac__textarea { width: 100%; min-height: 90px; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: 8px; padding: 10px; margin-top: 10px; }.ac__field-error { display: block; margin-top: 5px; color: #dc2626; font-size: 12px; }.ac__counter { display: block; margin-top: 3px; text-align: right; color: #94a3b8; font-size: 11px; }
 </style>

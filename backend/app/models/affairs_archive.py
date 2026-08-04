@@ -33,8 +33,13 @@ class ArchivePackage(PKMixin, TenantMixin, CommonMixin, Base):
     export_task_id: Mapped[int | None] = mapped_column(BigInteger, comment="兼容 → t_export_task")
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="PENDING_GEN", index=True,
-        comment="PENDING_GEN/PENDING_SUPPLEMENT/SUBMITTED/ARCHIVED/RETURNED",
+        comment="PENDING_GEN/GENERATING/PENDING_SUPPLEMENT/SUBMITTED/ARCHIVED/RETURNED",
     )
+
+    generation_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    generation_error: Mapped[str | None] = mapped_column(String(1000))
+    generation_lease_token: Mapped[str | None] = mapped_column(String(64), index=True)
+    generation_lease_until: Mapped[datetime | None] = mapped_column(DateTime, index=True)
 
     package_asset_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     package_version_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

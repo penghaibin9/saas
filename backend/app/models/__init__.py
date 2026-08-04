@@ -214,3 +214,5 @@ from app.models.system_implementation import (SystemImplementationCheck,  # noqa
 from app.models.national_standard import (NationalMajorCatalog, NationalStandardDocument,  # noqa: F401
                                           NationalStandardSection, NationalStandardSource,
                                           SchoolMajorStandardBinding)
+
+from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)

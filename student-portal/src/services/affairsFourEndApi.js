@@ -2,6 +2,25 @@ import { downloadFile, request, uploadFile } from './request'
 
 const enc = encodeURIComponent
 
+async function loadAllTransferPages(path) {
+  const pageSize = 200
+  let page = 1
+  let first = null
+  const items = []
+  let loading = true
+  while (loading) {
+    const data = await request(path, { params: { page, pageSize } })
+    if (!first) first = data || {}
+    const pageItems = data && Array.isArray(data.items) ? data.items : []
+    items.push(...pageItems)
+    const total = Number((data && data.total) || items.length)
+    const hasMore = Boolean(data && data.hasMore) || items.length < total
+    loading = hasMore && pageItems.length > 0
+    if (loading) page += 1
+  }
+  return { ...(first || {}), items, total: Number((first && first.total) || items.length), page: 1, pageSize: items.length, hasMore: false }
+}
+
 function creditAppealBody(body = {}) {
   const value = Number(body.claimValue)
   if (!Number.isFinite(value) || value <= 0) throw new Error('主张数值必填且必须大于0')
@@ -34,8 +53,8 @@ export const affairsFourEndApi = {
   downloadMaterial: (fileId, fileName = '补交材料') => downloadFile(`/files/download/${enc(fileId)}`, fileName),
 
   // 宿舍正式调宿
-  dormTransferOptions: () => request('/mobile/affairs/dorm/transfer-options'),
-  dormTransferRooms: (buildingId) => request(`/mobile/affairs/dorm/transfer-buildings/${enc(buildingId)}/rooms`),
+  dormTransferOptions: () => loadAllTransferPages('/mobile/affairs/dorm/transfer-options'),
+  dormTransferRooms: (buildingId) => loadAllTransferPages(`/mobile/affairs/dorm/transfer-buildings/${enc(buildingId)}/rooms`),
   dormTransferBeds: (roomId) => request(`/mobile/affairs/dorm/transfer-rooms/${enc(roomId)}/beds`),
   submitDormTransfer: (toBedId, reason) => request('/mobile/affairs/dorm/transfers', { method: 'POST', body: { toBedId, reason } }),
   myDormTransfers: () => request('/mobile/affairs/dorm/transfers/my'),

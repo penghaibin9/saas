@@ -153,14 +153,18 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == from_uid,
         UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
         UnifiedTodo.student_id.in_(student_ids))).all()
+    source_biz_ids = {int(todo.source_biz_id) for todo in todos if todo.source_biz_id}
+    target_rows = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == to_uid,
+        UnifiedTodo.source_biz_id.in_(source_biz_ids) if source_biz_ids else UnifiedTodo.source_biz_id == -1,
+        UnifiedTodo.is_deleted.is_(False),
+    )).all()
+    target_map = {
+        (row.source_module, int(row.source_biz_id or 0), row.todo_type): row
+        for row in target_rows
+    }
     for todo in todos:
-        clash = db.scalars(select(UnifiedTodo).where(
-            UnifiedTodo.tenant_id == _tid(),
-            UnifiedTodo.source_module == todo.source_module,
-            UnifiedTodo.source_biz_id == todo.source_biz_id,
-            UnifiedTodo.todo_type == todo.todo_type,
-            UnifiedTodo.assignee_id == to_uid,
-            UnifiedTodo.is_deleted.is_(False))).first()
+        clash = target_map.get((todo.source_module, int(todo.source_biz_id or 0), todo.todo_type))
         if clash:
             if clash.status != "PENDING":
                 clash.status = "PENDING"
@@ -176,21 +180,36 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         moved_todos += 1
 
     moved_tasks = 0
-    from app.models import CsLeave, WorkflowInstance
-    leave_ids = set(db.scalars(select(CsLeave.id).where(
-        CsLeave.tenant_id == _tid(),
-        CsLeave.student_id.in_(student_ids),
-        CsLeave.is_deleted.is_(False))).all())
-    if leave_ids:
-        for task in db.scalars(select(WorkflowTask).where(
-                WorkflowTask.tenant_id == _tid(), WorkflowTask.assignee_id == from_uid,
-                WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False))).all():
-            inst = db.get(WorkflowInstance, int(task.instance_id)) if task.instance_id else None
-            if not inst or (inst.source_module or "").replace("_", "-") != "student-affairs":
-                continue
-            if (inst.source_biz_type or "").upper() != "LEAVE":
-                continue
-            if int(inst.source_biz_id or 0) not in leave_ids:
+    from app.models import WorkflowInstance
+    # 以学工 UnifiedTodo 的学生归属作为跨域权威映射，覆盖请假、奖助、处分、宿舍等。
+    source_pairs = {
+        (str(biz_type or "").upper(), str(biz_id or ""))
+        for biz_type, biz_id in db.execute(
+            select(UnifiedTodo.source_biz_type, UnifiedTodo.source_biz_id).where(
+                UnifiedTodo.tenant_id == _tid(),
+                UnifiedTodo.source_module == "student-affairs",
+                UnifiedTodo.student_id.in_(student_ids),
+                UnifiedTodo.is_deleted.is_(False),
+            )
+        ).all()
+    }
+    if source_pairs:
+        task_rows = db.execute(
+            select(WorkflowTask, WorkflowInstance)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .where(
+                WorkflowTask.tenant_id == _tid(),
+                WorkflowTask.assignee_id == from_uid,
+                WorkflowTask.status == "PENDING",
+                WorkflowTask.is_deleted.is_(False),
+                WorkflowInstance.tenant_id == _tid(),
+                func.replace(WorkflowInstance.source_module, "_", "-") == "student-affairs",
+                WorkflowInstance.is_deleted.is_(False),
+            )
+        ).all()
+        for task, inst in task_rows:
+            key = (str(inst.source_biz_type or "").upper(), str(inst.source_biz_id or ""))
+            if key not in source_pairs:
                 continue
             task.assignee_id = to_uid
             task.version = int(task.version or 0) + 1

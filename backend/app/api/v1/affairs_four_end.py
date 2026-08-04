@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.optimistic_lock import atomic_claim_version
@@ -67,17 +67,41 @@ def _self_leave(db, leave_id: int, user):
     return row, stu
 
 
-def _candidate_rows(db, ids: set[int] | None, limit: int = 200) -> list[dict]:
-    """候选人只回选择器所需最小字段，不返回手机号、身份证等敏感信息。"""
+def _candidate_page(
+    db,
+    ids: set[int] | None,
+    *,
+    keyword: str = "",
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """候选人服务端搜索+真分页；只返回选择器所需最小字段。"""
     from app.models import SchoolClass, StudentProfile
+
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
     conds = [
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
     ]
     if ids is not None:
         conds.append(StudentProfile.id.in_(ids or {-1}))
+    keyword = str(keyword or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        conds.append(or_(
+            StudentProfile.real_name.like(like),
+            StudentProfile.student_no.like(like),
+        ))
+    total = int(db.scalar(
+        select(func.count()).select_from(StudentProfile).where(*conds)
+    ) or 0)
     rows = db.scalars(
-        select(StudentProfile).where(*conds).order_by(StudentProfile.real_name, StudentProfile.id).limit(limit)
+        select(StudentProfile)
+        .where(*conds)
+        .order_by(StudentProfile.real_name.asc(), StudentProfile.student_no.asc(), StudentProfile.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
     class_ids = {int(x.class_id) for x in rows if x.class_id}
     classes = {
@@ -96,7 +120,7 @@ def _candidate_rows(db, ids: set[int] | None, limit: int = 200) -> list[dict]:
             "className": classes.get(int(x.class_id), "") if x.class_id else "",
         }
         for x in rows
-    ]
+    ], total
 
 
 @router.get(
@@ -105,6 +129,9 @@ def _candidate_rows(db, ids: set[int] | None, limit: int = 200) -> list[dict]:
 )
 def teacher_affairs_student_candidates(
     purpose: str = Query("TALK", description="TALK/MENTAL"),
+    q: str = Query("", max_length=100),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
     user=Depends(get_current_user),
 ):
     purpose = (purpose or "TALK").upper()
@@ -141,8 +168,17 @@ def teacher_affairs_student_candidates(
                         StudentProfile.class_id.in_(class_ids),
                         StudentProfile.is_deleted.is_(False),
                     )).all())
-        items = _candidate_rows(db, ids)
-        return success({"items": items, "total": len(items), "purpose": purpose})
+        items, total = _candidate_page(
+            db, ids, keyword=q, page=page, page_size=pageSize,
+        )
+        return success({
+            "items": items,
+            "total": total,
+            "page": page,
+            "pageSize": pageSize,
+            "hasMore": page * pageSize < total,
+            "purpose": purpose,
+        })
 
 
 @router.get("/mobile/affairs/leave/{leave_id}/editable", summary="本人读取退回请假的可编辑内容")

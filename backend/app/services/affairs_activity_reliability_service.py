@@ -222,42 +222,81 @@ def install() -> None:
             db.commit()
             return {"activityId": str(row.id), "signupStatus": "ENROLLED"}
 
-    def my_activities(user):
+    def my_activities(user, page=1, page_size=20):
+        page = max(1, int(page or 1))
+        page_size = min(100, max(1, int(page_size or 20)))
         with session() as db:
             student, class_tokens, college_tokens = _student_org(db, user)
-            signup_rows = db.scalars(select(AffairsActivitySignup).where(
-                AffairsActivitySignup.tenant_id == _tid(),
-                AffairsActivitySignup.student_id == int(student.id),
-                AffairsActivitySignup.is_deleted.is_(False),
-            )).all()
-            signup_map = {int(x.activity_id): x for x in signup_rows}
-            published = db.scalars(select(AffairsActivity).where(
+            scope_cond = _scope_condition(
+                AffairsActivity, False, class_tokens, college_tokens,
+            )
+            available_conds = [
                 AffairsActivity.tenant_id == _tid(),
                 AffairsActivity.status == "PUBLISHED",
                 AffairsActivity.is_deleted.is_(False),
-            ).order_by(AffairsActivity.id.desc()).limit(500)).all()
+            ]
+            if scope_cond is not None:
+                available_conds.append(scope_cond)
+            available_total = int(db.scalar(
+                select(func.count()).select_from(AffairsActivity).where(*available_conds)
+            ) or 0)
+            available_rows = db.scalars(
+                select(AffairsActivity)
+                .where(*available_conds)
+                .order_by(AffairsActivity.id.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            ).all()
+            available_ids = {int(x.id) for x in available_rows}
+            page_signups = db.scalars(select(AffairsActivitySignup).where(
+                AffairsActivitySignup.tenant_id == _tid(),
+                AffairsActivitySignup.student_id == int(student.id),
+                AffairsActivitySignup.activity_id.in_(available_ids or {-1}),
+                AffairsActivitySignup.is_deleted.is_(False),
+            )).all()
+            signup_map = {int(x.activity_id): x for x in page_signups}
             available = [
                 {**activity._row(row), "mySignupStatus": (
                     signup_map[int(row.id)].signup_status if int(row.id) in signup_map else None
                 )}
-                for row in published
-                if _activity_matches(row, class_tokens, college_tokens)
+                for row in available_rows
             ]
-            ids = {int(x.activity_id) for x in signup_rows}
-            histories = {
-                int(row.id): row
-                for row in db.scalars(select(AffairsActivity).where(
+
+            mine_base = [
+                AffairsActivitySignup.tenant_id == _tid(),
+                AffairsActivitySignup.student_id == int(student.id),
+                AffairsActivitySignup.is_deleted.is_(False),
+            ]
+            mine_total = int(db.scalar(
+                select(func.count()).select_from(AffairsActivitySignup).where(*mine_base)
+            ) or 0)
+            mine_rows = db.execute(
+                select(AffairsActivitySignup, AffairsActivity)
+                .join(AffairsActivity, AffairsActivity.id == AffairsActivitySignup.activity_id)
+                .where(
+                    *mine_base,
                     AffairsActivity.tenant_id == _tid(),
-                    AffairsActivity.id.in_(ids or {-1}),
                     AffairsActivity.is_deleted.is_(False),
-                )).all()
-            }
+                )
+                .order_by(AffairsActivitySignup.id.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            ).all()
             mine = [
-                {**activity._row(histories[int(signup.activity_id)]), "mySignupStatus": signup.signup_status}
-                for signup in signup_rows
-                if int(signup.activity_id) in histories
+                {**activity._row(row), "mySignupStatus": signup.signup_status}
+                for signup, row in mine_rows
             ]
-            return {"available": available, "mine": mine}
+            return {
+                "available": available,
+                "mine": mine,
+                "availableTotal": available_total,
+                "mineTotal": mine_total,
+                "page": page,
+                "pageSize": page_size,
+                "availableHasMore": page * page_size < available_total,
+                "mineHasMore": page * page_size < mine_total,
+            }
+
 
     activity.list_activities = list_activities
     activity.enroll = enroll

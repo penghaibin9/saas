@@ -11,7 +11,7 @@
             </view>
             <text v-if="x.effectiveAt" class="hint">生效时间：{{ (x.effectiveAt || '').slice(0, 10) }}</text>
             <text v-if="x.appealReviewOpinion" class="hint">复核意见：{{ x.appealReviewOpinion }}</text>
-            <template v-if="x.canAppeal">
+            <template v-if="allows(x, 'SUBMIT_APPEAL')">
               <textarea class="ta" v-model="reasons[x.caseId]" placeholder="申辩理由（≥5字）" />
               <button class="btn" :disabled="busy" @click="appeal(x)">提交申辩</button>
             </template>
@@ -38,6 +38,7 @@ export default {
   data() { return { d: null, state: 'loading', busy: false, reasons: {} } },
   onLoad() { this.load() },
   methods: {
+    allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     appealText(s) { return APPEAL_L[s] || s },
     load() {
       this.state = 'loading'

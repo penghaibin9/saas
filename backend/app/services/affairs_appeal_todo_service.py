@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import logging
-from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
@@ -78,6 +77,12 @@ def _record_sync_failure(todo_type: str, row_id: int | None, stage: str, exc: Ex
         )
     except Exception:  # noqa: BLE001 - 最后兜底不得覆盖原业务结果
         log.exception("failed to persist appeal sync failure audit")
+    if row_id:
+        try:
+            from app.services.affairs_appeal_repair_service import enqueue
+            enqueue(todo_type, int(row_id), stage, exc)
+        except Exception:  # noqa: BLE001 - 入队失败仍不得覆盖原业务结果
+            log.exception("failed to enqueue appeal repair")
 
 
 def _ensure_todo(db, todo_type: str, row) -> None:
@@ -145,13 +150,6 @@ def _sync_todo_after_commit(todo_type: str, row_id: int) -> bool:
         return False
 
 
-def _preflight(todo_type: str, student_id: int) -> None:
-    if int(student_id or 0) <= 0:
-        raise AppException("VALIDATION_ERROR", "无法识别异议/申诉学生")
-    with session() as db:
-        _assignee(db, _SPECS[todo_type], int(student_id))
-
-
 def _result_notice(todo_type: str, row_id: int) -> bool:
     """关闭待办并写入学生结果消息；失败不反向覆盖复核成功结果。"""
     from app.services.message_event_outbox_service import emit_receiver_notice, try_process_pending_outbox
@@ -211,104 +209,32 @@ def _with_status(result: Any, key: str, ok: bool):
     return result
 
 
+def require_submission_assignee(db, todo_type: str, student_id: int) -> int:
+    """提交事务内显式验证受理人，禁止依赖启动期函数替换。"""
+    if todo_type not in _SPECS:
+        raise AppException("VALIDATION_ERROR", "未知学工申诉待办类型")
+    if int(student_id or 0) <= 0:
+        raise AppException("VALIDATION_ERROR", "无法识别异议/申诉学生")
+    return _assignee(db, _SPECS[todo_type], int(student_id))
+
+
+def sync_after_submit(todo_type: str, result: Any, *id_keys: str):
+    """业务提交成功后同步待办；失败进入租约补偿队列并返回 DEGRADED。"""
+    row_id = _row_id(result, *(id_keys or ("id",)))
+    return _with_status(
+        result, "todoSyncStatus",
+        bool(row_id) and _sync_todo_after_commit(todo_type, row_id),
+    )
+
+
+def sync_after_review(todo_type: str, row_id: int, result: Any):
+    """业务复核成功后关闭待办并通知学生；失败可恢复且不回滚业务结论。"""
+    return _with_status(
+        result, "notificationSyncStatus",
+        _result_notice(todo_type, int(row_id)),
+    )
+
+
 def install() -> None:
-    from app.services import affairs_activity_service as activity
-    from app.services import affairs_aid_service as aid
-    from app.services import affairs_discipline_service as discipline
-    from app.services import affairs_funding_service as funding
-
-    originals = {
-        "aid_submit": aid.submit_objection,
-        "aid_review": aid.review_objection,
-        "funding_submit": funding.submit_appeal,
-        "funding_review": funding.review_appeal,
-        "discipline_submit": discipline.submit_appeal,
-        "discipline_review": discipline.review_appeal,
-        "credit_submit": activity.submit_credit_appeal,
-        "credit_review": activity.review_credit_appeal,
-    }
-
-    def aid_submit(apply_id, body, user, **kwargs):
-        from app.models import AidApply
-        with session() as db:
-            parent = db.get(AidApply, int(apply_id))
-            if not parent or parent.is_deleted or parent.tenant_id != _tid():
-                raise AppException("DATA_NOT_FOUND", "认定申请不存在")
-            _preflight("AID_OBJECTION_REVIEW", int(parent.student_id))
-        result = originals["aid_submit"](apply_id, body, user, **kwargs)
-        row_id = _row_id(result, "objectionId", "id")
-        return _with_status(result, "todoSyncStatus", bool(row_id) and _sync_todo_after_commit(
-            "AID_OBJECTION_REVIEW", row_id,
-        ))
-
-    def aid_review(objection_id, body, user):
-        result = originals["aid_review"](objection_id, body, user)
-        return _with_status(
-            result, "notificationSyncStatus",
-            _result_notice("AID_OBJECTION_REVIEW", int(objection_id)),
-        )
-
-    def funding_submit(app_id, body, user, **kwargs):
-        from app.models import FundingApplication
-        with session() as db:
-            parent = db.get(FundingApplication, int(app_id))
-            if not parent or parent.is_deleted or parent.tenant_id != _tid():
-                raise AppException("DATA_NOT_FOUND", "资助申请不存在")
-            _preflight("FUNDING_APPEAL_REVIEW", int(parent.student_id))
-        result = originals["funding_submit"](app_id, body, user, **kwargs)
-        row_id = _row_id(result, "appealId", "id")
-        return _with_status(result, "todoSyncStatus", bool(row_id) and _sync_todo_after_commit(
-            "FUNDING_APPEAL_REVIEW", row_id,
-        ))
-
-    def funding_review(appeal_id, body, user):
-        result = originals["funding_review"](appeal_id, body, user)
-        return _with_status(
-            result, "notificationSyncStatus",
-            _result_notice("FUNDING_APPEAL_REVIEW", int(appeal_id)),
-        )
-
-    def discipline_submit(case_id, body, user, **kwargs):
-        from app.models import DisciplineCase
-        with session() as db:
-            parent = db.get(DisciplineCase, int(case_id))
-            if not parent or parent.is_deleted or parent.tenant_id != _tid():
-                raise AppException("DATA_NOT_FOUND", "处分记录不存在")
-            _preflight("DISCIPLINE_APPEAL_REVIEW", int(parent.student_id))
-        result = originals["discipline_submit"](case_id, body, user, **kwargs)
-        row_id = _row_id(result, "appealId", "id")
-        return _with_status(result, "todoSyncStatus", bool(row_id) and _sync_todo_after_commit(
-            "DISCIPLINE_APPEAL_REVIEW", row_id,
-        ))
-
-    def discipline_review(appeal_id, body, user):
-        result = originals["discipline_review"](appeal_id, body, user)
-        return _with_status(
-            result, "notificationSyncStatus",
-            _result_notice("DISCIPLINE_APPEAL_REVIEW", int(appeal_id)),
-        )
-
-    def credit_submit(body, user):
-        student_id = int(getattr(body, "studentId", 0) or 0)
-        _preflight("SECOND_CLASS_APPEAL_REVIEW", student_id)
-        result = originals["credit_submit"](body, user)
-        row_id = _row_id(result, "appealId", "id")
-        return _with_status(result, "todoSyncStatus", bool(row_id) and _sync_todo_after_commit(
-            "SECOND_CLASS_APPEAL_REVIEW", row_id,
-        ))
-
-    def credit_review(appeal_id, body, user):
-        result = originals["credit_review"](appeal_id, body, user)
-        return _with_status(
-            result, "notificationSyncStatus",
-            _result_notice("SECOND_CLASS_APPEAL_REVIEW", int(appeal_id)),
-        )
-
-    aid.submit_objection = aid_submit
-    aid.review_objection = aid_review
-    funding.submit_appeal = funding_submit
-    funding.review_appeal = funding_review
-    discipline.submit_appeal = discipline_submit
-    discipline.review_appeal = discipline_review
-    activity.submit_credit_appeal = credit_submit
-    activity.review_credit_appeal = credit_review
+    """兼容空入口；各领域服务已显式调用本模块，不再替换函数对象。"""
+    return None

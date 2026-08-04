@@ -21,7 +21,9 @@ def test_formal_mental_service_keeps_sa_admin_out_of_raw_detail():
     assert '_PSY_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}' in source
     assert "STUDENT_AFFAIRS_ADMIN 不在此列" in source
     assert "mental._can_view_detail =" not in guard
-    assert "mental._sensitive_view_audit = strict_sensitive_view_audit" in guard
+    assert "mental._sensitive_view_audit =" not in guard
+    assert "fail closed" in source.lower() or "fail-closed" in source.lower()
+    assert "get_audit_db_health" in source
 
 
 def test_talk_sensitive_role_and_actions_live_in_formal_service():

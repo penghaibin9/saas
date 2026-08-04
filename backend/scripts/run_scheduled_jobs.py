@@ -20,6 +20,7 @@ log = logging.getLogger("app.scheduler")
 
 # 频率（秒）
 INTERVAL_DELIVERY = 15          # 消息投递 / Outbox
+INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
 INTERVAL_EXPIRE_NUDGE = 120     # 失效 + 紧急确认催办
 INTERVAL_LEAVE_OVERDUE = 30 * 60
@@ -178,6 +179,31 @@ def job_expire_and_nudge() -> None:
             set_tenant(None)
 
 
+def job_student_affairs_background() -> None:
+    """学工高频后台任务：申诉补偿、请假导出与档案包异步生成。"""
+    from app.services import affairs_appeal_repair_service as repair
+    from app.services import affairs_archive_service as archive
+    from app.services import affairs_leave_export_service as leave_export
+
+    for tenant_id in _schedulable_tenant_ids():
+        set_tenant({"tenantId": str(tenant_id)})
+        try:
+            _run_isolated(
+                f"affairs_appeal_repair:{tenant_id}",
+                lambda: repair.repair_pending(limit=100),
+            )
+            _run_isolated(
+                f"affairs_leave_export:{tenant_id}",
+                lambda: leave_export.run_pending(limit=2, worker_id=f"scheduler-affairs:{tenant_id}"),
+            )
+            _run_isolated(
+                f"affairs_archive_package:{tenant_id}",
+                lambda: archive.run_pending_packages(limit=2),
+            )
+        finally:
+            set_tenant(None)
+
+
 def job_leave_overdue() -> None:
     from app.modules.internship.services import internship_leave_service
     from app.services import affairs_leave_service
@@ -280,12 +306,13 @@ def main() -> int:
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
     log.info(
-        "external scheduler started intervals delivery=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
-        INTERVAL_DELIVERY, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
+        "external scheduler started intervals delivery=%ss affairs=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
+        INTERVAL_DELIVERY, INTERVAL_STUDENT_AFFAIRS, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
         INTERVAL_LEAVE_OVERDUE, INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
     now0 = time.monotonic()
     tickers = [
         _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
+        _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background),
         _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages),
         _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
         _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field, condecimal
 
 from app.core.response import success, paginate
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_any_permission, require_permission
 from app.core.security import get_current_user, require_staff  # 仅敏感 reveal 等「服务层自鉴权+落 DENY 审计」端点用粗粒度门禁，避免网关短路吞掉越权审计
 from app.services import affairs_activity_service as activity_svc
@@ -25,6 +26,7 @@ from app.services import affairs_dorm_service as dorm_svc
 from app.services import affairs_funding_ext_service as fext_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
+from app.services import affairs_leave_export_service as leave_export_svc
 from app.services import affairs_mental_service as mental_svc
 from app.services import affairs_profile_service as profile_svc
 from app.services import affairs_risk_service as risk_svc
@@ -332,16 +334,45 @@ def leave_stats(groupBy: str = "CLASS", dateStart: Optional[str] = None,
     return success(leave_svc.leave_stats(user, groupBy, dateStart, dateEnd))
 
 
-@router.post("/leave/export", summary="请假台账导出（xlsx 水印 + 导出留痕）")
+class LeaveExportTicketBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+
+
+@router.post("/leave/export", summary="创建请假台账异步导出任务")
 def leave_export(status: Optional[str] = None, leaveType: Optional[str] = None,
                  classId: Optional[str] = None, keyword: Optional[str] = None,
                  studentId: Optional[str] = None,
                  dateStart: Optional[str] = None, dateEnd: Optional[str] = None,
                  followupOnly: bool = False,
                  user=Depends(require_permission("studentAffairs.leave.export"))):
-    return success(leave_svc.export_leaves(user, status, leaveType, classId, keyword,
-                                           dateStart, dateEnd, followup_only=followupOnly,
-                                           student_id=studentId))
+    return success(leave_export_svc.create_job(
+        user, status, leaveType, classId, keyword, dateStart, dateEnd,
+        followup_only=followupOnly, student_id=studentId,
+    ), message="导出任务已创建")
+
+
+@router.get("/leave/export-jobs/{jobId}", summary="请假台账导出任务详情")
+def leave_export_job(jobId: str, user=Depends(require_permission("studentAffairs.leave.export"))):
+    return success(leave_export_svc.get_job(jobId, user))
+
+
+@router.post("/leave/export-jobs/{jobId}/download-ticket", summary="创建请假台账一次性下载票据")
+def leave_export_ticket(body: LeaveExportTicketBody, jobId: str = Path(...),
+                        user=Depends(require_permission("studentAffairs.leave.export"))):
+    return success(leave_export_svc.create_download_ticket(jobId, body.expectedVersion, user))
+
+
+@router.get("/leave/export-jobs/{jobId}/download", summary="使用一次性票据下载请假台账")
+def leave_export_download(jobId: str = Path(...), ticket: str = Query(..., min_length=20),
+                          user=Depends(require_permission("studentAffairs.leave.export"))):
+    path, filename = leave_export_svc.consume_download_ticket(jobId, ticket, user)
+    return validated_local_file_response(
+        path, filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        audit_action="AFFAIRS_LEAVE_EXPORT_DOWNLOAD",
+        audit_target=f"leave-export:{jobId}",
+        audit_detail={"jobId": str(jobId), "ticketConsumed": True},
+    )
 
 
 @router.get("/leave/{leaveId}", summary="请假详情（含销假/续假记录 + 审批留痕）")
@@ -493,8 +524,15 @@ def aid_applications(batchId: Optional[str] = None, status: Optional[str] = None
                      level: Optional[str] = None, studentId: Optional[str] = None,
                      page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                      user=Depends(require_permission("studentAffairs.aid.view"))):
-    items, total, status_counts = aid_svc.list_applications(user, batchId, status, level, page, pageSize,
-                                                            student_id=studentId)
+    items, total, status_counts = aid_svc.list_applications(
+        user,
+        status=status,
+        batch_id=batchId,
+        level=level,
+        page=page,
+        page_size=pageSize,
+        student_id=studentId,
+    )
     return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 
@@ -804,8 +842,11 @@ class FeeReviewBody(BaseModel):
 
 # —— 勤工助学 ——
 @router.get("/work-study/posts", summary="勤工助学岗位列表")
-def ws_posts(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_posts(user, status)})
+def ws_posts(status: Optional[str] = None, page: int = Query(1, ge=1),
+             pageSize: int = Query(50, ge=1, le=200),
+             user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total = fext_svc.list_posts(user, status, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.post("/work-study/posts", summary="发布勤工岗位")
@@ -815,8 +856,11 @@ def ws_post_create(body: WsPostBody, user=Depends(require_permission("studentAff
 
 @router.get("/work-study/records", summary="勤工上岗记录（数据范围）")
 def ws_records(postId: Optional[int] = None, status: Optional[str] = None,
+               page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_ws_records(user, postId, status)})
+    items, total, status_counts = fext_svc.list_ws_records(user, postId, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/work-study/posts/{postId}/apply", summary="学生申请勤工岗位（代录）")
@@ -854,8 +898,12 @@ def ws_monthly_add(body: WsMonthlyBody, recordId: int = Path(...),
 
 # —— 助学贷款 ——
 @router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
-def loans(status: Optional[str] = None, user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_loans(user, status)})
+def loans(status: Optional[str] = None, page: int = Query(1, ge=1),
+          pageSize: int = Query(50, ge=1, le=200),
+          user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total, status_counts = fext_svc.list_loans(user, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/loans", summary="登记助学贷款")
@@ -872,8 +920,11 @@ def loan_advance(body: VersionOnlyBody, loanId: int = Path(...),
 # —— 减免与临时补助 ——
 @router.get("/fee-reductions", summary="减免/临补台账（数据范围）")
 def fee_reductions(itemType: Optional[str] = None, status: Optional[str] = None,
+                   page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                    user=Depends(require_permission("studentAffairs.funding.view"))):
-    return success({"items": fext_svc.list_reductions(user, itemType, status)})
+    items, total, status_counts = fext_svc.list_reductions(user, itemType, status, page, pageSize)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/fee-reductions", summary="申请学费减免/临时补助（理由≥5字）")
@@ -1081,9 +1132,14 @@ def risk_handles(riskId: int = Path(...),
 
 
 @router.get("/risk/owner-candidates", summary="可分派的风险责任人（在职+持学工风险处置角色）")
-def risk_owner_candidates(keyword: Optional[str] = None,
-                          user=Depends(require_permission("studentAffairs.risk.assign"))):
-    return success({"items": risk_svc.list_owner_candidates(keyword)})
+def risk_owner_candidates(
+    keyword: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.risk.assign")),
+):
+    items, total = risk_svc.list_owner_candidates(keyword, page=page, page_size=pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.post("/risk/records/{riskId}/assign", summary="分派责任人")

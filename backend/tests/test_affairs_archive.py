@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -57,8 +59,22 @@ def test_archive_full_flow(client, db_mode):
     collected = collected_response["data"]
     assert collected["packagesCreated"] == 2
     assert collected["status"] == "COLLECTING"
-    assert collected["packagesGenerated"] == 2
-    assert collected["packagesPending"] == 0
+    assert collected["packagesQueued"] == 2
+    assert collected["packagesGenerated"] == 0
+    assert collected["packagesPending"] == 2
+
+    from app.core.context import set_tenant
+    from app.services import affairs_archive_service
+
+    set_tenant({"tenantId": str(TID)})
+    try:
+        worker = affairs_archive_service.run_pending_packages(limit=10)
+    finally:
+        set_tenant(None)
+    assert worker == {"claimed": 2, "succeeded": 2, "failed": 0, "stale": 0}
+
+    detail_after_worker = client.get(f"{BASE}/archive/batches/{bid}", headers=hdr).json()["data"]
+    assert all(package["status"] == "SUBMITTED" for package in detail_after_worker["packages"])
 
     current = collected
     for expected_status in ("COLLEGE_REVIEW", "SA_CONFIRM", "ARCHIVED"):
@@ -126,3 +142,46 @@ def test_archive_batches_list(client, db_mode):
 
     drafts = client.get(f"{BASE}/archive/batches?status=DRAFT", headers=hdr).json()
     assert all(item["status"] == "DRAFT" for item in drafts["data"]["items"])
+
+
+def test_archive_generation_lease_reclaims_stale_worker_without_late_overwrite(db_mode):
+    ids = _seed(db_mode)
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import ArchiveBatch, ArchivePackage
+    from app.services import affairs_archive_service as archive
+
+    db = get_sessionmaker()()
+    batch = ArchiveBatch(tenant_id=TID, batch_name="租约回收", status="COLLECTING")
+    db.add(batch); db.flush()
+    package = ArchivePackage(
+        tenant_id=TID, batch_id=batch.id, student_id=ids["s1"],
+        missing_items_json="[]", status="PENDING_GEN",
+    )
+    db.add(package); db.commit()
+    package_id = int(package.id)
+    db.close()
+
+    set_tenant({"tenantId": str(TID)})
+    try:
+        first = archive._claim_pending_packages(limit=1)
+        assert len(first) == 1
+        db = get_sessionmaker()()
+        row = db.get(ArchivePackage, package_id)
+        row.generation_lease_until = datetime.utcnow() - timedelta(seconds=1)
+        db.commit(); db.close()
+
+        second = archive._claim_pending_packages(limit=1)
+        assert len(second) == 1
+        assert second[0]["leaseToken"] != first[0]["leaseToken"]
+        assert archive._fail_package_generation(
+            package_id, first[0]["leaseToken"], first[0]["version"], "late worker",
+        ) is False
+        db = get_sessionmaker()()
+        row = db.get(ArchivePackage, package_id)
+        assert row.status == "GENERATING"
+        assert row.generation_lease_token == second[0]["leaseToken"]
+        assert row.generation_attempts == 2
+        db.close()
+    finally:
+        set_tenant(None)

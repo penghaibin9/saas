@@ -14,6 +14,15 @@
         <button type="button" class="mp-link" @click="reset">重置</button>
       </div>
 
+      <div v-if="exportJob" class="lv-export-job" role="status" aria-live="polite">
+        <div>
+          <div class="mp-cell-main">导出任务 #{{ exportJob.jobId || exportJob.id }}</div>
+          <div class="mp-cell-sub">{{ exportStatusText }} · {{ exportJob.progress || 0 }}%<span v-if="exportJob.rowCount"> · {{ exportJob.rowCount }} 条</span></div>
+        </div>
+        <button v-if="exportJob.downloadable" type="button" class="mp-link" @click="downloadExport">下载 Excel</button>
+        <button v-else-if="exportJob.status === 'FAILED' || exportJob.status === 'DEAD'" type="button" class="mp-link" @click="exportFn().then(onExported)">重新创建</button>
+      </div>
+
       <div v-if="studentFilterLabel" class="lv-student-filter">
         <span>{{ studentFilterLabel }}</span>
         <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
@@ -76,6 +85,7 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 
 const STATUS_OPTIONS = [
@@ -110,7 +120,7 @@ export default {
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       statusOptions: STATUS_OPTIONS, typeOptions: TYPE_OPTIONS,
-      detailVisible: false, detail: null
+      detailVisible: false, detail: null, exportJob: null, exportPollTimer: null
     }
   },
   computed: {
@@ -131,6 +141,10 @@ export default {
       }
       if (name || no) return `当前学生筛选：${name || '学生'}${no ? ` / ${no}` : ''}`
       return `当前学生筛选：#${id}`
+    },
+    exportStatusText() {
+      const status = (this.exportJob && this.exportJob.status) || 'CREATED'
+      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || status
     },
     detailItems() {
       const d = this.detail || {}
@@ -156,6 +170,7 @@ export default {
   watch: {
     '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() }
   },
+  beforeUnmount() { this.stopExportPolling() },
   methods: {
     fmt(v) { return v ? formatDateTime(v) : '' },
     applyRouteFilters() {
@@ -230,7 +245,42 @@ export default {
       delete p.page; delete p.pageSize
       return leaveApi.exportLedger(p)
     },
-    onExported(data) { toast.success(`已导出 ${data.rowCount} 条请假台账（含水印，已写导出审计）`) }
+    onExported(data) {
+      if (!data?.jobId) {
+        toast.success(`已导出 ${data?.rowCount || 0} 条请假台账（含水印，已写导出审计）`)
+        return
+      }
+      this.exportJob = data
+      this.startExportPolling()
+    },
+    startExportPolling() {
+      this.stopExportPolling()
+      this.refreshExportJob()
+      this.exportPollTimer = window.setInterval(this.refreshExportJob, 2500)
+    },
+    stopExportPolling() {
+      if (this.exportPollTimer) window.clearInterval(this.exportPollTimer)
+      this.exportPollTimer = null
+    },
+    async refreshExportJob() {
+      const jobId = this.exportJob?.jobId || this.exportJob?.id
+      if (!jobId) return
+      const res = await leaveApi.exportJob(jobId)
+      if (res.code !== 0) { this.stopExportPolling(); return }
+      this.exportJob = { ...res.data, jobId }
+      if (['SUCCEEDED', 'FAILED', 'DEAD', 'EXPIRED', 'REVOKED'].includes(this.exportJob.status)) {
+        this.stopExportPolling()
+        if (this.exportJob.status === 'SUCCEEDED') toast.success('请假台账已生成，可下载')
+        else if (this.exportJob.status === 'FAILED' || this.exportJob.status === 'DEAD') toast.error(this.exportJob.errorMessage || '导出任务失败')
+      }
+    },
+    async downloadExport() {
+      const jobId = this.exportJob?.jobId || this.exportJob?.id
+      const res = await leaveApi.exportTicket(jobId, this.exportJob.version)
+      if (res.code !== 0) return toast.error(res.message || '创建下载票据失败')
+      this.exportJob.version = res.data.version
+      downloadXlsxFromApi({ filename: '请假台账.xlsx', downloadUrl: res.data.downloadUrl })
+    }
   }
 }
 </script>
@@ -238,6 +288,7 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .flt { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.lv-export-job,
 .lv-student-filter {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);

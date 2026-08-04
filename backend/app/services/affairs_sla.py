@@ -39,6 +39,40 @@ def _json_object(value) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _tenant_json(key: str, fallback_text: str = "") -> dict:
+    """读取有效配置来源链；未登记/未迁移时回落既有 t_sys_config 与环境默认。"""
+    package_default = None
+    try:
+        from app.services import effective_config_service
+        resolved = effective_config_service.resolve(key)
+        value = resolved.get("value")
+        if isinstance(value, dict):
+            if resolved.get("sourceLayer") not in (None, "PACKAGE_DEFAULT"):
+                return value
+            package_default = value
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import select
+        from app.db.session import db_enabled, get_sessionmaker
+        from app.models import SysConfig
+        from app.services.db_service import _tid
+        if not db_enabled():
+            return _json_object(fallback_text) or package_default or {}
+        db = get_sessionmaker()()
+        try:
+            row = db.scalars(select(SysConfig).where(
+                SysConfig.tenant_id == _tid(),
+                SysConfig.config_key == key,
+                SysConfig.is_deleted.is_(False),
+            )).first()
+            return _json_object(row.value_text if row and row.value_text else fallback_text) or package_default or {}
+        finally:
+            db.close()
+    except Exception:
+        return _json_object(fallback_text) or package_default or {}
+
+
 def _risk_unknown_fallback() -> dict:
     process = _positive_number(
         getattr(settings, "AFFAIRS_RISK_ASSIGNED_PROCESS_HOURS", 72), 72)
@@ -54,7 +88,9 @@ def get_risk_sla(level: str | None) -> dict:
     """返回等级当前生效 SLA；未知等级沿用旧全局默认作为兼容回退。"""
     code = str(level or "").upper()
     defaults = RISK_SLA_DEFAULTS.get(code, _risk_unknown_fallback())
-    configured = _json_object(getattr(settings, "AFFAIRS_RISK_SLA_JSON", "")).get(code, {})
+    configured = _tenant_json(
+        "AFFAIRS_RISK_SLA_JSON", getattr(settings, "AFFAIRS_RISK_SLA_JSON", "")
+    ).get(code, {})
     configured = configured if isinstance(configured, dict) else {}
     process = _positive_number(configured.get("processHours"), defaults["processHours"])
     return {
@@ -66,7 +102,9 @@ def get_risk_sla(level: str | None) -> dict:
 
 
 def get_leave_sla() -> dict:
-    configured = _json_object(getattr(settings, "AFFAIRS_LEAVE_SLA_JSON", ""))
+    configured = _tenant_json(
+        "AFFAIRS_LEAVE_SLA_JSON", getattr(settings, "AFFAIRS_LEAVE_SLA_JSON", "")
+    )
     return {
         key: _positive_number(configured.get(key), value)
         for key, value in LEAVE_SLA_DEFAULTS.items()

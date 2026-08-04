@@ -188,7 +188,7 @@ export const studentApi = {
   getDormRooms: (buildingId, floor) => real.affairsDormRooms(buildingId, floor),
   getDormBeds: (roomId) => real.affairsDormBeds(roomId),
   selfSelectBed: (bedId) => real.affairsDormSelfSelect(bedId),
-  getMyActivities: () => real.affairsMyActivities(),
+  getMyActivities: (page = 1, pageSize = 20) => real.affairsMyActivities(page, pageSize),
   enrollActivity: (activityId, action) => real.affairsActivityEnroll(activityId, action),
   checkinActivity: (activityId, method) => real.affairsActivityCheckin(activityId, method),
   getPsySurveyQuestions: () => real.psySurveyQuestions(),

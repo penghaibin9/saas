@@ -1,0 +1,23 @@
+entries:
+  - module: student-affairs
+    client: backend
+    route: /api/v1/student-affairs/leaves/export-jobs
+    page: backend/app/api/v1/student_affairs.py; frontend/src/modules/studentAffairs/views/leave/LeaveLedgerView.vue
+    action: export+download
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/student-affairs/leaves/export-jobs; GET /api/v1/student-affairs/leaves/export-jobs/{jobId}; POST /api/v1/student-affairs/leaves/export-jobs/{jobId}/ticket
+    backendService: backend/app/services/affairs_leave_export_service.py
+    storageMode: generated-xlsx-to-file-object
+    authMode: authenticated+studentAffairs.leave.export+one-time-ticket
+    dataScope: tenant+operator+frozen-query-and-affairs-data-scope
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: Web请求只创建导出任务；worker按冻结筛选与数据范围分页读取并流式生成XLSX，记录进度、行数、SHA-256、有效期、取消和失败重试，下载继续执行任务归属与一次性票据校验。

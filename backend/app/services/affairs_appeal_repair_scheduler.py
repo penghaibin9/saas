@@ -1,23 +1,14 @@
-"""学工异议/申诉补偿队列的稳定定时触发器。
+"""学工异议/申诉补偿队列的显式定时入口。
 
-仓库现有 web scheduler 默认启用三条学工扫描：请假逾期、风险超时、辅导员临时
-代管；启动后立即执行，之后每 6 小时执行。这里包装三条模块函数，任一扫描运行时
-都会为当前租户补偿申诉队列，5 分钟内重复扫描只执行一次。节流按租户隔离，禁止
-同一轮只处理第一个租户。
-
-``run_all_tenants`` 提供给 external scheduler 进程直接调用的单轮入口；生产采用
-SCHEDULER_MODE=external 时必须把该入口或上述任一已包装扫描纳入外部调度。
-
-补偿失败只记录日志，不得覆盖原定时任务结果；原任务失败时仍尝试补偿，然后保留
-原异常，避免把真实扫描故障伪装成成功。
+``run_due`` 对当前租户执行一次租约任务修复并按租户节流；
+``run_all_tenants`` 供独立 scheduler 进程逐租户调用。模块不包装任何其他
+定时函数，也不依赖 API router 的导入顺序。
 """
 from __future__ import annotations
 
 import logging
 import threading
 import time
-from functools import wraps
-from typing import Callable
 
 log = logging.getLogger("app.affairs.appeal-repair-scheduler")
 _INTERVAL_SECONDS = 5 * 60
@@ -79,7 +70,7 @@ def run_all_tenants() -> dict:
 
     db = get_sessionmaker()()
     try:
-        tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+        tenant_ids = list(db.scalars(select(Tenant.id).where(Tenant.status.in_(("ACTIVE", "TRIAL", "active", "trial")))))
     finally:
         db.close()
 
@@ -100,33 +91,6 @@ def run_all_tenants() -> dict:
     return totals
 
 
-def _wrap_periodic(original: Callable) -> Callable:
-    if getattr(original, "_affairs_appeal_repair_scheduled", False):
-        return original
-
-    @wraps(original)
-    def wrapped(*args, **kwargs):
-        try:
-            return original(*args, **kwargs)
-        finally:
-            run_due()
-
-    wrapped._affairs_appeal_repair_scheduled = True
-    wrapped._affairs_appeal_repair_original = original
-    return wrapped
-
-
 def install() -> None:
-    """接入既有学工扫描，形成无后续写请求和无人工点击依赖的定时触发。"""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-
-    from app.services import affairs_counselor_service, affairs_leave_service, affairs_risk_service
-
-    affairs_leave_service.scan_overdue = _wrap_periodic(affairs_leave_service.scan_overdue)
-    affairs_risk_service.scan_timeout = _wrap_periodic(affairs_risk_service.scan_timeout)
-    affairs_counselor_service.scan_expired_temps = _wrap_periodic(
-        affairs_counselor_service.scan_expired_temps,
-    )
-    _INSTALLED = True
+    """兼容空入口；调度已由 Web lifespan / external scheduler 显式调用。"""
+    return None

@@ -9,7 +9,7 @@ from app.core.optimistic_lock import atomic_claim_version
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -121,12 +121,30 @@ def create_talk(body, user) -> dict:
                         student_ids_json=json.dumps(sids), status="SCHEDULED" if scheduled else "DRAFT")
         db.add(plan)
         db.flush()
+        from app.core.affairs_security import build_affairs_context, no_data_scope
+        students = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(sids),
+            StudentProfile.is_deleted.is_(False),
+        )).all()
+        student_map = {int(student.id): student for student in students}
+        missing = [sid for sid in sids if sid not in student_map]
+        if missing:
+            raise not_found(f"学生 {missing[0]} 不存在")
+        context = build_affairs_context(user, db)
+        allowed_classes = context.allowed_class_ids(db)
+        allowed_students = context.psychology_student_ids | context.student_ids
+        for sid in sids:
+            student = student_map[sid]
+            if allowed_classes is None:
+                continue
+            if context.scope_type == "SELF" and context.self_student_id == sid:
+                continue
+            if context.scope_type == "STUDENT" and sid in allowed_students:
+                continue
+            if student.class_id not in allowed_classes:
+                raise no_data_scope("该学生不在您的数据范围内")
         talk_ids = []
         for sid in sids:
-            s = db.get(StudentProfile, sid)
-            if not s or s.is_deleted or s.tenant_id != _tid():
-                raise not_found(f"学生 {sid} 不存在")
-            _scope_or_403(db, sid, user, "学生")
             rec = TalkRecord(tenant_id=_tid(), plan_id=plan.id, student_id=sid, teacher_id=teacher_id,
                              topic_type=body.talkType, topic=body.topic, talk_at=scheduled,
                              status="SCHEDULED" if scheduled else "PLANNED")
@@ -347,29 +365,50 @@ def _fc_row(x, s=None) -> dict:
 
 
 def list_all_contacts(user, receipt_status=None, page=1, page_size=50):
-    """全局家校联系记录（数据范围过滤，不含号码本体）。"""
+    """全局家校联系记录真分页；学生信息在 SQL JOIN 中一次加载。"""
     from app.models import FamilyContactLog, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or 50), 200))
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        rows = db.scalars(select(FamilyContactLog).where(
-            FamilyContactLog.tenant_id == _tid()).order_by(
-            FamilyContactLog.id.desc())).all()
-        scoped = []
-        for x in rows:
-            s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            scoped.append(_fc_row(x, s))
-        status_counts = {
-            "ALL": len(scoped),
-            "PENDING": sum(1 for row in scoped if row["receiptStatus"] == "PENDING"),
-            "RECEIVED": sum(1 for row in scoped if row["receiptStatus"] == "RECEIVED"),
-        }
-        out = [row for row in scoped if not receipt_status or row["receiptStatus"] == receipt_status]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total, status_counts
+        conds = [FamilyContactLog.tenant_id == _tid()]
+        if receipt_status:
+            conds.append(FamilyContactLog.receipt_status == receipt_status)
+        if allowed is not None:
+            if not allowed:
+                return [], 0, {"ALL": 0, "PENDING": 0, "RECEIVED": 0}
+            conds.append(StudentProfile.class_id.in_(allowed))
+        join_on = and_(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.id == FamilyContactLog.student_id,
+            StudentProfile.is_deleted.is_(False),
+        )
+        total = int(db.scalar(
+            select(func.count()).select_from(FamilyContactLog)
+            .join(StudentProfile, join_on).where(*conds)
+        ) or 0)
+        scope_conds = [FamilyContactLog.tenant_id == _tid()]
+        if allowed is not None:
+            scope_conds.append(StudentProfile.class_id.in_(allowed))
+        count_rows = db.execute(
+            select(FamilyContactLog.receipt_status, func.count(FamilyContactLog.id))
+            .select_from(FamilyContactLog).join(StudentProfile, join_on)
+            .where(*scope_conds).group_by(FamilyContactLog.receipt_status)
+        ).all()
+        status_counts = {"ALL": 0, "PENDING": 0, "RECEIVED": 0}
+        for value, count in count_rows:
+            key = value or "PENDING"
+            status_counts[key] = int(count or 0)
+            status_counts["ALL"] += int(count or 0)
+        rows = db.execute(
+            select(FamilyContactLog, StudentProfile)
+            .join(StudentProfile, join_on).where(*conds)
+            .order_by(FamilyContactLog.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_fc_row(record, student) for record, student in rows], total, status_counts
 
 
 def mark_receipt(contact_id, user, note="") -> dict:
