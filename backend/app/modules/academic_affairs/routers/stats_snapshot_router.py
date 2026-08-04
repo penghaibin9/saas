@@ -61,3 +61,22 @@ def stats_snapshot_detail(
     user=Depends(require_permission("academicAffairs.stats.snapshot.view")),
 ):
     return success(service.get_snapshot(user, snapshot_id))
+
+
+@router.post("/{snapshot_id}/verify", summary="管理员复核统计快照完整性")
+def stats_snapshot_verify(
+    snapshot_id: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.stats.snapshot.manage")),
+):
+    """复用服务层的租户、数据范围和哈希校验，且不修改不可变快照。"""
+    snapshot = service.get_snapshot(user, snapshot_id)
+    return success(
+        {
+            "snapshotId": snapshot["snapshotId"],
+            "payloadHash": snapshot["payloadHash"],
+            "status": snapshot["status"],
+            "integrityValid": True,
+            "immutable": True,
+        },
+        message="统计快照完整性校验通过",
+    )
