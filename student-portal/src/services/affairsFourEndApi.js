@@ -7,14 +7,16 @@ async function loadAllTransferPages(path) {
   let page = 1
   let first = null
   const items = []
-  while (true) {
+  let loading = true
+  while (loading) {
     const data = await request(path, { params: { page, pageSize } })
     if (!first) first = data || {}
-    items.push(...((data && data.items) || []))
+    const pageItems = data && Array.isArray(data.items) ? data.items : []
+    items.push(...pageItems)
     const total = Number((data && data.total) || items.length)
-    if (!(data && data.hasMore) && items.length >= total) break
-    if (!data || !data.items || data.items.length === 0) break
-    page += 1
+    const hasMore = Boolean(data && data.hasMore) || items.length < total
+    loading = hasMore && pageItems.length > 0
+    if (loading) page += 1
   }
   return { ...(first || {}), items, total: Number((first && first.total) || items.length), page: 1, pageSize: items.length, hasMore: false }
 }
