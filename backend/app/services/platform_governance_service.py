@@ -13,6 +13,8 @@ from __future__ import annotations
 
 
 def governance_overview() -> dict:
+    from datetime import datetime, timedelta
+
     from sqlalchemy import select
 
     from app.core.context import set_tenant
@@ -25,8 +27,14 @@ def governance_overview() -> dict:
     db = get_sessionmaker()()
     try:
         tenants = db.scalars(select(Tenant).where(Tenant.is_deleted.is_(False))).all()
+        # 复审发现：原来是"全平台最近1000条"，一所高活跃度学校的日常操作足够挤满
+        # 1000条配额，导致其它学校同期的高危操作完全排不进这次完整性检查——
+        # 合规证据本来就是为了不漏检，这样反而制造了盲区。改成按时间窗口（近7天）
+        # 扫描，配合更高的行数上限做兜底，不再让"谁的日志量大"决定谁被检查。
+        since = datetime.utcnow() - timedelta(days=7)
         recent_audit_rows = db.scalars(
-            select(SecurityAuditLog).order_by(SecurityAuditLog.id.desc()).limit(1000)
+            select(SecurityAuditLog).where(SecurityAuditLog.created_at >= since)
+            .order_by(SecurityAuditLog.id.desc()).limit(20000)
         ).all()
     finally:
         db.close()

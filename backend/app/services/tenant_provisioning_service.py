@@ -141,6 +141,20 @@ def run_provisioning_job(job_id: int, *, user: dict | None = None) -> dict:
                 dto = _job_dto(job, steps)
                 dto["revealOnce"] = reveal_once
                 return dto
+            except Exception as exc:
+                # 只兜住 AppException 会让任何意外错误（DB 约束冲突、空引用等）把
+                # 这一步永远卡在 RUNNING——retry_step/compensate_step 都只接受
+                # FAILED 状态，卡在 RUNNING 的任务没有任何恢复路径。这里统一转成
+                # FAILED，把 SAGA 的可续跑承诺覆盖到"预料之外的失败"，不只是业务校验失败。
+                step.status = STATUS_FAILED
+                step.error_message = f"意外错误：{exc}"[:1000]
+                job.status = STATUS_FAILED
+                job.last_error = step.error_message
+                db.commit()
+                job, steps = _load_job(db, job.id)
+                dto = _job_dto(job, steps)
+                dto["revealOnce"] = reveal_once
+                return dto
 
         job.status = STATUS_SUCCEEDED
         job.current_step = None
@@ -169,51 +183,60 @@ def _execute_step(db, job: ProvisioningJob, code: str) -> dict:
 
 
 def _step_tenant(db, job: ProvisioningJob) -> dict:
+    """建租户行 + 写 TENANT_META 原本分两段提交；复审发现：如果上次执行恰好败在
+    两次提交之间（租户行已建、TENANT_META 还没写），重试时"租户已存在"直接判
+    reused=True 早退，永远不会补写 TENANT_META。改成不管新建还是复用，都在
+    最后统一检查 TENANT_META 是否缺失并补写，让续跑真正把这一步补全，而不是
+    误把"表存在"当成"整步都做完了"。"""
     from app.models import Tenant, TenantBrandConfig
     from app.services import platform_service as psvc
 
     body = job.input_json or {}
     existing = db.scalars(select(Tenant).where(
         Tenant.tenant_code == job.tenant_code, Tenant.is_deleted.is_(False))).first()
-    if existing:
-        job.tenant_id = existing.id
+
+    if existing is not None:
+        tid = existing.id
+        job.tenant_id = tid
         db.commit()
-        return {"tenantId": str(existing.id), "reused": True}
+        reused = True
+    else:
+        name = str(body.get("tenantName") or "").strip()
+        if not name:
+            raise AppException("VALIDATION_ERROR", "tenantName 必填", http_status=422)
+        import secrets as _secrets
+        base = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000
+        tid = None
+        for _ in range(10):
+            candidate = base + _secrets.randbelow(1000)
+            if db.get(Tenant, candidate) is None:
+                tid = candidate
+                break
+        if tid is None:
+            raise AppException("SERVER_ERROR", "租户 ID 生成冲突，请稍后重试")
+        db.add(Tenant(id=tid, tenant_code=job.tenant_code, school_name=name, status="ACTIVE"))
+        db.add(TenantBrandConfig(tenant_id=tid, platform_name="高校学生全生命周期管理平台",
+                                 primary_color="#2563EB", watermark_text=f"{name}内部系统"))
+        job.tenant_id = tid
+        db.commit()
+        reused = False
 
-    name = str(body.get("tenantName") or "").strip()
-    if not name:
-        raise AppException("VALIDATION_ERROR", "tenantName 必填", http_status=422)
-    import secrets as _secrets
-    base = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000
-    tid = None
-    for _ in range(10):
-        candidate = base + _secrets.randbelow(1000)
-        if db.get(Tenant, candidate) is None:
-            tid = candidate
-            break
-    if tid is None:
-        raise AppException("SERVER_ERROR", "租户 ID 生成冲突，请稍后重试")
-    db.add(Tenant(id=tid, tenant_code=job.tenant_code, school_name=name, status="ACTIVE"))
-    db.add(TenantBrandConfig(tenant_id=tid, platform_name="高校学生全生命周期管理平台",
-                             primary_color="#2563EB", watermark_text=f"{name}内部系统"))
-    job.tenant_id = tid
-    db.commit()
-
-    pkg = str(body.get("packageCode") or "trial")
-    from datetime import timedelta
-    days = psvc.get_package(pkg).get("durationDays", 30)
-    now = datetime.now()
-    psvc.put_config_json(tid, "TENANT_META", "-", {
-        "status": "trial" if pkg == "trial" else "active", "packageCode": pkg,
-        "environment": body.get("environment", "production"),
-        "schoolType": body.get("schoolType", "VOCATIONAL"),
-        "province": body.get("province", ""), "city": body.get("city", ""),
-        "contactName": body.get("contactName", ""), "contactPhone": body.get("contactPhone", ""),
-        "trialStartAt": now.isoformat(timespec="seconds"),
-        "trialEndAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
-        "expireAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
-    })
-    return {"tenantId": str(tid), "reused": False}
+    if not psvc.tenant_meta(tid):
+        pkg = str(body.get("packageCode") or "trial")
+        from datetime import timedelta
+        days = psvc.get_package(pkg).get("durationDays", 30)
+        now = datetime.now()
+        psvc.put_config_json(tid, "TENANT_META", "-", {
+            "status": "trial" if pkg == "trial" else "active", "packageCode": pkg,
+            "environment": body.get("environment", "production"),
+            "schoolType": body.get("schoolType", "VOCATIONAL"),
+            "province": body.get("province", ""), "city": body.get("city", ""),
+            "contactName": body.get("contactName", ""), "contactPhone": body.get("contactPhone", ""),
+            "trialStartAt": now.isoformat(timespec="seconds"),
+            "trialEndAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
+            "expireAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
+        })
+    return {"tenantId": str(tid), "reused": reused}
 
 
 def _step_roles(db, job: ProvisioningJob) -> dict:

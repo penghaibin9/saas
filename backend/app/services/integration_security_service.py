@@ -83,8 +83,6 @@ def validate_endpoint_ssrf_safe(endpoint: str) -> dict:
             raise AppException("VALIDATION_ERROR",
                                "生产环境禁止把 localhost/127.0.0.1 配置为集成出站地址（SSRF防护）",
                                http_status=422)
-        if parsed.scheme != "http":
-            pass  # 沿用既有口径：非本地环境才强制 https，本地回环允许 http
         return {"host": hostname, "ips": ["127.0.0.1"], "port": port}
 
     if parsed.scheme == "http":

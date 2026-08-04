@@ -210,6 +210,67 @@ def test_cannot_cancel_succeeded_job(db_mode):
         prov.cancel_job(int(job["jobId"]), reason="不应该允许取消已成功的任务", user=admin)
 
 
+# ── 复审补测：意外异常（非AppException）不能让步骤永远卡在RUNNING ──────────
+def test_unexpected_exception_leaves_step_failed_and_retryable(db_mode, monkeypatch):
+    """_execute_step 抛出非 AppException（如 RuntimeError）之前，这一步会永远停在
+    RUNNING——retry_step/compensate_step 都只接受 FAILED，没有恢复路径。"""
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
+
+    original = prov._step_capabilities
+
+    def _boom(db, job):
+        raise RuntimeError("模拟意外错误（非业务校验失败）")
+
+    monkeypatch.setattr(prov, "_step_capabilities", _boom)
+    job = prov.start_provisioning_job(admin, {
+        "idempotencyKey": key, "tenantCode": code, "tenantName": "PLAT04测试学校意外错误",
+        "adminLoginName": f"admin-{code}", "adminRealName": "首位管理员"})
+    assert job["status"] == "FAILED"
+    cap_step = next(s for s in job["steps"] if s["stepCode"] == "CAPABILITIES")
+    assert cap_step["status"] == "FAILED"
+    assert "意外错误" in (cap_step["error"] or "")
+
+    monkeypatch.setattr(prov, "_step_capabilities", original)
+    resumed = prov.retry_step(int(job["jobId"]), "CAPABILITIES", user=admin)
+    assert resumed["status"] == "SUCCEEDED"
+
+
+# ── 复审补测：TENANT 步骤"租户行已存在但 TENANT_META 缺失"要在续跑时补全 ────
+def test_step_tenant_backfills_missing_meta_when_tenant_row_preexists(db_mode):
+    """模拟"上次执行败在建租户行之后、写 TENANT_META 之前"的窄缝场景：
+    租户行已经存在但没有 TENANT_META。旧实现的 reused 分支会直接早退，
+    永远不补 TENANT_META；修复后无论新建还是复用都会检查并补齐。"""
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+    from app.services import platform_service as psvc
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
+
+    db = get_sessionmaker()()
+    try:
+        tid = 1000000000000000091
+        if db.get(Tenant, tid) is None:
+            db.add(Tenant(id=tid, tenant_code=code, school_name="预置租户行", status="ACTIVE"))
+            db.commit()
+    finally:
+        db.close()
+    assert psvc.tenant_meta(tid) == {}  # 确认这条窄缝：租户行有了，META 还没有
+
+    job = prov.start_provisioning_job(admin, {
+        "idempotencyKey": key, "tenantCode": code, "tenantName": "PLAT04测试学校补META",
+        "adminLoginName": f"admin-{code}", "adminRealName": "首位管理员"})
+    assert job["status"] == "SUCCEEDED"
+    tenant_step = next(s for s in job["steps"] if s["stepCode"] == "TENANT")
+    assert tenant_step["output"]["reused"] is True
+    meta = psvc.tenant_meta(tid)
+    assert meta.get("packageCode")  # 补写成功，不再是空字典
+
+
 # ── HTTP 端点冒烟 ────────────────────────────────────────────────────────────
 def test_http_endpoints(client, db_mode):
     from app.core.security import create_access_token
