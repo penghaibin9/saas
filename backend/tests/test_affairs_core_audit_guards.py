@@ -59,7 +59,16 @@ def test_risk_high_impact_actions_require_auditable_evidence():
 
 def test_counselor_evaluation_scope_and_publish_preconditions():
     source = read("backend/app/services/affairs_class_service.py")
-    assert "expected_version = int(period.version or 0)" in source
+    assert "atomic_claim_version(db, p, expected_version)" in source
     assert 'raise AppException("NO_DATA_SCOPE"' in source
     assert 'scope_type != "TENANT_ALL"' in source
     assert 'row.status != "SCORED" or row.college_score is None' in source
+
+
+def test_archive_async_migration_handles_metadata_created_fresh_database():
+    source = read("backend/alembic/versions/20260804_affairs_archive_async.py")
+    assert "sa.inspect(op.get_bind())" in source
+    assert "if name not in columns" in source
+    assert "if name not in indexes" in source
+    assert "must exist before applying" in source
+    assert "op.add_column(_TABLE, column)" in source
