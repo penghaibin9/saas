@@ -72,3 +72,13 @@ def test_archive_async_migration_handles_metadata_created_fresh_database():
     assert "if name not in indexes" in source
     assert "must exist before applying" in source
     assert "op.add_column(_TABLE, column)" in source
+
+
+def test_volunteer_and_loan_status_contracts_are_formal_and_singular():
+    activity = read("backend/app/services/affairs_activity_service.py")
+    funding = read("backend/app/services/affairs_funding_ext_service.py")
+    assert activity.count("_VOL_LABEL = {") == 1
+    assert activity.count('VOL_CATEGORY = "ZHIYUAN"') == 1
+    assert funding.count("_L_LOAN = {") == 1
+    assert funding.count("_LOAN_NEXT = {") == 1
+    assert not (ROOT / ".github/workflows/pr39-restore-status-contracts.yml").exists()
