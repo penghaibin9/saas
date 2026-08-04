@@ -12,69 +12,54 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'ci(pr41): install one-shot selection contract repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/academic-affairs-p0-p2-hardening
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Repair selection batch and timetable contracts
+      - name: Repair selection contracts
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
           target = Path("backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py")
-          workflow = Path(".github/workflows/pr41-one-shot-selection-contract.yml")
           text = target.read_text(encoding="utf-8")
-          old = '''    projected_credit = sum(float(item.credit or 0) for item in active_selected) + float(add_credit or 0)
-              if float(batch.max_credit or 0) > 0 and projected_credit > float(batch.max_credit):
-                  raise _core._invalid("超过本轮选课最大学分限制")
+          start_marker = "    projected_credit = sum(float(item.credit or 0) for item in active_selected)"
+          end_marker = "\n    if int(course.selected_count or 0) >= int(course.capacity or 0):"
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''    max_credits = float(_core._rule(db, batch, "maxCredits", 0) or 0)
+    projected_credit = sum(
+        float(record.credit or 0)
+        for record in my_records
+        if record.status in (_REC_SELECTED, _REC_LOCKED)
+    ) + float(add_credit or 0)
+    if max_credits > 0 and projected_credit > max_credits:
+        raise _core._invalid(f"超过本轮选课最大学分限制 {max_credits:g}")
 
-              for item in active_selected:
-                  if item.weekday != course.weekday or item.start_slot is None or item.end_slot is None:
-                      continue
-                  if _weeks_overlap(item.teaching_weeks_json, course.teaching_weeks_json) and not (
-                      int(item.end_slot) < int(course.start_slot) or int(course.end_slot) < int(item.start_slot)
-                  ):
-                      raise _core._invalid(f"与已选课程{item.course_name}上课时间冲突")
+    target_slots = _core._task_slots(db, course.teaching_task_id)
+    if target_slots:
+        for item in active_selected:
+            for (w1, s1, sw1, ew1, p1) in _core._task_slots(db, item.teaching_task_id):
+                for (w2, s2, sw2, ew2, p2) in target_slots:
+                    if w1 == w2 and s1 == s2 and _weeks_overlap(
+                        sw1, ew1, p1, sw2, ew2, p2
+                    ):
+                        raise _core._invalid(
+                            f"与已选课程{item.course_name or ''}上课时间冲突"
+                        )
 '''
-          # The literal above is indented by this workflow's YAML block. Normalize it to the source indentation.
-          old = "\n".join(line[10:] if line.startswith("          ") else line for line in old.splitlines()) + "\n"
-          new = '''    max_credits = float(_core._rule(db, batch, "maxCredits", 0) or 0)
-              projected_credit = sum(
-                  float(record.credit or 0)
-                  for record in my_records
-                  if record.status in (_REC_SELECTED, _REC_LOCKED)
-              ) + float(add_credit or 0)
-              if max_credits > 0 and projected_credit > max_credits:
-                  raise _core._invalid(f"超过本轮选课最大学分限制 {max_credits:g}")
-
-              target_slots = _core._task_slots(db, course.teaching_task_id)
-              if target_slots:
-                  for item in active_selected:
-                      for (w1, s1, sw1, ew1, p1) in _core._task_slots(db, item.teaching_task_id):
-                          for (w2, s2, sw2, ew2, p2) in target_slots:
-                              if w1 == w2 and s1 == s2 and _weeks_overlap(
-                                  sw1, ew1, p1, sw2, ew2, p2
-                              ):
-                                  raise _core._invalid(
-                                      f"与已选课程{item.course_name or ''}上课时间冲突"
-                                  )
-'''
-          new = "\n".join(line[10:] if line.startswith("          ") else line for line in new.splitlines()) + "\n"
-          if text.count(old) != 1:
-              raise SystemExit(f"expected exactly one legacy validation block, found {text.count(old)}")
-          target.write_text(text.replace(old, new, 1), encoding="utf-8")
-          workflow.unlink()
+          target.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
           PY
 
           python -m py_compile backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py .github/workflows/pr41-one-shot-selection-contract.yml
+          git add backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py
           git commit -m "fix(academic-affairs): align selection rule and timetable contracts"
           git push origin HEAD:agent/academic-affairs-p0-p2-hardening
