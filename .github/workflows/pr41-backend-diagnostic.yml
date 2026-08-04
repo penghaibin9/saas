@@ -78,7 +78,7 @@ jobs:
             exit 0
           fi
           set +e
-          python -m pytest -vv --tb=long --maxfail=1 "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-diagnostic/pytest.log
+          python -m pytest -vv --tb=short "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-diagnostic/pytest.log
           code=${PIPESTATUS[0]}
           set -e
           echo "$code" > /tmp/pr41-diagnostic/pytest-exit
