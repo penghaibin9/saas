@@ -134,10 +134,21 @@ export function createSubmitLock(cooldownMs = 1200) {
   }
 }
 
-/* ── 未登录/会话失效 → 跳登录 ── */
+/* ── 未登录/会话失效 → 跳登录 ──
+ * 只清 token 会残留 gx_session_v1 里的上一账号身份快照（姓名/学号/班级等），冷启动会先用
+ * 旧身份渲染一瞬，业务草稿等会话态也不会被清理。stores/session.js 已导入本模块，若这里再
+ * 反向导入 useSessionStore 会形成模块循环引用；改为登录态初始化时由 session store 反向
+ * 注册一个"完整登出"回调，request.js 不感知 pinia store 的存在。 */
+let _forceLogoutHandler = null
+export function registerForceLogoutHandler(fn) { _forceLogoutHandler = fn }
+
 let _redirecting = false
 export function requireAuthOrRedirect(message = '登录已失效，请重新登录') {
-  clearTokens()
+  if (_forceLogoutHandler) {
+    try { _forceLogoutHandler() } catch (e) { clearTokens() }
+  } else {
+    clearTokens()
+  }
   if (_redirecting) return
   _redirecting = true
   safeToast(message, 'none')
@@ -464,5 +475,5 @@ export function request(options) {
 export default {
   mockRequest, realRequest, realUpload, realDownload, realFirst, realFirstStrict, request,
   setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
-  createSubmitLock, requireAuthOrRedirect, isBusinessError, isNetworkError
+  createSubmitLock, requireAuthOrRedirect, registerForceLogoutHandler, isBusinessError, isNetworkError
 }

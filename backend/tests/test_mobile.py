@@ -296,6 +296,42 @@ def test_teacher_domain_pages_structure(client, db_mode):
     assert ap["code"] == 0 and "approvals" in ap["data"]
 
 
+def test_teacher_message_mark_read(client, db_mode):
+    """教师标记系统通知已读：真实持久化 + 严格 receiver 归属，非本人 404（2026-08-04 新增端点）。"""
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+    owner_uid, other_uid = 900010001, 900010002
+    db = get_sessionmaker()()
+    try:
+        m_own = UnifiedMessage(tenant_id=MAIN, receiver_id=owner_uid, receiver_user_id=owner_uid,
+                               title="给本人的通知", status="UNREAD")
+        m_other = UnifiedMessage(tenant_id=MAIN, receiver_id=other_uid, receiver_user_id=other_uid,
+                                 title="给别人的通知", status="UNREAD")
+        db.add_all([m_own, m_other])
+        db.commit()
+        db.refresh(m_own)
+        db.refresh(m_other)
+        mid_own, mid_other = m_own.id, m_other.id
+    finally:
+        db.close()
+
+    headers = _teacher_token_numeric(owner_uid)
+    before = client.get("/api/v1/mobile/teacher/messages", headers=headers).json()["data"]
+    own_row = next(x for x in before["groups"]["system"] if str(x["id"]) == str(mid_own))
+    assert own_row["read"] is False
+
+    r = client.post(f"/api/v1/mobile/teacher/messages/{mid_own}/read", headers=headers).json()
+    assert r["code"] == 0 and r["data"]["status"] == "READ"
+
+    after = client.get("/api/v1/mobile/teacher/messages", headers=headers).json()["data"]
+    own_row2 = next(x for x in after["groups"]["system"] if str(x["id"]) == str(mid_own))
+    assert own_row2["read"] is True
+
+    # 非本人消息：404，不泄露存在性，也不能被标记
+    r2 = client.post(f"/api/v1/mobile/teacher/messages/{mid_other}/read", headers=headers).json()
+    assert r2["code"] == 404001
+
+
 def test_new_endpoints_require_login(client):
     for path in ("/api/v1/mobile/me/profile", "/api/v1/mobile/me/applications",
                  "/api/v1/mobile/teacher/risk-students", "/api/v1/mobile/teacher/messages"):

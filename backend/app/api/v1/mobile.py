@@ -1109,6 +1109,11 @@ def teacher_messages(user=Depends(get_current_user)):
     return success(tea.messages(user))
 
 
+@router.post("/teacher/messages/{message_id}/read", summary="教师·标记系统通知已读")
+def teacher_message_read(message_id: str, user=Depends(get_current_user)):
+    return success(tea.message_mark_read(user, message_id))
+
+
 @router.get("/teacher/approvals", summary="教师·审批列表（mobile 轻量）")
 def teacher_approvals(user=Depends(get_current_user)):
     return success(tea.approvals(user))

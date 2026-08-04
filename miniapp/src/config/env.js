@@ -49,10 +49,23 @@ function resolveUseMock() {
   return true
 }
 
+/** 用户协议 / 隐私政策页面地址。仓库当前不存在这两份文档的公开路由，默认留空 →
+ * 登录页对应文字不可点（不放虚假链接冒充已核定的协议正文）。学校确定正式文档后，
+ * 通过 VITE_PRIVACY_URL / VITE_TERMS_URL 注入真实地址，与 frontend/portalConfig.js 同一约定。 */
+function resolveDocUrl(key) {
+  try {
+    const env = (import.meta && import.meta.env) || {}
+    const v = env[key]
+    return v ? String(v).trim() : ''
+  } catch (e) { return '' }
+}
+
 export const ENV = {
   // true=纯 mock 演示（无需后端，秒开，用于独立演示）；false=优先真实后端，失败回退 mock。
   // 可被构建期环境变量 VITE_USE_MOCK 覆盖（见 resolveUseMock）；默认保持纯 mock 演示。
   useMock: resolveUseMock(),
+  privacyUrl: resolveDocUrl('VITE_PRIVACY_URL'),
+  termsUrl: resolveDocUrl('VITE_TERMS_URL'),
   // Mock 回退仅是本地开发便利能力，不是离线产品能力。生产构建硬禁用。
   allowMockFallback: (() => {
     try {

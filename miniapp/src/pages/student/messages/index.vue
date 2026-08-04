@@ -168,9 +168,15 @@ export default {
         this.emgAcking = false
       }
     },
+    // 「待办/服务进度」的已读态由后端派生自真实业务状态（如请假是否仍 PENDING_REVIEW），
+    // 不是可持久化的已读标记；本地伪装已读只会刷新前误导"事项已处理"，刷新后又会恢复，
+    // 制造状态闪烁。全部已读只对真正可持久化的「通知」(kind=UNIFIED_MESSAGE) 生效。
     markAllRead() {
       this.list.forEach((message) => {
-        if (!message.read) { message.read = true; this._syncRead(message) }
+        if (!message.read && message.kind === 'UNIFIED_MESSAGE') {
+          message.read = true
+          this._syncRead(message)
+        }
       })
     },
     open(message) {
@@ -189,7 +195,9 @@ export default {
       const isUnified = message.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(raw)
       if (!isUnified) return
       message._synced = true
-      studentApi.markMessageRead(raw).catch(() => { message._synced = false })
+      // 失败时连同本地乐观的 read=true 一并回滚：只清 _synced 会让"已读"勾选留在界面上，
+      // 却从未真正持久化，刷新前后不一致（2026-08-04 复审新增发现）。
+      studentApi.markMessageRead(raw).catch(() => { message._synced = false; message.read = false })
     },
     handle(message) {
       message.read = true

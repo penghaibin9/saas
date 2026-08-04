@@ -15,7 +15,8 @@
     "setting": { "urlCheck": true, "es6": true, "minified": true },
     "usingComponents": true,
     "lazyCodeLoading": "requiredComponents",
-    "__usePrivacyCheck__": false
+    "__usePrivacyCheck__": true,
+    "requiredPrivateInfos": ["getLocation"]
   },
   "h5": {
     "title": "高校学生全生命周期管理平台",

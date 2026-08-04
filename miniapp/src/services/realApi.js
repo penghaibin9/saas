@@ -165,22 +165,42 @@ export const enrichHome = () => studentHomeReal()
  */
 export const mobileOverview = () => realRequest('/mobile/me/overview')
 
-export async function enrichOrientation(mock) {
+/* 生产禁止回落 mock 假报到码/假联系人/假流程节点：真实无档案时返回中性空态，
+ * 真实有档案时字段全部来自后端，未覆盖字段留空，不再用 mock 兜底冒充事实。
+ * 后端 _orientation_payload() 当前不下发 batch/contacts，如需展示批次名和辅导员联系方式，
+ * 需后端补字段，前端在拿到真实字段前不得展示示例批次名或示例辅导员姓名电话。 */
+const NEUTRAL_ORIENTATION = {
+  hasData: false, _real: true,
+  batch: '', overallStatus: 'NOT_REPORTED', overallText: '暂无迎新报到记录',
+  reportCode: { code: '', valid: false, note: '暂无迎新报到记录，如需办理请联系辅导员' },
+  greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
+  payStatus: '', materialStatus: '', blocked: null, steps: [], contacts: [],
+  identity: { name: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
+    origin: '', phoneMasked: '' }
+}
+
+export async function enrichOrientation() {
   const r = await realRequest('/mobile/orientation/my')
-  if (!r || !r.hasData) return { ...mock, _real: false }
+  if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
     COLLEGE_CONFIRMED: '学院已确认' }
-  return { ...mock, overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || mock.overallText,
-    dorm: { building: r.building, room: r.room, status: r.dormStatus },
-    payStatus: r.paymentStatus, materialStatus: r.materialStatus, greenChannelStatus: r.greenChannelStatus,
+  return {
+    hasData: true, _real: true,
+    batch: r.batchName || '迎新报到',
+    overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
+    dorm: { building: r.building || '', room: r.room || '', status: r.dormStatus || '' },
+    payStatus: r.paymentStatus || '', materialStatus: r.materialStatus || '',
+    greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
-    steps: (r.steps && r.steps.length) ? r.steps.map((s) => ({ key: s.key, status: s.status })) : mock.steps,
-    reportCode: { code: r.admissionNo || (mock.reportCode && mock.reportCode.code) || '',
+    steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
+    reportCode: { code: r.admissionNo || '',
       valid: !!r.reportCodeValid, note: r.reportCodeValid ? '现场核验时出示' : '已完成现场报到，二维码已失效' },
     identity: { name: r.name || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
       origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
-    _real: true }
+    // 后端暂不下发辅导员/招生办联系人，绝不用示例姓名电话冒充真实联系人
+    contacts: []
+  }
 }
 
 /** 迎新批次开放状态（公开·登录前可查，登录页限时入口倒计时用） */
@@ -430,17 +450,31 @@ export const teacherEmploymentJobCreate = (body) =>
 export const teacherEmploymentJobDisable = (jobId, reason) =>
   realRequest(`/mobile/teacher/employment/jobs/${jobId}/disable`, { method: 'POST', data: { reason: reason || '' } })
 
-export async function enrichAcademic(mock) {
+/* 当前无任何页面调用（旧 pages/student/academic/index 已改为重定向到
+ * academic-affairs，本函数是遗留死代码），但保留导出以防止未来被重新接线时
+ * 沿用 mock 假排名/假历史学期/假考场座位号。后端 /mobile/academic/my 不提供
+ * 班级排名、历史学期趋势和考试安排字段，一律留空，不得用 mock 数字冒充——
+ * 假考场地点/座位号（2026-08-04 复审新增发现）如被展示会导致学生跑错考场。 */
+export async function enrichAcademic() {
   const r = await realRequest('/mobile/academic/my')
-  if (!r || !r.hasData) return { ...mock, _real: false }
+  if (!r || !r.hasData) {
+    return { _real: true, hasData: false,
+      summary: { gpa: null, rank: '', creditEarned: 0, creditTotal: 0, warning: false,
+        academicStatus: '', failedCount: 0 },
+      termProgress: [], courses: [], exams: [], warnings: [] }
+  }
   const s = r.summary || {}
-  return { ...mock,
-    summary: { gpa: s.gpa, rank: mock.summary.rank, creditEarned: s.obtainedCredits,
+  return {
+    _real: true, hasData: true,
+    summary: { gpa: s.gpa, rank: '', creditEarned: s.obtainedCredits,
       creditTotal: s.requiredCredits, warning: (s.warningLevel && s.warningLevel !== 'NONE'),
       academicStatus: s.academicStatus, failedCount: s.failedCount },
+    termProgress: [],
     courses: (r.grades || []).map((g) => ({ name: g.course, term: g.term, score: g.score,
       pass: g.passStatus === 'PASSED' })),
-    warnings: r.warnings || [], _real: true }
+    exams: [],
+    warnings: r.warnings || []
+  }
 }
 
 export async function enrichInternship(_unused) {
@@ -863,48 +897,54 @@ export const markMessageRead = (id) =>
 export const ackMessageReceipt = (id) =>
   realRequest('/mobile/me/messages/' + id + '/receipt', { method: 'POST' })
 
-/** 学生档案：真实脱敏字段覆盖 mock 骨架（手机/身份证仅脱敏串，住址不返回）。 */
 /**
- * ⚠️ 已知未修复缺口（见 2026-07-18 真实交互巡检报告）：p.summaries.{internship,graduation,
- * employment} 完全沿用 mock 的「暂未进入 xx 阶段」文案，从未与真实数据合并——某学生即使已有
- * 真实在岗实习记录（岗位实习页可查真实企业/导师/周报）或真实毕设指导关系（毕业设计页可查真实
- * 指导教师/指导记录），本页仍会显示「暂未进入」。
- * 不能简单用 current_stage 顺序推断是否「已进入」某域：本系统 current_stage 是粗粒度全局阶段
- * （ADMITTED→...→ENROLLED→INTERN→GRADUATING→GRADUATED→ALUMNI），与各业务域（岗位实习/毕业
- * 设计）的真实启动时间并不同步——例如 stage=INTERN 的学生可能已经有真实的毕业设计指导记录
- * （毕设不等 stage 推进到 GRADUATING 才能选题/开题），按 stage 顺序纠正会把这类情况错判为
- * 「未进入」，反而制造新的假结论。正确修法需要后端 my_profile 分别下钻查询
- * InternshipRecord/GraduationStudent/EmpStudent 是否存在真实记录，本次未做（超出前端改动范围）。
+ * 学生档案：字段全部来自后端 my_profile()，不再以 mock 骨架打底。
+ * 后端 my_profile() 当前只下发 studentId/studentNo/name/gender/collegeName/majorName/
+ * className/grade/phoneMasked/idCardMasked/status/stage；民族/出生日期/政治面貌/邮箱/
+ * 紧急联系人/学制/入学时间/证照/生命周期摘要后端暂未提供，一律显式标"未登记"或留空，
+ * 绝不再用 mock 的示例姓名/手机 13612345678/身份证/紧急联系人冒充真人资料（2026-07-18
+ * 巡检 + 2026-08-04 复审已确认此前 mock 兜底仍会泄露到这些字段，本次彻底移除）。
+ * summaries.{internship,graduation,employment} 同理不再显示 mock「暂未进入」的假结论，
+ * 改为引导本人去对应业务页面查看真实状态；后端需要分别下钻 InternshipRecord/
+ * GraduationStudent/EmpStudent 才能给出准确摘要，超出本次前端改动范围。
  */
-export async function enrichProfileReal(mockProfile) {
+export async function enrichProfileReal() {
   const d = await realRequest('/mobile/me/profile')
+  const base = { name: '', studentNo: '', gender: '', nation: '未登记', birth: '未登记',
+    political: '未登记', idCard: '' }
+  const contact = { phone: '', email: '未登记', address: '出于隐私保护不展示', emergency: '未登记' }
+  const org = { college: '', major: '', className: '', grade: '', system: '未登记', enrollDate: '未登记' }
+  const editableFields = ['phone', 'address', 'emergency']
+  const lockedFields = ['name', 'idCard', 'studentNo', 'status']
+  const summaries = { service: '', internship: '以「岗位实习」页面为准',
+    graduation: '以「毕业设计」页面为准', employment: '以「就业」页面为准' }
   if (!d || !d.hasData) {
-    // 真实档案无数据时，绝不回落 mock 假档案（假姓名/手机 13612345678/身份证）冒充真人资料。
-    // 保留结构、清空敏感字段，标记空态，由页面渲染“暂无档案”而非虚假 PII。
-    const empty = JSON.parse(JSON.stringify(mockProfile))
-    empty.base = { ...empty.base, name: '', studentNo: '', idCard: '' }
-    empty.contact = { ...empty.contact, phone: '', address: '' }
-    empty._real = false
-    empty._empty = true
-    return empty
+    return {
+      _real: false, _empty: true, base, contact, org, editableFields, lockedFields,
+      status: { stageText: '', statusText: '暂无档案', enrollStatus: '' },
+      summaries: { service: '', internship: '', graduation: '', employment: '' },
+      credentials: [], _identity: null
+    }
   }
-  const p = JSON.parse(JSON.stringify(mockProfile))
-  p.base = { ...p.base, name: d.name, studentNo: d.studentNo,
-    gender: d.gender || p.base.gender, idCard: d.idCardMasked || '' }
-  p.contact = { ...p.contact, phone: d.phoneMasked || '', address: '' }
-  p.org = { ...p.org, college: d.collegeName || p.org.college, major: d.majorName || p.org.major,
-    className: d.className || p.org.className, grade: d.grade || p.org.grade }
-  p.status = { ...p.status, stageText: STAGE_TEXT[d.stage] || p.status.stageText }
-  p._real = true
-  p._identity = { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
-  return p
+  return {
+    _real: true, _empty: false,
+    base: { ...base, name: d.name || '', studentNo: d.studentNo || '', gender: d.gender || '',
+      idCard: d.idCardMasked || '' },
+    contact: { ...contact, phone: d.phoneMasked || '' },
+    org: { ...org, college: d.collegeName || '', major: d.majorName || '',
+      className: d.className || '', grade: d.grade || '' },
+    status: { stageText: STAGE_TEXT[d.stage] || d.stage || '', statusText: d.status || '', enrollStatus: '' },
+    editableFields, lockedFields, summaries, credentials: [],
+    _identity: { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
+  }
 }
 
-/** 学生消息（严格本人）→ mock tabs/groups 形状。 */
-export async function selfMessages(mock) {
+/* 当前无页面调用（消息页已改用真分页 selfMessagesPage/getMessagesPage，本函数是
+ * 遗留死代码），同样修掉 mock 兜底以防未来被重新接线时泄露假消息（2026-08-04 复审新增发现）。 */
+export async function selfMessages() {
   const d = await realRequest('/mobile/me/messages')
-  if (!d) return mock
-  const tabs = (d.tabs && d.tabs.length) ? d.tabs : (mock.tabs || [])
+  if (!d) return { tabs: [], groups: {}, unreadCount: 0, realApi: true }
+  const tabs = d.tabs || []
   const groups = d.groups || {}
   tabs.forEach((t) => { t.badge = (groups[t.key] || []).filter((x) => !x.read).length })
   return { tabs, groups, unreadCount: d.unreadCount || 0, realApi: true }
@@ -992,7 +1032,10 @@ export async function teacherStudent360(id) {
 }
 
 /** 教师·实习批阅页 → {reports, abnormal}。 */
-export async function teacherInternshipReal(mock) {
+/* 教师真实空队列必须原样返回空数组：不得再用 mock 假学生/假周报/假审批/假统计回填
+ * （2026-08-04 复审确认）。教师看到"当前没有待办"与"有学生待批阅"是相反的正式业务事实，
+ * 混入 mock 会让教师基于假学生做出真实审批决策判断。以下 5 个函数不再接收 mock 参数。 */
+export async function teacherInternshipReal() {
   const d = await realRequest('/mobile/teacher/internship')
   const reports = (d.weeklyReports || []).map((r) => ({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
@@ -1009,8 +1052,7 @@ export async function teacherInternshipReal(mock) {
     time: e.exceptionDate || e.date || '', type: e.exceptionType || e.type || '异常',
     distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE',
     statusLabel: e.statusLabel || '' }))
-  return { reports: reports.length ? reports : (mock.reports || []),
-    abnormal: abnormal.length ? abnormal : (mock.abnormal || []), _real: true }
+  return { reports, abnormal, _real: true }
 }
 
 /** 教师·单份周报正文详情（范围安全）。
@@ -1028,7 +1070,7 @@ export async function teacherWeeklyDetail(reportId) {
 }
 
 /** 教师·毕设指导页 → {list, reviewQueue}。reviewQueue=待批阅开题真实队列（含 proposalId，供单页队列批阅）。 */
-export async function teacherGraduationReal(mock) {
+export async function teacherGraduationReal() {
   const d = await realRequest('/mobile/teacher/graduation')
   const list = (d.students || []).map((s) => ({
     id: String(s.id || ''), name: s.name || s.studentName || '', className: s.className || '',
@@ -1048,15 +1090,19 @@ export async function teacherGraduationReal(mock) {
       studentName: f.studentName || f.name || '', className: f.className || '',
       topicTitle: f.topicTitle || '', submitAt: f.submitAt || '', type: f.type || '',
       version: f.version || '', plagiarismRate: f.plagiarismRate || '—' }))
-  return { list: list.length ? list : (mock.list || []),
-    reviewQueue, finalQueue, _real: !!d.hasData || list.length > 0 }
+  return { list, reviewQueue, finalQueue, _real: true }
 }
 
 /** 教师·移动端快速新增指导记录（仅本人指导学生，越权由后端 403 拦截）。 */
 export const teacherGraduationGuidanceCreate = (gdStudentId, body) => gdTeacherGuidanceCreate(gdStudentId, body)
 
 /** 教师·就业跟进页 → {stats, tabs, list, jobs}。 */
-export async function teacherEmploymentReal(mock) {
+const EMPLOYMENT_TAB_DEFS = [
+  { key: 'unemployed', label: '未就业' }, { key: 'following', label: '跟进中' },
+  { key: 'verify', label: '待核验' }, { key: 'done', label: '已落实' }
+]
+
+export async function teacherEmploymentReal() {
   const d = await realRequest('/mobile/teacher/employment')
   const s = d.stats || {}
   const stats = { total: s.total || 0, employed: s.employed || 0, rate: s.rate || s.employmentRate || 0,
@@ -1070,25 +1116,29 @@ export async function teacherEmploymentReal(mock) {
   const jobs = (d.jobPool || []).map((j) => ({
     id: String(j.id || ''), company: j.companyName || j.company || '', post: j.jobTitle || j.post || '',
     salary: j.salaryRange || '—', city: j.city || '—', headcount: j.headcount || 1 }))
-  return { stats: (d.stats ? stats : (mock.stats || stats)),
-    tabs: mock.tabs || d.tabs || [], list: list.length ? list : (mock.list || []),
-    jobs: jobs.length ? jobs : (mock.jobs || []), _real: true }
+  // tabs 徽标必须是真实分组计数，不得再用 mock 固定数字（37/12/8）冒充待跟进人数
+  const tabs = EMPLOYMENT_TAB_DEFS.map((t) => ({ ...t, badge: list.filter((x) => x.group === t.key).length }))
+  return { stats, tabs, list, jobs, _real: true }
 }
 
 /** 教师消息（范围/系统）→ {tabs, groups}。 */
-export async function teacherMessagesReal(mock) {
+export async function teacherMessagesReal() {
   const d = await realRequest('/mobile/teacher/messages')
-  if (!d || !d.groups) return mock
-  const groups = d.groups
-  const tabs = (d.tabs && d.tabs.length) ? d.tabs : (mock.tabs || [])
+  const groups = (d && d.groups) || { system: [], dynamic: [], risk: [] }
+  const tabs = (d && d.tabs) || []
   tabs.forEach((t) => { t.badge = (groups[t.key] || []).filter((x) => !x.read).length })
   return { tabs, groups, realApi: true }
 }
 
+/** 教师·标记单条系统通知已读（仅 kind=UNIFIED_MESSAGE 的真实消息可持久化；
+ * 学生动态/风险预警是由待处理业务记录派生的只读状态，不接受客户端伪造已读）。 */
+export const teacherMessageMarkRead = (id) =>
+  realRequest(`/mobile/teacher/messages/${id}/read`, { method: 'POST' })
+
 /** 教师审批列表（mobile 范围）→ 页面数组。 */
-export async function teacherApprovalsReal(mock) {
+export async function teacherApprovalsReal() {
   const d = await realRequest('/mobile/teacher/approvals')
-  const list = (d.approvals || []).map((t) => ({
+  return (d.approvals || []).map((t) => ({
     id: String(t.taskId || t.id || ''), title: t.title || '审批任务',
     type: t.sourceModule || t.sourceBizType || '审批', student: t.applicantName || '—',
     className: '', submitTime: (t.submittedAt || '').replace('T', ' ').slice(0, 16),
@@ -1097,7 +1147,6 @@ export async function teacherApprovalsReal(mock) {
       { label: '当前节点', value: t.nodeName || t.nodeCode || '—' }],
     flow: [{ node: '学生提交', time: '', done: true },
       { node: t.nodeName || '审核', time: '待处理', done: false, current: true }] }))
-  return list.length ? list : (mock || [])
 }
 
 // ── 13A 学工中心（P7 多端收口，学生自视图 + 自选床位；教师待办卡）──

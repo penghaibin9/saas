@@ -77,12 +77,16 @@ test('high-frequency message, todo and risk pages use final database pagination 
   ]) assert.match(installer, new RegExp(endpoint.replaceAll('/', '\\/')))
 })
 
-test('mark-all-read collapses synchronous row updates into one batch request', () => {
+test('mark-all-read collapses synchronous row updates into batched requests capped at the backend limit', () => {
   const installer = read('src/services/mobilePerformanceInstaller.js')
   assert.match(installer, /let queuedIds = new Set\(\)/)
   assert.match(installer, /Promise\.resolve\(\)\.then\(flushReadBatch\)/)
   assert.match(installer, /\/mobile\/performance\/student\/messages\/read-batch/)
-  assert.match(installer, /data: \{ messageIds \}/)
+  assert.match(installer, /data: \{ messageIds: chunk \}/)
+  // 后端 read_messages_batch() 单批硬上限 100 条，前端排队去重后必须按同样上限切片，
+  // 否则未读超过 100 条时一次性发送会被后端整批拒绝（2026-08-04 复审修复）。
+  assert.match(installer, /READ_BATCH_LIMIT = 100/)
+  assert.match(installer, /messageIds\.slice\(i, i \+ READ_BATCH_LIMIT\)/)
 })
 
 test('release build fails at the proactive 1.80 MiB split threshold', () => {

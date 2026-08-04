@@ -83,10 +83,22 @@ export default {
     },
     open(m) {
       m.read = true
+      this._syncRead(m)
       stashDetail(m)
       go('/pages/common/message-detail/index')
     },
-    markAllRead() { this.list.forEach((m) => { m.read = true }) },
+    markAllRead() { this.list.forEach((m) => { if (!m.read) { m.read = true; this._syncRead(m) } }) },
+    // 「学生动态/风险预警」的已读态由后端派生自真实待处理业务记录（永远是 false，直到
+    // 该学生的周报/开题/打卡异常/学业预警被实际处理），本地伪装已读毫无意义也不能持久化；
+    // 只有「系统通知」(kind=UNIFIED_MESSAGE) 是真实可持久化的已读状态。
+    _syncRead(m) {
+      if (m._synced || m.kind !== 'UNIFIED_MESSAGE') return
+      const raw = String(m.messageId || m.id || '')
+      if (!/^\d+$/.test(raw)) return
+      m._synced = true
+      // 失败时连同本地乐观的 read=true 一并回滚，避免"已读"勾选留在界面上却从未真正持久化。
+      teacherApi.markMessageRead(raw).catch(() => { m._synced = false; m.read = false })
+    },
     jump(tab) { go(tab === 'risk' ? '/pages/teacher/risk-students/index' : '/pages/teacher/todos/index') },
     openSearch() {
       stashSearchPool(Object.values((this.data && this.data.groups) || {}).flat())

@@ -2161,6 +2161,36 @@ def messages(user: dict) -> dict:
     return {"hasData": unread > 0 or any(groups.values()), "unreadCount": unread, "tabs": tabs, "groups": groups}
 
 
+def message_mark_read(user: dict, message_id) -> dict:
+    """标记教师本人接收的系统通知已读（仅 UnifiedMessage，"学生动态/风险预警"由待处理
+    业务记录派生只读状态，不在此接口范围）。严格校验 receiver 归属：非本人 404。"""
+    u = _require_teacher(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持")
+    try:
+        mid = int(str(message_id).replace("msg-", ""))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "消息 id 无效")
+    uid = _teacher_numeric_id(u)
+    if not uid:
+        raise AppException("DATA_NOT_FOUND", "消息不存在")
+    with _session() as db:
+        from app.models import UnifiedMessage
+        m = db.get(UnifiedMessage, mid)
+        if m is None or m.is_deleted or m.tenant_id != _tid():
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        owned = (m.receiver_user_id == uid) or (
+            m.receiver_user_id is None and m.receiver_id == uid)
+        if not owned:
+            raise AppException("DATA_NOT_FOUND", "消息不存在")
+        if (m.status or "").upper() == "UNREAD":
+            m.status = "READ"
+            m.read_at = datetime.utcnow()
+            m.version = int(m.version or 0) + 1
+            db.commit()
+        return {"messageId": str(m.id), "status": "READ"}
+
+
 # ══════════ 教师审批列表（复用审批服务，mobile 轻量） ══════════
 
 def _filter_approvals_by_scope(scope: dict, rows: list) -> list:

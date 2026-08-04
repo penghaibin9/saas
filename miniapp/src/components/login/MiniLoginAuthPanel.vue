@@ -34,7 +34,10 @@
       <input v-if="tenantOpen" v-model="account.tenantCode" class="field field--tenant" placeholder="请输入学校编码" placeholder-class="field__placeholder" />
 
       <button class="account-button" :disabled="accLoading" @click="onAccountLogin">{{ accLoading ? '登录中…' : (isTeacher ? '进入教师工作台' : '进入学生首页') }}</button>
-      <view class="agreement" @click="agree = !agree"><view class="agreement__box" :class="{ on: agree }"><text v-if="agree">✓</text></view><text>我已阅读并同意学校提供的用户协议与隐私政策</text></view>
+      <view class="agreement">
+        <view class="agreement__box" :class="{ on: agree }" @click="agree = !agree"><text v-if="agree">✓</text></view>
+        <text @click="agree = !agree">我已阅读并同意学校提供的</text><text class="agreement__link" @click.stop="openDoc('terms')">《用户协议》</text><text @click="agree = !agree">与</text><text class="agreement__link" @click.stop="openDoc('privacy')">《隐私政策》</text>
+      </view>
     </view>
 
     <view v-if="orientationBatch.open" class="orientation-card" @click="focusAccount">
@@ -67,10 +70,11 @@
 
 <script>
 import { tenantBrandConfig, ROLE } from '@/config'
+import { ENV } from '@/config/env'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
 import { clearTokens, realRequest, setRefreshToken, setToken } from '@/services/request'
-import { relaunch, toast } from '@/utils/nav'
+import { go, relaunch, toast } from '@/utils/nav'
 
 const ROLE_MAP = {
   STUDENT: ROLE.STUDENT,
@@ -133,11 +137,19 @@ export default {
     },
     completeLogin(data) {
       if (!this.assertEntryRole(data)) return
+      const roleCode = data.currentRole?.roleCode || ''
+      const roleKey = ROLE_MAP[roleCode]
+      // 未识别的角色编码禁止默认落到辅导员：会让该账号看到与自己身份不符的菜单和数据范围，
+      // 并在几乎每个业务动作上收到 403，还误导为"系统故障"。失败关闭，提示联系管理员配置。
+      if (!roleKey) {
+        clearTokens()
+        useSessionStore().logout()
+        toast('账号角色未配置或暂不支持，请联系学校管理员')
+        return
+      }
       setToken(data.accessToken)
       setRefreshToken(data.refreshToken || '')
       const session = useSessionStore()
-      const roleCode = data.currentRole?.roleCode || ''
-      const roleKey = ROLE_MAP[roleCode] || ROLE.COUNSELOR
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
       const goHome = () => relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index')
@@ -222,7 +234,14 @@ export default {
       this.bindForm = { tenantCode: '', loginName: '', password: '' }
     },
     focusAccount() { toast('请使用学校分配的学号和密码登录办理迎新事项') },
-    switchEntry() { relaunch('/pages/login/index') }
+    switchEntry() { relaunch('/pages/login/index') },
+    openDoc(kind) {
+      const isTerms = kind === 'terms'
+      const url = isTerms ? ENV.termsUrl : ENV.privacyUrl
+      const title = isTerms ? '用户协议' : '隐私政策'
+      if (!url) { toast('学校暂未配置该文档链接，请联系管理员'); return }
+      go(`/pages/common/legal-doc/index?title=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`)
+    }
   }
 }
 </script>
@@ -236,7 +255,7 @@ export default {
 button::after { border: none; }.wx-button,.account-button { display: flex; align-items: center; justify-content: center; height: 47px; margin: 18px 0 0; border: 0; border-radius: 11px; color: #fff; background: #07c160; font-size: 14px; font-weight: 600; }.account-button { background: linear-gradient(135deg, #15948b, #0f766e); }.is-teacher .account-button { background: linear-gradient(135deg, #2f70ea, #1f56c9); }.wx-button[disabled],.account-button[disabled] { opacity: .62; }
 .divider { display: flex; align-items: center; gap: 11px; margin: 18px 0; color: #9aa7b8; font-size: 10px; }.divider view { flex: 1; height: 1px; background: #e7ebf0; }.section-title { display: block; margin-bottom: 10px; color: #40536d; font-size: 12px; font-weight: 600; }.field { box-sizing: border-box; width: 100%; height: 46px; margin-top: 10px; padding: 0 13px; border: 1px solid #dce4ed; border-radius: 10px; color: #10233f; background: #f9fbfd; font-size: 13px; }.field__placeholder { color: #9aa7b8; }.field--tenant { margin-top: 8px; }
 .tenant-box { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; color: #536780; font-size: 11px; }.tenant-box view { display: flex; flex-direction: column; }.tenant-box__title { color: #40536d; font-size: 12px; font-weight: 600; }.tenant-box__hint { margin-top: 2px; color: #9aa7b8; font-size: 9px; }
-.agreement { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box.on { border-color: #15948b; background: #15948b; }.is-teacher .agreement__box.on { border-color: #2563eb; background: #2563eb; }
+.agreement { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 0; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box.on { border-color: #15948b; background: #15948b; }.is-teacher .agreement__box.on { border-color: #2563eb; background: #2563eb; }.agreement__link { color: #15948b; }.is-teacher .agreement__link { color: #2563eb; }
 .orientation-card,.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }.orientation-card__badge { color: #0f766e; font-size: 10px; font-weight: 600; }.orientation-card__title { margin-top: 5px; font-size: 14px; font-weight: 700; }.orientation-card__desc { margin-top: 4px; color: #536780; font-size: 10px; }
 .feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row > view { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.is-teacher .feature-row__mark { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }
 .role-note { border-color: #e7ecf2; background: #fff; }.role-note text:first-child { font-size: 12px; font-weight: 600; }.role-note text:last-child { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.switch-entry { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }

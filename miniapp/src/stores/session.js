@@ -6,7 +6,7 @@ import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
-import { clearTokens, shouldTryReal } from '@/services/request'
+import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
@@ -190,5 +190,10 @@ export const useSessionStore = defineStore('session', {
     }
   }
 })
+
+// 401 刷新失败时 request.js 需要做完整登出（清业务上下文 + gx_session_v1 + token），
+// 但 request.js 不能反向 import 本文件（本文件已 import request.js，会形成模块循环）。
+// 改为在此注册回调，调用时机在运行时（登录后才会触发 401），届时 pinia 必已激活。
+registerForceLogoutHandler(() => useSessionStore().logout())
 
 export default useSessionStore

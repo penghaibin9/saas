@@ -54,11 +54,11 @@ export const studentApi = {
       () => mockRequest(M.studentHome)),
   getProfile: () =>
     realFirstStrict('student.profile',
-      () => real.enrichProfileReal(M.studentProfile),
+      () => real.enrichProfileReal(),
       () => mockRequest(M.studentProfile)),
   getOrientation: () =>
     realFirstStrict('student.orientation',
-      () => real.enrichOrientation(M.studentOrientation),
+      () => real.enrichOrientation(),
       () => mockRequest(M.studentOrientation)),
   getOrientationBatchStatus: () => real.orientationBatchStatus(),
   submitOrientationCollect: (body) => real.orientationCollectSubmit(body),
@@ -69,7 +69,7 @@ export const studentApi = {
       () => mockRequest({ categories: M.serviceCategories, items: M.serviceItems })),
   getAcademic: () =>
     realFirstStrict('student.academic',
-      () => real.enrichAcademic(M.studentAcademic),
+      () => real.enrichAcademic(),
       () => mockRequest(M.studentAcademic)),
   getInternship: (batchId) => internship.studentInternshipDashboard(batchId).then(mapInternshipDashboard),
   getInternshipCompliance: (operation, batchId) => internship.studentInternshipCompliance(operation, batchId),
@@ -127,7 +127,7 @@ export const studentApi = {
       () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })),
   getMessages: () =>
     realFirstStrict('student.messages',
-      () => real.selfMessages({ tabs: M.studentMessageTabs, groups: M.studentMessages }),
+      () => real.selfMessages(),
       () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })),
   submitServiceApply: (body) => real.submitServiceApply(body),
   submitWeeklyReport: (body) => real.submitWeeklyReport(body),

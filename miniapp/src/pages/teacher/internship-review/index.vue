@@ -218,7 +218,8 @@ export default {
         this.tabs[0].badge = d.reports.filter((r) => r.status === 'PENDING_REVIEW').length
         this.tabs[2].badge = d.abnormal.filter((a) => a.status === 'PENDING_HANDLE').length
         this.state = 'ready'
-        this.data.reports.slice(0, 12).forEach((r) => this.loadBody(r))
+        // 正文按需加载：模板已提供"展开查看完整正文"按钮，不再进页自动预取前 12 条正文
+        // （此前每次进页最多打 12 个额外请求，是对既有性能优化的局部回归）。
       }).catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
     },
