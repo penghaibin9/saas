@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from affairs_contract_test_support import ensure_owner_scope, ensure_workflow_assignees, post_versioned
+from affairs_contract_test_support import ensure_workflow_assignees, post_versioned
 
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
@@ -20,6 +20,7 @@ def _hdr(client, login_name):
 def test_credit_appeal_approve_creates_credit(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
+    ensure_workflow_assignees(sid, nodes=("STUDENT_AFFAIRS_REVIEW",))
     # 理由过短
     r0 = client.post(f"{BASE}/second-class/appeals", headers=hdr,
                      json={"studentId": sid, "reason": "短", "claimValue": 2})
@@ -45,6 +46,7 @@ def test_credit_appeal_approve_creates_credit(client, db_mode):
 def test_credit_appeal_reject(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
+    ensure_workflow_assignees(sid, nodes=("STUDENT_AFFAIRS_REVIEW",))
     aid = client.post(f"{BASE}/second-class/appeals", headers=hdr, json={
         "studentId": sid, "claimValue": 1, "reason": "主张记错学时申请核减"}).json()["data"]["appealId"]
     # 驳回意见过短
