@@ -219,6 +219,15 @@ export const platformControlApi = {
   createPostmortem: (problemId, body) => real('postmortem-create', `/platform/problems/${problemId}/postmortems`, { method: 'POST', body }),
   publishPostmortem: (postmortemId, body) => real('postmortem-publish', `/platform/postmortems/${postmortemId}/publish`, { method: 'POST', body }),
 
+  /* PLAT-13 租户用量、容量、成本与公平使用（新页面，无演示兜底） */
+  getFairUseOverview: () => real('fair-use-overview', '/platform/fair-use/overview', {}),
+  getTenantUsageSnapshots: (tenantId, days) => real('tenant-usage-snapshots', `/platform/tenants/${tenantId}/usage-snapshots`, { params: { days } }),
+  captureTenantUsageSnapshot: (tenantId) => real('tenant-usage-capture', `/platform/tenants/${tenantId}/usage-snapshots/capture`, { method: 'POST', body: {} }),
+  getTenantFairUseLimits: (tenantId) => real('tenant-fair-use-limits', `/platform/tenants/${tenantId}/fair-use-limits`, {}),
+  setTenantFairUseLimit: (tenantId, body) => real('tenant-fair-use-limit-set', `/platform/tenants/${tenantId}/fair-use-limits`, { method: 'PUT', body }),
+  evaluateTenantFairUse: (tenantId) => real('tenant-fair-use-evaluate', `/platform/tenants/${tenantId}/fair-use/evaluate`, { method: 'POST', body: {} }),
+  listFairUseViolations: (params = {}) => real('fair-use-violations', '/platform/fair-use/violations', { params }),
+
   /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
   getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),
   listChanges: (params = {}) => real('changes-list', '/platform/changes', { params }),

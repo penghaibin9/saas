@@ -239,6 +239,12 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '问题管理、已知错误与事故复盘', requiresAuth: true, permissionKey: 'platform.incident.view' }
     },
     {
+      // PLAT-13：租户用量、容量、成本与公平使用
+      path: 'fair-use', name: 'platform-fair-use',
+      component: () => import('@/modules/platform/views/control/PlatformFairUseView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '租户用量、容量、成本与公平使用', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       // PLAT-11：卡片唯一正式路由是 /admin/platform/changes，与上面的 releases 占位页
       // 是不同路由，不合并；变更评估/审批/排期/灰度/回滚在这里，releases 留给其它范围。
       path: 'changes', name: 'platform-changes',

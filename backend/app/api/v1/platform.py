@@ -1241,3 +1241,67 @@ def postmortems_publish(postmortem_id: int, body: dict = Body(...),
                                   expected_version=_expected_version(body, operation="发布复盘"))
     _audit("PLATFORM_PROBLEM_POSTMORTEM_PUBLISH", str(postmortem_id), out)
     return success(out, message="复盘已发布")
+
+
+# ── PLAT-13 租户用量、容量、成本与公平使用 ──────────────────────────────────
+
+@router.get("/fair-use/overview", summary="用量与公平使用治理首屏结论")
+def fair_use_overview(user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    from app.services import tenant_metering_service as metering
+    return success({
+        "usage": metering.governance_overview(),
+        "fairUse": fu.governance_overview(),
+    })
+
+
+@router.get("/tenants/{tenant_id}/usage-snapshots", summary="单校用量趋势")
+def tenant_usage_snapshots(tenant_id: int, days: int = Query(default=30, ge=1, le=180),
+                           user=Depends(require_platform_super_admin)):
+    from app.services import tenant_metering_service as metering
+    items = metering.list_snapshots(tenant_id, days=days)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/tenants/{tenant_id}/usage-snapshots/capture", summary="立即为该校生成今日用量快照")
+def tenant_usage_capture(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import tenant_metering_service as metering
+    out = metering.capture_daily_snapshot(tenant_id)
+    return success(out, message="用量快照已生成")
+
+
+@router.get("/tenants/{tenant_id}/fair-use-limits", summary="单校公平使用配额")
+def tenant_fair_use_limits(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    return success({
+        code: {"resourceCode": code, "effectiveLimit": fu.get_effective_limit(tenant_id, code)}
+        for code in fu.RESOURCE_CODES
+    })
+
+
+@router.put("/tenants/{tenant_id}/fair-use-limits", summary="设置单校公平使用配额（覆盖平台默认值）")
+def tenant_fair_use_limit_set(tenant_id: int, body: dict = Body(...),
+                              user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    out = fu.upsert_limit(tenant_id, resource_code=body.get("resourceCode") or "",
+                          daily_limit=int(body.get("dailyLimit") or 0))
+    _audit("PLATFORM_FAIR_USE_LIMIT_SET", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out, message="配额已更新")
+
+
+@router.post("/tenants/{tenant_id}/fair-use/evaluate", summary="用今日真实用量评估是否超出公平使用配额")
+def tenant_fair_use_evaluate(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    out = fu.evaluate_tenant(tenant_id)
+    if out["violations"]:
+        _audit("PLATFORM_FAIR_USE_VIOLATION_DETECTED", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out)
+
+
+@router.get("/fair-use/violations", summary="近期公平使用违规记录")
+def fair_use_violations(tenantId: Optional[str] = Query(default=None),
+                        days: int = Query(default=7, ge=1, le=90),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    items = fu.list_violations(int(tenantId) if tenantId else None, days=days)
+    return success({"items": items, "total": len(items)})

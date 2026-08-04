@@ -17,7 +17,8 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
       { key: 'plt-customer-success', label: '客户健康、工单、培训与续费', path: '/admin/platform/customer-success', permissionKey: 'platform.control.view', view: 'customer-success', actions: [action('ticket:manage', '处理工单'), action('training:manage', '登记培训'), action('renewal:manage', '跟进续费')] },
       { key: 'plt-lifecycle-board', label: '租户生命周期看板', path: '/admin/platform/tenant-lifecycle', permissionKey: 'platform.tenant.lifecycle.view', view: 'capability', actions: [action('tenant:lifecycle:view', '查看生命周期')] },
       { key: 'plt-incidents', label: '告警与事件中心', path: '/admin/platform/incidents', permissionKey: 'platform.incident.view', view: 'incidents', actions: [action('incident:acknowledge', '确认告警'), action('incident:resolve', '关闭事件', 'HIGH'), action('incident:publish', '发布通知', 'HIGH')] },
-      { key: 'plt-problems', label: '问题管理、已知错误与事故复盘', path: '/admin/platform/problems', permissionKey: 'platform.incident.view', view: 'problems', actions: [action('problem:manage', '流转问题/发布已知错误', 'HIGH'), action('postmortem:publish', '发布复盘', 'HIGH')] }
+      { key: 'plt-problems', label: '问题管理、已知错误与事故复盘', path: '/admin/platform/problems', permissionKey: 'platform.incident.view', view: 'problems', actions: [action('problem:manage', '流转问题/发布已知错误', 'HIGH'), action('postmortem:publish', '发布复盘', 'HIGH')] },
+      { key: 'plt-fair-use', label: '租户用量、容量、成本与公平使用', path: '/admin/platform/fair-use', permissionKey: 'platform.control.view', view: 'fair-use', actions: [action('fair-use:limit:manage', '设置配额', 'HIGH')] }
     ]
   },
   {
