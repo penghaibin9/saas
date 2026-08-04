@@ -173,6 +173,19 @@ export const platformControlApi = {
   /* PLAT-14 数据治理、集成目录与合规证据（新页面，无演示兜底） */
   getPlatformGovernanceOverview: () => real('governance-overview', '/platform/governance/overview', {}),
 
+  /* PLAT-05 客户健康、工单、培训与续费（新页面，无演示兜底） */
+  getCustomerSuccessOverview: () => real('customer-success-overview', '/platform/customer-success/overview', {}),
+  getTenantHealthScore: (tenantId) => real('tenant-health-score', `/platform/tenants/${tenantId}/health-score`, {}),
+  listSupportTickets: (params = {}) => real('support-tickets-list', '/platform/support-tickets', { params }),
+  createSupportTicket: (body) => real('support-ticket-create', '/platform/support-tickets', { method: 'POST', body }),
+  transitionSupportTicket: (ticketId, body) => real('support-ticket-transition', `/platform/support-tickets/${ticketId}/transition`, { method: 'POST', body }),
+  listTrainings: (params = {}) => real('trainings-list', '/platform/trainings', { params }),
+  createTraining: (body) => real('training-create', '/platform/trainings', { method: 'POST', body }),
+  completeTraining: (trainingId, body) => real('training-complete', `/platform/trainings/${trainingId}/complete`, { method: 'POST', body }),
+  listRenewalTasks: (params = {}) => real('renewal-tasks-list', '/platform/renewal-tasks', { params }),
+  createRenewalTask: (body) => real('renewal-task-create', '/platform/renewal-tasks', { method: 'POST', body }),
+  transitionRenewalTask: (taskId, body) => real('renewal-task-transition', `/platform/renewal-tasks/${taskId}/transition`, { method: 'POST', body }),
+
   /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
   getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
   listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),

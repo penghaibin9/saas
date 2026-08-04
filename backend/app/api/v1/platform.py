@@ -1021,3 +1021,129 @@ def maintenance_windows_create(body: dict = Body(...),
     out = chg.upsert_maintenance_window(user, body)
     _audit("PLATFORM_MAINTENANCE_WINDOW_CREATE", out["id"], out)
     return success(out, message="冻结期已登记")
+
+
+# ── PLAT-05 客户健康、工单、培训与续费 ──────────────────────────────────────
+# 注：细粒度 capability 未接入（同 PLAT-08 先例），沿用 require_platform_super_admin。
+
+@router.get("/customer-success/overview", summary="客户健康、工单、培训与续费首屏结论")
+def customer_success_overview(user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    return success(cs.governance_overview())
+
+
+@router.get("/tenants/{tenant_id}/health-score", summary="单校健康分（实时判定，不落表）")
+def tenant_health_score(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    return success(cs.health_score(tenant_id))
+
+
+@router.get("/support-tickets", summary="客户成功工单列表")
+def support_tickets_list(tenantId: Optional[str] = Query(default=None),
+                         status: Optional[str] = Query(default=None),
+                         user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_tickets(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/support-tickets", summary="创建客户成功工单")
+def support_tickets_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    if not tenant_id:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+    out = cs.create_ticket(tenant_id=int(tenant_id), title=body.get("title") or "",
+                           description=body.get("description") or "",
+                           severity=body.get("severity") or "P2",
+                           reporter_name=body.get("reporterName") or "")
+    _audit("PLATFORM_SUPPORT_TICKET_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="工单已创建")
+
+
+@router.post("/support-tickets/{ticket_id}/transition", summary="流转工单状态")
+def support_tickets_transition(ticket_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.transition_ticket(ticket_id, status=body.get("status") or "",
+                               resolution_note=body.get("resolutionNote") or "",
+                               expected_version=_expected_version(body, operation="流转工单"))
+    _audit("PLATFORM_SUPPORT_TICKET_TRANSITION", str(ticket_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="工单状态已更新")
+
+
+@router.get("/trainings", summary="客户培训记录列表")
+def trainings_list(tenantId: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_trainings(tenant_id=int(tenantId) if tenantId else None)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/trainings", summary="登记客户培训计划")
+def trainings_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from datetime import datetime as _dt
+
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    scheduled_at = body.get("scheduledAt")
+    if not tenant_id or not scheduled_at:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 scheduledAt")
+    try:
+        scheduled_dt = _dt.fromisoformat(str(scheduled_at))
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "scheduledAt 必须是 ISO8601 时间") from None
+    out = cs.create_training(tenant_id=int(tenant_id), topic=body.get("topic") or "",
+                             scheduled_at=scheduled_dt, trainer_name=body.get("trainerName") or "")
+    _audit("PLATFORM_TRAINING_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="培训计划已登记")
+
+
+@router.post("/trainings/{training_id}/complete", summary="标记培训已完成")
+def trainings_complete(training_id: int, body: dict = Body(...),
+                       user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.complete_training(training_id, attendee_count=int(body.get("attendeeCount") or 0),
+                               note=body.get("note") or "",
+                               expected_version=_expected_version(body, operation="标记培训完成"))
+    _audit("PLATFORM_TRAINING_COMPLETE", str(training_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="培训已标记完成")
+
+
+@router.get("/renewal-tasks", summary="续费跟进任务列表")
+def renewal_tasks_list(tenantId: Optional[str] = Query(default=None),
+                       status: Optional[str] = Query(default=None),
+                       user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_renewal_tasks(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/renewal-tasks", summary="创建续费跟进任务")
+def renewal_tasks_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from datetime import datetime as _dt
+
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    due_at = body.get("dueAt")
+    if not tenant_id or not due_at:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 dueAt")
+    try:
+        due_dt = _dt.fromisoformat(str(due_at))
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "dueAt 必须是 ISO8601 时间") from None
+    out = cs.create_renewal_task(tenant_id=int(tenant_id), due_at=due_dt,
+                                 owner_name=body.get("ownerName") or "", note=body.get("note") or "")
+    _audit("PLATFORM_RENEWAL_TASK_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="续费任务已创建")
+
+
+@router.post("/renewal-tasks/{task_id}/transition", summary="流转续费任务状态")
+def renewal_tasks_transition(task_id: int, body: dict = Body(...),
+                             user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.update_renewal_task(task_id, status=body.get("status") or "",
+                                 note=body.get("note") or "",
+                                 expected_version=_expected_version(body, operation="流转续费任务"))
+    _audit("PLATFORM_RENEWAL_TASK_TRANSITION", str(task_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="续费任务状态已更新")

@@ -75,6 +75,13 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '数据治理、集成目录与合规证据', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
+      // PLAT-05：客户健康、工单、培训与续费
+      path: 'customer-success',
+      name: 'platform-customer-success',
+      component: () => import('@/modules/platform/views/control/PlatformCustomerSuccessView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '客户健康、工单、培训与续费', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),
