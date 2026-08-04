@@ -189,9 +189,9 @@ def _chronological_before_grade_insert(_mapper, connection, target) -> None:
         return
 
     term_ids = {int(row["effective_from_term_id"]) for row in policies if row["effective_from_term_id"]}
+    # 必须读取租户全部正式学期，成绩可能落在两个策略边界之间的普通学期。
     term_rows = connection.execute(select(term_table).where(
         term_table.c.tenant_id == tenant_id,
-        term_table.c.id.in_(sorted(term_ids) or [-1]),
         term_table.c.is_deleted.is_(False),
     )).mappings().all()
     terms = {int(row["id"]): row for row in term_rows}
