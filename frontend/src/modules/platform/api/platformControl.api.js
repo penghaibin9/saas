@@ -167,6 +167,25 @@ export const platformControlApi = {
   getServiceImpact: (serviceCode, releaseId) =>
     real('service-impact', '/platform/service-impact', { params: { serviceCode, releaseId: releaseId || undefined } }),
 
+  /* PLAT-06 公共底座运行中心（新页面，无演示兜底） */
+  getFoundationOverview: () => real('foundation-overview', '/platform/foundations/overview', {}),
+
+  /* PLAT-14 数据治理、集成目录与合规证据（新页面，无演示兜底） */
+  getPlatformGovernanceOverview: () => real('governance-overview', '/platform/governance/overview', {}),
+
+  /* PLAT-05 客户健康、工单、培训与续费（新页面，无演示兜底） */
+  getCustomerSuccessOverview: () => real('customer-success-overview', '/platform/customer-success/overview', {}),
+  getTenantHealthScore: (tenantId) => real('tenant-health-score', `/platform/tenants/${tenantId}/health-score`, {}),
+  listSupportTickets: (params = {}) => real('support-tickets-list', '/platform/support-tickets', { params }),
+  createSupportTicket: (body) => real('support-ticket-create', '/platform/support-tickets', { method: 'POST', body }),
+  transitionSupportTicket: (ticketId, body) => real('support-ticket-transition', `/platform/support-tickets/${ticketId}/transition`, { method: 'POST', body }),
+  listTrainings: (params = {}) => real('trainings-list', '/platform/trainings', { params }),
+  createTraining: (body) => real('training-create', '/platform/trainings', { method: 'POST', body }),
+  completeTraining: (trainingId, body) => real('training-complete', `/platform/trainings/${trainingId}/complete`, { method: 'POST', body }),
+  listRenewalTasks: (params = {}) => real('renewal-tasks-list', '/platform/renewal-tasks', { params }),
+  createRenewalTask: (body) => real('renewal-task-create', '/platform/renewal-tasks', { method: 'POST', body }),
+  transitionRenewalTask: (taskId, body) => real('renewal-task-transition', `/platform/renewal-tasks/${taskId}/transition`, { method: 'POST', body }),
+
   /* PLAT-04 租户自动开通、初始化与上线验收（新页面，无演示兜底） */
   getProvisioningOverview: () => real('provisioning-overview', '/platform/provisioning-jobs/overview', {}),
   listProvisioningJobs: () => real('provisioning-jobs-list', '/platform/provisioning-jobs', {}),
@@ -188,6 +207,26 @@ export const platformControlApi = {
   addIncidentUpdate: (incidentId, body) => real('incident-update-add', `/platform/incidents/${incidentId}/updates`, { method: 'POST', body }),
   publishIncidentUpdate: (incidentId, updateId) => real('incident-update-publish', `/platform/incidents/${incidentId}/updates/${updateId}/publish`, { method: 'POST', body: {} }),
   requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} }),
+
+  /* PLAT-10 问题管理、已知错误与事故复盘（新页面，无演示兜底） */
+  getProblemsOverview: () => real('problems-overview', '/platform/problems/overview', {}),
+  listProblems: (params = {}) => real('problems-list', '/platform/problems', { params }),
+  getProblem: (problemId) => real('problem-get', `/platform/problems/${problemId}`, {}),
+  createProblem: (body) => real('problem-create', '/platform/problems', { method: 'POST', body }),
+  updateProblemRootCause: (problemId, body) => real('problem-root-cause-update', `/platform/problems/${problemId}/root-cause`, { method: 'PUT', body }),
+  transitionProblem: (problemId, body) => real('problem-transition', `/platform/problems/${problemId}/status`, { method: 'POST', body }),
+  linkProblemPermanentFix: (problemId, body) => real('problem-permanent-fix-link', `/platform/problems/${problemId}/permanent-fix`, { method: 'POST', body }),
+  createPostmortem: (problemId, body) => real('postmortem-create', `/platform/problems/${problemId}/postmortems`, { method: 'POST', body }),
+  publishPostmortem: (postmortemId, body) => real('postmortem-publish', `/platform/postmortems/${postmortemId}/publish`, { method: 'POST', body }),
+
+  /* PLAT-13 租户用量、容量、成本与公平使用（新页面，无演示兜底） */
+  getFairUseOverview: () => real('fair-use-overview', '/platform/fair-use/overview', {}),
+  getTenantUsageSnapshots: (tenantId, days) => real('tenant-usage-snapshots', `/platform/tenants/${tenantId}/usage-snapshots`, { params: { days } }),
+  captureTenantUsageSnapshot: (tenantId) => real('tenant-usage-capture', `/platform/tenants/${tenantId}/usage-snapshots/capture`, { method: 'POST', body: {} }),
+  getTenantFairUseLimits: (tenantId) => real('tenant-fair-use-limits', `/platform/tenants/${tenantId}/fair-use-limits`, {}),
+  setTenantFairUseLimit: (tenantId, body) => real('tenant-fair-use-limit-set', `/platform/tenants/${tenantId}/fair-use-limits`, { method: 'PUT', body }),
+  evaluateTenantFairUse: (tenantId) => real('tenant-fair-use-evaluate', `/platform/tenants/${tenantId}/fair-use/evaluate`, { method: 'POST', body: {} }),
+  listFairUseViolations: (params = {}) => real('fair-use-violations', '/platform/fair-use/violations', { params }),
 
   /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
   getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),

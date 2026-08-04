@@ -9,6 +9,15 @@
           <div v-if="s.sub" class="pco__stat-sub">{{ s.sub }}</div>
         </AppCard>
       </div>
+      <AppCard v-if="ov.operationalRisks && ov.operationalRisks.length" class="pco__risks">
+        <AppSectionHeader title="运行风险（服务目录 / 事件 / 变更）" />
+        <ul class="pco__list">
+          <li v-for="(r, i) in ov.operationalRisks" :key="i">
+            <span class="pco__list-name">{{ r.text }}</span>
+            <StatusTag :type="r.level === 'HIGH' ? 'danger' : 'warning'" :label="r.sourceCard" />
+          </li>
+        </ul>
+      </AppCard>
       <div class="pco__cols">
         <AppCard class="pco__panel">
           <AppSectionHeader title="今日动态" />
@@ -126,7 +135,12 @@ export default {
   font-size: 12px;
   color: var(--text-tertiary);
 }
+.pco__risks {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+}
 .pco__cols {
+  margin-top: var(--space-3);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-3);

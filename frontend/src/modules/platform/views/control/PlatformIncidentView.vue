@@ -51,7 +51,8 @@
           <button v-if="selected.status === 'RESOLVED'" class="mp-link" @click="requestProblem">申请转Problem</button>
         </div>
         <p v-if="selected.problemConversionRequestedAt" class="pin__note">
-          已于 {{ selected.problemConversionRequestedAt }} 申请转 Problem（PLAT-10 尚未建卡，仅登记申请）
+          已于 {{ selected.problemConversionRequestedAt }} 转为 Problem
+          <button v-if="selected.problemId" class="mp-link" @click="$router.push('/admin/platform/problems')">前往问题管理中心 →</button>
         </p>
 
         <AppSectionHeader title="受影响租户（创建时快照，不随后续依赖图变化改写）" class="pin__gap" />

@@ -145,6 +145,7 @@ export const systemApi = {
         if (code === 'sync') return '/admin/system/sync-jobs'
         if (code === 'modules' || code.startsWith('module_')) return '/admin/system/module-entitlements'
         if (code === 'workflow' || code === 'term') return '/admin/workflow/processes'
+        if (code.startsWith('security_change_')) return '/admin/system/security-changes'
         return '/admin/system/implementation/acceptance'
       }
       return ok({

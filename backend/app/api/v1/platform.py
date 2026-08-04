@@ -53,9 +53,26 @@ def _expected_version(body: dict, *, operation: str) -> int:
 
 # ── §二 总览 ──
 
-@router.get("/overview", summary="平台经营总览")
+@router.get("/overview", summary="平台经营、客户成功与运行总览")
 def overview(user=Depends(require_platform_super_admin)):
-    return success(svc.overview())
+    from app.services.platform_overview_service import overview as gov_overview
+    return success(gov_overview())
+
+
+# ── PLAT-06 公共底座运行中心（跨租户聚合 PR#25 文件底座 + PLAT-08 服务目录）──
+
+@router.get("/foundations/overview", summary="公共底座运行中心：跨租户文件底座 + 服务目录")
+def foundations_overview(user=Depends(require_platform_super_admin)):
+    from app.services.foundation_operations_service import foundation_overview
+    return success(foundation_overview())
+
+
+# ── PLAT-14 数据治理、集成目录与合规证据（跨租户聚合）──
+
+@router.get("/governance/overview", summary="数据治理、集成目录与合规证据")
+def governance_overview_endpoint(user=Depends(require_platform_super_admin)):
+    from app.services.platform_governance_service import governance_overview
+    return success(governance_overview())
 
 
 # ── §三 租户全托管 ──
@@ -880,8 +897,13 @@ def incident_publish_update(incident_id: int, update_id: int,
 @router.post("/incidents/{incident_id}/request-problem-conversion", summary="RESOLVED事件申请转Problem")
 def incident_request_problem(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
     from app.services import incident_service as inc
+    from app.services import problem_management_service as prob
     out = inc.request_problem_conversion(incident_id, user=user)
-    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {})
+    # PLAT-10 建卡前，这一步只做资格判定和请求标记；现在真正落一条 Problem 记录，
+    # 用 source_incident_id 去重，同一个事件重复申请不会产生第二条 Problem。
+    problem = prob.create_problem_from_incident(incident_id, title=out.get("title") or "")
+    out["problemId"] = problem["id"]
+    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {"problemId": problem["id"]})
     return success(out, message="已登记转Problem申请")
 
 
@@ -1004,3 +1026,282 @@ def maintenance_windows_create(body: dict = Body(...),
     out = chg.upsert_maintenance_window(user, body)
     _audit("PLATFORM_MAINTENANCE_WINDOW_CREATE", out["id"], out)
     return success(out, message="冻结期已登记")
+
+
+# ── PLAT-05 客户健康、工单、培训与续费 ──────────────────────────────────────
+# 注：细粒度 capability 未接入（同 PLAT-08 先例），沿用 require_platform_super_admin。
+
+@router.get("/customer-success/overview", summary="客户健康、工单、培训与续费首屏结论")
+def customer_success_overview(user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    return success(cs.governance_overview())
+
+
+@router.get("/tenants/{tenant_id}/health-score", summary="单校健康分（实时判定，不落表）")
+def tenant_health_score(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    return success(cs.health_score(tenant_id))
+
+
+@router.get("/support-tickets", summary="客户成功工单列表")
+def support_tickets_list(tenantId: Optional[str] = Query(default=None),
+                         status: Optional[str] = Query(default=None),
+                         user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_tickets(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/support-tickets", summary="创建客户成功工单")
+def support_tickets_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    if not tenant_id:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+    out = cs.create_ticket(tenant_id=int(tenant_id), title=body.get("title") or "",
+                           description=body.get("description") or "",
+                           severity=body.get("severity") or "P2",
+                           reporter_name=body.get("reporterName") or "")
+    _audit("PLATFORM_SUPPORT_TICKET_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="工单已创建")
+
+
+@router.post("/support-tickets/{ticket_id}/transition", summary="流转工单状态")
+def support_tickets_transition(ticket_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.transition_ticket(ticket_id, status=body.get("status") or "",
+                               resolution_note=body.get("resolutionNote") or "",
+                               expected_version=_expected_version(body, operation="流转工单"))
+    _audit("PLATFORM_SUPPORT_TICKET_TRANSITION", str(ticket_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="工单状态已更新")
+
+
+@router.get("/trainings", summary="客户培训记录列表")
+def trainings_list(tenantId: Optional[str] = Query(default=None),
+                   user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_trainings(tenant_id=int(tenantId) if tenantId else None)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/trainings", summary="登记客户培训计划")
+def trainings_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from datetime import datetime as _dt
+
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    scheduled_at = body.get("scheduledAt")
+    if not tenant_id or not scheduled_at:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 scheduledAt")
+    try:
+        scheduled_dt = _dt.fromisoformat(str(scheduled_at))
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "scheduledAt 必须是 ISO8601 时间") from None
+    out = cs.create_training(tenant_id=int(tenant_id), topic=body.get("topic") or "",
+                             scheduled_at=scheduled_dt, trainer_name=body.get("trainerName") or "")
+    _audit("PLATFORM_TRAINING_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="培训计划已登记")
+
+
+@router.post("/trainings/{training_id}/complete", summary="标记培训已完成")
+def trainings_complete(training_id: int, body: dict = Body(...),
+                       user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.complete_training(training_id, attendee_count=int(body.get("attendeeCount") or 0),
+                               note=body.get("note") or "",
+                               expected_version=_expected_version(body, operation="标记培训完成"))
+    _audit("PLATFORM_TRAINING_COMPLETE", str(training_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="培训已标记完成")
+
+
+@router.get("/renewal-tasks", summary="续费跟进任务列表")
+def renewal_tasks_list(tenantId: Optional[str] = Query(default=None),
+                       status: Optional[str] = Query(default=None),
+                       user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    items = cs.list_renewal_tasks(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/renewal-tasks", summary="创建续费跟进任务")
+def renewal_tasks_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from datetime import datetime as _dt
+
+    from app.services import customer_health_service as cs
+    tenant_id = body.get("tenantId")
+    due_at = body.get("dueAt")
+    if not tenant_id or not due_at:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 dueAt")
+    try:
+        due_dt = _dt.fromisoformat(str(due_at))
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "dueAt 必须是 ISO8601 时间") from None
+    out = cs.create_renewal_task(tenant_id=int(tenant_id), due_at=due_dt,
+                                 owner_name=body.get("ownerName") or "", note=body.get("note") or "")
+    _audit("PLATFORM_RENEWAL_TASK_CREATE", out["id"], out, tenant_id=int(tenant_id))
+    return success(out, message="续费任务已创建")
+
+
+@router.post("/renewal-tasks/{task_id}/transition", summary="流转续费任务状态")
+def renewal_tasks_transition(task_id: int, body: dict = Body(...),
+                             user=Depends(require_platform_super_admin)):
+    from app.services import customer_health_service as cs
+    out = cs.update_renewal_task(task_id, status=body.get("status") or "",
+                                 note=body.get("note") or "",
+                                 expected_version=_expected_version(body, operation="流转续费任务"))
+    _audit("PLATFORM_RENEWAL_TASK_TRANSITION", str(task_id), out, tenant_id=int(out["tenantId"]))
+    return success(out, message="续费任务状态已更新")
+
+
+# ── PLAT-10 问题管理、已知错误与事故复盘 ────────────────────────────────────
+
+@router.get("/problems/overview", summary="问题管理治理首屏结论")
+def problems_overview(user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    return success(prob.governance_overview())
+
+
+@router.get("/problems", summary="问题列表")
+def problems_list(status: Optional[str] = Query(default=None),
+                  user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    items = prob.list_problems(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.get("/problems/{problem_id}", summary="问题详情（含复盘记录）")
+def problems_get(problem_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    return success(prob.get_problem(problem_id))
+
+
+@router.post("/problems", summary="创建问题")
+def problems_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.create_problem(title=body.get("title") or "",
+                              source_incident_id=body.get("sourceIncidentId"),
+                              root_cause=body.get("rootCause") or "",
+                              workaround=body.get("workaround") or "")
+    _audit("PLATFORM_PROBLEM_CREATE", out["id"], out)
+    return success(out, message="问题已创建")
+
+
+@router.put("/problems/{problem_id}/root-cause", summary="更新根因/临时规避方案")
+def problems_update_root_cause(problem_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.update_root_cause(problem_id, root_cause=body.get("rootCause") or "",
+                                 workaround=body.get("workaround") or "",
+                                 expected_version=_expected_version(body, operation="更新根因"))
+    _audit("PLATFORM_PROBLEM_ROOT_CAUSE_UPDATE", str(problem_id), out)
+    return success(out, message="根因已更新")
+
+
+@router.post("/problems/{problem_id}/status", summary="流转问题状态")
+def problems_transition(problem_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.transition_status(problem_id, target_status=body.get("status") or "",
+                                 expected_version=_expected_version(body, operation="流转问题状态"))
+    _audit("PLATFORM_PROBLEM_TRANSITION", str(problem_id), out)
+    return success(out, message="问题状态已更新")
+
+
+@router.post("/problems/{problem_id}/permanent-fix", summary="链接永久修复变更")
+def problems_link_fix(problem_id: int, body: dict = Body(...),
+                      user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    change_id = body.get("changeId")
+    if not change_id:
+        raise AppException("VALIDATION_ERROR", "必须指定 changeId")
+    out = prob.link_permanent_fix(problem_id, change_id=int(change_id),
+                                  expected_version=_expected_version(body, operation="链接永久修复"))
+    _audit("PLATFORM_PROBLEM_PERMANENT_FIX_LINK", str(problem_id), out)
+    return success(out, message="已链接永久修复变更")
+
+
+@router.post("/problems/{problem_id}/postmortems", summary="新增事故复盘草稿")
+def problems_create_postmortem(problem_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.create_postmortem(problem_id, what_happened=body.get("whatHappened") or "",
+                                 timeline=body.get("timeline") or [],
+                                 impact_summary=body.get("impactSummary") or "",
+                                 action_items=body.get("actionItems") or [], user=user)
+    _audit("PLATFORM_PROBLEM_POSTMORTEM_CREATE", out["id"], out)
+    return success(out, message="复盘草稿已创建")
+
+
+@router.post("/postmortems/{postmortem_id}/publish", summary="发布事故复盘")
+def postmortems_publish(postmortem_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.publish_postmortem(postmortem_id,
+                                  expected_version=_expected_version(body, operation="发布复盘"))
+    _audit("PLATFORM_PROBLEM_POSTMORTEM_PUBLISH", str(postmortem_id), out)
+    return success(out, message="复盘已发布")
+
+
+# ── PLAT-13 租户用量、容量、成本与公平使用 ──────────────────────────────────
+
+@router.get("/fair-use/overview", summary="用量与公平使用治理首屏结论")
+def fair_use_overview(user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    from app.services import tenant_metering_service as metering
+    return success({
+        "usage": metering.governance_overview(),
+        "fairUse": fu.governance_overview(),
+    })
+
+
+@router.get("/tenants/{tenant_id}/usage-snapshots", summary="单校用量趋势")
+def tenant_usage_snapshots(tenant_id: int, days: int = Query(default=30, ge=1, le=180),
+                           user=Depends(require_platform_super_admin)):
+    from app.services import tenant_metering_service as metering
+    items = metering.list_snapshots(tenant_id, days=days)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/tenants/{tenant_id}/usage-snapshots/capture", summary="立即为该校生成今日用量快照")
+def tenant_usage_capture(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import tenant_metering_service as metering
+    out = metering.capture_daily_snapshot(tenant_id)
+    return success(out, message="用量快照已生成")
+
+
+@router.get("/tenants/{tenant_id}/fair-use-limits", summary="单校公平使用配额")
+def tenant_fair_use_limits(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    return success({
+        code: {"resourceCode": code, "effectiveLimit": fu.get_effective_limit(tenant_id, code)}
+        for code in fu.RESOURCE_CODES
+    })
+
+
+@router.put("/tenants/{tenant_id}/fair-use-limits", summary="设置单校公平使用配额（覆盖平台默认值）")
+def tenant_fair_use_limit_set(tenant_id: int, body: dict = Body(...),
+                              user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    out = fu.upsert_limit(tenant_id, resource_code=body.get("resourceCode") or "",
+                          daily_limit=int(body.get("dailyLimit") or 0))
+    _audit("PLATFORM_FAIR_USE_LIMIT_SET", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out, message="配额已更新")
+
+
+@router.post("/tenants/{tenant_id}/fair-use/evaluate", summary="用今日真实用量评估是否超出公平使用配额")
+def tenant_fair_use_evaluate(tenant_id: int, user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    out = fu.evaluate_tenant(tenant_id)
+    if out["violations"]:
+        _audit("PLATFORM_FAIR_USE_VIOLATION_DETECTED", str(tenant_id), out, tenant_id=tenant_id)
+    return success(out)
+
+
+@router.get("/fair-use/violations", summary="近期公平使用违规记录")
+def fair_use_violations(tenantId: Optional[str] = Query(default=None),
+                        days: int = Query(default=7, ge=1, le=90),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import fair_use_service as fu
+    items = fu.list_violations(int(tenantId) if tenantId else None, days=days)
+    return success({"items": items, "total": len(items)})

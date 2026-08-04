@@ -61,6 +61,27 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '服务目录、依赖与租户影响地图', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
+      // PLAT-06：公共底座运行中心（跨租户聚合 PR#25 文件底座 + PLAT-08 服务目录）
+      path: 'foundations',
+      name: 'platform-foundations',
+      component: () => import('@/modules/platform/views/control/PlatformFoundationOpsView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '公共底座运行中心', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
+      // PLAT-14：数据治理、集成目录与合规证据（跨租户聚合）
+      path: 'governance',
+      name: 'platform-governance',
+      component: () => import('@/modules/platform/views/control/PlatformGovernanceView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '数据治理、集成目录与合规证据', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
+      // PLAT-05：客户健康、工单、培训与续费
+      path: 'customer-success',
+      name: 'platform-customer-success',
+      component: () => import('@/modules/platform/views/control/PlatformCustomerSuccessView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '客户健康、工单、培训与续费', requiresAuth: true, permissionKey: 'platform.control.view' }
+    },
+    {
       path: 'tenant-migration',
       name: 'platform-tenant-migration',
       component: () => import('@/modules/platform/views/PlatformTenantMigrationView.vue'),
@@ -210,6 +231,18 @@ const platformRoutes = {
     {
       path: 'releases', name: 'platform-releases', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', platformCapabilityKey: 'plt-releases' }
+    },
+    {
+      // PLAT-10：问题管理、已知错误与事故复盘
+      path: 'problems', name: 'platform-problems',
+      component: () => import('@/modules/platform/views/control/PlatformProblemView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '问题管理、已知错误与事故复盘', requiresAuth: true, permissionKey: 'platform.incident.view' }
+    },
+    {
+      // PLAT-13：租户用量、容量、成本与公平使用
+      path: 'fair-use', name: 'platform-fair-use',
+      component: () => import('@/modules/platform/views/control/PlatformFairUseView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '租户用量、容量、成本与公平使用', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
       // PLAT-11：卡片唯一正式路由是 /admin/platform/changes，与上面的 releases 占位页
