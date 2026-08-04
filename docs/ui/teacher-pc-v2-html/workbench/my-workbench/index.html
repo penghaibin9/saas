@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>教师工作台 V2</title>
+<!--
+route: /workbench
+routeName: admin-workbench
+source component: frontend/src/modules/workbench/views/WorkbenchView.vue
+layout component: frontend/src/views/AdminWorkbenchView.vue
+permission: authenticated management/teacher context; tile visibility由角色配方与权限决定
+API: fetchLayoutContext, fetchTodoSummary, fetchTodoCount, fetchTodoList, fetchMessageCount, fetchSchoolStats, fetchMyScheduleToday
+设计母版: 个人工作台
+生成日期: 2026-07-30
+数据说明：原型中的“— / 学生A / 课程A”等为中性占位，仅用于表现布局；不代表生产数据。
+-->
+<link rel="stylesheet" href="../../shared/v2-tokens.css" />
+<link rel="stylesheet" href="../../shared/v2-shell.css" />
+<link rel="stylesheet" href="../../shared/v2-components.css" />
+</head>
+<body>
+<div class="v2-app">
+<header class="v2-topbar">
+  <div class="v2-brand"><span class="v2-logo"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-shield"></use></svg></span><span>学校名称 · 校园通</span></div>
+  <nav class="v2-primary"><a class="active" href="#">工作台</a><a href="#">学工中心</a><a href="#">教务中心</a><a href="#">毕业设计中心</a><a href="#">岗位实习中心</a><a href="#">系统管理</a></nav>
+  <div class="v2-top-tools">
+    <div class="v2-search-wrap"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-search"></use></svg><input class="v2-search" placeholder="搜索学生、功能、待办、帮助" /></div>
+    <div class="v2-scope">数据范围：当前身份范围</div>
+    <div class="v2-swatches" aria-label="六套主题"><button class="v2-swatch" data-theme-value="academy" title="学院蓝" style="background:#2475f4"></button><button class="v2-swatch" data-theme-value="business" title="商务蓝" style="background:#295fae"></button><button class="v2-swatch" data-theme-value="gray" title="雅灰" style="background:#718198"></button><button class="v2-swatch" data-theme-value="green" title="护眼绿" style="background:#2e9b79"></button><button class="v2-swatch" data-theme-value="white" title="皓白极简" style="background:#e8edf5"></button><button class="v2-swatch" data-theme-value="ink" title="墨白极简" style="background:#253043"></button></div>
+    <button class="v2-icon-btn" title="消息"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-bell"></use></svg></button><button class="v2-icon-btn" title="帮助"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-help"></use></svg></button>
+    <div class="v2-user"><span class="v2-avatar">师</span><span><b>当前用户</b><small style="display:block;opacity:.72">当前角色</small></span></div>
+  </div>
+</header>
+<div class="v2-layout">
+<aside class="v2-sidebar"><h1 class="v2-side-title">工作台</h1><p class="v2-side-sub">当前中心工作区</p><nav class="v2-side-nav">
+<a class="active" href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-home"></use></svg><span>我的工作台</span></a>
+<a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-clipboard"></use></svg><span>我的待办</span></a>
+<a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-users"></use></svg><span>审批中心</span></a>
+<a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-message"></use></svg><span>消息中心</span></a>
+<a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-chart"></use></svg><span>领导驾驶舱</span></a>
+<a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-help"></use></svg><span>帮助中心</span></a>
+</nav><div class="v2-collapse">‹　收起菜单</div></aside>
+<main class="v2-content"><div class="v2-page"><div class="v2-main-grid"><div>
+<section class="v2-hero"><h1>你好，当前老师</h1><p>待办总数、逾期数、临期数和今日完成数均来自真实工作台汇总接口；此原型不写入固定业务数字。</p><div class="v2-chip-row"><span class="v2-chip">当前身份：角色配方返回值</span><span class="v2-chip">数据范围：接口 scopeLabel</span></div><div class="v2-actions"><button class="v2-btn ghost-on-dark">刷新</button><button class="v2-btn ghost-on-dark">查看全部待办 →</button><button class="v2-btn ghost-on-dark">编辑布局</button></div></section>
+<section class="v2-section"><div class="v2-metric-grid">
+<article class="v2-card v2-metric"><span class="v2-metric-icon"><svg><use href="../../shared/icons.svg#i-clipboard"></use></svg></span><div><h3>待我处理</h3><strong>—</strong><small>summary.pending</small></div><span class="v2-arrow">›</span></article>
+<article class="v2-card v2-metric"><span class="v2-metric-icon danger"><svg><use href="../../shared/icons.svg#i-hourglass"></use></svg></span><div><h3>已逾期</h3><strong>—</strong><small>summary.overdue</small></div><span class="v2-arrow">›</span></article>
+<article class="v2-card v2-metric"><span class="v2-metric-icon warning"><svg><use href="../../shared/icons.svg#i-clock"></use></svg></span><div><h3>24小时内到期</h3><strong>—</strong><small>summary.nearDeadline</small></div><span class="v2-arrow">›</span></article>
+<article class="v2-card v2-metric"><span class="v2-metric-icon success"><svg><use href="../../shared/icons.svg#i-check"></use></svg></span><div><h3>今日已完成</h3><strong>—</strong><small>summary.doneToday</small></div><span class="v2-arrow">›</span></article>
+</div></section>
+<section class="v2-section v2-card v2-kpi-strip"><div class="v2-kpi-head"><h2>范围内指标</h2><span class="v2-link">按角色配方展示</span></div><div class="v2-kpis">
+<div class="v2-kpi"><span class="v2-metric-icon"><svg><use href="../../shared/icons.svg#i-users"></use></svg></span><div><span>学生总数</span><strong>—</strong><small>stats.studentTotal</small></div></div>
+<div class="v2-kpi"><span class="v2-metric-icon warning"><svg><use href="../../shared/icons.svg#i-alert"></use></svg></span><div><span>学业预警</span><strong>—</strong><small>stats.academicWarning</small></div></div>
+<div class="v2-kpi"><span class="v2-metric-icon success"><svg><use href="../../shared/icons.svg#i-clipboard"></use></svg></span><div><span>迎新待报到</span><strong>—</strong><small>stats.orientationPending</small></div></div>
+<div class="v2-kpi"><span class="v2-metric-icon"><svg><use href="../../shared/icons.svg#i-message"></use></svg></span><div><span>未读消息</span><strong>—</strong><small>message.unread</small></div></div>
+</div></section>
+<section class="v2-section v2-two"><article class="v2-card v2-panel"><div class="v2-section-title"><h2 style="margin:0">最近待办</h2><span class="v2-link">查看全部待办 →</span></div><div class="v2-list">
+<div class="v2-list-item"><span class="v2-priority high">高</span><div><b>待办标题由 todo.title 返回</b><p>todoType · 业务说明</p></div><span class="v2-due danger">todo.dueAt</span></div>
+<div class="v2-list-item"><span class="v2-priority medium">中</span><div><b>待办标题由 todo.title 返回</b><p>根据 TODO_TYPE_ROUTES 下钻</p></div><span class="v2-due warning">即将到期</span></div>
+<div class="v2-list-item"><span class="v2-priority">低</span><div><b>待办标题由 todo.title 返回</b><p>没有 dueAt 时不展示截止时间</p></div><span class="v2-due">—</span></div>
+</div></article><article class="v2-card v2-panel"><div class="v2-section-title"><h2 style="margin:0">我的常用</h2><span class="v2-link">编辑</span></div><div class="v2-quick-grid">
+<div class="v2-quick"><span class="v2-metric-icon success"><svg><use href="../../shared/icons.svg#i-users"></use></svg></span><div><b>角色默认入口</b><small>recipe.quickLinks</small></div></div>
+<div class="v2-quick"><span class="v2-metric-icon warning"><svg><use href="../../shared/icons.svg#i-alert"></use></svg></span><div><b>角色默认入口</b><small>可按个人收藏</small></div></div>
+<div class="v2-quick"><span class="v2-metric-icon"><svg><use href="../../shared/icons.svg#i-message"></use></svg></span><div><b>消息中心</b><small>真实未读消息</small></div></div>
+<div class="v2-quick"><span class="v2-metric-icon"><svg><use href="../../shared/icons.svg#i-chart"></use></svg></span><div><b>统计入口</b><small>按当前角色显示</small></div></div>
+</div></article></section>
+</div><aside class="v2-context">
+<section class="v2-card v2-context-card"><div class="v2-section-title"><h2 style="margin:0">今日课表</h2><span class="v2-link">完整课表</span></div><div class="v2-timeline"><div class="v2-time"><b>—</b><span class="v2-time-dot"></span><p>courseName · className<small>slotName · classroom</small></p></div><div class="v2-time"><b>—</b><span class="v2-time-dot"></span><p>今日课程由 fetchMyScheduleToday 返回<small>无课程时展示真实空状态</small></p></div></div></section>
+<section class="v2-card v2-context-card"><h2>风险提醒</h2><div class="v2-alert">逾期和高优先级风险由真实待办汇总决定，不在原型中写死数量。</div></section>
+<section class="v2-card v2-context-card"><h2>本页帮助</h2><div class="v2-list"><div class="v2-list-item"><span class="v2-priority"><svg><use href="../../shared/icons.svg#i-help"></use></svg></span><div><b>如何处理工作台待办？</b><p>对应 AppPageGuide 与帮助中心</p></div><span>›</span></div><div class="v2-list-item"><span class="v2-priority"><svg><use href="../../shared/icons.svg#i-file"></use></svg></span><div><b>数据范围说明</b><p>解释当前身份可查看范围</p></div><span>›</span></div></div></section>
+<section class="v2-card v2-context-card"><h2>快捷操作</h2><div class="v2-quick-grid"><button class="v2-btn">消息中心</button><button class="v2-btn">完整课表</button></div></section>
+</aside></div></div></main></div></div>
+<script src="../../shared/v2-prototype.js"></script>
+</body></html>

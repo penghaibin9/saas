@@ -1,0 +1,26 @@
+{
+  "moduleKey": "teaching-resource",
+  "moduleLabel": "教学资源",
+  "sourceOfTruth": "frontend/src/config/navPlan.js",
+  "productionImplementationStatus": "9 navigation entries and permissions verified; production components, APIs, write permissions and enums require audit",
+  "sharedAssets": ["shared/v2-resource-workbench.js", "shared/v2-resource-workbench.css"],
+  "occupancySources": ["TIMETABLE", "EXAM", "CLASSROOM_BOOKING", "LAB_BOOKING", "REPAIR_BLOCK"],
+  "principles": [
+    "resource profile is not current-slot availability",
+    "temporary booking never overwrites timetable or exam occupancy",
+    "capacity, safety, equipment, consumables and time are validated together",
+    "conflicts return to source workflows and are revalidated",
+    "repair blocks availability until acceptance and reopening"
+  ],
+  "routes": [
+    {"route":"/admin/academic-affairs/classrooms","html":"academic-affairs/resources/classroom-resources.html","title":"教室资源","permissionCandidate":"academicAffairs.classroom.view","fields":["校区","楼栋","楼层","房间","教室类型","核定容量","设备能力","无障碍","可排课状态"]},
+    {"route":"/admin/academic-affairs/classroom-bookings","html":"academic-affairs/resources/classroom-bookings.html","title":"教室预约","permissionCandidate":"academicAffairs.classroom.view","states":["DRAFT","PENDING","APPROVED","REJECTED","CONFLICT","CANCELLED"],"fields":["申请人","用途","日期节次","参与人数","设备要求","候选教室","审批意见","占用来源单"]},
+    {"route":"/admin/academic-affairs/resources/labs","html":"academic-affairs/resources/lab-resources.html","title":"实训室资源","permissionCandidate":"academicAffairs.lab.view","fields":["安全等级","责任人","核定容量","工位","适用课程","关键设备","开放时间","维护状态"]},
+    {"route":"/admin/academic-affairs/resources/equipment","html":"academic-affairs/resources/equipment-resources.html","title":"设备资源","permissionCandidate":"academicAffairs.equipment.view","boundary":"teaching availability does not replace fixed-asset accounting","fields":["资产编号","设备名称","类别","所在实训室","总数量","维修数量","可用数量","校准检验","状态"]},
+    {"route":"/admin/academic-affairs/resources/lab-bookings","html":"academic-affairs/resources/lab-bookings.html","title":"实训室预约","permissionCandidate":"academicAffairs.lab.view","fields":["教学任务","教师","学生范围","日期节次","实训室","设备需求","耗材需求","安全资格","审批状态"]},
+    {"route":"/admin/academic-affairs/resources/occupancy","html":"academic-affairs/resources/resource-occupancy.html","title":"资源占用","permissionCandidate":"academicAffairs.resourceOccupancy.view","boundary":"read-only aggregation; source records remain authoritative","fields":["资源","日期节次","占用类型","来源单","优先级","使用人","状态"]},
+    {"route":"/admin/academic-affairs/resources/conflicts","html":"academic-affairs/resources/resource-conflicts.html","title":"资源冲突","permissionCandidate":"academicAffairs.resourceConflict.view","states":["BLOCKING","WARNING","RESOLVED","RECHECK_REQUIRED"],"fields":["冲突类型","资源","时段","来源A","来源B","影响","处理入口","解决意见","复核结果"]},
+    {"route":"/admin/academic-affairs/resources/repairs","html":"academic-affairs/resources/resource-repairs.html","title":"资源维修","permissionCandidate":"academicAffairs.resourceRepair.view","states":["REPORTED","CLASSIFIED","ASSIGNED","REPAIRING","ACCEPTANCE","REOPENED","CLOSED"],"fields":["维修单","资源","故障现象","影响等级","责任人","时限","停用范围","维修记录","验收结果","复发"]},
+    {"route":"/admin/academic-affairs/resources/stats","html":"academic-affairs/resources/resource-stats.html","title":"资源统计","permissionCandidate":"academicAffairs.resourceStats.view","fields":["可用时段","利用率","预约量","审批时长","冲突量","解决时长","维修停机率","设备健康","供需缺口"]}
+  ]
+}

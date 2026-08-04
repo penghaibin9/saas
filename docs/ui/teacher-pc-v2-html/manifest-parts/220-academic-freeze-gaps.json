@@ -1,0 +1,56 @@
+{
+  "moduleKey": "academic-freeze-gaps",
+  "moduleLabel": "教务中心冻结缺口",
+  "coverageType": "independent-production-workspaces",
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
+    "frontend/src/modules/academicAffairs/views/AaMajorSplitView.vue",
+    "frontend/src/modules/academicAffairs/views/AaSchedulingConsoleView.vue",
+    "frontend/src/modules/academicAffairs/views/AaAttendanceStatsView.vue"
+  ],
+  "sharedAssets": [
+    "shared/v2-freeze-gap.css",
+    "shared/v2-freeze-gap.js"
+  ],
+  "routes": [
+    {
+      "route": "/admin/academic-affairs/major-split",
+      "html": "academic-affairs/major-split/major-split-workbench.html",
+      "title": "专业分流 · 教务处控制台",
+      "component": "frontend/src/modules/academicAffairs/views/AaMajorSplitView.vue",
+      "permissionCandidates": ["academicAffairs.majorSplit.view"],
+      "apiSources": ["academicAffairsMajorSplitApi.listBatches", "listOptions", "listVolunteers", "createBatch", "addOption", "open", "close", "allocate", "reassign", "confirm"],
+      "states": ["DRAFT", "OPEN", "CLOSED", "ALLOCATED", "CONFIRMED", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["批次名称", "年级", "源专业", "志愿数上限", "可选专业", "容量", "学生绩点", "志愿顺序", "试分结果", "待调剂", "调剂原因", "最终专业"],
+      "boundary": "试分不落库；容量超限、未分配学生或缺失调剂原因阻断确认；只有 CONFIRMED 写入学生学籍专业"
+    },
+    {
+      "route": "/admin/academic-affairs/scheduling",
+      "html": "academic-affairs/scheduling/scheduling-workbench.html",
+      "title": "排课管理 · 规则与冲突",
+      "component": "frontend/src/modules/academicAffairs/views/AaSchedulingConsoleView.vue",
+      "permissionCandidates": ["academicAffairs.schedule.view", "academicAffairs.schedule.manage"],
+      "apiSources": ["排课规则目录与 CRUD", "教师可用时间审核", "自动排课 dryRun/commit/clear", "冲突报告"],
+      "states": ["rules", "availability", "auto", "conflict", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["学期", "批次", "规则范围", "规则目录", "安全默认值", "教师不可排时间", "试排", "已排任务", "漏排原因", "教室池", "冲突类型"],
+      "boundary": "规则只影响自动排课；手工与导入结果不被覆盖；已发布或已归档批次只读；试排结果不落库"
+    },
+    {
+      "route": "/admin/academic-affairs/attendance-stats",
+      "coveredRoutes": ["/admin/academic-affairs/attendance-stats?panel=sessions"],
+      "html": "academic-affairs/attendance/attendance-stats.html",
+      "title": "课堂考勤统计",
+      "component": "frontend/src/modules/academicAffairs/views/AaAttendanceStatsView.vue",
+      "permissionCandidates": ["academicAffairs.warning.view"],
+      "apiSources": ["academicAffairsApi.getAttendanceStats", "academicAffairsApi.getAttendanceSessions", "academicAffairsWarningApi.scan(attendance)"],
+      "states": ["stats", "sessions", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["行政班", "学期", "点名类别", "已提交场次", "学生", "出勤", "迟到", "旷课", "请假", "缺勤率", "预警扫描"],
+      "boundary": "PC 只统计教师移动端已提交场次，不提供逐生补点名；预警扫描不替代人工核验或纪律结论"
+    }
+  ],
+  "knownLimitations": [
+    "current branch still requires browser regression for these three new pages",
+    "manual schedule grid remains in the existing schedule workspace and is not duplicated here"
+  ]
+}

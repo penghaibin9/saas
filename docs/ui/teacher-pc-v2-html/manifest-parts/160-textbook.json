@@ -1,0 +1,12 @@
+{
+  "moduleKey":"textbook","moduleLabel":"教材管理","sourceOfTruth":"frontend/src/config/navPlan.js","productionImplementationStatus":"7 navigation entries verified; production components, write permissions, APIs and enums require audit","sharedAssets":["shared/v2-textbook-workbench.js","shared/v2-textbook-workbench.css"],"lifecycle":["CATALOG","SELECTION","REVIEW_FILE","ORDER","RECEIPT_INSPECTION","STOCK_ISSUE","FEE_ARCHIVE"],
+  "routes":[
+    {"route":"/admin/academic-affairs/textbooks?tab=catalog","html":"academic-affairs/textbooks/textbook-catalog.html","title":"教材目录","permissionCandidate":"academicAffairs.textbook.view","fields":["ISBN","书名","版次","出版年份","出版社","作者","适用课程","状态"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=selection","html":"academic-affairs/textbooks/textbook-selection.html","title":"教材选用","permissionCandidate":"academicAffairs.textbook.view","boundary":"selection is not approval or purchase","fields":["教学任务","课程","教材版本","学生数量","教师用书","安全库存","选用说明"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=review","html":"academic-affairs/textbooks/textbook-review.html","title":"审核备案","permissionCandidate":"academicAffairs.textbook.view","fields":["材料版本","课程负责人意见","学院审核","教务备案","退回原因"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=order","html":"academic-affairs/textbooks/textbook-order.html","title":"征订到货","permissionCandidate":"academicAffairs.textbook.view","fields":["采购单","供应商","征订数量","交期","到货数量","版次验收","破损短缺"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=fee","html":"academic-affairs/textbooks/textbook-fee.html","title":"费用台账","permissionCandidate":"academicAffairs.textbook.view","boundary":"textbook ledger is not finance general ledger or graduation clearance","fields":["应收","减免","实收","退款","差异","来源单"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=stock","html":"academic-affairs/textbooks/textbook-stock.html","title":"教材库存","permissionCandidate":"academicAffairs.textbook.view","key":["ISBN","edition","warehouse","lot"],"states":["AVAILABLE","RESERVED","ISSUED","RETURNED","DAMAGED","ADJUSTED"]},
+    {"route":"/admin/academic-affairs/textbooks?tab=stats","html":"academic-affairs/textbooks/textbook-stats.html","title":"教材统计","permissionCandidate":"academicAffairs.textbook.view","fields":["选用覆盖率","审核时长","到货率","发放率","库存周转","费用差异"]}
+  ]
+}

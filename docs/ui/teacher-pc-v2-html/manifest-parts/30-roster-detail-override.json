@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "2.0.0",
+  "baseline": {
+    "repository": "penghaibin9/saas",
+    "branch": "main",
+    "commit": "b0af2244e1c8d466fe8afbd7b2bc0ab067d68489",
+    "prototypeBranch": "codex/teacher-pc-v2-html-library",
+    "generatedAt": "2026-07-30T10:58:00+08:00"
+  },
+  "status": "IN_PROGRESS",
+  "designOnly": true,
+  "productionCodeModified": false,
+  "part": "30-roster-detail-override",
+  "entries": [
+    {
+      "route": "/admin/academic-affairs/roster/:studentId",
+      "routeName": "aa-roster-detail",
+      "component": "frontend/src/modules/academicAffairs/views/AaRosterDetailView.vue",
+      "center": "教务中心",
+      "workspace": "学籍管理",
+      "pageTitle": "学籍档案",
+      "pageType": "DETAIL",
+      "html": "academic-affairs/roster/roster-detail.html",
+      "queryVariants": [],
+      "permissionKey": "academicAffairs.roster.view",
+      "permissionAny": [],
+      "apiSources": ["getRosterDetail", "revealRosterSensitive"],
+      "sourceFiles": ["frontend/src/modules/academicAffairs/academic-affairs.routes.js", "frontend/src/modules/academicAffairs/views/AaRosterDetailView.vue"],
+      "statesCovered": ["ready", "loading", "empty-history", "error", "unauthorized", "long-data", "sensitive-masked", "sensitive-reveal-dialog", "sensitive-revealed"],
+      "sharedPrototype": false,
+      "coverageStatus": "COMPLETE",
+      "screenshotsCommitted": [],
+      "notes": "本批增强：基础信息、长字段、状态时间线、敏感字段查看审计、四个真实快捷入口。"
+    }
+  ]
+}

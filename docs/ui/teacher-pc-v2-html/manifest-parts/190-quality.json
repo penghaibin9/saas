@@ -1,0 +1,94 @@
+{
+  "moduleKey": "teaching-quality",
+  "moduleLabel": "教学质量",
+  "sourceOfTruth": "frontend/src/config/navPlan.js",
+  "productionImplementationStatus": "8 production navigation entries and permissions verified; production Vue components, APIs, state enums, write permissions and data scopes require audit before migration",
+  "sharedAssets": [
+    "shared/v2-quality-workbench.js",
+    "shared/v2-quality-workbench.css"
+  ],
+  "lifecycle": [
+    "SIGNAL_OR_PLAN",
+    "FACT_AND_EVIDENCE",
+    "VERIFICATION_AND_CLASSIFICATION",
+    "RESPONSIBILITY_CONFIRMATION",
+    "RECTIFICATION",
+    "INDEPENDENT_FOLLOW_UP",
+    "CLOSE_REOPEN_OR_RECUR",
+    "ARCHIVED"
+  ],
+  "principles": [
+    "signals and trends are clues rather than final responsibility findings",
+    "observation facts, professional judgement and final classification remain separate",
+    "inspection standards and samples are frozen and versioned",
+    "accident handling preserves evidence, statements, recusal and appeal rights",
+    "rectification binds a source problem, owner, deadline, evidence and verifiable acceptance criteria",
+    "submitted material does not equal effective rectification",
+    "follow-up is independent and preserves ineffective, reopened and recurring history",
+    "archived evidence and conclusions are immutable and downloads are audited"
+  ],
+  "routes": [
+    {
+      "route": "/admin/academic-affairs/quality",
+      "html": "academic-affairs/quality/quality-monitor.html",
+      "title": "运行质量看板 + 质量报告导出",
+      "permissionCandidate": "academicAffairs.quality.dashboard.view",
+      "fields": ["风险等级", "问题来源", "对象", "责任单位", "状态", "逾期", "待复查", "复发", "来源健康"],
+      "boundary": "monitoring signals do not directly determine responsibility"
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=supervision",
+      "html": "academic-affairs/quality/quality-supervision.html",
+      "title": "督导听课",
+      "permissionCandidate": "academicAffairs.quality.record.view",
+      "fields": ["督导计划", "任务范围", "督导人员", "回避", "检查表版本", "观察事实", "证据", "教师反馈", "问题转办"]
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=patrol",
+      "html": "academic-affairs/quality/quality-patrol.html",
+      "title": "巡课记录",
+      "permissionCandidate": "academicAffairs.quality.record.view",
+      "fields": ["课表", "时段", "场地", "课程", "教师", "观察事实", "附件", "教师说明", "后续转办"],
+      "boundary": "patrol records facts and cannot directly classify a teaching accident"
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=inspection",
+      "html": "academic-affairs/quality/quality-inspection.html",
+      "title": "教学检查",
+      "permissionCandidate": "academicAffairs.quality.record.view",
+      "fields": ["检查主题", "范围", "抽样规则", "清单版本", "检查组", "回避", "样本", "证据", "结论", "报告"],
+      "boundary": "standards and sampling rules are frozen when execution begins"
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=incident",
+      "html": "academic-affairs/quality/quality-incident.html",
+      "title": "教学事故",
+      "permissionCandidate": "academicAffairs.quality.record.view",
+      "fields": ["线索来源", "事实描述", "原始证据", "受理", "调查", "当事人说明", "回避", "制度版本", "定性", "处理", "申诉"],
+      "boundary": "registration is not accident determination; discipline and appeal follow separate school procedures"
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=rectify",
+      "html": "academic-affairs/quality/quality-rectify.html",
+      "title": "质量整改",
+      "permissionCandidate": "academicAffairs.quality.rectification.view",
+      "fields": ["来源问题", "责任单位", "责任人", "整改目标", "措施", "期限", "证据要求", "验收标准", "逾期升级", "状态"]
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=followUp",
+      "html": "academic-affairs/quality/quality-followup.html",
+      "title": "整改跟进",
+      "permissionCandidate": "academicAffairs.quality.rectification.view",
+      "fields": ["整改任务", "复查人", "回避", "复查方式", "措施完成", "问题消除", "副作用", "持续观察", "有效性结论", "重开", "复发"],
+      "boundary": "follow-up appends conclusions and never overwrites rectification history"
+    },
+    {
+      "route": "/admin/academic-affairs/quality?tab=archive",
+      "html": "academic-affairs/quality/quality-archive.html",
+      "title": "质量归档",
+      "permissionCandidate": "academicAffairs.quality.archive.view",
+      "fields": ["计划标准", "原始检查", "证据", "问题定性", "责任依据", "整改", "复查", "关闭", "复发", "下载用途", "审计"],
+      "boundary": "archived originals and result versions are immutable"
+    }
+  ]
+}

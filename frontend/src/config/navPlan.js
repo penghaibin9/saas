@@ -136,12 +136,12 @@ export const NAV_PLAN = [
     ]),
     // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入
     mod('sa-classes', '班级与辅导员', null, [
-      I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view'),
+      I('班级管理', '/admin/campus-service/classes', 'campus.record.view'),
       I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view'),
       I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
     // 数字迎新：菜单收敛为单一入口；19 个功能页由迎新内部导航与旧深链保留
-    mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'studentAffairs.orientation.view'),
+    mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'orientation.student.view'),
     // 请假销假
     mod('sa-leave', '请假销假', null, [
       I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view'),

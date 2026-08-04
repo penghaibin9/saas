@@ -1,0 +1,88 @@
+{
+  "moduleKey": "student-affairs-extension",
+  "moduleLabel": "学工中心冻结缺口",
+  "coverageType": "non-key-workspaces-required-for-freeze",
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "frontend/src/config/navPlan.permission-contract.test.js",
+    "frontend/src/modules/orientation/orientation.routes.js",
+    "frontend/src/modules/campusService/campusService.routes.js",
+    "frontend/src/modules/studentAffairs/studentAffairs.routes.js",
+    "orientation production pages",
+    "student affairs class, counselor, talk, family, activity and archive services",
+    "StudentAffairsSecurityContext"
+  ],
+  "sharedAssets": [
+    "shared/v2-freeze-gap.css",
+    "shared/v2-freeze-gap.js"
+  ],
+  "principles": [
+    "student master remains the single identity source",
+    "unconfigured non-management scope fails closed",
+    "protected notes contacts attachments and exports require permission purpose and audit",
+    "registration attendance results credits appeals and organization roles remain separate facts",
+    "menu permission and route permission use the same authoritative contract for each production entry"
+  ],
+  "routes": [
+    {
+      "route": "/admin/orientation",
+      "routeName": "orientation-dashboard",
+      "html": "student-affairs/orientation-workbench.html",
+      "title": "数字迎新 · 进度与异常工作台",
+      "menuPermissionCandidates": ["orientation.student.view"],
+      "routePermissionCandidates": ["orientation.student.view"],
+      "contractStatus": "ALIGNED",
+      "contractResolution": "navPlan 数字迎新入口已统一使用 orientation.student.view，与 orientation-dashboard 路由守卫一致，并由 navPlan.permission-contract.test.js 固定校验",
+      "apiSources": ["迎新批次与步骤", "身份核验", "信息采集", "缴费只读核验", "现场报到", "宿舍分配与入住", "绿色通道", "材料缺失与补交", "dashboard"],
+      "states": ["progress", "blocker", "green-channel", "materials", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["迎新批次", "学院", "应报到", "已报到", "步骤完成率", "阻断来源", "责任人", "截止时间", "证据", "补正结果"],
+      "boundary": "迎新推进阶段事实但不复制学生主档；阻断项保留来源、责任、证据、截止时间与补正历史"
+    },
+    {
+      "route": "/admin/campus-service/classes",
+      "routeName": "campus-service-classes",
+      "coveredRoutes": ["/admin/student-affairs/counselor-assignments", "/admin/student-affairs/counselor-eval"],
+      "coveredRouteNames": ["student-affairs-counselor-assignments", "student-affairs-counselor-eval"],
+      "html": "student-affairs/class-counselor-workbench.html",
+      "title": "班级与辅导员 · 责任工作台",
+      "menuPermissionCandidates": ["campus.record.view", "studentAffairs.class.view", "studentAffairs.counselorEval.view"],
+      "routePermissionCandidates": ["campus.record.view", "studentAffairs.class.view", "studentAffairs.counselorEval.view"],
+      "contractStatus": "ALIGNED",
+      "contractResolution": "navPlan 班级管理主入口已统一使用 campus.record.view，与 campus-service-classes 路由守卫一致；辅导员责任关系和考评入口继续使用各自学工权限，并由合同测试分别校验",
+      "apiSources": ["班级列表与画像", "班级材料", "辅导员责任关系", "考评周期", "自动指标", "学院评分", "排名发布"],
+      "states": ["responsibility", "profile", "materials", "assessment", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["学院", "年级", "班级", "学生数", "主辅导员", "协同辅导员", "生效时间", "范围状态", "请假/风险摘要", "考评指标", "综合分"],
+      "boundary": "辅导员范围必须显式配置；未配置返回空或403且不回退全校；班级画像不能绕过学生敏感字段权限"
+    },
+    {
+      "route": "/admin/student-affairs/talk",
+      "routeName": "student-affairs-talk",
+      "coveredRoutes": ["/admin/student-affairs/talk/ledger", "/admin/student-affairs/talk/stats", "/admin/student-affairs/family", "/admin/student-affairs/talk/key-follow", "/admin/student-affairs/family/receipts"],
+      "html": "student-affairs/talks-family-workbench.html",
+      "title": "谈心谈话与家校协同",
+      "permissionCandidates": ["studentAffairs.talk.view", "studentAffairs.homeSchool.view"],
+      "contractStatus": "ALIGNED",
+      "apiSources": ["谈话计划", "谈话记录", "后续跟进", "重点学生", "家校联系", "发送与送达", "回执", "统计与台账"],
+      "states": ["plan", "record", "followup", "family", "receipt", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["学生", "班级", "计划时间", "谈话摘要", "跟进任务", "责任人", "家庭联系状态", "回执状态", "附件", "用途审计"],
+      "boundary": "普通列表最小可见；谈话原文、家庭联系人明文、附件、导出与跨岗转办需要独立权限、用途和审计"
+    },
+    {
+      "route": "/admin/student-affairs/activity",
+      "routeName": "student-affairs-activity",
+      "coveredRoutes": ["/admin/student-affairs/activity/volunteer", "/admin/student-affairs/activity/second-class", "/admin/student-affairs/activity/credit-appeals", "/admin/student-affairs/activity/stats", "/admin/student-affairs/activity/clubs", "/admin/student-affairs/activity/organizations", "/admin/student-affairs/activity/party-league"],
+      "html": "student-affairs/activities-workbench.html",
+      "title": "活动、第二课堂与社团工作台",
+      "permissionCandidates": ["studentAffairs.activity.view", "studentAffairs.club.view", "studentAffairs.org.view", "studentAffairs.league.view"],
+      "contractStatus": "ALIGNED",
+      "apiSources": ["活动发布", "报名资格", "签到证据", "结果确认", "志愿时长", "第二课堂积分", "积分申诉", "社团", "学生干部与组织", "党团建设"],
+      "states": ["DRAFT", "PUBLISHED", "REGISTERED", "CHECKED_IN", "CONFIRMED", "APPEAL", "ARCHIVED", "loading", "empty", "error", "unauthorized", "readonly", "long-data"],
+      "fields": ["活动", "承办组织", "容量", "报名", "签到", "结果", "志愿时长", "积分", "规则版本", "申诉", "组织任职", "证据"],
+      "boundary": "报名、签到、结果、时长、积分和组织任职是独立事实；积分确认和申诉复核保留规则版本、证据和历史"
+    }
+  ],
+  "knownLimitations": [
+    "the four workspaces consolidate existing deep routes without deleting or replacing production routes",
+    "covered counselor responsibility and evaluation routes retain their own explicit permission contracts"
+  ]
+}

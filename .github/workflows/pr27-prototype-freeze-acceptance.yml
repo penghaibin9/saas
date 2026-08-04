@@ -1,0 +1,206 @@
+name: PR27 prototype freeze acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/ui/teacher-pc-v2-html/**'
+      - 'frontend/src/config/navPlan.js'
+      - 'frontend/src/config/navPlan.permission-contract.test.js'
+      - 'frontend/tests/studentAffairs.permissionCatalog.test.mjs'
+      - '.github/workflows/pr27-prototype-freeze-acceptance.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pr27-freeze-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  cross-browser-freeze-acceptance:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            browser: chrome
+            label: Linux Chrome 打印/宽表/键盘/敏感业务
+          - os: windows-2022
+            browser: edge
+            label: Windows Edge 打印/宽表/键盘/敏感业务
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare acceptance workspace
+        shell: bash
+        run: |
+          mkdir -p acceptance-artifacts/${{ matrix.browser }}
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+
+      - name: Check native shared-script syntax
+        shell: bash
+        run: |
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-student-affairs-workbench.js
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-internship-key.js
+
+      - name: Install isolated browser driver
+        shell: bash
+        run: npm install --prefix .pr27-tools --no-package-lock --ignore-scripts puppeteer-core@24.16.0
+
+      - name: Run cross-browser freeze acceptance
+        shell: bash
+        env:
+          ACCEPTANCE_BROWSER: ${{ matrix.browser }}
+          PUPPETEER_CORE_PATH: ${{ github.workspace }}/.pr27-tools/node_modules/puppeteer-core
+        run: |
+          node docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs \
+            --report=acceptance-artifacts/${{ matrix.browser }}/report.json
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr27-freeze-acceptance-${{ matrix.browser }}
+          path: acceptance-artifacts/${{ matrix.browser }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  final-full-regression:
+    name: 最新 HEAD 边界/一致性/870 全量回归
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify exact PR file boundary
+        shell: bash
+        run: |
+          git fetch origin main --depth=1
+          python - <<'PY'
+          import subprocess
+
+          allowed_outside_docs = {
+              '.github/workflows/pr27-prototype-freeze-acceptance.yml',
+              'frontend/src/config/navPlan.js',
+              'frontend/src/config/navPlan.permission-contract.test.js',
+              'frontend/tests/studentAffairs.permissionCatalog.test.mjs',
+          }
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'origin/main...HEAD'],
+              text=True,
+          ).splitlines()
+          outside = {
+              item for item in changed
+              if not item.startswith('docs/ui/teacher-pc-v2-html/')
+          }
+          unexpected = sorted(outside - allowed_outside_docs)
+          missing = sorted(allowed_outside_docs - outside)
+          if unexpected or missing:
+              raise SystemExit(
+                  f'production boundary mismatch; unexpected={unexpected}; missing={missing}; outside={sorted(outside)}'
+              )
+          print(f'changed files: {len(changed)}; exact outside-docs allowlist: {sorted(outside)}')
+          PY
+
+      - name: Prepare truthful manifest and consistency tools
+        shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p freeze-artifacts/consistency
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-manifest.mjs
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
+          node docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs \
+            --report=freeze-artifacts/consistency/report.json
+
+      - name: Install isolated persistent browser driver
+        shell: bash
+        run: npm install --prefix .pr27-tools --no-package-lock --ignore-scripts puppeteer-core@24.16.0
+
+      - name: Run final 290 x 3 persistent browser regression
+        shell: bash
+        env:
+          PUPPETEER_CORE_PATH: ${{ github.workspace }}/.pr27-tools/node_modules/puppeteer-core
+        run: |
+          node docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs \
+            --concurrency=2 \
+            --timeout-ms=30000 \
+            --report-dir=freeze-artifacts/full-regression
+
+      - name: Upload final regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr27-final-consistency-and-870
+          path: freeze-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  materialize-validated-tools:
+    name: 固化已验证冻结状态与工具
+    needs:
+      - cross-browser-freeze-acceptance
+      - final-full-regression
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Materialize verified manifest and tools
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-acceptance.mjs
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-manifest.mjs
+          node docs/ui/teacher-pc-v2-html/tools/prepare-freeze-boundary.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          node --check docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
+          node --check docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
+          rm -f .github/workflows/pr27-acceptance-runner-repair.yml
+
+      - name: Commit only when materialization changed the branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ui/teacher-pc-v2-html/prototype-manifest.json
+          git add docs/ui/teacher-pc-v2-html/shared/v2-prototype.js
+          git add docs/ui/teacher-pc-v2-html/tools/run-freeze-acceptance.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/check-prototype-consistency.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression.mjs
+          git add docs/ui/teacher-pc-v2-html/tools/run-browser-regression-persistent.mjs
+          if git ls-files --error-unmatch .github/workflows/pr27-acceptance-runner-repair.yml >/dev/null 2>&1; then
+            git add -u -- .github/workflows/pr27-acceptance-runner-repair.yml
+          fi
+          if git diff --cached --quiet; then
+            echo 'freeze state and tools already materialized'
+            exit 0
+          fi
+          git commit -m 'chore(prototype): freeze validated teacher PC V2 library'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

@@ -1,0 +1,83 @@
+{
+  "moduleKey": "academic-archive",
+  "moduleLabel": "教务归档",
+  "sourceOfTruth": [
+    "frontend/src/config/navPlan.js",
+    "frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue",
+    "frontend/src/modules/academicAffairs/views/ArchivePrecheckView.vue",
+    "frontend/src/modules/academicAffairs/views/ArchiveExportView.vue",
+    "backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py"
+  ],
+  "productionImplementationStatus": "four navigation entries, three production Vue pages, six batch states, semantic precheck, term write guards and audited exports verified; production state transitions and domain scopes must still be re-read before migration",
+  "sharedAssets": [
+    "shared/v2-archive-workbench.js",
+    "shared/v2-archive-workbench.css"
+  ],
+  "batchStates": ["DRAFT", "CHECKING", "READY", "MISSING_ITEMS", "ARCHIVED", "CANCELLED"],
+  "coreDomains": [
+    "STUDENT_STATUS",
+    "REGISTRATION",
+    "STATUS_CHANGE",
+    "PROGRAM",
+    "TEACHING_TASK",
+    "SCHEDULE",
+    "EXAM",
+    "GRADE",
+    "GRADUATION"
+  ],
+  "principles": [
+    "one term has one archive batch",
+    "semantic completion gates take priority over record counts",
+    "batch archive means multiple domains inside one term batch rather than multi-term one-click sealing",
+    "normal confirmation requires READY",
+    "forced archive preserves missing domains and records risk reason",
+    "ARCHIVED term writes are blocked with TERM_ARCHIVED 409 where guards are connected",
+    "special unfreeze is school-admin-only and never deletes archive history",
+    "formal exports are limited to archived batches and require purpose, watermark and audit"
+  ],
+  "routes": [
+    {
+      "route": "/admin/academic-affairs/archive",
+      "html": "academic-affairs/archive/archive-batches.html",
+      "title": "归档批次 + 9数据域完整性检查 + 学期封存",
+      "sourceComponent": "AaArchiveConsoleView.vue",
+      "permissionCandidates": ["academicAffairs.archive.view", "academicAffairs.archive.manage"],
+      "fields": ["学期", "批次名称", "批次状态", "缺失域数", "9域记录数", "完整性", "检查时间", "归档时间", "备注"],
+      "actions": ["创建批次", "完整性检查", "确认归档", "强制归档", "取消", "特批解冻"],
+      "boundary": "confirm archive seals the term and write actions must not rely on stale page state"
+    },
+    {
+      "route": "/admin/academic-affairs/archive/precheck",
+      "html": "academic-affairs/archive/archive-precheck.html",
+      "title": "归档缺失提醒",
+      "sourceComponent": "ArchivePrecheckView.vue",
+      "permissionCandidates": ["academicAffairs.archive.view"],
+      "fields": ["学期", "域码", "规则码", "语义结论", "业务记录数", "阻断项", "摘要", "证据", "处理路由", "范围说明"],
+      "boundary": "record presence never substitutes for semantic completion and scope limitations remain visible"
+    },
+    {
+      "route": "/admin/academic-affairs/archive?entry=batch",
+      "html": "academic-affairs/archive/archive-batch-workbench.html",
+      "title": "批量归档",
+      "sourceComponent": "AaArchiveConsoleView.vue",
+      "permissionCandidates": ["academicAffairs.archive.view", "academicAffairs.archive.manage"],
+      "fields": ["批次状态机", "前置条件", "业务阻断", "写保护", "强制原因", "封存结果", "解冻原因", "审计"],
+      "boundary": "batch processing covers multiple domains in one term batch and is not a multi-term bulk archive"
+    },
+    {
+      "route": "/admin/academic-affairs/archive/export",
+      "html": "academic-affairs/archive/archive-export.html",
+      "title": "归档导出",
+      "sourceComponent": "ArchiveExportView.vue",
+      "permissionCandidates": ["academicAffairs.archive.view", "academicAffairs.archive.export"],
+      "fields": ["已归档批次", "归档时间", "数据域", "记录数", "文件类型", "下载用途", "下载人", "角色", "下载类型", "下载说明", "下载时间"],
+      "actions": ["单域水印XLSX", "全量ZIP", "查看下载记录"],
+      "boundary": "only archived batches may produce formal files and every download requires purpose and audit"
+    }
+  ],
+  "knownLimitations": [
+    "some domains lack strong term or college dimensions and may use tenant-wide or current-term fallback scope",
+    "semantic precheck can include more enabled domains than the nine core persisted archive items",
+    "current prototype batch has not completed browser rendering or keyboard-focus regression"
+  ]
+}

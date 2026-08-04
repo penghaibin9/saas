@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>挂科清单 V2</title>
+<!--
+route: /admin/academic-affairs/grade-fail
+routeName: aa-grade-fail
+source component: frontend/src/modules/academicAffairs/views/AaGradeFailListView.vue
+permission: academicAffairs.grade.view
+API: academicAffairsApi.getFailList
+filters: term; columns: studentName,courseName,term,score,actions
+states: ready, empty, loading, error
+设计母版: 业务台账
+生成日期: 2026-07-30
+数据说明：原型中的“— / 学生A / 课程A”等为中性占位，仅用于表现布局；不代表生产数据。
+-->
+<link rel="stylesheet" href="../../shared/v2-tokens.css" />
+<link rel="stylesheet" href="../../shared/v2-shell.css" />
+<link rel="stylesheet" href="../../shared/v2-components.css" />
+</head>
+<body>
+<div class="v2-app">
+<header class="v2-topbar"><div class="v2-brand"><span class="v2-logo"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-shield"></use></svg></span><span>学校名称 · 校园通</span></div><nav class="v2-primary"><a href="#">工作台</a><a href="#">学工中心</a><a class="active" href="#">教务中心</a><a href="#">毕业设计中心</a><a href="#">岗位实习中心</a><a href="#">系统管理</a></nav><div class="v2-top-tools"><div class="v2-search-wrap"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-search"></use></svg><input class="v2-search" placeholder="搜索学生、功能、待办、帮助" /></div><div class="v2-scope">数据范围：当前身份范围</div><div class="v2-swatches" aria-label="六套主题"><button class="v2-swatch" data-theme-value="academy" title="学院蓝" style="background:#2475f4"></button><button class="v2-swatch" data-theme-value="business" title="商务蓝" style="background:#295fae"></button><button class="v2-swatch" data-theme-value="gray" title="雅灰" style="background:#718198"></button><button class="v2-swatch" data-theme-value="green" title="护眼绿" style="background:#2e9b79"></button><button class="v2-swatch" data-theme-value="white" title="皓白极简" style="background:#e8edf5"></button><button class="v2-swatch" data-theme-value="ink" title="墨白极简" style="background:#253043"></button></div><button class="v2-icon-btn" title="消息"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-bell"></use></svg></button><button class="v2-icon-btn" title="帮助"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-help"></use></svg></button><div class="v2-user"><span class="v2-avatar">师</span><span><b>当前用户</b><small style="display:block;opacity:.72">当前角色</small></span></div></div></header><div class="v2-layout">
+<aside class="v2-sidebar"><h1 class="v2-side-title">教务中心</h1><p class="v2-side-sub">当前中心工作区</p><nav class="v2-side-nav"><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-home"></use></svg><span>教务看板</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-clipboard"></use></svg><span>学年学期</span></a><a class="active" href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-users"></use></svg><span>成绩管理</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-chart"></use></svg><span>学业预警</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-message"></use></svg><span>考务管理</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-help"></use></svg><span>课表管理</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-file"></use></svg><span>毕业资格审核</span></a><a href="#"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-edit"></use></svg><span>统计与归档</span></a></nav><div class="v2-collapse">‹　收起菜单</div></aside>
+<main class="v2-content"><div class="v2-page"><div class="v2-breadcrumb">教务中心　/　成绩管理　/　挂科清单</div><div class="v2-main-grid"><div>
+<section class="v2-page-head"><div class="v2-page-title"><span class="v2-page-title-icon"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-alert"></use></svg></span><div><h1>挂科清单</h1><p>已发布成绩中不及格记录，可下钻到学生成绩单。</p></div></div><div class="v2-head-actions"><span class="v2-soft-chip">权限：academicAffairs.grade.view</span></div></section>
+<div class="v2-tabs" data-tab-scope><button class="v2-tab active" data-tab="overview">成绩总览</button><button class="v2-tab" data-tab="entry">成绩录入</button><button class="v2-tab" data-tab="fail">挂科清单</button><button class="v2-tab" data-tab="transcript">学生成绩单</button><button class="v2-tab" data-tab="exception">成绩异常</button><button class="v2-tab" data-tab="import">成绩导入导出</button></div>
+<section class="v2-section v2-card v2-filter"><div class="v2-field grow"><label>学期</label><input class="v2-input" placeholder="学期码（空=全部）"/></div><button class="v2-btn primary">查询</button><button class="v2-btn">重置</button></section>
+<section class="v2-section v2-card v2-table-card"><div class="v2-table-toolbar"><h2>不及格成绩记录</h2><span class="v2-note">GET /grade-views/fail-list · pageSize 50</span></div><div class="v2-table-wrap"><table class="v2-table"><thead><tr><th>学生</th><th>课程</th><th>学期</th><th>成绩</th><th>操作</th></tr></thead><tbody><tr><td>学生A（占位）</td><td>课程A（占位）</td><td>学期码</td><td style="color:var(--v2-danger);font-weight:800">—</td><td class="actions">成绩单</td></tr><tr><td>学生B（占位）</td><td>课程B（占位）</td><td>学期码</td><td style="color:var(--v2-danger);font-weight:800">—</td><td class="actions">成绩单</td></tr></tbody></table></div><div class="v2-pager"><span class="v2-note">共 — 条</span><button class="v2-page-no active">1</button></div></section>
+</div><aside class="v2-context"><section class="v2-card v2-context-card"><h2>页面说明</h2><p class="v2-note">仅展示已发布成绩中的不及格记录。点击成绩单携带 studentId 与 studentName 进入学生成绩单页。</p></section><section class="v2-card v2-context-card"><h2>状态预览</h2><div class="v2-actions" style="margin-top:0"><button class="v2-btn" data-state-button="ready">正常</button><button class="v2-btn" data-state-button="empty">空态</button><button class="v2-btn" data-state-button="loading">加载</button><button class="v2-btn" data-state-button="error">错误</button></div></section></aside></div>
+<section class="v2-state active" data-prototype-state="ready"></section><section class="v2-state" data-prototype-state="empty"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-check"></use></svg><h3>无挂科记录</h3><p>当前范围内没有不及格成绩。</p></section><section class="v2-state" data-prototype-state="loading"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-clock"></use></svg><h3>正在加载挂科清单</h3><p>对应 LoadingState。</p></section><section class="v2-state" data-prototype-state="error"><svg aria-hidden="true"><use href="../../shared/icons.svg#i-alert"></use></svg><h3>挂科清单加载失败</h3><p>对应 ErrorState，可执行重试。</p></section>
+</div></main></div></div>
+<script src="../../shared/v2-prototype.js"></script>
+</body></html>
