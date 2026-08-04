@@ -897,8 +897,13 @@ def incident_publish_update(incident_id: int, update_id: int,
 @router.post("/incidents/{incident_id}/request-problem-conversion", summary="RESOLVED事件申请转Problem")
 def incident_request_problem(incident_id: int, user=Depends(require_platform_capability("incident.manage"))):
     from app.services import incident_service as inc
+    from app.services import problem_management_service as prob
     out = inc.request_problem_conversion(incident_id, user=user)
-    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {})
+    # PLAT-10 建卡前，这一步只做资格判定和请求标记；现在真正落一条 Problem 记录，
+    # 用 source_incident_id 去重，同一个事件重复申请不会产生第二条 Problem。
+    problem = prob.create_problem_from_incident(incident_id, title=out.get("title") or "")
+    out["problemId"] = problem["id"]
+    _audit("PLATFORM_INCIDENT_PROBLEM_CONVERSION_REQUEST", str(incident_id), {"problemId": problem["id"]})
     return success(out, message="已登记转Problem申请")
 
 
@@ -1147,3 +1152,92 @@ def renewal_tasks_transition(task_id: int, body: dict = Body(...),
                                  expected_version=_expected_version(body, operation="流转续费任务"))
     _audit("PLATFORM_RENEWAL_TASK_TRANSITION", str(task_id), out, tenant_id=int(out["tenantId"]))
     return success(out, message="续费任务状态已更新")
+
+
+# ── PLAT-10 问题管理、已知错误与事故复盘 ────────────────────────────────────
+
+@router.get("/problems/overview", summary="问题管理治理首屏结论")
+def problems_overview(user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    return success(prob.governance_overview())
+
+
+@router.get("/problems", summary="问题列表")
+def problems_list(status: Optional[str] = Query(default=None),
+                  user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    items = prob.list_problems(status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.get("/problems/{problem_id}", summary="问题详情（含复盘记录）")
+def problems_get(problem_id: int, user=Depends(require_platform_capability("incident.manage"))):
+    from app.services import problem_management_service as prob
+    return success(prob.get_problem(problem_id))
+
+
+@router.post("/problems", summary="创建问题")
+def problems_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.create_problem(title=body.get("title") or "",
+                              source_incident_id=body.get("sourceIncidentId"),
+                              root_cause=body.get("rootCause") or "",
+                              workaround=body.get("workaround") or "")
+    _audit("PLATFORM_PROBLEM_CREATE", out["id"], out)
+    return success(out, message="问题已创建")
+
+
+@router.put("/problems/{problem_id}/root-cause", summary="更新根因/临时规避方案")
+def problems_update_root_cause(problem_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.update_root_cause(problem_id, root_cause=body.get("rootCause") or "",
+                                 workaround=body.get("workaround") or "",
+                                 expected_version=_expected_version(body, operation="更新根因"))
+    _audit("PLATFORM_PROBLEM_ROOT_CAUSE_UPDATE", str(problem_id), out)
+    return success(out, message="根因已更新")
+
+
+@router.post("/problems/{problem_id}/status", summary="流转问题状态")
+def problems_transition(problem_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.transition_status(problem_id, target_status=body.get("status") or "",
+                                 expected_version=_expected_version(body, operation="流转问题状态"))
+    _audit("PLATFORM_PROBLEM_TRANSITION", str(problem_id), out)
+    return success(out, message="问题状态已更新")
+
+
+@router.post("/problems/{problem_id}/permanent-fix", summary="链接永久修复变更")
+def problems_link_fix(problem_id: int, body: dict = Body(...),
+                      user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    change_id = body.get("changeId")
+    if not change_id:
+        raise AppException("VALIDATION_ERROR", "必须指定 changeId")
+    out = prob.link_permanent_fix(problem_id, change_id=int(change_id),
+                                  expected_version=_expected_version(body, operation="链接永久修复"))
+    _audit("PLATFORM_PROBLEM_PERMANENT_FIX_LINK", str(problem_id), out)
+    return success(out, message="已链接永久修复变更")
+
+
+@router.post("/problems/{problem_id}/postmortems", summary="新增事故复盘草稿")
+def problems_create_postmortem(problem_id: int, body: dict = Body(...),
+                               user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.create_postmortem(problem_id, what_happened=body.get("whatHappened") or "",
+                                 timeline=body.get("timeline") or [],
+                                 impact_summary=body.get("impactSummary") or "",
+                                 action_items=body.get("actionItems") or [], user=user)
+    _audit("PLATFORM_PROBLEM_POSTMORTEM_CREATE", out["id"], out)
+    return success(out, message="复盘草稿已创建")
+
+
+@router.post("/postmortems/{postmortem_id}/publish", summary="发布事故复盘")
+def postmortems_publish(postmortem_id: int, body: dict = Body(...),
+                        user=Depends(require_platform_super_admin)):
+    from app.services import problem_management_service as prob
+    out = prob.publish_postmortem(postmortem_id,
+                                  expected_version=_expected_version(body, operation="发布复盘"))
+    _audit("PLATFORM_PROBLEM_POSTMORTEM_PUBLISH", str(postmortem_id), out)
+    return success(out, message="复盘已发布")

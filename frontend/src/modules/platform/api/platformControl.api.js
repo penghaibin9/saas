@@ -208,6 +208,17 @@ export const platformControlApi = {
   publishIncidentUpdate: (incidentId, updateId) => real('incident-update-publish', `/platform/incidents/${incidentId}/updates/${updateId}/publish`, { method: 'POST', body: {} }),
   requestIncidentProblemConversion: (incidentId) => real('incident-problem-conversion', `/platform/incidents/${incidentId}/request-problem-conversion`, { method: 'POST', body: {} }),
 
+  /* PLAT-10 问题管理、已知错误与事故复盘（新页面，无演示兜底） */
+  getProblemsOverview: () => real('problems-overview', '/platform/problems/overview', {}),
+  listProblems: (params = {}) => real('problems-list', '/platform/problems', { params }),
+  getProblem: (problemId) => real('problem-get', `/platform/problems/${problemId}`, {}),
+  createProblem: (body) => real('problem-create', '/platform/problems', { method: 'POST', body }),
+  updateProblemRootCause: (problemId, body) => real('problem-root-cause-update', `/platform/problems/${problemId}/root-cause`, { method: 'PUT', body }),
+  transitionProblem: (problemId, body) => real('problem-transition', `/platform/problems/${problemId}/status`, { method: 'POST', body }),
+  linkProblemPermanentFix: (problemId, body) => real('problem-permanent-fix-link', `/platform/problems/${problemId}/permanent-fix`, { method: 'POST', body }),
+  createPostmortem: (problemId, body) => real('postmortem-create', `/platform/problems/${problemId}/postmortems`, { method: 'POST', body }),
+  publishPostmortem: (postmortemId, body) => real('postmortem-publish', `/platform/postmortems/${postmortemId}/publish`, { method: 'POST', body }),
+
   /* PLAT-11 变更、发布、兼容性、灰度与回滚（新页面，无演示兜底） */
   getChangesOverview: () => real('changes-overview', '/platform/changes/overview', {}),
   listChanges: (params = {}) => real('changes-list', '/platform/changes', { params }),
