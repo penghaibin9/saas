@@ -130,6 +130,11 @@ def _active_round(db, batch_id):
     ).first()
 
 
+def _counts_toward_capacity(status: str | None) -> bool:
+    """只有已选/已锁定记录占用容量；待抽签记录从未增加 selected_count。"""
+    return status in (_REC_SELECTED, _REC_LOCKED)
+
+
 def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allow_reselect_closed=False):
     from app.models import AaCourse, AaSelectionCourse
     from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
@@ -313,9 +318,10 @@ def drop(user, course_id):
             raise not_found("当前课程没有可退选记录")
         if record.status == _REC_LOCKED:
             raise _core._invalid("选课名单已锁定，不可自行退课")
+        previous_status = record.status
         record.status = _REC_DROPPED
         record.dropped_at = datetime.utcnow()
-        if record.status != _REC_PENDING:
+        if _counts_toward_capacity(previous_status):
             course.selected_count = max(0, int(course.selected_count or 0) - 1)
         _core._audit(db, record.id, "SELECTION_DROP", "学生退课")
         db.commit()
