@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  backend-diagnostic:
+  alembic-diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     services:
       mysql:
         image: mysql:8.0
@@ -44,14 +44,19 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: 安装依赖
         run: pip install -r backend/requirements.txt
-      - name: 运行并保存教务及迁移测试完整日志
+      - name: 运行并保存 Alembic 合同测试完整日志
         shell: bash
         run: |
           cd backend
-          mapfile -t TARGETS < <(find tests -maxdepth 1 -type f \( -name 'test_aa_*.py' -o -name 'test_alembic*.py' \) | sort)
+          mapfile -t TARGETS < <(find tests -maxdepth 1 -type f -name 'test_alembic*.py' | sort)
           printf '%s\n' "${TARGETS[@]}" | tee /tmp/pr41-targets.txt
+          if [ "${#TARGETS[@]}" -eq 0 ]; then
+            echo "No test_alembic*.py files found" | tee /tmp/pr41-pytest.log
+            echo 2 > /tmp/pr41-pytest-exit
+            exit 0
+          fi
           set +e
-          pytest -vv --tb=long --maxfail=10 "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-pytest.log
+          pytest -vv --tb=long --maxfail=1 "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-pytest.log
           code=${PIPESTATUS[0]}
           echo "$code" > /tmp/pr41-pytest-exit
           exit 0
@@ -59,7 +64,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr41-backend-diagnostic
+          name: pr41-alembic-diagnostic
           path: |
             /tmp/pr41-targets.txt
             /tmp/pr41-pytest.log
