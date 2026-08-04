@@ -1,0 +1,38 @@
+name: PR39 synchronize latest main
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-p0-p1-closeout-20260803
+    paths:
+      - .github/workflows/pr39-sync-latest-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  merge-and-self-delete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-p0-p1-closeout-20260803
+          fetch-depth: 0
+
+      - name: Merge latest main without conflict shortcuts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-ff --no-commit origin/main
+          rm .github/workflows/pr39-sync-latest-main.yml
+          git add .github/workflows/pr39-sync-latest-main.yml
+          git diff --cached --check
+          if git ls-files -u | grep -q .; then
+            echo "merge conflicts remain" >&2
+            exit 1
+          fi
+          git commit -m "Merge latest main into student-affairs closeout"
+          git push origin HEAD:audit/student-affairs-p0-p1-closeout-20260803
