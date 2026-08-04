@@ -220,7 +220,24 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         raise _core._invalid(f"未满足先修课程：{','.join(missing)}")
 
     projected_credit = sum(float(item.credit or 0) for item in active_selected) + float(add_credit or 0)
-    if float(batch.max_credit or 0) > 0 and projected_credit > float(batch.max_credit):
+    configured_max_credit = _core._rule(db, batch, "maxCredits", 0)
+    try:
+        max_credit = float(configured_max_credit or 0)
+    except (TypeError, ValueError) as exc:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课规则 maxCredits 配置无效，请联系教务管理员修复",
+            details={"maxCredits": str(configured_max_credit)},
+            http_status=409,
+        ) from exc
+    if max_credit < 0:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课规则 maxCredits 不可小于 0，请联系教务管理员修复",
+            details={"maxCredits": str(configured_max_credit)},
+            http_status=409,
+        )
+    if max_credit > 0 and projected_credit > max_credit:
         raise _core._invalid("超过本轮选课最大学分限制")
 
     for item in active_selected:
