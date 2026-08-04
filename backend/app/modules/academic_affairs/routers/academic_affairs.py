@@ -30,6 +30,7 @@ from app.modules.academic_affairs.services import academic_affairs_workload_serv
 from app.modules.academic_affairs.services import academic_affairs_change_service as change_svc
 from app.modules.academic_affairs.services import academic_affairs_course_service as course_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_service as effective_policy_svc
 from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad_svc
 from app.modules.academic_affairs.services import academic_affairs_org_service as org_svc
 from app.modules.academic_affairs.services import academic_affairs_program_service as prog_svc
@@ -1533,6 +1534,27 @@ def grade_college_review(body: GradeReviewBody, taskId: int = Path(...),
 @router.post("/grade-tasks/{taskId}/publish", summary="教务处终审发布（原子回写+台账刷新+预警）")
 def grade_publish(taskId: int = Path(...), user=Depends(require_permission("academicAffairs.grade.publish"))):
     return success(grade_svc.publish_grades(taskId, user), message="已发布")
+
+
+class EffectiveGradePolicyBody(BaseModel):
+    policyCode: Optional[str] = Field(default=None, max_length=80)
+    attemptStrategy: str = Field(..., min_length=1, max_length=40)
+    makeupStrategy: str = Field(default="CAP_AND_OVERRIDE", max_length=40)
+    makeupCap: Optional[int] = Field(default=60, ge=0, le=100)
+    retakeStrategy: str = Field(default="REPLACE_IF_PASSED", max_length=40)
+    recognitionPriority: int = Field(default=75, ge=0, le=1000)
+    effectiveFromTermId: Optional[int] = Field(default=None, gt=0)
+
+
+@router.get("/grade-policies", summary="有效成绩策略版本链")
+def grade_policy_list(user=Depends(require_permission("academicAffairs.grade.policy.view"))):
+    return success(effective_policy_svc.list_grade_policies(user))
+
+
+@router.post("/grade-policies/activate", summary="激活新的有效成绩策略版本")
+def grade_policy_activate(body: EffectiveGradePolicyBody,
+                          user=Depends(require_permission("academicAffairs.grade.policy.manage"))):
+    return success(effective_policy_svc.activate_grade_policy(user, body.model_dump()), message="成绩策略已激活")
 
 
 @router.post("/grade-tasks/{taskId}/return", summary="教务处退回（教务终审阶段）")

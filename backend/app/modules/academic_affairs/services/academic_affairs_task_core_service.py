@@ -160,30 +160,40 @@ def generate_batch(body, user) -> dict:
 
 # ═══════════ 分配 / 教师确认 ═══════════
 
+def assign_teacher_tx(db, task_id, user, body) -> dict:
+    from app.models import AaTeachingTask
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+
+    t = db.query(AaTeachingTask).filter(
+        AaTeachingTask.id == int(task_id),
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.is_deleted.is_(False),
+    ).with_for_update().first()
+    if not t:
+        raise not_found("教学任务不存在")
+    guard_term_writable(db, _term_id_of(db, t.batch_id))
+    if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
+        raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")
+    t.teacher_id = int(body.teacherId) if getattr(body, "teacherId", None) else None
+    t.teacher_key = getattr(body, "teacherKey", None)
+    t.teacher_name = getattr(body, "teacherName", None)
+    if getattr(body, "weeklyHours", None) is not None:
+        t.weekly_hours = body.weeklyHours
+    if getattr(body, "expectedStudents", None) is not None:
+        t.expected_students = body.expectedStudents
+    if getattr(body, "isMerged", None) is not None:
+        t.is_merged = bool(body.isMerged)
+    t.status, t.reject_reason = "ASSIGNED", None
+    _audit(db, "AA_TASK", t.id, "ASSIGN", t.teacher_name or "")
+    db.flush()
+    return _task_row(t)
+
+
 def assign_teacher(task_id, user, body) -> dict:
     with session() as db:
-        from app.models import AaTeachingTask
-        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        t = db.get(AaTeachingTask, int(task_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
-            raise not_found("教学任务不存在")
-        guard_term_writable(db, _term_id_of(db, t.batch_id))
-        if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")
-        t.teacher_id = int(body.teacherId) if getattr(body, "teacherId", None) else None
-        t.teacher_key = getattr(body, "teacherKey", None)
-        t.teacher_name = getattr(body, "teacherName", None)
-        if getattr(body, "weeklyHours", None) is not None:
-            t.weekly_hours = body.weeklyHours
-        if getattr(body, "expectedStudents", None) is not None:
-            t.expected_students = body.expectedStudents
-        if getattr(body, "isMerged", None) is not None:
-            t.is_merged = bool(body.isMerged)
-        t.status, t.reject_reason = "ASSIGNED", None
-        _audit(db, "AA_TASK", t.id, "ASSIGN", t.teacher_name or "")
+        result = assign_teacher_tx(db, task_id, user, body)
         db.commit()
-        db.refresh(t)
-        return _task_row(t)
+        return result
 
 
 _REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}

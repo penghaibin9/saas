@@ -6,8 +6,8 @@
         <view class="card">
           <view class="cr__metrics">
             <view class="cr__metric">
-              <text class="cr__metric-val">{{ d.obtainedCredits }}<text class="cr__metric-unit">/{{ d.requiredCredits }}</text></text>
-              <text class="cr__metric-label">已获/应修学分</text>
+              <text class="cr__metric-val">{{ d.obtainedCredits }}<text v-if="d.resolutionStatus === 'RESOLVED'" class="cr__metric-unit">/{{ d.requiredCredits }}</text></text>
+              <text class="cr__metric-label">{{ d.resolutionStatus === 'RESOLVED' ? '已获/应修学分' : '已获学分' }}</text>
             </view>
             <view class="cr__metric">
               <text class="cr__metric-val">{{ d.gpa != null ? d.gpa : '—' }}</text>
@@ -18,7 +18,11 @@
               <text class="cr__metric-label">挂科门数</text>
             </view>
           </view>
-          <view style="margin-top: var(--space-3);"><MobileProgress :value="pct" tone="success" /></view>
+          <view v-if="d.resolutionStatus === 'RESOLVED'" style="margin-top: var(--space-3);"><MobileProgress :value="pct" tone="success" /></view>
+          <view v-else class="cr__unresolved">
+            <text class="t-sm">学校尚未完成你的培养方案绑定，暂时无法准确计算应修学分。</text>
+            <text class="cr__sub">已获得成绩和学分不会丢失。</text>
+          </view>
           <text class="cr__sub" style="margin-top:8px;display:block">本页为学分汇总只读；培养方案分类占比以教务处发布口径为准。</text>
         </view>
 
@@ -72,5 +76,6 @@ export default {
 .cr__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .cr__score { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--success-600); }
 .cr__note { margin-top: var(--space-2); }
+.cr__unresolved { margin-top: var(--space-3); padding: 12px; border-radius: 10px; background: var(--warning-50); color: var(--text-primary); }
 .t-danger { color: var(--danger-600) !important; }
 </style>

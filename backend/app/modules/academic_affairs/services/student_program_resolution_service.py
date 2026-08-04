@@ -135,3 +135,33 @@ def resolve_student_program(db, student, *, tenant_id: int, as_of=None) -> Progr
         "NO_EFFECTIVE_BINDING",
         "未找到班级、专业年级或生效日期内历史培养方案绑定",
     )
+
+def credit_requirement_payload(db, student, *, tenant_id: int, earned_credits=0, as_of=None) -> dict:
+    """把培养方案解析结果转换为所有学分页面共用的正式合同。
+
+    未解析时 ``requiredCredits`` / ``missingCredits`` 必须为 ``None``，
+    禁止使用学校无依据的默认学分或把未知解释为通过。
+    """
+    resolution = resolve_student_program(
+        db, student, tenant_id=int(tenant_id), as_of=as_of
+    )
+    earned = float(earned_credits or 0)
+    program = resolution.program if resolution.status == "RESOLVED" else None
+    required = (
+        float(program.total_credits)
+        if program is not None and getattr(program, "total_credits", None) is not None
+        else None
+    )
+    resolved = required is not None
+    return {
+        "resolutionStatus": "RESOLVED" if resolved else "UNRESOLVED",
+        "programId": str(program.id) if resolved else None,
+        "programVersion": int(program.version) if resolved and getattr(program, "version", None) is not None else None,
+        "requiredCredits": required if resolved else None,
+        "earnedCredits": earned,
+        "obtainedCredits": earned,
+        "missingCredits": max(0.0, required - earned) if resolved else None,
+        "canJudgeGraduation": bool(resolved),
+        "blockingReason": None if resolved else resolution.message,
+        "resolutionRule": resolution.rule,
+    }

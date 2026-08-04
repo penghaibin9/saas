@@ -22,7 +22,7 @@ class StatsSnapshotCreateBody(BaseModel):
 @router.post("", summary="冻结当前教务统计快照")
 def stats_snapshot_create(
     body: StatsSnapshotCreateBody,
-    user=Depends(require_permission("academicAffairs.stats.view")),
+    user=Depends(require_permission("academicAffairs.stats.snapshot.create")),
 ):
     return success(
         service.create_snapshot(
@@ -43,7 +43,7 @@ def stats_snapshot_list(
     snapshotType: str | None = Query(default=None, max_length=40),
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=50, ge=1, le=100),
-    user=Depends(require_permission("academicAffairs.stats.view")),
+    user=Depends(require_permission("academicAffairs.stats.snapshot.view")),
 ):
     rows, total = service.list_snapshots(
         user,
@@ -58,6 +58,6 @@ def stats_snapshot_list(
 @router.get("/{snapshot_id}", summary="统计快照详情与哈希校验")
 def stats_snapshot_detail(
     snapshot_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.stats.view")),
+    user=Depends(require_permission("academicAffairs.stats.snapshot.view")),
 ):
     return success(service.get_snapshot(user, snapshot_id))

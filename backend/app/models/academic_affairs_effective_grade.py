@@ -5,10 +5,54 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Index, Integer, String, Text, UniqueConstraint, event, inspect, select
+from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text, UniqueConstraint, event, inspect, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
+
+
+class AaEffectiveGradePolicy(PKMixin, TenantMixin, CommonMixin, Base):
+    """租户级、按生效学期版本化的有效成绩策略。"""
+
+    __tablename__ = "t_aa_effective_grade_policy"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "policy_code", name="uk_aa_effective_grade_policy_code"),
+        Index("ix_aa_effective_grade_policy_active", "tenant_id", "status", "effective_from_term_id"),
+    )
+
+    policy_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    attempt_strategy: Mapped[str] = mapped_column(String(40), nullable=False)
+    makeup_strategy: Mapped[str] = mapped_column(String(40), nullable=False, default="CAP_AND_OVERRIDE")
+    makeup_cap: Mapped[int | None] = mapped_column(Integer)
+    retake_strategy: Mapped[str] = mapped_column(String(40), nullable=False, default="REPLACE_IF_PASSED")
+    recognition_priority: Mapped[int] = mapped_column(Integer, nullable=False, default=75)
+    effective_from_term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="DRAFT/ACTIVE/SUPERSEDED")
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaGradeCorrection(PKMixin, TenantMixin, CommonMixin, Base):
+    """正式成绩追加式更正链；原成绩保留为SUPERSEDED，新成绩成为ACTIVE。"""
+
+    __tablename__ = "t_aa_grade_correction"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "recheck_id", name="uk_aa_grade_correction_recheck"),
+        Index("ix_aa_grade_correction_original", "tenant_id", "original_grade_id"),
+        Index("ix_aa_grade_correction_corrected", "tenant_id", "corrected_grade_id"),
+    )
+
+    recheck_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    original_grade_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    corrected_grade_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    before_score: Mapped[int | None] = mapped_column(Integer)
+    after_score: Mapped[int | None] = mapped_column(Integer)
+    pass_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    rule_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500))
+    operator: Mapped[str | None] = mapped_column(String(100))
+    effective_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
 
 
 class AaEffectiveGradePolicySnapshot(PKMixin, TenantMixin, CommonMixin, Base):
@@ -70,6 +114,10 @@ _GRADE_SNAPSHOT_FIELDS = {
     "teaching_task_id",
     "teaching_class_id",
     "roster_version_id",
+    "effective_policy_code",
+    "effective_policy_version",
+    "effective_attempt_strategy",
+    "pass_line_snapshot",
 }
 
 
@@ -77,8 +125,6 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
     """Core insert保持与AcademicGrade同一数据库事务，并与显式冻结使用同一事件幂等键。"""
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
-        POLICY_CODE,
-        POLICY_VERSION,
         identity_snapshot,
         policy_payload,
     )
@@ -106,9 +152,13 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
         "recordStatus": getattr(target, "record_status", None),
         "gradeSource": getattr(target, "source", None),
         "examType": getattr(target, "exam_type", None),
+        "effectivePolicyCode": getattr(target, "effective_policy_code", None),
+        "effectivePolicyVersion": getattr(target, "effective_policy_version", None),
+        "attemptStrategy": getattr(target, "effective_attempt_strategy", None),
+        "passLineSnapshot": getattr(target, "pass_line_snapshot", None),
         **identity,
     }
-    policy = policy_payload()
+    policy = policy_payload(target)
     policy_hash = hashlib.sha256(
         _canonical({"policy": policy, "decision": decision}).encode("utf-8")
     ).hexdigest()
@@ -148,8 +198,8 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
         event_type=event_type,
         source_biz_type=source_biz_type[:50],
         source_biz_id=int(source_biz_id) if source_biz_id not in (None, "") else None,
-        policy_code=POLICY_CODE,
-        policy_version=POLICY_VERSION,
+        policy_code=policy["policyCode"],
+        policy_version=policy["policyVersion"],
         policy_json=_canonical(policy),
         policy_hash=policy_hash,
         identity_type=identity["identityType"],
@@ -167,6 +217,34 @@ def _write_snapshot(connection, target, *, operation: str) -> None:
     ))
 
 
+
+def _before_grade_insert(_mapper, connection, target) -> None:
+    """正式成绩写入前冻结租户策略；无ACTIVE策略直接阻断。"""
+    if not getattr(target, "tenant_id", None):
+        return
+    if getattr(target, "effective_attempt_strategy", None):
+        return
+    table = AaEffectiveGradePolicy.__table__
+    row = connection.execute(
+        select(
+            table.c.policy_code, table.c.policy_version, table.c.attempt_strategy
+        ).where(
+            table.c.tenant_id == int(target.tenant_id),
+            table.c.status == "ACTIVE",
+            table.c.is_deleted.is_(False),
+        ).order_by(
+            table.c.effective_from_term_id.desc(),
+            table.c.policy_version.desc(),
+            table.c.id.desc(),
+        ).limit(1)
+    ).first()
+    if not row:
+        # 兼容历史迁移/沙箱导入；正式发布入口会显式要求ACTIVE策略。
+        return
+    target.effective_policy_code = row.policy_code
+    target.effective_policy_version = row.policy_version
+    target.effective_attempt_strategy = row.attempt_strategy
+
 def _after_grade_insert(_mapper, connection, target) -> None:
     _write_snapshot(connection, target, operation="INSERT")
 
@@ -181,6 +259,8 @@ def _after_grade_update(_mapper, connection, target) -> None:
 # 模型模块在app.models初始化时显式注册；命名监听器允许检查并避免测试reload造成重复绑定。
 from app.models.academic import AcademicGrade  # noqa: E402
 
+if not event.contains(AcademicGrade, "before_insert", _before_grade_insert):
+    event.listen(AcademicGrade, "before_insert", _before_grade_insert)
 if not event.contains(AcademicGrade, "after_insert", _after_grade_insert):
     event.listen(AcademicGrade, "after_insert", _after_grade_insert)
 if not event.contains(AcademicGrade, "after_update", _after_grade_update):

@@ -31,22 +31,12 @@
 
         <view v-if="canEdit && roster.length" class="ge__notice">
           正常成绩填写0—100整数；缺考、缓考、免修、作弊请选择特殊状态，系统不会把它们误记为0分。
-          修改会自动保存为本机草稿，点击“保存全部”后才写入学校服务器。
+          修改仅保留在当前页面内存中，点击“保存全部”后才写入学校服务器。
         </view>
         <AppInlineAlert
           v-else-if="active && !canEdit"
           type="warning"
           :description="`任务当前为${statusLabel(active.status)}，移动端只读；已提交或已发布成绩不得直接修改。`"
-        />
-        <AppInlineAlert
-          v-if="draftRestoredCount"
-          type="success"
-          :description="`已恢复${draftRestoredCount}人的本机草稿${draftSavedAt ? '（' + draftSavedAt + '）' : ''}，请核对后保存到服务器。`"
-        />
-        <AppInlineAlert
-          v-else-if="dirtyCount && draftSavedAt"
-          type="success"
-          :description="`本机草稿已自动保存（${draftSavedAt}），离开页面后再次进入仍可继续。`"
         />
 
         <view v-if="qualityReport" class="ge__quality" :class="qualityReport.ready ? 'is-ready' : 'is-blocked'">
@@ -122,7 +112,7 @@
 </template>
 
 <script>
-/** V2 R5 教师微信成绩录入：名单分组 + 本机草稿 + 整批事务保存 + 提交前质量报告。 */
+/** V2 R5 教师微信成绩录入：名单分组 + 内存编辑 + 整批事务保存 + 提交前质量报告。 */
 import { teacherApi } from '@/services/teacherApi'
 import { academicGradeEntryApi } from '@/services/academicGradeEntryApi'
 import { normalizeError } from '@/services/request'
@@ -167,7 +157,6 @@ export default {
   },
   onUnload() {
     if (this.draftTimer) clearTimeout(this.draftTimer)
-    this.persistDraftNow()
   },
   onBackPress() {
     if (!this.active) return false
@@ -232,11 +221,10 @@ export default {
     async leaveActiveTask() {
       if (!this.active) return true
       if (this.dirtyCount) {
-        this.persistDraftNow()
         const leave = await this.confirmModal(
           '仍有未保存成绩',
-          `还有${this.dirtyCount}人的修改尚未写入学校服务器，已自动保存为本机草稿。确认返回任务列表？`,
-          '保存草稿并返回'
+          `还有${this.dirtyCount}人的修改尚未写入学校服务器，离开后将丢失。确认返回任务列表？`,
+          '放弃修改并返回'
         )
         if (!leave) return false
       }
@@ -277,88 +265,15 @@ export default {
           }
           this.dirty[student.studentId] = false
         })
-        if (this.canEdit) this.restoreDraft()
-        else this.clearDraft()
+        this.clearDraft()
         this.rosterState = 'ready'
       } catch (e) {
         this.rosterState = 'error'
         toast((e && e.message) || '名单加载失败')
       }
     },
-    draftKey(task = this.active) {
-      if (!task || !task.gradeTaskId) return ''
-      return `aa-grade-entry-draft:${task.gradeTaskId}:${task.teacherKey || 'self'}`
-    },
-    formatDraftTime(value) {
-      if (!value) return ''
-      const date = new Date(value)
-      const pad = (number) => String(number).padStart(2, '0')
-      return `${pad(date.getHours())}:${pad(date.getMinutes())}`
-    },
-    scheduleDraftSave() {
-      if (this.draftTimer) clearTimeout(this.draftTimer)
-      this.draftTimer = setTimeout(() => this.persistDraftNow(), 400)
-    },
-    persistDraftNow() {
-      if (this.draftTimer) {
-        clearTimeout(this.draftTimer)
-        this.draftTimer = null
-      }
-      const key = this.draftKey()
-      if (!key || !this.active) return
-      const draftScores = {}
-      Object.keys(this.dirty).forEach((studentId) => {
-        if (this.dirty[studentId] && this.scores[studentId]) {
-          draftScores[studentId] = { ...this.scores[studentId] }
-        }
-      })
-      const ids = Object.keys(draftScores)
-      try {
-        if (!ids.length) {
-          uni.removeStorageSync(key)
-          this.draftSavedAt = ''
-          return
-        }
-        const savedAt = Date.now()
-        uni.setStorageSync(key, {
-          version: 1,
-          gradeTaskId: String(this.active.gradeTaskId),
-          teacherKey: this.active.teacherKey || '',
-          savedAt,
-          scores: draftScores
-        })
-        this.draftSavedAt = this.formatDraftTime(savedAt)
-      } catch (e) {
-        toast('本机草稿保存失败，请先点击“保存全部”')
-      }
-    },
-    restoreDraft() {
-      const key = this.draftKey()
-      if (!key) return
-      try {
-        const draft = uni.getStorageSync(key)
-        if (!draft || String(draft.gradeTaskId || '') !== String(this.active.gradeTaskId) || !draft.scores) return
-        let restored = 0
-        Object.keys(draft.scores).forEach((studentId) => {
-          if (!this.scores[studentId]) return
-          this.scores[studentId] = { ...this.scores[studentId], ...draft.scores[studentId] }
-          this.dirty[studentId] = true
-          restored += 1
-          const student = this.roster.find((row) => String(row.studentId) === String(studentId))
-          if (student) this.validateStudent(student)
-        })
-        this.draftRestoredCount = restored
-        this.draftSavedAt = this.formatDraftTime(draft.savedAt)
-        if (!restored) uni.removeStorageSync(key)
-      } catch (e) {
-        toast('本机草稿读取失败，已使用服务器最新成绩')
-      }
-    },
     clearDraft() {
-      const key = this.draftKey()
-      if (key) {
-        try { uni.removeStorageSync(key) } catch (e) {}
-      }
+      // 成绩属于敏感教务数据：生产端禁止写入uni本地持久化存储。
       this.draftSavedAt = ''
       this.draftRestoredCount = 0
     },
@@ -367,7 +282,6 @@ export default {
       this.rowErrors[studentId] = ''
       this.qualityReport = null
       this.draftRestoredCount = 0
-      this.scheduleDraftSave()
     },
     changeException(student, event) {
       if (!this.canEdit) return

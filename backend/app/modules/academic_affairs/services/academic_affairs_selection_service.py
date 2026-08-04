@@ -94,6 +94,32 @@ def _passed_course_codes(db, student) -> set[str]:
     }
 
 
+
+
+def _load_prerequisite_codes(course) -> set[str]:
+    """读取课程正式先修代码；损坏配置必须阻断选课，禁止静默当作无先修课。"""
+    raw = getattr(course, "prerequisite_codes_json", None)
+    if raw in (None, "", []):
+        return set()
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则JSON损坏，请联系教务管理员修复后再选课",
+                details={"courseCode": str(getattr(course, "course_code", "") or "")},
+                http_status=409,
+            ) from exc
+    if not isinstance(raw, list):
+        raise AppException(
+            "DATA_CONFLICT",
+            "课程先修规则格式错误，必须是课程代码数组",
+            details={"courseCode": str(getattr(course, "course_code", "") or "")},
+            http_status=409,
+        )
+    return {str(code).strip().upper() for code in raw if str(code).strip()}
+
 def _active_round(db, batch_id):
     from app.models import AaSelectionRound
 
@@ -157,17 +183,7 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         AaCourse.course_code == course.course_code,
         AaCourse.is_deleted.is_(False),
     ).order_by(AaCourse.version.desc(), AaCourse.id.desc()).first()
-    prerequisites = set()
-    if source_course and source_course.prerequisite_json:
-        try:
-            parsed = json.loads(source_course.prerequisite_json)
-            prerequisites = {
-                str(code).strip().upper()
-                for code in parsed
-                if str(code).strip()
-            } if isinstance(parsed, list) else set()
-        except (TypeError, ValueError):
-            prerequisites = set()
+    prerequisites = _load_prerequisite_codes(source_course) if source_course else set()
     missing = sorted(prerequisites - passed_codes)
     if missing:
         raise _core._invalid(f"未满足先修课程：{','.join(missing)}")

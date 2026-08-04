@@ -303,29 +303,37 @@ def _refresh_administrative_roster(task_id: int, reason: str) -> dict:
 
 
 def generate_batch(body, user) -> dict:
+    """教学任务、独立教学班、初始名单和审计一次提交；任一步失败全部回滚。"""
     college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
     with session() as db:
         precheck = _generation_precheck(db, user, college_id)
-    result = generation.generate_batch(body, user)
-    batch_id = int(result["batchId"])
-    with session() as db:
+        result = generation.generate_batch_tx(db, body, user)
+        batch_id = int(result["batchId"])
         projection = teaching_class.sync_batch_teaching_classes(db, batch_id)
         db.commit()
-    result["programValidation"] = {
-        "programCount": precheck["programCount"],
-        "warningCount": precheck["warningCount"],
-        "conclusion": "已启用方案结构与绑定校验通过",
-    }
-    result["teachingClassProjection"] = projection
-    return result
+        result["programValidation"] = {
+            "programCount": precheck["programCount"],
+            "warningCount": precheck["warningCount"],
+            "conclusion": "已启用方案结构与绑定校验通过",
+        }
+        result["teachingClassProjection"] = projection
+        return result
 
 
 def assign_teacher(task_id, user, body) -> dict:
+    """教师分配与教学班投影在同一事务中完成。"""
     with session() as db:
         _ensure_task_visible(db, int(task_id), user)
-    result = _core.assign_teacher(task_id, user, body)
-    result["teachingClassProjection"] = _sync_task(int(task_id))
-    return result
+        result = _core.assign_teacher_tx(db, int(task_id), user, body)
+        teaching_row = teaching_class.ensure_teaching_class_for_task(db, int(task_id))
+        db.commit()
+        result["teachingClassProjection"] = {
+            "ok": True,
+            "teachingTaskId": str(task_id),
+            "teachingClassId": str(teaching_row.id),
+            "rosterVersionNo": int(teaching_row.current_roster_version_no or 0),
+        }
+        return result
 
 
 def adjust_task(task_id, user, body) -> dict:

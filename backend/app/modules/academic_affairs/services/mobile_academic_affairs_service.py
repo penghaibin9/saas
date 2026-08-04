@@ -300,20 +300,23 @@ def _acad_student(db, stu):
 
 
 def credits_my(user) -> dict:
-    """我的学分修读（真实汇总：已获/应修学分+均分+已通过课程清单；无分类占比，数据模型不支持类别拆分）。"""
+    """我的学分修读；培养方案无法唯一解析时必须返回UNRESOLVED，不伪造应修学分。"""
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
     with session() as db:
         stu = _me(db, user)
         sid = stu.id
         acad = _acad_student(db, stu)
-        obtained = float(acad.obtained_credits) if acad else None
-        required = float(acad.required_credits) if acad else 120.0
-        gpa = float(acad.gpa or 0) if acad else None
+        obtained = float(acad.obtained_credits) if acad and acad.obtained_credits is not None else None
+        gpa = float(acad.gpa) if acad and acad.gpa is not None else None
     t = grade.transcript(sid, user)
+    earned = obtained if obtained is not None else float(t.get("earnedCredits") or 0)
+    from app.modules.academic_affairs.services.student_program_resolution_service import credit_requirement_payload
+    with session() as db:
+        stu = _me(db, user)
+        credit = credit_requirement_payload(db, stu, tenant_id=_tid(), earned_credits=earned)
     passed = [it for it in t.get("items", []) if it.get("passStatus") == "PASSED"]
     return {
-        "obtainedCredits": obtained if obtained is not None else t.get("earnedCredits", 0),
-        "requiredCredits": required,
+        **credit,
         "gpa": gpa if gpa is not None else t.get("gpa"),
         "failCount": t.get("failCount", 0),
         "passedCourses": passed,
