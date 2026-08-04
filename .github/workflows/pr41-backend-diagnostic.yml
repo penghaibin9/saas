@@ -13,9 +13,10 @@ permissions:
   contents: read
 
 jobs:
-  alembic-diagnostic:
+  academic-affairs-diagnostic:
+    name: 教务系统专项测试
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       mysql:
         image: mysql:8.0
@@ -32,6 +33,7 @@ jobs:
     env:
       APP_ENV: test
       TEST_DATABASE_URL: mysql+pymysql://root:rootpass@127.0.0.1:3306/campus_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
       FIELD_ENCRYPTION_MASTER_KEY: test-only-master-key-32-bytes
       LOG_DECRYPTION_KEY: test-only-log-decryption-key-32b
       SECURITY_AUDIT_RETENTION_DAYS: "365"
@@ -39,39 +41,53 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: 安装依赖
-        run: pip install -r backend/requirements.txt
-      - name: 运行并保存 Alembic 合同测试完整日志
-        shell: bash
+        working-directory: backend
         run: |
-          cd backend
-          mapfile -t TARGETS < <(find tests -maxdepth 1 -type f -name 'test_alembic*.py' | sort)
-          printf '%s\n' "${TARGETS[@]}" | tee /tmp/pr41-targets.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: 运行并保存教务系统专项测试完整日志
+        shell: bash
+        working-directory: backend
+        run: |
+          mkdir -p /tmp/pr41-diagnostic
+          CANDIDATES=(
+            tests/unit/test_academic_affairs_models.py
+            tests/unit/test_academic_affairs_service.py
+            tests/test_department_permissions.py
+            tests/test_user_pagination.py
+          )
+          TARGETS=()
+          for target in "${CANDIDATES[@]}"; do
+            if [ -f "$target" ]; then
+              TARGETS+=("$target")
+            fi
+          done
+          printf '%s\n' "${TARGETS[@]}" | tee /tmp/pr41-diagnostic/targets.txt
           if [ "${#TARGETS[@]}" -eq 0 ]; then
-            echo "No test_alembic*.py files found" | tee /tmp/pr41-pytest.log
-            echo 2 > /tmp/pr41-pytest-exit
+            echo "No PR41 academic-affairs tests found" | tee /tmp/pr41-diagnostic/pytest.log
+            echo 2 > /tmp/pr41-diagnostic/pytest-exit
             exit 0
           fi
           set +e
-          pytest -vv --tb=long --maxfail=1 "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-pytest.log
+          python -m pytest -vv --tb=long --maxfail=1 "${TARGETS[@]}" 2>&1 | tee /tmp/pr41-diagnostic/pytest.log
           code=${PIPESTATUS[0]}
-          echo "$code" > /tmp/pr41-pytest-exit
+          set -e
+          echo "$code" > /tmp/pr41-diagnostic/pytest-exit
           exit 0
       - name: 上传诊断日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr41-alembic-diagnostic
-          path: |
-            /tmp/pr41-targets.txt
-            /tmp/pr41-pytest.log
-            /tmp/pr41-pytest-exit
+          name: pr41-academic-affairs-diagnostic
+          path: /tmp/pr41-diagnostic/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 3
       - name: 保留真实测试结论
         if: always()
         shell: bash
-        run: test "$(cat /tmp/pr41-pytest-exit)" = "0"
+        run: test "$(cat /tmp/pr41-diagnostic/pytest-exit)" = "0"
