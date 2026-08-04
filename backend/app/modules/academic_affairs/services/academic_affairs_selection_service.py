@@ -94,8 +94,6 @@ def _passed_course_codes(db, student) -> set[str]:
     }
 
 
-
-
 def _load_prerequisite_codes(course) -> set[str]:
     """读取课程正式先修代码；损坏配置必须阻断选课，禁止静默当作无先修课。"""
     raw = getattr(course, "prerequisite_codes_json", None)
@@ -119,6 +117,7 @@ def _load_prerequisite_codes(course) -> set[str]:
             http_status=409,
         )
     return {str(code).strip().upper() for code in raw if str(code).strip()}
+
 
 def _active_round(db, batch_id):
     from app.models import AaSelectionRound
@@ -169,21 +168,53 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         AaSelectionCourse.id.in_(selected_course_ids or {-1}),
         AaSelectionCourse.is_deleted.is_(False),
     ).all()
-    selected_codes = {str(item.course_code or "").strip().upper() for item in active_selected}
-    if str(course.course_code or "").strip().upper() in selected_codes:
+
+    # AaSelectionCourse 是批次供给关系，不承载正式 courseCode。
+    # 所有同课判断和先修规则必须经 course_id 回到 AaCourse 主档，避免把关系表字段当成课程事实。
+    selection_rows = [course, *active_selected]
+    unlinked_selection_ids = [
+        str(item.id) for item in selection_rows
+        if not getattr(item, "course_id", None)
+    ]
+    if unlinked_selection_ids:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课供给项未关联有效课程主档，请联系教务管理员修复",
+            details={"selectionCourseIds": unlinked_selection_ids},
+            http_status=409,
+        )
+
+    catalog_course_ids = {int(item.course_id) for item in selection_rows}
+    catalog_rows = db.query(AaCourse).filter(
+        AaCourse.tenant_id == _core._tid(),
+        AaCourse.id.in_(catalog_course_ids or {-1}),
+        AaCourse.is_deleted.is_(False),
+    ).all()
+    catalog_by_id = {int(item.id): item for item in catalog_rows}
+    missing_catalog_ids = sorted(catalog_course_ids - set(catalog_by_id))
+    if missing_catalog_ids:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课供给项关联的课程主档不存在或已删除，请联系教务管理员修复",
+            details={"courseIds": [str(value) for value in missing_catalog_ids]},
+            http_status=409,
+        )
+
+    source_course = catalog_by_id[int(course.course_id)]
+    selected_codes = {
+        str(catalog_by_id[int(item.course_id)].course_code or "").strip().upper()
+        for item in active_selected
+        if str(catalog_by_id[int(item.course_id)].course_code or "").strip()
+    }
+    target_code = str(source_course.course_code or "").strip().upper()
+    if target_code and target_code in selected_codes:
         raise _core._invalid("同一课程代码已存在在途选课记录")
 
     passed_codes = _passed_course_codes(db, student)
-    target_code = str(course.course_code or "").strip().upper()
     if target_code and target_code in passed_codes:
         raise _core._invalid("该课程已修读通过，不可重复选课")
 
-    source_course = db.query(AaCourse).filter(
-        AaCourse.tenant_id == _core._tid(),
-        AaCourse.course_code == course.course_code,
-        AaCourse.is_deleted.is_(False),
-    ).order_by(AaCourse.version.desc(), AaCourse.id.desc()).first()
-    prerequisites = _load_prerequisite_codes(source_course) if source_course else set()
+    prerequisites = _load_prerequisite_codes(source_course)
     missing = sorted(prerequisites - passed_codes)
     if missing:
         raise _core._invalid(f"未满足先修课程：{','.join(missing)}")
