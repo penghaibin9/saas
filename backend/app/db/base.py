@@ -34,5 +34,6 @@ from app.models import incident as _incident  # noqa: F401  (PLAT-09·事件)
 from app.models import change_management as _change_management  # noqa: F401  (PLAT-11·变更管理)
 from app.models import customer_success as _customer_success  # noqa: F401  (PLAT-05·客户健康)
 from app.models import problem_management as _problem_management  # noqa: F401  (PLAT-10·问题管理)
+from app.models import tenant_metering as _tenant_metering  # noqa: F401  (PLAT-13·租户用量与公平使用)
 
 metadata = Base.metadata
