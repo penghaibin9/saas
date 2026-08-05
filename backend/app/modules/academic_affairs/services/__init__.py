@@ -38,3 +38,8 @@ academic_affairs_scheduling_service.list_availability = (
 academic_affairs_scheduling_service.review_availability = (
     academic_affairs_scheduling_rule_final_facade.review_availability
 )
+
+# 包 3：成绩单目标学生与无行政班成绩任务必须经过对象级范围裁决。
+from . import academic_affairs_object_scope_guard
+
+academic_affairs_object_scope_guard.install()
