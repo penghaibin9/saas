@@ -8,7 +8,6 @@ an internship request; production code remains fail-closed.
 from __future__ import annotations
 
 import hashlib
-import sys
 from urllib.parse import urlsplit
 
 import pytest
@@ -73,7 +72,7 @@ def _stable_test_user_id(claims: dict) -> int | None:
 
 
 def _upgrade_internship_fixture_identity(path: str, kwargs: dict) -> None:
-    """Perform an explicit test-data backfill; never enable name authorization."""
+    """Backfill legacy test rows to stable ids without enabling name authorization."""
     if "internship" not in path:
         return
     headers = kwargs.get("headers") or {}
@@ -115,7 +114,11 @@ def _upgrade_internship_fixture_identity(path: str, kwargs: dict) -> None:
         finally:
             db.close()
 
-        patched = {key: value for key, value in claims.items() if key not in {"exp", "iat", "jti"}}
+        patched = {
+            key: value
+            for key, value in claims.items()
+            if key not in {"exp", "iat", "jti"}
+        }
         patched["userId"] = str(stable_id)
         new_headers = dict(headers)
         new_headers["Authorization"] = "Bearer " + create_access_token(patched)
@@ -126,27 +129,26 @@ def _upgrade_internship_fixture_identity(path: str, kwargs: dict) -> None:
 
 
 def _install_request_wrapper() -> None:
+    """Wrap the actual client used by legacy internship integration tests."""
     global _REQUEST_WRAPPER_PATCHED
     if _REQUEST_WRAPPER_PATCHED:
         return
-    for module in tuple(sys.modules.values()):
-        client_type = getattr(module, "GraduationBatchAwareClient", None)
-        if client_type is None:
-            continue
-        original = client_type.request
-        if getattr(original, "_internship_stable_fixture_wrapper", False):
-            _REQUEST_WRAPPER_PATCHED = True
-            return
 
-        def request(self, method, url, _original=original, **kwargs):
-            path = urlsplit(str(url)).path or str(url)
-            _upgrade_internship_fixture_identity(path, kwargs)
-            return _original(self, method, url, **kwargs)
+    from starlette.testclient import TestClient
 
-        request._internship_stable_fixture_wrapper = True
-        client_type.request = request
+    original = TestClient.request
+    if getattr(original, "_internship_stable_fixture_wrapper", False):
         _REQUEST_WRAPPER_PATCHED = True
         return
+
+    def request(self, method, url, _original=original, **kwargs):
+        path = urlsplit(str(url)).path or str(url)
+        _upgrade_internship_fixture_identity(path, kwargs)
+        return _original(self, method, url, **kwargs)
+
+    request._internship_stable_fixture_wrapper = True
+    TestClient.request = request
+    _REQUEST_WRAPPER_PATCHED = True
 
 
 def pytest_runtest_setup(item) -> None:
