@@ -43,9 +43,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-# 健康检查：就绪端点同时核验数据库、Redis、目录和 Alembic 版本。
+# 就绪端点在生产环境受 INTERNAL_OPS_TOKEN 保护；健康检查必须携带同一令牌，
+# 才能真实核验数据库、Redis、目录和 Alembic 版本，而不是永久收到 403。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/health/ready | grep -q '"status":"READY"' || exit 1
+    CMD curl -fsS -H "X-Ops-Token: ${INTERNAL_OPS_TOKEN}" http://127.0.0.1:8000/health/ready | grep -q '"status":"READY"' || exit 1
 
-# 生产/预演统一不带 --reload（--reload 仅用于本机开发，见 scripts/dev/start-backend.ps1）
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 默认容器入口先执行 Redis 生产闸门；非生产未配置 Redis 时脚本安全跳过。
+# Compose 若覆盖 command，也必须保留同等预检或至少依赖 Redis health + 本 HEALTHCHECK。
+CMD ["sh", "-c", "python scripts/check_production_redis.py && exec uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8000}"]
