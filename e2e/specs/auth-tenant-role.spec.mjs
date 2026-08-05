@@ -2,15 +2,19 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage, StudentLoginPage, decodeJwt } from '../pages/login.page.mjs'
 
+const contextOptions = (lastOctet) => ({
+  extraHTTPHeaders: { 'X-Forwarded-For': `10.254.0.${lastOctet}` }
+})
+
 test.describe.serial('登录、租户隔离与多角色身份切换', () => {
   test('真实浏览器登录：教师端与学生端均通过表单进入', async ({ browser }) => {
-    const staffContext = await browser.newContext()
+    const staffContext = await browser.newContext(contextOptions(21))
     const staffPage = await staffContext.newPage()
     await new StaffLoginPage(staffPage, config.staffBaseUrl).login(config.sandboxAdmin)
     await expect(staffPage).toHaveURL(/\/workbench|\/admin/)
     await staffContext.close()
 
-    const studentContext = await browser.newContext()
+    const studentContext = await browser.newContext(contextOptions(22))
     const studentPage = await studentContext.newPage()
     await new StudentLoginPage(studentPage, config.studentBaseUrl).login(config.student)
     await expect(studentPage).toHaveURL(/\/portal\/(home|graduation)|\/home/)
@@ -18,8 +22,8 @@ test.describe.serial('登录、租户隔离与多角色身份切换', () => {
   })
 
   test('两个租户会话完全隔离，JWT 租户和页面学校标识不得串线', async ({ browser }) => {
-    const sandbox = await browser.newContext()
-    const demo = await browser.newContext()
+    const sandbox = await browser.newContext(contextOptions(23))
+    const demo = await browser.newContext(contextOptions(24))
     const sandboxPage = await sandbox.newPage()
     const demoPage = await demo.newPage()
 
