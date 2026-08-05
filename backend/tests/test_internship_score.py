@@ -1,7 +1,8 @@
-"""实习成绩：权重快照、企业评价权威来源、导师核算、学校发布与版本锁。"""
+"""实习成绩：权重快照、权威来源、ASSESSING 门禁、发布合规与版本锁。"""
 from __future__ import annotations
 
 import io
+from datetime import date
 
 TID = 1000000000000000001
 INT = "/api/v1/internship"
@@ -31,16 +32,35 @@ def _student(student_no, tid=TID):
 
 
 def _seed(db_mode):
+    """两名学生均具备进入 ASSESS 的正式基础事实；评价仍通过真实 API 生成。"""
     from uuid import uuid4
     from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    from app.models import (
+        EmpCompany, InternshipAgreement, InternshipBatch, InternshipInsurance,
+        InternshipPosition, InternshipRecord, StudentProfile,
+    )
     db = get_sessionmaker()()
     ids = {}
     try:
         batch = InternshipBatch(
             tenant_id=TID, batch_name="成绩测试批次",
-            batch_no=f"SCORE-{uuid4().hex[:8]}", status="RUNNING", planned_count=2)
+            batch_no=f"SCORE-{uuid4().hex[:8]}", status="RUNNING", planned_count=2,
+            end_date=date.today(),
+            rules_config={"compliance": {"studentConsent": {
+                "requireGuardianConsentForMinor": False,
+            }}},
+        )
         db.add(batch); db.flush(); ids["batch"] = batch.id
+        company = EmpCompany(
+            tenant_id=TID, name="成绩测试企业",
+            credit_code=f"91310000SC{uuid4().hex[:6].upper()}", coop_status="ACTIVE",
+        )
+        db.add(company); db.flush()
+        position = InternshipPosition(
+            tenant_id=TID, company_id=company.id, company_name=company.name,
+            title="实习生", batch_id=batch.id, status="PUBLISHED", headcount=5,
+        )
+        db.add(position); db.flush()
         for number, name, advisor, key in [
             ("SC-A", "甲", "刘强", "a"), ("SC-B", "乙", "王芳", "b")
         ]:
@@ -50,9 +70,18 @@ def _seed(db_mode):
             db.add(student); db.flush()
             record = InternshipRecord(
                 tenant_id=TID, student_id=student.id, advisor_name=advisor,
-                enterprise_name="测试企业", position_name="实习生", status="ONBOARD",
+                enterprise_name=company.name, position_name=position.title,
+                enterprise_id=company.id, position_id=position.id,
+                eligibility_status="QUALIFIED", status="ASSESSING",
                 risk_level="NONE", batch_id=batch.id)
             db.add(record); db.flush(); ids[f"rec_{key}"] = record.id
+            ids[f"stu_{key}"] = student.id
+            db.add(InternshipInsurance(
+                tenant_id=TID, internship_id=record.id,
+                student_id=student.id, status="VERIFIED"))
+            db.add(InternshipAgreement(
+                tenant_id=TID, internship_id=record.id,
+                student_id=student.id, status="EFFECTIVE"))
         db.commit(); return ids
     finally:
         db.close()
@@ -142,7 +171,7 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
     _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
     computed = _compute(client, ids, scores={
         "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80})
-    assert computed.status_code == 200
+    assert computed.status_code == 200, computed.json()
     detail = client.get(
         f"{INT}/scores/{computed.json()['data']['id']}", headers=_mentor("刘强")).json()["data"]
     assert detail["scoreConfigId"] == first["configId"]
@@ -158,7 +187,7 @@ def test_compute_and_school_publish_with_versions(client, db_mode):
     _config(client)
     _approve_enterprise_eval(client, ids["rec_a"], component_score=60)
     computed = _compute(client, ids)
-    assert computed.status_code == 200
+    assert computed.status_code == 200, computed.json()
     score = computed.json()["data"]
     assert score["total"] == 79.0 and score["incomplete"] is False and score["isPass"] is True
 
@@ -170,7 +199,7 @@ def test_compute_and_school_publish_with_versions(client, db_mode):
     published = client.post(
         f"{INT}/scores/{score['id']}/publish",
         json={"expectedVersion": score["version"]}, headers=_admin(client))
-    assert published.status_code == 200
+    assert published.status_code == 200, published.json()
     published_data = published.json()["data"]
     assert published_data["status"] == "PUBLISHED"
 
@@ -198,7 +227,7 @@ def test_enterprise_score_is_authoritative_and_manual_override_rejected(client, 
     computed = _compute(client, ids, scores={
         "checkinScore": 100, "weeklyScore": 100,
         "monthlyScore": 100, "schoolScore": 100})
-    assert computed.status_code == 200
+    assert computed.status_code == 200, computed.json()
     detail = client.get(
         f"{INT}/scores/{computed.json()['data']['id']}", headers=_mentor("刘强")).json()["data"]
     assert detail["enterpriseScore"] == 84
@@ -210,7 +239,7 @@ def test_incomplete_cannot_publish(client, db_mode):
     _config(client)
     computed = _compute(client, ids, scores={
         "checkinScore": 90, "weeklyScore": 80, "schoolScore": 100})
-    assert computed.status_code == 200
+    assert computed.status_code == 200, computed.json()
     score = computed.json()["data"]
     assert score["incomplete"] is True
     denied = client.post(
@@ -263,3 +292,64 @@ def test_scope_student_forbidden_withdraw_and_export(client, db_mode):
     assert exported.status_code == 200
     data = exported.json()["data"]
     assert data["filename"].endswith(".xlsx") and data["rowCount"] == 2
+
+
+def test_wrong_stage_cannot_compute(client, db_mode):
+    ids = _seed(db_mode)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord
+    db = get_sessionmaker()()
+    try:
+        db.get(InternshipRecord, ids["rec_a"]).status = "ONBOARD"
+        db.commit()
+    finally:
+        db.close()
+    denied = _compute(client, ids)
+    assert denied.status_code == 409
+    assert "ASSESSING" in denied.json()["message"]
+
+
+def test_publish_reruns_authoritative_assess_compliance(client, db_mode):
+    ids = _seed(db_mode)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
+    computed = _compute(client, ids, scores={
+        "checkinScore": 80, "weeklyScore": 80,
+        "monthlyScore": 80, "schoolScore": 80,
+    })
+    assert computed.status_code == 200, computed.json()
+    score = computed.json()["data"]
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipInsurance
+    db = get_sessionmaker()()
+    try:
+        insurance = db.query(InternshipInsurance).filter_by(
+            tenant_id=TID, internship_id=ids["rec_a"]).one()
+        insurance.status = "PENDING"
+        db.commit()
+    finally:
+        db.close()
+    denied = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]}, headers=_admin(client))
+    assert denied.status_code == 409
+    assert denied.json()["details"]["blockers"]
+
+
+def test_independent_score_archive_is_disabled(client, db_mode):
+    ids = _seed(db_mode)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
+    computed = _compute(client, ids, scores={
+        "checkinScore": 80, "weeklyScore": 80,
+        "monthlyScore": 80, "schoolScore": 80,
+    }).json()["data"]
+    published = client.post(
+        f"{INT}/scores/{computed['id']}/publish",
+        json={"expectedVersion": computed["version"]}, headers=_admin(client))
+    assert published.status_code == 200, published.json()
+    denied = client.post(
+        f"{INT}/scores/{computed['id']}/archive",
+        json={"expectedVersion": published.json()["data"]["version"]},
+        headers=_admin(client))
+    assert denied.status_code == 409
+    assert "总档案归档" in denied.json()["message"]
