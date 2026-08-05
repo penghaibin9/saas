@@ -223,14 +223,16 @@ def _render_png(code: str) -> bytes:
         x, y = rnd.randrange(width), rnd.randrange(height)
         pos = (y * width + x) * 3
         pixels[pos:pos + 3] = bytes((rnd.randrange(80, 220), rnd.randrange(80, 220), rnd.randrange(80, 220)))
-    rows = b"".join(
-        b"\x00" + bytes(pixels[y * width * 3:(y + 1) * width * 3])
-        for y in range(height)
-    )
+    rows = bytearray()
+    row_width = width * 3
+    for y in range(height):
+        rows.append(0)
+        start = y * row_width
+        rows.extend(pixels[start:start + row_width])
     return (
         b"\x89PNG\r\n\x1a\n"
         + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-        + _png_chunk(b"IDAT", zlib.compress(rows, 9))
+        + _png_chunk(b"IDAT", zlib.compress(bytes(rows), 9))
         + _png_chunk(b"IEND", b"")
     )
 
@@ -265,7 +267,7 @@ def issue_captcha(
         "imageDataUrl": "data:image/png;base64," + base64.b64encode(_render_png(code)).decode("ascii"),
         "expiresIn": ttl,
     }
-    if settings.APP_ENV == "test":
+    if str(settings.APP_ENV or "").strip().lower() == "test" and not _is_strict_env():
         result["devCode"] = code
     return result
 
