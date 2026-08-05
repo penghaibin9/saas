@@ -1,0 +1,174 @@
+name: Auth Login Redis E2E
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/app/api/v1/auth.py"
+      - "backend/app/services/auth_challenge_service.py"
+      - "backend/app/services/auth_service_db.py"
+      - "backend/app/core/redis_client.py"
+      - "backend/app/core/token_store.py"
+      - "backend/scripts/check_production_redis.py"
+      - "backend/scripts/_seed_login_accounts_only.py"
+      - "frontend/src/views/LoginView.vue"
+      - "frontend/src/components/auth/LoginCaptcha.vue"
+      - "frontend/src/services/http/client.js"
+      - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/auth-redis.production.env.example"
+      - "deploy/start-backend-production.sh"
+      - ".github/workflows/auth-login-redis-e2e.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "backend/app/api/v1/auth.py"
+      - "backend/app/services/auth_challenge_service.py"
+      - "backend/app/services/auth_service_db.py"
+      - "backend/app/core/redis_client.py"
+      - "backend/app/core/token_store.py"
+      - "backend/scripts/check_production_redis.py"
+      - "backend/scripts/_seed_login_accounts_only.py"
+      - "frontend/src/views/LoginView.vue"
+      - "frontend/src/components/auth/LoginCaptcha.vue"
+      - "frontend/src/services/http/client.js"
+      - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/auth-redis.production.env.example"
+      - "deploy/start-backend-production.sh"
+      - ".github/workflows/auth-login-redis-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-login-redis-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auth-login-redis-e2e:
+    name: 真实登录点击 + Redis 单次消费
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: auth_login_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: auth_login_e2e
+      DB_USER: root
+      DB_PASSWORD: root
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/auth_login_e2e?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REDIS_KEY_PREFIX: auth-login-e2e
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+      SCHEDULER_MODE: external
+      MOCK_LOGIN_ENABLED: "false"
+      JWT_SECRET: auth-login-e2e-only-secret-20260805-at-least-32
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      VITE_PROXY_TARGET: http://127.0.0.1:8000
+      E2E_BASE_URL: http://127.0.0.1:5173
+      E2E_ARTIFACT_DIR: artifacts/auth-login-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装后端与浏览器依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: 验证生产 Redis 启动闸门
+        env:
+          APP_ENV: production
+          DEPLOYMENT_MODE: production
+          ALLOW_LOCAL_REDIS_IN_PRODUCTION: "true"
+        run: python backend/scripts/check_production_redis.py
+
+      - name: 初始化真实 MySQL 登录账号
+        run: |
+          python backend/scripts/init_mysql_db.py
+          python backend/scripts/_seed_login_accounts_only.py
+
+      - name: 启动 FastAPI
+        run: |
+          cd backend
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/auth-backend.log 2>&1 &
+          echo $! > /tmp/auth-backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/auth-backend.log
+          exit 1
+
+      - name: 安装并启动 Vue 登录页
+        run: |
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/auth-frontend.log 2>&1 &
+          echo $! > /tmp/auth-frontend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/auth-frontend.log
+          exit 1
+
+      - name: 浏览器真实输入并点击登录
+        run: python scripts/e2e/auth_login_redis_click.py
+
+      - name: 失败时输出服务日志
+        if: failure()
+        run: |
+          echo "===== backend ====="
+          cat /tmp/auth-backend.log || true
+          echo "===== frontend ====="
+          cat /tmp/auth-frontend.log || true
+
+      - name: 上传点击验收证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-login-redis-e2e-${{ github.run_id }}
+          path: artifacts/auth-login-e2e
+          if-no-files-found: warn
+          retention-days: 14
