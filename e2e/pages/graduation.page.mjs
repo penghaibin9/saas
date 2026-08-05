@@ -1,5 +1,19 @@
 import { expect } from '../lib/observability.mjs'
 
+async function expectSuccessfulResponse(response, action) {
+  const text = await response.text()
+  let body = null
+  try { body = JSON.parse(text) } catch { body = null }
+  expect(
+    response.ok(),
+    `${action} returned HTTP ${response.status()}: ${text.slice(0, 800)}`
+  ).toBeTruthy()
+  if (body && Object.prototype.hasOwnProperty.call(body, 'code')) {
+    expect(body.code, `${action} returned business error: ${text.slice(0, 800)}`).toBe(0)
+  }
+  return body
+}
+
 export class StudentGraduationPage {
   constructor(page, baseUrl) {
     this.page = page
@@ -26,10 +40,13 @@ export class StudentGraduationPage {
     if (await checkbox.count() && !(await checkbox.isChecked())) await checkbox.check()
     const sign = step.getByRole('button', { name: /签署确认/ })
     if (await sign.count()) {
-      await Promise.all([
-        this.page.waitForResponse((r) => r.url().includes('/portal/graduation/taskbook/sign') && r.request().method() === 'POST'),
+      const [response] = await Promise.all([
+        this.page.waitForResponse((r) =>
+          r.url().includes('/portal/graduation/taskbook/sign') && r.request().method() === 'POST'
+        ),
         sign.click()
       ])
+      await expectSuccessfulResponse(response, '学生签署任务书')
       await expect(step).toContainText(/已签署|已确认/)
     }
   }
@@ -51,12 +68,13 @@ export class StudentGraduationPage {
       buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
     })
 
-    await Promise.all([
+    const [response] = await Promise.all([
       this.page.waitForResponse((r) =>
         r.url().includes('/portal/graduation/proposal') && r.request().method() === 'POST'
       ),
       step.getByRole('button', { name: /提交开题报告/ }).click()
     ])
+    await expectSuccessfulResponse(response, '学生提交开题报告')
     await expect(step).toContainText(/待审核|待审阅|已提交/)
   }
 
@@ -92,8 +110,6 @@ export class StaffGraduationPage {
 
   async selectStudent() {
     // The proposal workbench automatically opens the first record in the current queue.
-    // Keep that real page behavior instead of adding an unrelated second search that can
-    // clear the queue before the core mentor-review action is exercised.
     const detail = this.page.locator('.prc')
     if (await detail.count() && await detail.isVisible()) {
       await expect(detail).toContainText(this.fixture.topicTitle)
@@ -111,19 +127,29 @@ export class StaffGraduationPage {
     const textarea = this.page.getByPlaceholder('批注将随批阅结果同步学生端…')
     await expect(textarea).toBeEnabled()
     await textarea.fill(reason)
-    await Promise.all([
-      this.page.waitForResponse((r) => r.url().includes('/graduation/proposals/') && new URL(r.url()).pathname.endsWith('/review') && r.request().method() === 'POST'),
+    const [response] = await Promise.all([
+      this.page.waitForResponse((r) =>
+        r.url().includes('/graduation/proposals/')
+        && new URL(r.url()).pathname.endsWith('/review')
+        && r.request().method() === 'POST'
+      ),
       this.page.getByRole('button', { name: /驳回当前版本/ }).click()
     ])
+    await expectSuccessfulResponse(response, '导师驳回开题报告')
     await expect(this.page.locator('.prc')).toContainText(/已驳回|驳回修改/)
   }
 
   async approve() {
     await expect(this.page.getByRole('button', { name: /通过当前版本/ })).toBeEnabled()
-    await Promise.all([
-      this.page.waitForResponse((r) => r.url().includes('/graduation/proposals/') && new URL(r.url()).pathname.endsWith('/review') && r.request().method() === 'POST'),
+    const [response] = await Promise.all([
+      this.page.waitForResponse((r) =>
+        r.url().includes('/graduation/proposals/')
+        && new URL(r.url()).pathname.endsWith('/review')
+        && r.request().method() === 'POST'
+      ),
       this.page.getByRole('button', { name: /通过当前版本/ }).click()
     ])
+    await expectSuccessfulResponse(response, '导师通过开题报告')
     await expect(this.page.locator('.prc')).toContainText(/已通过/)
   }
 
