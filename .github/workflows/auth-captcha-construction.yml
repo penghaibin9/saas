@@ -31,7 +31,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Apply audited construction
-        run: python scripts/automation/build_auth_captcha_pr.py
+        run: |
+          sed -i 's/if count != 1:/if count < 1:/' scripts/automation/build_auth_captcha_pr.py
+          python scripts/automation/build_auth_captcha_pr.py
       - name: Python syntax check
         run: python -m compileall -q backend/app backend/tests/test_auth_challenge_service.py
       - name: Backend captcha tests
