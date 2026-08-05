@@ -4,6 +4,7 @@ on:
   push:
     branches: ["**"]
     paths:
+      - "backend/Dockerfile"
       - "backend/app/api/v1/auth.py"
       - "backend/app/core/config.py"
       - "backend/app/core/redis_client.py"
@@ -30,12 +31,16 @@ on:
       - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
       - "miniapp/src/services/request.js"
       - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/README-auth-redis.md"
       - "deploy/auth-redis.production.env.example"
+      - "deploy/env/backend.systemd.env.example"
       - "deploy/start-backend-production.sh"
+      - "deploy/systemd/school-lifecycle-backend.service"
       - ".github/workflows/auth-login-redis-e2e.yml"
   pull_request:
     branches: ["**"]
     paths:
+      - "backend/Dockerfile"
       - "backend/app/api/v1/auth.py"
       - "backend/app/core/config.py"
       - "backend/app/core/redis_client.py"
@@ -62,8 +67,11 @@ on:
       - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
       - "miniapp/src/services/request.js"
       - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/README-auth-redis.md"
       - "deploy/auth-redis.production.env.example"
+      - "deploy/env/backend.systemd.env.example"
       - "deploy/start-backend-production.sh"
+      - "deploy/systemd/school-lifecycle-backend.service"
       - ".github/workflows/auth-login-redis-e2e.yml"
   workflow_dispatch:
 
@@ -166,6 +174,31 @@ jobs:
           DEPLOYMENT_MODE: production
           ALLOW_LOCAL_REDIS_IN_PRODUCTION: "true"
         run: python backend/scripts/check_production_redis.py
+
+      - name: 验证正式部署入口接入 Redis 闸门
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          systemd = Path('deploy/systemd/school-lifecycle-backend.service').read_text(encoding='utf-8')
+          env = Path('deploy/env/backend.systemd.env.example').read_text(encoding='utf-8')
+          dockerfile = Path('backend/Dockerfile').read_text(encoding='utf-8')
+          readme = Path('deploy/README-auth-redis.md').read_text(encoding='utf-8')
+
+          required = {
+              'systemd Redis ExecStartPre': 'ExecStartPre=/opt/school-lifecycle/current/backend/.venv/bin/python /opt/school-lifecycle/current/backend/scripts/check_production_redis.py' in systemd,
+              'systemd worker count': 'WEB_CONCURRENCY=2' in env,
+              'systemd multi-process flag': 'MULTI_INSTANCE=true' in env,
+              'local Redis explicit exception': 'ALLOW_LOCAL_REDIS_IN_PRODUCTION=true' in env,
+              'Docker Redis preflight': 'python scripts/check_production_redis.py && exec uvicorn' in dockerfile,
+              'Docker readiness auth': 'X-Ops-Token: ${INTERNAL_OPS_TOKEN}' in dockerfile,
+              'deployment documentation': '不要把上述入口改回直接裸跑 `uvicorn`' in readme,
+          }
+          missing = [name for name, ok in required.items() if not ok]
+          if missing:
+              raise SystemExit('正式部署 Redis 闸门缺失：' + ', '.join(missing))
+          print('✅ systemd、Docker 与运维文档均接入 Redis 生产闸门')
+          PY
 
       - name: 初始化真实 MySQL 登录账号
         run: |
