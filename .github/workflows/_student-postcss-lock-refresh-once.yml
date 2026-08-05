@@ -1,0 +1,48 @@
+name: Student PostCSS lock refresh once
+
+on:
+  push:
+    branches:
+      - feat/adaptive-login-captcha-20260805
+    paths:
+      - "student-portal/package.json"
+      - ".github/workflows/_student-postcss-lock-refresh-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-validate-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/adaptive-login-captcha-20260805
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - name: Rebuild deterministic student lockfile
+        working-directory: student-portal
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Validate patched production tree
+        working-directory: student-portal
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm ls postcss@8.5.23
+          npm run lint
+          npm test
+          npm run build
+      - name: Commit lockfile and remove this one-off workflow
+        run: |
+          rm .github/workflows/_student-postcss-lock-refresh-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add student-portal/package-lock.json .github/workflows/_student-postcss-lock-refresh-once.yml
+          git diff --cached --quiet && { echo "expected lockfile or cleanup change missing"; exit 1; }
+          git commit -m "fix(student-portal): refresh patched PostCSS lock"
+          git push origin HEAD:feat/adaptive-login-captcha-20260805
