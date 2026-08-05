@@ -72,6 +72,16 @@ def test_captcha_is_bound_to_client_type():
     assert exc.value.code == "CAPTCHA_INVALID"
 
 
+def test_dev_code_never_leaks_when_deployment_is_strict(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "test")
+    monkeypatch.setattr(settings, "DEPLOYMENT_MODE", "production")
+    monkeypatch.setattr(svc, "_store", lambda *_args, **_kwargs: None)
+
+    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")
+
+    assert "devCode" not in data
+
+
 def test_guardian_verification_sms_login_is_permanently_disabled():
     from app.student_portal.services import guardian_service
 
