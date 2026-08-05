@@ -14,7 +14,11 @@ from app.modules.internship.services import internship_compliance_authoritative_
 from app.modules.internship.services import internship_complaint_auditor_scope as _complaint_auditor_scope
 from app.modules.internship.services import internship_score_archive_guard as _score_archive_guard
 from app.modules.internship.services import internship_score_fact_guard as _score_fact_guard
+from app.modules.internship.services import internship_material_transaction_guard as _material_transaction_guard
+from app.modules.internship.services import internship_score_fact_transaction_fix as _score_fact_transaction_fix
 
 _complaint_auditor_scope.install()
 _score_archive_guard.install()
 _score_fact_guard.install()
+_material_transaction_guard.install()
+_score_fact_transaction_fix.install()
