@@ -2,11 +2,12 @@
 
 - 风险处置：handle→follow→escalate→close 状态机；跨导师 owner 403；数据范围收敛；审计。
 - 指导转风险：guidance toRisk=True 自动生成 t_risk_record 风险单（source=guidance）。
-- 附件：无效 fileId 被拒 400；有效 fileId（预置 t_file_object）可挂载并在详情还原。
+- 附件：无效 fileId 被拒 400；有效临时上传由业务事务建立正式 binding 并在详情还原。
 - 请假：学生按当前批次申请/撤回/销假 + 教师按版本审批（owner 403 + 数据范围 + 材料查看）。
 """
 from __future__ import annotations
 
+import io
 from datetime import datetime
 
 TID = 1000000000000000001
@@ -23,8 +24,9 @@ def _admin(client):
 
 def _mentor(name, tid=TID):
     from app.core.security import create_access_token
+    user_id = {"刘强": "9001", "王芳": "9002"}.get(name, "9099")
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
+        "userId": user_id, "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
@@ -83,23 +85,21 @@ def _seed_risk(rec_id, level="MEDIUM"):
         db.close()
 
 
-def _seed_evidence(stu_id, name="请假证明.pdf"):
-    """biz_id 须为 StudentProfile.id（file_service._student_owns_file 按此核对本人归属），
-    不能用 InternshipRecord.id，否则学生本人访问自己上传的证据也会被判无权访问。"""
-    from uuid import uuid4
-
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    try:
-        row = FileObject(
-            tenant_id=TID, file_key=f"stage3/{uuid4().hex}.pdf", file_name=name,
-            ext="pdf", size_bytes=2048, biz_type="INTERNSHIP", biz_id=str(stu_id),
-            visibility="BIZ_SCOPED", status="STORED")
-        db.add(row); db.flush(); file_id = str(row.id); db.commit()
-        return file_id
-    finally:
-        db.close()
+def _upload_evidence(client, headers, name="evidence.txt", biz_type="INTERNSHIP_LEAVE"):
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=headers,
+        files={"file": (
+            name,
+            io.BytesIO(f"authoritative-{biz_type.lower()}-evidence".encode("utf-8")),
+            "text/plain",
+        )},
+        data={"bizType": biz_type},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    data = uploaded.json()["data"]
+    assert data["temporary"] is True and data["bindingCreated"] is False
+    return data["fileId"]
 
 
 # ══════════════ 风险处置闭环 ══════════════
@@ -108,30 +108,24 @@ def test_risk_lifecycle_handle_follow_escalate_close(client, db_mode):
     ids = _seed(db_mode)
     rid = _seed_risk(ids["rec_a"])
     h = _mentor("刘强")
-    # 受理 PENDING→PROCESSING（每步都会把风险单乐观锁版本 +1，须逐次回传）
     r1 = client.post(f"{INT}/risks/{rid}/handle",
                      json={"comment": "已联系企业核实", "ownerName": "刘强", "expectedVersion": 0}, headers=h)
     assert r1.status_code == 200 and r1.json()["data"]["status"] == "PROCESSING", r1.json()
     ver = r1.json()["data"]["version"]
-    # 跟进
     r2 = client.post(f"{INT}/risks/{rid}/follow",
                      json={"note": "企业反馈已到岗", "expectedVersion": ver}, headers=h)
     assert r2.status_code == 200, r2.json()
     ver = r2.json()["data"]["version"]
-    # 升级 MEDIUM→HIGH
     r3 = client.post(f"{INT}/risks/{rid}/escalate",
                      json={"level": "HIGH", "note": "连续缺勤", "expectedVersion": ver}, headers=h)
     assert r3.status_code == 200 and r3.json()["data"]["riskLevel"] == "HIGH", r3.json()
     ver = r3.json()["data"]["version"]
-    # 降级/平级拒绝（note≥2 先过校验，再命中状态冲突 409）
     bad = client.post(f"{INT}/risks/{rid}/escalate",
                       json={"level": "MEDIUM", "note": "尝试降级", "expectedVersion": ver}, headers=h)
     assert bad.status_code == 409
-    # 关闭
     r4 = client.post(f"{INT}/risks/{rid}/close",
                      json={"result": "RESOLVED", "comment": "学生已恢复正常打卡", "expectedVersion": ver}, headers=h)
     assert r4.status_code == 200 and r4.json()["data"]["status"] == "CLOSED", r4.json()
-    # 详情含全链审计
     detail = client.get(f"{INT}/risks/{rid}", headers=h).json()["data"]
     actions = [t["action"] for t in detail["auditTrail"]]
     assert {"HANDLE", "FOLLOW", "ESCALATE", "CLOSE"} <= set(actions)
@@ -139,14 +133,11 @@ def test_risk_lifecycle_handle_follow_escalate_close(client, db_mode):
 
 def test_risk_owner_and_scope(client, db_mode):
     ids = _seed(db_mode)
-    rid_b = _seed_risk(ids["rec_b"])  # 王芳的学生
-    # 刘强 受理 王芳 学生风险 → 403（comment≥5 先过校验，再命中 owner）
+    rid_b = _seed_risk(ids["rec_b"])
     assert client.post(f"{INT}/risks/{rid_b}/handle",
                        json={"comment": "越权受理测试例", "expectedVersion": 0},
                        headers=_mentor("刘强")).status_code == 403
-    # 刘强 详情越权 → 403
     assert client.get(f"{INT}/risks/{rid_b}", headers=_mentor("刘强")).status_code == 403
-    # 数据范围：管理员看 1，刘强看 0
     assert client.get(f"{INT}/risks", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
     assert client.get(f"{INT}/risks", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
 
@@ -169,16 +160,13 @@ def test_risk_student_forbidden(client, db_mode):
 def test_guidance_spawns_risk(client, db_mode):
     ids = _seed(db_mode)
     h = _mentor("刘强")
-    # 无转风险：不产生风险单
     client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "常规指导"}, headers=h)
     assert client.get(f"{INT}/risks", headers=h, params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
-    # 转风险：自动生成 1 条 source=guidance 风险单
     res = client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "发现安全隐患",
                                                 "topic": "安全", "toRisk": True, "notifyCounselor": True}, headers=h)
     assert res.status_code == 200 and res.json()["data"]["riskId"]
     rid = res.json()["data"]["riskId"]
     assert client.get(f"{INT}/risks", headers=h, params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
-    # 详情验证来源为 guidance（列表沿用旧 svc 形状，来源字段在详情）
     detail = client.get(f"{INT}/risks/{rid}", headers=h).json()["data"]
     assert detail["sourceModule"] == "guidance" and detail["riskCode"] == "INT-GUIDE"
 
@@ -189,29 +177,18 @@ def test_attachment_invalid_fileid_rejected(client, db_mode):
     ids = _seed(db_mode)
     r = client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "带附件",
                                               "fileId": "999999"}, headers=_mentor("刘强"))
-    assert r.status_code == 400  # 无效附件 → VALIDATION_ERROR
+    assert r.status_code == 400
 
 
 def test_attachment_valid_fileid_resolved(client, db_mode):
     ids = _seed(db_mode)
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    try:
-        # 对象级授权：biz_type=INTERNSHIP 命中 internship.student.material.view（导师有此权限）；
-        # 必须同时给 biz_id 非空，否则会先命中"无归属私有文件仅超管可读"的早退分支
-        f = FileObject(tenant_id=TID, file_key="20260709/abc.pdf", file_name="实习证明.pdf",
-                       ext="pdf", size_bytes=1234, biz_type="INTERNSHIP", biz_id=str(ids["rec_a"]),
-                       status="STORED")
-        db.add(f); db.flush(); fid = str(f.id); db.commit()
-    finally:
-        db.close()
     h = _mentor("刘强")
+    fid = _upload_evidence(client, h, "guidance-evidence.txt", "INTERNSHIP_GUIDANCE")
     res = client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "带附件",
                                                 "fileId": fid}, headers=h)
     assert res.status_code == 200, res.json()
     detail = client.get(f"{INT}/guidances/{res.json()['data']['id']}", headers=h).json()["data"]
-    assert detail["attachment"] and detail["attachment"]["fileName"] == "实习证明.pdf"
+    assert detail["attachment"] and detail["attachment"]["fileName"] == "guidance-evidence.txt"
 
 
 # ══════════════ 实习请假 ══════════════
@@ -219,26 +196,21 @@ def test_attachment_valid_fileid_resolved(client, db_mode):
 def test_leave_apply_withdraw_and_review(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
-    evidence_id = _seed_evidence(ids["stu_a"])
-    # 学生 S3-A 按当前批次提交 3 天病假及真实证明
+    evidence_id = _upload_evidence(client, student, "leave-evidence.txt", "INTERNSHIP_LEAVE")
     ap = client.post(f"{MOBILE_CONTEXT}/leaves",
                      json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "leaveType": "SICK", "startDate": "2026-07-10", "endDate": "2026-07-12",
                            "reason": "感冒发烧需就医", "evidenceFileId": evidence_id}, headers=student)
     assert ap.status_code == 200 and ap.json()["data"]["days"] == 3, ap.json()
     leave = ap.json()["data"]
     lid = leave["id"]
-    # 教师数据范围：刘强看 1，王芳看 0
     assert client.get(f"{INT}/leaves", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
     assert client.get(f"{INT}/leaves", headers=_mentor("王芳"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 0
-    # 越权审批：王芳审批刘强学生请假 → 403
     assert client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
                        params={"batchId": ids["batch"]},
                        json={"action": "APPROVE", "expectedVersion": leave["version"]},
                        headers=_mentor("王芳")).status_code == 403
-    # 有证明时必须先由当前审批人真实查看并写审计
     viewed = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/evidence-viewed", headers=_mentor("刘强"))
     assert viewed.status_code == 200 and viewed.json()["data"]["evidenceViewed"] is True, viewed.json()
-    # 刘强按版本审批通过
     ok = client.post(f"{TEACHER_CONTEXT}/leaves/{lid}/review",
                      params={"batchId": ids["batch"]},
                      json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
@@ -248,7 +220,6 @@ def test_leave_apply_withdraw_and_review(client, db_mode):
 def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
-    # 结束早于开始 → 400
     bad = client.post(f"{MOBILE_CONTEXT}/leaves",
                       json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "startDate": "2026-07-12", "endDate": "2026-07-10", "reason": "事假"},
                       headers=student)
@@ -258,7 +229,6 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
                            headers=student)
     assert response.status_code == 200, response.json()
     leave = response.json()["data"]
-    # 驳回需原因≥5字
     assert client.post(f"{TEACHER_CONTEXT}/leaves/{leave['id']}/review",
                        params={"batchId": ids["batch"]},
                        json={"action": "REJECT", "comment": "no", "expectedVersion": leave["version"]},
@@ -268,7 +238,7 @@ def test_leave_reject_reason_required_and_end_before_start(client, db_mode):
 def test_leave_approve_writes_leave_checkins(client, db_mode):
     ids = _seed(db_mode)
     student = _student("S3-A", batch_id=ids["batch"])
-    evidence_id = _seed_evidence(ids["stu_a"], "连续请假证明.pdf")
+    evidence_id = _upload_evidence(client, student, "continuous-leave-evidence.txt", "INTERNSHIP_LEAVE")
     response = client.post(f"{MOBILE_CONTEXT}/leaves",
                            json={"batchId": ids["batch"], "internshipId": ids["rec_a"], "leaveType": "PERSONAL", "startDate": "2026-07-10", "endDate": "2026-07-12",
                                  "reason": "家庭事务需要处理", "evidenceFileId": evidence_id}, headers=student)
@@ -280,7 +250,6 @@ def test_leave_approve_writes_leave_checkins(client, db_mode):
                      params={"batchId": ids["batch"]},
                      json={"action": "APPROVE", "expectedVersion": leave["version"]}, headers=_mentor("刘强"))
     assert ok.status_code == 200 and ok.json()["data"]["leaveDays"] == 3, ok.json()
-    # 打卡台账显示这 3 天为「请假」
     checkins = client.get(f"{INT}/checkins", headers=_mentor("刘强"),
                           params={"batchId": ids["batch"]}).json()["data"]["items"]
     leave_days = [c for c in checkins if c["result"] == "LEAVE"]
@@ -289,7 +258,6 @@ def test_leave_approve_writes_leave_checkins(client, db_mode):
 
 def test_guidance_notify_counselor_sends_message(client, db_mode):
     ids = _seed(db_mode)
-    # 给学生甲(rec_a/stu_a)配一个带辅导员的班级
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile, UnifiedMessage
     db = get_sessionmaker()()
@@ -300,12 +268,10 @@ def test_guidance_notify_counselor_sends_message(client, db_mode):
         db.commit()
     finally:
         db.close()
-    # 指导转风险 + 通知辅导员
     res = client.post(f"{INT}/guidances", json={"internshipId": str(ids["rec_a"]), "content": "发现安全隐患",
                                                 "topic": "安全", "toRisk": True, "notifyCounselor": True},
                       headers=_mentor("刘强"))
     assert res.status_code == 200
-    # 通知走 outbox 异步投递：写 outbox 后须消费才会真正落 t_unified_message
     from app.core.context import set_tenant
     from app.services.message_event_outbox_service import process_pending_outbox
     set_tenant({"tenantId": str(TID)})
@@ -353,7 +319,6 @@ def test_leave_overdue_creates_one_risk_and_student_can_return(client, db_mode):
     assert approved.status_code == 200, approved.json()
     refreshed = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
     assert refreshed["markedOverdue"] == 1 and refreshed["risksCreated"] == 1
-    # Idempotent recurring invocation must not create another risk card.
     repeat = client.post(f"{INT}/leaves/overdue/refresh", headers=_admin(client)).json()["data"]
     assert repeat["markedOverdue"] == 0 and repeat["risksCreated"] == 0
     current_rows = client.get(f"{MOBILE_CONTEXT}/leaves", headers=student).json()["data"]
