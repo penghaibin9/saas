@@ -56,8 +56,8 @@ test.describe.serial('登录、租户隔离与多角色身份切换', () => {
     await login.switchRole(/毕设管理员|GRADUATION_ADMIN/)
     await expect.poll(() => login.currentRoleText()).toMatch(/毕设管理员|GRADUATION_ADMIN/)
 
-    await login.switchRole(/教务管理员|教务老师|ACADEMIC_ADMIN/)
-    await expect.poll(() => login.currentRoleText()).toMatch(/教务管理员|教务老师|ACADEMIC_ADMIN/)
+    await login.switchRole(/教务处管理员|教务管理员|教务老师|ACADEMIC_ADMIN/)
+    await expect.poll(() => login.currentRoleText()).toMatch(/教务处管理员|教务管理员|教务老师|ACADEMIC_ADMIN/)
     await expect(page).toHaveURL(/\/workbench/)
   })
 })
