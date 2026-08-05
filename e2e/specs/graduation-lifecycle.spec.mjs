@@ -44,10 +44,8 @@ test.describe.serial('毕业设计：学生—导师—管理员真实点击闭�
     await graduation.approve()
   })
 
-  test('管理员切换毕设管理员身份，复核已通过状态与审批留痕', async ({ page }) => {
-    const login = new StaffLoginPage(page, config.staffBaseUrl)
-    await login.login(config.multiRole)
-    await login.switchRole(/毕设管理员|GRADUATION_ADMIN/)
+  test('学校管理员复核已通过状态与审批留痕', async ({ page }) => {
+    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
 
     const graduation = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
     await graduation.openProposals('APPROVED')
