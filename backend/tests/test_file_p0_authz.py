@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 
 import pytest
+from sqlalchemy import select
 
 TID = 1000000000000000001
 OTHER_TID = 1000000000000000002
@@ -56,7 +57,7 @@ def _token(role: str, *, tenant_id: int = TID, user_id: str = "u-x",
     return {"Authorization": "Bearer " + create_access_token(claims)}
 
 
-def _upload(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMENT", biz_id=None):
+def _upload_data(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMENT", biz_id=None):
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else "txt"
     mime = {
         "txt": "text/plain", "csv": "text/csv", "pdf": "application/pdf",
@@ -68,7 +69,11 @@ def _upload(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMEN
         data["bizId"] = biz_id
     r = client.post("/api/v1/files", headers=hdr, files=files, data=data)
     assert r.status_code == 200, r.text
-    return r.json()["data"]["fileId"]
+    return r.json()["data"]
+
+
+def _upload(client, hdr, name="p0.txt", content=b"hello-p0", biz_type="ATTACHMENT", biz_id=None):
+    return _upload_data(client, hdr, name, content, biz_type, biz_id)["fileId"]
 
 
 def test_same_tenant_other_user_cannot_guess_download(client, db_mode):
@@ -79,11 +84,14 @@ def test_same_tenant_other_user_cannot_guess_download(client, db_mode):
     assert client.get(f"/api/v1/files/{fid}", headers=other).status_code == 404
 
 
-def test_owner_can_download(client, db_mode):
+def test_owner_can_download_temporary_private_file(client, db_mode):
     teacher = _hdr(client, "academic01")
     fid = _upload(client, teacher, name="mine.txt", content=b"mine")
     assert client.get(f"/api/v1/files/download/{fid}", headers=teacher).status_code == 200
-    assert client.get(f"/api/v1/files/{fid}", headers=teacher).status_code == 200
+    meta = client.get(f"/api/v1/files/{fid}", headers=teacher)
+    assert meta.status_code == 200
+    assert meta.json()["data"]["bizType"] == "TEMP_PRIVATE"
+    assert meta.json()["data"]["bizId"] is None
 
 
 def test_cross_tenant_download_denied(client, db_mode):
@@ -93,22 +101,97 @@ def test_cross_tenant_download_denied(client, db_mode):
     assert client.get(f"/api/v1/files/download/{fid}", headers=other).status_code == 404
 
 
-def test_biz_permission_holder_can_download_after_bind(client, db_mode):
+def test_generic_upload_cannot_forge_formal_binding(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import FileBinding, FileObject
+
     admin = _hdr(client, "school_admin01")
-    fid = _upload(client, admin, name="leave.pdf", content=b"%PDF-1.4\n%", biz_type="LEAVE", biz_id="1001")
+    data = _upload_data(
+        client,
+        admin,
+        name="leave.pdf",
+        content=b"%PDF-1.4\n%",
+        biz_type="LEAVE",
+        biz_id="1001",
+    )
+    fid = data["fileId"]
+    assert data["temporary"] is True
+    assert data["bindingCreated"] is False
+    assert data["requestedBizType"] == "LEAVE"
+
+    db = get_sessionmaker()()
+    try:
+        row = db.get(FileObject, int(fid))
+        assert row is not None
+        assert row.biz_type == "TEMP_PRIVATE"
+        assert row.biz_id is None
+        assert row.visibility == "PRIVATE"
+        bindings = db.scalars(select(FileBinding).where(FileBinding.file_id == int(fid))).all()
+        assert bindings == []
+    finally:
+        db.close()
+
     counselor = _hdr(client, "counselor01")
-    assert client.get(f"/api/v1/files/download/{fid}", headers=counselor).status_code == 200
+    assert client.get(f"/api/v1/files/download/{fid}", headers=counselor).status_code == 404
 
 
-def test_student_only_own_attachment(client, db_mode):
+def test_client_attachment_id_does_not_grant_student_access(client, db_mode):
     admin = _hdr(client, "school_admin01")
     own = _upload(client, admin, name="own.pdf", content=b"%PDF-1.4\nown",
                   biz_type="ATTACHMENT", biz_id="2023100001")
     other = _upload(client, admin, name="other.pdf", content=b"%PDF-1.4\nother",
                     biz_type="ATTACHMENT", biz_id="OTHERNO")
     stu = _hdr(client, "student01")
-    assert client.get(f"/api/v1/files/download/{own}", headers=stu).status_code == 200
+    assert client.get(f"/api/v1/files/download/{own}", headers=stu).status_code == 404
     assert client.get(f"/api/v1/files/download/{other}", headers=stu).status_code == 404
+
+
+def test_formal_file_uploader_cannot_bypass_object_binding(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import FileBinding, FileObject
+
+    db = get_sessionmaker()()
+    try:
+        row = FileObject(
+            tenant_id=TID,
+            file_key="p0/formal-owner-bypass.pdf",
+            file_name="formal-owner-bypass.pdf",
+            ext="pdf",
+            mime_type="application/pdf",
+            size_bytes=10,
+            sha256="f" * 64,
+            biz_type="ATTACHMENT",
+            biz_id="OTHER-STUDENT",
+            owner_user_id=9001,
+            visibility="BIZ_SCOPED",
+            status="AVAILABLE",
+            storage_backend="local",
+            storage_zone="ACTIVE",
+            upload_source="USER",
+            scan_required=False,
+            scan_status="NOT_REQUIRED",
+        )
+        db.add(row)
+        db.flush()
+        db.add(FileBinding(
+            tenant_id=TID,
+            file_id=row.id,
+            biz_type="ATTACHMENT",
+            biz_id="OTHER-STUDENT",
+            relation_type="ATTACHMENT",
+            subject_type="BUSINESS_OBJECT",
+            version_no=1,
+            is_current=True,
+            status="ACTIVE",
+        ))
+        db.commit()
+        fid = str(row.id)
+    finally:
+        db.close()
+
+    uploader = _token("STAFF", user_id="9001", user_type="TEACHER")
+    assert client.get(f"/api/v1/files/{fid}", headers=uploader).status_code == 404
+    assert client.get(f"/api/v1/files/download/{fid}", headers=uploader).status_code == 404
 
 
 def test_no_tenant_context_upload_fails(client, db_mode, monkeypatch):
@@ -131,7 +214,7 @@ def test_no_tenant_context_upload_fails(client, db_mode, monkeypatch):
             return b"abc"
 
     with pytest.raises(AppException) as ei:
-        asyncio.run(file_service.store_upload(_F(), "ATTACHMENT", user={"userId": "u_school_admin01"}))
+        asyncio.run(file_service.store_upload(_F(), "TEMP_PRIVATE", user={"userId": "u_school_admin01"}))
     assert ei.value.code == "TENANT_CONTEXT_REQUIRED"
 
 
