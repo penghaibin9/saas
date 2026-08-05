@@ -12,6 +12,28 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+_APP_ENV_ALIASES = {
+    "dev": "development",
+    "develop": "development",
+    "local": "development",
+    "test": "test",
+    "testing": "test",
+    "stage": "staging",
+    "staging": "staging",
+    "preprod": "staging",
+    "prod": "production",
+    "production": "production",
+}
+_DEPLOYMENT_ALIASES = {
+    "dev": "local",
+    "development": "local",
+    "local": "local",
+    "stage": "staging",
+    "staging": "staging",
+    "preprod": "staging",
+    "prod": "production",
+    "production": "production",
+}
 
 
 def _load_backend_env() -> None:
@@ -53,10 +75,30 @@ def _positive_float(name: str, default: float) -> float:
     return value
 
 
+def _resolve_app_env() -> tuple[str, str | None]:
+    """与主配置兼容旧 ENV/ENVIRONMENT，并在冲突时拒绝放行。"""
+    normalized: list[tuple[str, str]] = []
+    for name in ("APP_ENV", "ENV", "ENVIRONMENT"):
+        raw = os.environ.get(name, "").strip().lower()
+        if not raw:
+            continue
+        normalized.append((name, _APP_ENV_ALIASES.get(raw, raw)))
+    if not normalized:
+        return "development", None
+    values = {value for _, value in normalized}
+    if len(values) > 1:
+        rendered = ", ".join(f"{name}={value}" for name, value in normalized)
+        return "", f"应用环境变量冲突：{rendered}"
+    return normalized[0][1], None
+
+
 def main() -> int:
     _load_backend_env()
-    app_env = os.environ.get("APP_ENV", "development").strip().lower()
-    deployment = os.environ.get("DEPLOYMENT_MODE", "local").strip().lower()
+    app_env, env_error = _resolve_app_env()
+    if env_error:
+        return _fail(env_error)
+    raw_deployment = os.environ.get("DEPLOYMENT_MODE", "local").strip().lower() or "local"
+    deployment = _DEPLOYMENT_ALIASES.get(raw_deployment, raw_deployment)
     strict = app_env in {"production", "staging"} or deployment in {"production", "staging"}
     redis_url = os.environ.get("REDIS_URL", "").strip()
 
