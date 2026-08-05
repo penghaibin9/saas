@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import traceback
 from pathlib import Path
 
@@ -62,7 +63,7 @@ def wait_captcha_ready(page: Page, trigger) -> None:
     image = trigger.locator("img")
     if image.count():
         expect(image).to_be_visible(timeout=10_000)
-        expect(image).to_have_attribute("src", "data:image/png;base64,", timeout=10_000)
+        expect(image).to_have_attribute("src", re.compile(r"^data:image/png;base64,"), timeout=10_000)
 
 
 def fresh_captcha(page: Page, trigger, redis_client) -> tuple[str, str]:
