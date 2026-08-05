@@ -7,6 +7,9 @@
 来源 hash 守卫。所有成绩写入口和总归档入口使用同一锁顺序、同一权威合规
 事实与最终成绩冻结合同，禁止继续产生独立成绩归档事实或客户端直填过程分。
 
+包 8 起，校内实习导师授权只认稳定 userId；姓名仅作展示快照，历史缺 ID 记录
+运行时 fail-closed，禁止同名或伪造 realName 获得学生对象范围。
+
 禁止在这里给 ORM 模型动态添加非持久化字段。业务构造参数必须有真实数据库列，
 或由明确的审计/归档 manifest 快照表达，避免“构造成功但数据未落库”。
 """
@@ -16,9 +19,11 @@ from app.modules.internship.services import internship_score_archive_guard as _s
 from app.modules.internship.services import internship_score_fact_guard as _score_fact_guard
 from app.modules.internship.services import internship_material_transaction_guard as _material_transaction_guard
 from app.modules.internship.services import internship_score_fact_transaction_fix as _score_fact_transaction_fix
+from app.modules.internship.services import internship_advisor_identity_guard as _advisor_identity_guard
 
 _complaint_auditor_scope.install()
 _score_archive_guard.install()
 _score_fact_guard.install()
 _material_transaction_guard.install()
 _score_fact_transaction_fix.install()
+_advisor_identity_guard.install()
