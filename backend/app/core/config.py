@@ -160,7 +160,6 @@ class Settings(BaseSettings):
     SMS_TEMPLATE_GUARDIAN_CONSENT: str = ""
     SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
     SMS_MAX_RETRY: int = 2              # 发送失败重试次数
-    GUARDIAN_SMS_LOGIN_ENABLED: bool = False  # 验证短信仅允许找回密码；家长短信登录默认永久关闭
     SMS_TEMPLATE_PASSWORD_RESET: str = ""  # 找回密码专用模板；不得复用于登录
 
     model_config = SettingsConfigDict(

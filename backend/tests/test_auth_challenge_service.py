@@ -60,3 +60,15 @@ def test_guard_key_does_not_contain_account_plaintext():
     key = svc.login_guard_key("school-code", "teacher@example.com")
     assert "school-code" not in key
     assert "teacher@example.com" not in key
+
+def test_guardian_verification_sms_login_is_permanently_disabled():
+    from app.student_portal.services import guardian_service
+
+    with pytest.raises(AppException) as issue_exc:
+        guardian_service.request_otp({"phone": "13800138000"})
+    assert issue_exc.value.code == "NO_PERMISSION"
+
+    with pytest.raises(AppException) as consume_exc:
+        guardian_service.login({"phone": "13800138000", "code": "123456"})
+    assert consume_exc.value.code == "NO_PERMISSION"
+    assert "找回密码" in consume_exc.value.message

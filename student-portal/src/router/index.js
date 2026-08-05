@@ -3,7 +3,7 @@ import { guard } from '../platform/permissionGuard'
 
 const routes = [
   { path: '/login', name: 'login', meta: { public: true }, component: () => import('../views/login/LoginView.vue') },
-  { path: '/guardian', name: 'guardian', meta: { public: true }, component: () => import('../views/guardian/GuardianView.vue') },
+  { path: '/guardian', redirect: '/login' },
   {
     path: '/',
     component: () => import('../layouts/PortalLayout.vue'),
