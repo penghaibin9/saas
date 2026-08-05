@@ -108,11 +108,16 @@ function withQuery(path, params) {
   return `${path}${path.includes('?') ? '&' : '?'}${query.toString()}`
 }
 
-function authError(message = '登录已失效，请重新登录') {
+function authError(message = '登录已失效，请重新登录', payload = null, status = 401) {
   const e = new Error(message)
-  e.status = 401
+  e.status = status
   e.code = 401001
   e.biz = true
+  if (payload && typeof payload === 'object') {
+    e.bizCode = payload.bizCode
+    e.details = payload.details
+    e.traceId = payload.traceId
+  }
   return e
 }
 
@@ -186,8 +191,8 @@ export async function request(path, {
       await refreshOnce()
       return request(path, { method, body, auth, params, query, _retried: true })
     }
-    clearSession()
-    throw authError((payload && payload.message) || undefined)
+    if (auth) clearSession()
+    throw authError((payload && payload.message) || undefined, payload, res.status)
   }
   if (!payload || typeof payload.code !== 'number') {
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
