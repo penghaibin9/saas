@@ -72,6 +72,29 @@ def test_captcha_is_bound_to_client_type():
     assert exc.value.code == "CAPTCHA_INVALID"
 
 
+def test_wx_bind_request_preserves_and_accepts_client_type():
+    from app.api.v1.auth import WxBindRequest
+
+    body = WxBindRequest(
+        wxToken="wx-token-long-enough",
+        tenantCode="school",
+        loginName="teacher",
+        password="secret",
+        clientType="TEACHER_MINI",
+        clientNonce="nonce",
+    )
+    assert body.clientType == "TEACHER_MINI"
+
+    data = svc.issue_captcha(
+        svc.WX_BIND, body.tenantCode, body.loginName,
+        body.clientNonce, body.clientType,
+    )
+    svc.verify_captcha(
+        data["captchaId"], data["devCode"], svc.WX_BIND,
+        body.tenantCode, body.loginName, body.clientNonce, body.clientType,
+    )
+
+
 def test_dev_code_never_leaks_when_deployment_is_strict(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "test")
     monkeypatch.setattr(settings, "DEPLOYMENT_MODE", "production")
