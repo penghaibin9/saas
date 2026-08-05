@@ -41,6 +41,7 @@ jobs:
       CI: 'true'
       APP_ENV: test
       DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
       DB_ENABLED: 'true'
       DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
       DB_HOST: 127.0.0.1
