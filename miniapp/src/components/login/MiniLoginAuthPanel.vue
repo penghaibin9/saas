@@ -240,6 +240,7 @@ export default {
           tenantCode: this.bindForm.tenantCode.trim() || null,
           loginName: this.bindForm.loginName.trim(),
           password: this.bindForm.password,
+          clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
           captchaId: this.bindCaptcha.id || undefined, captchaCode: this.bindCaptcha.code || undefined, clientNonce: this.bindCaptcha.nonce
         }
       }).then((data) => { this.binding = false; this.completeLogin(data) })

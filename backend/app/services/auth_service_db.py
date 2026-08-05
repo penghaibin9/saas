@@ -439,8 +439,9 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
             if locked:
                 raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {lock_minutes} 分钟")
             if count >= max(1, int(getattr(settings, 'CAPTCHA_AFTER_FAILURES', 2) or 2)):
+                captcha_scene = 'PLATFORM_LOGIN' if platform_client else 'PASSWORD_LOGIN'
                 raise AppException('CAPTCHA_REQUIRED', '账号、学校编码或密码不正确，请输入验证码后继续',
-                                   details={'captchaRequired': True, 'scene': 'PASSWORD_LOGIN'}, http_status=401)
+                                   details={'captchaRequired': True, 'scene': captcha_scene}, http_status=401)
             raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
 
         contexts = _role_contexts(db, user)

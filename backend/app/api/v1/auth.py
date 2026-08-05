@@ -72,7 +72,7 @@ def login(body: PasswordLoginRequest):
     _login_rate_guard()
     scene = captcha_svc.PLATFORM_LOGIN if body.clientType.strip().upper() == 'PLATFORM_PC' else captcha_svc.PASSWORD_LOGIN
     captcha_svc.enforce_login_captcha(scene, body.tenantCode, body.loginName, body.captchaId,
-                                      body.captchaCode, body.clientNonce)
+                                      body.captchaCode, body.clientNonce, body.clientType)
     result = auth_service_db.login_with_password(
         body.loginName.strip(), body.password, body.tenantCode, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
@@ -126,13 +126,14 @@ class WxBindRequest(BaseModel):
     captchaId: str | None = Field(None, max_length=100)
     captchaCode: str | None = Field(None, min_length=4, max_length=12)
     clientNonce: str | None = Field(None, max_length=128)
+    clientType: str = Field("MP", max_length=40, description="STUDENT_MINI / TEACHER_MINI / MP")
 
 
 @router.post("/wx-bind", summary="微信绑定校园账号（首次；绑定后 openid 免密登录）")
 def wx_bind(body: WxBindRequest):
     _login_rate_guard()
     captcha_svc.enforce_login_captcha(captcha_svc.WX_BIND, body.tenantCode, body.loginName,
-                                      body.captchaId, body.captchaCode, body.clientNonce)
+                                      body.captchaId, body.captchaCode, body.clientNonce, body.clientType)
     from app.services import wx_auth_service
     result = wx_auth_service.wx_bind(
         body.wxToken, body.loginName.strip(), body.password, body.tenantCode)

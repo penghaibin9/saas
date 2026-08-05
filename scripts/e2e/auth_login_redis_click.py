@@ -40,6 +40,19 @@ def run() -> dict:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        browser_errors: list[str] = []
+        api_failures: list[str] = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: browser_errors.append(f"console:{message.type}:{message.text}")
+            if message.type == "error" else None,
+        )
+        page.on(
+            "response",
+            lambda response: api_failures.append(f"{response.status} {response.request.method} {response.url}")
+            if "/api/" in response.url and response.status >= 500 else None,
+        )
         try:
             page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=30_000)
             expect(page.get_by_role("heading", name="教师 / 管理人员登录")).to_be_visible()
@@ -81,6 +94,9 @@ def run() -> dict:
             if len(redis_keys) != 1:
                 raise AssertionError(f"验证码提交前 Redis 中应恰有 1 个挑战键，实际 {redis_keys!r}")
 
+            # 前两次错误密码产生的 401 属于预期安全行为；从此处开始只审计成功登录后的错误。
+            browser_errors.clear()
+            api_failures.clear()
             captcha_input.fill(captcha_code)
             page.locator("#staff-password").fill("123456")
             success_payload = _click_login(page)
@@ -88,6 +104,16 @@ def run() -> dict:
                 raise AssertionError(f"正确账号密码与验证码登录失败：{success_payload!r}")
 
             page.wait_for_url("**/workbench**", timeout=15_000)
+            expect(page.get_by_text("正在加载工作台…", exact=True)).to_be_hidden(timeout=20_000)
+            expect(page.locator(".wb-v2")).to_be_visible(timeout=20_000)
+            expect(page.get_by_text("工作台数据暂时未能加载", exact=True)).to_have_count(0)
+            expect(page.get_by_text("无法加载工作台数据", exact=True)).to_have_count(0)
+            page.wait_for_timeout(1_000)
+            if api_failures:
+                raise AssertionError(f"登录后出现服务端 5xx：{api_failures!r}")
+            if browser_errors:
+                raise AssertionError(f"登录后出现浏览器错误：{browser_errors!r}")
+
             token = page.evaluate("sessionStorage.getItem('gx_pc_token_v1') || ''")
             if not token or token.count(".") != 2:
                 raise AssertionError("登录成功后 sessionStorage 未写入有效 access token")
@@ -104,6 +130,9 @@ def run() -> dict:
                 "redisChallengeCreated": True,
                 "redisChallengeConsumed": True,
                 "tokenStored": True,
+                "workbenchReady": True,
+                "browserErrors": browser_errors,
+                "api5xx": api_failures,
                 "screenshot": str(screenshot),
             }
             (ARTIFACT_DIR / "result.json").write_text(

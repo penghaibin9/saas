@@ -36,7 +36,9 @@ _MEMORY_LOCK = threading.Lock()
 
 
 def _is_strict_env() -> bool:
-    return settings.APP_ENV in {"production", "staging"} or settings.DEPLOYMENT_MODE == "production"
+    app_env = str(settings.APP_ENV or "").strip().lower()
+    deployment_mode = str(settings.DEPLOYMENT_MODE or "").strip().lower()
+    return app_env in {"production", "staging"} or deployment_mode in {"production", "staging"}
 
 
 def _auth_store_unavailable(exc: Exception | None = None) -> AppException:
@@ -275,6 +277,7 @@ def verify_captcha(
     tenant_code: str | None = None,
     login_name: str | None = None,
     client_nonce: str | None = None,
+    client_type: str | None = None,
 ) -> None:
     details = {"captchaRequired": True, "scene": scene}
     if not captcha_id or not captcha_code:
@@ -289,6 +292,10 @@ def verify_captcha(
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     expected_nonce = payload.get("nonce") or ""
     if expected_nonce and not hmac.compare_digest(expected_nonce, _nonce_hash(client_nonce)):
+        raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
+    expected_client_type = str(payload.get("clientType") or "").strip().upper()
+    actual_client_type = str(client_type or "").strip().upper()
+    if expected_client_type and not hmac.compare_digest(expected_client_type, actual_client_type):
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     actual = _digest(f"answer\n{captcha_id}\n{str(captcha_code).strip()}")
     if not hmac.compare_digest(str(payload.get("answer") or ""), actual):
@@ -311,12 +318,13 @@ def enforce_login_captcha(
     captcha_id: str | None,
     captcha_code: str | None,
     client_nonce: str | None,
+    client_type: str | None = None,
 ) -> None:
     required = captcha_required(scene, tenant_code, login_name)
     supplied = bool(captcha_id or captcha_code)
     if not required and not supplied:
         return
-    verify_captcha(captcha_id, captcha_code, scene, tenant_code, login_name, client_nonce)
+    verify_captcha(captcha_id, captcha_code, scene, tenant_code, login_name, client_nonce, client_type)
 
 
 def reset_for_tests() -> None:

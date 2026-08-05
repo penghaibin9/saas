@@ -61,6 +61,17 @@ def test_guard_key_does_not_contain_account_plaintext():
     assert "school-code" not in key
     assert "teacher@example.com" not in key
 
+
+def test_captcha_is_bound_to_client_type():
+    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")
+    with pytest.raises(AppException) as exc:
+        svc.verify_captcha(
+            data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN,
+            "school", "teacher", "nonce", "TEACHER_MINI",
+        )
+    assert exc.value.code == "CAPTCHA_INVALID"
+
+
 def test_guardian_verification_sms_login_is_permanently_disabled():
     from app.student_portal.services import guardian_service
 

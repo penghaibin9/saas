@@ -53,3 +53,14 @@ def test_password_login_risk_gate_reads_shared_counter_in_production(monkeypatch
 
     monkeypatch.setattr(svc, "get_redis", lambda: SharedCounterRedis("2"))
     assert svc.captcha_required(svc.PASSWORD_LOGIN, "school", "teacher")
+
+def test_staging_deployment_mode_is_strict_even_when_app_env_is_development(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(settings, "DEPLOYMENT_MODE", "staging")
+    monkeypatch.setattr(svc, "get_redis", lambda: None)
+
+    with pytest.raises(AppException) as exc:
+        svc.captcha_required(svc.PASSWORD_LOGIN, "school", "teacher")
+
+    assert exc.value.code == "AUTH_STORE_UNAVAILABLE"
+    assert exc.value.http_status == 503
