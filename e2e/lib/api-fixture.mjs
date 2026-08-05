@@ -22,7 +22,7 @@ async function readEnvelope(response) {
   return json.data
 }
 
-class Api {
+export class Api {
   constructor(token = '') { this.token = token }
   async request(method, path, { params, body } = {}) {
     const response = await fetch(url(path, params), {
@@ -39,9 +39,10 @@ class Api {
   }
   get(path, params) { return this.request('GET', path, { params }) }
   post(path, body, params) { return this.request('POST', path, { body, params }) }
+  put(path, body, params) { return this.request('PUT', path, { body, params }) }
 }
 
-async function login(account) {
+export async function loginApi(account) {
   const api = new Api()
   const data = await api.post('/auth/login', {
     loginName: account.username,
@@ -52,8 +53,20 @@ async function login(account) {
   return new Api(data.accessToken)
 }
 
-function items(data) {
+export function items(data) {
   return Array.isArray(data) ? data : (data?.items || data?.list || [])
+}
+
+function isoDay(offset) {
+  const date = new Date()
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCDate(date.getUTCDate() + offset)
+  return date.toISOString().slice(0, 10)
+}
+
+function academicYear() {
+  const year = new Date().getUTCFullYear()
+  return `${year}-${year + 1}`
 }
 
 async function findStudentProfile(api, studentNo) {
@@ -71,11 +84,12 @@ async function ensureBatch(api, runId) {
     .find((item) => item.batchNo === batchNo)
 
   if (!batch) {
+    const year = new Date().getUTCFullYear()
     batch = await api.post('/graduation/batches', {
       batchName: `Playwright 毕设交互测试 ${runId}`,
       batchNo,
-      academicYear: '2026-2027',
-      gradeYear: '2027届',
+      academicYear: academicYear(),
+      gradeYear: `${year + 1}届`,
       plannedCount: 1,
       remark: 'Only for isolated Playwright E2E database'
     })
@@ -90,14 +104,14 @@ async function ensureBatch(api, runId) {
     })
     await api.post(`/graduation/batches/${batch.id}/stages`, {
       stages: [
-        { code: 'TOPIC', name: '选题', startDate: '2026-07-01', endDate: '2026-07-31' },
-        { code: 'PROPOSAL', name: '开题', startDate: '2026-08-01', endDate: '2026-09-30' },
-        { code: 'MIDTERM', name: '中期', startDate: '2026-10-01', endDate: '2026-10-31' },
-        { code: 'SUBMISSION', name: '成果', startDate: '2026-11-01', endDate: '2026-11-30' },
-        { code: 'PLAGIARISM', name: '查重', startDate: '2026-12-01', endDate: '2026-12-10' },
-        { code: 'REVIEW', name: '评阅', startDate: '2026-12-11', endDate: '2026-12-15' },
-        { code: 'DEFENSE', name: '答辩', startDate: '2026-12-16', endDate: '2026-12-25' },
-        { code: 'GRADE', name: '成绩', startDate: '2026-12-26', endDate: '2026-12-31' }
+        { code: 'TOPIC', name: '选题', startDate: isoDay(-45), endDate: isoDay(-1) },
+        { code: 'PROPOSAL', name: '开题', startDate: isoDay(0), endDate: isoDay(30) },
+        { code: 'MIDTERM', name: '中期', startDate: isoDay(31), endDate: isoDay(60) },
+        { code: 'SUBMISSION', name: '成果', startDate: isoDay(61), endDate: isoDay(90) },
+        { code: 'PLAGIARISM', name: '查重', startDate: isoDay(91), endDate: isoDay(100) },
+        { code: 'REVIEW', name: '评阅', startDate: isoDay(101), endDate: isoDay(110) },
+        { code: 'DEFENSE', name: '答辩', startDate: isoDay(111), endDate: isoDay(125) },
+        { code: 'GRADE', name: '成绩', startDate: isoDay(126), endDate: isoDay(145) }
       ]
     })
     const activated = await api.post(`/graduation/batches/${batch.id}/activate`, {})
@@ -189,7 +203,7 @@ export async function prepareGraduationFixture() {
   const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
   const runId = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
 
-  const admin = await login(config.sandboxAdmin)
+  const admin = await loginApi(config.sandboxAdmin)
 
   const batch = await ensureBatch(admin, runId)
   const profile = await findStudentProfile(admin, config.student.username)
