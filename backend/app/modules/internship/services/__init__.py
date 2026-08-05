@@ -7,3 +7,6 @@
 或由明确的 package_type / manifest 快照表达，避免“构造成功但数据未落库”。
 """
 from app.modules.internship.services import internship_compliance_authoritative_service as _compliance_authoritative  # noqa: F401,E501
+from app.modules.internship.services import internship_complaint_auditor_scope as _complaint_auditor_scope
+
+_complaint_auditor_scope.install()
