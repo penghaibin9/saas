@@ -91,6 +91,19 @@ jobs:
               script_lines.append(line[10:] if line.startswith('          ') else line)
           script = '\n'.join(script_lines) + '\n'
           exec(compile(script, str(workflow), 'exec'), {'__name__': '__main__'})
+
+          e2e = Path('scripts/e2e/auth_login_redis_click.py')
+          text = e2e.read_text(encoding='utf-8')
+          needle = '            captcha_input.fill(captcha_code)\n'
+          replacement = (
+              '            # 前两次错误密码产生的 401 属于预期安全行为；从此处开始只审计成功登录后的错误。\n'
+              '            browser_errors.clear()\n'
+              '            api_failures.clear()\n'
+              '            captcha_input.fill(captcha_code)\n'
+          )
+          if text.count(needle) != 1:
+              raise SystemExit(f'E2E success-boundary marker mismatch: {text.count(needle)}')
+          e2e.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
           PY
 
       - name: Install backend and browser dependencies
