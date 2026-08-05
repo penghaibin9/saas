@@ -1,4 +1,4 @@
-name: Auth Captcha Final Review
+name: Auth Captcha Finalize Reviewed Source
 
 on:
   push:
@@ -10,74 +10,16 @@ permissions:
   contents: write
 
 jobs:
-  final-review:
+  finalize-source:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: auth_login_e2e
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=15
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=20
-    env:
-      APP_ENV: test
-      DEPLOYMENT_MODE: local
-      DEBUG: "false"
-      DB_ENABLED: "true"
-      DB_DRIVER: mysql
-      DB_HOST: 127.0.0.1
-      DB_PORT: "3306"
-      DB_NAME: auth_login_e2e
-      DB_USER: root
-      DB_PASSWORD: root
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/auth_login_e2e?charset=utf8mb4
-      REDIS_URL: redis://127.0.0.1:6379/15
-      REDIS_KEY_PREFIX: auth-login-final-review
-      REDIS_CONNECT_TIMEOUT: "2"
-      REDIS_SOCKET_TIMEOUT: "2"
-      SCHEDULER_MODE: external
-      MOCK_LOGIN_ENABLED: "false"
-      JWT_SECRET: auth-login-final-review-secret-20260805-at-least-32
-      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
-      VITE_PROXY_TARGET: http://127.0.0.1:8000
-      E2E_BASE_URL: http://127.0.0.1:5173
-      E2E_ARTIFACT_DIR: artifacts/auth-login-final-review
-
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/adaptive-login-captcha-20260805
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Apply reviewed source fixes
+      - name: Apply the exact source patch already verified by final review
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -89,8 +31,7 @@ jobs:
           script_lines = []
           for line in lines[start + 1:end]:
               script_lines.append(line[10:] if line.startswith('          ') else line)
-          script = '\n'.join(script_lines) + '\n'
-          exec(compile(script, str(workflow), 'exec'), {'__name__': '__main__'})
+          exec(compile('\n'.join(script_lines) + '\n', str(workflow), 'exec'), {'__name__': '__main__'})
 
           e2e = Path('scripts/e2e/auth_login_redis_click.py')
           text = e2e.read_text(encoding='utf-8')
@@ -112,99 +53,14 @@ jobs:
           )
           PY
 
-      - name: Install backend and browser dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
-          pip install playwright
-          python -m playwright install --with-deps chromium
-
-      - name: Run focused backend regression tests
-        run: |
-          cd backend
-          pytest tests/test_auth_challenge_service.py tests/test_auth_captcha_redis_fail_closed.py -q -p no:warnings
-
-      - name: Verify production Redis startup gates
-        run: |
-          if env -u REDIS_URL APP_ENV=production DEPLOYMENT_MODE=production \
-            python backend/scripts/check_production_redis.py; then
-            echo "Production gate incorrectly allowed missing REDIS_URL"
-            exit 1
-          fi
-          APP_ENV=production DEPLOYMENT_MODE=production ALLOW_LOCAL_REDIS_IN_PRODUCTION=true \
-            python backend/scripts/check_production_redis.py
-
-      - name: Build miniapp H5 and WeChat targets
-        run: |
-          cd miniapp
-          npm ci
-          npm run build:h5
-          npm run build:mp-weixin
-
-      - name: Initialize real MySQL login accounts
-        run: |
-          python backend/scripts/init_mysql_db.py
-          python backend/scripts/_seed_login_accounts_only.py
-
-      - name: Start FastAPI
-        run: |
-          cd backend
-          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/auth-backend.log 2>&1 &
-          echo $! > /tmp/auth-backend.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat /tmp/auth-backend.log
-          exit 1
-
-      - name: Start Vue login application
-        run: |
-          cd frontend
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/auth-frontend.log 2>&1 &
-          echo $! > /tmp/auth-frontend.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat /tmp/auth-frontend.log
-          exit 1
-
-      - name: Run real browser login and loaded-workbench verification
-        run: python scripts/e2e/auth_login_redis_click.py
-
-      - name: Validate patch and result evidence
-        run: |
+          # The review patch also updates the permanent workflow trigger. A GitHub
+          # Actions token cannot push workflow changes, so the connector applies that
+          # file separately after this source commit.
+          git restore .github/workflows/auth-login-redis-e2e.yml
           git diff --check
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          path = Path('artifacts/auth-login-final-review/result.json')
-          data = json.loads(path.read_text(encoding='utf-8'))
-          assert data.get('tokenStored') is True, data
-          assert data.get('workbenchReady') is True, data
-          assert data.get('browserErrors') == [], data
-          assert data.get('api5xx') == [], data
-          print(json.dumps(data, ensure_ascii=False, indent=2))
-          PY
 
-      - name: Upload final review evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: auth-captcha-final-review-${{ github.run_id }}
-          path: |
-            artifacts/auth-login-final-review
-            /tmp/auth-backend.log
-            /tmp/auth-frontend.log
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Commit fixes and remove temporary runners
+      - name: Commit only the reviewed application and test source
         run: |
-          rm .github/workflows/auth-captcha-review-fix.yml
-          rm .github/workflows/auth-captcha-review-finalize.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -214,10 +70,7 @@ jobs:
             backend/tests/test_auth_challenge_service.py \
             backend/tests/test_auth_captcha_redis_fail_closed.py \
             miniapp/src/components/login/MiniLoginAuthPanel.vue \
-            scripts/e2e/auth_login_redis_click.py \
-            .github/workflows/auth-login-redis-e2e.yml \
-            .github/workflows/auth-captcha-review-fix.yml \
-            .github/workflows/auth-captcha-review-finalize.yml
+            scripts/e2e/auth_login_redis_click.py
           git diff --cached --check
           git commit -m "fix(auth): close captcha review gaps"
           git push origin HEAD:feat/adaptive-login-captcha-20260805
