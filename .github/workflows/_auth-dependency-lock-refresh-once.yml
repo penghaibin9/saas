@@ -9,7 +9,7 @@ on:
       - ".github/workflows/_auth-dependency-lock-refresh-once.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lock:
@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/adaptive-login-captcha-20260805
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -44,7 +45,16 @@ jobs:
           npm run lint
           npm test
           npm run build
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          git diff --cached --quiet && { echo "package-lock.json did not change"; exit 1; }
+          git commit -m "fix(frontend): refresh patched production dependency lock"
+          git push origin HEAD:feat/adaptive-login-captcha-20260805
       - name: Upload regenerated lockfile
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: auth-patched-package-lock-${{ github.run_id }}
