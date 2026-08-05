@@ -26,7 +26,9 @@ def _headers(role: str, user_type: str = "TEACHER") -> dict[str, str]:
 def test_graduation_role_permission_templates_are_least_privilege():
     mentor = {"currentRoleCode": "GD_MENTOR", "userType": "TEACHER"}
     assert has_permission(mentor, "graduationDesign.dashboard.view")
+    assert has_permission(mentor, "graduationDesign.batch.view")
     assert has_permission(mentor, "graduationDesign.proposal.review")
+    assert not has_permission(mentor, "graduationDesign.batch.manage")
     assert not has_permission(mentor, "graduationDesign.grade.publish")
     assert not has_permission(mentor, "graduationDesign.archive.file")
 
@@ -91,9 +93,27 @@ def test_mentor_cannot_call_unclassified_management_write(graduation_client):
     assert response.status_code == 403
 
 
-def test_mentor_cannot_read_graduation_configuration_ledgers(graduation_client):
+def test_mentor_can_read_batch_context_but_not_configuration_ledgers(
+    graduation_client, monkeypatch
+):
+    """开题批阅页需要读取当前批次，但导师不得读取其它配置台账。"""
+    from app.modules.graduation.routers import graduation_batch as batch_router
+
+    monkeypatch.setattr(
+        batch_router.svc,
+        "list_batches",
+        lambda page, page_size, keyword=None, status=None: ([], 0),
+    )
+
     headers = _headers("GD_MENTOR")
-    assert graduation_client.get("/api/v1/graduation/batches", headers=headers).status_code == 403
+    response = graduation_client.get("/api/v1/graduation/batches", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("code") == 0
+    data = body.get("data") or {}
+    assert data.get("items") == []
+    assert data.get("total") == 0
+
     assert graduation_client.get("/api/v1/graduation/gd-mentors", headers=headers).status_code == 403
     assert graduation_client.get("/api/v1/graduation/gd-defense-experts", headers=headers).status_code == 403
 
