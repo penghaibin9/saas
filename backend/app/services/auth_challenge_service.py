@@ -27,6 +27,11 @@ PASSWORD_LOGIN = "PASSWORD_LOGIN"
 PLATFORM_LOGIN = "PLATFORM_LOGIN"
 WX_BIND = "WX_BIND"
 _ALLOWED_SCENES = {PASSWORD_LOGIN, PLATFORM_LOGIN, WX_BIND}
+_ALLOWED_CLIENT_TYPES = {
+    PASSWORD_LOGIN: {"PC", "STUDENT_MINI", "TEACHER_MINI", "MP"},
+    PLATFORM_LOGIN: {"PLATFORM_PC"},
+    WX_BIND: {"STUDENT_MINI", "TEACHER_MINI", "MP"},
+}
 _DIGIT_SEGMENTS = {
     "0": "abcedf", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",
     "5": "afgcd", "6": "afgecd", "7": "abc", "8": "abcdefg", "9": "abfgcd",
@@ -74,6 +79,24 @@ def _nonce_hash(value: str | None) -> str:
 def _ip_hash() -> str:
     ip = str((get_request_meta() or {}).get("ip") or "unknown")
     return _digest("ip\n" + ip)[:24]
+
+
+def _validate_issue_binding(
+    scene: str,
+    login_name: str | None,
+    client_nonce: str | None,
+    client_type: str | None,
+) -> tuple[str, str, str]:
+    normalized_login = str(login_name or "").strip()
+    normalized_nonce = str(client_nonce or "").strip()
+    normalized_client = str(client_type or "").strip().upper()
+    if not normalized_login:
+        raise AppException("VALIDATION_ERROR", "获取验证码前请先填写登录账号")
+    if not normalized_nonce:
+        raise AppException("VALIDATION_ERROR", "验证码客户端标识不能为空")
+    if normalized_client not in _ALLOWED_CLIENT_TYPES[scene]:
+        raise AppException("VALIDATION_ERROR", "验证码场景与客户端类型不匹配")
+    return normalized_login, normalized_nonce, normalized_client
 
 
 def _store_key(captcha_id: str) -> str:
@@ -247,6 +270,9 @@ def issue_captcha(
     scene = (scene or "").strip().upper()
     if scene not in _ALLOWED_SCENES:
         raise AppException("VALIDATION_ERROR", "不支持的验证码场景")
+    login_name, client_nonce, client_type = _validate_issue_binding(
+        scene, login_name, client_nonce, client_type,
+    )
     if not rate_limit(f"captcha-issue:{_ip_hash()}", 12, 60):
         raise AppException("RATE_LIMITED", "验证码获取过于频繁，请稍后再试", http_status=429)
     code = f"{secrets.randbelow(1_000_000):06d}"
@@ -257,7 +283,7 @@ def issue_captcha(
         "scene": scene,
         "subject": _subject_hash(tenant_code, login_name),
         "nonce": _nonce_hash(client_nonce),
-        "clientType": (client_type or "").strip().upper(),
+        "clientType": client_type,
         "ip": _ip_hash(),
         "issuedAt": int(time.time()),
     }
@@ -289,15 +315,15 @@ def verify_captcha(
         raise AppException("CAPTCHA_EXPIRED", "验证码已过期，请刷新后重试", details=details, http_status=401)
     if payload.get("scene") != scene:
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
-    expected_subject = payload.get("subject") or ""
-    if expected_subject and not hmac.compare_digest(expected_subject, _subject_hash(tenant_code, login_name)):
+    expected_subject = str(payload.get("subject") or "")
+    if not hmac.compare_digest(expected_subject, _subject_hash(tenant_code, login_name)):
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
-    expected_nonce = payload.get("nonce") or ""
-    if expected_nonce and not hmac.compare_digest(expected_nonce, _nonce_hash(client_nonce)):
+    expected_nonce = str(payload.get("nonce") or "")
+    if not hmac.compare_digest(expected_nonce, _nonce_hash(client_nonce)):
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     expected_client_type = str(payload.get("clientType") or "").strip().upper()
     actual_client_type = str(client_type or "").strip().upper()
-    if expected_client_type and not hmac.compare_digest(expected_client_type, actual_client_type):
+    if not hmac.compare_digest(expected_client_type, actual_client_type):
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     actual = _digest(f"answer\n{captcha_id}\n{str(captcha_code).strip()}")
     if not hmac.compare_digest(str(payload.get("answer") or ""), actual):
