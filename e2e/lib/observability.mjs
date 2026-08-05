@@ -22,12 +22,22 @@ function safeJson(text) {
   try { return redact(JSON.parse(text)) } catch { return String(text).slice(0, 2_000) }
 }
 
+function testClientIp(testInfo) {
+  const seed = [...String(testInfo.testId || testInfo.title)].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  return `10.253.${Math.floor(seed / 200) % 200}.${20 + (seed % 200)}`
+}
+
 export const test = base.extend({
   page: async ({ page }, use, testInfo) => {
     const network = []
     const consoleErrors = []
     const pageErrors = []
     const started = new Map()
+
+    // The backend still enforces its real 10 logins/minute/IP guard. Each legitimate
+    // Playwright test receives a distinct trusted-proxy client IP so serial role flows
+    // do not incorrectly throttle one another on the shared GitHub runner loopback.
+    await page.setExtraHTTPHeaders({ 'X-Forwarded-For': testClientIp(testInfo) })
 
     page.on('request', (request) => {
       if (!request.url().includes('/api/')) return
