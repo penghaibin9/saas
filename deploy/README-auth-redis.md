@@ -29,7 +29,7 @@ python backend/scripts/check_production_redis.py
 
 ## 3. 正式启动
 
-由 systemd、Supervisor、Docker Entrypoint 或发布平台调用：
+通用启动入口：
 
 ```bash
 bash deploy/start-backend-production.sh
@@ -37,12 +37,22 @@ bash deploy/start-backend-production.sh
 
 该入口先执行 Redis 闸门，失败时后端不会启动；通过后才启动 Uvicorn 多 worker。`SCHEDULER_MODE` 应为 `external`，定时任务由独立进程运行。
 
+仓库内正式部署入口已同步接入保护：
+
+- `deploy/systemd/school-lifecycle-backend.service` 使用 `ExecStartPre` 强制执行 Redis 预检；
+- `deploy/env/backend.systemd.env.example` 与 systemd 的 2 worker 配置保持一致，并明确本机 Redis 例外开关；
+- `backend/Dockerfile` 默认入口先执行 Redis 预检；
+- Docker 健康检查携带 `INTERNAL_OPS_TOKEN` 调用 `/health/ready`，会真实核验 Redis，而不是因生产鉴权返回 403。
+
+不要把上述入口改回直接裸跑 `uvicorn`。确需自定义 systemd、Supervisor 或容器命令时，必须保留等价的 Redis 启动前预检。
+
 ## 4. 上线后检查
 
 ```bash
 curl -fsS http://127.0.0.1:8000/health
+curl -fsS -H "X-Ops-Token: $INTERNAL_OPS_TOKEN" http://127.0.0.1:8000/health/ready
 ```
 
 随后用教师/管理端登录页执行两次错误密码，再确认出现验证码；填写正确验证码和密码后应进入 `/workbench`。验证码键必须在 Redis 中创建，并在登录提交时被单次消费。
 
-> 仓库只能提供配置模板、启动闸门和自动化验收。腾讯云实例创建、VPC、安全组及真实密码注入必须在拥有服务器/腾讯云权限的环境执行。
+> 仓库能够提供配置模板、启动闸门和自动化验收。腾讯云实例创建、VPC、安全组及真实密码注入必须在拥有服务器/腾讯云权限的环境执行；真实密钥绝不进入 GitHub。
