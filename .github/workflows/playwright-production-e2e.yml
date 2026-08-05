@@ -83,11 +83,9 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
 
-      - name: Seed isolated tenants
+      - name: Seed minimal isolated E2E tenants
         working-directory: backend
-        run: |
-          python scripts/seed_mysql_two_tenants.py
-          python scripts/seed_mysql_demo_data.py
+        run: python scripts/e2e_seed_playwright_tenants.py
 
       - name: Start backend
         run: |
