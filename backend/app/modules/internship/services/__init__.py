@@ -8,7 +8,8 @@
 事实与最终成绩冻结合同，禁止继续产生独立成绩归档事实或客户端直填过程分。
 
 包 8 起，校内实习导师授权只认稳定 userId；姓名仅作展示快照，历史缺 ID 记录
-运行时 fail-closed，禁止同名或伪造 realName 获得学生对象范围。
+运行时 fail-closed。豁免和强制归档共用文件 evidence validator，冻结文件版本、
+hash 与 binding，证据变化自动 INVALIDATED。
 
 禁止在这里给 ORM 模型动态添加非持久化字段。业务构造参数必须有真实数据库列，
 或由明确的审计/归档 manifest 快照表达，避免“构造成功但数据未落库”。
@@ -20,6 +21,7 @@ from app.modules.internship.services import internship_score_fact_guard as _scor
 from app.modules.internship.services import internship_material_transaction_guard as _material_transaction_guard
 from app.modules.internship.services import internship_score_fact_transaction_fix as _score_fact_transaction_fix
 from app.modules.internship.services import internship_advisor_identity_guard as _advisor_identity_guard
+from app.modules.internship.services import internship_evidence_authority_guard as _evidence_authority_guard
 
 _complaint_auditor_scope.install()
 _score_archive_guard.install()
@@ -27,3 +29,4 @@ _score_fact_guard.install()
 _material_transaction_guard.install()
 _score_fact_transaction_fix.install()
 _advisor_identity_guard.install()
+_evidence_authority_guard.install()
