@@ -24,12 +24,15 @@ on:
       - "frontend/src/services/http/client.js"
       - "frontend/src/views/LoginView.vue"
       - "frontend/src/views/PlatformLoginView.vue"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
       - "student-portal/src/components/auth/LoginCaptcha.vue"
       - "student-portal/src/router/index.js"
       - "student-portal/src/services/portalApi.js"
       - "student-portal/src/services/request.js"
       - "student-portal/src/stores/session.js"
       - "student-portal/src/views/login/LoginView.vue"
+      - "student-portal/tests/auth-error-details.test.mjs"
       - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
       - "miniapp/src/services/request.js"
       - "scripts/e2e/auth_login_redis_click.py"
@@ -63,12 +66,15 @@ on:
       - "frontend/src/services/http/client.js"
       - "frontend/src/views/LoginView.vue"
       - "frontend/src/views/PlatformLoginView.vue"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
       - "student-portal/src/components/auth/LoginCaptcha.vue"
       - "student-portal/src/router/index.js"
       - "student-portal/src/services/portalApi.js"
       - "student-portal/src/services/request.js"
       - "student-portal/src/stores/session.js"
       - "student-portal/src/views/login/LoginView.vue"
+      - "student-portal/tests/auth-error-details.test.mjs"
       - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
       - "miniapp/src/services/request.js"
       - "scripts/e2e/auth_login_redis_click.py"
@@ -90,9 +96,9 @@ concurrency:
 
 jobs:
   auth-login-redis-e2e:
-    name: 真实登录点击 + Redis 单次消费
+    name: 管理端、平台端、学生端真实登录 + Redis 单次消费
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     services:
       mysql:
         image: mysql:8.0
@@ -134,9 +140,11 @@ jobs:
       SCHEDULER_MODE: external
       MOCK_LOGIN_ENABLED: "false"
       JWT_SECRET: auth-login-e2e-only-secret-20260805-at-least-32
-      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5199,http://localhost:5199
       VITE_PROXY_TARGET: http://127.0.0.1:8000
+      VITE_API_BASE_URL: http://127.0.0.1:8000
       E2E_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199
       E2E_ARTIFACT_DIR: artifacts/auth-login-e2e
     steps:
       - uses: actions/checkout@v4
@@ -151,7 +159,9 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
 
       - name: 安装后端与浏览器依赖
         run: |
@@ -160,10 +170,13 @@ jobs:
           pip install playwright
           python -m playwright install --with-deps chromium
 
-      - name: 认证与 Redis 运行时专项测试
+      - name: 认证、Redis 与学生错误合同专项测试
         run: |
           cd backend
           pytest tests/test_auth_challenge_service.py tests/test_auth_captcha_redis_fail_closed.py -q -p no:warnings
+          cd ../student-portal
+          npm ci
+          npm test
 
       - name: 验证生产 Redis 缺失时拒绝启动
         run: |
@@ -228,7 +241,6 @@ jobs:
         run: |
           cd backend
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/auth-backend.log 2>&1 &
-          echo $! > /tmp/auth-backend.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
             sleep 1
@@ -236,29 +248,33 @@ jobs:
           cat /tmp/auth-backend.log
           exit 1
 
-      - name: 安装 Vue 登录页依赖
+      - name: 安装并审计管理端依赖
         run: |
           cd frontend
           npm ci
-
-      - name: 审计前端生产依赖
-        run: |
-          cd frontend
           npm audit --omit=dev --audit-level=high
 
-      - name: 启动 Vue 登录页
+      - name: 启动管理 PC 与学生 PC
         run: |
           cd frontend
           nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/auth-frontend.log 2>&1 &
-          echo $! > /tmp/auth-frontend.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
-            sleep 1
+          cd ../student-portal
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > /tmp/auth-student.log 2>&1 &
+          for target in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ready=false
+            for i in {1..90}; do
+              if curl -fsS "$target" >/dev/null; then ready=true; break; fi
+              sleep 1
+            done
+            if [ "$ready" != true ]; then
+              echo "service not ready: $target"
+              cat /tmp/auth-frontend.log || true
+              cat /tmp/auth-student.log || true
+              exit 1
+            fi
           done
-          cat /tmp/auth-frontend.log
-          exit 1
 
-      - name: 浏览器真实输入并点击登录
+      - name: 三入口浏览器真实输入并点击登录
         run: python scripts/e2e/auth_login_redis_click.py
 
       - name: 失败时输出服务日志
@@ -268,6 +284,8 @@ jobs:
           cat /tmp/auth-backend.log || true
           echo "===== frontend ====="
           cat /tmp/auth-frontend.log || true
+          echo "===== student portal ====="
+          cat /tmp/auth-student.log || true
 
       - name: 上传点击验收证据
         if: always()
