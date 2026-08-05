@@ -42,6 +42,17 @@ def _fail(message: str) -> int:
     return 1
 
 
+def _positive_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, str(default)).strip() or str(default)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是数字") from exc
+    if value <= 0 or value > 60:
+        raise ValueError(f"{name} 必须大于 0 且不超过 60 秒")
+    return value
+
+
 def main() -> int:
     _load_backend_env()
     app_env = os.environ.get("APP_ENV", "development").strip().lower()
@@ -55,22 +66,32 @@ def main() -> int:
         print("ℹ️ 非生产环境未设置 REDIS_URL，跳过 Redis 生产闸门")
         return 0
 
-    parsed = urlparse(redis_url)
+    try:
+        parsed = urlparse(redis_url)
+        port = parsed.port or (6380 if parsed.scheme == "rediss" else 6379)
+    except ValueError:
+        return _fail("REDIS_URL 端口格式非法")
     if parsed.scheme not in {"redis", "rediss"}:
         return _fail("REDIS_URL 仅允许 redis:// 或 rediss://")
     if not parsed.hostname:
         return _fail("REDIS_URL 缺少主机名")
+    if not 1 <= port <= 65535:
+        return _fail("REDIS_URL 端口必须在 1-65535 范围内")
     if deployment == "production" and parsed.hostname.lower() in {"127.0.0.1", "localhost", "::1"}:
         if not _truthy("ALLOW_LOCAL_REDIS_IN_PRODUCTION"):
             return _fail("生产部署禁止连接本机 Redis；确为单机私有化部署时显式设置 ALLOW_LOCAL_REDIS_IN_PRODUCTION=true")
+
+    try:
+        connect_timeout = _positive_float("REDIS_CONNECT_TIMEOUT", 2)
+        socket_timeout = _positive_float("REDIS_SOCKET_TIMEOUT", 2)
+    except ValueError as exc:
+        return _fail(str(exc))
 
     try:
         import redis
     except ModuleNotFoundError:
         return _fail("缺少 redis Python 包，请先安装 backend/requirements.txt")
 
-    connect_timeout = float(os.environ.get("REDIS_CONNECT_TIMEOUT", "2") or 2)
-    socket_timeout = float(os.environ.get("REDIS_SOCKET_TIMEOUT", "2") or 2)
     prefix = os.environ.get("REDIS_KEY_PREFIX", "school-lifecycle").strip().strip(":") or "school-lifecycle"
     client = redis.Redis.from_url(
         redis_url,
@@ -109,7 +130,6 @@ def main() -> int:
 
     tls = "TLS" if parsed.scheme == "rediss" else "非 TLS（应仅用于可信内网）"
     db = (parsed.path or "/0").lstrip("/") or "0"
-    port = parsed.port or (6380 if parsed.scheme == "rediss" else 6379)
     print(f"✅ Redis 生产闸门通过：host={parsed.hostname} port={port} db={db} mode={tls} prefix={prefix}")
     return 0
 
