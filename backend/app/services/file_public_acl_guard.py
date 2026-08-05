@@ -17,11 +17,18 @@ _INSTALLED = False
 
 
 def _is_temporary_private(file_obj) -> bool:
-    return bool(
-        str(getattr(file_obj, "biz_type", "") or "").upper() == "TEMP_PRIVATE"
-        and not str(getattr(file_obj, "biz_id", "") or "").strip()
-        and str(getattr(file_obj, "visibility", "") or "PRIVATE").upper() == "PRIVATE"
+    """只识别无正式目标的临时对象；正式业务类型绝不能因 owner 放行。"""
+    biz_type = str(getattr(file_obj, "biz_type", "") or "").upper()
+    visibility = str(getattr(file_obj, "visibility", "") or "PRIVATE").upper()
+    status = str(getattr(file_obj, "status", "") or "").upper()
+    storage_zone = str(getattr(file_obj, "storage_zone", "") or "").upper()
+    no_target = not str(getattr(file_obj, "biz_id", "") or "").strip()
+    explicit_temp = biz_type == "TEMP_PRIVATE"
+    import_staging = bool(
+        biz_type.endswith("_IMPORT_SOURCE")
+        and (status in {"UPLOADED", "QUARANTINED", "STORED"} or storage_zone == "QUARANTINE")
     )
+    return bool(no_target and visibility == "PRIVATE" and (explicit_temp or import_staging))
 
 
 def _active_bindings(bindings: list[Any]) -> list[Any]:
