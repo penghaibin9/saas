@@ -23,22 +23,22 @@ def _reset(monkeypatch):
 
 
 def test_captcha_is_raster_png_single_use():
-    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")
     raw = base64.b64decode(data["imageDataUrl"].split(",", 1)[1])
     assert raw.startswith(b"\x89PNG\r\n\x1a\n")
-    svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+    svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")
     with pytest.raises(AppException) as replay:
-        svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+        svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")
     assert replay.value.code == "CAPTCHA_EXPIRED"
 
 
 def test_wrong_code_consumes_challenge():
-    data = svc.issue_captcha(svc.WX_BIND, "school", "student", "nonce")
+    data = svc.issue_captcha(svc.WX_BIND, "school", "student", "nonce", "STUDENT_MINI")
     with pytest.raises(AppException) as wrong:
-        svc.verify_captcha(data["captchaId"], "000000", svc.WX_BIND, "school", "student", "nonce")
+        svc.verify_captcha(data["captchaId"], "000000", svc.WX_BIND, "school", "student", "nonce", "STUDENT_MINI")
     assert wrong.value.code == "CAPTCHA_INVALID"
     with pytest.raises(AppException):
-        svc.verify_captcha(data["captchaId"], data["devCode"], svc.WX_BIND, "school", "student", "nonce")
+        svc.verify_captcha(data["captchaId"], data["devCode"], svc.WX_BIND, "school", "student", "nonce", "STUDENT_MINI")
 
 
 def test_platform_always_requires_captcha():
@@ -70,6 +70,28 @@ def test_captcha_is_bound_to_client_type():
             "school", "teacher", "nonce", "TEACHER_MINI",
         )
     assert exc.value.code == "CAPTCHA_INVALID"
+
+
+def test_captcha_issue_requires_complete_binding():
+    cases = [
+        {"login_name": "", "client_nonce": "nonce", "client_type": "PC"},
+        {"login_name": "teacher", "client_nonce": "", "client_type": "PC"},
+        {"login_name": "teacher", "client_nonce": "nonce", "client_type": ""},
+    ]
+    for case in cases:
+        with pytest.raises(AppException) as exc:
+            svc.issue_captcha(svc.PASSWORD_LOGIN, "school", **case)
+        assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_captcha_scene_rejects_wrong_client_type():
+    with pytest.raises(AppException) as platform_exc:
+        svc.issue_captcha(svc.PLATFORM_LOGIN, "platform", "owner", "nonce", "PC")
+    assert platform_exc.value.code == "VALIDATION_ERROR"
+
+    with pytest.raises(AppException) as bind_exc:
+        svc.issue_captcha(svc.WX_BIND, "school", "student", "nonce", "PLATFORM_PC")
+    assert bind_exc.value.code == "VALIDATION_ERROR"
 
 
 def test_wx_bind_request_preserves_and_accepts_client_type():
