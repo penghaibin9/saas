@@ -44,7 +44,13 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Apply audited SMS policy hardening
-        run: python scripts/automation/harden_verification_sms_policy.py
+        run: |
+          python scripts/automation/harden_verification_sms_policy.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/tests/test_auth_challenge_service.py')
+          path.write_text(path.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
       - name: Python syntax check
         run: python -m compileall -q backend/app backend/tests/test_auth_challenge_service.py
       - name: Backend regression tests
