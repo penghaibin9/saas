@@ -32,10 +32,10 @@ jobs:
           cd ..
           python -m py_compile backend/scripts/_seed_login_accounts_only.py scripts/e2e/auth_login_redis_click.py
           git diff --check
-      - name: Commit reviewed fixes
+      - name: Commit reviewed code fixes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add student-portal/src/services/request.js student-portal/tests/auth-error-details.test.mjs backend/scripts/_seed_login_accounts_only.py scripts/e2e/auth_login_redis_click.py .github/workflows/auth-login-redis-e2e.yml .github/workflows/_auth-review-repair-once.yml scripts/_auth_review_repair_once.py
+          git add student-portal/src/services/request.js student-portal/tests/auth-error-details.test.mjs backend/scripts/_seed_login_accounts_only.py scripts/e2e/auth_login_redis_click.py .github/workflows/_auth-review-repair-once.yml scripts/_auth_review_repair_once.py
           git commit -m "fix(auth): preserve captcha errors and expand login E2E"
           git push origin HEAD:feat/adaptive-login-captcha-20260805
