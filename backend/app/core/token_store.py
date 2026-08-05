@@ -313,6 +313,19 @@ def record_login_failure(key: str, threshold: int | None = None,
     return rec[0], 0
 
 
+def get_login_failure_count(key: str) -> int:
+    """Return the bounded failed-password count shared by the captcha risk gate."""
+    from app.core.redis_client import cache_get
+    shared = cache_get(f"auth:login-fail:{key}")
+    if shared is not None:
+        try:
+            return max(0, int(shared))
+        except (TypeError, ValueError):
+            return 0
+    rec = _fail.get(key)
+    return max(0, int(rec[0])) if rec else 0
+
+
 def reset_login_failures(key: str) -> None:
     from app.core.redis_client import cache_delete
     cache_delete(f"auth:login-fail:{key}", f"auth:login-lock:{key}")

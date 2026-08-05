@@ -34,6 +34,7 @@
             <input id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
             <button type="button" class="eye-button" :aria-label="showPwd ? '隐藏密码' : '显示密码'" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
           </div>
+          <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" input-id="student-login-captcha" @refresh="refreshCaptcha" />
           <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
 
           <details class="tenant-details">
@@ -59,6 +60,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useUiStore } from '../../stores/ui'
+import LoginCaptcha from '../../components/auth/LoginCaptcha.vue'
+import { portalApi } from '../../services/portalApi'
 
 const REMEMBER_KEY = 'student_portal_login_name'
 const router = useRouter()
@@ -75,6 +78,7 @@ const loading = ref(false)
 const showPwd = ref(false)
 const remember = ref(false)
 const agree = ref(false)
+const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: `student-${Date.now()}-${Math.random()}` })
 const platformName = computed(() => cfg.brand?.platformName || cfg.portalName || '学生服务门户')
 const brandLogo = computed(() => cfg.brand?.logo || '')
 
@@ -91,7 +95,13 @@ onMounted(() => {
 })
 
 function forgotPassword() {
-  ui.notify('请联系辅导员或学校管理员重置密码')
+  ui.notify('找回密码短信仅用于身份验证；功能开通前请联系学校管理员重置')
+}
+
+async function refreshCaptcha() {
+  captcha.value.loading = true
+  try { const d = await portalApi.captcha({ scene: 'PASSWORD_LOGIN', tenantCode: tenantCode.value || undefined, loginName: loginName.value, clientNonce: captcha.value.nonce, clientType: 'PC' }); captcha.value.id = d.captchaId; captcha.value.image = d.imageDataUrl; captcha.value.code = '' }
+  catch (e) { error.value = e?.message || '验证码加载失败，请稍后重试' } finally { captcha.value.loading = false }
 }
 
 async function doLogin() {
@@ -106,7 +116,8 @@ async function doLogin() {
   }
   loading.value = true
   try {
-    await session.login(loginName.value, password.value, tenantCode.value || undefined)
+    if (captcha.value.required && (!captcha.value.id || captcha.value.code.length !== 6)) { error.value = '请输入图中 6 位验证码'; return }
+    await session.login(loginName.value, password.value, tenantCode.value || undefined, { captchaId: captcha.value.id, captchaCode: captcha.value.code, clientNonce: captcha.value.nonce })
     try {
       if (remember.value) localStorage.setItem(REMEMBER_KEY, loginName.value)
       else localStorage.removeItem(REMEMBER_KEY)
@@ -118,6 +129,7 @@ async function doLogin() {
     const redirect = route.query.redirect
     router.replace(typeof redirect === 'string' ? redirect : '/home')
   } catch (e) {
+    if ((e?.bizCode || '').startsWith('CAPTCHA_') || e?.details?.captchaRequired) { captcha.value.required = true; await refreshCaptcha() }
     error.value = e?.notStudent ? '该账号不是学生账号，请使用教师端入口' : (e?.message || '登录失败，请稍后重试')
   } finally {
     loading.value = false

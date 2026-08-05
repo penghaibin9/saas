@@ -14,6 +14,7 @@ from app.core.exceptions import AppException
 from app.core.config import settings
 from app.core.redis_client import cache_delete, cache_get_json, cache_set_json
 from app.core.security import create_access_token, hash_password, verify_password
+from app.services.auth_challenge_service import login_guard_key
 from app.core.token_store import (block_jti, issue_refresh, login_locked,
                                   record_login_failure, reset_login_failures,
                                   revoke_refresh_by_user)
@@ -411,7 +412,7 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
         raise AppException("UNAUTHORIZED", "账号密码登录需启用数据库（DB_ENABLED=true）；演示可用 mock-login")
     login_name = (login_name or "").strip()
     tenant_code = (tenant_code or "").strip() or None
-    lock_key = f"pw:{tenant_code or '*'}:{login_name}"
+    lock_key = login_guard_key(tenant_code, login_name)
     remain = login_locked(lock_key)
     if remain > 0:
         from app.services import audit_log
@@ -422,6 +423,10 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
     db = get_sessionmaker()()
     try:
         user = _find_login_user(db, login_name, tenant_code)
+        platform_account = bool(user and (user.user_type or '').upper() in {'PLATFORM_OP', 'PLATFORM_SUPER_ADMIN'})
+        platform_client = (client_type or '').upper() == 'PLATFORM_PC'
+        if user and platform_account != platform_client:
+            raise AppException('UNAUTHORIZED', '账号、学校编码或密码不正确')
         if not user or not verify_password(password, user.password_hash):
             from app.services import audit_log
             from app.services.system_config_service import get_int
@@ -433,6 +438,9 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
                                      "tenantCode": tenant_code}, result="FAIL")
             if locked:
                 raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {lock_minutes} 分钟")
+            if count >= max(1, int(getattr(settings, 'CAPTCHA_AFTER_FAILURES', 2) or 2)):
+                raise AppException('CAPTCHA_REQUIRED', '账号、学校编码或密码不正确，请输入验证码后继续',
+                                   details={'captchaRequired': True, 'scene': 'PASSWORD_LOGIN'}, http_status=401)
             raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
 
         contexts = _role_contexts(db, user)

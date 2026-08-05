@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.config import settings
 from app.core.security import create_access_token
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled
@@ -39,7 +40,9 @@ def _valid_phone(phone: str) -> bool:
 
 
 def request_otp(body: dict) -> dict:
-    """家长请求登录验证码。通用成功响应（不泄露手机号是否被授权）；仅在被授权时真正下发。"""
+    """Legacy guardian SMS login is disabled by default; verification SMS is reserved for password reset."""
+    if not settings.GUARDIAN_SMS_LOGIN_ENABLED:
+        raise AppException('NO_PERMISSION', '家长短信登录已停用，请使用学校统一身份入口')
     body = body or {}
     phone = str(body.get("phone") or "").strip()
     if not _valid_phone(phone):

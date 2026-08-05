@@ -321,6 +321,8 @@ function executeRealRequest(path, effectivePath, {
             biz: true,
             message: body.message || '业务错误',
             traceId: body.traceId,
+            bizCode: body.bizCode,
+            details: body.details,
             httpStatus: res.statusCode
           })
           return

@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+import base64
+
+import pytest
+
+from app.core.config import settings
+from app.core.exceptions import AppException
+from app.core.token_store import record_login_failure, reset_all_for_tests
+from app.services import auth_challenge_service as svc
+
+
+@pytest.fixture(autouse=True)
+def _reset(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "test")
+    monkeypatch.setattr(settings, "DEPLOYMENT_MODE", "local")
+    monkeypatch.setattr(settings, "REDIS_URL", "")
+    reset_all_for_tests()
+    svc.reset_for_tests()
+    yield
+    reset_all_for_tests()
+    svc.reset_for_tests()
+
+
+def test_captcha_is_raster_png_single_use():
+    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+    raw = base64.b64decode(data["imageDataUrl"].split(",", 1)[1])
+    assert raw.startswith(b"\x89PNG\r\n\x1a\n")
+    svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+    with pytest.raises(AppException) as replay:
+        svc.verify_captcha(data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN, "school", "teacher", "nonce")
+    assert replay.value.code == "CAPTCHA_EXPIRED"
+
+
+def test_wrong_code_consumes_challenge():
+    data = svc.issue_captcha(svc.WX_BIND, "school", "student", "nonce")
+    with pytest.raises(AppException) as wrong:
+        svc.verify_captcha(data["captchaId"], "000000", svc.WX_BIND, "school", "student", "nonce")
+    assert wrong.value.code == "CAPTCHA_INVALID"
+    with pytest.raises(AppException):
+        svc.verify_captcha(data["captchaId"], data["devCode"], svc.WX_BIND, "school", "student", "nonce")
+
+
+def test_platform_always_requires_captcha():
+    with pytest.raises(AppException) as exc:
+        svc.enforce_login_captcha(svc.PLATFORM_LOGIN, "platform", "owner", None, None, "n")
+    assert exc.value.code == "CAPTCHA_REQUIRED"
+
+
+def test_regular_login_becomes_adaptive_after_two_failures():
+    key = svc.login_guard_key("school", "teacher")
+    assert not svc.captcha_required(svc.PASSWORD_LOGIN, "school", "teacher")
+    record_login_failure(key, threshold=5, lock_seconds=900)
+    assert not svc.captcha_required(svc.PASSWORD_LOGIN, "school", "teacher")
+    record_login_failure(key, threshold=5, lock_seconds=900)
+    assert svc.captcha_required(svc.PASSWORD_LOGIN, "school", "teacher")
+
+
+def test_guard_key_does_not_contain_account_plaintext():
+    key = svc.login_guard_key("school-code", "teacher@example.com")
+    assert "school-code" not in key
+    assert "teacher@example.com" not in key
