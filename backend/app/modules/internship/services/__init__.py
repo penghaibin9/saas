@@ -10,7 +10,8 @@
 包 8 起，校内实习导师授权只认稳定 userId；姓名仅作展示快照，历史缺 ID 记录
 运行时 fail-closed。豁免和强制归档共用文件 evidence validator，冻结文件版本、
 hash 与 binding，证据变化自动 INVALIDATED。强制归档依据在生成不可变档案
-快照前完成正式绑定，避免同一文件被快照链重复解释为第二个业务对象。
+快照前完成正式绑定，避免同一文件被快照链重复解释为第二个业务对象；归档
+采集器只从冻结字典读取稳定 fileId，不把整份字典误当文件引用。
 
 禁止在这里给 ORM 模型动态添加非持久化字段。业务构造参数必须有真实数据库列，
 或由明确的审计/归档 manifest 快照表达，避免“构造成功但数据未落库”。
@@ -24,6 +25,7 @@ from app.modules.internship.services import internship_score_fact_transaction_fi
 from app.modules.internship.services import internship_advisor_identity_guard as _advisor_identity_guard
 from app.modules.internship.services import internship_evidence_authority_guard as _evidence_authority_guard
 from app.modules.internship.services import internship_force_archive_evidence_fix as _force_archive_evidence_fix
+from app.modules.internship.services import internship_archive_file_ref_fix as _archive_file_ref_fix
 
 _complaint_auditor_scope.install()
 _score_archive_guard.install()
@@ -33,3 +35,4 @@ _score_fact_transaction_fix.install()
 _advisor_identity_guard.install()
 _evidence_authority_guard.install()
 _force_archive_evidence_fix.install()
+_archive_file_ref_fix.install()
