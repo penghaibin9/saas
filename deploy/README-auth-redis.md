@@ -55,4 +55,8 @@ curl -fsS -H "X-Ops-Token: $INTERNAL_OPS_TOKEN" http://127.0.0.1:8000/health/rea
 
 随后用教师/管理端登录页执行两次错误密码，再确认出现验证码；填写正确验证码和密码后应进入 `/workbench`。验证码键必须在 Redis 中创建，并在登录提交时被单次消费。
 
+## 5. 可重复验收闸门
+
+`.github/workflows/auth-login-redis-e2e.yml` 使用真实 MySQL、Redis、FastAPI、管理端和学生门户运行浏览器点击验收，覆盖管理端、平台运营端和学生端登录。前端依赖必须通过 `npm ci` 安装，`package.json` 与 `package-lock.json` 不同步时应直接阻断，禁止在流水线中改用会悄悄重写锁文件的 `npm install`。
+
 > 仓库能够提供配置模板、启动闸门和自动化验收。腾讯云实例创建、VPC、安全组及真实密码注入必须在拥有服务器/腾讯云权限的环境执行；真实密钥绝不进入 GitHub。
