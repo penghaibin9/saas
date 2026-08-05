@@ -28,6 +28,7 @@
       <text class="section-title">使用{{ isTeacher ? '工号' : '学号' }}和密码登录</text>
       <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
       <input v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
+      <view v-if="accountCaptcha.required" class="captcha-row"><input v-model="accountCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="accountCaptcha.image" mode="aspectFill" @click="loadCaptcha('account')" /></view>
       <view class="tenant-box" @click="tenantOpen = !tenantOpen">
         <view><text class="tenant-box__title">学校编码</text><text class="tenant-box__hint">仅多校同账号时填写</text></view><text>{{ tenantOpen ? '收起' : '填写' }}</text>
       </view>
@@ -60,6 +61,7 @@
         <text class="bind-sheet__sub">使用{{ isTeacher ? '工号' : '学号' }}或手机号与密码绑定一次，后续即可微信一键登录。</text>
         <input v-model="bindForm.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
         <input v-model="bindForm.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
+        <view v-if="bindCaptcha.required" class="captcha-row"><input v-model="bindCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="bindCaptcha.image" mode="aspectFill" @click="loadCaptcha('bind')" /></view>
         <input v-model="bindForm.tenantCode" class="field" placeholder="学校编码（仅多校同账号时填写）" placeholder-class="field__placeholder" />
         <button class="account-button" :disabled="bindLoading" @click="submitBind">{{ bindLoading ? '绑定中…' : '绑定并登录' }}</button>
         <text class="bind-sheet__cancel" @click="cancelBind">取消</text>
@@ -103,6 +105,8 @@ export default {
       binding: false,
       wxToken: '',
       bindForm: { tenantCode: '', loginName: '', password: '' },
+      accountCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-account-${Date.now()}-${Math.random()}` },
+      bindCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-bind-${Date.now()}-${Math.random()}` },
       bindLoading: false,
       orientationBatch: { open: false, batchName: '', daysLeft: 0 }
     }
@@ -125,6 +129,18 @@ export default {
     }
   },
   methods: {
+    loadCaptcha(target) {
+      const box = target === 'bind' ? this.bindCaptcha : this.accountCaptcha
+      const form = target === 'bind' ? this.bindForm : this.account
+      const scene = target === 'bind' ? 'WX_BIND' : 'PASSWORD_LOGIN'
+      return realRequest('/auth/captcha', { method: 'POST', auth: false, data: { scene, tenantCode: form.tenantCode.trim() || undefined, loginName: form.loginName.trim(), clientNonce: box.nonce, clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' } })
+        .then((d) => { box.id = d.captchaId; box.image = d.imageDataUrl; box.code = '' })
+        .catch((e) => toast(e?.message || '验证码加载失败'))
+    },
+    handleCaptchaError(error, target) {
+      if (!(String(error?.bizCode || '').startsWith('CAPTCHA_') || error?.details?.captchaRequired)) return false
+      const box = target === 'bind' ? this.bindCaptcha : this.accountCaptcha; box.required = true; this.loadCaptcha(target); return true
+    },
     assertEntryRole(data) {
       const roleCode = data?.currentRole?.roleCode || ''
       const matches = this.isTeacher ? roleCode !== 'STUDENT' : roleCode === 'STUDENT'
@@ -168,9 +184,11 @@ export default {
         data: {
           loginName: this.account.loginName.trim(),
           password: this.account.password,
-          tenantCode: this.account.tenantCode.trim() || undefined
+          tenantCode: this.account.tenantCode.trim() || undefined,
+          clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
+          captchaId: this.accountCaptcha.id || undefined, captchaCode: this.accountCaptcha.code || undefined, clientNonce: this.accountCaptcha.nonce
         }
-      }).then(this.completeLogin).catch((error) => toast(error?.message || '登录失败，请稍后重试')).finally(() => { this.accLoading = false })
+      }).then(this.completeLogin).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
     },
     wechatLogin() {
       if (this.wxLoading) return
@@ -221,10 +239,12 @@ export default {
           wxToken: this.wxToken,
           tenantCode: this.bindForm.tenantCode.trim() || null,
           loginName: this.bindForm.loginName.trim(),
-          password: this.bindForm.password
+          password: this.bindForm.password,
+          clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
+          captchaId: this.bindCaptcha.id || undefined, captchaCode: this.bindCaptcha.code || undefined, clientNonce: this.bindCaptcha.nonce
         }
       }).then((data) => { this.binding = false; this.completeLogin(data) })
-        .catch((error) => toast(error?.message || '绑定失败，请检查账号密码'))
+        .catch((error) => { this.handleCaptchaError(error, 'bind'); toast(error?.message || '绑定失败，请检查账号密码') })
         .finally(() => { this.bindLoading = false })
     },
     cancelBind() {
@@ -258,4 +278,5 @@ button::after { border: none; }.wx-button,.account-button { display: flex; align
 .role-note { border-color: #e7ecf2; background: #fff; }.role-note text:first-child { font-size: 12px; font-weight: 600; }.role-note text:last-child { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.switch-entry { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }
 .bind-mask { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: flex-end; background: rgba(16,35,63,.46); }.bind-sheet { width: 100%; padding: 13px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; }.bind-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 4px; background: #d9e0e8; }.bind-sheet__title,.bind-sheet__sub,.bind-sheet__cancel { display: block; }.bind-sheet__title { font-size: 18px; font-weight: 700; }.bind-sheet__sub { margin: 7px 0 4px; color: #718096; font-size: 11px; line-height: 1.55; }.bind-sheet__cancel { padding: 15px 0 3px; color: #718096; text-align: center; font-size: 12px; }
 @media (min-width: 520px) { .mini-login { width: 430px; min-height: 100vh; margin: 0 auto; box-shadow: 0 0 35px rgba(16,35,63,.12); } }
+.captcha-row { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }.captcha-row__input { flex: 1; margin: 0; }.captcha-row__image { width: 260rpx; height: 88rpx; border: 1rpx solid #dbe3ed; border-radius: 14rpx; background: #f8fafc; }
 </style>

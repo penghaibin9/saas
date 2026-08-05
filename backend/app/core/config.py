@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # ── 微信小程序一键登录（jscode2session）──
     WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录
     WX_SECRET: str = ""                  # 小程序 AppSecret；仅经 .env/环境变量注入，禁止写进仓库
+    CAPTCHA_TTL_SECONDS: int = 120
+    CAPTCHA_AFTER_FAILURES: int = 2
 
     # ── 数据库 ──
     DB_ENABLED: bool = False             # False 时部分链路可走内存/演示；生产强制 True
@@ -158,6 +160,7 @@ class Settings(BaseSettings):
     SMS_TEMPLATE_GUARDIAN_CONSENT: str = ""
     SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
     SMS_MAX_RETRY: int = 2              # 发送失败重试次数
+    SMS_TEMPLATE_PASSWORD_RESET: str = ""  # 找回密码专用模板；不得复用于登录
 
     model_config = SettingsConfigDict(
         env_file=".env",

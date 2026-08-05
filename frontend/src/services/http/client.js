@@ -120,6 +120,7 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true, for
       err.biz = true
       err.code = payload.code
       err.bizCode = payload.bizCode           // NO_PERMISSION / NO_DATA_SCOPE：供页面渲染统一无权限/无范围态
+      err.details = payload.details
       err.traceId = payload.traceId
       throw err
     }
@@ -292,14 +293,21 @@ export function isPlatformSuperAdmin() {
   return !!u && (u.currentRoleCode === 'PLATFORM_SUPER_ADMIN' || u.userType === 'PLATFORM_SUPER_ADMIN')
 }
 
+/** 获取短时、单次图形验证码。 */
+export async function issueLoginCaptcha(payload) {
+  return rawRequest('/auth/captcha', { method: 'POST', auth: false, forceProbe: true, body: payload })
+}
+
 /** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
-export async function loginWithPassword(loginName, password, tenantCode = '') {
+export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()
   const data = await rawRequest('/auth/login', {
     method: 'POST',
     auth: false,
     forceProbe: true,
-    body: { loginName, password, tenantCode: tenantCode || undefined, clientType: 'PC' }
+    body: { loginName, password, tenantCode: tenantCode || undefined,
+      clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
+      captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
   })
   _holdTokens(data.accessToken, data.refreshToken || '')
   return data

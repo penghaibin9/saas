@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
 from app.services import auth_service_db
+from app.services import auth_challenge_service as captcha_svc
 from app.services import mock_audit_service as audit
 from app.services import mock_auth_service as mock_auth_svc
 from app.core.context import get_request_meta
@@ -46,12 +47,32 @@ class PasswordLoginRequest(BaseModel):
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
     loginName: str = Field(..., description="工号/学号/登录名")
     password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
-    clientType: str = Field("PC", description="PC / STUDENT_MINI / TEACHER_MINI / MP")
+    clientType: str = Field("PC", description="PC / PLATFORM_PC / STUDENT_MINI / TEACHER_MINI / MP")
+    captchaId: str | None = Field(None, max_length=100)
+    captchaCode: str | None = Field(None, min_length=4, max_length=12)
+    clientNonce: str | None = Field(None, max_length=128)
+
+
+class CaptchaRequest(BaseModel):
+    scene: str = Field(..., min_length=1, max_length=40)
+    tenantCode: str | None = Field(None, max_length=100)
+    loginName: str | None = Field(None, max_length=100)
+    clientNonce: str | None = Field(None, max_length=128)
+    clientType: str | None = Field(None, max_length=40)
+
+
+@router.post('/captcha', summary='获取登录图形验证码（短时、单次、生产 Redis 原子消费）')
+def captcha(body: CaptchaRequest):
+    return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.loginName,
+                                             body.clientNonce, body.clientType))
 
 
 @router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")
 def login(body: PasswordLoginRequest):
     _login_rate_guard()
+    scene = captcha_svc.PLATFORM_LOGIN if body.clientType.strip().upper() == 'PLATFORM_PC' else captcha_svc.PASSWORD_LOGIN
+    captcha_svc.enforce_login_captcha(scene, body.tenantCode, body.loginName, body.captchaId,
+                                      body.captchaCode, body.clientNonce, body.clientType)
     result = auth_service_db.login_with_password(
         body.loginName.strip(), body.password, body.tenantCode, body.clientType)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
@@ -102,11 +123,17 @@ class WxBindRequest(BaseModel):
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
     loginName: str = Field(..., min_length=1, description="学号/工号")
     password: str = Field(..., min_length=1, description="校园账号密码")
+    captchaId: str | None = Field(None, max_length=100)
+    captchaCode: str | None = Field(None, min_length=4, max_length=12)
+    clientNonce: str | None = Field(None, max_length=128)
+    clientType: str = Field("MP", max_length=40, description="STUDENT_MINI / TEACHER_MINI / MP")
 
 
 @router.post("/wx-bind", summary="微信绑定校园账号（首次；绑定后 openid 免密登录）")
 def wx_bind(body: WxBindRequest):
     _login_rate_guard()
+    captcha_svc.enforce_login_captcha(captcha_svc.WX_BIND, body.tenantCode, body.loginName,
+                                      body.captchaId, body.captchaCode, body.clientNonce, body.clientType)
     from app.services import wx_auth_service
     result = wx_auth_service.wx_bind(
         body.wxToken, body.loginName.strip(), body.password, body.tenantCode)

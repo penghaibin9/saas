@@ -25,7 +25,7 @@
           </label>
           <label>
             账号
-            <input v-model.trim="form.loginName" autocomplete="username" placeholder="请输入平台账号" required />
+            <input v-model.trim="form.loginName" autocomplete="username" placeholder="请输入平台账号" required @blur="ensureCaptcha" />
           </label>
           <label>
             密码
@@ -36,6 +36,7 @@
               </button>
             </div>
           </label>
+          <LoginCaptcha visible v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" input-id="platform-captcha" @refresh="refreshCaptcha" />
           <p v-if="error" class="error" role="alert">{{ error }}</p>
           <button class="submit" type="submit" :disabled="loading">
             {{ loading ? '正在验证…' : '登录运营平台' }}
@@ -50,24 +51,56 @@
 </template>
 
 <script>
-import { clearAuthSession, isPlatformSuperAdmin, loginWithPassword } from '@/services/http/client'
+import { clearAuthSession, isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
+import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 
 export default {
   name: 'PlatformLoginView',
+  components: { LoginCaptcha },
   data() {
     return {
       loading: false,
       showPassword: false,
       error: '',
+      captcha: { id: '', code: '', image: '', loading: false, nonce: `platform-${Date.now()}-${Math.random()}`, subject: '' },
       form: { tenantCode: 'platform', loginName: '', password: '' }
     }
   },
   methods: {
+    async ensureCaptcha() {
+      const loginName = this.form.loginName.trim()
+      if (loginName && (this.captcha.subject !== loginName || !this.captcha.id)) await this.refreshCaptcha()
+    },
+    async refreshCaptcha() {
+      const loginName = this.form.loginName.trim()
+      if (!loginName) {
+        this.captcha.id = ''; this.captcha.code = ''; this.captcha.image = ''; this.captcha.subject = ''
+        this.error = '请先输入平台账号再获取验证码'
+        return false
+      }
+      this.captcha.loading = true
+      try {
+        const d = await issueLoginCaptcha({ scene: 'PLATFORM_LOGIN', tenantCode: this.form.tenantCode, loginName, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
+        this.captcha.id = d.captchaId; this.captcha.image = d.imageDataUrl; this.captcha.code = ''; this.captcha.subject = loginName
+        return true
+      } catch (e) {
+        this.error = e?.message || '验证码加载失败'
+        return false
+      } finally { this.captcha.loading = false }
+    },
     async submit() {
       this.error = ''
       this.loading = true
       try {
-        await loginWithPassword(this.form.loginName, this.form.password, this.form.tenantCode || 'platform')
+        const loginName = this.form.loginName.trim()
+        if (!loginName) { this.error = '请输入平台账号'; return }
+        if (!this.captcha.id || this.captcha.subject !== loginName) {
+          await this.refreshCaptcha()
+          this.error = '账号已确认，请输入新生成的验证码'
+          return
+        }
+        if (this.captcha.code.length !== 6) { this.error = '请输入图中 6 位验证码'; return }
+        await loginWithPassword(loginName, this.form.password, this.form.tenantCode || 'platform', { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
         if (!isPlatformSuperAdmin()) {
           clearAuthSession()
           this.error = '此账号不是平台超级管理员，请使用学校端登录。'
@@ -75,6 +108,7 @@ export default {
         }
         await this.$router.push('/admin/platform/overview')
       } catch (error) {
+        if ((error?.bizCode || '').startsWith('CAPTCHA_') || error?.details?.captchaRequired) await this.refreshCaptcha()
         this.error = error?.message || '登录失败，请检查账号、密码和平台编码。'
       } finally {
         this.loading = false

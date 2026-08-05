@@ -12,6 +12,8 @@ EnvironmentFile=/etc/school-lifecycle/backend.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONPATH=/opt/school-lifecycle/current/backend
+# 正式后端启动前必须验证 Redis 连通、读写与验证码单次原子消费；失败则拒绝启动。
+ExecStartPre=/opt/school-lifecycle/current/backend/.venv/bin/python /opt/school-lifecycle/current/backend/scripts/check_production_redis.py
 ExecStart=/opt/school-lifecycle/current/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=always
 RestartSec=5

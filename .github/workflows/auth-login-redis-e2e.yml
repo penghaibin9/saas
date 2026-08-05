@@ -1,0 +1,309 @@
+name: Auth Login Redis E2E
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/Dockerfile"
+      - "backend/app/api/v1/auth.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/redis_client.py"
+      - "backend/app/core/token_store.py"
+      - "backend/app/services/auth_challenge_service.py"
+      - "backend/app/services/auth_service_db.py"
+      - "backend/app/services/wx_auth_service.py"
+      - "backend/app/student_portal/router.py"
+      - "backend/app/student_portal/services/guardian_service.py"
+      - "backend/scripts/check_production_redis.py"
+      - "backend/scripts/_seed_login_accounts_only.py"
+      - "backend/tests/test_auth_challenge_service.py"
+      - "backend/tests/test_auth_captcha_redis_fail_closed.py"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/src/components/auth/LoginCaptcha.vue"
+      - "frontend/src/services/http/client.js"
+      - "frontend/src/views/LoginView.vue"
+      - "frontend/src/views/PlatformLoginView.vue"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
+      - "student-portal/src/components/auth/LoginCaptcha.vue"
+      - "student-portal/src/router/index.js"
+      - "student-portal/src/services/portalApi.js"
+      - "student-portal/src/services/request.js"
+      - "student-portal/src/stores/session.js"
+      - "student-portal/src/views/login/LoginView.vue"
+      - "student-portal/tests/auth-error-details.test.mjs"
+      - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
+      - "miniapp/src/services/request.js"
+      - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/README-auth-redis.md"
+      - "deploy/auth-redis.production.env.example"
+      - "deploy/docker/docker-compose.mysql.yml"
+      - "deploy/env/backend.systemd.env.example"
+      - "deploy/start-backend-production.sh"
+      - "deploy/systemd/school-lifecycle-backend.service"
+      - ".github/workflows/auth-login-redis-e2e.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "backend/Dockerfile"
+      - "backend/app/api/v1/auth.py"
+      - "backend/app/core/config.py"
+      - "backend/app/core/redis_client.py"
+      - "backend/app/core/token_store.py"
+      - "backend/app/services/auth_challenge_service.py"
+      - "backend/app/services/auth_service_db.py"
+      - "backend/app/services/wx_auth_service.py"
+      - "backend/app/student_portal/router.py"
+      - "backend/app/student_portal/services/guardian_service.py"
+      - "backend/scripts/check_production_redis.py"
+      - "backend/scripts/_seed_login_accounts_only.py"
+      - "backend/tests/test_auth_challenge_service.py"
+      - "backend/tests/test_auth_captcha_redis_fail_closed.py"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "frontend/src/components/auth/LoginCaptcha.vue"
+      - "frontend/src/services/http/client.js"
+      - "frontend/src/views/LoginView.vue"
+      - "frontend/src/views/PlatformLoginView.vue"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
+      - "student-portal/src/components/auth/LoginCaptcha.vue"
+      - "student-portal/src/router/index.js"
+      - "student-portal/src/services/portalApi.js"
+      - "student-portal/src/services/request.js"
+      - "student-portal/src/stores/session.js"
+      - "student-portal/src/views/login/LoginView.vue"
+      - "student-portal/tests/auth-error-details.test.mjs"
+      - "miniapp/src/components/login/MiniLoginAuthPanel.vue"
+      - "miniapp/src/services/request.js"
+      - "scripts/e2e/auth_login_redis_click.py"
+      - "deploy/README-auth-redis.md"
+      - "deploy/auth-redis.production.env.example"
+      - "deploy/docker/docker-compose.mysql.yml"
+      - "deploy/env/backend.systemd.env.example"
+      - "deploy/start-backend-production.sh"
+      - "deploy/systemd/school-lifecycle-backend.service"
+      - ".github/workflows/auth-login-redis-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-login-redis-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auth-login-redis-e2e:
+    name: 管理端、平台端、学生端真实登录 + Redis 单次消费
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: auth_login_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: auth_login_e2e
+      DB_USER: root
+      DB_PASSWORD: root
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/auth_login_e2e?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REDIS_KEY_PREFIX: auth-login-e2e
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+      SCHEDULER_MODE: external
+      MOCK_LOGIN_ENABLED: "false"
+      JWT_SECRET: auth-login-e2e-only-secret-20260805-at-least-32
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5199,http://localhost:5199
+      VITE_PROXY_TARGET: http://127.0.0.1:8000
+      VITE_API_BASE_URL: http://127.0.0.1:8000
+      E2E_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199
+      E2E_ARTIFACT_DIR: artifacts/auth-login-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+
+      - name: 安装后端与浏览器依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: 认证、Redis 与学生错误合同专项测试
+        run: |
+          cd backend
+          pytest tests/test_auth_challenge_service.py tests/test_auth_captcha_redis_fail_closed.py -q -p no:warnings
+          cd ../student-portal
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm test
+
+      - name: 验证生产 Redis 缺失时拒绝启动
+        run: |
+          if env -u REDIS_URL APP_ENV=production DEPLOYMENT_MODE=production \
+            python backend/scripts/check_production_redis.py; then
+            echo "❌ 未配置 REDIS_URL 时生产闸门错误放行"
+            exit 1
+          fi
+          echo "✅ 未配置 REDIS_URL 时已按预期拒绝"
+
+      - name: 验证生产 Redis 启动闸门
+        env:
+          APP_ENV: production
+          DEPLOYMENT_MODE: production
+          ALLOW_LOCAL_REDIS_IN_PRODUCTION: "true"
+        run: python backend/scripts/check_production_redis.py
+
+      - name: 验证正式部署入口接入 Redis 闸门
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          systemd = Path('deploy/systemd/school-lifecycle-backend.service').read_text(encoding='utf-8')
+          env = Path('deploy/env/backend.systemd.env.example').read_text(encoding='utf-8')
+          dockerfile = Path('backend/Dockerfile').read_text(encoding='utf-8')
+          compose = Path('deploy/docker/docker-compose.mysql.yml').read_text(encoding='utf-8')
+          readme = Path('deploy/README-auth-redis.md').read_text(encoding='utf-8')
+
+          required = {
+              'systemd Redis ExecStartPre': 'ExecStartPre=/opt/school-lifecycle/current/backend/.venv/bin/python /opt/school-lifecycle/current/backend/scripts/check_production_redis.py' in systemd,
+              'systemd worker count': 'WEB_CONCURRENCY=2' in env,
+              'systemd multi-process flag': 'MULTI_INSTANCE=true' in env,
+              'local Redis explicit exception': 'ALLOW_LOCAL_REDIS_IN_PRODUCTION=true' in env,
+              'Docker Redis preflight': 'python scripts/check_production_redis.py && exec uvicorn' in dockerfile,
+              'Docker readiness auth': 'X-Ops-Token: ${INTERNAL_OPS_TOKEN}' in dockerfile,
+              'Compose Redis preflight': 'python scripts/check_production_redis.py && exec uvicorn' in compose,
+              'Compose production environment': 'DEPLOYMENT_MODE: "production"' in compose,
+              'Compose worker count': 'WEB_CONCURRENCY: "2"' in compose,
+              'Compose multi-process flag': 'MULTI_INSTANCE: "true"' in compose,
+              'deployment documentation': '不要把上述入口改回直接裸跑 `uvicorn`' in readme,
+          }
+          missing = [name for name, ok in required.items() if not ok]
+          if missing:
+              raise SystemExit('正式部署 Redis 闸门缺失：' + ', '.join(missing))
+          print('✅ systemd、Docker、Compose 与运维文档均接入 Redis 生产闸门')
+          PY
+
+      - name: 验证 MySQL Compose 语法
+        run: |
+          cp deploy/env/backend.mysql.env.example deploy/env/backend.mysql.env
+          DB_PASSWORD=ci-only MYSQL_ROOT_PASSWORD=ci-only REDIS_PASSWORD=ci-only \
+            docker compose --env-file deploy/env/backend.mysql.env \
+              -f deploy/docker/docker-compose.mysql.yml config -q
+          rm -f deploy/env/backend.mysql.env
+
+      - name: 初始化真实 MySQL 登录账号
+        run: |
+          python backend/scripts/init_mysql_db.py
+          python backend/scripts/_seed_login_accounts_only.py
+
+      - name: 启动 FastAPI
+        run: |
+          cd backend
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/auth-backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/auth-backend.log
+          exit 1
+
+      - name: 安装、审计并验证管理端生产依赖
+        run: |
+          cd frontend
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          node - <<'NODE'
+          const COS = require('cos-js-sdk-v5')
+          const { XMLParser, XMLBuilder } = require('fast-xml-parser')
+          const client = new COS({})
+          if (typeof client.getObject !== 'function') throw new Error('COS SDK failed to load')
+          const parser = new XMLParser()
+          const value = parser.parse('<ListBucketResult><Name>auth-e2e</Name></ListBucketResult>')
+          if (value?.ListBucketResult?.Name !== 'auth-e2e') throw new Error('fast-xml-parser parse compatibility failed')
+          const xml = new XMLBuilder().build({ ListBucketResult: { Name: 'auth-e2e' } })
+          if (!xml.includes('<Name>auth-e2e</Name>')) throw new Error('fast-xml-parser build compatibility failed')
+          NODE
+
+      - name: 启动管理 PC 与学生 PC
+        run: |
+          cd frontend
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/auth-frontend.log 2>&1 &
+          cd ../student-portal
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > /tmp/auth-student.log 2>&1 &
+          for target in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ready=false
+            for i in {1..90}; do
+              if curl -fsS "$target" >/dev/null; then ready=true; break; fi
+              sleep 1
+            done
+            if [ "$ready" != true ]; then
+              echo "service not ready: $target"
+              cat /tmp/auth-frontend.log || true
+              cat /tmp/auth-student.log || true
+              exit 1
+            fi
+          done
+
+      - name: 三入口浏览器真实输入并点击登录
+        run: python scripts/e2e/auth_login_redis_click.py
+
+      - name: 失败时输出服务日志
+        if: failure()
+        run: |
+          echo "===== backend ====="
+          cat /tmp/auth-backend.log || true
+          echo "===== frontend ====="
+          cat /tmp/auth-frontend.log || true
+          echo "===== student portal ====="
+          cat /tmp/auth-student.log || true
+
+      - name: 上传点击验收证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-login-redis-e2e-${{ github.run_id }}
+          path: artifacts/auth-login-e2e
+          if-no-files-found: warn
+          retention-days: 14

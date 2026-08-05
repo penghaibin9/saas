@@ -725,12 +725,12 @@ def revoke_guardian(link_id: str, user=Depends(get_current_user)):
 
 
 # ── 家长（proxy）侧：验证码登录 + 只读查看（otp/login 免登录）──
-@router.post("/guardian/otp", summary="家长登录·请求验证码（公开）")
+@router.post("/guardian/otp", summary="家长短信验证码登录已停用", include_in_schema=False)
 def guardian_otp(body: dict = Body(...)):
     return success(guardian.request_otp(body))
 
 
-@router.post("/guardian/login", summary="家长登录·手机号+验证码（公开，签发GUARDIAN令牌）")
+@router.post("/guardian/login", summary="家长短信验证码登录已停用", include_in_schema=False)
 def guardian_login(body: dict = Body(...)):
     return success(guardian.login(body))
 

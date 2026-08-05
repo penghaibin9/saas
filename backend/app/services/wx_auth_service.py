@@ -15,6 +15,8 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.security import create_access_token, decode_token, verify_password
+from app.core.token_store import login_locked, record_login_failure, reset_login_failures
+from app.services.auth_challenge_service import login_guard_key
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.auth_service_db import _find_login_user, build_login_result
 
@@ -139,11 +141,25 @@ def wx_bind(wx_token: str, login_name: str, password: str,
     login_name = (login_name or "").strip()
     if not login_name or not password:
         raise AppException("VALIDATION_ERROR", "请输入学号/工号与密码")
+    normalized_tenant = (tenant_code or '').strip() or None
+    lock_key = login_guard_key(normalized_tenant, login_name)
+    remain = login_locked(lock_key)
+    if remain > 0:
+        raise AppException('UNAUTHORIZED', f'失败次数过多，账号已锁定，请 {remain // 60 + 1} 分钟后再试')
     db = get_sessionmaker()()
     try:
-        user = _find_login_user(db, login_name, (tenant_code or "").strip() or None)
+        user = _find_login_user(db, login_name, normalized_tenant)
         if not user or not verify_password(password, user.password_hash):
-            raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
+            from app.services.system_config_service import get_int
+            lock_minutes = get_int('SEC_LOCK_MINUTES', 15)
+            count, locked = record_login_failure(lock_key, threshold=get_int('SEC_LOCK_MAX_FAIL', 5),
+                                                 lock_seconds=lock_minutes * 60)
+            if locked:
+                raise AppException('UNAUTHORIZED', f'失败次数过多，账号已锁定 {lock_minutes} 分钟')
+            if count >= max(1, int(getattr(settings, 'CAPTCHA_AFTER_FAILURES', 2) or 2)):
+                raise AppException('CAPTCHA_REQUIRED', '账号、学校编码或密码不正确，请输入验证码后继续',
+                                   details={'captchaRequired': True, 'scene': 'WX_BIND'}, http_status=401)
+            raise AppException('UNAUTHORIZED', '账号、学校编码或密码不正确')
         from app.models import WxAccountBinding
         existing = db.scalars(select(WxAccountBinding).where(
             WxAccountBinding.wx_openid == openid, WxAccountBinding.tenant_id == user.tenant_id,
@@ -159,6 +175,7 @@ def wx_bind(wx_token: str, login_name: str, password: str,
             user.wx_openid = openid
         db.commit()
         db.refresh(user)
+        reset_login_failures(lock_key)
         return build_login_result(db, user, client_type="MP")
     finally:
         db.close()

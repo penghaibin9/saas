@@ -10,6 +10,10 @@ from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.models import Tenant, TenantBrandConfig, User
 
+PLATFORM_TID = 1000000000000000001
+PLATFORM_CODE = "platform"
+PLATFORM_NAME = "跃科 SaaS 运营平台"
+PLATFORM_SHORT_NAME = "运营平台"
 DEMO_TID = 1000000000000000003
 DEMO_CODE = "demo-school"
 DEMO_NAME = "演示职业技术学校"
@@ -18,6 +22,7 @@ SANDBOX_CODE = "sandbox-school"
 SANDBOX_NAME = "体验沙箱学校"
 
 ACCOUNTS = [
+    (PLATFORM_TID, PLATFORM_CODE, PLATFORM_NAME, PLATFORM_SHORT_NAME, "platform_admin", "平台管理员", "PLATFORM_SUPER_ADMIN"),
     (DEMO_TID, DEMO_CODE, DEMO_NAME, "演示职校", "admin", "陈管理", "ADMIN"),
     (DEMO_TID, DEMO_CODE, DEMO_NAME, "演示职校", "teacher", "李导师", "TEACHER"),
     (DEMO_TID, DEMO_CODE, DEMO_NAME, "演示职校", "student", "张同学", "STUDENT"),

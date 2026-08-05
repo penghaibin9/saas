@@ -33,6 +33,8 @@
             <button type="button" class="eye-button" :aria-label="pwdVisible ? '隐藏密码' : '显示密码'" @click="pwdVisible = !pwdVisible">{{ pwdVisible ? '隐藏' : '显示' }}</button>
           </div>
 
+          <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" @refresh="refreshCaptcha" />
+
           <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
 
           <details class="tenant-details">
@@ -58,13 +60,15 @@
 
 <script>
 import { DEFAULT_PLATFORM_NAME } from '@/config/portalConfig'
-import { isPlatformSuperAdmin, loginWithPassword } from '@/services/http/client'
+import { isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
+import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 import { toast } from '@/utils/toast'
 
 const REMEMBER_KEY = 'staff_login_name'
 
 export default {
   name: 'LoginView',
+  components: { LoginCaptcha },
   data() {
     return {
       platformName: DEFAULT_PLATFORM_NAME,
@@ -73,6 +77,7 @@ export default {
       agree: false,
       loading: false,
       error: '',
+      captcha: { required: false, id: '', code: '', image: '', loading: false, nonce: `web-${Date.now()}-${Math.random()}` },
       form: { tenantCode: '', loginName: '', password: '' }
     }
   },
@@ -89,6 +94,18 @@ export default {
     }
   },
   methods: {
+    async refreshCaptcha() {
+      this.captcha.loading = true
+      try {
+        const d = await issueLoginCaptcha({ scene: 'PASSWORD_LOGIN', tenantCode: this.form.tenantCode || undefined, loginName: this.form.loginName, clientNonce: this.captcha.nonce, clientType: 'PC' })
+        this.captcha.id = d.captchaId; this.captcha.image = d.imageDataUrl; this.captcha.code = ''
+      } catch (e) { this.error = e?.message || '验证码加载失败，请稍后重试' } finally { this.captcha.loading = false }
+    },
+    async requireCaptcha(error) {
+      const code = error?.bizCode || ''
+      if (!code.startsWith('CAPTCHA_') && !error?.details?.captchaRequired) return false
+      this.captcha.required = true; await this.refreshCaptcha(); return true
+    },
     async doLogin() {
       this.error = ''
       if (!this.agree) {
@@ -101,7 +118,8 @@ export default {
       }
       this.loading = true
       try {
-        const data = await loginWithPassword(this.form.loginName, this.form.password, this.form.tenantCode)
+        if (this.captcha.required && (!this.captcha.id || this.captcha.code.length !== 6)) { this.error = '请输入图中 6 位验证码'; return }
+        const data = await loginWithPassword(this.form.loginName, this.form.password, this.form.tenantCode, { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PC' })
         try {
           if (this.remember) localStorage.setItem(REMEMBER_KEY, this.form.loginName)
           else localStorage.removeItem(REMEMBER_KEY)
@@ -112,6 +130,7 @@ export default {
         const redirect = typeof this.$route.query.redirect === 'string' ? this.$route.query.redirect : ''
         this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || '/workbench'))
       } catch (e) {
+        await this.requireCaptcha(e)
         this.error = e?.message || '登录失败，请稍后重试'
       } finally {
         this.loading = false

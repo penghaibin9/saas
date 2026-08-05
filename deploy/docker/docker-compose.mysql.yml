@@ -96,7 +96,8 @@ services:
     env_file:
       - ../env/backend.mysql.env
     environment:
-      APP_ENV: "prod"
+      APP_ENV: "production"
+      DEPLOYMENT_MODE: "production"
       DB_ENABLED: "true"
       DB_DRIVER: "mysql"
       DB_HOST: "mysql"
@@ -118,12 +119,14 @@ services:
       context: ../../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    # Compose 会覆盖 Dockerfile CMD，因此这里也必须显式保留 Redis 启动前闸门。
+    command: ["sh", "-c", "python scripts/check_production_redis.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
     env_file:
       - ../env/backend.mysql.env      # 先 cp backend.mysql.env.example 为 backend.mysql.env
     environment:
-      # 生产环境固定 prod：不依赖运维记得在 env 文件里设（忘设时 mock 免密登录/默认密钥/CORS 跳过全部敞开）
-      APP_ENV: "prod"
+      # 使用完整 production 值，避免独立预检脚本无法识别 prod 别名而错误放行。
+      APP_ENV: "production"
+      DEPLOYMENT_MODE: "production"
       # Nginx 容器经 docker 网段反代到后端：信任容器私网段，才能从 X-Forwarded-For 取真实客户端 IP
       # （登录限流按人不按代理、审计日志可溯源）。后端端口只在 docker 网络内 expose，该网段无外部直连。
       TRUSTED_PROXY_IPS: "127.0.0.1,::1,172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
@@ -137,6 +140,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DATABASE_URL: ""                # 留空 → 由 DB_* 组装 mysql+pymysql（含 charset=utf8mb4）
       REDIS_URL: "redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0"
+      REDIS_KEY_PREFIX: "school-lifecycle:prod"
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+      WEB_CONCURRENCY: "2"
+      MULTI_INSTANCE: "true"
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "10"
       DB_POOL_TIMEOUT: "5"
@@ -168,7 +176,8 @@ services:
     env_file:
       - ../env/backend.mysql.env
     environment:
-      APP_ENV: "prod"
+      APP_ENV: "production"
+      DEPLOYMENT_MODE: "production"
       DB_ENABLED: "true"
       DB_DRIVER: "mysql"
       DB_HOST: "mysql"
@@ -178,6 +187,10 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DATABASE_URL: ""
       REDIS_URL: "redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0"
+      REDIS_KEY_PREFIX: "school-lifecycle:prod"
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+      MULTI_INSTANCE: "true"
       DB_POOL_SIZE: "2"
       DB_MAX_OVERFLOW: "2"
       SCHEDULER_MODE: "external"
