@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import event, select
+from sqlalchemy import event, inspect, select
 from sqlalchemy.orm import Session as OrmSession
 
 from app.core.context import get_current_user_ctx
@@ -19,6 +19,7 @@ _READY_FILE_STATUS = {"AVAILABLE", "STORED"}
 _READY_SCAN_STATUS = {"CLEAN", "NOT_REQUIRED"}
 _PENDING_KEY = "file_business_bindings_pending"
 _PROCESSING_KEY = "file_business_bindings_processing"
+_PROCESSED_KEY = "file_business_bindings_processed"
 _INSTALLED = False
 
 
@@ -72,6 +73,36 @@ def _legacy_target_values(record, student, target_id: str) -> set[str]:
     }
 
 
+def _same_target_binding(active, *, target_type: str, target_id: str):
+    return next((row for row in active if (
+        str(row.biz_type or "").upper() == target_type
+        and _text(row.biz_id) == target_id
+    )), None)
+
+
+def _assert_same_target_scope(
+    binding,
+    *,
+    target_subject: str,
+    target_subject_id: str,
+    student_id: int | None,
+    batch_id: str | None,
+) -> None:
+    """同一业务对象可幂等复用，但不允许借幂等调用改变主体或数据范围。"""
+    existing_subject_type = str(binding.subject_type or "").upper()
+    existing_subject_id = _text(binding.subject_id)
+    if existing_subject_type and existing_subject_type != target_subject:
+        raise AppException("FILE_ALREADY_BOUND", "文件已绑定同一业务对象但主体类型不一致，禁止覆盖")
+    if existing_subject_id and existing_subject_id != target_subject_id:
+        raise AppException("FILE_ALREADY_BOUND", "文件已绑定同一业务对象但主体不一致，禁止覆盖")
+    if binding.student_id and student_id and int(binding.student_id) != int(student_id):
+        raise AppException("FILE_ALREADY_BOUND", "文件已绑定同一业务对象但学生范围不一致，禁止覆盖")
+    existing_batch = _text(binding.batch_id)
+    requested_batch = _text(batch_id)
+    if existing_batch and requested_batch and existing_batch != requested_batch:
+        raise AppException("FILE_ALREADY_BOUND", "文件已绑定同一业务对象但批次范围不一致，禁止覆盖")
+
+
 def bind_file_to_business(
     db,
     *,
@@ -123,15 +154,37 @@ def bind_file_to_business(
         FileBinding.is_current.is_(True),
         FileBinding.is_deleted.is_(False),
     ).with_for_update()).all())
-    exact = next((row for row in active if (
-        str(row.biz_type or "").upper() == target_type
-        and _text(row.biz_id) == target_id
-        and str(row.relation_type or "").upper() == relation_type.upper()
-    )), None)
-    if exact:
-        return exact
+
+    # 同一正式对象可能被 ORM 事务钩子、证据冻结守卫和归档快照连续复核。
+    # relationType 是关系用途标签，不得把同一 bizType + bizId 误判成“改绑”。
+    same_target = _same_target_binding(active, target_type=target_type, target_id=target_id)
+    if same_target:
+        _assert_same_target_scope(
+            same_target,
+            target_subject=target_subject,
+            target_subject_id=target_subject_id,
+            student_id=student_id,
+            batch_id=batch_id,
+        )
+        return same_target
     if active:
-        raise AppException("FILE_ALREADY_BOUND", "文件已绑定其他正式业务对象，禁止重新指向")
+        raise AppException(
+            "FILE_ALREADY_BOUND",
+            "文件已绑定其他正式业务对象，禁止重新指向",
+            details={
+                "fileId": fid,
+                "requested": {"bizType": target_type, "bizId": target_id, "relationType": relation_type.upper()},
+                "active": [
+                    {
+                        "bindingId": str(row.id),
+                        "bizType": str(row.biz_type or "").upper(),
+                        "bizId": _text(row.biz_id),
+                        "relationType": str(row.relation_type or "").upper(),
+                    }
+                    for row in active
+                ],
+            },
+        )
 
     if _temporary_private(file_obj):
         if not resolvers._owner_allows(file_obj, actor or {}):
@@ -220,15 +273,32 @@ def _before_flush(db, flush_context, instances) -> None:
     if db.info.get(_PROCESSING_KEY):
         return
     pending = []
+    seen = set()
+    new_objects = set(db.new)
     for obj in list(db.new) + list(db.dirty):
         spec = _spec_for(obj)
         if not spec:
             continue
         file_field, biz_type, record_field = spec
-        if _text(getattr(obj, file_field, None)):
-            pending.append((obj, file_field, biz_type, record_field))
+        file_id = _text(getattr(obj, file_field, None))
+        if not file_id:
+            continue
+        # 已落库对象只有在文件字段本身变化时才重新绑定；普通状态/版本更新不得
+        # 把同一文件再次排入队列。
+        if obj not in new_objects:
+            try:
+                if not inspect(obj).attrs[file_field].history.has_changes():
+                    continue
+            except Exception:
+                continue
+        key = (id(obj), file_field, file_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        pending.append((obj, file_field, biz_type, record_field))
     if pending:
-        db.info[_PENDING_KEY] = pending
+        current = list(db.info.get(_PENDING_KEY, []))
+        db.info[_PENDING_KEY] = current + pending
 
 
 def _after_flush_postexec(db, flush_context) -> None:
@@ -241,12 +311,16 @@ def _after_flush_postexec(db, flush_context) -> None:
 
     from app.models import InternshipRecord, StudentProfile
 
+    processed = db.info.setdefault(_PROCESSED_KEY, set())
     db.info[_PROCESSING_KEY] = True
     try:
         for obj, file_field, biz_type, record_field in pending:
             file_id = _text(getattr(obj, file_field, None))
             target_id = _text(getattr(obj, "id", None))
             record_id = _text(getattr(obj, record_field, None))
+            processing_key = (biz_type, target_id, file_id)
+            if processing_key in processed:
+                continue
             if not file_id or not target_id or not record_id.isdigit():
                 raise AppException("FILE_BINDING_TARGET_REQUIRED", "正式业务文件缺少已落库的权威目标")
             record = db.scalar(select(InternshipRecord).where(
@@ -290,8 +364,15 @@ def _after_flush_postexec(db, flush_context) -> None:
                 scope=scope,
                 legacy_target_values=_legacy_target_values(record, student, target_id),
             )
+            processed.add(processing_key)
     finally:
         db.info.pop(_PROCESSING_KEY, None)
+
+
+def _clear_transaction_state(db) -> None:
+    db.info.pop(_PENDING_KEY, None)
+    db.info.pop(_PROCESSING_KEY, None)
+    db.info.pop(_PROCESSED_KEY, None)
 
 
 def install_internship_binding_hooks() -> None:
@@ -301,4 +382,6 @@ def install_internship_binding_hooks() -> None:
         return
     event.listen(OrmSession, "before_flush", _before_flush)
     event.listen(OrmSession, "after_flush_postexec", _after_flush_postexec)
+    event.listen(OrmSession, "after_commit", _clear_transaction_state)
+    event.listen(OrmSession, "after_rollback", _clear_transaction_state)
     _INSTALLED = True
