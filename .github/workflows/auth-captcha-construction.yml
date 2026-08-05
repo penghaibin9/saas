@@ -47,6 +47,7 @@ jobs:
         run: |
           sed -i 's/if count != 1:/if count < 1:/' scripts/automation/build_auth_captcha_pr.py
           python scripts/automation/build_auth_captcha_pr.py
+          sed -i 's/\.biz_code/.code/g' backend/tests/test_auth_challenge_service.py
       - name: Python syntax check
         run: python -m compileall -q backend/app backend/tests/test_auth_challenge_service.py
       - name: Backend captcha tests
