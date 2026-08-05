@@ -249,11 +249,22 @@ jobs:
           cat /tmp/auth-backend.log
           exit 1
 
-      - name: 安装并审计管理端依赖
+      - name: 安装、审计并验证管理端生产依赖
         run: |
           cd frontend
           npm ci
           npm audit --omit=dev --audit-level=high
+          node - <<'NODE'
+          const COS = require('cos-js-sdk-v5')
+          const { XMLParser, XMLBuilder } = require('fast-xml-parser')
+          const client = new COS({})
+          if (typeof client.getObject !== 'function') throw new Error('COS SDK failed to load')
+          const parser = new XMLParser()
+          const value = parser.parse('<ListBucketResult><Name>auth-e2e</Name></ListBucketResult>')
+          if (value?.ListBucketResult?.Name !== 'auth-e2e') throw new Error('fast-xml-parser parse compatibility failed')
+          const xml = new XMLBuilder().build({ ListBucketResult: { Name: 'auth-e2e' } })
+          if (!xml.includes('<Name>auth-e2e</Name>')) throw new Error('fast-xml-parser build compatibility failed')
+          NODE
 
       - name: 启动管理 PC 与学生 PC
         run: |
