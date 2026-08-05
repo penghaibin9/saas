@@ -144,7 +144,8 @@ async function main() {
   const matchStats = { exact: 0, alias: 0, redirect: 0, param: 0, missing: 0, noPath: 0 }
   const permStats = { EXPLICIT: 0, INHERIT_FIRST_LEAF: 0, INHERIT_WORKSPACE: 0, EXEMPT: 0, UNRESOLVED: 0 }
 
-  const groups = [...NAV_PLAN, ...PLATFORM_PLAN]
+  const platformGroups = Array.isArray(PLATFORM_PLAN) ? PLATFORM_PLAN : [PLATFORM_PLAN]
+  const groups = [...NAV_PLAN, ...platformGroups]
   for (const group of groups) {
     const schoolCenter = group.label
     const techModule = moduleKeyFromGroup(group)
