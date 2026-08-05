@@ -176,6 +176,7 @@ jobs:
           pytest tests/test_auth_challenge_service.py tests/test_auth_captcha_redis_fail_closed.py -q -p no:warnings
           cd ../student-portal
           npm ci
+          npm audit --omit=dev --audit-level=high
           npm test
 
       - name: 验证生产 Redis 缺失时拒绝启动
