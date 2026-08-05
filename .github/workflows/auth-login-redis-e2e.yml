@@ -18,6 +18,8 @@ on:
       - "backend/scripts/_seed_login_accounts_only.py"
       - "backend/tests/test_auth_challenge_service.py"
       - "backend/tests/test_auth_captcha_redis_fail_closed.py"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - "frontend/src/components/auth/LoginCaptcha.vue"
       - "frontend/src/services/http/client.js"
       - "frontend/src/views/LoginView.vue"
@@ -55,6 +57,8 @@ on:
       - "backend/scripts/_seed_login_accounts_only.py"
       - "backend/tests/test_auth_challenge_service.py"
       - "backend/tests/test_auth_captcha_redis_fail_closed.py"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - "frontend/src/components/auth/LoginCaptcha.vue"
       - "frontend/src/services/http/client.js"
       - "frontend/src/views/LoginView.vue"
@@ -232,10 +236,19 @@ jobs:
           cat /tmp/auth-backend.log
           exit 1
 
-      - name: 安装并启动 Vue 登录页
+      - name: 安装 Vue 登录页依赖
         run: |
           cd frontend
           npm ci
+
+      - name: 审计前端生产依赖
+        run: |
+          cd frontend
+          npm audit --omit=dev --audit-level=high
+
+      - name: 启动 Vue 登录页
+        run: |
+          cd frontend
           nohup npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/auth-frontend.log 2>&1 &
           echo $! > /tmp/auth-frontend.pid
           for i in {1..60}; do
