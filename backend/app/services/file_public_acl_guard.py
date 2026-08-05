@@ -1,8 +1,8 @@
-"""包 6：公共文件入口与默认对象 ACL 的 fail-closed 安全层。
+"""包 6：公共文件入口、事务绑定与默认对象 ACL 的 fail-closed 安全层。
 
-通用上传只产生 TEMP_PRIVATE 文件。正式业务文件必须依赖 ACTIVE binding 与
-业务 resolver；上传者身份、通用模块 view 权限或无范围 BUSINESS_OBJECT 绑定
-均不能单独授予正式文件读取权限。
+通用上传只产生 TEMP_PRIVATE 文件。正式业务文件必须由业务事务建立 ACTIVE binding
+并通过业务 resolver；上传者身份、通用模块 view 权限或无范围 BUSINESS_OBJECT
+绑定均不能单独授予正式文件读取权限。
 """
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ def _active_bindings(bindings: list[Any]) -> list[Any]:
         for item in bindings
         if not bool(getattr(item, "is_deleted", False))
         and str(getattr(item, "status", "") or "").upper() == "ACTIVE"
+        and bool(getattr(item, "is_current", True))
     ]
 
 
@@ -66,8 +67,8 @@ def strict_scoped_binding_resolver(
     biz_type = str(getattr(file_obj, "biz_type", "") or "").upper()
     actor = user or {}
 
-    # 实习教师必须先通过具体实习记录/学生指导关系；不能只凭模块权限。
-    if biz_type in {"INTERNSHIP", "ENT_EVAL", "LEAVE"}:
+    # 所有岗位实习正式文件都按绑定中的学生/实习记录做对象范围裁决。
+    if biz_type in {"INTERNSHIP", "ENT_EVAL", "LEAVE"} or biz_type.startswith("INTERNSHIP_"):
         if resolvers._internship_staff_scope_allows(db, file_obj, active, actor):
             return True
 
@@ -85,20 +86,36 @@ def strict_scoped_binding_resolver(
 
 
 def install() -> None:
-    """幂等安装公共 ACL；由权威 file contract 在路由加载时执行。"""
+    """幂等安装公共 ACL 与事务绑定钩子；由权威 file contract 加载。"""
     global _INSTALLED
     if _INSTALLED:
         return
     access._default_resolver = strict_default_resolver
-    for biz_type in (
+    scoped_types = {
         "INTERNSHIP",
         "ENT_EVAL",
+        "LEAVE",
+        "INTERNSHIP_AGREEMENT",
+        "INTERNSHIP_APPLICATION",
+        "INTERNSHIP_INSURANCE",
+        "INTERNSHIP_ENTERPRISE_EVAL",
+        "INTERNSHIP_STUDENT_EVAL",
+        "INTERNSHIP_GUIDANCE",
+        "INTERNSHIP_VISIT",
+        "INTERNSHIP_LEAVE",
+        "INTERNSHIP_ATTENDANCE_APPEAL",
+        "INTERNSHIP_PLAN_TASK",
+        "INTERNSHIP_SAFETY",
         "COURSE_MATERIAL",
         "ATTACHMENT",
-        "LEAVE",
         "AID",
         "RISK",
         "MENTAL",
-    ):
+    }
+    for biz_type in scoped_types:
         access._RESOLVERS[biz_type] = strict_scoped_binding_resolver
+
+    from app.services.file_business_binding_service import install_internship_binding_hooks
+
+    install_internship_binding_hooks()
     _INSTALLED = True
