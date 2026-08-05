@@ -12,10 +12,10 @@ async function readEnvelope(response) {
   const text = await response.text()
   let json
   try { json = JSON.parse(text) } catch {
-    throw new Error(`${response.status} ${response.url()}: ${text.slice(0, 500)}`)
+    throw new Error(`${response.status} ${response.url}: ${text.slice(0, 500)}`)
   }
   if (!response.ok || json.code !== 0) {
-    throw new Error(`${response.status} ${response.url()}: ${json.message || text.slice(0, 500)}`)
+    throw new Error(`${response.status} ${response.url}: ${json.message || text.slice(0, 500)}`)
   }
   return json.data
 }
@@ -27,6 +27,7 @@ class Api {
       method,
       headers: {
         Accept: 'application/json',
+        'X-Forwarded-For': '10.255.0.31',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
       },
@@ -49,15 +50,6 @@ async function login(account) {
   return new Api(data.accessToken)
 }
 
-async function switchRole(api, roleCode) {
-  const me = await api.get('/auth/me')
-  const contexts = me.contexts || []
-  const target = contexts.find((item) => item.roleCode === roleCode || item.contextType === roleCode)
-  if (!target) throw new Error(`Account has no ${roleCode} context: ${contexts.map((x) => x.roleCode).join(', ')}`)
-  const data = await api.post('/auth/switch-role', { contextId: target.contextId, clientType: 'PC' })
-  return new Api(data.accessToken)
-}
-
 function items(data) {
   return Array.isArray(data) ? data : (data?.items || data?.list || [])
 }
@@ -65,7 +57,9 @@ function items(data) {
 async function findStudentProfile(api, studentNo) {
   const data = await api.get('/students', { keyword: studentNo, page: 1, pageSize: 50 })
   const row = items(data).find((item) => String(item.studentNo || item.loginName || '') === studentNo)
-  if (!row) throw new Error(`Student profile not found for ${studentNo}; run e2e_bootstrap_graduation_accounts.py first.`)
+  if (!row) {
+    throw new Error(`Student profile ${studentNo} is not visible to the school-wide E2E administrator.`)
+  }
   return row
 }
 
@@ -188,8 +182,10 @@ export async function prepareGraduationFixture() {
   const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
   const runId = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
 
-  let admin = await login(config.multiRole)
-  admin = await switchRole(admin, 'GRADUATION_ADMIN')
+  // Fixture creation requires full-school visibility. Role-switch behavior is covered by
+  // the dedicated browser test; using an unscoped graduation role here would correctly
+  // fail closed and hide the imported student profile.
+  const admin = await login(config.sandboxAdmin)
 
   const batch = await ensureBatch(admin, runId)
   const profile = await findStudentProfile(admin, config.student.username)
