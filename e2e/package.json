@@ -1,0 +1,15 @@
+{
+  "name": "saas-production-browser-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:auth": "playwright test specs/auth-tenant-role.spec.mjs",
+    "test:graduation": "playwright test specs/graduation-lifecycle.spec.mjs",
+    "report": "playwright show-report playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}

@@ -304,7 +304,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     "GD_MENTOR": {
         *_WORKBENCH_SELF,
-        "graduationDesign.dashboard.view", "graduationDesign.student.view",
+        # 导师批阅页必须先加载当前毕设批次；只授予读取上下文，不授予任何批次写操作。
+        "graduationDesign.dashboard.view", "graduationDesign.batch.view",
+        "graduationDesign.student.view",
         "graduationDesign.topic.view", "graduationDesign.topic.create",
         "graduationDesign.topic.assign", "graduationDesign.topic.review",
         "graduationDesign.taskbook.view",
@@ -549,7 +551,7 @@ def _audit_denied(user: dict, code: str) -> None:
 
 
 def enforce_permission(user: dict, code: str) -> dict:
-    """命令式校验（不嵌套 Depends）：无权限则 403 + 写拒绝审计。供既有端点在函数体内内联调用。"""
+    """命令式校验（不嵌套 Depends）：无权限则 403 + 写拒绝审计。供既有端点在函数体内内联复用。"""
     if not has_permission(user, code):
         _audit_denied(user, code)
         raise no_permission(f"无权限执行该操作（{code}）")

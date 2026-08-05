@@ -19,6 +19,11 @@ E2E_LOGINS = [
 STABLE_PWD = "E2eTest@2026"
 
 
+def _login_headers(index: int) -> dict[str, str]:
+    """Give each legitimate CI identity its own proxy IP without disabling auth throttling."""
+    return {"X-Forwarded-For": f"10.251.0.{20 + index}"}
+
+
 def main() -> int:
     token = login()
     users = _req("GET", "/system/users", token=token, body=None)
@@ -39,7 +44,7 @@ def main() -> int:
 
     pwd_map = {"admin2": ADMIN[1]}
     results = []
-    for ln in E2E_LOGINS:
+    for index, ln in enumerate(E2E_LOGINS):
         u = by_login.get(ln)
         if not u:
             # try keyword search
@@ -67,8 +72,11 @@ def main() -> int:
         if not temp:
             results.append({"loginName": ln, "ok": False, "message": "no_temp_password", "reset": reset.get("data")})
             continue
+        login_headers = _login_headers(index)
         # login with temp
-        lg = _req("POST", "/auth/login", body={"loginName": ln, "password": temp, "tenantCode": TENANT})
+        lg = _req("POST", "/auth/login", headers=login_headers, body={
+            "loginName": ln, "password": temp, "tenantCode": TENANT,
+        })
         if lg.get("code") != 0:
             results.append({"loginName": ln, "ok": False, "message": f"temp_login_fail:{lg.get('message')}"})
             continue
@@ -79,7 +87,9 @@ def main() -> int:
         if ch.get("code") != 0:
             results.append({"loginName": ln, "ok": False, "message": f"change_fail:{ch.get('message')}"})
             continue
-        lg2 = _req("POST", "/auth/login", body={"loginName": ln, "password": STABLE_PWD, "tenantCode": TENANT})
+        lg2 = _req("POST", "/auth/login", headers=login_headers, body={
+            "loginName": ln, "password": STABLE_PWD, "tenantCode": TENANT,
+        })
         ok = lg2.get("code") == 0
         role = ((lg2.get("data") or {}).get("currentRole") or {}).get("roleCode") if ok else None
         pwd_map[ln] = STABLE_PWD
