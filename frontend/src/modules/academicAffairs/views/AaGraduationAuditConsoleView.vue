@@ -156,7 +156,7 @@
       </template>
     </div>
 
-    <AppDrawer :visible="detail.visible" title="预审结果详情（十项）" @close="detail.visible = false">
+    <AppDrawer :visible="detail.visible" title="预审结果详情（十项）" mode="modal" size="xlarge" @close="detail.visible = false">
       <template v-if="detail.row">
         <div class="agc-detail-head">
           <div class="agc-detail-name">{{ detail.row.realName || ('学生 ' + detail.row.studentId) }}</div>
@@ -180,9 +180,7 @@
 
         <div v-if="detail.row.status === 'ACADEMIC_REVIEW'" class="agc-actions">
           <div class="agc-actions__title">毕业资格终审</div>
-          <label v-for="(l, v) in CONCLUSION_LABEL" :key="v" class="agc-radio">
-            <input v-model="finalConclusion" type="radio" :value="v" /> {{ l }}
-          </label>
+          <AppRadioGroup v-model="finalConclusion" :options="conclusionOptions" variant="button" />
           <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
         </div>
         <p v-if="detail.row.conclusion" class="mp-note">终审结论：{{ conclusionLabel(detail.row.conclusion) }}（涉学籍终态，不可在本页撤销）</p>
@@ -228,7 +226,7 @@
  * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppGraduationBatchPicker } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppGraduationBatchPicker, AppRadioGroup } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import AppStatusTag from '@/components/common/AppStatusTag.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -263,11 +261,12 @@ const LINK_ITEM = {
 
 export default {
   name: 'AaGraduationAuditConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppGraduationBatchPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppGraduationBatchPicker, AppRadioGroup },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       CONCLUSION_LABEL,
+      conclusionOptions: Object.entries(CONCLUSION_LABEL).map(([value, label]) => ({ value, label })),
       tabs: Object.keys(TAB_CONFIG).map((key) => ({ key, label: TAB_CONFIG[key].label })),
       tab: 'credit',
       batches: [], loadingBatches: true, batchId: '',

@@ -45,7 +45,7 @@
       </template>
     </DataTable>
 
-    <AppDrawer :visible="createVisible" title="代录成绩认定申请" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="代录成绩认定申请" mode="modal" size="large" @close="createVisible = false">
       <div class="aarn-form">
         <AppFormItem label="学生" required><AppStudentPicker v-model="form.studentId" :disabled="saving" @change="onStudentChange" /></AppFormItem>
         <AppFormItem label="原课程名称" required><AppTextInput v-model="form.sourceCourseName" placeholder="如 高等数学A" :disabled="saving" /></AppFormItem>
@@ -75,7 +75,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="rejectVisible" :title="'驳回 · ' + (rejectRow ? rejectRow.studentName : '')" @close="rejectVisible = false">
+    <AppDrawer :visible="rejectVisible" :title="'驳回 · ' + (rejectRow ? rejectRow.studentName : '')" mode="modal" size="small" @close="rejectVisible = false">
       <div class="aarn-form">
         <AppFormItem label="驳回原因（≥5字）" required><AppTextarea v-model="rejectReason" placeholder="如：原课程学时/大纲不满足替代要求" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="rejectError" type="danger" :description="rejectError" />

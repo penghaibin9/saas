@@ -103,7 +103,7 @@
     </div>
 
     <!-- 报告导出 -->
-    <AppDrawer :visible="exportVisible" title="导出教务运行质量报告" @close="exportVisible = false">
+    <AppDrawer :visible="exportVisible" title="导出教务运行质量报告" mode="modal" size="small" @close="exportVisible = false">
       <div class="aaql-form">
         <AppFormItem label="导出用途" required>
           <AppTextInput ref="purposeInput" v-model="exportPurpose" placeholder="如 期末教学质量分析（≥5字，写审计）" :disabled="exporting" />
@@ -119,36 +119,51 @@
     </AppDrawer>
 
     <!-- 问题记录：新建 -->
-    <AppDrawer :visible="recCreateVisible" :title="recMeta.createLabel" @close="recCreateVisible = false">
-      <div class="aaql-form">
-        <AppFormItem label="标题" required><AppTextInput v-model="recForm.title" :placeholder="recMeta.titlePlaceholder" :disabled="recSaving" /></AppFormItem>
+    <AppDrawer
+      :visible="recCreateVisible"
+      :title="recMeta.createLabel"
+      :subtitle="`填写${recMeta.label}的基本信息与处理结论，提交后将形成教学质量记录。`"
+      mode="modal"
+      size="large"
+      @close="recCreateVisible = false"
+    >
+      <div class="aaql-form aaql-form--record">
+        <div class="aaql-form-section aaql-field--full">
+          <strong>基本信息</strong>
+          <span>记录本次{{ recMeta.label }}涉及的人、课、时间与地点</span>
+        </div>
+        <AppFormItem class="aaql-field--full" label="标题" required><AppTextInput v-model="recForm.title" :placeholder="recMeta.titlePlaceholder" :disabled="recSaving" /></AppFormItem>
         <AppFormItem v-if="recMeta.showTeacher" label="涉及教师"><AppTextInput v-model="recForm.teacherName" placeholder="教师姓名（选填）" :disabled="recSaving" /></AppFormItem>
         <AppFormItem v-if="recMeta.showCourse" label="涉及课程"><AppTextInput v-model="recForm.courseName" placeholder="课程名称（选填）" :disabled="recSaving" /></AppFormItem>
         <AppFormItem label="发生时间"><AppDateTimePicker v-model="recForm.occurredAt" :disabled="recSaving" /></AppFormItem>
         <AppFormItem label="地点/教室"><AppTextInput v-model="recForm.location" placeholder="选填" :disabled="recSaving" /></AppFormItem>
+        <div class="aaql-form-section aaql-field--full">
+          <strong>评价与处理</strong>
+          <span>填写评价结果，并确认是否需要转入整改流程</span>
+        </div>
         <AppFormItem v-if="recMeta.showScore" label="评分（0-100）"><AppNumberInput v-model="recForm.score" :min="0" :max="100" :disabled="recSaving" /></AppFormItem>
         <AppFormItem :label="recMeta.categoryLabel"><AppTextInput v-model="recForm.category" :placeholder="recMeta.categoryPlaceholder" :disabled="recSaving" /></AppFormItem>
         <AppFormItem label="结论"><AppTextInput v-model="recForm.conclusion" placeholder="如 合格/待整改/不合格（自由文本）" :disabled="recSaving" /></AppFormItem>
-        <AppFormItem label="详细描述"><AppTextarea v-model="recForm.description" :rows="3" placeholder="选填" :disabled="recSaving" /></AppFormItem>
-        <AppFormItem v-if="tab === 'incident'" label="处理意见"><AppTextarea v-model="recForm.handlingNote" :rows="2" placeholder="人工填写，系统不自动判定处理结论" :disabled="recSaving" /></AppFormItem>
-        <AppFormItem label="需要转入整改"><AppRadioGroup v-model="recForm.needRectify" :options="[{ label: '是', value: true }, { label: '否', value: false }]" /></AppFormItem>
-        <AppInlineAlert v-if="recFormError" type="danger" :description="recFormError" />
+        <AppFormItem class="aaql-field--full" label="详细描述"><AppTextarea v-model="recForm.description" :rows="3" placeholder="选填" :disabled="recSaving" /></AppFormItem>
+        <AppFormItem v-if="tab === 'incident'" class="aaql-field--full" label="处理意见"><AppTextarea v-model="recForm.handlingNote" :rows="2" placeholder="人工填写，系统不自动判定处理结论" :disabled="recSaving" /></AppFormItem>
+        <AppFormItem class="aaql-field--full" label="需要转入整改"><AppRadioGroup v-model="recForm.needRectify" :options="[{ label: '是', value: true }, { label: '否', value: false }]" /></AppFormItem>
+        <AppInlineAlert v-if="recFormError" class="aaql-field--full" type="danger" :description="recFormError" />
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="recSaving" @click="recCreateVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="recSaving" @click="submitRecCreate">提交</AppButton>
+        <AppButton variant="primary" :loading="recSaving" @click="submitRecCreate">提交记录</AppButton>
       </template>
     </AppDrawer>
 
     <!-- 问题记录：详情 -->
-    <AppDrawer :visible="recDetailVisible" title="记录详情" @close="recDetailVisible = false">
+    <AppDrawer :visible="recDetailVisible" title="记录详情" mode="modal" size="medium" @close="recDetailVisible = false">
       <AppDescriptionList v-if="recCurrent" :items="recDescItems" :columns="2">
         <template #status><StatusTag :type="recStatusType(recCurrent.status)" :label="recStatusLabel(recCurrent.status)" dot /></template>
       </AppDescriptionList>
     </AppDrawer>
 
     <!-- 整改任务：发起（含来源问题记录一键发起） -->
-    <AppDrawer :visible="rectCreateVisible" :title="rectSourceRecord ? `从「${rectSourceRecord.title}」发起整改` : '发起质量整改任务'" @close="rectCreateVisible = false">
+    <AppDrawer :visible="rectCreateVisible" :title="rectSourceRecord ? `从「${rectSourceRecord.title}」发起整改` : '发起质量整改任务'" mode="modal" size="medium" @close="rectCreateVisible = false">
       <div class="aaql-form">
         <AppFormItem label="整改标题" required><AppTextInput v-model="rectForm.title" placeholder="如 XX课程教学检查整改" :disabled="rectSaving" /></AppFormItem>
         <AppFormItem label="整改要求" required><AppTextarea v-model="rectForm.requirement" :rows="3" placeholder="≥5字，写审计" :disabled="rectSaving" /></AppFormItem>
@@ -163,7 +178,7 @@
     </AppDrawer>
 
     <!-- 整改任务：详情 + 跟进时间线 -->
-    <AppDrawer :visible="rectDetailVisible" title="整改任务详情" @close="rectDetailVisible = false">
+    <AppDrawer :visible="rectDetailVisible" title="整改任务详情" mode="modal" size="large" @close="rectDetailVisible = false">
       <div v-if="rectCurrent" class="aaql-detail">
         <AppDescriptionList :items="rectDescItems" :columns="2">
           <template #status><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" dot /></template>
@@ -175,7 +190,7 @@
     </AppDrawer>
 
     <!-- 跟进说明 / 提交复核 -->
-    <AppDrawer :visible="rectNoteVisible" :title="rectNoteMode === 'progress' ? '记录整改跟进' : '提交整改说明待复核'" @close="rectNoteVisible = false">
+    <AppDrawer :visible="rectNoteVisible" :title="rectNoteMode === 'progress' ? '记录整改跟进' : '提交整改说明待复核'" mode="modal" size="small" @close="rectNoteVisible = false">
       <div class="aaql-form">
         <AppFormItem :label="rectNoteMode === 'progress' ? '跟进说明' : '整改说明'" required>
           <AppTextarea v-model="rectNoteText" :rows="4" placeholder="请填写具体进展或整改结果说明" :disabled="rectSaving" />
@@ -189,7 +204,7 @@
     </AppDrawer>
 
     <!-- 复核（通过/驳回） -->
-    <AppDrawer :visible="reviewVisible" :title="reviewAction === 'APPROVE' ? '复核通过并关闭' : '驳回整改'" @close="reviewVisible = false">
+    <AppDrawer :visible="reviewVisible" :title="reviewAction === 'APPROVE' ? '复核通过并关闭' : '驳回整改'" mode="modal" size="small" @close="reviewVisible = false">
       <div class="aaql-form">
         <AppFormItem :label="reviewAction === 'APPROVE' ? '复核结论（选填）' : '驳回原因'" :required="reviewAction === 'REJECT'">
           <AppTextarea v-model="reviewReason" :rows="3" :placeholder="reviewAction === 'REJECT' ? '≥5字，写审计' : '选填'" :disabled="rectSaving" />
@@ -536,10 +551,21 @@ export default {
 .aaql-sub { margin-top: 2px; font-size: 12px; color: var(--text-tertiary, #94a3b8); }
 .aaql-section-title { font-weight: 500; margin: 8px 0 12px; }
 .aaql-form { display: flex; flex-direction: column; gap: 12px; }
+.aaql-form--record { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 20px; padding: 20px; border: 1px solid var(--border-base, #e2e8f0); border-radius: 12px; background: var(--bg-card, #fff); }
+.aaql-form--record .aaql-field--full { grid-column: 1 / -1; }
+.aaql-form-section { display: flex; align-items: baseline; gap: 10px; padding-bottom: 10px; margin: 2px 0 8px; border-bottom: 1px solid var(--border-base, #e2e8f0); }
+.aaql-form-section:not(:first-child) { margin-top: 8px; }
+.aaql-form-section strong { color: var(--text-primary, #0f172a); font-size: 15px; }
+.aaql-form-section span { color: var(--text-tertiary, #94a3b8); font-size: 12px; }
 .aaql-flag { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--warning-bg, #fef3c7); color: var(--warning-color, #b45309); }
 .aaql-detail { display: flex; flex-direction: column; gap: 10px; }
 .aaql-detail-row { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .aaql-detail-row span { color: var(--text-tertiary, #94a3b8); font-size: 12px; }
 .aaql-detail-row b.aaql-danger { color: var(--danger-color, #dc2626); }
 .aaql-detail-row p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 720px) {
+  .aaql-form--record { grid-template-columns: 1fr; }
+  .aaql-form--record .aaql-field--full { grid-column: auto; }
+  .aaql-form-section { align-items: flex-start; flex-direction: column; gap: 3px; }
+}
 </style>

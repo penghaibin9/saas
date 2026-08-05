@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" title="导出数据" @update:visible="onClose">
+  <AppDrawer :visible="visible" title="导出数据" mode="modal" size="large" @update:visible="onClose">
     <div v-if="!options" class="aed-note">导出配置加载中…</div>
     <template v-else>
       <section class="aed-sec">

@@ -125,7 +125,7 @@
     />
 
     <!-- 登记处分：抽屉承载多字段表单，替代原生弹窗 -->
-    <AppDrawer v-model:visible="registerModal.visible" title="登记违纪处分">
+    <AppDrawer v-model:visible="registerModal.visible" title="登记违纪处分" mode="modal" size="medium">
       <div class="dp-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="registerModal.studentId" placeholder="按姓名 / 学号搜索学生" />

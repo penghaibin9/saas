@@ -1,0 +1,362 @@
+/**
+ * PC 管理端高对比圆润皮肤。
+ *
+ * 只负责结构质感（圆角、尺寸、层级和阴影），颜色全部来自 tokens.css 的
+ * th-a ~ th-f 主题变量，避免视觉皮肤反向覆盖 themePreference。
+ */
+
+.base-portal-layout {
+  --hc-topbar-bg: linear-gradient(100deg, var(--deep1) 0%, var(--deep2) 72%);
+  --hc-topbar-border: rgba(147, 197, 253, 0.24);
+  --hc-topbar-text: #ffffff;
+  --hc-topbar-muted: rgba(219, 232, 255, 0.68);
+  --hc-topbar-control-bg: rgba(3, 23, 61, 0.26);
+  --hc-topbar-control-hover: rgba(3, 23, 61, 0.48);
+  --hc-topbar-control-border: rgba(174, 204, 255, 0.24);
+  --hc-topbar-control-text: rgba(219, 232, 255, 0.74);
+  --hc-topbar-shadow: 0 8px 24px color-mix(in srgb, var(--deep1) 24%, transparent);
+  --hc-panel-bg: var(--bg-card, #ffffff);
+  --hc-card-bg: var(--card);
+  --hc-active-bg: var(--btn-p-bg);
+  --hc-active-shadow: 0 8px 18px color-mix(in srgb, var(--pri) 24%, transparent);
+  --hc-soft-bg: var(--pri-bg);
+  --hc-hover-bg: color-mix(in srgb, var(--pri-50) 58%, #ffffff);
+  --hc-page-bg: var(--bg);
+  --hc-border: var(--card-b);
+  --hc-text: var(--t1);
+  --hc-muted: var(--t3);
+  --r: 16px;
+  --rs: 10px;
+  background: var(--hc-page-bg);
+}
+
+/* 皓白与墨白主题使用浅色顶栏，交互结构与其余主题保持一致。 */
+.base-portal-layout.th-e,
+.base-portal-layout.th-f {
+  --hc-topbar-bg: var(--topbar-bg);
+  --hc-topbar-border: var(--topbar-bd);
+  --hc-topbar-text: var(--t1);
+  --hc-topbar-muted: var(--t3);
+  --hc-topbar-control-bg: var(--bg);
+  --hc-topbar-control-hover: var(--pri-bg);
+  --hc-topbar-control-border: var(--card-b);
+  --hc-topbar-control-text: var(--t2);
+  --hc-topbar-shadow: var(--s2);
+}
+
+/* 顶栏：高对比但不固定色相。 */
+#app .base-portal-layout .bpl-topbar {
+  min-height: 64px;
+  height: 64px;
+  padding: 0 18px;
+  gap: 12px;
+  border-bottom-color: var(--hc-topbar-border);
+  background: var(--hc-topbar-bg);
+  box-shadow: var(--hc-topbar-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.base-portal-layout .bpl-brand {
+  min-width: 210px;
+}
+
+#app .base-portal-layout .bpl-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--btn-p-bg);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--pri) 34%, transparent);
+}
+
+#app .base-portal-layout .bpl-brand__nm {
+  color: var(--hc-topbar-text);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+#app .base-portal-layout .bpl-brand__sch {
+  color: var(--hc-topbar-muted);
+}
+
+.base-portal-layout .bpl-search {
+  max-width: 760px;
+  margin: 0 10px;
+}
+
+#app .base-portal-layout .bpl-cmdk {
+  height: 40px;
+  border-color: var(--hc-topbar-control-border);
+  border-radius: 11px;
+  background: var(--hc-topbar-control-bg);
+  color: var(--hc-topbar-control-text);
+}
+
+#app .base-portal-layout .bpl-cmdk:hover,
+#app .base-portal-layout .bpl-cmdk.is-open {
+  border-color: var(--pri-500);
+  background: var(--hc-topbar-control-hover);
+  box-shadow: 0 0 0 3px var(--pri-bg);
+}
+
+#app .base-portal-layout .bpl-cmdk__input {
+  color: var(--hc-topbar-text);
+}
+
+#app .base-portal-layout .bpl-cmdk__input::placeholder {
+  color: var(--hc-topbar-muted);
+}
+
+#app .base-portal-layout .bpl-cmdk kbd {
+  border-color: var(--hc-topbar-control-border);
+  background: color-mix(in srgb, var(--hc-topbar-control-bg) 72%, transparent);
+  color: var(--hc-topbar-muted);
+}
+
+#app .base-portal-layout .bpl-cmdk__panel {
+  border-color: var(--hc-border);
+  border-radius: 14px;
+  background: var(--hc-panel-bg);
+  box-shadow: var(--s3);
+}
+
+.base-portal-layout .bpl-top-r {
+  gap: 7px;
+}
+
+#app .base-portal-layout .bpl-scope,
+#app .base-portal-layout .bpl-env {
+  border-color: var(--hc-topbar-control-border);
+  background: color-mix(in srgb, var(--hc-topbar-control-bg) 76%, transparent);
+  color: var(--hc-topbar-control-text);
+}
+
+#app .base-portal-layout .bpl-help__btn,
+#app .base-portal-layout .bpl-bell {
+  color: var(--hc-topbar-control-text);
+}
+
+#app .base-portal-layout .bpl-help__btn:hover,
+#app .base-portal-layout .bpl-help.is-open .bpl-help__btn,
+#app .base-portal-layout .bpl-bell:hover {
+  background: var(--hc-topbar-control-hover);
+  color: var(--hc-topbar-text);
+}
+
+.base-portal-layout .uchip--topbar .uchip__btn,
+.base-portal-layout .uchip--topbar .uchip__switch,
+.base-portal-layout .uchip--topbar .uchip__exit {
+  min-height: 38px;
+  border-color: var(--card-b);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--hc-panel-bg) 94%, transparent);
+  box-shadow: var(--s1);
+}
+
+.base-portal-layout .uchip--topbar .uchip__switch {
+  color: var(--pri-h);
+}
+
+/* 一级菜单仍为原图标轨，只增强触控面积与选中层次。 */
+#app .base-portal-layout .bpl-rail {
+  width: 82px;
+  padding: 15px 8px;
+  gap: 6px;
+  background: var(--rail-bg);
+  box-shadow: var(--s2);
+}
+
+#app .base-portal-layout .bpl-rail__item {
+  width: 66px;
+  min-height: 58px;
+  padding: 9px 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--rail-tx);
+}
+
+#app .base-portal-layout .bpl-rail__item:hover {
+  border-color: color-mix(in srgb, var(--rail-hover-tx) 20%, transparent);
+  background: var(--rail-hover-bg);
+  color: var(--rail-hover-tx);
+}
+
+#app .base-portal-layout .bpl-rail__item.is-on {
+  border-color: color-mix(in srgb, var(--rail-on-tx) 28%, transparent);
+  background: var(--rail-on-bg);
+  color: var(--rail-on-tx);
+  box-shadow: var(--rail-on-ring);
+}
+
+.base-portal-layout .bpl-rail__ic {
+  width: 21px;
+  height: 21px;
+}
+
+.base-portal-layout .bpl-rail__lb {
+  font-size: 11px;
+}
+
+/* 二、三级菜单保留本轮确认过的圆润树形结构，颜色跟随主题。 */
+#app .base-portal-layout .bpl-aside--subnav {
+  width: 196px;
+  padding: 18px 12px;
+  border-right-color: var(--hc-border);
+  background: var(--hc-panel-bg);
+  box-shadow: var(--s1);
+}
+
+#app .base-portal-layout .bpl-submods__label {
+  min-height: 42px;
+  padding: 9px 11px;
+  border-color: var(--pri-100);
+  border-radius: 12px;
+  background: var(--hc-soft-bg);
+  color: var(--hc-text);
+  font-size: 16px;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .bpl-tree .bpl-tree__mod,
+#app .base-portal-layout .bpl-submods__item,
+#app .base-portal-layout .bpl-menu__item {
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--t2);
+}
+
+#app .base-portal-layout .bpl-tree .bpl-tree__mod:hover,
+#app .base-portal-layout .bpl-submods__item:hover,
+#app .base-portal-layout .bpl-menu__item:hover {
+  border-color: var(--pri-100);
+  background: var(--hc-hover-bg);
+  color: var(--hc-text);
+}
+
+#app .base-portal-layout .bpl-tree .bpl-tree__mod.is-active,
+#app .base-portal-layout .bpl-submods__item.is-active,
+#app .base-portal-layout .bpl-menu__item.is-active {
+  border-color: var(--pri);
+  background: var(--hc-active-bg);
+  color: #ffffff;
+  box-shadow: var(--hc-active-shadow);
+}
+
+.base-portal-layout .bpl-tree .bpl-tree__mod.is-active .bpl-tree__caret,
+.base-portal-layout .bpl-tree .bpl-tree__mod.is-active .bpl-planbadge {
+  color: #ffffff;
+}
+
+.base-portal-layout .bpl-tree__leaves {
+  margin: 4px 0 8px 15px;
+  padding-left: 10px;
+  border-left-color: var(--pri-100);
+}
+
+.base-portal-layout .bpl-tree .bpl-tree__leaf {
+  min-height: 36px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 9px;
+  color: var(--hc-muted);
+  font-size: 13px;
+}
+
+#app .base-portal-layout .bpl-tree .bpl-tree__leaf::before {
+  /* 从左侧竖线连到胶囊外侧，端点不再进入按钮和文字区域。 */
+  left: auto;
+  right: calc(100% + 4px);
+  width: 13px;
+  background: var(--pri-100);
+  pointer-events: none;
+}
+
+.base-portal-layout .bpl-tree .bpl-tree__leaf .bpl-menu__label {
+  position: relative;
+  z-index: 1;
+}
+
+.base-portal-layout .bpl-tree .bpl-tree__leaf:hover {
+  background: var(--hc-hover-bg);
+  color: var(--hc-text);
+}
+
+#app .base-portal-layout .bpl-tree .bpl-tree__leaf.is-active {
+  background: var(--hc-soft-bg);
+  color: var(--pri-h);
+  font-weight: 700;
+}
+
+.base-portal-layout .bpl-tree .bpl-tree__leaf.is-active::before {
+  background: var(--pri);
+}
+
+/* 内容区和公共业务组件仅增强层次，不指定主题色。 */
+#app .base-portal-layout .bpl-main {
+  padding: 22px 24px 32px;
+  background: var(--hc-page-bg);
+}
+
+#app .base-portal-layout .mp-card,
+#app .base-portal-layout .app-card,
+#app .base-portal-layout .wb-v2__panel {
+  border-color: var(--hc-border);
+  border-radius: 16px;
+  background: var(--hc-card-bg);
+  box-shadow: var(--s1);
+}
+
+.base-portal-layout .mp-card:hover,
+.base-portal-layout .app-card:hover {
+  border-color: var(--pri-100);
+  box-shadow: var(--s2);
+}
+
+.base-portal-layout .mp-btn,
+.base-portal-layout .app-button,
+.base-portal-layout button[class*='__action'] {
+  border-radius: 10px;
+}
+
+.base-portal-layout .mp-btn--primary,
+.base-portal-layout .app-button--primary {
+  border-color: var(--pri);
+  background: var(--btn-p-bg);
+  box-shadow: var(--btn-p-shadow);
+}
+
+.base-portal-layout input:not([type='checkbox']):not([type='radio']),
+.base-portal-layout select,
+.base-portal-layout textarea {
+  border-radius: 10px;
+}
+
+.base-portal-layout table {
+  color: var(--hc-text);
+}
+
+.base-portal-layout thead th {
+  background: var(--hc-soft-bg);
+  color: var(--t2);
+}
+
+@media (max-width: 1280px) {
+  .base-portal-layout .bpl-brand {
+    min-width: 0;
+  }
+
+  .base-portal-layout .bpl-search {
+    max-width: 540px;
+  }
+
+  .base-portal-layout .bpl-scope {
+    display: none;
+  }
+}
+
+@media (max-width: 1050px) {
+  .base-portal-layout .bpl-thdots {
+    display: none;
+  }
+}

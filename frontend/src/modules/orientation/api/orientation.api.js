@@ -4,6 +4,7 @@
  */
 import * as meta from '@/modules/orientation/constants/orientation.meta'
 import { request } from '@/services/http/client'
+import { enrichContext } from '@/services/http/adapters'
 
 let seq = 0
 const envelope = (data, code = 0, message = 'ok') => ({
@@ -50,13 +51,19 @@ async function callList(path, params = {}) {
 /* ---------------- 上下文 / 字典（展示层元数据） ---------------- */
 export async function getOrientationContext() {
   const role = currentRole()
-  return envelope({
+  const localContext = envelope({
     tenantBrandConfig: clone(meta.tenantBrandConfig),
     currentRole: clone(role),
     roles: clone(meta.roles),
     dataScope: clone(role.dataScope),
     permissionActions: buildPermissionActions()
   })
+  try {
+    return await enrichContext(localContext)
+  } catch {
+    // 展示元数据可以降级；真实业务接口仍由后端权限校验兜底。
+    return localContext
+  }
 }
 
 export async function switchOrientationRole(roleId) {

@@ -93,7 +93,7 @@
     </div>
 
     <!-- 新增 / 编辑抽屉 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑账号' : '新增用户'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑账号' : '新增用户'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">
         新账号初始状态为「待激活」，首次登录强制修改密码；工号 / 账号创建后不可修改。
@@ -105,7 +105,7 @@
     </AppDrawer>
 
     <!-- 账号详情抽屉 -->
-    <AppDrawer v-model:visible="detail.open" :title="'账号详情 · ' + (detail.data ? detail.data.name : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'账号详情 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">{{ isStudent ? '学号' : '工号 / 账号' }}</span><span class="mp-kv__v">{{ maskNo(detail.data.userNo) }}</span></div>
@@ -158,11 +158,8 @@
     </AppDrawer>
 
     <!-- 分配角色抽屉 -->
-    <AppDrawer v-if="!isStudent" v-model:visible="assign.open" :title="assign.batch ? '批量分配角色（' + selected.length + ' 人）' : '分配角色 · ' + assign.name">
-      <label v-for="r in staffRoleOptions" :key="r.value" class="su-assign">
-        <input v-model="assign.roles" type="checkbox" :value="r.value" />
-        <span>{{ r.label }}</span>
-      </label>
+    <AppDrawer v-if="!isStudent" v-model:visible="assign.open" :title="assign.batch ? '批量分配角色（' + selected.length + ' 人）' : '分配角色 · ' + assign.name" mode="modal" size="medium">
+      <AppCheckboxGroup v-model="assign.roles" :options="staffRoleOptions" block />
       <p class="mp-note">角色对应的数据范围在「角色权限管理」中配置；变更即时生效并写入审计日志。</p>
       <template #footer>
         <AppButton variant="ghost" @click="assign.open = false">取消</AppButton>
@@ -198,34 +195,19 @@
       <div v-if="isStudent" class="su-batch-scope">
         <label class="su-batch-scope__field">
           <span>停用范围</span>
-          <select v-model="batchDisable.scope" @change="onBatchDisableScopeChange">
-            <option v-if="selected.length" value="SELECTED">当前勾选（{{ selected.length }} 人）</option>
-            <option value="CLASS">按班级</option>
-            <option value="GRADE">按年级</option>
-            <option value="COLLEGE">按学院</option>
-            <option value="SCHOOL">全校学生账号</option>
-          </select>
+          <AppSelect v-model="batchDisable.scope" :options="batchDisableScopeOptions" placeholder="" @change="onBatchDisableScopeChange" />
         </label>
         <label v-if="batchDisable.scope === 'CLASS'" class="su-batch-scope__field">
           <span>班级</span>
-          <select v-model="batchDisable.classId" @change="refreshBatchDisablePreview">
-            <option value="">请选择班级</option>
-            <option v-for="item in ctx.filterOptions.classes" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
+          <AppSelect v-model="batchDisable.classId" :options="ctx.filterOptions.classes" placeholder="请选择班级" @change="refreshBatchDisablePreview" />
         </label>
         <label v-if="batchDisable.scope === 'GRADE'" class="su-batch-scope__field">
           <span>年级</span>
-          <select v-model="batchDisable.grade" @change="refreshBatchDisablePreview">
-            <option value="">请选择年级</option>
-            <option v-for="item in ctx.filterOptions.grades" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
+          <AppSelect v-model="batchDisable.grade" :options="ctx.filterOptions.grades" placeholder="请选择年级" @change="refreshBatchDisablePreview" />
         </label>
         <label v-if="batchDisable.scope === 'COLLEGE'" class="su-batch-scope__field">
           <span>学院</span>
-          <select v-model="batchDisable.collegeId" @change="refreshBatchDisablePreview">
-            <option value="">请选择学院</option>
-            <option v-for="item in ctx.filterOptions.colleges" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
+          <AppSelect v-model="batchDisable.collegeId" :options="ctx.filterOptions.colleges" placeholder="请选择学院" @change="refreshBatchDisablePreview" />
         </label>
         <p v-if="batchDisable.previewing" class="mp-note">正在统计当前启用账号…</p>
         <p v-else-if="batchDisable.previewError" class="su-batch-scope__error">{{ batchDisable.previewError }}</p>
@@ -290,6 +272,7 @@ import {
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppCheckboxGroup, AppSelect } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
@@ -304,7 +287,7 @@ export default {
   name: 'SystemUserListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog,
+    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppCheckboxGroup, AppSelect,
     FormFields, ExportDialog
   },
   props: { ctx: { type: Object, required: true } },
@@ -338,6 +321,15 @@ export default {
     }
   },
   computed: {
+    batchDisableScopeOptions() {
+      return [
+        ...(this.selected.length ? [{ value: 'SELECTED', label: `当前勾选（${this.selected.length} 人）` }] : []),
+        { value: 'CLASS', label: '按班级' },
+        { value: 'GRADE', label: '按年级' },
+        { value: 'COLLEGE', label: '按学院' },
+        { value: 'SCHOOL', label: '全校学生账号' }
+      ]
+    },
     accountType() {
       return this.$route.meta.accountType === 'STUDENT' ? 'STUDENT' : 'STAFF'
     },

@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" :title="'批量导入 · ' + (template.name || '')" @update:visible="$emit('update:visible', $event)">
+  <AppDrawer :visible="visible" :title="'批量导入 · ' + (template.name || '')" mode="modal" size="xlarge" @update:visible="$emit('update:visible', $event)">
     <div class="imp">
       <div class="imp__steps">
         <span v-for="(s, i) in ['下载模板', '上传并校验', '确认导入']" :key="s" class="imp__step" :class="{ 'is-on': step === i, 'is-done': step > i }">

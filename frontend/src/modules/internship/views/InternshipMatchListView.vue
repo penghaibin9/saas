@@ -80,7 +80,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer v-model:visible="intentionVisible" title="登记学生意向">
+    <AppDrawer v-model:visible="intentionVisible" title="登记学生意向" mode="modal" size="large">
       <form class="ie-form" @submit.prevent="submitIntentionForm">
         <!-- Picker 不能包在 <label> 里：label 激活会把点击转发给选择器内部按钮 -->
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
@@ -92,8 +92,8 @@
             data-scope-hint="仅显示你数据范围内未落实岗位的实习学生"
           />
         </div>
-        <label class="ie-fld"><span class="ie-lbl">意向城市</span><input v-model.trim="intentionForm.preferredCity" class="ie-in" /></label>
-        <label class="ie-fld"><span class="ie-lbl">意向行业</span><input v-model.trim="intentionForm.preferredIndustry" class="ie-in" /></label>
+        <label class="ie-fld"><span class="ie-lbl">意向城市</span><AppTextInput v-model="intentionForm.preferredCity" /></label>
+        <label class="ie-fld"><span class="ie-lbl">意向行业</span><AppTextInput v-model="intentionForm.preferredIndustry" /></label>
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">意向企业</span>
           <AppInternshipEnterprisePicker
             v-model="intentionForm.preferredCompanyId"
@@ -101,7 +101,7 @@
             search-placeholder="按企业名称搜索"
           />
         </div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="intentionForm.intentionNote" class="ie-in" rows="2" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><AppTextarea v-model="intentionForm.intentionNote" :rows="2" /></label>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="intentionVisible = false">取消</button>
@@ -110,7 +110,7 @@
       </form>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="manualVisible" title="手动匹配">
+    <AppDrawer v-model:visible="manualVisible" title="手动匹配" mode="modal" size="large">
       <form class="ie-form" @submit.prevent="submitManual">
         <div class="ie-fld ie-fld--full"><span class="ie-lbl">实习学生 <i>*</i></span>
           <AppUnassignedInternshipStudentPicker
@@ -129,7 +129,7 @@
             data-scope-hint="仅已上架岗位可选 · 满员（余 0）岗位不可选"
           />
         </div>
-        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><textarea v-model.trim="manualForm.remark" class="ie-in" rows="2" /></label>
+        <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><AppTextarea v-model="manualForm.remark" :rows="2" /></label>
         <p v-if="formError" class="ie-err">{{ formError }}</p>
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="manualVisible = false">取消</button>
@@ -138,7 +138,7 @@
       </form>
     </AppDrawer>
 
-    <AppDrawer v-model:visible="batchVisible" title="批量匹配">
+    <AppDrawer v-model:visible="batchVisible" title="批量匹配" mode="modal" size="large">
       <div class="ie-form">
         <p class="ie-hint">逐行选择「学生 → 岗位」，可一次提交多条；数据范围与单条匹配一致。</p>
         <div v-for="(row, i) in batchRows" :key="i" class="ie-batch-row">
@@ -188,7 +188,7 @@
 
 <script>
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker } from '@/components/common'
+import { AppExportButton, AppStatusTag, AppTextInput, AppTextarea, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -216,7 +216,7 @@ const PANEL_HINTS = {
 
 export default {
   name: 'InternshipMatchListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppTextInput, AppTextarea, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppDrawer, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip, AppUnassignedInternshipStudentPicker, AppInternshipPositionPicker, AppInternshipEnterprisePicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

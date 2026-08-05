@@ -43,7 +43,7 @@
       <p class="mp-note">仅支持学号/姓名/性别/证件号/年级四类身份数据纠错；学籍状态、院系专业班级变更须走「学籍异动」。</p>
     </div>
 
-    <AppDrawer :visible="createVisible" title="发起学籍信息更正" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="发起学籍信息更正" mode="modal" size="large" @close="createVisible = false">
       <div class="aa-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="form.studentId" placeholder="按姓名/学号检索学生" @change="onStudentChange" />

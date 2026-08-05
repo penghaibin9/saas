@@ -2,15 +2,7 @@
   <BasePortalLayout
     :title="portalTitle"
     subtitle="学工中心 · 数字迎新"
-    :ctx="
-      brand
-        ? {
-            tenantBrandConfig: brand,
-            currentRole: roles.find((r) => r.roleId === currentRoleId) || {},
-            dataScope: { name: dataScopeName }
-          }
-        : null
-    "
+    :ctx="context"
     @menu-select="onMenuSelect"
   >
     <router-view :key="viewKey" />
@@ -29,7 +21,7 @@ export default {
   name: 'AdminOrientationLayout',
   components: { BasePortalLayout },
   data() {
-    return { brand: null, roles: [], currentRoleId: '', dataScopeName: '' }
+    return { context: null, brand: null, roles: [], currentRoleId: '', dataScopeName: '' }
   },
   computed: {
     portalTitle() {
@@ -49,6 +41,7 @@ export default {
       if (res.code === 0) this.applyContext(res.data)
     },
     applyContext(ctx) {
+      this.context = ctx
       this.brand = ctx.tenantBrandConfig
       this.roles = ctx.roles || []
       this.currentRoleId = ctx.currentRole?.roleId || ''

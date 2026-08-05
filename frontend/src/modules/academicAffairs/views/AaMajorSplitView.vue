@@ -72,7 +72,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建专业分流批次" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建专业分流批次" mode="modal" size="medium" @close="createVisible = false">
       <div class="aams-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024级电子信息大类分流" :disabled="saving" /></AppFormItem>
         <AppFormItem label="分流年级" required><AppTextInput v-model="form.grade" placeholder="如 2024" :disabled="saving" /></AppFormItem>
@@ -86,7 +86,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="optionVisible" title="添加可选专业" @close="optionVisible = false">
+    <AppDrawer :visible="optionVisible" title="添加可选专业" mode="modal" size="medium" @close="optionVisible = false">
       <div class="aams-form">
         <AppFormItem label="专业" required><AppMajorPicker v-model="optionForm.majorId" :options="majorOptions" :disabled="saving" /></AppFormItem>
         <AppFormItem label="容量" required><AppNumberInput v-model="optionForm.capacity" :min="1" :max="2000" :disabled="saving" /></AppFormItem>
@@ -98,7 +98,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="reassignVisible" :title="'人工调剂 · ' + (reassignRow ? reassignRow.studentName : '')" @close="reassignVisible = false">
+    <AppDrawer :visible="reassignVisible" :title="'人工调剂 · ' + (reassignRow ? reassignRow.studentName : '')" mode="modal" size="medium" @close="reassignVisible = false">
       <div class="aams-form">
         <AppFormItem label="目标专业" required>
           <AppMajorPicker v-model="reassignForm.majorId" :options="options.map(o => ({ label: o.majorName + '（余 ' + o.remain + '）', value: o.majorId }))" :disabled="saving" />

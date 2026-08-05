@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" title="表格列设置" @update:visible="onClose">
+  <AppDrawer :visible="visible" title="表格列设置" mode="modal" size="medium" @update:visible="onClose">
     <p class="acs-note">勾选需要展示的列；带锁的列为固定列不可隐藏。含「敏感」标记的列默认隐藏，展示后仍为脱敏形态。</p>
     <label v-for="c in columns" :key="c.key" class="acs-item" :class="{ 'is-locked': c.locked }">
       <input type="checkbox" :checked="localKeys.includes(c.key)" :disabled="c.locked" @change="toggle(c.key, $event.target.checked)" />

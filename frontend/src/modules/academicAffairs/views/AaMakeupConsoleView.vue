@@ -88,7 +88,7 @@
       </div>
     </template>
 
-    <AppDrawer :visible="batchVisible" title="新建补考批次" @close="batchVisible = false">
+    <AppDrawer :visible="batchVisible" title="新建补考批次" mode="modal" size="medium" @close="batchVisible = false">
       <div class="aamk-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="batchForm.batchName" placeholder="如 2024秋补考" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学期"><AppTermCodePicker v-model="batchForm.termCode" :disabled="saving" /></AppFormItem>
@@ -100,7 +100,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="mergeVisible" title="并入补考批次" @close="mergeVisible = false">
+    <AppDrawer :visible="mergeVisible" title="并入补考批次" mode="modal" size="small" @close="mergeVisible = false">
       <div class="aamk-form">
         <AppFormItem label="目标补考批次" required><AppMakeupBatchPicker v-model="mergeBatchId" :disabled="saving" /></AppFormItem>
       </div>
@@ -111,7 +111,7 @@
     </AppDrawer>
 
     <!-- 建清考批次 -->
-    <AppDrawer :visible="clearanceVisible" title="新建毕业清考批次" @close="clearanceVisible = false">
+    <AppDrawer :visible="clearanceVisible" title="新建毕业清考批次" mode="modal" size="medium" @close="clearanceVisible = false">
       <div class="aamk-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="clearanceForm.batchName" placeholder="如 2022届毕业清考" :disabled="saving" /></AppFormItem>
         <AppFormItem label="限定毕业年级" required><AppTextInput v-model="clearanceForm.grades" placeholder="逗号分隔，如 2022 或 2021,2022" :disabled="saving" /></AppFormItem>
@@ -125,15 +125,23 @@
     </AppDrawer>
 
     <!-- 清考名单/录分 -->
-    <AppDrawer :visible="crVisible" :title="'清考名单 · ' + (crBatch ? crBatch.batchName : '')" @close="crVisible = false">
+    <AppDrawer :visible="crVisible" :title="'清考名单 · ' + (crBatch ? crBatch.batchName : '')" mode="modal" size="xlarge" @close="crVisible = false">
       <EmptyState v-if="!crRows.length" title="暂无名单" description="先执行「圈定名单」自动捞取未通过课程" />
       <DataTable v-else :columns="crColumns" :rows="crRows" row-key="makeupId">
         <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>
         <template #cell-course="{ row }">{{ row.courseName }}<span class="mp-cell-sub">（原 {{ row.originScore != null ? row.originScore : '—' }} 分）</span></template>
         <template #cell-score="{ row }">
           <span v-if="row.status === 'SCORED'">{{ row.finalScore }}</span>
-          <input v-else-if="crBatch && ['PUBLISHED','SCORING'].includes(crBatch.status)" v-model="crScores[row.makeupId]"
-                 class="aamk-score-input" type="number" min="0" max="100" placeholder="0-100" />
+          <AppNumberInput
+            v-else-if="crBatch && ['PUBLISHED','SCORING'].includes(crBatch.status)"
+            v-model="crScores[row.makeupId]"
+            class="aamk-score-input"
+            :min="0"
+            :max="100"
+            :controls="false"
+            size="compact"
+            placeholder="0-100"
+          />
           <span v-else>—</span>
         </template>
         <template #cell-ops="{ row }">
@@ -156,7 +164,7 @@
 /** 补考重修缓考免修 · 教务处控制台（/admin/academic-affairs/makeup）：四条线 tab 管理。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -166,7 +174,7 @@ export default {
   name: 'AaMakeupConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-      AppButton, AppDrawer, AppTextInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker
+      AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker
   },
   data() {
     return {

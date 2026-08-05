@@ -37,7 +37,7 @@
     </AppGlobalState>
 
     <!-- 新建资助项目 -->
-    <AppDrawer v-model:visible="drawer.visible" title="新建资助项目">
+    <AppDrawer v-model:visible="drawer.visible" title="新建资助项目" mode="modal" size="medium">
       <div class="sa-form">
         <AppFormItem label="项目名称" required>
           <AppTextInput v-model="drawer.form.projectName" placeholder="如：国家励志奖学金" :disabled="saving" />

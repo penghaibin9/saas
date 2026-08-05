@@ -76,7 +76,7 @@
       </template>
     </div>
 
-    <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name">
+    <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name" mode="modal" size="medium">
       <p class="lp-tip">
         平台允许范围 {{ floorText(edit.floor) }}；超出会被后端拒绝，不会被悄悄改成边界值。
       </p>

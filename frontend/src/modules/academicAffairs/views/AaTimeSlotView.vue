@@ -18,7 +18,7 @@
           <div class="aa-slot-form">
             <label class="aa-slot-form__item">
               第几节
-              <input v-model.number="draft.slotNo" type="number" min="1" max="20" class="aa-input aa-input--num" placeholder="如 1" />
+              <AppNumberInput v-model="draft.slotNo" :min="1" :max="20" placeholder="如 1" />
             </label>
             <label class="aa-slot-form__item">
               名称
@@ -130,10 +130,10 @@
     </div>
 
     <!-- 编辑节次 -->
-    <AppDrawer :visible="editVisible" title="编辑节次" @close="editVisible = false">
+    <AppDrawer :visible="editVisible" title="编辑节次" mode="modal" size="medium" @close="editVisible = false">
       <div class="aa-cal-form--drawer" v-if="editForm">
         <AppFormItem label="第几节" required>
-          <input v-model.number="editForm.slotNo" type="number" min="1" class="aa-input" />
+          <AppNumberInput v-model="editForm.slotNo" :min="1" />
         </AppFormItem>
         <AppFormItem label="名称"><AppTextInput v-model="editForm.slotName" :maxlength="30" /></AppFormItem>
         <AppFormItem label="开始时间"><AppTimePicker v-model="editForm.startTime" /></AppFormItem>
@@ -147,7 +147,7 @@
     </AppDrawer>
 
     <!-- 编辑上课时间段 -->
-    <AppDrawer :visible="editBandVisible" title="编辑上课时间段" @close="editBandVisible = false">
+    <AppDrawer :visible="editBandVisible" title="编辑上课时间段" mode="modal" size="large" @close="editBandVisible = false">
       <div class="aa-cal-form--drawer" v-if="editBandForm">
         <AppFormItem label="名称"><AppTextInput v-model="editBandForm.bandName" :maxlength="50" /></AppFormItem>
         <AppFormItem label="校区"><AppTextInput v-model="editBandForm.campusCode" :maxlength="50" /></AppFormItem>
@@ -176,7 +176,7 @@
  * 按校区/生效日期区间可配多套，如夏令/冬令作息）。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppSectionCard, AppTextInput, AppFormItem, AppDatePicker, AppTimePicker, AppConfirmDialog, AppInlineAlert, AppTimeSlotPicker } from '@/components/common'
+import { AppSectionCard, AppTextInput, AppNumberInput, AppFormItem, AppDatePicker, AppTimePicker, AppConfirmDialog, AppInlineAlert, AppTimeSlotPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -186,7 +186,7 @@ export default {
   name: 'AaTimeSlotView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppSectionCard, AppTextInput, AppFormItem, AppDatePicker, AppTimePicker, AppTimeSlotPicker,
+    AppButton, AppDrawer, AppSectionCard, AppTextInput, AppNumberInput, AppFormItem, AppDatePicker, AppTimePicker, AppTimeSlotPicker,
     AppConfirmDialog, AppInlineAlert
   },
   props: { ctx: { type: Object, required: true } },

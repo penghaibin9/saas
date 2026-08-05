@@ -1,5 +1,11 @@
 <template>
-  <AppDrawer :visible="visible" :title="title" @update:visible="$emit('update:visible', $event)">
+  <AppDrawer
+    :visible="visible"
+    :title="title"
+    mode="modal"
+    :size="fields.length > 6 ? 'large' : 'medium'"
+    @update:visible="$emit('update:visible', $event)"
+  >
     <form class="ed" @submit.prevent="onSubmit">
       <label v-for="f in fields" :key="f.key" class="ed__field">
         <span class="ed__label">
@@ -12,21 +18,34 @@
           :disabled="f.disabled"
           :placeholder="f.placeholder || '请选择日期'"
         />
-        <textarea
+        <AppTextarea
           v-else-if="f.type === 'textarea'"
           v-model="form[f.key]"
-          class="ed__control ed__control--area"
           :rows="f.rows || 3"
           :placeholder="f.placeholder || '请输入'"
           :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
         />
-        <input
-          v-else
+        <AppNumberInput
+          v-else-if="f.type === 'number'"
           v-model="form[f.key]"
-          class="ed__control"
-          :type="f.type === 'number' ? 'number' : 'text'"
+          :min="f.min ?? -Infinity"
+          :max="f.max ?? Infinity"
+          :step="f.step ?? 1"
+          :precision="f.precision ?? null"
+          :controls="f.controls !== false"
           :placeholder="f.placeholder || '请输入'"
           :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
+        />
+        <AppTextInput
+          v-else
+          v-model="form[f.key]"
+          :type="f.type === 'tel' ? 'tel' : 'text'"
+          :placeholder="f.placeholder || '请输入'"
+          :disabled="f.disabled"
+          :maxlength="f.maxlength || 0"
+          :status="errors[f.key] ? 'error' : 'default'"
         />
         <span v-if="f.hint" class="ed__hint">{{ f.hint }}</span>
         <span v-if="errors[f.key]" class="ed__error">{{ errors[f.key] }}</span>
@@ -51,11 +70,11 @@
  * Emits: submit(formData)
  */
 import { AppDrawer, AppButton } from '@/components/ui'
-import { AppDatePicker, AppSelect } from '@/components/common'
+import { AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea } from '@/components/common'
 
 export default {
   name: 'EditDrawer',
-  components: { AppDrawer, AppButton, AppDatePicker, AppSelect },
+  components: { AppDrawer, AppButton, AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, required: true },
@@ -113,26 +132,6 @@ export default {
 .ed__required {
   color: var(--danger-600);
   margin-left: 2px;
-}
-.ed__control {
-  height: 36px;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  padding: 0 var(--space-2);
-  outline: none;
-}
-.ed__control:focus {
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
-}
-.ed__control--area {
-  height: auto;
-  padding: var(--space-2);
-  resize: vertical;
-  font-family: inherit;
 }
 .ed__hint {
   font-size: var(--font-size-xs);

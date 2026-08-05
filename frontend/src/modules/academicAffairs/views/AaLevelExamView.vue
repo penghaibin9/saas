@@ -63,7 +63,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建等级考试" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建等级考试" mode="modal" size="large" @close="createVisible = false">
       <div class="aalv-form">
         <AppFormItem label="考试名称" required><AppTextInput v-model="form.examName" placeholder="如 大学英语四级(2025-06)" :disabled="saving" /></AppFormItem>
         <AppFormItem label="类别" required>
@@ -81,7 +81,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="scoreVisible" :title="'录入成绩 · ' + (scoreRow ? scoreRow.studentName : '')" @close="scoreVisible = false">
+    <AppDrawer :visible="scoreVisible" :title="'录入成绩 · ' + (scoreRow ? scoreRow.studentName : '')" mode="modal" size="medium" @close="scoreVisible = false">
       <div class="aalv-form">
         <AppFormItem :label="current && current.passLine ? '分数（合格线 ' + current.passLine + '，自动判定通过）' : '分数（选填）'">
           <AppNumberInput v-model="scoreForm.score" :min="0" :max="750" :disabled="saving" />

@@ -21,18 +21,13 @@
       <EmptyState v-if="!rows.length" text="暂无公告" />
     </template>
 
-    <AppDrawer :visible="createVisible" title="新建公告" @update:visible="createVisible = $event">
+    <AppDrawer :visible="createVisible" title="新建公告" mode="modal" size="medium" @update:visible="createVisible = $event">
       <div class="pcn__form">
-        <label class="pcn__field"><span>标题 *</span><input v-model.trim="form.title" class="pcn__input" /></label>
+        <label class="pcn__field"><span>标题 *</span><AppTextInput v-model="form.title" /></label>
         <label class="pcn__field"><span>类型</span>
-          <select v-model="form.noticeType" class="pcn__input">
-            <option value="ANNOUNCEMENT">全平台公告</option>
-            <option value="EXPIRE_REMIND">到期提醒</option>
-            <option value="MAINTENANCE">维护通知</option>
-            <option value="TRIAL_REMIND">试用提醒</option>
-          </select>
+          <AppSelect v-model="form.noticeType" :options="noticeTypeOptions" />
         </label>
-        <label class="pcn__field"><span>内容</span><textarea v-model.trim="form.content" class="pcn__input pcn__textarea" rows="5" /></label>
+        <label class="pcn__field"><span>内容</span><AppTextarea v-model="form.content" :rows="5" /></label>
         <div class="pcn__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submit">保存草稿</AppButton>
           <AppButton @click="createVisible = false">取消</AppButton>
@@ -45,17 +40,24 @@
 <script>
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
+import { AppSelect, AppTextInput, AppTextarea } from '@/components/common'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'PlatformControlNotices',
-  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag },
+  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, StatusTag, AppSelect, AppTextInput, AppTextarea },
   data() {
     return {
       loading: true,
       saving: false,
       rows: [],
+      noticeTypeOptions: [
+        { value: 'ANNOUNCEMENT', label: '全平台公告' },
+        { value: 'EXPIRE_REMIND', label: '到期提醒' },
+        { value: 'MAINTENANCE', label: '维护通知' },
+        { value: 'TRIAL_REMIND', label: '试用提醒' }
+      ],
       createVisible: false,
       form: { title: '', noticeType: 'ANNOUNCEMENT', content: '', tenantId: 0 },
       columns: [

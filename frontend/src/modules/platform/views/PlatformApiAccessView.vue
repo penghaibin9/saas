@@ -113,7 +113,7 @@
     </div>
 
     <!-- API 应用 新增/编辑 -->
-    <AppDrawer v-model:visible="apiForm.open" :title="apiForm.id ? '编辑 API 访问配置' : '新增 API 访问配置'">
+    <AppDrawer v-model:visible="apiForm.open" :title="apiForm.id ? '编辑 API 访问配置' : '新增 API 访问配置'" mode="modal" size="medium">
       <FormFields v-model="apiForm.value" :fields="apiFormFields" :errors="apiForm.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">创建后 AppSecret 仅一次性下发；数据范围授权遵循最小可用原则，敏感字段仅提供脱敏档。</p>
       <template #footer>
@@ -123,7 +123,7 @@
     </AppDrawer>
 
     <!-- API 应用详情 -->
-    <AppDrawer v-model:visible="apiDetail.open" :title="'访问配置 · ' + (apiDetail.row ? apiDetail.row.appName : '')">
+    <AppDrawer v-model:visible="apiDetail.open" :title="'访问配置 · ' + (apiDetail.row ? apiDetail.row.appName : '')" mode="modal" size="large">
       <template v-if="apiDetail.row">
         <div class="mp-kv"><span class="mp-kv__k">租户</span><span class="mp-kv__v">{{ apiDetail.row.tenantName }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">AppKey</span><span class="mp-kv__v"><SecretField :masked="apiDetail.row.appKeyMasked" /></span></div>
@@ -137,7 +137,7 @@
     </AppDrawer>
 
     <!-- Webhook 新增/编辑 -->
-    <AppDrawer v-model:visible="whForm.open" :title="whForm.id ? '编辑 Webhook 订阅' : '新增 Webhook 订阅'">
+    <AppDrawer v-model:visible="whForm.open" :title="whForm.id ? '编辑 Webhook 订阅' : '新增 Webhook 订阅'" mode="modal" size="medium">
       <FormFields v-model="whForm.value" :fields="whFormFields" :errors="whForm.errors" />
       <template #footer>
         <AppButton variant="ghost" @click="whForm.open = false">取消</AppButton>

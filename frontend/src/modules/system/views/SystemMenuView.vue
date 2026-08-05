@@ -87,7 +87,7 @@
     </div>
 
     <!-- 新增 / 编辑菜单 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑菜单' : '新增菜单'">
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑菜单' : '新增菜单'" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <template #footer>
         <AppButton variant="ghost" @click="form.open = false">取消</AppButton>
@@ -96,10 +96,10 @@
     </AppDrawer>
 
     <!-- 配置按钮权限点 -->
-    <AppDrawer v-model:visible="btns.open" :title="'按钮权限点 · ' + btns.menuName">
+    <AppDrawer v-model:visible="btns.open" :title="'按钮权限点 · ' + btns.menuName" mode="modal" size="large">
       <div v-for="(b, i) in btns.list" :key="i" class="mn-btnrow">
-        <input v-model="b.name" type="text" class="mn-input" placeholder="按钮名称，如 批量导出" />
-        <input v-model="b.code" type="text" class="mn-input" placeholder="权限码，如 user:export" />
+        <AppTextInput v-model="b.name" size="compact" placeholder="按钮名称，如 批量导出" />
+        <AppTextInput v-model="b.code" size="compact" placeholder="权限码，如 user:export" />
         <button class="mp-link mn-danger" @click="btns.list.splice(i, 1)">移除</button>
       </div>
       <button class="mp-link" @click="btns.list.push({ name: '', code: '' })">＋ 添加按钮权限点</button>
@@ -133,6 +133,7 @@ import { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, Em
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppTextInput } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
@@ -141,7 +142,7 @@ export default {
   name: 'SystemMenuView',
   components: {
     ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppConfirmDialog, FormFields
+    AppButton, AppDrawer, AppConfirmDialog, AppTextInput, FormFields
   },
   props: { ctx: { type: Object, required: true } },
   data() {

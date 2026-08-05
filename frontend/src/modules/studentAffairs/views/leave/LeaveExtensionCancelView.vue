@@ -101,7 +101,7 @@
       :submitting="cd.submitting" @confirm="onConfirmSimple" />
 
     <!-- 表单动作弹窗（代登记销假 / 发起续假 / 逾期处置 / 销假确认） -->
-    <AppDrawer v-model:visible="fm.visible" :title="fm.title">
+    <AppDrawer v-model:visible="fm.visible" :title="fm.title" mode="modal" size="medium">
       <div class="fm-body">
         <template v-for="f in fm.fields" :key="f.key">
           <AppFormItem :label="f.label" :required="f.required">

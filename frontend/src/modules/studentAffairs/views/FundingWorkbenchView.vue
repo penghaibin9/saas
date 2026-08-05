@@ -128,7 +128,7 @@
     />
 
     <!-- 建项目 -->
-    <AppDrawer v-model:visible="projectModal.visible" title="新建资助项目">
+    <AppDrawer v-model:visible="projectModal.visible" title="新建资助项目" mode="modal" size="medium">
       <div class="sa-form">
         <AppFormItem label="项目类型" required>
           <AppSelect v-model="projectModal.projectType" :options="projectTypeOptions" />
@@ -150,7 +150,7 @@
     </AppDrawer>
 
     <!-- 建批次 -->
-    <AppDrawer v-model:visible="batchModal.visible" title="新建资助批次">
+    <AppDrawer v-model:visible="batchModal.visible" title="新建资助批次" mode="modal" size="medium">
       <div class="sa-form">
         <AppFormItem label="学年" required>
           <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
@@ -169,7 +169,7 @@
     </AppDrawer>
 
     <!-- 受理申请 -->
-    <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请">
+    <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请" mode="modal" size="medium">
       <div class="sa-form">
         <AppFormItem label="学生" required>
           <AppStudentPicker v-model="applyModal.studentId" placeholder="按姓名 / 学号搜索学生" />

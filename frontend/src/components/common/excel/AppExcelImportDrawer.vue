@@ -219,25 +219,28 @@ export default {
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
+  backdrop-filter: blur(2px);
 }
 .aeid__boundary {
   margin-bottom: var(--space-4);
 }
 .aeid {
-  width: min(680px, 100%);
-  max-height: 88vh;
+  width: min(960px, 100%);
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-base);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
   overflow: hidden;
 }
 .aeid__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-5);
+  padding: 16px 24px 17px;
+  border-top: 4px solid var(--color-primary);
   border-bottom: 1px solid var(--border-light);
 }
 .aeid__header h3 {
@@ -269,6 +272,8 @@ export default {
 .aeid__body {
   padding: var(--space-5);
   overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
 }
 .aeid__result {
   text-align: center;
@@ -306,5 +311,13 @@ export default {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-light);
+}
+@media (max-width: 720px) {
+  .aeid__mask { padding: 12px; }
+  .aeid {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    border-radius: 14px;
+  }
 }
 </style>

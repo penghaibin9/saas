@@ -51,7 +51,7 @@
       </template>
     </DataTable>
 
-    <AppDrawer v-model:visible="drawer.visible" :title="drawerTitle" width="620px">
+    <AppDrawer v-model:visible="drawer.visible" :title="drawerTitle" mode="modal" size="large">
       <div v-if="drawer.loading" class="iar-state">加载中…</div>
       <div v-else-if="drawer.error" class="iar-state iar-state--error">{{ drawer.error }} <button type="button" class="mp-link" @click="loadDetail(drawer.id)">重试</button></div>
       <template v-else-if="drawer.data">

@@ -28,7 +28,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer v-model:visible="form.open" title="创建临时授权">
+    <AppDrawer v-model:visible="form.open" title="创建临时授权" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <template #footer>
         <AppButton variant="ghost" @click="form.open = false">取消</AppButton>

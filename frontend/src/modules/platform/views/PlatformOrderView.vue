@@ -73,7 +73,7 @@
     </div>
 
     <!-- 新增订单 -->
-    <AppDrawer v-model:visible="form.open" title="新增订单记录">
+    <AppDrawer v-model:visible="form.open" title="新增订单记录" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p class="mp-note" style="margin-top: var(--space-3)">合同金额录入后仅财务角色可见明文，本页展示脱敏区间；开通动作需在订单创建后单独执行并留痕。</p>
       <template #footer>
@@ -83,7 +83,7 @@
     </AppDrawer>
 
     <!-- 订单详情 -->
-    <AppDrawer v-model:visible="detail.open" :title="'订单详情 · ' + (detail.data ? detail.data.orderNo : '')">
+    <AppDrawer v-model:visible="detail.open" :title="'订单详情 · ' + (detail.data ? detail.data.orderNo : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
         <div class="mp-kv"><span class="mp-kv__k">租户</span><span class="mp-kv__v">{{ detail.data.tenantName }}</span></div>
@@ -105,8 +105,8 @@
     </AppDrawer>
 
     <!-- 备注编辑 -->
-    <AppDrawer v-model:visible="remark.open" :title="'编辑备注 · ' + remark.orderNo">
-      <textarea v-model="remark.value" class="mp-textarea" rows="4" placeholder="如：合同走款中 / 学校预算周期说明" />
+    <AppDrawer v-model:visible="remark.open" :title="'编辑备注 · ' + remark.orderNo" mode="modal" size="small">
+      <AppTextarea v-model="remark.value" :rows="4" placeholder="如：合同走款中 / 学校预算周期说明" />
       <template #footer>
         <AppButton variant="ghost" @click="remark.open = false">取消</AppButton>
         <AppButton variant="primary" :loading="remark.submitting" @click="submitRemark">保存备注并留痕</AppButton>
@@ -156,6 +156,7 @@ import {
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppTextarea } from '@/components/common'
 import FormFields from '@/modules/platform/components/FormFields.vue'
 import ExportDialog from '@/modules/platform/components/ExportDialog.vue'
 import { platformApi } from '@/modules/platform/api/platform.api'
@@ -167,7 +168,7 @@ export default {
   name: 'PlatformOrderView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, FormFields, ExportDialog
+    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppTextarea, FormFields, ExportDialog
   },
   props: { ctx: { type: Object, required: true } },
   data() {

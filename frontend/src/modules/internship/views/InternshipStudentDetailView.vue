@@ -117,7 +117,7 @@
       </section>
     </template>
 
-    <AppDrawer v-model:visible="assignVisible" title="分配岗位">
+    <AppDrawer v-model:visible="assignVisible" title="分配岗位" mode="modal" size="medium">
       <div class="ie-form">
         <div class="ie-intro">
           <strong>{{ detail?.name || '当前学生' }}</strong>

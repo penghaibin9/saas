@@ -49,7 +49,7 @@
       </p>
     </div>
 
-    <AppDrawer :visible="formVisible" :title="editingId ? '编辑实训室' : '新建实训室'" @close="formVisible = false">
+    <AppDrawer :visible="formVisible" :title="editingId ? '编辑实训室' : '新建实训室'" mode="modal" size="large" @close="formVisible = false">
       <div class="aalr-form">
         <AppFormItem label="实训室编号" required>
           <AppTextInput v-model="form.labCode" placeholder="如 SX-101" :disabled="saving" />

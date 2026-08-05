@@ -1,5 +1,5 @@
 <template>
-  <AppDrawer :visible="visible" :title="'批量导入 · ' + (template.name || '')" @update:visible="$emit('update:visible', $event)">
+  <AppDrawer :visible="visible" :title="'批量导入 · ' + (template.name || '')" mode="modal" size="xlarge" @update:visible="$emit('update:visible', $event)">
     <div class="imp">
       <div class="imp__steps">
         <span v-for="(s, i) in ['下载模板', '上传并校验', '确认导入']" :key="s" class="imp__step" :class="{ 'is-on': step === i, 'is-done': step > i }">
@@ -22,7 +22,7 @@
 
       <template v-else-if="step === 1">
         <label class="imp__upload">
-          <input v-model="fileName" type="text" class="imp__file-input" placeholder="演示环境：输入文件名模拟上传，如 用户导入_0704.xlsx" />
+          <AppTextInput v-model="fileName" placeholder="演示环境：输入文件名模拟上传，如 用户导入_0704.xlsx" />
           <span class="mp-note">上传后自动执行字段校验（dry-run 预检），不会直接写入</span>
         </label>
         <div v-if="preview" class="imp__result">
@@ -70,11 +70,12 @@
  */
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppTextInput } from '@/components/common'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'PlatformImportDialog',
-  components: { AppButton, AppDrawer },
+  components: { AppButton, AppDrawer, AppTextInput },
   props: {
     visible: { type: Boolean, default: false },
     template: { type: Object, required: true },

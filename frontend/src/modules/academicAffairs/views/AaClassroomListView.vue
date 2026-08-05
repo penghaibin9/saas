@@ -49,7 +49,7 @@
     </div>
 
     <!-- 新建 / 编辑抽屉 -->
-    <AppDrawer :visible="formVisible" :title="editingId ? '编辑教室' : '新建教室'" @close="formVisible = false">
+    <AppDrawer :visible="formVisible" :title="editingId ? '编辑教室' : '新建教室'" mode="modal" size="large" @close="formVisible = false">
       <div class="aacr-form">
         <AppFormItem label="楼栋编码" required>
           <AppTextInput v-model="form.buildingCode" placeholder="如 A / 教1" :disabled="saving" />

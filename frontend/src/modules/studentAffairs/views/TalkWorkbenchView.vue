@@ -148,7 +148,7 @@
     />
 
     <!-- 发起谈话 drawer（批量圈定学生） -->
-    <AppDrawer v-model:visible="createModal.visible" title="发起谈话计划">
+    <AppDrawer v-model:visible="createModal.visible" title="发起谈话计划" mode="modal" size="medium">
       <AppFormItem label="谈话类型" required>
         <AppSelect v-model="createModal.talkType" :options="talkTypes" />
       </AppFormItem>

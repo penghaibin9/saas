@@ -131,7 +131,7 @@
     </div>
 
     <!-- 编辑事件 -->
-    <AppDrawer :visible="editVisible" title="编辑校历事件" @close="editVisible = false">
+    <AppDrawer :visible="editVisible" title="编辑校历事件" mode="modal" size="large" @close="editVisible = false">
       <div class="aa-cal-form aa-cal-form--drawer" v-if="editForm">
         <AppFormItem label="类型" v-if="tab === 'events'">
           <AppSelect v-model="editForm.eventType" :options="eventTypeOptions" />

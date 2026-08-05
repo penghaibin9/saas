@@ -101,7 +101,7 @@
     </div>
 
     <!-- 建批次 -->
-    <AppDrawer :visible="createVisible" title="新建选课批次" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建选课批次" mode="modal" size="medium" @close="createVisible = false">
       <div class="aasel-form">
         <AppFormItem label="批次名称" required>
           <AppTextInput v-model="form.batchName" placeholder="如 2024秋公共选修课选课" :disabled="saving" />
@@ -121,7 +121,7 @@
     </AppDrawer>
 
     <!-- 加课程 -->
-    <AppDrawer :visible="courseVisible" title="添加可选课程" @close="courseVisible = false">
+    <AppDrawer :visible="courseVisible" title="添加可选课程" mode="modal" size="large" @close="courseVisible = false">
       <div class="aasel-form">
         <AppFormItem label="课程" required>
           <AppCoursePicker v-model="courseForm.courseId" :disabled="saving" />
@@ -144,7 +144,7 @@
     </AppDrawer>
 
     <!-- 建轮次 -->
-    <AppDrawer :visible="roundVisible" title="添加选课轮次" @close="roundVisible = false">
+    <AppDrawer :visible="roundVisible" title="添加选课轮次" mode="modal" size="medium" @close="roundVisible = false">
       <div class="aasel-form">
         <AppFormItem label="轮次名称" required>
           <AppTextInput v-model="roundForm.roundName" placeholder="如 第一轮预选 / 正选 / 补退选" :disabled="saving" />
@@ -164,7 +164,7 @@
     </AppDrawer>
 
     <!-- 名单抽屉 -->
-    <AppDrawer :visible="rosterVisible" :title="'选课名单 · ' + (rosterCourse ? rosterCourse.courseName : '')" @close="rosterVisible = false">
+    <AppDrawer :visible="rosterVisible" :title="'选课名单 · ' + (rosterCourse ? rosterCourse.courseName : '')" mode="modal" size="xlarge" @close="rosterVisible = false">
       <EmptyState v-if="!rosterRows.length" title="暂无学生" description="该课程尚无有效选课记录" />
       <DataTable v-else :columns="rosterColumns" :rows="rosterRows" row-key="recordId">
         <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>

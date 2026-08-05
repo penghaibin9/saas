@@ -52,7 +52,7 @@
     </AppGlobalState>
 
     <!-- 新建检查任务：原为「任务名→类型码→楼栋 ID」3 连原生弹窗，类型要手打 HYGIENE 之类 -->
-    <AppDrawer :visible="taskDlg.visible" title="新建检查任务" @close="taskDlg.visible = false">
+    <AppDrawer :visible="taskDlg.visible" title="新建检查任务" mode="modal" size="medium" @close="taskDlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="任务名称" required>
           <AppTextInput v-model="taskDlg.taskName" placeholder="如：11 月宿舍卫生检查" :disabled="actioning" />
@@ -73,7 +73,7 @@
     </AppDrawer>
 
     <!-- 录检查结果：原为「房间 ID→结果码→异常说明→涉事学生 ID」4 连弹窗，中途取消丢数据、ID 全靠手打 -->
-    <AppDrawer :visible="recDlg.visible" :title="`录检查结果 · ${recDlg.taskName}`" @close="recDlg.visible = false">
+    <AppDrawer :visible="recDlg.visible" :title="`录检查结果 · ${recDlg.taskName}`" mode="modal" size="large" @close="recDlg.visible = false">
       <div class="dr-form">
         <AppFormItem label="楼栋">
           <AppDormBuildingPicker v-model="recDlg.buildingId" :options="buildingOptions" placeholder="不限楼栋"

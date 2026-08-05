@@ -19,7 +19,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer :visible="bookVisible" title="申请实训室预约" @close="bookVisible = false">
+    <AppDrawer :visible="bookVisible" title="申请实训室预约" mode="modal" size="medium" @close="bookVisible = false">
       <div class="aalb-form">
         <AppFormItem label="实训室" required>
           <AppLabPicker v-model="form.labId" placeholder="选择可用实训室" :disabled="saving" />

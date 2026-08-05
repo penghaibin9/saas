@@ -55,7 +55,7 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="closeReferral">
+    <AppDrawer :visible="refDlg.visible" title="登记心理转介" mode="modal" size="medium" @close="closeReferral">
       <div class="dr-form">
         <div class="mental-form-note">仅记录客观观察和转介必要性，不在此页面作诊断结论。</div>
         <AppFormItem label="学生" required><AppStudentPicker v-model="refDlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" /></AppFormItem>

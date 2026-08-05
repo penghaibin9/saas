@@ -79,8 +79,9 @@ function grp(key, label, moduleKey, children, extra) {
 export const NAV_PLAN = [
   /* ═══════════ 一级①：工作台 ═══════════ */
   grp('workbench', '工作台', 'workbench', [
-    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）
-    mod('wb-home', '我的工作台', '/', []),
+    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）。
+    // 根路径 / 已是公开门户，管理端入口必须固定指向 /workbench。
+    mod('wb-home', '我的工作台', '/workbench', []),
     mod('wb-todo', '我的待办', '/admin/approval/todos', [], 'approval.todo.view'),
     mod('wb-approval', '审批中心', '/admin/approval', [
       I('待办看板', '/admin/approval', 'approval.todo.view'),
@@ -116,8 +117,8 @@ export const NAV_PLAN = [
     /* 本组对齐学工中心业务入口；状态以代码真实路由为准。 */
     mod('sa-workbench', '学工工作台', null, [
       I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
-      /* 旧辅导员双首页已 redirect → /；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/', 'workbench.home.view')
+      /* 旧辅导员双首页已统一到 /workbench；菜单只保留统一「我的工作台」 */
+      I('我的工作台', '/workbench', 'workbench.home.view')
     ]),
     // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
     // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。
@@ -140,8 +141,29 @@ export const NAV_PLAN = [
       I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view'),
       I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
-    // 数字迎新：菜单收敛为单一入口；19 个功能页由迎新内部导航与旧深链保留
-    mod('sa-orientation', '数字迎新', '/admin/orientation', [], 'studentAffairs.orientation.view'),
+    // 数字迎新：19 个已实现功能页直接作为三级菜单展示。
+    // 此前收敛成单一入口，但迎新模块并没有对应的内部导航，导致真实页面全部失去菜单入口。
+    mod('sa-orientation', '数字迎新', '/admin/orientation', [
+      I('迎新看板', '/admin/orientation', 'orientation.student.view'),
+      I('迎新批次', '/admin/orientation/batches', 'orientation.student.view'),
+      I('新生数据', '/admin/orientation/data', 'orientation.student.view'),
+      I('新生信息核验', '/admin/orientation/verify', 'orientation.student.view'),
+      I('报到资格', '/admin/orientation/qualification', 'orientation.student.view'),
+      I('报到流程配置', '/admin/orientation/flow-config', 'orientation.student.view'),
+      I('新生报到', '/admin/orientation/students', 'orientation.student.view'),
+      I('报到进度', '/admin/orientation/progress', 'orientation.student.view'),
+      I('缴费状态', '/admin/orientation/payment', 'orientation.payment.view'),
+      I('绿色通道', '/admin/orientation/green-channels', 'orientation.student.view'),
+      I('材料审核', '/admin/orientation/materials', 'orientation.material.review'),
+      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'orientation.student.view'),
+      I('宿舍入住', '/admin/orientation/dorm', 'orientation.dorm.confirm'),
+      I('现场报到点', '/admin/orientation/checkin-points', 'orientation.student.view'),
+      I('异常学生', '/admin/orientation/exceptions', 'orientation.exception.handle'),
+      I('未报到学生', '/admin/orientation/no-show', 'orientation.student.view'),
+      I('迎新通知', '/admin/orientation/notices', 'orientation.student.view'),
+      I('迎新统计', '/admin/orientation/statistics', 'orientation.student.view'),
+      I('迎新归档', '/admin/orientation/archive', 'orientation.student.view')
+    ]),
     // 请假销假
     mod('sa-leave', '请假销假', null, [
       I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view'),

@@ -43,7 +43,7 @@
     </AppGlobalState>
 
     <!-- 新建资助批次 -->
-    <AppDrawer v-model:visible="drawer.visible" title="新建资助批次">
+    <AppDrawer v-model:visible="drawer.visible" title="新建资助批次" mode="modal" size="large">
       <div class="sa-form">
         <AppFormItem label="所属项目" required>
           <AppFundingProjectPicker v-model="drawer.form.projectId" :options="projectOptions" placeholder="（选择项目）" :disabled="saving" />

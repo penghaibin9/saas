@@ -45,7 +45,7 @@
       <EmptyState v-if="!rows.length" text="没有符合条件的学校" />
     </template>
 
-    <AppDrawer :visible="createVisible" title="开通新学校" @update:visible="createVisible = $event">
+    <AppDrawer :visible="createVisible" title="开通新学校" mode="modal" size="xlarge" @update:visible="createVisible = $event">
       <div v-if="createResult" class="pct__secret">
         <strong>学校已开通，请立即保存管理员凭据</strong>
         <p>学校编码：<code>{{ createResult.tenantCode }}</code></p>
@@ -58,37 +58,28 @@
         </div>
       </div>
       <div v-else class="pct__form">
-        <label class="pct__field"><span>学校编码 *</span><input v-model.trim="form.tenantCode" class="pct__input" placeholder="如 gz-tech（唯一）" /></label>
-        <label class="pct__field"><span>学校全称 *</span><input v-model.trim="form.tenantName" class="pct__input" placeholder="如 广州科技职业技术学院" /></label>
+        <label class="pct__field"><span>学校编码 *</span><AppTextInput v-model="form.tenantCode" placeholder="如 gz-tech（唯一）" /></label>
+        <label class="pct__field"><span>学校全称 *</span><AppTextInput v-model="form.tenantName" placeholder="如 广州科技职业技术学院" /></label>
         <label class="pct__field"><span>初始套餐</span>
-          <select v-model="form.packageCode" class="pct__input">
-            <option value="trial">试用版（30 天）</option>
-            <option value="basic">基础版</option>
-            <option value="standard">标准版</option>
-            <option value="professional">专业版</option>
-            <option value="private">私有化版</option>
-          </select>
+          <AppSelect v-model="form.packageCode" :options="packageOptions" />
         </label>
         <label class="pct__field"><span>环境</span>
-          <select v-model="form.environment" class="pct__input">
-            <option value="production">生产环境</option>
-            <option value="demo">演示环境</option>
-          </select>
+          <AppSelect v-model="form.environment" :options="environmentOptions" />
         </label>
         <label class="pct__field"><span>省 / 市</span>
           <span class="pct__pair">
-            <input v-model.trim="form.province" class="pct__input" placeholder="省" />
-            <input v-model.trim="form.city" class="pct__input" placeholder="市" />
+            <AppTextInput v-model="form.province" placeholder="省" />
+            <AppTextInput v-model="form.city" placeholder="市" />
           </span>
         </label>
         <label class="pct__field"><span>联系人 / 电话</span>
           <span class="pct__pair">
-            <input v-model.trim="form.contactName" class="pct__input" placeholder="姓名" />
-            <input v-model.trim="form.contactPhone" class="pct__input" placeholder="手机号" />
+            <AppTextInput v-model="form.contactName" placeholder="姓名" />
+            <AppTextInput v-model="form.contactPhone" type="tel" placeholder="手机号" />
           </span>
         </label>
-        <label class="pct__field"><span>首位学校管理员账号 *</span><input v-model.trim="form.adminLoginName" class="pct__input" placeholder="如 admin（校内唯一）" /></label>
-        <label class="pct__field"><span>首位学校管理员姓名 *</span><input v-model.trim="form.adminRealName" class="pct__input" placeholder="如 张老师" /></label>
+        <label class="pct__field"><span>首位学校管理员账号 *</span><AppTextInput v-model="form.adminLoginName" placeholder="如 admin（校内唯一）" /></label>
+        <label class="pct__field"><span>首位学校管理员姓名 *</span><AppTextInput v-model="form.adminRealName" placeholder="如 张老师" /></label>
         <div class="pct__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submitCreate">开通</AppButton>
           <AppButton @click="createVisible = false">取消</AppButton>
@@ -101,6 +92,7 @@
 <script>
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
+import { AppSelect, AppTextInput } from '@/components/common'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
@@ -113,7 +105,7 @@ const STATUS = {
 
 export default {
   name: 'PlatformControlTenants',
-  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag },
+  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag, AppSelect, AppTextInput },
   props: {
     targetTab: { type: String, default: '' }
   },
@@ -122,6 +114,17 @@ export default {
       loading: true,
       saving: false,
       rows: [],
+      packageOptions: [
+        { value: 'trial', label: '试用版（30 天）' },
+        { value: 'basic', label: '基础版' },
+        { value: 'standard', label: '标准版' },
+        { value: 'professional', label: '专业版' },
+        { value: 'private', label: '私有化版' }
+      ],
+      environmentOptions: [
+        { value: 'production', label: '生产环境' },
+        { value: 'demo', label: '演示环境' }
+      ],
       keyword: '',
       status: '',
       createVisible: false,

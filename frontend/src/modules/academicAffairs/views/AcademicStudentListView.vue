@@ -119,7 +119,7 @@
     />
     <ColumnSettingsDrawer v-model:visible="columnVisible" :columns="allColumns" v-model:visible-keys="visibleKeys" />
 
-    <AppDrawer v-model:visible="auditVisible" title="操作留痕（学业学生台账）">
+    <AppDrawer v-model:visible="auditVisible" title="操作留痕（学业学生台账）" mode="modal" size="xlarge">
       <table class="mp-audit">
         <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>明细</th></tr></thead>
         <tbody>

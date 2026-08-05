@@ -48,7 +48,7 @@
       </DataTable>
 
       <!-- 卡点详情 / 编辑 -->
-      <AppDrawer v-model:visible="issueVisible" :title="issueTarget ? `卡点事项 · ${issueTarget.name}` : '卡点事项'">
+      <AppDrawer v-model:visible="issueVisible" :title="issueTarget ? `卡点事项 · ${issueTarget.name}` : '卡点事项'" mode="modal" size="large">
         <template v-if="issueTarget">
           <div class="ori-issue-view">
             <div class="ori-kv__item">
@@ -57,14 +57,11 @@
             </div>
             <label class="ori-issue-field">
               <span class="ori-kv__label">卡点环节</span>
-              <select v-model="issueForm.blockedStep" class="ori-issue-control" :disabled="!canEditProgress">
-                <option value="">无卡点</option>
-                <option v-for="s in steps" :key="s.key" :value="s.key">{{ s.label }}</option>
-              </select>
+              <AppSelect v-model="issueForm.blockedStep" :options="blockedStepOptions" placeholder="" :disabled="!canEditProgress" />
             </label>
             <label class="ori-issue-field">
               <span class="ori-kv__label">卡点说明</span>
-              <textarea v-model="issueForm.blockedReason" class="ori-issue-control ori-issue-control--area" rows="3" :disabled="!canEditProgress" placeholder="说明阻塞原因与待办事项" />
+              <AppTextarea v-model="issueForm.blockedReason" :rows="3" :disabled="!canEditProgress" placeholder="说明阻塞原因与待办事项" />
             </label>
           </div>
         </template>
@@ -94,7 +91,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 报到进度">
+      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 报到进度" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>
@@ -105,6 +102,7 @@
 /** 页面 4：/admin/orientation/progress 报到进度跟踪（卡点查看/编辑 / 人工处理 / 批量提醒 / 导出 / 留痕）。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppDrawer, AppButton } from '@/components/ui'
+import { AppSelect, AppTextarea } from '@/components/common'
 import { TableActionColumn, BatchActionBar, ExportDialog, AuditTrailPanel, ColumnSettings, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { REPORT_TAG_TYPE, toLabelMap } from '@/modules/orientation/constants/orientation.constants'
@@ -126,6 +124,8 @@ export default {
     ErrorState,
     AppDrawer,
     AppButton,
+    AppSelect,
+    AppTextarea,
     TableActionColumn,
     BatchActionBar,
     ExportDialog,
@@ -161,6 +161,9 @@ export default {
     }
   },
   computed: {
+    blockedStepOptions() {
+      return [{ value: '', label: '无卡点' }, ...this.steps.map((step) => ({ value: step.key, label: step.label }))]
+    },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },

@@ -36,7 +36,7 @@
       </DataTable>
 
       <!-- 材料查看 -->
-      <AppDrawer v-model:visible="viewVisible" :title="viewTarget ? `材料查看 · ${viewTarget.name}` : '材料查看'">
+      <AppDrawer v-model:visible="viewVisible" :title="viewTarget ? `材料查看 · ${viewTarget.name}` : '材料查看'" mode="modal" size="large">
         <template v-if="viewTarget">
           <div class="ori-preview">
             <span class="ori-preview__icon">▤</span>
@@ -97,7 +97,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="审核留痕 · 迎新材料">
+      <AppDrawer v-model:visible="auditVisible" title="审核留痕 · 迎新材料" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>

@@ -99,7 +99,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建考试批次" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建考试批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaexam-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024秋期末考试" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
@@ -110,7 +110,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="courseVisible" title="从教学任务圈定考试课程" @close="courseVisible = false">
+    <AppDrawer :visible="courseVisible" title="从教学任务圈定考试课程" mode="modal" size="medium" @close="courseVisible = false">
       <div class="aaexam-form">
         <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="courseTaskId" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="courseError" type="danger" :description="courseError" />
@@ -121,7 +121,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="schedVisible" title="设置考试时间" @close="schedVisible = false">
+    <AppDrawer :visible="schedVisible" title="设置考试时间" mode="modal" size="medium" @close="schedVisible = false">
       <div class="aaexam-form">
         <AppFormItem label="考试日期"><AppDatePicker v-model="sched.examDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="开始时间"><AppTimePicker v-model="sched.startTime" :disabled="saving" /></AppFormItem>
@@ -133,7 +133,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="arrangeVisible" :title="'考场编排 · ' + (arrangeCourse ? arrangeCourse.courseName : '')" @close="arrangeVisible = false">
+    <AppDrawer :visible="arrangeVisible" :title="'考场编排 · ' + (arrangeCourse ? arrangeCourse.courseName : '')" mode="modal" size="large" @close="arrangeVisible = false">
       <div class="aaexam-form">
         <div class="aaexam-section-title">已有考场</div>
         <EmptyState v-if="!arrangeRooms.length" title="暂无考场" description="添加考场后可指定监考" />
@@ -149,7 +149,7 @@
       </div>
     </AppDrawer>
 
-    <AppDrawer :visible="patrolVisible" title="巡考安排" @close="patrolVisible = false">
+    <AppDrawer :visible="patrolVisible" title="巡考安排" mode="modal" size="large" @close="patrolVisible = false">
       <div class="aaexam-form">
         <div class="aaexam-section-title">已排巡考</div>
         <EmptyState v-if="!patrols.length" title="暂无巡考" description="填写下方表单排巡考（同一人同时段/与监考冲突会拦截）" />

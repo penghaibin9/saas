@@ -44,7 +44,7 @@
       </DataTable>
 
       <!-- 异常详情 -->
-      <AppDrawer v-model:visible="detailVisible" :title="detailData ? `异常详情 · ${detailData.exception.name}` : '异常详情'">
+      <AppDrawer v-model:visible="detailVisible" :title="detailData ? `异常详情 · ${detailData.exception.name}` : '异常详情'" mode="modal" size="xlarge">
         <template v-if="detailData">
           <div class="ori-kv">
             <div class="ori-kv__item">
@@ -126,7 +126,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 迎新异常">
+      <AppDrawer v-model:visible="auditVisible" title="操作留痕 · 迎新异常" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>

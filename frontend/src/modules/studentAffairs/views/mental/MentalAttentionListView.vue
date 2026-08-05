@@ -90,7 +90,7 @@
       <AppInlineAlert v-if="revDlg.error" type="danger" :description="revDlg.error" />
     </AppConfirmDialog>
 
-    <AppDrawer :visible="refDlg.visible" title="登记心理转介" @close="refDlg.visible = false">
+    <AppDrawer :visible="refDlg.visible" title="登记心理转介" mode="modal" size="medium" @close="refDlg.visible = false">
       <div class="dr-form">
         <div class="mental-form-note">只记录客观表现、关注等级与转介必要性，不在此处填写诊断性结论。</div>
         <AppFormItem label="学生" required>

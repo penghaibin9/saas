@@ -32,7 +32,7 @@
       </DataTable>
 
       <!-- 绿色通道详情 -->
-      <AppDrawer v-model:visible="detailVisible" :title="detailTarget ? `绿色通道申请 · ${detailTarget.name}` : '申请详情'">
+      <AppDrawer v-model:visible="detailVisible" :title="detailTarget ? `绿色通道申请 · ${detailTarget.name}` : '申请详情'" mode="modal" size="large">
         <template v-if="detailTarget">
           <div class="ori-kv">
             <div class="ori-kv__item"><span class="ori-kv__label">申请类型</span><span class="ori-kv__value">{{ detailTarget.applyType }}</span></div>
@@ -99,7 +99,7 @@
         :export-fn="exportFn"
       />
 
-      <AppDrawer v-model:visible="auditVisible" title="审批留痕 · 缴费与绿色通道">
+      <AppDrawer v-model:visible="auditVisible" title="审批留痕 · 缴费与绿色通道" mode="modal" size="xlarge">
         <AuditTrailPanel :logs="auditLogs" />
       </AppDrawer>
     </template>

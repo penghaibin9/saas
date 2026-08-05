@@ -93,7 +93,7 @@
       </AppSectionCard>
     </AppGlobalState>
 
-    <AppDrawer :visible="buildDlg.visible" title="新增楼栋" @close="buildDlg.visible = false">
+    <AppDrawer :visible="buildDlg.visible" title="新增楼栋" mode="modal" size="large" @close="buildDlg.visible = false">
       <div class="dr-form">
         <div class="dorm-form-note">新建楼栋后可选择一键铺满。提交前请核对性别限制和容量参数，避免生成错误房间结构。</div>
         <AppFormItem label="楼栋名称" required>
@@ -120,7 +120,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="genDlg.visible" :title="`一键铺满 · ${genDlg.buildingName}`" @close="genDlg.visible = false">
+    <AppDrawer :visible="genDlg.visible" :title="`一键铺满 · ${genDlg.buildingName}`" mode="modal" size="medium" @close="genDlg.visible = false">
       <div class="dr-form">
         <div class="dorm-form-note">系统将按以下参数批量创建房间和床位。请确认目标楼栋与容量参数无误。</div>
         <AppFormItem label="层数" required><AppNumberInput v-model="genDlg.floors" :min="1" :max="50" :disabled="actioning" /></AppFormItem>

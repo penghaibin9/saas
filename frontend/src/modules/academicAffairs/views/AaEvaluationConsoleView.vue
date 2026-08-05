@@ -130,7 +130,7 @@
       </DataTable>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建评教批次" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" title="新建评教批次" mode="modal" size="medium" @close="createVisible = false">
       <div class="aaev-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024秋学生评教" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学期"><AppTermEntityPicker v-model="form.termId" placeholder="选择学期（可空）" :disabled="saving" /></AppFormItem>
@@ -143,7 +143,7 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="genVisible" title="生成应评任务" @close="genVisible = false">
+    <AppDrawer :visible="genVisible" title="生成应评任务" mode="modal" size="medium" @close="genVisible = false">
       <div class="aaev-form">
         <AppFormItem label="评价来源">
           <AppSelect v-model="genType" :options="genTypeOptions" :disabled="saving" />
