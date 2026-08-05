@@ -1,6 +1,8 @@
 """Formal application: position allocation and self-arranged evidence are both closed loops."""
 from __future__ import annotations
 
+import io
+
 from app.core.security import create_access_token
 
 TID = 1000000000000000001
@@ -85,7 +87,6 @@ def test_position_application_review_uses_real_assignment(client, auth_headers, 
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student)
     assert submitted.status_code == 200 and submitted.json()["data"]["status"] == "PENDING_REVIEW"
     ver = int(submitted.json()["data"].get("version") or 0)
-    # POSITION 类型审核通过会真实落岗（写实习学生记录），须单独回传该记录的 expectedVersion
     record_ver = int(submitted.json()["data"].get("recordVersion") or 0)
     review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
                          json={"action": "APPROVE", "expectedVersion": ver,
@@ -148,19 +149,22 @@ def test_self_arranged_application_requires_evidence_and_is_audited(client, auth
     assert missing.status_code == 200
     app_id = missing.json()["data"]["id"]
     assert client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).status_code == 400
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    try:
-        # 对象级授权：学生附件必须可被本人 meta 校验（biz_id=学号）
-        file = FileObject(
-            tenant_id=TID, file_key="test/self-arranged.pdf", file_name="证明.pdf",
-            ext="pdf", size_bytes=12, status="AVAILABLE", visibility="BIZ_SCOPED",
-            biz_type="INTERNSHIP_APPLICATION", biz_id="APP-SELF-001",
-        )
-        db.add(file); db.commit(); file_id = str(file.id)
-    finally:
-        db.close()
+
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=student,
+        files={"file": (
+            "self-arranged.txt",
+            io.BytesIO(b"self-arranged-internship-evidence"),
+            "text/plain",
+        )},
+        data={"bizType": "INTERNSHIP_APPLICATION"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    upload_data = uploaded.json()["data"]
+    assert upload_data["temporary"] is True and upload_data["bindingCreated"] is False
+    file_id = upload_data["fileId"]
+
     draft = client.put(f"{MOB}/internship/applications", headers=student, json={
         "id": app_id, "applicationType": "SELF_ARRANGED", "companyName": "自主实习单位",
         "positionName": "技术员", "workAddress": "上海市浦东新区实习路1号", "contactName": "企业联系人",
@@ -170,8 +174,6 @@ def test_self_arranged_application_requires_evidence_and_is_audited(client, auth
     submitted = client.post(f"{MOB}/internship/applications/{app_id}/submit", headers=student).json()
     assert submitted["code"] == 0, submitted
     ver = int(submitted["data"].get("version") or 0)
-    # SELF_ARRANGED 类型通过审核时会同时写实习学生记录（去向/企业/岗位名），
-    # 须单独回传该记录的 expectedVersion（乐观锁），与申请自身的版本号是两回事
     record_ver = int(submitted["data"].get("recordVersion") or 0)
     review = client.post(f"{APP}/{app_id}/review", headers=auth_headers,
                          json={"action": "APPROVE", "expectedVersion": ver,
@@ -201,7 +203,6 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "SUBMIT"}).json()["code"] == 0
     assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["code"] == 0
 
-    # 先提交申请（此时仍有名额），再被人占满，审核落岗才应失败并回滚
     _record(db_mode, "APP-FULL-002", batch_id=batch_id)
     student = _student_header("APP-FULL-002")
     draft = client.put(f"{MOB}/internship/applications", headers=student, json={
@@ -229,8 +230,6 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     assert body["code"] != 0, body
     detail = client.get(f"{APP}/{app_id}", headers=auth_headers).json()["data"]
     assert detail["status"] == "PENDING_REVIEW"
-    # 落岗校验与审批在同一事务原子执行：失败时整个事务回滚，从未真正写入过
-    # APPROVED 状态，因此审计留痕里不应出现 APPROVE（比"先通过再补偿回滚"更强的保证）
     assert "APPROVE" not in {x["action"] for x in detail["auditTrail"]}
 
     db = get_sessionmaker()()
