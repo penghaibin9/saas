@@ -31,13 +31,42 @@ def payload(response) -> dict:
     return value
 
 
-def click_login(page: Page, label: str) -> dict:
-    with page.expect_response(is_login, timeout=15_000) as info:
-        page.get_by_text(label, exact=True).click()
-    return payload(info.value)
+def page_error(page: Page) -> str:
+    alerts = page.locator('[role="alert"]')
+    if alerts.count() and alerts.first.is_visible():
+        return (alerts.first.text_content() or "").strip()
+    return ""
+
+
+def click_login(page: Page, label: str, artifact_prefix: str) -> dict:
+    button = page.get_by_role("button", name=label, exact=True)
+    expect(button).to_be_visible(timeout=10_000)
+    expect(button).to_be_enabled(timeout=10_000)
+    try:
+        with page.expect_response(is_login, timeout=15_000) as info:
+            button.click()
+        return payload(info.value)
+    except Exception as exc:
+        page.screenshot(path=str(ARTIFACT_DIR / f"{artifact_prefix}-submit-failure.png"), full_page=True)
+        raise AssertionError(
+            f"点击“{label}”后未收到登录响应；页面错误={page_error(page)!r}；"
+            f"按钮禁用={button.is_disabled()}；当前地址={page.url}"
+        ) from exc
+
+
+def wait_captcha_ready(page: Page, trigger) -> None:
+    expect(trigger).to_be_visible(timeout=10_000)
+    # 自适应验证码出现后，页面会先自动签发一次；等该次签发彻底结束，
+    # 再手动换一张并读取测试环境 devCode，避免两个请求交错覆盖组件状态。
+    expect(trigger).to_be_enabled(timeout=10_000)
+    image = trigger.locator("img")
+    if image.count():
+        expect(image).to_be_visible(timeout=10_000)
+        expect(image).to_have_attribute("src", "data:image/png;base64,", timeout=10_000)
 
 
 def fresh_captcha(page: Page, trigger, redis_client) -> tuple[str, str]:
+    wait_captcha_ready(page, trigger)
     with page.expect_response(is_captcha, timeout=15_000) as info:
         trigger.click()
     data = payload(info.value).get("data")
@@ -50,7 +79,17 @@ def fresh_captcha(page: Page, trigger, redis_client) -> tuple[str, str]:
     keys = list(redis_client.scan_iter(match=f"*auth:captcha:{captcha_id}"))
     if len(keys) != 1:
         raise AssertionError(f"验证码提交前 Redis 挑战键异常：{keys!r}")
+    # 网络响应到达后，给 Vue/uni-app 一个事件循环把 captchaId 写入组件状态。
+    page.wait_for_timeout(150)
     return captcha_id, code
+
+
+def fill_and_sync(page: Page, selector: str, value: str) -> None:
+    field = page.locator(selector)
+    field.fill(value)
+    expect(field).to_have_value(value)
+    field.press("Tab")
+    page.wait_for_timeout(150)
 
 
 def assert_consumed(redis_client, captcha_id: str) -> None:
@@ -69,16 +108,20 @@ def teacher_pc(browser, redis_client) -> dict:
     page.get_by_label("我已阅读并同意学校提供的用户协议与隐私政策").check()
     wrong = []
     for _ in range(2):
-        result = click_login(page, "进入教师工作台")
+        result = click_login(page, "进入教师工作台", "teacher-pc-wrong")
         if result.get("code") == 0:
             raise AssertionError("管理 PC 错误密码被接受")
         wrong.append(result.get("bizCode"))
+
     captcha_input = page.locator("#login-captcha")
     expect(captcha_input).to_be_visible(timeout=10_000)
-    captcha_id, code = fresh_captcha(page, page.locator('button[title="点击换一张"]'), redis_client)
-    captcha_input.fill(code)
-    page.locator("#staff-password").fill("123456")
-    result = click_login(page, "进入教师工作台")
+    trigger = page.locator('button[title="点击换一张"]')
+    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    fill_and_sync(page, "#login-captcha", code)
+    fill_and_sync(page, "#staff-password", "123456")
+    page.screenshot(path=str(ARTIFACT_DIR / "teacher-pc-before-submit.png"), full_page=True)
+
+    result = click_login(page, "进入教师工作台", "teacher-pc")
     if result.get("code") != 0:
         raise AssertionError(f"管理 PC 登录失败：{result!r}")
     page.wait_for_url("**/workbench**", timeout=15_000)
@@ -99,10 +142,13 @@ def platform_pc(browser, redis_client) -> dict:
     username.fill("platform_admin")
     username.press("Tab")
     expect(page.locator("#platform-captcha")).to_be_visible(timeout=10_000)
-    page.locator('input[autocomplete="current-password"]').fill("123456")
-    captcha_id, code = fresh_captcha(page, page.locator('button[title="点击换一张"]'), redis_client)
-    page.locator("#platform-captcha").fill(code)
-    result = click_login(page, "登录运营平台")
+    fill_and_sync(page, 'input[autocomplete="current-password"]', "123456")
+    trigger = page.locator('button[title="点击换一张"]')
+    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    fill_and_sync(page, "#platform-captcha", code)
+    page.screenshot(path=str(ARTIFACT_DIR / "platform-pc-before-submit.png"), full_page=True)
+
+    result = click_login(page, "登录运营平台", "platform-pc")
     if result.get("code") != 0:
         raise AssertionError(f"平台 PC 登录失败：{result!r}")
     page.wait_for_url("**/admin/platform/overview**", timeout=15_000)
@@ -126,16 +172,20 @@ def student_pc(browser, redis_client) -> dict:
     page.get_by_label("我已阅读并同意学校提供的用户协议与隐私政策").check()
     wrong = []
     for _ in range(2):
-        result = click_login(page, "进入学生服务门户")
+        result = click_login(page, "进入学生服务门户", "student-pc-wrong")
         if result.get("code") == 0:
             raise AssertionError("学生 PC 错误密码被接受")
         wrong.append(result.get("bizCode"))
+
     captcha_input = page.locator("#student-login-captcha")
     expect(captcha_input).to_be_visible(timeout=10_000)
-    captcha_id, code = fresh_captcha(page, page.locator('button[title="点击换一张"]'), redis_client)
-    captcha_input.fill(code)
-    page.locator("#student-password").fill("123456")
-    result = click_login(page, "进入学生服务门户")
+    trigger = page.locator('button[title="点击换一张"]')
+    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    fill_and_sync(page, "#student-login-captcha", code)
+    fill_and_sync(page, "#student-password", "123456")
+    page.screenshot(path=str(ARTIFACT_DIR / "student-pc-before-submit.png"), full_page=True)
+
+    result = click_login(page, "进入学生服务门户", "student-pc")
     if result.get("code") != 0:
         raise AssertionError(f"学生 PC 登录失败：{result!r}")
     page.wait_for_url("**/portal/home**", timeout=20_000)
