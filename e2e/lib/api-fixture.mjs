@@ -15,7 +15,9 @@ async function readEnvelope(response) {
     throw new Error(`${response.status} ${response.url}: ${text.slice(0, 500)}`)
   }
   if (!response.ok || json.code !== 0) {
-    throw new Error(`${response.status} ${response.url}: ${json.message || text.slice(0, 500)}`)
+    const details = json.details ?? json.detail ?? json.data
+    const suffix = details ? ` details=${JSON.stringify(details).slice(0, 1_500)}` : ''
+    throw new Error(`${response.status} ${response.url}: ${json.message || text.slice(0, 500)}${suffix}`)
   }
   return json.data
 }
@@ -65,38 +67,45 @@ async function findStudentProfile(api, studentNo) {
 
 async function ensureBatch(api, runId) {
   const batchNo = `PW-E2E-${runId}`
-  const existing = items(await api.get('/graduation/batches', { keyword: batchNo, page: 1, pageSize: 200 }))
+  let batch = items(await api.get('/graduation/batches', { keyword: batchNo, page: 1, pageSize: 200 }))
     .find((item) => item.batchNo === batchNo)
-  if (existing) return existing
 
-  const batch = await api.post('/graduation/batches', {
-    batchName: `Playwright 毕设交互测试 ${runId}`,
-    batchNo,
-    academicYear: '2026-2027',
-    gradeYear: '2027届',
-    plannedCount: 1,
-    remark: 'Only for isolated Playwright E2E database'
-  })
-  await api.post(`/graduation/batches/${batch.id}/rules`, {
-    rules: {
-      score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 },
-      plagiarism: { thresholdPercent: 20, mustPassToDefense: true }
-    }
-  })
-  await api.post(`/graduation/batches/${batch.id}/stages`, {
-    stages: [
-      { code: 'TOPIC', name: '选题', startDate: '2026-08-01', endDate: '2026-08-31' },
-      { code: 'PROPOSAL', name: '开题', startDate: '2026-08-01', endDate: '2026-09-30' },
-      { code: 'MIDTERM', name: '中期', startDate: '2026-10-01', endDate: '2026-10-31' },
-      { code: 'SUBMISSION', name: '成果', startDate: '2026-11-01', endDate: '2026-11-30' },
-      { code: 'PLAGIARISM', name: '查重', startDate: '2026-12-01', endDate: '2026-12-10' },
-      { code: 'REVIEW', name: '评阅', startDate: '2026-12-11', endDate: '2026-12-20' },
-      { code: 'DEFENSE', name: '答辩', startDate: '2026-12-21', endDate: '2026-12-25' },
-      { code: 'GRADE', name: '成绩', startDate: '2026-12-26', endDate: '2026-12-31' }
-    ]
-  })
-  const activated = await api.post(`/graduation/batches/${batch.id}/activate`, {})
-  return { ...batch, ...(activated || {}), id: batch.id, batchName: batch.batchName }
+  if (!batch) {
+    batch = await api.post('/graduation/batches', {
+      batchName: `Playwright 毕设交互测试 ${runId}`,
+      batchNo,
+      academicYear: '2026-2027',
+      gradeYear: '2027届',
+      plannedCount: 1,
+      remark: 'Only for isolated Playwright E2E database'
+    })
+  }
+
+  // A failed retry can leave a DRAFT batch behind. Finish the same batch instead of
+  // returning a half-configured fixture. Once RUNNING, rules/stages are immutable here.
+  if (String(batch.status || '').toUpperCase() !== 'RUNNING') {
+    await api.post(`/graduation/batches/${batch.id}/rules`, {
+      rules: {
+        score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 },
+        plagiarism: { thresholdPercent: 20, mustPassToDefense: true }
+      }
+    })
+    await api.post(`/graduation/batches/${batch.id}/stages`, {
+      stages: [
+        { code: 'TOPIC', name: '选题', startDate: '2026-07-01', endDate: '2026-07-31' },
+        { code: 'PROPOSAL', name: '开题', startDate: '2026-08-01', endDate: '2026-09-30' },
+        { code: 'MIDTERM', name: '中期', startDate: '2026-10-01', endDate: '2026-10-31' },
+        { code: 'SUBMISSION', name: '成果', startDate: '2026-11-01', endDate: '2026-11-30' },
+        { code: 'PLAGIARISM', name: '查重', startDate: '2026-12-01', endDate: '2026-12-10' },
+        { code: 'REVIEW', name: '评阅', startDate: '2026-12-11', endDate: '2026-12-15' },
+        { code: 'DEFENSE', name: '答辩', startDate: '2026-12-16', endDate: '2026-12-25' },
+        { code: 'GRADE', name: '成绩', startDate: '2026-12-26', endDate: '2026-12-31' }
+      ]
+    })
+    const activated = await api.post(`/graduation/batches/${batch.id}/activate`, {})
+    batch = { ...batch, ...(activated || {}), status: 'RUNNING' }
+  }
+  return batch
 }
 
 async function ensureGdStudent(api, batchId, profile) {
@@ -182,9 +191,6 @@ export async function prepareGraduationFixture() {
   const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
   const runId = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
 
-  // Fixture creation requires full-school visibility. Role-switch behavior is covered by
-  // the dedicated browser test; using an unscoped graduation role here would correctly
-  // fail closed and hide the imported student profile.
   const admin = await login(config.sandboxAdmin)
 
   const batch = await ensureBatch(admin, runId)
@@ -212,9 +218,7 @@ export async function prepareGraduationFixture() {
   try {
     await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
       objective: '验证毕业设计学生、导师、管理员真实交互闭环',
-      content: '学生签署任务书并提交开题，导师驳回后学生重交，导师通过，管理员复核。',
-      progressPlan: '准备数据→学生提交→导师驳回→学生重交→导师通过→管理员复核',
-      outcomeRequirement: 'HTML 报告、失败截图、录像、trace 与接口日志齐全'
+      content: '学生签署任务书并提交开题，导师驳回后学生重交，导师通过，管理员复核。'
     })
   } catch (error) {
     if (!/已下发|已存在|状态/.test(error.message)) throw error
