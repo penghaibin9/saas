@@ -1,6 +1,8 @@
 """实习成绩：权重快照、企业评价权威来源、导师核算、学校发布与版本锁。"""
 from __future__ import annotations
 
+import io
+
 TID = 1000000000000000001
 INT = "/api/v1/internship"
 
@@ -13,8 +15,9 @@ def _admin(client):
 
 def _mentor(name, tid=TID):
     from app.core.security import create_access_token
+    user_id = {"刘强": "9001", "王芳": "9002"}.get(name, "9099")
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
+        "userId": user_id, "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
@@ -30,7 +33,7 @@ def _student(student_no, tid=TID):
 def _seed(db_mode):
     from uuid import uuid4
     from app.db.session import get_sessionmaker
-    from app.models import FileObject, InternshipBatch, InternshipRecord, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
     db = get_sessionmaker()()
     ids = {}
     try:
@@ -38,11 +41,6 @@ def _seed(db_mode):
             tenant_id=TID, batch_name="成绩测试批次",
             batch_no=f"SCORE-{uuid4().hex[:8]}", status="RUNNING", planned_count=2)
         db.add(batch); db.flush(); ids["batch"] = batch.id
-        evidence = FileObject(
-            tenant_id=TID, file_key=f"score/{uuid4().hex}.pdf", file_name="企业评价扫描件.pdf",
-            ext="pdf", size_bytes=1024, biz_type="INTERNSHIP", biz_id="ENT_EVAL_TEST",
-            visibility="BIZ_SCOPED", status="STORED")
-        db.add(evidence); db.flush(); ids["file"] = str(evidence.id)
         for number, name, advisor, key in [
             ("SC-A", "甲", "刘强", "a"), ("SC-B", "乙", "王芳", "b")
         ]:
@@ -69,8 +67,26 @@ def _config(client, **overrides):
     return client.post(f"{INT}/scores/config", json=body, headers=_admin(client))
 
 
-def _approve_enterprise_eval(client, record_id, evidence_file_id, mentor_name="刘强",
-                             component_score=60):
+def _upload_enterprise_evidence(client, headers) -> str:
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=headers,
+        files={"file": (
+            "enterprise-eval.txt",
+            io.BytesIO(b"authoritative-enterprise-evaluation-evidence"),
+            "text/plain",
+        )},
+        data={"bizType": "INTERNSHIP_ENTERPRISE_EVAL"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    data = uploaded.json()["data"]
+    assert data["temporary"] is True and data["bindingCreated"] is False
+    return data["fileId"]
+
+
+def _approve_enterprise_eval(client, record_id, mentor_name="刘强", component_score=60):
+    mentor_headers = _mentor(mentor_name)
+    evidence_file_id = _upload_enterprise_evidence(client, mentor_headers)
     created = client.post(
         f"{INT}/enterprise-evals",
         json={
@@ -79,16 +95,16 @@ def _approve_enterprise_eval(client, record_id, evidence_file_id, mentor_name="�
             "attitudeScore": component_score, "collaborationScore": component_score,
             "safetyScore": component_score, "sourceFileId": evidence_file_id,
         },
-        headers=_mentor(mentor_name),
+        headers=mentor_headers,
     )
-    assert created.status_code == 200
+    assert created.status_code == 200, created.json()
     data = created.json()["data"]
     reviewed = client.post(
         f"{INT}/enterprise-evals/{data['id']}/review-versioned",
         json={"action": "APPROVE", "expectedVersion": data["version"]},
         headers=_admin(client),
     )
-    assert reviewed.status_code == 200
+    assert reviewed.status_code == 200, reviewed.json()
     return data["id"]
 
 
@@ -111,7 +127,6 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
     first = _config(client).json()["data"]
     assert first["configId"]
 
-    # 保留 main 的配置读取断言，避免只验证写入而未验证读取契约。
     current = client.get(f"{INT}/scores/config", headers=_admin(client)).json()["data"]
     assert current["enterpriseWeight"] == 30
     assert current["passLine"] == 60
@@ -124,7 +139,7 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
         headers=_mentor("刘强"))
     assert denied.status_code == 403
 
-    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=80)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
     computed = _compute(client, ids, scores={
         "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80})
     assert computed.status_code == 200
@@ -141,7 +156,7 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
 def test_compute_and_school_publish_with_versions(client, db_mode):
     ids = _seed(db_mode)
     _config(client)
-    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=60)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=60)
     computed = _compute(client, ids)
     assert computed.status_code == 200
     score = computed.json()["data"]
@@ -170,7 +185,7 @@ def test_compute_and_school_publish_with_versions(client, db_mode):
 def test_enterprise_score_is_authoritative_and_manual_override_rejected(client, db_mode):
     ids = _seed(db_mode)
     _config(client)
-    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], component_score=84)
+    _approve_enterprise_eval(client, ids["rec_a"], component_score=84)
 
     manual = client.post(
         f"{INT}/scores/compute",
@@ -207,8 +222,8 @@ def test_incomplete_cannot_publish(client, db_mode):
 def test_scope_student_forbidden_withdraw_and_export(client, db_mode):
     ids = _seed(db_mode)
     _config(client)
-    _approve_enterprise_eval(client, ids["rec_a"], ids["file"], mentor_name="刘强", component_score=80)
-    _approve_enterprise_eval(client, ids["rec_b"], ids["file"], mentor_name="王芳", component_score=80)
+    _approve_enterprise_eval(client, ids["rec_a"], mentor_name="刘强", component_score=80)
+    _approve_enterprise_eval(client, ids["rec_b"], mentor_name="王芳", component_score=80)
     score_a = _compute(client, ids, key="a", mentor="刘强", scores={
         "checkinScore": 80, "weeklyScore": 80, "monthlyScore": 80, "schoolScore": 80}).json()["data"]
     score_b = _compute(client, ids, key="b", mentor="王芳", scores={
