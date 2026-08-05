@@ -1,0 +1,53 @@
+name: Auth dependency lock refresh once
+
+on:
+  push:
+    branches:
+      - feat/adaptive-login-captcha-20260805
+    paths:
+      - "frontend/package.json"
+      - ".github/workflows/_auth-dependency-lock-refresh-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/adaptive-login-captcha-20260805
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Regenerate deterministic lockfile
+        run: |
+          cd frontend
+          npm install --package-lock-only --ignore-scripts
+      - name: Validate install and patched production tree
+        run: |
+          cd frontend
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          node - <<'NODE'
+          const COS = require('cos-js-sdk-v5')
+          const { XMLParser } = require('fast-xml-parser')
+          const client = new COS({})
+          if (typeof client.getObject !== 'function') throw new Error('COS SDK failed to load')
+          const value = new XMLParser().parse('<ListBucketResult><Name>lock-smoke</Name></ListBucketResult>')
+          if (value?.ListBucketResult?.Name !== 'lock-smoke') throw new Error('fast-xml-parser compatibility smoke failed')
+          NODE
+          npm run lint
+          npm test
+          npm run build
+      - name: Upload regenerated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-patched-package-lock-${{ github.run_id }}
+          path: frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 2
