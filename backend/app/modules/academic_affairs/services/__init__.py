@@ -48,3 +48,8 @@ academic_affairs_object_scope_guard.install()
 from . import academic_affairs_graduation_truth_guard
 
 academic_affairs_graduation_truth_guard.install()
+
+# 包 5：异动详情范围、所属学期与真实工作流受理人 fail-closed。
+from . import academic_affairs_change_safety_guard
+
+academic_affairs_change_safety_guard.install()
