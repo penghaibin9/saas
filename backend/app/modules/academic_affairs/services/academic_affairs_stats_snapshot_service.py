@@ -11,11 +11,12 @@ from datetime import datetime
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import is_super_admin
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_stats_facade as _stats
 
-_ADMIN_ROLES = {"ACADEMIC_ADMIN", "ACADEMIC_TEACHER", "SCHOOL_ADMIN"}
+_SCHOOL_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
 
 
 def _ctx() -> dict:
@@ -74,6 +75,10 @@ def create_snapshot(user, *, term_id=None, college_id=None, major_id=None,
     if kind != "OVERVIEW":
         raise AppException("VALIDATION_ERROR", "当前仅支持OVERVIEW教务总览快照")
 
+    with session() as scope_db:
+        scope = _snapshot_scope(scope_db, user, write=True)
+        _require_filter_in_scope(scope, college_id)
+
     data = _stats.overview(
         user,
         term_id=int(term_id) if term_id else None,
@@ -123,13 +128,26 @@ def create_snapshot(user, *, term_id=None, college_id=None, major_id=None,
         return _row(row, include_payload=True)
 
 
-def _can_read(row, user) -> bool:
+def _snapshot_scope(db, user, *, write=False):
+    """统计快照使用独立数据范围；普通任课教师默认无权读取或创建。"""
+    from app.core.affairs_security import build_affairs_context
+
     role = _role(user)
-    if role in _ADMIN_ROLES or str((user or {}).get("userType") or "").upper() == "PLATFORM_SUPER_ADMIN":
-        return True
-    return bool(row.generated_by and row.generated_by == str(
-        (user or {}).get("userId") or (user or {}).get("loginName") or ""
-    ))
+    if is_super_admin(user) or role in _SCHOOL_ROLES:
+        return {"all": True, "collegeIds": set()}
+    context = build_affairs_context(user or {}, db)
+    college_ids = {int(value) for value in (context.college_ids or set())}
+    if role in {"COLLEGE_ADMIN", "COLLEGE_SA"} and college_ids:
+        return {"all": False, "collegeIds": college_ids}
+    action = "创建" if write else "查看"
+    raise no_permission(f"当前身份无权{action}教务统计冻结快照")
+
+
+def _require_filter_in_scope(scope, college_id):
+    if scope["all"]:
+        return
+    if not college_id or int(college_id) not in scope["collegeIds"]:
+        raise no_permission("统计快照学院范围不在当前授权内")
 
 
 def _loads(raw, fallback):
@@ -166,26 +184,28 @@ def list_snapshots(user, *, term_id=None, snapshot_type=None, page=1, page_size=
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 50)))
     with session() as db:
+        scope = _snapshot_scope(db, user)
         query = db.query(AaStatsSnapshot).filter(
             AaStatsSnapshot.tenant_id == _tid(),
             AaStatsSnapshot.status == "FROZEN",
             AaStatsSnapshot.is_deleted.is_(False),
         )
+        if not scope["all"]:
+            query = query.filter(AaStatsSnapshot.college_id.in_(sorted(scope["collegeIds"])))
         if term_id:
             query = query.filter(AaStatsSnapshot.term_id == int(term_id))
         if snapshot_type:
             query = query.filter(AaStatsSnapshot.snapshot_type == str(snapshot_type).upper())
-        rows = query.order_by(AaStatsSnapshot.id.desc()).all()
-        rows = [row for row in rows if _can_read(row, user)]
-        total = len(rows)
-        start = (page - 1) * page_size
-        return [_row(row) for row in rows[start:start + page_size]], total
+        total = query.count()
+        rows = query.order_by(AaStatsSnapshot.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        return [_row(row) for row in rows], total
 
 
 def get_snapshot(user, snapshot_id) -> dict:
     from app.models.academic_affairs_r10 import AaStatsSnapshot
 
     with session() as db:
+        scope = _snapshot_scope(db, user)
         row = db.query(AaStatsSnapshot).filter(
             AaStatsSnapshot.id == int(snapshot_id),
             AaStatsSnapshot.tenant_id == _tid(),
@@ -194,7 +214,9 @@ def get_snapshot(user, snapshot_id) -> dict:
         ).first()
         if not row:
             raise not_found("统计快照不存在")
-        if not _can_read(row, user):
+        if not scope["all"] and (not row.college_id or int(row.college_id) not in scope["collegeIds"]):
+            _audit(db, row.id, "STATS_SNAPSHOT_ACCESS_DENIED", "scope mismatch")
+            db.commit()
             raise no_permission("该统计快照不在当前可见范围")
         parsed = _loads(row.payload_json, {})
         if payload_hash(parsed) != row.payload_hash:

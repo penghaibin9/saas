@@ -196,7 +196,7 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
 
 
 def sync_batch_teaching_classes(db, batch_id: int) -> dict:
-    """逐条保存点投影；单条失败不污染同批次已成功投影。"""
+    """批次投影必须全成全败；任一教学班或名单失败由调用方整体回滚。"""
     from app.models import AaTeachingTask
 
     task_ids = [
@@ -215,9 +215,16 @@ def sync_batch_teaching_classes(db, batch_id: int) -> dict:
             projected.append(str(row.id))
         except Exception as exc:
             errors.append({"teachingTaskId": str(task_id), "error": str(exc)})
+    if errors:
+        raise AppException(
+            "DATA_CONFLICT",
+            "教学任务生成后教学班投影失败，已回滚整个批次",
+            details={"batchId": str(batch_id), "errors": errors[:20]},
+            http_status=409,
+        )
     return {
         "taskCount": len(task_ids), "projectedCount": len(projected),
-        "teachingClassIds": projected, "errors": errors,
+        "teachingClassIds": projected, "errors": [],
     }
 
 

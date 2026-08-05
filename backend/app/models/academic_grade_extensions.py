@@ -64,6 +64,18 @@ def install_academic_grade_extensions() -> None:
     _add_column(AcademicGrade, "roster_version_id", mapped_column(
         BigInteger, nullable=True, comment="发布时采用的正式名单版本"
     ))
+    _add_column(AcademicGrade, "effective_policy_code", mapped_column(
+        String(80), nullable=True, comment="发布时冻结的有效成绩策略编码"
+    ))
+    _add_column(AcademicGrade, "effective_policy_version", mapped_column(
+        Integer, nullable=True, comment="发布时冻结的有效成绩策略版本"
+    ))
+    _add_column(AcademicGrade, "effective_attempt_strategy", mapped_column(
+        String(40), nullable=True, comment="LATEST_ATTEMPT/HIGHEST_SCORE/HIGHEST_PASSED/LATEST_PASSED等"
+    ))
+    _add_column(AcademicGrade, "pass_line_snapshot", mapped_column(
+        Integer, nullable=True, comment="成绩发布时及格线快照"
+    ))
 
     grade_table = AcademicGrade.__table__
     _append_unique(grade_table, "uk_acad_grade_source_record", "tenant_id", "grade_record_id")

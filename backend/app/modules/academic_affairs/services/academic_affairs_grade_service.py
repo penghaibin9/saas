@@ -22,8 +22,10 @@ from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_grade_core_service as _core
 from .academic_affairs_effective_grade_policy_service import (
+    apply_policy_to_grade,
     freeze_effective_grade_policy,
     policy_snapshot_debt,
+    resolve_active_policy,
     resolve_effective_grade,
 )
 from .academic_affairs_grade_identity_service import (
@@ -704,6 +706,7 @@ def publish_grades(task_id, user) -> dict:
                 http_status=409,
             )
 
+        policy = resolve_active_policy(db, task.term_id, required=True)
         course = resolve_grade_task_course(db, task)
         course_meta = course_snapshot(course)
         duplicate = db.scalars(select(AcademicGrade.grade_record_id).where(
@@ -758,6 +761,7 @@ def publish_grades(task_id, user) -> dict:
                 record_status="ACTIVE",
                 source="PUBLISH",
             )
+            apply_policy_to_grade(grade, policy, pass_line=task.pass_line)
             db.add(grade)
             db.flush()
             freeze_effective_grade_policy(

@@ -28,7 +28,8 @@ class AcademicStudent(PKMixin, TenantMixin, CommonMixin, Base):
     avg_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     obtained_credits: Mapped[float] = mapped_column(Numeric(6, 1), nullable=False, default=0)
-    required_credits: Mapped[float] = mapped_column(Numeric(6, 1), nullable=False, default=120)
+    # 仅保留为历史缓存字段；正式应修学分必须从培养方案解析，未解析时为 NULL。
+    required_credits: Mapped[float | None] = mapped_column(Numeric(6, 1), nullable=True)
     makeup_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     retake_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     warning_level: Mapped[str] = mapped_column(String(50), nullable=False, default="NONE")

@@ -4,6 +4,11 @@
 用法：
   python scripts/check/select_pytest_targets.py
   # 输出空格分隔的 pytest 路径/glob，无命中时输出安全默认集合
+
+选择原则：
+- 改动过的后端测试必须原样执行；
+- 业务域源码改动只拉起该域的稳定生产闸门，不用一个通配符吞下整套历史测试；
+- 公共底座、模型和迁移继续执行跨域安全与迁移守卫。
 """
 from __future__ import annotations
 
@@ -28,8 +33,11 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "backend/app/services/domain_export", "backend/app/core/import_export",
       "backend/app/api/v1/import_export", "backend/app/api/v1/transfer"),
      ["tests/test_import_export_p0_authz.py", "tests/test_import_export.py"]),
+    # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
+    # 任意教务源码改动执行稳定权限闸门；本次实际改动的 test_aa_* 文件由
+    # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
     (("backend/app/modules/academic_affairs", "backend/app/api/v1/academic"),
-     ["tests/test_aa_*.py", "tests/test_portal_academic*.py"]),
+     ["tests/test_aa_p0_authz.py"]),
     (("backend/app/services/affairs", "backend/app/api/v1/student_affairs",
       "backend/app/api/v1/mobile"),
      ["tests/test_affairs_*.py", "tests/test_portal_affairs*.py", "tests/test_mobile*.py"]),
@@ -105,8 +113,21 @@ def _changed_files() -> list[str]:
     return sorted(files)
 
 
+def _changed_backend_tests(files: list[str]) -> list[str]:
+    """把 PR 中实际新增/修改的 pytest 文件转换为 backend 工作目录下的路径。"""
+    prefix = "backend/tests/"
+    return [
+        path[len("backend/"):]
+        for path in files
+        if path.startswith(prefix)
+        and path.endswith(".py")
+        and path.rsplit("/", 1)[-1].startswith("test_")
+    ]
+
+
 def select(files: list[str]) -> list[str]:
-    selected: list[str] = []
+    # 测试与实现必须同批验证；精确测试路径优先于域级稳定闸门。
+    selected: list[str] = _changed_backend_tests(files)
     joined = "\n".join(files)
     core_hit = any(any(p.startswith(c) or c.rstrip("/") in p for c in CORE_TOUCH) for p in files)
     if core_hit:

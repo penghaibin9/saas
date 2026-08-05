@@ -167,28 +167,106 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             raise _bad("无效操作（UPHOLD/ADJUST/REJECT）")
         if new_score is None or not (0 <= int(new_score) <= 100):
             raise _bad("调整后成绩必须为 0-100")
-        grade = db.get(AcademicGrade, int(row.acad_grade_id))
-        if not grade or grade.is_deleted or grade.tenant_id != _tid() or grade.record_status != "ACTIVE":
+        grade = db.query(AcademicGrade).filter(
+            AcademicGrade.id == int(row.acad_grade_id),
+            AcademicGrade.tenant_id == _tid(),
+            AcademicGrade.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not grade or grade.record_status != "ACTIVE":
             raise not_found("被复查成绩不存在或已失效")
-        score = int(new_score)
-        grade.score = score
-        grade.pass_status = "PASSED" if score >= 60 else "FAILED"
-        grade.source = "RECHECK"
-        grade.source_biz_type = "RECHECK"
-        grade.source_biz_id = row.id
-        row.new_score, row.status = score, "ADJUSTED"
-        row.review_note = (note or "").strip() or None
-        row.reviewed_by, row.reviewed_at = _op(), datetime.utcnow()
 
-        from app.models import AaGradeRecord
+        from app.models import AaGradeRecord, AaGradeTask
+        from app.models.academic_affairs_effective_grade import AaGradeCorrection
+        from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+        from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
+            freeze_effective_grade_policy,
+            policy_payload,
+        )
+
+        if not grade.grade_task_id:
+            raise _invalid("历史成绩缺少发布任务快照，无法安全判定及格线，请先完成数据治理")
+        grade_task = db.query(AaGradeTask).filter(
+            AaGradeTask.id == int(grade.grade_task_id),
+            AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not grade_task or not grade_task.term_id:
+            raise _invalid("成绩发布任务或学期快照缺失，禁止直接更正正式成绩")
+        guard_term_writable(db, int(grade_task.term_id))
+        if not grade.effective_attempt_strategy or not grade.effective_policy_code:
+            raise _invalid("历史成绩缺少冻结的有效成绩策略，必须治理后才能更正")
+
+        pass_line = int(grade.pass_line_snapshot if grade.pass_line_snapshot is not None else grade_task.pass_line)
+        score = int(new_score)
+        pass_status = "PASSED" if score >= pass_line else "FAILED"
+
+        excluded = {
+            "id", "created_at", "created_by", "updated_at", "updated_by",
+            "is_deleted", "version", "score", "pass_status", "record_status",
+            "void_reason", "source", "source_biz_type", "source_biz_id",
+        }
+        payload = {
+            attr.key: getattr(grade, attr.key)
+            for attr in AcademicGrade.__mapper__.column_attrs
+            if attr.key not in excluded
+        }
+        corrected = AcademicGrade(
+            **payload,
+            score=score,
+            pass_status=pass_status,
+            record_status="ACTIVE",
+            void_reason=None,
+            source="RECHECK",
+            source_biz_type="RECHECK",
+            source_biz_id=row.id,
+        )
+        db.add(corrected)
+        db.flush()
+
+        grade.record_status = "SUPERSEDED"
+        grade.void_reason = f"成绩复查更正，后继成绩ID={corrected.id}"
+
         grade_record = db.scalars(select(AaGradeRecord).where(
             AaGradeRecord.tenant_id == _tid(),
             AaGradeRecord.acad_grade_id == grade.id,
             AaGradeRecord.is_deleted.is_(False),
-        )).first()
+        ).with_for_update()).first()
         if grade_record:
             grade_record.total_score = score
-            grade_record.pass_status = grade.pass_status
+            grade_record.pass_status = pass_status
+            grade_record.acad_grade_id = corrected.id
+            grade_record.version_no = int(grade_record.version_no or 1) + 1
+            grade_record.change_reason = (note or "成绩复查更正").strip()
+            grade_record.change_at = datetime.utcnow()
+
+        correction = AaGradeCorrection(
+            tenant_id=_tid(),
+            recheck_id=row.id,
+            original_grade_id=grade.id,
+            corrected_grade_id=corrected.id,
+            before_score=grade.score,
+            after_score=score,
+            pass_line=pass_line,
+            rule_snapshot_json=__import__("json").dumps(
+                {
+                    "passLine": pass_line,
+                    "policy": policy_payload(corrected),
+                    "gradeTaskId": str(grade_task.id),
+                    "termId": str(grade_task.term_id),
+                },
+                ensure_ascii=False, sort_keys=True,
+            ),
+            reason=(note or "").strip() or None,
+            operator=_op(),
+            effective_at=datetime.utcnow(),
+            status="ACTIVE",
+        )
+        db.add(correction)
+
+        row.new_score, row.status = score, "ADJUSTED"
+        row.review_note = (note or "").strip() or None
+        row.reviewed_by, row.reviewed_at = _op(), datetime.utcnow()
+
         academic_student = db.get(AcademicStudent, int(grade.acad_student_id)) if grade.acad_student_id else None
         if academic_student:
             _refresh_aggregates(db, academic_student)
@@ -205,8 +283,13 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             content=f"{row.course_name or ''} 经复查成绩由 {row.original_score} 调整为 {score}",
             receiver_as="student",
         )
-        _audit(db, row.id, "RECHECK_ADJUST", f"{row.course_name or ''} {row.original_score}→{score}")
-        # flush触发AcademicGrade after_update，同事务生成RECHECK策略快照。
+        _audit(
+            db, row.id, "RECHECK_ADJUST",
+            f"{row.course_name or ''} {row.original_score}→{score};passLine={pass_line};newGradeId={corrected.id}",
+        )
+        freeze_effective_grade_policy(
+            db, corrected, event_type="RECHECK", source_biz_type="RECHECK", source_biz_id=row.id,
+        )
         db.flush()
         db.commit()
         from app.services.message_event_outbox_service import try_process_pending_outbox

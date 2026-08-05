@@ -94,6 +94,31 @@ def _passed_course_codes(db, student) -> set[str]:
     }
 
 
+def _load_prerequisite_codes(course) -> set[str]:
+    """读取课程正式先修代码；损坏配置必须阻断选课，禁止静默当作无先修课。"""
+    raw = getattr(course, "prerequisite_codes_json", None)
+    if raw in (None, "", []):
+        return set()
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则JSON损坏，请联系教务管理员修复后再选课",
+                details={"courseCode": str(getattr(course, "course_code", "") or "")},
+                http_status=409,
+            ) from exc
+    if not isinstance(raw, list):
+        raise AppException(
+            "DATA_CONFLICT",
+            "课程先修规则格式错误，必须是课程代码数组",
+            details={"courseCode": str(getattr(course, "course_code", "") or "")},
+            http_status=409,
+        )
+    return {str(code).strip().upper() for code in raw if str(code).strip()}
+
+
 def _active_round(db, batch_id):
     from app.models import AaSelectionRound
 
@@ -103,6 +128,11 @@ def _active_round(db, batch_id):
         AaSelectionRound.status == "OPEN",
         AaSelectionRound.is_deleted.is_(False),
     ).first()
+
+
+def _counts_toward_capacity(status: str | None) -> bool:
+    """只有已选/已锁定记录占用容量；待抽签记录从未增加 selected_count。"""
+    return status in (_REC_SELECTED, _REC_LOCKED)
 
 
 def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allow_reselect_closed=False):
@@ -143,46 +173,90 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
         AaSelectionCourse.id.in_(selected_course_ids or {-1}),
         AaSelectionCourse.is_deleted.is_(False),
     ).all()
-    selected_codes = {str(item.course_code or "").strip().upper() for item in active_selected}
-    if str(course.course_code or "").strip().upper() in selected_codes:
+
+    # AaSelectionCourse 是批次供给关系，不承载正式 courseCode。
+    # 所有同课判断和先修规则必须经 course_id 回到 AaCourse 主档，避免把关系表字段当成课程事实。
+    selection_rows = [course, *active_selected]
+    unlinked_selection_ids = [
+        str(item.id) for item in selection_rows
+        if not getattr(item, "course_id", None)
+    ]
+    if unlinked_selection_ids:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课供给项未关联有效课程主档，请联系教务管理员修复",
+            details={"selectionCourseIds": unlinked_selection_ids},
+            http_status=409,
+        )
+
+    catalog_course_ids = {int(item.course_id) for item in selection_rows}
+    catalog_rows = db.query(AaCourse).filter(
+        AaCourse.tenant_id == _core._tid(),
+        AaCourse.id.in_(catalog_course_ids or {-1}),
+        AaCourse.is_deleted.is_(False),
+    ).all()
+    catalog_by_id = {int(item.id): item for item in catalog_rows}
+    missing_catalog_ids = sorted(catalog_course_ids - set(catalog_by_id))
+    if missing_catalog_ids:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课供给项关联的课程主档不存在或已删除，请联系教务管理员修复",
+            details={"courseIds": [str(value) for value in missing_catalog_ids]},
+            http_status=409,
+        )
+
+    source_course = catalog_by_id[int(course.course_id)]
+    selected_codes = {
+        str(catalog_by_id[int(item.course_id)].course_code or "").strip().upper()
+        for item in active_selected
+        if str(catalog_by_id[int(item.course_id)].course_code or "").strip()
+    }
+    target_code = str(source_course.course_code or "").strip().upper()
+    if target_code and target_code in selected_codes:
         raise _core._invalid("同一课程代码已存在在途选课记录")
 
     passed_codes = _passed_course_codes(db, student)
-    target_code = str(course.course_code or "").strip().upper()
     if target_code and target_code in passed_codes:
         raise _core._invalid("该课程已修读通过，不可重复选课")
 
-    source_course = db.query(AaCourse).filter(
-        AaCourse.tenant_id == _core._tid(),
-        AaCourse.course_code == course.course_code,
-        AaCourse.is_deleted.is_(False),
-    ).order_by(AaCourse.version.desc(), AaCourse.id.desc()).first()
-    prerequisites = set()
-    if source_course and source_course.prerequisite_json:
-        try:
-            parsed = json.loads(source_course.prerequisite_json)
-            prerequisites = {
-                str(code).strip().upper()
-                for code in parsed
-                if str(code).strip()
-            } if isinstance(parsed, list) else set()
-        except (TypeError, ValueError):
-            prerequisites = set()
+    prerequisites = _load_prerequisite_codes(source_course)
     missing = sorted(prerequisites - passed_codes)
     if missing:
         raise _core._invalid(f"未满足先修课程：{','.join(missing)}")
 
     projected_credit = sum(float(item.credit or 0) for item in active_selected) + float(add_credit or 0)
-    if float(batch.max_credit or 0) > 0 and projected_credit > float(batch.max_credit):
+    configured_max_credit = _core._rule(db, batch, "maxCredits", 0)
+    try:
+        max_credit = float(configured_max_credit or 0)
+    except (TypeError, ValueError) as exc:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课规则 maxCredits 配置无效，请联系教务管理员修复",
+            details={"maxCredits": str(configured_max_credit)},
+            http_status=409,
+        ) from exc
+    if max_credit < 0:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课规则 maxCredits 不可小于 0，请联系教务管理员修复",
+            details={"maxCredits": str(configured_max_credit)},
+            http_status=409,
+        )
+    if max_credit > 0 and projected_credit > max_credit:
         raise _core._invalid("超过本轮选课最大学分限制")
 
-    for item in active_selected:
-        if item.weekday != course.weekday or item.start_slot is None or item.end_slot is None:
-            continue
-        if _weeks_overlap(item.teaching_weeks_json, course.teaching_weeks_json) and not (
-            int(item.end_slot) < int(course.start_slot) or int(course.end_slot) < int(item.start_slot)
-        ):
-            raise _core._invalid(f"与已选课程{item.course_name}上课时间冲突")
+    target_slots = _core._task_slots(db, course.teaching_task_id)
+    if target_slots:
+        for item in active_selected:
+            selected_slots = _core._task_slots(db, item.teaching_task_id)
+            for (w1, s1, sw1, ew1, p1) in selected_slots:
+                for (w2, s2, sw2, ew2, p2) in target_slots:
+                    if w1 == w2 and s1 == s2 and _weeks_overlap(
+                        sw1, ew1, p1, sw2, ew2, p2
+                    ):
+                        raise _core._invalid(
+                            f"与已选课程{item.course_name or ''}上课时间冲突"
+                        )
 
     if int(course.selected_count or 0) >= int(course.capacity or 0):
         raise _core._invalid("课程容量已满")
@@ -244,9 +318,10 @@ def drop(user, course_id):
             raise not_found("当前课程没有可退选记录")
         if record.status == _REC_LOCKED:
             raise _core._invalid("选课名单已锁定，不可自行退课")
+        previous_status = record.status
         record.status = _REC_DROPPED
         record.dropped_at = datetime.utcnow()
-        if record.status != _REC_PENDING:
+        if _counts_toward_capacity(previous_status):
             course.selected_count = max(0, int(course.selected_count or 0) - 1)
         _core._audit(db, record.id, "SELECTION_DROP", "学生退课")
         db.commit()

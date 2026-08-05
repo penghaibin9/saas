@@ -20,11 +20,20 @@ from app.models.academic_affairs_r11 import (
     AaSemesterPilot,
     AaSemesterPilotCheckpoint,
 )
-from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicySnapshot
+from app.models.academic_affairs_effective_grade import (
+    AaEffectiveGradePolicy,
+    AaEffectiveGradePolicySnapshot,
+    AaGradeCorrection,
+)
 
 
 # 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
 install_academic_grade_extensions()
+
+# 模型和成绩扩展完成后安装迁移兼容、稳定课程身份、学期顺序、当前学期与ACTIVE-only守卫。
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_compat as _grade_policy_compat  # noqa: E402,F401
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_current_term as _grade_policy_current_term  # noqa: E402,F401
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_active_only as _grade_active_only  # noqa: E402,F401
 
 __all__ = [
     "AaTeachingClass",
@@ -37,5 +46,7 @@ __all__ = [
     "AaStatsSnapshot",
     "AaSemesterPilot",
     "AaSemesterPilotCheckpoint",
+    "AaEffectiveGradePolicy",
     "AaEffectiveGradePolicySnapshot",
+    "AaGradeCorrection",
 ]
