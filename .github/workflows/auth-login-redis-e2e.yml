@@ -33,6 +33,7 @@ on:
       - "scripts/e2e/auth_login_redis_click.py"
       - "deploy/README-auth-redis.md"
       - "deploy/auth-redis.production.env.example"
+      - "deploy/docker/docker-compose.mysql.yml"
       - "deploy/env/backend.systemd.env.example"
       - "deploy/start-backend-production.sh"
       - "deploy/systemd/school-lifecycle-backend.service"
@@ -69,6 +70,7 @@ on:
       - "scripts/e2e/auth_login_redis_click.py"
       - "deploy/README-auth-redis.md"
       - "deploy/auth-redis.production.env.example"
+      - "deploy/docker/docker-compose.mysql.yml"
       - "deploy/env/backend.systemd.env.example"
       - "deploy/start-backend-production.sh"
       - "deploy/systemd/school-lifecycle-backend.service"
@@ -183,6 +185,7 @@ jobs:
           systemd = Path('deploy/systemd/school-lifecycle-backend.service').read_text(encoding='utf-8')
           env = Path('deploy/env/backend.systemd.env.example').read_text(encoding='utf-8')
           dockerfile = Path('backend/Dockerfile').read_text(encoding='utf-8')
+          compose = Path('deploy/docker/docker-compose.mysql.yml').read_text(encoding='utf-8')
           readme = Path('deploy/README-auth-redis.md').read_text(encoding='utf-8')
 
           required = {
@@ -192,13 +195,25 @@ jobs:
               'local Redis explicit exception': 'ALLOW_LOCAL_REDIS_IN_PRODUCTION=true' in env,
               'Docker Redis preflight': 'python scripts/check_production_redis.py && exec uvicorn' in dockerfile,
               'Docker readiness auth': 'X-Ops-Token: ${INTERNAL_OPS_TOKEN}' in dockerfile,
+              'Compose Redis preflight': 'python scripts/check_production_redis.py && exec uvicorn' in compose,
+              'Compose production environment': 'DEPLOYMENT_MODE: "production"' in compose,
+              'Compose worker count': 'WEB_CONCURRENCY: "2"' in compose,
+              'Compose multi-process flag': 'MULTI_INSTANCE: "true"' in compose,
               'deployment documentation': '不要把上述入口改回直接裸跑 `uvicorn`' in readme,
           }
           missing = [name for name, ok in required.items() if not ok]
           if missing:
               raise SystemExit('正式部署 Redis 闸门缺失：' + ', '.join(missing))
-          print('✅ systemd、Docker 与运维文档均接入 Redis 生产闸门')
+          print('✅ systemd、Docker、Compose 与运维文档均接入 Redis 生产闸门')
           PY
+
+      - name: 验证 MySQL Compose 语法
+        run: |
+          cp deploy/env/backend.mysql.env.example deploy/env/backend.mysql.env
+          DB_PASSWORD=ci-only MYSQL_ROOT_PASSWORD=ci-only REDIS_PASSWORD=ci-only \
+            docker compose --env-file deploy/env/backend.mysql.env \
+              -f deploy/docker/docker-compose.mysql.yml config -q
+          rm -f deploy/env/backend.mysql.env
 
       - name: 初始化真实 MySQL 登录账号
         run: |
