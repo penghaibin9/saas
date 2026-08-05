@@ -104,6 +104,12 @@ jobs:
           if text.count(needle) != 1:
               raise SystemExit(f'E2E success-boundary marker mismatch: {text.count(needle)}')
           e2e.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+
+          fail_closed_test = Path('backend/tests/test_auth_captcha_redis_fail_closed.py')
+          fail_closed_test.write_text(
+              fail_closed_test.read_text(encoding='utf-8').rstrip() + '\n',
+              encoding='utf-8',
+          )
           PY
 
       - name: Install backend and browser dependencies
