@@ -19,6 +19,11 @@ const ENTRY_TYPES = new Set([
 ])
 
 const WORKBENCH_NO_PERM = new Set(['/', '/admin/help'])
+// 登录后的统一工作台不是匿名入口。它对所有教职工角色开放，但仍必须在
+// 控制面能力注册表中显式绑定到后端 _WORKBENCH_SELF 的同名权限码。
+const WORKSPACE_PATH_PERMISSIONS = new Map([
+  ['/workbench', 'workbench.home.view'],
+])
 
 function normalizeEntryType(raw, leaf, { isWorkspaceRecord }) {
   if (isWorkspaceRecord) return 'WORKSPACE'
@@ -145,7 +150,8 @@ async function main() {
     for (const workspace of group.children || []) {
       const wsKey = workspace.key
       const wsLabel = workspace.label
-      const inheritedWsPerm = workspace.permissionKey || firstLeafPermission(workspace)
+      const pathPermission = WORKSPACE_PATH_PERMISSIONS.get(workspace.path) || null
+      const inheritedWsPerm = workspace.permissionKey || pathPermission || firstLeafPermission(workspace)
 
       if (workspace.path || (workspace.children || []).length === 0) {
         const match = workspace.path ? matchRouteExists(routeIndex, workspace.path) : { exists: false, matchType: 'missing' }
@@ -162,7 +168,7 @@ async function main() {
           label: wsLabel,
           path: workspace.path || null,
           entryType: 'WORKSPACE',
-          permissionKey: workspace.permissionKey || null,
+          permissionKey: workspace.permissionKey || pathPermission || null,
           featureKey: featureForModule(manifest, techModule),
           status: workspace.status || (workspace.path ? 'implemented' : 'planned'),
           hidden: false,
