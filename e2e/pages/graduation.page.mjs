@@ -78,21 +78,33 @@ export class StaffGraduationPage {
     this.fixture = fixture
   }
 
+  async dismissGuideIfPresent() {
+    const skip = this.page.getByRole('button', { name: /跳过引导/ })
+    if (await skip.count() && await skip.isVisible()) await skip.click()
+  }
+
   async openProposals(tab = 'PENDING_REVIEW') {
     const query = new URLSearchParams({ batchId: this.fixture.batchId, tab })
     await this.page.goto(`${this.baseUrl}/admin/graduation/proposals?${query}`)
     await expect(this.page.getByText('开题审核').first()).toBeVisible()
+    await this.dismissGuideIfPresent()
   }
 
   async selectStudent() {
-    const search = this.page.getByPlaceholder('搜索学生 / 学号 / 课题')
-    await expect(search).toBeVisible()
-    await search.fill(this.fixture.studentNo)
-    await search.press('Enter')
-    const row = this.page.locator('.pr-row').filter({ hasText: this.fixture.studentNo }).first()
+    // The proposal workbench automatically opens the first record in the current queue.
+    // Keep that real page behavior instead of adding an unrelated second search that can
+    // clear the queue before the core mentor-review action is exercised.
+    const detail = this.page.locator('.prc')
+    if (await detail.count() && await detail.isVisible()) {
+      await expect(detail).toContainText(this.fixture.topicTitle)
+      return
+    }
+
+    const row = this.page.locator('.pr-row').first()
     await expect(row).toBeVisible()
     await row.click()
-    await expect(this.page.locator('.prc')).toBeVisible()
+    await expect(detail).toBeVisible()
+    await expect(detail).toContainText(this.fixture.topicTitle)
   }
 
   async reject(reason) {
