@@ -103,7 +103,7 @@ def test_cross_tenant_download_denied(client, db_mode):
 
 def test_generic_upload_cannot_forge_formal_binding(client, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import FileBinding, FileObject
+    from app.models.file import FileBinding, FileObject
 
     admin = _hdr(client, "school_admin01")
     data = _upload_data(
@@ -148,7 +148,7 @@ def test_client_attachment_id_does_not_grant_student_access(client, db_mode):
 
 def test_formal_file_uploader_cannot_bypass_object_binding(client, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import FileBinding, FileObject
+    from app.models.file import FileBinding, FileObject
 
     db = get_sessionmaker()()
     try:
