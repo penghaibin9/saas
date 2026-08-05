@@ -82,7 +82,7 @@ def test_reminder_copy_matches_real_message_delivery():
     assert "学生未绑定有效登录账号，提醒未发送" in backend
 
 
-def test_temporary_file_cleanup_is_owner_scoped_and_binding_safe():
+def test_generic_upload_is_temp_private_and_graduation_abandon_is_owner_scoped():
     service = read("backend/app/modules/graduation/services/graduation_material_temp_service.py")
     files = read("backend/app/api/v1/files.py")
     file_ops = read("backend/app/api/v1/file.py")
@@ -92,11 +92,13 @@ def test_temporary_file_cleanup_is_owner_scoped_and_binding_safe():
     assert "owner_user_id" in service and "_binding" in service
     assert "with_for_update=True" in service
     assert "附件已绑定开题或成果记录" in service
-    # 唯一普通上传入口委托 upload_contract；会话/扫描路由不得复制上传与清理逻辑。
+    # 普通上传统一创建 TEMP_PRIVATE，正式对象关系只能由业务命令在同事务内建立。
+    assert '"TEMP_PRIVATE"' in contract
+    assert 'visibility="PRIVATE"' in contract
+    assert '"bindingCreated": False' in contract
     assert "upload_contract" in files
     assert "upload_contract" not in file_ops
     assert "upload-sessions" in file_ops
-    assert "cleanup_stale_temporary_materials" in contract
     assert "abandonTemporaryGraduationMaterial" in portal
     assert "/mobile/graduation/materials/${fileId}/abandon" in janitor
 
@@ -106,5 +108,17 @@ def test_phase3_receipts_do_not_impersonate_graduation_materials():
     contract = read("backend/app/api/v1/file_contract.py")
     assert 'biz_type="DATA_EXCHANGE_RECEIPT"' in jobs
     assert 'security_level="HIGHLY_SENSITIVE"' in jobs
-    assert 'normalized == "GRADUATION_MATERIAL"' in contract
-    assert "temporary" in contract
+    # 客户端声明只进入 requestedBizType 审计；公共上传实际仍是 TEMP_PRIVATE。
+    assert "requested_biz_type" in contract
+    assert '"TEMP_PRIVATE"' in contract
+    assert '"bindingCreated": False' in contract
+
+
+def test_system_snapshot_staging_has_narrow_bind_only_resolver():
+    resolver = read("backend/app/modules/graduation/materials/snapshot_staging_resolver.py")
+    package_init = read("backend/app/modules/graduation/materials/__init__.py")
+    assert '@register_file_resolver("GRADUATION_SNAPSHOT_STAGING")' in resolver
+    assert 'action != "bind"' in resolver
+    assert 'upload_source' in resolver and '"SYSTEM"' in resolver
+    assert "assert_student_access" in resolver
+    assert "snapshot_staging_resolver" in package_init
