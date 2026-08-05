@@ -11,6 +11,8 @@ on:
       - "backend/app/core/token_store.py"
       - "backend/scripts/check_production_redis.py"
       - "backend/scripts/_seed_login_accounts_only.py"
+      - "backend/tests/test_auth_challenge_service.py"
+      - "backend/tests/test_auth_captcha_redis_fail_closed.py"
       - "frontend/src/views/LoginView.vue"
       - "frontend/src/components/auth/LoginCaptcha.vue"
       - "frontend/src/services/http/client.js"
@@ -28,6 +30,8 @@ on:
       - "backend/app/core/token_store.py"
       - "backend/scripts/check_production_redis.py"
       - "backend/scripts/_seed_login_accounts_only.py"
+      - "backend/tests/test_auth_challenge_service.py"
+      - "backend/tests/test_auth_captcha_redis_fail_closed.py"
       - "frontend/src/views/LoginView.vue"
       - "frontend/src/components/auth/LoginCaptcha.vue"
       - "frontend/src/services/http/client.js"
@@ -115,6 +119,20 @@ jobs:
           pip install -r backend/requirements.txt
           pip install playwright
           python -m playwright install --with-deps chromium
+
+      - name: 认证与 Redis 运行时专项测试
+        run: |
+          cd backend
+          pytest tests/test_auth_challenge_service.py tests/test_auth_captcha_redis_fail_closed.py -q -p no:warnings
+
+      - name: 验证生产 Redis 缺失时拒绝启动
+        run: |
+          if env -u REDIS_URL APP_ENV=production DEPLOYMENT_MODE=production \
+            python backend/scripts/check_production_redis.py; then
+            echo "❌ 未配置 REDIS_URL 时生产闸门错误放行"
+            exit 1
+          fi
+          echo "✅ 未配置 REDIS_URL 时已按预期拒绝"
 
       - name: 验证生产 Redis 启动闸门
         env:
