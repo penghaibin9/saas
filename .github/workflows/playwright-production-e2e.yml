@@ -21,7 +21,7 @@ jobs:
   browser-e2e:
     name: real browser / real API / isolated MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     services:
       mysql:
@@ -36,6 +36,15 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
 
     env:
       CI: 'true'
@@ -49,6 +58,10 @@ jobs:
       DB_USER: root
       DB_PASSWORD: e2e_root
       DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: playwright-interaction-e2e
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
       JWT_SECRET: playwright-e2e-only-not-production
       JWT_SECRET_KEY: playwright-e2e-only-not-production
       MOCK_LOGIN_ENABLED: 'false'
@@ -80,6 +93,10 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: Enforce E2E artifact safety contract
+        working-directory: backend
+        run: pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+
       - name: Migrate isolated database
         working-directory: backend
         run: alembic upgrade head
@@ -101,7 +118,7 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
-      - name: Import and normalize dedicated graduation accounts
+      - name: Import and normalize dedicated interaction accounts
         working-directory: backend
         run: |
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
@@ -159,15 +176,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload screenshots, video, traces and API logs
+      - name: Upload screenshots, video, traces and redacted API logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-failure-evidence-${{ github.run_id }}
-          path: |
-            e2e/test-results/
-            backend/tmp/*.json
-            backend/tmp/**/*.json
+          name: playwright-evidence-${{ github.run_id }}
+          path: e2e/test-results/
           if-no-files-found: warn
           retention-days: 14
 
