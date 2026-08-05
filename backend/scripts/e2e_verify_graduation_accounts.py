@@ -1,13 +1,16 @@
-"""Verify E2E accounts from saved credential receipt (no re-import)."""
+"""Verify dedicated interaction-E2E accounts without reading credential files."""
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-# allow running as script
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.e2e_bootstrap_graduation_accounts import CRED_PATH, verify_logins  # noqa: E402
+from scripts.e2e_bootstrap_graduation_accounts import ADMIN, TENANT, _req  # noqa: E402
+from scripts.e2e_reset_graduation_passwords import (  # noqa: E402
+    E2E_LOGINS,
+    STABLE_PWD,
+)
 
 
 def _login_headers(index: int) -> dict[str, str]:
@@ -15,30 +18,52 @@ def _login_headers(index: int) -> dict[str, str]:
 
 
 def main() -> int:
-    if not CRED_PATH.exists():
-        print("missing credentials file", CRED_PATH)
-        return 1
-    receipt = json.loads(CRED_PATH.read_text(encoding="utf-8"))
-    # If already rewritten to passwords map, verify every identity through the real login endpoint.
-    if "passwords" in receipt and "credentialReceipt" not in receipt:
-        results = []
-        from scripts.e2e_bootstrap_graduation_accounts import _req, TENANT, ADMIN
-        pwd_map = dict(receipt["passwords"])
-        pwd_map.setdefault("admin2", ADMIN[1])
-        for index, (ln, pwd) in enumerate(pwd_map.items()):
-            r = _req("POST", "/auth/login", headers=_login_headers(index), body={
-                "loginName": ln, "password": pwd, "tenantCode": TENANT,
-            })
-            ok = r.get("code") == 0
-            role = ((r.get("data") or {}).get("currentRole") or {}).get("roleCode") if ok else None
-            results.append({"loginName": ln, "ok": ok, "role": role, "message": None if ok else r.get("message")})
-        print(json.dumps(results, ensure_ascii=False, indent=2))
-        return 0 if all(x["ok"] for x in results if x["loginName"] != "e2e_sysadmin") else 1
-    results = verify_logins(receipt)
+    identities = [(ADMIN[0], ADMIN[1]), *[(login_name, STABLE_PWD) for login_name in E2E_LOGINS]]
+    results: list[dict] = []
+    for index, (login_name, password) in enumerate(identities):
+        response = _req(
+            "POST",
+            "/auth/login",
+            headers=_login_headers(index),
+            body={
+                "loginName": login_name,
+                "password": password,
+                "tenantCode": TENANT,
+            },
+        )
+        ok = response.get("code") == 0
+        role = (
+            ((response.get("data") or {}).get("currentRole") or {}).get("roleCode")
+            if ok
+            else None
+        )
+        contexts = (
+            (response.get("data") or {}).get("contexts")
+            or (response.get("data") or {}).get("roleContexts")
+            or []
+        )
+        role_codes = sorted({
+            str(item.get("roleCode") or "")
+            for item in contexts
+            if isinstance(item, dict) and item.get("roleCode")
+        })
+        results.append({
+            "loginName": login_name,
+            "ok": ok,
+            "role": role,
+            "roleCodes": role_codes,
+            "message": None if ok else response.get("message"),
+        })
+
+    advisor = next(item for item in results if item["loginName"] == "e2e_advisor_a")
+    if advisor["ok"] and "INTERN_MENTOR" not in advisor["roleCodes"]:
+        advisor["ok"] = False
+        advisor["message"] = "missing INTERN_MENTOR role context"
+
     print(json.dumps(results, ensure_ascii=False, indent=2))
-    ok = sum(1 for x in results if x.get("ok"))
-    print(f"ok={ok}/{len(results)}")
-    return 0 if ok >= 10 else 1
+    ok_count = sum(1 for item in results if item.get("ok"))
+    print(f"ok={ok_count}/{len(results)}")
+    return 0 if ok_count == len(results) else 1
 
 
 if __name__ == "__main__":
