@@ -43,3 +43,8 @@ academic_affairs_scheduling_service.review_availability = (
 from . import academic_affairs_object_scope_guard
 
 academic_affairs_object_scope_guard.install()
+
+# 包 4：毕业资格跨域事实必须命中正式完成状态、成绩和归档证据。
+from . import academic_affairs_graduation_truth_guard
+
+academic_affairs_graduation_truth_guard.install()
