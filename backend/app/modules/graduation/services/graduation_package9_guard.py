@@ -232,7 +232,15 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
     manifest_hash = str(manifest.get("manifestHash") or "")
     if len(manifest_hash) != 64:
         raise AppException("DATA_CONFLICT", "归档来源清单 hash 生成失败")
+
+    # after_flush_postexec 内不能递归 flush；用 Core DML 立即持久化，确保
+    # 调用方 db.flush() 返回时主记录 hash 与版本行都已经在同一事务可见。
     archive.manifest_hash = manifest_hash
+    session.execute(
+        GraduationArchiveRecord.__table__.update()
+        .where(GraduationArchiveRecord.id == int(archive.id))
+        .values(manifest_hash=manifest_hash)
+    )
 
     current_rows = list(session.scalars(select(GraduationArchiveVersion).where(
         GraduationArchiveVersion.tenant_id == int(archive.tenant_id),
@@ -244,13 +252,18 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
         raise AppException("DATA_CONFLICT", "同一毕设归档存在多个当前版本")
     previous = current_rows[0] if current_rows else None
     if previous:
-        previous.current_flag = False
-        if not previous.invalidated_reason:
-            previous.invalidated_reason = "SUPERSEDED_BY_REFILING"
+        session.execute(
+            GraduationArchiveVersion.__table__.update()
+            .where(GraduationArchiveVersion.id == int(previous.id))
+            .values(
+                current_flag=False,
+                invalidated_reason=previous.invalidated_reason or "SUPERSEDED_BY_REFILING",
+            )
+        )
 
     next_version = int(previous.archive_version if previous else 0) + 1
     filed_at = archive.filed_at or datetime.now(timezone.utc)
-    session.add(GraduationArchiveVersion(
+    session.execute(GraduationArchiveVersion.__table__.insert().values(
         tenant_id=int(archive.tenant_id),
         archive_record_id=int(archive.id),
         gd_student_id=int(archive.gd_student_id),
