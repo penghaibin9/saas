@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
+from app.models.base import Base, PKMixin, TenantMixin
 
 
-class DisciplineDecisionVersion(PKMixin, TenantMixin, AuditTimeMixin, Base):
+class DisciplineDecisionVersion(PKMixin, TenantMixin, Base):
     """处分决定追加式版本；数据库触发器禁止 UPDATE/DELETE。"""
 
     __tablename__ = "t_affairs_discipline_decision_version"
@@ -29,9 +29,10 @@ class DisciplineDecisionVersion(PKMixin, TenantMixin, AuditTimeMixin, Base):
     source_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     decided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     decided_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
-class DisciplineSubflowLock(PKMixin, TenantMixin, AuditTimeMixin, Base):
+class DisciplineSubflowLock(PKMixin, TenantMixin, Base):
     """同一处分主案只能存在一个活动申诉或解除流程。"""
 
     __tablename__ = "t_affairs_discipline_subflow_lock"
@@ -44,3 +45,4 @@ class DisciplineSubflowLock(PKMixin, TenantMixin, AuditTimeMixin, Base):
     case_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     flow_type: Mapped[str] = mapped_column(String(20), nullable=False)
     flow_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
