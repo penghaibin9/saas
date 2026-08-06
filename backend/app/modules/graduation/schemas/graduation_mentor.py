@@ -1,9 +1,9 @@
-"""毕业设计中心 · 导师管理 / 导师分配请求 DTO（独立文件，与毕业设计域其它 schema 隔离）。"""
+"""毕业设计中心 · 导师管理 / 导师分配请求 DTO。"""
 from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class MentorCreate(BaseModel):
@@ -42,15 +42,51 @@ class MentorDisableRequest(BaseModel):
 
 
 class MentorAssignRequest(BaseModel):
+    """导师分配只接受校内导师或外聘导师的稳定主体 ID。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     gdStudentId: str
-    mentorId: str
+    mentorId: Optional[str] = None
+    externalAdvisorId: Optional[str] = None
     reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_stable_subject(self):
+        mentor_id = str(self.mentorId or "").strip()
+        external_id = str(self.externalAdvisorId or "").strip()
+        if bool(mentor_id) == bool(external_id):
+            raise ValueError("mentorId 与 externalAdvisorId 必须且只能提供一个")
+        self.mentorId = mentor_id or external_id
+        self.externalAdvisorId = external_id or None
+        return self
 
 
 class MentorChangeRequest(BaseModel):
+    """调导师同样只认稳定主体 ID；姓名只作为展示快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     gdStudentId: str
-    newMentorId: str
+    newMentorId: Optional[str] = None
+    mentorId: Optional[str] = None
+    externalAdvisorId: Optional[str] = None
     reason: str = Field(..., min_length=5, description="调导师原因，至少 5 字")
+
+    @model_validator(mode="after")
+    def validate_stable_subject(self):
+        values = [
+            str(self.newMentorId or "").strip(),
+            str(self.mentorId or "").strip(),
+            str(self.externalAdvisorId or "").strip(),
+        ]
+        supplied = [value for value in values if value]
+        if len(supplied) != 1:
+            raise ValueError("newMentorId、mentorId、externalAdvisorId 必须且只能提供一个")
+        self.newMentorId = supplied[0]
+        self.mentorId = str(self.mentorId or "").strip() or None
+        self.externalAdvisorId = str(self.externalAdvisorId or "").strip() or None
+        return self
 
 
 class MentorAssignCancelRequest(BaseModel):
