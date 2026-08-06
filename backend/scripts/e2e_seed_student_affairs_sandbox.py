@@ -1,10 +1,10 @@
 """Seed only student-affairs prerequisites for the Playwright leave lifecycle.
 
-The script gives the dedicated E2E advisor the real COUNSELOR role and binds that
-counselor to the E2E student's administrative class, only inside the disposable
-sandbox-school E2E database. It deliberately does not create CsLeave, workflow
-tasks, cancel records or audit rows: every business transition must be produced
-by visible browser interactions.
+The script gives the dedicated E2E advisor the real COUNSELOR role, binds that
+counselor to the E2E student's administrative class, and installs the matching
+CLASS data-scope row only inside the disposable sandbox-school E2E database.
+It deliberately does not create CsLeave, workflow tasks, cancel records or audit
+rows: every business transition must be produced by visible browser interactions.
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from app.models import (
     Role,
     SchoolClass,
     StudentProfile,
+    TeacherStudentScope,
     Tenant,
     User,
     UserRole,
@@ -142,6 +143,50 @@ def ensure_counselor_role(db) -> User:
     return counselor
 
 
+def ensure_class_scope(db, school_class: SchoolClass, counselor: User) -> TeacherStudentScope:
+    """Install the security-context row consumed by build_affairs_context.
+
+    AffairsCounselorAssignment selects the workflow assignee, while
+    TeacherStudentScope controls what a COUNSELOR may list or open. Both must
+    describe the same class or the system correctly fails closed with an empty queue.
+    """
+    rows = db.scalars(
+        select(TeacherStudentScope).where(
+            TeacherStudentScope.tenant_id == TENANT_ID,
+            TeacherStudentScope.teacher_key == counselor.login_name,
+            TeacherStudentScope.role_code == COUNSELOR_ROLE,
+            TeacherStudentScope.is_deleted.is_(False),
+        )
+    ).all()
+    current = None
+    for row in rows:
+        if row.scope_type == "CLASS" and row.ref_value == school_class.class_name:
+            current = row
+            continue
+        row.status = "INACTIVE"
+        row.version = int(row.version or 0) + 1
+
+    if current is None:
+        current = TeacherStudentScope(
+            tenant_id=TENANT_ID,
+            teacher_key=counselor.login_name,
+            teacher_name=counselor.real_name,
+            role_code=COUNSELOR_ROLE,
+            scope_type="CLASS",
+            ref_value=school_class.class_name,
+            status="ACTIVE",
+        )
+        db.add(current)
+        db.flush()
+    else:
+        current.teacher_name = counselor.real_name
+        current.scope_type = "CLASS"
+        current.ref_value = school_class.class_name
+        current.status = "ACTIVE"
+        current.is_deleted = False
+    return current
+
+
 def ensure_assignment(
     db,
     student: StudentProfile,
@@ -202,6 +247,7 @@ def main() -> int:
         require_tenant(db)
         student, school_class = require_student_and_class(db)
         counselor = ensure_counselor_role(db)
+        scope = ensure_class_scope(db, school_class, counselor)
         assignment = ensure_assignment(db, student, school_class, counselor, now)
         db.commit()
 
@@ -215,6 +261,7 @@ def main() -> int:
             "counselorUserId": str(counselor.id),
             "counselorLogin": counselor.login_name,
             "counselorName": counselor.real_name,
+            "scopeId": str(scope.id),
             "assignmentId": str(assignment.id),
         }
         target = fixture_path()
