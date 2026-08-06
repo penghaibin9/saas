@@ -116,7 +116,7 @@ def test_partial_id_panel_name_only_chair_cannot_access_stable_id_seat(graduatio
 
 
 def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(graduation_client, auth_headers, db_mode):
-    """部分席位有 ID 时：确认使用稳定导师 ID 评分行覆盖席位。"""
+    """部分席位有 ID 时：已发布答辩组可由稳定导师 ID 评分行覆盖席位并确认。"""
     h = auth_headers
     bid = _batch(graduation_client, h)
     chair_mid = _mentor(graduation_client, h, _uniq("TC"), "姓名主席")
@@ -133,6 +133,9 @@ def test_confirm_accepts_stable_id_score_rows_on_partial_id_panel(graduation_cli
         stu = db.get(GraduationStudent, int(gsid))
         stu.defense_group_id = int(grp["id"])
         stu.stage = "DEFENSE"
+        defense_group = db.get(GraduationDefenseGroup, int(grp["id"]))
+        assert defense_group is not None
+        defense_group.published = True
         db.add(GraduationDefenseScore(
             tenant_id=MAIN, gd_student_id=int(gsid), defense_group_id=int(grp["id"]),
             judge_name="姓名主席", score=88, round_no=1, status="SCORED",
