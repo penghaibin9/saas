@@ -48,6 +48,9 @@ def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
     assert "E2E_ALLOW_DESTRUCTIVE_TESTS=true is required" in seed
     assert "DATABASE_URL must contain e2e or test" in seed
     assert "internship E2E seed only accepts a local database" in seed
+    assert "require_tenant(db)" in seed
+    assert "refusing internship E2E seed" in seed
+    assert "tenant.tenant_code != TENANT_CODE" in seed
 
     # Leave state and its audit trail must be produced by visible browser interactions.
     assert "InternshipLeave(" not in seed
