@@ -15,6 +15,7 @@ from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
 from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
 from app.api.v1.affairs_four_end import router as affairs_four_end_router
+from app.api.v1.affairs_funding_authority_api import router as affairs_funding_authority_router
 from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_router
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
@@ -36,6 +37,7 @@ from app.services.affairs_dorm_transfer_scope_guard import install as install_do
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
+from app.services.affairs_funding_authority_service import install as install_funding_authority
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
@@ -71,6 +73,7 @@ for supplemental_router in (
     affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
+    affairs_funding_authority_router,
     affairs_student_dorm_router,
     affairs_activity_mobile_router,
     affairs_appeal_mobile_router,
@@ -107,4 +110,5 @@ install_dorm_node_guard()
 install_dorm_transfer_scope_guard()
 install_student_contract()
 install_student_contract_security_guard()
+install_funding_authority()
 install_affairs_four_end_terminal_guard(api_router)
