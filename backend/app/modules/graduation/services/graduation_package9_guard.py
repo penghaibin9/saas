@@ -252,14 +252,19 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
         raise AppException("DATA_CONFLICT", "同一毕设归档存在多个当前版本")
     previous = current_rows[0] if current_rows else None
     if previous:
+        invalidated_reason = previous.invalidated_reason or "SUPERSEDED_BY_REFILING"
         session.execute(
             GraduationArchiveVersion.__table__.update()
             .where(GraduationArchiveVersion.id == int(previous.id))
             .values(
                 current_flag=False,
-                invalidated_reason=previous.invalidated_reason or "SUPERSEDED_BY_REFILING",
+                invalidated_reason=invalidated_reason,
             )
         )
+        # Core DML 已更新数据库；同步 identity map，避免同一事务后续查询
+        # 从会话缓存读取到过期的 current_flag=True。
+        previous.current_flag = False
+        previous.invalidated_reason = invalidated_reason
 
     next_version = int(previous.archive_version if previous else 0) + 1
     filed_at = archive.filed_at or datetime.now(timezone.utc)
