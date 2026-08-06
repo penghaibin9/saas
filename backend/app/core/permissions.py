@@ -343,7 +343,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,
-        "internship.guide.*", "internship.dashboard.view",
+        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予批次配置或写操作。
+        "internship.guide.*", "internship.dashboard.view", "internship.batch.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
         "internship.report.view", "internship.report.review", "internship.report.export",
