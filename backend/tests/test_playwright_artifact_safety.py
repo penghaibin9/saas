@@ -31,7 +31,6 @@ def test_ci_account_chain_never_persists_plaintext_password_maps():
     )
     for marker in forbidden:
         assert marker not in combined
-    assert '"COUNSELOR"' in combined
 
 
 def test_workflow_keeps_mock_login_disabled_and_isolated_database_guarded():
@@ -71,6 +70,8 @@ def test_student_affairs_seed_only_binds_counselor_in_local_e2e_database():
     assert "student-affairs E2E seed only accepts a local database" in seed
     assert "require_tenant(db)" in seed
     assert "tenant.tenant_code != TENANT_CODE" in seed
+    assert 'COUNSELOR_ROLE = "COUNSELOR"' in seed
+    assert "UserRole(" in seed
     assert "AffairsCounselorAssignment(" in seed
 
     # Every leave state, task, cancel record and audit row must be created by browser actions.
