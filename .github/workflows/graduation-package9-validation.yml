@@ -87,15 +87,14 @@ jobs:
           HEAD_COUNT=$(grep -c '(head)' /tmp/package9-heads.txt || true)
           test "$HEAD_COUNT" -eq 1
           alembic upgrade head
-          alembic current
+          alembic current | tee /tmp/package9-current.txt
+          grep -q '(head)' /tmp/package9-current.txt
           python - <<'PY'
           import pymysql
           conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", database="student_lifecycle_migration")
           with conn.cursor() as cur:
               cur.execute("SHOW TABLES LIKE 't_gd_archive_version'")
               assert cur.fetchone(), "缺少 t_gd_archive_version"
-              cur.execute("SELECT version_num FROM alembic_version")
-              assert cur.fetchone()[0] == "20260806_gd_pkg9_archive_ver"
           conn.close()
           PY
 
