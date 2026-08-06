@@ -72,6 +72,8 @@ def test_student_affairs_seed_only_binds_counselor_in_local_e2e_database():
     assert "tenant.tenant_code != TENANT_CODE" in seed
     assert 'COUNSELOR_ROLE = "COUNSELOR"' in seed
     assert "UserRole(" in seed
+    assert "TeacherStudentScope(" in seed
+    assert 'scope_type="CLASS"' in seed
     assert "AffairsCounselorAssignment(" in seed
 
     # Every leave state, task, cancel record and audit row must be created by browser actions.
