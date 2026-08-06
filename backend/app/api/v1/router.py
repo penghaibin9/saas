@@ -15,7 +15,6 @@ from app.api.v1.affairs_activity_mobile import router as affairs_activity_mobile
 from app.api.v1.affairs_appeal_mobile import router as affairs_appeal_mobile_router
 from app.api.v1.affairs_appeal_repair_api import router as affairs_appeal_repair_router
 from app.api.v1.affairs_four_end import router as affairs_four_end_router
-from app.api.v1.affairs_leave_portal_apply import router as affairs_leave_portal_apply_router
 from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_router
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
@@ -77,7 +76,6 @@ for supplemental_router in (
     affairs_appeal_mobile_router,
     affairs_appeal_repair_router,
     affairs_student_returned_router,
-    affairs_leave_portal_apply_router,
     affairs_leave_self_router,
     mobile_performance_router,
 ):
