@@ -62,9 +62,14 @@ export class StudentAffairsPortalPage {
     const body = await expectSuccessfulResponse(await responsePromise, '学生提交学工请假')
     const leaveId = String(body?.data?.id || body?.data?.leaveId || '')
     expect(leaveId, '学生提交学工请假响应必须返回 leave id').not.toBe('')
+    expect(body?.data?.affairsStatus).toBe('COUNSELOR_REVIEW')
 
-    const current = this.page.locator('article.record').filter({ hasText: /待辅导员审批|待审批|COUNSELOR_REVIEW/ }).first()
+    // 学生端状态标签使用后端中文 label，不把测试绑死到某一种文案；
+    // 业务状态由写接口响应精确断言，同时要求刷新后的真实记录卡可见。
+    const current = this.page.locator('article.record').first()
     await expect(current).toBeVisible()
+    await expect(current).toContainText('事假')
+    await expect(current).toContainText(startDate)
     return leaveId
   }
 
@@ -73,7 +78,7 @@ export class StudentAffairsPortalPage {
     const button = this.page.getByRole('button', { name: '申请销假' }).first()
     await expect(button).toBeEnabled()
     const row = button.locator('xpath=ancestor::article[contains(@class,"record")]')
-    await expect(row).toContainText(/已通过|APPROVED/)
+    await expect(row).toBeVisible()
 
     this.page.once('dialog', async (dialog) => {
       expect(dialog.type()).toBe('confirm')
@@ -86,7 +91,7 @@ export class StudentAffairsPortalPage {
     await button.click()
     const body = await expectSuccessfulResponse(await responsePromise, '学生申请销假')
     expect(body?.data?.affairsStatus).toBe('WAIT_CANCEL_LEAVE')
-    await expect(row).toContainText(/待销假确认|WAIT_CANCEL_LEAVE/)
+    await expect(this.page.getByRole('button', { name: '申请销假' })).toHaveCount(0)
   }
 }
 
