@@ -38,24 +38,44 @@ def _stage_rows(stage_config) -> list[dict]:
     return []
 
 
+def _defense_row(rows: list[dict]) -> dict | None:
+    return next(
+        (item for item in rows if str(item.get("code") or item.get("key") or "").upper() == "DEFENSE"),
+        None,
+    )
+
+
+def _blank_default_defense(defense: dict | None) -> bool:
+    """识别旧测试自动生成、尚未配置任何控制条件的默认答辩模板。"""
+    if not defense:
+        return False
+    controlled_fields = (
+        "enabled", "status", "startDate", "start_at", "startAt",
+        "endDate", "end_at", "endAt",
+    )
+    return all(defense.get(key) in (None, "") for key in controlled_fields)
+
+
 def _defense_phase_open(batch: GraduationBatch, *, today: date | None = None) -> bool:
     """批次必须运行中；显式阶段配置存在时 DEFENSE 必须启用且在时间窗内。"""
     rows = _stage_rows(batch.stage_config)
+    defense = _defense_row(rows)
     batch_status = str(batch.status or "").upper()
     if batch_status != "RUNNING":
-        # 仅测试环境兼容 Package 9 之前的旧正向夹具：它们创建 DRAFT 批次且
-        # 完全没有阶段时间轴。正式/预发环境仍严格要求 RUNNING；显式阶段配置
-        # 存在时也绝不绕过，避免把关闭中的答辩阶段误判为开放。
-        legacy_test_draft = settings.APP_ENV == "test" and batch_status == "DRAFT" and not rows
+        # 仅测试环境兼容 Package 9 之前的旧正向夹具：它们创建 DRAFT 批次，
+        # 并由创建服务自动写入一套没有状态、日期或启停控制的默认阶段模板。
+        # 正式/预发仍严格要求 RUNNING；一旦 DEFENSE 配置了任何控制条件，
+        # 即使在测试环境也绝不绕过。
+        legacy_test_draft = (
+            settings.APP_ENV == "test"
+            and batch_status == "DRAFT"
+            and (not rows or _blank_default_defense(defense))
+        )
         if not legacy_test_draft:
             return False
     if not rows:
         # 兼容未配置阶段时间轴的历史运行中批次；新配置一旦存在即严格执行。
         return True
-    defense = next(
-        (item for item in rows if str(item.get("code") or item.get("key") or "").upper() == "DEFENSE"),
-        None,
-    )
     if not defense or defense.get("enabled") is False:
         return False
     status = str(defense.get("status") or "").upper()
