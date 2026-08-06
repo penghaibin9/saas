@@ -395,9 +395,21 @@ def list_grade_policies(user) -> list[dict]:
         return [_policy_dto(row) for row in rows]
 
 
+def active_scope_key(term_id) -> str:
+    """活动范围键：同一生效学期（或租户基础范围）同时只能有一条 ACTIVE 策略。"""
+    return str(int(term_id)) if term_id not in (None, "") else "BASE"
+
+
 def activate_grade_policy(user, payload) -> dict:
-    """新增一个按学期生效的策略版本；历史成绩继续使用发布时快照。"""
+    """发布一个策略版本：锁定该范围现有 ACTIVE → 置 SUPERSEDED → 落新 ACTIVE，一次事务。
+
+    并发保护有两道：范围内既有 ACTIVE 行的 ``FOR UPDATE`` 让后到者排队；范围内本来就没有
+    ACTIVE 行时（无行可锁）由 ``uk_aa_effective_grade_policy_scope`` 唯一索引兜底，
+    第二个请求插入即撞键，转成 409 而不是产生两条并存的 ACTIVE 策略。
+    """
     from datetime import datetime
+
+    from sqlalchemy.exc import IntegrityError
 
     from app.models import AaTerm, AffairsAuditTrail
     from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
@@ -423,16 +435,18 @@ def activate_grade_policy(user, payload) -> dict:
             AaEffectiveGradePolicy.status == "ACTIVE",
             AaEffectiveGradePolicy.is_deleted.is_(False),
         ).with_for_update().all()
-        next_version = max([int(row.policy_version or 1) for row in same] + [0]) + 1
-        for row in same:
-            row.status = "SUPERSEDED"
-        code = str(payload.get("policyCode") or f"{strategy}_T{term_id or 'BASE'}_V{next_version}").strip().upper()
-        exists = db.query(AaEffectiveGradePolicy.id).filter(
+        code = str(payload.get("policyCode") or f"{strategy}_T{term_id or 'BASE'}").strip().upper()
+        # 版本号沿同一 policy_code 的版本链递增（含已 SUPERSEDED 的历史版本），
+        # 这样 V1 被替代后新版本是 V2，不会回到 V1 撞版本身份唯一键。
+        chain = db.query(AaEffectiveGradePolicy.policy_version).filter(
             AaEffectiveGradePolicy.tenant_id == _tid(),
             AaEffectiveGradePolicy.policy_code == code,
-        ).first()
-        if exists:
-            raise AppException("APPROVAL_VERSION_CONFLICT", "策略编码已存在", http_status=409)
+        ).all()
+        next_version = max([int(value) for (value,) in chain] + [0]) + 1
+        for row in same:
+            row.status = "SUPERSEDED"
+            row.active_scope_key = None  # 让出活动范围，新版本才能占位
+        db.flush()
         row = AaEffectiveGradePolicy(
             tenant_id=_tid(),
             policy_code=code,
@@ -443,11 +457,21 @@ def activate_grade_policy(user, payload) -> dict:
             retake_strategy=str(payload.get("retakeStrategy") or "REPLACE_IF_PASSED").upper(),
             recognition_priority=int(payload.get("recognitionPriority") or 75),
             effective_from_term_id=term_id,
+            active_scope_key=active_scope_key(term_id),
             status="ACTIVE",
             activated_at=datetime.utcnow(),
         )
         db.add(row)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "该生效范围已有并发发布的有效成绩策略，请刷新后重试",
+                details={"policyCode": code, "effectiveFromTermId": str(term_id or "")},
+                http_status=409,
+            ) from exc
         ctx = get_current_user_ctx() or user or {}
         db.add(AffairsAuditTrail(
             tenant_id=_tid(),

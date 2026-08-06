@@ -12,16 +12,28 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
 class AaEffectiveGradePolicy(PKMixin, TenantMixin, CommonMixin, Base):
-    """租户级、按生效学期版本化的有效成绩策略。"""
+    """租户级、按生效学期版本化的有效成绩策略。
+
+    两条数据库级合同，缺一不可：
+    - 版本身份 ``UNIQUE(tenant_id, policy_code, policy_version)``：同一策略代码必须能发布
+      V1/V2/V3 版本链，历史成绩继续引用它发布时的那个版本；
+    - 活动范围 ``UNIQUE(tenant_id, active_scope_key)``：``active_scope_key`` 只在 ACTIVE 行
+      非空（值为生效学期，无学期即 ``BASE``），SUPERSEDED 行置 NULL。MySQL 唯一索引允许
+      多行 NULL，于是"同一生效范围同时只能有一条 ACTIVE"由数据库兜底，而不是靠应用先查后写。
+    """
 
     __tablename__ = "t_aa_effective_grade_policy"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "policy_code", name="uk_aa_effective_grade_policy_code"),
+        UniqueConstraint("tenant_id", "policy_code", "policy_version",
+                         name="uk_aa_effective_grade_policy_ver"),
+        UniqueConstraint("tenant_id", "active_scope_key", name="uk_aa_effective_grade_policy_scope"),
         Index("ix_aa_effective_grade_policy_active", "tenant_id", "status", "effective_from_term_id"),
     )
 
     policy_code: Mapped[str] = mapped_column(String(80), nullable=False)
     policy_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    active_scope_key: Mapped[str | None] = mapped_column(
+        String(40), comment="ACTIVE 行的生效范围键（学期ID 或 BASE）；非 ACTIVE 行为 NULL")
     attempt_strategy: Mapped[str] = mapped_column(String(40), nullable=False)
     makeup_strategy: Mapped[str] = mapped_column(String(40), nullable=False, default="CAP_AND_OVERRIDE")
     makeup_cap: Mapped[int | None] = mapped_column(Integer)
@@ -30,6 +42,29 @@ class AaEffectiveGradePolicy(PKMixin, TenantMixin, CommonMixin, Base):
     effective_from_term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="DRAFT/ACTIVE/SUPERSEDED")
     activated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaEffectiveGradePolicyBypass(PKMixin, TenantMixin, CommonMixin, Base):
+    """历史导入绕过"必须有 ACTIVE 策略"合同时的显式欠账登记。
+
+    正式业务写入无策略一律 409；只有迁移/历史导入可以在 ``legacy_import_context`` 里写入，
+    并且必须留下来源、操作人、批次和欠账理由，让上线门禁能查出"哪些正式成绩没有冻结策略"。
+    静默放行是不允许的——那正是 NEW-P1-04 的根因。
+    """
+
+    __tablename__ = "t_aa_effective_grade_policy_bypass"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_no", name="uk_aa_grade_policy_bypass_batch"),
+        Index("ix_aa_grade_policy_bypass_tenant", "tenant_id", "source"),
+    )
+
+    source: Mapped[str] = mapped_column(String(50), nullable=False, comment="MIGRATION/LEGACY_IMPORT/SANDBOX")
+    operator: Mapped[str] = mapped_column(String(100), nullable=False)
+    batch_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    debt_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    grade_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class AaGradeCorrection(PKMixin, TenantMixin, CommonMixin, Base):

@@ -206,23 +206,27 @@ def _validate_task_course(db, body):
 
 
 def create_grade_task(body, user) -> dict:
-    """创建成绩任务并绑定稳定课程版本；保留原任务唯一性、权限和比例校验。"""
+    """创建成绩任务并绑定稳定课程版本；任务行、课程身份、待办和审计一次事务提交。
+
+    包 2（NEW-P1-01）：此前任务先独立 commit、再开第二个会话回写 course_id，第二步失败就留下
+    一条没有课程身份的成绩任务；教学任务唯一约束又不允许重建，发布时也因缺 courseId 被拦，
+    这门课的成绩从此进退两难。现在整条链共用一个会话。
+    """
     with _core.session() as db:
         course = _validate_task_course(db, body)
         course_meta = course_snapshot(course)
 
-    proxy = body
-    if not _body_value(body, "teachingTaskId"):
-        proxy = _body_proxy(
-            body,
-            courseId=course_meta["courseId"],
-            courseName=course_meta["courseName"],
-            credit=course_meta["credit"],
-        )
-    result = _core.create_grade_task(proxy, user)
+        proxy = body
+        if not _body_value(body, "teachingTaskId"):
+            proxy = _body_proxy(
+                body,
+                courseId=course_meta["courseId"],
+                courseName=course_meta["courseName"],
+                credit=course_meta["credit"],
+            )
+        result = _core.create_grade_task_in_session(db, proxy, user)
 
-    with _core.session() as db:
-        task = _load_task(db, int(result["gradeTaskId"]), lock=True)
+        task = _load_task(db, int(result["gradeTaskId"]))
         task.course_id = int(course_meta["courseId"])
         if not str(task.course_name or "").strip():
             task.course_name = course_meta["courseName"]

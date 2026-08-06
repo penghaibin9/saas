@@ -22,6 +22,7 @@ from app.models.academic_affairs_r11 import (
 )
 from app.models.academic_affairs_effective_grade import (
     AaEffectiveGradePolicy,
+    AaEffectiveGradePolicyBypass,
     AaEffectiveGradePolicySnapshot,
     AaGradeCorrection,
 )
@@ -34,6 +35,8 @@ install_academic_grade_extensions()
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_compat as _grade_policy_compat  # noqa: E402,F401
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_current_term as _grade_policy_current_term  # noqa: E402,F401
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_active_only as _grade_active_only  # noqa: E402,F401
+# 包 2：无 ACTIVE 策略的正式成绩写入必须 409；历史导入只能经显式豁免上下文并登记欠账。
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_failclosed as _grade_policy_failclosed  # noqa: E402,F401
 
 __all__ = [
     "AaTeachingClass",
@@ -47,6 +50,7 @@ __all__ = [
     "AaSemesterPilot",
     "AaSemesterPilotCheckpoint",
     "AaEffectiveGradePolicy",
+    "AaEffectiveGradePolicyBypass",
     "AaEffectiveGradePolicySnapshot",
     "AaGradeCorrection",
 ]
