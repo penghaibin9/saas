@@ -1,9 +1,10 @@
 """Seed only student-affairs prerequisites for the Playwright leave lifecycle.
 
-The script binds the dedicated E2E counselor to the E2E student's administrative
-class in the isolated sandbox-school database. It deliberately does not create
-CsLeave, workflow tasks, cancel records or audit rows: every business transition
-must be produced by visible browser interactions.
+The script gives the dedicated E2E advisor the real COUNSELOR role and binds that
+counselor to the E2E student's administrative class, only inside the disposable
+sandbox-school E2E database. It deliberately does not create CsLeave, workflow
+tasks, cancel records or audit rows: every business transition must be produced
+by visible browser interactions.
 """
 from __future__ import annotations
 
@@ -94,7 +95,7 @@ def require_student_and_class(db) -> tuple[StudentProfile, SchoolClass]:
     return student, school_class
 
 
-def require_counselor(db) -> User:
+def ensure_counselor_role(db) -> User:
     counselor = db.scalars(
         select(User).where(
             User.tenant_id == TENANT_ID,
@@ -118,17 +119,26 @@ def require_counselor(db) -> User:
     ).first()
     if role is None:
         raise SystemExit(f"role {COUNSELOR_ROLE} is missing in {TENANT_CODE}")
+
     linked = db.scalars(
         select(UserRole).where(
             UserRole.tenant_id == TENANT_ID,
             UserRole.user_id == counselor.id,
             UserRole.role_id == role.id,
-            UserRole.status == "ACTIVE",
-            UserRole.is_deleted.is_(False),
         )
     ).first()
     if linked is None:
-        raise SystemExit(f"{COUNSELOR_LOGIN} does not have active role {COUNSELOR_ROLE}")
+        linked = UserRole(
+            tenant_id=TENANT_ID,
+            user_id=counselor.id,
+            role_id=role.id,
+            status="ACTIVE",
+        )
+        db.add(linked)
+    else:
+        linked.status = "ACTIVE"
+        linked.is_deleted = False
+    db.flush()
     return counselor
 
 
@@ -191,7 +201,7 @@ def main() -> int:
     try:
         require_tenant(db)
         student, school_class = require_student_and_class(db)
-        counselor = require_counselor(db)
+        counselor = ensure_counselor_role(db)
         assignment = ensure_assignment(db, student, school_class, counselor, now)
         db.commit()
 
