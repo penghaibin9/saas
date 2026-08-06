@@ -1,9 +1,8 @@
-"""包 8：强制归档依据文件先绑定、后生成不可变快照。
+"""包 8：强制归档依据只在稳定 archive.id 上绑定并冻结。
 
-历史归档命令会先把原始 fileId 写入 InternshipArchive，再调用证据包快照。
-证据权威守卫若在快照生成后才转换，重复采集链可能把同一文件当成另一个
-正式对象再次绑定。这里把转换前移到不可变快照之前：原始 ID 只存在于当前
-事务内，正式归档记录只保存 file/version/hash/binding 快照。
+原始 fileId 在预备 flush 期间由事务暂存守卫持续隐藏，不写入正式归档记录，
+也不参与任何通用文件监听器。归档主记录取得稳定 ID 后，本模块一次性消费暂存，
+建立唯一权威 binding，再保存 file/version/hash/binding 不可变快照。
 """
 from __future__ import annotations
 
@@ -25,10 +24,21 @@ def _capture_archive_snapshot(db, record, evaluation, user):
         InternshipArchive.internship_id == record.id,
         InternshipArchive.is_deleted.is_(False),
     ).order_by(InternshipArchive.id.desc()).with_for_update())
-    raw = archive.force_evidence_file_ids if archive else None
+
+    raw = None
+    if archive:
+        # 延迟导入避免服务包安装阶段形成循环依赖。
+        from app.modules.internship.services import (
+            internship_archive_preflush_evidence_guard as preflush_guard,
+        )
+
+        raw = preflush_guard.pop_raw_evidence(db, archive)
+        if raw is None:
+            raw = archive.force_evidence_file_ids
+
     if archive and raw and not evidence_guard._is_snapshot_list(raw):
-        # 先移除事务内原始 ID，防止后续快照/监听器把它当成第二个正式关系。
         raw_ids = list(raw)
+        # 正式行在绑定完成前保持空值，禁止任何监听器看到未冻结的原始 fileId。
         archive.force_evidence_file_ids = None
         db.flush()
 
