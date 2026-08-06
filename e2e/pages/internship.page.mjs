@@ -174,7 +174,7 @@ export class StaffInternshipLeavePage {
     const actions = (data.auditTrail || []).map((item) => item.action)
     expect(actions).toContain('APPLY')
     expect(actions).toContain('REVIEW_APPROVE')
-    expect(actions).toContain('RETURN')
+    expect(actions).toContain('RETURN_VERSIONED')
 
     const detail = this.page.locator('.lv-main')
     await expect(detail).toContainText(this.fixture.studentName)
@@ -182,6 +182,6 @@ export class StaffInternshipLeavePage {
     await expect(detail).toContainText('审批留痕')
     await expect(detail).toContainText(/APPLY|申请/)
     await expect(detail).toContainText(/REVIEW_APPROVE|通过/)
-    await expect(detail).toContainText(/RETURN|销假/)
+    await expect(detail).toContainText(/RETURN_VERSIONED|销假/)
   }
 }
