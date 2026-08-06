@@ -6,6 +6,13 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+def _stable_subject_ref(raw: str, prefix: str, field_name: str) -> str:
+    value = str(raw or "").strip()
+    if not value.isdigit() or int(value) <= 0:
+        raise ValueError(f"{field_name} 必须是有效的稳定主体 ID")
+    return f"{prefix}:{int(value)}"
+
+
 class MentorCreate(BaseModel):
     teacherNo: str = Field(..., min_length=1, max_length=50)
     teacherName: str = Field(..., min_length=1, max_length=100)
@@ -57,8 +64,12 @@ class MentorAssignRequest(BaseModel):
         external_id = str(self.externalAdvisorId or "").strip()
         if bool(mentor_id) == bool(external_id):
             raise ValueError("mentorId 与 externalAdvisorId 必须且只能提供一个")
-        self.mentorId = mentor_id or external_id
-        self.externalAdvisorId = external_id or None
+        if mentor_id:
+            self.mentorId = _stable_subject_ref(mentor_id, "INTERNAL", "mentorId")
+            self.externalAdvisorId = None
+        else:
+            self.mentorId = _stable_subject_ref(external_id, "EXTERNAL", "externalAdvisorId")
+            self.externalAdvisorId = external_id
         return self
 
 
@@ -75,17 +86,22 @@ class MentorChangeRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_stable_subject(self):
-        values = [
-            str(self.newMentorId or "").strip(),
-            str(self.mentorId or "").strip(),
-            str(self.externalAdvisorId or "").strip(),
-        ]
-        supplied = [value for value in values if value]
+        legacy_id = str(self.newMentorId or "").strip()
+        mentor_id = str(self.mentorId or "").strip()
+        external_id = str(self.externalAdvisorId or "").strip()
+        supplied = [value for value in (legacy_id, mentor_id, external_id) if value]
         if len(supplied) != 1:
             raise ValueError("newMentorId、mentorId、externalAdvisorId 必须且只能提供一个")
-        self.newMentorId = supplied[0]
-        self.mentorId = str(self.mentorId or "").strip() or None
-        self.externalAdvisorId = str(self.externalAdvisorId or "").strip() or None
+        if external_id:
+            self.newMentorId = _stable_subject_ref(external_id, "EXTERNAL", "externalAdvisorId")
+            self.externalAdvisorId = external_id
+            self.mentorId = None
+        else:
+            raw_internal = mentor_id or legacy_id
+            field_name = "mentorId" if mentor_id else "newMentorId"
+            self.newMentorId = _stable_subject_ref(raw_internal, "INTERNAL", field_name)
+            self.mentorId = mentor_id or None
+            self.externalAdvisorId = None
         return self
 
 
