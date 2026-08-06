@@ -129,7 +129,7 @@ export class StaffInternshipLeavePage {
     await expectSuccessfulResponse(await detailResponse, '教师打开请假详情')
     const detail = this.page.locator('.lv-main')
     await expect(detail).toContainText(this.fixture.studentName)
-    await expect(detail).toContainText(/待审批|PENDING/)
+    await expect(detail).toContainText(/待处理|待审批|PENDING/)
   }
 
   async approve({ leaveId, reason }) {
