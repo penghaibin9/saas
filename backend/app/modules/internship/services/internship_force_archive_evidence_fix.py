@@ -6,13 +6,18 @@
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 
 from app.core.exceptions import not_found
 from app.models import InternshipArchive, StudentProfile
+from app.models.file import FileBinding
 from app.modules.internship.services import internship_evidence_authority_guard as evidence_guard
 from app.modules.internship.services import internship_evidence_package_service as package_service
 from app.services.db_service import _tid
+
+logger = logging.getLogger(__name__)
 
 _INSTALLED = False
 _PREVIOUS_CAPTURE = None
@@ -41,6 +46,34 @@ def _capture_archive_snapshot(db, record, evaluation, user):
         # 正式行在绑定完成前保持空值，禁止任何监听器看到未冻结的原始 fileId。
         archive.force_evidence_file_ids = None
         db.flush()
+
+        # 窄诊断：若此前已有活动绑定，把完整来源写入 CI 日志；不放宽改绑规则。
+        active = list(db.scalars(select(FileBinding).where(
+            FileBinding.tenant_id == _tid(),
+            FileBinding.file_id.in_([int(value) for value in raw_ids]),
+            FileBinding.status == "ACTIVE",
+            FileBinding.is_current.is_(True),
+            FileBinding.is_deleted.is_(False),
+        ).order_by(FileBinding.id)).all())
+        if active:
+            logger.warning(
+                "force_archive_evidence_prebound internshipId=%s archiveId=%s bindings=%s",
+                record.id,
+                archive.id,
+                [
+                    {
+                        "bindingId": str(item.id),
+                        "fileId": str(item.file_id),
+                        "bizType": str(item.biz_type or ""),
+                        "bizId": str(item.biz_id or ""),
+                        "relationType": str(item.relation_type or ""),
+                        "subjectType": str(item.subject_type or ""),
+                        "subjectId": str(item.subject_id or ""),
+                        "scope": dict(item.scope_json or {}),
+                    }
+                    for item in active
+                ],
+            )
 
         student = db.scalar(select(StudentProfile).where(
             StudentProfile.id == record.student_id,
