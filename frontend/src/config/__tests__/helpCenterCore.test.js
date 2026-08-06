@@ -14,6 +14,8 @@ test('maps runtime role codes and Chinese labels', () => {
   assert.equal(resolveHelpRole('GRADUATION_TEACHER'), 'teacher')
   assert.equal(resolveHelpRole('', '教务管理员'), 'academic')
   assert.equal(normalizeHelpRole('学生'), 'student')
+  assert.equal(normalizeHelpRole('STUDENT_AFFAIRS_ADMIN'), 'student-affairs')
+  assert.equal(normalizeHelpRole('学生处管理员'), 'student-affairs')
 })
 
 test('role filtering is permissive for unknown legacy metadata', () => {

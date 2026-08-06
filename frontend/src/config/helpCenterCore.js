@@ -16,7 +16,7 @@ const ROLE_ALIASES = new Map([
   ['教务', 'academic'], ['教务人员', 'academic'], ['教务管理员', 'academic'],
   ['academic', 'academic'], ['academic_admin', 'academic'], ['teaching_admin', 'academic'],
   ['学工', 'student-affairs'], ['学工人员', 'student-affairs'], ['学工管理员', 'student-affairs'],
-  ['student-affairs', 'student-affairs'], ['student_affairs', 'student-affairs'],
+  ['student-affairs', 'student-affairs'], ['student_affairs', 'student-affairs'], ['student_affairs_admin', 'student-affairs'],
   ['counselor', 'student-affairs'], ['辅导员', 'student-affairs'], ['班主任', 'student-affairs'],
   ['head_teacher', 'student-affairs'], ['class_teacher', 'student-affairs'],
   ['teacher', 'teacher'], ['教师', 'teacher'], ['任课教师', 'teacher'], ['指导教师', 'teacher'], ['导师', 'teacher'],
@@ -49,7 +49,7 @@ export function normalizeHelpRole(value) {
   if (ROLE_ALIASES.has(raw)) return ROLE_ALIASES.get(raw)
   if (/超级|平台|学校.*管理员|系统.*管理员/.test(raw)) return 'school-admin'
   if (/教务|教学管理/.test(raw)) return 'academic'
-  if (/学工|辅导员|班主任/.test(raw)) return 'student-affairs'
+  if (/学工|学生处|学生工作|辅导员|班主任/.test(raw)) return 'student-affairs'
   if (/教师|导师|指导/.test(raw)) return 'teacher'
   if (/学生/.test(raw)) return 'student'
   return ''
