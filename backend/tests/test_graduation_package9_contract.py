@@ -13,17 +13,18 @@ from app.core.exceptions import AppException
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent
 from app.modules.graduation.policies import defense_policy
 from app.modules.graduation.schemas.graduation_mentor import MentorAssignRequest, MentorChangeRequest
+from app.modules.graduation.services import graduation_mentor_subject_guard as subject_guard
 from app.modules.graduation.services import graduation_package9_guard as package9
 
 
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [
-        ({"gdStudentId": "1", "mentorId": "11"}, "11"),
-        ({"gdStudentId": "1", "externalAdvisorId": "21"}, "21"),
+        ({"gdStudentId": "1", "mentorId": "11"}, "INTERNAL:11"),
+        ({"gdStudentId": "1", "externalAdvisorId": "21"}, "EXTERNAL:21"),
     ],
 )
-def test_assign_request_accepts_exactly_one_stable_subject(payload, expected):
+def test_assign_request_accepts_exactly_one_typed_stable_subject(payload, expected):
     body = MentorAssignRequest(**payload)
     assert body.mentorId == expected
 
@@ -34,27 +35,56 @@ def test_assign_request_accepts_exactly_one_stable_subject(payload, expected):
         {"gdStudentId": "1"},
         {"gdStudentId": "1", "mentorId": "11", "externalAdvisorId": "21"},
         {"gdStudentId": "1", "advisorName": "同名导师"},
+        {"gdStudentId": "1", "mentorId": "同名导师"},
+        {"gdStudentId": "1", "externalAdvisorId": "-1"},
     ],
 )
-def test_assign_request_rejects_missing_ambiguous_or_name_subject(payload):
+def test_assign_request_rejects_missing_ambiguous_name_or_invalid_subject(payload):
     with pytest.raises(ValidationError):
         MentorAssignRequest(**payload)
 
 
-def test_change_request_keeps_legacy_stable_id_and_accepts_external_id():
+def test_change_request_preserves_internal_or_external_subject_type():
     legacy = MentorChangeRequest(gdStudentId="1", newMentorId="11", reason="调整原因不少于五字")
+    internal = MentorChangeRequest(gdStudentId="1", mentorId="12", reason="调整原因不少于五字")
     external = MentorChangeRequest(gdStudentId="1", externalAdvisorId="21", reason="调整原因不少于五字")
-    assert legacy.newMentorId == "11"
-    assert external.newMentorId == "21"
+    assert legacy.newMentorId == "INTERNAL:11"
+    assert internal.newMentorId == "INTERNAL:12"
+    assert external.newMentorId == "EXTERNAL:21"
 
 
-def test_batch_assignment_rejects_name_and_normalizes_external_id():
-    assert package9._normalize_assignment_item({
+def test_batch_assignment_rejects_name_and_preserves_external_subject_type():
+    assert subject_guard.normalize_assignment_item({
         "gdStudentId": "1", "externalAdvisorId": "21",
-    })["mentorId"] == "21"
+    })["mentorId"] == "EXTERNAL:21"
+    assert subject_guard.normalize_assignment_item({
+        "gdStudentId": "1", "mentorId": "11",
+    })["mentorId"] == "INTERNAL:11"
     with pytest.raises(AppException) as exc:
-        package9._normalize_assignment_item({"gdStudentId": "1", "advisorName": "同名导师"})
+        subject_guard.normalize_assignment_item({"gdStudentId": "1", "advisorName": "同名导师"})
     assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_typed_subject_guard_rejects_wrong_mentor_type(monkeypatch):
+    mentors = {
+        "11": SimpleNamespace(id=11, mentor_type="INTERNAL"),
+        "21": SimpleNamespace(id=21, mentor_type="ENTERPRISE"),
+        "31": SimpleNamespace(id=31, mentor_type="DUAL"),
+    }
+    monkeypatch.setattr(subject_guard, "_PREVIOUS_GET_MENTOR", lambda db, mid: mentors[str(mid)])
+
+    assert subject_guard._get_typed_mentor(None, "INTERNAL:11").id == 11
+    assert subject_guard._get_typed_mentor(None, "EXTERNAL:21").id == 21
+    assert subject_guard._get_typed_mentor(None, "INTERNAL:31").id == 31
+    assert subject_guard._get_typed_mentor(None, "EXTERNAL:31").id == 31
+
+    with pytest.raises(AppException) as external_mismatch:
+        subject_guard._get_typed_mentor(None, "EXTERNAL:11")
+    assert external_mismatch.value.code == "VALIDATION_ERROR"
+
+    with pytest.raises(AppException) as internal_mismatch:
+        subject_guard._get_typed_mentor(None, "INTERNAL:21")
+    assert internal_mismatch.value.code == "VALIDATION_ERROR"
 
 
 def _batch(stage_config, status="RUNNING"):
@@ -128,11 +158,13 @@ def test_archive_version_model_and_migration_freeze_required_fields():
     assert "uk_gd_archive_version_no" in migration
 
 
-def test_package9_guard_installs_filed_source_lock_and_strict_current_queries():
+def test_package9_guard_installs_subject_archive_and_current_fact_guards():
     router_init = Path("app/modules/graduation/routers/__init__.py").read_text("utf-8")
     guard_source = Path("app/modules/graduation/services/graduation_package9_guard.py").read_text("utf-8")
+    subject_source = Path("app/modules/graduation/services/graduation_mentor_subject_guard.py").read_text("utf-8")
     terminal_source = Path("app/modules/graduation/services/graduation_archive_terminal_guard.py").read_text("utf-8")
     assert "install_graduation_package9_guard()" in router_init
+    assert "install_graduation_mentor_subject_guard()" in router_init
     assert "register_graduation_archive_guard()" in guard_source
     assert "model.is_deleted.is_(False)" in guard_source
     assert "order_by(model.id.desc())" in guard_source
@@ -140,6 +172,8 @@ def test_package9_guard_installs_filed_source_lock_and_strict_current_queries():
     assert "source_manifest_json" in guard_source
     assert "source_manifest_hash" in guard_source
     assert "_strict_manifest_payload" in guard_source
+    assert '{"INTERNAL", "DUAL"}' in subject_source
+    assert '{"ENTERPRISE", "DUAL"}' in subject_source
 
 
 def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):

@@ -52,6 +52,113 @@ def _record(graduation_client, h, sid, batch_id=None):
     return graduation_client.post(GD_STU, headers=h, json=body).json()["data"]["id"]
 
 
+def _seed_complete_filed_archive(gd_student_id):
+    """按包 9 正式清单准备完整来源，再形成可追溯 FILED 版本。"""
+    from datetime import datetime
+
+    from app.db.session import get_sessionmaker
+    from app.models import (
+        GraduationArchiveRecord,
+        GraduationDefenseScore,
+        GraduationFinal,
+        GraduationGrade,
+        GraduationMidterm,
+        GraduationProposal,
+        GraduationReview,
+        GraduationTaskBook,
+    )
+
+    tenant_id = 1000000000000000001
+    student_id = int(gd_student_id)
+    now = datetime.utcnow()
+    db = get_sessionmaker()()
+    try:
+        taskbook = GraduationTaskBook(
+            tenant_id=tenant_id,
+            gd_student_id=student_id,
+            status="CONFIRMED",
+            objective="目标",
+            content="内容",
+            confirmed_at=now,
+            history_json=[],
+        )
+        proposal = GraduationProposal(
+            tenant_id=tenant_id,
+            gd_student_id=student_id,
+            version="v1",
+            status="APPROVED",
+            submit_at=now,
+            attachments_json=[],
+        )
+        midterm = GraduationMidterm(
+            tenant_id=tenant_id,
+            gd_student_id=student_id,
+            status="CHECKED_PASS",
+            conclusion="PASS",
+            checked_at=now,
+        )
+        final = GraduationFinal(
+            tenant_id=tenant_id,
+            gd_student_id=student_id,
+            final_type="定稿",
+            version="v1",
+            status="APPROVED",
+            submit_at=now,
+            attachments_json=[],
+        )
+        db.add_all([taskbook, proposal, midterm, final])
+        db.flush()
+        db.add_all([
+            GraduationReview(
+                tenant_id=tenant_id,
+                gd_student_id=student_id,
+                gd_final_id=final.id,
+                reviewer_name="归档评阅人",
+                status="COMPLETED",
+                score=85,
+                reviewed_at=now,
+            ),
+            GraduationDefenseScore(
+                tenant_id=tenant_id,
+                gd_student_id=student_id,
+                judge_name="归档评委",
+                judge_identity=f"TEST:{student_id}",
+                score=86,
+                status="CONFIRMED",
+                confirmed_at=now,
+            ),
+            GraduationGrade(
+                tenant_id=tenant_id,
+                gd_student_id=student_id,
+                advisor_score=85,
+                reviewer_score=85,
+                defense_score=86,
+                total_score=85,
+                grade_level="良好",
+                status="PUBLISHED",
+                source_snapshot_hash="a" * 64,
+                published_at=now,
+            ),
+        ])
+        db.flush()
+        archive = GraduationArchiveRecord(
+            tenant_id=tenant_id,
+            gd_student_id=student_id,
+            status="PENDING_SUBMIT",
+            missing_items=[],
+            checklist_json=[],
+        )
+        db.add(archive)
+        db.flush()
+        archive.status = "FILED"
+        archive.archive_batch_no = f"TEST-FILED-{student_id}"
+        archive.filed_at = now
+        archive.verified_by = "pytest"
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_create_and_list(graduation_client, auth_headers, db_mode):
     sid = _student(graduation_client, auth_headers, "S-GDS-001")
     bid = _batch(graduation_client, auth_headers, "GD-STU-L1")
@@ -95,32 +202,15 @@ def test_unassign_releases(graduation_client, auth_headers, db_mode):
 
 
 def test_stage_machine(graduation_client, auth_headers, db_mode):
-    from datetime import datetime
     from app.db.session import get_sessionmaker
-    from app.models import GraduationArchiveRecord, GraduationProposal, GraduationRiskCase, GraduationTaskBook
+    from app.models import GraduationRiskCase
 
     tid = _topic(graduation_client, auth_headers, "状态机测试", capacity=2)
     rid = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-040"))
     assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["code"] != 0
     graduation_client.post(f"{GD_STU}/{rid}/assign-topic", headers=auth_headers, json={"topicId": tid})
     graduation_client.post(f"{GD_STU}/{rid}/assign-advisor", headers=auth_headers, json={"advisorName": "李老师"})
-    db = get_sessionmaker()()
-    try:
-        db.add(GraduationTaskBook(
-            tenant_id=1000000000000000001, gd_student_id=int(rid), status="CONFIRMED",
-            objective="目标", content="内容", confirmed_at=datetime.utcnow(), history_json=[],
-        ))
-        db.add(GraduationProposal(
-            tenant_id=1000000000000000001, gd_student_id=int(rid), version="v1",
-            status="APPROVED", submit_at=datetime.utcnow(),
-        ))
-        db.add(GraduationArchiveRecord(
-            tenant_id=1000000000000000001, gd_student_id=int(rid), status="FILED",
-            missing_items=[], checklist_json=[], manifest_hash="test-manifest",
-        ))
-        db.commit()
-    finally:
-        db.close()
+    _seed_complete_filed_archive(rid)
     assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "GUIDING"
     assert graduation_client.post(f"{GD_STU}/{rid}/stage", headers=auth_headers, json={"action": "ADVANCE"}).json()["data"]["stage"] == "MIDTERM"
     db = get_sessionmaker()()
@@ -231,23 +321,12 @@ def test_subpanels_eligibility_group_defense_grad_qual(graduation_client, auth_h
 
 
 def test_batch_group_and_archive(graduation_client, auth_headers, db_mode):
-    from app.db.session import get_sessionmaker
-    from app.models import GraduationArchiveRecord
-
     r1 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-081"))
     r2 = _record(graduation_client, auth_headers, _student(graduation_client, auth_headers, "S-GDS-082"))
     bg = graduation_client.post(f"{GD_STU}/batch-group", headers=auth_headers,
                      json={"recordIds": [r1, r2], "groupName": "批量组A", "reason": "批量"}).json()
     assert bg["code"] == 0 and bg["data"]["updated"] == 2
-    db = get_sessionmaker()()
-    try:
-        db.add(GraduationArchiveRecord(
-            tenant_id=1000000000000000001, gd_student_id=int(r1), status="FILED",
-            missing_items=[], checklist_json=[], manifest_hash="test-manifest",
-        ))
-        db.commit()
-    finally:
-        db.close()
+    _seed_complete_filed_archive(r1)
     ba = graduation_client.post(f"{GD_STU}/batch-archive", headers=auth_headers,
                      json={"recordIds": [r1], "reason": "结业归档"}).json()
     assert ba["code"] == 0 and ba["data"]["archived"] == 1

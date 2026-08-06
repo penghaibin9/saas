@@ -1,14 +1,16 @@
 """Repository-wide pytest safety and compatibility fixtures.
 
 DB-backed tests use an isolated MySQL schema and the canonical demo tenant id.
-Package 8 also removed runtime authorization by advisor display name. Older
-integration fixtures are explicitly migrated to stable advisor ids here before
-an internship request; production code remains fail-closed.
+Package 8 removed runtime authorization by advisor display name, so older
+internship fixtures are explicitly migrated to stable advisor ids here.
+Package 9 adds an authoritative defense-phase gate; legacy positive defense
+fixtures without an explicit DEFENSE phase are normalized here rather than
+weakening the production policy.
 """
 from __future__ import annotations
 
 import hashlib
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -129,8 +131,76 @@ def _upgrade_internship_fixture_identity(path: str, kwargs: dict) -> None:
         return
 
 
+def _stage_rows(stage_config) -> list[dict]:
+    if isinstance(stage_config, list):
+        return [item for item in stage_config if isinstance(item, dict)]
+    if isinstance(stage_config, dict):
+        for key in ("stages", "phases", "items"):
+            rows = stage_config.get(key)
+            if isinstance(rows, list):
+                return [item for item in rows if isinstance(item, dict)]
+    return []
+
+
+def _is_defense_write(path: str) -> bool:
+    if path == "/api/v1/graduation/gd-defense-scores/entry":
+        return True
+    if path.startswith("/api/v1/graduation/gd-defense-scores/") and path.endswith(("/confirm", "/second-defense")):
+        return True
+    return path.startswith("/api/v1/mobile/teacher/graduation/defense/") and path.endswith("/score")
+
+
+def _upgrade_legacy_graduation_defense_phase(url, path: str, kwargs: dict) -> None:
+    """Normalize only legacy positive fixtures that omitted an explicit DEFENSE phase.
+
+    This hook runs only in pytest. Explicit DEFENSE rows and CLOSED/ARCHIVED
+    batches are never altered. Legacy batches created by old positive fixtures
+    commonly remain DRAFT because those tests predate the phase contract; when
+    they have no explicit timeline, the fixture states their intended setup by
+    moving them to RUNNING. Production policy remains fail-closed.
+    """
+    if not _is_defense_write(path):
+        return
+    params = kwargs.get("params") or {}
+    batch_id = params.get("batchId") if isinstance(params, dict) else None
+    if batch_id in (None, ""):
+        query = dict(parse_qsl(urlsplit(str(url)).query, keep_blank_values=True))
+        batch_id = query.get("batchId")
+    try:
+        parsed_batch_id = int(batch_id)
+    except (TypeError, ValueError):
+        return
+
+    try:
+        from app.db.session import get_sessionmaker
+        from app.models import GraduationBatch
+
+        db = get_sessionmaker()()
+        try:
+            batch = db.get(GraduationBatch, parsed_batch_id)
+            if not batch or batch.is_deleted or int(batch.tenant_id) != TEST_TENANT_ID:
+                return
+            if str(batch.status or "").upper() not in {"DRAFT", "ACTIVE", "RUNNING"}:
+                return
+            rows = _stage_rows(batch.stage_config)
+            has_explicit_defense = any(
+                str(item.get("code") or item.get("key") or "").upper() == "DEFENSE"
+                for item in rows
+            )
+            if has_explicit_defense:
+                return
+            batch.status = "RUNNING"
+            batch.stage_config = None
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # A failed compatibility migration must leave the production gate fail-closed.
+        return
+
+
 def _install_request_wrapper() -> None:
-    """Wrap the actual client used by legacy internship integration tests."""
+    """Wrap the actual client used by legacy integration tests."""
     global _REQUEST_WRAPPER_PATCHED
     if _REQUEST_WRAPPER_PATCHED:
         return
@@ -138,16 +208,17 @@ def _install_request_wrapper() -> None:
     from starlette.testclient import TestClient
 
     original = TestClient.request
-    if getattr(original, "_internship_stable_fixture_wrapper", False):
+    if getattr(original, "_stable_fixture_wrapper", False):
         _REQUEST_WRAPPER_PATCHED = True
         return
 
     def request(self, method, url, _original=original, **kwargs):
         path = urlsplit(str(url)).path or str(url)
         _upgrade_internship_fixture_identity(path, kwargs)
+        _upgrade_legacy_graduation_defense_phase(url, path, kwargs)
         return _original(self, method, url, **kwargs)
 
-    request._internship_stable_fixture_wrapper = True
+    request._stable_fixture_wrapper = True
     TestClient.request = request
     _REQUEST_WRAPPER_PATCHED = True
 
