@@ -97,8 +97,14 @@ export class StaffGraduationPage {
   }
 
   async dismissGuideIfPresent() {
-    const skip = this.page.getByRole('button', { name: /跳过引导/ })
-    if (await skip.count() && await skip.isVisible()) await skip.click()
+    const skip = this.page.getByRole('button', { name: /跳过引导|跳过/ }).first()
+    try {
+      await skip.waitFor({ state: 'visible', timeout: 1500 })
+    } catch {
+      return
+    }
+    await skip.click()
+    await this.page.locator('.tour-mask').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})
   }
 
   async openProposals(tab = 'PENDING_REVIEW') {
@@ -109,6 +115,9 @@ export class StaffGraduationPage {
   }
 
   async selectStudent() {
+    // 引导层可能在首屏数据加载后延迟出现；点击记录前再次关闭，避免遮罩拦截真实点击。
+    await this.dismissGuideIfPresent()
+
     // The proposal workbench automatically opens the first record in the current queue.
     const detail = this.page.locator('.prc')
     if (await detail.count() && await detail.isVisible()) {
@@ -118,6 +127,7 @@ export class StaffGraduationPage {
 
     const row = this.page.locator('.pr-row').first()
     await expect(row).toBeVisible()
+    await this.dismissGuideIfPresent()
     await row.click()
     await expect(detail).toBeVisible()
     await expect(detail).toContainText(this.fixture.topicTitle)
