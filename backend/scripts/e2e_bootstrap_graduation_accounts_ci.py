@@ -1,6 +1,6 @@
-"""Bootstrap dedicated graduation/internship/student-affairs E2E identities without persisting credentials.
+"""Bootstrap dedicated graduation/internship E2E identities without persisting credentials.
 
-The official identity-import API may return an initial-password receipt. CI deliberately
+The official identity-import API may return an initial-password receipt.  CI deliberately
 keeps that response in memory only; passwords are normalized by the official reset/change
 endpoints and are never written to disk or uploaded as an artifact.
 """
@@ -24,8 +24,8 @@ from scripts.e2e_bootstrap_graduation_accounts import (  # noqa: E402
 )
 
 
-def _add_interaction_roles(content: bytes) -> bytes:
-    """Give the existing E2E advisor all real roles used by browser interaction chains."""
+def _add_internship_mentor_role(content: bytes) -> bytes:
+    """Give the existing E2E advisor the real internship-mentor role as well."""
     wb = load_workbook(io.BytesIO(content))
     ws = wb["导入模板"]
     headers = {str(cell.value or "").strip(): idx for idx, cell in enumerate(ws[1], start=1)}
@@ -36,7 +36,7 @@ def _add_interaction_roles(content: bytes) -> bytes:
         if str(ws.cell(row, login_col).value or "").strip() != "e2e_advisor_a":
             continue
         roles = [part.strip() for part in str(ws.cell(row, role_col).value or "").split(",") if part.strip()]
-        for code in ("GD_MENTOR", "INTERN_MENTOR", "COUNSELOR"):
+        for code in ("GD_MENTOR", "INTERN_MENTOR"):
             if code not in roles:
                 roles.append(code)
         ws.cell(row, role_col).value = ",".join(roles)
@@ -50,7 +50,7 @@ def _add_interaction_roles(content: bytes) -> bytes:
 
 
 def import_accounts_without_receipt_file(token: str) -> dict:
-    content = _add_interaction_roles(build_xlsx(token))
+    content = _add_internship_mentor_role(build_xlsx(token))
     body, boundary = multipart(content, "e2e_interaction_identity.xlsx")
     validated = _req(
         "POST",
