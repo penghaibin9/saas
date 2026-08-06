@@ -1,7 +1,7 @@
 """包 5：学籍异动并发合同列（expectedVersion / currentTask / decisionVersion / idempotency）。
 
 Revision ID: 20260806_aa_pkg5_concur
-Revises: 20260806_gd_pkg9_archive_ver
+Revises: 20260806_funding_pkg10
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "20260806_aa_pkg5_concur"
-down_revision = "20260806_gd_pkg9_archive_ver"
+down_revision = "20260806_funding_pkg10"
 branch_labels = None
 depends_on = None
 

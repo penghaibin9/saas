@@ -15,10 +15,12 @@
 """
 from __future__ import annotations
 
+import functools
 import json
 from datetime import datetime
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import OperationalError
 
 from app.core.affairs_security import build_affairs_context
 from app.core.context import get_current_user_ctx
@@ -30,6 +32,11 @@ from . import academic_affairs_grade_core_service as _core
 _COLLEGE_NODE = "COLLEGE_REVIEW"
 _ACADEMIC_NODE = "ACADEMIC_REVIEW"
 _REVIEW_PERM = "academicAffairs.gradeChange.review"
+# InnoDB 死锁 / 锁等待超时错误码：两个并发终审各自按相同顺序申请多把行锁时，
+# 数据库仍可能在极窄窗口判定死锁并主动回滚其中一个事务。这不是本命令的锁顺序错误，
+# 是关系型数据库对并发写入的正常兜底；上层必须把它转成干净的业务冲突，而不是让
+# pymysql 的原始异常穿透到调用方——那样前端拿到的是 500，不是可重试的 409。
+_DEADLOCK_ERRNOS = (1213, 1205)
 
 
 def _conflict(message, **details):
@@ -38,6 +45,31 @@ def _conflict(message, **details):
 
 def _version_conflict(message, **details):
     return AppException("APPROVAL_VERSION_CONFLICT", message, details=details or None, http_status=409)
+
+
+def _is_deadlock(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    args = getattr(orig, "args", None) or ()
+    return bool(args) and args[0] in _DEADLOCK_ERRNOS
+
+
+def _retry_on_deadlock(func):
+    """并发终审撞上死锁时，转成 APPROVAL_VERSION_CONFLICT 让调用方重试，而不是抛裸异常。
+
+    ``with session() as db`` 在异常退出时已经关闭连接、回滚未提交的改动，这里只负责
+    把数据库层面的死锁翻译成本命令统一使用的业务错误，不改变任何已提交的正式事实。
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except OperationalError as exc:
+            if not _is_deadlock(exc):
+                raise
+            raise _version_conflict("该成绩更正遇到并发审批冲突，请重新提交") from exc
+
+    return wrapper
 
 
 # ═══════════ 受理人解析（NEW-P1-02） ═══════════
@@ -371,6 +403,7 @@ def _reject(db, request, instance, task, reason):
     _core._audit(db, "AA_GRADE_RECORD", request.grade_record_id, "CHANGE_REJECT", reason)
 
 
+@_retry_on_deadlock
 def change_college_review(record_id, user, action, reason="") -> dict:
     """学院初审：通过→推进到教务终审并解析真实受理人；驳回→正式成绩本来就没动过。"""
     from app.models import AaGradeTask, WorkflowTask
@@ -408,6 +441,7 @@ def change_college_review(record_id, user, action, reason="") -> dict:
                 "assigneeId": str(assignee)}
 
 
+@_retry_on_deadlock
 def change_academic_review(record_id, user, action, reason="") -> dict:
     """教务终审：通过则以追加式版本生成新正式成绩，全链单事务。"""
     from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AcademicStudent
