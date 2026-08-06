@@ -18,6 +18,11 @@ function apiPath(response) {
   try { return new URL(response.url()).pathname } catch { return '' }
 }
 
+function isLeaveDetailResponse(response) {
+  return /^\/api\/v1\/internship\/leaves\/[^/]+$/.test(apiPath(response))
+    && response.request().method() === 'GET'
+}
+
 export class StudentInternshipPage {
   constructor(page, baseUrl, fixture) {
     this.page = page
@@ -102,8 +107,14 @@ export class StaffInternshipLeavePage {
   }
 
   async dismissGuideIfPresent() {
-    const skip = this.page.getByRole('button', { name: /跳过引导/ })
-    if (await skip.count() && await skip.isVisible()) await skip.click()
+    const skip = this.page.getByRole('button', { name: /跳过引导|跳过/ }).first()
+    try {
+      await skip.waitFor({ state: 'visible', timeout: 1500 })
+    } catch {
+      return
+    }
+    await skip.click()
+    await this.page.locator('.tour-mask').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})
   }
 
   url({ panel = 'pending', leaveId = '' } = {}) {
@@ -118,15 +129,33 @@ export class StaffInternshipLeavePage {
     await this.dismissGuideIfPresent()
   }
 
+  async clickExactLeave(leaveId, action) {
+    // The same student may have multiple historical leave rows. Exercise visible row
+    // clicks, but identify the target from the authoritative detail response instead
+    // of assuming the first row for a student is the leave created by this test.
+    await this.dismissGuideIfPresent()
+    const rows = this.page.locator('.lv-item')
+    await expect(rows.first()).toBeVisible()
+    const count = await rows.count()
+
+    for (let index = 0; index < count; index += 1) {
+      const row = rows.nth(index)
+      if (!(await row.isVisible())) continue
+      await this.dismissGuideIfPresent()
+      const detailResponse = this.page.waitForResponse(isLeaveDetailResponse)
+      await row.click()
+      const body = await expectSuccessfulResponse(await detailResponse, action)
+      if (String(body?.data?.id || '') === String(leaveId)) {
+        return { row, data: body.data }
+      }
+    }
+
+    throw new Error(`当前请假队列未找到目标记录 ${leaveId}`)
+  }
+
   async selectLeave(leaveId) {
-    const row = this.page.locator('.lv-item').filter({ hasText: this.fixture.studentNo }).first()
-    await expect(row).toBeVisible()
-    const detailResponse = this.page.waitForResponse((response) =>
-      apiPath(response).endsWith(`/api/v1/internship/leaves/${leaveId}`)
-      && response.request().method() === 'GET'
-    )
-    await row.click()
-    await expectSuccessfulResponse(await detailResponse, '教师打开请假详情')
+    const { data } = await this.clickExactLeave(leaveId, '教师打开请假详情')
+    expect(String(data.id)).toBe(String(leaveId))
     const detail = this.page.locator('.lv-main')
     await expect(detail).toContainText(this.fixture.studentName)
     await expect(detail).toContainText(/待处理|待审批|PENDING/)
@@ -159,19 +188,13 @@ export class StaffInternshipLeavePage {
     await expect(this.page.getByText('请假审批').first()).toBeVisible()
     await this.dismissGuideIfPresent()
 
-    const row = this.page.locator('.lv-item').filter({ hasText: this.fixture.studentNo }).first()
-    await expect(row).toBeVisible()
-    const detailResponse = this.page.waitForResponse((response) =>
-      apiPath(response).endsWith(`/api/v1/internship/leaves/${leaveId}`)
-      && response.request().method() === 'GET'
-    )
-    await row.click()
-    const body = await expectSuccessfulResponse(await detailResponse, '管理员读取请假最终详情')
-    return body?.data || {}
+    const { data } = await this.clickExactLeave(leaveId, '管理员读取请假最终详情')
+    return data || {}
   }
 
   async verifyFinalAudit({ leaveId, returnNote }) {
     const data = await this.openFinal(leaveId)
+    expect(String(data.id)).toBe(String(leaveId))
     expect(data.status).toBe('RETURNED')
     expect(data.returnNote).toBe(returnNote)
 
