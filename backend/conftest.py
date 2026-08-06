@@ -72,8 +72,9 @@ def _stable_test_user_id(claims: dict) -> int | None:
 
 
 def _upgrade_internship_fixture_identity(path: str, kwargs: dict) -> None:
-    """Backfill legacy test rows to stable ids without enabling name authorization."""
-    if "internship" not in path:
+    """Backfill legacy rows and keep mentor uploads on the same stable identity."""
+    normalized_path = path.rstrip("/") or "/"
+    if "internship" not in normalized_path and normalized_path != "/api/v1/files":
         return
     headers = kwargs.get("headers") or {}
     auth = headers.get("Authorization") or headers.get("authorization")
