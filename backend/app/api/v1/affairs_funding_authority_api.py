@@ -7,10 +7,14 @@ from pydantic import BaseModel, Field, condecimal
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.services import affairs_funding_authority_service as authority
+from app.services.affairs_funding_scan_guard import install as install_funding_scan_guard
 
 Money = condecimal(max_digits=14, decimal_places=2, gt=0)
 
 router = APIRouter(prefix="/student-affairs/funding", tags=["学工中心·资助金额权威化"])
+
+# 旧公示扫描 URL 保持不变，只替换运行时服务为逐申请事务版本。
+install_funding_scan_guard()
 
 
 class AmountAdjustmentCreate(BaseModel):
