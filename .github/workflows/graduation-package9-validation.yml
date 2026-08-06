@@ -1,0 +1,111 @@
+name: Graduation Package 9 Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/app/modules/graduation/**"
+      - "backend/app/models/graduation.py"
+      - "backend/alembic/versions/**"
+      - "backend/tests/test_graduation*.py"
+      - ".github/workflows/graduation-package9-validation.yml"
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "backend/app/modules/graduation/**"
+      - "backend/app/models/graduation.py"
+      - "backend/alembic/versions/**"
+      - "backend/tests/test_graduation*.py"
+      - ".github/workflows/graduation-package9-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-package9-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package9-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migration?charset=utf8mb4
+      PYTHONUNBUFFERED: "1"
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=18
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: 创建迁移测试库
+        run: |
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", autocommit=True)
+          with conn.cursor() as cur:
+              cur.execute("CREATE DATABASE IF NOT EXISTS student_lifecycle_migration CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+          conn.close()
+          PY
+
+      - name: Alembic 单头与真实 MySQL 升级
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic heads | tee /tmp/package9-heads.txt
+          HEAD_COUNT=$(grep -c '(head)' /tmp/package9-heads.txt || true)
+          test "$HEAD_COUNT" -eq 1
+          alembic upgrade head
+          alembic current
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", database="student_lifecycle_migration")
+          with conn.cursor() as cur:
+              cur.execute("SHOW TABLES LIKE 't_gd_archive_version'")
+              assert cur.fetchone(), "缺少 t_gd_archive_version"
+              cur.execute("SELECT version_num FROM alembic_version")
+              assert cur.fetchone()[0] == "20260806_gd_pkg9_archive_ver"
+          conn.close()
+          PY
+
+      - name: 包 9 真实 MySQL 合同测试
+        working-directory: backend
+        run: |
+          set -o pipefail
+          timeout 25m pytest tests/test_graduation_package9_contract.py -q -p no:warnings --durations=20
+
+      - name: Python 编译与差异格式检查
+        run: |
+          python -m compileall -q backend/app/modules/graduation backend/tests/test_graduation_package9_contract.py
+          git diff --check
