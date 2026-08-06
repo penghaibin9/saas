@@ -23,6 +23,7 @@ from app.models import (
     InternshipPosition,
     InternshipRecord,
     StudentProfile,
+    Tenant,
     User,
 )
 
@@ -61,6 +62,23 @@ def run_id() -> str:
 
 def fixture_path() -> Path:
     return Path(os.getenv("E2E_INTERNSHIP_FIXTURE_FILE") or DEFAULT_FIXTURE_PATH).resolve()
+
+
+def require_tenant(db) -> Tenant:
+    tenant = db.get(Tenant, TENANT_ID)
+    if tenant is None or tenant.is_deleted:
+        raise SystemExit(
+            f"tenant {TENANT_CODE}/{TENANT_ID} is missing; run the E2E tenant bootstrap first"
+        )
+    if tenant.tenant_code != TENANT_CODE:
+        raise SystemExit(
+            f"tenant id {TENANT_ID} belongs to {tenant.tenant_code!r}, refusing internship E2E seed"
+        )
+    if tenant.status != "ACTIVE":
+        raise SystemExit(
+            f"tenant {TENANT_CODE}/{TENANT_ID} is not active, refusing internship E2E seed"
+        )
+    return tenant
 
 
 def require_student(db) -> StudentProfile:
@@ -253,6 +271,7 @@ def main() -> int:
     now = datetime.utcnow()
     db = get_sessionmaker()()
     try:
+        require_tenant(db)
         student = require_student(db)
         mentor = require_mentor(db)
         batch = ensure_batch(db, rid, now)
