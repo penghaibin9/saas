@@ -155,13 +155,17 @@ export class StaffInternshipLeavePage {
   }
 
   async openFinal(leaveId) {
+    await this.page.goto(this.url({ panel: 'all' }))
+    await expect(this.page.getByText('请假审批').first()).toBeVisible()
+    await this.dismissGuideIfPresent()
+
+    const row = this.page.locator('.lv-item').filter({ hasText: this.fixture.studentNo }).first()
+    await expect(row).toBeVisible()
     const detailResponse = this.page.waitForResponse((response) =>
       apiPath(response).endsWith(`/api/v1/internship/leaves/${leaveId}`)
       && response.request().method() === 'GET'
     )
-    await this.page.goto(this.url({ panel: 'all', leaveId }))
-    await expect(this.page.getByText('请假审批').first()).toBeVisible()
-    await this.dismissGuideIfPresent()
+    await row.click()
     const body = await expectSuccessfulResponse(await detailResponse, '管理员读取请假最终详情')
     return body?.data || {}
   }
