@@ -53,3 +53,8 @@ academic_affairs_graduation_truth_guard.install()
 from . import academic_affairs_change_safety_guard
 
 academic_affairs_change_safety_guard.install()
+
+# 包 1：正式成绩更正统一命令——申请不改正式成绩，终审追加版本且与工作流同事务。
+from . import academic_affairs_grade_correction_command
+
+academic_affairs_grade_correction_command.install()
