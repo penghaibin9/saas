@@ -59,14 +59,40 @@ def test_canonical_term_code_matches_archive_contract():
     assert guard._canonical_term_code(_row()) == "2026-2027-1"
 
 
+class _FakeConnection:
+    """伪连接：只回答"这个学生主档当前 version 是多少"。"""
+
+    def __init__(self, version):
+        self.version = version
+
+    def execute(self, _statement):
+        return _ScalarResult([SimpleNamespace(version=self.version)])
+
+
 def test_new_status_change_freezes_selected_term_code():
-    change = _row(term_code=None)
+    change = _row(term_code=None, student_id=None, idempotency_key=None,
+                  expected_student_version=None)
     token = guard._SELECTED_TERM_CODE.set("2026-2027-1")
     try:
         guard._freeze_term_code(None, None, change)
     finally:
         guard._SELECTED_TERM_CODE.reset(token)
     assert change.term_code == "2026-2027-1"
+
+
+def test_new_status_change_freezes_student_version_and_idempotency_key():
+    """异动行落库时必须同时冻结主档 version 快照与幂等键，供终审条件更新和重复提交判定。"""
+    change = _row(term_code=None, student_id=42, idempotency_key=None,
+                  expected_student_version=None)
+    term_token = guard._SELECTED_TERM_CODE.set("2026-2027-1")
+    key_token = guard._SELECTED_IDEMPOTENCY_KEY.set("idem-1")
+    try:
+        guard._freeze_term_code(None, _FakeConnection(7), change)
+    finally:
+        guard._SELECTED_IDEMPOTENCY_KEY.reset(key_token)
+        guard._SELECTED_TERM_CODE.reset(term_token)
+    assert change.expected_student_version == 7
+    assert change.idempotency_key == "idem-1"
 
 
 def test_term_code_conflict_fails_closed():
