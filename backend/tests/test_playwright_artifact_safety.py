@@ -8,6 +8,7 @@ RESET_SCRIPT = ROOT / "backend" / "scripts" / "e2e_reset_graduation_passwords.py
 VERIFY_SCRIPT = ROOT / "backend" / "scripts" / "e2e_verify_graduation_accounts.py"
 BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_accounts_ci.py"
 INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
+STUDENT_AFFAIRS_SEED = ROOT / "backend" / "scripts" / "e2e_seed_student_affairs_sandbox.py"
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -30,6 +31,7 @@ def test_ci_account_chain_never_persists_plaintext_password_maps():
     )
     for marker in forbidden:
         assert marker not in combined
+    assert '"COUNSELOR"' in combined
 
 
 def test_workflow_keeps_mock_login_disabled_and_isolated_database_guarded():
@@ -55,5 +57,26 @@ def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
     # Leave state and its audit trail must be produced by visible browser interactions.
     assert "InternshipLeave(" not in seed
     assert "InternshipAuditTrail(" not in seed
+    assert '"password"' not in seed
+    assert "password_hash" not in seed
+
+
+def test_student_affairs_seed_only_binds_counselor_in_local_e2e_database():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    seed = STUDENT_AFFAIRS_SEED.read_text(encoding="utf-8")
+
+    assert "python scripts/e2e_seed_student_affairs_sandbox.py" in workflow
+    assert "E2E_ALLOW_DESTRUCTIVE_TESTS=true is required" in seed
+    assert "DATABASE_URL must contain e2e or test" in seed
+    assert "student-affairs E2E seed only accepts a local database" in seed
+    assert "require_tenant(db)" in seed
+    assert "tenant.tenant_code != TENANT_CODE" in seed
+    assert "AffairsCounselorAssignment(" in seed
+
+    # Every leave state, task, cancel record and audit row must be created by browser actions.
+    assert "CsLeave(" not in seed
+    assert "WorkflowTask(" not in seed
+    assert "AffairsLeaveCancelRecord(" not in seed
+    assert "AffairsAuditTrail(" not in seed
     assert '"password"' not in seed
     assert "password_hash" not in seed
