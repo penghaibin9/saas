@@ -676,11 +676,17 @@ class StatusChangeSubmit(BaseModel):
     toCollegeId: Optional[str] = None
     toMajorId: Optional[str] = None
     toClassId: Optional[str] = Field(None, description="TRANSFER_MAJOR/TRANSFER_CLASS 目标班级；TRANSFER_CLASS 必填")
+    idempotencyKey: Optional[str] = Field(
+        None, max_length=120,
+        description="发起幂等键；重复提交同一键只落一条异动单并返回既有结果")
 
 
 class AaReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/RETURN")
     reason: Optional[str] = Field("", max_length=500)
+    expectedDecisionVersion: Optional[int] = Field(
+        None, ge=0,
+        description="客户端读到的 decisionVersion；落后于服务端即 409，防止覆盖他人已作出的审批决定")
 
 
 @router.post("/status-changes", summary="发起学籍异动（含休学/复学/退学/转专业/转班分类申请入口，changeType 区分）")
@@ -709,7 +715,10 @@ def status_change_detail(changeId: int = Path(...), user=Depends(_SC_LIST_VIEW))
 
 @router.post("/status-changes/{changeId}/review", summary="异动审批（多节点，终审经单一入口生效；节点授权见 service）")
 def status_change_review(body: AaReviewBody, changeId: int = Path(...), user=Depends(_SC_REVIEW_ANY)):
-    return success(change_svc.review(changeId, user, body.action, body.reason or ""), message="已处理")
+    return success(
+        change_svc.review(changeId, user, body.action, body.reason or "",
+                          expected_decision_version=body.expectedDecisionVersion),
+        message="已处理")
 
 
 # ═══════════ 培养方案（P2 编制骨架，审批发布 P3）═══════════

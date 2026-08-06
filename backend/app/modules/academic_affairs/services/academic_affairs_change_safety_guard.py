@@ -1,16 +1,20 @@
-"""包 5：学籍异动详情、学期和工作流受理人安全层。
+"""包 5：学籍异动详情范围、学期冻结、受理人与并发审批安全层。
 
-本模块先关闭三个可独立止血的问题：
+本模块关闭包 5 的全部合同：
 1. 详情读取必须按目标学生做对象级范围裁决；
-2. 新异动创建时在同一 ORM flush 中冻结学期编码，审批必须校验异动所属学期，
-   不再用“当前学期”替代历史事实；
+2. 新异动创建时在同一 ORM flush 中冻结学期编码、发起时的学生主档 version 与幂等键，
+   审批必须校验异动所属学期，不再用“当前学期”替代历史事实；
 3. 工作流任务禁止 assignee_id=0。学院节点优先使用学院教学秘书，其他节点按
-   有效权限成员解析；没有唯一真实受理人时 fail-closed，禁止生成无人任务。
-
-完整的 expectedVersion、最终状态条件更新和并发终审 MySQL 证明仍由包 5 后续施工完成。
+   有效权限成员解析；没有唯一真实受理人时 fail-closed，禁止生成无人任务；
+4. 一次审批 = 一个事务：异动行锁 → 学期校验 → decisionVersion 乐观锁 → 当前
+   WorkflowTask 原子认领 → 决定与正式事实 → 待办/审计/outbox，全部同一次 commit。
+   任一步失败整笔回滚，不产生半截任务、事件或消息。
+5. 终审经 change_student_status 对学生主档做条件更新（version + 当前状态双条件），
+   两个并发终审只能有一个成功。
 """
 from __future__ import annotations
 
+import uuid
 from contextvars import ContextVar
 from datetime import datetime
 from functools import wraps
@@ -35,6 +39,10 @@ _ORIGINAL_ASSIGNEE = getattr(
 
 _SELECTED_TERM_CODE: ContextVar[str | None] = ContextVar(
     "aa_status_change_selected_term_code",
+    default=None,
+)
+_SELECTED_IDEMPOTENCY_KEY: ContextVar[str | None] = ContextVar(
+    "aa_status_change_idempotency_key",
     default=None,
 )
 _CHANGE_CONTEXT: ContextVar[dict | None] = ContextVar(
@@ -113,7 +121,8 @@ def _term_for_change(db, term_code):
     return term
 
 
-def _freeze_term_code(_mapper, _connection, target) -> None:
+def _freeze_term_code(_mapper, connection, target) -> None:
+    """在异动行真正落库的同一事务里冻结学期、主档 version 快照和幂等键。"""
     selected = _SELECTED_TERM_CODE.get()
     if not selected:
         return
@@ -126,6 +135,25 @@ def _freeze_term_code(_mapper, _connection, target) -> None:
             http_status=409,
         )
     target.term_code = selected
+    if getattr(target, "idempotency_key", None) in (None, ""):
+        target.idempotency_key = _SELECTED_IDEMPOTENCY_KEY.get()
+    if getattr(target, "expected_student_version", None) is None:
+        target.expected_student_version = _read_student_version(
+            connection, getattr(target, "student_id", None))
+
+
+def _read_student_version(connection, student_id) -> int | None:
+    """用异动写入所在的连接读主档 version，保证快照与本次插入处于同一事务视图。"""
+    from app.models import StudentProfile
+
+    if connection is None or not student_id:
+        return None
+    table = StudentProfile.__table__
+    row = connection.execute(select(table.c.version).where(
+        table.c.id == int(student_id),
+        table.c.tenant_id == _tid(),
+    )).first()
+    return int(row.version or 0) if row else None
 
 
 def require_change_scope(db, user: dict | None, change) -> None:
@@ -279,19 +307,46 @@ def _change_snapshot(change) -> dict:
     }
 
 
-def _current_user_id(user: dict | None) -> int:
+def _current_user_id(db, user: dict | None) -> int:
+    """解析审批人的稳定数值 userId。
+
+    生产 JWT 直接携带数值 userId。演示/联调环境的登录名式身份（``u_<loginName>``）必须回到
+    ``t_user`` 查出真实账号，查不到就 fail-closed —— 不允许拿一个不存在的账号去认领审批任务。
+    """
+    from app.models import User
+
     current = user or get_current_user_ctx() or {}
     value = current.get("userId") or current.get("id")
     try:
         parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise no_permission("当前登录身份缺少稳定 userId，禁止审批") from exc
-    if parsed <= 0:
-        raise no_permission("当前登录身份缺少稳定 userId，禁止审批")
-    return parsed
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed > 0:
+        return parsed
+
+    login_name = str(current.get("loginName") or "").strip()
+    raw = str(value or "").strip()
+    if not login_name and raw.startswith("u_"):
+        login_name = raw[2:]
+    if login_name:
+        row = db.scalars(select(User).where(
+            User.tenant_id == _tid(),
+            User.login_name == login_name,
+            User.status == "ACTIVE",
+            User.is_deleted.is_(False),
+        )).first()
+        if row:
+            return int(row.id)
+    raise no_permission("当前登录身份未绑定有效系统账号，禁止审批")
 
 
 def _claim_or_validate_pending_task(db, change, user: dict | None) -> None:
+    """在调用方事务内原子认领当前节点任务；本函数不 commit。
+
+    行锁 + `status == PENDING` 保证两个并发审批只能有一个拿到任务：后到的那个会阻塞到
+    先到的提交，再读时任务已是 APPROVED/REJECTED，直接 409，且它自己写的任何东西都随
+    事务一起回滚。
+    """
     from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
 
     if not change.workflow_instance_id:
@@ -310,7 +365,7 @@ def _claim_or_validate_pending_task(db, change, user: dict | None) -> None:
     if not task:
         raise AppException("APPROVAL_VERSION_CONFLICT", "当前审批任务不存在或已被处理", http_status=409)
 
-    uid = _current_user_id(user)
+    uid = _current_user_id(db, user)
     assignee = int(task.assignee_id or 0)
     if assignee <= 0:
         token = _CHANGE_CONTEXT.set(_change_snapshot(change))
@@ -333,34 +388,76 @@ def _claim_or_validate_pending_task(db, change, user: dict | None) -> None:
 
     if assignee != uid:
         raise no_permission("当前审批任务已明确分配给其他受理人")
+    change.current_task_id = int(task.id)
+
+
+def _require_decision_version(change, expected) -> None:
+    """审批乐观锁：客户端带着看到的 decisionVersion 提交，落后即 409，不覆盖别人的决定。"""
+    if expected in (None, ""):
+        return
+    try:
+        wanted = int(expected)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "expectedDecisionVersion 必须是整数") from exc
+    current = int(change.decision_version or 0)
+    if wanted != current:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "该异动已被他人处理，请刷新后重试",
+            details={"expectedDecisionVersion": wanted, "currentDecisionVersion": current},
+            http_status=409,
+        )
+
+
+def _existing_by_idempotency_key(db, key: str):
+    from app.models import AaStatusChange
+
+    return db.query(AaStatusChange).filter(
+        AaStatusChange.tenant_id == _tid(),
+        AaStatusChange.idempotency_key == key,
+        AaStatusChange.is_deleted.is_(False),
+    ).first()
 
 
 @wraps(_ORIGINAL_SUBMIT)
 def strict_submit(body, user) -> dict:
     requested_code = getattr(body, "termCode", None)
+    client_key = str(getattr(body, "idempotencyKey", "") or "").strip()[:120] or None
     with session() as db:
         term = _current_writable_term(db, requested_code)
         term_code = _canonical_term_code(term)
-    token = _SELECTED_TERM_CODE.set(term_code)
+        if client_key:
+            replay = _existing_by_idempotency_key(db, client_key)
+            if replay is not None:
+                # 网络重试/重复点击：返回既有异动单，不再开第二条流水与第二个工作流。
+                from app.models import StudentProfile
+
+                student = db.get(StudentProfile, int(replay.student_id)) if replay.student_id else None
+                return change_service._row(replay, student)
+    term_token = _SELECTED_TERM_CODE.set(term_code)
+    key_token = _SELECTED_IDEMPOTENCY_KEY.set(client_key or f"auto-{uuid.uuid4().hex}")
     try:
         return _ORIGINAL_SUBMIT(body, user)
     finally:
-        _SELECTED_TERM_CODE.reset(token)
+        _SELECTED_IDEMPOTENCY_KEY.reset(key_token)
+        _SELECTED_TERM_CODE.reset(term_token)
 
 
 @wraps(_ORIGINAL_REVIEW)
-def strict_review(sc_id, user, action, reason="") -> dict:
+def strict_review(sc_id, user, action, reason="", expected_decision_version=None) -> dict:
+    """一次审批 = 一个事务：认领、决定、正式事实、待办、审计和 outbox 记录同生共死。"""
     with session() as db:
-        change, _student = change_service._load(db, sc_id)
+        change, _student = change_service._load(db, sc_id, lock=True)
         _term_for_change(db, change.term_code)
+        _require_decision_version(change, expected_decision_version)
         _claim_or_validate_pending_task(db, change, user)
-        snapshot = _change_snapshot(change)
+        token = _CHANGE_CONTEXT.set(_change_snapshot(change))
+        try:
+            result, post = change_service.review_in_session(db, sc_id, user, action, reason)
+        finally:
+            _CHANGE_CONTEXT.reset(token)
         db.commit()
-    token = _CHANGE_CONTEXT.set(snapshot)
-    try:
-        return _ORIGINAL_REVIEW(sc_id, user, action, reason)
-    finally:
-        _CHANGE_CONTEXT.reset(token)
+    return change_service.run_review_post_commit(post, result)
 
 
 def strict_get_change(sc_id, user) -> dict:

@@ -76,6 +76,11 @@ class AaClassTimeBand(PKMixin, TenantMixin, CommonMixin, Base):
 class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
     """学籍异动流水单（change_student_status 单一入口写入；P1 仅注册类，异动全类 P2）。"""
     __tablename__ = "t_aa_status_change"
+    __table_args__ = (
+        # 幂等键唯一：重复提交同一份异动申请只落一行。MySQL 唯一索引允许多行 NULL，
+        # 历史流水（含 change_student_status 直接生成的注册类）不受影响。
+        UniqueConstraint("tenant_id", "idempotency_key", name="uk_aa_status_change_idem"),
+    )
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     change_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True,
@@ -97,6 +102,12 @@ class AaStatusChange(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="EFFECTIVE", index=True,
                                         comment="DRAFT/SUBMITTED/IN_REVIEW/APPROVED/REJECTED/RETURNED/CANCELLED/EFFECTIVE/ARCHIVED")
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    # 包 5 并发合同：发起时冻结学生主档 version，终审据此做条件更新；current_task_id 记录本节点
+    # 已认领的审批任务；decision_version 是审批决定的单调乐观锁；idempotency_key 让重复提交幂等。
+    expected_student_version: Mapped[int | None] = mapped_column(Integer)
+    current_task_id: Mapped[int | None] = mapped_column(BigInteger)
+    decision_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120))
 
 
 class AaRegistrationBatch(PKMixin, TenantMixin, CommonMixin, Base):
