@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, String, UniqueConstraint, event, inspect, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.core.context import get_current_user_ctx
+from app.core.context import get_current_user_ctx, get_tenant, set_tenant
 from app.core.exceptions import AppException
 from app.models import (
     GraduationArchiveRecord,
@@ -25,7 +25,6 @@ from app.modules.graduation.services import graduation_archive_service as archiv
 from app.modules.graduation.services import graduation_defense_score_service as defense_score_service
 from app.modules.graduation.services import graduation_mentor_service as mentor_service
 from app.modules.graduation.services.graduation_archive_terminal_guard import register_graduation_archive_guard
-from app.services.db_service import _tid
 
 
 class GraduationArchiveVersion(PKMixin, TenantMixin, CommonMixin, Base):
@@ -61,9 +60,9 @@ _PENDING_ARCHIVE_VERSION_KEY = "graduation_package9_pending_archive_versions"
 _PROCESSING_ARCHIVE_VERSION_KEY = "graduation_package9_processing_archive_versions"
 
 
-def _latest(db, model, student_id, *criteria):
+def _latest(db, model, tenant_id, student_id, *criteria):
     return db.scalars(select(model).where(
-        model.tenant_id == _tid(),
+        model.tenant_id == int(tenant_id),
         model.gd_student_id == int(student_id),
         model.is_deleted.is_(False),
         *criteria,
@@ -71,17 +70,24 @@ def _latest(db, model, student_id, *criteria):
 
 
 def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dict], list[str]]:
-    """只允许当前租户、未删除、最新且有效的事实满足归档清单。"""
-    taskbook = _latest(db, GraduationTaskBook, student.id)
-    proposal = _latest(db, GraduationProposal, student.id)
-    midterm = _latest(db, GraduationMidterm, student.id)
-    final = _latest(db, GraduationFinal, student.id, GraduationFinal.final_type == "定稿")
+    """只允许学生所属租户、未删除、最新且有效的事实满足归档清单。"""
+    tenant_id = int(student.tenant_id)
+    taskbook = _latest(db, GraduationTaskBook, tenant_id, student.id)
+    proposal = _latest(db, GraduationProposal, tenant_id, student.id)
+    midterm = _latest(db, GraduationMidterm, tenant_id, student.id)
+    final = _latest(db, GraduationFinal, tenant_id, student.id, GraduationFinal.final_type == "定稿")
     review = (
-        _latest(db, GraduationReview, student.id, GraduationReview.gd_final_id == int(final.id))
+        _latest(
+            db,
+            GraduationReview,
+            tenant_id,
+            student.id,
+            GraduationReview.gd_final_id == int(final.id),
+        )
         if final else None
     )
-    defense = _latest(db, GraduationDefenseScore, student.id)
-    grade = _latest(db, GraduationGrade, student.id)
+    defense = _latest(db, GraduationDefenseScore, tenant_id, student.id)
+    grade = _latest(db, GraduationGrade, tenant_id, student.id)
 
     present = {
         "taskbook": bool(taskbook and taskbook.status == "CONFIRMED"),
@@ -103,9 +109,21 @@ def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dic
 
 
 def _strict_manifest_payload(db, student: GraduationStudent, archive_batch_no: str) -> dict:
-    """归档 manifest 与 checklist 使用同一条最新有效成绩事实。"""
-    payload = archive_consistency.manifest_payload(db, student, archive_batch_no)
-    grade = _latest(db, GraduationGrade, student.id, GraduationGrade.status == "PUBLISHED")
+    """归档 manifest 与 checklist 使用同一租户、同一条最新有效成绩事实。"""
+    tenant_id = int(student.tenant_id)
+    previous_tenant = get_tenant()
+    set_tenant({"tenantId": str(tenant_id)})
+    try:
+        payload = archive_consistency.manifest_payload(db, student, archive_batch_no)
+    finally:
+        set_tenant(previous_tenant)
+    grade = _latest(
+        db,
+        GraduationGrade,
+        tenant_id,
+        student.id,
+        GraduationGrade.status == "PUBLISHED",
+    )
     if not grade:
         raise AppException("DATA_CONFLICT", "归档缺少当前有效的已发布成绩")
     payload["grade"] = {
@@ -233,8 +251,6 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
     if len(manifest_hash) != 64:
         raise AppException("DATA_CONFLICT", "归档来源清单 hash 生成失败")
 
-    # after_flush_postexec 内不能递归 flush；用 Core DML 立即持久化，确保
-    # 调用方 db.flush() 返回时主记录 hash 与版本行都已经在同一事务可见。
     archive.manifest_hash = manifest_hash
     session.execute(
         GraduationArchiveRecord.__table__.update()
@@ -261,8 +277,6 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
                 invalidated_reason=invalidated_reason,
             )
         )
-        # Core DML 已更新数据库；同步 identity map，避免同一事务后续查询
-        # 从会话缓存读取到过期的 current_flag=True。
         previous.current_flag = False
         previous.invalidated_reason = invalidated_reason
 
