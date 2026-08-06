@@ -1,0 +1,164 @@
+version: 1
+updatedAt: 2026-08-06
+
+statuses:
+  - draft
+  - reviewed
+  - published
+  - stale
+  - archived
+
+platforms:
+  - PC
+  - 教师小程序
+  - 学生小程序
+
+categories:
+  - id: getting-started
+    title: 新手入门
+    description: 首次登录、学校开通和基础配置顺序
+  - id: roles
+    title: 按角色找帮助
+    description: 按学校管理员、业务老师、指导教师和学生查找
+  - id: modules
+    title: 按业务找帮助
+    description: 系统管理、学生主档、教务、学工、实习和毕业设计
+  - id: mobile
+    title: 微信小程序
+    description: 教师和学生移动端高频操作
+  - id: troubleshooting
+    title: 常见问题与故障排查
+    description: 登录、权限、数据范围、状态、导入导出和消息问题
+
+articles:
+  - id: getting-started.school-initial-setup
+    path: getting-started/school-initial-setup.md
+    title: 学校首次开通后应该先配置什么
+    category: getting-started
+    roles:
+      - 学校管理员
+      - 平台运营人员
+    platforms:
+      - PC
+    module: 新手入门
+    status: draft
+    owner: 系统管理
+    keywords:
+      - 首次开通
+      - 初始化
+      - 基础配置
+      - 上线准备
+      - 学校配置顺序
+
+  - id: student.create
+    path: modules/student/create-student.md
+    title: 如何新增一名学生
+    category: modules
+    roles:
+      - 学校管理员
+      - 学籍管理员
+    platforms:
+      - PC
+    module: 学生主档
+    status: draft
+    owner: 学生主档
+    keywords:
+      - 新增学生
+      - 添加学生
+      - 学生建档
+      - 录入学生
+      - 创建学籍
+
+  - id: student.import
+    path: modules/student/import-students.md
+    title: 如何批量导入学生
+    category: modules
+    roles:
+      - 学校管理员
+      - 学籍管理员
+    platforms:
+      - PC
+    module: 学生主档
+    status: draft
+    owner: 学生主档
+    keywords:
+      - 批量导入学生
+      - 学生花名册
+      - Excel 导入
+      - 导入失败
+      - 错误行
+
+  - id: system.permission.troubleshooting
+    path: modules/system/data-permission.md
+    title: 为什么看不到菜单、按钮或学生数据
+    category: troubleshooting
+    roles:
+      - 学校管理员
+      - 业务老师
+      - 指导教师
+    platforms:
+      - PC
+      - 教师小程序
+    module: 系统管理
+    status: draft
+    owner: 系统管理
+    keywords:
+      - 看不到菜单
+      - 按钮不见了
+      - 没有权限
+      - 看不到学生
+      - 数据范围
+      - 无数据
+
+  - id: student.mobile.scan-profile
+    path: mobile/student-scan-profile.md
+    title: 如何使用手机扫码采集学生资料
+    category: mobile
+    roles:
+      - 学校管理员
+      - 学籍管理员
+      - 学生
+    platforms:
+      - PC
+      - 学生小程序
+    module: 学生主档
+    status: draft
+    owner: 学生主档
+    keywords:
+      - 扫码建档
+      - 手机采集
+      - 学生资料
+      - 二维码
+      - 移动端填报
+
+plannedArticles:
+  - id: auth.first-login
+    title: 学生和教师第一次如何登录
+    priority: P0
+  - id: system.teacher-role
+    title: 如何创建教师账号并分配角色
+    priority: P0
+  - id: system.organization-setup
+    title: 如何建立院系、专业、年级和班级
+    priority: P0
+  - id: academic.full-workflow
+    title: 从培养方案到成绩发布的完整流程
+    priority: P0
+  - id: student-affairs.full-workflow
+    title: 从学生申请到审核归档的完整流程
+    priority: P0
+  - id: internship.full-workflow
+    title: 从创建实习批次到材料归档的完整流程
+    priority: P0
+  - id: graduation.full-workflow
+    title: 从选题到答辩归档的完整流程
+    priority: P0
+  - id: import.troubleshooting
+    title: Excel 导入失败和错误行怎么处理
+    priority: P0
+  - id: export.task
+    title: 如何查询、筛选和导出业务台账
+    priority: P0
+  - id: notification.troubleshooting
+    title: 为什么没有收到待办或消息
+    priority: P0
