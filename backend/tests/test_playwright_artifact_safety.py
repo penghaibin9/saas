@@ -7,6 +7,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "playwright-production-e2e.yml"
 RESET_SCRIPT = ROOT / "backend" / "scripts" / "e2e_reset_graduation_passwords.py"
 VERIFY_SCRIPT = ROOT / "backend" / "scripts" / "e2e_verify_graduation_accounts.py"
 BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_accounts_ci.py"
+INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -37,3 +38,19 @@ def test_workflow_keeps_mock_login_disabled_and_isolated_database_guarded():
     assert "E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'" in text
     assert "student_lifecycle_e2e" in text
     assert "APP_ENV: test" in text
+
+
+def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    seed = INTERNSHIP_SEED.read_text(encoding="utf-8")
+
+    assert "python scripts/e2e_seed_internship_sandbox.py" in workflow
+    assert "E2E_ALLOW_DESTRUCTIVE_TESTS=true is required" in seed
+    assert "DATABASE_URL must contain e2e or test" in seed
+    assert "internship E2E seed only accepts a local database" in seed
+
+    # Leave state and its audit trail must be produced by visible browser interactions.
+    assert "InternshipLeave(" not in seed
+    assert "InternshipAuditTrail(" not in seed
+    assert '"password"' not in seed
+    assert "password_hash" not in seed
