@@ -1,6 +1,6 @@
 """包 9：新增毕业设计不可变归档版本链。
 
-Revision ID: 20260806_gd_package9_archive_versions
+Revision ID: 20260806_gd_pkg9_archive_ver
 Revises: 20260804_aa_enrollment_program
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import inspect
 
-revision = "20260806_gd_package9_archive_versions"
+revision = "20260806_gd_pkg9_archive_ver"
 down_revision = "20260804_aa_enrollment_program"
 branch_labels = None
 depends_on = None
@@ -19,7 +19,7 @@ _TABLE = "t_gd_archive_version"
 
 def _require_mysql() -> None:
     if op.get_bind().dialect.name != "mysql":
-        raise RuntimeError("20260806_gd_package9_archive_versions requires MySQL")
+        raise RuntimeError("20260806_gd_pkg9_archive_ver requires MySQL")
 
 
 def upgrade() -> None:
