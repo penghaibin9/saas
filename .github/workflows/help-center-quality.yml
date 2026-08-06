@@ -1,0 +1,54 @@
+name: Help Center Quality
+
+on:
+  pull_request:
+    paths:
+      - 'docs/help/**'
+      - 'frontend/src/config/helpContent.js'
+      - 'frontend/src/config/help/**'
+      - 'frontend/src/config/helpCenterModel.js'
+      - 'frontend/src/config/__tests__/helpCenterModel.test.js'
+      - 'frontend/src/views/admin/help/**'
+      - 'frontend/public/help/**'
+      - 'scripts/validate_help_center.py'
+      - '.github/workflows/help-center-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: help-center-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate governance, links, ids and assets
+        run: python scripts/validate_help_center.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run help center model tests
+        working-directory: frontend
+        run: npm run test:run -- src/config/__tests__/helpCenterModel.test.js
+
+      - name: Build management PC
+        working-directory: frontend
+        run: npm run build
