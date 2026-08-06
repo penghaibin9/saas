@@ -14,6 +14,9 @@ down_revision = "20260804_aa_enrollment_program"
 branch_labels = None
 depends_on = None
 
+# alembic_version.version_num 的常见正式合同为 VARCHAR(32)，迁移 ID 必须稳定落入该边界。
+assert len(revision) <= 32
+
 _TABLE = "t_gd_archive_version"
 
 
