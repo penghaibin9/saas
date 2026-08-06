@@ -100,6 +100,23 @@ def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dic
     return checklist, missing
 
 
+def _strict_manifest_payload(db, student: GraduationStudent, archive_batch_no: str) -> dict:
+    """归档 manifest 与 checklist 使用同一条最新有效成绩事实。"""
+    payload = archive_consistency.manifest_payload(db, student, archive_batch_no)
+    grade = _latest(db, GraduationGrade, student.id, GraduationGrade.status == "PUBLISHED")
+    if not grade:
+        raise AppException("DATA_CONFLICT", "归档缺少当前有效的已发布成绩")
+    payload["grade"] = {
+        "id": str(grade.id),
+        "status": grade.status,
+        "score": grade.total_score,
+        "sourceHash": grade.source_snapshot_hash,
+        "version": grade.version,
+    }
+    payload["manifestHash"] = archive_consistency._json_hash(payload)
+    return payload
+
+
 def _normalize_assignment_item(item: dict) -> dict:
     if not isinstance(item, dict):
         raise AppException("VALIDATION_ERROR", "导师分配项必须是对象")
@@ -180,12 +197,25 @@ def _append_archive_versions(session: Session, flush_context, instances) -> None
         ).with_for_update()).first()
         if not student:
             raise AppException("DATA_CONFLICT", "归档学生不存在或已失效")
+        _checklist, missing = _strict_check_completeness(session, student)
+        if missing:
+            raise AppException(
+                "DATA_CONFLICT",
+                "归档来源事实不完整，禁止形成 FILED 版本",
+                details={"missingItems": missing},
+            )
 
-        manifest = archive_consistency.manifest_payload(
+        manifest = _strict_manifest_payload(
             session,
             student,
             str(archive.archive_batch_no or ""),
         )
+        if manifest.get("fileErrors"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "归档文件证据不完整",
+                details={"fileErrors": list(manifest.get("fileErrors") or [])[:10]},
+            )
         manifest_hash = str(manifest.get("manifestHash") or "")
         if len(manifest_hash) != 64:
             raise AppException("DATA_CONFLICT", "归档来源清单 hash 生成失败")

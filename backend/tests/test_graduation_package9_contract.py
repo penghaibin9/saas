@@ -1,15 +1,16 @@
 """包 9 反向合同：稳定导师、答辩权威门禁、严格清单与版本化归档。"""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.models import GraduationBatch
+from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent
 from app.modules.graduation.policies import defense_policy
 from app.modules.graduation.schemas.graduation_mentor import MentorAssignRequest, MentorChangeRequest
 from app.modules.graduation.services import graduation_package9_guard as package9
@@ -122,6 +123,7 @@ def test_archive_version_model_and_migration_freeze_required_fields():
     }.issubset(columns)
 
     migration = Path("alembic/versions/20260806_gd_package9_archive_versions.py").read_text("utf-8")
+    assert 'revision = "20260806_gd_pkg9_archive_ver"' in migration
     assert 'down_revision = "20260804_aa_enrollment_program"' in migration
     assert "uk_gd_archive_version_no" in migration
 
@@ -137,3 +139,78 @@ def test_package9_guard_installs_filed_source_lock_and_strict_current_queries():
     assert 'status == "FILED"' in terminal_source
     assert "source_manifest_json" in guard_source
     assert "source_manifest_hash" in guard_source
+    assert "_strict_manifest_payload" in guard_source
+
+
+def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):
+    """真实 MySQL：两次 FILED 形成连续版本，且同一时刻仅一个 current。"""
+    from app.db.session import get_sessionmaker
+
+    tenant_id = 1000000000000000001
+    monkeypatch.setattr(package9, "_strict_check_completeness", lambda db, student: ([], []))
+    monkeypatch.setattr(
+        package9,
+        "_strict_manifest_payload",
+        lambda db, student, archive_no: {
+            "tenantId": str(tenant_id),
+            "gdStudentId": str(student.id),
+            "archiveBatchNo": archive_no,
+            "grade": {"id": "1", "status": "PUBLISHED", "version": 1},
+            "fileErrors": [],
+            "manifestHash": "a" * 64 if archive_no.endswith("01") else "b" * 64,
+        },
+    )
+
+    db = get_sessionmaker()()
+    try:
+        student = GraduationStudent(
+            tenant_id=tenant_id,
+            student_no="PKG9-MYSQL-001",
+            name="包9归档测试学生",
+            stage="FINAL_CHECK",
+            record_status="ACTIVE",
+        )
+        db.add(student)
+        db.flush()
+        archive = GraduationArchiveRecord(
+            tenant_id=tenant_id,
+            gd_student_id=student.id,
+            status="PENDING_SUBMIT",
+        )
+        db.add(archive)
+        db.flush()
+
+        archive.status = "FILED"
+        archive.archive_batch_no = "PKG9-ARCH-01"
+        archive.filed_at = datetime.utcnow()
+        archive.verified_by = "mysql-test"
+        db.flush()
+
+        first = db.scalars(select(package9.GraduationArchiveVersion).where(
+            package9.GraduationArchiveVersion.archive_record_id == archive.id,
+        )).one()
+        assert first.archive_version == 1
+        assert first.current_flag is True
+        assert first.previous_archive_id is None
+        assert first.source_manifest_hash == "a" * 64
+
+        archive.status = "SUBMITTED"
+        db.flush()
+        archive.status = "FILED"
+        archive.archive_batch_no = "PKG9-ARCH-02"
+        archive.filed_at = datetime.utcnow()
+        db.flush()
+        db.commit()
+
+        rows = list(db.scalars(select(package9.GraduationArchiveVersion).where(
+            package9.GraduationArchiveVersion.archive_record_id == archive.id,
+        ).order_by(package9.GraduationArchiveVersion.archive_version)).all())
+        assert [row.archive_version for row in rows] == [1, 2]
+        assert rows[0].current_flag is False
+        assert rows[0].invalidated_reason == "SUPERSEDED_BY_REFILING"
+        assert rows[1].current_flag is True
+        assert rows[1].previous_archive_id == rows[0].id
+        assert rows[1].source_manifest_hash == "b" * 64
+    finally:
+        db.rollback()
+        db.close()
