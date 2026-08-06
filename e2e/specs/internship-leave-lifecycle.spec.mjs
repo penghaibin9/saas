@@ -11,7 +11,13 @@ function isoDay(offset) {
   return date.toISOString().slice(0, 10)
 }
 
-test.describe.serial('岗位实习：学生请假—导师审批—学生销假—管理员核验', () => {
+test.describe('岗位实习：学生请假—导师审批—学生销假—管理员核验', () => {
+  // This suite intentionally persists one state machine across four visible actors.
+  // A retry after a later failure would replay the submit step against an existing
+  // pending leave and produce a legitimate 409, so this stateful chain fails once
+  // with complete evidence instead of contaminating the diagnosis with a retry.
+  test.describe.configure({ mode: 'serial', retries: 0 })
+
   let fixture
   let leaveId = ''
   let reason = ''
@@ -36,7 +42,11 @@ test.describe.serial('岗位实习：学生请假—导师审批—学生销假�
 
   test('实习指导教师从请假队列审批通过', async ({ page }) => {
     expect(leaveId, '学生步骤必须先生成请假单').not.toBe('')
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+    const login = new StaffLoginPage(page, config.staffBaseUrl)
+    await login.login(config.mentor)
+    await login.switchRole(/实习指导教师|实习导师|INTERN_MENTOR/)
+    await expect.poll(() => login.currentRoleText()).toMatch(/实习指导教师|实习导师|INTERN_MENTOR/)
+
     const internship = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await internship.approve({ leaveId, reason })
   })
