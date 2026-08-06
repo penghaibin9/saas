@@ -130,6 +130,10 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_internship_sandbox.py
 
+      - name: Seed isolated student-affairs prerequisites
+        working-directory: backend
+        run: python scripts/e2e_seed_student_affairs_sandbox.py
+
       - name: Install and start staff PC
         run: |
           cd frontend
