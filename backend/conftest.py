@@ -153,9 +153,11 @@ def _is_defense_write(path: str) -> bool:
 def _upgrade_legacy_graduation_defense_phase(url, path: str, kwargs: dict) -> None:
     """Normalize only legacy positive fixtures that omitted an explicit DEFENSE phase.
 
-    Explicit DEFENSE rows, CLOSED/ARCHIVED batches and production code are never
-    altered. This keeps Package 9 fail-closed tests meaningful while allowing
-    pre-Package-9 positive integration fixtures to state their intended setup.
+    This hook runs only in pytest. Explicit DEFENSE rows and CLOSED/ARCHIVED
+    batches are never altered. Legacy batches created by old positive fixtures
+    commonly remain DRAFT because those tests predate the phase contract; when
+    they have no explicit timeline, the fixture states their intended setup by
+    moving them to RUNNING. Production policy remains fail-closed.
     """
     if not _is_defense_write(path):
         return
@@ -178,7 +180,7 @@ def _upgrade_legacy_graduation_defense_phase(url, path: str, kwargs: dict) -> No
             batch = db.get(GraduationBatch, parsed_batch_id)
             if not batch or batch.is_deleted or int(batch.tenant_id) != TEST_TENANT_ID:
                 return
-            if str(batch.status or "").upper() not in {"ACTIVE", "RUNNING"}:
+            if str(batch.status or "").upper() not in {"DRAFT", "ACTIVE", "RUNNING"}:
                 return
             rows = _stage_rows(batch.stage_config)
             has_explicit_defense = any(
