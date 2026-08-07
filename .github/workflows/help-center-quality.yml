@@ -11,6 +11,8 @@ on:
       - 'frontend/src/config/helpCenterRuntime.js'
       - 'frontend/src/config/__tests__/**'
       - 'frontend/src/views/admin/help/**'
+      - 'frontend/src/views/help/**'
+      - 'frontend/src/main.js'
       - 'frontend/public/help/**'
       - 'scripts/validate_help_center.py'
       - '.github/workflows/help-center-quality.yml'
@@ -56,6 +58,7 @@ jobs:
             src/config/__tests__/foundationHelpCards.test.js \
             src/config/__tests__/studentDataHelpCards.test.js \
             src/config/__tests__/verifiedHelpOverrides.test.js \
+            src/config/__tests__/legacyHelpPolicy.test.js \
             src/config/__tests__/mobileHelpCards.test.js \
             src/config/__tests__/mobileOperationsHelpCards.test.js
 
