@@ -43,5 +43,6 @@ test('grade publish guide separates committed publish from best-effort warning s
   assert.match(text, /不及格记录.*academic_warning/)
   assert.match(text, /warningscanok \/ warningscanerror/)
   assert.match(text, /扫描失败.*不会回滚已经发布的成绩/)
-  assert.match(text, /不要重复发布成绩/)
+  assert.match(text, /单独排查预警扫描/)
+  assert.match(text, /重复发布成绩/)
 })
