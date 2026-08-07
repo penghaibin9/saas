@@ -2,8 +2,8 @@
 Description=Schedule School Lifecycle verified backup
 
 [Timer]
-OnCalendar=*-*-* 02:15:00
-RandomizedDelaySec=10m
+OnCalendar=*-*-* 01,07,13,19:15:00
+RandomizedDelaySec=5m
 Persistent=true
 AccuracySec=1m
 Unit=school-lifecycle-backup.service
