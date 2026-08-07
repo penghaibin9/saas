@@ -4,32 +4,45 @@ import {
   HELP_FLOWS,
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
+import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 
 /**
  * 帮助中心运行时聚合层。
  *
- * 兼容既有 helpContent.js 的四大业务内容，同时把 PR #48 新核验的系统管理
- * 任务卡注册进同一套帮助数组。这里有意就地扩展既有数组：BasePortalLayout 仍然
- * 可以继续调用 helpContent.js 已有的 searchHelp / findHelpForRoute，而无需改动门户壳；
- * 帮助中心模型则直接从本文件读取同一份运行时集合，不产生第二套正文真值。
+ * 兼容既有 helpContent.js 的四大业务内容，同时把 PR #48 新核验的开局/登录/学期
+ * 与系统管理任务卡注册进同一套帮助数组。这里有意就地扩展既有数组：
+ * BasePortalLayout 仍然可以继续调用 helpContent.js 已有的 searchHelp / findHelpForRoute，
+ * 而帮助中心模型直接从本文件读取同一份运行时集合，不产生第二套正文真值。
  */
-export { HELP_DOCS, HELP_FLOWS, SYSTEM_HELP_CARDS }
+export { FOUNDATION_HELP_CARDS, HELP_DOCS, HELP_FLOWS, SYSTEM_HELP_CARDS }
 
-const existingCardIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
-for (let index = SYSTEM_HELP_CARDS.length - 1; index >= 0; index -= 1) {
-  const card = SYSTEM_HELP_CARDS[index]
-  if (!existingCardIds.has(card.id)) {
-    BASE_HELP_CARDS.unshift(card)
-    existingCardIds.add(card.id)
+function registerCards(cards) {
+  const existingIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
+  for (let index = cards.length - 1; index >= 0; index -= 1) {
+    const card = cards[index]
+    if (!existingIds.has(card.id)) {
+      BASE_HELP_CARDS.unshift(card)
+      existingIds.add(card.id)
+    }
   }
 }
+
+registerCards(SYSTEM_HELP_CARDS)
+registerCards(FOUNDATION_HELP_CARDS)
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
   BASE_HELP_SECTIONS.unshift({
     key: 'system-cards',
     label: '系统管理 · 任务卡',
     items: SYSTEM_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'foundation-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'foundation-cards',
+    label: '开局与通用基础 · 任务卡',
+    items: FOUNDATION_HELP_CARDS
   })
 }
 
@@ -77,7 +90,7 @@ function splitRoute(route) {
   return { path, panel }
 }
 
-/** 顶栏“本页帮助”统一匹配，包含新增系统管理任务卡。 */
+/** 顶栏“本页帮助”统一匹配，包含新增任务卡。 */
 export function findHelpForRoute(fullPath) {
   const current = splitRoute(fullPath)
   if (!current.path) return null
