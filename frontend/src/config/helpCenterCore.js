@@ -88,15 +88,22 @@ export function buildHelpSearchText(item) {
     summary: item?.summary,
     keywords: item?.keywords,
     roles: item?.roles || item?.role,
+    platforms: item?.platforms,
     module: item?.module,
     category: item?.category,
     entry: item?.entry,
+    route: item?.route,
+    mobilePath: item?.mobilePath,
+    prerequisites: item?.prerequisites,
     steps: item?.steps,
     points: item?.points,
     tips: item?.tips,
     warnings: item?.warnings,
     fields: item?.fields,
+    successCriteria: item?.successCriteria,
+    troubleshooting: item?.troubleshooting,
     faq: item?.faq,
+    related: item?.related,
     sections: item?.sections
   }).join(' ').toLowerCase()
 }
