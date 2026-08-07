@@ -45,6 +45,17 @@ jobs:
             exit 1
           fi
           echo 'All explicit workflow Node runtimes are pinned to Node 24.'
+      - name: Require current official Actions runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BAD="$(grep -R -nE 'actions/(checkout@v[1-6]|setup-node@v[1-6]|setup-python@v[1-6]|upload-artifact@v[1-6]|download-artifact@v[1-7])' .github/workflows || true)"
+          if [ -n "$BAD" ]; then
+            echo 'Deprecated official Actions runtime returned:'
+            echo "$BAD"
+            exit 1
+          fi
+          echo 'Official checkout/setup/upload/download actions use the current Node-24-era major versions.'
       - name: Require canonical post-merge main gate
         shell: bash
         run: |
