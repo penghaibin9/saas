@@ -1,11 +1,16 @@
-"""审批任务 API（阶段12）。第一批骨架：不实现流程引擎；操作全部写审计。"""
+"""审批任务 API。审批动作必须由后端真实状态机执行并写审计。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.approval import ApprovalActionRequest, ApprovalRejectRequest, ApprovalTransferRequest
+from app.schemas.approval import (
+    ApprovalActionRequest,
+    ApprovalRejectRequest,
+    ApprovalReturnRequest,
+    ApprovalTransferRequest,
+)
 from app.services import approval_service as svc
 from app.services import mock_audit_service as audit
 
@@ -13,9 +18,14 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
 @router.get("/tasks", summary="待我审批任务列表")
-def list_tasks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-               user=Depends(require_staff)):
-    items, total = svc.list_tasks(page, pageSize, user=user)
+def list_tasks(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: str | None = Query(None, max_length=100),
+    bizType: str | None = Query(None, max_length=100),
+    user=Depends(require_staff),
+):
+    items, total = svc.list_tasks(page, pageSize, user=user, keyword=keyword, biz_type=bizType)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -31,7 +41,6 @@ def get_task(task_id: str, user=Depends(require_staff)):
 
 @router.post("/tasks/{task_id}/approve", summary="通过（写审计，返回任务与实例状态）")
 def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staff)):
-    # DB：act_task 同事务 record_critical；mock：此处强制落审计
     from app.db.session import db_enabled
     result = svc.approve(task_id, body.comment, user=user, version=body.version)
     if not db_enabled():
@@ -41,7 +50,19 @@ def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staf
     return success(result, message="已通过")
 
 
-@router.post("/tasks/{task_id}/reject", summary="驳回（reason 必填 ≥5 字，写审计）")
+@router.post("/tasks/{task_id}/return", summary="退回修改（流程保持运行，可修改后重提）")
+def return_for_revision(task_id: str, body: ApprovalReturnRequest, user=Depends(require_staff)):
+    from app.db.session import db_enabled
+    result = svc.return_for_revision(task_id, body.reason, user=user, version=body.version)
+    if not db_enabled():
+        audit.record_critical(
+            "审批退回修改", method="POST", path=f"/api/v1/approvals/tasks/{task_id}/return",
+            status_code=200, target_type="approval", target_id=task_id,
+            detail={"action": "RETURNED", "reason": body.reason})
+    return success(result, message="已退回修改")
+
+
+@router.post("/tasks/{task_id}/reject", summary="驳回终止（reason 必填，写审计）")
 def reject(task_id: str, body: ApprovalRejectRequest, user=Depends(require_staff)):
     from app.db.session import db_enabled
     result = svc.reject(task_id, body.reason, user=user, version=body.version)
@@ -61,9 +82,16 @@ def transfer(task_id: str, body: ApprovalTransferRequest, user=Depends(require_s
 
 
 @router.get("/processed", summary="已办列表")
-def processed(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-              user=Depends(require_staff)):
-    items, total = svc.list_processed(page, pageSize, user=user)
+def processed(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: str | None = Query(None, max_length=100),
+    bizType: str | None = Query(None, max_length=100),
+    result: str | None = Query(None, max_length=30),
+    user=Depends(require_staff),
+):
+    items, total = svc.list_processed(
+        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result)
     return success(paginate(items, total, page, pageSize))
 
 
