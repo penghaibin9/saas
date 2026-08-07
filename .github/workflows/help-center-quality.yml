@@ -8,7 +8,8 @@ on:
       - 'frontend/src/config/help/**'
       - 'frontend/src/config/helpCenterCore.js'
       - 'frontend/src/config/helpCenterModel.js'
-      - 'frontend/src/config/__tests__/helpCenterCore.test.js'
+      - 'frontend/src/config/helpCenterRuntime.js'
+      - 'frontend/src/config/__tests__/**'
       - 'frontend/src/views/admin/help/**'
       - 'frontend/public/help/**'
       - 'scripts/validate_help_center.py'
@@ -46,9 +47,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run help center core tests
+      - name: Run help center tests
         working-directory: frontend
-        run: node --test src/config/__tests__/helpCenterCore.test.js
+        run: |
+          node --test \
+            src/config/__tests__/helpCenterCore.test.js \
+            src/config/__tests__/systemHelpCards.test.js \
+            src/config/__tests__/foundationHelpCards.test.js \
+            src/config/__tests__/studentDataHelpCards.test.js \
+            src/config/__tests__/verifiedHelpOverrides.test.js \
+            src/config/__tests__/mobileHelpCards.test.js \
+            src/config/__tests__/mobileOperationsHelpCards.test.js
 
       - name: Build management PC
         working-directory: frontend
