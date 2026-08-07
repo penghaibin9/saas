@@ -46,7 +46,7 @@ export const GRADUATION_ROLE_GUIDANCE = Object.freeze({
   ],
   'gd-v3-review': [
     { role: '学院/毕设管理员', roleCode: 'GD_COLLEGE_ADMIN / GRADUATION_ADMIN', permission: 'graduationDesign.review.assign / return / view 等实际权限', scope: '学院 claim 或本校全量', relation: '必须存在 APPROVED 正式定稿，且评阅人与指导教师无 SoD 冲突', canDo: '分配/管理真实评阅任务。' },
-    { role: '评阅教师', roleCode: 'GD_REVIEWER', permission: 'graduationDesign.review.submit / view', scope: '本人被分配任务', relation: '只认 GraduationReview.reviewer_mentor_id == 当前用户稳定导师台账 ID', canDo: '提交本人评阅；reviewer_name 只作快照，缺稳定 ID 时 fail-closed。' }
+    { role: '评阅教师', roleCode: 'GD_REVIEWER', permission: 'graduationDesign.review.submit / view', scope: '本人被分配任务', relation: '只认 GraduationReview.reviewer_mentor_id == 当前用户稳定导师台账 ID', canDo: '提交本人评阅；评阅人姓名仅是快照，真正授权不看姓名；缺稳定 reviewer_mentor_id 时 fail-closed。' }
   ],
   'gd-v2-defense': [
     { role: '答辩秘书', roleCode: 'GD_DEFENSE_SECRETARY', permission: 'graduationDesign.defense.scoreConfirm / view 等实际权限', scope: '本人所在答辩组学生', relation: '只认 GraduationDefenseGroup.secretary_mentor_id 与当前导师身份匹配', canDo: '办理本人答辩组秘书职责和允许的确认动作。' },
