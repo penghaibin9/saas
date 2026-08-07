@@ -5,17 +5,18 @@ import {
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
+import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 
 /**
  * 帮助中心运行时聚合层。
  *
- * 兼容既有 helpContent.js 的四大业务内容，同时把 PR #48 新核验的开局/登录/学期
- * 与系统管理任务卡注册进同一套帮助数组。这里有意就地扩展既有数组：
- * BasePortalLayout 仍然可以继续调用 helpContent.js 已有的 searchHelp / findHelpForRoute，
- * 而帮助中心模型直接从本文件读取同一份运行时集合，不产生第二套正文真值。
+ * 兼容既有 helpContent.js 的四大业务内容，同时把 PR #48 新核验的增量任务卡注册进
+ * 同一套帮助数组。这里有意就地扩展既有数组：BasePortalLayout 仍然可以继续调用
+ * helpContent.js 已有的 searchHelp / findHelpForRoute，而帮助中心模型直接从本文件读取
+ * 同一份运行时集合，不产生第二套正文真值。
  */
-export { FOUNDATION_HELP_CARDS, HELP_DOCS, HELP_FLOWS, SYSTEM_HELP_CARDS }
+export { FOUNDATION_HELP_CARDS, HELP_DOCS, HELP_FLOWS, STUDENT_DATA_HELP_CARDS, SYSTEM_HELP_CARDS }
 
 function registerCards(cards) {
   const existingIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
@@ -30,6 +31,7 @@ function registerCards(cards) {
 
 registerCards(SYSTEM_HELP_CARDS)
 registerCards(FOUNDATION_HELP_CARDS)
+registerCards(STUDENT_DATA_HELP_CARDS)
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
   BASE_HELP_SECTIONS.unshift({
@@ -43,6 +45,13 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'foundation-cards')) {
     key: 'foundation-cards',
     label: '开局与通用基础 · 任务卡',
     items: FOUNDATION_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'student-data-cards',
+    label: '学生主档与数据 · 任务卡',
+    items: STUDENT_DATA_HELP_CARDS
   })
 }
 
