@@ -38,12 +38,16 @@ test('legacy policy quarantines confirmed stale generic docs and flows', () => {
   assert.match(LEGACY_HELP_EXCLUSIONS.flows['flow-academic-warning'], /失真/)
 })
 
-test('runtime removes quarantined card, doc and flow ids from search arrays and sidebar sections', () => {
+test('runtime removes confirmed stale ids and then applies the stricter V2 verified-only gate', () => {
   assert.match(runtimeSource, /removeIdsInPlace\(BASE_HELP_CARDS, cardIds\)/)
   assert.match(runtimeSource, /removeIdsInPlace\(HELP_DOCS, docIds\)/)
   assert.match(runtimeSource, /removeIdsInPlace\(HELP_FLOWS, flowIds\)/)
+  assert.match(runtimeSource, /EXCLUDED_LEGACY_HELP_IDS/)
+  assert.match(runtimeSource, /quarantineConfirmedStaleHelp\(\)/)
+  assert.match(runtimeSource, /quarantineUnverifiedKnowledge\(\)/)
+  assert.match(runtimeSource, /VERIFIED_HELP_CARD_IDS/)
+  assert.match(runtimeSource, /VERIFIED_HELP_FLOW_IDS/)
   assert.match(runtimeSource, /BASE_HELP_SECTIONS\.forEach/)
-  assert.match(runtimeSource, /EXCLUDED_LEGACY_HELP_IDS\.has/)
 })
 
 test('leave flow is corrected to current 3 and 7 day workflow thresholds with return follow-up', () => {
