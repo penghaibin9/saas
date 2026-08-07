@@ -5,6 +5,7 @@ import {
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
+import { MOBILE_HELP_CARDS } from './help/mobileHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
@@ -17,13 +18,15 @@ import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
  * helpContent.js 已有的 searchHelp / findHelpForRoute，而帮助中心模型直接从本文件读取
  * 同一份运行时集合，不产生第二套正文真值。
  *
- * 历史大文件中经本轮后端静态核验确认存在偏差的条目，通过 VERIFIED_HELP_OVERRIDES
- * 在同一对象上就地修正；不会并存两个同 id 条目。后续模块文件拆分时再回迁修正内容。
+ * 小程序卡只登记 mobilePath / entry，不登记 PC route，避免管理 PC 帮助中心产生一个
+ * 点击后 404 的“前往办理页面”。历史大文件中经后端静态核验确认存在偏差的条目，
+ * 通过 VERIFIED_HELP_OVERRIDES 在同一对象上就地修正，不并存两个同 id 条目。
  */
 export {
   FOUNDATION_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
+  MOBILE_HELP_CARDS,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
   VERIFIED_HELP_OVERRIDES
@@ -51,6 +54,7 @@ function applyVerifiedOverrides() {
 registerCards(SYSTEM_HELP_CARDS)
 registerCards(FOUNDATION_HELP_CARDS)
 registerCards(STUDENT_DATA_HELP_CARDS)
+registerCards(MOBILE_HELP_CARDS)
 applyVerifiedOverrides()
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
@@ -72,6 +76,13 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards'))
     key: 'student-data-cards',
     label: '学生主档与数据 · 任务卡',
     items: STUDENT_DATA_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'mobile-cards',
+    label: '微信小程序 · 高频任务',
+    items: MOBILE_HELP_CARDS
   })
 }
 
@@ -119,11 +130,13 @@ function splitRoute(route) {
   return { path, panel }
 }
 
-/** 顶栏“本页帮助”统一匹配，包含新增任务卡。 */
+/** 顶栏“本页帮助”统一匹配。无 PC route 的小程序卡不会参与路由命中。 */
 export function findHelpForRoute(fullPath) {
   const current = splitRoute(fullPath)
   if (!current.path) return null
-  const cards = HELP_CARDS.map((card) => ({ card, route: splitRoute(card.route) }))
+  const cards = HELP_CARDS
+    .filter((card) => card.route)
+    .map((card) => ({ card, route: splitRoute(card.route) }))
   const exact = cards.find((item) => item.route.path === current.path && item.route.panel === current.panel)
   const samePath = exact || cards.find((item) => item.route.path === current.path)
   const prefix = samePath || cards
