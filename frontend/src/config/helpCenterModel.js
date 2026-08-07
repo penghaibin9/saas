@@ -26,6 +26,12 @@ const TYPE_LABELS = {
 const PRIORITY_HELP_IDS = [
   'sys-card-first-school-setup',
   'auth-card-staff-login-password',
+  'mobile-student-internship-checkin',
+  'mobile-student-internship-weekly',
+  'mobile-student-graduation-topic',
+  'mobile-teacher-todos',
+  'mobile-teacher-internship-process',
+  'mobile-teacher-graduation-topic-review',
   'sys-card-staff-account-role',
   'sys-card-role-permission-scope',
   'sys-card-org-foundation',
