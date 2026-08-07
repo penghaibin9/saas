@@ -4,10 +4,8 @@ import {
   HELP_FLOWS,
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
-import {
-  ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
-  ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES
-} from './help/academicAffairsVerifiedOverrides'
+import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from './help/academicAffairsCleanHelpCards'
+import { ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS } from './help/academicAffairsVerifiedOverrides'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import {
   EXCLUDED_LEGACY_HELP_IDS,
@@ -27,17 +25,16 @@ import { STUDENT_AFFAIRS_VERIFIED_OVERRIDES } from './help/studentAffairsVerifie
  * V2 知识清洗原则：
  * - 正式搜索、目录、本页帮助和 ?topic= 深链只发布“已经按当前代码 / API / 权限 / 状态机核验”的知识；
  * - “没有证明错误”不再等于“允许继续展示”；未经本轮核验的历史卡、旧百科和旧流程默认隔离；
- * - PR #48 新增并逐项核验的任务卡直接进入可信集合；
- * - 历史条目只有进入 VERIFIED_* 修正层或 VERIFIED_HELP_FLOW_OVERRIDES 后才继续保留稳定 help id；
+ * - 新增并逐项核验的任务卡直接进入可信集合；
+ * - 历史条目只有进入 VERIFIED_* 修正层或被领域清洗后的正式任务卡替换才继续保留稳定 help id；
  * - docs/help 继续只做治理、审计和发布证据，不成为第二套产品正文。
  *
- * 这是帮助中心知识清洗 V2 的发布门，不是删除历史源码。被隔离内容暂留仓库供追溯，
- * 后续按“系统管理 → 教务 → 实习 → 毕设 → 学工 → 小程序”逐轮验真：能验证则收编，
- * 半真半假则改写，无代码依据则删除，重复则合并。
+ * 教务知识清洗 V2 已把学籍、成绩、选课、考务从“历史卡 + academic override”迁到
+ * academicAffairsCleanHelpCards.js 正式真值；同 ID 历史卡会被干净替换，未重新验真的旧教务卡继续隔离。
  */
 export {
+  ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
   ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
-  ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES,
   FOUNDATION_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
@@ -64,6 +61,19 @@ function registerCards(cards) {
   }
 }
 
+/**
+ * 领域清洗后的正式卡拥有稳定 id 的最终正文权。
+ * 如果历史 helpContent 中已有同 id，则完整替换旧对象；没有则注册新卡。
+ */
+function replaceOrRegisterCards(cards) {
+  for (let index = cards.length - 1; index >= 0; index -= 1) {
+    const card = cards[index]
+    const existingIndex = BASE_HELP_CARDS.findIndex((item) => item.id === card.id)
+    if (existingIndex >= 0) BASE_HELP_CARDS.splice(existingIndex, 1, card)
+    else BASE_HELP_CARDS.unshift(card)
+  }
+}
+
 function applyCardOverrides(cardsById, overrides) {
   Object.entries(overrides || {}).forEach(([id, patch]) => {
     const target = cardsById.get(id)
@@ -75,7 +85,6 @@ function applyVerifiedOverrides() {
   const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
   applyCardOverrides(cardsById, VERIFIED_HELP_OVERRIDES)
   applyCardOverrides(cardsById, STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
-  applyCardOverrides(cardsById, ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES)
 
   const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
@@ -126,7 +135,7 @@ function quarantineConfirmedStaleHelp() {
  * V2 发布白名单。
  *
  * 新任务卡数组本身就是本 PR 按页面 / 服务层重新取证后的内容；历史大文件只有明确进入
- * VERIFIED_* 的稳定 id 才继续发布。旧 HELP_DOCS 暂不默认发布：流程图/百科如仍有价值，
+ * VERIFIED_* 或领域 clean source 的稳定 id 才继续发布。旧 HELP_DOCS 暂不默认发布：流程图/百科如仍有价值，
  * 必须在后续领域清洗中重新验真后再显式收编，而不是因为历史上存在就自动继续可搜。
  */
 export const VERIFIED_HELP_CARD_IDS = new Set([
@@ -134,9 +143,9 @@ export const VERIFIED_HELP_CARD_IDS = new Set([
   ...FOUNDATION_HELP_CARDS.map((item) => item.id),
   ...STUDENT_DATA_HELP_CARDS.map((item) => item.id),
   ...ALL_MOBILE_HELP_CARDS.map((item) => item.id),
+  ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
   ...Object.keys(VERIFIED_HELP_OVERRIDES),
-  ...Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES),
-  ...Object.keys(ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES)
+  ...Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
 ])
 
 export const VERIFIED_HELP_FLOW_IDS = new Set(Object.keys(VERIFIED_HELP_FLOW_OVERRIDES))
@@ -167,6 +176,7 @@ registerCards(STUDENT_DATA_HELP_CARDS)
 registerCards(MOBILE_HELP_CARDS)
 registerCards(MOBILE_OPERATIONS_HELP_CARDS)
 applyVerifiedOverrides()
+replaceOrRegisterCards(ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS)
 quarantineConfirmedStaleHelp()
 quarantineUnverifiedKnowledge()
 
@@ -189,6 +199,13 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards'))
     key: 'student-data-cards',
     label: '学生主档与数据 · 任务卡',
     items: STUDENT_DATA_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'academic-clean-cards',
+    label: '教务中心 · 已核验任务',
+    items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS
   })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
