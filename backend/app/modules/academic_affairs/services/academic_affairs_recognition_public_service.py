@@ -5,17 +5,32 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
+from . import academic_affairs_exemption_evidence_service as evidence_service
 from . import academic_affairs_recognition_service as _base
-from .academic_affairs_grade_identity_service import next_study_attempt_no
+from .academic_affairs_grade_identity_service import lock_grade_identity, next_study_attempt_no
 
 
 def __getattr__(name):
     return getattr(_base, name)
+
+
+def _fresh_read(query):
+    """加锁读，读到最新已提交版本；SQLite 无共享行锁时退回普通读。
+
+    按方言判断，不用 try/except 兜底：那样会把 MySQL 的锁等待超时也一并吞掉，静默退回
+    普通读，守卫恰好在高并发（唯一真正需要它的时候）自动失效。
+    """
+    try:
+        is_mysql = query.session.get_bind().dialect.name == "mysql"
+    except Exception:  # noqa: BLE001  取不到方言时保守走普通读
+        is_mysql = False
+    return query.with_for_update(read=True).first() if is_mysql else query.first()
 
 
 def _resolve_student(db, *, student_no=None):
@@ -68,17 +83,41 @@ def submit(user, body, *, student_no=None) -> dict:
         if target_code in _base._passed_course_codes(db, profile.id):
             raise _base._invalid("目标课程已通过，无需认定")
 
-        attachment_json = _base._validate_attachments(
-            db,
-            getattr(body, "attachmentFileIds", None),
+        # 先锁学生主档行，再做查重。原来是 SELECT-then-INSERT 无锁：两个并发申请都查不到在途
+        # 记录，于是双双落库，最后各自终审生成两条都 PASSED 的正式成绩。锁必须早于查重。
+        #
+        # 这里锁 StudentProfile 而不是成绩身份头：身份头按 acad_student_id 定位，而
+        # _acad_student_id() 在学业台账缺失时会新建一行——两个并发事务会各建一条、拿到不同的
+        # acad_student_id，于是锁到两把不同的锁，等于没锁。StudentProfile 是必然已存在的稳定行。
+        from app.models import StudentProfile as _Profile
+
+        db.query(_Profile).filter(
+            _Profile.id == int(profile.id),
+            _Profile.tenant_id == _base._tid(),
+        ).with_for_update().first()
+
+        raw_files = getattr(body, "attachmentFileIds", None) or []
+        file_ids = raw_files if isinstance(raw_files, list) else [raw_files]
+        int_ids = [int(value) for value in file_ids if str(value).isdigit()]
+        if len(int_ids) != len(file_ids):
+            raise _base._bad("佐证附件ID格式不正确")
+        if len(set(int_ids)) != len(int_ids):
+            raise _base._bad("佐证附件重复提交")
+        attachment_json = (
+            json.dumps([str(value) for value in int_ids], ensure_ascii=False) if int_ids else None
         )
-        duplicate = db.query(AaGradeRecognition).filter(
+        # 查重必须用加锁读。MySQL 默认 REPEATABLE READ：本事务在拿锁之前已经做过普通读
+        # （解析学生、解析目标课程），读视图就定格了；此后即使拿到了学生主档行锁，普通读依然
+        # 看不见并发提交刚落库的那条申请，于是两边都"查无在途记录"，双双插入。
+        # 加锁读总是读最新已提交版本，锁 + 新鲜读两者缺一不可。
+        duplicate_query = db.query(AaGradeRecognition).filter(
             AaGradeRecognition.tenant_id == _base._tid(),
             AaGradeRecognition.student_id == profile.id,
             AaGradeRecognition.target_course_id == int(target_course.id),
             AaGradeRecognition.status.in_(("SUBMITTED", "APPROVED")),
             AaGradeRecognition.is_deleted.is_(False),
-        ).first()
+        )
+        duplicate = _fresh_read(duplicate_query)
         if duplicate:
             raise _base._invalid("该目标课程版本已有在途或已通过的认定记录")
 
@@ -99,11 +138,23 @@ def submit(user, body, *, student_no=None) -> dict:
         )
         db.add(row)
         db.flush()
+        # 佐证绑定到这条申请本身（要先 flush 拿到 id），归属与安全状态由文件中心统一把关；
+        # 与免修共用同一套守卫，终审前会逐项复验。
+        evidence = evidence_service.freeze_manifest(
+            db, row, int_ids,
+            actor=get_current_user_ctx() or {},
+            student=profile,
+            kind="RECOGNITION",
+            scope={"targetCourseId": str(target_course.id), "targetCourseCode": target_code},
+        )
         _base._audit(
             db,
             row.id,
             "RECOG_SUBMIT",
-            f"{profile.student_no} {source_name}→{target_code}@v{target_course.version}",
+            (
+                f"{profile.student_no} {source_name}→{target_code}@v{target_course.version};"
+                f"evidence={evidence['count']};manifestHash={evidence['manifestHash'][:16]}"
+            ),
         )
         db.commit()
         return _base._dto(row)
@@ -155,7 +206,23 @@ def review(user, recognition_id, action, reason="") -> dict:
             row.student_id,
             row.student_name or "",
         )
-        if str(course.course_code).strip() in _base._passed_course_codes(db, row.student_id):
+        # 锁 (学生, 课程) 身份头：与免修、正常发布、补考等所有正式成绩写入互斥，
+        # 之后的"已通过"判断和 attempt_no 分配才是在同一把锁下做的。
+        course_code = str(course.course_code).strip()
+        lock_grade_identity(db, academic_student.id, course_code)
+        # 已通过判断必须在拿到锁之后、用加锁读重做一次。MySQL 默认 REPEATABLE READ：本事务
+        # 在拿锁前已经做过普通读，读视图就定格了，普通读看不见并发终审刚提交的那条 PASSED，
+        # 于是两条认定各自"查无及格成绩"，双双发学分。加锁读总是读最新已提交版本。
+        passed_query = db.query(AcademicGrade).filter(
+            AcademicGrade.tenant_id == _base._tid(),
+            AcademicGrade.acad_student_id == academic_student.id,
+            AcademicGrade.course_code == course_code,
+            AcademicGrade.pass_status == "PASSED",
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        )
+        already_passed = _fresh_read(passed_query)
+        if already_passed or course_code in _base._passed_course_codes(db, row.student_id):
             raise _base._invalid("审核期间目标课程已取得及格成绩，认定申请不再有效")
 
         existing = db.query(AcademicGrade).filter(
@@ -171,10 +238,13 @@ def review(user, recognition_id, action, reason="") -> dict:
                 http_status=409,
             )
 
+        # 终审要凭这些佐证生成一条正式的、计学分的及格成绩，写成绩前重新验一遍证据链。
+        evidence = evidence_service.require_valid_manifest(db, row, kind="RECOGNITION")
         attempt_no = next_study_attempt_no(
             db,
             academic_student.id,
             course.course_code,
+            source_biz_type="RECOGNITION",
         )
         grade = AcademicGrade(
             tenant_id=_base._tid(),
@@ -212,7 +282,8 @@ def review(user, recognition_id, action, reason="") -> dict:
             "RECOG_APPROVE",
             (
                 f"courseId={course.id};version={course.version};"
-                f"attemptNo={attempt_no};gradeId={grade.id}"
+                f"attemptNo={attempt_no};gradeId={grade.id};"
+                f"manifestHash={str(evidence['manifestHash'] or '')[:16]}"
             ),
         )
         db.commit()
