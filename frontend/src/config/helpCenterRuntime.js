@@ -7,6 +7,8 @@ import {
 import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from './help/academicAffairsCleanHelpCards'
 import { ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS } from './help/academicAffairsVerifiedOverrides'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
+import { GRADUATION_CLEAN_HELP_CARDS } from './help/graduationCleanHelpCards'
+import { INTERNSHIP_CLEAN_HELP_CARDS } from './help/internshipCleanHelpCards'
 import {
   EXCLUDED_LEGACY_HELP_IDS,
   LEGACY_HELP_EXCLUSIONS,
@@ -14,10 +16,11 @@ import {
 } from './help/legacyHelpPolicy'
 import { MOBILE_HELP_CARDS } from './help/mobileHelpCards'
 import { MOBILE_OPERATIONS_HELP_CARDS } from './help/mobileOperationsHelpCards'
+import { MOBILE_CLEAN_HELP_CARDS } from './help/mobileCleanHelpCards'
+import { STUDENT_AFFAIRS_CLEAN_HELP_CARDS } from './help/studentAffairsCleanHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
-import { STUDENT_AFFAIRS_VERIFIED_OVERRIDES } from './help/studentAffairsVerifiedOverrides'
 
 /**
  * 帮助中心运行时聚合层。
@@ -25,30 +28,29 @@ import { STUDENT_AFFAIRS_VERIFIED_OVERRIDES } from './help/studentAffairsVerifie
  * V2 知识清洗原则：
  * - 正式搜索、目录、本页帮助和 ?topic= 深链只发布“已经按当前代码 / API / 权限 / 状态机核验”的知识；
  * - “没有证明错误”不再等于“允许继续展示”；未经本轮核验的历史卡、旧百科和旧流程默认隔离；
- * - 新增并逐项核验的任务卡直接进入可信集合；
- * - 历史条目只有进入 VERIFIED_* 修正层或被领域清洗后的正式任务卡替换才继续保留稳定 help id；
+ * - 领域 clean source 拥有稳定 help id 的最终正文权，同 id 历史卡会被完整替换；
  * - docs/help 继续只做治理、审计和发布证据，不成为第二套产品正文。
  *
- * 教务知识清洗 V2 已把学籍、成绩、选课、考务从“历史卡 + academic override”迁到
- * academicAffairsCleanHelpCards.js 正式真值；同 ID 历史卡会被干净替换，未重新验真的旧教务卡继续隔离。
+ * 当前 clean source：教务、岗位实习、毕业设计、学工、小程序。
  */
 export {
   ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
   ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
   FOUNDATION_HELP_CARDS,
+  GRADUATION_CLEAN_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
+  INTERNSHIP_CLEAN_HELP_CARDS,
   LEGACY_HELP_EXCLUSIONS,
+  MOBILE_CLEAN_HELP_CARDS,
   MOBILE_HELP_CARDS,
   MOBILE_OPERATIONS_HELP_CARDS,
-  STUDENT_AFFAIRS_VERIFIED_OVERRIDES,
+  STUDENT_AFFAIRS_CLEAN_HELP_CARDS,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
   VERIFIED_HELP_FLOW_OVERRIDES,
   VERIFIED_HELP_OVERRIDES
 }
-
-const ALL_MOBILE_HELP_CARDS = [...MOBILE_HELP_CARDS, ...MOBILE_OPERATIONS_HELP_CARDS]
 
 function registerCards(cards) {
   const existingIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
@@ -84,7 +86,6 @@ function applyCardOverrides(cardsById, overrides) {
 function applyVerifiedOverrides() {
   const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
   applyCardOverrides(cardsById, VERIFIED_HELP_OVERRIDES)
-  applyCardOverrides(cardsById, STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
 
   const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
@@ -142,10 +143,12 @@ export const VERIFIED_HELP_CARD_IDS = new Set([
   ...SYSTEM_HELP_CARDS.map((item) => item.id),
   ...FOUNDATION_HELP_CARDS.map((item) => item.id),
   ...STUDENT_DATA_HELP_CARDS.map((item) => item.id),
-  ...ALL_MOBILE_HELP_CARDS.map((item) => item.id),
+  ...MOBILE_CLEAN_HELP_CARDS.map((item) => item.id),
   ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
-  ...Object.keys(VERIFIED_HELP_OVERRIDES),
-  ...Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
+  ...INTERNSHIP_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...GRADUATION_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...Object.keys(VERIFIED_HELP_OVERRIDES)
 ])
 
 export const VERIFIED_HELP_FLOW_IDS = new Set(Object.keys(VERIFIED_HELP_FLOW_OVERRIDES))
@@ -173,10 +176,12 @@ function quarantineUnverifiedKnowledge() {
 registerCards(SYSTEM_HELP_CARDS)
 registerCards(FOUNDATION_HELP_CARDS)
 registerCards(STUDENT_DATA_HELP_CARDS)
-registerCards(MOBILE_HELP_CARDS)
-registerCards(MOBILE_OPERATIONS_HELP_CARDS)
 applyVerifiedOverrides()
 replaceOrRegisterCards(ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(INTERNSHIP_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(GRADUATION_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(MOBILE_CLEAN_HELP_CARDS)
 quarantineConfirmedStaleHelp()
 quarantineUnverifiedKnowledge()
 
@@ -208,11 +213,32 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards'
     items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS
   })
 }
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'internship-clean-cards',
+    label: '岗位实习 · 已核验任务',
+    items: INTERNSHIP_CLEAN_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'graduation-clean-cards',
+    label: '毕业设计 · 已核验任务',
+    items: GRADUATION_CLEAN_HELP_CARDS
+  })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-clean-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'student-affairs-clean-cards',
+    label: '学工中心 · 已核验任务',
+    items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS
+  })
+}
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
   BASE_HELP_SECTIONS.unshift({
     key: 'mobile-cards',
-    label: '微信小程序 · 高频任务',
-    items: ALL_MOBILE_HELP_CARDS
+    label: '微信小程序 · 已核验高频任务',
+    items: MOBILE_CLEAN_HELP_CARDS
   })
 }
 
