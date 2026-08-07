@@ -1,0 +1,64 @@
+name: Branch governance migration
+
+on:
+  push:
+    branches: [agent/production-release-governance-20260807]
+    paths:
+      - '.github/workflows/_branch-governance-migrate.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/production-release-governance-20260807
+          fetch-depth: 0
+      - name: Upgrade workflow runtimes and remove this one-shot migrator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('.github/workflows')
+          for path in root.glob('*.yml'):
+              if path.name == '_branch-governance-migrate.yml':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              for old in ('actions/checkout@v4', 'actions/checkout@v5', 'actions/checkout@v6'):
+                  text = text.replace(old, 'actions/checkout@v7')
+              for old in ('actions/setup-node@v4', 'actions/setup-node@v5', 'actions/setup-node@v6'):
+                  text = text.replace(old, 'actions/setup-node@v7')
+              for old in ('actions/setup-python@v5', 'actions/setup-python@v6'):
+                  text = text.replace(old, 'actions/setup-python@v7')
+              for old, new in (
+                  ('node-version: "20"', 'node-version: "24"'),
+                  ("node-version: '20'", "node-version: '24'"),
+                  ('node-version: 20', 'node-version: 24'),
+                  ('node-version: "22"', 'node-version: "24"'),
+                  ("node-version: '22'", "node-version: '24'"),
+                  ('node-version: 22', 'node-version: 24'),
+              ):
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
+          chmod +x deploy/backup/backup-runner.sh deploy/backup/restore-drill.sh
+          git rm .github/workflows/_branch-governance-migrate.yml
+          if grep -R -nE 'node-version:[[:space:]]*["'"'"']?(20|22)["'"'"']?([[:space:]]|$)' .github/workflows; then
+            echo 'old Node runtime remains'
+            exit 1
+          fi
+          if grep -R -nE 'actions/(checkout@v[456]|setup-node@v[456]|setup-python@v[56])' .github/workflows; then
+            echo 'old official action runtime remains'
+            exit 1
+          fi
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows deploy/backup/backup-runner.sh deploy/backup/restore-drill.sh
+          git commit -m 'ci: migrate workflows to Node 24 actions runtime'
+          git push origin HEAD:agent/production-release-governance-20260807
