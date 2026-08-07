@@ -41,11 +41,11 @@ test('graduation grade correction uses real ledger, authoritative sources and li
   assert.match(text, /权威.*答辩/)
   assert.match(text, /来源快照/)
   assert.match(text, /重新核算/)
-  assert.match(text, /待核算\(DRAFT\)/)
-  assert.match(text, /已核算\(CALCULATED\)/)
-  assert.match(text, /已复核\(REVIEWED\)/)
-  assert.match(text, /已发布\(PUBLISHED\)/)
-  assert.match(text, /已撤回待重发\(WITHDRAWN\)/)
+  assert.match(text, /待核算\(draft\)/)
+  assert.match(text, /已核算\(calculated\)/)
+  assert.match(text, /已复核\(reviewed\)/)
+  assert.match(text, /已发布\(published\)/)
+  assert.match(text, /已撤回待重发\(withdrawn\)/)
 })
 
 test('graduation appeal correction preserves published-only, single pending and withdraw-recalculate semantics', () => {
@@ -60,5 +60,5 @@ test('graduation appeal correction preserves published-only, single pending and 
   assert.match(text, /受理.*撤回/)
   assert.match(text, /重新核算/)
   assert.match(text, /驳回.*原成绩保持不变/)
-  assert.match(text, /不会.*直接改成学生要求的分数/)
+  assert.match(text, /直接改成学生要求的分数吗？ 不会/)
 })
