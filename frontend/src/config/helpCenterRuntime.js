@@ -5,6 +5,7 @@ import {
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
 import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from './help/academicAffairsCleanHelpCards'
+import { ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS } from './help/academicAffairsCoreFlowHelpCards'
 import { ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS } from './help/academicAffairsVerifiedOverrides'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { GRADUATION_CLEAN_HELP_CARDS } from './help/graduationCleanHelpCards'
@@ -25,16 +26,16 @@ import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
 /**
  * 帮助中心运行时聚合层。
  *
- * V2 知识清洗原则：
+ * V2/V3 可信发布原则：
  * - 正式搜索、目录、本页帮助和 ?topic= 深链只发布“已经按当前代码 / API / 权限 / 状态机核验”的知识；
  * - “没有证明错误”不再等于“允许继续展示”；未经本轮核验的历史卡、旧百科和旧流程默认隔离；
  * - 领域 clean source 拥有稳定 help id 的最终正文权，同 id 历史卡会被完整替换；
+ * - V3 核心流程同样只能引用 verified-only 已发布任务，不为流程完整度复活旧知识；
  * - docs/help 继续只做治理、审计和发布证据，不成为第二套产品正文。
- *
- * 当前 clean source：教务、岗位实习、毕业设计、学工、小程序。
  */
 export {
   ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
+  ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS,
   ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
   FOUNDATION_HELP_CARDS,
   GRADUATION_CLEAN_HELP_CARDS,
@@ -132,19 +133,14 @@ function quarantineConfirmedStaleHelp() {
   })
 }
 
-/**
- * V2 发布白名单。
- *
- * 新任务卡数组本身就是本 PR 按页面 / 服务层重新取证后的内容；历史大文件只有明确进入
- * VERIFIED_* 或领域 clean source 的稳定 id 才继续发布。旧 HELP_DOCS 暂不默认发布：流程图/百科如仍有价值，
- * 必须在后续领域清洗中重新验真后再显式收编，而不是因为历史上存在就自动继续可搜。
- */
+/** verified-only 发布白名单。 */
 export const VERIFIED_HELP_CARD_IDS = new Set([
   ...SYSTEM_HELP_CARDS.map((item) => item.id),
   ...FOUNDATION_HELP_CARDS.map((item) => item.id),
   ...STUDENT_DATA_HELP_CARDS.map((item) => item.id),
   ...MOBILE_CLEAN_HELP_CARDS.map((item) => item.id),
   ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...INTERNSHIP_CLEAN_HELP_CARDS.map((item) => item.id),
   ...GRADUATION_CLEAN_HELP_CARDS.map((item) => item.id),
   ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
@@ -166,7 +162,6 @@ function quarantineUnverifiedKnowledge() {
     ...VERIFIED_HELP_FLOW_IDS
   ])
 
-  // helpContent.js 初始化时已经把旧对象挂进 section；必须同步清掉，否则旧知识仍会从侧栏进入。
   BASE_HELP_SECTIONS.forEach((section) => {
     if (!Array.isArray(section.items)) return
     section.items = section.items.filter((item) => publishedIds.has(item?.id))
@@ -178,6 +173,7 @@ registerCards(FOUNDATION_HELP_CARDS)
 registerCards(STUDENT_DATA_HELP_CARDS)
 applyVerifiedOverrides()
 replaceOrRegisterCards(ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(INTERNSHIP_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(GRADUATION_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
@@ -186,60 +182,35 @@ quarantineConfirmedStaleHelp()
 quarantineUnverifiedKnowledge()
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'system-cards',
-    label: '系统管理 · 任务卡',
-    items: SYSTEM_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'system-cards', label: '系统管理 · 任务卡', items: SYSTEM_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'foundation-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'foundation-cards',
-    label: '开局与通用基础 · 任务卡',
-    items: FOUNDATION_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'foundation-cards', label: '开局与通用基础 · 任务卡', items: FOUNDATION_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards')) {
+  BASE_HELP_SECTIONS.unshift({ key: 'student-data-cards', label: '学生主档与数据 · 任务卡', items: STUDENT_DATA_HELP_CARDS })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-v3-core-cards')) {
   BASE_HELP_SECTIONS.unshift({
-    key: 'student-data-cards',
-    label: '学生主档与数据 · 任务卡',
-    items: STUDENT_DATA_HELP_CARDS
+    key: 'academic-v3-core-cards',
+    label: '教务中心 · V3核心事实链',
+    items: ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS
   })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'academic-clean-cards',
-    label: '教务中心 · 已核验任务',
-    items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'academic-clean-cards', label: '教务中心 · 已核验任务', items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'internship-clean-cards',
-    label: '岗位实习 · 已核验任务',
-    items: INTERNSHIP_CLEAN_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'internship-clean-cards', label: '岗位实习 · 已核验任务', items: INTERNSHIP_CLEAN_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'graduation-clean-cards',
-    label: '毕业设计 · 已核验任务',
-    items: GRADUATION_CLEAN_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'graduation-clean-cards', label: '毕业设计 · 已核验任务', items: GRADUATION_CLEAN_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'student-affairs-clean-cards',
-    label: '学工中心 · 已核验任务',
-    items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-clean-cards', label: '学工中心 · 已核验任务', items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'mobile-cards',
-    label: '微信小程序 · 已核验高频任务',
-    items: MOBILE_CLEAN_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'mobile-cards', label: '微信小程序 · 已核验高频任务', items: MOBILE_CLEAN_HELP_CARDS })
 }
 
 export const HELP_CARDS = BASE_HELP_CARDS
@@ -257,20 +228,11 @@ function hitHelp(item, query) {
   })
 }
 
-/** 顶部功能 / 帮助搜索只索引 V2 已发布知识。 */
 export function searchHelp(query) {
   const q = String(query || '').trim().toLowerCase()
   if (!q) return []
-  const docs = HELP_DOCS.filter((item) => hitHelp(item, q)).map((item) => ({
-    id: item.id,
-    kind: '功能帮助',
-    title: item.title
-  }))
-  const flows = HELP_FLOWS.filter((item) => hitHelp(item, q)).map((item) => ({
-    id: item.id,
-    kind: '业务流程图',
-    title: item.title
-  }))
+  const docs = HELP_DOCS.filter((item) => hitHelp(item, q)).map((item) => ({ id: item.id, kind: '功能帮助', title: item.title }))
+  const flows = HELP_FLOWS.filter((item) => hitHelp(item, q)).map((item) => ({ id: item.id, kind: '业务流程图', title: item.title }))
   const cards = HELP_CARDS.filter((item) => hitHelp(item, q)).map((item) => ({
     id: item.id,
     kind: '帮助任务卡',
@@ -286,7 +248,6 @@ function splitRoute(route) {
   return { path, panel }
 }
 
-/** 顶栏“本页帮助”只会命中 V2 已发布 PC 任务卡。无 PC route 的小程序卡不会参与。 */
 export function findHelpForRoute(fullPath) {
   const current = splitRoute(fullPath)
   if (!current.path) return null
@@ -301,7 +262,6 @@ export function findHelpForRoute(fullPath) {
   return prefix ? { id: prefix.card.id, title: prefix.card.title } : null
 }
 
-/** 帮助中心 ?topic= 深链只返回 V2 已发布知识；被隔离的旧 help id 返回 null。 */
 export function getHelpById(id) {
   const card = HELP_CARDS.find((item) => item.id === id)
   if (card) return { type: 'card', item: card }
