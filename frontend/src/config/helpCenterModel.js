@@ -14,8 +14,20 @@ import {
   resolveHelpRole,
   uniqueHelpEntries
 } from './helpCenterCore'
+import {
+  HELP_V3_CORE_JOURNEYS,
+  HELP_V3_HOME_INTENTS,
+  HELP_V3_QUICK_QUESTIONS
+} from './help/helpCenterV3'
 
-export { HELP_ROLE_OPTIONS, isHelpVisibleForRole, normalizeHelpRole, resolveHelpRole }
+export {
+  HELP_ROLE_OPTIONS,
+  HELP_V3_HOME_INTENTS,
+  HELP_V3_QUICK_QUESTIONS,
+  isHelpVisibleForRole,
+  normalizeHelpRole,
+  resolveHelpRole
+}
 
 const TYPE_LABELS = {
   card: '帮助任务卡',
@@ -24,7 +36,7 @@ const TYPE_LABELS = {
 }
 
 /**
- * V2 首页优先级只放已经进入运行时发布白名单的高频任务或已核验流程。
+ * V3 首页优先级只放已经进入运行时发布白名单的高频任务。
  * 未重新验真的百科/旧流程不再靠“历史优先级”被顶到首页。
  */
 const PRIORITY_HELP_IDS = [
@@ -47,13 +59,17 @@ const PRIORITY_HELP_IDS = [
   'aa-card-selection-publish',
   'aa-card-exam-arrangement',
   'aa-card-exam-publish',
-  'in-card-batch-rules',
-  'in-card-eval-score',
-  'gd-card-defense-grade',
+  'in-v2-student-application',
+  'in-v2-teacher-process',
+  'in-v2-enterprise-evaluation',
+  'in-v2-score',
+  'gd-v2-topic-selection',
+  'gd-v2-proposal',
+  'gd-v2-defense',
+  'gd-v2-grade',
   'sa-card-risk-handle',
   'sa-card-archive',
-  'flow-leave',
-  'flow-in-score',
+  'mobile-unified-help-entry',
   'mobile-student-internship-checkin',
   'mobile-student-internship-weekly',
   'mobile-student-graduation-topic',
@@ -108,8 +124,8 @@ function hasPermissionGuidance(item) {
  * 6. 异常处理 troubleshooting
  * 7. 权限说明 permissions / permissionNotes，或正文中明确的权限/数据范围/allowedActions 证据
  *
- * 运行时发布资格由 helpCenterRuntime 的 verified-only 白名单控制；这里负责把“已核验但结构尚未
- * 收口”的内容明确记为 quality gap，禁止再用只有 title/summary/keywords 的低门槛冒充成熟帮助。
+ * V3 在此基础上继续推进“下一步 / 退回异常 / 什么时候找管理员”等免培训字段；
+ * 在 V3-08 质量闸门完成前，不用放宽 V2 七维合同，也不把尚未补齐 V3 字段的真实任务下线。
  */
 function getQualityMissing(type, item, roleTokens, recognizedRoleTokens) {
   const missing = []
@@ -214,6 +230,34 @@ export function getPriorityHelp(role = 'all', limit = 8) {
   )
 
   return [...preferred, ...fallback].slice(0, limit)
+}
+
+/**
+ * V3 首页核心业务地图。
+ * 每个节点必须能解析到 verified-only 运行时中的真实帮助条目；不存在或当前角色不可见的节点不会展示。
+ */
+export function getV3CoreJourneys(role = 'all') {
+  return HELP_V3_CORE_JOURNEYS
+    .map((journey) => {
+      const verifiedEntries = journey.helpIds.map(getHelpEntry).filter(Boolean)
+      const entries = verifiedEntries.filter((entry) => isHelpVisibleForRole(entry.item, role))
+      return {
+        ...journey,
+        entries,
+        verifiedCount: verifiedEntries.length,
+        visibleCount: entries.length
+      }
+    })
+    .filter((journey) => journey.entries.length)
+}
+
+export function getV3HomeModel(role = 'all') {
+  return {
+    intents: HELP_V3_HOME_INTENTS,
+    quickQuestions: HELP_V3_QUICK_QUESTIONS,
+    priorityTasks: getPriorityHelp(role, 8),
+    journeys: getV3CoreJourneys(role)
+  }
 }
 
 export function getHelpOverview(role = 'all') {
