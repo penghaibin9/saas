@@ -10,12 +10,15 @@ from fastapi.responses import FileResponse
 from app.core.exceptions import AppException, not_found
 from app.services import audit_log, file_service
 from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401  注册内置 resolver
-from app.services.file_access_service import (
+from app.services.file_public_acl_guard import install as install_public_file_acl
+
+install_public_file_acl()
+
+from app.services.file_access_service import (  # noqa: E402
     STATUS_TEXT,
     file_view,
     list_business_files,
     require_file_access,
-    upsert_file_binding,
 )
 
 
@@ -27,37 +30,26 @@ async def upload_contract(
     user: dict,
     visibility: str = "BIZ_SCOPED",
 ) -> dict:
+    """通用上传只创建临时私有文件，不接受客户端指定正式业务绑定。
+
+    ``biz_type``/``biz_id`` 暂时保留在传输合同中用于旧客户端兼容和审计，但不再
+    写入 FileObject，也不创建 FileBinding。业务提交服务必须在自己的事务中完成
+    对象写权限、扫描状态和目标关系校验后再建立正式 binding。
+    """
     from app.core.token_store import rate_limit
 
     if not rate_limit(f"upload:{user.get('userId', '-')}", 20, 60):
         raise AppException("RATE_LIMITED", "上传过于频繁（每分钟最多 20 次），请稍后再试")
-    normalized = str(biz_type or "ATTACHMENT").upper()
-    if normalized == "GRADUATION_MATERIAL" and not biz_id:
-        from app.modules.graduation.services.graduation_material_temp_service import cleanup_stale_temporary_materials
-        cleanup_stale_temporary_materials(user, older_than_hours=24, limit=50)
+
+    requested_biz_type = str(biz_type or "ATTACHMENT").strip().upper()
+    requested_biz_id = str(biz_id or "").strip() or None
     meta = await file_service.store_upload(
         file,
-        normalized,
-        biz_id=biz_id,
+        "TEMP_PRIVATE",
+        biz_id=None,
         user=user,
-        visibility=visibility,
+        visibility="PRIVATE",
     )
-    if biz_id:
-        is_student = str(user.get("userType") or "").upper() == "STUDENT"
-        subject_type = "STUDENT" if is_student else "USER"
-        subject_id = (
-            user.get("studentId") or user.get("studentNo")
-            if is_student
-            else user.get("userId") or user.get("id")
-        )
-        upsert_file_binding(
-            meta["fileId"],
-            biz_type=normalized,
-            biz_id=str(biz_id),
-            subject_type=subject_type,
-            subject_id=str(subject_id) if subject_id else None,
-            user=user,
-        )
     scan_status = str(meta.get("scanStatus") or "NOT_REQUIRED").upper()
     result = {
         "fileId": meta["fileId"],
@@ -73,12 +65,20 @@ async def upload_contract(
         "statusText": STATUS_TEXT.get(scan_status, "状态未知"),
         "readyForBusiness": meta.get("readyForBusiness", False),
         "allowedActions": ["viewMetadata"] + (["preview", "download"] if meta.get("readyForBusiness") else []),
-        "temporary": normalized == "GRADUATION_MATERIAL" and not biz_id,
+        "temporary": True,
+        "requestedBizType": requested_biz_type,
+        "bindingCreated": False,
     }
     audit_log.record(
-        "FILE_UPLOAD",
+        "FILE_UPLOAD_TEMP_PRIVATE",
         f"file:{result['fileId']}",
-        {"fileName": result.get("fileName"), "size": result.get("sizeBytes")},
+        {
+            "fileName": result.get("fileName"),
+            "size": result.get("sizeBytes"),
+            "requestedBizType": requested_biz_type,
+            "requestedBizIdPresent": bool(requested_biz_id),
+            "bindingCreated": False,
+        },
     )
     return result
 

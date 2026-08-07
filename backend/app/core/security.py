@@ -104,6 +104,20 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     return authorization[7:] if authorization.startswith("Bearer ") else authorization
 
 
+def _optional_positive_int_claim(claims: dict, key: str) -> int | None:
+    """解析正式对象 ID claim；存在但非法时拒绝整个令牌，禁止静默退回学号匹配。"""
+    raw = claims.get(key)
+    if raw in (None, ""):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise unauthorized("认证令牌中的学生身份无效")
+    if value <= 0:
+        raise unauthorized("认证令牌中的学生身份无效")
+    return value
+
+
 def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """FastAPI 依赖：要求登录，返回当前用户上下文并写入 contextvar。"""
     token = _extract_bearer(authorization)
@@ -125,6 +139,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
+        "studentId": _optional_positive_int_claim(claims, "studentId"),
         "studentNo": claims.get("studentNo"),
         "collegeId": claims.get("collegeId"),
         "collegeIds": claims.get("collegeIds"),
@@ -161,14 +176,21 @@ STAFF_USER_TYPES = frozenset({
     "TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN",
 })
 
+# 学校移动教师端不得接受平台跨租户身份。新增学校侧教职工 userType 时必须显式登记。
+MOBILE_STAFF_USER_TYPES = frozenset({"TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN"})
+
 
 def require_staff(user: dict = Depends(get_current_user)) -> dict:
-    """FastAPI 依赖：仅教职工/管理员可访问的 PC 管理端接口。
-    白名单模式：userType 必须落在 STAFF_USER_TYPES 内，否则一律 403，
-    防止越权访问全校学生主档/审批/待办/导入导出/审计等 PC 接口。
-    学生合法入口是 /mobile/* 与 /portal/*（严格本人 + 脱敏）；家长合法入口是 /portal/guardian/*（只读）。"""
+    """FastAPI 依赖：仅教职工/管理员可访问的 PC 管理端接口。"""
     if (user.get("userType") or "").strip().upper() not in STAFF_USER_TYPES:
         raise no_permission("该接口仅教职工可用，请使用个人/家长门户")
+    return user
+
+
+def require_mobile_staff(user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI 依赖：学校移动教师端严格教职工白名单，空值/未知类型一律拒绝。"""
+    if not user.get("userId") or (user.get("userType") or "").strip().upper() not in MOBILE_STAFF_USER_TYPES:
+        raise no_permission("该接口仅学校教职工移动端可用")
     return user
 
 

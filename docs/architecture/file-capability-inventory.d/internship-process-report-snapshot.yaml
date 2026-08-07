@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: backend
+    route: internal://internship/process-report-snapshot
+    page: backend/app/modules/internship/services/internship_material_transaction_guard.py
+    action: generate+bind+archive
+    fileCategory: INTERNSHIP_PROCESS_REPORT_SNAPSHOT
+    api: internal archive_internship material snapshot
+    backendService: backend/app/modules/internship/services/internship_material_transaction_guard.py::_report_snapshot
+    storageMode: file-center+same-database-transaction
+    authMode: authenticated+internship.archive.manage+object-scope
+    dataScope: tenant+internship-record+student+batch
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: false
+    archive: true
+    status: active
+    risk: P1
+    targetPhase: '6'
+    notes: 系统从已审核的过程报告生成只读文本快照；文件对象、版本、业务绑定与总档案归档共用同一数据库事务，避免 MySQL REPEATABLE READ 下跨会话不可见。源码 backend/app/modules/internship/services/internship_material_transaction_guard.py

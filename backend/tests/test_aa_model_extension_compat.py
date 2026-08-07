@@ -64,7 +64,10 @@ def test_extension_indexes_and_unique_constraints_are_registered_once():
 
     assert "ix_acad_grade_course_attempt" in grade_indexes
     assert "ix_acad_grade_source_biz" in grade_indexes
-    assert "uk_acad_grade_source_record" in grade_constraints
+    # 包 1：正式成绩改为追加式版本链后，唯一性只约束"当前有效版本"，
+    # 历史 SUPERSEDED 版本必须能与新版本共存（active_record_key 为 NULL）。
+    assert "uk_acad_grade_active_record" in grade_constraints
+    assert "uk_acad_grade_source_record" not in grade_constraints
     assert "uk_acad_grade_source_biz" in grade_constraints
     assert "ix_acad_makeup_course_attempt" in makeup_indexes
     assert "ix_acad_makeup_roster_version" in makeup_indexes

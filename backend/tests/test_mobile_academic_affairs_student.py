@@ -27,11 +27,18 @@ def _seed_student(student_no, real_name):
 
 
 def test_credits_my_no_data_not_500(client, db_mode):
+    """无学业数据时接口不能 500；解析不到培养方案时毕业总学分必须是"未知"。
+
+    原断言期望 requiredCredits == 120.0，那是早期「解析不到就给个默认 120」的口径。
+    该默认值已被刻意废除：学生没维护专业、或专业没绑培养方案时，学校根本没有依据说
+    这个学生该修多少学分，编一个 120 出来会让学生照错目标规划选课，"还差多少学分"
+    也会算出一个假数。credit_requirement_payload 的现行契约是未解析即 None。
+    """
     _seed_student("CR0001", "学分测生")
     r = client.get(f"{BASE}/credits/my", headers=_stu_token()).json()
     assert r["code"] == 0
     d = r["data"]
-    assert d["requiredCredits"] == 120.0
+    assert d["requiredCredits"] is None, "未解析到培养方案时不得编造默认毕业学分"
     assert d["passedCourses"] == []
 
 

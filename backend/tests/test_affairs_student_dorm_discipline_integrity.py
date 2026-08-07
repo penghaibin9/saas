@@ -36,11 +36,36 @@ def test_dorm_transfer_is_node_role_and_assignee_bound():
 
 
 def test_discipline_projection_never_uses_profile_id_as_shadow_id():
+    """NEW-P0-03：处分投影绝不能拿 StudentProfile.id 当 CsServiceStudent.id。
+
+    原断言钉的是另一版实现的源码字符串（函数名 ensure_service_student、
+    `shadow.identity_snapshot(db, profile)` 等），与包 11 实际交付的实现对不上，
+    自交付起就没绿过。真正要守的是能力，改为按能力断言：
+
+    - 存在「取或建服务台账」的函数，且返回的是 CsServiceStudent 实体本身；
+    - 台账身份字段一律取自学籍主档，不采信调用方入参；
+    - 绝不出现 `return int(student_id)` 这种「拿学籍 id 冒充台账 id」的降级；
+    - 投影去重提示仍在。
+    """
+    import inspect
+
+    from app.services import affairs_discipline_integrity_guard as guard
+
     text = read("backend/app/services/affairs_discipline_integrity_guard.py")
-    assert "def ensure_service_student" in text
-    assert "shadow.identity_snapshot(db, profile)" in text
-    assert "return int(record.id)" in text
+
+    ensure = getattr(guard, "_ensure_cs_student", None)
+    assert callable(ensure), "缺少「取或建服务台账」的函数，投影将无处挂载"
+
+    source = inspect.getsource(ensure)
+    # 核心红线：任何形式的「学籍 id 当台账 id 用」都不允许。
     assert "return int(student_id)" not in text
+    assert "else int(student_id)" not in text
+    # 身份必须来自主档快照，不能采信调用方传进来的姓名/学号。
+    assert "profile.real_name" in source and "profile.student_no" in source
+    # 必须锁住主档与台账，避免并发建出两条台账。
+    assert "with_for_update" in source
+    # 返回值是台账实体（调用点再取 .id），不是学籍 id。
+    assert "return existing" in source or "return record" in source
     assert "该处分已存在投影" in text
 
 

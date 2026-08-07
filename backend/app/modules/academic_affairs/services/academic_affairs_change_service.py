@@ -225,12 +225,25 @@ def _row(x, s=None) -> dict:
             "status": x.status, "currentNode": x.current_node or "",
             "effectiveDate": _iso(x.effective_date), "expireDate": _iso(x.expire_date),
             "toClassId": str(x.to_class_id or ""), "toMajorId": str(x.to_major_id or ""),
-            "version": x.version}
+            "version": x.version,
+            # 审批乐观锁与并发合同对外可见字段：前端拿 decisionVersion 回传即可拒绝过期决定。
+            "decisionVersion": int(getattr(x, "decision_version", 0) or 0),
+            "currentTaskId": str(getattr(x, "current_task_id", None) or ""),
+            "expectedStudentVersion": getattr(x, "expected_student_version", None),
+            "idempotencyKey": getattr(x, "idempotency_key", None) or ""}
 
 
-def _load(db, sc_id):
+def _load(db, sc_id, *, lock=False):
+    """读异动单。lock=True 时对异动行加行锁，让并发审批在同一事务内真正互斥排队。"""
     from app.models import AaStatusChange, StudentProfile
-    x = db.get(AaStatusChange, int(sc_id))
+    if lock:
+        x = db.query(AaStatusChange).filter(
+            AaStatusChange.id == int(sc_id),
+            AaStatusChange.tenant_id == _tid(),
+            AaStatusChange.is_deleted.is_(False),
+        ).with_for_update().first()
+    else:
+        x = db.get(AaStatusChange, int(sc_id))
     if not x or x.is_deleted or x.tenant_id != _tid():
         raise not_found("异动单不存在")
     s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
@@ -366,79 +379,120 @@ def submit(body, user) -> dict:
 
 # ═══════════ 审批（多节点）═══════════
 
-def review(sc_id, user, action, reason="") -> dict:
-    action = (action or "").upper()
-    _n, _r, uid = _op()
+def review(sc_id, user, action, reason="", expected_decision_version=None) -> dict:
+    """审批入口（自带事务）。安全层需要与认领/条件更新同事务时改调 review_in_session()。"""
     with session() as db:
-        from app.models import WorkflowInstance, WorkflowTask
-        from app.modules.academic_affairs.services.academic_affairs_archive_service import (
-            guard_term_writable_current)
-        x, s = _load(db, sc_id)
-        guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期的异动不应继续审批流转（降级为当前学期判据）
-        if x.status not in _ACTIVE and x.status != "IN_REVIEW":
-            raise AppException("APPROVAL_VERSION_CONFLICT", "该异动当前状态不可审批")
-        # 节点授权：permissionCode + 数据范围（辅导员限本班/学院教务限本院/教务处终审限 TENANT_ALL）
-        _check_node_authority(db, user, x.current_node, x)
-        nodes = CHANGE_FLOW[x.change_type][1]
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
-        task = db.scalars(select(WorkflowTask).where(
-            WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == (inst.id if inst else 0),
-            WorkflowTask.node_code == x.current_node, WorkflowTask.status == "PENDING",
-            WorkflowTask.is_deleted.is_(False))).first() if inst else None
-        if action in ("REJECT", "RETURN"):
-            if not reason or len(reason.strip()) < 5:
-                raise AppException("VALIDATION_ERROR", "驳回/退回原因必填且不少于 5 字")
-            if task:
-                task.status, task.action_reason, task.acted_at = ("REJECTED" if action == "REJECT" else "TRANSFERRED"), reason.strip(), datetime.utcnow()
-            x.status = "REJECTED" if action == "REJECT" else "RETURNED"
-            x.version += 1
-            if inst:
-                inst.status = "REJECTED" if action == "REJECT" else "RETURNED"
-            _todo_done(db, x.id)
-            _msg(db, x.student_id, f"{L_CT[x.change_type]}{'未通过' if action == 'REJECT' else '被退回'}",
-                 reason.strip(), "WORKFLOW_RESULT" if action == "REJECT" else "RETURNED_NOTICE", x.id)
-            _audit(db, x.id, x.status, reason.strip())
-            db.commit()
-            from app.services.message_event_outbox_service import try_process_pending_outbox
-            try_process_pending_outbox(worker_id="aa-change-inline")
-            db.refresh(x)
-            return _row(x, s)
-        if action != "APPROVE":
-            raise AppException("VALIDATION_ERROR", "无效操作")
-        if task:
-            task.status, task.acted_at = "APPROVED", datetime.utcnow()
-        i = nodes.index(x.current_node) if x.current_node in nodes else 0
-        if i + 1 < len(nodes):
-            nxt = nodes[i + 1]
-            x.current_node, x.status, x.version = nxt, "IN_REVIEW", x.version + 1
-            if inst:
-                inst.current_node = nxt
-            assignee = _assignee_for(db, nxt, x.student_id)
-            db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
-                                assignee_id=assignee, status="PENDING"))
-            _todo_upsert(db, x.id, assignee, x.student_id, f"{L_CT[x.change_type]}待审（{nxt}）：{s.real_name if s else ''}")
-            _audit(db, x.id, "STEP", f"->{nxt}")
-            db.commit()
-            db.refresh(x)
-            return _row(x, s)
-        # 终审通过 → 经单一入口生效
-        res = change_student_status(
-            db, x.student_id, x.to_status, change_type=x.change_type, reason=x.reason or "",
-            operator=uid, existing_change_id=x.id,
-            to_college_id=x.to_college_id, to_major_id=x.to_major_id, to_class_id=x.to_class_id)
-        if inst:
-            inst.status = "APPROVED"
-        _todo_done(db, x.id)
-        _msg(db, x.student_id, f"{L_CT[x.change_type]}已生效",
-             f"你的{L_CT[x.change_type]}申请已通过并生效", "WORKFLOW_RESULT", x.id)
-        _audit(db, x.id, "EFFECTIVE", f"{res['fromStatus']}->{res['toStatus']}")
+        if expected_decision_version not in (None, ""):
+            x, _s = _load(db, sc_id, lock=True)
+            if int(x.decision_version or 0) != int(expected_decision_version):
+                raise AppException(
+                    "APPROVAL_VERSION_CONFLICT", "该异动已被他人处理，请刷新后重试",
+                    details={"expectedDecisionVersion": int(expected_decision_version),
+                             "currentDecisionVersion": int(x.decision_version or 0)},
+                    http_status=409)
+        result, post = review_in_session(db, sc_id, user, action, reason)
         db.commit()
+    return run_review_post_commit(post, result)
+
+
+def run_review_post_commit(post: dict, result: dict) -> dict:
+    """提交成功后才允许执行的副作用：outbox 投递与安全审计。事务回滚时一律不执行。"""
+    if post.get("outbox"):
         from app.services.message_event_outbox_service import try_process_pending_outbox
         try_process_pending_outbox(worker_id="aa-change-inline")
-        db.refresh(x)
-        out = _row(x, s)
-    audit_status_change(x.student_id, res["fromStatus"], res["toStatus"], x.change_type, uid)
-    return out
+    effective = post.get("effective")
+    if effective:
+        audit_status_change(
+            effective["studentId"], effective["fromStatus"], effective["toStatus"],
+            effective["changeType"], effective["operator"],
+        )
+    return result
+
+
+def review_in_session(db, sc_id, user, action, reason="") -> tuple[dict, dict]:
+    """在调用方事务内完成一次审批决定；不 commit、不投递消息。
+
+    返回 (响应体, 提交后动作)。正式事实、工作流任务、待办、审计和 outbox 全部落在同一事务，
+    调用方 commit 成功后再执行 run_review_post_commit()。
+    """
+    from app.models import WorkflowInstance, WorkflowTask
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+        guard_term_writable_current)
+
+    action = (action or "").upper()
+    _n, _r, uid = _op()
+    x, s = _load(db, sc_id, lock=True)
+    guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期的异动不应继续审批流转（降级为当前学期判据）
+    if x.status not in _ACTIVE and x.status != "IN_REVIEW":
+        raise AppException("APPROVAL_VERSION_CONFLICT", "该异动当前状态不可审批")
+    # 节点授权：permissionCode + 数据范围（辅导员限本班/学院教务限本院/教务处终审限 TENANT_ALL）
+    _check_node_authority(db, user, x.current_node, x)
+    nodes = CHANGE_FLOW[x.change_type][1]
+    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == (inst.id if inst else 0),
+        WorkflowTask.node_code == x.current_node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False))).first() if inst else None
+    if action in ("REJECT", "RETURN"):
+        if not reason or len(reason.strip()) < 5:
+            raise AppException("VALIDATION_ERROR", "驳回/退回原因必填且不少于 5 字")
+        if task:
+            task.status, task.action_reason, task.acted_at = ("REJECTED" if action == "REJECT" else "TRANSFERRED"), reason.strip(), datetime.utcnow()
+        x.status = "REJECTED" if action == "REJECT" else "RETURNED"
+        x.version += 1
+        x.decision_version = int(x.decision_version or 0) + 1
+        x.current_task_id = None
+        if inst:
+            inst.status = "REJECTED" if action == "REJECT" else "RETURNED"
+        _todo_done(db, x.id)
+        _msg(db, x.student_id, f"{L_CT[x.change_type]}{'未通过' if action == 'REJECT' else '被退回'}",
+             reason.strip(), "WORKFLOW_RESULT" if action == "REJECT" else "RETURNED_NOTICE", x.id)
+        _audit(db, x.id, x.status, reason.strip())
+        db.flush()
+        return _row(x, s), {"outbox": True}
+    if action != "APPROVE":
+        raise AppException("VALIDATION_ERROR", "无效操作")
+    if task:
+        task.status, task.acted_at = "APPROVED", datetime.utcnow()
+    i = nodes.index(x.current_node) if x.current_node in nodes else 0
+    if i + 1 < len(nodes):
+        nxt = nodes[i + 1]
+        x.current_node, x.status, x.version = nxt, "IN_REVIEW", x.version + 1
+        x.decision_version = int(x.decision_version or 0) + 1
+        if inst:
+            inst.current_node = nxt
+        assignee = _assignee_for(db, nxt, x.student_id)
+        next_task = WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
+                                 assignee_id=assignee, status="PENDING")
+        db.add(next_task)
+        db.flush()
+        x.current_task_id = int(next_task.id)
+        _todo_upsert(db, x.id, assignee, x.student_id, f"{L_CT[x.change_type]}待审（{nxt}）：{s.real_name if s else ''}")
+        _audit(db, x.id, "STEP", f"->{nxt}")
+        db.flush()
+        return _row(x, s), {}
+    # 终审通过 → 经单一入口生效
+    res = change_student_status(
+        db, x.student_id, x.to_status, change_type=x.change_type, reason=x.reason or "",
+        operator=uid, existing_change_id=x.id,
+        to_college_id=x.to_college_id, to_major_id=x.to_major_id, to_class_id=x.to_class_id,
+        expected_student_version=x.expected_student_version)
+    if inst:
+        inst.status = "APPROVED"
+    x.decision_version = int(x.decision_version or 0) + 1
+    x.current_task_id = None
+    _todo_done(db, x.id)
+    _msg(db, x.student_id, f"{L_CT[x.change_type]}已生效",
+         f"你的{L_CT[x.change_type]}申请已通过并生效", "WORKFLOW_RESULT", x.id)
+    _audit(db, x.id, "EFFECTIVE", f"{res['fromStatus']}->{res['toStatus']}")
+    db.flush()
+    return _row(x, s), {
+        "outbox": True,
+        "effective": {
+            "studentId": x.student_id, "fromStatus": res["fromStatus"],
+            "toStatus": res["toStatus"], "changeType": x.change_type, "operator": uid,
+        },
+    }
 
 
 # ═══════════ 查询 ═══════════

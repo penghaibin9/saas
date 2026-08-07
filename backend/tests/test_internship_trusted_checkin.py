@@ -1,6 +1,8 @@
 """Production checks for geofenced, retry-safe mobile internship check-ins."""
 from __future__ import annotations
 
+import io
+
 TID = 1000000000000000001
 
 
@@ -65,22 +67,33 @@ def test_mock_location_exception_can_be_appealed_and_teacher_decided(client, db_
     assert checked.status_code == 200 and checked.json()["data"]["result"] == "MOCK_LOCATION"
 
     from app.db.session import get_sessionmaker
-    from app.models import AttendanceException, FileObject
+    from app.models import AttendanceException
     db = get_sessionmaker()()
     try:
         exc = db.query(AttendanceException).filter_by(tenant_id=TID).one()
-        # 文件对象级授权：学生本人凭证须挂 biz_id=studentNo，否则 get_file_meta 判无权访问
-        file_obj = FileObject(tenant_id=TID, file_key="checkin/evidence.pdf", file_name="evidence.pdf",
-                              ext="pdf", size_bytes=12, biz_type="INTERNSHIP", biz_id="CHECKIN-B",
-                              status="STORED")
-        db.add(file_obj); db.flush(); file_id, exception_id = str(file_obj.id), str(exc.id); db.commit()
+        exception_id = str(exc.id)
     finally:
         db.close()
+
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=headers,
+        files={"file": (
+            "attendance-appeal.txt",
+            io.BytesIO(b"trusted-attendance-appeal-evidence"),
+            "text/plain",
+        )},
+        data={"bizType": "INTERNSHIP_ATTENDANCE_APPEAL"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    upload_data = uploaded.json()["data"]
+    assert upload_data["temporary"] is True and upload_data["bindingCreated"] is False
+    file_id = upload_data["fileId"]
+
     appeal = client.post(f"/api/v1/mobile/internship/exceptions/{exception_id}/appeal",
                          json={"note": "I was on site and attach the attendance proof.", "fileId": file_id},
                          headers=headers)
-    assert appeal.status_code == 200 and appeal.json()["data"]["appealStatus"] == "PENDING"
-    # 学生申诉已把异常 version 从 0 递增到 1（乐观锁），处理时须回传当前版本
+    assert appeal.status_code == 200 and appeal.json()["data"]["appealStatus"] == "PENDING", appeal.json()
     reviewed = client.post(f"/api/v1/internship/exceptions/{exception_id}/handle",
                            json={"action": "REASONABLE", "comment": "Evidence checked and accepted.",
                                  "expectedVersion": 1},

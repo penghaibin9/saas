@@ -879,6 +879,27 @@ def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
             time.sleep(base_delay)
 
 
+def _drop_all_mysql(engine, metadata):
+    """drop_all，但先关外键检查。
+
+    起因：部分迁移建的表在 ORM 里没有对应 model（例如包10 的
+    t_affairs_funding_amount_adjustment，service 走裸 SQL + _table_exists 兜底），
+    而它带一个指向 t_affairs_funding_application 的外键。metadata 里看不见这张子表，
+    drop_all 排不出正确顺序，在任何真跑过 alembic 的库上都会撞 3730
+    "Cannot drop table ... referenced by a foreign key constraint"。
+    只在 create_all 建的库上才碰巧不出问题——那正好掩盖了迁移库与 ORM 库的分裂。
+
+    测试库的 teardown 本来就是要清空一切，关掉外键顺序约束是安全的；真实的 schema
+    故障仍会照常抛出（这里只影响删除顺序，不吞任何错误）。"""
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        try:
+            metadata.drop_all(bind=conn)
+        finally:
+            conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+
+
 @pytest.fixture(scope="session")
 def _session_mysql_schema():
     """FAST_TEST_SCHEMA 模式：会话只建一次 schema，单用例只清空数据。"""
@@ -893,7 +914,7 @@ def _session_mysql_schema():
     settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
     reset_state()
     engine = get_engine()
-    _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
+    _ddl_with_retry(lambda: _drop_all_mysql(engine, metadata))
     _ddl_with_retry(lambda: metadata.create_all(bind=engine))
     try:
         yield engine
@@ -938,10 +959,24 @@ def db_mode(tmp_path, request):
                 # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
                 # 且不拿元数据 DDL 锁。
                 from sqlalchemy import inspect as sa_inspect
+                from sqlalchemy.exc import OperationalError
                 existing = set(sa_inspect(conn).get_table_names())
                 for table in reversed(metadata.sorted_tables):
-                    if table.name in existing:
+                    if table.name not in existing:
+                        continue
+                    try:
                         conn.execute(text(f"DELETE FROM `{table.name}`"))
+                    except OperationalError as e:
+                        # 部分表（如包11 t_affairs_discipline_decision_version）挂了
+                        # BEFORE DELETE/UPDATE 硬不可变触发器：生产语义是"应用运行时凭据
+                        # 无法删除/修改该表任何一行"，触发器不区分测试库与生产库，DELETE
+                        # 一律被 SIGNAL 拒绝（errno 1644）。TRUNCATE 在 MySQL 里是 DDL，
+                        # 不经过行级触发器，可以清空表且不需要给触发器加任何绕过口子
+                        # （应用服务代码从不签发 TRUNCATE，不可变承诺不受影响）。
+                        if "1644" in str(e.orig):
+                            conn.execute(text(f"TRUNCATE TABLE `{table.name}`"))
+                        else:
+                            raise
                 conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
         else:
             engine = get_engine()
@@ -953,7 +988,7 @@ def db_mode(tmp_path, request):
                     cursor.close()
             if not is_sqlite:
                 event.listen(engine, "connect", _set_ddl_lock_timeout)
-                _ddl_with_retry(lambda: metadata.drop_all(bind=engine))
+                _ddl_with_retry(lambda: _drop_all_mysql(engine, metadata))
                 _ddl_with_retry(lambda: metadata.create_all(bind=engine))
             else:
                 metadata.create_all(bind=engine)

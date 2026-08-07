@@ -103,7 +103,7 @@ def get(tenant_id: int, namespace: str, batch_no: str) -> dict:
                 "payload": _decode(row.payload_json or {}),
                 "errors": _decode(row.errors_json or []),
                 "publicResult": _decode(row.public_result_json or {}),
-                "requestId": row.request_id}
+                "requestId": row.request_id, "operatorKey": row.operator_key}
     finally:
         db.close()
 

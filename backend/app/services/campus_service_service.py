@@ -178,13 +178,18 @@ def get_student_detail(sid) -> dict:
                 "auditLogs": [_log_row(x) for x in logs]}
 
 
-def create_student(body: dict) -> dict:
+def create_student(body: dict, *, db=None) -> dict:
     """新建服务台账行。阶段 D 起必须挂在已有学籍档案上，不再允许独立影子学生。
 
     身份字段（姓名/学号/组织）一律取自主档快照，调用方传什么都不采信——
     否则同一个人在这里叫张三、在学籍里叫张山，越权范围和统计口径立刻分裂。
+
+    db 由调用方传入时（批量导入整批事务）复用同一会话、不在本函数内提交，交由调用方
+    统一 commit/rollback；单条调用（db=None）保持原有独立开合事务行为不变。
     """
-    with session() as db:
+    from contextlib import nullcontext
+    owns_session = db is None
+    with (session() if owns_session else nullcontext(db)) as db:
         p = shadow.resolve_profile_for_shadow(
             db, _tid(), domain_label="在校服务台账",
             student_id=body.get("studentId") or body.get("profileStudentId"),
@@ -203,7 +208,10 @@ def create_student(body: dict) -> dict:
         db.add(s)
         db.flush()
         _audit(db, "RECORD", s.id, "新增服务记录", f"{snap['name']}（{snap['student_no']}）")
-        db.commit()
+        if owns_session:
+            db.commit()
+        else:
+            db.flush()
         return {"id": str(s.id), "profileStudentId": str(p.id)}
 
 

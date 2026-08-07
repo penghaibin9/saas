@@ -10,24 +10,90 @@ TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
 
+import pytest
+
+_TOKEN_CACHE: dict[str, dict] = {}
+
+
+@pytest.fixture(autouse=True)
+def _reset_token_cache():
+    """db_mode 每个用例重建 schema，上一用例的令牌随 token_store 一起失效，必须逐例清空。"""
+    _TOKEN_CACHE.clear()
+    yield
+    _TOKEN_CACHE.clear()
+
+
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
-    return {"Authorization": f"Bearer {data['accessToken']}"}
+    """同一用例内复用令牌：逐节点审批会多次取头，反复调登录会撞上登录频次/锁定阈值。"""
+    cached = _TOKEN_CACHE.get(login_name)
+    if cached:
+        return cached
+    body = client.post("/api/v1/auth/mock-login",
+                       json={"loginName": login_name, "password": "any"}).json()
+    data = body.get("data")
+    assert data, f"mock-login {login_name} failed: {body}"
+    header = {"Authorization": f"Bearer {data['accessToken']}"}
+    _TOKEN_CACHE[login_name] = header
+    return header
+
+
+_COLLEGE_NAME = "软件学院"
+
+# 包 5 收口后，审批任务有明确受理人：每个节点只能由它真实的受理人办理，
+# 校管理员不再能一个人把三级审批全点完（职责分离）。
+_NODE_LOGIN = {
+    "COUNSELOR_REVIEW": "counselor01",
+    "COLLEGE_REVIEW": "college_admin01",
+    "OUT_COLLEGE_REVIEW": "college_admin01",
+    "IN_COLLEGE_REVIEW": "college_admin01",
+    "COLLEGE_ASSIGN_CLASS": "college_admin01",
+    "AA_OFFICE_FINAL": "school_admin01",
+}
+
+
+def _seed_reviewers(db, *, class_ids, college_ids):
+    """当前学期 + 真实审批账号 + 辅导员/学院教务的数据范围，缺一不可（全部 fail-closed）。"""
+    from app.models import College, SchoolClass, TeacherStudentScope
+    from tests.support_status_change_identity import seed_status_change_identity
+
+    seed_status_change_identity(db, class_ids=class_ids, college_ids=college_ids)
+    for class_id in class_ids:
+        row = db.get(SchoolClass, int(class_id))
+        if row is not None:
+            db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+                                       role_code="COUNSELOR", scope_type="CLASS",
+                                       ref_value=row.class_name, status="ACTIVE"))
+    for college_id in college_ids:
+        row = db.get(College, int(college_id))
+        if row is not None:
+            db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01",
+                                       teacher_name="张晓明", role_code="COLLEGE_ADMIN",
+                                       scope_type="COLLEGE", ref_value=row.college_name,
+                                       status="ACTIVE"))
+    db.flush()
 
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    b = SchoolClass(tenant_id=TID, major_id=2, class_name="网络2101", grade="2021", status="ACTIVE")
+    college_sw = College(tenant_id=TID, college_name=_COLLEGE_NAME, status="ACTIVE")
+    college_net = College(tenant_id=TID, college_name="网络学院", status="ACTIVE")
+    db.add(college_sw); db.add(college_net); db.flush()
+    major_sw = Major(tenant_id=TID, college_id=college_sw.id, major_name="软件技术", status="ACTIVE")
+    major_net = Major(tenant_id=TID, college_id=college_net.id, major_name="网络技术", status="ACTIVE")
+    db.add(major_sw); db.add(major_net); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major_sw.id, class_name="软件2101", grade="2021", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major_net.id, class_name="网络2101", grade="2021", status="ACTIVE")
     db.add(a); db.add(b); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="AA001", real_name="学籍甲", class_id=a.id,
-                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       college_id=college_sw.id, major_id=major_sw.id, current_stage="ON_CAMPUS",
                        student_status="NORMAL", status="ACTIVE")
     db.add(s); db.flush()
-    ids = {"a": a.id, "b": b.id, "s": s.id}
+    _seed_reviewers(db, class_ids=(a.id, b.id), college_ids=(college_sw.id, college_net.id))
+    ids = {"a": a.id, "b": b.id, "s": s.id,
+           "college": college_sw.id, "collegeNet": college_net.id,
+           "majorSw": major_sw.id, "majorNet": major_net.id}
     db.commit()
     db.close()
     return ids
@@ -38,10 +104,19 @@ def _submit(client, hdr, sid, ct, **extra):
                        json={"studentId": str(sid), "changeType": ct, "reason": f"{ct}原因说明足够长", **extra})
 
 
+def _current_node(client, cid):
+    hdr = _hdr(client, "school_admin01")
+    return client.get(f"{BASE}/status-changes/{cid}", headers=hdr).json()["data"]["currentNode"]
+
+
 def _approve(client, hdr, cid, times):
+    """按节点真实受理人逐级通过。hdr 只用于读取详情，写操作一律用该节点的受理人身份。"""
     r = None
     for _ in range(times):
-        r = client.post(f"{BASE}/status-changes/{cid}/review", headers=hdr, json={"action": "APPROVE"})
+        node = _current_node(client, cid)
+        node_hdr = _hdr(client, _NODE_LOGIN[node])
+        r = client.post(f"{BASE}/status-changes/{cid}/review", headers=node_hdr, json={"action": "APPROVE"})
+        assert r.status_code == 200, f"node={node} -> {r.text}"
     return r.json()
 
 
@@ -79,7 +154,8 @@ def test_sc3_transfer_major_moves_org(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _submit(client, hdr, ids["s"], "TRANSFER_MAJOR",
-                  toMajorId="2", toClassId=str(ids["b"]), toCollegeId="20").json()["data"]["changeId"]
+                  toMajorId=str(ids["majorNet"]), toClassId=str(ids["b"]),
+                  toCollegeId=str(ids["collegeNet"])).json()["data"]["changeId"]
     r = _approve(client, hdr, cid, 4)  # 辅导员→转出院→接收院→教务处
     assert r["data"]["status"] == "EFFECTIVE"
     from app.db.session import get_sessionmaker
@@ -87,7 +163,8 @@ def test_sc3_transfer_major_moves_org(client, db_mode):
     db = get_sessionmaker()()
     s = db.get(StudentProfile, ids["s"])
     # 转专业不改学籍状态字面，但迁移了院系班
-    assert s.student_status == "REGISTERED" and s.class_id == ids["b"] and s.major_id == 2
+    assert (s.student_status == "REGISTERED" and s.class_id == ids["b"]
+            and s.major_id == ids["majorNet"] and s.college_id == ids["collegeNet"])
     db.close()
 
 
@@ -120,7 +197,9 @@ def test_sc7_reject(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _submit(client, hdr, ids["s"], "SUSPEND").json()["data"]["changeId"]
-    r = client.post(f"{BASE}/status-changes/{cid}/review", headers=hdr,
+    # 首节点是辅导员初审，任务已明确分配给辅导员本人：驳回也必须由受理人做，不能由校管理员代劳。
+    coun_hdr = _hdr(client, "counselor01")
+    r = client.post(f"{BASE}/status-changes/{cid}/review", headers=coun_hdr,
                     json={"action": "REJECT", "reason": "材料不齐，不予批准"}).json()
     assert r["data"]["status"] == "REJECTED"
     assert _status(client, ids["s"], hdr) == "NORMAL"  # 未生效，主档不变
@@ -165,6 +244,11 @@ def _seed_scoped(db_mode):
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101", status="ACTIVE"))
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", teacher_name="张晓明",
                                role_code="COLLEGE_ADMIN", scope_type="COLLEGE", ref_value="软件学院", status="ACTIVE"))
+    # 两个班都挂同一个辅导员账号：越权断言靠 TeacherStudentScope 的班级范围裁决，
+    # 不靠"任务无人认领"这种假阴性通过。
+    from tests.support_status_change_identity import seed_status_change_identity
+    seed_status_change_identity(db, class_ids=(a.id, b.id),
+                                college_ids=(college_sw.id, college_wl.id))
     db.commit()
     ids = {"collegeSw": college_sw.id, "collegeWl": college_wl.id, "classA": a.id, "classB": b.id,
            "sIn": s_in.id, "sOut": s_out.id}
@@ -257,17 +341,20 @@ def test_sc14_counselor_no_apply_permission(client, db_mode):
 def _seed_transfer_class(db_mode):
     """转班测试专用种子：同专业两班（软件2101当前班 / 软件2102目标班）+ 另一专业一班（网络2101，跨专业对照）。"""
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, SchoolClass, StudentProfile
     db = get_sessionmaker()()
+    college = College(tenant_id=TID, college_name=_COLLEGE_NAME, status="ACTIVE")
+    db.add(college); db.flush()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE", class_status="NORMAL")
     a2 = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE", class_status="NORMAL")
     b = SchoolClass(tenant_id=TID, major_id=2, class_name="网络2101", grade="2021", status="ACTIVE", class_status="NORMAL")
     db.add(a); db.add(a2); db.add(b); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="AA020", real_name="转班甲", class_id=a.id,
-                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       college_id=college.id, major_id=1, current_stage="ON_CAMPUS",
                        student_status="NORMAL", status="ACTIVE")
     db.add(s); db.flush()
-    ids = {"a": a.id, "a2": a2.id, "b": b.id, "s": s.id}
+    _seed_reviewers(db, class_ids=(a.id, a2.id, b.id), college_ids=(college.id,))
+    ids = {"a": a.id, "a2": a2.id, "b": b.id, "s": s.id, "college": college.id}
     db.commit()
     db.close()
     return ids
@@ -284,7 +371,7 @@ def test_sc15_transfer_class_same_major_flow(client, db_mode):
     from app.models import StudentProfile
     db = get_sessionmaker()()
     s = db.get(StudentProfile, ids["s"])
-    assert s.class_id == ids["a2"] and s.major_id == 1 and s.college_id == 10
+    assert s.class_id == ids["a2"] and s.major_id == 1 and s.college_id == ids["college"]
     db.close()
 
 
@@ -318,14 +405,17 @@ def test_sc19_retain_full_flow(client, db_mode):
     学生，非入学未注册状态），故本测试起点造 REGISTERED 学生，不复用别测试的 NORMAL 起点种子。
     注意：留级(RETAINED)与保留学籍(PRESERVED)是两个语义相反的独立类型，后者见 sc20/sc21/sc22。"""
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, SchoolClass, StudentProfile
     db = get_sessionmaker()()
+    college = College(tenant_id=TID, college_name=_COLLEGE_NAME, status="ACTIVE")
+    db.add(college); db.flush()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="AA021", real_name="留级甲", class_id=a.id,
-                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       college_id=college.id, major_id=1, current_stage="ON_CAMPUS",
                        student_status="REGISTERED", status="ACTIVE")
     db.add(s); db.flush()
+    _seed_reviewers(db, class_ids=(a.id,), college_ids=(college.id,))
     sid = s.id
     db.commit()
     db.close()
@@ -345,14 +435,17 @@ def test_sc19_retain_full_flow(client, db_mode):
 def _seed_registered(db_mode, student_no, real_name):
     """造一个 REGISTERED 在读学生（保留学籍/留级都要求发起时在籍）。"""
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, SchoolClass, StudentProfile
     db = get_sessionmaker()()
+    college = College(tenant_id=TID, college_name=_COLLEGE_NAME, status="ACTIVE")
+    db.add(college); db.flush()
     c = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
     db.add(c); db.flush()
     s = StudentProfile(tenant_id=TID, student_no=student_no, real_name=real_name, class_id=c.id,
-                       college_id=10, major_id=1, current_stage="ON_CAMPUS",
+                       college_id=college.id, major_id=1, current_stage="ON_CAMPUS",
                        student_status="REGISTERED", status="ACTIVE")
     db.add(s); db.flush()
+    _seed_reviewers(db, class_ids=(c.id,), college_ids=(college.id,))
     sid = s.id
     db.commit()
     db.close()

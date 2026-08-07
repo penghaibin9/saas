@@ -63,18 +63,32 @@ def can_transition(from_status: str | None, to_status: str) -> bool:
 
 def change_student_status(db, student_id, to_status, change_type, reason="", operator="",
                           source_biz_id=None, term_code=None, existing_change_id=None,
-                          to_college_id=None, to_major_id=None, to_class_id=None) -> dict:
+                          to_college_id=None, to_major_id=None, to_class_id=None,
+                          expected_student_version=None) -> dict:
     """全平台唯一 student_status 写入口。db 为调用方事务会话（本函数不 commit）。
 
     existing_change_id：异动审批终审时把既有异动单置 EFFECTIVE（不新建流水）；无则新建一行（如注册）。
     to_college/major/class：转专业/复学定班时同步迁移主档院系班（真实业务需要）。
+    expected_student_version：异动发起时冻结的主档 version。传入后，主档在申请在途期间被其他
+      入口改写（含另一条并发生效的异动）会直接 409，不允许拿过期事实覆盖当前学籍。
     """
     from app.models import AaStatusChange, StudentProfile, StudentStageEvent
     if to_status not in STATUSES:
         raise AppException("VALIDATION_ERROR", f"非法目标学籍状态：{to_status}")
-    s = db.get(StudentProfile, int(student_id))
-    if not s or s.is_deleted or s.tenant_id != _tid():
+    # 主档行锁：终审必须独占学生主档，避免两条异动同时读到同一 from_status 后各自 +1。
+    s = db.query(StudentProfile).filter(
+        StudentProfile.id == int(student_id),
+        StudentProfile.tenant_id == _tid(),
+    ).with_for_update().first()
+    if not s or s.is_deleted:
         raise AppException("DATA_NOT_FOUND", "学生不存在")
+    if expected_student_version is not None and int(s.version or 0) != int(expected_student_version):
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "学生主档在本申请在途期间已被改写，请重新核对后再终审",
+            details={"expectedVersion": int(expected_student_version), "currentVersion": int(s.version or 0)},
+            http_status=409,
+        )
     frm = s.student_status
     # 终态学生禁再异动（MERGED/RECYCLED/WITHDRAWN/GRADUATED）
     if frm in ("MERGED", "RECYCLED", "WITHDRAWN", "GRADUATED") and to_status != frm:
@@ -82,15 +96,31 @@ def change_student_status(db, student_id, to_status, change_type, reason="", ope
     # ① 合法转移校验
     if not can_transition(frm, to_status):
         raise AppException("VALIDATION_ERROR", f"学籍状态不允许 {frm} → {to_status}")
-    # ② 乐观锁更新主档（含转专业/复学迁移院系班）
-    s.student_status = to_status
+    # ② 条件更新主档（含转专业/复学迁移院系班）。WHERE 同时锁定 version 与当前状态：
+    #    即使行锁被绕开（例如未来出现不走本入口的路径），version/状态被改写也只会更新 0 行，
+    #    此时整笔终审 409 回滚，绝不静默覆盖当前学籍。
+    loaded_version = int(s.version or 0)
+    updates = {StudentProfile.student_status: to_status, StudentProfile.version: loaded_version + 1}
     if to_college_id is not None:
-        s.college_id = int(to_college_id)
+        updates[StudentProfile.college_id] = int(to_college_id)
     if to_major_id is not None:
-        s.major_id = int(to_major_id)
+        updates[StudentProfile.major_id] = int(to_major_id)
     if to_class_id is not None:
-        s.class_id = int(to_class_id)
-    s.version = (s.version or 0) + 1
+        updates[StudentProfile.class_id] = int(to_class_id)
+    changed = db.query(StudentProfile).filter(
+        StudentProfile.id == int(student_id),
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.version == loaded_version,
+        StudentProfile.student_status == frm,
+    ).update(updates, synchronize_session=False)
+    if not changed:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "学生主档已被并发改写，本次学籍变更未生效",
+            details={"expectedVersion": loaded_version, "fromStatus": frm},
+            http_status=409,
+        )
+    db.refresh(s)
     # ③ 写/更新异动流水
     if existing_change_id:
         row = db.get(AaStatusChange, int(existing_change_id))

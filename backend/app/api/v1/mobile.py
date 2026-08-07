@@ -685,8 +685,13 @@ def teacher_academic(user=Depends(get_current_user)):
 
 
 @internship_teacher_mobile.get("", summary="教师·实习待批")
-def teacher_internship(user=Depends(get_current_user)):
-    return success(tea.internship(user))
+def teacher_internship(
+    batch_id: str | None = Query(default=None, alias="batchId"),
+    user=Depends(get_current_user),
+):
+    # 教师路径拿不到 x-internship-batch-id 隐式上下文（中间件按设计只绑学生端路径），
+    # 批次必须由本接口显式接收；不传时页面照常打开，取不到的来源在 errors 里说明。
+    return success(tea.internship(user, batch_id=batch_id))
 
 
 @router.get("/teacher/graduation", summary="教师·毕设待审")

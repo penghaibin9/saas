@@ -172,6 +172,17 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "处分通知",
         "require_ack": False,
     },
+    # 包 11 的申诉复核会发这条通知，但事件码一直没登记，发送时被本表拦成 422，
+    # 「维持/变更/撤销」三种复核结论全都做不完。申诉结果直接决定学生的处分是否成立，
+    # 必须送达学生本人，故 require_ack=True。
+    "DISCIPLINE_APPEAL.RESULT": {
+        "source_module": "student-affairs",
+        "category": "BUSINESS",
+        "priority": "HIGH",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "处分申诉复核结果",
+        "require_ack": True,
+    },
     "FUNDING.NOTICE": {
         "source_module": "student-affairs",
         "category": "BUSINESS",

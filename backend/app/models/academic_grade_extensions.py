@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Index, Integer, String, UniqueConstraint, event
 from sqlalchemy.orm import mapped_column
 
 from app.models.academic import AcademicGrade, AcademicMakeup
@@ -77,8 +77,16 @@ def install_academic_grade_extensions() -> None:
         Integer, nullable=True, comment="成绩发布时及格线快照"
     ))
 
+    # 包 1：正式成绩更正是"追加新版本 + 原行 SUPERSEDED"，同一 grade_record 会留下多条历史版本。
+    # 原来的 UNIQUE(tenant_id, grade_record_id) 把这条链直接堵死，只允许存在一条正式成绩。
+    # 改成只对当前有效版本占位：ACTIVE 行写 grade_record_id，SUPERSEDED/VOID 行留 NULL，
+    # "一个成绩明细同时只能有一条有效正式成绩"仍由数据库兜底，历史版本得以完整保留。
+    _add_column(AcademicGrade, "active_record_key", mapped_column(
+        BigInteger, nullable=True, comment="ACTIVE 版本的 grade_record_id；非 ACTIVE 版本为 NULL"
+    ))
+
     grade_table = AcademicGrade.__table__
-    _append_unique(grade_table, "uk_acad_grade_source_record", "tenant_id", "grade_record_id")
+    _append_unique(grade_table, "uk_acad_grade_active_record", "tenant_id", "active_record_key")
     _append_unique(grade_table, "uk_acad_grade_source_biz", "tenant_id", "source_biz_type", "source_biz_id")
     _append_index(
         grade_table, "ix_acad_grade_course_attempt",
@@ -120,4 +128,20 @@ def install_academic_grade_extensions() -> None:
     _append_index(makeup_table, "ix_acad_makeup_roster_version", "tenant_id", "roster_version_id")
 
 
+def _sync_active_record_key(_mapper, _connection, target) -> None:
+    """``active_record_key`` 由 record_status 派生，业务代码不需要（也不允许）自己维护。
+
+    只有 ACTIVE 版本占用 ``UNIQUE(tenant_id, active_record_key)``；一旦转 SUPERSEDED/VOID
+    立即让位，后继版本才能接管同一个成绩明细。
+    """
+    record_id = getattr(target, "grade_record_id", None)
+    is_active = str(getattr(target, "record_status", None) or "ACTIVE").upper() == "ACTIVE"
+    target.active_record_key = int(record_id) if (is_active and record_id) else None
+
+
 install_academic_grade_extensions()
+
+if not event.contains(AcademicGrade, "before_insert", _sync_active_record_key):
+    event.listen(AcademicGrade, "before_insert", _sync_active_record_key)
+if not event.contains(AcademicGrade, "before_update", _sync_active_record_key):
+    event.listen(AcademicGrade, "before_update", _sync_active_record_key)
