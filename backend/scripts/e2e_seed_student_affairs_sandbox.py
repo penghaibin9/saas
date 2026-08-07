@@ -1,10 +1,11 @@
 """Seed only student-affairs prerequisites for the Playwright leave lifecycle.
 
-The script gives the dedicated E2E advisor the real COUNSELOR role, binds that
-counselor to the E2E student's administrative class, and installs the matching
-CLASS data-scope row only inside the disposable sandbox-school E2E database.
-It deliberately does not create CsLeave, workflow tasks, cancel records or audit
-rows: every business transition must be produced by visible browser interactions.
+The script gives two dedicated E2E advisors the real COUNSELOR role and installs
+separate class assignments/scopes for student A and the cross-class negative-control
+student B. It runs only against the disposable sandbox-school E2E database.
+
+It deliberately does not create CsLeave, workflow tasks, cancel records or audit rows:
+every business transition must be produced by visible browser interactions.
 """
 from __future__ import annotations
 
@@ -33,6 +34,8 @@ TENANT_ID = 1000000000000000007
 TENANT_CODE = "sandbox-school"
 STUDENT_NO = "E2E20260001"
 COUNSELOR_LOGIN = "e2e_advisor_a"
+OUTSIDE_STUDENT_NO = "E2E20260002"
+OUTSIDE_COUNSELOR_LOGIN = "e2e_advisor_b"
 COUNSELOR_ROLE = "COUNSELOR"
 DEFAULT_FIXTURE_PATH = "../e2e/runtime/student-affairs-fixture.json"
 
@@ -78,36 +81,36 @@ def require_tenant(db) -> Tenant:
     return tenant
 
 
-def require_student_and_class(db) -> tuple[StudentProfile, SchoolClass]:
+def require_student_and_class(db, student_no: str) -> tuple[StudentProfile, SchoolClass]:
     student = db.scalars(
         select(StudentProfile).where(
             StudentProfile.tenant_id == TENANT_ID,
-            StudentProfile.student_no == STUDENT_NO,
+            StudentProfile.student_no == student_no,
             StudentProfile.is_deleted.is_(False),
         )
     ).first()
     if student is None:
         raise SystemExit(
-            f"student {TENANT_CODE}/{STUDENT_NO} is missing; run the E2E identity bootstrap first"
+            f"student {TENANT_CODE}/{student_no} is missing; run the E2E identity bootstrap first"
         )
     school_class = db.get(SchoolClass, student.class_id) if student.class_id else None
     if school_class is None or school_class.tenant_id != TENANT_ID or school_class.is_deleted:
-        raise SystemExit(f"student {STUDENT_NO} has no active administrative class")
+        raise SystemExit(f"student {student_no} has no active administrative class")
     return student, school_class
 
 
-def ensure_counselor_role(db) -> User:
+def ensure_counselor_role(db, counselor_login: str) -> User:
     counselor = db.scalars(
         select(User).where(
             User.tenant_id == TENANT_ID,
-            User.login_name == COUNSELOR_LOGIN,
+            User.login_name == counselor_login,
             User.status == "ACTIVE",
             User.is_deleted.is_(False),
         )
     ).first()
     if counselor is None:
         raise SystemExit(
-            f"counselor {TENANT_CODE}/{COUNSELOR_LOGIN} is missing; run the E2E identity bootstrap first"
+            f"counselor {TENANT_CODE}/{counselor_login} is missing; run the E2E identity bootstrap first"
         )
 
     role = db.scalars(
@@ -189,7 +192,6 @@ def ensure_class_scope(db, school_class: SchoolClass, counselor: User) -> Teache
 
 def ensure_assignment(
     db,
-    student: StudentProfile,
     school_class: SchoolClass,
     counselor: User,
     now: datetime,
@@ -245,10 +247,20 @@ def main() -> int:
     db = get_sessionmaker()()
     try:
         require_tenant(db)
-        student, school_class = require_student_and_class(db)
-        counselor = ensure_counselor_role(db)
+
+        student, school_class = require_student_and_class(db, STUDENT_NO)
+        outside_student, outside_class = require_student_and_class(db, OUTSIDE_STUDENT_NO)
+        if int(school_class.id) == int(outside_class.id):
+            raise SystemExit(
+                "cross-class negative control is invalid: primary and outside students share a class"
+            )
+
+        counselor = ensure_counselor_role(db, COUNSELOR_LOGIN)
+        outside_counselor = ensure_counselor_role(db, OUTSIDE_COUNSELOR_LOGIN)
         scope = ensure_class_scope(db, school_class, counselor)
-        assignment = ensure_assignment(db, student, school_class, counselor, now)
+        outside_scope = ensure_class_scope(db, outside_class, outside_counselor)
+        assignment = ensure_assignment(db, school_class, counselor, now)
+        outside_assignment = ensure_assignment(db, outside_class, outside_counselor, now)
         db.commit()
 
         payload = {
@@ -263,6 +275,16 @@ def main() -> int:
             "counselorName": counselor.real_name,
             "scopeId": str(scope.id),
             "assignmentId": str(assignment.id),
+            "outsideStudentId": str(outside_student.id),
+            "outsideStudentNo": outside_student.student_no,
+            "outsideStudentName": outside_student.real_name,
+            "outsideClassId": str(outside_class.id),
+            "outsideClassName": outside_class.class_name,
+            "outsideCounselorUserId": str(outside_counselor.id),
+            "outsideCounselorLogin": outside_counselor.login_name,
+            "outsideCounselorName": outside_counselor.real_name,
+            "outsideScopeId": str(outside_scope.id),
+            "outsideAssignmentId": str(outside_assignment.id),
         }
         target = fixture_path()
         target.parent.mkdir(parents=True, exist_ok=True)
