@@ -65,6 +65,35 @@ def test_default_policy_matches_legacy_formula(client, db_mode):
         set_tenant(None)
 
 
+def test_grade_service_public_refresh_also_freezes(client, db_mode):
+    """academic_affairs_grade_service.py（"成绩域唯一公开 Service"）有自己独立的
+    _refresh_aggregates 实现，被发布/复查/认定/补考等主链路调用——必须同样走
+    _course_point_frozen，不能各用各的绩点公式导致两条链路算出不同 GPA。"""
+    from app.core.context import set_current_user, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicGrade, AcademicStudent
+    from app.modules.academic_affairs.services.academic_affairs_grade_service import (
+        _refresh_aggregates as public_refresh_aggregates,
+    )
+
+    set_tenant({"tenantId": str(TID)})
+    set_current_user(_svc_user())
+    db = get_sessionmaker()()
+    try:
+        student_id, grade_id = _seed_student_with_grade(db, score=85, credit=3)
+        student = db.get(AcademicStudent, student_id)
+        public_refresh_aggregates(db, student)
+        db.commit()
+        grade = db.get(AcademicGrade, grade_id)
+        assert float(grade.gpa_point) == 3.5
+        assert grade.gpa_policy_code == "DEFAULT" and grade.gpa_policy_version == 1
+        assert float(student.gpa) == 3.5
+    finally:
+        db.close()
+        set_current_user(None)
+        set_tenant(None)
+
+
 def test_frozen_point_survives_new_policy_activation(client, db_mode):
     """已冻结绩点的历史记录，在租户激活新策略版本后重新走一次台账刷新，绩点必须原封不动。"""
     from app.core.context import set_current_user, set_tenant

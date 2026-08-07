@@ -640,19 +640,18 @@ def _refresh_aggregates(db, academic_student) -> None:
     if not scored:
         academic_student.gpa = 0
         return
-    total_credit = sum(float(row.credit_value or 0) for row in scored)
+    # P1-GPA：绩点必须走 _core._course_point_frozen（版本化策略+历史冻结），不能用
+    # 已废弃的硬编码 _core._course_point——否则本文件(成绩域唯一公开 Service)承载的
+    # 发布/复查/认定/补考等主链路全部绕过冻结，租户升级绩点策略会静默改写历史 GPA。
+    points = [(_core._course_point_frozen(db, row), float(row.credit_value or 0)) for row in scored]
+    total_credit = sum(credit for _point, credit in points)
     if total_credit > 0:
         academic_student.gpa = round(
-            sum(
-                _core._course_point(row.score) * float(row.credit_value or 0)
-                for row in scored
-            ) / total_credit,
-            2,
+            sum(point * credit for point, credit in points) / total_credit, 2,
         )
     else:
         academic_student.gpa = round(
-            sum(_core._course_point(row.score) for row in scored) / len(scored),
-            2,
+            sum(point for point, _credit in points) / len(points), 2,
         )
 
 
