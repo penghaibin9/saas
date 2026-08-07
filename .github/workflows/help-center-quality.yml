@@ -59,6 +59,7 @@ jobs:
             src/config/__tests__/studentDataHelpCards.test.js \
             src/config/__tests__/verifiedHelpOverrides.test.js \
             src/config/__tests__/studentAffairsVerifiedOverrides.test.js \
+            src/config/__tests__/academicAffairsVerifiedOverrides.test.js \
             src/config/__tests__/legacyHelpPolicy.test.js \
             src/config/__tests__/mobileHelpCards.test.js \
             src/config/__tests__/mobileOperationsHelpCards.test.js
