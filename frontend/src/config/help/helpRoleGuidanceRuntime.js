@@ -6,6 +6,7 @@ import {
   HELP_AUTHORIZATION_PRINCIPLE
 } from './helpRoleGuidance.js'
 import { INTERNSHIP_ROLE_GUIDANCE } from './internshipRoleGuidance.js'
+import { INTERNSHIP_V3_SELF_SERVICE_GUIDANCE } from './internshipV3SelfServiceGuidance.js'
 
 function stringifyRoleGuidance(item) {
   const parts = [
@@ -39,13 +40,24 @@ function attachGuidance(card, guidanceMap) {
   return card
 }
 
+function attachInternshipV3SelfService(card) {
+  const patch = INTERNSHIP_V3_SELF_SERVICE_GUIDANCE[card.id]
+  if (!patch) return card
+  if (patch.nextSteps?.length) card.nextSteps = patch.nextSteps
+  if (patch.contactAdminWhen?.length) card.contactAdminWhen = patch.contactAdminWhen
+  return card
+}
+
 export function applyHelpRoleGuidanceRuntime() {
   ;[
     ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
     ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS
   ].forEach((card) => attachGuidance(card, ACADEMIC_ROLE_GUIDANCE))
 
-  INTERNSHIP_CLEAN_HELP_CARDS.forEach((card) => attachGuidance(card, INTERNSHIP_ROLE_GUIDANCE))
+  INTERNSHIP_CLEAN_HELP_CARDS.forEach((card) => {
+    attachGuidance(card, INTERNSHIP_ROLE_GUIDANCE)
+    attachInternshipV3SelfService(card)
+  })
 }
 
 applyHelpRoleGuidanceRuntime()
