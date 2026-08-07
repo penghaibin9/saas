@@ -23,9 +23,31 @@ const TYPE_LABELS = {
   flow: '业务流程图'
 }
 
+/**
+ * V2 首页优先级只放已经进入运行时发布白名单的高频任务或已核验流程。
+ * 未重新验真的百科/旧流程不再靠“历史优先级”被顶到首页。
+ */
 const PRIORITY_HELP_IDS = [
   'sys-card-first-school-setup',
   'auth-card-staff-login-password',
+  'sys-card-staff-account-role',
+  'sys-card-role-permission-scope',
+  'sys-card-org-foundation',
+  'sys-card-student-import',
+  'sys-card-access-diagnosis',
+  'student-card-single-create',
+  'student-card-list-filter',
+  'student-card-secure-export',
+  'aa-card-term-setup',
+  'aa-card-grade-entry',
+  'aa-card-grade-review-publish',
+  'in-card-batch-rules',
+  'in-card-eval-score',
+  'gd-card-defense-grade',
+  'sa-card-risk-handle',
+  'sa-card-archive',
+  'flow-leave',
+  'flow-in-score',
   'mobile-student-internship-checkin',
   'mobile-student-internship-weekly',
   'mobile-student-graduation-topic',
@@ -35,23 +57,7 @@ const PRIORITY_HELP_IDS = [
   'mobile-teacher-todos',
   'mobile-teacher-internship-process',
   'mobile-teacher-graduation-topic-review',
-  'mobile-teacher-grade-entry',
-  'sys-card-staff-account-role',
-  'sys-card-role-permission-scope',
-  'sys-card-org-foundation',
-  'student-card-single-create',
-  'student-card-list-filter',
-  'student-card-secure-export',
-  'aa-card-term-setup',
-  'sys-card-student-import',
-  'sys-card-access-diagnosis',
-  'doc-lifecycle',
-  'doc-teaching-affairs-preparation',
-  'doc-academic-full-flow',
-  'doc-course-schedule-full-flow',
-  'doc-internship-full-flow',
-  'doc-graduation-full-flow',
-  'doc-student-status'
+  'mobile-teacher-grade-entry'
 ]
 
 function getSectionIndex() {
@@ -68,17 +74,64 @@ function getSectionIndex() {
 
 const SECTION_INDEX = getSectionIndex()
 
+function hasList(item, field) {
+  return Array.isArray(item?.[field]) && item[field].filter(Boolean).length > 0
+}
+
+function hasEntryLocation(item) {
+  return Boolean(item?.entry || item?.route || item?.mobilePath)
+}
+
+function hasPermissionGuidance(item) {
+  if (hasList(item, 'permissions') || hasList(item, 'permissionNotes')) return true
+  const evidence = [
+    ...(item?.prerequisites || []),
+    ...(item?.warnings || []),
+    ...(item?.troubleshooting || [])
+  ].map((value) => String(value)).join(' ')
+  return /权限|授权|数据范围|allowedactions|角色|管理员|本人授课范围/i.test(evidence)
+}
+
+/**
+ * V2 正式任务卡的七维知识合同：
+ * 1. 适用角色 roles
+ * 2. 入口位置 entry / route / mobilePath
+ * 3. 操作步骤 steps
+ * 4. 前置条件 prerequisites
+ * 5. 成功结果 successCriteria
+ * 6. 异常处理 troubleshooting
+ * 7. 权限说明 permissions / permissionNotes，或正文中明确的权限/数据范围/allowedActions 证据
+ *
+ * 运行时发布资格由 helpCenterRuntime 的 verified-only 白名单控制；这里负责把“已核验但结构尚未
+ * 收口”的内容明确记为 quality gap，禁止再用只有 title/summary/keywords 的低门槛冒充成熟帮助。
+ */
+function getQualityMissing(type, item, roleTokens, recognizedRoleTokens) {
+  const missing = []
+  if (!item.title) missing.push('title')
+  if (!item.summary) missing.push('summary')
+  if (!(item.keywords || []).length) missing.push('keywords')
+
+  if (type === 'card') {
+    if (!roleTokens.length) missing.push('roles')
+    if (roleTokens.length && !recognizedRoleTokens.length) missing.push('recognized-role')
+    if (!hasEntryLocation(item)) missing.push('entry-location')
+    if (!hasList(item, 'steps')) missing.push('steps')
+    if (!hasList(item, 'prerequisites')) missing.push('prerequisites')
+    if (!hasList(item, 'successCriteria')) missing.push('success-criteria')
+    if (!hasList(item, 'troubleshooting')) missing.push('troubleshooting')
+    if (!hasPermissionGuidance(item)) missing.push('permission-guidance')
+  }
+
+  if (type === 'flow' && !hasList(item, 'steps')) missing.push('steps')
+  return missing
+}
+
 function normalizeEntry(type, item) {
   const section = SECTION_INDEX.get(item.id) || { key: 'other', label: '其他帮助' }
   const roleTokens = getHelpRoleTokens(item)
   const recognizedRoleTokens = roleTokens.map(normalizeHelpRole).filter(Boolean)
   const category = item.module || item.category || section.label || TYPE_LABELS[type]
-  const missing = []
-  if (!item.title) missing.push('title')
-  if (!item.summary) missing.push('summary')
-  if (!(item.keywords || []).length) missing.push('keywords')
-  if (!roleTokens.length && type === 'card') missing.push('roles')
-  if (roleTokens.length && !recognizedRoleTokens.length) missing.push('recognized-role')
+  const missing = getQualityMissing(type, item, roleTokens, recognizedRoleTokens)
 
   return {
     id: item.id,
@@ -95,7 +148,8 @@ function normalizeEntry(type, item) {
     searchText: buildHelpSearchText(item),
     quality: {
       missing,
-      isComplete: missing.length === 0
+      isComplete: missing.length === 0,
+      contract: type === 'card' ? 'knowledge-cleaning-v2-seven-dimensions' : 'verified-reference'
     }
   }
 }
