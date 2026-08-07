@@ -21,7 +21,9 @@ test.describe('学工请假生产交互闭环', () => {
 
   let fixture
   let leaveId = ''
+  let outsideLeaveId = ''
   let reason = ''
+  let outsideReason = ''
   let startDate = ''
   let endDate = ''
 
@@ -29,6 +31,7 @@ test.describe('学工请假生产交互闭环', () => {
     fixture = await loadStudentAffairsFixture()
     const runId = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/\D/g, '').slice(-12)
     reason = `Playwright 学工请假交互验证 ${runId}`
+    outsideReason = `Playwright 跨班级不可见验证 ${runId}`
     startDate = localDate(1)
     endDate = localDate(1)
   })
@@ -40,7 +43,29 @@ test.describe('学工请假生产交互闭环', () => {
     await affairs.assertLeaveFormValidation({ startDate, endDate })
   })
 
-  test('学生 PC 真实提交普通请假', async ({ page }) => {
+  test('其他行政班学生 PC 真实提交请假作为越权负向样本', async ({ page }) => {
+    expect(String(fixture.outsideClassId)).not.toBe(String(fixture.classId))
+    const login = new StudentLoginPage(page, config.studentBaseUrl)
+    await login.login(config.outsideStudent)
+    const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
+    outsideLeaveId = await affairs.submitLeave({
+      startDate,
+      endDate,
+      reason: outsideReason
+    })
+    expect(outsideLeaveId).not.toBe('')
+  })
+
+  test('辅导员 PC 待审队列看不到其他行政班学生请假', async ({ page }) => {
+    expect(outsideLeaveId, '前序跨班级学生提交步骤必须返回 leave id').not.toBe('')
+    const login = new StaffLoginPage(page, config.staffBaseUrl)
+    await login.login(config.mentor)
+    await login.switchRole(/辅导员|COUNSELOR/)
+    const affairs = new StaffStudentAffairsLeavePage(page, config.staffBaseUrl, fixture)
+    await affairs.assertOutsideLeaveNotVisible(outsideLeaveId)
+  })
+
+  test('学生 PC 真实提交本人行政班普通请假', async ({ page }) => {
     const login = new StudentLoginPage(page, config.studentBaseUrl)
     await login.login(config.student)
     const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
