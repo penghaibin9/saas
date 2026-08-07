@@ -92,9 +92,16 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
 
     db2 = get_sessionmaker()()
     case2 = db2.get(DisciplineCase, cid)
-    assert case2.status == "REMOVED"
+    # 申诉撤销 ≠ 处分解除：REMOVED（已解除）表示处分成立过、后来给解除了；
+    # REVOKED（已撤销）表示申诉认定处分本身有误，应视为从未成立。包 11 按施工总表
+    # 的 original/revised/revoked 决定版本引入了这个区分，本断言原先写的 REMOVED
+    # 是包 11 之前的旧口径。
+    assert case2.status == "REVOKED"
     proj2 = db2.get(CsDiscipline, proj_id)
     assert proj2.record_status == "REVOKED"
+    # 撤销后投影必须离开 ACTIVE：毕业资格审核只统计 record_status=ACTIVE 的处分，
+    # 撤销的处分不能再卡学生毕业。
+    assert proj2.record_status != "ACTIVE"
     db2.close()
 
 
