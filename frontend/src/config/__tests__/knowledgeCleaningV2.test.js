@@ -24,15 +24,18 @@ test('V2 verified card allowlist is grounded in re-audited sources and clean dom
     'SYSTEM_HELP_CARDS.map',
     'FOUNDATION_HELP_CARDS.map',
     'STUDENT_DATA_HELP_CARDS.map',
-    'ALL_MOBILE_HELP_CARDS.map',
+    'MOBILE_CLEAN_HELP_CARDS.map',
     'ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map',
-    'Object.keys(VERIFIED_HELP_OVERRIDES)',
-    'Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES)'
+    'INTERNSHIP_CLEAN_HELP_CARDS.map',
+    'GRADUATION_CLEAN_HELP_CARDS.map',
+    'STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map',
+    'Object.keys(VERIFIED_HELP_OVERRIDES)'
   ]) {
     assert.match(runtimeSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.doesNotMatch(runtimeSource, /Object\.keys\(ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES\)/)
-  assert.doesNotMatch(runtimeSource, /applyCardOverrides\(cardsById, ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES\)/)
+  assert.doesNotMatch(runtimeSource, /Object\.keys\(STUDENT_AFFAIRS_VERIFIED_OVERRIDES\)/)
+  assert.doesNotMatch(runtimeSource, /ALL_MOBILE_HELP_CARDS\.map/)
 })
 
 test('V2 removes unverified knowledge from sidebar as well as search arrays', () => {
@@ -57,7 +60,7 @@ test('V2 task-card quality contract requires the seven operational dimensions', 
   assert.match(modelSource, /hasPermissionGuidance/)
 })
 
-test('V2 priority help no longer promotes unverified encyclopedia docs and includes cleaned academic tasks', () => {
+test('V2 priority help no longer promotes unverified encyclopedia docs and includes cleaned high-frequency tasks', () => {
   assert.doesNotMatch(modelSource, /'doc-lifecycle'/)
   assert.doesNotMatch(modelSource, /'doc-academic-full-flow'/)
   assert.doesNotMatch(modelSource, /'doc-internship-full-flow'/)
