@@ -43,19 +43,54 @@ def _require_manage(user=None):
         raise no_permission("无审批中心管理权限（approval.manage）")
 
 
-def _nodes(db, definition_id):
+def _nodes(db, definition_id, *, active_only=True):
     from sqlalchemy import select
     from app.models import WorkflowNodeDefinition
-    return db.scalars(select(WorkflowNodeDefinition).where(
+
+    cond = [
         WorkflowNodeDefinition.tenant_id == _tid(),
         WorkflowNodeDefinition.workflow_definition_id == definition_id,
         WorkflowNodeDefinition.is_deleted.is_(False),
-        WorkflowNodeDefinition.status == "ACTIVE",
-    ).order_by(WorkflowNodeDefinition.sequence_no, WorkflowNodeDefinition.id)).all()
+    ]
+    if active_only:
+        cond.append(WorkflowNodeDefinition.status == "ACTIVE")
+    return db.scalars(select(WorkflowNodeDefinition).where(*cond)
+                      .order_by(WorkflowNodeDefinition.sequence_no, WorkflowNodeDefinition.id)).all()
+
+
+def _snapshot(definition, nodes) -> dict:
+    return {
+        "definitionVersion": str(definition.definition_version),
+        "name": definition.workflow_name,
+        "bizType": definition.source_biz_type,
+        "status": definition.status,
+        "capturedAt": datetime.utcnow().isoformat(timespec="seconds"),
+        "nodes": [{
+            "nodeCode": x.node_code,
+            "name": x.node_name,
+            "role": x.approver_role_code,
+            "sla": x.timeout_hours,
+            "sequence": x.sequence_no,
+            "status": x.status,
+        } for x in nodes],
+    }
+
+
+def _store_snapshot(definition, nodes, *, preserve_previous=True) -> None:
+    existing = definition.policy_snapshot_json if isinstance(definition.policy_snapshot_json, dict) else {}
+    history = list(existing.get("history") or [])
+    current = existing.get("current")
+    if preserve_previous and current:
+        history.append(current)
+    definition.policy_snapshot_json = {
+        "current": _snapshot(definition, nodes),
+        "history": history[-20:],
+    }
 
 
 def _row(db, definition):
     ns = _nodes(db, definition.id)
+    snap = definition.policy_snapshot_json if isinstance(definition.policy_snapshot_json, dict) else {}
     return {
         "id": str(definition.id),
         "name": definition.workflow_name,
@@ -70,6 +105,7 @@ def _row(db, definition):
         "updatedBy": str(definition.updated_by or definition.created_by or ""),
         "updatedAt": definition.updated_at.isoformat(timespec="seconds") if definition.updated_at else "",
         "voidReason": definition.description if definition.status == "DISABLED" else "",
+        "versionHistory": list(snap.get("history") or []),
         "nodes": [{
             "name": x.node_name,
             "role": x.approver_role_code,
@@ -105,6 +141,7 @@ def _validate_nodes(nodes):
     if not nodes:
         raise AppException("VALIDATION_ERROR", "至少配置 1 个审批节点")
     out = []
+    codes = set()
     for idx, node in enumerate(nodes, start=1):
         name = str(node.get("name") or "").strip()
         role = str(node.get("role") or "").strip()
@@ -112,14 +149,15 @@ def _validate_nodes(nodes):
             sla = int(node.get("sla") or 0)
         except (TypeError, ValueError):
             sla = 0
+        code = str(node.get("nodeCode") or f"NODE_{idx:02d}").strip().upper()
         if not name or not role or sla <= 0:
             raise AppException("VALIDATION_ERROR", f"第 {idx} 个节点信息不完整")
-        out.append({
-            "name": name,
-            "role": role,
-            "sla": sla,
-            "nodeCode": str(node.get("nodeCode") or f"NODE_{idx:02d}"),
-        })
+        if not code:
+            raise AppException("VALIDATION_ERROR", f"第 {idx} 个节点编码为空")
+        if code in codes:
+            raise AppException("VALIDATION_ERROR", f"节点编码 {code} 重复")
+        codes.add(code)
+        out.append({"name": name, "role": role, "sla": sla, "nodeCode": code})
     return out
 
 
@@ -149,6 +187,7 @@ def create_template(payload, *, user=None):
             policy_confirmed=True,
             policy_confirmed_by=uid,
             policy_confirmed_at=datetime.utcnow(),
+            policy_snapshot_json={},
             source_profile="MANUAL",
             installed_project_id=0,
             created_by=uid,
@@ -156,8 +195,9 @@ def create_template(payload, *, user=None):
         )
         db.add(definition)
         db.flush()
+        created_nodes = []
         for idx, node in enumerate(nodes, start=1):
-            db.add(WorkflowNodeDefinition(
+            row = WorkflowNodeDefinition(
                 tenant_id=_tid(),
                 workflow_definition_id=definition.id,
                 node_code=node["nodeCode"],
@@ -168,12 +208,16 @@ def create_template(payload, *, user=None):
                 status="ACTIVE",
                 created_by=uid,
                 updated_by=uid,
-            ))
+            )
+            db.add(row)
+            created_nodes.append(row)
+        db.flush()
+        _store_snapshot(definition, created_nodes, preserve_previous=False)
         audit.record_critical(
             "审批模板新增",
             method="POST", path="/api/v1/approvals/templates",
             status_code=200, target_type="approval-template", target_id=str(definition.id),
-            detail={"workflowCode": code, "bizType": biz_type}, db=db,
+            detail={"workflowCode": code, "bizType": biz_type, "definitionVersion": "1"}, db=db,
         )
         db.commit()
         db.refresh(definition)
@@ -206,6 +250,44 @@ def update_template(template_id, payload, *, user=None, expected_version=0):
             raise AppException("APPROVAL_TEMPLATE_VOIDED", "已作废模板不可编辑", http_status=409)
         if int(definition.version or 0) != int(expected_version):
             raise AppException("APPROVAL_VERSION_CONFLICT", "模板已被他人修改，请刷新后重试", http_status=409)
+
+        # 节点唯一键不包含 is_deleted，不能“软删后插同 code”。锁全量节点后原位更新/复活。
+        existing_rows = db.scalars(select(WorkflowNodeDefinition).where(
+            WorkflowNodeDefinition.tenant_id == _tid(),
+            WorkflowNodeDefinition.workflow_definition_id == definition.id,
+        ).with_for_update()).all()
+        existing = {str(x.node_code).upper(): x for x in existing_rows}
+        active_codes = set()
+        final_nodes = []
+        for idx, node in enumerate(nodes, start=1):
+            code = node["nodeCode"]
+            active_codes.add(code)
+            row = existing.get(code)
+            if row is None:
+                row = WorkflowNodeDefinition(
+                    tenant_id=_tid(),
+                    workflow_definition_id=definition.id,
+                    node_code=code,
+                    created_by=uid,
+                )
+                db.add(row)
+            else:
+                row.is_deleted = False
+                row.version = int(row.version or 0) + 1
+            row.node_name = node["name"]
+            row.sequence_no = idx
+            row.approver_role_code = node["role"]
+            row.timeout_hours = node["sla"]
+            row.status = "ACTIVE"
+            row.updated_by = uid
+            final_nodes.append(row)
+
+        for code, row in existing.items():
+            if code not in active_codes:
+                row.status = "DISABLED"
+                row.version = int(row.version or 0) + 1
+                row.updated_by = uid
+
         definition.workflow_name = name
         definition.source_biz_type = biz_type
         try:
@@ -214,27 +296,16 @@ def update_template(template_id, payload, *, user=None, expected_version=0):
             definition.definition_version = f"{definition.definition_version}.1"
         definition.version = int(definition.version or 0) + 1
         definition.updated_by = uid
-        for old in _nodes(db, definition.id):
-            old.is_deleted = True
-            old.version = int(old.version or 0) + 1
-        for idx, node in enumerate(nodes, start=1):
-            db.add(WorkflowNodeDefinition(
-                tenant_id=_tid(),
-                workflow_definition_id=definition.id,
-                node_code=node["nodeCode"],
-                node_name=node["name"],
-                sequence_no=idx,
-                approver_role_code=node["role"],
-                timeout_hours=node["sla"],
-                status="ACTIVE",
-                created_by=uid,
-                updated_by=uid,
-            ))
+        db.flush()
+        _store_snapshot(definition, final_nodes, preserve_previous=True)
         audit.record_critical(
             "审批模板更新",
             method="PUT", path=f"/api/v1/approvals/templates/{template_id}",
             status_code=200, target_type="approval-template", target_id=str(template_id),
-            detail={"definitionVersion": definition.definition_version}, db=db,
+            detail={
+                "definitionVersion": definition.definition_version,
+                "activeNodeCodes": [x.node_code for x in final_nodes],
+            }, db=db,
         )
         db.commit()
         db.refresh(definition)
@@ -263,15 +334,18 @@ def void_template(template_id, reason, *, user=None, expected_version=0):
             raise not_found("审批模板不存在")
         if int(definition.version or 0) != int(expected_version):
             raise AppException("APPROVAL_VERSION_CONFLICT", "模板已被他人修改，请刷新后重试", http_status=409)
+        if definition.status == "DISABLED":
+            raise AppException("APPROVAL_TEMPLATE_VOIDED", "模板已经作废，请刷新", http_status=409)
         definition.status = "DISABLED"
         definition.description = text
         definition.version = int(definition.version or 0) + 1
         definition.updated_by = uid
+        _store_snapshot(definition, _nodes(db, definition.id), preserve_previous=True)
         audit.record_critical(
             "审批模板作废",
             method="POST", path=f"/api/v1/approvals/templates/{template_id}/void",
             status_code=200, target_type="approval-template", target_id=str(template_id),
-            detail={"reason": text}, db=db,
+            detail={"reason": text, "definitionVersion": definition.definition_version}, db=db,
         )
         db.commit()
         db.refresh(definition)
