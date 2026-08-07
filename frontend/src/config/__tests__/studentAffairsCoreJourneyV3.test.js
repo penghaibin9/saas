@@ -49,9 +49,11 @@ test('V3-04 journey is four high-frequency lines plus verified risk/archive clos
   }
 })
 
-test('leave card preserves approval, return, extension, cancel and overdue states', () => {
+test('leave card preserves approval tiers, return, extension, cancel and overdue states', () => {
   const text = body('sa-v3-leave-lifecycle')
-  for (const token of ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW', 'APPROVED', 'RETURNED', 'REJECTED', 'EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'CLOSED', 'expectedVersion']) assert.match(text, new RegExp(token))
+  for (const token of ['COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW', 'APPROVED', 'RETURNED', 'REJECTED', 'EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'CLOSED', 'expectedVersion']) assert.match(text, new RegExp(token))
+  assert.match(text, /辅导员.*学院.*学工处/)
+  assert.match(text, /≤3 天.*>3.*≤7 天.*>7 天/)
   assert.match(text, /RETURN.*退回.*REJECT|退回.*不等于.*REJECT/)
   assert.match(text, /待办.*指派|assignee/)
 })
