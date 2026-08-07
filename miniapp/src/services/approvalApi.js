@@ -37,7 +37,7 @@ function mapTask(t = {}) {
     submitTime: fmt(t.submittedAt),
     status: String(t.status || '').toUpperCase() === 'PENDING' ? 'PENDING_REVIEW' : String(t.status || ''),
     level: urgency === 'OVERDUE' || urgency === 'NEAR_DEADLINE' ? 'high' : 'normal',
-    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : ['APPROVE', 'RETURN', 'REJECT', 'TRANSFER'],
+    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : ['APPROVE', 'RETURN', 'REJECT'],
     fields: t.sourceBizId ? [{ label: '业务记录', value: String(t.sourceBizId) }] : [],
     flow: [{ node: t.nodeName || t.nodeCode || '当前审批', time: '', current: true, done: false }]
   }
@@ -60,14 +60,20 @@ export async function actApproval(task, action, reason = '') {
   if (!endpoint) throw { code: 400001, biz: true, message: '不支持的审批动作' }
   const taskId = String(task?.taskId || task?.id || '')
   if (!/^\d+$/.test(taskId)) throw { code: 422001, biz: true, message: '审批任务编号无效，请刷新后重试' }
-  if (!Array.isArray(task?.allowedActions) || !task.allowedActions.includes(normalized)) {
-    throw { code: 409001, biz: true, message: '该任务当前不可执行此动作，请刷新后重试' }
-  }
-  const version = Number(task?.version)
-  if (!Number.isInteger(version) || version < 0) throw { code: 409001, biz: true, message: '审批版本缺失，请刷新后重试' }
   if ((normalized === 'RETURN' || normalized === 'REJECT') && !String(reason || '').trim()) {
     throw { code: 422001, biz: true, message: normalized === 'RETURN' ? '请填写退回修改原因' : '请填写驳回终止原因' }
   }
+
+  // 点击动作时重新读取服务端详情：allowedActions 与 version 必须来自此刻的真实任务，
+  // 列表缓存只用于展示，不能决定是否允许办理，也不能拿旧版本制造成功。
+  const fresh = await realRequest(`/approvals/tasks/${encodeURIComponent(taskId)}`)
+  const allowedActions = Array.isArray(fresh?.allowedActions) ? fresh.allowedActions : []
+  if (!allowedActions.includes(normalized)) {
+    throw { code: 409001, biz: true, message: '该任务当前不可执行此动作，请刷新后重试' }
+  }
+  const version = Number(fresh?.version)
+  if (!Number.isInteger(version) || version < 0) throw { code: 409001, biz: true, message: '审批版本缺失，请刷新后重试' }
+
   return realRequest(`/approvals/tasks/${encodeURIComponent(taskId)}/${endpoint}`, {
     method: 'POST',
     data: normalized === 'APPROVE'
