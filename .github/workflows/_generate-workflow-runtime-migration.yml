@@ -17,19 +17,17 @@ jobs:
         with:
           ref: agent/production-release-governance-20260807
           fetch-depth: 0
-      - name: Generate transformed workflow blobs outside workflow directory
+      - name: Generate transformed workflow mirrors outside workflow directory
         shell: bash
         run: |
           set -euo pipefail
           rm -rf ops/workflow-migration
-          mkdir -p ops/workflow-migration/blobs
+          mkdir -p ops/workflow-migration/rendered
           python - <<'PY'
-          from __future__ import annotations
           from pathlib import Path
-          import base64
 
           root = Path('.github/workflows')
-          out = Path('ops/workflow-migration/blobs')
+          out = Path('ops/workflow-migration/rendered')
           generator = '_generate-workflow-runtime-migration.yml'
           rows = []
           replacements = (
@@ -62,15 +60,14 @@ jobs:
               transformed = original
               for old, new in replacements:
                   transformed = transformed.replace(old, new)
-              payload = base64.b64encode(transformed.encode('utf-8')).decode('ascii')
-              blob_path = out / f'{path.name}.b64'
-              blob_path.write_text(payload + '\n', encoding='ascii')
-              rows.append(f'{path.as_posix()}\tops/workflow-migration/blobs/{path.name}.b64\t{int(original != transformed)}')
+              mirror = out / path.name
+              mirror.write_text(transformed, encoding='utf-8')
+              rows.append(f'{path.as_posix()}\t{mirror.as_posix()}\t{int(original != transformed)}')
           Path('ops/workflow-migration/manifest.tsv').write_text('\n'.join(rows) + '\n', encoding='utf-8')
           print(f'generated={len(rows)} changed={sum(int(row.rsplit(chr(9),1)[1]) for row in rows)}')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ops/workflow-migration
-          git commit -m 'chore: materialize workflow runtime migration payload'
+          git add -A ops/workflow-migration
+          git commit -m 'chore: materialize rendered workflow migration payload'
           git push origin HEAD:agent/production-release-governance-20260807
