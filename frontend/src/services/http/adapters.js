@@ -195,34 +195,51 @@ const BIZ_LABEL = {
 }
 
 function approvalItem(t) {
+  const rawStatus = String(t.status || 'PENDING').toUpperCase()
+  const statusMap = {
+    PENDING: ['PENDING_REVIEW', '待审批'],
+    APPROVED: ['APPROVED', '已通过'],
+    RETURNED: ['RETURNED', '已退回修改'],
+    REJECTED: ['REJECTED', '已驳回终止'],
+    TRANSFERRED: ['TRANSFERRED', '已转办']
+  }
+  const [status, statusLabel] = statusMap[rawStatus] || [rawStatus, rawStatus]
   return {
     taskId: String(t.taskId),
     bizType: t.sourceBizType || 'GENERAL',
     bizTypeLabel: BIZ_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
     title: t.title || '',
-    applicant: { name: t.applicantName || '—', studentNo: '', className: '' },
+    applicant: { name: t.applicantName || '—', studentNo: t.studentNo || '', className: t.className || '' },
     submitTime: (t.submittedAt || '').replace('T', ' ').slice(5, 16),
-    deadline: '',
+    deadline: (t.deadlineAt || '').replace('T', ' ').slice(0, 16),
     urgency: t.urgency || 'NORMAL',
     urgencyLabel: { OVERDUE: '已超时', NEAR_DEADLINE: '临期', URGENT: '临期' }[t.urgency] || '正常',
-    status: 'PENDING_REVIEW',
-    statusLabel: '待审批',
+    status,
+    statusLabel,
     currentNode: t.nodeName || t.nodeCode || '',
-    transferred: false,
-    version: t.version,
+    transferred: rawStatus === 'TRANSFERRED',
+    version: Number(t.version ?? 0),
+    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : [],
+    instanceStatus: t.instanceStatus || '',
+    actionReason: t.actionReason || ''
   }
 }
 
 export async function getApprovalTodos(params = {}) {
   const data = await request('/approvals/tasks', {
-    params: { page: params.page || 1, pageSize: params.pageSize || 10 }
+    params: {
+      page: params.page || 1,
+      pageSize: params.pageSize || 10,
+      keyword: params.keyword,
+      bizType: params.bizType
+    }
   })
-  let list = data.items.map(approvalItem)
-  if (params.keyword) {
-    const kw = String(params.keyword).trim()
-    list = list.filter((t) => t.title.includes(kw) || t.applicant.name.includes(kw) || t.taskId.includes(kw))
-  }
-  return envelope({ list, total: data.total, page: data.page, pageSize: data.pageSize })
+  return envelope({
+    list: data.items.map(approvalItem),
+    total: data.total,
+    page: data.page,
+    pageSize: data.pageSize
+  })
 }
 
 export async function getApprovalDetail(taskId) {
@@ -230,8 +247,13 @@ export async function getApprovalDetail(taskId) {
   return envelope({
     ...approvalItem(t),
     bizFields: (t.diff || []).map((d) => ({ label: d.field, oldValue: d.oldMasked, newValue: d.newMasked })),
-    timeline: (t.history || []).map((h) => ({ title: h.action, time: h.at, who: h.by })),
-    attachments: [],
+    timeline: (t.history || []).map((h) => ({
+      title: h.action,
+      time: h.actedAt || h.createdAt || '',
+      who: h.assigneeName || (h.assigneeId ? `办理人 ${h.assigneeId}` : '系统'),
+      comment: h.comment || ''
+    })),
+    attachments: Array.isArray(t.attachments) ? t.attachments : [],
     suggestion: ''
   })
 }
@@ -239,39 +261,51 @@ export async function getApprovalDetail(taskId) {
 export async function approveTask(taskId, { comment, version } = {}) {
   const d = await request(`/approvals/tasks/${taskId}/approve`, {
     method: 'POST',
-    body: { comment, version },
+    body: { comment, version }
   })
-  return envelope({ taskId: String(d.taskId), status: 'APPROVED', statusLabel: '已通过', version: d.version })
+  return envelope(d)
 }
 
 export async function returnTask(taskId, { reason, version } = {}) {
+  const d = await request(`/approvals/tasks/${taskId}/return`, {
+    method: 'POST',
+    body: { reason, version }
+  })
+  return envelope(d)
+}
+
+export async function rejectTask(taskId, { reason, version } = {}) {
   const d = await request(`/approvals/tasks/${taskId}/reject`, {
     method: 'POST',
-    body: { reason, version },
+    body: { reason, version }
   })
-  return envelope({ taskId: String(d.taskId), status: 'RETURNED', statusLabel: '已退回', version: d.version })
+  return envelope(d)
+}
+
+export async function transferTask(taskId, { targetUserId, comment, version } = {}) {
+  const d = await request(`/approvals/tasks/${taskId}/transfer`, {
+    method: 'POST',
+    body: { targetUserId, comment, version }
+  })
+  return envelope(d)
 }
 
 export async function getTodoSummary() {
-  const [s, tasks, groups] = await Promise.all([
-    request('/todos/summary'),
-    request('/approvals/tasks', { params: { page: 1, pageSize: 1 } }),
-    request('/approvals/tasks/summary/by-biz-type').catch(() => [])
-  ])
+  const s = await request('/approvals/summary')
   return envelope({
     todayTag: '',
-    total: tasks.total,
-    todayNew: 0,
-    nearDeadline: s.nearDeadline || 0,
-    overdue: s.overdue || 0,
-    byBizType: (groups || []).map((g) => ({
+    total: Number(s.total || 0),
+    todayNew: Number(s.todayNew || 0),
+    nearDeadline: Number(s.nearDeadline || 0),
+    overdue: Number(s.overdue || 0),
+    byBizType: (s.byBizType || []).map((g) => ({
       bizType: g.bizType,
       label: BIZ_LABEL[g.bizType] || g.bizType || '其他',
       count: g.count,
-      overdue: 0,
+      overdue: Number(g.overdue || 0),
       earliest: (g.earliest || '').replace('T', ' ').slice(0, 16)
     })),
-    overdueList: []
+    overdueList: (s.overdueList || []).map(approvalItem)
   })
 }
 
