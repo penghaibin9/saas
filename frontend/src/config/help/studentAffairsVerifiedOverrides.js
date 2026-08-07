@@ -38,5 +38,37 @@ export const STUDENT_AFFAIRS_VERIFIED_OVERRIDES = {
       { label: '心理危机升级', route: '/admin/student-affairs/mental/crisis' },
       { label: '谈心谈话', route: '/admin/student-affairs/talk' }
     ]
+  },
+  'sa-card-archive': {
+    summary: '学工归档按 DRAFT → COLLECTING → COLLEGE_REVIEW → SA_CONFIRM → ARCHIVED 流转。系统为圈定学生异步生成真实 xlsx 档案快照和文件版本，最终冻结每生 Manifest、生成 SHA-256 归档清单并登记导出任务。',
+    steps: [
+      '进入「学工归档」新建归档批次，批次初始状态为 DRAFT。',
+      '圈定至少1名有权访问的学生开始收集。系统为新增学生建立档案包任务，批次进入 COLLECTING，并异步生成每生 xlsx 档案快照。',
+      '只有档案包生成完成并形成当前文件版本后，才应继续审核；连续生成失败达到上限的档案会进入待补充状态，不能直接归档。',
+      '批次按 COLLECTING → COLLEGE_REVIEW → SA_CONFIRM 逐级推进；学院审核需要学院学工或全域管理员，最终确认只允许学校/学工处全域管理员。',
+      'SA_CONFIRM 最终归档前，系统再次检查所有档案包均已生成完成；任何未完成档案包都会阻止归档。',
+      '最终确认后系统冻结每份档案包 Manifest，档案包和批次进入 ARCHIVED；同时生成归档清单 xlsx、计算 SHA-256、创建导出任务并记录文件 ID / 行数 / 操作审计。'
+    ],
+    fields: [
+      '批次名称：归档批次标识',
+      '年度代码 / 范围：按页面实际配置',
+      '学生范围：至少圈定1名且必须在当前数据范围内',
+      '档案包状态：归档前必须全部生成完成',
+      'Manifest：最终归档时冻结并记录版本 / SHA-256'
+    ],
+    warnings: [
+      '不要再按旧帮助理解成“确认后生成加密水印包”。当前可直接从归档服务证明的是敏感级文件存储、真实文件版本、冻结 Manifest、SHA-256 清单和审计；没有证据的“加密水印”不作为已交付能力宣传。',
+      '通用 advance 接口当前只接受 APPROVE；代码提示退回应走专用退回流程，但当前前端适配器只暴露推进接口，因此帮助不再宣称“绝对没有退回”，也不虚构一个尚未核到的退回按钮。',
+      '最终归档不是只改一个状态：所有档案包必须就绪，否则后端会明确拒绝。'
+    ],
+    faq: [
+      { q: '为什么批次不能最终归档？', a: '先看档案包是否全部生成完成。只要还有未生成完成或缺少当前文件版本的档案包，SA_CONFIRM 就不能进入 ARCHIVED。' },
+      { q: '归档后能证明文件没有被悄悄替换吗？', a: '最终归档会冻结 Manifest，并为归档清单计算 SHA-256；每生档案包也进入文件资产/版本/绑定体系，便于追溯版本。' },
+      { q: '归档包一定带“加密水印”吗？', a: '当前归档服务没有足够代码证据支持这个固定承诺。帮助只按可验证能力描述：敏感级文件、版本、Manifest、SHA-256 清单与审计。' }
+    ],
+    related: [
+      { label: '学生档案包', route: '/admin/student-affairs/archive/packages' },
+      { label: '学工统计', route: '/admin/student-affairs/stats' }
+    ]
   }
 }
