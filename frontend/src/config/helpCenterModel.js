@@ -4,7 +4,7 @@ import {
   HELP_FLOWS,
   HELP_SECTIONS,
   getHelpById
-} from './helpContent'
+} from './helpCenterRuntime'
 import {
   HELP_ROLE_OPTIONS,
   buildHelpSearchText,
@@ -24,6 +24,11 @@ const TYPE_LABELS = {
 }
 
 const PRIORITY_HELP_IDS = [
+  'sys-card-staff-account-role',
+  'sys-card-role-permission-scope',
+  'sys-card-org-foundation',
+  'sys-card-student-import',
+  'sys-card-access-diagnosis',
   'doc-lifecycle',
   'doc-teaching-affairs-preparation',
   'doc-academic-full-flow',
