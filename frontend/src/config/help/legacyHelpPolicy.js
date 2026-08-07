@@ -23,6 +23,8 @@ export const LEGACY_HELP_EXCLUSIONS = {
     'doc-internship': '旧实习概览已被完整实习一眼通与任务卡替代'
   },
   flows: {
+    // 该流程仍来自早期“标准流程”设计描述，包含缴费/材料/入住等固定环节，当前尚未逐项按真实端点重审。
+    'flow-orientation': '旧迎新标准流程仍混有未逐项核验的设计阶段环节，先下线，待按真实迎新状态机重建',
     // 已确认错误：旧流程写“教务老师录入平时+期末”，与现行任课教师成绩任务不一致。
     'flow-academic-warning': '旧成绩到预警流程的录入角色与成绩组成已失真',
     // 早期五步概览未表达现行权威评阅/答辩来源、核算-复核-发布-撤回/申诉状态机。
@@ -36,6 +38,20 @@ export const LEGACY_HELP_EXCLUSIONS = {
  * 仍有独立检索价值、但正文明确错误的历史流程，保留 ID 并修正真值，避免旧收藏/深链失效。
  */
 export const VERIFIED_HELP_FLOW_OVERRIDES = {
+  'flow-leave': {
+    title: '学生请假、退回重提、续假与销假流程',
+    keywords: ['请假流程', '请假审批', '退回重提', '驳回', '续假', '销假', '3天', '7天', '学工'],
+    summary: '当前请假审批按请假天数选择真实工作流：3天及以内辅导员审批，超过3天至7天增加学院审批，超过7天再增加学工处审批；审批节点支持通过、退回、驳回，退回可修改重提，通过后还可按状态发起续假或销假。',
+    steps: [
+      { name: '发起请假', who: '学生 / 授权代录人员', detail: '填写请假类型、起止时间和事由；系统根据实际天数选择审批工作流' },
+      { name: '按天数分级审批', who: '辅导员 → 学院 → 学工处', detail: '当前代码阈值为3天和7天：≤3天仅辅导员；>3且≤7天为辅导员→学院；>7天为辅导员→学院→学工处' },
+      { name: '通过 / 退回 / 驳回', who: '当前审批节点', detail: '审批节点可通过、退回或驳回；退回进入 RETURNED，可在原申请上修改后重新提交；驳回为终止结果' },
+      { name: '请假生效', who: '系统', detail: '最后审批节点通过后进入 APPROVED，并按服务器状态开放后续动作' },
+      { name: '续假', who: '学生 / 审批人', detail: 'APPROVED 或 OVERDUE 且服务器允许时可申请续假，新结束时间必须晚于原结束时间；续假进入独立审批' },
+      { name: '销假', who: '学生 / 辅导员', detail: 'APPROVED 或 OVERDUE 且服务器允许时发起销假，进入 WAIT_CANCEL_LEAVE；辅导员确认后进入 CLOSED' },
+      { name: '逾期处置', who: '系统 / 授权人员', detail: '请假有独立 SLA 与逾期扫描；OVERDUE 状态仍按 allowedActions 决定可续假、销假或处置，不靠前端自行判断' }
+    ]
+  },
   'flow-sa-risk': {
     title: '学生风险预警、处置与 SLA 超时升级流程',
     keywords: ['风险', '风险预警', '风险处置', 'sla', '分派', '超时', '自动升级', '销号', '重开', '学工'],
@@ -47,6 +63,19 @@ export const VERIFIED_HELP_FLOW_OVERRIDES = {
       { name: '转办或升级', who: '责任人 / 学工管理员 / 系统扫描', detail: 'PROCESSING / FOLLOWING 可人工转办或升级；超过当前等级 processHours / followHours 时，扫描可自动升级一级并进入 ESCALATED' },
       { name: '上级接管', who: '具备上级接管权限的角色', detail: 'ESCALATED 由上级接管后回到 PROCESSING，并可继续处置' },
       { name: '关闭或重开', who: '责任人 / 学工管理员 / 上级角色', detail: '关闭前至少有1条处置记录，关闭结论不少于5字；风险复发后可按权限重开' }
+    ]
+  },
+  'flow-sa-archive': {
+    title: '学工档案生成、复核与正式归档流程',
+    keywords: ['归档', '档案', '学工档案', '档案包', 'manifest', 'sha256', '批次', '学工'],
+    summary: '学工归档按 DRAFT → COLLECTING → COLLEGE_REVIEW → SA_CONFIRM → ARCHIVED 推进；每生档案包异步生成并进入文件版本体系，最终冻结 Manifest、生成 SHA-256 归档清单和导出任务。',
+    steps: [
+      { name: '建归档批次', who: '学工处 / 授权管理员', detail: '新建批次进入 DRAFT，可登记年度与归档范围' },
+      { name: '圈定并生成档案包', who: '授权管理员 / 系统 worker', detail: '圈定至少1名当前数据范围内学生，批次进入 COLLECTING；系统异步生成每生 xlsx 档案快照和当前文件版本' },
+      { name: '处理未就绪档案', who: '管理员 / 系统', detail: '生成任务有租约和重试；连续失败达到上限会进入待补充，未就绪档案包不能进入最终归档' },
+      { name: '学院复核', who: '学院学工 / 全域管理员', detail: 'COLLECTING 推进到 COLLEGE_REVIEW 后完成学院审核，再进入 SA_CONFIRM' },
+      { name: '学工处最终确认', who: '学校 / 学工处全域管理员', detail: 'SA_CONFIRM 再检查所有档案包均为 SUBMITTED 且有当前文件版本；有未就绪档案则明确阻断' },
+      { name: '冻结与登记', who: '系统', detail: '冻结每生 Manifest，档案包和批次进入 ARCHIVED；生成归档清单 xlsx、SHA-256、导出任务、文件ID、行数与审计记录' }
     ]
   },
   'flow-in-score': {
