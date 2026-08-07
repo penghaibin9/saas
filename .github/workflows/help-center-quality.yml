@@ -74,7 +74,8 @@ jobs:
             src/config/__tests__/studentAffairsMobileKnowledgeCleaningV2.test.js \
             src/config/__tests__/helpCenterV3.test.js \
             src/config/__tests__/roleScopeOwnershipHelpV3.test.js \
-            src/config/__tests__/internshipCoreJourneyV3.test.js
+            src/config/__tests__/internshipCoreJourneyV3.test.js \
+            src/config/__tests__/graduationCoreJourneyV3.test.js
 
       - name: Build management PC
         working-directory: frontend
