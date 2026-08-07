@@ -7,6 +7,7 @@ import {
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
+import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
 
 /**
  * 帮助中心运行时聚合层。
@@ -15,8 +16,18 @@ import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
  * 同一套帮助数组。这里有意就地扩展既有数组：BasePortalLayout 仍然可以继续调用
  * helpContent.js 已有的 searchHelp / findHelpForRoute，而帮助中心模型直接从本文件读取
  * 同一份运行时集合，不产生第二套正文真值。
+ *
+ * 历史大文件中经本轮后端静态核验确认存在偏差的条目，通过 VERIFIED_HELP_OVERRIDES
+ * 在同一对象上就地修正；不会并存两个同 id 条目。后续模块文件拆分时再回迁修正内容。
  */
-export { FOUNDATION_HELP_CARDS, HELP_DOCS, HELP_FLOWS, STUDENT_DATA_HELP_CARDS, SYSTEM_HELP_CARDS }
+export {
+  FOUNDATION_HELP_CARDS,
+  HELP_DOCS,
+  HELP_FLOWS,
+  STUDENT_DATA_HELP_CARDS,
+  SYSTEM_HELP_CARDS,
+  VERIFIED_HELP_OVERRIDES
+}
 
 function registerCards(cards) {
   const existingIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
@@ -29,9 +40,18 @@ function registerCards(cards) {
   }
 }
 
+function applyVerifiedOverrides() {
+  const byId = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
+  Object.entries(VERIFIED_HELP_OVERRIDES).forEach(([id, patch]) => {
+    const target = byId.get(id)
+    if (target) Object.assign(target, patch)
+  })
+}
+
 registerCards(SYSTEM_HELP_CARDS)
 registerCards(FOUNDATION_HELP_CARDS)
 registerCards(STUDENT_DATA_HELP_CARDS)
+applyVerifiedOverrides()
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
   BASE_HELP_SECTIONS.unshift({
