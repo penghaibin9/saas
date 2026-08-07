@@ -44,7 +44,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             "internshipBatchId": _resolve_internship_batch_id(request) or "",
         })
 
-        deny = _expired_tenant_readonly_deny(request)
+        # 移动教师端在 Router 之外再设一层统一身份闸门，防止新增路由漏挂依赖。
+        deny = _mobile_teacher_identity_deny(request)
+        if deny is None:
+            deny = _expired_tenant_readonly_deny(request)
         if deny is None:
             deny = _demo_tenant_readonly_deny(request)
         if deny is not None:
@@ -143,6 +146,7 @@ def _bind_token_tenant(request: Request) -> None:
             "currentRoleCode": claims.get("currentRoleCode"),
             "permissionVersion": claims.get("permissionVersion"),
             "loginName": claims.get("loginName") or claims.get("username"),
+            "studentId": claims.get("studentId"),
             "studentNo": claims.get("studentNo"),
             "collegeId": claims.get("collegeId"),
             "collegeIds": claims.get("collegeIds"),
@@ -162,6 +166,40 @@ def _bind_token_tenant(request: Request) -> None:
                 set_tenant(dict(t))
     except Exception:
         return
+
+
+def _mobile_teacher_identity_deny(request: Request):
+    """所有 /mobile/teacher 路由统一执行学校教职工白名单；缺令牌仍交给路由返回 401。"""
+    if not request.url.path.startswith("/api/v1/mobile/teacher"):
+        return None
+    try:
+        from app.core.context import get_current_user_ctx
+        from app.core.security import MOBILE_STAFF_USER_TYPES
+        user = get_current_user_ctx() or {}
+        if not user.get("userId"):
+            return None
+        user_type = (user.get("userType") or "").strip().upper()
+        if user_type in MOBILE_STAFF_USER_TYPES:
+            return None
+        from app.services import audit_log
+        try:
+            audit_log.record(
+                "MOBILE_TEACHER_IDENTITY_DENIED", request.url.path,
+                detail={"userType": user_type or "EMPTY", "userId": str(user.get("userId"))},
+                result="DENIED",
+            )
+        except Exception:
+            pass
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=403, content=fail(
+            "NO_PERMISSION", "该接口仅学校教职工移动端可用"))
+    except Exception:
+        # 身份守卫自身异常时必须 fail-closed，不能把教师端数据暴露出去。
+        from starlette.responses import JSONResponse
+        from app.core.response import fail
+        return JSONResponse(status_code=503, content=fail(
+            "IDENTITY_GUARD_UNAVAILABLE", "教师端身份守卫暂时不可用，请稍后重试"))
 
 
 _READONLY_EXEMPT_PREFIXES = (

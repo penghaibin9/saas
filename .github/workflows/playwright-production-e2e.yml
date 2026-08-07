@@ -126,6 +126,10 @@ jobs:
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
 
+      - name: Seed isolated internship prerequisites
+        working-directory: backend
+        run: python scripts/e2e_seed_internship_sandbox.py
+
       - name: Install and start staff PC
         run: |
           cd frontend

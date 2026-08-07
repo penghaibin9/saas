@@ -73,7 +73,22 @@ def _msg(db, receiver_id, title, content, mtype, biz_id):
     )
 
 
-def _open_wf(db, cid, applicant_id, title, first_node):
+def _schedule_change_assignee(db, node, change):
+    """调停课审批节点 → 唯一真实受理人；解析不到即 409（NEW-P1-02 同类缺陷）。
+
+    调停课与成绩任务走同名的 COLLEGE_REVIEW/ACADEMIC_REVIEW 两节点，收敛规则一致，
+    只是权限码不同，因此复用成绩任务那套解析器而不是再写一遍。
+    """
+    from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+        SCHEDULE_CHANGE_ACADEMIC_PERM, SCHEDULE_CHANGE_COLLEGE_PERM,
+        resolve_grade_task_assignee,
+    )
+    return resolve_grade_task_assignee(
+        db, node, change, college_perm=SCHEDULE_CHANGE_COLLEGE_PERM,
+        academic_perm=SCHEDULE_CHANGE_ACADEMIC_PERM, subject="调停课单")
+
+
+def _open_wf(db, cid, applicant_id, title, first_node, change=None):
     from app.models import WorkflowInstance, WorkflowTask
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     ensure_workflow_enabled(db, _tid(), WORKFLOW_CODE)
@@ -84,22 +99,30 @@ def _open_wf(db, cid, applicant_id, title, first_node):
     db.add(inst)
     db.flush()
     db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=first_node,
-                        assignee_id=0, status="PENDING"))
+                        assignee_id=_schedule_change_assignee(db, first_node, change),
+                        status="PENDING"))
     return inst
 
 
-def _todo_upsert(db, cid, node, title):
+def _todo_upsert(db, cid, node, title, change=None):
+    """统一待办也必须落到具体的人：assignee_id=0 的待办任何人都查不到，只能靠人肉巡列表。
+
+    受理人与同节点的 WorkflowTask 用同一个解析器，保证「待办里看到的人」和「流程上真正
+    能办的人」是同一个；解析不到即 409 阻断，不留无人待办。
+    """
     from app.models import UnifiedTodo
+    assignee_id = _schedule_change_assignee(db, node, change)
     row = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "academic-affairs",
         UnifiedTodo.source_biz_id == int(cid), UnifiedTodo.todo_type == "AA_SCHEDULE_CHANGE_APPROVAL",
-        UnifiedTodo.assignee_id == 0, UnifiedTodo.is_deleted.is_(False))).first()
+        UnifiedTodo.is_deleted.is_(False))).first()
     if row:
-        row.title, row.status, row.remark, row.version = title, "PENDING", node, row.version + 1
+        row.title, row.status, row.remark = title, "PENDING", node
+        row.assignee_id, row.version = assignee_id, row.version + 1
     else:
         db.add(UnifiedTodo(tenant_id=_tid(), source_module="academic-affairs",
                            source_biz_type="AA_SCHEDULE_CHANGE", source_biz_id=int(cid),
-                           todo_type="AA_SCHEDULE_CHANGE_APPROVAL", assignee_id=0,
+                           todo_type="AA_SCHEDULE_CHANGE_APPROVAL", assignee_id=assignee_id,
                            title=title, status="PENDING", remark=node))
 
 
@@ -243,9 +266,11 @@ def submit(body, user) -> dict:
         db.add(x)
         db.flush()
         inst = _open_wf(db, x.id, uid_num or 0,
-                        f"{origin.teacher_name or ''} {L_CT[ct]}：{origin.course_name or ''}", "COLLEGE_REVIEW")
+                        f"{origin.teacher_name or ''} {L_CT[ct]}：{origin.course_name or ''}",
+                        "COLLEGE_REVIEW", change=x)
         x.workflow_instance_id = inst.id
-        _todo_upsert(db, x.id, "COLLEGE_REVIEW", f"{L_CT[ct]}待学院审：{origin.course_name or ''}")
+        _todo_upsert(db, x.id, "COLLEGE_REVIEW", f"{L_CT[ct]}待学院审：{origin.course_name or ''}",
+                     change=x)
         _audit(db, x.id, "SUBMIT", f"{ct} item={origin.id}")
         db.commit()
         db.refresh(x)
@@ -296,8 +321,10 @@ def review(cid, user, action, comment="") -> dict:
             if inst:
                 inst.current_node = nxt
             db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
-                                assignee_id=0, status="PENDING"))
-            _todo_upsert(db, x.id, nxt, f"{L_CT[x.change_type]}待教务处审：{x.course_name or ''}")
+                                assignee_id=_schedule_change_assignee(db, nxt, x),
+                                status="PENDING"))
+            _todo_upsert(db, x.id, nxt, f"{L_CT[x.change_type]}待教务处审：{x.course_name or ''}",
+                         change=x)
             _audit(db, x.id, "STEP", f"->{nxt}")
             db.commit()
             db.refresh(x)

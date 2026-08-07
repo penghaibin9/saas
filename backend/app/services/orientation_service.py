@@ -184,12 +184,16 @@ def get_student_detail(sid) -> dict:
         }
 
 
-def create_student(body: dict) -> dict:
+def create_student(body: dict, *, db=None) -> dict:
+    """新建迎新台账行。db 由调用方传入时（批量导入整批事务）复用同一会话、不在本函数内提交，
+    交由调用方统一 commit/rollback；单条调用（db=None）保持原有独立开合事务行为不变。"""
     name = str(body.get("name") or "").strip()
     adm = str(body.get("admissionNo") or "").strip()
     if not name or not adm:
         raise AppException("VALIDATION_ERROR", "姓名与录取编号必填")
-    with session() as db:
+    from contextlib import nullcontext
+    owns_session = db is None
+    with (session() if owns_session else nullcontext(db)) as db:
         dup = db.scalars(select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == adm,
             OrientationStudent.is_deleted.is_(False))).first()
@@ -222,7 +226,10 @@ def create_student(body: dict) -> dict:
         db.add(s)
         db.flush()
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
-        db.commit()
+        if owns_session:
+            db.commit()
+        else:
+            db.flush()
         return {"id": str(s.id), "studentId": str(s.id),
                 "profileStudentId": str(s.student_id) if s.student_id else ""}
 

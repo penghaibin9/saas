@@ -33,7 +33,6 @@ function normalizeEntryType(raw, leaf, { isWorkspaceRecord }) {
   if (map[v]) return map[v]
   if (leaf?.hidden) return 'DETAIL'
   if (leaf?.status === 'partial') return 'CONFIG_VIEW'
-  // 叶子缺省：不要默认成 WORKSPACE（那是二级工作区专属）
   return 'CONFIG_VIEW'
 }
 
@@ -55,7 +54,6 @@ function firstLeafPermission(workspace) {
 }
 
 function resolvePermission(cap, workspacePerm) {
-  // 返回 { permissionKey, permissionPolicy, permissionExemptReason }
   if (cap.permissionKey) {
     return { permissionKey: cap.permissionKey, permissionPolicy: 'EXPLICIT', permissionExemptReason: null }
   }
@@ -125,7 +123,6 @@ async function main() {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
   const { NAV_PLAN, PLATFORM_PLAN } = await loadNav()
   const routeIndex = buildRouteIndex()
-  // 同步落盘完整 route-index（含 exact/patterns/redirects/aliases），禁止只写统计壳
   const routeIndexOut = path.join(ROOT, 'shared/generated/route-index.json')
   fs.writeFileSync(routeIndexOut, JSON.stringify({
     generatedAt: new Date().toISOString(),
@@ -143,7 +140,8 @@ async function main() {
   const matchStats = { exact: 0, alias: 0, redirect: 0, param: 0, missing: 0, noPath: 0 }
   const permStats = { EXPLICIT: 0, INHERIT_FIRST_LEAF: 0, INHERIT_WORKSPACE: 0, EXEMPT: 0, UNRESOLVED: 0 }
 
-  const groups = [...NAV_PLAN, PLATFORM_PLAN]
+  const platformGroups = Array.isArray(PLATFORM_PLAN) ? PLATFORM_PLAN : [PLATFORM_PLAN]
+  const groups = [...NAV_PLAN, ...platformGroups]
   for (const group of groups) {
     const schoolCenter = group.label
     const techModule = moduleKeyFromGroup(group)
@@ -154,7 +152,9 @@ async function main() {
       const inheritedWsPerm = workspace.permissionKey || pathPermission || firstLeafPermission(workspace)
 
       if (workspace.path || (workspace.children || []).length === 0) {
-        const match = workspace.path ? matchRouteExists(routeIndex, workspace.path) : { exists: false, matchType: 'missing' }
+        const match = workspace.path
+          ? matchRouteExists(routeIndex, workspace.path)
+          : { exists: false, matchType: 'missing' }
         if (!workspace.path) matchStats.noPath += 1
         else if (!match.exists) matchStats.missing += 1
         else matchStats[match.matchType] = (matchStats[match.matchType] || 0) + 1
@@ -185,7 +185,9 @@ async function main() {
 
       for (const leaf of workspace.children || []) {
         const entryType = normalizeEntryType(leaf.entryType, leaf, { isWorkspaceRecord: false })
-        const match = leaf.path ? matchRouteExists(routeIndex, leaf.path) : { exists: false, matchType: 'missing' }
+        const match = leaf.path
+          ? matchRouteExists(routeIndex, leaf.path)
+          : { exists: false, matchType: 'missing' }
         if (!leaf.path) matchStats.noPath += 1
         else if (!match.exists) matchStats.missing += 1
         else matchStats[match.matchType] = (matchStats[match.matchType] || 0) + 1

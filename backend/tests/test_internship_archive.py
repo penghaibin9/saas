@@ -127,6 +127,31 @@ def test_archive_requires_complete_or_force(client, db_mode):
     # B 不完整 → 409（未 force）
     assert client.post(f"{INT}/archive/{ids['rec_b']}/archive",
                        json={"expectedVersion": 0}, headers=h).status_code == 409
+
+    # force 只能绕过材料缺项，不能绕过正式成绩：先补一条可冻结的 PUBLISHED 成绩，
+    # 其余资格/企业/岗位/保险/协议/评价仍保持缺失，用来证明强制归档只绕过这些缺项。
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipFinalScore
+    db = get_sessionmaker()()
+    try:
+        db.add(InternshipFinalScore(
+            tenant_id=TID,
+            internship_id=ids["rec_b"],
+            student_id=ids["stu_b"],
+            batch_id=ids["batch"],
+            total_score=80,
+            pass_line=60,
+            is_pass=True,
+            incomplete=False,
+            status="PUBLISHED",
+            published_by_name="学校管理员",
+            published_at=datetime.utcnow(),
+            version=1,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     # force 归档 B → 200，记 missing（强制归档必须提供理由与依据文件）
     import io
     up = client.post("/api/v1/files", headers=h,

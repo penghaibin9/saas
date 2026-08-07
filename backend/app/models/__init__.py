@@ -98,6 +98,11 @@ from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noq
 from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
                                            AffairsRiskRecord, DisciplineAppeal,
                                            DisciplineCase, DisciplineRemoveApply)
+# 包 11 的两张完整性表、文件配额预留表：model 文件都已写好，却一直没在这里导入，
+# metadata 里看不到它们，drop_all/create_all 与迁移库一致性检查全都漏掉——补上注册。
+from app.models.affairs_discipline_integrity import (DisciplineDecisionVersion,  # noqa: F401
+                                                     DisciplineSubflowLock)
+from app.models.file_quota import FileStorageQuotaReservation  # noqa: F401
 from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
 from app.models.affairs_mental import PsyReferral  # noqa: F401

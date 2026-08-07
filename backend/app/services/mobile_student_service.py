@@ -54,6 +54,20 @@ def _session():
     return get_sessionmaker()()
 
 
+def _real_account_id(u: dict) -> int | None:
+    """从 token 的 userId 取真实数据库账号主键。
+
+    `db-<n>` 是正式登录签发的形态，`u_<n>` 是演示/兼容登录的形态——两者都代表
+    "这是一个真实存在的数据库账号"，必须同等对待。只认其中一种会让另一种滑到
+    姓名兜底，等于给它开了一条按姓名猜人的旁路。
+    """
+    raw = str(u.get("userId") or "")
+    for prefix in ("db-", "u_"):
+        if raw.startswith(prefix) and raw[len(prefix):].isdigit():
+            return int(raw[len(prefix):])
+    return None
+
+
 def resolve_student(db, u: dict):
     """解析当前登录学生本人的主档。
 
@@ -64,6 +78,11 @@ def resolve_student(db, u: dict):
       4. 姓名 —— **不再用于正式在线请求**，只在唯一命中且前三者全空时保留给历史演示账号。
 
     姓名兜底仅唯一命中时采用：同租户存在同名时返回 None，绝不 .first() 撞到他人档案。
+
+    ⚠ 关键：第 4 步的前提是"前三者**全空**"，不是"前三者**没查到**"。
+    token 里带着真实账号 id 却查不到链接，说明该账号的链接数据缺失——那是需要修的
+    数据问题，绝不能顺势滑到按姓名猜人：同名学生一多，就会把 A 的成绩、请假、资助
+    直接开给 B。此处对真实账号 fail-closed 返回 None，由调用方按 403/404 处理。
     """
     from app.models import StudentProfile
     from app.services import student_account_link_service as link_svc
@@ -78,19 +97,27 @@ def resolve_student(db, u: dict):
         if row:
             return row
 
-    raw_uid = str(u.get("userId") or "")
-    uid = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
+    uid = _real_account_id(u)
     if uid:
-        linked = link_svc.get_student_id_by_user(db, tenant_id=tid, user_id=uid)
+        # 链接表查不到时允许按历史约定 login_name == student_no 兜底，但该路径会打
+        # warning 记指标（见 student_account_link_service._legacy_student_id_by_login_name），
+        # 指标归零即可删除；不是静默通过。
+        linked = link_svc.get_student_id_by_user(
+            db, tenant_id=tid, user_id=uid, allow_legacy_fallback=True,
+            login_name=str(u.get("loginName") or "") or None)
         if linked:
             row = db.scalars(q.where(StudentProfile.id == int(linked))).first()
             if row:
                 return row
+        # 真实账号 + 无有效链接 → 到此为止，不再往下猜。
+        log.warning("student_identity_unlinked_account tenant=%s user_id=%s", tid, uid)
+        return None
 
     sn = u.get("studentNo")
     if sn:
         row = db.scalars(q.where(StudentProfile.student_no == sn)).first()
         if row:
+            log.warning("student_identity_legacy_student_no tenant=%s student_no=%s", tid, sn)
             return row
 
     name = u.get("realName")

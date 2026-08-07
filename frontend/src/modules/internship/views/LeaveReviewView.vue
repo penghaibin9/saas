@@ -24,7 +24,7 @@
               <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
                 <div class="lv-item__row">
                   <span class="lv-item__name">{{ r.studentName }}</span>
-                  <AppStatusTag :status="r.status" />
+                  <AppStatusTag :status="r.status" :label="leaveStatusLabel(r.status)" :type="leaveStatusType(r.status)" />
                 </div>
                 <div class="lv-item__sub">{{ r.studentNo }}<template v-if="r.advisorName"> · {{ r.advisorName }}</template></div>
                 <div class="lv-item__sub">
@@ -56,7 +56,7 @@
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }}</span>
-                <AppStatusTag :status="detail.data.status" />
+                <AppStatusTag :status="detail.data.status" :label="leaveStatusLabel(detail.data.status)" :type="leaveStatusType(detail.data.status)" />
               </div>
 
               <div class="sec-t">学生与申请摘要</div>
@@ -112,7 +112,8 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const STATUS_OPTIONS = [
   { label: '待审批', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' },
-  { label: '已驳回', value: 'REJECTED' }, { label: '已撤回', value: 'WITHDRAWN' }
+  { label: '已销假', value: 'RETURNED' }, { label: '已驳回', value: 'REJECTED' },
+  { label: '已撤回', value: 'WITHDRAWN' }
 ]
 /* 右栏只渲染 /internship/leaves/{id} 真实返回字段（见 internship_leave_service._row + get_leave） */
 const SUMMARY_FIELDS = [
@@ -165,10 +166,10 @@ export default {
     leaveItems() { const d = this.detail.data || {}; return LEAVE_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     reviewItems() { const d = this.detail.data || {}; return REVIEW_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     // BUG-013：待审批单据不得展示审批人/时间——脏数据里 PENDING 也带审批人时会误导教师
-    // 以为已经有人批过。只有终态（已通过/已驳回）才渲染审批结论区。
+    // 以为已经有人批过。只有已通过、已驳回或已销假的终态才渲染审批结论区。
     hasReview() {
       const d = this.detail.data || {}
-      if (!['APPROVED', 'REJECTED'].includes(d.status)) return false
+      if (!['APPROVED', 'REJECTED', 'RETURNED'].includes(d.status)) return false
       return !!(d.reviewBy || d.reviewAt || d.reviewComment)
     },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
@@ -202,6 +203,8 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    leaveStatusLabel(status) { return status === 'RETURNED' ? '已销假' : '' },
+    leaveStatusType(status) { return status === 'RETURNED' ? 'success' : '' },
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.pending
       this.statusFilter = preset().statusFilter
