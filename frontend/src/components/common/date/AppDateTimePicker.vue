@@ -9,6 +9,7 @@
         <el-date-picker
           type="datetime"
           :model-value="inner || null"
+          format="YYYY-MM-DD HH:mm"
           value-format="YYYY-MM-DD[T]HH:mm"
           time-format="HH:mm"
           :placeholder="placeholder"
