@@ -14,6 +14,11 @@ on:
       - 'frontend/src/views/help/**'
       - 'frontend/src/main.js'
       - 'frontend/public/help/**'
+      - 'miniapp/src/pages/common/help/**'
+      - 'miniapp/src/pages/student/me/**'
+      - 'miniapp/src/pages/teacher/me/**'
+      - 'miniapp/src/pages.json'
+      - 'miniapp/src/config/env.js'
       - 'scripts/validate_help_center.py'
       - '.github/workflows/help-center-quality.yml'
   workflow_dispatch:
@@ -64,7 +69,8 @@ jobs:
             src/config/__tests__/legacyHelpPolicy.test.js \
             src/config/__tests__/knowledgeCleaningV2.test.js \
             src/config/__tests__/mobileHelpCards.test.js \
-            src/config/__tests__/mobileOperationsHelpCards.test.js
+            src/config/__tests__/mobileOperationsHelpCards.test.js \
+            src/config/__tests__/studentAffairsMobileKnowledgeCleaningV2.test.js
 
       - name: Build management PC
         working-directory: frontend
