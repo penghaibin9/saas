@@ -26,6 +26,7 @@ test('V2 verified card allowlist is grounded in re-audited sources and clean dom
     'STUDENT_DATA_HELP_CARDS.map',
     'MOBILE_CLEAN_HELP_CARDS.map',
     'ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map',
+    'ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map',
     'INTERNSHIP_CLEAN_HELP_CARDS.map',
     'GRADUATION_CLEAN_HELP_CARDS.map',
     'STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map',
@@ -41,7 +42,8 @@ test('V2 verified card allowlist is grounded in re-audited sources and clean dom
 test('V2 removes unverified knowledge from sidebar as well as search arrays', () => {
   assert.match(runtimeSource, /const publishedIds = new Set/)
   assert.match(runtimeSource, /section\.items = section\.items\.filter\(\(item\) => publishedIds\.has/)
-  assert.match(runtimeSource, /被隔离的旧 help id 返回 null/)
+  assert.match(runtimeSource, /export function getHelpById/)
+  assert.match(runtimeSource, /getHelpById[\s\S]*return null/)
 })
 
 test('V2 task-card quality contract requires the seven operational dimensions', () => {
