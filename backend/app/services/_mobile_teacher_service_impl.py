@@ -5,6 +5,7 @@
 复用 P7 六域真实 service，不重复造业务，也不暴露 PC 管理端全列表给前端。"""
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -12,6 +13,8 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
+
+log = logging.getLogger("app.mobile.teacher")
 from app.services import (academic_service, affairs_leave_service, approval_service, campus_service_service,
                           orientation_service)
 from app.modules.employment.services import employment_service
@@ -378,6 +381,10 @@ def todos_page(user: dict, group: str = "all", page: int = 1,
         "pendingCount": int(data.get("pendingCount") or 0),
         "hasMore": start + len(items) < len(source),
         "scopeMode": data.get("scopeMode"),
+        # 包 13：分页接口才是移动端真正调用的入口，必须把故障可见性一并透出——
+        # 否则某个来源域挂了，老师看到的是「今天没有待办」而不是「有数据取不到」。
+        "available": bool(data.get("available", True)),
+        "errors": list(data.get("errors") or []),
     }
 
 
@@ -408,10 +415,55 @@ def risk_students_page(user: dict, level: str = "all", page: int = 1,
         "counts": counts,
         "hasMore": start + len(items) < len(filtered),
         "scopeMode": data.get("scopeMode"),
+        # 命中扫描上限时如实告知；total 只是「已扫到的」而不是「全部的」。
+        "truncated": bool(data.get("truncated")),
+        "note": data.get("note"),
     }
 
 
 # ══════════ 风险学生（替代 PC /students 全列表） ══════════
+
+RISK_SCAN_CAP = 2000
+
+
+def _scope_class_variants(scope: dict) -> set[str]:
+    """把范围里的班级名展开成 _class_match 认可的全部写法，供 SQL IN 使用。
+
+    _class_match 兼容「软件2301」与「软件2301班」两种写法，下推到 SQL 时必须把这两种
+    变体都列进 IN，否则会比 Python 端过滤更严，把本该看见的行挡在外面。
+    """
+    variants: set[str] = set()
+    for raw in scope.get("classNames") or ():
+        name = str(raw or "").strip()
+        if name:
+            variants |= {name, name.rstrip("班"), name + "班"}
+    return variants
+
+
+def _scope_sql_predicate(scope: dict, student_no_col=None, class_name_col=None):
+    """把教师数据范围下推成 SQL 条件；None 表示无需收敛（ADMIN_TENANT 等）。
+
+    包 13：此前是「每域先 order by id desc limit 80，再在 Python 里按范围过滤」。
+    截断发生在过滤之前，辅导员负责的学生只要不在全租户最新 80 条里，风险页就是空的——
+    本该被看到的高风险学生被静默隐藏，且页面不会给任何提示。范围必须进 SQL。
+    """
+    if scope.get("mode") != "SCOPED":
+        return None
+    from sqlalchemy import or_ as _or
+
+    clauses = []
+    student_nos = {str(x).strip() for x in (scope.get("studentNos") or ()) if str(x).strip()}
+    if student_no_col is not None and student_nos:
+        clauses.append(student_no_col.in_(student_nos))
+    class_names = _scope_class_variants(scope)
+    if class_name_col is not None and class_names:
+        clauses.append(class_name_col.in_(class_names))
+    if not clauses:
+        # SCOPED 但没有任何可用范围 → 默认拒绝，返回恒假而不是放行全租户。
+        from sqlalchemy import false as _false
+        return _false()
+    return _or(*clauses)
+
 
 def risk_students(user: dict) -> dict:
     u = _require_teacher(user)
@@ -420,6 +472,7 @@ def risk_students(user: dict) -> dict:
     scope = resolve_teacher_scope(u)
     tid = _tid()
     out = {}
+    truncated = False
 
     def _key(no, name):
         return (no or "") + "|" + (name or "")
@@ -427,22 +480,36 @@ def risk_students(user: dict) -> dict:
     with _session() as db:
         from app.models import (AcademicStudent, AcademicWarning, CsServiceStudent, InternshipRecord,
                                 StudentProfile)
-        # 学业预警
+        # 学业预警（范围已下推 SQL：先按范围过滤，再排序取数）
+        aw_scope = _scope_sql_predicate(scope, AcademicStudent.student_no, AcademicStudent.class_name)
+        aw_conds = [AcademicWarning.tenant_id == tid, AcademicWarning.is_deleted.is_(False),
+                    AcademicWarning.record_status == "ACTIVE"]
+        if aw_scope is not None:
+            aw_conds.append(aw_scope)
         aw = db.execute(select(AcademicWarning, AcademicStudent).join(
             AcademicStudent, AcademicWarning.acad_student_id == AcademicStudent.id).where(
-            AcademicWarning.tenant_id == tid, AcademicWarning.is_deleted.is_(False),
-            AcademicWarning.record_status == "ACTIVE").order_by(AcademicWarning.id.desc()).limit(80)).all()
+            *aw_conds).order_by(AcademicWarning.id.desc()).limit(RISK_SCAN_CAP + 1)).all()
+        truncated = truncated or len(aw) > RISK_SCAN_CAP
+        aw = aw[:RISK_SCAN_CAP]
         for w, a in aw:
             k = _key(a.student_no, a.name)
             out.setdefault(k, {"name": a.name, "studentNo": a.student_no,
                                "className": a.class_name or "", "riskType": "学业预警",
                                "riskLevel": w.level or "MEDIUM", "latestTime": _iso(w.created_at),
                                "reason": w.reason or "学业预警", "tags": ["学业"]})
-        # 实习风险
-        ir = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == tid, InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.risk_level.in_(["HIGH", "MEDIUM"]))
-            .order_by(InternshipRecord.id.desc()).limit(80)).all()
+        # 实习风险：本域输出的 className 恒为空，只有学号能命中范围，故按 StudentProfile
+        # 关联下推学号条件（关联本身也顺带排除了查不到主档的孤儿记录）。
+        ir_conds = [InternshipRecord.tenant_id == tid, InternshipRecord.is_deleted.is_(False),
+                    InternshipRecord.risk_level.in_(["HIGH", "MEDIUM"])]
+        ir_stmt = select(InternshipRecord)
+        ir_scope = _scope_sql_predicate(scope, StudentProfile.student_no, None)
+        if ir_scope is not None:
+            ir_stmt = ir_stmt.join(StudentProfile, InternshipRecord.student_id == StudentProfile.id)
+            ir_conds.extend([StudentProfile.tenant_id == tid, ir_scope])
+        ir = db.scalars(ir_stmt.where(*ir_conds)
+                        .order_by(InternshipRecord.id.desc()).limit(RISK_SCAN_CAP + 1)).all()
+        truncated = truncated or len(ir) > RISK_SCAN_CAP
+        ir = ir[:RISK_SCAN_CAP]
         sids = [r.student_id for r in ir if r.student_id]
         smap = {}
         if sids:
@@ -460,10 +527,16 @@ def risk_students(user: dict) -> dict:
             if "实习" not in row["tags"]:
                 row["tags"].append("实习")
         # 在校服务高关注
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == tid, CsServiceStudent.is_deleted.is_(False),
-            CsServiceStudent.risk_level.in_(["HIGH", "MEDIUM"]))
-            .order_by(CsServiceStudent.id.desc()).limit(80)).all()
+        cs_conds = [CsServiceStudent.tenant_id == tid, CsServiceStudent.is_deleted.is_(False),
+                    CsServiceStudent.risk_level.in_(["HIGH", "MEDIUM"])]
+        cs_scope = _scope_sql_predicate(scope, CsServiceStudent.student_no,
+                                        CsServiceStudent.class_name)
+        if cs_scope is not None:
+            cs_conds.append(cs_scope)
+        cs = db.scalars(select(CsServiceStudent).where(*cs_conds)
+                        .order_by(CsServiceStudent.id.desc()).limit(RISK_SCAN_CAP + 1)).all()
+        truncated = truncated or len(cs) > RISK_SCAN_CAP
+        cs = cs[:RISK_SCAN_CAP]
         for c in cs:
             k = _key(c.student_no, c.name)
             row = out.setdefault(k, {"name": c.name, "studentNo": c.student_no or "",
@@ -473,7 +546,8 @@ def risk_students(user: dict) -> dict:
             if "在校" not in row["tags"]:
                 row["tags"].append("在校")
     lst = list(out.values())
-    # 范围收敛：SCOPED 教师只看自己负责的班级/学生/指导学生
+    # 范围已在 SQL 里收敛；这里保留同口径的 Python 复核作为纵深防御——任何一个域将来
+    # 忘了下推条件，也不会把别人的学生泄漏到列表里。
     if scope["mode"] == "SCOPED":
         lst = [r for r in lst if scope_match_row(scope, student_no=r.get("studentNo"),
                                                  class_name=r.get("className"))]
@@ -482,7 +556,14 @@ def risk_students(user: dict) -> dict:
     for i, r in enumerate(lst):
         r["id"] = "risk-" + str(i + 1)
         r["studentId"] = r.get("studentNo") or r["id"]
-    return {"hasData": bool(lst), "list": lst, "total": len(lst), "scopeMode": scope["mode"]}
+    if truncated:
+        log.warning("risk_students truncated at cap tenant=%s scope=%s cap=%s",
+                    tid, scope.get("mode"), RISK_SCAN_CAP)
+    return {"hasData": bool(lst), "list": lst, "total": len(lst), "scopeMode": scope["mode"],
+            # 命中扫描上限时如实告知，不再让页面把「被截断」显示成「就这么多」。
+            "truncated": truncated,
+            "note": (f"风险数据超过单次扫描上限 {RISK_SCAN_CAP} 条，列表可能不完整，请缩小范围查询"
+                     if truncated else None)}
 
 
 # ══════════ 我的班级 / 我的学生（辅导员/班主任按 t_class.counselor_id/head_teacher_id 收敛） ══════════
