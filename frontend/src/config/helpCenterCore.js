@@ -95,6 +95,8 @@ export function buildHelpSearchText(item) {
     route: item?.route,
     mobilePath: item?.mobilePath,
     prerequisites: item?.prerequisites,
+    permissions: item?.permissions,
+    permissionNotes: item?.permissionNotes,
     steps: item?.steps,
     points: item?.points,
     tips: item?.tips,
