@@ -30,3 +30,26 @@ test('risk help preserves real timeout scan and lifecycle semantics', () => {
   assert.match(text, /关闭前必须至少有1条处置记录/)
   assert.match(text, /重开/)
 })
+
+test('archive help removes unverified encryption watermark promise and keeps real manifest controls', () => {
+  const card = STUDENT_AFFAIRS_VERIFIED_OVERRIDES['sa-card-archive']
+  const text = buildHelpSearchText(card)
+
+  assert.match(text, /draft → collecting → college_review → sa_confirm → archived/)
+  assert.match(text, /xlsx/)
+  assert.match(text, /manifest/)
+  assert.match(text, /sha-256/)
+  assert.match(text, /导出任务/)
+  assert.match(text, /未生成完成.*不能归档/)
+  assert.match(text, /没有证据.*“加密水印”/)
+  assert.doesNotMatch(text, /系统生成加密水印档案包/)
+})
+
+test('archive help does not invent a return button when only generic approve adapter is verified', () => {
+  const card = STUDENT_AFFAIRS_VERIFIED_OVERRIDES['sa-card-archive']
+  const text = buildHelpSearchText(card)
+
+  assert.match(text, /advance.*只接受 approve/)
+  assert.match(text, /不再宣称“绝对没有退回”/)
+  assert.match(text, /不虚构.*退回按钮/)
+})
