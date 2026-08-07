@@ -1,6 +1,7 @@
 import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from './academicAffairsCleanHelpCards.js'
 import { ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS } from './academicAffairsCoreFlowHelpCards.js'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './internshipCleanHelpCards.js'
+import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './internshipCoreFlowHelpCards.js'
 import {
   ACADEMIC_ROLE_GUIDANCE,
   HELP_AUTHORIZATION_PRINCIPLE
@@ -54,7 +55,10 @@ export function applyHelpRoleGuidanceRuntime() {
     ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS
   ].forEach((card) => attachGuidance(card, ACADEMIC_ROLE_GUIDANCE))
 
-  INTERNSHIP_CLEAN_HELP_CARDS.forEach((card) => {
+  ;[
+    ...INTERNSHIP_CLEAN_HELP_CARDS,
+    ...INTERNSHIP_CORE_FLOW_HELP_CARDS
+  ].forEach((card) => {
     attachGuidance(card, INTERNSHIP_ROLE_GUIDANCE)
     attachInternshipV3SelfService(card)
   })
