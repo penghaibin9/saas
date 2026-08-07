@@ -553,8 +553,21 @@ def publish(batch_id, user) -> dict:
     from app.models import AaScheduleItem, AaSchedulePublish, User
     from app.services.message_event_outbox_service import emit_receiver_notice
 
+    from . import academic_affairs_schedule_truth_service as truth_service
+
     with _base.session() as db:
         batch = _load_batch(db, batch_id)
+        # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，
+        # 同一学期就出现两份 PUBLISHED，学生的正式课表变得没有答案。
+        scope_type, scope_id = truth_service.scope_of(batch)
+        head = truth_service.lock_scope_head(db, batch.term_id, scope_type, scope_id)
+        db.refresh(batch)
+        if batch.status == "SUPERSEDED":
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "该课表批次已被更新版本顶替，不能再次发布",
+                http_status=409,
+            )
         if batch.status == "PUBLISHED":
             last = db.query(AaSchedulePublish).filter(
                 AaSchedulePublish.tenant_id == _base._tid(),
@@ -582,8 +595,11 @@ def publish(batch_id, user) -> dict:
                 http_status=409,
             )
         gate = gate_service.require_publishable(db, batch)
+        # 全校共享资源（教师/教室/班级）跨批次校验：学院级批次内部合法不等于全校合法。
+        school_wide = truth_service.require_no_school_wide_conflict(db, batch)
         batch.status = "PUBLISHED"
         batch.publish_at = datetime.utcnow()
+        truth = truth_service.promote_to_active(db, batch, head)
 
         teacher_keys = {
             row.teacher_key for row in db.query(AaScheduleItem).filter(
@@ -630,7 +646,12 @@ def publish(batch_id, user) -> dict:
             "AA_SCHEDULE_BATCH",
             batch.id,
             "PUBLISH",
-            f"teachers={notified};gateVersion={gate['ruleVersion']}",
+            (
+                f"teachers={notified};gateVersion={gate['ruleVersion']};"
+                f"scope={truth['scopeType']}:{truth['scopeId']};headVersion={truth['headVersion']};"
+                f"superseded={truth['supersededBatchId'] or '-'};"
+                f"schoolWideChecked={school_wide['comparedAgainst']}"
+            ),
         )
         db.commit()
 
@@ -641,4 +662,5 @@ def publish(batch_id, user) -> dict:
         "status": "PUBLISHED",
         "notified": notified,
         "gate": gate,
+        "activeTruth": truth,
     }
