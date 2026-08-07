@@ -15,6 +15,7 @@ import { MOBILE_OPERATIONS_HELP_CARDS } from './help/mobileOperationsHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
+import { STUDENT_AFFAIRS_VERIFIED_OVERRIDES } from './help/studentAffairsVerifiedOverrides'
 
 /**
  * 帮助中心运行时聚合层。
@@ -26,8 +27,9 @@ import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
  *
  * 小程序卡只登记 mobilePath / entry，不登记 PC route，避免管理 PC 帮助中心产生一个
  * 点击后 404 的“前往办理页面”。历史大文件中经后端静态核验确认存在偏差的条目，
- * 通过 VERIFIED_HELP_OVERRIDES / VERIFIED_HELP_FLOW_OVERRIDES 在同一对象上就地修正；
- * 已确认过时、错误或被更精确内容替代的旧条目由 LEGACY_HELP_EXCLUSIONS 从运行时下线。
+ * 通过 VERIFIED_HELP_OVERRIDES / STUDENT_AFFAIRS_VERIFIED_OVERRIDES /
+ * VERIFIED_HELP_FLOW_OVERRIDES 在同一对象上就地修正；已确认过时、错误或被更精确内容替代
+ * 的旧条目由 LEGACY_HELP_EXCLUSIONS 从运行时下线。
  */
 export {
   FOUNDATION_HELP_CARDS,
@@ -36,6 +38,7 @@ export {
   LEGACY_HELP_EXCLUSIONS,
   MOBILE_HELP_CARDS,
   MOBILE_OPERATIONS_HELP_CARDS,
+  STUDENT_AFFAIRS_VERIFIED_OVERRIDES,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
   VERIFIED_HELP_FLOW_OVERRIDES,
@@ -55,12 +58,17 @@ function registerCards(cards) {
   }
 }
 
-function applyVerifiedOverrides() {
-  const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
-  Object.entries(VERIFIED_HELP_OVERRIDES).forEach(([id, patch]) => {
+function applyCardOverrides(cardsById, overrides) {
+  Object.entries(overrides || {}).forEach(([id, patch]) => {
     const target = cardsById.get(id)
     if (target) Object.assign(target, patch)
   })
+}
+
+function applyVerifiedOverrides() {
+  const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
+  applyCardOverrides(cardsById, VERIFIED_HELP_OVERRIDES)
+  applyCardOverrides(cardsById, STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
 
   const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
@@ -76,8 +84,10 @@ function removeIdsInPlace(items, ids) {
 }
 
 function quarantineLegacyHelp() {
-  const docIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.docs))
-  const flowIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.flows))
+  const cardIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.cards || {}))
+  const docIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.docs || {}))
+  const flowIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.flows || {}))
+  removeIdsInPlace(BASE_HELP_CARDS, cardIds)
   removeIdsInPlace(HELP_DOCS, docIds)
   removeIdsInPlace(HELP_FLOWS, flowIds)
 
