@@ -1,8 +1,17 @@
 /**
- * 教务历史帮助的代码级真值修正。
+ * 教务历史帮助的代码级真值修正与下线策略。
  *
- * 保留仍有高频价值的稳定 help id，但以当前动态成绩项与成绩任务状态机覆盖旧固定口径。
+ * 保留仍有高频价值的稳定 help id，但以当前动态成绩项与成绩任务状态机覆盖旧固定口径；
+ * 无法通过局部修正保证不误导的旧长文直接从运行时下线。
  */
+export const ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS = {
+  docs: {
+    'doc-aa-grade': '旧长文仍把成绩写成固定“平时/期末→自动总评”，与当前1–12个动态成绩项、特殊状态和方案锁定机制冲突'
+  },
+  cards: {},
+  flows: {}
+}
+
 export const ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES = {
   'aa-card-grade-entry': {
     title: '任课教师如何按当前成绩项方案录入并提交成绩',
