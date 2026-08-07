@@ -181,10 +181,16 @@ def overview(user: dict) -> dict:
          (1, 1), {}),
     ]
     metrics, errors = [], []
+    calculated_at = _impl._iso(datetime.now())
     for key, label, route, fn, args, kwargs in specs:
         value, error = _read_metric(key, fn, *args, **kwargs)
+        # 包 13 指标合同：value/available/calculatedAt/scope/errorCode 五件套齐全。
+        # scope 必须逐指标带上——同一块工作台，校级管理员和辅导员看到的 12 是完全
+        # 不同含义的 12，前端和使用者都需要知道这个数是在多大范围内算出来的。
         metric = {"key": key, "label": label, "value": value, "route": route,
-                  "available": error is None, "errorCode": None if error is None else error["errorCode"]}
+                  "available": error is None, "calculatedAt": calculated_at,
+                  "scope": scope["mode"],
+                  "errorCode": None if error is None else error["errorCode"]}
         metrics.append(metric)
         if error:
             errors.append(error)
