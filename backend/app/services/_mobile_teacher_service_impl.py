@@ -1826,14 +1826,40 @@ def _advisor_map(ids: list) -> dict:
         return {}
 
 
-def internship(user: dict) -> dict:
+def internship(user: dict, batch_id=None) -> dict:
+    """教师·实习待批。
+
+    实习域的查询按批次收敛，而请求中间件只把 x-internship-batch-id 绑给学生端路径
+    （见 _resolve_internship_batch_id 的白名单，教师接口被显式排除），所以本页拿不到
+    隐式批次上下文，底层查询会直接抛"必须指定实习批次"，整页 500——老师根本打不开
+    实习工作台。
+
+    改为：批次由本页显式传入（未选批次时按来源隔离，页面照常打开并说明哪一块取不到），
+    不再依赖那条不会为教师路径生效的隐式上下文。
+    """
     u = _require_teacher(user)
     if not db_enabled():
         return {"hasData": False, "weeklyReports": [], "abnormalCheckins": [], "stats": {}}
     scope = resolve_teacher_scope(u)
-    reports, rtotal = _safe_list(internship_service.list_weekly_reports, 1, 50, status="PENDING_REVIEW")
-    overdue, ototal = _safe_list(internship_service.list_weekly_reports, 1, 50, status="OVERDUE")
-    excs, etotal = _safe_list(internship_service.list_attendance_exceptions, 1, 50, status="PENDING_HANDLE")
+    source_errors: list[dict] = []
+
+    def _src(source: str, fn, **kw):
+        try:
+            return _safe_list(fn, 1, 50, **kw)
+        except Exception as exc:  # noqa: BLE001
+            code = getattr(exc, "code", None) or "SOURCE_UNAVAILABLE"
+            log.warning("mobile_teacher_internship_source_unavailable source=%s code=%s",
+                        source, code)
+            source_errors.append({"source": source, "errorCode": str(code), "available": False})
+            return [], 0
+
+    batch_kw = {"batch_id": batch_id} if batch_id else {}
+    reports, rtotal = _src("weeklyReportPending", internship_service.list_weekly_reports,
+                           status="PENDING_REVIEW", **batch_kw)
+    overdue, ototal = _src("weeklyReportOverdue", internship_service.list_weekly_reports,
+                           status="OVERDUE", **batch_kw)
+    excs, etotal = _src("attendanceException", internship_service.list_attendance_exceptions,
+                        status="PENDING_HANDLE", **batch_kw)
     # 合并待批阅与逾期未交（去重 id）
     seen = {str(r.get("id")) for r in reports}
     for r in overdue:
@@ -1859,7 +1885,9 @@ def internship(user: dict) -> dict:
     except Exception:  # noqa: BLE001
         stats = {"pendingReports": rtotal, "abnormal": etotal}
     return {"hasData": (rtotal + etotal) > 0, "weeklyReports": reports,
-            "abnormalCheckins": excs, "stats": stats, "scopeMode": scope["mode"]}
+            "abnormalCheckins": excs, "stats": stats, "scopeMode": scope["mode"],
+            # 哪一块取不到显式告知，不把"取不到"静默显示成"没有待批"。
+            "available": not source_errors, "errors": source_errors}
 
 
 def graduation(user: dict) -> dict:
@@ -2209,24 +2237,45 @@ def messages(user: dict) -> dict:
                     "time": _iso(n.created_at) if n.created_at else None,
                     "read": (n.status or "").upper() != "UNREAD",
                 })
+    # 学生动态 / 风险预警是消息页的附加来源：某一个域取不到，不该让整页消息打不开。
+    # 实际发生过——实习周报查询要求请求上下文里有实习批次 batchId，而消息页本来就不是
+    # 实习页面、不带这个上下文，于是整个 /mobile/teacher/messages 直接 503，老师连系统
+    # 通知都看不到。改为按来源隔离：坏掉的来源记进 errors 显式告知，其余照常呈现。
+    source_errors: list[dict] = []
+
+    def _optional_source(source: str, fn, **kw):
+        try:
+            rows, _total = _safe_list(fn, 1, 15, **kw)
+            return rows
+        except Exception as exc:  # noqa: BLE001
+            code = getattr(exc, "code", None) or "SOURCE_UNAVAILABLE"
+            log.warning("mobile_teacher_messages_source_unavailable source=%s code=%s",
+                        source, code)
+            source_errors.append({"source": source, "errorCode": str(code), "available": False})
+            return []
+
     # 学生动态：待批周报 / 开题
-    reports, _ = _safe_list(internship_service.list_weekly_reports, 1, 15, status="PENDING_REVIEW")
+    reports = _optional_source("weeklyReport", internship_service.list_weekly_reports,
+                               status="PENDING_REVIEW")
     for r in filter(_in_scope, reports):
         dynamic_msgs.append({"id": "dyn-wr-" + str(r.get("id")),
                              "title": f"{r.get('name') or r.get('studentName') or '学生'} 提交了实习周报",
                              "module": "岗位实习", "level": "normal", "read": False})
-    props, _ = _safe_list(graduation_service.list_proposals, 1, 15, status="PENDING_REVIEW")
+    props = _optional_source("graduationProposal", graduation_service.list_proposals,
+                             status="PENDING_REVIEW")
     for p in filter(_in_scope, props):
         dynamic_msgs.append({"id": "dyn-gp-" + str(p.get("id")),
                              "title": f"{p.get('name') or p.get('studentName') or '学生'} 提交了开题材料",
                              "module": "毕业设计", "level": "normal", "read": False})
     # 风险预警：打卡异常 / 学业预警
-    excs, _ = _safe_list(internship_service.list_attendance_exceptions, 1, 15, status="PENDING_HANDLE")
+    excs = _optional_source("attendanceException", internship_service.list_attendance_exceptions,
+                            status="PENDING_HANDLE")
     for e in filter(_in_scope, excs):
         risk_msgs.append({"id": "risk-ck-" + str(e.get("id")),
                           "title": f"{e.get('name') or e.get('studentName') or '学生'} 打卡异常",
                           "module": "风险预警", "level": "high", "read": False})
-    warns, _ = _safe_list(academic_service.list_warnings, 1, 15, status="PENDING_HANDLE")
+    warns = _optional_source("academicWarning", academic_service.list_warnings,
+                             status="PENDING_HANDLE")
     for w in filter(_in_scope, warns):
         risk_msgs.append({"id": "risk-aw-" + str(w.get("id")),
                           "title": f"{w.get('name') or w.get('studentName') or '学生'} 学业预警",
@@ -2239,7 +2288,10 @@ def messages(user: dict) -> dict:
             {"key": "dynamic", "label": "学生动态", "badge": len([x for x in groups["dynamic"] if not x["read"]])},
             {"key": "risk", "label": "风险预警", "badge": len([x for x in groups["risk"] if not x["read"]])}]
     unread = sum(len([x for x in v if not x.get("read")]) for v in groups.values())
-    return {"hasData": unread > 0 or any(groups.values()), "unreadCount": unread, "tabs": tabs, "groups": groups}
+    return {"hasData": unread > 0 or any(groups.values()), "unreadCount": unread,
+            "tabs": tabs, "groups": groups,
+            # 哪些附加来源没取到，显式告知，不静默当成"没有动态"。
+            "available": not source_errors, "errors": source_errors}
 
 
 def message_mark_read(user: dict, message_id) -> dict:
