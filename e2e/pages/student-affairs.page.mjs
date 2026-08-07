@@ -23,6 +23,18 @@ function isLeaveDetailResponse(response) {
     && response.request().method() === 'GET'
 }
 
+function isPendingLeaveResponse(response) {
+  return apiPath(response) === '/api/v1/student-affairs/leave/pending'
+    && response.request().method() === 'GET'
+}
+
+function envelopeItems(body) {
+  const data = body?.data
+  if (Array.isArray(data)) return data
+  if (!data || typeof data !== 'object') return []
+  return data.items || data.list || data.rows || []
+}
+
 export class StudentAffairsPortalPage {
   constructor(page, baseUrl, fixture) {
     this.page = page
@@ -194,15 +206,31 @@ export class StaffStudentAffairsLeavePage {
   }
 
   async openApproval() {
+    const pendingResponse = this.page.waitForResponse(isPendingLeaveResponse)
     await this.page.goto(`${this.baseUrl}/admin/student-affairs/leave`)
+    const body = await expectSuccessfulResponse(await pendingResponse, '辅导员加载请假待审队列')
     await expect(this.page.getByText('请假审批').first()).toBeVisible()
     await this.dismissGuideIfPresent()
+    return body
   }
 
   async openFollowup() {
     await this.page.goto(`${this.baseUrl}/admin/student-affairs/leave/followup?status=WAIT_CANCEL_LEAVE`)
     await expect(this.page.getByText('延期销假').first()).toBeVisible()
     await this.dismissGuideIfPresent()
+  }
+
+  async assertOutsideLeaveNotVisible(leaveId) {
+    const body = await this.openApproval()
+    const items = envelopeItems(body)
+    const leakedById = items.some((item) => String(item.id || item.leaveId || '') === String(leaveId))
+    const leakedByStudent = items.some((item) =>
+      String(item.studentId || '') === String(this.fixture.outsideStudentId)
+      || String(item.studentNo || '') === String(this.fixture.outsideStudentNo)
+    )
+    expect(leakedById, '辅导员待审接口不得返回其他行政班的目标请假单').toBeFalsy()
+    expect(leakedByStudent, '辅导员待审接口不得返回其他行政班学生').toBeFalsy()
+    await expect(this.page.getByText(this.fixture.outsideStudentName, { exact: true })).toHaveCount(0)
   }
 
   async clickExactQueueLeave(leaveId, action) {
