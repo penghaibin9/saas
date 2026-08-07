@@ -40,7 +40,7 @@ test('archive help removes unverified encryption watermark promise and keeps rea
   assert.match(text, /manifest/)
   assert.match(text, /sha-256/)
   assert.match(text, /导出任务/)
-  assert.match(text, /未生成完成.*不能归档/)
+  assert.match(text, /(未完成档案包.*阻止归档|未生成完成.*不能进入 archived|档案包.*必须全部生成完成)/)
   assert.match(text, /没有证据.*“加密水印”/)
   assert.doesNotMatch(text, /系统生成加密水印档案包/)
 })
