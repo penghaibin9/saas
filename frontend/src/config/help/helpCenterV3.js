@@ -62,7 +62,7 @@ export const HELP_V3_CORE_JOURNEYS = Object.freeze([
       'in-v2-agreement',
       'in-v2-teacher-process',
       'in-v2-student-change',
-      'in-v2-enterprise-evaluation',
+      'in-v2-enterprise-eval',
       'in-v2-score'
     ]
   },
