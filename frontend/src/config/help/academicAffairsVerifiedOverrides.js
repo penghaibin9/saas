@@ -44,5 +44,34 @@ export const ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES = {
       { label: '成绩总览', route: '/admin/academic-affairs/grade-overview' },
       { label: '成绩更正', route: '/admin/academic-affairs/grade-change' }
     ]
+  },
+  'aa-card-grade-review-publish': {
+    summary: '教师提交后冻结正式教学名单快照并进入学院审核；学院通过后进入教务终审。正式发布会冻结课程/名单等身份、生成正式成绩投影、刷新学生学业聚合并为不及格记录建立风险；发布后的全量学业预警扫描是提交后的独立步骤，扫描失败不会回滚已经发布的成绩。',
+    steps: [
+      '教师提交成绩时，后端要求正式教学名单与成绩记录完全一致、正常成绩无缺项，并冻结当次名单快照；提交状态进入 SUBMITTED。',
+      '学院在本学院数据范围内完成审核。退回后任务回到 RETURNED，教师按最新正式名单重新录入/补齐并重新提交，新的提交会保留名单快照版本历史。',
+      '学院通过后任务进入 ACADEMIC_REVIEW。正式发布只允许教务终审角色执行，且管理员特殊补录不能借普通教学任务发布入口生成正式成绩。',
+      '发布前再次校验冻结名单仍是当前正式版本，并检查未录、名单外记录、正常成绩未录全等问题；任何一项未收口都会阻止发布。',
+      '正式发布事务把任务置为 PUBLISHED，为每条成绩生成正式 AcademicGrade 投影，冻结课程身份、修读次数、教学班/名单版本和有效成绩策略快照，并刷新均分、绩点、已获学分、挂科数。',
+      '不及格记录会在发布事务内生成 ACADEMIC_WARNING 来源风险单（已存在则不重复建）。事务提交成功后再触发全量学业预警扫描。',
+      '如果后续全量预警扫描失败，成绩仍保持已发布；后端通过 warningScanOk / warningScanError 暴露扫描结果，应单独排查预警扫描，而不是重复发布成绩。'
+    ],
+    fields: [
+      '成绩任务状态：SUBMITTED → COLLEGE_REVIEW / ACADEMIC_REVIEW → PUBLISHED（以实际审批动作推进为准）',
+      '正式名单快照：发布前必须仍与当前教学班正式名单一致',
+      '发布结果：正式成绩投影 + 学业聚合 + 不及格风险',
+      '预警扫描结果：warningScanOk / warningScanError，与成绩发布事务分开判断'
+    ],
+    faq: [
+      { q: '成绩发布成功就代表全量预警扫描一定成功吗？', a: '不代表。正式成绩发布事务先提交，之后才调用全量预警扫描；扫描失败时成绩不会回滚，接口会返回 warningScanOk=false，应单独处理扫描故障。' },
+      { q: '为什么发布前提示名单变化？', a: '教师提交时会冻结正式名单快照，发布前再次与当前教学班名单比对；名单版本变化必须回到正确流程重新收口，不能用旧快照直接发布。' },
+      { q: '为什么不能重复点发布？', a: 'PUBLISHED 状态和已存在正式成绩投影都有并发/重复发布保护，重复发布会被拒绝。' },
+      { q: '发布后发现分数有误怎么办？', a: '不要直接覆盖正式成绩，走“成绩更正”流程，保留原值和审核留痕。' }
+    ],
+    related: [
+      { label: '教务发布', route: '/admin/academic-affairs/grade-publish' },
+      { label: '成绩更正', route: '/admin/academic-affairs/grade-change' },
+      { label: '学业预警', route: '/admin/academic-affairs/warnings' }
+    ]
   }
 }
