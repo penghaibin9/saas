@@ -62,14 +62,20 @@ def _seed(db_mode, *, students=4, rooms=(), extra_class=False):
                          class_id=klass.id, teaching_class_name="软件2401-B",
                          teacher_key="teacher_c", teacher_name="丙老师")
     db.add_all([tt1, tt2, tt0]); db.flush()
-    ids = {"tt1": tt1.id, "tt2": tt2.id, "class": klass.id, "college": col.id, "rooms": {}}
+    ids = {"tt1": tt1.id, "tt2": tt2.id, "class": klass.id, "college": col.id, "rooms": {},
+           "term": term.id}
     if extra_class:
-        k2 = SchoolClass(tenant_id=TID, major_id=major.id, class_name="空班2402", grade="2024", status="ACTIVE")
+        # 学院确认考试课程会冻结正式名单快照(frozen roster)，行政班必须有在读学生，
+        # 否则 confirm 阶段就 409——这个班只是"tt2 之外的另一个班"，不能是真空班。
+        k2 = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2402", grade="2024", status="ACTIVE")
         db.add(k2); db.flush()
         tt3 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co2.id, course_name="大学英语",
-                             class_id=k2.id, teaching_class_name="空班2402",
+                             class_id=k2.id, teaching_class_name="软件2402",
                              teacher_key="teacher_b", teacher_name="乙老师")
         db.add(tt3); db.flush()
+        db.add(StudentProfile(tenant_id=TID, student_no="AX2499", real_name="乙班考生",
+                              college_id=col.id, major_id=major.id, class_id=k2.id,
+                              grade="2024", student_status="NORMAL", status="ACTIVE"))
         ids["tt3"] = tt3.id
     for i in range(students):
         db.add(StudentProfile(tenant_id=TID, student_no=f"AX24{i + 1:02d}", real_name=f"考生{i + 1}",
@@ -85,8 +91,12 @@ def _seed(db_mode, *, students=4, rooms=(), extra_class=False):
     return ids
 
 
-def _confirmed_batch(client, admin, tt_id, *, with_time=True, name="2024秋期末"):
-    bid = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": name}).json()["data"]["batchId"]
+def _confirmed_batch(client, admin, tt_id, *, with_time=True, name="2024秋期末", term_id=None):
+    """建批次→圈课→确认→(可选)定时间。termId 是 create_batch 的硬门禁，缺了直接 400。"""
+    body = {"batchName": name}
+    if term_id:
+        body["termId"] = str(term_id)
+    bid = client.post(f"{BASE}/exam/batches", headers=admin, json=body).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
     client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
@@ -112,7 +122,7 @@ def test_auto_arrange_basic(client, db_mode):
     """4 名考生 + 1 间 30 座教室 → 1 个考场、4 个座位、2 名监考（主+副）、任课回避。"""
     ids = _seed(db_mode, students=4, rooms=[("101", 30, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     r = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin)
     assert r.status_code == 200, r.text
     d = r.json()["data"]
@@ -134,7 +144,7 @@ def test_split_prefers_fewest_then_smallest(client, db_mode):
     """4 人 + 教室 100 座与 6 座 → 1 个考场且选 6 座（末考场就小不就大）。"""
     ids = _seed(db_mode, students=4, rooms=[("big", 100, None, False), ("small", 6, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin)
     rooms = _rooms_of(client, admin, cid)
     assert len(rooms) == 1
@@ -146,7 +156,7 @@ def test_exam_seats_priority_over_capacity(client, db_mode):
     ids = _seed(db_mode, students=4,
                 rooms=[("A1", 60, 2, False), ("A2", 60, 2, False), ("A3", 60, 2, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin)
     rooms = _rooms_of(client, admin, cid)
     assert len(rooms) == 2, f"考试座位数 2/间，4 人应切 2 考场，实际 {len(rooms)}"
@@ -159,7 +169,7 @@ def test_spaced_seat_mode(client, db_mode):
     from app.models import AaScheduleRule
     ids = _seed(db_mode, students=4, rooms=[("B1", 6, None, False), ("B2", 6, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     db = get_sessionmaker()()
     db.add(AaScheduleRule(tenant_id=TID, batch_id=bid, rule_key="EXAM_SEAT_MODE",
                           rule_value_json='"SPACED"', status="ENABLED"))
@@ -177,7 +187,7 @@ def test_room_not_reused_same_time(client, db_mode):
     ids = _seed(db_mode, students=2, rooms=[("C1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "同时段批次"}).json()["data"]["batchId"]
+                      json={"batchName": "同时段批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cids = []
     for tt in (ids["tt1"], ids["tt2"]):
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
@@ -198,7 +208,7 @@ def test_room_not_reused_same_time(client, db_mode):
 def test_no_time_reported(client, db_mode):
     ids = _seed(db_mode, students=2, rooms=[("D1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"], with_time=False)
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], with_time=False, term_id=ids["term"])
     d = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin).json()["data"]
     assert d["missedCourses"] == 1
     assert d["misses"][0]["reason"] == "NO_TIME"
@@ -208,7 +218,7 @@ def test_no_time_reported(client, db_mode):
 def test_incremental_skips_arranged(client, db_mode):
     ids = _seed(db_mode, students=4, rooms=[("E1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin)
     d2 = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin).json()["data"]
     assert d2["arrangedCourses"] == 0 and d2["skippedCourses"] == 1
@@ -218,7 +228,7 @@ def test_incremental_skips_arranged(client, db_mode):
 def test_dry_run_not_persisted(client, db_mode):
     ids = _seed(db_mode, students=4, rooms=[("F1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     d = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange?dryRun=true",
                     headers=admin).json()["data"]
     assert d["dryRun"] is True and d["arrangedCourses"] == 1
@@ -230,7 +240,7 @@ def test_clear_auto_preserves_manual_room(client, db_mode):
     ids = _seed(db_mode, students=4, rooms=[("G1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "混合批次"}).json()["data"]["batchId"]
+                      json={"batchName": "混合批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cids = []
     for i, tt in enumerate((ids["tt1"], ids["tt2"])):
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
@@ -259,7 +269,7 @@ def test_draft_batch_rejects(client, db_mode):
     ids = _seed(db_mode, students=2, rooms=[("H1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "草稿批次"}).json()["data"]["batchId"]
+                      json={"batchName": "草稿批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     r = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange", headers=admin)
     assert r.status_code == 409, r.text
 
@@ -267,7 +277,7 @@ def test_draft_batch_rejects(client, db_mode):
 def test_student_forbidden(client, db_mode):
     ids = _seed(db_mode, students=2, rooms=[("I1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
-    bid, _cid = _confirmed_batch(client, admin, ids["tt1"])
+    bid, _cid = _confirmed_batch(client, admin, ids["tt1"], term_id=ids["term"])
     r = client.post(f"{BASE}/exam/batches/{bid}/auto-arrange",
                     headers=_stu_token("张三", "AX2401"))
     assert r.status_code == 403, r.text
@@ -280,7 +290,7 @@ def test_assign_times_teacher_slot_overlap(client, db_mode):
     ids = _seed(db_mode, students=4, rooms=[], extra_class=True)
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "时段重叠回归"}).json()["data"]["batchId"]
+                      json={"batchName": "时段重叠回归", "termId": str(ids["term"])}).json()["data"]["batchId"]
     for tt in ("tt2", "tt3"):  # tt2=软件2401·teacher_b, tt3=空班2402·teacher_b（同教师不同班）
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                           json={"teachingTaskId": str(ids[tt])}).json()["data"]["examCourseId"]

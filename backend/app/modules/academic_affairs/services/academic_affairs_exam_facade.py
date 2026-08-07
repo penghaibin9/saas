@@ -9,6 +9,9 @@ import hashlib
 import json
 from datetime import datetime
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+
 from app.core.affairs_security import _derive_keys, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -20,10 +23,6 @@ from .academic_affairs_roster_consumer_service import (
     require_consumer_snapshot_current,
     resolve_versioned_roster,
 )
-
-
-def __getattr__(name):
-    return getattr(_legacy, name)
 
 
 def _status(value) -> str:
@@ -709,3 +708,397 @@ def defer_apply(user, body):
         )
         db.commit()
         return _legacy._defer_dto(deferred)
+
+
+# ══════════ 教师时间线互斥锁（监考/巡考共用） ══════════
+
+def _lock_teacher_timeline(db, teacher_key: str):
+    """取得并锁定该教师的监考/巡考时间线互斥锁。
+
+    冲突检测是"查已有场次 → 比对时段 → 通过则插入"，不是原子操作：两个并发请求都可能
+    查到"无冲突"再各自插入，同一个老师就被排进两场同时段的考试。返回前该教师的锁行
+    已持有排他锁，调用方须在同一事务内完成"冲突检测→插入/改写"。
+    """
+    from app.models import AaExamTeacherLock
+
+    key = str(teacher_key or "").strip()
+    if not key:
+        raise AppException("VALIDATION_ERROR", "教师工号不能为空")
+
+    def _query():
+        return db.query(AaExamTeacherLock).filter(
+            AaExamTeacherLock.tenant_id == _legacy._tid(),
+            AaExamTeacherLock.teacher_key == key,
+            AaExamTeacherLock.is_deleted.is_(False),
+        )
+
+    lock_row = _query().with_for_update().first()
+    if lock_row:
+        return lock_row
+    # 进 savepoint 前先 flush 已有待写数据：begin_nested 之后的 flush 会把 session 里所有
+    # pending 对象一起写进这个 savepoint，建锁行撞键回滚时不能连调用方已写的数据一起撤销。
+    db.flush()
+    try:
+        with db.begin_nested():
+            lock_row = AaExamTeacherLock(tenant_id=_legacy._tid(), teacher_key=key)
+            db.add(lock_row)
+            db.flush()
+    except IntegrityError:
+        lock_row = None
+    return _query().with_for_update().first() or lock_row
+
+
+def _fresh_rows(query):
+    """加锁读，返回最新已提交版本。
+
+    MySQL REPEATABLE READ 下，事务里只要在拿锁之前发生过任何普通读（本模块几乎所有函数
+    一开始都会 _ctx()/_get_course() 之类），读视图就定格了；此后即使刚拿到教师锁，普通读
+    依然看不见并发方刚提交的监考/巡考安排。按方言判断，不用 try/except 兜底：那样会把
+    MySQL 的锁等待超时也一并吞掉，守卫恰好在高并发时自动失效。
+    """
+    try:
+        is_mysql = query.session.get_bind().dialect.name == "mysql"
+    except Exception:  # noqa: BLE001  取不到方言时保守走普通读
+        is_mysql = False
+    return query.with_for_update(read=True).all() if is_mysql else query.all()
+
+
+# ══════════ 考场：canonical classroomId + 并发安全序号分配 ══════════
+
+def add_room(user, cid, body):
+    """添加考场——室号在课程行锁下分配，避免并发建考场撞号；优先使用 canonical
+    classroomId，不依赖文本模糊匹配（人工建考场用显示名，字典里匹配不上就等于放弃了
+    这间教室参与发布门禁的跨批次冲突检测）。"""
+    from app.models import AaClassroom, AaExamCourse, AaExamRoom
+
+    with _legacy.session() as db:
+        ctx = _legacy._ctx(user, db)
+        course = _legacy._get_course(db, int(cid))
+        _legacy._check_college_scope(ctx, course.college_id)
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status != _legacy._B_CONFIRMED:
+            raise _legacy._invalid("仅 COURSE_CONFIRMED 阶段可编排考场")
+
+        # 锁课程行：同一门课并发建考场时，室号分配(MAX(room_seq)+1)必须串行，否则两个
+        # 并发请求都读到同样的 MAX 再各自 INSERT，只能靠事后撞唯一键补救、体验很差。
+        locked_course = db.query(AaExamCourse).filter(
+            AaExamCourse.id == course.id, AaExamCourse.tenant_id == _legacy._tid(),
+        ).with_for_update().first()
+        if not locked_course:
+            raise not_found("考试课程不存在")
+
+        classroom_id = getattr(body, "classroomId", None)
+        classroom_text = getattr(body, "classroomText", None)
+        if classroom_id and str(classroom_id).isdigit():
+            room = db.query(AaClassroom).filter(
+                AaClassroom.id == int(classroom_id), AaClassroom.tenant_id == _legacy._tid(),
+                AaClassroom.is_deleted.is_(False),
+            ).first()
+            if not room:
+                raise not_found("教室不存在")
+            if room.status != "AVAILABLE":
+                raise AppException("DATA_CONFLICT", "所选教室当前不可用", http_status=409)
+            classroom_text = (room.room_name or "").strip() or f"{room.building_name}{room.room_code}"
+            classroom_id = int(room.id)
+        else:
+            classroom_id = _legacy._resolve_classroom_id(db, classroom_text)
+
+        # 课程行锁只保证"同一时刻只有一个事务能算这个课程的下一个室号"，但普通 MAX 查询
+        # 仍然可能读到本事务开始时(通常是更早的 _ctx()调用)就已经定格的 REPEATABLE READ
+        # 快照——事务B排队等到事务A提交后才拿到锁，此时它的普通读依然看不见A刚插入的行，
+        # 于是双方都算出同一个 seq。用加锁读（MySQL FOR UPDATE 聚合查询）强制读最新已提交
+        # 数据，同时把已有考场行也纳入本事务的锁范围。
+        existing_seqs = db.query(AaExamRoom.room_seq).filter(
+            AaExamRoom.exam_course_id == locked_course.id, AaExamRoom.tenant_id == _legacy._tid(),
+            AaExamRoom.is_deleted.is_(False),
+        ).with_for_update().all()
+        seq = (max((int(value) for (value,) in existing_seqs), default=0)) + 1
+        row = AaExamRoom(
+            tenant_id=_legacy._tid(), exam_course_id=locked_course.id, room_seq=seq,
+            classroom_text=classroom_text, classroom_id=int(classroom_id) if classroom_id else None,
+            capacity=int(getattr(body, "capacity", 0) or 0),
+            seat_mode=getattr(body, "seatMode", None) or "SEQUENTIAL", status="ACTIVE",
+        )
+        db.add(row)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            raise AppException(
+                "DATA_CONFLICT", "考场序号并发冲突，请重试", http_status=409,
+            ) from exc
+        _legacy._audit(db, "EXAM_ROOM", row.id, "EXAM_ROOM_ADD", f"考场{seq} {row.classroom_text}")
+        db.commit()
+        return _legacy._room_dto(row)
+
+
+# ══════════ 监考：发布前可指定，发布后只能显式变更 ══════════
+
+def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT"):
+    """指定监考——批次一旦发布，监考安排已通知本人，禁止再走这条普通指定入口；
+    冲突检测在教师时间线锁下用加锁读，避免并发把同一老师排进两场同时段考试。"""
+    from app.models import AaExamInvigilator, AaExamRoom
+
+    with _legacy.session() as db:
+        ctx = _legacy._ctx(user, db)
+        room = db.query(AaExamRoom).filter(
+            AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _legacy._tid(),
+        ).first()
+        if not room:
+            raise not_found("考场不存在")
+        course = _legacy._get_course(db, room.exam_course_id)
+        _legacy._check_college_scope(ctx, course.college_id)
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
+            raise AppException(
+                "DATA_CONFLICT",
+                "批次已发布，监考安排已是正式事实，禁止直接指定；如需换人请走显式变更(change_invigilator)",
+                http_status=409,
+            )
+
+        key = str(teacher_key or "").strip()
+        _lock_teacher_timeline(db, key)
+        d0, s0, e0 = course.exam_date, course.start_time, course.end_time
+        existing = _fresh_rows(db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == key,
+            AaExamInvigilator.is_deleted.is_(False),
+        ))
+        for inv in existing:
+            other_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            if not other_room or other_room.id == room.id:
+                continue
+            other_course = _legacy._get_course(db, other_room.exam_course_id)
+            if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
+                                     other_course.start_time, other_course.end_time):
+                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段已有监考安排（冲突）")
+        dup = db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
+            AaExamInvigilator.teacher_key == key, AaExamInvigilator.is_deleted.is_(False),
+        ).first()
+        if dup:
+            raise _legacy._bad("该教师已在本考场监考")
+        inv = AaExamInvigilator(
+            tenant_id=_legacy._tid(), exam_room_id=room.id, teacher_key=key,
+            teacher_name=teacher_name, role=role, confirm_status="ASSIGNED",
+        )
+        db.add(inv)
+        db.flush()
+        _legacy._audit(db, "EXAM_INVIGILATOR", inv.id, "EXAM_INVIGILATOR_ADD", f"监考 {teacher_name}")
+        db.commit()
+        return {"invigilatorId": str(inv.id), "examRoomId": str(room.id), "teacherKey": key, "role": role}
+
+
+def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teacher_name,
+                       reason, new_role=None):
+    """发布后调整监考的唯一合法入口：必填原因、冻结前后值、冲突检测走加锁读。
+
+    旧老师和新老师的时间线都要锁——旧老师释放这个时段、新老师占用这个时段是同一个
+    事务里的两件事，任何一步失败整体回滚，不留半截换人。
+    """
+    from app.models import AaExamInvigilator, AaExamRoom
+
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "调整监考必须填写原因且不少于5字")
+    old_key = str(old_teacher_key or "").strip()
+    new_key = str(new_teacher_key or "").strip()
+    if not old_key or not new_key:
+        raise AppException("VALIDATION_ERROR", "原监考教师和新监考教师均为必填")
+    if old_key == new_key:
+        raise _legacy._bad("新监考教师不能与原监考教师相同")
+
+    with _legacy.session() as db:
+        ctx = _legacy._ctx(user, db)
+        room = db.query(AaExamRoom).filter(
+            AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _legacy._tid(),
+        ).first()
+        if not room:
+            raise not_found("考场不存在")
+        course = _legacy._get_course(db, room.exam_course_id)
+        _legacy._check_college_scope(ctx, course.college_id)
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+
+        row = db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
+            AaExamInvigilator.teacher_key == old_key, AaExamInvigilator.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("原监考安排不存在")
+
+        _lock_teacher_timeline(db, old_key)
+        _lock_teacher_timeline(db, new_key)
+
+        d0, s0, e0 = course.exam_date, course.start_time, course.end_time
+        existing = _fresh_rows(db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == new_key,
+            AaExamInvigilator.is_deleted.is_(False),
+        ))
+        for inv in existing:
+            other_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            if not other_room or other_room.id == room.id:
+                continue
+            other_course = _legacy._get_course(db, other_room.exam_course_id)
+            if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
+                                     other_course.start_time, other_course.end_time):
+                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段已有监考安排（冲突）")
+        dup = db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
+            AaExamInvigilator.teacher_key == new_key, AaExamInvigilator.is_deleted.is_(False),
+        ).first()
+        if dup:
+            raise _legacy._bad("该教师已在本考场监考")
+
+        before = f"{row.teacher_key}:{row.teacher_name or ''}"
+        row.teacher_key = new_key
+        row.teacher_name = new_teacher_name
+        row.confirm_status = "ASSIGNED"
+        if new_role:
+            row.role = new_role
+        after = f"{row.teacher_key}:{row.teacher_name or ''}"
+        _legacy._audit(db, "EXAM_INVIGILATOR", row.id, "EXAM_INVIGILATOR_CHANGE",
+                       reason_text[:200], before, after)
+        db.commit()
+        return {"invigilatorId": str(row.id), "examRoomId": str(room.id),
+                "teacherKey": new_key, "role": row.role}
+
+
+# ══════════ 巡考：发布前可指定，发布后只能显式变更 ══════════
+
+def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_time, end_time,
+                  area_scope=None):
+    """排巡考——批次一旦发布禁止普通指定；冲突检测(巡考互撞/监考互撞)在教师时间线锁下
+    用加锁读。"""
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
+
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        batch = _legacy._get_batch(db, batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
+            raise AppException(
+                "DATA_CONFLICT",
+                "批次已发布，巡考安排已是正式事实，禁止直接指定；如需换人请走显式变更(change_patrol)",
+                http_status=409,
+            )
+
+        key = str(teacher_key or "").strip()
+        _lock_teacher_timeline(db, key)
+        existing = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == key,
+            AaExamPatrol.is_deleted.is_(False),
+        ))
+        for p in existing:
+            if _legacy._time_overlap(patrol_date, start_time, end_time,
+                                     p.patrol_date, p.start_time, p.end_time):
+                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段已有巡考安排（冲突）")
+        invs = _fresh_rows(db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == key,
+            AaExamInvigilator.is_deleted.is_(False),
+        ))
+        for inv in invs:
+            room = db.get(AaExamRoom, int(inv.exam_room_id))
+            if not room:
+                continue
+            course = _legacy._get_course(db, room.exam_course_id)
+            if _legacy._time_overlap(patrol_date, start_time, end_time,
+                                     course.exam_date, course.start_time, course.end_time):
+                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段有监考任务，不能同时巡考（冲突）")
+        row = AaExamPatrol(
+            tenant_id=_legacy._tid(), batch_id=batch.id, teacher_key=key, teacher_name=teacher_name,
+            patrol_date=patrol_date, start_time=start_time, end_time=end_time,
+            area_scope_json=area_scope, status="ASSIGNED",
+        )
+        db.add(row)
+        db.flush()
+        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_ADD", f"巡考 {teacher_name}")
+        db.commit()
+        return {"patrolId": str(row.id), "batchId": str(batch.id), "teacherKey": key}
+
+
+def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
+                  new_patrol_date=None, new_start_time=None, new_end_time=None):
+    """发布后调整巡考的唯一合法入口：必填原因、冻结前后值、冲突检测走加锁读。"""
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
+
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "调整巡考必须填写原因且不少于5字")
+    new_key = str(new_teacher_key or "").strip()
+    if not new_key:
+        raise AppException("VALIDATION_ERROR", "新巡考教师必填")
+
+    with _legacy.session() as db:
+        row = db.query(AaExamPatrol).filter(
+            AaExamPatrol.id == int(patrol_id), AaExamPatrol.tenant_id == _legacy._tid(),
+            AaExamPatrol.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
+            raise not_found("巡考安排不存在")
+        batch = _legacy._get_batch(db, row.batch_id)
+        _legacy._require_school(_legacy._ctx(user, db))
+        _legacy._ensure_not_archived(batch)
+
+        old_key = row.teacher_key
+        patrol_date = new_patrol_date or row.patrol_date
+        start_time = new_start_time or row.start_time
+        end_time = new_end_time or row.end_time
+
+        if old_key and old_key != new_key:
+            _lock_teacher_timeline(db, old_key)
+        _lock_teacher_timeline(db, new_key)
+
+        existing = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == new_key,
+            AaExamPatrol.id != row.id, AaExamPatrol.is_deleted.is_(False),
+        ))
+        for p in existing:
+            if _legacy._time_overlap(patrol_date, start_time, end_time,
+                                     p.patrol_date, p.start_time, p.end_time):
+                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段已有巡考安排（冲突）")
+        invs = _fresh_rows(db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == new_key,
+            AaExamInvigilator.is_deleted.is_(False),
+        ))
+        for inv in invs:
+            inv_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            if not inv_room:
+                continue
+            inv_course = _legacy._get_course(db, inv_room.exam_course_id)
+            if _legacy._time_overlap(patrol_date, start_time, end_time,
+                                     inv_course.exam_date, inv_course.start_time, inv_course.end_time):
+                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段有监考任务，不能同时巡考（冲突）")
+
+        before = f"{row.teacher_key}:{row.teacher_name or ''}:{row.patrol_date} {row.start_time}-{row.end_time}"
+        row.teacher_key = new_key
+        row.teacher_name = new_teacher_name
+        row.patrol_date = patrol_date
+        row.start_time = start_time
+        row.end_time = end_time
+        after = f"{row.teacher_key}:{row.teacher_name or ''}:{row.patrol_date} {row.start_time}-{row.end_time}"
+        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_CHANGE", reason_text[:200], before, after)
+        db.commit()
+        return {"patrolId": str(row.id), "batchId": str(batch.id), "teacherKey": new_key}
+
+
+# ══════════ 显式静态契约：以下均为无副作用只读或不涉及本轮安全修复的写操作。
+# ══════════ 逐个具名重导出，替代原来的 __getattr__ 动态穿透——新增 legacy 函数
+# ══════════ 不会自动出现在这里，必须显式登记才能被 Router/其它模块调用到。
+
+add_exam_course = _legacy.add_exam_course
+get_batch = _legacy.get_batch
+list_batches = _legacy.list_batches
+confirm_batch_courses = _legacy.confirm_batch_courses
+list_rooms = _legacy.list_rooms
+room_seats = _legacy.room_seats
+list_invigilators = _legacy.list_invigilators
+list_patrols = _legacy.list_patrols
+list_incidents = _legacy.list_incidents
+defer_list = _legacy.defer_list
+defer_resubmit = _legacy.defer_resubmit
+defer_review = _legacy.defer_review
+list_archived_batches = _legacy.list_archived_batches
+batch_stats = _legacy.batch_stats
+my_deferrable_courses = _legacy.my_deferrable_courses
+my_exam_schedule = _legacy.my_exam_schedule

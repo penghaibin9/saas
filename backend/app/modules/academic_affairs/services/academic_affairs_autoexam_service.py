@@ -153,13 +153,28 @@ def _room_busy_index(db) -> dict:
 
 
 def _roster(db, course) -> list:
-    """考生名单：课程挂接班级的在读学生，按学号稳定排序。"""
+    """考生名单：消费学院确认课程时冻结的正式教学名单快照，与手工铺位(assign_seats)
+    同一权威来源——不再按行政班猜考生。
+
+    选修课、重修跟班、分层教学、跨专业课程，教学班成员从来不等于行政班成员；院系确认
+    考试课程(CONFIRM)那一刻已经把 EXAM_COURSE 消费者快照冻死在
+    academic_affairs_roster_consumer_service，本函数只读这份快照，不重新推导。
+    课程能进到这里(status==CONFIRMED)就必然已有快照——facade.confirm_course 在冻结
+    失败时不允许推进到 CONFIRMED，所以这里没有快照就是真的数据问题，如实报空并让
+    调用方按 NO_ROSTER 上报，不回退到行政班瞎猜。
+    """
     from app.models import StudentProfile
-    if not course.class_id:
+    from app.modules.academic_affairs.services.academic_affairs_roster_consumer_service import (
+        get_consumer_snapshot,
+    )
+
+    snapshot = get_consumer_snapshot(db, "EXAM_COURSE", int(course.id))
+    if not snapshot or not snapshot.get("studentIds"):
         return []
+    ids = [int(value) for value in snapshot["studentIds"]]
     rows = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.class_id == int(course.class_id),
-        StudentProfile.student_status == "NORMAL", StudentProfile.is_deleted.is_(False))).all()
+        StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(ids),
+        StudentProfile.is_deleted.is_(False))).all()
     return sorted(rows, key=lambda s: (s.student_no or "", s.id))
 
 
@@ -436,7 +451,15 @@ def auto_assign_times(user, batch_id, body, dry_run=False) -> dict:
     from app.models import AaExamBatch, AaExamCourse
     with session() as db:
         _require_school(user, db)
-        b = db.get(AaExamBatch, int(batch_id))
+        # 与 auto_arrange 同一套并发纪律：自动定时会直接改写 AaExamCourse.exam_date/
+        # start_time/end_time，若不锁批次行，管理员手工改期和自动定时可以在同一批次上
+        # 并发交叉写同一批课程，谁的结果留下全靠提交顺序，且都读不到对方的改动。
+        # dry_run 不落库，无并发写风险，走普通读避免占锁。
+        if dry_run:
+            b = db.get(AaExamBatch, int(batch_id))
+        else:
+            b = db.scalars(select(AaExamBatch).where(
+                AaExamBatch.id == int(batch_id)).with_for_update()).first()
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("考试批次不存在")
         if b.status != "COURSE_CONFIRMED":

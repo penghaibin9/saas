@@ -18,14 +18,18 @@ from __future__ import annotations
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
-from . import academic_affairs_exam_service as _exam
+# 精确到子模块的绝对导入：`from . import academic_affairs_exam_service` 这种形式在
+# services/__init__.py 已经把包属性 academic_affairs_exam_service 重新绑定到 facade 之后
+# 导入，会拿到 facade（facade 去掉 __getattr__ 后没有 _time_overlap，AttributeError）。
+# 这里只需要判定函数本身，与安全门禁无关，用点路径直接锁定真正的实现模块。
+from app.modules.academic_affairs.services.academic_affairs_exam_service import _time_overlap as _exam_time_overlap
 
 # 已经对外成立、必须参与资源竞争的批次状态；DRAFT/COURSE_CONFIRMED/ARRANGED 还没对学生生效。
 _LIVE_BATCH_STATUSES = ("PUBLISHED", "FINISHED")
 
 
 def _overlap(left, right) -> bool:
-    return _exam._time_overlap(
+    return _exam_time_overlap(
         left["examDate"], left["startTime"], left["endTime"],
         right["examDate"], right["startTime"], right["endTime"],
     )

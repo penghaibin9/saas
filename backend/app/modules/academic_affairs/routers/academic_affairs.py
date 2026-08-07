@@ -3440,6 +3440,8 @@ class ExamScheduleBody(BaseModel):
 
 class ExamRoomBody(BaseModel):
     classroomText: Optional[str] = None
+    classroomId: Optional[str] = Field(
+        None, description="教室字典canonical ID；提供时不再靠文本模糊匹配，直接锁定该教室")
     capacity: int = Field(0, ge=0)
     seatMode: Optional[str] = "SEQUENTIAL"
 
@@ -3548,6 +3550,23 @@ def exam_invigs(roomId: int = Path(...), user=Depends(require_permission(_EXAM_V
     return success({"items": exam_svc.list_invigilators(user, roomId)})
 
 
+class ChangeInvigilatorBody(BaseModel):
+    oldTeacherKey: str = Field(..., min_length=1)
+    newTeacherKey: str = Field(..., min_length=1)
+    newTeacherName: Optional[str] = None
+    newRole: Optional[str] = None
+    reason: str = Field(..., min_length=5, description="调整原因，不少于5字")
+
+
+@router.post("/exam/rooms/{roomId}/invigilators/change", summary="发布后调整监考（唯一合法变更入口，必填原因）")
+def exam_invig_change(body: ChangeInvigilatorBody, roomId: int = Path(...),
+                      user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.change_invigilator(
+        user, roomId, body.oldTeacherKey, body.newTeacherKey, body.newTeacherName,
+        body.reason, body.newRole,
+    ), message="已调整")
+
+
 # ── 自动排考引擎（编排时间→切考场→铺座位→配监考；dryRun 只算不落）──
 class ExamAutoTimesBody(BaseModel):
     dates: list[str] = Field(..., min_length=1, description="考试日期列表 YYYY-MM-DD")
@@ -3588,6 +3607,24 @@ class PatrolBody(BaseModel):
 def exam_patrol_add(body: PatrolBody, bid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
     return success(exam_svc.assign_patrol(user, bid, body.teacherKey, body.teacherName,
                                           body.patrolDate, body.startTime, body.endTime, body.areaScope), message="已排巡考")
+
+
+class ChangePatrolBody(BaseModel):
+    newTeacherKey: str = Field(..., min_length=1)
+    newTeacherName: Optional[str] = None
+    newPatrolDate: Optional[str] = None
+    newStartTime: Optional[str] = None
+    newEndTime: Optional[str] = None
+    reason: str = Field(..., min_length=5, description="调整原因，不少于5字")
+
+
+@router.post("/exam/patrols/{patrolId}/change", summary="发布后调整巡考（唯一合法变更入口，必填原因）")
+def exam_patrol_change(body: ChangePatrolBody, patrolId: int = Path(...),
+                       user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.change_patrol(
+        user, patrolId, body.newTeacherKey, body.newTeacherName, body.reason,
+        body.newPatrolDate, body.newStartTime, body.newEndTime,
+    ), message="已调整")
 
 
 @router.get("/exam/batches/{bid}/patrols", summary="巡考列表")
