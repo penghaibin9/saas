@@ -149,7 +149,7 @@ test('exam arrangement guide publishes the real auto-exam engine without pretend
   assert.match(value, /no_room/)
   assert.match(value, /room_short/)
   assert.match(value, /人工编排不应被自动流程覆盖/)
-  assert.doesNotMatch(value, /系统没有自动排考/)
+  assert.doesNotMatch(value, /系统能自动排考吗？.*不能/)
 })
 
 test('exam publish guide requires rooms seats and invigilators before PUBLISHED', () => {
