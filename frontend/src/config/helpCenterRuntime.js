@@ -5,6 +5,11 @@ import {
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
+import {
+  EXCLUDED_LEGACY_HELP_IDS,
+  LEGACY_HELP_EXCLUSIONS,
+  VERIFIED_HELP_FLOW_OVERRIDES
+} from './help/legacyHelpPolicy'
 import { MOBILE_HELP_CARDS } from './help/mobileHelpCards'
 import { MOBILE_OPERATIONS_HELP_CARDS } from './help/mobileOperationsHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
@@ -21,16 +26,19 @@ import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
  *
  * 小程序卡只登记 mobilePath / entry，不登记 PC route，避免管理 PC 帮助中心产生一个
  * 点击后 404 的“前往办理页面”。历史大文件中经后端静态核验确认存在偏差的条目，
- * 通过 VERIFIED_HELP_OVERRIDES 在同一对象上就地修正，不并存两个同 id 条目。
+ * 通过 VERIFIED_HELP_OVERRIDES / VERIFIED_HELP_FLOW_OVERRIDES 在同一对象上就地修正；
+ * 已确认过时、错误或被更精确内容替代的旧条目由 LEGACY_HELP_EXCLUSIONS 从运行时下线。
  */
 export {
   FOUNDATION_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
+  LEGACY_HELP_EXCLUSIONS,
   MOBILE_HELP_CARDS,
   MOBILE_OPERATIONS_HELP_CARDS,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
+  VERIFIED_HELP_FLOW_OVERRIDES,
   VERIFIED_HELP_OVERRIDES
 }
 
@@ -48,10 +56,36 @@ function registerCards(cards) {
 }
 
 function applyVerifiedOverrides() {
-  const byId = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
+  const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_OVERRIDES).forEach(([id, patch]) => {
-    const target = byId.get(id)
+    const target = cardsById.get(id)
     if (target) Object.assign(target, patch)
+  })
+
+  const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
+  Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
+    const target = flowsById.get(id)
+    if (target) Object.assign(target, patch)
+  })
+}
+
+function removeIdsInPlace(items, ids) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (ids.has(items[index]?.id)) items.splice(index, 1)
+  }
+}
+
+function quarantineLegacyHelp() {
+  const docIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.docs))
+  const flowIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.flows))
+  removeIdsInPlace(HELP_DOCS, docIds)
+  removeIdsInPlace(HELP_FLOWS, flowIds)
+
+  // HELP_SECTIONS 在 helpContent.js 初始化时已经复制/引用了各类 items，必须同步清理，
+  // 否则旧条目虽然不在搜索数组里，仍会残留在侧栏目录。
+  BASE_HELP_SECTIONS.forEach((section) => {
+    if (!Array.isArray(section.items)) return
+    section.items = section.items.filter((item) => !EXCLUDED_LEGACY_HELP_IDS.has(item?.id))
   })
 }
 
@@ -61,6 +95,7 @@ registerCards(STUDENT_DATA_HELP_CARDS)
 registerCards(MOBILE_HELP_CARDS)
 registerCards(MOBILE_OPERATIONS_HELP_CARDS)
 applyVerifiedOverrides()
+quarantineLegacyHelp()
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
   BASE_HELP_SECTIONS.unshift({
@@ -150,7 +185,7 @@ export function findHelpForRoute(fullPath) {
   return prefix ? { id: prefix.card.id, title: prefix.card.title } : null
 }
 
-/** 帮助中心 ?topic= 深链取条目。 */
+/** 帮助中心 ?topic= 深链取条目。已下线旧条目在这里返回 null。 */
 export function getHelpById(id) {
   const card = HELP_CARDS.find((item) => item.id === id)
   if (card) return { type: 'card', item: card }
