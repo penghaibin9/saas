@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -23,7 +24,8 @@ def test_return_and_reject_are_distinct_in_all_formal_clients():
     adapter = read("frontend/src/services/http/adapters.js")
     mini = read("miniapp/src/services/approvalApi.js")
 
-    for text in (pc, adapter, mini):
+    # PC facade 与旧适配器都使用显式正式路径。
+    for text in (pc, adapter):
         assert "/return" in text
         assert "/reject" in text
 
@@ -33,16 +35,19 @@ def test_return_and_reject_are_distinct_in_all_formal_clients():
     assert "/reject" not in return_body
     assert "status: 'RETURNED'" not in return_body
 
+    # 小程序通过受控动作映射拼接正式路径，锁定 RETURN/REJECT 不得共用 endpoint。
     assert "移动端驳回" not in mini
     assert "pathByAction" in mini
     assert "RETURN: 'return'" in mini
     assert "REJECT: 'reject'" in mini
+    assert "RETURN: 'reject'" not in mini
 
 
 def test_teacher_page_never_synthesizes_terminal_approval_status():
     page = read("miniapp/src/pages/teacher/approval/index.vue")
-    assert "a.status =" not in page
-    assert "task.status =" not in page
+    # 只禁止赋值；模板中的 a.status === 'PENDING_REVIEW' 是合法只读判断。
+    assert not re.search(r"\ba\.status\s*=(?!=)", page)
+    assert not re.search(r"\btask\.status\s*=(?!=)", page)
     assert "await this.load()" in page
     assert "已退回修改" in page
     assert "已驳回终止原流程" in page
