@@ -8,6 +8,7 @@
  * 新内容不得因为“以前帮助这么写”而继承旧口径，必须重新对真实页面/接口/状态机取证。
  */
 export const LEGACY_HELP_EXCLUSIONS = {
+  cards: {},
   docs: {
     // 早期模块总览，菜单分组和职责描述来自旧设计口径；现已有更细的一眼通/任务卡。
     'doc-student-affairs': '旧学工三分组总览已被现行学工一眼通与任务卡替代',
@@ -35,6 +36,19 @@ export const LEGACY_HELP_EXCLUSIONS = {
  * 仍有独立检索价值、但正文明确错误的历史流程，保留 ID 并修正真值，避免旧收藏/深链失效。
  */
 export const VERIFIED_HELP_FLOW_OVERRIDES = {
+  'flow-sa-risk': {
+    title: '学生风险预警、处置与 SLA 超时升级流程',
+    keywords: ['风险', '风险预警', '风险处置', 'sla', '分派', '超时', '自动升级', '销号', '重开', '学工'],
+    summary: '风险从多来源建单后按责任人和状态机处置；系统按风险等级与学校当前生效 SLA 判断分派、首次处置和跟进超时，超时扫描可自动分派或升级，不是所有风险统一72小时。',
+    steps: [
+      { name: '生成风险单', who: '系统 / 授权人员', detail: '请假逾期、学业预警、宿舍、心理、违纪、实习、毕设等来源可形成风险，也支持人工建单；同来源单据做去重保护' },
+      { name: '分派责任人', who: '授权人员 / 超时扫描', detail: 'NEW / REOPENED / TRANSFERRED 可分派；责任人必须有风险处置权限且数据范围覆盖学生。NEW 超过当前等级 assignHours 后，如能确定有效班级辅导员，扫描可自动分派' },
+      { name: '处置与跟进', who: '责任人 / 学工管理员', detail: 'ASSIGNED 进入处置，处置内容不少于5字；需要持续观察时转 FOLLOWING，并继续追加过程留痕' },
+      { name: '转办或升级', who: '责任人 / 学工管理员 / 系统扫描', detail: 'PROCESSING / FOLLOWING 可人工转办或升级；超过当前等级 processHours / followHours 时，扫描可自动升级一级并进入 ESCALATED' },
+      { name: '上级接管', who: '具备上级接管权限的角色', detail: 'ESCALATED 由上级接管后回到 PROCESSING，并可继续处置' },
+      { name: '关闭或重开', who: '责任人 / 学工管理员 / 上级角色', detail: '关闭前至少有1条处置记录，关闭结论不少于5字；风险复发后可按权限重开' }
+    ]
+  },
   'flow-in-score': {
     title: '实习成绩核算、复核、发布与撤回流程',
     keywords: ['实习成绩', '成绩核算', '打卡', '周报', '月报总结', '企业评价', '学校评价', '成绩复核', '成绩发布', '成绩撤回', '成绩归档'],
@@ -51,6 +65,7 @@ export const VERIFIED_HELP_FLOW_OVERRIDES = {
 }
 
 export const EXCLUDED_LEGACY_HELP_IDS = new Set([
+  ...Object.keys(LEGACY_HELP_EXCLUSIONS.cards),
   ...Object.keys(LEGACY_HELP_EXCLUSIONS.docs),
   ...Object.keys(LEGACY_HELP_EXCLUSIONS.flows)
 ])
