@@ -33,7 +33,9 @@ on_error() {
 }
 trap on_error ERR
 
-"$SCRIPT_DIR/backup-mysql.sh"
+# Use bash explicitly because the historical backup script may not carry the executable bit
+# in older repository clones. The orchestration contract must not depend on that file mode.
+bash "$SCRIPT_DIR/backup-mysql.sh"
 
 latest_db="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "db_${DB_NAME}_*.sql.gz" -printf '%T@ %p\n' \
   | sort -nr | head -n1 | cut -d' ' -f2-)"
