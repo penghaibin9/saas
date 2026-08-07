@@ -26,6 +26,7 @@ from app.models.academic_affairs_effective_grade import (
     AaEffectiveGradePolicySnapshot,
     AaGradeChangeRequest,
     AaGradeCorrection,
+    AaGradeIdentityHead,
 )
 
 
@@ -55,4 +56,5 @@ __all__ = [
     "AaEffectiveGradePolicySnapshot",
     "AaGradeChangeRequest",
     "AaGradeCorrection",
+    "AaGradeIdentityHead",
 ]

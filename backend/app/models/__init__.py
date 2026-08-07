@@ -161,7 +161,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaRegistrationException,
                                          AaScheduleBatch, AaScheduleChange,
                                          AaScheduleItem, AaSchedulePublish,
-                                         AaScheduleRule,
+                                         AaScheduleRule, AaScheduleScopeHead,
                                          AaSelectionBatch,
                                          AaTeacherAvailability,
                                          AaGradeRecognition, AaGraduationCertificate,
