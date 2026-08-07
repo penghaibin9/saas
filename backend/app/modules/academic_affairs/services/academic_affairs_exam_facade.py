@@ -9,6 +9,8 @@ import hashlib
 import json
 from datetime import datetime
 
+from app.core.affairs_security import _derive_keys, no_data_scope
+from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_exam_service as _legacy
@@ -101,6 +103,34 @@ def confirm_course(user, cid, action):
         result["expectedStudents"] = course.expected_students
         result["rosterIdentity"] = roster_identity
         return result
+
+
+def set_course_schedule(user, cid, body):
+    """设置考试时间/时长——批次一旦发布/结束/归档，考试时间就是已通知考生和监考的正式事实，
+    禁止普通 UPDATE 悄悄改写；只能在课程尚未确认或课程确认后、发布前的编排阶段调整。"""
+    with _legacy.session() as db:
+        ctx = _legacy._ctx(user, db)
+        course = _legacy._get_course(db, int(cid))
+        _legacy._check_college_scope(ctx, course.college_id)
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status not in (_legacy._B_DRAFT, _legacy._B_CONFIRMED):
+            raise AppException(
+                "DATA_CONFLICT",
+                f"批次已{batch.status}，考试时间已是正式事实，禁止直接修改；如需改期请先走批次退回流程",
+                http_status=409,
+            )
+        if course.status == "REMOVED":
+            raise _legacy._invalid("该考试课程已移除，不可设置时间")
+        before = f"{course.exam_date} {course.start_time}-{course.end_time}"
+        course.exam_date = getattr(body, "examDate", None) or course.exam_date
+        course.start_time = getattr(body, "startTime", None) or course.start_time
+        course.end_time = getattr(body, "endTime", None) or course.end_time
+        course.duration_minutes = getattr(body, "durationMinutes", None) or course.duration_minutes
+        after = f"{course.exam_date} {course.start_time}-{course.end_time}"
+        _legacy._audit(db, "EXAM_COURSE", course.id, "EXAM_COURSE_SCHEDULE", f"设时间 {after}", before, after)
+        db.commit()
+        return _legacy._course_dto(course)
 
 
 def list_courses(user, bid, page=1, page_size=100):
@@ -319,12 +349,20 @@ def _check_arrangement_complete(db, batch_id):
 
 
 def publish_batch(user, bid):
-    """发布前必须通过冻结名单、铺位和监考完整性检查。"""
+    """发布前必须通过冻结名单、铺位、监考完整性，以及全校资源冲突门禁。"""
+    from . import academic_affairs_exam_conflict_service as conflict_service
+
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {batch.status}")
+        # 先取同学期批次行锁，再做检测和写入：两个批次并发抢同一间教室/同一个老师时，
+        # 若各自只查不锁，会双双查到"无冲突"再双双发布。锁必须早于检测。
+        conflict_service.lock_term_exam_batches(db, batch.term_id)
+        db.refresh(batch)
+        if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
+            raise _legacy._invalid(f"批次已被并发操作推进为 {batch.status}，本次发布取消")
         courses, problems = _check_arrangement_complete(db, batch.id)
         if problems:
             raise _legacy._invalid(
@@ -332,6 +370,15 @@ def publish_batch(user, bid):
             )
         if not courses:
             raise _legacy._bad("批次无已确认考试课程")
+        conflicts = conflict_service.validate_exam_batch_conflicts(db, batch)
+        if conflicts["problems"]:
+            found = conflicts["problems"]
+            raise AppException(
+                "DATA_CONFLICT",
+                "存在资源冲突，不可发布：" + "；".join(found[:5]) + ("…" if len(found) > 5 else ""),
+                details={"conflicts": found[:50], "occupancy": conflicts["occupancy"]},
+                http_status=409,
+            )
         batch.status = _legacy._B_PUBLISHED
         batch.published_at = datetime.utcnow()
         sent = _legacy._notify_publish(db, batch, courses)
@@ -513,3 +560,152 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
             "disciplineCaseRef": incident.discipline_case_ref,
             "resolvedAt": datetime.utcnow().isoformat(),
         }
+
+
+def record_incident(user, body):
+    """登记缺考/违纪——studentId 不能单凭客户端传入即成为权威：必须先证明该学生在本场
+    考试的正式冻结座位名单（AaExamRoomStudent）里，不存在则 409 拒绝，不产生 incident/risk/audit 副作用。"""
+    from app.models import AaExamIncident, AaExamRoomStudent, AffairsRiskRecord
+
+    with _legacy.session() as db:
+        context = _legacy._ctx(user, db)
+        course = _legacy._get_course(db, int(body.examCourseId))
+        if not _legacy._is_school(context):
+            allowed = getattr(context, "college_ids", None) or set()
+            teacher_keys = _derive_keys(user)
+            is_college = context.scope_type == "COLLEGE" and course.college_id and int(course.college_id) in allowed
+            is_invig = _legacy._is_invigilator_of_course(db, course.id, teacher_keys)
+            if not (is_college or is_invig):
+                raise no_data_scope("非本人监考场次/本学院，无权登记")
+        batch = _legacy._get_batch(db, course.batch_id)
+        _legacy._ensure_not_archived(batch)
+        if batch.status not in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
+            raise _legacy._invalid("仅发布/结束后可登记考场异常")
+
+        incident_type = body.incidentType
+        student_id = int(body.studentId)
+        seat = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.student_id == student_id,
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).first()
+        if not seat:
+            # 错误码沿用同类判定（merge_deferred「学生不在原考试课程冻结名单」）的 DATA_CONFLICT/409，
+            # 不自造 422：本项目冻结契约的业务码表里没有 422 这一档。
+            raise AppException(
+                "DATA_CONFLICT",
+                "该学生不在本场考试的正式冻结座位名单，禁止登记考场异常",
+                details={"examCourseId": str(course.id), "studentId": str(student_id)},
+                http_status=409,
+            )
+
+        exist = db.query(AaExamIncident).filter(
+            AaExamIncident.tenant_id == _legacy._tid(),
+            AaExamIncident.exam_course_id == course.id,
+            AaExamIncident.student_id == student_id,
+            AaExamIncident.incident_type == incident_type,
+            AaExamIncident.is_deleted.is_(False),
+        ).first()
+        if exist:
+            exist.description = getattr(body, "description", None) or exist.description
+            exist.status = "ACTIVE"
+            incident = exist
+        else:
+            incident = AaExamIncident(
+                tenant_id=_legacy._tid(), exam_room_id=seat.exam_room_id,
+                exam_course_id=course.id, student_id=student_id,
+                student_no=seat.student_no, student_name=seat.student_name,
+                incident_type=incident_type, description=getattr(body, "description", None),
+                recorded_by=_legacy._op(), recorded_at=datetime.utcnow(),
+                risk_alert_sent=(incident_type == "ABSENT"), status="ACTIVE",
+            )
+            db.add(incident)
+        seat.attendance_status = "ABSENT" if incident_type == "ABSENT" else "DISCIPLINE_VIOLATION"
+        db.flush()
+
+        if incident_type == "ABSENT":
+            dup = db.query(AffairsRiskRecord).filter(
+                AffairsRiskRecord.tenant_id == _legacy._tid(),
+                AffairsRiskRecord.source == "EXAM_ABSENT",
+                AffairsRiskRecord.source_ref_id == incident.id,
+            ).first()
+            if not dup:
+                db.add(AffairsRiskRecord(
+                    tenant_id=_legacy._tid(), student_id=student_id, source="EXAM_ABSENT",
+                    source_ref_id=incident.id, risk_level="MEDIUM",
+                    title=f"考试缺考：{course.course_name or '课程'}",
+                    detail=f"批次 {batch.batch_name} 课程 {course.course_name} 缺考，需辅导员跟进",
+                    status="NEW",
+                ))
+                incident.risk_alert_sent = True
+
+        _legacy._audit(db, "EXAM_INCIDENT", incident.id, "EXAM_INCIDENT_RECORD",
+                       f"{incident_type} 学生{student_id};examRoomStudentId={seat.id}")
+        db.commit()
+        return {"incidentId": str(incident.id), "incidentType": incident_type, "riskAlertSent": incident.risk_alert_sent}
+
+
+def defer_apply(user, body):
+    """学生申请缓考——examCourseId 不能单凭客户端传入即成为权威：必须先证明本人属于该考试课程
+    的正式冻结考生名单（学院确认课程时冻结的 EXAM_COURSE 名单快照，或已铺定的正式座位），
+    两者都证明不了就 409 拒绝，不产生进入四级审批链的申请记录。"""
+    from app.models import AaDeferredExam, AaExamRoomStudent, StudentProfile
+
+    ctx = get_current_user_ctx() or {}
+    with _legacy.session() as db:
+        student = db.query(StudentProfile).filter(
+            StudentProfile.tenant_id == _legacy._tid(),
+            StudentProfile.student_no == ctx.get("studentNo"),
+            StudentProfile.is_deleted.is_(False),
+        ).first()
+        if not student:
+            raise not_found("学生档案不存在")
+        course = _legacy._get_course(db, int(body.examCourseId))
+        if _legacy._exam_started(course):
+            raise _legacy._bad("考试已开始，不可申请缓考")
+
+        seat = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.student_id == student.id,
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).first()
+        roster_proof = "SEAT" if seat else ""
+        if not seat:
+            snapshot = get_consumer_snapshot(db, "EXAM_COURSE", int(course.id))
+            frozen_ids = {int(value) for value in (snapshot or {}).get("studentIds") or []}
+            if int(student.id) in frozen_ids:
+                roster_proof = f"ROSTER:{snapshot['rosterVersionId']}"
+        if not roster_proof:
+            raise AppException(
+                "DATA_CONFLICT",
+                "本人不在该考试课程的正式冻结考生名单，无法申请缓考",
+                details={"examCourseId": str(course.id)},
+                http_status=409,
+            )
+
+        active = db.query(AaDeferredExam).filter(
+            AaDeferredExam.tenant_id == _legacy._tid(),
+            AaDeferredExam.student_id == student.id,
+            AaDeferredExam.exam_course_id == course.id,
+            AaDeferredExam.status.notin_([_legacy._D_REJECTED, _legacy._D_APPROVED]),
+            AaDeferredExam.is_deleted.is_(False),
+        ).first()
+        if active:
+            raise _legacy._conflict("已有进行中的缓考申请")
+
+        deferred = AaDeferredExam(
+            tenant_id=_legacy._tid(), student_id=student.id, student_no=student.student_no,
+            student_name=student.real_name, exam_course_id=course.id, course_name=course.course_name,
+            reason_type=getattr(body, "reasonType", None), reason=getattr(body, "reason", None),
+            apply_at=datetime.utcnow(), current_node="COUNSELOR", status=_legacy._D_COUNSELOR,
+        )
+        db.add(deferred)
+        db.flush()
+        _legacy._audit(
+            db, "DEFERRED_EXAM", deferred.id, "DEFER_APPLY_SUBMIT",
+            f"缓考申请 {course.course_name};rosterProof={roster_proof}",
+        )
+        db.commit()
+        return _legacy._defer_dto(deferred)
