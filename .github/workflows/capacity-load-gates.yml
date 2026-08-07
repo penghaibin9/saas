@@ -49,11 +49,11 @@ jobs:
     name: 压测边界与脚本合同
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
-      - uses: actions/setup-python@v5
+          node-version: "24"
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: 校验只读范围、指标门槛与安全锁
@@ -123,8 +123,8 @@ jobs:
           --health-timeout=5s
           --health-retries=20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -252,7 +252,7 @@ jobs:
             --output performance/results/capacity-verdict.json
       - name: 上传本地容量结果
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-local-${{ matrix.profile }}-${{ github.run_id }}
           path: performance/results/
@@ -282,8 +282,8 @@ jobs:
       INTERNAL_OPS_TOKEN: ${{ secrets.PERF_INTERNAL_OPS_TOKEN }}
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: 检查目标、运维探针与账号/令牌池
@@ -374,7 +374,7 @@ jobs:
             --output performance/results/capacity-verdict.json
       - name: 上传容量结果
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ github.run_id }}
           path: performance/results/

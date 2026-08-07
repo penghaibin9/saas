@@ -140,7 +140,7 @@ jobs:
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
 
       - name: 上传微信开发者工具导入目录
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mp-weixin-importable-stage-a
           path: miniapp/dist/build/mp-weixin

@@ -30,7 +30,7 @@ jobs:
             -d '{"state":"pending","context":"academic-affairs/stage4-source-fidelity","description":"正在核对 PR17 教务独占成果完整性","target_url":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
 
       - name: Checkout 最终验收分支
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

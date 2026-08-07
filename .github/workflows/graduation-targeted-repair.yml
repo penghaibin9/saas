@@ -37,7 +37,7 @@ jobs:
           --health-retries=18
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -52,7 +52,7 @@ jobs:
           PY
           git diff --check
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -91,7 +91,7 @@ jobs:
 
       - name: 上传 Alembic 诊断日志
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: graduation-alembic-log
           path: /tmp/alembic-validation.log
@@ -231,7 +231,7 @@ jobs:
 
       - name: 上传 Graduation pytest 证据
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: graduation-pytest-evidence
           path: |
@@ -240,9 +240,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: PC 管理端 lint 与 build
         working-directory: frontend

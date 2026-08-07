@@ -95,10 +95,10 @@ jobs:
           --health-timeout=5s
           --health-retries=30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -155,7 +155,7 @@ jobs:
           } > artifacts/student-affairs/acceptance-summary.txt
       - name: 上传后端验收证据
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: student-affairs-backend-${{ github.sha }}
           path: artifacts/student-affairs
@@ -167,10 +167,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
@@ -212,7 +212,7 @@ jobs:
           } > /tmp/student-affairs-build-evidence/build-summary.txt
       - name: 上传构建证据与微信导入包
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: student-affairs-four-clients-${{ github.sha }}
           path: |
