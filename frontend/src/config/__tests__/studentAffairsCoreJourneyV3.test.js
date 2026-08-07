@@ -10,7 +10,7 @@ import '../help/helpRoleGuidanceRuntime.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const runtimeSource = readFileSync(resolve(here, '../helpCenterRuntime.js'), 'utf8')
-const mentalSource = readFileSync(resolve(here, '../../../backend/app/services/affairs_mental_service.py'), 'utf8')
+const mentalSource = readFileSync(resolve(here, '../../../../backend/app/services/affairs_mental_service.py'), 'utf8')
 
 const CORE_IDS = ['sa-v3-leave-lifecycle', 'sa-v3-aid-funding', 'sa-v3-discipline', 'sa-v3-care-risk']
 const JOURNEY_IDS = [...CORE_IDS, 'sa-card-risk-handle', 'sa-card-archive']
