@@ -74,9 +74,20 @@ test('V2 priority help no longer promotes unverified encyclopedia docs and inclu
     'aa-card-selection-publish',
     'aa-card-exam-arrangement',
     'aa-card-exam-publish',
-    'in-card-eval-score',
-    'gd-card-defense-grade'
+    'in-v2-student-application',
+    'in-v2-teacher-process',
+    'in-v2-enterprise-evaluation',
+    'in-v2-score',
+    'gd-v2-topic-selection',
+    'gd-v2-proposal',
+    'gd-v2-defense',
+    'gd-v2-grade',
+    'sa-card-risk-handle',
+    'sa-card-archive',
+    'mobile-unified-help-entry'
   ]) {
     assert.match(modelSource, new RegExp(`'${id}'`))
   }
+  assert.doesNotMatch(modelSource, /'in-card-eval-score'/)
+  assert.doesNotMatch(modelSource, /'gd-card-defense-grade'/)
 })
