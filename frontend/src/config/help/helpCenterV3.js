@@ -55,15 +55,20 @@ export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   },
   {
     key: 'internship',
-    title: '岗位实习核心办理链',
-    description: '当前已核验学生申请、协议、过程办理、调岗退岗、企业评价、成绩，并已经按实习指导教师/学院管理员/学校管理员/审计角色解释权限模板、数据范围和稳定指导关系；批次、岗前合规、风险事故、学生鉴定和归档继续按 V3-02 验真扩展。',
+    title: '岗位实习完整办理链',
+    description: '按正式实习事实推进：批次 → 学生申请/正式去向 → 三方协议 → 岗前合规 → 周报/指导巡访 → 风险与事故 → 调岗退岗 → 企业评价 → 学生鉴定 → 综合成绩 → 实习归档。每个节点同时解释 permissionCode、数据范围、稳定指导关系/本人关系和当前状态。',
     helpIds: [
+      'in-v3-batch-lifecycle',
       'in-v2-student-application',
       'in-v2-agreement',
+      'in-v3-onboard-compliance',
       'in-v2-teacher-process',
+      'in-v3-risk-incident',
       'in-v2-student-change',
       'in-v2-enterprise-eval',
-      'in-v2-score'
+      'in-v3-student-evaluation',
+      'in-v2-score',
+      'in-v3-archive'
     ]
   },
   {
