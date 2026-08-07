@@ -1,0 +1,63 @@
+name: Miniapp security refresh
+
+on:
+  push:
+    branches: [agent/production-release-governance-20260807]
+    paths:
+      - '.github/workflows/_miniapp-security-refresh.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/production-release-governance-20260807
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - name: Upgrade UniApp security train and regenerate lock
+        working-directory: miniapp
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --save-exact \
+            @dcloudio/uni-app@3.0.0-5010520260709002 \
+            @dcloudio/uni-cli-shared@3.0.0-5010520260709002 \
+            @dcloudio/uni-components@3.0.0-5010520260709002 \
+            @dcloudio/uni-h5@3.0.0-5010520260709002 \
+            @dcloudio/uni-mp-weixin@3.0.0-5010520260709002 \
+            @dcloudio/vite-plugin-uni@3.0.0-5010520260709002 \
+            vue-i18n@11.4.8
+          npm audit fix --package-lock-only
+      - name: Verify clean install, production audit, tests and builds
+        working-directory: miniapp
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm test
+          npm run build:h5
+          npm run build:mp-weixin
+      - name: Commit only dependency manifest and lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANGED="$(git status --short)"
+          echo "$CHANGED"
+          test -n "$CHANGED"
+          BAD="$(git status --short | awk '{print $2}' | grep -Ev '^(miniapp/package.json|miniapp/package-lock.json)$' || true)"
+          test -z "$BAD"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add miniapp/package.json miniapp/package-lock.json
+          git commit -m 'security(miniapp): upgrade UniApp dependency train'
+          git push origin HEAD:agent/production-release-governance-20260807
