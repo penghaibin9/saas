@@ -6,6 +6,7 @@ import {
 } from './helpContent'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { MOBILE_HELP_CARDS } from './help/mobileHelpCards'
+import { MOBILE_OPERATIONS_HELP_CARDS } from './help/mobileOperationsHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
@@ -27,10 +28,13 @@ export {
   HELP_DOCS,
   HELP_FLOWS,
   MOBILE_HELP_CARDS,
+  MOBILE_OPERATIONS_HELP_CARDS,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
   VERIFIED_HELP_OVERRIDES
 }
+
+const ALL_MOBILE_HELP_CARDS = [...MOBILE_HELP_CARDS, ...MOBILE_OPERATIONS_HELP_CARDS]
 
 function registerCards(cards) {
   const existingIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
@@ -55,6 +59,7 @@ registerCards(SYSTEM_HELP_CARDS)
 registerCards(FOUNDATION_HELP_CARDS)
 registerCards(STUDENT_DATA_HELP_CARDS)
 registerCards(MOBILE_HELP_CARDS)
+registerCards(MOBILE_OPERATIONS_HELP_CARDS)
 applyVerifiedOverrides()
 
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
@@ -82,7 +87,7 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
   BASE_HELP_SECTIONS.unshift({
     key: 'mobile-cards',
     label: '微信小程序 · 高频任务',
-    items: MOBILE_HELP_CARDS
+    items: ALL_MOBILE_HELP_CARDS
   })
 }
 
