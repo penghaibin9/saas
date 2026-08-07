@@ -20,6 +20,7 @@ test('legacy policy quarantines confirmed stale generic docs and flows', () => {
     'doc-academic',
     'doc-graduation',
     'doc-internship',
+    'flow-orientation',
     'flow-academic-warning',
     'flow-graduation',
     'flow-internship'
@@ -29,6 +30,7 @@ test('legacy policy quarantines confirmed stale generic docs and flows', () => {
 
   assert.deepEqual(LEGACY_HELP_EXCLUSIONS.cards, {})
   assert.match(LEGACY_HELP_EXCLUSIONS.docs['doc-academic'], /真实代码|推翻|成绩组成/)
+  assert.match(LEGACY_HELP_EXCLUSIONS.flows['flow-orientation'], /未逐项核验|设计阶段/)
   assert.match(LEGACY_HELP_EXCLUSIONS.flows['flow-academic-warning'], /失真/)
 })
 
@@ -38,6 +40,20 @@ test('runtime removes quarantined card, doc and flow ids from search arrays and 
   assert.match(runtimeSource, /removeIdsInPlace\(HELP_FLOWS, flowIds\)/)
   assert.match(runtimeSource, /BASE_HELP_SECTIONS\.forEach/)
   assert.match(runtimeSource, /EXCLUDED_LEGACY_HELP_IDS\.has/)
+})
+
+test('leave flow is corrected to current 3 and 7 day workflow thresholds with return follow-up', () => {
+  const flow = VERIFIED_HELP_FLOW_OVERRIDES['flow-leave']
+  const text = JSON.stringify(flow).toLowerCase()
+
+  assert.match(text, /≤3天仅辅导员/)
+  assert.match(text, />3且≤7天为辅导员→学院/)
+  assert.match(text, />7天为辅导员→学院→学工处/)
+  assert.match(text, /returned/)
+  assert.match(text, /修改后重新提交/)
+  assert.match(text, /续假/)
+  assert.match(text, /wait_cancel_leave/)
+  assert.match(text, /allowedactions/)
 })
 
 test('student affairs risk flow is corrected instead of keeping fixed 72-hour claim', () => {
@@ -53,6 +69,20 @@ test('student affairs risk flow is corrected instead of keeping fixed 72-hour cl
   assert.match(text, /自动升级/)
   assert.match(text, /escalated/)
   assert.doesNotMatch(text, /分派后72小时未处置自动升级/)
+})
+
+test('student affairs archive flow uses real package manifest and sha semantics', () => {
+  const flow = VERIFIED_HELP_FLOW_OVERRIDES['flow-sa-archive']
+  const text = JSON.stringify(flow).toLowerCase()
+
+  assert.match(text, /draft → collecting → college_review → sa_confirm → archived/)
+  assert.match(text, /xlsx/)
+  assert.match(text, /manifest/)
+  assert.match(text, /sha-256/)
+  assert.match(text, /导出任务/)
+  assert.match(text, /未就绪档案.*不能进入最终归档/)
+  assert.doesNotMatch(text, /加密水印档案包/)
+  assert.doesNotMatch(text, /无驳回分支/)
 })
 
 test('internship score flow is corrected instead of silently deleted', () => {
