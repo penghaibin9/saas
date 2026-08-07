@@ -583,11 +583,14 @@ def submit_task(task_id, user) -> dict:
         )
         db.add(instance)
         db.flush()
+        from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+            resolve_grade_task_assignee,
+        )
         db.add(WorkflowTask(
             tenant_id=_core._tid(),
             instance_id=instance.id,
             node_code="COLLEGE_REVIEW",
-            assignee_id=0,
+            assignee_id=resolve_grade_task_assignee(db, "COLLEGE_REVIEW", task),
             status="PENDING",
         ))
         task.workflow_instance_id = instance.id

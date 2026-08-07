@@ -799,7 +799,11 @@ def submit_task(task_id, user) -> dict:
                                 title=f"{t.course_name or ''} 成绩审核", status="RUNNING", current_node=first_node)
         db.add(inst)
         db.flush()
-        db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=first_node, assignee_id=0,
+        from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+            resolve_grade_task_assignee,
+        )
+        db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=first_node,
+                            assignee_id=resolve_grade_task_assignee(db, first_node, t),
                             status="PENDING"))
         t.workflow_instance_id = inst.id
         t.submitted_at = datetime.utcnow()
@@ -842,9 +846,13 @@ def college_review(task_id, user, action, reason="") -> dict:
                 wtask.status, wtask.acted_at = "APPROVED", datetime.utcnow()
             next_node = "ACADEMIC_REVIEW"
             if inst:
+                from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+                    resolve_grade_task_assignee,
+                )
                 inst.current_node = next_node
                 db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=next_node,
-                                    assignee_id=0, status="PENDING"))
+                                    assignee_id=resolve_grade_task_assignee(db, next_node, t),
+                                    status="PENDING"))
             t.college_reviewed_at = datetime.utcnow()
             t.college_reviewer_id = int(uid) if uid.isdigit() else None
             t.status = "ACADEMIC_REVIEW"
