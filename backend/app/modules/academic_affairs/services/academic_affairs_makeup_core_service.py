@@ -408,9 +408,14 @@ def clearance_records(user, batch_id, page=1, page_size=100):
             AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
             AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
             AcademicMakeup.is_deleted.is_(False)).order_by(AcademicMakeup.id).all()
+        # originGradeId 必须回给前端：候选名单要据此标出"这条不及格成绩已经纳入过了"，
+        # 没有它，教务只能靠课程名肉眼比对，重复点纳入也看不出来。
         items = [{"makeupId": str(m.id), "acadStudentId": str(m.acad_student_id),
+                  "originGradeId": str(m.origin_grade_id) if m.origin_grade_id else None,
                   "studentNo": s.student_no, "studentName": s.name,
-                  "courseName": m.course_name, "originScore": m.origin_score,
+                  "courseName": m.course_name, "courseCode": m.course_code,
+                  "attemptNo": m.attempt_no, "kind": getattr(m, "kind", "MAKEUP"),
+                  "originScore": m.origin_score,
                   "finalScore": m.final_score, "status": m.status} for m, s in rows]
         return items[(page - 1) * page_size: page * page_size], len(items)
 
