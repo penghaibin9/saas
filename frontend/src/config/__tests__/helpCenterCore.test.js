@@ -37,12 +37,13 @@ test('search text includes nested steps, faq and warnings', () => {
   assert.match(text, /正式发布/)
 })
 
-test('search text indexes task prerequisites outcomes troubleshooting platforms and related entries', () => {
+test('search text indexes V2 task prerequisites outcomes troubleshooting permissions platforms and related entries', () => {
   const text = buildHelpSearchText({
     title: '移动请假',
     platforms: ['微信小程序'],
     mobilePath: 'pages/student/affairs/leave',
     prerequisites: ['先完成学生身份绑定'],
+    permissions: ['只有当前申请人且服务器 allowedActions 允许时才能重提'],
     successCriteria: ['重新进入审批队列'],
     troubleshooting: ['修改已保存但重提失败时继续原申请'],
     related: [{ label: '账号异常排查', route: '/admin/system/account-exceptions' }]
@@ -51,6 +52,7 @@ test('search text indexes task prerequisites outcomes troubleshooting platforms 
   assert.match(text, /微信小程序/)
   assert.match(text, /pages\/student\/affairs\/leave/)
   assert.match(text, /学生身份绑定/)
+  assert.match(text, /allowedactions/)
   assert.match(text, /重新进入审批队列/)
   assert.match(text, /重提失败/)
   assert.match(text, /账号异常排查/)
