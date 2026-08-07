@@ -10,7 +10,16 @@ const REQUIRED = [
   'counselorUserId',
   'counselorLogin',
   'counselorName',
-  'assignmentId'
+  'assignmentId',
+  'outsideStudentId',
+  'outsideStudentNo',
+  'outsideStudentName',
+  'outsideClassId',
+  'outsideClassName',
+  'outsideCounselorUserId',
+  'outsideCounselorLogin',
+  'outsideCounselorName',
+  'outsideAssignmentId'
 ]
 
 export async function loadStudentAffairsFixture() {
@@ -29,6 +38,9 @@ export async function loadStudentAffairsFixture() {
     if (fixture[key] === undefined || fixture[key] === null || fixture[key] === '') {
       throw new Error(`Student-affairs E2E fixture is missing ${key}: ${target}`)
     }
+  }
+  if (String(fixture.classId) === String(fixture.outsideClassId)) {
+    throw new Error(`Student-affairs E2E cross-class fixture collapsed to one class: ${target}`)
   }
   return fixture
 }
