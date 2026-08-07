@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.core.permissions import has_permission
 from app.core.request_context import get_trace_id
 from app.db.session import db_enabled
 from app.services import approval_service as base
@@ -35,16 +34,6 @@ def _tid() -> int:
     return value
 
 
-def _manage(user=None) -> bool:
-    u = _user(user)
-    return has_permission(u, "*") or has_permission(u, "approval.manage")
-
-
-def _require_manage(user=None) -> None:
-    if not _manage(user):
-        raise no_permission("无审批中心管理权限（approval.manage）")
-
-
 def _allowed(status: str) -> list[str]:
     return ["APPROVE", "RETURN", "REJECT", "TRANSFER"] if str(status).upper() == "PENDING" else []
 
@@ -57,24 +46,85 @@ def _contract(result: dict, next_todo=None) -> dict:
     return out
 
 
+def _task_can_act(db, task, inst, user=None) -> bool:
+    """与既有 SYS-14 节点动作策略保持同一事实源。"""
+    from app.services import db_service
+
+    if db_service._can_manage_all_approvals(
+        user,
+        workflow_code=(inst.workflow_code if inst else None),
+        node_code=task.node_code,
+    ):
+        return True
+    uid = db_service._approval_actor_id(user)
+    return bool(uid and int(task.assignee_id) == int(uid))
+
+
+def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
+    """列表补齐实例状态、业务对象、期限和 allowedActions；前端不得自己猜动作。"""
+    if not rows:
+        return rows
+    from sqlalchemy import select
+    from app.models import WorkflowInstance, WorkflowTask
+    from app.services import db_service
+
+    task_ids = []
+    for row in rows:
+        try:
+            task_ids.append(int(row.get("taskId") or 0))
+        except (TypeError, ValueError):
+            continue
+    if not task_ids:
+        return rows
+    with db_service.session() as db:
+        tasks = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.id.in_(task_ids),
+            WorkflowTask.is_deleted.is_(False),
+        )).all()
+        task_map = {int(x.id): x for x in tasks}
+        instance_ids = {x.instance_id for x in tasks}
+        instances = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.id.in_(instance_ids),
+            WorkflowInstance.is_deleted.is_(False),
+        )).all() if instance_ids else []
+        inst_map = {int(x.id): x for x in instances}
+        now = datetime.utcnow()
+        for row in rows:
+            try:
+                task = task_map.get(int(row.get("taskId") or 0))
+            except (TypeError, ValueError):
+                task = None
+            if not task:
+                row["allowedActions"] = []
+                continue
+            inst = inst_map.get(int(task.instance_id))
+            row["instanceStatus"] = inst.status if inst else ""
+            row["currentInstanceNode"] = inst.current_node if inst else ""
+            row["sourceBizId"] = str(inst.source_biz_id) if inst else ""
+            row["deadlineAt"] = task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None
+            row["urgency"] = (
+                "OVERDUE" if task.deadline_at and task.deadline_at < now
+                else "NEAR_DEADLINE" if task.deadline_at and task.deadline_at <= now + timedelta(hours=24)
+                else "NORMAL"
+            )
+            row["allowedActions"] = _allowed(task.status) if _task_can_act(db, task, inst, user) else []
+    return rows
+
+
 def list_tasks(page, page_size, *, user=None, keyword=None, biz_type=None):
     _require_db()
-    return base.list_tasks(page, page_size, user=user, keyword=keyword, biz_type=biz_type)
+    rows, total = base.list_tasks(page, page_size, user=user, keyword=keyword, biz_type=biz_type)
+    return _enrich_rows(rows, user=user), total
 
 
 def list_processed(page, page_size, *, user=None, keyword=None, biz_type=None, result=None):
     _require_db()
-    return base.list_processed(
+    rows, total = base.list_processed(
         page, page_size, user=user, keyword=keyword, biz_type=biz_type, result=result
     )
-
-
-def _assert_access(task, user=None):
-    if _manage(user):
-        return
-    uid = resolve_message_user_id(_user(user))
-    if not uid or int(task.assignee_id) != int(uid):
-        raise no_permission("该审批任务不在你的办理范围内")
+    return _enrich_rows(rows, user=user), total
 
 
 def get_task(task_id: str, *, user=None) -> dict:
@@ -95,7 +145,8 @@ def get_task(task_id: str, *, user=None) -> dict:
         )).first()
         if not task:
             raise not_found("审批任务不存在")
-        _assert_access(task, user)
+        # 复用既有审批安全策略：assignee + approval.manage + SYS-14 节点动作策略。
+        db_service._assert_task_assignee(db, task, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == task.instance_id,
             WorkflowInstance.tenant_id == _tid(),
@@ -105,6 +156,7 @@ def get_task(task_id: str, *, user=None) -> dict:
             raise not_found("审批实例不存在")
         row = db_service._task_row(task, inst)
         row["instanceStatus"] = inst.status
+        row["currentInstanceNode"] = inst.current_node or ""
         row["sourceBizId"] = str(inst.source_biz_id)
         row["deadlineAt"] = task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None
         now = datetime.utcnow()
@@ -113,7 +165,7 @@ def get_task(task_id: str, *, user=None) -> dict:
             else "NEAR_DEADLINE" if task.deadline_at and task.deadline_at <= now + timedelta(hours=24)
             else "NORMAL"
         )
-        row["allowedActions"] = _allowed(task.status)
+        row["allowedActions"] = _allowed(task.status) if _task_can_act(db, task, inst, user) else []
         history = db.scalars(select(WorkflowTask).where(
             WorkflowTask.instance_id == inst.id,
             WorkflowTask.tenant_id == _tid(),
@@ -167,13 +219,20 @@ def summary(*, user=None) -> dict:
         for _, inst in rows:
             key = inst.source_biz_type or "GENERAL"
             by[key] = by.get(key, 0) + 1
+        overdue_rows = [db_service._task_row(t, i) for t, i in overdue[:10]]
+        for item, (task, inst) in zip(overdue_rows, overdue[:10]):
+            item["instanceStatus"] = inst.status
+            item["sourceBizId"] = str(inst.source_biz_id)
+            item["deadlineAt"] = task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None
+            item["urgency"] = "OVERDUE"
+            item["allowedActions"] = _allowed(task.status) if _task_can_act(db, task, inst, user) else []
         return {
             "total": total,
             "todayNew": today,
             "overdue": len(overdue),
             "nearDeadline": len(near),
             "byBizType": [{"bizType": k, "count": v} for k, v in sorted(by.items())],
-            "overdueList": [db_service._task_row(t, i) for t, i in overdue[:10]],
+            "overdueList": overdue_rows,
             "asOf": datetime.now().isoformat(timespec="seconds"),
         }
 
@@ -209,7 +268,7 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
         ).with_for_update()).first()
         if not task:
             raise not_found("审批任务不存在")
-        _assert_access(task, user)
+        db_service._assert_task_assignee(db, task, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == task.instance_id,
             WorkflowInstance.tenant_id == _tid(),
@@ -231,13 +290,13 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
         inst.current_node = "APPLICANT_RESUBMIT"
         inst.version = int(inst.version or 0) + 1
 
+        # 去重键不包含 is_deleted：必须连软删记录一起查，存在则原位恢复，禁止插入碰唯一键。
         todo = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(),
             UnifiedTodo.source_module == inst.source_module,
             UnifiedTodo.source_biz_id == inst.source_biz_id,
             UnifiedTodo.todo_type == "APPROVAL_RESUBMIT",
             UnifiedTodo.assignee_id == inst.applicant_id,
-            UnifiedTodo.is_deleted.is_(False),
         ).with_for_update()).first()
         if not todo:
             todo = UnifiedTodo(
@@ -253,6 +312,7 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
             )
             db.add(todo)
         else:
+            todo.is_deleted = False
             todo.status = "PENDING"
             todo.title = f"{inst.title or '审批申请'}：修改并重新提交"
             todo.remark = reason.strip()
@@ -412,9 +472,10 @@ def transfer(task_id, target_user_id, comment, *, user=None, version=None):
             User.id == target_id,
             User.tenant_id == _tid(),
             User.is_deleted.is_(False),
+            User.status == "ACTIVE",
         )).first()
         if not target or str(getattr(target, "user_type", "")).upper() == "STUDENT":
-            raise AppException("VALIDATION_ERROR", "转办目标不存在或不是教职工")
+            raise AppException("VALIDATION_ERROR", "转办目标不存在、已停用或不是教职工")
         task = db.scalars(select(WorkflowTask).where(
             WorkflowTask.id == int(task_id),
             WorkflowTask.tenant_id == _tid(),
@@ -422,7 +483,7 @@ def transfer(task_id, target_user_id, comment, *, user=None, version=None):
         ).with_for_update()).first()
         if not task:
             raise not_found("审批任务不存在")
-        _assert_access(task, user)
+        db_service._assert_task_assignee(db, task, user)
         if int(task.assignee_id) == target_id:
             raise AppException("VALIDATION_ERROR", "不能转办给当前办理人")
         inst = db.scalars(select(WorkflowInstance).where(
@@ -466,7 +527,7 @@ def transfer(task_id, target_user_id, comment, *, user=None, version=None):
             "instanceStatus": inst.status,
             "version": int(version) + 1,
             "newTaskId": str(new_task.id),
-            "transferredTo": getattr(target, "real_name", None) or getattr(target, "login_name", None) or str(target_id),
+            "transferredTo": target.real_name or target.login_name or str(target_id),
         })
 
 
@@ -481,10 +542,11 @@ def transfer_targets(*, user=None, limit=100):
         users = db.scalars(select(User).where(
             User.tenant_id == _tid(),
             User.is_deleted.is_(False),
+            User.status == "ACTIVE",
         ).order_by(User.id).limit(min(max(int(limit), 1), 200))).all()
         out = []
         for row in users:
-            if int(row.id) == int(me or 0) or str(getattr(row, "user_type", "")).upper() == "STUDENT":
+            if int(row.id) == int(me or 0) or str(row.user_type or "").upper() == "STUDENT":
                 continue
             pending = int(db.scalar(select(func.count()).select_from(WorkflowTask).where(
                 WorkflowTask.tenant_id == _tid(),
@@ -494,8 +556,8 @@ def transfer_targets(*, user=None, limit=100):
             )) or 0)
             out.append({
                 "userId": str(row.id),
-                "userName": getattr(row, "real_name", None) or getattr(row, "login_name", None) or str(row.id),
-                "roleName": getattr(row, "user_type", None) or "教职工",
+                "userName": row.real_name or row.login_name or str(row.id),
+                "roleName": row.user_type or "教职工",
                 "orgName": "",
                 "pendingCount": pending,
             })
@@ -582,9 +644,18 @@ def list_returned(page, page_size, *, user=None, keyword=None, rectify_status=No
         page, page_size, user=user, keyword=keyword, result="RETURNED"
     )
     for row in rows:
-        row["rectifyStatus"] = "PENDING_RESUBMIT" if row.get("instanceStatus") == "RUNNING" else "CLOSED"
+        inst_status = str(row.get("instanceStatus") or "").upper()
+        current_node = str(row.get("currentInstanceNode") or "").upper()
+        if inst_status == "RUNNING" and current_node == "APPLICANT_RESUBMIT":
+            row["rectifyStatus"] = "PENDING_RESUBMIT"
+        elif inst_status == "RUNNING":
+            row["rectifyStatus"] = "RESUBMITTED"
+        else:
+            row["rectifyStatus"] = "CLOSED"
     if rectify_status:
-        rows = [x for x in rows if x["rectifyStatus"] == rectify_status]
+        wanted = str(rectify_status).upper()
+        rows = [x for x in rows if x["rectifyStatus"] == wanted]
+        # 过滤发生在服务端返回的真实页内；total 不冒充全库命中数。
         total = len(rows)
     return rows, total
 
