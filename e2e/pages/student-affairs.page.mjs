@@ -43,6 +43,45 @@ export class StudentAffairsPortalPage {
     return this.page.locator('section.sp-card').filter({ hasText: '请假申请' }).first()
   }
 
+  async assertLeaveFormValidation({ startDate, endDate }) {
+    await this.openLeave()
+    const form = this.form()
+    await expect(form).toBeVisible()
+
+    const submit = form.getByRole('button', { name: '提交请假' })
+    const dates = form.locator('input[type="date"]')
+    const reason = form.locator('textarea')
+    await expect(dates).toHaveCount(2)
+    await expect(submit).toBeDisabled()
+
+    let writes = 0
+    const onRequest = (request) => {
+      if (
+        apiPath(request) === '/api/v1/portal/affairs/leave'
+        && request.method() === 'POST'
+      ) writes += 1
+    }
+    this.page.on('request', onRequest)
+    try {
+      await form.locator('select').selectOption('PERSONAL')
+      await dates.nth(0).fill(startDate)
+      await dates.nth(1).fill(endDate)
+      await reason.fill('四字事由')
+      await expect(submit).toBeDisabled()
+
+      await reason.fill('五字事由啊')
+      await expect(submit).toBeEnabled()
+
+      await dates.nth(1).fill('')
+      await expect(submit).toBeDisabled()
+      await dates.nth(1).fill(endDate)
+      await expect(submit).toBeEnabled()
+      expect(writes, '只做表单校验时不应产生任何请假写请求').toBe(0)
+    } finally {
+      this.page.off('request', onRequest)
+    }
+  }
+
   async submitLeave({ startDate, endDate, reason }) {
     await this.openLeave()
     const form = this.form()
@@ -73,9 +112,36 @@ export class StudentAffairsPortalPage {
     return leaveId
   }
 
+  async dismissCancelAndStay({ leaveId }) {
+    await this.openLeave()
+    const buttons = this.page.getByRole('button', { name: '申请销假' })
+    await expect(buttons).toHaveCount(1)
+    const button = buttons.first()
+    await expect(button).toBeEnabled()
+    const row = button.locator('xpath=ancestor::article[contains(@class,"record")]')
+    await expect(row).toBeVisible()
+    await expect(row).toContainText(/已通过|APPROVED/)
+
+    this.page.once('dialog', async (dialog) => {
+      expect(dialog.type()).toBe('confirm')
+      await dialog.dismiss()
+    })
+    const unexpectedWrite = this.page.waitForRequest((request) =>
+      apiPath(request) === `/api/v1/portal/affairs/leave/${leaveId}/cancel`
+      && request.method() === 'POST',
+    { timeout: 700 }).then(() => true).catch(() => false)
+
+    await button.click()
+    expect(await unexpectedWrite, '用户取消确认框后不应提交销假请求').toBeFalsy()
+    await expect(button).toBeEnabled()
+    await expect(row).toContainText(/已通过|APPROVED/)
+  }
+
   async submitCancel({ leaveId }) {
     await this.openLeave()
-    const button = this.page.getByRole('button', { name: '申请销假' }).first()
+    const buttons = this.page.getByRole('button', { name: '申请销假' })
+    await expect(buttons).toHaveCount(1)
+    const button = buttons.first()
     await expect(button).toBeEnabled()
     const row = button.locator('xpath=ancestor::article[contains(@class,"record")]')
     await expect(row).toBeVisible()
@@ -92,6 +158,20 @@ export class StudentAffairsPortalPage {
     const body = await expectSuccessfulResponse(await responsePromise, '学生申请销假')
     expect(body?.data?.affairsStatus).toBe('WAIT_CANCEL_LEAVE')
     await expect(this.page.getByRole('button', { name: '申请销假' })).toHaveCount(0)
+  }
+
+  async verifyClosedAsStudent({ startDate }) {
+    await this.openLeave()
+    const records = this.page.locator('article.record')
+    await expect(records).toHaveCount(1)
+    const record = records.first()
+    await expect(record).toBeVisible()
+    await expect(record).toContainText('事假')
+    await expect(record).toContainText(startDate)
+    await expect(record).toContainText(/已销假|CLOSED/)
+    await expect(record.getByRole('button', { name: '申请销假' })).toHaveCount(0)
+    await expect(record.getByRole('button', { name: '申请续假' })).toHaveCount(0)
+    await expect(record.getByRole('button', { name: '修改后重提' })).toHaveCount(0)
   }
 }
 
