@@ -46,7 +46,7 @@ export const INTERNSHIP_V3_SELF_SERVICE_GUIDANCE = Object.freeze({
       '版本冲突持续发生且确认没有其他人在办理，可能存在历史并发/版本数据问题。'
     ]
   },
-  'in-v2-enterprise-evaluation': {
+  'in-v2-enterprise-eval': {
     nextSteps: [
       '企业评价真实材料代录并通过学校审核后，才能作为成绩核算的企业评价来源。',
       '继续完成学生鉴定/指导教师意见等学校侧评价材料，再进入综合成绩核算。'
