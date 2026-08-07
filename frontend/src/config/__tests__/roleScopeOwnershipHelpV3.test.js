@@ -62,7 +62,7 @@ test('academic teacher help cannot imply broad admin authority', () => {
   assert.match(scheduleText, /只能查看本班课表/)
 })
 
-test('internship clean cards expose stable owner and scoped role guidance', () => {
+test('internship clean cards expose stable owner, scoped role and self-service handoff guidance', () => {
   const expected = [
     'in-v2-student-application',
     'in-v2-agreement',
@@ -76,6 +76,8 @@ test('internship clean cards expose stable owner and scoped role guidance', () =
     assert.ok(card, `missing ${id}`)
     assert.ok(card.authorizationPrinciple, `${id} missing authorizationPrinciple`)
     assert.ok(card.roleGuidance?.length, `${id} missing roleGuidance`)
+    assert.ok(card.nextSteps?.length, `${id} missing nextSteps`)
+    assert.ok(card.contactAdminWhen?.length, `${id} missing contactAdminWhen`)
   }
 
   const processText = roleText(INTERNSHIP_CLEAN_HELP_CARDS.find((item) => item.id === 'in-v2-teacher-process'))
