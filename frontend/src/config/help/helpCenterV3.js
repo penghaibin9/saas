@@ -32,23 +32,24 @@ export const HELP_V3_QUICK_QUESTIONS = Object.freeze([
 
 /**
  * V3 核心业务地图只引用 verified-only 已发布 help id。
- * 这里故意不把尚未完成重新验真的历史节点塞进流程图：
- * “完整流程”会在 V3-01~04 按代码事实逐段扩展，当前首页只展示已经可信的办理链。
+ * 不把尚未完成重新验真的历史节点塞进流程图；各领域按 V3-01~04 逐段扩展。
  */
 export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   {
     key: 'academic',
-    title: '教务核心办理链',
-    description: '当前先覆盖已重新验真的学籍、选课、考务、成绩链；培养方案、教学任务、排课、学分/GPA、补考重修、毕业资格继续按 V3-01 验真后扩展。',
+    title: '教务完整事实链',
+    description: '按正式数据依赖从学籍一路走到毕业资格：学籍 → 培养方案/课程 → 教学任务 → 排课 → 选课 → 考务 → 成绩 → 学分/GPA → 补考重修 → 毕业资格。每个节点只引用当前代码已重新验真的正式帮助。',
     helpIds: [
       'aa-card-status-change',
-      'aa-card-selection-round',
+      'aa-v3-program-course',
+      'aa-v3-teaching-task',
+      'aa-v3-schedule',
       'aa-card-selection-publish',
-      'aa-card-exam-arrangement',
       'aa-card-exam-publish',
-      'aa-card-grade-entry',
       'aa-card-grade-review-publish',
-      'aa-card-grade-change'
+      'aa-v3-credit-gpa',
+      'aa-v3-makeup-retake',
+      'aa-v3-graduation-qualification'
     ]
   },
   {
