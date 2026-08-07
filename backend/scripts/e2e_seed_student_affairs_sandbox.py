@@ -2,7 +2,9 @@
 
 The script gives two dedicated E2E advisors the real COUNSELOR role and installs
 separate class assignments/scopes for student A and the cross-class negative-control
-student B. It runs only against the disposable sandbox-school E2E database.
+student B. It also binds deterministic college/student-affairs reviewer roles needed by
+long-leave multi-level browser tests. It runs only against the disposable sandbox-school
+E2E database.
 
 It deliberately does not create CsLeave, workflow tasks, cancel records or audit rows:
 every business transition must be produced by visible browser interactions.
@@ -21,6 +23,8 @@ from sqlalchemy import select
 from app.db.session import get_sessionmaker
 from app.models import (
     AffairsCounselorAssignment,
+    College,
+    Major,
     Role,
     SchoolClass,
     StudentProfile,
@@ -37,6 +41,10 @@ COUNSELOR_LOGIN = "e2e_advisor_a"
 OUTSIDE_STUDENT_NO = "E2E20260002"
 OUTSIDE_COUNSELOR_LOGIN = "e2e_advisor_b"
 COUNSELOR_ROLE = "COUNSELOR"
+COLLEGE_REVIEWER_LOGIN = "e2e_college_secretary"
+COLLEGE_REVIEWER_ROLE = "COLLEGE_ADMIN"
+SA_REVIEWER_LOGIN = "e2e_academic_admin"
+SA_REVIEWER_ROLE = "STUDENT_AFFAIRS_ADMIN"
 DEFAULT_FIXTURE_PATH = "../e2e/runtime/student-affairs-fixture.json"
 
 
@@ -99,42 +107,42 @@ def require_student_and_class(db, student_no: str) -> tuple[StudentProfile, Scho
     return student, school_class
 
 
-def ensure_counselor_role(db, counselor_login: str) -> User:
-    counselor = db.scalars(
+def ensure_staff_role(db, login_name: str, role_code: str) -> User:
+    staff = db.scalars(
         select(User).where(
             User.tenant_id == TENANT_ID,
-            User.login_name == counselor_login,
+            User.login_name == login_name,
             User.status == "ACTIVE",
             User.is_deleted.is_(False),
         )
     ).first()
-    if counselor is None:
+    if staff is None:
         raise SystemExit(
-            f"counselor {TENANT_CODE}/{counselor_login} is missing; run the E2E identity bootstrap first"
+            f"staff {TENANT_CODE}/{login_name} is missing; run the E2E identity bootstrap first"
         )
 
     role = db.scalars(
         select(Role).where(
             Role.tenant_id == TENANT_ID,
-            Role.role_code == COUNSELOR_ROLE,
+            Role.role_code == role_code,
             Role.status == "ACTIVE",
             Role.is_deleted.is_(False),
         )
     ).first()
     if role is None:
-        raise SystemExit(f"role {COUNSELOR_ROLE} is missing in {TENANT_CODE}")
+        raise SystemExit(f"role {role_code} is missing in {TENANT_CODE}")
 
     linked = db.scalars(
         select(UserRole).where(
             UserRole.tenant_id == TENANT_ID,
-            UserRole.user_id == counselor.id,
+            UserRole.user_id == staff.id,
             UserRole.role_id == role.id,
         )
     ).first()
     if linked is None:
         linked = UserRole(
             tenant_id=TENANT_ID,
-            user_id=counselor.id,
+            user_id=staff.id,
             role_id=role.id,
             status="ACTIVE",
         )
@@ -143,7 +151,11 @@ def ensure_counselor_role(db, counselor_login: str) -> User:
         linked.status = "ACTIVE"
         linked.is_deleted = False
     db.flush()
-    return counselor
+    return staff
+
+
+def ensure_counselor_role(db, counselor_login: str) -> User:
+    return ensure_staff_role(db, counselor_login, COUNSELOR_ROLE)
 
 
 def ensure_class_scope(db, school_class: SchoolClass, counselor: User) -> TeacherStudentScope:
@@ -185,6 +197,52 @@ def ensure_class_scope(db, school_class: SchoolClass, counselor: User) -> Teache
         current.teacher_name = counselor.real_name
         current.scope_type = "CLASS"
         current.ref_value = school_class.class_name
+        current.status = "ACTIVE"
+        current.is_deleted = False
+    return current
+
+
+def resolve_college(db, school_class: SchoolClass) -> College:
+    major = db.get(Major, school_class.major_id) if school_class.major_id else None
+    college = db.get(College, major.college_id) if major and major.college_id else None
+    if college is None or college.tenant_id != TENANT_ID or college.is_deleted:
+        raise SystemExit(f"class {school_class.class_name} has no active college")
+    return college
+
+
+def ensure_college_scope(db, college: College, reviewer: User) -> TeacherStudentScope:
+    rows = db.scalars(
+        select(TeacherStudentScope).where(
+            TeacherStudentScope.tenant_id == TENANT_ID,
+            TeacherStudentScope.teacher_key == reviewer.login_name,
+            TeacherStudentScope.role_code == COLLEGE_REVIEWER_ROLE,
+            TeacherStudentScope.is_deleted.is_(False),
+        )
+    ).all()
+    current = None
+    for row in rows:
+        if row.scope_type == "COLLEGE" and row.ref_value == college.college_name:
+            current = row
+            continue
+        row.status = "INACTIVE"
+        row.version = int(row.version or 0) + 1
+
+    if current is None:
+        current = TeacherStudentScope(
+            tenant_id=TENANT_ID,
+            teacher_key=reviewer.login_name,
+            teacher_name=reviewer.real_name,
+            role_code=COLLEGE_REVIEWER_ROLE,
+            scope_type="COLLEGE",
+            ref_value=college.college_name,
+            status="ACTIVE",
+        )
+        db.add(current)
+        db.flush()
+    else:
+        current.teacher_name = reviewer.real_name
+        current.scope_type = "COLLEGE"
+        current.ref_value = college.college_name
         current.status = "ACTIVE"
         current.is_deleted = False
     return current
@@ -257,8 +315,13 @@ def main() -> int:
 
         counselor = ensure_counselor_role(db, COUNSELOR_LOGIN)
         outside_counselor = ensure_counselor_role(db, OUTSIDE_COUNSELOR_LOGIN)
+        college = resolve_college(db, school_class)
+        college_reviewer = ensure_staff_role(db, COLLEGE_REVIEWER_LOGIN, COLLEGE_REVIEWER_ROLE)
+        sa_reviewer = ensure_staff_role(db, SA_REVIEWER_LOGIN, SA_REVIEWER_ROLE)
+
         scope = ensure_class_scope(db, school_class, counselor)
         outside_scope = ensure_class_scope(db, outside_class, outside_counselor)
+        college_scope = ensure_college_scope(db, college, college_reviewer)
         assignment = ensure_assignment(db, school_class, counselor, now)
         outside_assignment = ensure_assignment(db, outside_class, outside_counselor, now)
         db.commit()
@@ -285,6 +348,13 @@ def main() -> int:
             "outsideCounselorName": outside_counselor.real_name,
             "outsideScopeId": str(outside_scope.id),
             "outsideAssignmentId": str(outside_assignment.id),
+            "collegeReviewerUserId": str(college_reviewer.id),
+            "collegeReviewerLogin": college_reviewer.login_name,
+            "collegeReviewerName": college_reviewer.real_name,
+            "collegeReviewerScopeId": str(college_scope.id),
+            "studentAffairsReviewerUserId": str(sa_reviewer.id),
+            "studentAffairsReviewerLogin": sa_reviewer.login_name,
+            "studentAffairsReviewerName": sa_reviewer.real_name,
         }
         target = fixture_path()
         target.parent.mkdir(parents=True, exist_ok=True)
