@@ -83,9 +83,10 @@ test('course and program card preserves versioning, two-review and binding truth
 
 test('teaching-task and schedule cards lock the READY handoff and publish gate', () => {
   const task = text(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-teaching-task'))
-  for (const token of ['PENDING_ASSIGN', 'ASSIGNED', 'TEACHER_CONFIRMED', 'COLLEGE_CONFIRMED', 'APPROVED', 'READY', 'teacher_key']) {
+  for (const token of ['PENDING_ASSIGN', 'TEACHER_CONFIRMED', 'COLLEGE_CONFIRMED', 'APPROVED', 'READY', 'teacher_key']) {
     assert.match(task, new RegExp(token))
   }
+  assert.match(task, /分配任课教师/)
   assert.match(task, /课表项/)
   assert.match(task, /不能静默/)
 
@@ -98,14 +99,15 @@ test('teaching-task and schedule cards lock the READY handoff and publish gate',
   assert.match(schedule, /重新回到 DRAFT/)
 })
 
-test('credit and GPA card states the current formula without pretending per-school GPA configurability', () => {
+test('credit and GPA card states the current formula and explicitly refuses fake per-school configurability', () => {
   const body = text(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-credit-gpa'))
   assert.match(body, /\(成绩-50\)\/10/)
   assert.match(body, /60→1\.0/)
   assert.match(body, /100→5\.0/)
   assert.match(body, /课程绩点×课程学分/)
   assert.match(body, /尚未参数化/)
-  assert.doesNotMatch(body, /学校可自定义GPA算法|每校可自由配置 GPA 算法/)
+  assert.match(body, /不能承诺.*每校可自由配置 GPA 算法/)
+  assert.match(body, /学校制度要求另一套 GPA 映射.*当前规则中心尚未支持/)
 })
 
 test('makeup card requires reviewed formal writeback and does not overwrite the original failed fact', () => {
