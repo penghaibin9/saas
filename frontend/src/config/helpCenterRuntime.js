@@ -9,6 +9,7 @@ import { ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS } from './help/academicAffairsCor
 import { ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS } from './help/academicAffairsVerifiedOverrides'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { GRADUATION_CLEAN_HELP_CARDS } from './help/graduationCleanHelpCards'
+import { GRADUATION_CORE_FLOW_HELP_CARDS } from './help/graduationCoreFlowHelpCards'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './help/internshipCleanHelpCards'
 import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './help/internshipCoreFlowHelpCards'
 import {
@@ -40,6 +41,7 @@ export {
   ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
   FOUNDATION_HELP_CARDS,
   GRADUATION_CLEAN_HELP_CARDS,
+  GRADUATION_CORE_FLOW_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
   INTERNSHIP_CLEAN_HELP_CARDS,
@@ -66,10 +68,6 @@ function registerCards(cards) {
   }
 }
 
-/**
- * 领域清洗后的正式卡拥有稳定 id 的最终正文权。
- * 如果历史 helpContent 中已有同 id，则完整替换旧对象；没有则注册新卡。
- */
 function replaceOrRegisterCards(cards) {
   for (let index = cards.length - 1; index >= 0; index -= 1) {
     const card = cards[index]
@@ -89,7 +87,6 @@ function applyCardOverrides(cardsById, overrides) {
 function applyVerifiedOverrides() {
   const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
   applyCardOverrides(cardsById, VERIFIED_HELP_OVERRIDES)
-
   const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
     const target = flowsById.get(id)
@@ -124,28 +121,26 @@ function quarantineConfirmedStaleHelp() {
   const docIds = policyIds('docs')
   const flowIds = policyIds('flows')
   const allExcludedIds = new Set([...EXCLUDED_LEGACY_HELP_IDS, ...cardIds, ...docIds, ...flowIds])
-
   removeIdsInPlace(BASE_HELP_CARDS, cardIds)
   removeIdsInPlace(HELP_DOCS, docIds)
   removeIdsInPlace(HELP_FLOWS, flowIds)
-
   BASE_HELP_SECTIONS.forEach((section) => {
     if (!Array.isArray(section.items)) return
     section.items = section.items.filter((item) => !allExcludedIds.has(item?.id))
   })
 }
 
-/** verified-only 发布白名单。 */
 export const VERIFIED_HELP_CARD_IDS = new Set([
   ...SYSTEM_HELP_CARDS.map((item) => item.id),
   ...FOUNDATION_HELP_CARDS.map((item) => item.id),
   ...STUDENT_DATA_HELP_CARDS.map((item) => item.id),
   ...MOBILE_CLEAN_HELP_CARDS.map((item) => item.id),
   ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
-  ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
+  ...ACAMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...INTERNSHIP_CLEAN_HELP_CARDS.map((item) => item.id),
   ...INTERNSHIP_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...GRADUATION_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...GRADUATION_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
   ...Object.keys(VERIFIED_HELP_OVERRIDES)
 ])
@@ -158,13 +153,11 @@ function quarantineUnverifiedKnowledge() {
   removeUnverifiedInPlace(BASE_HELP_CARDS, VERIFIED_HELP_CARD_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
   removeUnverifiedInPlace(HELP_DOCS, VERIFIED_HELP_DOC_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
   removeUnverifiedInPlace(HELP_FLOWS, VERIFIED_HELP_FLOW_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
-
   const publishedIds = new Set([
     ...VERIFIED_HELP_CARD_IDS,
     ...VERIFIED_HELP_DOC_IDS,
     ...VERIFIED_HELP_FLOW_IDS
   ])
-
   BASE_HELP_SECTIONS.forEach((section) => {
     if (!Array.isArray(section.items)) return
     section.items = section.items.filter((item) => publishedIds.has(item?.id))
@@ -180,6 +173,7 @@ replaceOrRegisterCards(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(INTERNSHIP_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(INTERNSHIP_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(GRADUATION_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(GRADUATION_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(MOBILE_CLEAN_HELP_CARDS)
 quarantineConfirmedStaleHelp()
@@ -195,24 +189,19 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards'))
   BASE_HELP_SECTIONS.unshift({ key: 'student-data-cards', label: '学生主档与数据 · 任务卡', items: STUDENT_DATA_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-v3-core-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'academic-v3-core-cards',
-    label: '教务中心 · V3核心事实链',
-    items: ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'academic-v3-core-cards', label: '教务中心 · V3核心事实链', items: ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) {
   BASE_HELP_SECTIONS.unshift({ key: 'academic-clean-cards', label: '教务中心 · 已核验任务', items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-v3-core-cards')) {
-  BASE_HELP_SECTIONS.unshift({
-    key: 'internship-v3-core-cards',
-    label: '岗位实习 · V3完整办理链',
-    items: INTERNSHIP_CORE_FLOW_HELP_CARDS
-  })
+  BASE_HELP_SECTIONS.unshift({ key: 'internship-v3-core-cards', label: '岗位实习 · V3完整办理链', items: INTERNSHIP_CORE_FLOW_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) {
   BASE_HELP_SECTIONS.unshift({ key: 'internship-clean-cards', label: '岗位实习 · 已核验任务', items: INTERNSHIP_CLEAN_HELP_CARDS })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-v3-core-cards')) {
+  BASE_HELP_SECTIONS.unshift({ key: 'graduation-v3-core-cards', label: '毕业设计 · V3完整办理链', items: GRADUATION_CORE_FLOW_HELP_CARDS })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) {
   BASE_HELP_SECTIONS.unshift({ key: 'graduation-clean-cards', label: '毕业设计 · 已核验任务', items: GRADUATION_CLEAN_HELP_CARDS })
