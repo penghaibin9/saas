@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   restore-drill:
-    name: Verified backup -> isolated MySQL -> readiness/login/isolation
+    name: Verified backup -> offsite copy -> isolated MySQL -> readiness/login/isolation
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     services:
@@ -68,7 +68,8 @@ jobs:
       BACKUP_DIR: /tmp/school-lifecycle-backup-drill
       KEEP_DAYS: '2'
       UPLOAD_DIR: /tmp/nonexistent-upload-dir
-      BACKUP_REQUIRE_OFFSITE: 'false'
+      BACKUP_REQUIRE_OFFSITE: 'true'
+      BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-offsite-drill
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -76,13 +77,12 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
-      - name: Install MySQL client and backend dependencies
+      - name: Install MySQL client, rclone and backend dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-mysql-client
+          sudo apt-get install -y default-mysql-client rclone
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-          pip install cryptography
       - name: Build source database through the real migration chain
         working-directory: backend
         run: |
@@ -90,13 +90,31 @@ jobs:
           alembic upgrade head
           alembic current
           python scripts/_seed_login_accounts_only.py
-      - name: Produce and verify backup with the production scripts
+      - name: Prove production runner rejects local-only success
         run: |
+          set -euo pipefail
+          if BACKUP_RCLONE_REMOTE= bash deploy/backup/backup-runner.sh; then
+            echo '::error::backup runner unexpectedly succeeded without an offsite destination'
+            exit 1
+          fi
+          echo 'Fail-closed offsite contract verified.'
+      - name: Produce and verify local plus offsite backup with production scripts
+        run: |
+          set -euo pipefail
+          rm -rf "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_RCLONE_REMOTE"
           bash deploy/backup/backup-runner.sh
           BACKUP_FILE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'db_backup_source_*.sql.gz' | sort | tail -n1)"
           test -n "$BACKUP_FILE"
+          test -s "$BACKUP_FILE"
           test -f "${BACKUP_FILE}.sha256"
+          OFFSITE_FILE="$BACKUP_RCLONE_REMOTE/$(basename "$BACKUP_FILE")"
+          test -s "$OFFSITE_FILE"
+          test -f "${OFFSITE_FILE}.sha256"
+          cmp -s "$BACKUP_FILE" "$OFFSITE_FILE"
+          cmp -s "${BACKUP_FILE}.sha256" "${OFFSITE_FILE}.sha256"
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+          echo "OFFSITE_FILE=$OFFSITE_FILE" >> "$GITHUB_ENV"
       - name: Restore only into a disposable local drill database
         run: bash deploy/backup/restore-drill.sh "$BACKUP_FILE" backup_restore_drill
       - name: Verify Alembic state on restored database
@@ -167,5 +185,6 @@ jobs:
             /tmp/ready.json
             /tmp/restore-drill-backend.log
             /tmp/school-lifecycle-backup-drill/*.sha256
+            /tmp/school-lifecycle-offsite-drill/*.sha256
           if-no-files-found: warn
           retention-days: 14
