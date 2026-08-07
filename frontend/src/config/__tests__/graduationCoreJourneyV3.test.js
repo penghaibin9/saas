@@ -95,7 +95,7 @@ test('graduation ownership guidance uses stable identities and fails closed inst
   const review = roleText('gd-v3-review')
   assert.match(review, /GD_REVIEWER/)
   assert.match(review, /reviewer_mentor_id/)
-  assert.match(review, /姓名仅是快照/)
+  assert.match(review, /评阅人姓名仅是快照/)
 
   const defense = roleText('gd-v2-defense')
   assert.match(defense, /secretary_mentor_id/)
