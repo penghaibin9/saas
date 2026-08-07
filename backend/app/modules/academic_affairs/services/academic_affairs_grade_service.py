@@ -743,7 +743,8 @@ def publish_grades(task_id, user) -> dict:
                 record.student_id,
                 profile.real_name if profile else "",
             )
-            attempt_no = next_study_attempt_no(db, academic_student.id, course_meta["courseCode"])
+            attempt_no = next_study_attempt_no(db, academic_student.id, course_meta["courseCode"],
+                                               source_biz_type="NORMAL_PUBLISH")
             grade = AcademicGrade(
                 tenant_id=_core._tid(),
                 acad_student_id=academic_student.id,
