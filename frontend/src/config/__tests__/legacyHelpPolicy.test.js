@@ -20,6 +20,8 @@ test('legacy policy quarantines confirmed stale generic docs and flows', () => {
     'doc-academic',
     'doc-graduation',
     'doc-internship',
+    'doc-sa-growth-archive-map',
+    'doc-sa-archive-stats',
     'flow-orientation',
     'flow-academic-warning',
     'flow-graduation',
@@ -30,6 +32,8 @@ test('legacy policy quarantines confirmed stale generic docs and flows', () => {
 
   assert.deepEqual(LEGACY_HELP_EXCLUSIONS.cards, {})
   assert.match(LEGACY_HELP_EXCLUSIONS.docs['doc-academic'], /真实代码|推翻|成绩组成/)
+  assert.match(LEGACY_HELP_EXCLUSIONS.docs['doc-sa-growth-archive-map'], /加密档案包/)
+  assert.match(LEGACY_HELP_EXCLUSIONS.docs['doc-sa-archive-stats'], /加密水印档案包/)
   assert.match(LEGACY_HELP_EXCLUSIONS.flows['flow-orientation'], /未逐项核验|设计阶段/)
   assert.match(LEGACY_HELP_EXCLUSIONS.flows['flow-academic-warning'], /失真/)
 })
