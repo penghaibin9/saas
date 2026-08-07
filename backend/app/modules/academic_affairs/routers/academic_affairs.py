@@ -3689,8 +3689,8 @@ class MakeupBatchBody(BaseModel):
 
 
 class MakeupEnrollBody(BaseModel):
+    gradeId: str = Field(..., min_length=1, description="学生本人当前有效不及格成绩ID，服务器据此推导课程身份")
     acadStudentId: str = Field(..., min_length=1)
-    courseName: str = Field(..., min_length=1)
     originScore: Optional[int] = None
 
 
@@ -3699,8 +3699,7 @@ class MakeupScoreBody(BaseModel):
 
 
 class RetakeApplyBody(BaseModel):
-    courseName: str = Field(..., min_length=1)
-    termCode: Optional[str] = None
+    gradeId: str = Field(..., min_length=1, description="本人当前有效挂科成绩ID，学生/课程/学期均由服务器推导")
     reason: Optional[str] = Field(None, max_length=500)
 
 
@@ -3714,10 +3713,9 @@ class RetakeEnrollBody(BaseModel):
 
 
 class ExemptionApplyBody(BaseModel):
-    courseName: str = Field(..., min_length=1)
-    termCode: Optional[str] = None
+    courseId: str = Field(..., min_length=1, description="课程库具体课程版本ID，课程名/学期由服务器推导")
     reason: Optional[str] = Field(None, max_length=500)
-    materialFileIds: Optional[str] = None
+    materialFileIds: Optional[list] = None
 
 
 class ExemptionReviewBody(BaseModel):
@@ -3777,9 +3775,22 @@ def clearance_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/makeup/batches/{bid}/enroll", summary="纳入补考名单")
+@router.get("/makeup/batches/{bid}/records", summary="补考/清考批次名单（含成绩录入状态）")
+def makeup_batch_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
+                         user=Depends(require_permission(_MK_VIEW))):
+    """补考批次此前只有清考那条 records 路由，补考批次自己没有查名单的入口，
+    教务在页面上看不到已纳入了谁、也无从录分。service 侧本来就是按 batch_id 查、与
+    kind 无关，这里补一条语义正确的通用路由，不另写一套查询。"""
+    items, total = makeup_svc.clearance_records(user, bid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/makeup/batches/{bid}/enroll", summary="纳入补考名单（按gradeId精确纳入，禁止课程名称猜测）")
 def makeup_enroll(body: MakeupEnrollBody, bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
-    return success(makeup_svc.enroll_makeup(user, bid, body.acadStudentId, body.courseName, body.originScore), message="已纳入")
+    return success(
+        makeup_svc.enroll_makeup_by_grade(user, bid, body.gradeId, body.acadStudentId, body.originScore),
+        message="已纳入",
+    )
 
 
 @router.post("/makeup/batches/{bid}/publish", summary="发布补考批次")
