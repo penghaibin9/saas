@@ -1,0 +1,55 @@
+name: Release governance contracts
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - '.github/workflows/**'
+      - 'deploy/backup/**'
+      - 'deploy/systemd/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'deploy/backup/**'
+      - 'deploy/systemd/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-governance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-contracts:
+    name: Permanent release governance contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reject obsolete one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/package11-closeout-patch.yml
+          test ! -e .github/workflows/file-center-final-merge-closeout-v3.yml
+      - name: Require Node 24 in long-lived workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          BAD="$(grep -R -nE 'node-version:[[:space:]]*["'"'"']?(20|22)["'"'"']?([[:space:]]|$)' .github/workflows || true)"
+          if [ -n "$BAD" ]; then
+            echo 'Long-lived workflows still pin unsupported/older Node runtimes:'
+            echo "$BAD"
+            exit 1
+          fi
+          echo 'All explicit workflow Node runtimes are pinned to Node 24.'
+      - name: Require canonical post-merge main gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/main-post-merge-acceptance.yml
+          grep -q '^name: Main post-merge acceptance$' .github/workflows/main-post-merge-acceptance.yml
+          grep -q 'branches: \[main\]' .github/workflows/main-post-merge-acceptance.yml
+          grep -q '^    name: Main / canonical release gate$' .github/workflows/main-post-merge-acceptance.yml
