@@ -22,11 +22,22 @@ test.describe('学工请假生产交互闭环', () => {
   let fixture
   let leaveId = ''
   let reason = ''
+  let startDate = ''
+  let endDate = ''
 
   test.beforeAll(async () => {
     fixture = await loadStudentAffairsFixture()
     const runId = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/\D/g, '').slice(-12)
     reason = `Playwright 学工请假交互验证 ${runId}`
+    startDate = localDate(1)
+    endDate = localDate(1)
+  })
+
+  test('学生 PC 请假表单先做交互校验且不产生业务写入', async ({ page }) => {
+    const login = new StudentLoginPage(page, config.studentBaseUrl)
+    await login.login(config.student)
+    const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
+    await affairs.assertLeaveFormValidation({ startDate, endDate })
   })
 
   test('学生 PC 真实提交普通请假', async ({ page }) => {
@@ -34,20 +45,28 @@ test.describe('学工请假生产交互闭环', () => {
     await login.login(config.student)
     const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
     leaveId = await affairs.submitLeave({
-      startDate: localDate(1),
-      endDate: localDate(1),
+      startDate,
+      endDate,
       reason
     })
     expect(leaveId).not.toBe('')
   })
 
-  test('辅导员 PC 只审批本人负责班级的精确请假单', async ({ page }) => {
+  test('辅导员 PC 审批本人负责班级的精确请假单', async ({ page }) => {
     expect(leaveId, '前序学生提交步骤必须返回 leave id').not.toBe('')
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(config.mentor)
     await login.switchRole(/辅导员|COUNSELOR/)
     const affairs = new StaffStudentAffairsLeavePage(page, config.staffBaseUrl, fixture)
     await affairs.approve(leaveId)
+  })
+
+  test('学生 PC 取消销假确认时保持已通过且不产生写入', async ({ page }) => {
+    expect(leaveId, '前序学生提交步骤必须返回 leave id').not.toBe('')
+    const login = new StudentLoginPage(page, config.studentBaseUrl)
+    await login.login(config.student)
+    const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
+    await affairs.dismissCancelAndStay({ leaveId })
   })
 
   test('学生 PC 对已通过请假真实申请销假', async ({ page }) => {
@@ -63,6 +82,13 @@ test.describe('学工请假生产交互闭环', () => {
     await login.switchRole(/辅导员|COUNSELOR/)
     const affairs = new StaffStudentAffairsLeavePage(page, config.staffBaseUrl, fixture)
     await affairs.confirmCancel(leaveId)
+  })
+
+  test('学生 PC 同步看到已销假终态且非法操作入口消失', async ({ page }) => {
+    const login = new StudentLoginPage(page, config.studentBaseUrl)
+    await login.login(config.student)
+    const affairs = new StudentAffairsPortalPage(page, config.studentBaseUrl, fixture)
+    await affairs.verifyClosedAsStudent({ startDate })
   })
 
   test('学校管理员 PC 核验 CLOSED 终态与四段审批留痕', async ({ page }) => {
