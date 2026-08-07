@@ -29,6 +29,9 @@ export const config = {
   outsideStudent: account('E2E_OUTSIDE_STUDENT', {
     tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026'
   }),
+  studentC: account('E2E_STUDENT_C', {
+    tenant: 'sandbox-school', username: 'E2E20260003', password: 'E2eTest@2026'
+  }),
   mentor: account('E2E_MENTOR', {
     tenant: 'sandbox-school', username: 'e2e_advisor_a', password: 'E2eTest@2026'
   })
