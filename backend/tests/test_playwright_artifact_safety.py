@@ -9,6 +9,7 @@ VERIFY_SCRIPT = ROOT / "backend" / "scripts" / "e2e_verify_graduation_accounts.p
 BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_accounts_ci.py"
 INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
 STUDENT_AFFAIRS_SEED = ROOT / "backend" / "scripts" / "e2e_seed_student_affairs_sandbox.py"
+STUDENT_AFFAIRS_CLOCK = ROOT / "backend" / "scripts" / "e2e_backdate_student_affairs_leave.py"
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -83,3 +84,24 @@ def test_student_affairs_seed_only_binds_counselor_in_local_e2e_database():
     assert "AffairsAuditTrail(" not in seed
     assert '"password"' not in seed
     assert "password_hash" not in seed
+
+
+def test_student_affairs_clock_fixture_only_moves_time_in_local_e2e_database():
+    clock = STUDENT_AFFAIRS_CLOCK.read_text(encoding="utf-8")
+
+    assert "E2E_ALLOW_DESTRUCTIVE_TESTS=true is required" in clock
+    assert "DATABASE_URL must contain e2e or test" in clock
+    assert "student-affairs E2E clock fixture only accepts a local database" in clock
+    assert 'leave.affairs_status != "APPROVED"' in clock
+    assert "leave.start_time = start_at" in clock
+    assert "leave.end_time = end_at" in clock
+    assert "leave.expected_return_at = end_at" in clock
+
+    # The clock fixture may change timestamps only. Business states and artifacts are real UI writes.
+    assert 'leave.affairs_status = "OVERDUE"' not in clock
+    assert 'leave.affairs_status = "CLOSED"' not in clock
+    assert "WorkflowTask(" not in clock
+    assert "UnifiedTodo(" not in clock
+    assert "AffairsLeaveCancelRecord(" not in clock
+    assert "AffairsLeaveExtension(" not in clock
+    assert "AffairsAuditTrail(" not in clock
