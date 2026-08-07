@@ -1,5 +1,5 @@
-import { MOBILE_HELP_CARDS } from './mobileHelpCards'
-import { MOBILE_OPERATIONS_HELP_CARDS } from './mobileOperationsHelpCards'
+import { MOBILE_HELP_CARDS } from './mobileHelpCards.js'
+import { MOBILE_OPERATIONS_HELP_CARDS } from './mobileOperationsHelpCards.js'
 
 /**
  * 微信小程序知识清洗 V2 正式正文。
