@@ -21,6 +21,7 @@
         <DataTable v-else :columns="batchColumns" :rows="rows" row-key="batchId">
           <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /></template>
           <template #cell-ops="{ row }">
+            <button class="mp-link" @click="openMakeupRecords(row)">名单/纳入</button>
             <button v-if="row.status === 'ARRANGED'" class="mp-link" @click="act('publishBatch', row.batchId, '发布')">发布</button>
             <button v-if="row.status === 'SCORING'" class="mp-link" @click="act('collegeReview', row.batchId, '学院审核')">学院审核</button>
             <button v-if="row.status === 'REVIEWED'" class="mp-link" @click="act('finishBatch', row.batchId, '教务发布回写')">教务发布回写</button>
@@ -151,6 +152,63 @@
       </DataTable>
     </AppDrawer>
 
+    <!-- 补考名单/纳入：上半是已纳入名单与录分，下半是候选名单与纳入 -->
+    <AppDrawer :visible="mkVisible" :title="'补考名单 · ' + (mkBatch ? mkBatch.batchName : '')" mode="modal" size="xlarge" @close="mkVisible = false">
+      <AppInlineAlert
+        type="info"
+        description="纳入只认学生本人当前有效的不及格成绩：课程、课程版本、修读次数和原始分全部由服务器从该条成绩推导，不接受手工输入课程名称。"
+      />
+
+      <h4 class="aamk-sub">已纳入名单（{{ mkRows.length }}）</h4>
+      <EmptyState v-if="!mkRows.length" title="尚未纳入学生" description="从下方候选名单选择不及格成绩纳入本批次" />
+      <DataTable v-else :columns="mkColumns" :rows="mkRows" row-key="makeupId">
+        <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>
+        <template #cell-course="{ row }">{{ row.courseName }}<span class="mp-cell-sub">（原 {{ row.originScore != null ? row.originScore : '—' }} 分）</span></template>
+        <template #cell-score="{ row }">
+          <span v-if="row.status === 'SCORED' || row.status === 'FINISHED'">{{ row.finalScore }}</span>
+          <AppNumberInput
+            v-else-if="canScoreMakeup"
+            v-model="mkScores[row.makeupId]"
+            class="aamk-score-input" :min="0" :max="100" :controls="false" size="compact" placeholder="0-100"
+          />
+          <span v-else>—</span>
+        </template>
+        <template #cell-ops="{ row }">
+          <button v-if="row.status !== 'SCORED' && row.status !== 'FINISHED' && canScoreMakeup"
+                  class="mp-link" @click="submitMakeupScore(row)">录分</button>
+        </template>
+      </DataTable>
+
+      <template v-if="canEnroll">
+        <h4 class="aamk-sub">候选名单 · 当前有效不及格成绩</h4>
+        <AppInlineAlert
+          v-if="mkDebtCount"
+          type="warning"
+          :title="`${mkDebtCount} 条候选暂不可纳入`"
+          description="这些成绩缺少课程ID、课程版本或修读次数，需先由教务处完成成绩身份治理。"
+        />
+        <EmptyState v-if="!mkCandidates.length" title="暂无候选" description="成绩发布后不及格的学生会出现在这里" />
+        <DataTable v-else :columns="mkCandColumns" :rows="mkCandidates" row-key="gradeId">
+          <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）<span class="mp-cell-sub">{{ row.className || '' }}</span></template>
+          <template #cell-course="{ row }">
+            {{ row.courseName }}
+            <span class="mp-cell-sub">{{ row.courseCode || '无代码' }} v{{ row.courseVersion || '?' }} · 第{{ row.attemptNo || '?' }}次修读 · {{ row.score != null ? row.score : '—' }} 分</span>
+          </template>
+          <template #cell-ops="{ row }">
+            <button v-if="row.identityReady && !enrolledGradeIds.has(String(row.gradeId))"
+                    class="mp-link" :disabled="saving" @click="enrollCandidate(row)">纳入</button>
+            <span v-else-if="enrolledGradeIds.has(String(row.gradeId))" class="mp-cell-sub">已纳入</span>
+            <span v-else class="mp-cell-sub">身份待治理</span>
+          </template>
+        </DataTable>
+      </template>
+      <AppInlineAlert
+        v-else
+        type="info"
+        :description="'批次当前为' + mbLabel(mkBatch ? mkBatch.status : '') + '，只有草稿/已编排阶段可以继续纳入学生。'"
+      />
+    </AppDrawer>
+
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
     <AppConfirmDialog
       v-model:visible="reasonDialog.visible" :title="reasonDialog.title" type="danger"
@@ -190,6 +248,10 @@ export default {
       crColumns: [{ key: 'student', title: '学生' }, { key: 'course', title: '课程' }, { key: 'score', title: '清考成绩' }, { key: 'ops', title: '操作' }],
       clearanceVisible: false, clearanceForm: { batchName: '', grades: '', termCode: '' }, clearanceError: '',
       crVisible: false, crBatch: null, crRows: [], crScores: {},
+      // 补考名单/纳入
+      mkVisible: false, mkBatch: null, mkRows: [], mkScores: {}, mkCandidates: [], mkDebtCount: 0,
+      mkColumns: [{ key: 'student', title: '学生' }, { key: 'course', title: '课程' }, { key: 'score', title: '补考成绩' }, { key: 'ops', title: '操作' }],
+      mkCandColumns: [{ key: 'student', title: '学生' }, { key: 'course', title: '不及格成绩' }, { key: 'ops', title: '操作' }],
       retakeColumns: [{ key: 'student', title: '申请' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       exemptionColumns: [{ key: 'student', title: '申请' }, { key: 'currentNode', title: '当前节点' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       poolColumns: [{ key: 'student', title: '缓考学生' }, { key: 'ops', title: '操作' }],
@@ -197,6 +259,15 @@ export default {
       mergeVisible: false, mergeRow: null, mergeBatchId: '',
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       reasonDialog: { visible: false, title: '', sceneKey: '', submitting: false, action: null }
+    }
+  },
+  computed: {
+    /** 只有草稿/已编排阶段能继续纳入；发布后名单已对学生成立，后端也会 409。 */
+    canEnroll() { return !!this.mkBatch && ['DRAFT', 'ARRANGED'].includes(this.mkBatch.status) },
+    canScoreMakeup() { return !!this.mkBatch && ['PUBLISHED', 'SCORING'].includes(this.mkBatch.status) },
+    /** 已纳入的原始成绩ID集合，避免候选里重复点「纳入」（后端幂等，这里只是别误导人）。 */
+    enrolledGradeIds() {
+      return new Set(this.mkRows.map((r) => String(r.originGradeId || '')).filter(Boolean))
     }
   },
   async created() {
@@ -323,6 +394,45 @@ export default {
       if (res.code === 0) { toast.success('已录入'); await this.openClearanceRecords(this.crBatch); this.reload() }
       else toast.error(res.message)
     },
+    async openMakeupRecords(row) {
+      this.mkBatch = row; this.mkScores = {}; this.mkCandidates = []; this.mkDebtCount = 0
+      await this.loadMakeupRecords()
+      if (this.canEnroll) await this.loadMakeupCandidates()
+      this.mkVisible = true
+    },
+    async loadMakeupRecords() {
+      const res = await api.batchRecords(this.mkBatch.batchId, { pageSize: 200 })
+      if (res.code === 0) this.mkRows = res.data.list
+      else { this.mkRows = []; toast.error(res.message) }
+    },
+    async loadMakeupCandidates() {
+      const res = await api.makeupPending({ pageSize: 200 })
+      if (res.code !== 0) { toast.error(res.message); return }
+      const list = res.data.list || []
+      this.mkCandidates = list
+      this.mkDebtCount = list.filter((r) => !r.identityReady).length
+    },
+    async enrollCandidate(row) {
+      // 只传 gradeId + acadStudentId：课程身份和原始分由服务器从这条成绩推导
+      this.saving = true
+      const res = await api.enroll(this.mkBatch.batchId, {
+        gradeId: String(row.gradeId), acadStudentId: String(row.acadStudentId)
+      })
+      this.saving = false
+      if (res.code !== 0) { toast.error(res.message); return }
+      toast.success(res.data && res.data.idempotent ? '该成绩已在本批次' : '已纳入')
+      await this.loadMakeupRecords()
+      this.reload()
+    },
+    async submitMakeupScore(row) {
+      const v = Number(this.mkScores[row.makeupId])
+      if (!(v >= 0 && v <= 100)) { toast.error('成绩须为 0-100'); return }
+      const res = await api.score(row.makeupId, v)
+      if (res.code !== 0) { toast.error(res.message); return }
+      toast.success('已录入')
+      await this.loadMakeupRecords()
+      this.reload()
+    },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }
 }
@@ -335,4 +445,5 @@ export default {
 .aamk-bar { margin-bottom: 8px; }
 .aamk-form { display: flex; flex-direction: column; gap: 12px; }
 .aamk-score-input { width: 82px; padding: 4px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; font-size: 13px; }
+.aamk-sub { margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-primary, #1f2937); }
 </style>
