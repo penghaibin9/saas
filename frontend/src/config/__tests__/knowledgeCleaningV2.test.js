@@ -19,18 +19,20 @@ test('V2 runtime publishes verified knowledge only instead of trusting every leg
   assert.match(runtimeSource, /removeUnverifiedInPlace\(HELP_FLOWS/)
 })
 
-test('V2 verified card allowlist is grounded in re-audited sources and verified overrides', () => {
+test('V2 verified card allowlist is grounded in re-audited sources and clean domain sources', () => {
   for (const token of [
     'SYSTEM_HELP_CARDS.map',
     'FOUNDATION_HELP_CARDS.map',
     'STUDENT_DATA_HELP_CARDS.map',
     'ALL_MOBILE_HELP_CARDS.map',
+    'ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map',
     'Object.keys(VERIFIED_HELP_OVERRIDES)',
-    'Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES)',
-    'Object.keys(ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES)'
+    'Object.keys(STUDENT_AFFAIRS_VERIFIED_OVERRIDES)'
   ]) {
     assert.match(runtimeSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.doesNotMatch(runtimeSource, /Object\.keys\(ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES\)/)
+  assert.doesNotMatch(runtimeSource, /applyCardOverrides\(cardsById, ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES\)/)
 })
 
 test('V2 removes unverified knowledge from sidebar as well as search arrays', () => {
@@ -55,12 +57,23 @@ test('V2 task-card quality contract requires the seven operational dimensions', 
   assert.match(modelSource, /hasPermissionGuidance/)
 })
 
-test('V2 priority help no longer promotes unverified encyclopedia docs', () => {
+test('V2 priority help no longer promotes unverified encyclopedia docs and includes cleaned academic tasks', () => {
   assert.doesNotMatch(modelSource, /'doc-lifecycle'/)
   assert.doesNotMatch(modelSource, /'doc-academic-full-flow'/)
   assert.doesNotMatch(modelSource, /'doc-internship-full-flow'/)
   assert.doesNotMatch(modelSource, /'doc-graduation-full-flow'/)
-  assert.match(modelSource, /'aa-card-grade-entry'/)
-  assert.match(modelSource, /'in-card-eval-score'/)
-  assert.match(modelSource, /'gd-card-defense-grade'/)
+  for (const id of [
+    'aa-card-status-change',
+    'aa-card-grade-entry',
+    'aa-card-grade-review-publish',
+    'aa-card-grade-change',
+    'aa-card-selection-round',
+    'aa-card-selection-publish',
+    'aa-card-exam-arrangement',
+    'aa-card-exam-publish',
+    'in-card-eval-score',
+    'gd-card-defense-grade'
+  ]) {
+    assert.match(modelSource, new RegExp(`'${id}'`))
+  }
 })
