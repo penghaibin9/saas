@@ -50,11 +50,11 @@ jobs:
             pkg.devDependencies[name] = pkg.dependencies[name]
             delete pkg.dependencies[name]
           }
-          // 9.14.5 is the patched v9 line and remains compatible with the current app contract.
           pkg.dependencies['vue-i18n'] = '9.14.5'
           fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
           NODE
           npm install --package-lock-only
+          npm ci
       - name: Verify production tree is free of build-only DCloud packages
         working-directory: miniapp
         shell: bash
@@ -66,12 +66,11 @@ jobs:
           const forbidden = Object.keys(pkg.dependencies || {}).filter((name) => name.startsWith('@dcloudio/') || ['vite', 'sass'].includes(name))
           if (forbidden.length) throw new Error(`build-only packages leaked into production dependencies: ${forbidden.join(', ')}`)
           NODE
-      - name: Verify clean install, production audit, tests and builds
+      - name: Verify production audit, tests and builds
         working-directory: miniapp
         shell: bash
         run: |
           set -euo pipefail
-          npm ci
           npm audit --omit=dev --audit-level=high
           npm test
           npm run build:h5
