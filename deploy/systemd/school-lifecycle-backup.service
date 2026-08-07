@@ -9,8 +9,9 @@ User=schoolapp
 Group=schoolapp
 WorkingDirectory=/opt/school-lifecycle/current
 EnvironmentFile=/etc/school-lifecycle/backend.env
-EnvironmentFile=-/etc/school-lifecycle/backup.env
+EnvironmentFile=/etc/school-lifecycle/backup.env
 Environment=BACKUP_DIR=/var/lib/school-lifecycle-backup
+Environment=BACKUP_REQUIRE_OFFSITE=true
 ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-runner.sh
 StateDirectory=school-lifecycle-backup
 UMask=0077
