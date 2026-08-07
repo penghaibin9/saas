@@ -21,20 +21,11 @@ import { MOBILE_HELP_CARDS } from './help/mobileHelpCards'
 import { MOBILE_OPERATIONS_HELP_CARDS } from './help/mobileOperationsHelpCards'
 import { MOBILE_CLEAN_HELP_CARDS } from './help/mobileCleanHelpCards'
 import { STUDENT_AFFAIRS_CLEAN_HELP_CARDS } from './help/studentAffairsCleanHelpCards'
+import { STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS } from './help/studentAffairsCoreFlowHelpCards'
 import { STUDENT_DATA_HELP_CARDS } from './help/studentDataHelpCards'
 import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
 import { VERIFIED_HELP_OVERRIDES } from './help/verifiedHelpOverrides'
 
-/**
- * 帮助中心运行时聚合层。
- *
- * V2/V3 可信发布原则：
- * - 正式搜索、目录、本页帮助和 ?topic= 深链只发布“已经按当前代码 / API / 权限 / 状态机核验”的知识；
- * - “没有证明错误”不再等于“允许继续展示”；未经本轮核验的历史卡、旧百科和旧流程默认隔离；
- * - 领域 clean source 拥有稳定 help id 的最终正文权，同 id 历史卡会被完整替换；
- * - V3 核心流程同样只能引用 verified-only 已发布任务，不为流程完整度复活旧知识；
- * - docs/help 继续只做治理、审计和发布证据，不成为第二套产品正文。
- */
 export {
   ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
   ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS,
@@ -51,6 +42,7 @@ export {
   MOBILE_HELP_CARDS,
   MOBILE_OPERATIONS_HELP_CARDS,
   STUDENT_AFFAIRS_CLEAN_HELP_CARDS,
+  STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS,
   STUDENT_DATA_HELP_CARDS,
   SYSTEM_HELP_CARDS,
   VERIFIED_HELP_FLOW_OVERRIDES,
@@ -142,6 +134,7 @@ export const VERIFIED_HELP_CARD_IDS = new Set([
   ...GRADUATION_CLEAN_HELP_CARDS.map((item) => item.id),
   ...GRADUATION_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...Object.keys(VERIFIED_HELP_OVERRIDES)
 ])
 
@@ -153,11 +146,7 @@ function quarantineUnverifiedKnowledge() {
   removeUnverifiedInPlace(BASE_HELP_CARDS, VERIFIED_HELP_CARD_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
   removeUnverifiedInPlace(HELP_DOCS, VERIFIED_HELP_DOC_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
   removeUnverifiedInPlace(HELP_FLOWS, VERIFIED_HELP_FLOW_IDS, QUARANTINED_UNVERIFIED_HELP_IDS)
-  const publishedIds = new Set([
-    ...VERIFIED_HELP_CARD_IDS,
-    ...VERIFIED_HELP_DOC_IDS,
-    ...VERIFIED_HELP_FLOW_IDS
-  ])
+  const publishedIds = new Set([...VERIFIED_HELP_CARD_IDS, ...VERIFIED_HELP_DOC_IDS, ...VERIFIED_HELP_FLOW_IDS])
   BASE_HELP_SECTIONS.forEach((section) => {
     if (!Array.isArray(section.items)) return
     section.items = section.items.filter((item) => publishedIds.has(item?.id))
@@ -175,43 +164,23 @@ replaceOrRegisterCards(INTERNSHIP_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(GRADUATION_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(GRADUATION_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(MOBILE_CLEAN_HELP_CARDS)
 quarantineConfirmedStaleHelp()
 quarantineUnverifiedKnowledge()
 
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'system-cards', label: '系统管理 · 任务卡', items: SYSTEM_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'foundation-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'foundation-cards', label: '开局与通用基础 · 任务卡', items: FOUNDATION_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'student-data-cards', label: '学生主档与数据 · 任务卡', items: STUDENT_DATA_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-v3-core-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'academic-v3-core-cards', label: '教务中心 · V3核心事实链', items: ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'academic-clean-cards', label: '教务中心 · 已核验任务', items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-v3-core-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'internship-v3-core-cards', label: '岗位实习 · V3完整办理链', items: INTERNSHIP_CORE_FLOW_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'internship-clean-cards', label: '岗位实习 · 已核验任务', items: INTERNSHIP_CLEAN_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-v3-core-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'graduation-v3-core-cards', label: '毕业设计 · V3完整办理链', items: GRADUATION_CORE_FLOW_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'graduation-clean-cards', label: '毕业设计 · 已核验任务', items: GRADUATION_CLEAN_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-clean-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-clean-cards', label: '学工中心 · 已核验任务', items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS })
-}
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) {
-  BASE_HELP_SECTIONS.unshift({ key: 'mobile-cards', label: '微信小程序 · 已核验高频任务', items: MOBILE_CLEAN_HELP_CARDS })
-}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) BASE_HELP_SECTIONS.unshift({ key: 'system-cards', label: '系统管理 · 任务卡', items: SYSTEM_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'foundation-cards')) BASE_HELP_SECTIONS.unshift({ key: 'foundation-cards', label: '开局与通用基础 · 任务卡', items: FOUNDATION_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-data-cards')) BASE_HELP_SECTIONS.unshift({ key: 'student-data-cards', label: '学生主档与数据 · 任务卡', items: STUDENT_DATA_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-v3-core-cards')) BASE_HELP_SECTIONS.unshift({ key: 'academic-v3-core-cards', label: '教务中心 · V3核心事实链', items: ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'academic-clean-cards', label: '教务中心 · 已核验任务', items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-v3-core-cards')) BASE_HELP_SECTIONS.unshift({ key: 'internship-v3-core-cards', label: '岗位实习 · V3完整办理链', items: INTERNSHIP_CORE_FLOW_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'internship-clean-cards', label: '岗位实习 · 已核验任务', items: INTERNSHIP_CLEAN_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-v3-core-cards')) BASE_HELP_SECTIONS.unshift({ key: 'graduation-v3-core-cards', label: '毕业设计 · V3完整办理链', items: GRADUATION_CORE_FLOW_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'graduation-clean-cards', label: '毕业设计 · 已核验任务', items: GRADUATION_CLEAN_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-v3-core-cards')) BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-v3-core-cards', label: '学工中心 · V3四条高频办理线', items: STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-clean-cards', label: '学工中心 · 已核验任务', items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) BASE_HELP_SECTIONS.unshift({ key: 'mobile-cards', label: '微信小程序 · 已核验高频任务', items: MOBILE_CLEAN_HELP_CARDS })
 
 export const HELP_CARDS = BASE_HELP_CARDS
 export const HELP_SECTIONS = BASE_HELP_SECTIONS
@@ -251,14 +220,10 @@ function splitRoute(route) {
 export function findHelpForRoute(fullPath) {
   const current = splitRoute(fullPath)
   if (!current.path) return null
-  const cards = HELP_CARDS
-    .filter((card) => card.route)
-    .map((card) => ({ card, route: splitRoute(card.route) }))
+  const cards = HELP_CARDS.filter((card) => card.route).map((card) => ({ card, route: splitRoute(card.route) }))
   const exact = cards.find((item) => item.route.path === current.path && item.route.panel === current.panel)
   const samePath = exact || cards.find((item) => item.route.path === current.path)
-  const prefix = samePath || cards
-    .filter((item) => item.route.path && current.path.startsWith(item.route.path + '/'))
-    .sort((a, b) => b.route.path.length - a.route.path.length)[0]
+  const prefix = samePath || cards.filter((item) => item.route.path && current.path.startsWith(item.route.path + '/')).sort((a, b) => b.route.path.length - a.route.path.length)[0]
   return prefix ? { id: prefix.card.id, title: prefix.card.title } : null
 }
 
