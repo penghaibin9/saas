@@ -8,7 +8,7 @@
           :class="{ 'is-active': !currentEntry }"
           @click="showOverview"
         >
-          <span>帮助中心首页</span>
+          <span>自助服务首页</span>
           <small>{{ overview.total }} 项</small>
         </button>
 
@@ -43,24 +43,24 @@
     <div class="help-shell">
       <header class="help-hero">
         <div>
-          <p class="help-eyebrow">跃科 SaaS · 自助服务</p>
-          <h1>帮助中心</h1>
-          <p>按角色、任务或问题查找操作步骤。帮助筛选只用于减少干扰，不替代系统权限控制。</p>
+          <p class="help-eyebrow">跃科 SaaS · 免培训自助服务</p>
+          <h1>自助办理与问题解决中心</h1>
+          <p>不用先读说明书。直接告诉系统“我要办什么”或“哪里做不了”，也可以沿核心业务流程看现在在哪一步、下一步谁处理。</p>
         </div>
         <dl class="help-metrics" aria-label="帮助内容统计">
-          <div><dt>任务卡</dt><dd>{{ overview.taskCards }}</dd></div>
-          <div><dt>流程图</dt><dd>{{ overview.flowGuides }}</dd></div>
+          <div><dt>已核验任务</dt><dd>{{ overview.taskCards }}</dd></div>
+          <div><dt>业务流程</dt><dd>{{ overview.flowGuides }}</dd></div>
           <div><dt>可视指南</dt><dd>{{ overview.visualGuides }}</dd></div>
         </dl>
       </header>
 
       <section class="help-controls" aria-label="帮助筛选">
         <label class="help-control help-control--search">
-          <span>搜索帮助</span>
+          <span>直接描述你要办的事或遇到的问题</span>
           <input
             v-model.trim="queryText"
             type="search"
-            placeholder="例如：导入学生、批阅周报、限期整改"
+            placeholder="例如：成绩为什么提交不了？怎么发布选课？为什么看不到学生？"
             autocomplete="off"
             @keyup.enter="syncFiltersToUrl"
           />
@@ -88,11 +88,11 @@
       </section>
 
       <div v-if="invalidTopic" class="help-notice" role="alert">
-        原链接指向的帮助条目不存在或已调整。已返回帮助中心首页，请重新搜索。
+        原链接指向的帮助条目不存在或已调整。已返回自助服务首页，请重新搜索。
       </div>
 
       <article v-if="currentEntry" class="help-article">
-        <button type="button" class="help-back" @click="showOverview">← 返回帮助中心首页</button>
+        <button type="button" class="help-back" @click="showOverview">← 返回自助服务首页</button>
 
         <header class="help-article__header">
           <div class="help-badges">
@@ -104,7 +104,7 @@
           <p>{{ currentEntry.summary }}</p>
           <div v-if="currentItem.entry || currentItem.route" class="help-entry">
             <div>
-              <strong>常见入口</strong>
+              <strong>从哪里进入</strong>
               <span>{{ currentItem.entry || '从对应业务模块进入' }}</span>
             </div>
             <button v-if="currentItem.route" type="button" @click="goRoute(currentItem.route)">
@@ -119,7 +119,7 @@
         </section>
 
         <section v-if="currentEntry.type === 'card' && currentItem.steps?.length" class="help-section">
-          <h3>操作步骤</h3>
+          <h3>照着做</h3>
           <ol class="help-task-steps">
             <li v-for="(step, index) in currentItem.steps" :key="index">
               <span>{{ index + 1 }}</span>
@@ -161,8 +161,13 @@
         </section>
 
         <section v-if="currentItem.successCriteria?.length" class="help-section help-section--success">
-          <h3>完成后的正确结果</h3>
+          <h3>怎样才算办成功</h3>
           <ul><li v-for="(item, index) in currentItem.successCriteria" :key="index">{{ stringify(item) }}</li></ul>
+        </section>
+
+        <section v-if="currentItem.nextSteps?.length" class="help-section help-section--next">
+          <h3>办完以后下一步</h3>
+          <ul><li v-for="(item, index) in currentItem.nextSteps" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentItem.tips?.length" class="help-section help-section--tip">
@@ -184,8 +189,13 @@
         </section>
 
         <section v-if="currentItem.troubleshooting?.length" class="help-section">
-          <h3>异常排查</h3>
+          <h3>做不了时怎么自己排查</h3>
           <ol><li v-for="(item, index) in currentItem.troubleshooting" :key="index">{{ stringify(item) }}</li></ol>
+        </section>
+
+        <section v-if="currentItem.contactAdminWhen?.length" class="help-section help-section--admin">
+          <h3>什么情况才需要找管理员</h3>
+          <ul><li v-for="(item, index) in currentItem.contactAdminWhen" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentItem.related?.length" class="help-section">
@@ -222,8 +232,8 @@
         <section v-if="queryText || selectedCategory !== 'all'" class="help-results">
           <div class="help-section-heading">
             <div>
-              <p class="help-eyebrow">搜索结果</p>
-              <h2>找到 {{ filteredEntries.length }} 项帮助</h2>
+              <p class="help-eyebrow">自助搜索结果</p>
+              <h2>找到 {{ filteredEntries.length }} 项可执行帮助</h2>
             </div>
           </div>
           <div v-if="filteredEntries.length" class="help-card-grid">
@@ -240,20 +250,35 @@
             </button>
           </div>
           <div v-else class="help-empty-state">
-            <h3>没有找到匹配内容</h3>
-            <p>尝试使用业务动作搜索，例如“导入学生”“批阅周报”“成绩发布”，或清除角色和分类筛选。</p>
-            <button type="button" @click="clearFilters">查看全部帮助</button>
+            <h3>没有找到已经核验的答案</h3>
+            <p>可以换成更具体的业务动作或错误现象，例如“成绩提交”“退回”“数据范围”“409”。没有通过 verified-only 发布门的旧知识不会为了凑答案重新展示。</p>
+            <button type="button" @click="clearFilters">返回自助服务首页</button>
           </div>
         </section>
 
         <template v-else>
-          <section class="help-section-block">
+          <section class="help-intents" aria-label="自助服务入口">
+            <button
+              v-for="intent in v3Home.intents"
+              :key="intent.key"
+              type="button"
+              class="help-intent"
+              :class="{ 'is-active': homeMode === intent.key }"
+              @click="selectHomeMode(intent.key)"
+            >
+              <span>{{ intent.title }}</span>
+              <strong>{{ intent.description }}</strong>
+              <small>{{ intent.hint }}</small>
+            </button>
+          </section>
+
+          <section v-if="homeMode === 'tasks'" class="help-section-block">
             <div class="help-section-heading">
               <div>
-                <p class="help-eyebrow">先从高频事项开始</p>
-                <h2>推荐任务与完整流程</h2>
+                <p class="help-eyebrow">我要办一件事</p>
+                <h2>按当前角色推荐高频办理</h2>
               </div>
-              <p>当前按“{{ activeRoleLabel }}”推荐；学校管理员可查看全部角色内容。</p>
+              <p>当前按“{{ activeRoleLabel }}”推荐；每一项都来自已核验正式知识。</p>
             </div>
             <div class="help-card-grid">
               <button
@@ -270,18 +295,71 @@
             </div>
           </section>
 
-          <section class="help-section-block help-diagnosis">
-            <div>
-              <p class="help-eyebrow">遇到问题时</p>
-              <h2>按固定顺序排查，不要反复试错</h2>
+          <template v-else-if="homeMode === 'problems'">
+            <section class="help-section-block">
+              <div class="help-section-heading">
+                <div>
+                  <p class="help-eyebrow">我遇到问题</p>
+                  <h2>先选最像你当前情况的问题</h2>
+                </div>
+                <p>点击后直接搜索相关已核验答案，不要求你先知道问题属于哪个模块。</p>
+              </div>
+              <div class="help-question-grid">
+                <button
+                  v-for="question in v3Home.quickQuestions"
+                  :key="question.label"
+                  type="button"
+                  class="help-question"
+                  @click="applyQuickQuestion(question)"
+                >
+                  {{ question.label }}
+                </button>
+              </div>
+            </section>
+
+            <section class="help-section-block help-diagnosis">
+              <div>
+                <p class="help-eyebrow">通用自查顺序</p>
+                <h2>先自己排查，再决定是否需要找管理员</h2>
+              </div>
+              <ol>
+                <li>确认当前学期、批次、学生或业务范围是否正确。</li>
+                <li>确认账号当前角色、数据范围和记录归属。</li>
+                <li>确认业务状态是否允许当前操作，是否已经提交、发布或归档。</li>
+                <li>确认前置数据、必填字段和材料是否齐全。</li>
+                <li>遇到 403 / 409 / 明确业务提示时，先按帮助中的对应原因处理，不反复连续点击。</li>
+                <li>只有组织、账号、权限、数据范围配置明显错误，或按帮助排查仍无法恢复时，再联系学校管理员。</li>
+              </ol>
+            </section>
+          </template>
+
+          <section v-else-if="homeMode === 'journeys'" class="help-section-block">
+            <div class="help-section-heading">
+              <div>
+                <p class="help-eyebrow">核心业务流程</p>
+                <h2>看现在在哪一步，下一步该做什么</h2>
+              </div>
+              <p>当前只展示已经通过 verified-only 发布门的流程节点；尚未重新验真的历史节点不会混进来。</p>
             </div>
-            <ol>
-              <li>确认当前学期、批次或业务范围。</li>
-              <li>确认账号角色与数据范围。</li>
-              <li>确认业务状态是否允许当前操作。</li>
-              <li>确认前置数据和必填材料是否齐全。</li>
-              <li>重新登录并检查网络；仍未解决时记录页面、账号角色、操作时间和错误提示。</li>
-            </ol>
+            <div class="help-journey-grid">
+              <article v-for="journey in v3Home.journeys" :key="journey.key" class="help-journey">
+                <header>
+                  <div>
+                    <strong>{{ journey.title }}</strong>
+                    <span>已核验 {{ journey.verifiedCount }} 个节点</span>
+                  </div>
+                  <p>{{ journey.description }}</p>
+                </header>
+                <ol class="help-journey-steps">
+                  <li v-for="(entry, index) in journey.entries" :key="entry.id">
+                    <span>{{ index + 1 }}</span>
+                    <button type="button" @click="selectTopic(entry.id)">
+                      {{ entry.title }}
+                    </button>
+                  </li>
+                </ol>
+              </article>
+            </div>
           </section>
         </template>
       </template>
@@ -297,7 +375,7 @@ import {
   getHelpEntry,
   getHelpOverview,
   getHelpSections,
-  getPriorityHelp,
+  getV3HomeModel,
   resolveHelpRole,
   searchHelpCenter
 } from '@/config/helpCenterModel'
@@ -322,7 +400,8 @@ export default {
       invalidTopic: Boolean(requestedTopic && !getHelpEntry(requestedTopic)),
       queryText: String(this.$route.query.q || ''),
       selectedRole,
-      selectedCategory: String(this.$route.query.category || 'all')
+      selectedCategory: String(this.$route.query.category || 'all'),
+      homeMode: 'tasks'
     }
   },
   computed: {
@@ -364,8 +443,11 @@ export default {
         limit: 100
       })
     },
+    v3Home() {
+      return getV3HomeModel(this.selectedRole)
+    },
     priorityEntries() {
-      return getPriorityHelp(this.selectedRole, 8)
+      return this.v3Home.priorityTasks
     },
     hasFilters() {
       return Boolean(this.queryText || this.selectedCategory !== 'all' || this.selectedRole !== 'all')
@@ -397,6 +479,16 @@ export default {
       this.invalidTopic = false
       this.replaceQuery({ topic: undefined })
     },
+    selectHomeMode(mode) {
+      this.homeMode = mode
+      this.currentId = ''
+      this.invalidTopic = false
+    },
+    applyQuickQuestion(question) {
+      this.queryText = String(question?.query || question?.label || '').trim()
+      this.selectedCategory = 'all'
+      this.syncFiltersToUrl()
+    },
     onFilterChange() {
       if (this.selectedCategory !== 'all' && !this.categoryOptions.some((item) => item.value === this.selectedCategory)) {
         this.selectedCategory = 'all'
@@ -410,6 +502,7 @@ export default {
       this.selectedCategory = 'all'
       this.currentId = ''
       this.invalidTopic = false
+      this.homeMode = 'tasks'
       this.replaceQuery({ topic: undefined, q: undefined, role: undefined, category: undefined })
     },
     syncFiltersToUrl() {
@@ -463,13 +556,13 @@ export default {
 .help-shell { display: grid; gap: 18px; max-width: 1180px; margin: 0 auto; }
 .help-hero { display: flex; justify-content: space-between; gap: 24px; padding: 26px; border: 1px solid var(--dv); border-radius: 20px; background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 12%, white), white 62%); }
 .help-hero h1 { margin: 3px 0 8px; font-size: 28px; color: var(--t1); }
-.help-hero p { margin: 0; max-width: 660px; color: var(--t2); line-height: 1.7; }
+.help-hero p { margin: 0; max-width: 680px; color: var(--t2); line-height: 1.7; }
 .help-eyebrow { margin: 0; color: var(--brand); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
 .help-metrics { display: grid; grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 10px; margin: 0; min-width: 270px; }
 .help-metrics div { padding: 13px; border-radius: 14px; background: rgba(255,255,255,.82); border: 1px solid rgba(255,255,255,.9); }
 .help-metrics dt { color: var(--t3); font-size: 11px; }
 .help-metrics dd { margin: 5px 0 0; color: var(--t1); font-size: 22px; font-weight: 800; }
-.help-controls { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, .35fr) minmax(180px, .4fr) auto; gap: 12px; align-items: end; padding: 16px; border: 1px solid var(--dv); border-radius: 16px; background: var(--c0); }
+.help-controls { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, .35fr) minmax(180px, .4fr) auto; gap: 12px; align-items: end; padding: 16px; border: 1px solid var(--dv); border-radius: 16px; background: var(--c0); }
 .help-control { display: grid; gap: 6px; color: var(--t2); font-size: 12px; font-weight: 700; }
 .help-control input,
 .help-control select { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--dv); border-radius: 10px; color: var(--t1); background: white; font: inherit; outline: none; }
@@ -480,6 +573,13 @@ export default {
 .help-article,
 .help-section-block,
 .help-results { padding: 26px; border: 1px solid var(--dv); border-radius: 18px; background: white; }
+.help-intents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.help-intent { display: grid; gap: 8px; min-height: 128px; padding: 18px; border: 1px solid var(--dv); border-radius: 16px; background: white; text-align: left; cursor: pointer; }
+.help-intent:hover,
+.help-intent.is-active { border-color: color-mix(in srgb, var(--brand) 52%, var(--dv)); background: color-mix(in srgb, var(--brand) 6%, white); box-shadow: 0 10px 24px rgba(20,53,90,.07); }
+.help-intent span { color: var(--brand); font-size: 17px; font-weight: 850; }
+.help-intent strong { color: var(--t1); font-size: 13px; line-height: 1.6; }
+.help-intent small { color: var(--t3); line-height: 1.5; }
 .help-back { border: 0; padding: 0; background: transparent; color: var(--brand); font-weight: 700; cursor: pointer; }
 .help-article__header { padding: 18px 0 22px; border-bottom: 1px solid var(--dv); }
 .help-article__header h2 { margin: 12px 0 10px; color: var(--t1); font-size: 27px; line-height: 1.3; }
@@ -502,6 +602,8 @@ export default {
 .help-section--tip { margin-top: 18px; padding: 18px; border: 1px solid #b9ddff; border-radius: 13px; background: #f2f8ff; }
 .help-section--warning { margin-top: 18px; padding: 18px; border: 1px solid #f6cf7d; border-radius: 13px; background: #fff9eb; }
 .help-section--success { margin-top: 18px; padding: 18px; border: 1px solid #b7e4c7; border-radius: 13px; background: #f1fbf5; }
+.help-section--next { margin-top: 18px; padding: 18px; border: 1px solid #c9d7ff; border-radius: 13px; background: #f5f7ff; }
+.help-section--admin { margin-top: 18px; padding: 18px; border: 1px solid #e3d5f5; border-radius: 13px; background: #fbf8ff; }
 .help-task-steps { display: grid; gap: 12px; padding: 0 !important; list-style: none; }
 .help-task-steps li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
 .help-task-steps li > span,
@@ -519,26 +621,43 @@ export default {
 .help-article__footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 18px; color: var(--t3); font-size: 11px; }
 .help-section-heading { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 18px; }
 .help-section-heading h2 { margin: 5px 0 0; color: var(--t1); }
-.help-section-heading > p { max-width: 400px; margin: 0; color: var(--t3); line-height: 1.6; }
+.help-section-heading > p { max-width: 430px; margin: 0; color: var(--t3); line-height: 1.6; }
 .help-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .help-card { display: grid; gap: 9px; min-height: 150px; padding: 18px; border: 1px solid var(--dv); border-radius: 14px; background: white; text-align: left; cursor: pointer; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .help-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--brand) 45%, var(--dv)); box-shadow: 0 10px 24px rgba(20,53,90,.08); }
 .help-card span { color: var(--brand); font-size: 11px; font-weight: 800; }
 .help-card strong { color: var(--t1); font-size: 16px; }
 .help-card p { margin: 0; color: var(--t2); font-size: 13px; line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.help-question-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.help-question { min-height: 48px; padding: 11px 14px; border: 1px solid var(--dv); border-radius: 12px; background: var(--c1); color: var(--t1); text-align: left; font-weight: 750; cursor: pointer; }
+.help-question:hover { border-color: var(--brand); color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, white); }
+.help-journey-grid { display: grid; gap: 14px; }
+.help-journey { padding: 18px; border: 1px solid var(--dv); border-radius: 15px; background: linear-gradient(180deg, #fff, #fbfcff); }
+.help-journey header { display: grid; gap: 7px; margin-bottom: 14px; }
+.help-journey header > div { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.help-journey header strong { color: var(--t1); font-size: 17px; }
+.help-journey header span { color: var(--brand); font-size: 11px; font-weight: 800; }
+.help-journey header p { margin: 0; color: var(--t2); line-height: 1.65; }
+.help-journey-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.help-journey-steps li { display: flex; align-items: center; gap: 7px; }
+.help-journey-steps li > span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--brand) 12%, white); color: var(--brand); font-size: 10px; font-weight: 800; }
+.help-journey-steps button { border: 1px solid var(--dv); border-radius: 999px; padding: 7px 10px; background: white; color: var(--t2); cursor: pointer; font: inherit; font-size: 12px; }
+.help-journey-steps button:hover { border-color: var(--brand); color: var(--brand); }
 .help-diagnosis { display: grid; grid-template-columns: .7fr 1fr; gap: 24px; background: linear-gradient(135deg, #f7faff, white); }
 .help-diagnosis h2 { margin: 5px 0 0; color: var(--t1); }
 .help-diagnosis ol { margin: 0; padding-left: 20px; }
 .help-diagnosis li { padding: 5px 0; color: var(--t2); line-height: 1.6; }
 .help-empty-state { padding: 50px 24px; text-align: center; color: var(--t2); }
 .help-empty-state h3 { color: var(--t1); }
-.help-empty-state p { max-width: 560px; margin: 0 auto 18px; line-height: 1.7; }
+.help-empty-state p { max-width: 620px; margin: 0 auto 18px; line-height: 1.7; }
 @media (max-width: 900px) {
   .help-hero { flex-direction: column; }
   .help-metrics { min-width: 0; }
   .help-controls { grid-template-columns: 1fr 1fr; }
   .help-control--search { grid-column: 1 / -1; }
-  .help-card-grid { grid-template-columns: 1fr; }
+  .help-intents { grid-template-columns: 1fr; }
+  .help-card-grid,
+  .help-question-grid { grid-template-columns: 1fr; }
   .help-diagnosis { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
@@ -550,7 +669,8 @@ export default {
   .help-control--search { grid-column: auto; }
   .help-metrics { grid-template-columns: 1fr; }
   .help-entry,
-  .help-section-heading { align-items: flex-start; flex-direction: column; }
+  .help-section-heading,
+  .help-journey header > div { align-items: flex-start; flex-direction: column; }
   .help-section--embed iframe { min-height: 520px; }
 }
 </style>
