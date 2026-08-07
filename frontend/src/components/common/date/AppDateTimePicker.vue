@@ -10,7 +10,7 @@
           type="datetime"
           :model-value="inner || null"
           format="YYYY-MM-DD HH:mm"
-          value-format="YYYY-MM-DD[T]HH:mm"
+          value-format="YYYY-MM-DD[T]HH:mm:ss"
           time-format="HH:mm"
           :placeholder="placeholder"
           :disabled="disabled"
@@ -27,9 +27,8 @@
 
 <script>
 /**
- * AppDateTimePicker — 日期+时间（YYYY-MM-DDTHH:mm，对齐 datetime-local）。
- * 内部使用 Element Plus DatePicker（datetime 模式，含「此刻/确定」面板），对外 API 与旧版一致；
- * 业务页只允许用本组件，不得直接引 el-date-picker。
+ * AppDateTimePicker — 日期+时间。界面展示到分钟，提交值统一为 YYYY-MM-DDTHH:mm:ss，
+ * 与后端日期时间解析契约保持一致；业务页只允许用本组件，不得直接引 el-date-picker。
  */
 import { ElDatePicker, ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
