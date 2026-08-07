@@ -73,13 +73,21 @@ export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   },
   {
     key: 'graduation',
-    title: '毕业设计核心办理链',
-    description: '覆盖选题、开题、答辩、成绩；任务书、中期、成果定稿、归档继续按 V3-03 验真后扩展。',
+    title: '毕业设计完整事实链',
+    description: '按真实毕设证据推进：批次/规则 → 学生与导师 → 选题 → 任务书 → 开题 → 指导/中期整改 → 成果定稿 → 查重 → 独立评阅 → 答辩 → 成绩/申诉 → 归档。每个节点同时解释 permissionCode、学院/专业数据范围、稳定导师/评阅/答辩席位关系和当前状态；备案后证据进入不可变终态。',
     helpIds: [
+      'gd-v3-batch-setup',
+      'gd-v3-student-mentor',
       'gd-v2-topic-selection',
+      'gd-v3-taskbook',
       'gd-v2-proposal',
+      'gd-v3-guidance-midterm',
+      'gd-v3-final-submission',
+      'gd-v3-plagiarism',
+      'gd-v3-review',
       'gd-v2-defense',
-      'gd-v2-grade'
+      'gd-v2-grade',
+      'gd-v3-archive'
     ]
   },
   {
