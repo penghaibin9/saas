@@ -4,6 +4,8 @@ import { GRADUATION_CLEAN_HELP_CARDS } from './graduationCleanHelpCards.js'
 import { GRADUATION_CORE_FLOW_HELP_CARDS } from './graduationCoreFlowHelpCards.js'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './internshipCleanHelpCards.js'
 import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './internshipCoreFlowHelpCards.js'
+import { STUDENT_AFFAIRS_CLEAN_HELP_CARDS } from './studentAffairsCleanHelpCards.js'
+import { STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS } from './studentAffairsCoreFlowHelpCards.js'
 import {
   ACADEMIC_ROLE_GUIDANCE,
   HELP_AUTHORIZATION_PRINCIPLE
@@ -12,6 +14,7 @@ import { GRADUATION_ROLE_GUIDANCE } from './graduationRoleGuidance.js'
 import { GRADUATION_V3_SELF_SERVICE_GUIDANCE } from './graduationV3SelfServiceGuidance.js'
 import { INTERNSHIP_ROLE_GUIDANCE } from './internshipRoleGuidance.js'
 import { INTERNSHIP_V3_SELF_SERVICE_GUIDANCE } from './internshipV3SelfServiceGuidance.js'
+import { STUDENT_AFFAIRS_ROLE_GUIDANCE } from './studentAffairsRoleGuidance.js'
 
 function stringifyRoleGuidance(item) {
   const parts = [
@@ -74,6 +77,11 @@ export function applyHelpRoleGuidanceRuntime() {
     attachGuidance(card, GRADUATION_ROLE_GUIDANCE)
     attachSelfService(card, GRADUATION_V3_SELF_SERVICE_GUIDANCE)
   })
+
+  ;[
+    ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS,
+    ...STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS
+  ].forEach((card) => attachGuidance(card, STUDENT_AFFAIRS_ROLE_GUIDANCE))
 }
 
 applyHelpRoleGuidanceRuntime()
