@@ -10,17 +10,31 @@ import { SYSTEM_HELP_CARDS } from './help/systemHelpCards'
  * 帮助中心运行时聚合层。
  *
  * 兼容既有 helpContent.js 的四大业务内容，同时把 PR #48 新核验的系统管理
- * 任务卡接入同一套帮助搜索、本页帮助、深链与帮助中心模型。
- * helpContent.js 仍保留既有正文真值；新增系统卡按模块拆文件，避免继续膨胀单文件。
+ * 任务卡注册进同一套帮助数组。这里有意就地扩展既有数组：BasePortalLayout 仍然
+ * 可以继续调用 helpContent.js 已有的 searchHelp / findHelpForRoute，而无需改动门户壳；
+ * 帮助中心模型则直接从本文件读取同一份运行时集合，不产生第二套正文真值。
  */
 export { HELP_DOCS, HELP_FLOWS, SYSTEM_HELP_CARDS }
 
-export const HELP_CARDS = [...SYSTEM_HELP_CARDS, ...BASE_HELP_CARDS]
+const existingCardIds = new Set(BASE_HELP_CARDS.map((item) => item.id))
+for (let index = SYSTEM_HELP_CARDS.length - 1; index >= 0; index -= 1) {
+  const card = SYSTEM_HELP_CARDS[index]
+  if (!existingCardIds.has(card.id)) {
+    BASE_HELP_CARDS.unshift(card)
+    existingCardIds.add(card.id)
+  }
+}
 
-export const HELP_SECTIONS = [
-  { key: 'system-cards', label: '系统管理 · 任务卡', items: SYSTEM_HELP_CARDS },
-  ...BASE_HELP_SECTIONS
-]
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'system-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'system-cards',
+    label: '系统管理 · 任务卡',
+    items: SYSTEM_HELP_CARDS
+  })
+}
+
+export const HELP_CARDS = BASE_HELP_CARDS
+export const HELP_SECTIONS = BASE_HELP_SECTIONS
 
 function hitHelp(item, query) {
   if (item.title && item.title.toLowerCase().includes(query)) return true
