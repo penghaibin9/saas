@@ -9,6 +9,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import './config/helpCenterRuntime'
 import { toast } from './utils/toast'
 
 // 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
