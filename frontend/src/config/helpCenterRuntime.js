@@ -10,6 +10,7 @@ import { ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS } from './help/academicAffairsVerifi
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import { GRADUATION_CLEAN_HELP_CARDS } from './help/graduationCleanHelpCards'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './help/internshipCleanHelpCards'
+import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './help/internshipCoreFlowHelpCards'
 import {
   EXCLUDED_LEGACY_HELP_IDS,
   LEGACY_HELP_EXCLUSIONS,
@@ -42,6 +43,7 @@ export {
   HELP_DOCS,
   HELP_FLOWS,
   INTERNSHIP_CLEAN_HELP_CARDS,
+  INTERNSHIP_CORE_FLOW_HELP_CARDS,
   LEGACY_HELP_EXCLUSIONS,
   MOBILE_CLEAN_HELP_CARDS,
   MOBILE_HELP_CARDS,
@@ -142,6 +144,7 @@ export const VERIFIED_HELP_CARD_IDS = new Set([
   ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
   ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...INTERNSHIP_CLEAN_HELP_CARDS.map((item) => item.id),
+  ...INTERNSHIP_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...GRADUATION_CLEAN_HELP_CARDS.map((item) => item.id),
   ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map((item) => item.id),
   ...Object.keys(VERIFIED_HELP_OVERRIDES)
@@ -175,6 +178,7 @@ applyVerifiedOverrides()
 replaceOrRegisterCards(ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(INTERNSHIP_CLEAN_HELP_CARDS)
+replaceOrRegisterCards(INTERNSHIP_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(GRADUATION_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(MOBILE_CLEAN_HELP_CARDS)
@@ -199,6 +203,13 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-v3-core-card
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'academic-clean-cards')) {
   BASE_HELP_SECTIONS.unshift({ key: 'academic-clean-cards', label: '教务中心 · 已核验任务', items: ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS })
+}
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-v3-core-cards')) {
+  BASE_HELP_SECTIONS.unshift({
+    key: 'internship-v3-core-cards',
+    label: '岗位实习 · V3完整办理链',
+    items: INTERNSHIP_CORE_FLOW_HELP_CARDS
+  })
 }
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'internship-clean-cards')) {
   BASE_HELP_SECTIONS.unshift({ key: 'internship-clean-cards', label: '岗位实习 · 已核验任务', items: INTERNSHIP_CLEAN_HELP_CARDS })
