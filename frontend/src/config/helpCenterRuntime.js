@@ -4,6 +4,10 @@ import {
   HELP_FLOWS,
   HELP_SECTIONS as BASE_HELP_SECTIONS
 } from './helpContent'
+import {
+  ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
+  ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES
+} from './help/academicAffairsVerifiedOverrides'
 import { FOUNDATION_HELP_CARDS } from './help/foundationHelpCards'
 import {
   EXCLUDED_LEGACY_HELP_IDS,
@@ -27,11 +31,12 @@ import { STUDENT_AFFAIRS_VERIFIED_OVERRIDES } from './help/studentAffairsVerifie
  *
  * 小程序卡只登记 mobilePath / entry，不登记 PC route，避免管理 PC 帮助中心产生一个
  * 点击后 404 的“前往办理页面”。历史大文件中经后端静态核验确认存在偏差的条目，
- * 通过 VERIFIED_HELP_OVERRIDES / STUDENT_AFFAIRS_VERIFIED_OVERRIDES /
- * VERIFIED_HELP_FLOW_OVERRIDES 在同一对象上就地修正；已确认过时、错误或被更精确内容替代
- * 的旧条目由 LEGACY_HELP_EXCLUSIONS 从运行时下线。
+ * 通过模块级 VERIFIED_OVERRIDES 在同一对象上就地修正；已确认过时、错误或被更精确内容替代
+ * 的旧条目由模块级 LEGACY_EXCLUSIONS 从运行时下线。
  */
 export {
+  ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS,
+  ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES,
   FOUNDATION_HELP_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
@@ -69,6 +74,7 @@ function applyVerifiedOverrides() {
   const cardsById = new Map(BASE_HELP_CARDS.map((item) => [item.id, item]))
   applyCardOverrides(cardsById, VERIFIED_HELP_OVERRIDES)
   applyCardOverrides(cardsById, STUDENT_AFFAIRS_VERIFIED_OVERRIDES)
+  applyCardOverrides(cardsById, ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES)
 
   const flowsById = new Map(HELP_FLOWS.map((item) => [item.id, item]))
   Object.entries(VERIFIED_HELP_FLOW_OVERRIDES).forEach(([id, patch]) => {
@@ -83,10 +89,19 @@ function removeIdsInPlace(items, ids) {
   }
 }
 
+function policyIds(kind) {
+  return new Set([
+    ...Object.keys((LEGACY_HELP_EXCLUSIONS[kind] || {})),
+    ...Object.keys((ACADEMIC_AFFAIRS_LEGACY_EXCLUSIONS[kind] || {}))
+  ])
+}
+
 function quarantineLegacyHelp() {
-  const cardIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.cards || {}))
-  const docIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.docs || {}))
-  const flowIds = new Set(Object.keys(LEGACY_HELP_EXCLUSIONS.flows || {}))
+  const cardIds = policyIds('cards')
+  const docIds = policyIds('docs')
+  const flowIds = policyIds('flows')
+  const allExcludedIds = new Set([...EXCLUDED_LEGACY_HELP_IDS, ...cardIds, ...docIds, ...flowIds])
+
   removeIdsInPlace(BASE_HELP_CARDS, cardIds)
   removeIdsInPlace(HELP_DOCS, docIds)
   removeIdsInPlace(HELP_FLOWS, flowIds)
@@ -95,7 +110,7 @@ function quarantineLegacyHelp() {
   // 否则旧条目虽然不在搜索数组里，仍会残留在侧栏目录。
   BASE_HELP_SECTIONS.forEach((section) => {
     if (!Array.isArray(section.items)) return
-    section.items = section.items.filter((item) => !EXCLUDED_LEGACY_HELP_IDS.has(item?.id))
+    section.items = section.items.filter((item) => !allExcludedIds.has(item?.id))
   })
 }
 
