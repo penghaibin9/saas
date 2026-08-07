@@ -1,11 +1,15 @@
 import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from './academicAffairsCleanHelpCards.js'
 import { ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS } from './academicAffairsCoreFlowHelpCards.js'
+import { GRADUATION_CLEAN_HELP_CARDS } from './graduationCleanHelpCards.js'
+import { GRADUATION_CORE_FLOW_HELP_CARDS } from './graduationCoreFlowHelpCards.js'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './internshipCleanHelpCards.js'
 import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './internshipCoreFlowHelpCards.js'
 import {
   ACADEMIC_ROLE_GUIDANCE,
   HELP_AUTHORIZATION_PRINCIPLE
 } from './helpRoleGuidance.js'
+import { GRADUATION_ROLE_GUIDANCE } from './graduationRoleGuidance.js'
+import { GRADUATION_V3_SELF_SERVICE_GUIDANCE } from './graduationV3SelfServiceGuidance.js'
 import { INTERNSHIP_ROLE_GUIDANCE } from './internshipRoleGuidance.js'
 import { INTERNSHIP_V3_SELF_SERVICE_GUIDANCE } from './internshipV3SelfServiceGuidance.js'
 
@@ -41,8 +45,8 @@ function attachGuidance(card, guidanceMap) {
   return card
 }
 
-function attachInternshipV3SelfService(card) {
-  const patch = INTERNSHIP_V3_SELF_SERVICE_GUIDANCE[card.id]
+function attachSelfService(card, guidanceMap) {
+  const patch = guidanceMap[card.id]
   if (!patch) return card
   if (patch.nextSteps?.length) card.nextSteps = patch.nextSteps
   if (patch.contactAdminWhen?.length) card.contactAdminWhen = patch.contactAdminWhen
@@ -60,7 +64,15 @@ export function applyHelpRoleGuidanceRuntime() {
     ...INTERNSHIP_CORE_FLOW_HELP_CARDS
   ].forEach((card) => {
     attachGuidance(card, INTERNSHIP_ROLE_GUIDANCE)
-    attachInternshipV3SelfService(card)
+    attachSelfService(card, INTERNSHIP_V3_SELF_SERVICE_GUIDANCE)
+  })
+
+  ;[
+    ...GRADUATION_CLEAN_HELP_CARDS,
+    ...GRADUATION_CORE_FLOW_HELP_CARDS
+  ].forEach((card) => {
+    attachGuidance(card, GRADUATION_ROLE_GUIDANCE)
+    attachSelfService(card, GRADUATION_V3_SELF_SERVICE_GUIDANCE)
   })
 }
 
