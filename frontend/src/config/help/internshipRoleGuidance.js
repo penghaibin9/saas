@@ -26,7 +26,7 @@ export const INTERNSHIP_ROLE_GUIDANCE = Object.freeze({
     { role: '安全审计员', roleCode: 'SECURITY_AUDITOR', permission: 'internship.dashboard/student/risk/stats/...view', scope: '监督只读', relation: '没有业务 owner 关系也不获得写权限', canDo: '查看风险、统计、审核/分配台账用于监督；不做周报审批、风险处置等写操作。' },
     { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: '*', scope: '本校全量', relation: '仍受记录状态和流程动作约束', canDo: '本校管理与异常兜底，不以“管理员看过”代替正式关闭。' }
   ],
-  'in-v2-enterprise-evaluation': [
+  'in-v2-enterprise-eval': [
     { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.eval.enterprise.view / manage / review', scope: '本人指导学生', relation: '必须是本人指导学生，评价证据属于该实习记录', canDo: '依据真实企业评价材料代录并审核本人学生的企业评价。' },
     { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.eval.enterprise.*', scope: '本学院', relation: '评价记录属于本院学生', canDo: '办理本院企业评价复核与台账工作。' },
     { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: '*', scope: '本校全量', relation: '仍需真实企业证据和审核状态', canDo: '本校管理；当前不能宣传为企业账号登录在线评分闭环。' }
