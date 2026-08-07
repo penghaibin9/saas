@@ -865,10 +865,20 @@ def college_review(task_id, user, action, reason="") -> dict:
 
 
 def _course_point(score) -> float:
-    """百分制课程绩点：≥60 → (成绩-50)/10（60→1.0，100→5.0），<60 → 0。
-    高校百分制绩点的通行映射（designSource=project_rule；各校如有自定义档位，后续参数化）。"""
+    """已废弃的硬编码绩点公式，仅保留给未迁移的旧调用点做兜底比对；正式绩点计算一律走
+    `_course_point_frozen()`（P1-GPA：AaGpaPointPolicy 版本化 + 历史冻结）。"""
     s = float(score or 0)
     return round((s - 50) / 10, 2) if s >= 60 else 0.0
+
+
+def _course_point_frozen(db, grade_row) -> float:
+    """课程绩点：优先返回该成绩记录已冻结的绩点；未冻结时按租户当前生效的
+    AaGpaPointPolicy 冻结一次，此后即使策略升级到新版本也不再重算（GPA-POLICY-01，
+    避免学校调整绩点口径时静默改写已毕业学生的历史 GPA）。"""
+    from app.modules.academic_affairs.services.academic_affairs_gpa_policy_service import (
+        course_point_frozen,
+    )
+    return course_point_frozen(db, grade_row)
 
 
 def _refresh_aggregates(db, a) -> None:
@@ -897,12 +907,12 @@ def _refresh_aggregates(db, a) -> None:
     a.failed_count = sum(1 for x in rows if x.pass_status in ("FAIL", "FAILED"))
     a.obtained_credits = sum(float(x.credit_value or 0) for x in rows if x.pass_status == "PASSED")
     if scored:
-        total_credit = sum(float(x.credit_value or 0) for x in scored)
+        points = [(_course_point_frozen(db, x), float(x.credit_value or 0)) for x in scored]
+        total_credit = sum(credit for _point, credit in points)
         if total_credit > 0:
-            a.gpa = round(sum(_course_point(x.score) * float(x.credit_value or 0)
-                              for x in scored) / total_credit, 2)
+            a.gpa = round(sum(point * credit for point, credit in points) / total_credit, 2)
         else:
-            a.gpa = round(sum(_course_point(x.score) for x in scored) / len(scored), 2)
+            a.gpa = round(sum(point for point, _credit in points) / len(points), 2)
     else:
         a.gpa = 0
 

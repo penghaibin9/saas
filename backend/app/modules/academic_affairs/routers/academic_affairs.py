@@ -1246,6 +1246,7 @@ class ScheduleItemBody(BaseModel):
 
 class ScheduleImportBody(BaseModel):
     items: list[dict] = Field(..., description="课表行数组（同一冲突检测器逐行校验）")
+    atomic: bool = Field(True, description="True=任一行失败整批不写入（默认）；False=逐行尽力导入")
 
 
 class VoidBody(BaseModel):
@@ -1271,7 +1272,7 @@ def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Dep
 
 @router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
 def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.import"))):
-    return success(sched_svc.import_items(batchId, user, body.items), message="导入完成")
+    return success(sched_svc.import_items(batchId, user, body.items, atomic=body.atomic), message="导入完成")
 
 
 class ScheduleMoveBody(BaseModel):
@@ -1565,6 +1566,35 @@ def grade_policy_list(user=Depends(require_permission("academicAffairs.grade.pol
 def grade_policy_activate(body: EffectiveGradePolicyBody,
                           user=Depends(require_permission("academicAffairs.grade.policy.manage"))):
     return success(effective_policy_svc.activate_grade_policy(user, body.model_dump()), message="成绩策略已激活")
+
+
+class GpaBandBody(BaseModel):
+    minScore: float = Field(..., ge=0, le=100)
+    maxScore: float = Field(..., ge=0, le=100)
+    point: float = Field(..., ge=0, le=5)
+
+
+class GpaPointPolicyBody(BaseModel):
+    policyCode: Optional[str] = Field(default=None, max_length=80)
+    scaleType: str = Field(default="LINEAR", max_length=20, description="LINEAR/BANDS")
+    linearFailScore: Optional[int] = Field(default=60, ge=0, le=100)
+    linearAnchorScore: Optional[int] = Field(default=50, ge=0, le=100)
+    linearDivisor: Optional[int] = Field(default=10, gt=0, le=100)
+    bands: Optional[list[GpaBandBody]] = None
+    remark: Optional[str] = Field(default=None, max_length=200)
+
+
+@router.get("/gpa-policies", summary="GPA 绩点换算策略版本链")
+def gpa_policy_list(user=Depends(require_permission("academicAffairs.grade.policy.view"))):
+    from app.modules.academic_affairs.services import academic_affairs_gpa_policy_service as gpa_policy_svc
+    return success(gpa_policy_svc.list_gpa_policies(user))
+
+
+@router.post("/gpa-policies/activate", summary="激活新的 GPA 绩点换算策略版本（不改变已冻结的历史绩点）")
+def gpa_policy_activate(body: GpaPointPolicyBody,
+                        user=Depends(require_permission("academicAffairs.grade.policy.manage"))):
+    from app.modules.academic_affairs.services import academic_affairs_gpa_policy_service as gpa_policy_svc
+    return success(gpa_policy_svc.activate_gpa_policy(user, body.model_dump()), message="GPA 绩点策略已激活")
 
 
 @router.post("/grade-tasks/{taskId}/return", summary="教务处退回（教务终审阶段）")
