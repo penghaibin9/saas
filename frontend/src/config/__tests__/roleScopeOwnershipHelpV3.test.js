@@ -68,7 +68,7 @@ test('internship clean cards expose stable owner, scoped role and self-service h
     'in-v2-agreement',
     'in-v2-student-change',
     'in-v2-teacher-process',
-    'in-v2-enterprise-evaluation',
+    'in-v2-enterprise-eval',
     'in-v2-score'
   ]
   for (const id of expected) {
@@ -93,7 +93,7 @@ test('internship clean cards expose stable owner, scoped role and self-service h
   assert.match(scoreText, /最终发布、撤回/)
 })
 
-test('authorization guidance is searchable and V3 internship journey uses the real change card id', () => {
+test('authorization guidance is searchable and V3 internship journey uses canonical clean ids', () => {
   const card = academicCards.find((item) => item.id === 'aa-card-grade-entry')
   const searchText = buildHelpSearchText(card)
   assert.match(searchText, /permissioncode/)
@@ -103,5 +103,7 @@ test('authorization guidance is searchable and V3 internship journey uses the re
   const internship = HELP_V3_CORE_JOURNEYS.find((item) => item.key === 'internship')
   assert.ok(internship)
   assert.ok(internship.helpIds.includes('in-v2-student-change'))
+  assert.ok(internship.helpIds.includes('in-v2-enterprise-eval'))
   assert.ok(!internship.helpIds.includes('in-v2-change'))
+  assert.ok(!internship.helpIds.includes('in-v2-enterprise-evaluation'))
 })
