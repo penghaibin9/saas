@@ -16,6 +16,11 @@ class ApprovalRejectRequest(BaseModel):
     version: int = Field(..., description="乐观锁版本，必填")
 
 
+class ApprovalReturnRequest(BaseModel):
+    reason: str = Field(..., min_length=1, description="退回修改原因（必填；与驳回终止语义严格区分）")
+    version: int = Field(..., description="乐观锁版本，必填")
+
+
 class ApprovalTransferRequest(BaseModel):
     targetUserId: str = Field(..., description="转办目标用户")
     comment: Optional[str] = Field(None, description="转办说明")
