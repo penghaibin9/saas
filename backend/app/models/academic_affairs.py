@@ -1161,6 +1161,23 @@ class AaExamPatrol(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ASSIGNED")
 
 
+class AaExamTeacherLock(PKMixin, TenantMixin, CommonMixin, Base):
+    """监考/巡考教师时间线互斥锁——纯锁行，不承载业务数据。
+
+    同一个老师的监考冲突检测是"查该教师全部已排场次→比对时段→通过则插入"，这本身不是
+    原子操作：两个并发请求都查到"无冲突"再各自插入，同一个老师就被排进两场同时段的考试。
+    (tenant, teacher_key) 上锁行，写监考/巡考前先取这把锁再做冲突检测+插入，把整条判断-写
+    序列串行化。teacher_key 覆盖监考和巡考共用同一份时间线(监考撞巡考也要拦)。
+    """
+    __tablename__ = "t_aa_exam_teacher_lock"
+
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "teacher_key", name="uk_aa_exam_teacher_lock"),
+    )
+
+
 class AaExamIncident(PKMixin, TenantMixin, CommonMixin, Base):
     """考场异常（缺考/违纪）。缺考触发风险通知；违纪留处分线索引用位。status ACTIVE/VOIDED。"""
     __tablename__ = "t_aa_exam_incident"

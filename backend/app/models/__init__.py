@@ -148,6 +148,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaExamCourse, AaExamIncident,
                                          AaExamInvigilator, AaExamPatrol,
                                          AaExamRoom, AaExamRoomStudent,
+                                         AaExamTeacherLock,
                                          AaGradeRecheck, AaWorkloadDeclaration,
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
