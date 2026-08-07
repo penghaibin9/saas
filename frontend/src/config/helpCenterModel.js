@@ -24,9 +24,12 @@ const TYPE_LABELS = {
 }
 
 const PRIORITY_HELP_IDS = [
+  'sys-card-first-school-setup',
+  'auth-card-staff-login-password',
   'sys-card-staff-account-role',
   'sys-card-role-permission-scope',
   'sys-card-org-foundation',
+  'aa-card-term-setup',
   'sys-card-student-import',
   'sys-card-access-diagnosis',
   'doc-lifecycle',
