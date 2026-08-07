@@ -1,9 +1,16 @@
-"""毕业设计中心 · 导师管理 / 导师分配请求 DTO（独立文件，与毕业设计域其它 schema 隔离）。"""
+"""毕业设计中心 · 导师管理 / 导师分配请求 DTO。"""
 from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+def _stable_subject_ref(raw: str, prefix: str, field_name: str) -> str:
+    value = str(raw or "").strip()
+    if not value.isdigit() or int(value) <= 0:
+        raise ValueError(f"{field_name} 必须是有效的稳定主体 ID")
+    return f"{prefix}:{int(value)}"
 
 
 class MentorCreate(BaseModel):
@@ -42,15 +49,60 @@ class MentorDisableRequest(BaseModel):
 
 
 class MentorAssignRequest(BaseModel):
+    """导师分配只接受校内导师或外聘导师的稳定主体 ID。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     gdStudentId: str
-    mentorId: str
+    mentorId: Optional[str] = None
+    externalAdvisorId: Optional[str] = None
     reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_stable_subject(self):
+        mentor_id = str(self.mentorId or "").strip()
+        external_id = str(self.externalAdvisorId or "").strip()
+        if bool(mentor_id) == bool(external_id):
+            raise ValueError("mentorId 与 externalAdvisorId 必须且只能提供一个")
+        if mentor_id:
+            self.mentorId = _stable_subject_ref(mentor_id, "INTERNAL", "mentorId")
+            self.externalAdvisorId = None
+        else:
+            self.mentorId = _stable_subject_ref(external_id, "EXTERNAL", "externalAdvisorId")
+            self.externalAdvisorId = external_id
+        return self
 
 
 class MentorChangeRequest(BaseModel):
+    """调导师同样只认稳定主体 ID；姓名只作为展示快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
     gdStudentId: str
-    newMentorId: str
+    newMentorId: Optional[str] = None
+    mentorId: Optional[str] = None
+    externalAdvisorId: Optional[str] = None
     reason: str = Field(..., min_length=5, description="调导师原因，至少 5 字")
+
+    @model_validator(mode="after")
+    def validate_stable_subject(self):
+        legacy_id = str(self.newMentorId or "").strip()
+        mentor_id = str(self.mentorId or "").strip()
+        external_id = str(self.externalAdvisorId or "").strip()
+        supplied = [value for value in (legacy_id, mentor_id, external_id) if value]
+        if len(supplied) != 1:
+            raise ValueError("newMentorId、mentorId、externalAdvisorId 必须且只能提供一个")
+        if external_id:
+            self.newMentorId = _stable_subject_ref(external_id, "EXTERNAL", "externalAdvisorId")
+            self.externalAdvisorId = external_id
+            self.mentorId = None
+        else:
+            raw_internal = mentor_id or legacy_id
+            field_name = "mentorId" if mentor_id else "newMentorId"
+            self.newMentorId = _stable_subject_ref(raw_internal, "INTERNAL", field_name)
+            self.mentorId = mentor_id or None
+            self.externalAdvisorId = None
+        return self
 
 
 class MentorAssignCancelRequest(BaseModel):

@@ -1,6 +1,8 @@
 """三方协议：批次、三方职责、版本锁、学生新版入口、附件与审计。"""
 from __future__ import annotations
 
+import io
+
 TID = 1000000000000000001
 INT = "/api/v1/internship"
 MOBILE = "/api/v1/mobile/internship/context/agreements"
@@ -14,8 +16,9 @@ def _admin(client):
 
 def _mentor(name, tid=TID):
     from app.core.security import create_access_token
+    user_id = {"刘强": "9001", "王芳": "9002"}.get(name, "9099")
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
+        "userId": user_id, "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
@@ -60,19 +63,21 @@ def _seed(db_mode):
         db.close()
 
 
-def _file(db_mode):
-    from app.db.session import get_sessionmaker
-    from app.models import FileObject
-    db = get_sessionmaker()()
-    try:
-        file = FileObject(
-            tenant_id=TID, file_key="20260709/ag.pdf", file_name="三方协议签署.pdf",
-            ext="pdf", size_bytes=2048, biz_type="INTERNSHIP", biz_id="AGREEMENT_TEST",
-            visibility="BIZ_SCOPED", status="STORED")
-        db.add(file); db.flush(); file_id = str(file.id); db.commit()
-        return file_id
-    finally:
-        db.close()
+def _file(client, headers):
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=headers,
+        files={"file": (
+            "agreement.txt",
+            io.BytesIO(b"signed-three-party-agreement-evidence"),
+            "text/plain",
+        )},
+        data={"bizType": "INTERNSHIP_AGREEMENT"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    data = uploaded.json()["data"]
+    assert data["temporary"] is True and data["bindingCreated"] is False
+    return data["fileId"]
 
 
 def _generate_and_issue(client, record_id, mentor):
@@ -89,8 +94,8 @@ def _generate_and_issue(client, record_id, mentor):
 
 def test_full_three_party_flow(client, db_mode):
     ids = _seed(db_mode)
-    file_id = _file(db_mode)
     mentor = _mentor("刘强")
+    file_id = _file(client, mentor)
     agreement_id, version = _generate_and_issue(client, ids["rec_a"], mentor)
 
     duplicate = client.post(
@@ -118,7 +123,7 @@ def test_full_three_party_flow(client, db_mode):
         f"{INT}/agreements/{agreement_id}/enterprise-confirm",
         json={"confirmBy": "企业HR", "fileId": file_id, "expectedVersion": version},
         headers=mentor)
-    assert enterprise_confirm.status_code == 200
+    assert enterprise_confirm.status_code == 200, enterprise_confirm.json()
     version = enterprise_confirm.json()["data"]["version"]
 
     school_confirm = client.post(
@@ -133,7 +138,7 @@ def test_full_three_party_flow(client, db_mode):
     assert archived.status_code == 200
 
     detail = client.get(f"{INT}/agreements/{agreement_id}", headers=mentor).json()["data"]
-    assert detail["attachment"]["fileName"] == "三方协议签署.pdf"
+    assert detail["attachment"]["fileName"] == "agreement.txt"
     actions = {item["action"] for item in detail["auditTrail"]}
     assert {"GENERATE", "ISSUE", "STUDENT_CONFIRM", "ENTERPRISE_CONFIRM",
             "SCHOOL_CONFIRM", "ARCHIVE"} <= actions
@@ -145,7 +150,6 @@ def test_student_reject_and_legacy_route_is_disabled(client, db_mode):
     agreement_id, version = _generate_and_issue(client, ids["rec_a"], mentor)
     student_headers = _student("AG-A", ids["batch"])
 
-    # 旧路由从不透传 expectedVersion，乐观锁校验必然缺参数报 400——旧路由已名存实亡
     legacy = client.post(
         f"/api/v1/mobile/internship/agreements/{agreement_id}/confirm",
         json={"action": "REJECT", "reason": "岗位与专业不符，暂不确认",
@@ -172,7 +176,6 @@ def test_owner_scope_and_school_confirm_boundary(client, db_mode):
     agreement = created.json()["data"]
     agreement_id = agreement["id"]
 
-    # 非本人指导学生不得下发协议；保留 main 的 owner 负向断言。
     assert client.post(
         f"{INT}/agreements/{agreement_id}/issue",
         json={"expectedVersion": agreement["version"]},

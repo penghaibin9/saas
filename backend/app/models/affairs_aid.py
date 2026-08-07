@@ -9,7 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, DateTime, Integer, Numeric, String,
+from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, Numeric, String,
                         UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -119,7 +119,7 @@ class FundingProject(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class FundingBatch(PKMixin, TenantMixin, CommonMixin, Base):
-    """项目学年批次（申请窗/公示天数/名额）。状态 DRAFT/OPEN/REVIEWING/PUBLICITY/ANNOUNCED/CLOSED/ARCHIVED。"""
+    """项目学年批次（申请窗/公示天数/名额/金额额度）。状态 DRAFT/OPEN/REVIEWING/PUBLICITY/ANNOUNCED/CLOSED/ARCHIVED。"""
     __tablename__ = "t_affairs_funding_batch"
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -129,18 +129,39 @@ class FundingBatch(PKMixin, TenantMixin, CommonMixin, Base):
     apply_end: Mapped[datetime | None] = mapped_column(DateTime)
     publicity_days: Mapped[int | None] = mapped_column(Integer, default=5)
     quota: Mapped[int | None] = mapped_column(Integer)
+    amount_budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(16, 2), comment="批次金额额度；默认按名额×项目标准金额生成"
+    )
+    reserved_quota: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0", comment="已原子占用名额"
+    )
+    reserved_amount: Mapped[Decimal] = mapped_column(
+        Numeric(16, 2), nullable=False, default=Decimal("0.00"),
+        server_default="0.00", comment="已原子占用金额"
+    )
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
 
 
 class FundingApplication(PKMixin, TenantMixin, CommonMixin, Base):
-    """资助申请单（11 态，唯一键防同批次重复）。GRANTED 写 StageEvent 进 360。"""
+    """资助申请单（11 态，唯一键防同批次重复）。GRANTED 冻结批准事实并原子占用额度。"""
     __tablename__ = "t_affairs_funding_application"
 
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     apply_source: Mapped[str] = mapped_column(String(20), nullable=False, default="SELF", comment="SELF/RECOMMEND")
     project_type: Mapped[str | None] = mapped_column(String(50), index=True)
-    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="金额(脱敏按角色)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="兼容金额；新真值由申请额/批准额分离")
+    requested_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), comment="申请金额真值；与批准金额分离"
+    )
+    approved_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), comment="最终批准金额真值；占用额度后不可修改"
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, comment="最终批准事实时间")
+    quota_reserved: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0",
+        comment="名额与金额额度是否已原子占用"
+    )
     statement: Mapped[str | None] = mapped_column(String(1000), comment="申请理由")
     check_snapshot_json: Mapped[str | None] = mapped_column(String(2000), comment="资格校验快照(学籍/处分/成绩/困难库)")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
@@ -162,7 +183,12 @@ class FundingDisbursement(PKMixin, TenantMixin, CommonMixin, Base):
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     project_type: Mapped[str | None] = mapped_column(String(50))
-    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="发放金额(脱敏按角色)")
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), comment="发放金额；由冻结批准快照驱动")
+    approved_amount_snapshot: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), comment="发放时冻结的批准金额"
+    )
+    approved_at_snapshot: Mapped[datetime | None] = mapped_column(DateTime, comment="发放时冻结的批准时间")
+    approval_version_snapshot: Mapped[int | None] = mapped_column(Integer, comment="发放时冻结的申请版本")
     disburse_no: Mapped[str | None] = mapped_column(String(100), comment="发放批次号")
     bank_last4: Mapped[str | None] = mapped_column(String(10), comment="银行卡后4位(不落全号)")
     bank_status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", index=True)

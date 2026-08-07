@@ -12,16 +12,28 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
 class AaEffectiveGradePolicy(PKMixin, TenantMixin, CommonMixin, Base):
-    """租户级、按生效学期版本化的有效成绩策略。"""
+    """租户级、按生效学期版本化的有效成绩策略。
+
+    两条数据库级合同，缺一不可：
+    - 版本身份 ``UNIQUE(tenant_id, policy_code, policy_version)``：同一策略代码必须能发布
+      V1/V2/V3 版本链，历史成绩继续引用它发布时的那个版本；
+    - 活动范围 ``UNIQUE(tenant_id, active_scope_key)``：``active_scope_key`` 只在 ACTIVE 行
+      非空（值为生效学期，无学期即 ``BASE``），SUPERSEDED 行置 NULL。MySQL 唯一索引允许
+      多行 NULL，于是"同一生效范围同时只能有一条 ACTIVE"由数据库兜底，而不是靠应用先查后写。
+    """
 
     __tablename__ = "t_aa_effective_grade_policy"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "policy_code", name="uk_aa_effective_grade_policy_code"),
+        UniqueConstraint("tenant_id", "policy_code", "policy_version",
+                         name="uk_aa_effective_grade_policy_ver"),
+        UniqueConstraint("tenant_id", "active_scope_key", name="uk_aa_effective_grade_policy_scope"),
         Index("ix_aa_effective_grade_policy_active", "tenant_id", "status", "effective_from_term_id"),
     )
 
     policy_code: Mapped[str] = mapped_column(String(80), nullable=False)
     policy_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    active_scope_key: Mapped[str | None] = mapped_column(
+        String(40), comment="ACTIVE 行的生效范围键（学期ID 或 BASE）；非 ACTIVE 行为 NULL")
     attempt_strategy: Mapped[str] = mapped_column(String(40), nullable=False)
     makeup_strategy: Mapped[str] = mapped_column(String(40), nullable=False, default="CAP_AND_OVERRIDE")
     makeup_cap: Mapped[int | None] = mapped_column(Integer)
@@ -32,17 +44,90 @@ class AaEffectiveGradePolicy(PKMixin, TenantMixin, CommonMixin, Base):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class AaEffectiveGradePolicyBypass(PKMixin, TenantMixin, CommonMixin, Base):
+    """历史导入绕过"必须有 ACTIVE 策略"合同时的显式欠账登记。
+
+    正式业务写入无策略一律 409；只有迁移/历史导入可以在 ``legacy_import_context`` 里写入，
+    并且必须留下来源、操作人、批次和欠账理由，让上线门禁能查出"哪些正式成绩没有冻结策略"。
+    静默放行是不允许的——那正是 NEW-P1-04 的根因。
+    """
+
+    __tablename__ = "t_aa_effective_grade_policy_bypass"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_no", name="uk_aa_grade_policy_bypass_batch"),
+        Index("ix_aa_grade_policy_bypass_tenant", "tenant_id", "source"),
+    )
+
+    source: Mapped[str] = mapped_column(String(50), nullable=False, comment="MIGRATION/LEGACY_IMPORT/SANDBOX")
+    operator: Mapped[str] = mapped_column(String(100), nullable=False)
+    batch_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    debt_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    grade_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AaGradeChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
+    """成绩更正命令（包 1 GradeCorrectionCommand）。
+
+    发起更正时把"想改成什么"存在这里，正式成绩一个字节都不动——此前的实现在申请阶段就把
+    ``AaGradeRecord`` 的分项改成申请值，于是成绩单、毕业审核和学生自己看到的都是一个还没
+    批准的分数（C05）。终审通过时才由统一命令一次性生成新的 ``AcademicGrade`` 版本。
+
+    ``expected_grade_version`` 是发起时看到的正式成绩行版本；终审前若正式成绩已被别的入口
+    （复查更正、补考回写）改过，本次更正必须 409 重来，不允许拿过期分数覆盖当前事实。
+    """
+
+    __tablename__ = "t_aa_grade_change_request"
+    __table_args__ = (
+        Index("ix_aa_grade_change_request_record", "tenant_id", "grade_record_id", "status"),
+        Index("ix_aa_grade_change_request_instance", "tenant_id", "workflow_instance_id"),
+    )
+
+    grade_task_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    grade_record_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="CHANGE_REQUEST",
+                                        comment="CHANGE_REQUEST/RECHECK")
+    proposed_usual_score: Mapped[int | None] = mapped_column(Integer)
+    proposed_midterm_score: Mapped[int | None] = mapped_column(Integer)
+    proposed_final_score: Mapped[int | None] = mapped_column(Integer)
+    proposed_total_score: Mapped[int | None] = mapped_column(Integer)
+    proposed_pass_status: Mapped[str | None] = mapped_column(String(20))
+    before_usual_score: Mapped[int | None] = mapped_column(Integer)
+    before_midterm_score: Mapped[int | None] = mapped_column(Integer)
+    before_final_score: Mapped[int | None] = mapped_column(Integer)
+    before_total_score: Mapped[int | None] = mapped_column(Integer)
+    current_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="发起时的 ACTIVE AcademicGrade")
+    expected_grade_version: Mapped[int | None] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger)
+    current_task_id: Mapped[int | None] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING",
+                                        comment="PENDING/APPROVED/REJECTED")
+    decided_by: Mapped[str | None] = mapped_column(String(100))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class AaGradeCorrection(PKMixin, TenantMixin, CommonMixin, Base):
-    """正式成绩追加式更正链；原成绩保留为SUPERSEDED，新成绩成为ACTIVE。"""
+    """正式成绩追加式更正链；原成绩保留为SUPERSEDED，新成绩成为ACTIVE。
+
+    更正来源有两条（学生复查、教师发起更正），必须落在同一张更正链上，
+    ``UNIQUE(tenant_id, source_type, source_ref_id)`` 保证同一来源单据只生效一次。
+    """
 
     __tablename__ = "t_aa_grade_correction"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "recheck_id", name="uk_aa_grade_correction_recheck"),
+        UniqueConstraint("tenant_id", "source_type", "source_ref_id",
+                         name="uk_aa_grade_correction_source"),
         Index("ix_aa_grade_correction_original", "tenant_id", "original_grade_id"),
         Index("ix_aa_grade_correction_corrected", "tenant_id", "corrected_grade_id"),
     )
 
-    recheck_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="RECHECK",
+                                             comment="RECHECK/CHANGE_REQUEST")
+    source_ref_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="来源单据ID")
+    recheck_id: Mapped[int | None] = mapped_column(BigInteger, comment="历史列：复查来源保留回链")
     original_grade_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     corrected_grade_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     before_score: Mapped[int | None] = mapped_column(Integer)

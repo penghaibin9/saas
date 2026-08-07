@@ -312,8 +312,34 @@ def test_status_machine(client, auth_headers, db_mode):
         db.close()
     assess = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ASSESS"}).json()
     assert assess.get("data") and assess["data"]["status"] == "ASSESSING", assess
+
+    # force 只能绕过企业评价、自评等材料缺项，不能绕过正式成绩；状态机用例先写入
+    # 一条可冻结的 PUBLISHED 成绩，其余归档材料继续保持缺失并由 force 留痕绕过。
+    from datetime import datetime
+    from app.models import InternshipFinalScore, InternshipRecord
+    db = get_sessionmaker()()
+    try:
+        rec = db.get(InternshipRecord, int(rid))
+        db.add(InternshipFinalScore(
+            tenant_id=TID,
+            internship_id=rec.id,
+            student_id=rec.student_id,
+            batch_id=rec.batch_id,
+            total_score=80,
+            pass_line=60,
+            is_pass=True,
+            incomplete=False,
+            status="PUBLISHED",
+            published_by_name="学校管理员",
+            published_at=datetime.utcnow(),
+            version=1,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     # 归档不再走 /status（其 action 校验只放行 READY/ONBOARD/ASSESS），须走正式归档接口；
-    # 本用例未凑齐企业评价/学生自评/成绩发布等归档合规材料，走 force 强制归档
+    # 本用例未凑齐企业评价/学生自评等归档合规材料，走 force 强制归档
     import io
     up = client.post("/api/v1/files", headers=auth_headers,
                      files={"file": ("evidence.txt", io.BytesIO(b"force-archive-evidence"), "text/plain")},

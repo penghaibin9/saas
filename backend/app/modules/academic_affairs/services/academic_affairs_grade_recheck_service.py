@@ -210,6 +210,12 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             for attr in AcademicGrade.__mapper__.column_attrs
             if attr.key not in excluded
         }
+        # 必须先让原行退位再插新行：uk_acad_grade_active_record 只允许同一成绩明细存在
+        # 一条 ACTIVE 版本，顺序反了会在 flush 时自己撞自己的唯一键。
+        grade.record_status = "SUPERSEDED"
+        grade.void_reason = "成绩复查更正，已由后继版本接管"
+        db.flush()
+
         corrected = AcademicGrade(
             **payload,
             score=score,
@@ -222,8 +228,6 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
         )
         db.add(corrected)
         db.flush()
-
-        grade.record_status = "SUPERSEDED"
         grade.void_reason = f"成绩复查更正，后继成绩ID={corrected.id}"
 
         grade_record = db.scalars(select(AaGradeRecord).where(
@@ -241,6 +245,8 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
 
         correction = AaGradeCorrection(
             tenant_id=_tid(),
+            source_type="RECHECK",
+            source_ref_id=row.id,
             recheck_id=row.id,
             original_grade_id=grade.id,
             corrected_grade_id=corrected.id,

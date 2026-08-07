@@ -22,7 +22,9 @@ def test_academic_grade_has_formal_identity_fields_and_indexes():
         "ix_acad_grade_teaching_class",
     } <= index_names
     unique_names = {constraint.name for constraint in AcademicGrade.__table__.constraints if constraint.name}
-    assert "uk_acad_grade_source_record" in unique_names
+    # 包 1：唯一性从"一个成绩明细一条正式成绩"改为"一个成绩明细一条有效正式成绩"。
+    assert "uk_acad_grade_active_record" in unique_names
+    assert "active_record_key" in set(AcademicGrade.__mapper__.attrs.keys())
 
 
 def test_course_snapshot_uses_specific_course_version_row():

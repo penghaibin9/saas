@@ -40,7 +40,9 @@ DOMAINS = {
     "student-affairs": ("studentNo", "", "", "学号"),
 }
 
-_MEM: dict[str, dict] = {}
+# 单一命名空间：batch_no 全局唯一（uuid 生成），peek_batch 在拿到 domain 之前就要能按
+# batch_no 单独查到批次，故不像 migration_import_service 那样按域分命名空间。
+_NAMESPACE = "DOMAIN_IMPORT"
 MAX_IMPORT_ROWS = 5000
 
 
@@ -142,46 +144,74 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
     actor = user or get_current_user_ctx() or {}
     created_by = str(actor.get("userId") or "")
-    _MEM[batch_no] = {
-        "domain": domain, "rows": ok_rows, "status": status, "tenantId": _tid(),
-        "createdBy": created_by, "namespace": namespace or domain.upper(),
-    }
+    from app.services import shared_import_batch_service as shared_batches
+    # 持久化到共享 MySQL 批次表（跨进程/跨实例可见，服务重启不丢）：C29 止血——
+    # 之前用进程内 _MEM 存批次，worker A 校验、worker B 确认时若落在不同实例/重启后即
+    # 查无此批次；也没有 claim 租约，重复点确认会重复写。
+    shared_batches.create(_tid(), _NAMESPACE, batch_no, status,
+                          {"domain": domain, "rows": ok_rows}, errors=errors,
+                          operator_key=created_by)
     return {"batchNo": batch_no, "status": status, "totalRows": len(rows),
             "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50]}
 
 
 def peek_batch(batch_no: str) -> dict | None:
-    batch = _MEM.get(batch_no)
-    if not batch or batch.get("tenantId") != _tid():
+    from app.services import shared_import_batch_service as shared_batches
+    try:
+        row = shared_batches.get(_tid(), _NAMESPACE, batch_no)
+    except AppException:
         return None
-    return {"domain": batch.get("domain"), "status": batch.get("status"),
-            "createdBy": batch.get("createdBy")}
+    payload = row.get("payload") or {}
+    return {"domain": payload.get("domain"), "status": row.get("status"),
+            "createdBy": row.get("operatorKey")}
 
 
 def assert_confirm_allowed(user: dict, batch_no: str, auth) -> None:
-    batch = _MEM.get(batch_no)
-    if not batch or batch.get("tenantId") != _tid():
+    meta = peek_batch(batch_no)
+    if not meta:
         raise not_found("导入批次不存在或已过期，请重新校验")
-    assert_import_batch_owner(user, batch.get("createdBy"), auth.import_perm)
+    assert_import_batch_owner(user, meta.get("createdBy"), auth.import_perm)
+
+
+def _confirm_master_domain_rows(domain: str, rows: list[dict]) -> int:
+    """一批行在同一个事务/同一个会话内写入：任一行失败整批 rollback，不留半成品台账。"""
+    from app.services import db_service
+    create = _svc(DOMAINS[domain][1])
+    db = db_service.session()
+    try:
+        inserted = 0
+        for r in rows:
+            create({k: v for k, v in r.items() if v is not None}, db=db)
+            inserted += 1
+        db.commit()
+        return inserted
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def confirm(batch_no: str) -> dict:
-    batch = _MEM.get(batch_no)
-    if not batch or batch.get("tenantId") != _tid():
-        raise not_found("导入批次不存在或已过期，请重新校验")
-    if batch["status"] != "DRY_RUN_PASSED":
-        raise AppException("VALIDATION_ERROR", "该批次未通过 Dry-Run 校验，禁止确认导入")
-    if batch["domain"] == "student-affairs":
-        result = _confirm_student_affairs(batch["rows"])
-        batch["status"] = "SUCCESS"
-        return {"batchNo": batch_no, "status": "SUCCESS", **result}
-    create = _svc(DOMAINS[batch["domain"]][1])
-    inserted = 0
-    for r in batch["rows"]:
-        create({k: v for k, v in r.items() if v is not None})
-        inserted += 1
-    batch["status"] = "SUCCESS"
-    return {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
+    from app.services import shared_import_batch_service as shared_batches
+    payload, claim_token, already_done = shared_batches.claim(
+        _tid(), _NAMESPACE, batch_no, required_status="DRY_RUN_PASSED")
+    if already_done:
+        return payload
+    domain = payload.get("domain")
+    rows = payload.get("rows") or []
+    try:
+        if domain == "student-affairs":
+            result = _confirm_student_affairs(rows)
+            public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
+        else:
+            inserted = _confirm_master_domain_rows(domain, rows)
+            public_result = {"batchNo": batch_no, "status": "SUCCESS", "insertedRows": inserted}
+    except Exception as exc:
+        shared_batches.fail(_tid(), _NAMESPACE, batch_no, claim_token, str(exc), retryable=True)
+        raise
+    shared_batches.finish(_tid(), _NAMESPACE, batch_no, claim_token, public_result)
+    return public_result
 
 
 _AFFAIRS_HISTORY_TYPES = {
@@ -191,7 +221,7 @@ _AFFAIRS_HISTORY_TYPES = {
 
 
 def _dry_run_student_affairs(rows, *, namespace=None, user=None):
-    from app.models import StudentProfile
+    from app.models import AffairsAuditTrail, StudentProfile
     if len(rows) > MAX_IMPORT_ROWS:
         raise AppException("VALIDATION_ERROR", f"单次导入不能超过 {MAX_IMPORT_ROWS} 行")
     db = get_sessionmaker()()
@@ -252,9 +282,10 @@ def _dry_run_student_affairs(rows, *, namespace=None, user=None):
     batch_no = f"IMP{uuid.uuid4().hex[:10]}"
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
     actor = user or get_current_user_ctx() or {}
-    _MEM[batch_no] = {"domain": "student-affairs", "rows": ok_rows, "status": status,
-                      "tenantId": _tid(), "createdBy": str(actor.get("userId") or ""),
-                      "namespace": namespace or "STUDENT_AFFAIRS_HISTORY"}
+    from app.services import shared_import_batch_service as shared_batches
+    shared_batches.create(_tid(), _NAMESPACE, batch_no, status,
+                          {"domain": "student-affairs", "rows": ok_rows}, errors=errors,
+                          operator_key=str(actor.get("userId") or ""))
     return {"batchNo": batch_no, "status": status, "totalRows": len(rows),
             "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50],
             "reconciliation": {"acceptedHistoryNos": [r["historyNo"] for r in ok_rows]}}

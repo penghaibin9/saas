@@ -86,6 +86,30 @@ def _acad_of(db, s):
         AcademicStudent.is_deleted.is_(False))).first()
 
 
+def _earned_credits(db, acad, *extra_conditions) -> float:
+    """按稳定课程身份收敛后累加已通过学分。
+
+    绝不能直接 SUM(credit_value)：同一门课的补考通过和重修通过在教务里是两条并存的正式
+    ACTIVE 成绩（不是脏数据），裸求和会把同一门课的学分计两遍，学生凭重复学分被判达到
+    毕业要求。resolve_effective_grade 按 COURSE_ID > COURSE_CODE > LEGACY_NAME_KEY 的
+    稳定身份把每门课收敛到一条有效成绩，再只累加其中通过的那些。
+
+    历史无课程 ID/代码的行走 LEGACY_NAME_KEY，按行独立保留、不按同名静默合并——宁可
+    多算也不把两门不同的课误并成一门，这与必修检查口径一致。
+    """
+    from app.models import AcademicGrade
+    from app.modules.academic_affairs.services.academic_affairs_grade_service import (
+        effective_grade_rows,
+    )
+
+    rows = db.scalars(select(AcademicGrade).where(
+        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
+        AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False),
+        *extra_conditions)).all()
+    return float(sum(float(r.credit_value or 0)
+                     for r in effective_grade_rows(rows) if r.pass_status == "PASSED"))
+
+
 def _check_credit(db, s):
     """学分按学生确定方案总学分审核；方案歧义/缺失返回 UNKNOWN，并阻断系统通过。"""
     from app.models import AcademicGrade
@@ -102,10 +126,7 @@ def _check_credit(db, s):
     if not acad:
         return {"item": "CREDIT", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "无学业过程台账", **meta}
-    earned = db.scalar(select(func.coalesce(func.sum(AcademicGrade.credit_value), 0)).where(
-        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
-        AcademicGrade.pass_status == "PASSED", AcademicGrade.record_status == "ACTIVE",
-        AcademicGrade.is_deleted.is_(False))) or 0
+    earned = _earned_credits(db, acad)
     ok = float(earned) >= float(prog.total_credits)
     return {"item": "CREDIT", "result": "PASS" if ok else "FAIL", "owner": "AA_STAFF",
             "evidence": f"已得 {float(earned)}/{float(prog.total_credits)} 学分", **meta}
@@ -148,10 +169,7 @@ def _check_course_elective(db, s):
     if not acad:
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "无学业记录", **meta}
-    earned = db.scalar(select(func.coalesce(func.sum(AcademicGrade.credit_value), 0)).where(
-        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
-        AcademicGrade.nature == "ELECTIVE", AcademicGrade.pass_status == "PASSED",
-        AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))) or 0
+    earned = _earned_credits(db, acad, AcademicGrade.nature == "ELECTIVE")
     target = None
     if prog.requirement_json:
         try:
@@ -198,10 +216,7 @@ def _check_practice(db, s):
     if not practice_names:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "方案未标注实践环节课程", **meta}
-    earned = db.scalar(select(func.coalesce(func.sum(AcademicGrade.credit_value), 0)).where(
-        AcademicGrade.tenant_id == _tid(), AcademicGrade.acad_student_id == acad.id,
-        AcademicGrade.course_name.in_(practice_names), AcademicGrade.pass_status == "PASSED",
-        AcademicGrade.record_status == "ACTIVE", AcademicGrade.is_deleted.is_(False))) or 0
+    earned = _earned_credits(db, acad, AcademicGrade.course_name.in_(practice_names))
     ok = float(earned) >= float(target)
     return {"item": "PRACTICE", "result": "PASS" if ok else "FAIL", "owner": "AA_STAFF",
             "evidence": f"实践环节已得 {float(earned)}/{float(target)} 学分", **meta}
