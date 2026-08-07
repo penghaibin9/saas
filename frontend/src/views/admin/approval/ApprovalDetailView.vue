@@ -7,7 +7,7 @@
   >
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
-    <div v-else class="mp-grid-2">
+    <div v-else-if="task" class="mp-grid-2">
       <div class="mp-stack">
         <section class="mp-card">
           <div class="mp-card__head">
@@ -26,40 +26,22 @@
             <div class="mp-kv">
               <span class="mp-kv__k">申请人</span>
               <span class="mp-kv__v">
-                {{ task.applicant.name }} · {{ maskNo(task.applicant.studentNo) }} · {{ task.applicant.className }}
+                {{ task.applicant.name }}
+                <template v-if="task.applicant.studentNo"> · {{ maskNo(task.applicant.studentNo) }}</template>
+                <template v-if="task.applicant.className"> · {{ task.applicant.className }}</template>
               </span>
             </div>
-            <div class="mp-kv">
-              <span class="mp-kv__k">提交时间</span>
-              <span class="mp-kv__v">{{ task.submitTime }}（截止 {{ task.deadline }}）</span>
-            </div>
-            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv">
-              <span class="mp-kv__k">{{ f.label }}</span>
-              <span class="mp-kv__v">
-                {{ f.value }}
-                <span v-if="f.masked" class="dv-masked">已脱敏</span>
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <section v-if="detail.applyNote" class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">申请说明</span></div>
-          <div class="mp-card__body">
-            <p class="dv-note-text">{{ detail.applyNote }}</p>
+            <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ task.submitTime || '—' }}</span></div>
+            <div v-if="task.deadline" class="mp-kv"><span class="mp-kv__k">办理期限</span><span class="mp-kv__v">{{ task.deadline }}</span></div>
+            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv"><span class="mp-kv__k">{{ f.label }}</span><span class="mp-kv__v">{{ f.value }}</span></div>
           </div>
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">附件材料</span>
-            <span class="mp-note">共 {{ detail.attachments.length }} 份</span>
-          </div>
+          <div class="mp-card__head"><span class="mp-card__title">附件材料</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
           <div class="mp-card__body">
             <p v-if="!detail.attachments.length" class="mp-note">申请人未上传附件</p>
-            <div v-else style="display: flex; gap: var(--space-2); flex-wrap: wrap">
-              <StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" />
-            </div>
+            <div v-else class="dv-attachments"><StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" /></div>
           </div>
         </section>
       </div>
@@ -79,70 +61,22 @@
           </div>
         </section>
 
-        <section v-if="suggestions.length" class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">加签建议</span>
-            <span class="mp-note">仅供决策参考，不改变流转节点</span>
-          </div>
-          <div class="mp-card__body">
-            <div v-for="(s, i) in suggestions" :key="i" class="dv-suggestion">
-              <div class="mp-cell-main">{{ s.who }}</div>
-              <div class="dv-suggestion__content">{{ s.content }}</div>
-              <div class="mp-cell-sub">{{ s.time }}</div>
-            </div>
-          </div>
-        </section>
-
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">办理操作</span></div>
           <div class="mp-card__body">
             <template v-if="canHandle">
-              <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">审批意见（选填）</label>
-              <textarea
-                v-model="comment"
-                class="mp-textarea"
-                placeholder="例如：材料齐全，同意办理；意见将写入时间线并同步申请人…"
-              ></textarea>
+              <label class="mp-note dv-label">审批意见（选填）</label>
+              <textarea v-model="comment" class="mp-textarea" placeholder="审批意见会写入真实流转记录"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
-              <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                <AppButton
-                  variant="primary"
-                  style="flex: 1"
-                  :loading="submitting"
-                  :disabled="!can('approveTask')"
-                  :title="reason('approveTask')"
-                  @click="submitApprove"
-                >
-                  ✓ 审批通过
-                </AppButton>
-                <AppButton
-                  variant="danger"
-                  style="flex: 1"
-                  :disabled="!can('returnTask') || submitting"
-                  :title="reason('returnTask')"
-                  @click="returnDialog = true"
-                >
-                  ↩ 退回申请
-                </AppButton>
-                <AppButton
-                  variant="secondary"
-                  style="flex: 1"
-                  :disabled="!can('transferTask') || submitting"
-                  :title="reason('transferTask')"
-                  @click="openTransfer"
-                >
-                  ⇄ 转交
-                </AppButton>
+              <div class="dv-actions">
+                <AppButton variant="primary" :loading="submitting" :disabled="!canAction('approveTask', 'APPROVE')" @click="submitApprove">✓ 审批通过</AppButton>
+                <AppButton variant="secondary" :disabled="!canAction('returnTask', 'RETURN') || submitting" @click="returnDialog = true">↩ 退回修改</AppButton>
+                <AppButton variant="danger" :disabled="!canAction('rejectTask', 'REJECT') || submitting" @click="rejectDialog = true">✕ 驳回终止</AppButton>
+                <AppButton variant="secondary" :disabled="!canAction('transferTask', 'TRANSFER') || submitting" @click="openTransfer">⇄ 转办</AppButton>
               </div>
-              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">
-                办理动作实时写入审批时间线与审计留痕，结果同步申请人
-              </p>
+              <p class="mp-note dv-hint">退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。</p>
             </template>
-            <EmptyState
-              v-else
-              :title="readonlyTitle"
-              :description="readonlyDesc"
-            />
+            <EmptyState v-else :title="readonlyTitle" :description="readonlyDesc" />
           </div>
         </section>
       </div>
@@ -150,62 +84,47 @@
 
     <AppConfirmDialog
       v-model:visible="returnDialog"
-      title="退回申请确认"
-      :message="task ? '退回后「' + task.title + '」将返回申请人整改，退回原因原样同步对方。' : ''"
-      type="danger"
-      confirm-text="确认退回"
+      title="退回修改确认"
+      :message="task ? '退回后「' + task.title + '」仍保持流程运行，并给申请人生成修改重提待办。' : ''"
+      type="primary"
+      confirm-text="确认退回修改"
       require-reason
-      reason-label="退回原因"
-      reason-placeholder="请写明退回原因与整改要求（不少于 5 个字）"
+      reason-label="退回原因 / 修改要求"
+      reason-placeholder="请写明退回原因与需要修改的内容"
       :submitting="submitting"
       @confirm="submitReturn"
     />
 
-    <AppDrawer v-model:visible="transferDrawer" title="转交任务">
-      <p class="mp-note" style="margin: 0 0 var(--space-3)">
-        任务状态保持待审批，办理人转移给所选对象并全程留痕。
-      </p>
-      <div
-        v-for="t in ctx.transferTargets"
-        :key="t.userId"
-        class="mp-radio"
-        :class="{ 'is-active': transferForm.targetUserId === t.userId }"
-        @click="transferForm.targetUserId = t.userId"
-      >
-        <input type="radio" :checked="transferForm.targetUserId === t.userId" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div>
-          <div class="mp-radio__desc">{{ t.orgName }} · 当前在办 {{ t.pendingCount }} 条</div>
-        </div>
+    <AppConfirmDialog
+      v-model:visible="rejectDialog"
+      title="驳回终止确认"
+      :message="task ? '驳回后「' + task.title + '」的原审批流程将终止，不生成原流程重提入口。' : ''"
+      type="danger"
+      confirm-text="确认驳回终止"
+      require-reason
+      reason-label="驳回原因"
+      reason-placeholder="请写明终止原流程的原因"
+      :submitting="submitting"
+      @confirm="submitReject"
+    />
+
+    <AppDrawer v-model:visible="transferDrawer" title="转办任务">
+      <p class="mp-note">原任务保留 TRANSFERRED 留痕，并给目标办理人生成新的 PENDING 任务。</p>
+      <div v-for="t in ctx.transferTargets" :key="t.userId" class="mp-radio" :class="{ 'is-active': transferForm.targetUserId === t.userId }" @click="transferForm.targetUserId = t.userId">
+        <input type="radio" :checked="transferForm.targetUserId === t.userId" />
+        <div><div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div><div class="mp-radio__desc">{{ t.orgName || '本校' }} · 当前在办 {{ t.pendingCount }} 条</div></div>
       </div>
-      <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">转交说明（选填）</label>
-      <textarea
-        v-model="transferForm.note"
-        class="mp-textarea"
-        placeholder="例如：该件涉及学籍口径，请协助复核后办理…"
-      ></textarea>
+      <p v-if="!ctx.transferTargets.length" class="mp-note">当前没有可转办的同租户教职工账号。</p>
+      <label class="mp-note dv-label">转办说明（选填）</label>
+      <textarea v-model="transferForm.note" class="mp-textarea" placeholder="请说明转办原因或办理重点"></textarea>
       <p v-if="transferError" class="mp-form-err">{{ transferError }}</p>
-      <template #footer>
-        <AppButton variant="ghost" @click="transferDrawer = false">取消</AppButton>
-        <AppButton variant="primary" :loading="submitting" @click="submitTransfer">确认转交</AppButton>
-      </template>
+      <template #footer><AppButton variant="ghost" @click="transferDrawer = false">取消</AppButton><AppButton variant="primary" :loading="submitting" @click="submitTransfer">确认转办</AppButton></template>
     </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 审批详情（/admin/approval/todos/:taskId）。
- * 闭环：业务信息（脱敏）/附件/申请说明 → 通过（意见选填）/ 退回（原因必填）/ 转交（选人）
- * → 时间线与审计留痕即时刷新；已办结或已转交任务操作区只读；taskId 不存在展示 ErrorState。
- */
-import {
-  ModulePageShell,
-  StatusTag,
-  LoadingState,
-  ErrorState,
-  EmptyState
-} from '@/components/business'
+import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
@@ -213,144 +132,98 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'ApprovalDetailView',
-  components: {
-    ModulePageShell,
-    StatusTag,
-    LoadingState,
-    ErrorState,
-    EmptyState,
-    AppConfirmDialog,
-    AppButton,
-    AppDrawer
-  },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppButton, AppDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
-      error: '',
-      task: null,
-      detail: null,
-      timeline: [],
-      suggestions: [],
-      comment: '',
-      formError: '',
-      submitting: false,
-      returnDialog: false,
-      transferDrawer: false,
-      transferForm: { targetUserId: '', note: '' },
-      transferError: ''
+      loading: true, error: '', task: null,
+      detail: { fields: [], attachments: [], applyNote: '' }, timeline: [], suggestions: [],
+      comment: '', formError: '', submitting: false,
+      returnDialog: false, rejectDialog: false, transferDrawer: false,
+      transferForm: { targetUserId: '', note: '' }, transferError: ''
     }
   },
   computed: {
-    canHandle() {
-      return !!(this.task && this.task.status === 'PENDING_REVIEW' && !this.task.transferred)
-    },
+    canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
     readonlyTitle() {
       if (!this.task) return '任务不可操作'
-      if (this.task.transferred) return '该任务已转交'
-      return this.task.status === 'APPROVED' ? '该任务已办结（通过）' : '该任务已办结（退回）'
+      if (this.task.status === 'APPROVED') return '该任务已办结（通过）'
+      if (this.task.status === 'RETURNED') return '该任务已退回修改'
+      if (this.task.status === 'REJECTED') return '该任务已驳回终止'
+      if (this.task.status === 'TRANSFERRED') return '该任务已转办'
+      return '该任务当前不可办理'
     },
     readonlyDesc() {
       if (!this.task) return ''
-      if (this.task.transferred) return (this.task.transferHint || '已转交他人办理') + '，本页仅可查看流转记录'
-      return '办理结果已同步申请人，操作区仅可查看，完整留痕见审批时间线'
+      if (this.task.status === 'RETURNED') return '流程仍在运行，申请人可按退回要求修改并重新提交。'
+      if (this.task.status === 'REJECTED') return '原流程已经终止；如需再次申请，应重新发起新流程。'
+      return '本页仅展示服务端已持久化的处理结果与流转记录。'
     }
   },
-  created() {
-    this.load()
-  },
+  created() { this.load() },
   methods: {
-    can(key) {
+    canAction(key, action) {
       const pa = this.ctx.permissionActions[key]
-      return !!(pa && pa.visible && pa.allowed)
+      return !!(pa && pa.visible && pa.allowed && this.task?.allowedActions?.includes(action))
     },
-    reason(key) {
-      const pa = this.ctx.permissionActions[key]
-      return pa && !pa.allowed ? pa.reason : ''
-    },
-    urgencyTone(urgency) {
-      if (urgency === 'OVERDUE') return 'danger'
-      if (urgency === 'URGENT') return 'warning'
-      return 'default'
-    },
-    toneClass(tone) {
-      const t = tone === 'processing' ? 'warning' : tone
-      return 'is-' + (['success', 'warning', 'danger', 'default'].includes(t) ? t : 'default')
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
+    urgencyTone(v) { return v === 'OVERDUE' ? 'danger' : (v === 'NEAR_DEADLINE' || v === 'URGENT') ? 'warning' : 'default' },
+    toneClass(tone) { const t = tone === 'processing' ? 'warning' : tone; return 'is-' + (['success', 'warning', 'danger', 'default'].includes(t) ? t : 'default') },
+    maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
     async load() {
-      this.loading = true
-      this.error = ''
+      this.loading = true; this.error = ''
       const res = await approvalApi.getApprovalDetail(this.$route.params.taskId)
       if (res.code === 0) {
-        this.task = res.data.task
-        this.detail = res.data.detail
-        this.timeline = res.data.timeline
-        this.suggestions = res.data.suggestions
-      } else {
-        this.error = res.message
-      }
+        this.task = res.data.task; this.detail = res.data.detail; this.timeline = res.data.timeline; this.suggestions = res.data.suggestions
+      } else this.error = res.message
       this.loading = false
     },
-    async submitApprove() {
-      if (!this.can('approveTask')) return
-      this.formError = ''
-      this.submitting = true
-      const res = await approvalApi.approveTask(this.task.taskId, {
-        comment: this.comment,
-        version: this.task.version,
-      })
-      this.submitting = false
-      if (res.code === 0) {
-        toast.success('审批通过：已留痕并同步申请人，待办统计已联动更新')
-        this.comment = ''
-        this.load()
-      } else {
-        this.formError = res.message
+    async actionFailed(res, field = 'form') {
+      const conflict = String(res.bizCode || '').includes('CONFLICT') || /已被处理|发生变化|刷新后重试|版本/.test(res.message || '')
+      if (conflict) { toast.info('该审批事实已经变化，已为你刷新最新状态'); await this.load(); return }
+      if (field === 'transfer') this.transferError = res.message; else this.formError = res.message
+    },
+    async goNext() {
+      const queue = await approvalApi.getTodos({ page: 1, pageSize: 1, bizType: this.$route.query.bizType || '' })
+      if (queue.code === 0 && queue.data.list.length) {
+        const next = queue.data.list[0]
+        if (String(next.taskId) !== String(this.task?.taskId)) {
+          await this.$router.replace({ path: '/admin/approval/todos/' + next.taskId, query: { ...this.$route.query } }); await this.load(); return
+        }
       }
+      await this.$router.push('/admin/approval/todos')
+    },
+    async finishAction(res, message) {
+      if (res.code !== 0) { await this.actionFailed(res); return false }
+      toast.success(message); await this.load(); await this.goNext(); return true
+    },
+    async submitApprove() {
+      if (!this.canAction('approveTask', 'APPROVE')) return
+      this.formError = ''; this.submitting = true
+      const res = await approvalApi.approveTask(this.task.taskId, { comment: this.comment, version: this.task.version })
+      this.submitting = false
+      if (await this.finishAction(res, '审批通过：服务端已持久化，正在进入下一条待办')) this.comment = ''
     },
     async submitReturn({ reason }) {
       this.submitting = true
-      const res = await approvalApi.returnTask(this.task.taskId, {
-        reason,
-        version: this.task.version,
-      })
-      this.submitting = false
-      this.returnDialog = false
-      if (res.code === 0) {
-        toast.success('已退回：原因已同步申请人，并写入退回记录与审计留痕')
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const res = await approvalApi.returnTask(this.task.taskId, { reason, version: this.task.version })
+      this.submitting = false; this.returnDialog = false
+      await this.finishAction(res, '已退回修改：申请人修改重提待办已生成，正在进入下一条待办')
     },
-    openTransfer() {
-      if (!this.can('transferTask')) return
-      this.transferForm = { targetUserId: '', note: '' }
-      this.transferError = ''
-      this.transferDrawer = true
+    async submitReject({ reason }) {
+      this.submitting = true
+      const res = await approvalApi.rejectTask(this.task.taskId, { reason, version: this.task.version })
+      this.submitting = false; this.rejectDialog = false
+      await this.finishAction(res, '已驳回终止：原流程已结束，正在进入下一条待办')
     },
+    openTransfer() { if (!this.canAction('transferTask', 'TRANSFER')) return; this.transferForm = { targetUserId: '', note: '' }; this.transferError = ''; this.transferDrawer = true },
     async submitTransfer() {
       this.transferError = ''
-      if (!this.transferForm.targetUserId) {
-        this.transferError = '请选择转交对象'
-        return
-      }
+      if (!this.transferForm.targetUserId) { this.transferError = '请选择转办对象'; return }
       this.submitting = true
-      const res = await approvalApi.transferTask(this.task.taskId, {
-        targetUserId: this.transferForm.targetUserId,
-        note: this.transferForm.note
-      })
+      const res = await approvalApi.transferTask(this.task.taskId, { targetUserId: this.transferForm.targetUserId, note: this.transferForm.note, version: this.task.version })
       this.submitting = false
-      if (res.code === 0) {
-        this.transferDrawer = false
-        toast.success('已转交给 ' + res.data.transferredTo + '：任务状态不变，流转留痕已更新')
-        this.load()
-      } else {
-        this.transferError = res.message
-      }
+      if (res.code === 0) { this.transferDrawer = false; toast.success('已转办：原任务已留痕，新办理人已获得真实待办'); await this.load(); await this.goNext() }
+      else await this.actionFailed(res, 'transfer')
     }
   }
 }
@@ -358,38 +231,9 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-
-.dv-masked {
-  margin-left: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--info-600);
-  background: var(--info-50);
-  border: 1px solid var(--info-100);
-  border-radius: var(--radius-full);
-  padding: 0 var(--space-1);
-  white-space: nowrap;
-}
-.dv-note-text {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-.dv-suggestion {
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-left: 3px solid var(--warning-500);
-  border-radius: var(--radius-base);
-  background: var(--bg-section-warm);
-  margin-bottom: var(--space-2);
-}
-.dv-suggestion:last-child {
-  margin-bottom: 0;
-}
-.dv-suggestion__content {
-  margin: var(--space-1) 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
+.dv-attachments { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.dv-label { display: block; margin: var(--space-3) 0 var(--space-1); }
+.dv-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
+.dv-hint { margin: var(--space-2) 0 0; text-align: center; line-height: 1.6; }
+@media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } }
 </style>
