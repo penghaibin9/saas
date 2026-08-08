@@ -1,5 +1,10 @@
 """岗位实习域种子（挂在主租户 demo 上，用已有学生；幂等：已有实习记录则跳过）。
-不新增/删除任何 StudentProfile，不影响 demo=5 / 主租户=100 基线。"""
+不新增/删除任何 StudentProfile，不影响 demo=5 / 主租户=100 基线。
+
+生产文件治理说明：演示种子不得用字符串占位符伪造正式 fileId。只有真实
+FileObject + 正式上传/扫描链路产生的文件才能写入 evidence_file_id/file_id；
+因此本种子保留“材料/证明”的业务文案，但不伪造附件引用。
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -108,10 +113,10 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
             tenant_id=tenant_id, record_id=recs[1].id, student_id=students[1].id, batch_id=batch.id,
             application_type="SELF_ARRANGED", volunteer_no=0, company_name="星辰网络技术有限公司",
             position_name="软件测试实习生", work_address="苏州工业园区", contact_name="陈经理",
-            contact_phone="13900005678", evidence_file_id="demo-internship-agreement-01",
-            application_note="学生自主联系，协议及资质材料齐全", status="APPROVED",
-            submitted_at=now - timedelta(days=12), reviewed_by_name="实习就业处",
-            reviewed_at=now - timedelta(days=10), review_comment="材料完整，同意",
+            contact_phone="13900005678",
+            application_note="学生自主联系；演示种子不伪造附件 fileId",
+            status="APPROVED", submitted_at=now - timedelta(days=12), reviewed_by_name="实习就业处",
+            reviewed_at=now - timedelta(days=10), review_comment="基础信息完整，同意",
         ),
         InternshipMatch(
             tenant_id=tenant_id, record_id=recs[2].id, student_id=students[2].id,
@@ -124,10 +129,9 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
             tenant_id=tenant_id, internship_id=recs[3].id, student_id=students[3].id,
             leave_type="SICK", start_date=(now + timedelta(days=20)).strftime("%Y-%m-%d"),
             end_date=(now + timedelta(days=21)).strftime("%Y-%m-%d"), days=2,
-            reason="发热就医，已上传门诊证明", status="APPROVED",
+            reason="发热就医（演示种子不伪造证明附件）", status="APPROVED",
             apply_by_name=students[3].real_name, review_by_name="刘强",
-            review_at=now - timedelta(days=1), review_comment="证明有效，同意请假",
-            file_id="demo-intern-leave-proof-01",
+            review_at=now - timedelta(days=1), review_comment="演示审批记录",
         ),
         InternshipAuditTrail(
             tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
