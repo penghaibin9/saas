@@ -18,60 +18,42 @@ const ENTRY_GRAPHS = [
     phase: 'A1',
     name: '审批中心 PC 正式路由',
     entry: 'frontend/src/modules/approval/approval.routes.js',
-    registration: {
-      file: 'frontend/src/router/index.js',
-      needle: "@/modules/approval/approval.routes"
-    },
+    registration: { file: 'frontend/src/router/index.js', needle: "@/modules/approval/approval.routes" },
     requiredReachable: ['frontend/src/modules/approval/api/approval.api.js']
   },
   {
     phase: 'A2',
     name: '学生中心 PC 正式路由',
     entry: 'frontend/src/modules/student/student.routes.js',
-    registration: {
-      file: 'frontend/src/router/index.js',
-      needle: "@/modules/student/student.routes"
-    },
+    registration: { file: 'frontend/src/router/index.js', needle: "@/modules/student/student.routes" },
     requiredReachable: ['frontend/src/modules/student/api/student.api.js']
   },
   {
     phase: 'A3',
     name: '就业中心 PC 正式路由',
     entry: 'frontend/src/modules/employment/employment.routes.js',
-    registration: {
-      file: 'frontend/src/router/index.js',
-      needle: "@/modules/employment/employment.routes"
-    },
+    registration: { file: 'frontend/src/router/index.js', needle: "@/modules/employment/employment.routes" },
     requiredReachable: ['frontend/src/modules/employment/api/employment.api.js']
   },
   {
     phase: 'A4',
     name: '数据驾驶舱 PC 正式路由',
     entry: 'frontend/src/modules/dataCenter/dataCenter.routes.js',
-    registration: {
-      file: 'frontend/src/router/index.js',
-      needle: "@/modules/dataCenter/dataCenter.routes"
-    },
+    registration: { file: 'frontend/src/router/index.js', needle: "@/modules/dataCenter/dataCenter.routes" },
     requiredReachable: ['frontend/src/modules/dataCenter/api/dataCenter.api.js']
   },
   {
     phase: 'A5',
     name: '平台运营 PC 正式路由',
     entry: 'frontend/src/modules/platform/platform.routes.js',
-    registration: {
-      file: 'frontend/src/router/index.js',
-      needle: "@/modules/platform/platform.routes"
-    },
+    registration: { file: 'frontend/src/router/index.js', needle: "@/modules/platform/platform.routes" },
     requiredReachable: ['frontend/src/modules/platform/api/platformControl.api.js']
   },
   {
     phase: 'A1',
     name: '教师小程序审批正式页',
     entry: 'miniapp/src/pages/teacher/approval/index.vue',
-    registration: {
-      file: 'miniapp/src/pages.json',
-      needle: '"path": "pages/teacher/approval/index"'
-    },
+    registration: { file: 'miniapp/src/pages.json', needle: '"path": "pages/teacher/approval/index"' },
     requiredReachable: ['miniapp/src/services/approvalApi.js']
   }
 ]
@@ -87,31 +69,70 @@ const FORBIDDEN_IMPORTED_SYMBOLS = new Set([
   'shouldTryReal'
 ])
 
-// 将 A1-A5 已封板 contract 的旧浏览器真值源汇总进 A6。
-// 只在对应文件确实由正式 route graph 可达时检查，避免扫描仓库里的归档/测试 fixture。
-const FILE_FORBIDDEN_TOKENS = new Map([
+// A6 继承 A1-A5 已封板合同，但只匹配“旧实现特征”，不把真实 DTO 字段名本身当违规。
+// 例如 approvalList / overviewMetrics 作为服务端响应字段是合法的；只有本地声明、内存变更、
+// mock import / fallback 调用等能够重新形成浏览器事实源的形态才 fail-closed。
+const FILE_FORBIDDEN_PATTERNS = new Map([
   ['frontend/src/modules/approval/api/approval.api.js', [
-    '@/mocks/approval', 'withFallback', 'mockApproval', 'approvalList', 'doneItems', 'returnedItems'
+    { label: '@/mocks/approval', regex: /@\/mocks\/approval\b/ },
+    { label: 'withFallback()', regex: /\bwithFallback\s*\(/ },
+    { label: 'mockApproval', regex: /\bmockApproval\b/ },
+    {
+      label: '审批旧内存台账声明',
+      regex: /\b(?:const|let|var)\s+(?:approvalList|doneItems|returnedItems)\b/
+    },
+    {
+      label: '审批旧内存台账写入',
+      regex: /\b(?:approvalList|doneItems|returnedItems)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse)\s*\(/
+    }
   ]],
   ['frontend/src/modules/student/api/student.api.js', [
-    '@/mocks/', 'withFallback(', '_mockGet', '_mockCreate', 'mockStudents', 'roleProfiles'
+    { label: '@/mocks/', regex: /@\/mocks\// },
+    { label: 'withFallback()', regex: /\bwithFallback\s*\(/ },
+    { label: '_mockGet()', regex: /\b_mockGet\s*\(/ },
+    { label: '_mockCreate()', regex: /\b_mockCreate\s*\(/ },
+    { label: 'mockStudents', regex: /\bmockStudents\b/ },
+    { label: 'roleProfiles', regex: /\broleProfiles\b/ }
   ]],
   ['frontend/src/modules/employment/api/employment.api.js', [
-    '@/mocks/employment', 'shouldTryReal', 'db.employmentStudents', 'db.materialReviews',
-    'db.followUpRecords', 'db.auditLogs'
+    { label: '@/mocks/employment', regex: /@\/mocks\/employment\b/ },
+    { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
+    {
+      label: '就业旧浏览器 db 事实源',
+      regex: /\bdb\s*\.\s*(?:employmentStudents|materialReviews|followUpRecords|auditLogs)\b/
+    }
   ]],
   ['frontend/src/modules/dataCenter/api/dataCenter.api.js', [
-    '@/mocks/dataCenter', 'shouldTryReal', 'overviewMetrics', 'lifecycleFunnel', 'riskStats',
-    'collegeRankings', 'majorRankings', 'classRankings', 'drilldownStudents', 'mockRuntime',
-    'roleProfiles', 'reportList', 'reportDetailMap', 'auditLogs.push', 'reportSeq', 'auditSeq',
-    'taskId: `EXP-', 'Math.round(funnel.totalCount * ratio)'
+    { label: '@/mocks/dataCenter', regex: /@\/mocks\/dataCenter\b/ },
+    { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
+    {
+      label: '驾驶舱旧本地 KPI/report 事实声明',
+      regex: /\b(?:const|let|var)\s+(?:overviewMetrics|lifecycleFunnel|riskStats|collegeRankings|majorRankings|classRankings|drilldownStudents|mockRuntime|roleProfiles|reportList|reportDetailMap|reportSeq|auditSeq)\b/
+    },
+    { label: '驾驶舱旧本地审计写入', regex: /\bauditLogs\s*\.\s*push\s*\(/ },
+    { label: '驾驶舱浏览器伪导出任务', regex: /\btaskId\s*:\s*`EXP-/ },
+    {
+      label: '驾驶舱浏览器比例估算',
+      regex: /Math\.round\s*\(\s*funnel\.totalCount\s*\*\s*ratio\s*\)/
+    }
   ]],
   ['frontend/src/modules/platform/api/platformControl.api.js', [
-    'shouldTryReal', 'MOCK_TENANTS', 'MOCK_OVERVIEW', 'mockData', '@/mocks/platform',
-    '回退演示数据', 'ok（演示数据）'
+    { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
+    {
+      label: '平台旧 MOCK_TENANTS/MOCK_OVERVIEW 声明',
+      regex: /\b(?:const|let|var)\s+(?:MOCK_TENANTS|MOCK_OVERVIEW)\b/
+    },
+    { label: 'mockData', regex: /\bmockData\b/ },
+    { label: '@/mocks/platform', regex: /@\/mocks\/platform\b/ },
+    { label: '回退演示数据', regex: /回退演示数据/ },
+    { label: 'ok（演示数据）', regex: /ok（演示数据）/ }
   ]],
   ['miniapp/src/services/approvalApi.js', [
-    '@/mocks/', 'realFirst(', 'realFirstStrict(', 'mockRequest(', 'shouldTryReal'
+    { label: '@/mocks/', regex: /@\/mocks\// },
+    { label: 'realFirst()', regex: /\brealFirst\s*\(/ },
+    { label: 'realFirstStrict()', regex: /\brealFirstStrict\s*\(/ },
+    { label: 'mockRequest()', regex: /\bmockRequest\s*\(/ },
+    { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ }
   ]]
 ])
 
@@ -179,8 +200,7 @@ function resolveLocalImport(fromFile, specifier) {
 
   for (const candidate of candidateFiles(basePath)) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      const ext = path.extname(candidate).toLowerCase()
-      return { kind: isCodeFile(candidate) ? 'code' : 'asset', file: candidate, ext }
+      return { kind: isCodeFile(candidate) ? 'code' : 'asset', file: candidate }
     }
   }
 
@@ -196,18 +216,16 @@ function extractImports(source) {
   const seen = new Set()
   const push = (specifier, clause = '', kind = 'import') => {
     const key = `${kind}\0${specifier}\0${clause}`
-    if (!seen.has(key)) {
-      seen.add(key)
-      imports.push({ specifier, clause, kind })
-    }
+    if (seen.has(key)) return
+    seen.add(key)
+    imports.push({ specifier, clause, kind })
   }
 
   let match
-  const staticImport = /\bimport\s+([\s\S]*?)\s+from\s*(['"])([^'"]+)\2/g
-  while ((match = staticImport.exec(source))) push(match[3], match[1], 'import')
-
-  const staticExport = /\bexport\s+([\s\S]*?)\s+from\s*(['"])([^'"]+)\2/g
-  while ((match = staticExport.exec(source))) push(match[3], match[1], 'export')
+  // 静态 import/export 的 clause 只允许真正的 import 语法字符，禁止用 [\s\S]*? 跨越业务代码
+  // 一路吞到后面的 from，从而把普通 DTO / 文本误当成 import clause。
+  const staticFrom = /\b(import|export)\s+(?:type\s+)?([A-Za-z0-9_$*{},\s]+?)\s+from\s*(['"])([^'"]+)\3/g
+  while ((match = staticFrom.exec(source))) push(match[4], match[2], match[1])
 
   const sideEffectImport = /\bimport\s*(['"])([^'"]+)\1/g
   while ((match = sideEffectImport.exec(source))) push(match[2], '', 'import')
@@ -252,21 +270,17 @@ function inspectBusinessSource(repoPath, source, chain, violations) {
     ]
     for (const item of localPatterns) {
       if (item.regex.test(code)) {
-        violations.push({
-          type: 'forbidden-business-symbol',
-          message: `${repoPath} 命中 ${item.label}`,
-          chain
-        })
+        violations.push({ type: 'forbidden-business-symbol', message: `${repoPath} 命中 ${item.label}`, chain })
       }
     }
   }
 
-  const fileTokens = FILE_FORBIDDEN_TOKENS.get(repoPath) || []
-  for (const token of fileTokens) {
-    if (code.includes(token)) {
+  const filePatterns = FILE_FORBIDDEN_PATTERNS.get(repoPath) || []
+  for (const item of filePatterns) {
+    if (item.regex.test(code)) {
       violations.push({
         type: 'stage-contract-regression',
-        message: `${repoPath} 重新出现阶段 A 已封板旧真值源: ${token}`,
+        message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`,
         chain
       })
     }
@@ -290,11 +304,7 @@ function inspectImportedSymbols(repoPath, imp, chain, violations) {
 function assertRegistration(graph, violations) {
   const registrationFile = abs(graph.registration.file)
   if (!fs.existsSync(registrationFile)) {
-    violations.push({
-      type: 'missing-registration-file',
-      message: `${graph.registration.file} 不存在`,
-      chain: [graph.entry]
-    })
+    violations.push({ type: 'missing-registration-file', message: `${graph.registration.file} 不存在`, chain: [graph.entry] })
     return
   }
   const source = fs.readFileSync(registrationFile, 'utf8')
@@ -343,11 +353,7 @@ function scanGraph(graph) {
     try {
       source = fs.readFileSync(current.file, 'utf8')
     } catch (error) {
-      violations.push({
-        type: 'read-error',
-        message: `无法读取 ${repoPath}: ${error.message}`,
-        chain: current.chain
-      })
+      violations.push({ type: 'read-error', message: `无法读取 ${repoPath}: ${error.message}`, chain: current.chain })
       continue
     }
 
@@ -371,11 +377,7 @@ function scanGraph(graph) {
       const nextChain = [...current.chain, targetPath]
       const targetReason = forbiddenPathReason(targetPath)
       if (targetReason) {
-        violations.push({
-          type: 'forbidden-path',
-          message: `${targetPath}: ${targetReason}`,
-          chain: nextChain
-        })
+        violations.push({ type: 'forbidden-path', message: `${targetPath}: ${targetReason}`, chain: nextChain })
         continue
       }
       if (resolved.kind === 'asset') continue
@@ -426,7 +428,7 @@ function run() {
     process.exit(1)
   }
 
-  console.log('\n✅ A6 PASS：A1-A5 正式入口依赖图无法到达已禁止的 mock 事实源/回退符号；正式真实 facade 仍可达。')
+  console.log('\n✅ A6 PASS：A1-A5 正式入口依赖图无法到达已禁止的 mock 事实源/回退实现；正式真实 facade 仍可达。')
 }
 
 run()
