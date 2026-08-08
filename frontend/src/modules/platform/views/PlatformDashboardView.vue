@@ -1,5 +1,5 @@
 <template>
-  <PlatformControlOverview />
+  <PlatformControlOverview :ctx="ctx" />
 </template>
 
 <script>
@@ -12,6 +12,6 @@ import PlatformControlOverview from '@/modules/platform/views/control/PlatformCo
 export default {
   name: 'PlatformDashboardView',
   components: { PlatformControlOverview },
-  props: { ctx: { type: Object, required: false, default: null } }
+  props: { ctx: { type: Object, required: true } }
 }
 </script>
