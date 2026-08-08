@@ -1,6 +1,6 @@
 name: CI
 
-# 每次 push / PR 自动验证：后端测试 + 管理 PC/学生 PC + 小程序构建 + 禁止文件检查。
+# 每次 push / PR 自动验证：后端测试 + 管理 PC/学生 PC + 小程序测试/构建 + 禁止文件检查。
 
 on:
   push:
@@ -186,7 +186,7 @@ jobs:
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
 
   miniapp:
-    name: 小程序生产 build
+    name: 小程序 test + production build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -199,6 +199,8 @@ jobs:
           cache: "npm"
           cache-dependency-path: miniapp/package-lock.json
       - run: npm ci
+      - name: 小程序合同测试
+        run: npm test
       - run: npm run build:h5
       - run: npm run build:mp-weixin
       - name: 禁止生产包携带固定演示凭据
