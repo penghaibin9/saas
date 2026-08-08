@@ -215,10 +215,12 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
                     params={"batchId": _running_internship_batch_id(SBX_TID)}).json()
     reports = it["data"]["weeklyReports"]
     assert len(reports) >= 1
-    rid = reports[0]["id"]
+    report = reports[0]
+    rid = report["id"]
     ok = client.post(f"/api/v1/mobile/teacher/internship/weekly/{rid}/review",
-                     headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱批阅通过"}).json()
-    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
+                     headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱批阅通过",
+                                          "expectedVersion": report["version"]}).json()
+    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED", ok
     gd = client.get("/api/v1/mobile/teacher/graduation", headers=sbx_t).json()
     props = gd["data"]["reviewDetail"]
     assert len(props) >= 1
@@ -237,7 +239,8 @@ def test_demo_tenant_is_readonly(client, two_tenants):
     reports = it["data"]["weeklyReports"]
     assert len(reports) >= 1  # 看得见
     r = client.post(f"/api/v1/mobile/teacher/internship/weekly/{reports[0]['id']}/review",
-                    headers=demo_t, json={"action": "APPROVE", "comment": "演示批阅"})
+                    headers=demo_t, json={"action": "APPROVE", "comment": "演示批阅",
+                                          "expectedVersion": reports[0]["version"]})
     assert r.status_code == 403
     assert "沙箱" in r.json()["message"]
     # 学生写操作同样只读
