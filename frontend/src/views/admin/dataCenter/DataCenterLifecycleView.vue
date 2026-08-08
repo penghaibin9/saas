@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="学生生命周期总览"
-    :subtitle="lifecycle ? '统计范围：' + lifecycle.scopeLabel + ' · ' + lifecycle.funnel.cohortLabel : '迎新报到 → 就业去向 全流程漏斗'"
+    :subtitle="lifecycle ? '全校实时聚合 · 数据截至 ' + asOfLabel : '迎新报到 → 就业去向 全流程漏斗'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -15,17 +15,37 @@
       :description="viewReason"
       @back="$router.push('/admin/data-center')"
     />
-    <div v-else class="mp-stack">
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
+    <EmptyState
+      v-else-if="!lifecycle || !lifecycle.funnel || !lifecycle.funnel.stages.length"
+      title="当前全校口径暂无生命周期数据"
+      description="本页只展示服务端可证明的全校实时聚合，不使用浏览器估算或演示数据补齐。"
+    />
 
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState
-        v-else-if="!lifecycle || !lifecycle.funnel.stages.length"
-        title="当前筛选条件下暂无生命周期数据"
-        description="可调整学院 / 年级 / 时间范围后重新查询"
-      />
-      <div v-else class="mp-grid-2">
+    <div v-else class="mp-stack">
+      <section class="mp-card dclc-contract">
+        <div class="mp-card__body dclc-contract__body">
+          <div>
+            <div class="dclc-contract__label">数据范围</div>
+            <div class="dclc-contract__value">{{ scopeLabel }}</div>
+          </div>
+          <div>
+            <div class="dclc-contract__label">统计口径</div>
+            <div class="dclc-contract__value">{{ caliberLabel }}</div>
+          </div>
+          <div>
+            <div class="dclc-contract__label">数据来源</div>
+            <div class="dclc-contract__value">{{ sourceNames || '服务端真实聚合' }}</div>
+          </div>
+          <div>
+            <div class="dclc-contract__label">质量提示</div>
+            <div class="dclc-contract__value">{{ qualityFlags.length ? qualityFlags.length + ' 项' : '无阻断项' }}</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="mp-grid-2">
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">生命周期漏斗（{{ lifecycle.funnel.totalCount }} 人）</span>
@@ -41,21 +61,16 @@
             >
               <div class="dclc-stage__meta">
                 <span class="dclc-stage__label">{{ s.label }}</span>
-                <span class="dclc-stage__count">{{ s.count }} 人 · 完成率 {{ s.rate }}%</span>
+                <span class="dclc-stage__count">{{ s.count }} 人 · 占全校 {{ s.rate }}%</span>
               </div>
               <div class="dclc-stage__track">
                 <div class="dclc-stage__bar" :style="{ width: barWidth(s) }" />
               </div>
               <div class="dclc-stage__side">
-                <span class="dclc-stage__abnormal">异常 {{ s.abnormal }} 人</span>
-                <button class="mp-link" :class="{ 'is-disabled': !canDrill }" :title="drillReason" @click.stop="openDrill(s)">
-                  学生清单
-                </button>
+                <span class="dclc-stage__abnormal">异常/待跟进 {{ s.abnormal }} 人</span>
+                <span class="mp-note">{{ s.note }}</span>
               </div>
             </div>
-            <p class="mp-note">
-              漏斗人数为进入并完成对应阶段的学生数，逐阶段递减；异常数指该阶段规则命中且未闭环的学生。
-            </p>
           </div>
         </section>
 
@@ -71,116 +86,65 @@
               <span class="mp-kv__v">{{ it.value }}</span>
             </div>
             <p class="mp-note" style="margin-top: var(--space-3)">{{ activeStage.note }}</p>
-            <button
-              class="mp-link"
-              :class="{ 'is-disabled': !canDrill }"
-              :title="drillReason"
-              style="margin-top: var(--space-2)"
-              @click="openDrill(activeStage)"
-            >
-              查看该阶段重点关注学生 →
-            </button>
+            <p class="dclc-boundary">
+              阶段重点学生名单尚未形成跨域统一服务端口径。本页不返回“全校学生”冒充命中名单；明细处置请进入对应业务模块。
+            </p>
           </div>
         </section>
       </div>
+
+      <section v-if="qualityFlags.length" class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">数据质量提示</span></div>
+        <div class="mp-card__body mp-stack">
+          <div v-for="flag in qualityFlags" :key="flag.code" class="dclc-quality">
+            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+            <span>{{ flag.message }}</span>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <AppDrawer v-model:visible="drill.visible" :title="drill.stage ? drill.stage.label + ' · 重点关注学生' : '重点关注学生'">
+    <AppDrawer v-model:visible="guideVisible" title="生命周期数据口径">
       <div class="mp-stack">
-        <p class="mp-note">清单仅包含需重点关注的学生样本；学号、手机号默认脱敏，查询行为已留痕。</p>
-        <ErrorState v-if="drill.error" :description="drill.error" @retry="loadDrill" />
-        <LoadingState v-else-if="drill.loading" text="正在加载学生清单…" />
-        <EmptyState
-          v-else-if="!drill.rows.length"
-          title="该阶段暂无重点关注学生"
-          description="当前筛选范围内没有命中该阶段规则的学生"
-        />
-        <DataTable
-          v-else
-          :columns="drillColumns"
-          :rows="drill.rows"
-          row-key="id"
-          :pagination="drill.pagination"
-          @page-change="onDrillPage"
-        >
-          <template #cell-student="{ row }">
-            <div class="mp-cell-main">{{ row.name }}</div>
-            <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ maskPhone(row.phone) }}</div>
-          </template>
-          <template #cell-org="{ row }">
-            <div class="mp-cell-main">{{ row.className }}</div>
-            <div class="mp-cell-sub">{{ row.collegeName }}</div>
-          </template>
-          <template #cell-status="{ row }">
-            <StatusTag :type="row.tone" :label="row.statusLabel" />
-          </template>
-        </DataTable>
-      </div>
-    </AppDrawer>
-
-    <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="primary"
-      title="导出生命周期统计"
-      :message="ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
+        <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '服务端真实聚合' }}</span></div>
+        <p class="mp-note">
+          当前 A4 只开放后端已实现的全校实时口径。学院、专业、班级、年级、时间范围筛选以及阶段命中名单未服务端化前不展示，防止浏览器估算被误认为正式事实。
+        </p>
+        <div v-for="flag in qualityFlags" :key="'drawer-' + flag.code" class="dclc-quality">
+          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+          <span>{{ flag.message }}</span>
         </div>
       </div>
-    </AppConfirmDialog>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 学生生命周期总览（/admin/data-center/lifecycle）。
- * 漏斗为纯 CSS 横向条（宽度按人数占比），阶段点击联动右侧统计；
- * 每阶段可下钻学生清单（AppDrawer + 脱敏 DataTable），导出需确认用途并留痕。
- */
 import {
   ModulePageShell,
   ModuleToolbar,
-  AdvancedFilter,
-  DataTable,
   StatusTag,
   LoadingState,
   ErrorState,
   EmptyState
 } from '@/components/business'
-import { AppGlobalState, AppConfirmDialog } from '@/components/common'
+import { AppGlobalState } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
-import { toast } from '@/utils/toast'
-
-const EMPTY_FILTERS = () => ({ collegeId: '', majorId: '', classId: '', grade: '', timeRange: '' })
 
 export default {
   name: 'DataCenterLifecycleView',
   components: {
     ModulePageShell,
     ModuleToolbar,
-    AdvancedFilter,
-    DataTable,
     StatusTag,
     LoadingState,
     ErrorState,
     EmptyState,
     AppGlobalState,
-    AppConfirmDialog,
     AppDrawer
   },
   props: { ctx: { type: Object, required: true } },
@@ -189,25 +153,8 @@ export default {
       loading: true,
       error: '',
       lifecycle: null,
-      filters: EMPTY_FILTERS(),
       activeStageKey: 'ORIENTATION',
-      drill: {
-        visible: false,
-        stage: null,
-        loading: false,
-        error: '',
-        rows: [],
-        pagination: { page: 1, pageSize: 5, total: 0 }
-      },
-      drillColumns: [
-        { key: 'student', title: '学生' },
-        { key: 'org', title: '班级 / 学院' },
-        { key: 'status', title: '状态' },
-        { key: 'lastEvent', title: '最近动态' }
-      ],
-      exportVisible: false,
-      exportPurpose: 'INTERNAL_ANALYSIS',
-      exporting: false
+      guideVisible: false
     }
   },
   computed: {
@@ -219,118 +166,61 @@ export default {
       const pa = this.ctx.permissionActions.viewLifecycle
       return (pa && pa.reason) || '当前角色未开通生命周期总览查看权限'
     },
-    canDrill() {
-      const pa = this.ctx.permissionActions.drilldownStudents
-      return !!(pa && pa.visible && pa.allowed)
-    },
-    drillReason() {
-      const pa = this.ctx.permissionActions.drilldownStudents
-      return pa && !pa.allowed ? pa.reason : ''
-    },
-    filterFields() {
-      const o = this.ctx.filterOptions
-      return [
-        { key: 'collegeId', label: '学院', type: 'select', options: o.colleges },
-        { key: 'majorId', label: '专业', type: 'select', options: o.majors },
-        { key: 'classId', label: '班级', type: 'select', options: o.classes },
-        { key: 'grade', label: '年级', type: 'select', options: o.grades },
-        { key: 'timeRange', label: '时间范围', type: 'select', options: o.timeRanges }
-      ]
-    },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [{ key: 'exportLifecycle', label: '导出统计数据', variant: 'primary' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+      return [{ key: 'metricGuide', label: '数据口径与质量', variant: 'ghost' }]
     },
     activeStage() {
-      if (!this.lifecycle) return null
-      const stages = this.lifecycle.funnel.stages
+      if (!this.lifecycle || !this.lifecycle.funnel) return null
+      const stages = this.lifecycle.funnel.stages || []
       return stages.find((s) => s.key === this.activeStageKey) || stages[0] || null
     },
     activeStats() {
       if (!this.lifecycle || !this.activeStage) return null
-      return this.lifecycle.stageStats[this.activeStage.key] || null
+      return (this.lifecycle.stageStats || {})[this.activeStage.key] || null
+    },
+    meta() {
+      return (this.lifecycle && this.lifecycle.meta) || {}
+    },
+    qualityFlags() {
+      return Array.isArray(this.meta.qualityFlags) ? this.meta.qualityFlags : []
+    },
+    sourceNames() {
+      const rows = Array.isArray(this.meta.source) ? this.meta.source : []
+      return rows.map((x) => x.module).filter(Boolean).join('、')
+    },
+    scopeLabel() {
+      return (this.meta.scope && this.meta.scope.scopeName) || this.lifecycle.scopeLabel || this.ctx.dataScope.scopeName || '—'
+    },
+    caliberLabel() {
+      return this.meta.caliberLabel || '服务端在册口径'
+    },
+    asOfLabel() {
+      return this.meta.asOf || (this.lifecycle && this.lifecycle.funnel && this.lifecycle.funnel.updatedAt) || '—'
     }
   },
   created() {
-    this.load()
+    if (this.viewAllowed) this.load()
   },
   methods: {
-    maskPhone(v) {
-      return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
     barWidth(stage) {
-      if (!this.lifecycle || !this.lifecycle.funnel.totalCount) return '0%'
+      if (!this.lifecycle || !this.lifecycle.funnel || !this.lifecycle.funnel.totalCount) return '0%'
       const pct = (stage.count / this.lifecycle.funnel.totalCount) * 100
-      return Math.max(4, Math.round(pct * 10) / 10) + '%'
+      return Math.max(4, Math.min(100, Math.round(pct * 10) / 10)) + '%'
     },
-    search() {
-      this.load()
-    },
-    reset() {
-      this.filters = EMPTY_FILTERS()
-      this.load()
+    onToolbar(key) {
+      if (key === 'metricGuide') this.guideVisible = true
     },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await dataCenterApi.getLifecycle({ ...this.filters })
-      if (res.code === 0) this.lifecycle = res.data
-      else this.error = res.message
+      const res = await dataCenterApi.getLifecycle()
+      if (res.code === 0) {
+        this.lifecycle = res.data
+      } else {
+        this.lifecycle = null
+        this.error = res.message
+      }
       this.loading = false
-    },
-    openDrill(stage) {
-      if (!this.canDrill) {
-        toast.info(this.drillReason || '当前角色不可查看学生明细')
-        return
-      }
-      this.drill.stage = stage
-      this.drill.visible = true
-      this.drill.pagination.page = 1
-      this.loadDrill()
-    },
-    onDrillPage(page) {
-      this.drill.pagination.page = page
-      this.loadDrill()
-    },
-    async loadDrill() {
-      if (!this.drill.stage) return
-      this.drill.loading = true
-      this.drill.error = ''
-      const res = await dataCenterApi.getDrilldownStudents({
-        metricKey: this.drill.stage.key,
-        collegeId: this.filters.collegeId,
-        page: this.drill.pagination.page,
-        pageSize: this.drill.pagination.pageSize
-      })
-      if (res.code === 0) {
-        this.drill.rows = res.data.list
-        this.drill.pagination.total = res.data.total
-      } else {
-        this.drill.error = res.message
-      }
-      this.drill.loading = false
-    },
-    onToolbar(key) {
-      if (key === 'exportLifecycle') {
-        this.exportPurpose = 'INTERNAL_ANALYSIS'
-        this.exportVisible = true
-      }
-    },
-    async onExportConfirm() {
-      this.exporting = true
-      const res = await dataCenterApi.exportData({ scope: 'LIFECYCLE', purpose: this.exportPurpose })
-      this.exporting = false
-      if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入审计日志（演示态，暂未生成实际文件）')
-      } else {
-        toast.error(res.message)
-      }
     }
   }
 }
@@ -338,6 +228,22 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.dclc-contract__body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.dclc-contract__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.dclc-contract__value {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
 .dclc-stage {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
@@ -345,29 +251,31 @@ export default {
   cursor: pointer;
   transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
 }
-.dclc-stage:hover {
-  background: var(--bg-hover);
-}
+.dclc-stage:hover { background: var(--bg-hover); }
 .dclc-stage.is-active {
   border-color: var(--primary-500);
   background: var(--primary-25);
 }
-.dclc-stage__meta {
+.dclc-stage__meta,
+.dclc-stage__side {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  gap: var(--space-3);
 }
+.dclc-stage__meta { margin-bottom: var(--space-2); }
+.dclc-stage__side { margin-top: var(--space-2); align-items: flex-start; }
 .dclc-stage__label {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
 }
-.dclc-stage__count {
+.dclc-stage__count,
+.dclc-stage__abnormal {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
   font-variant-numeric: var(--font-numeric);
 }
+.dclc-stage__count { color: var(--text-secondary); }
+.dclc-stage__abnormal { color: var(--danger-600); white-space: nowrap; }
 .dclc-stage__track {
   height: 14px;
   background: var(--gray-100);
@@ -380,19 +288,24 @@ export default {
   background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
   transition: width var(--motion-normal) var(--ease-standard);
 }
-.dclc-stage.is-active .dclc-stage__bar {
-  background: linear-gradient(90deg, var(--primary-600), var(--primary-700));
-}
-.dclc-stage__side {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-.dclc-stage__abnormal {
+.dclc-boundary {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--info-100);
+  border-radius: var(--radius-md);
+  background: var(--info-50);
+  color: var(--text-secondary);
   font-size: var(--font-size-xs);
-  color: var(--danger-600);
-  font-variant-numeric: var(--font-numeric);
+  line-height: var(--line-height-base);
+}
+.dclc-quality {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+@media (max-width: 960px) {
+  .dclc-contract__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
