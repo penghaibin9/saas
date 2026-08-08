@@ -1,6 +1,12 @@
 <template>
-  <ModulePageShell title="平台总控台" subtitle="全平台经营总览 · 数据实时来自后端" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell
+    title="平台总控台"
+    subtitle="全平台经营总览 · 数据实时来自后端"
+    :role-name="ctx.currentRole.roleName"
+    :data-scope-name="ctx.dataScope.scopeName"
+  >
     <LoadingState v-if="loading" text="正在加载平台总览…" />
+    <ErrorState v-else-if="error" :text="error" @retry="load" />
     <template v-else-if="ov">
       <div class="pco__grid">
         <AppCard v-for="s in statCards" :key="s.label" class="pco__stat">
@@ -57,7 +63,8 @@
             <li><span>存储占用</span><b>{{ ov.storageUsedMb }} MB</b></li>
           </ul>
           <AppSectionHeader title="最近平台审计" class="pco__gap" />
-          <ul class="pco__list">
+          <EmptyState v-if="!ov.recentAudits || !ov.recentAudits.length" text="暂无平台审计记录" compact />
+          <ul v-else class="pco__list">
             <li v-for="(a, i) in ov.recentAudits" :key="i">
               <span class="pco__list-name">{{ a.action }} · {{ a.operator }}</span>
               <span class="pco__list-time">{{ (a.at || '').replace('T', ' ').slice(5, 16) }}</span>
@@ -66,7 +73,6 @@
         </AppCard>
       </div>
     </template>
-    <ErrorState v-else :text="error || '总览加载失败'" @retry="load" />
   </ModulePageShell>
 </template>
 
@@ -78,6 +84,9 @@ import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 export default {
   name: 'PlatformControlOverview',
   components: { AppCard, AppSectionHeader, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag },
+  props: {
+    ctx: { type: Object, required: true }
+  },
   data() {
     return { loading: true, ov: null, error: '' }
   },
@@ -98,14 +107,12 @@ export default {
   methods: {
     async load() {
       this.loading = true
+      this.error = ''
+      this.ov = null
       const res = await platformControlApi.getOverview()
       this.loading = false
-      if (res.code === 0) {
-        this.ov = res.data
-        this.error = ''
-      } else {
-        this.error = res.message
-      }
+      if (res.code === 0) this.ov = res.data
+      else this.error = res.message || '平台总览加载失败'
     }
   }
 }
