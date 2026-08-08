@@ -119,11 +119,12 @@ def seed_sandbox(db) -> dict:
     """沙箱租户全量种子（幂等；重置后重建基础组织/账号/教师范围/六域最小数据）。"""
     from app.core.security import hash_password
     from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College, CsLeave,
-                            CsServiceStudent, EmpJob, EmpStudent, GraduationProposal,
-                            GraduationStudent, InternshipRecord, Major, OrientationStudent,
-                            Role, SchoolClass, StudentContact, StudentProfile, TeacherStudentScope,
-                            Tenant, TenantBrandConfig, UnifiedMessage, UnifiedTodo, User,
-                            UserRole, WeeklyReport, WorkflowInstance, WorkflowTask)
+                            CsServiceStudent, EmpJob, EmpStudent, GraduationMentor,
+                            GraduationMentorAssignment, GraduationProposal, GraduationStudent,
+                            InternshipRecord, Major, OrientationStudent, Role, SchoolClass,
+                            StudentContact, StudentProfile, TeacherStudentScope, Tenant,
+                            TenantBrandConfig, UnifiedMessage, UnifiedTodo, User, UserRole,
+                            WeeklyReport, WorkflowInstance, WorkflowTask)
     _assert_target_is_sandbox(db)
     out = {}
     tenant = db.get(Tenant, SANDBOX_TID)
@@ -165,7 +166,14 @@ def seed_sandbox(db) -> dict:
     _add_user("student2", SBX_STUDENT_NAME, "STUDENT")
     db.flush()
     # 页面里的责任人/指导教师选择器必须来自真实在职账号与真实角色关系。
-    role_specs = (("SCHOOL_ADMIN", "学校管理员", "admin2"),)
+    # teacher2 是一个真实多岗位账号：默认 COUNSELOR，进入实习/毕设动作时显式切对应岗位；
+    # 不把审核权限揉进 COUNSELOR，从而保持最小权限与“岗位切换后权限生效”的真实产品语义。
+    role_specs = (
+        ("SCHOOL_ADMIN", "学校管理员", "admin2"),
+        ("COUNSELOR", "辅导员", "teacher2"),
+        ("INTERN_MENTOR", "实习指导教师", "teacher2"),
+        ("GD_MENTOR", "毕业设计指导教师", "teacher2"),
+    )
     for role_code, role_name, login_name in role_specs:
         role = db.scalars(select(Role).where(
             Role.tenant_id == SANDBOX_TID, Role.role_code == role_code,
@@ -184,6 +192,7 @@ def seed_sandbox(db) -> dict:
             db.add(UserRole(tenant_id=SANDBOX_TID, user_id=user_row.id,
                             role_id=role.id, status="ACTIVE"))
     out["accounts"] = "admin2/teacher2/student2"
+    out["teacherRoles"] = "COUNSELOR/INTERN_MENTOR/GD_MENTOR"
 
     # ORG_WRITE_BYPASS_ALLOWLIST: sandbox_service — 演示沙箱种子，非学校正式管理写入口
     k = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == SANDBOX_TID)).first()
@@ -314,6 +323,34 @@ def seed_sandbox(db) -> dict:
                                topic_source="学生自拟", advisor_name=SBX_TEACHER_NAME,
                                stage="PROPOSAL", risk_level="LOW", record_status="ACTIVE")
         db.add(gd); db.flush()
+        # 毕设移动端安全门禁使用 teacher_no == loginName 的稳定导师身份，禁止同名授权。
+        # 因此沙箱固定账号 teacher2 必须在每次重置后重新建立导师台账与 mentor_id 关系。
+        mentor = db.scalars(select(GraduationMentor).where(
+            GraduationMentor.tenant_id == SANDBOX_TID,
+            GraduationMentor.teacher_no == "teacher2",
+            GraduationMentor.is_deleted.is_(False),
+        )).first()
+        if mentor is None:
+            mentor = GraduationMentor(
+                tenant_id=SANDBOX_TID, teacher_no="teacher2", teacher_name=SBX_TEACHER_NAME,
+                mentor_type="INTERNAL", title="讲师", college_name="体验学院",
+                major_name="电子商务", research_direction="数字商务与运营",
+                max_capacity=20, current_count=1, qualification_status="QUALIFIED",
+            )
+            db.add(mentor); db.flush()
+        gd.mentor_id = mentor.id
+        gd.advisor_name = mentor.teacher_name
+        if not db.scalars(select(GraduationMentorAssignment).where(
+                GraduationMentorAssignment.tenant_id == SANDBOX_TID,
+                GraduationMentorAssignment.gd_student_id == gd.id,
+                GraduationMentorAssignment.mentor_id == mentor.id,
+                GraduationMentorAssignment.is_deleted.is_(False))).first():
+            db.add(GraduationMentorAssignment(
+                tenant_id=SANDBOX_TID, gd_student_id=gd.id, mentor_id=mentor.id,
+                assign_source="MANUAL", assign_reason="固定体验账号真实导师关系",
+                status="ACTIVE", confirmed_by_mentor=True, confirmed_at=now,
+                assigned_by="sandbox-seed", assigned_at=now,
+            ))
         db.add(GraduationProposal(tenant_id=SANDBOX_TID, gd_student_id=gd.id, version="v1",
                                   submit_at=now - timedelta(hours=6), status="PENDING_REVIEW",
                                   background="体验开题批阅", plan="调研+方案", outcome="方案与论文"))
