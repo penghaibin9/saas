@@ -80,6 +80,7 @@ def _seed_scoped_rows(db_mode):
         return {
             "allowed_emp": str(allowed_emp.id), "denied_emp": str(denied_emp.id),
             "allowed_mat": str(allowed_mat.id), "denied_mat": str(denied_mat.id),
+            "allowed_class": str(allowed_class.id), "denied_class": str(denied_class.id),
         }
     finally:
         db.close()
@@ -145,38 +146,51 @@ def test_employment_export_row_count_matches_scoped_student_list(client, db_mode
 
 
 def test_bound_student_transfer_uses_current_master_scope_not_stale_employment_snapshot(client, db_mode):
-    """学生转出负责班后，就业快照仍写旧班也不能继续出现在原辅导员列表/材料/跟进中。"""
-    from sqlalchemy import select
+    """转班后列表/筛选/详情都以主档当前班级为准，旧就业快照既不能泄漏，也不能把转入学生漏掉。"""
     from app.db.session import get_sessionmaker
-    from app.models import EmpStudent, SchoolClass, StudentProfile
+    from app.models import EmpStudent, StudentProfile
 
     ids = _seed_scoped_rows(db_mode)
     db = get_sessionmaker()()
     try:
-        emp = db.get(EmpStudent, int(ids["allowed_emp"]))
-        profile = db.get(StudentProfile, int(emp.student_id))
-        denied_class = db.scalars(select(SchoolClass).where(
-            SchoolClass.tenant_id == TID,
-            SchoolClass.class_name == "A3就业越权班",
-            SchoolClass.is_deleted.is_(False),
-        ).order_by(SchoolClass.id.desc())).first()
-        assert denied_class is not None
-        stale_class_id = emp.class_id
-        profile.class_id = denied_class.id
+        moved_out_emp = db.get(EmpStudent, int(ids["allowed_emp"]))
+        moved_in_emp = db.get(EmpStudent, int(ids["denied_emp"]))
+        moved_out_profile = db.get(StudentProfile, int(moved_out_emp.student_id))
+        moved_in_profile = db.get(StudentProfile, int(moved_in_emp.student_id))
+        out_snapshot = moved_out_emp.class_id
+        in_snapshot = moved_in_emp.class_id
+        moved_out_profile.class_id = int(ids["denied_class"])
+        moved_in_profile.class_id = int(ids["allowed_class"])
         db.commit()
-        assert emp.class_id == stale_class_id  # 就业历史快照故意不跟着改，模拟真实转班后的陈旧快照
+        assert moved_out_emp.class_id == out_snapshot
+        assert moved_in_emp.class_id == in_snapshot
     finally:
         db.close()
 
     hdr = _hdr(client)
     students = client.get(f"{BASE}/students?page=1&pageSize=200", headers=hdr).json()["data"]
-    assert ids["allowed_emp"] not in {str(row["id"]) for row in students["items"]}
+    student_ids = {str(row["id"]) for row in students["items"]}
+    assert ids["allowed_emp"] not in student_ids
+    assert ids["denied_emp"] in student_ids
 
-    detail = client.get(f"{BASE}/students/{ids['allowed_emp']}", headers=hdr)
-    assert detail.status_code == 403 and detail.json()["bizCode"] == "NO_DATA_SCOPE"
+    # 选择“当前负责班”筛选时，转入学生即使就业快照仍是旧班，也必须命中。
+    filtered = client.get(
+        f"{BASE}/students?page=1&pageSize=200&classId={ids['allowed_class']}", headers=hdr).json()["data"]
+    filtered_ids = {str(row["id"]) for row in filtered["items"]}
+    assert ids["allowed_emp"] not in filtered_ids
+    assert ids["denied_emp"] in filtered_ids
+
+    hidden_detail = client.get(f"{BASE}/students/{ids['allowed_emp']}", headers=hdr)
+    assert hidden_detail.status_code == 403 and hidden_detail.json()["bizCode"] == "NO_DATA_SCOPE"
+    visible_detail = client.get(f"{BASE}/students/{ids['denied_emp']}", headers=hdr)
+    assert visible_detail.status_code == 200 and visible_detail.json()["code"] == 0
 
     materials = client.get(f"{BASE}/materials?page=1&pageSize=200", headers=hdr).json()["data"]
-    assert ids["allowed_mat"] not in {str(row["id"]) for row in materials["items"]}
+    material_ids = {str(row["id"]) for row in materials["items"]}
+    assert ids["allowed_mat"] not in material_ids
+    assert ids["denied_mat"] in material_ids
 
     followups = client.get(f"{BASE}/followups?page=1&pageSize=200", headers=hdr).json()["data"]
-    assert ids["allowed_emp"] not in {str(row["studentId"]) for row in followups["items"]}
+    follow_student_ids = {str(row["studentId"]) for row in followups["items"]}
+    assert ids["allowed_emp"] not in follow_student_ids
+    assert ids["denied_emp"] in follow_student_ids
