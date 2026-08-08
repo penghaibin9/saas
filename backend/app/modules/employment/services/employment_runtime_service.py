@@ -171,9 +171,31 @@ def list_students(page, ps, *, user: dict, keyword=None, class_id=None,
 
 
 def get_student_detail(sid, *, user: dict) -> dict:
+    """详情的 scope 裁决与详情读取必须共用一个 session，避免校验后转班产生并发越权读。"""
     with session() as db:
-        _assert_emp_id(db, sid, user)
-    return base.get_student_detail(sid)
+        student = _assert_emp_id(db, sid, user)
+        materials = db.scalars(select(EmpMaterial).where(
+            EmpMaterial.tenant_id == _tid(),
+            EmpMaterial.emp_student_id == student.id,
+            EmpMaterial.is_deleted.is_(False),
+        ).order_by(EmpMaterial.id.desc())).all()
+        followups = db.scalars(select(EmpFollowup).where(
+            EmpFollowup.tenant_id == _tid(),
+            EmpFollowup.emp_student_id == student.id,
+            EmpFollowup.is_deleted.is_(False),
+        ).order_by(EmpFollowup.id.desc())).all()
+        logs = db.scalars(select(EmpAuditTrail).where(
+            EmpAuditTrail.tenant_id == _tid(),
+            EmpAuditTrail.biz_type == "RECORD",
+            EmpAuditTrail.biz_id == str(student.id),
+        ).order_by(EmpAuditTrail.id.desc()).limit(20)).all()
+        profiles = shadow.load_profiles(db, [student])
+        return {
+            "student": base._stu_row(student, db=db, profiles=profiles),
+            "materials": [base._mat_row(item, student) for item in materials],
+            "followUps": [base._fu_row(item, student) for item in followups],
+            "auditLogs": [base._log_row(item) for item in logs],
+        }
 
 
 def create_student(body: dict, *, user: dict) -> dict:
