@@ -58,11 +58,28 @@ jobs:
           fi
 
           if [ "$classic_protected" = 'true' ]; then
-            echo 'main is protected by classic branch protection.'
+            classic="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/branches/main/protection")"
+            classic_strict="$(jq -r '.required_status_checks.strict == true' <<<"$classic")"
+            classic_contexts="$(jq '[((.required_status_checks.contexts // [])[]?) | select(. == "Main / canonical release gate")] | length' <<<"$classic")"
+            classic_checks="$(jq '[((.required_status_checks.checks // [])[]?) | select(.context == "Main / canonical release gate")] | length' <<<"$classic")"
+            classic_pull_request="$(jq -r '.required_pull_request_reviews != null' <<<"$classic")"
+            classic_admins="$(jq -r '(.enforce_admins | type) == "object" and .enforce_admins.enabled == true' <<<"$classic")"
+            classic_no_force_push="$(jq -r '(.allow_force_pushes | type) == "object" and .allow_force_pushes.enabled == false' <<<"$classic")"
+            classic_no_deletion="$(jq -r '(.allow_deletions | type) == "object" and .allow_deletions.enabled == false' <<<"$classic")"
+            printf 'classic.strict=%s\nclassic.canonical_contexts=%s\nclassic.canonical_checks=%s\nclassic.pull_request=%s\nclassic.enforce_admins=%s\nclassic.no_force_push=%s\nclassic.no_deletion=%s\n' \
+              "$classic_strict" "$classic_contexts" "$classic_checks" "$classic_pull_request" \
+              "$classic_admins" "$classic_no_force_push" "$classic_no_deletion"
+            test "$classic_strict" = 'true'
+            test "$((classic_contexts + classic_checks))" -gt 0
+            test "$classic_pull_request" = 'true'
+            test "$classic_admins" = 'true'
+            test "$classic_no_force_push" = 'true'
+            test "$classic_no_deletion" = 'true'
+            echo 'main is protected by strict classic branch protection.'
             exit 0
           fi
 
-          echo '::error::main has neither effective ruleset protection nor classic branch protection.'
+          echo '::error::main has neither an effective ruleset nor equally strict classic branch protection.'
           exit 1
 
   migrated-schema:

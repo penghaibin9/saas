@@ -98,9 +98,15 @@ jobs:
           fi
           grep -q '^    name: Main / protected branch contract$' "$FILE"
           grep -q 'rules/branches/main' "$FILE"
+          grep -q 'branches/main/protection' "$FILE"
           grep -q 'main.effective_rules=' "$FILE"
           grep -q 'strict_required_status_checks_policy' "$FILE"
+          grep -q 'required_status_checks.strict == true' "$FILE"
+          grep -q 'required_pull_request_reviews != null' "$FILE"
+          grep -q 'enforce_admins.enabled == true' "$FILE"
+          grep -q 'allow_force_pushes.enabled == false' "$FILE"
+          grep -q 'allow_deletions.enabled == false' "$FILE"
           grep -q 'Main / canonical release gate' "$FILE"
           grep -q '^    name: Main / canonical release gate$' "$FILE"
           grep -q 'needs: \[main-governance,' "$FILE"
-          echo 'Canonical main gate is permanently wired to every main PR and to effective GitHub rulesets or classic branch protection.'
+          echo 'Canonical main gate is permanently wired to every main PR; Ruleset and classic-protection paths are both strict and fail closed.'
