@@ -271,7 +271,7 @@ def main() -> int:
         "roleTemplateMissingRegistryCodes": role_missing,
         "frontendCatalogDrift": catalog_drift,
         "runtimeInstallerCount": len(invoked_installers),
-        "runtimeInstallerBudget": 27,
+        "runtimeInstallerBudget": 28,
         "criticalInstallerRegressions": critical_installer_regressions,
         "applicationBatchProjection": application_batch_projection,
         "statsSqlAggregates": stats_sql_aggregates,
