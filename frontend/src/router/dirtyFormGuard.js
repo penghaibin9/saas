@@ -1,10 +1,17 @@
 // Stage B / B4：统一长表单未保存保护。
-// 第一批锁定实习批次、企业新增/编辑页；后续只需追加 route name，不再复制页面级 beforeRouteLeave。
+// 先覆盖实习批次/企业，再扩到同域岗位、指导、企业评价、协议模板等长表单；
+// 后续只需追加 route name，不再复制页面级 beforeRouteLeave。
 const DEFAULT_GUARDED_ROUTES = new Set([
   'internship-batch-new',
   'internship-batch-edit',
   'internship-enterprise-new',
-  'internship-enterprise-edit'
+  'internship-enterprise-edit',
+  'internship-position-new',
+  'internship-position-edit',
+  'internship-guidance-new',
+  'internship-enterprise-eval-new',
+  'internship-agreement-template-new',
+  'internship-agreement-template-edit'
 ])
 
 const EDITABLE_SELECTOR = 'input:not([type="hidden"]):not([type="search"]), textarea, select, [contenteditable="true"]'
@@ -81,7 +88,7 @@ export function installDirtyFormGuard(router, options = {}) {
     }
   })
 
-  // 为后续页面在真实保存成功后显式清理提供统一接口；不要求第一批页面复制 guard 逻辑。
+  // 为真实保存成功后的显式清理提供统一接口；页面无需复制导航 guard 逻辑。
   window.__SAAS_DIRTY_FORM_GUARD__ = {
     markDirty: () => { if (isGuarded(router.currentRoute.value, guardedRoutes)) dirty = true },
     markSaved: () => { dirty = false; submitWindowUntil = 0 },
