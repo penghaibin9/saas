@@ -20,38 +20,56 @@ _REQUEST_WRAPPER_PATCHED = False
 
 @pytest.fixture(autouse=True)
 def _seed_authoritative_tenant_for_db_tests(request):
-    """Seed the canonical active tenant after ``db_mode`` resets the schema."""
+    """Seed and bind the canonical active tenant after ``db_mode`` resets the schema.
+
+    ``db_mode`` is an explicit trusted test-database boundary.  Production service
+    writes are fail-closed when no tenant ContextVar exists, so DB-backed tests must
+    install the same authoritative tenant context that their seeded rows use.  This
+    fixture deliberately does *not* install a user/actor context: actor-sensitive
+    policies (notably formal file binding) remain fail-closed and must opt in to an
+    explicit actor in the fixture that owns that operation.
+    """
     if "db_mode" not in request.fixturenames:
         yield
         return
 
     request.getfixturevalue("db_mode")
 
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import Tenant
 
-    db = get_sessionmaker()()
+    set_tenant({
+        "tenantId": str(TEST_TENANT_ID),
+        "tenantCode": "demo",
+        "tenantName": "测试学校",
+        "status": "ACTIVE",
+    })
     try:
-        if db.get(Tenant, TEST_TENANT_ID) is None:
-            db.add(
-                Tenant(
-                    id=TEST_TENANT_ID,
-                    tenant_code="demo",
-                    school_name="测试学校",
-                    short_name="测试学校",
-                    deploy_mode="SAAS",
-                    db_mode="SHARED",
-                    status="ACTIVE",
+        db = get_sessionmaker()()
+        try:
+            if db.get(Tenant, TEST_TENANT_ID) is None:
+                db.add(
+                    Tenant(
+                        id=TEST_TENANT_ID,
+                        tenant_code="demo",
+                        school_name="测试学校",
+                        short_name="测试学校",
+                        deploy_mode="SAAS",
+                        db_mode="SHARED",
+                        status="ACTIVE",
+                    )
                 )
-            )
-            db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+                db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
-    yield
+        yield
+    finally:
+        set_tenant(None)
 
 
 def _stable_test_user_id(claims: dict) -> int | None:
