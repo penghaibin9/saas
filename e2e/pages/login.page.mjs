@@ -51,16 +51,17 @@ export class StaffLoginPage {
     await target.click()
     const response = await responsePromise
     expect(response.ok(), `switch role HTTP ${response.status()}`).toBeTruthy()
-    const payload = await response.json()
-    const newToken = payload?.data?.accessToken || ''
-    expect(newToken, 'switch role response must rotate access token').toBeTruthy()
-    expect(newToken, 'switch role access token must differ from old token').not.toBe(oldToken)
 
     await navigationPromise
     await this.page.waitForLoadState('domcontentloaded')
+    // location.replace 可能在响应事件后立即销毁 DevTools 的 response body，不能依赖
+    // response.json()；最终浏览器会话才是用户真正持有的身份。要求其必须已落盘且完成轮换。
     await this.page.waitForFunction(
-      (expected) => sessionStorage.getItem('gx_pc_token_v1') === expected,
-      newToken,
+      (previous) => {
+        const current = sessionStorage.getItem('gx_pc_token_v1') || ''
+        return Boolean(current) && current !== previous
+      },
+      oldToken,
       { timeout: 10_000 }
     )
   }
