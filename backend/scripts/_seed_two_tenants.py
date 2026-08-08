@@ -214,7 +214,7 @@ def seed_demo_tenant(db) -> dict:
 # ═══════════════ sandbox-school 自由体验租户（实现见 app/services/sandbox_service.py） ═══════════════
 
 def _ensure_sandbox_teacher_roles(db) -> list[str]:
-    """把 teacher2 的“辅导员 + 实习指导教师”语义落成真实 UserRole，不靠权限放宽。"""
+    """把 teacher2 的多岗位语义落成真实 UserRole，不靠角色权限放宽。"""
     teacher = db.scalars(select(User).where(
         User.tenant_id == SANDBOX_TID,
         User.login_name == "teacher2",
@@ -224,8 +224,13 @@ def _ensure_sandbox_teacher_roles(db) -> list[str]:
         return []
 
     role_codes = []
-    # COUNSELOR 必须先建/先关联，保证首次登录默认仍保持历史合同；写实习时由客户端显式切 INTERN_MENTOR。
-    for role_code, role_name in (("COUNSELOR", "辅导员"), ("INTERN_MENTOR", "实习指导教师")):
+    # COUNSELOR 必须先建/先关联，首次登录保持历史默认；进入实习/毕设办理时显式切换对应岗位。
+    role_specs = (
+        ("COUNSELOR", "辅导员"),
+        ("INTERN_MENTOR", "实习指导教师"),
+        ("GD_MENTOR", "毕业设计指导教师"),
+    )
+    for role_code, role_name in role_specs:
         role = db.scalars(select(Role).where(
             Role.tenant_id == SANDBOX_TID,
             Role.role_code == role_code,
