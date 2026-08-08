@@ -58,6 +58,7 @@ def test_overview_refresh_failure_clears_stale_metrics_before_error_state():
     assert "this.ov = null" in src
     assert "this.error = ''" in src
     assert 'v-else-if="error"' in src
+    assert ':description="error"' in src
     assert "res.message || '平台总览加载失败'" in src
 
 
