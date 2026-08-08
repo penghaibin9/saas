@@ -57,7 +57,10 @@ def _audit(db, biz_type, biz_id, action, detail=""):
 
 
 def _acad_student_id(db, student_id, name=""):
-    """全局学生 → 学业过程台账；无则建一行（投影落点）。返回台账对象（供台账刷新复用）。"""
+    """全局学生 → 学业过程台账；无则建一行（投影落点）。返回台账对象（供台账刷新复用）。
+
+    单条查询场景用；批量发布场景请用 `_acad_student_ids_bulk`，否则整批学生逐个
+    db.get/select 是典型 N+1（一个班 50 人就是 100+ 条 SELECT）。"""
     from app.models import AcademicStudent, StudentProfile
     a = db.scalars(select(AcademicStudent).where(
         AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == int(student_id),
@@ -70,6 +73,37 @@ def _acad_student_id(db, student_id, name=""):
     db.add(a)
     db.flush()
     return a
+
+
+def _acad_student_ids_bulk(db, student_ids, names: dict | None = None) -> dict:
+    """`_acad_student_id` 的批量版：整批学生只发 2 条 SELECT（既有台账 + 缺台账学生的
+    StudentProfile），而不是每个学生各发 1-2 条——成绩发布一次动辄几十上百名学生，
+    逐行查询是最直接可量化的 N+1（P1 批次C）。返回 {student_id: AcademicStudent}。
+    """
+    from app.models import AcademicStudent, StudentProfile
+    names = names or {}
+    ids = sorted({int(sid) for sid in student_ids})
+    if not ids:
+        return {}
+    existing = db.scalars(select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id.in_(ids),
+        AcademicStudent.is_deleted.is_(False))).all()
+    result = {int(a.student_id): a for a in existing}
+    missing_ids = [sid for sid in ids if sid not in result]
+    if missing_ids:
+        profiles = {int(s.id): s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(missing_ids))).all()}
+        for sid in missing_ids:
+            s = profiles.get(sid)
+            a = AcademicStudent(
+                tenant_id=_tid(), student_id=sid, student_no=(s.student_no if s else None),
+                name=(s.real_name if s else names.get(sid, "")),
+                class_id=(str(s.class_id) if s and s.class_id else None),
+            )
+            db.add(a)
+            result[sid] = a
+        db.flush()
+    return result
 
 
 # ═══════════ 数据范围（COURSE/COLLEGE/TENANT_ALL） ═══════════
@@ -921,7 +955,7 @@ def publish_grades(task_id, user) -> dict:
     """教务处终审发布：合成总评原子回写 t_acad_grade + 刷新学生台账 + 预警扫描 + 不及格生成 RISK_ALERT。"""
     _require_review_role(user)
     with session() as db:
-        from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AffairsRiskRecord, StudentProfile
+        from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AffairsRiskRecord
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
@@ -947,10 +981,21 @@ def publish_grades(task_id, user) -> dict:
             db.rollback()
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩已发布")
         t.status = "PUBLISHED"
+        # P1 批次C：整批学生台账 + 已存在预警记录各一次性批量取出，不在下面的循环里
+        # 对每个学生各发一次 StudentProfile/AcademicStudent/AffairsRiskRecord 查询——
+        # 一个班 50 人发布成绩原来是 150+ 条 SELECT，现在固定 3 条。
+        student_map = _acad_student_ids_bulk(db, (r.student_id for r in recs))
+        failed_rec_ids = [r.id for r in recs if r.pass_status == "FAILED"]
+        existing_risk_refs = set()
+        if failed_rec_ids:
+            existing_risk_refs = {
+                row.source_ref_id for row in db.scalars(select(AffairsRiskRecord).where(
+                    AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == "ACADEMIC_WARNING",
+                    AffairsRiskRecord.source_ref_id.in_(failed_rec_ids))).all()
+            }
         projected, fail_count = 0, 0
         for r in recs:
-            s = db.get(StudentProfile, int(r.student_id))
-            a = _acad_student_id(db, r.student_id, s.real_name if s else "")
+            a = student_map[int(r.student_id)]
             g = AcademicGrade(tenant_id=_tid(), acad_student_id=a.id, course_name=t.course_name or "",
                               term=t.term_code, nature="REQUIRED", credit_value=(t.credit or 0),
                               score=r.total_score, pass_status=(r.pass_status or "PENDING"), exam_type="FINAL",
@@ -963,10 +1008,7 @@ def publish_grades(task_id, user) -> dict:
             _refresh_aggregates(db, a)
             if r.pass_status == "FAILED":
                 fail_count += 1
-                dup = db.scalars(select(AffairsRiskRecord).where(
-                    AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == "ACADEMIC_WARNING",
-                    AffairsRiskRecord.source_ref_id == r.id)).first()
-                if not dup:
+                if r.id not in existing_risk_refs:
                     db.add(AffairsRiskRecord(tenant_id=_tid(), student_id=r.student_id, source="ACADEMIC_WARNING",
                                              source_ref_id=r.id, risk_level="MEDIUM",
                                              title=f"{t.course_name or ''} 课程不及格",

@@ -73,17 +73,27 @@ def resolve_active_policy(db):
 
     默认策略 (score-50)/10（60→1.0，100→5.0，<60→0）与升级前 `_course_point()` 的行为
     逐分值一致，保证首次上线不改变任何学生的历史 GPA。
+
+    同一事务内缓存在 `db.info`：批量发布成绩时 `_refresh_aggregates` 会对每个学生的
+    每条成绩各调用一次本函数，策略在同一事务内不会变化，逐行重复查同一张策略表是
+    可量化的 N+1（P1 批次C）。`db.info` 是 SQLAlchemy Session 自带的会话级字典，
+    Session 关闭即失效，不会跨请求残留旧策略。
     """
     from app.models.academic_affairs_gpa_policy import AaGpaPointPolicy
 
+    cache_key = f"_gpa_active_policy_{_tid()}"
+    cached = db.info.get(cache_key)
+    if cached is not None:
+        return cached
     policy = db.query(AaGpaPointPolicy).filter(
         AaGpaPointPolicy.tenant_id == _tid(),
         AaGpaPointPolicy.status == "ACTIVE",
         AaGpaPointPolicy.is_deleted.is_(False),
     ).order_by(AaGpaPointPolicy.policy_version.desc()).first()
-    if policy:
-        return policy
-    return _ensure_default_policy(db)
+    if not policy:
+        policy = _ensure_default_policy(db)
+    db.info[cache_key] = policy
+    return policy
 
 
 def _ensure_default_policy(db):
