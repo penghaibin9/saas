@@ -180,7 +180,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
         migration, mobile, mobile_export, mobile_graduation_extension_teacher,
         mobile_graduation_guard, mobile_graduation_material_center,
         mobile_graduation_teacher_context, mobile_orientation_teacher,
-        mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
+        mobile_internship_context, mobile_internship_leave_context,
+        mobile_internship_student, mobile_internship_weekly_versioned,
         national_standards, notification, onboarding, org_directory, platform, stats,
         student_portal_graduation_guard, system, transfer, user_preference,
     )
@@ -223,13 +224,13 @@ def register_platform_routes(api_router: APIRouter) -> None:
     )
     api_router.include_router(mobile_graduation_guard.router)
     from app.core.mobile_internship_permission_gate import enforce_teacher_internship_mobile_permission
-    api_router.include_router(
-        mobile.router,
-        dependencies=[
-            Depends(require_mobile_graduation_request_permission),
-            Depends(enforce_teacher_internship_mobile_permission),
-        ],
-    )
+    mobile_legacy_deps = [
+        Depends(require_mobile_graduation_request_permission),
+        Depends(enforce_teacher_internship_mobile_permission),
+    ]
+    # 周报版本化入口覆盖旧聚合路由的同 URL，权限依赖完全一致；必须先注册。
+    api_router.include_router(mobile_internship_weekly_versioned.router, dependencies=mobile_legacy_deps)
+    api_router.include_router(mobile.router, dependencies=mobile_legacy_deps)
     from app.core.student_portal_module_gate import enforce_student_portal_module_access
     from app.student_portal.internship_router import router as student_portal_internship_router
     api_router.include_router(mobile_internship_context.router)
