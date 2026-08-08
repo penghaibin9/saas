@@ -115,8 +115,10 @@ def install() -> None:
                 # 只读身份字段原样回传属于真实 no-op；仍要求调用者基于当前 version 提交，
                 # 但不制造一次假更新/假审计/假版本增长。
                 if int(row.version or 0) != expected:
-                    from app.core.optimistic_lock import raise_version_conflict
-                    raise_version_conflict(int(row.version or 0))
+                    raise AppException(
+                        "APPROVAL_VERSION_CONFLICT",
+                        "数据已被他人修改或状态已经变化，请刷新后重试",
+                    )
                 return {"id": str(row.id), "version": expected, "noChange": True}
 
             atomic_versioned_update(
