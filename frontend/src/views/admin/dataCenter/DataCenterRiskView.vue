@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="风险预警数据"
-    :subtitle="risk ? '预警总量 ' + risk.total + ' 条 · ' + risk.timeRangeLabel + ' · 更新于 ' + risk.updatedAt : '来源分布 · 等级分布 · 趋势与下钻'"
+    :subtitle="risk ? '当前实时风险 ' + risk.total + ' 条 · 数据截至 ' + asOfLabel : '来源分布 · 等级分布 · 数据质量说明'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -17,16 +17,47 @@
     />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
-    <EmptyState v-else-if="!risk" title="暂无风险统计数据" description="预警规则命中后将自动生成统计" />
+    <EmptyState
+      v-else-if="!risk"
+      title="暂无可证明的风险统计数据"
+      description="本页不会用演示记录或浏览器估算补齐风险数字。"
+    />
+
     <div v-else class="mp-stack">
+      <section class="mp-card dcrk-contract">
+        <div class="mp-card__body dcrk-contract__body">
+          <div>
+            <div class="dcrk-contract__label">数据范围</div>
+            <div class="dcrk-contract__value">{{ scopeLabel }}</div>
+          </div>
+          <div>
+            <div class="dcrk-contract__label">统计口径</div>
+            <div class="dcrk-contract__value">{{ caliberLabel }}</div>
+          </div>
+          <div>
+            <div class="dcrk-contract__label">数据来源</div>
+            <div class="dcrk-contract__value">{{ sourceNames || '服务端真实聚合' }}</div>
+          </div>
+          <div>
+            <div class="dcrk-contract__label">质量提示</div>
+            <div class="dcrk-contract__value">{{ qualityFlags.length ? qualityFlags.length + ' 项' : '无阻断项' }}</div>
+          </div>
+        </div>
+      </section>
+
       <div class="mp-grid-2">
         <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">风险来源分布（按业务模块）</span>
+            <span class="mp-card__title">风险来源分布</span>
             <span class="mp-note">合计 {{ risk.total }} 条</span>
           </div>
           <div class="mp-card__body mp-stack">
-            <div v-for="s in risk.bySource" :key="s.moduleCode" class="dcrk-bar">
+            <EmptyState
+              v-if="!risk.bySource || !risk.bySource.length"
+              title="暂无风险来源数据"
+              description="当前真实聚合未命中风险记录。"
+            />
+            <div v-for="s in risk.bySource || []" v-else :key="s.moduleCode" class="dcrk-bar">
               <span class="dcrk-bar__label">{{ s.moduleName }}</span>
               <div class="dcrk-bar__track">
                 <div class="dcrk-bar__fill" :style="{ width: sourceWidth(s) }" />
@@ -38,191 +69,117 @@
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">等级分布与处理进度</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">风险等级分布</span></div>
           <div class="mp-card__body mp-stack">
-            <div v-for="l in risk.byLevel" :key="l.level" class="dcrk-bar">
+            <div v-for="l in risk.byLevel || []" :key="l.level" class="dcrk-bar">
               <span class="dcrk-bar__label"><RiskTag :level="l.level" /></span>
               <div class="dcrk-bar__track">
                 <div class="dcrk-bar__fill" :class="'is-' + l.level" :style="{ width: levelWidth(l) }" />
               </div>
               <span class="dcrk-bar__value">{{ l.count }} 条</span>
             </div>
-            <div class="dcrk-status">
+          </div>
+        </section>
+      </div>
+
+      <div class="mp-grid-2">
+        <section class="mp-card">
+          <div class="mp-card__head"><span class="mp-card__title">处理进度</span></div>
+          <div class="mp-card__body">
+            <div v-if="risk.byStatus && risk.byStatus.length" class="mp-stack">
               <div v-for="st in risk.byStatus" :key="st.key" class="mp-kv">
-                <span class="mp-kv__k">
-                  <StatusTag :type="st.key === 'PENDING' ? 'warning' : st.key === 'PROCESSING' ? 'processing' : 'success'" :label="st.label" dot />
-                </span>
+                <span class="mp-kv__k">{{ st.label }}</span>
                 <span class="mp-kv__v">{{ st.count }} 条</span>
               </div>
             </div>
+            <EmptyState
+              v-else
+              title="处理进度口径尚未统一"
+              description="跨业务域的待处理/跟进中/已关闭状态还没有统一服务端合同；空白代表未配置，不代表 0。"
+            />
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head"><span class="mp-card__title">历史趋势</span></div>
+          <div class="mp-card__body">
+            <div v-if="hasTrend" class="dcrk-trend-list">
+              <div v-for="(m, i) in risk.trend.months" :key="m" class="mp-kv">
+                <span class="mp-kv__k">{{ m }}</span>
+                <span class="mp-kv__v">总量 {{ risk.trend.total[i] }} · 高风险 {{ risk.trend.high[i] }}</span>
+              </div>
+            </div>
+            <EmptyState
+              v-else
+              title="历史趋势尚未配置"
+              description="统计快照表尚未形成统一历史序列；系统不会用 0 或演示曲线填充。"
+            />
           </div>
         </section>
       </div>
 
       <section class="mp-card">
-        <div class="mp-card__head">
-          <span class="mp-card__title">近 6 个月风险趋势</span>
-          <span class="dcrk-legend">
-            <span class="dcrk-legend__item"><span class="dcrk-legend__dot is-total" />预警总量</span>
-            <span class="dcrk-legend__item"><span class="dcrk-legend__dot is-high" />高风险</span>
-          </span>
-        </div>
+        <div class="mp-card__head"><span class="mp-card__title">明细能力边界</span></div>
         <div class="mp-card__body">
-          <svg :viewBox="'0 0 ' + chart.width + ' ' + chart.height" class="dcrk-chart" role="img" aria-label="近六个月风险趋势折线图">
-            <line
-              v-for="t in yTicks"
-              :key="'grid-' + t.value"
-              class="dcrk-chart__grid"
-              :x1="chart.left"
-              :x2="chart.width - chart.right"
-              :y1="t.y"
-              :y2="t.y"
-            />
-            <text v-for="t in yTicks" :key="'ylab-' + t.value" class="dcrk-chart__label" :x="chart.left - 8" :y="t.y + 4" text-anchor="end">
-              {{ t.value }}
-            </text>
-            <polyline class="dcrk-chart__line is-total" :points="linePoints(risk.trend.total)" />
-            <polyline class="dcrk-chart__line is-high" :points="linePoints(risk.trend.high)" />
-            <circle
-              v-for="(v, i) in risk.trend.total"
-              :key="'pt-' + i"
-              class="dcrk-chart__dot is-total"
-              :cx="pointX(i)"
-              :cy="pointY(v)"
-              r="3.5"
-            />
-            <circle
-              v-for="(v, i) in risk.trend.high"
-              :key="'ph-' + i"
-              class="dcrk-chart__dot is-high"
-              :cx="pointX(i)"
-              :cy="pointY(v)"
-              r="3"
-            />
-            <text
-              v-for="(m, i) in risk.trend.months"
-              :key="'x-' + m"
-              class="dcrk-chart__label"
-              :x="pointX(i)"
-              :y="chart.height - 8"
-              text-anchor="middle"
-            >
-              {{ monthLabel(m) }}
-            </text>
-          </svg>
+          <p class="dcrk-boundary">
+            跨域“风险学生名单”尚未形成统一服务端命中口径，批量提醒和风险导出也尚未接入正式任务链，因此本页不提供这些入口。风险处置请进入对应业务模块，以各域权威记录和权限规则为准。
+          </p>
         </div>
       </section>
 
-      <p class="mp-note">
-        风险数据由各业务模块预警规则实时汇入，本页仅作统计分析；处置动作请在对应业务模块完成，全程留痕。
-      </p>
+      <section v-if="qualityFlags.length" class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">数据质量提示</span></div>
+        <div class="mp-card__body mp-stack">
+          <div v-for="flag in qualityFlags" :key="flag.code" class="dcrk-quality">
+            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+            <span>{{ flag.message }}</span>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <AppDrawer v-model:visible="drill.visible" title="风险学生名单">
+    <AppDrawer v-model:visible="guideVisible" title="风险数据口径">
       <div class="mp-stack">
-        <p class="mp-note">名单来自各模块风险记录（脱敏展示）；勾选学生后可生成提醒建议，操作将写入审计日志。</p>
-        <ErrorState v-if="drill.error" :description="drill.error" @retry="loadDrill" />
-        <LoadingState v-else-if="drill.loading" text="正在加载风险学生名单…" />
-        <EmptyState v-else-if="!drill.rows.length" title="暂无风险学生" description="当前范围内没有未闭环的风险记录" />
-        <DataTable
-          v-else
-          :columns="drillColumns"
-          :rows="drill.rows"
-          row-key="id"
-          selectable
-          v-model:selected="drill.selected"
-          :pagination="drill.pagination"
-          @page-change="onDrillPage"
-        >
-          <template #cell-student="{ row }">
-            <div class="mp-cell-main">{{ row.name }}</div>
-            <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ maskPhone(row.phone) }} · {{ row.className }}</div>
-          </template>
-          <template #cell-risk="{ row }">
-            <RiskTag :level="row.riskLevel" />
-          </template>
-          <template #cell-status="{ row }">
-            <StatusTag :type="row.tone" :label="row.statusLabel" />
-          </template>
-        </DataTable>
-      </div>
-      <template #footer>
-        <AppButton
-          variant="primary"
-          :disabled="!canRemind || !drill.selected.length"
-          :loading="reminding"
-          :title="!canRemind ? remindReason : !drill.selected.length ? '请先勾选学生' : ''"
-          @click="sendReminder"
-        >
-          生成提醒建议（{{ drill.selected.length }}）
-        </AppButton>
-        <span class="mp-note">建议将下发至责任教师工作台，并写入审计日志</span>
-      </template>
-    </AppDrawer>
-
-    <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="warning"
-      title="导出风险预警报表"
-      :message="'风险报表含学生敏感信息摘要。' + ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
+        <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '服务端真实聚合' }}</span></div>
+        <p class="mp-note">空数组表示服务端尚未形成对应统一口径，而不是业务事实为 0。</p>
+        <div v-for="flag in qualityFlags" :key="'drawer-' + flag.code" class="dcrk-quality">
+          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+          <span>{{ flag.message }}</span>
         </div>
       </div>
-    </AppConfirmDialog>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 风险预警数据（/admin/data-center/risk）。
- * 来源 / 等级 / 处理进度三视角统计（合计一致），近 6 月趋势为内联 SVG polyline（禁图表库）；
- * 风险学生名单下钻（drawer + 脱敏），批量提醒建议与导出均留痕。
- */
 import {
   ModulePageShell,
   ModuleToolbar,
-  DataTable,
   StatusTag,
   RiskTag,
   LoadingState,
   ErrorState,
   EmptyState
 } from '@/components/business'
-import { AppGlobalState, AppConfirmDialog } from '@/components/common'
-import { AppDrawer, AppButton } from '@/components/ui'
+import { AppGlobalState } from '@/components/common'
+import { AppDrawer } from '@/components/ui'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'DataCenterRiskView',
   components: {
     ModulePageShell,
     ModuleToolbar,
-    DataTable,
     StatusTag,
     RiskTag,
     LoadingState,
     ErrorState,
     EmptyState,
     AppGlobalState,
-    AppConfirmDialog,
-    AppDrawer,
-    AppButton
+    AppDrawer
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -230,25 +187,7 @@ export default {
       loading: true,
       error: '',
       risk: null,
-      chart: { width: 640, height: 240, left: 48, right: 24, top: 20, bottom: 32 },
-      drill: {
-        visible: false,
-        loading: false,
-        error: '',
-        rows: [],
-        selected: [],
-        pagination: { page: 1, pageSize: 5, total: 0 }
-      },
-      drillColumns: [
-        { key: 'student', title: '学生' },
-        { key: 'risk', title: '等级', width: '86px' },
-        { key: 'status', title: '状态' },
-        { key: 'lastEvent', title: '最近动态' }
-      ],
-      reminding: false,
-      exportVisible: false,
-      exportPurpose: 'INTERNAL_ANALYSIS',
-      exporting: false
+      guideVisible: false
     }
   },
   computed: {
@@ -260,161 +199,64 @@ export default {
       const pa = this.ctx.permissionActions.viewRisk
       return (pa && pa.reason) || '当前角色未开通风险预警数据查看权限'
     },
-    canDrill() {
-      const pa = this.ctx.permissionActions.drilldownStudents
-      return !!(pa && pa.visible && pa.allowed)
-    },
-    drillReason() {
-      const pa = this.ctx.permissionActions.drilldownStudents
-      return pa && !pa.allowed ? pa.reason : ''
-    },
-    canRemind() {
-      const pa = this.ctx.permissionActions.batchRemind
-      return !!(pa && pa.visible && pa.allowed)
-    },
-    remindReason() {
-      const pa = this.ctx.permissionActions.batchRemind
-      return pa && !pa.allowed ? pa.reason : ''
-    },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
-      const list = []
-      if (pa.exportRisk && pa.exportRisk.visible) {
-        list.push({
-          key: 'exportRisk',
-          label: '导出风险报表',
-          variant: 'primary',
-          disabled: !pa.exportRisk.allowed,
-          disabledReason: pa.exportRisk.reason
-        })
-      }
-      if (pa.drilldownStudents && pa.drilldownStudents.visible) {
-        list.push({
-          key: 'openStudents',
-          label: '风险学生名单',
-          disabled: !pa.drilldownStudents.allowed,
-          disabledReason: pa.drilldownStudents.reason
-        })
-      }
-      return list
+      return [{ key: 'metricGuide', label: '数据口径与质量', variant: 'ghost' }]
     },
-    maxY() {
-      if (!this.risk) return 10
-      const max = Math.max(...this.risk.trend.total, ...this.risk.trend.high)
-      return Math.max(10, Math.ceil((max * 1.15) / 20) * 20)
+    meta() {
+      return (this.risk && this.risk.meta) || {}
     },
-    yTicks() {
-      const ticks = []
-      const steps = 4
-      for (let i = 0; i <= steps; i++) {
-        const value = Math.round((this.maxY / steps) * i)
-        ticks.push({ value, y: this.pointY(value) })
-      }
-      return ticks
+    qualityFlags() {
+      return Array.isArray(this.meta.qualityFlags) ? this.meta.qualityFlags : []
+    },
+    sourceNames() {
+      const rows = Array.isArray(this.meta.source) ? this.meta.source : []
+      return rows.map((x) => x.module).filter(Boolean).join('、')
+    },
+    scopeLabel() {
+      return (this.meta.scope && this.meta.scope.scopeName) || this.ctx.dataScope.scopeName || '—'
+    },
+    caliberLabel() {
+      return this.meta.caliberLabel || '服务端实时风险口径'
+    },
+    asOfLabel() {
+      return this.meta.asOf || (this.risk && this.risk.updatedAt) || '—'
+    },
+    hasTrend() {
+      return !!(
+        this.risk && this.risk.trend &&
+        Array.isArray(this.risk.trend.months) && this.risk.trend.months.length &&
+        Array.isArray(this.risk.trend.total) && Array.isArray(this.risk.trend.high)
+      )
     }
   },
   created() {
-    this.load()
+    if (this.viewAllowed) this.load()
   },
   methods: {
-    maskPhone(v) {
-      return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
     sourceWidth(s) {
-      if (!this.risk) return '0%'
-      const max = Math.max(...this.risk.bySource.map((x) => x.count))
-      return Math.round((s.count / max) * 100) + '%'
+      const rows = (this.risk && this.risk.bySource) || []
+      const max = Math.max(0, ...rows.map((x) => Number(x.count) || 0))
+      if (!max) return '0%'
+      return Math.round(((Number(s.count) || 0) / max) * 100) + '%'
     },
     levelWidth(l) {
       if (!this.risk || !this.risk.total) return '0%'
-      return Math.round((l.count / this.risk.total) * 100) + '%'
+      return Math.round(((Number(l.count) || 0) / this.risk.total) * 100) + '%'
     },
-    monthLabel(m) {
-      return m.includes('-') ? Number(m.split('-')[1]) + '月' : m
-    },
-    pointX(i) {
-      const n = this.risk ? this.risk.trend.months.length : 1
-      const plotWidth = this.chart.width - this.chart.left - this.chart.right
-      if (n <= 1) return this.chart.left
-      return this.chart.left + (plotWidth / (n - 1)) * i
-    },
-    pointY(value) {
-      const plotHeight = this.chart.height - this.chart.top - this.chart.bottom
-      return this.chart.height - this.chart.bottom - (value / this.maxY) * plotHeight
-    },
-    linePoints(values) {
-      return values.map((v, i) => this.pointX(i) + ',' + this.pointY(v)).join(' ')
+    onToolbar(key) {
+      if (key === 'metricGuide') this.guideVisible = true
     },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await dataCenterApi.getRiskStats({ timeRange: 'LAST_6M' })
-      if (res.code === 0) this.risk = res.data
-      else this.error = res.message
+      const res = await dataCenterApi.getRiskStats()
+      if (res.code === 0) {
+        this.risk = res.data
+      } else {
+        this.risk = null
+        this.error = res.message
+      }
       this.loading = false
-    },
-    onToolbar(key) {
-      if (key === 'exportRisk') {
-        this.exportPurpose = 'INTERNAL_ANALYSIS'
-        this.exportVisible = true
-      }
-      if (key === 'openStudents') this.openDrill()
-    },
-    openDrill() {
-      if (!this.canDrill) {
-        toast.info(this.drillReason || '当前角色不可查看学生明细')
-        return
-      }
-      this.drill.visible = true
-      this.drill.selected = []
-      this.drill.pagination.page = 1
-      this.loadDrill()
-    },
-    onDrillPage(page) {
-      this.drill.pagination.page = page
-      this.loadDrill()
-    },
-    async loadDrill() {
-      this.drill.loading = true
-      this.drill.error = ''
-      const res = await dataCenterApi.getDrilldownStudents({
-        metricKey: 'RISK',
-        page: this.drill.pagination.page,
-        pageSize: this.drill.pagination.pageSize
-      })
-      if (res.code === 0) {
-        this.drill.rows = res.data.list
-        this.drill.pagination.total = res.data.total
-      } else {
-        this.drill.error = res.message
-      }
-      this.drill.loading = false
-    },
-    async sendReminder() {
-      if (!this.canRemind || !this.drill.selected.length) return
-      this.reminding = true
-      const res = await dataCenterApi.sendRiskReminder({ studentIds: [...this.drill.selected] })
-      this.reminding = false
-      if (res.code === 0) {
-        toast.success('已为 ' + res.data.count + ' 名学生生成提醒建议并下发责任教师工作台，操作已留痕')
-        this.drill.selected = []
-      } else {
-        toast.error(res.message)
-      }
-    },
-    async onExportConfirm() {
-      this.exporting = true
-      const res = await dataCenterApi.exportData({ scope: 'RISK', purpose: this.exportPurpose })
-      this.exporting = false
-      if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入审计日志（演示态，暂未生成实际文件）')
-      } else {
-        toast.error(res.message)
-      }
     }
   }
 }
@@ -422,13 +264,29 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.dcrk-contract__body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.dcrk-contract__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.dcrk-contract__value {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
 .dcrk-bar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 .dcrk-bar__label {
-  width: 84px;
+  width: 96px;
   flex-shrink: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -444,62 +302,36 @@ export default {
   height: 100%;
   border-radius: var(--radius-full);
   background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
-  transition: width var(--motion-normal) var(--ease-standard);
 }
 .dcrk-bar__fill.is-HIGH { background: var(--danger-500); }
 .dcrk-bar__fill.is-MEDIUM { background: var(--warning-500); }
 .dcrk-bar__fill.is-LOW { background: var(--info-500); }
 .dcrk-bar__value {
-  width: 56px;
+  width: 64px;
   flex-shrink: 0;
   text-align: right;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   font-variant-numeric: var(--font-numeric);
 }
-.dcrk-status {
-  border-top: 1px dashed var(--border-light);
-  padding-top: var(--space-2);
-}
-.dcrk-legend {
-  display: inline-flex;
-  gap: var(--space-4);
-  font-size: var(--font-size-xs);
+.dcrk-boundary {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--info-100);
+  border-radius: var(--radius-md);
+  background: var(--info-50);
   color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
 }
-.dcrk-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+.dcrk-quality {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
-.dcrk-legend__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
+@media (max-width: 960px) {
+  .dcrk-contract__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-.dcrk-legend__dot.is-total { background: var(--primary-500); }
-.dcrk-legend__dot.is-high { background: var(--danger-500); }
-.dcrk-chart {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-.dcrk-chart__grid {
-  stroke: var(--border-light);
-  stroke-width: 1;
-}
-.dcrk-chart__label {
-  fill: var(--text-tertiary);
-  font-size: 11px;
-}
-.dcrk-chart__line {
-  fill: none;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.dcrk-chart__line.is-total { stroke: var(--primary-500); }
-.dcrk-chart__line.is-high { stroke: var(--danger-500); }
-.dcrk-chart__dot.is-total { fill: var(--primary-500); }
-.dcrk-chart__dot.is-high { fill: var(--danger-500); }
 </style>
