@@ -11,6 +11,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
 
 // 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
@@ -21,6 +22,9 @@ if (!router.hasRoute('unknown-route-fallback')) {
     redirect: '/workbench'
   })
 }
+
+// Stage B / B4：统一未保存表单保护。第一批覆盖实习批次/企业，扩展列表由 guard 单一维护。
+installDirtyFormGuard(router)
 
 const app = createApp(App)
 // 统一轻提示兼容门面：业务页可使用 this.$message.success/error/warning/info，
