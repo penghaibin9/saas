@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS } from '../help/highFrequencyTroubleshootingHelpCards.js'
 import { HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS } from '../help/highFrequencyTroubleshootingHelpCardsV305B.js'
+import { HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS } from '../help/highFrequencyTroubleshootingHelpCardsV305C.js'
 import { HELP_V3_QUICK_QUESTIONS } from '../help/helpCenterV3.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -35,9 +36,15 @@ const SECOND_IDS = [
   'tr-v3-service-5xx'
 ]
 
+const CLOSEOUT_IDS = [
+  'tr-v3-validation-400',
+  'tr-v3-not-found-404'
+]
+
 const ALL_CARDS = [
   ...HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS,
-  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS,
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS
 ]
 
 function body(id) {
@@ -52,10 +59,11 @@ function assertSelfServiceContract(card) {
   assert.ok(card.keywords?.length, `${card.id} missing keywords`)
 }
 
-test('V3-05 publishes fourteen verified self-service fault cards in two batches', () => {
+test('V3-05 closes with sixteen verified self-service fault cards', () => {
   assert.deepEqual(HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS.map((card) => card.id), FIRST_IDS)
   assert.deepEqual(HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS.map((card) => card.id), SECOND_IDS)
-  assert.equal(ALL_CARDS.length, 14)
+  assert.deepEqual(HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS.map((card) => card.id), CLOSEOUT_IDS)
+  assert.equal(ALL_CARDS.length, 16)
   for (const card of ALL_CARDS) assertSelfServiceContract(card)
 })
 
@@ -122,6 +130,26 @@ test('second batch follows auth, module, rate-limit and service-error contracts'
   assert.match(body('tr-v3-service-5xx'), /fail-closed/)
 })
 
+test('closeout cards follow validation and not-found contracts', () => {
+  assert.match(exceptionSource, /"VALIDATION_ERROR": 400/)
+  assert.match(exceptionSource, /"REJECT_REASON_REQUIRED": 400/)
+  assert.match(exceptionSource, /"DATA_NOT_FOUND": 404/)
+  assert.match(exceptionSource, /"TENANT_NOT_FOUND": 404/)
+  assert.match(exceptionSource, /"ROLE_NOT_FOUND": 404/)
+  assert.match(exceptionSource, /RequestValidationError/)
+  assert.match(exceptionSource, /"field"/)
+
+  const validation = body('tr-v3-validation-400')
+  assert.match(validation, /VALIDATION_ERROR/)
+  assert.match(validation, /REJECT_REASON_REQUIRED/)
+  assert.match(validation, /field\/msg/)
+
+  const notFound = body('tr-v3-not-found-404')
+  assert.match(notFound, /DATA_NOT_FOUND/)
+  assert.match(notFound, /404/)
+  assert.match(notFound, /不反复修改 URL|不手工拼接路径/)
+})
+
 test('file-upload fault card follows upload-session and scan contracts', () => {
   for (const token of ['FILE_TYPE_NOT_ALLOWED', 'FILE_TOO_LARGE', '/upload-sessions', '/scan-status', 'readyForBusiness']) {
     assert.match(fileApiSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -148,16 +176,19 @@ test('export fault card follows the real task-center download-ticket contract', 
 test('V3-05 cards are published only through the verified runtime', () => {
   assert.match(runtimeSource, /HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS/)
   assert.match(runtimeSource, /HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS/)
+  assert.match(runtimeSource, /HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS/)
   assert.match(runtimeSource, /\.\.\.HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS\.map\(\(item\) => item\.id\)/)
   assert.match(runtimeSource, /\.\.\.HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS\.map\(\(item\) => item\.id\)/)
+  assert.match(runtimeSource, /\.\.\.HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS\.map\(\(item\) => item\.id\)/)
   assert.match(runtimeSource, /replaceOrRegisterCards\(HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS\)/)
   assert.match(runtimeSource, /replaceOrRegisterCards\(HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS\)/)
+  assert.match(runtimeSource, /replaceOrRegisterCards\(HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS\)/)
   assert.match(runtimeSource, /troubleshooting-v3-cards/)
 })
 
-test('problem-mode quick questions reach both troubleshooting batches', () => {
+test('problem-mode quick questions reach the closed troubleshooting library', () => {
   const queries = HELP_V3_QUICK_QUESTIONS.map((item) => item.query)
-  for (const query of ['权限', '退回', '数据范围', '409', '发布', '错误行', '待办', '401', '模块未授权', '文件上传', '导出任务']) {
+  for (const query of ['权限', '退回', '数据范围', '409', '发布', '错误行', '待办', '401', '模块未授权', '文件上传', '导出任务', '校验失败', '404']) {
     assert.ok(queries.includes(query), `${query} must remain a quick problem entry`)
   }
   const corpus = JSON.stringify(ALL_CARDS)
