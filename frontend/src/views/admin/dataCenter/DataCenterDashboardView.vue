@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="数据驾驶舱"
-    :subtitle="'全生命周期指标同源汇聚 · 数据更新于 ' + (overview ? overview.updatedAt : '—')"
+    :subtitle="'全生命周期指标同源汇聚 · 数据截至 ' + asOfLabel"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -13,40 +13,43 @@
       v-if="!viewAllowed"
       state="forbidden"
       :description="viewReason"
-      @back="$router.push('/admin/data-center')"
+      @back="$router.push('/admin')"
     />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <EmptyState
       v-else-if="!overview"
-      title="暂无概览数据"
-      description="当前口径下暂未生成概览快照，可切换统计口径或稍后重试"
+      title="暂无可证明的概览数据"
+      description="当前服务端没有返回正式概览；页面不会用浏览器演示数据补齐。"
     />
+
     <div v-else class="mp-stack">
       <ModuleHero
         :title="ctx.tenantBrandConfig.schoolName + ' · 全景数据驾驶舱'"
-        :subtitle="overview.caliberLabel + '快照 · 覆盖迎新报到至就业去向全流程'"
+        :subtitle="caliberLabel + ' · ' + scopeLabel + ' · 服务端实时聚合'"
         :chips="heroChips"
         :stats="heroStats"
         :flow="overview.stageFlow"
       />
 
-      <section class="mp-card">
-        <div class="mp-card__body dcd-caliber">
-          <span class="mp-note">统计口径：</span>
-          <div class="dcd-caliber__seg">
-            <button
-              v-for="c in ctx.filterOptions.calibers"
-              :key="c.value"
-              type="button"
-              class="dcd-caliber__btn"
-              :class="{ 'is-active': caliber === c.value }"
-              @click="setCaliber(c.value)"
-            >
-              {{ c.label }}
-            </button>
+      <section class="mp-card dcd-contract">
+        <div class="mp-card__body dcd-contract__body">
+          <div>
+            <div class="dcd-contract__label">数据截至</div>
+            <div class="dcd-contract__value">{{ asOfLabel }}</div>
           </div>
-          <span class="mp-note dcd-caliber__note">{{ overview.caliberNote }}</span>
+          <div>
+            <div class="dcd-contract__label">统计口径</div>
+            <div class="dcd-contract__value">{{ caliberLabel }}</div>
+          </div>
+          <div>
+            <div class="dcd-contract__label">数据范围</div>
+            <div class="dcd-contract__value">{{ scopeLabel }}</div>
+          </div>
+          <div>
+            <div class="dcd-contract__label">质量提示</div>
+            <div class="dcd-contract__value">{{ qualityFlags.length ? qualityFlags.length + ' 项' : '无阻断项' }}</div>
+          </div>
         </div>
       </section>
 
@@ -56,7 +59,7 @@
           :key="m.key"
           type="button"
           class="dcd-metric"
-          :title="'下钻查看：' + m.drillLabel"
+          :title="m.drillRoute ? '进入权威业务页：' + m.drillLabel : m.description"
           @click="drill(m)"
         >
           <div class="dcd-metric__head">
@@ -66,22 +69,33 @@
           <div class="dcd-metric__value">
             {{ m.value }}<span class="dcd-metric__unit">{{ m.unit }}</span>
           </div>
-          <div class="dcd-metric__trend" :class="'is-' + (m.trendQuality || 'neutral')">{{ m.trend }}</div>
+          <div v-if="m.trend" class="dcd-metric__trend" :class="'is-' + (m.trendQuality || 'neutral')">{{ m.trend }}</div>
           <div class="dcd-metric__desc">{{ m.description }}</div>
-          <div class="dcd-metric__drill">下钻：{{ m.drillLabel }} →</div>
+          <div v-if="m.drillRoute" class="dcd-metric__drill">进入：{{ m.drillLabel }} →</div>
         </button>
       </div>
 
+      <section v-if="qualityFlags.length" class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">数据质量提示</span></div>
+        <div class="mp-card__body mp-stack">
+          <div v-for="flag in qualityFlags" :key="flag.code" class="dcd-quality">
+            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+            <span>{{ flag.message }}</span>
+          </div>
+        </div>
+      </section>
+
       <p class="mp-note">
-        指标口径与各业务模块同源，页面不做二次计算；概览导出默认脱敏并附追踪水印，导出用途写入审计日志。
+        当前 A4 仅开放已由服务端真实查询实现的在册口径。未实现的自然口径、导出任务等能力不会以切换标签、假 taskId 或演示数据冒充成功。
       </p>
     </div>
 
-    <AppDrawer v-model:visible="guideVisible" title="指标口径说明">
+    <AppDrawer v-model:visible="guideVisible" title="指标口径与数据来源">
       <div class="mp-stack">
-        <p class="mp-note">
-          以下为当前角色可见指标的统计口径，口径调整需经数据治理流程评审后统一发布。
-        </p>
+        <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">服务端来源</span><span class="mp-kv__v">{{ sourceNames || '跨域真实 MySQL 聚合' }}</span></div>
         <section v-for="m in visibleMetrics" :key="m.key" class="dcd-guide">
           <div class="dcd-guide__title">
             {{ m.label }}
@@ -89,44 +103,16 @@
           </div>
           <div class="dcd-guide__desc">{{ m.description }}</div>
         </section>
-        <p v-if="overview" class="mp-note">{{ overview.caliberNote }}</p>
-        <p class="mp-note">{{ ctx.exportOptions.policyNote }}</p>
-      </div>
-    </AppDrawer>
-
-    <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="primary"
-      title="导出全校概览数据"
-      :message="ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
+        <div v-for="flag in qualityFlags" :key="'guide-' + flag.code" class="dcd-quality">
+          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+          <span>{{ flag.message }}</span>
         </div>
       </div>
-    </AppConfirmDialog>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 数据驾驶舱（/admin/data-center）。
- * 指标卡按角色 visibleMetricKeys 过滤；统计口径可切换；点击指标卡下钻到对应分析页；
- * 概览导出受 permissionActions.exportOverview 控制，导出前确认用途并留痕。
- */
 import {
   ModulePageShell,
   ModuleHero,
@@ -136,10 +122,9 @@ import {
   ErrorState,
   EmptyState
 } from '@/components/business'
-import { AppGlobalState, AppConfirmDialog } from '@/components/common'
+import { AppGlobalState } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'DataCenterDashboardView',
@@ -152,7 +137,6 @@ export default {
     ErrorState,
     EmptyState,
     AppGlobalState,
-    AppConfirmDialog,
     AppDrawer
   },
   props: { ctx: { type: Object, required: true } },
@@ -161,11 +145,7 @@ export default {
       loading: true,
       error: '',
       overview: null,
-      caliber: 'REGISTERED',
-      guideVisible: false,
-      exportVisible: false,
-      exportPurpose: 'REPORT_TO_LEADER',
-      exporting: false
+      guideVisible: false
     }
   },
   computed: {
@@ -179,7 +159,8 @@ export default {
     },
     visibleMetrics() {
       if (!this.overview) return []
-      return this.overview.metrics.filter((m) => this.ctx.visibleMetricKeys.includes(m.key))
+      const allowed = new Set(this.ctx.visibleMetricKeys || [])
+      return (this.overview.metrics || []).filter((m) => allowed.has(m.key))
     },
     heroStats() {
       return this.visibleMetrics.slice(0, 5).map((m) => ({
@@ -190,66 +171,56 @@ export default {
       }))
     },
     heroChips() {
-      const chips = [
+      return [
         '当前角色：' + this.ctx.currentRole.roleName,
-        '数据范围：' + this.ctx.dataScope.scopeName
+        '数据范围：' + this.scopeLabel,
+        '统计口径：' + this.caliberLabel
       ]
-      if (this.overview) chips.push('统计口径：' + this.overview.caliberLabel)
-      return chips
     },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
-      const list = []
-      if (pa.exportOverview && pa.exportOverview.visible) {
-        list.push({
-          key: 'exportOverview',
-          label: '导出全校概览',
-          variant: 'primary',
-          disabled: !pa.exportOverview.allowed,
-          disabledReason: pa.exportOverview.reason
-        })
-      }
-      list.push({ key: 'metricGuide', label: '指标口径说明', variant: 'ghost' })
-      return list
+      return [{ key: 'metricGuide', label: '指标口径与来源', variant: 'ghost' }]
+    },
+    meta() {
+      return (this.overview && this.overview.meta) || {}
+    },
+    qualityFlags() {
+      return Array.isArray(this.meta.qualityFlags) ? this.meta.qualityFlags : []
+    },
+    sourceNames() {
+      const rows = Array.isArray(this.meta.source) ? this.meta.source : []
+      return rows.map((x) => x.module).filter(Boolean).join('、')
+    },
+    scopeLabel() {
+      return (this.meta.scope && this.meta.scope.scopeName) || this.ctx.dataScope.scopeName || '—'
+    },
+    caliberLabel() {
+      return this.meta.caliberLabel || (this.overview && this.overview.caliberLabel) || '在册口径'
+    },
+    asOfLabel() {
+      return this.meta.asOf || (this.overview && this.overview.updatedAt) || '—'
     }
   },
   created() {
-    this.load()
+    if (this.viewAllowed) this.load()
   },
   methods: {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await dataCenterApi.getOverview({ caliber: this.caliber })
-      if (res.code === 0) this.overview = res.data
-      else this.error = res.message
+      const res = await dataCenterApi.getOverview({ caliber: 'REGISTERED' })
+      if (res.code === 0) {
+        this.overview = res.data
+      } else {
+        this.overview = null
+        this.error = res.message
+      }
       this.loading = false
-    },
-    setCaliber(value) {
-      if (value === this.caliber) return
-      this.caliber = value
-      this.load()
     },
     drill(metric) {
       if (metric.drillRoute) this.$router.push(metric.drillRoute)
     },
     onToolbar(key) {
       if (key === 'metricGuide') this.guideVisible = true
-      if (key === 'exportOverview') {
-        this.exportPurpose = 'REPORT_TO_LEADER'
-        this.exportVisible = true
-      }
-    },
-    async onExportConfirm() {
-      this.exporting = true
-      const res = await dataCenterApi.exportData({ scope: 'OVERVIEW', purpose: this.exportPurpose })
-      this.exporting = false
-      if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入审计日志（演示态，暂未生成实际文件）')
-      } else {
-        toast.error(res.message)
-      }
     }
   }
 }
@@ -257,34 +228,17 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.dcd-caliber {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+.dcd-contract__body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
 }
-.dcd-caliber__seg {
-  display: inline-flex;
-  border: 1px solid var(--border-base);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-.dcd-caliber__btn {
-  border: none;
-  background: var(--bg-card);
-  color: var(--text-secondary);
+.dcd-contract__label { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.dcd-contract__value {
+  margin-top: var(--space-1);
   font-size: var(--font-size-sm);
-  padding: var(--space-1) var(--space-4);
-  cursor: pointer;
-}
-.dcd-caliber__btn.is-active {
-  background: var(--primary-600);
-  color: var(--text-inverse);
-  font-weight: var(--font-weight-medium);
-}
-.dcd-caliber__note {
-  flex: 1;
-  min-width: 200px;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
 }
 .dcd-metric {
   text-align: left;
@@ -299,21 +253,9 @@ export default {
   gap: var(--space-1);
   transition: box-shadow var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
 }
-.dcd-metric:hover {
-  border-color: var(--primary-500);
-  box-shadow: var(--shadow-card-hover);
-}
-.dcd-metric__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.dcd-metric__label {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  font-weight: var(--font-weight-medium);
-}
+.dcd-metric:hover { border-color: var(--primary-500); box-shadow: var(--shadow-card-hover); }
+.dcd-metric__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.dcd-metric__label { font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: var(--font-weight-medium); }
 .dcd-metric__value {
   font-size: var(--font-size-metric-sm);
   font-weight: var(--font-weight-bold);
@@ -321,53 +263,19 @@ export default {
   color: var(--text-primary);
   line-height: 1.2;
 }
-.dcd-metric__unit {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-normal);
-  color: var(--text-tertiary);
-  margin-left: var(--space-1);
-}
-.dcd-metric__trend {
-  font-size: var(--font-size-xs);
-}
+.dcd-metric__unit { font-size: var(--font-size-sm); font-weight: var(--font-weight-normal); color: var(--text-tertiary); margin-left: var(--space-1); }
+.dcd-metric__trend { font-size: var(--font-size-xs); }
 .dcd-metric__trend.is-good { color: var(--trend-good); }
 .dcd-metric__trend.is-bad { color: var(--trend-bad); }
 .dcd-metric__trend.is-neutral { color: var(--trend-neutral); }
-.dcd-metric__desc {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  line-height: var(--line-height-base);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.dcd-metric__drill {
-  margin-top: auto;
-  padding-top: var(--space-2);
-  font-size: var(--font-size-xs);
-  color: var(--text-link);
-  font-weight: var(--font-weight-medium);
-}
-.dcd-guide {
-  border-bottom: 1px dashed var(--border-light);
-  padding-bottom: var(--space-3);
-}
-.dcd-guide:last-of-type {
-  border-bottom: none;
-}
-.dcd-guide__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  flex-wrap: wrap;
-}
-.dcd-guide__desc {
-  margin-top: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  line-height: var(--line-height-base);
+.dcd-metric__desc { font-size: var(--font-size-xs); color: var(--text-tertiary); line-height: var(--line-height-base); }
+.dcd-metric__drill { margin-top: auto; padding-top: var(--space-2); font-size: var(--font-size-xs); color: var(--text-link); font-weight: var(--font-weight-medium); }
+.dcd-guide { border-bottom: 1px dashed var(--border-light); padding-bottom: var(--space-3); }
+.dcd-guide:last-of-type { border-bottom: none; }
+.dcd-guide__title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-weight: var(--font-weight-semibold); }
+.dcd-guide__desc { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: var(--line-height-base); }
+.dcd-quality { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--text-secondary); font-size: var(--font-size-sm); }
+@media (max-width: 960px) {
+  .dcd-contract__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
