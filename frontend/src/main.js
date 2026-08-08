@@ -14,6 +14,27 @@ import router from './router'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
 
+// Stage B 高频工作流：给“某个实习学生的材料”一个稳定真实深链。
+// 页面直接读取 /internship/material-center/{internshipId} 的真实版本链，不造第二份材料数据。
+if (!router.hasRoute('internship-student-materials')) {
+  router.addRoute({
+    path: '/admin/internship/students/:id/materials',
+    component: () => import('@/modules/internship/views/AdminInternshipLayout.vue'),
+    meta: { moduleCode: 'INTERNSHIP' },
+    children: [{
+      path: '',
+      name: 'internship-student-materials',
+      component: () => import('@/modules/internship/views/InternshipStudentMaterialEntryView.vue'),
+      meta: {
+        moduleCode: 'INTERNSHIP',
+        title: '学生实习材料',
+        requiresAuth: true,
+        permissionKey: 'internship.archive.view'
+      }
+    }]
+  })
+}
+
 // 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
 if (!router.hasRoute('unknown-route-fallback')) {
   router.addRoute({
@@ -23,7 +44,7 @@ if (!router.hasRoute('unknown-route-fallback')) {
   })
 }
 
-// Stage B / B4：统一未保存表单保护。第一批覆盖实习批次/企业，扩展列表由 guard 单一维护。
+// Stage B / B4：统一未保存表单保护。第一批覆盖实习批次/企业，同域长表单由 guard 单一维护。
 installDirtyFormGuard(router)
 
 const app = createApp(App)
