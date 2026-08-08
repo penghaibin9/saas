@@ -60,7 +60,10 @@ export default {
   },
   computed: {
     inner() {
-      return toDateTimeInputValue(this.modelValue)
+      // Element Plus 要求 model-value 与 value-format 完全同形。公共工具为原生
+      // datetime-local 保留分钟级格式，这里只在 picker 边界补秒，避免回填后被判无效并清空。
+      const value = toDateTimeInputValue(this.modelValue)
+      return value ? `${value}:00` : ''
     },
     errorText() {
       const cur = parseDate(this.modelValue)

@@ -24,7 +24,7 @@ const state = { token: _load(TOKEN_KEY), refreshToken: _load(REFRESH_KEY), offli
 const REQUEST_TIMEOUT_MS =
   typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
 
-/** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
+/** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过真实 fetch，直接让 mock fallback 接管 */
 const OFFLINE_COOLDOWN_MS = 15000
 
 export function isBackendOffline() {
@@ -167,6 +167,12 @@ function _redirectToLogin() {
  *  只有第一个能换到新 token，其余会收到「已使用」401 并清空本已刷新成功的登录态，
  *  导致用户被误踢回登录页。这里让并发调用共享同一个 in-flight Promise，只真正请求一次。 */
 let refreshPromise = null
+/**
+ * 身份切换会在服务端立即吊销旧会话。切换请求返回新 token 前，旧页面尚未完成的请求可能收到 401；
+ * 这些 401 不能抢先 refresh/清空会话，否则会把刚切好的新身份再次踢回登录页。
+ */
+let roleSwitchPromise = null
+
 async function tryRefresh() {
   if (!state.refreshToken) return false
   if (refreshPromise) return refreshPromise
@@ -273,18 +279,26 @@ export async function fetchMyAuthContexts() {
  * 成功后持有新令牌；调用方应刷新页面以重建菜单/数据范围/工作台。
  */
 export async function switchAuthContext(contextId, clientType = 'PC') {
-  const data = await request('/auth/switch-role', {
-    method: 'POST',
-    body: { contextId, clientType }
-  })
-  if (data && data.accessToken) {
-    // DB 路径会发新 refresh；mock 可能只换 access —— 有则替换，无则保留
-    applyAuthSession(
-      data.accessToken,
-      Object.prototype.hasOwnProperty.call(data, 'refreshToken') ? (data.refreshToken || '') : undefined
-    )
+  if (roleSwitchPromise) await roleSwitchPromise
+  let finishRoleSwitch = null
+  roleSwitchPromise = new Promise((resolve) => { finishRoleSwitch = resolve })
+  try {
+    const data = await request('/auth/switch-role', {
+      method: 'POST',
+      body: { contextId, clientType }
+    })
+    if (data && data.accessToken) {
+      // DB 路径会发新 refresh；mock 可能只换 access —— 有则替换，无则保留
+      applyAuthSession(
+        data.accessToken,
+        Object.prototype.hasOwnProperty.call(data, 'refreshToken') ? (data.refreshToken || '') : undefined
+      )
+    }
+    return data
+  } finally {
+    finishRoleSwitch?.()
+    roleSwitchPromise = null
   }
-  return data
 }
 
 /** 是否为平台超级管理员（老板本人）——用于 /admin/platform 路由守卫 */
@@ -316,10 +330,18 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 /** 请求入口（必须已登录；401 自动刷新一次并重试，刷新失败回登录页） */
 export async function request(path, options = {}) {
   await ensureToken()
+  const tokenAtStart = state.token
   try {
     return await rawRequest(path, options)
   } catch (e) {
     if (e.biz && e.code === 401001) {
+      // 请求若是旧身份发出的，而会话已在期间轮换，直接用当前新 token 重试，禁止拿旧 refresh 抢救。
+      if (state.token && state.token !== tokenAtStart) return rawRequest(path, options)
+      // 身份切换仍在服务端处理中时，等新会话落地再重试；不要与 switch-role 并发 refresh。
+      if (roleSwitchPromise && path !== '/auth/switch-role') {
+        await roleSwitchPromise
+        if (state.token && state.token !== tokenAtStart) return rawRequest(path, options)
+      }
       if (await tryRefresh()) return rawRequest(path, options)
       _redirectToLogin() // 会话彻底失效：回登录页，不让页面停在半死状态
     }
@@ -378,6 +400,7 @@ export async function requestUpload(path, file, fieldName = 'file') {
 /** 二进制下载（Excel 模板/导出文件等）：复用现有 token/baseURL/401 刷新机制 */
 export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
   await ensureToken()
+  const tokenAtStart = state.token
   const qs = params
     ? '?' +
       Object.entries(params)
@@ -432,6 +455,11 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
     return await doFetch()
   } catch (e) {
     if (e.biz && e.code === 401001) {
+      if (state.token && state.token !== tokenAtStart) return doFetch()
+      if (roleSwitchPromise && path !== '/auth/switch-role') {
+        await roleSwitchPromise
+        if (state.token && state.token !== tokenAtStart) return doFetch()
+      }
       if (await tryRefresh()) return doFetch()
       _redirectToLogin()
     }
