@@ -116,13 +116,9 @@ def install() -> None:
                     values["class_name"] = _text(body.get("className"), "班级", 100)
 
             if not values:
-                # 只读身份字段原样回传属于真实 no-op；不制造一次假更新/假审计/假版本增长。
-                if int(row.version or 0) != expected:
-                    raise AppException(
-                        "APPROVAL_VERSION_CONFLICT",
-                        "数据已被他人修改或状态已经变化，请刷新后重试",
-                    )
-                return {"id": str(row.id), "version": expected, "noChange": True}
+                # A2：只读身份字段原样回传不算业务更新。拒绝空写，避免“什么都没改却成功”
+                # 形成假审计/假保存；调用方应至少提交一个真实服务字段。
+                raise AppException("VALIDATION_ERROR", "没有可保存的服务字段")
 
             atomic_versioned_update(
                 db,
