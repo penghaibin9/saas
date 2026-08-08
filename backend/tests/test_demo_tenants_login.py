@@ -105,6 +105,15 @@ def _running_internship_batch_id(tenant_id: int) -> str:
         db.close()
 
 
+def _teacher_graduation_batch_id(client, headers: dict) -> str:
+    """走教师移动端真实批次上下文选择当前可处理批次。"""
+    result = client.get("/api/v1/mobile/teacher/graduation/batches", headers=headers).json()
+    assert result["code"] == 0, result
+    batch_id = (result.get("data") or {}).get("selectedBatchId")
+    assert batch_id, result
+    return str(batch_id)
+
+
 def _platform_h():
     from app.core.security import create_access_token
     token = create_access_token({
@@ -229,31 +238,55 @@ def test_teacher_scope_visibility(client, two_tenants):
 
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     teacher_auth = _login(client, "teacher2")
-    counselor_h = _h(teacher_auth)
-    it = client.get("/api/v1/mobile/teacher/internship", headers=counselor_h,
-                    params={"batchId": _running_internship_batch_id(SBX_TID)}).json()
-    reports = it["data"]["weeklyReports"]
-    assert len(reports) >= 1
-    report = reports[0]
-    rid = report["id"]
+    batch_id = _running_internship_batch_id(SBX_TID)
 
-    # COUNSELOR 只能协同查看；真正批阅必须显式切到实习指导教师岗位。
+    # COUNSELOR 只验证协同可见；真正的写队列必须在 INTERN_MENTOR 身份下重新获取，
+    # 禁止拿辅导员角色看见的其他导师记录去碰指导教师写接口。
+    counselor_h = _h(teacher_auth)
+    counselor_view = client.get(
+        "/api/v1/mobile/teacher/internship",
+        headers=counselor_h,
+        params={"batchId": batch_id},
+    ).json()
+    assert counselor_view["code"] == 0 and counselor_view["data"]["weeklyReports"], counselor_view
+
     intern_auth = _switch_role(client, teacher_auth, "INTERN_MENTOR")
     intern_h = _h(intern_auth)
-    ok = client.post(f"/api/v1/mobile/teacher/internship/weekly/{rid}/review",
-                     headers=intern_h, json={"action": "APPROVE", "comment": "沙箱批阅通过",
-                                             "expectedVersion": report["version"]}).json()
+    intern_view = client.get(
+        "/api/v1/mobile/teacher/internship",
+        headers=intern_h,
+        params={"batchId": batch_id},
+    ).json()
+    assert intern_view["code"] == 0, intern_view
+    reports = [r for r in intern_view["data"]["weeklyReports"] if r.get("status") == "PENDING_REVIEW"]
+    assert reports, intern_view
+    report = reports[0]
+    ok = client.post(
+        f"/api/v1/mobile/teacher/internship/weekly/{report['id']}/review",
+        headers=intern_h,
+        json={"action": "APPROVE", "comment": "沙箱批阅通过",
+              "expectedVersion": report["version"]},
+    ).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED", ok
 
-    # 同一真实账号再切到毕设导师岗位，验证多岗位互不扩权、各域动作在正确身份下执行。
+    # 同一真实账号再切到毕设导师岗位。该跨域身份测试只验证稳定 mentor_id 下的真实写入；
+    # 开题/成果材料审核的 expectedVersion + fileVersionId 权威链由毕业设计材料专项套件覆盖。
     gd_auth = _switch_role(client, intern_auth, "GD_MENTOR")
     gd_h = _h(gd_auth)
-    gd = client.get("/api/v1/mobile/teacher/graduation", headers=gd_h).json()
-    props = gd["data"]["reviewDetail"]
-    assert len(props) >= 1
-    pid = props[0]["id"]
-    ok2 = client.post(f"/api/v1/mobile/teacher/graduation/proposal/{pid}/review",
-                      headers=gd_h, json={"action": "APPROVE", "comment": "沙箱开题通过"}).json()
+    gd_batch_id = _teacher_graduation_batch_id(client, gd_h)
+    gd = client.get(
+        "/api/v1/mobile/teacher/graduation",
+        headers=gd_h,
+        params={"batchId": gd_batch_id},
+    ).json()
+    assert gd["code"] == 0 and gd["data"]["students"], gd
+    gd_student_id = gd["data"]["students"][0]["id"]
+    ok2 = client.post(
+        f"/api/v1/mobile/teacher/graduation/{gd_student_id}/guidance",
+        headers=gd_h,
+        params={"batchId": gd_batch_id},
+        json={"method": "ONLINE", "content": "沙箱导师真实指导记录", "issues": "继续完善材料"},
+    ).json()
     assert ok2["code"] == 0, ok2
 
 
