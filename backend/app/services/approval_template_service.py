@@ -1,15 +1,12 @@
-"""A1 审批模板与导出真实化：WorkflowDefinition/NodeDefinition + ExportTask。"""
+"""审批模板真实化；审批导出统一委托 approval_export_service。"""
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
-from app.core.request_context import get_trace_id
 from app.db.session import db_enabled
 from app.services.message_identity import resolve_message_user_id
 
@@ -18,7 +15,7 @@ def _require_db():
     if not db_enabled():
         raise AppException(
             "APPROVAL_BACKEND_UNAVAILABLE",
-            "审批模板与导出需要真实数据库，当前不可回落演示数据",
+            "审批模板需要真实数据库，当前不可回落演示数据",
             http_status=503,
         )
 
@@ -251,7 +248,6 @@ def update_template(template_id, payload, *, user=None, expected_version=0):
         if int(definition.version or 0) != int(expected_version):
             raise AppException("APPROVAL_VERSION_CONFLICT", "模板已被他人修改，请刷新后重试", http_status=409)
 
-        # 节点唯一键不包含 is_deleted，不能“软删后插同 code”。锁全量节点后原位更新/复活。
         existing_rows = db.scalars(select(WorkflowNodeDefinition).where(
             WorkflowNodeDefinition.tenant_id == _tid(),
             WorkflowNodeDefinition.workflow_definition_id == definition.id,
@@ -352,106 +348,16 @@ def void_template(template_id, reason, *, user=None, expected_version=0):
         return _row(db, definition)
 
 
+# 兼容旧内部调用点：不再维护第二套同步 Workbook / ExportTask 实现。
 def create_export(scope, purpose, *, user=None):
-    _require_db()
-    _require_manage(user)
-    scope = str(scope or "").upper()
-    if scope not in {"TODO", "DONE", "RETURNED", "CC", "TEMPLATE"}:
-        raise AppException("VALIDATION_ERROR", "未知审批导出范围")
-    purpose = str(purpose or "").strip()
-    if len(purpose) < 5:
-        raise AppException("VALIDATION_ERROR", "导出用途必填且不少于 5 字")
+    from app.services import approval_export_service as export_service
 
-    from openpyxl import Workbook
-    from app.models import ExportTask
-    from app.services import approval_runtime_service as runtime
-    from app.services import db_service
-    from app.services import mock_audit_service as audit
-    from app.services.import_export_service import upload_dir
-
-    max_rows = 5000
-    if scope == "TODO":
-        rows, total = runtime.list_tasks(1, max_rows, user=user)
-    elif scope == "DONE":
-        rows, total = runtime.list_processed(1, max_rows, user=user)
-    elif scope == "RETURNED":
-        rows, total = runtime.list_returned(1, max_rows, user=user)
-    elif scope == "CC":
-        rows, total = runtime.list_cc(1, max_rows, user=user)
-    else:
-        rows, total = list_templates(1, max_rows, user=user)
-    if total > max_rows:
-        raise AppException("VALIDATION_ERROR", f"导出数据量 {total} 行超过单次上限 {max_rows} 行，请缩小范围")
-
-    actor = _user(user)
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet(title="审批中心")
-    ws.append([f"审批中心 · {scope} · 导出人：{actor.get('realName') or '-'} · 时间：{datetime.now():%Y-%m-%d %H:%M} · 用途：{purpose}"])
-    ws.append(["任务/模板ID", "标题/名称", "业务类型", "状态", "办理时间", "原因/说明"])
-    for row in rows:
-        ws.append([
-            str(row.get("taskId") or row.get("id") or ""),
-            str(row.get("title") or row.get("name") or ""),
-            str(row.get("sourceBizType") or row.get("bizType") or ""),
-            str(row.get("status") or row.get("rectifyStatus") or ""),
-            str(row.get("actedAt") or row.get("updatedAt") or row.get("ccTime") or ""),
-            str(row.get("actionReason") or row.get("reason") or row.get("ccReason") or ""),
-        ])
-
-    key = f"exports/{datetime.now():%Y%m%d}/approval_{scope.lower()}_{uuid.uuid4().hex[:8]}.xlsx"
-    target = upload_dir() / key
-    target.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(target)
-
-    uid = resolve_message_user_id(actor) or None
-    with db_service.session() as db:
-        task = ExportTask(
-            tenant_id=_tid(),
-            export_mode="LIST",
-            module_code="approval",
-            row_count=total,
-            purpose=purpose,
-            file_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
-            status="SUCCESS",
-            remark=key,
-            created_by=uid,
-        )
-        db.add(task)
-        db.flush()
-        audit.record_critical(
-            "审批导出",
-            method="POST", path="/api/v1/approvals/export",
-            status_code=200, target_type="approval-export", target_id=str(task.id),
-            detail={"scope": scope, "rows": total, "purpose": purpose}, db=db,
-        )
-        db.commit()
-        return {
-            "taskId": str(task.id),
-            "status": "SUCCESS",
-            "rowCount": total,
-            "downloadUrl": f"/api/v1/approvals/export/{task.id}/download",
-            "auditId": get_trace_id(),
-            "scope": scope,
-        }
+    return export_service.create_job(scope, purpose, user=user)
 
 
 def export_file_path(task_id, *, user=None):
-    _require_db()
-    _require_manage(user)
-    from sqlalchemy import select
-    from app.models import ExportTask
-    from app.services import db_service
-    from app.services.import_export_service import upload_dir
-
-    with db_service.session() as db:
-        task = db.scalars(select(ExportTask).where(
-            ExportTask.id == int(task_id),
-            ExportTask.tenant_id == _tid(),
-            ExportTask.module_code == "approval",
-        )).first()
-        if not task:
-            raise not_found("导出任务不存在或文件已清理")
-        path = upload_dir() / str(task.remark or "")
-        if not task.remark or not Path(path).exists():
-            raise not_found("导出任务不存在或文件已清理")
-        return path
+    raise AppException(
+        "APPROVAL_EXPORT_TICKET_REQUIRED",
+        "审批导出已统一使用 ExportJob + 一次性下载票据，请通过正式下载票据接口访问文件",
+        http_status=409,
+    )
