@@ -40,6 +40,37 @@ def test_data_center_context_is_server_truth_and_export_is_fail_closed(client, d
     assert data["permissionActions"]["exportReport"]["visible"] is False
     assert data["permissionActions"]["exportReport"]["allowed"] is False
     assert "正式文件任务链" in data["permissionActions"]["exportReport"]["reason"]
+    assert data["filterOptions"]["calibers"] == [{"value": "REGISTERED", "label": "在册口径"}]
+
+
+def test_unsupported_natural_caliber_fails_closed_in_bi_and_reports(client, db_mode):
+    headers = _headers(client)
+    for path in (
+        "/api/v1/stats/overview?caliber=NATURAL",
+        "/api/v1/stats/lifecycle?caliber=NATURAL",
+        "/api/v1/stats/lifecycle-board?caliber=NATURAL",
+    ):
+        resp = client.get(path, headers=headers)
+        assert resp.status_code == 422, (path, resp.text)
+        payload = resp.json()
+        assert payload.get("bizCode") == "UNSUPPORTED_CALIBER"
+        assert "禁止仅更换标签" in payload.get("message", "")
+
+    create = client.post(f"{BASE}/reports", headers=headers, json={
+        "name": "自然口径不得伪装报表",
+        "category": "ACADEMIC",
+        "cycle": "MONTHLY",
+        "caliber": "NATURAL",
+        "scopeName": "全校",
+    })
+    assert create.status_code == 422
+
+    row = _create(client, headers, "在册口径更新保护报表")
+    update = client.put(f"{BASE}/reports/{row['id']}", headers=headers, json={
+        "version": row["version"],
+        "caliber": "NATURAL",
+    })
+    assert update.status_code == 422
 
 
 def test_report_persists_across_relogin_and_stale_version_conflicts(client, db_mode):
@@ -67,7 +98,11 @@ def test_report_persists_across_relogin_and_stale_version_conflicts(client, db_m
     assert stale.json()["bizCode"] == "DATA_VERSION_CONFLICT"
 
 
-def test_publish_freezes_metrics_with_metadata_and_requires_withdraw_before_edit(client, db_mode):
+def test_publish_freezes_metrics_and_config_snapshots_across_republish(client, db_mode):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models.data_center import DataCenterReportVersion
+
     headers = _headers(client)
     created = _create(client, headers, "A4发布冻结验证报表")
     rid = created["id"]
@@ -111,6 +146,12 @@ def test_publish_freezes_metrics_with_metadata_and_requires_withdraw_before_edit
     assert edited.status_code == 200
     e = edited.json()["data"]
 
+    # 撤回后工作副本不再冒充发布指标；V1 历史快照仍然存在。
+    withdrawn_detail = client.get(f"{BASE}/reports/{rid}", headers=headers).json()["data"]
+    assert withdrawn_detail["metrics"] == []
+    assert withdrawn_detail["meta"]["asOf"] is None
+    assert any(x["code"] == "NOT_PUBLISHED" for x in withdrawn_detail["meta"]["qualityFlags"])
+
     republished = client.post(f"{BASE}/reports/{rid}/publish", headers=headers,
                               json={"version": e["version"]})
     assert republished.status_code == 200
@@ -120,8 +161,27 @@ def test_publish_freezes_metrics_with_metadata_and_requires_withdraw_before_edit
     assert [x["versionNo"] for x in versions2] == [2, 1]
     assert versions2[1]["asOf"] == v1_as_of
 
+    db = get_sessionmaker()()
+    try:
+        snapshots = db.scalars(select(DataCenterReportVersion).where(
+            DataCenterReportVersion.tenant_id == TID,
+            DataCenterReportVersion.report_id == int(rid),
+        ).order_by(DataCenterReportVersion.version_no)).all()
+        assert len(snapshots) == 2
+        assert snapshots[0].snapshot_json["description"] == "A4真实专题报表"
+        assert snapshots[1].snapshot_json["description"] == "撤回后修改工作副本"
+        assert snapshots[0].snapshot_json != snapshots[1].snapshot_json
+        assert snapshots[0].metrics_json
+        assert snapshots[1].metrics_json
+    finally:
+        db.close()
 
-def test_report_void_is_traceable_and_audit_is_real(client, db_mode):
+
+def test_report_void_is_traceable_and_audit_is_tenant_isolated(client, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models.audit import SecurityAuditLog
+
     headers = _headers(client)
     created = _create(client, headers, "A4作废审计验证报表")
     rid = created["id"]
@@ -136,10 +196,31 @@ def test_report_void_is_traceable_and_audit_is_real(client, db_mode):
     detail = client.get(f"{BASE}/reports/{rid}", headers=headers).json()["data"]
     assert detail["voidInfo"]["reason"] == "业务口径已废弃，不再使用"
 
+    # 同 resourceId 的其它租户审计必须被 tenant 条件隔离。
+    db = get_sessionmaker()()
+    try:
+        db.add(SecurityAuditLog(
+            tenant_id=TID + 999,
+            operator_id=999,
+            operator_name="跨租户伪记录",
+            current_role="SCHOOL_ADMIN",
+            data_scope="TENANT_ALL",
+            action="DATA_CENTER_REPORT_VOID",
+            resource="data_center_report",
+            resource_id=str(rid),
+            result="SUCCESS",
+            detail_json={"reason": "不应泄露"},
+            created_at=datetime.utcnow(),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     audits = client.get(f"{BASE}/audit-logs?targetId={rid}&limit=50", headers=headers).json()["data"]
     actions = {x["action"] for x in audits}
     assert "DATA_CENTER_REPORT_CREATE" in actions
     assert "DATA_CENTER_REPORT_VOID" in actions
+    assert all(x["userName"] != "跨租户伪记录" for x in audits)
 
 
 def test_non_tenant_all_role_cannot_read_schoolwide_reports(client, db_mode):
@@ -165,3 +246,14 @@ def test_school_bi_dto_exposes_asof_caliber_scope_source_and_quality(client, db_
     assert meta["scope"] == {"scopeType": "TENANT_ALL", "scopeName": "全校"}
     assert isinstance(meta["source"], list) and meta["source"]
     assert isinstance(meta["qualityFlags"], list)
+
+    lifecycle = client.get("/api/v1/stats/lifecycle-board?caliber=REGISTERED", headers=headers)
+    assert lifecycle.status_code == 200
+    lifecycle_meta = lifecycle.json()["data"]["meta"]
+    assert any(x["code"] == "TREND_SERIES_NOT_CONFIGURED" for x in lifecycle_meta["qualityFlags"])
+
+    risk = client.get("/api/v1/stats/risk-board", headers=headers)
+    assert risk.status_code == 200
+    risk_meta = risk.json()["data"]["meta"]
+    risk_codes = {x["code"] for x in risk_meta["qualityFlags"]}
+    assert {"RISK_STATUS_CALIBER_PARTIAL", "RISK_TREND_NOT_CONFIGURED", "INTERNSHIP_RISK_NOT_UNIFIED"} <= risk_codes
