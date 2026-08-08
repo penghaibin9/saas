@@ -1,6 +1,7 @@
 /**
  * 教师小程序审批专用真实 API。
  * A1 红线：RETURN/REJECT 分离，动作结果只认服务端；禁止 mock fallback 和本地合成终态。
+ * Stage B / B2：pending / done / mine 全部走真实服务端分页，并支持关键词搜索。
  */
 import { realRequest } from './request'
 
@@ -25,28 +26,66 @@ function fmt(value) {
 
 function mapTask(t = {}) {
   const urgency = t.urgency || 'NORMAL'
+  const rawStatus = String(t.status || '').toUpperCase()
   return {
-    id: String(t.taskId || ''),
-    taskId: String(t.taskId || ''),
+    id: String(t.taskId || t.instanceId || ''),
+    taskId: String(t.taskId || t.instanceId || ''),
+    instanceId: String(t.instanceId || ''),
     version: Number(t.version ?? 0),
     title: t.title || '审批任务',
     type: TYPE_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
     sourceBizType: t.sourceBizType || '',
+    sourceBizId: String(t.sourceBizId || ''),
+    orderNo: t.sourceBizId ? String(t.sourceBizId) : '',
     student: t.applicantName || '申请人',
+    studentNo: t.studentNo || '',
     className: t.className || '',
     submitTime: fmt(t.submittedAt),
-    status: String(t.status || '').toUpperCase() === 'PENDING' ? 'PENDING_REVIEW' : String(t.status || ''),
+    actedTime: fmt(t.actedAt),
+    status: rawStatus === 'PENDING' ? 'PENDING_REVIEW' : rawStatus,
     level: urgency === 'OVERDUE' || urgency === 'NEAR_DEADLINE' ? 'high' : 'normal',
-    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : ['APPROVE', 'RETURN', 'REJECT'],
-    fields: t.sourceBizId ? [{ label: '业务记录', value: String(t.sourceBizId) }] : [],
-    flow: [{ node: t.nodeName || t.nodeCode || '当前审批', time: '', current: true, done: false }]
+    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : [],
+    fields: [
+      ...(t.studentNo ? [{ label: '学号', value: String(t.studentNo) }] : []),
+      ...(t.sourceBizId ? [{ label: '业务单号', value: String(t.sourceBizId) }] : [])
+    ],
+    flow: [{ node: t.nodeName || t.nodeCode || '当前审批', time: '', current: rawStatus === 'PENDING', done: rawStatus !== 'PENDING' }]
   }
 }
 
-export async function getPendingApprovals(page = 1, pageSize = 50) {
-  const d = await realRequest(`/approvals/tasks?page=${page}&pageSize=${pageSize}`)
+function buildQueueUrl(mode, page, pageSize, keyword = '', bizType = '') {
+  const params = [
+    `mode=${encodeURIComponent(mode)}`,
+    `page=${Number(page || 1)}`,
+    `pageSize=${Number(pageSize || 20)}`
+  ]
+  const kw = String(keyword || '').trim()
+  if (kw) params.push(`keyword=${encodeURIComponent(kw)}`)
+  if (bizType) params.push(`bizType=${encodeURIComponent(bizType)}`)
+  return `/approvals/mobile/queue?${params.join('&')}`
+}
+
+export async function getApprovalQueue(mode = 'pending', page = 1, pageSize = 20, keyword = '', bizType = '') {
+  const d = await realRequest(buildQueueUrl(mode, page, pageSize, keyword, bizType))
   const items = Array.isArray(d?.items) ? d.items.map(mapTask) : []
-  return { items, total: Number(d?.total || 0), page: Number(d?.page || page), pageSize: Number(d?.pageSize || pageSize) }
+  return {
+    items,
+    total: Number(d?.total || 0),
+    page: Number(d?.page || page),
+    pageSize: Number(d?.pageSize || pageSize)
+  }
+}
+
+export function getPendingApprovals(page = 1, pageSize = 20, keyword = '', bizType = '') {
+  return getApprovalQueue('pending', page, pageSize, keyword, bizType)
+}
+
+export function getDoneApprovals(page = 1, pageSize = 20, keyword = '', bizType = '') {
+  return getApprovalQueue('done', page, pageSize, keyword, bizType)
+}
+
+export function getMyApprovals(page = 1, pageSize = 20, keyword = '', bizType = '') {
+  return getApprovalQueue('mine', page, pageSize, keyword, bizType)
 }
 
 export async function actApproval(task, action, reason = '') {
