@@ -1,23 +1,21 @@
-"""学生主档 API。
+"""学生主档正式 API。
 
-两种语义：
-1) 主档管理：student.profile.view / manage，未知角色 fail-closed（空范围）。
-2) 公共选择器：?mode=picker，仅最小字段，且必须按数据范围过滤，无写能力。
+A2 约束：正式路由只连接真实 student_service；数据范围、权限、状态、版本、幂等和审计
+都在服务端执行。学生列表兼容旧页面查询字段，但统一在数据库分页前收敛。
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from app.core.affairs_security import no_data_scope, student_directory_scope
 from app.core.exceptions import AppException
-from app.core.permissions import (has_permission, require_any_permission,
-                                  require_permission)
+from app.core.idempotency import begin as idempotency_begin, finish as idempotency_finish
+from app.core.permissions import has_permission, require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.student import (StudentCreateRequest, StudentRestoreRequest,
-                                 StudentUpdateRequest, StudentVoidRequest)
+from app.schemas.student import StudentCreateRequest, StudentRestoreRequest, StudentUpdateRequest, StudentVoidRequest
 from app.services import mock_audit_service as audit
 from app.services import student_service as svc
 
@@ -46,29 +44,30 @@ def _check_target_scope(student_id: str, user) -> None:
     class_ids, student_ids = student_directory_scope(user)
     if class_ids is None and student_ids is None:
         return
-    # 空集合：明确无范围
     if student_ids is not None and len(student_ids) == 0:
         raise no_data_scope("该学生不在您的数据范围内")
     if class_ids is not None and len(class_ids) == 0 and student_ids is None:
         raise no_data_scope("该学生不在您的数据范围内")
     from sqlalchemy import select
-
     from app.models import StudentProfile
     from app.services.db_service import _tid, session
+
     try:
         sid = int(student_id)
     except (TypeError, ValueError):
         return
     with session() as db:
-        s = db.scalars(select(StudentProfile).where(
-            StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
-            StudentProfile.is_deleted.is_(False))).first()
-        if s is None:
+        row = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == sid,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )).first()
+        if row is None:
             return
         if student_ids is not None:
-            if s.id in student_ids:
+            if row.id in student_ids:
                 return
-        elif s.class_id is not None and s.class_id in class_ids:
+        elif row.class_id is not None and row.class_id in class_ids:
             return
     raise no_data_scope("该学生不在您的数据范围内")
 
@@ -86,22 +85,76 @@ def _to_picker_item(row: dict) -> dict:
     }
 
 
+def _class_name(class_id: Optional[str], explicit_name: Optional[str]) -> Optional[str]:
+    if explicit_name:
+        return explicit_name
+    raw = str(class_id or "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", "classId 必须是数字 ID")
+    from sqlalchemy import select
+    from app.models import SchoolClass
+    from app.services.db_service import _tid, session
+
+    with session() as db:
+        row = db.scalars(select(SchoolClass).where(
+            SchoolClass.id == int(raw),
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.is_deleted.is_(False),
+        )).first()
+        if not row:
+            raise AppException("VALIDATION_ERROR", "班级不存在或不属于当前租户")
+        return row.class_name
+
+
 @router.get("", summary="学生列表（主档或选择器）")
-def list_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                  keyword: Optional[str] = None, college: Optional[str] = None,
-                  major: Optional[str] = None, className: Optional[str] = None,
-                  status: Optional[str] = None, riskLevel: Optional[str] = None,
-                  mode: Optional[str] = Query(None, description="picker=最小字段选择器"),
-                  user=Depends(require_staff)):
+def list_students(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: Optional[str] = None,
+    college: Optional[str] = None,
+    collegeId: Optional[str] = None,
+    major: Optional[str] = None,
+    majorId: Optional[str] = None,
+    className: Optional[str] = None,
+    classId: Optional[str] = None,
+    status: Optional[str] = None,
+    studentStatus: Optional[str] = None,
+    identityVerifyStatus: Optional[str] = None,
+    riskLevel: Optional[str] = None,
+    mode: Optional[str] = Query(None, description="picker=最小字段选择器"),
+    user=Depends(require_staff),
+):
     is_picker = (mode or "").strip().lower() == "picker"
     if is_picker:
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
     elif not _can_view_profile(user) and not _can_pick_students(user):
         raise AppException("NO_PERMISSION", "无权查看学生主档")
+
+    requested_identity = str(identityVerifyStatus or "").strip().upper()
+    if requested_identity and requested_identity not in {"NOT_CONFIGURED", "UNKNOWN"}:
+        # 当前没有第三方身份核验事实；不能为了筛选制造 VERIFIED/PENDING 行。
+        return success(paginate([], 0, page, pageSize))
+
     class_ids, student_ids = student_directory_scope(user)
-    items, total = svc.list_students(page, pageSize, keyword, college, major, className, status, riskLevel,
-                                     class_ids=class_ids, student_ids=student_ids)
+    items, total = svc.list_students(
+        page,
+        pageSize,
+        keyword,
+        collegeId or college,
+        majorId or major,
+        _class_name(classId, className),
+        studentStatus or status,
+        riskLevel,
+        class_ids=class_ids,
+        student_ids=student_ids,
+    )
+    if requested_identity == "UNKNOWN":
+        # 正式服务能给出的事实是 NOT_CONFIGURED；UNKNOWN 仅用于无法解析的异常行。
+        items = [x for x in items if x.get("identityVerifyStatus") == "UNKNOWN"]
+        total = len(items)
     if is_picker or not _can_view_profile(user):
         items = [_to_picker_item(x) for x in items]
     return success(paginate(items, total, page, pageSize))
@@ -114,7 +167,6 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
     elif not _can_view_profile(user):
-        # 无主档查看权：仅返回最小字段（若有域内学生查看权）
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权查看学生主档")
         is_picker = True
@@ -123,57 +175,88 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
     return success(_to_picker_item(row) if is_picker else row)
 
 
-# 学籍维护动作已拆细：create / update / restore 各自独立权限码，不再用一个
-# 过宽的 student.profile.manage 包办。manage 暂时并列接受，避免存量角色（学工等）
-# 的既有功能在本次拆分中被一刀切断；角色矩阵见 core/permissions.py。
 _P_CREATE = require_any_permission("student.profile.create", "student.profile.manage")
 _P_UPDATE = require_any_permission("student.profile.update", "student.profile.manage")
-_P_RESTORE = require_permission("student.profile.restore")  # 恢复不接受 manage 兜底
+_P_RESTORE = require_permission("student.profile.restore")
 
 
 @router.post("", summary="学生补录（新增学生主档）", dependencies=[Depends(_P_CREATE)])
-def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
+def create_student(
+    body: StudentCreateRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    cached, handle = idempotency_begin(user, "student-create", idempotency_key, body.model_dump())
+    if cached is not None:
+        return success(cached, message="建档成功（幂等重放）")
     row = svc.create_student(body)
-    audit.record("学生补录", method="POST", path="/api/v1/students", status_code=200,
-                 target_type="student", target_id=row["id"])
+    audit.record(
+        "学生补录", method="POST", path="/api/v1/students", status_code=200,
+        target_type="student", target_id=row["id"],
+    )
+    idempotency_finish(handle, row)
     return success(row, message="建档成功")
 
 
-@router.post("/restore", summary="恢复已作废学生主档（受控动作）",
-             dependencies=[Depends(_P_RESTORE)])
-def restore_student(body: StudentRestoreRequest, user=Depends(require_staff)):
-    """恢复复用原 studentId 与全部历史关联，属高危动作：单独权限 + 原因≥5字 + 审计。
-
-    不自动恢复登录账号——账号启用与密码重置由「师生账号」单独处理。
-    """
+@router.post("/restore", summary="恢复已作废学生主档（受控动作）", dependencies=[Depends(_P_RESTORE)])
+def restore_student(
+    body: StudentRestoreRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    cached, handle = idempotency_begin(user, "student-restore", idempotency_key, body.model_dump())
+    if cached is not None:
+        return success(cached, message="学生主档已恢复（幂等重放）")
     row = svc.restore_student(body)
     audit.record_critical(
         "恢复作废学生主档", method="POST", path="/api/v1/students/restore", status_code=200,
         target_type="student", target_id=row["id"],
-        detail={"studentNo": body.studentNo, "reason": body.reason})
+        detail={"studentNo": body.studentNo, "reason": body.reason},
+    )
+    idempotency_finish(handle, row)
     return success(row, message=row.get("message") or "已恢复该学生主档")
 
 
 @router.put("/{student_id}", summary="更新学生主档", dependencies=[Depends(_P_UPDATE)])
-def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(require_staff)):
+def update_student(
+    student_id: str,
+    body: StudentUpdateRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
     _check_target_scope(student_id, user)
+    payload = {"studentId": student_id, **body.model_dump()}
+    cached, handle = idempotency_begin(user, "student-update", idempotency_key, payload)
+    if cached is not None:
+        return success(cached, message="已保存（幂等重放）")
     row = svc.update_student(student_id, body)
-    audit.record("更新学生", method="PUT", path=f"/api/v1/students/{student_id}", status_code=200,
-                 target_type="student", target_id=student_id)
+    audit.record(
+        "更新学生", method="PUT", path=f"/api/v1/students/{student_id}", status_code=200,
+        target_type="student", target_id=student_id,
+    )
+    idempotency_finish(handle, row)
     return success(row, message="已保存")
 
 
 @router.post("/{student_id}/void", summary="作废学生主档", dependencies=[Depends(_P_UPDATE)])
-def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require_staff)):
+def void_student(
+    student_id: str,
+    body: StudentVoidRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
     _check_target_scope(student_id, user)
-    # DB 模式：作废与高危审计同事务；mock 模式仍走 record_critical
-    from app.db.session import db_enabled
+    payload = {"studentId": student_id, "reason": body.reason}
+    cached, handle = idempotency_begin(user, "student-void", idempotency_key, payload)
+    if cached is not None:
+        return success(cached, message="已作废（幂等重放）")
     result = svc.void_student(student_id, body.reason)
-    if not db_enabled():
-        audit.record_critical(
-            "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",
-            status_code=200, target_type="student", target_id=student_id,
-            detail={"reason": body.reason})
+    audit.record_critical(
+        "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",
+        status_code=200, target_type="student", target_id=student_id,
+        detail={"reason": body.reason},
+    )
+    idempotency_finish(handle, result)
     return success(result, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
 
 
