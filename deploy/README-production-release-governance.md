@@ -15,34 +15,30 @@
 
 ## 2. main 分支保护（仓库所有者必须在 GitHub Settings 配置）
 
-当前 GitHub App 连接没有修改 Ruleset/Branch Protection 的权限，因此该部分不能由代码提交代替。
+当前 GitHub App 连接只有 Administration read 权限，没有 Ruleset/Branch Protection 写权限，因此该部分不能由代码提交代替。
 
-对 `main` 建议启用以下规则：
+推荐使用 GitHub Ruleset 对 `main` 启用以下规则：
 
+- **Target branches 必须包含 Default branch 或明确 `main`**；创建 active Ruleset 但目标分支为空并不会保护任何分支；
 - Require a pull request before merging；
-- 禁止 direct push；
-- 禁止 force push；
-- 禁止删除 main；
-- Require branches to be up to date before merging；
+- Restrict deletions；
+- Block force pushes / non-fast-forward；
 - Require status checks to pass before merging；
-- 不允许绕过规则（管理员也应尽量受规则约束）。
+- Required check 至少包含 `Main / canonical release gate`；
+- **Require branches to be up to date before merging**（对应 required status checks 的 strict policy）；
+- 不允许 bypass（管理员也应尽量受规则约束）。
 
-建议至少把当前始终运行的主 CI job 设为 required checks：
+平台配置完成后，不以“Ruleset 页面显示 Active”作为验收，而要检查 GitHub 的 effective-rules API：
 
-- `控制面合同检查`
-- `岗位实习生产闸门`
-- `毕业设计生产闸门`
-- `后端 pytest（PR:变更感知 / 定时:全量）`
-- `PC 管理端 lint + test + build`
-- `学生 PC 门户 lint + test + build`
-- `小程序生产 build`
-- `禁止文件检查`
-- `迁移库门禁（真实 alembic schema）`
-- `Permanent release governance contracts`
+```text
+GET /repos/penghaibin9/saas/rules/branches/main
+```
 
-配置完成后，必须重新打开仓库 `main` 分支 API/页面确认显示为 `protected=true`。仓库内的
-`Main / protected branch contract` 会读取 GitHub 的实时状态；如果平台仍返回 `false`，整个
-`Main post-merge acceptance` 必须保持失败，禁止用修改 workflow 条件的方式绕过。
+该接口必须真实返回作用于 `main` 的 `deletion`、`non_fast_forward`、`pull_request`、`required_status_checks`，并且 required status checks 必须包含 `Main / canonical release gate`，strict policy 必须为 true。
+
+仓库内 `Main / protected branch contract` 已按这个 effective-rules 结果 fail-closed；只有在没有 effective Ruleset 时才回退接受传统 Branch Protection 的 `protected=true`。禁止通过修改 workflow 条件绕过平台治理。
+
+建议其他长期 required checks 仍由 `Main / canonical release gate` 内部汇总，避免 Ruleset 直接绑定大量会随变更范围跳过的专项 job 造成不可合并；canonical gate 自身必须唯一命名并永久存在。
 
 `Main post-merge acceptance` 是合并后的最终 main 证明，不是 PR 合并前的替代品。
 
