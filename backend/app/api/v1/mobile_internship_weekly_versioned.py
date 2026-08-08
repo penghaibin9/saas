@@ -76,13 +76,29 @@ def teacher_weekly_review_versioned(
     body: dict = Body(...),
     user=Depends(get_current_user),
 ):
-    return success(
-        tea.weekly_review(
-            user,
-            report_id,
-            str(body.get("action") or "").upper(),
-            body.get("comment") or "",
-            expected_version=body.get("expectedVersion"),
-        ),
-        message="批阅完成",
+    """直接复用岗位实习领域的稳定主体范围校验与乐观锁。
+
+    权威领域服务已经按 ``advisor_user_id`` 判定 owner；这里不得再经过 legacy facade
+    的姓名二次校验，否则两名同名指导教师会把合法的稳定 ID 授权误判成 403。
+    """
+    action = str(body.get("action") or "").upper()
+    comment = body.get("comment") or ""
+    result = internship_service.review_weekly_report(
+        report_id,
+        action,
+        comment,
+        user=user,
+        expected_version=body.get("expectedVersion"),
     )
+    # 保留移动端操作审计；领域内部同时写 InternshipAuditTrail，二者职责不同。
+    from app.services import audit_log
+    audit_log.record(
+        "MOBILE_WEEKLY_REVIEW",
+        f"internship/weekly:{report_id}",
+        detail={
+            "operator": user.get("realName"),
+            "action": action,
+            "comment": comment[:200],
+        },
+    )
+    return success(result, message="批阅完成")

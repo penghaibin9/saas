@@ -36,7 +36,7 @@ GET /repos/penghaibin9/saas/rules/branches/main
 
 该接口必须真实返回作用于 `main` 的 `deletion`、`non_fast_forward`、`pull_request`、`required_status_checks`，并且 required status checks 必须包含 `Main / canonical release gate`，strict policy 必须为 true。
 
-仓库内 `Main / protected branch contract` 已按这个 effective-rules 结果 fail-closed；只有在没有 effective Ruleset 时才回退接受传统 Branch Protection 的 `protected=true`。禁止通过修改 workflow 条件绕过平台治理。
+仓库内 `Main / protected branch contract` 已按这个 effective-rules 结果 fail-closed；只有在没有 effective Ruleset 时才回退检查传统 Branch Protection，而且**不能只凭 `protected=true` 放行**。classic fallback 必须同样证明：要求 PR 合并、`Main / canonical release gate` 为 required check、status checks 为 strict/up-to-date、管理员也受保护、禁止 force push、禁止删除；任一项缺失都直接失败。禁止通过修改 workflow 条件绕过平台治理。
 
 建议其他长期 required checks 仍由 `Main / canonical release gate` 内部汇总，避免 Ruleset 直接绑定大量会随变更范围跳过的专项 job 造成不可合并；canonical gate 自身必须唯一命名并永久存在。
 
