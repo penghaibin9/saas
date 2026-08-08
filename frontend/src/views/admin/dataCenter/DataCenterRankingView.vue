@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="排行分析"
-    :subtitle="ranking ? '统计范围：' + ranking.scopeName + ' · 学生数合计 ' + ranking.totalCount + ' 人' : '学院 / 专业 / 班级多层级横向对比'"
+    :subtitle="ranking ? ranking.scopeName + ' · 数据截至 ' + asOfLabel : '学院 / 专业 / 班级真实组织聚合'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -15,135 +15,136 @@
       :description="viewReason"
       @back="$router.push('/admin/data-center')"
     />
-    <div v-else class="mp-stack">
-      <div class="mp-tabs">
-        <button
-          v-for="l in ctx.filterOptions.rankLevels"
-          :key="l.value"
-          type="button"
-          class="mp-tab"
-          :class="{ 'is-active': level === l.value }"
-          @click="setLevel(l.value)"
-        >
-          {{ l.label }}
-        </button>
-      </div>
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
+    <EmptyState
+      v-else-if="!ranking || !ranking.rows || !ranking.rows.length"
+      title="当前组织维度暂无排行数据"
+      description="本页只展示 StudentProfile 服务端真实聚合，不使用浏览器补数。"
+    />
 
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!ranking || !ranking.rows.length" title="暂无排行数据" description="当前维度下没有可对比的组织单元" />
-      <template v-else>
-        <DataTable
-          :columns="columns"
-          :rows="ranking.rows"
-          row-key="id"
-          row-clickable
-          @row-click="onRowClick"
-        >
-          <template #cell-rank="{ row }">
-            <span class="dcr-rank" :class="{ 'is-top': row.rank <= 3 }">{{ row.rank }}</span>
-          </template>
-          <template #cell-name="{ row }">
-            <div class="mp-cell-main">{{ row.name }}</div>
-            <div class="mp-cell-sub">在册 {{ row.studentCount }} 人</div>
-          </template>
-          <template #cell-completion="{ row }">
-            <div class="dcr-bar">
-              <div class="dcr-bar__track">
-                <div class="dcr-bar__fill" :style="{ width: row.completionRate + '%' }" />
+    <div v-else class="mp-stack">
+      <section class="mp-card">
+        <div class="mp-card__body dcr-levels">
+          <span class="mp-note">排行维度：</span>
+          <button
+            v-for="item in ctx.filterOptions.rankLevels"
+            :key="item.value"
+            type="button"
+            class="dcr-levels__btn"
+            :class="{ 'is-active': level === item.value }"
+            @click="setLevel(item.value)"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+      </section>
+
+      <section class="mp-card dcr-contract">
+        <div class="mp-card__body dcr-contract__body">
+          <div>
+            <div class="dcr-contract__label">数据范围</div>
+            <div class="dcr-contract__value">{{ scopeLabel }}</div>
+          </div>
+          <div>
+            <div class="dcr-contract__label">统计口径</div>
+            <div class="dcr-contract__value">{{ caliberLabel }}</div>
+          </div>
+          <div>
+            <div class="dcr-contract__label">数据来源</div>
+            <div class="dcr-contract__value">{{ sourceNames || 'StudentProfile' }}</div>
+          </div>
+          <div>
+            <div class="dcr-contract__label">质量提示</div>
+            <div class="dcr-contract__value">{{ qualityFlags.length ? qualityFlags.length + ' 项' : '无阻断项' }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mp-card">
+        <div class="mp-card__head">
+          <span class="mp-card__title">{{ ranking.scopeName }}</span>
+          <span class="mp-note">覆盖 {{ ranking.totalCount }} 名学生</span>
+        </div>
+        <div class="mp-card__body">
+          <DataTable :columns="columns" :rows="ranking.rows" row-key="id">
+            <template #cell-rank="{ row }">
+              <span class="dcr-rank" :class="{ 'is-top': row.rank <= 3 }">{{ row.rank }}</span>
+            </template>
+            <template #cell-name="{ row }">
+              <button class="mp-link" :title="canDrill ? '查看该组织学生清单' : drillReason" @click="onRowClick(row)">
+                {{ row.name }}
+              </button>
+              <div class="mp-cell-sub">{{ row.studentCount }} 人</div>
+            </template>
+            <template #cell-completion="{ row }">
+              <div class="dcr-bar">
+                <div class="dcr-bar__track"><div class="dcr-bar__fill" :style="{ width: row.completionRate + '%' }" /></div>
+                <span class="dcr-bar__value">{{ row.completionRate }}%</span>
               </div>
-              <span class="dcr-bar__value">{{ row.completionRate }}%</span>
-            </div>
-          </template>
-          <template #cell-employmentRate="{ row }">
-            <span class="dcr-num">{{ row.employmentRate }}%</span>
-          </template>
-          <template #cell-risk="{ row }">
-            <StatusTag :type="row.riskCount > 25 ? 'danger' : row.riskCount > 10 ? 'warning' : 'default'" :label="row.riskCount + ' 条'" />
-          </template>
-          <template #cell-delta="{ row }">
-            <span class="dcr-delta" :class="'is-' + (row.deltaQuality || 'neutral')">{{ row.delta }}</span>
-          </template>
-        </DataTable>
-        <p class="mp-note">{{ ranking.note }}；点击任意一行可下钻查看该组织的重点关注学生。</p>
-      </template>
+            </template>
+            <template #cell-employmentRate="{ row }"><span class="dcr-num">{{ row.employmentRate }}%</span></template>
+            <template #cell-risk="{ row }"><span class="dcr-num">{{ row.riskCount }} 人</span></template>
+            <template #cell-delta="{ row }"><span class="dcr-delta" :class="'is-' + (row.deltaQuality || 'neutral')">{{ row.delta }}</span></template>
+          </DataTable>
+        </div>
+      </section>
+
+      <section class="mp-card">
+        <div class="mp-card__head"><span class="mp-card__title">口径说明</span></div>
+        <div class="mp-card__body mp-stack">
+          <p class="mp-note">{{ ranking.note }}</p>
+          <div v-for="flag in qualityFlags" :key="flag.code" class="dcr-quality">
+            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+            <span>{{ flag.message }}</span>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <AppDrawer v-model:visible="drill.visible" :title="drill.row ? drill.row.name + ' · 下钻明细' : '下钻明细'">
-      <div v-if="drill.row" class="mp-stack">
-        <section class="mp-card">
-          <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">当前名次</span><span class="mp-kv__v">第 {{ drill.row.rank }} 名（较上期 {{ drill.row.delta }}）</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">在册学生</span><span class="mp-kv__v">{{ drill.row.studentCount }} 人</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">综合完成率</span><span class="mp-kv__v">{{ drill.row.completionRate }}%</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">去向落实率</span><span class="mp-kv__v">{{ drill.row.employmentRate }}%</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">风险预警</span><span class="mp-kv__v">{{ drill.row.riskCount }} 条</span></div>
-          </div>
-        </section>
-        <p class="mp-note">重点关注学生样本（学号 / 手机号已脱敏，查询已留痕）：</p>
+    <AppDrawer v-model:visible="drill.visible" :title="drill.row ? drill.row.name + ' · 学生清单' : '学生清单'">
+      <div class="mp-stack">
+        <p class="mp-note">本清单由服务端按当前组织 ID 查询，学号已在服务端脱敏；不使用浏览器名单过滤冒充结果。</p>
         <ErrorState v-if="drill.error" :description="drill.error" @retry="loadDrill" />
-        <LoadingState v-else-if="drill.loading" text="正在加载学生清单…" />
-        <EmptyState
-          v-else-if="!drill.rows.length"
-          title="该组织暂无重点关注学生"
-          description="演示数据集未包含该组织的学生样本"
-        />
+        <LoadingState v-else-if="drill.loading" text="正在加载组织学生清单…" />
+        <EmptyState v-else-if="!drill.rows.length" title="该组织暂无学生" description="当前权威主档中没有符合条件的学生。" />
         <DataTable
           v-else
           :columns="drillColumns"
           :rows="drill.rows"
-          row-key="id"
+          row-key="studentNo"
           :pagination="drill.pagination"
           @page-change="onDrillPage"
         >
           <template #cell-student="{ row }">
             <div class="mp-cell-main">{{ row.name }}</div>
-            <div class="mp-cell-sub">{{ maskNo(row.studentNo) }} · {{ maskPhone(row.phone) }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo }}</div>
           </template>
           <template #cell-stage="{ row }">
-            <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.stageLabel }}</div>
-            <div class="mp-cell-sub">{{ row.className }}</div>
+            <div class="mp-cell-main">{{ row.stage || '—' }}</div>
+            <div class="mp-cell-sub">{{ row.collegeName || '—' }}</div>
           </template>
-          <template #cell-status="{ row }">
-            <StatusTag :type="row.tone" :label="row.statusLabel" />
-          </template>
+          <template #cell-status="{ row }">{{ row.studentStatus || '—' }}</template>
         </DataTable>
       </div>
     </AppDrawer>
 
-    <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="primary"
-      title="导出排行分析数据"
-      :message="ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
+    <AppDrawer v-model:visible="guideVisible" title="排行数据口径">
+      <div class="mp-stack">
+        <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || 'StudentProfile' }}</span></div>
+        <p class="mp-note">{{ ranking ? ranking.note : '' }}</p>
+        <div v-for="flag in qualityFlags" :key="'guide-' + flag.code" class="dcr-quality">
+          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+          <span>{{ flag.message }}</span>
         </div>
       </div>
-    </AppConfirmDialog>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 排行分析（/admin/data-center/rankings）。
- * 学院 / 专业 / 班级三级切换；完成率以纯 CSS 横向条呈现；
- * 行点击下钻组织重点学生（脱敏），导出需确认用途并留痕。
- */
 import {
   ModulePageShell,
   ModuleToolbar,
@@ -153,10 +154,9 @@ import {
   ErrorState,
   EmptyState
 } from '@/components/business'
-import { AppGlobalState, AppConfirmDialog } from '@/components/common'
+import { AppGlobalState } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
-import { toast } from '@/utils/toast'
 
 const LEVEL_ORG_PARAM = { COLLEGE: 'collegeId', MAJOR: 'majorId', CLASS: 'classId' }
 
@@ -171,7 +171,6 @@ export default {
     ErrorState,
     EmptyState,
     AppGlobalState,
-    AppConfirmDialog,
     AppDrawer
   },
   props: { ctx: { type: Object, required: true } },
@@ -185,8 +184,8 @@ export default {
         { key: 'rank', title: '名次', width: '70px' },
         { key: 'name', title: '组织单元' },
         { key: 'completion', title: '综合完成率', width: '220px' },
-        { key: 'employmentRate', title: '去向落实率', width: '110px' },
-        { key: 'risk', title: '风险预警', width: '110px' },
+        { key: 'employmentRate', title: '去向代理率', width: '110px' },
+        { key: 'risk', title: '异常学籍', width: '110px' },
         { key: 'delta', title: '较上期', width: '90px' }
       ],
       drill: {
@@ -195,16 +194,14 @@ export default {
         loading: false,
         error: '',
         rows: [],
-        pagination: { page: 1, pageSize: 5, total: 0 }
+        pagination: { page: 1, pageSize: 10, total: 0 }
       },
       drillColumns: [
         { key: 'student', title: '学生' },
-        { key: 'stage', title: '阶段 / 班级' },
-        { key: 'status', title: '状态' }
+        { key: 'stage', title: '阶段 / 学院' },
+        { key: 'status', title: '学籍状态' }
       ],
-      exportVisible: false,
-      exportPurpose: 'INTERNAL_ANALYSIS',
-      exporting: false
+      guideVisible: false
     }
   },
   computed: {
@@ -222,25 +219,35 @@ export default {
     },
     drillReason() {
       const pa = this.ctx.permissionActions.drilldownStudents
-      return pa && !pa.allowed ? pa.reason : ''
+      return pa && !pa.allowed ? pa.reason : '当前角色不可查看组织学生明细'
     },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [{ key: 'exportRanking', label: '导出排行数据', variant: 'primary' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+      return [{ key: 'metricGuide', label: '数据口径与质量', variant: 'ghost' }]
+    },
+    meta() {
+      return (this.ranking && this.ranking.meta) || {}
+    },
+    qualityFlags() {
+      return Array.isArray(this.meta.qualityFlags) ? this.meta.qualityFlags : []
+    },
+    sourceNames() {
+      const rows = Array.isArray(this.meta.source) ? this.meta.source : []
+      return rows.map((x) => x.module).filter(Boolean).join('、')
+    },
+    scopeLabel() {
+      return (this.meta.scope && this.meta.scope.scopeName) || this.ctx.dataScope.scopeName || '—'
+    },
+    caliberLabel() {
+      return this.meta.caliberLabel || '在册组织主档代理口径'
+    },
+    asOfLabel() {
+      return this.meta.asOf || '—'
     }
   },
   created() {
-    this.load()
+    if (this.viewAllowed) this.load()
   },
   methods: {
-    maskPhone(v) {
-      return v ? v.slice(0, 3) + '****' + v.slice(-4) : '未登记'
-    },
-    maskNo(v) {
-      return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
-    },
     setLevel(value) {
       if (value === this.level) return
       this.level = value
@@ -250,15 +257,16 @@ export default {
       this.loading = true
       this.error = ''
       const res = await dataCenterApi.getRankings({ level: this.level })
-      if (res.code === 0) this.ranking = res.data
-      else this.error = res.message
+      if (res.code === 0) {
+        this.ranking = res.data
+      } else {
+        this.ranking = null
+        this.error = res.message
+      }
       this.loading = false
     },
     onRowClick(row) {
-      if (!this.canDrill) {
-        toast.info(this.drillReason || '当前角色不可查看学生明细')
-        return
-      }
+      if (!this.canDrill) return
       this.drill.row = row
       this.drill.visible = true
       this.drill.pagination.page = 1
@@ -281,29 +289,16 @@ export default {
       if (orgKey) params[orgKey] = this.drill.row.id
       const res = await dataCenterApi.getDrilldownStudents(params)
       if (res.code === 0) {
-        this.drill.rows = res.data.list
-        this.drill.pagination.total = res.data.total
+        this.drill.rows = res.data.list || []
+        this.drill.pagination.total = res.data.total || 0
       } else {
+        this.drill.rows = []
         this.drill.error = res.message
       }
       this.drill.loading = false
     },
     onToolbar(key) {
-      if (key === 'exportRanking') {
-        this.exportPurpose = 'INTERNAL_ANALYSIS'
-        this.exportVisible = true
-      }
-    },
-    async onExportConfirm() {
-      this.exporting = true
-      const res = await dataCenterApi.exportData({ scope: 'RANKING', purpose: this.exportPurpose })
-      this.exporting = false
-      if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入审计日志（演示态，暂未生成实际文件）')
-      } else {
-        toast.error(res.message)
-      }
+      if (key === 'metricGuide') this.guideVisible = true
     }
   }
 }
@@ -311,6 +306,37 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.dcr-levels {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dcr-levels__btn {
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: var(--space-1) var(--space-4);
+  cursor: pointer;
+}
+.dcr-levels__btn.is-active {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  color: var(--text-inverse);
+}
+.dcr-contract__body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.dcr-contract__label { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.dcr-contract__value {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
 .dcr-rank {
   display: inline-flex;
   align-items: center;
@@ -322,18 +348,9 @@ export default {
   color: var(--gray-600);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  font-variant-numeric: var(--font-numeric);
 }
-.dcr-rank.is-top {
-  background: var(--primary-600);
-  color: var(--text-inverse);
-  box-shadow: var(--shadow-capsule);
-}
-.dcr-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
+.dcr-rank.is-top { background: var(--primary-600); color: var(--text-inverse); }
+.dcr-bar { display: flex; align-items: center; gap: var(--space-2); }
 .dcr-bar__track {
   flex: 1;
   height: 10px;
@@ -341,26 +358,21 @@ export default {
   border-radius: var(--radius-full);
   overflow: hidden;
 }
-.dcr-bar__fill {
-  height: 100%;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
-}
-.dcr-bar__value {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  font-variant-numeric: var(--font-numeric);
-  min-width: 44px;
-  text-align: right;
-}
-.dcr-num {
-  font-variant-numeric: var(--font-numeric);
-}
-.dcr-delta {
-  font-size: var(--font-size-xs);
-  font-variant-numeric: var(--font-numeric);
-}
+.dcr-bar__fill { height: 100%; background: var(--primary-600); border-radius: var(--radius-full); }
+.dcr-bar__value,
+.dcr-num,
+.dcr-delta { font-size: var(--font-size-xs); font-variant-numeric: var(--font-numeric); }
 .dcr-delta.is-good { color: var(--trend-good); }
 .dcr-delta.is-bad { color: var(--trend-bad); }
 .dcr-delta.is-neutral { color: var(--trend-neutral); }
+.dcr-quality {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+@media (max-width: 960px) {
+  .dcr-contract__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
