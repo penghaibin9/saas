@@ -49,6 +49,9 @@ jobs:
       - name: Validate governance, links, ids and assets
         run: python scripts/validate_help_center.py
 
+      - name: Compile V3-08 metrics backend
+        run: python -m py_compile backend/app/api/v1/help_metrics.py backend/app/services/help_metrics_service.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
