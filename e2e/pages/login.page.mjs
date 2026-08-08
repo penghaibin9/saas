@@ -37,10 +37,32 @@ export class StaffLoginPage {
     const target = menu.locator('button.uchip__ctx').filter({ hasText: rolePattern }).first()
     await expect(target, `missing role context ${rolePattern}`).toBeVisible()
     if (await target.isDisabled()) return
+
     const oldToken = await this.token()
+    const responsePromise = this.page.waitForResponse((response) =>
+      response.url().includes('/api/v1/auth/switch-role') && response.request().method() === 'POST'
+    )
+    // 产品在身份切换成功后用 location.replace('/workbench') 整页刷新。当前页本来可能就是
+    // /workbench，所以 waitForURL(/workbench/) 会误判为“已完成”；必须等这一次真实主框架导航。
+    const navigationPromise = this.page.waitForEvent('framenavigated', (frame) =>
+      frame === this.page.mainFrame() && new URL(frame.url()).pathname === '/workbench'
+    )
+
     await target.click()
-    await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
-    await expect.poll(() => this.token()).not.toBe(oldToken)
+    const response = await responsePromise
+    expect(response.ok(), `switch role HTTP ${response.status()}`).toBeTruthy()
+    const payload = await response.json()
+    const newToken = payload?.data?.accessToken || ''
+    expect(newToken, 'switch role response must rotate access token').toBeTruthy()
+    expect(newToken, 'switch role access token must differ from old token').not.toBe(oldToken)
+
+    await navigationPromise
+    await this.page.waitForLoadState('domcontentloaded')
+    await this.page.waitForFunction(
+      (expected) => sessionStorage.getItem('gx_pc_token_v1') === expected,
+      newToken,
+      { timeout: 10_000 }
+    )
   }
 
   async token() {
