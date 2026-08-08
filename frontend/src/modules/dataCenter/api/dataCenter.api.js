@@ -60,6 +60,19 @@ async function real(path, options) {
 }
 
 const RANKING_MAP = { COLLEGE: collegeRankings, MAJOR: majorRankings, CLASS: classRankings }
+const viewedReportVersions = new Map()
+
+function rememberReport(row) {
+  if (row && row.id !== undefined && row.version !== undefined && row.version !== null) {
+    viewedReportVersions.set(String(row.id), Number(row.version))
+  }
+  return row
+}
+
+function viewedVersion(id, explicit) {
+  if (explicit !== undefined && explicit !== null) return Number(explicit)
+  return viewedReportVersions.get(String(id))
+}
 
 export const dataCenterApi = {
   /** 权威上下文：禁止 mockRuntime / roleProfiles 充当当前身份。 */
@@ -162,39 +175,62 @@ export const dataCenterApi = {
   async getReports(params = {}) {
     const res = await real('/data-center/reports', { params })
     if (res.code === 0) {
-      res.data = { ...res.data, list: Array.isArray(res.data.items) ? res.data.items : [] }
+      const list = Array.isArray(res.data.items) ? res.data.items.map(rememberReport) : []
+      res.data = { ...res.data, list }
     }
     return res
   },
 
-  getReportDetail(id) {
-    return real(`/data-center/reports/${encodeURIComponent(id)}`)
+  async getReportDetail(id) {
+    const res = await real(`/data-center/reports/${encodeURIComponent(id)}`)
+    if (res.code === 0) rememberReport(res.data)
+    return res
   },
 
-  createReport(payload = {}) {
-    return real('/data-center/reports', { method: 'POST', body: payload })
+  async createReport(payload = {}) {
+    const res = await real('/data-center/reports', { method: 'POST', body: payload })
+    if (res.code === 0) rememberReport(res.data)
+    return res
   },
 
-  updateReport(id, payload = {}) {
-    return real(`/data-center/reports/${encodeURIComponent(id)}`, { method: 'PUT', body: payload })
-  },
-
-  publishReport(id, version) {
-    return real(`/data-center/reports/${encodeURIComponent(id)}/publish`, {
-      method: 'POST', body: { version }
+  async updateReport(id, payload = {}) {
+    const version = viewedVersion(id, payload.version)
+    if (version === undefined) return fail('缺少报表版本，请刷新列表后重试')
+    const res = await real(`/data-center/reports/${encodeURIComponent(id)}`, {
+      method: 'PUT', body: { ...payload, version }
     })
+    if (res.code === 0) rememberReport(res.data)
+    return res
   },
 
-  withdrawReport(id, version) {
-    return real(`/data-center/reports/${encodeURIComponent(id)}/withdraw`, {
-      method: 'POST', body: { version }
+  async publishReport(id, version) {
+    const expected = viewedVersion(id, version)
+    if (expected === undefined) return fail('缺少报表版本，请刷新详情后重试')
+    const res = await real(`/data-center/reports/${encodeURIComponent(id)}/publish`, {
+      method: 'POST', body: { version: expected }
     })
+    if (res.code === 0) rememberReport(res.data)
+    return res
   },
 
-  voidReport(id, { reason, version } = {}) {
-    return real(`/data-center/reports/${encodeURIComponent(id)}/void`, {
-      method: 'POST', body: { reason, version }
+  async withdrawReport(id, version) {
+    const expected = viewedVersion(id, version)
+    if (expected === undefined) return fail('缺少报表版本，请刷新详情后重试')
+    const res = await real(`/data-center/reports/${encodeURIComponent(id)}/withdraw`, {
+      method: 'POST', body: { version: expected }
     })
+    if (res.code === 0) rememberReport(res.data)
+    return res
+  },
+
+  async voidReport(id, { reason, version } = {}) {
+    const expected = viewedVersion(id, version)
+    if (expected === undefined) return fail('缺少报表版本，请刷新列表后重试')
+    const res = await real(`/data-center/reports/${encodeURIComponent(id)}/void`, {
+      method: 'POST', body: { reason, version: expected }
+    })
+    if (res.code === 0) rememberReport(res.data)
+    return res
   },
 
   getReportVersions(id) {
