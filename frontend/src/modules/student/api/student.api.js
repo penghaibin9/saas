@@ -34,6 +34,24 @@ async function safe(fn, fallback) {
   }
 }
 
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]))
+  }
+  return value
+}
+
+function idempotencyHeaders(actionName, payload = {}) {
+  const raw = JSON.stringify(canonical({ actionName, payload }))
+  let hash = 2166136261
+  for (let i = 0; i < raw.length; i += 1) {
+    hash ^= raw.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return { 'Idempotency-Key': `student-${actionName}-${(hash >>> 0).toString(16).padStart(8, '0')}` }
+}
+
 function hasPermission(patterns = [], code) {
   const list = Array.isArray(patterns) ? patterns.map(String) : []
   if (list.includes('*') || list.includes(code)) return true
@@ -141,35 +159,18 @@ const EXPORT_OPTIONS = {
 }
 
 const STAGE_TO_STATUS = {
-  ADMITTED: 'ADMITTED',
-  ORIENTATION: 'ADMITTED',
-  ENROLLED: 'ACTIVE',
-  IN_SCHOOL: 'ACTIVE',
-  INTERNSHIP: 'ACTIVE',
-  GRADUATION_DESIGN: 'ACTIVE',
-  EMPLOYMENT: 'ACTIVE',
-  SUSPENDED: 'SUSPENDED',
-  GRADUATED: 'GRADUATED',
-  DROPPED: 'DROPPED',
-  WITHDRAWN: 'DROPPED'
+  ADMITTED: 'ADMITTED', ORIENTATION: 'ADMITTED', ENROLLED: 'ACTIVE', IN_SCHOOL: 'ACTIVE',
+  INTERNSHIP: 'ACTIVE', GRADUATION_DESIGN: 'ACTIVE', EMPLOYMENT: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED', GRADUATED: 'GRADUATED', DROPPED: 'DROPPED', WITHDRAWN: 'DROPPED'
 }
 
 function coreCompleteness(row = {}) {
-  // 仅使用真实接口已经返回的主档字段计算“核心字段完整度”，绝不补固定 90%。
   const fields = [
-    ['studentNo', row.studentNo],
-    ['name', row.realName || row.name],
-    ['gender', row.gender],
-    ['collegeId', row.collegeId],
-    ['majorId', row.majorId],
-    ['classId', row.classId],
-    ['grade', row.grade]
+    ['studentNo', row.studentNo], ['name', row.realName || row.name], ['gender', row.gender],
+    ['collegeId', row.collegeId], ['majorId', row.majorId], ['classId', row.classId], ['grade', row.grade]
   ]
   const missingFields = fields.filter(([, value]) => !String(value ?? '').trim()).map(([key]) => key)
-  return {
-    value: Math.round(((fields.length - missingFields.length) / fields.length) * 100),
-    missingFields
-  }
+  return { value: Math.round(((fields.length - missingFields.length) / fields.length) * 100), missingFields }
 }
 
 function studentRow(row = {}) {
@@ -178,75 +179,39 @@ function studentRow(row = {}) {
     : coreCompleteness(row)
   const phoneMasked = row.phoneMasked === '1**********' ? '' : (row.phoneMasked || row.phone || '')
   return {
-    studentId: String(row.studentId || row.id || ''),
-    id: String(row.studentId || row.id || ''),
-    studentNo: row.studentNo || '',
-    name: row.realName || row.name || '',
-    realName: row.realName || row.name || '',
-    gender: row.gender || '',
-    collegeId: String(row.collegeId || ''),
-    collegeName: row.collegeName || '',
-    majorId: String(row.majorId || ''),
-    majorName: row.majorName || '',
-    classId: String(row.classId || ''),
-    className: row.className || '',
-    grade: row.grade || '',
-    counselorName: row.counselorName || '—',
-    phone: phoneMasked,
-    idCard: row.idCardMasked || row.idCard || '',
+    studentId: String(row.studentId || row.id || ''), id: String(row.studentId || row.id || ''),
+    studentNo: row.studentNo || '', name: row.realName || row.name || '', realName: row.realName || row.name || '',
+    gender: row.gender || '', collegeId: String(row.collegeId || ''), collegeName: row.collegeName || '',
+    majorId: String(row.majorId || ''), majorName: row.majorName || '', classId: String(row.classId || ''),
+    className: row.className || '', grade: row.grade || '', counselorName: row.counselorName || '—',
+    phone: phoneMasked, idCard: row.idCardMasked || row.idCard || '',
     studentStatus: row.isDeleted ? 'VOIDED' : (row.studentStatusUi || STAGE_TO_STATUS[row.currentStage] || row.studentStatus || 'UNKNOWN'),
-    identityVerifyStatus: row.identityVerifyStatus || 'NOT_CONFIGURED',
-    accountBindStatus: row.accountBindStatus || 'UNKNOWN',
-    riskLevel: row.riskLevel || 'NONE',
-    dataCompleteness: completeness.value,
-    missingFields: completeness.missingFields,
+    identityVerifyStatus: row.identityVerifyStatus || 'NOT_CONFIGURED', accountBindStatus: row.accountBindStatus || 'UNKNOWN',
+    riskLevel: row.riskLevel || 'NONE', dataCompleteness: completeness.value, missingFields: completeness.missingFields,
     supportedActions: Array.isArray(row.supportedActions) ? row.supportedActions : [],
-    enrollDate: row.enrollDate || '',
-    version: Number(row.version ?? 0),
-    voided: !!row.isDeleted || row.studentStatus === 'VOIDED',
-    voidReason: row.voidReason || '',
+    enrollDate: row.enrollDate || '', version: Number(row.version ?? 0),
+    voided: !!row.isDeleted || row.studentStatus === 'VOIDED', voidReason: row.voidReason || '',
     updatedAt: String(row.updatedAt || '').replace('T', ' ').slice(0, 16)
   }
 }
 
 function detailRow(row = {}) {
   return {
-    ...studentRow(row),
-    contacts: Array.isArray(row.contacts) ? row.contacts : [],
-    timeline: Array.isArray(row.timeline) ? row.timeline : [],
-    statusHistory: Array.isArray(row.statusHistory) ? row.statusHistory : [],
-    identityRecords: [],
-    corrections: [],
-    riskTags: [],
-    auditTrail: [],
-    orientation: { steps: [] },
-    serviceRecords: [],
+    ...studentRow(row), contacts: Array.isArray(row.contacts) ? row.contacts : [],
+    timeline: Array.isArray(row.timeline) ? row.timeline : [], statusHistory: Array.isArray(row.statusHistory) ? row.statusHistory : [],
+    identityRecords: [], corrections: [], riskTags: [], auditTrail: [], orientation: { steps: [] }, serviceRecords: [],
     academic: { gpa: '—', earnedCredits: 0, requiredCredits: 0, courses: [], warningLevel: '' },
-    internship: null,
-    graduationDesign: null,
-    employment: null,
-    capabilityStatus: {
-      identityVerification: 'NOT_CONFIGURED',
-      crossModule360Aggregation: 'PARTIAL'
-    }
+    internship: null, graduationDesign: null, employment: null,
+    capabilityStatus: { identityVerification: 'NOT_CONFIGURED', crossModule360Aggregation: 'PARTIAL' }
   }
 }
 
 function fromBackendStatusChange(x = {}) {
   return {
-    id: x.changeId,
-    studentId: x.studentId,
-    studentName: x.realName || '',
-    className: x.toClassId ? `班级#${x.toClassId}` : '',
-    fromStatus: x.fromStatus || '',
-    toStatus: x.toStatus || '',
-    reason: x.reason || '',
-    auditStatus: x.status,
-    operatedAt: x.effectiveDate || x.updatedAt || '',
-    operator: x.operatorName || '',
-    roleName: x.operatorRole || '',
-    attachment: '',
-    version: x.version
+    id: x.changeId, studentId: x.studentId, studentName: x.realName || '', className: x.toClassId ? `班级#${x.toClassId}` : '',
+    fromStatus: x.fromStatus || '', toStatus: x.toStatus || '', reason: x.reason || '', auditStatus: x.status,
+    operatedAt: x.effectiveDate || x.updatedAt || '', operator: x.operatorName || '', roleName: x.operatorRole || '',
+    attachment: '', version: x.version
   }
 }
 
@@ -254,24 +219,11 @@ const CORRECTION_STATUS_TO_UI = { PENDING: 'PENDING_REVIEW', APPROVED: 'APPROVED
 const CORRECTION_STATUS_TO_API = { PENDING_REVIEW: 'PENDING', APPROVED: 'APPROVED', RETURNED: 'REJECTED' }
 function fromBackendCorrection(r = {}) {
   return {
-    id: r.correctionId,
-    studentId: r.studentId,
-    studentName: r.realName || '',
-    studentNo: r.studentNo || '',
-    className: r.className || '',
-    fieldKey: r.fieldKey,
-    fieldLabel: r.fieldLabel,
-    oldValue: r.oldValue,
-    newValue: r.newValue,
-    sensitive: !!r.sensitive,
-    reason: r.reason || '',
-    attachments: (r.materialFileIds || []).map((fid) => `附件#${fid}`),
-    channel: r.channel || '教务发起',
-    submitTime: r.createdAt || '',
-    status: CORRECTION_STATUS_TO_UI[r.status] || r.status,
-    reviewer: r.reviewerName || '',
-    reviewTime: r.reviewedAt || '',
-    reviewComment: r.reviewNote || ''
+    id: r.correctionId, studentId: r.studentId, studentName: r.realName || '', studentNo: r.studentNo || '',
+    className: r.className || '', fieldKey: r.fieldKey, fieldLabel: r.fieldLabel, oldValue: r.oldValue, newValue: r.newValue,
+    sensitive: !!r.sensitive, reason: r.reason || '', attachments: (r.materialFileIds || []).map((fid) => `附件#${fid}`),
+    channel: r.channel || '教务发起', submitTime: r.createdAt || '', status: CORRECTION_STATUS_TO_UI[r.status] || r.status,
+    reviewer: r.reviewerName || '', reviewTime: r.reviewedAt || '', reviewComment: r.reviewNote || ''
   }
 }
 
@@ -282,27 +234,11 @@ const RISK_SOURCE_LABEL = {
 }
 function fromBackendRisk(x = {}) {
   return {
-    id: x.riskId,
-    studentId: x.studentId,
-    studentName: x.realName || '',
-    studentNo: x.studentNo || '',
-    className: '',
-    tagType: x.source,
-    tagTypeLabel: RISK_SOURCE_LABEL[x.source] || x.source,
-    level: x.riskLevel,
-    title: x.title || '',
-    description: x.detail || '',
-    source: x.source,
-    sourceLabel: RISK_SOURCE_LABEL[x.source] || x.source,
-    status: x.status,
-    statusLabel: x.statusLabel || x.status,
-    owner: x.ownerName || '',
-    ownerId: x.ownerId || '',
-    mentalMasked: !!x.mentalMasked,
-    createdAt: x.createdAt || '',
-    voidReason: '',
-    followUps: [],
-    version: x.version
+    id: x.riskId, studentId: x.studentId, studentName: x.realName || '', studentNo: x.studentNo || '', className: '',
+    tagType: x.source, tagTypeLabel: RISK_SOURCE_LABEL[x.source] || x.source, level: x.riskLevel, title: x.title || '',
+    description: x.detail || '', source: x.source, sourceLabel: RISK_SOURCE_LABEL[x.source] || x.source,
+    status: x.status, statusLabel: x.statusLabel || x.status, owner: x.ownerName || '', ownerId: x.ownerId || '',
+    mentalMasked: !!x.mentalMasked, createdAt: x.createdAt || '', voidReason: '', followUps: [], version: x.version
   }
 }
 
@@ -313,7 +249,6 @@ function permissionActions(patterns = []) {
   const update = manage || hasPermission(patterns, 'student.profile.update')
   const restore = manage || hasPermission(patterns, 'student.profile.restore')
   const exportAllowed = hasPermission(patterns, 'student.export')
-  const importAllowed = hasPermission(patterns, 'systemAdmin.user.import') || hasPermission(patterns, 'academicAffairs.roster.import')
   const auditAllowed = hasPermission(patterns, 'systemAdmin.audit.sensitive.view') || hasPermission(patterns, 'systemAdmin.audit.view')
   return {
     viewList: action(view, view, '无学生主档查看权限'),
@@ -322,13 +257,13 @@ function permissionActions(patterns = []) {
     voidStudent: action(update, update, '无学生主档维护权限'),
     restoreStudent: action(restore, restore, '无学生主档恢复权限'),
     viewSensitive: action(view, hasPermission(patterns, 'student.profile.sensitive.view'), '敏感字段仅授权岗位可查看'),
-    importStudents: action(importAllowed, importAllowed, '学生批量导入请使用系统管理/教务正式导入链路'),
+    importStudents: action(false, false, '学生导入已迁往系统管理/教务正式导入任务中心'),
     exportStudents: action(exportAllowed, exportAllowed, '无学生数据导出权限'),
     viewAudit: action(auditAllowed, auditAllowed, '无敏感审计查看权限'),
     columnSettings: action(view, view, '无学生主档查看权限'),
-    changeStatus: action(view, view, ''),
+    changeStatus: action(false, false, '学籍状态写入必须走教务中心“学籍异动”审批；本页仅保留只读台账'),
     batchChangeStatus: action(false, false, '学籍异动必须逐人走教务审批，不提供批量直改'),
-    exportStatusRecords: action(exportAllowed, exportAllowed, '无学生数据导出权限'),
+    exportStatusRecords: action(false, false, '学籍异动筛选导出尚未接入服务端冻结条件，禁止误导出当前范围'),
     batchAssignClass: action(false, false, '班级变更必须走教务中心“学籍异动”审批'),
     batchAssignCounselor: action(false, false, '辅导员责任按班级维护，请到学工中心“辅导员责任关系”办理'),
     batchRemind: action(false, false, '学生批量提醒尚未接入真实通知投递链路'),
@@ -340,21 +275,15 @@ function permissionActions(patterns = []) {
 function normalizeClassOptions(payload) {
   const rows = payload?.items || payload?.list || []
   return rows.map((row) => ({
-    value: String(row.classId || row.id || ''),
-    label: row.className || row.name || `班级#${row.classId || row.id}`,
-    collegeId: String(row.collegeId || ''),
-    collegeName: row.collegeName || '',
-    majorId: String(row.majorId || ''),
-    majorName: row.majorName || '',
-    grade: row.grade || ''
+    value: String(row.classId || row.id || ''), label: row.className || row.name || `班级#${row.classId || row.id}`,
+    collegeId: String(row.collegeId || ''), collegeName: row.collegeName || '', majorId: String(row.majorId || ''),
+    majorName: row.majorName || '', grade: row.grade || ''
   })).filter((x) => x.value)
 }
 
 async function buildContext() {
   const [brand, ctx, todoSummary, classesResult] = await Promise.all([
-    request('/tenant/brand'),
-    request('/rbac/current-context'),
-    request('/todos/summary').catch(() => null),
+    request('/tenant/brand'), request('/rbac/current-context'), request('/todos/summary').catch(() => null),
     request('/student-affairs/classes', { params: { page: 1, pageSize: 200 } }).catch(() => null)
   ])
   const patterns = Array.isArray(ctx?.permissionPatterns) ? ctx.permissionPatterns : []
@@ -366,44 +295,22 @@ async function buildContext() {
   const scope = ctx?.dataScope || {}
   return {
     tenantBrandConfig: {
-      schoolName: brand?.schoolName || '',
-      platformName: brand?.platformDisplayName || '',
-      platformDisplayName: brand?.platformDisplayName || brand?.schoolName || '',
-      watermarkText: brand?.watermarkText || brand?.schoolName || ''
+      schoolName: brand?.schoolName || '', platformName: brand?.platformDisplayName || '',
+      platformDisplayName: brand?.platformDisplayName || brand?.schoolName || '', watermarkText: brand?.watermarkText || brand?.schoolName || ''
     },
-    currentRole: {
-      ...role,
-      roleCode: role.roleCode || '',
-      roleName: role.roleName || '—',
-      userName: role.userName || role.realName || ''
-    },
-    dataScope: {
-      ...scope,
-      scopeName: scope.scopeName || scope.name || '未声明数据范围',
-      name: scope.scopeName || scope.name || '未声明数据范围'
-    },
-    permissionPatterns: patterns,
-    moduleEntitlements: Array.isArray(ctx?.moduleEntitlements) ? ctx.moduleEntitlements : [],
-    moduleStates: ctx?.moduleStates || {},
-    moduleAccessHealthy: ctx?.moduleAccessHealthy !== false,
-    moduleAccessError: ctx?.moduleAccessError || '',
-    readonlyTenant: !!ctx?.readonlyTenant,
-    readonlyReason: ctx?.readonlyReason || '',
-    permissionActions: permissionActions(patterns),
-    supportedActions: permissionActions(patterns),
-    statusOptions: STATUS_OPTIONS,
-    filterOptions: { colleges, majors, classes, grades, counselors: [] },
-    pendingCount: Number(todoSummary?.pending || 0),
+    currentRole: { ...role, roleCode: role.roleCode || '', roleName: role.roleName || '—', userName: role.userName || role.realName || '' },
+    dataScope: { ...scope, scopeName: scope.scopeName || scope.name || '未声明数据范围', name: scope.scopeName || scope.name || '未声明数据范围' },
+    permissionPatterns: patterns, moduleEntitlements: Array.isArray(ctx?.moduleEntitlements) ? ctx.moduleEntitlements : [],
+    moduleStates: ctx?.moduleStates || {}, moduleAccessHealthy: ctx?.moduleAccessHealthy !== false,
+    moduleAccessError: ctx?.moduleAccessError || '', readonlyTenant: !!ctx?.readonlyTenant, readonlyReason: ctx?.readonlyReason || '',
+    permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns), statusOptions: STATUS_OPTIONS,
+    filterOptions: { colleges, majors, classes, grades, counselors: [] }, pendingCount: Number(todoSummary?.pending || 0),
     identityVerificationCapability: {
-      status: 'NOT_CONFIGURED',
-      message: '第三方实名/人脸核验服务当前未配置；新生人工信息核验请使用数字迎新。'
+      status: 'NOT_CONFIGURED', message: '第三方实名/人脸核验服务当前未配置；新生人工信息核验请使用数字迎新。'
     },
     realApi: true,
-    ctxKey: [
-      role.contextId || '', role.permissionVersion || '', role.roleCode || '',
-      [...patterns].sort().join(','),
-      ...(Array.isArray(ctx?.moduleEntitlements) ? [[...ctx.moduleEntitlements].sort().join(',')] : [''])
-    ].join('|')
+    ctxKey: [role.contextId || '', role.permissionVersion || '', role.roleCode || '', [...patterns].sort().join(','),
+      ...(Array.isArray(ctx?.moduleEntitlements) ? [[...ctx.moduleEntitlements].sort().join(',')] : [''])].join('|')
   }
 }
 
@@ -414,24 +321,20 @@ export const studentApi = {
 
   async getDashboardSummary() {
     return safe(async () => {
-      const [students, changes, audits] = await Promise.all([
-        this.getStudents({ page: 1, pageSize: 1 }),
-        this.getStatusRecords({ page: 1, pageSize: 5 }),
-        this.getAuditLogs({ page: 1, pageSize: 5 })
+      const [summary, changes, audits] = await Promise.all([
+        request('/students/summary'), this.getStatusRecords({ page: 1, pageSize: 5 }), this.getAuditLogs({ page: 1, pageSize: 5 })
       ])
-      if (students.code !== 0) return students
-      const total = Number(students.data?.total || 0)
+      const binding = summary?.accountBinding || {}
       return ok({
         stats: [
-          { key: 'total', label: '当前范围学生', value: total },
-          { key: 'identity', label: '身份核验服务', value: '未配置', tone: 'default' }
+          { key: 'total', label: '当前范围学生', value: Number(summary?.totalStudents || 0) },
+          { key: 'bound', label: '账号已绑定', value: Number(binding.bound || 0) },
+          { key: 'unbound', label: '账号未绑定', value: Number(binding.unbound || 0) },
+          { key: 'identity', label: '身份核验服务', value: summary?.identityVerification?.status === 'NOT_CONFIGURED' ? '未配置' : '可用', tone: 'default' }
         ],
-        flow: [],
-        todos: [],
-        recentChanges: changes.code === 0 ? (changes.data?.list || []) : [],
-        recentAudits: audits.code === 0 ? (audits.data?.list || []) : [],
-        asOf: new Date().toISOString(),
-        qualityFlags: ['IDENTITY_VERIFICATION_NOT_CONFIGURED', 'CROSS_MODULE_360_PARTIAL']
+        flow: [], todos: [], recentChanges: changes.code === 0 ? (changes.data?.list || []) : [],
+        recentAudits: audits.code === 0 ? (audits.data?.list || []) : [], asOf: summary?.asOf || '',
+        scopeType: summary?.scopeType || '', qualityFlags: Array.isArray(summary?.qualityFlags) ? summary.qualityFlags : []
       })
     }, '学生中心看板加载失败')
   },
@@ -440,19 +343,14 @@ export const studentApi = {
     return safe(async () => {
       const data = await request('/students', {
         params: {
-          page: params.page || 1,
-          pageSize: params.pageSize || 10,
-          keyword: params.keyword || undefined,
-          collegeId: params.collegeId || undefined,
-          majorId: params.majorId || undefined,
-          className: params.className || undefined,
-          studentStatus: params.studentStatus || undefined,
-          riskLevel: params.riskLevel || undefined,
-          includeVoided: params.includeVoided ? 1 : undefined
+          page: params.page || 1, pageSize: params.pageSize || 10, keyword: params.keyword || undefined,
+          collegeId: params.collegeId || undefined, majorId: params.majorId || undefined,
+          classId: params.classId || undefined, className: params.className || undefined,
+          studentStatus: params.studentStatus || undefined, identityVerifyStatus: params.identityVerifyStatus || undefined,
+          riskLevel: params.riskLevel || undefined, includeVoided: params.includeVoided ? 1 : undefined
         }
       })
-      let rows = (data?.items || []).map(studentRow)
-      if (params.identityVerifyStatus) rows = rows.filter((row) => row.identityVerifyStatus === params.identityVerifyStatus)
+      const rows = (data?.items || []).map(studentRow)
       return ok({ list: rows, total: Number(data?.total || 0), page: data?.page || params.page || 1, pageSize: data?.pageSize || params.pageSize || 10 })
     }, '学生主档列表加载失败')
   },
@@ -463,19 +361,13 @@ export const studentApi = {
 
   async createStudent(payload = {}) {
     return safe(async () => {
+      const body = {
+        studentNo: payload.studentNo, realName: payload.name, gender: payload.gender || null,
+        collegeId: payload.collegeId || null, majorId: payload.majorId || null, classId: payload.classId || null,
+        grade: payload.grade || null, phone: payload.phone || null, idCard: payload.idCard || null
+      }
       const data = await request('/students', {
-        method: 'POST',
-        body: {
-          studentNo: payload.studentNo,
-          realName: payload.name,
-          gender: payload.gender || null,
-          collegeId: payload.collegeId || null,
-          majorId: payload.majorId || null,
-          classId: payload.classId || null,
-          grade: payload.grade || null,
-          phone: payload.phone || null,
-          idCard: payload.idCard || null
-        }
+        method: 'POST', body, headers: idempotencyHeaders('create', body)
       })
       return ok(studentRow(data))
     }, '学生建档失败')
@@ -492,15 +384,12 @@ export const studentApi = {
       return fail('缺少主档版本号，请刷新后重试。', 'VERSION_REQUIRED')
     }
     return safe(async () => {
+      const body = {
+        expectedVersion: payload.expectedVersion, realName: payload.name,
+        gender: payload.gender, grade: payload.grade, phone: payload.phone
+      }
       const data = await request(`/students/${studentId}`, {
-        method: 'PUT',
-        body: {
-          expectedVersion: payload.expectedVersion,
-          realName: payload.name,
-          gender: payload.gender,
-          grade: payload.grade,
-          phone: payload.phone
-        }
+        method: 'PUT', body, headers: idempotencyHeaders('update', { studentId, ...body })
       })
       return ok(studentRow(data))
     }, '学生主档更新失败')
@@ -509,13 +398,19 @@ export const studentApi = {
   async voidStudent(studentId, { reason } = {}) {
     const note = String(reason || '').trim()
     if (note.length < 5) return fail('作废原因必填且不少于 5 个字', 'VALIDATION_ERROR')
-    return safe(async () => ok(await request(`/students/${studentId}/void`, { method: 'POST', body: { reason: note } })), '学生主档作废失败')
+    const body = { reason: note }
+    return safe(async () => ok(await request(`/students/${studentId}/void`, {
+      method: 'POST', body, headers: idempotencyHeaders('void', { studentId, ...body })
+    })), '学生主档作废失败')
   },
 
   async restoreStudent({ studentNo, reason } = {}) {
     const note = String(reason || '').trim()
     if (note.length < 5) return fail('恢复原因必填且不少于 5 个字', 'VALIDATION_ERROR')
-    return safe(async () => ok(studentRow(await request('/students/restore', { method: 'POST', body: { studentNo, reason: note } }))), '学生主档恢复失败')
+    const body = { studentNo, reason: note }
+    return safe(async () => ok(studentRow(await request('/students/restore', {
+      method: 'POST', body, headers: idempotencyHeaders('restore', body)
+    }))), '学生主档恢复失败')
   },
 
   batchAssignClass() {
@@ -563,8 +458,7 @@ export const studentApi = {
     return safe(async () => {
       const res = await academicAffairsApi.getRosterCorrections({
         status: params.status ? (CORRECTION_STATUS_TO_API[params.status] || params.status) : '',
-        page: params.page || 1,
-        pageSize: params.pageSize || 20
+        page: params.page || 1, pageSize: params.pageSize || 20
       })
       if (res.code !== 0) return res
       let list = (res.data?.list || []).map(fromBackendCorrection)
@@ -676,21 +570,15 @@ export const studentApi = {
     }, '学生数据导出失败')
   },
   getTransferTasks() {
-    // 旧 transferTasks 是浏览器内存。正式接口暂无“学生导出任务列表”，因此明确返回真实空态而非伪造历史。
     return ok([])
   },
   async getAuditLogs(params = {}) {
     return safe(async () => {
       const data = await request('/audit/logs', { params: { page: params.page || 1, pageSize: params.pageSize || 10 } })
       let list = (data?.items || []).map((row) => ({
-        id: String(row.auditId || row.id || ''),
-        time: String(row.occurredAt || row.createdAt || '').replace('T', ' ').slice(0, 19),
-        operator: row.actorName || row.operatorName || '—',
-        roleName: row.currentRole || '',
-        action: row.action || '',
-        targetName: row.resource || '',
-        detail: row.detail ? JSON.stringify(row.detail) : '',
-        result: row.result || ''
+        id: String(row.auditId || row.id || ''), time: String(row.occurredAt || row.createdAt || '').replace('T', ' ').slice(0, 19),
+        operator: row.actorName || row.operatorName || '—', roleName: row.currentRole || '', action: row.action || '',
+        targetName: row.resource || '', detail: row.detail ? JSON.stringify(row.detail) : '', result: row.result || ''
       }))
       if (params.keyword) list = list.filter((row) => row.targetName.includes(params.keyword) || row.action.includes(params.keyword))
       return ok({ list, total: Number(data?.total || list.length), page: data?.page || params.page || 1, pageSize: data?.pageSize || params.pageSize || 10 })
