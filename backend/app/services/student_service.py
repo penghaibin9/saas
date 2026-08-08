@@ -85,7 +85,6 @@ def _fact_map(student_ids: list[int]) -> dict[int, dict]:
     for link in links:
         sid = int(link.student_id)
         status = str(link.link_status or "").upper()
-        # ACTIVE 为权威绑定；SUSPENDED 次之；历史 REVOKED/MERGED 不等于当前已绑定。
         if status == LINK_ACTIVE:
             link_status[sid] = "BOUND"
         elif status == LINK_SUSPENDED and link_status.get(sid) != "BOUND":
@@ -121,7 +120,6 @@ def _fact_map(student_ids: list[int]) -> dict[int, dict]:
             "completenessDefinition": COMPLETENESS_DEFINITION,
             "supportedActions": actions,
             "dataQualityStatus": profile.data_quality_status or "UNKNOWN",
-            # db_service 的历史兼容值在未登记手机时为 1**********；这里以真实联系表纠偏。
             "phoneRegistered": sid in phone_present,
         }
     return facts
@@ -140,7 +138,6 @@ def _enrich(rows: list[dict]) -> list[dict]:
             if not fact.get("phoneRegistered"):
                 item["phoneMasked"] = ""
         else:
-            # 无法解析事实时宁可 UNKNOWN，也不制造成功态。
             item.update({
                 "identityVerifyStatus": "UNKNOWN",
                 "accountBindStatus": "UNKNOWN",
@@ -197,6 +194,13 @@ def create_student(body) -> dict:
     from app.services import db_service
 
     return _enrich([db_service.create_student(body)])[0]
+
+
+def restore_student(body) -> dict:
+    _require_db()
+    from app.services import db_service
+
+    return _enrich([db_service.restore_student(body)])[0]
 
 
 def update_student(student_id: str, body) -> dict:
