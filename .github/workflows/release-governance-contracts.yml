@@ -91,7 +91,10 @@ jobs:
           grep -q '^name: Main post-merge acceptance$' "$FILE"
           grep -q 'branches: \[main\]' "$FILE"
           grep -q '^    name: Main / protected branch contract$' "$FILE"
-          grep -q 'main.protected=' "$FILE"
+          grep -q 'rules/branches/main' "$FILE"
+          grep -q 'main.effective_rules=' "$FILE"
+          grep -q 'strict_required_status_checks_policy' "$FILE"
+          grep -q 'Main / canonical release gate' "$FILE"
           grep -q '^    name: Main / canonical release gate$' "$FILE"
           grep -q 'needs: \[main-governance,' "$FILE"
-          echo 'Canonical main gate is permanently wired to live main protection state.'
+          echo 'Canonical main gate is permanently wired to effective GitHub rulesets or classic branch protection.'
