@@ -62,6 +62,9 @@ def _assert_emp_student(db, emp: EmpStudent | None, user: dict) -> EmpStudent:
     if emp.student_id:
         ctx.require_student(db, int(emp.student_id))
         return emp
+    # 精确 STUDENT scope 不能把“同班级的未绑定历史行”推断成可见，否则会从点名授权放大成班级授权。
+    if ctx.scope_type == "STUDENT":
+        raise no_data_scope("该历史就业记录未绑定学生主档，无法证明属于您的点名学生范围")
     allowed = ctx.allowed_class_ids(db)
     if not allowed:
         raise no_data_scope("该就业记录不在您的数据范围内")
@@ -150,7 +153,7 @@ def list_students(page, ps, *, user: dict, keyword=None, class_id=None,
 
 def get_student_detail(sid, *, user: dict) -> dict:
     with session() as db:
-        emp = _assert_emp_id(db, sid, user)
+        _assert_emp_id(db, sid, user)
     return base.get_student_detail(sid)
 
 
