@@ -106,12 +106,10 @@ def _assert_emp_id(db, sid, user: dict) -> EmpStudent:
     return _assert_emp_student(db, emp, user)
 
 
-def _assert_emp_ids(ids, user: dict) -> None:
+def _assert_emp_ids(db, ids, user: dict) -> list[EmpStudent]:
     if not ids:
         raise AppException("VALIDATION_ERROR", "请选择至少一条记录")
-    with session() as db:
-        for sid in ids:
-            _assert_emp_id(db, sid, user)
+    return [_assert_emp_id(db, sid, user) for sid in ids]
 
 
 def _assert_material(db, mid, user: dict) -> tuple[EmpMaterial, EmpStudent]:
@@ -179,7 +177,7 @@ def get_student_detail(sid, *, user: dict) -> dict:
 
 
 def create_student(body: dict, *, user: dict) -> dict:
-    # 先按主档校验当前用户是否可管理目标学生；底层再次解析主档并在独立事务写入。
+    # scope 校验与创建使用同一事务，避免校验后学生恰好异动导致越范围写入。
     with session() as db:
         profile = shadow.resolve_profile_for_shadow(
             db, _tid(), domain_label="就业台账",
@@ -187,24 +185,57 @@ def create_student(body: dict, *, user: dict) -> dict:
             student_no=body.get("studentNo"),
         )
         _ctx(db, user).require_student(db, int(profile.id))
-    return base.create_student(body)
+        result = base.create_student(body, db=db)
+        db.commit()
+        return result
 
 
 def update_student(sid, body: dict, *, user: dict) -> dict:
     with session() as db:
-        _assert_emp_id(db, sid, user)
-    return base.update_student(sid, body)
+        s = _assert_emp_id(db, sid, user)
+        shadow.assert_identity_immutable(db, s, body, "就业台账")
+        for key, column in {
+            "destinationType": "destination_type", "companyName": "company_name",
+            "jobTitle": "job_title", "salaryRange": "salary_range", "signDate": "sign_date",
+            "employmentTeacher": "employment_teacher",
+        }.items():
+            if body.get(key) is not None:
+                setattr(s, column, body[key])
+        s.version = int(s.version or 0) + 1
+        base._audit(db, "RECORD", s.id, "编辑就业记录")
+        db.commit()
+        return {"id": str(s.id)}
 
 
 def void_student(sid, reason, *, user: dict) -> dict:
+    text = str(reason or "").strip()
+    if len(text) < 5:
+        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
     with session() as db:
-        _assert_emp_id(db, sid, user)
-    return base.void_student(sid, reason)
+        s = _assert_emp_id(db, sid, user)
+        s.record_status = "VOIDED"
+        s.void_reason = text
+        s.is_deleted = True
+        s.version = int(s.version or 0) + 1
+        base._audit(db, "RECORD", s.id, "作废就业记录", text)
+        db.commit()
+        return {"id": str(s.id)}
 
 
 def batch_mark_destination(ids, destination_type, *, user: dict) -> dict:
-    _assert_emp_ids(ids, user)
-    return base.batch_mark_destination(ids, destination_type)
+    if destination_type not in base.L_DEST:
+        raise AppException("VALIDATION_ERROR", "非法去向类型")
+    with session() as db:
+        rows = _assert_emp_ids(db, ids, user)
+        for s in rows:
+            s.destination_type = destination_type
+            s.verify_status = "PENDING_VERIFY"
+            s.version = int(s.version or 0) + 1
+            if destination_type != "UNEMPLOYED":
+                base._todo_done_followup(db, s.id)
+            base._audit(db, "RECORD", s.id, "批量标记去向", base.L_DEST[destination_type])
+        db.commit()
+        return {"count": len(rows)}
 
 
 def list_materials(page, ps, *, user: dict, keyword=None, status=None, material_type=None):
@@ -248,14 +279,39 @@ def get_material_detail(mid, *, user: dict) -> dict:
 
 def approve_material(mid, comment="", *, user: dict) -> dict:
     with session() as db:
-        _assert_material(db, mid, user)
-    return base.approve_material(mid, comment)
+        material, emp = _assert_material(db, mid, user)
+        if material.status == "APPROVED":
+            raise AppException("DATA_CONFLICT", "该材料已通过")
+        before = material.status
+        operator, _ = base._op()
+        material.status = "APPROVED"
+        material.reviewer = operator
+        material.review_time = datetime.utcnow()
+        material.version = int(material.version or 0) + 1
+        emp.material_status = "APPROVED"
+        emp.verify_status = "VERIFIED"
+        base._audit(db, "MATERIAL", material.id, "审核通过", comment, before, "APPROVED")
+        db.commit()
+        return {"id": str(material.id), "status": "APPROVED"}
 
 
 def return_material(mid, reason, *, user: dict) -> dict:
+    text = str(reason or "").strip()
+    if len(text) < 5:
+        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        _assert_material(db, mid, user)
-    return base.return_material(mid, reason)
+        material, emp = _assert_material(db, mid, user)
+        before = material.status
+        operator, _ = base._op()
+        material.status = "RETURNED"
+        material.reviewer = operator
+        material.review_time = datetime.utcnow()
+        material.return_reason = text
+        material.version = int(material.version or 0) + 1
+        emp.material_status = "RETURNED"
+        base._audit(db, "MATERIAL", material.id, "退回材料", text, before, "RETURNED")
+        db.commit()
+        return {"id": str(material.id), "status": "RETURNED"}
 
 
 def list_unemployed(page, ps, *, user: dict, keyword=None, help_level=None, risk_level=None):
@@ -282,18 +338,45 @@ def list_unemployed(page, ps, *, user: dict, keyword=None, help_level=None, risk
 
 
 def mark_employed(ids, *, user: dict):
-    _assert_emp_ids(ids, user)
-    return base.mark_employed(ids)
+    with session() as db:
+        rows = _assert_emp_ids(db, ids, user)
+        for s in rows:
+            s.destination_type = "SIGNED"
+            s.verify_status = "PENDING_VERIFY"
+            s.version = int(s.version or 0) + 1
+            base._todo_done_followup(db, s.id)
+            base._audit(db, "RECORD", s.id, "标记已就业")
+        db.commit()
+        return {"count": len(rows)}
 
 
 def mark_key_help(ids, *, user: dict):
-    _assert_emp_ids(ids, user)
-    return base.mark_key_help(ids)
+    with session() as db:
+        rows = _assert_emp_ids(db, ids, user)
+        for s in rows:
+            s.help_level = "KEY_HELP"
+            s.risk_level = "HIGH"
+            s.version = int(s.version or 0) + 1
+            base._audit(db, "RECORD", s.id, "标记重点帮扶")
+        db.commit()
+        return {"count": len(rows)}
 
 
 def assign_teacher(ids, teacher, *, user: dict):
-    _assert_emp_ids(ids, user)
-    return base.assign_teacher(ids, teacher)
+    text = str(teacher or "").strip()
+    if not text:
+        raise AppException("VALIDATION_ERROR", "就业老师必填")
+    with session() as db:
+        rows = _assert_emp_ids(db, ids, user)
+        assignee_id = base._resolve_teacher_user_id(db, text)
+        for s in rows:
+            s.employment_teacher = text
+            s.version = int(s.version or 0) + 1
+            if assignee_id and base._needs_followup(s):
+                base._todo_upsert_followup(db, s, assignee_id)
+            base._audit(db, "RECORD", s.id, "分配就业老师")
+        db.commit()
+        return {"count": len(rows)}
 
 
 def list_followups(page, ps, *, user: dict, keyword=None, status=None):
@@ -318,15 +401,39 @@ def list_followups(page, ps, *, user: dict, keyword=None, status=None):
 
 
 def create_followup(body: dict, *, user: dict) -> dict:
+    content = str(body.get("content") or "").strip()
+    if not body.get("studentId") or not content:
+        raise AppException("VALIDATION_ERROR", "学生、跟进内容必填")
     with session() as db:
-        _assert_emp_id(db, body.get("studentId"), user)
-    return base.create_followup(body)
+        s = _assert_emp_id(db, body.get("studentId"), user)
+        operator, _ = base._op()
+        followup = EmpFollowup(
+            tenant_id=_tid(), emp_student_id=s.id, way=body.get("way") or "PHONE",
+            content=content, result=body.get("result"), next_plan=body.get("nextPlan"),
+            operator=operator, status="OPEN", follow_time=datetime.utcnow(),
+        )
+        db.add(followup)
+        s.last_follow_up_time = datetime.utcnow()
+        s.follow_up_count = int(s.follow_up_count or 0) + 1
+        base._audit(db, "FOLLOWUP", s.id, "新增就业跟进", content)
+        db.commit()
+        db.refresh(followup)
+        return {"id": str(followup.id)}
 
 
 def void_followup(fid, reason, *, user: dict) -> dict:
+    text = str(reason or "").strip()
+    if len(text) < 5:
+        raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
     with session() as db:
-        _assert_followup(db, fid, user)
-    return base.void_followup(fid, reason)
+        followup, _ = _assert_followup(db, fid, user)
+        followup.status = "VOIDED"
+        followup.void_reason = text
+        followup.is_deleted = True
+        followup.version = int(followup.version or 0) + 1
+        base._audit(db, "FOLLOWUP", followup.id, "作废跟进", text)
+        db.commit()
+        return {"id": str(followup.id)}
 
 
 def get_filter_options(*, user: dict) -> dict:
