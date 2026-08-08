@@ -73,9 +73,19 @@ def _seed_authoritative_tenant_for_db_tests(request):
 
 
 def _stable_test_user_id(claims: dict) -> int | None:
+    """Return an existing stable DB id when the token already carries one.
+
+    Real password-login/switch-role tokens use ``db-<user.id>``.  The synthetic
+    BIGINT namespace below is only for legacy tests whose tokens do not identify a
+    persisted user.  Replacing a real ``db-`` identity with a synthetic id would
+    make correctly assigned internship records disappear from the mentor's scope.
+    """
     raw = claims.get("userId")
+    normalized = str(raw or "").strip()
+    if normalized.startswith("db-"):
+        normalized = normalized[3:]
     try:
-        parsed = int(raw)
+        parsed = int(normalized)
     except (TypeError, ValueError):
         parsed = 0
     if parsed > 0:
