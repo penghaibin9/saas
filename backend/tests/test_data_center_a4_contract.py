@@ -107,6 +107,72 @@ def test_context_and_school_bi_are_server_scoped_fail_closed():
     assert "不以 0 或演示" in stats_api
 
 
+def test_only_real_registered_caliber_is_advertised_and_accepted():
+    api = _read("backend/app/api/v1/data_center.py")
+    stats_api = _read("backend/app/api/v1/stats.py")
+    dashboard = _read("frontend/src/views/admin/dataCenter/DataCenterDashboardView.vue")
+
+    assert 'SupportedCaliber = Literal["REGISTERED"]' in api
+    assert 'item.get("value") == "REGISTERED"' in api
+    assert "def _require_supported_caliber" in stats_api
+    assert 'value != "REGISTERED"' in stats_api
+    assert "UNSUPPORTED_CALIBER" in stats_api
+    assert "NATURAL 自然口径尚未形成跨域真实查询合同" in stats_api
+    assert "caliber: 'REGISTERED'" in dashboard
+
+
+def test_lifecycle_page_does_not_expose_unsupported_filters_or_fake_rule_drilldown():
+    page = _read("frontend/src/views/admin/dataCenter/DataCenterLifecycleView.vue")
+    for token in (
+        "AdvancedFilter",
+        "collegeId",
+        "majorId",
+        "classId",
+        "timeRange",
+        "getDrilldownStudents",
+        "exportData",
+        "AppConfirmDialog",
+    ):
+        assert token not in page, f"生命周期页不得暴露未服务端化能力：{token}"
+    for token in ("meta.source", "meta.qualityFlags", "meta.scope", "meta.asOf"):
+        assert token in page
+    assert "已禁止浏览器估算" in _read("frontend/src/modules/dataCenter/api/dataCenter.api.js")
+    assert "本页不返回“全校学生”冒充命中名单" in page
+
+
+def test_risk_page_distinguishes_unconfigured_from_zero_and_has_no_fake_actions():
+    page = _read("frontend/src/views/admin/dataCenter/DataCenterRiskView.vue")
+    for token in ("getDrilldownStudents", "sendRiskReminder", "exportData", "AppConfirmDialog"):
+        assert token not in page, f"风险页不得暴露未形成正式合同的能力：{token}"
+    assert "空白代表未配置，不代表 0" in page
+    assert "系统不会用 0 或演示曲线填充" in page
+    assert "meta.qualityFlags" in page and "meta.source" in page and "meta.asOf" in page
+
+
+def test_data_center_layout_context_failure_is_explicit_and_fail_closed():
+    page = _read("frontend/src/views/admin/dataCenter/AdminDataCenterLayout.vue")
+    assert "ctxError" in page
+    assert "<ErrorState" in page
+    assert "@retry=\"loadContext\"" in page
+    assert "this.ctx = null" in page
+    assert "默认角色" in page or "绝不构造" in page
+
+
+def test_dashboard_and_ranking_surface_data_contract_without_fake_export():
+    dashboard = _read("frontend/src/views/admin/dataCenter/DataCenterDashboardView.vue")
+    ranking = _read("frontend/src/views/admin/dataCenter/DataCenterRankingView.vue")
+    for page in (dashboard, ranking):
+        assert "exportData" not in page
+        assert "演示态" not in page
+        assert "meta.qualityFlags" in page
+        assert "meta.source" in page
+        assert "meta.scope" in page
+        assert "meta.asOf" in page
+    assert "RANKING_PROXY_CALIBER" not in ranking  # 由服务端 meta 返回，页面不得硬编码口径结果
+    assert "ranking.note" in ranking
+    assert "metricKey: 'ALL'" in ranking
+
+
 def test_facade_preserves_viewed_version_instead_of_fetching_latest_before_write():
     src = _read("frontend/src/modules/dataCenter/api/dataCenter.api.js")
     assert "const viewedReportVersions = new Map()" in src
