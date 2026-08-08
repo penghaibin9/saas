@@ -39,6 +39,7 @@ from app.services.affairs_dorm_transfer_scope_guard import install as install_do
 from app.services.affairs_four_end_contract import install as install_affairs_four_end_contract
 from app.services.affairs_four_end_review_guard import install as install_affairs_four_end_review_guard
 from app.services.affairs_four_end_terminal_guard import install as install_affairs_four_end_terminal_guard
+from app.services.affairs_funding_authority_service import install as install_funding_authority
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
 from app.services.affairs_returned_view_service import install as install_returned_view_projection
@@ -113,4 +114,5 @@ install_dorm_node_guard()
 install_dorm_transfer_scope_guard()
 install_student_contract()
 install_student_contract_security_guard()
+install_funding_authority()
 install_affairs_four_end_terminal_guard(api_router)
