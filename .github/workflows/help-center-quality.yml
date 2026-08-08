@@ -69,6 +69,7 @@ jobs:
             src/config/__tests__/helpCenterCore.test.js \
             src/config/__tests__/systemHelpCards.test.js \
             src/config/__tests__/foundationHelpCards.test.js \
+            src/config/__tests__/firstSchoolGuideV306.test.js \
             src/config/__tests__/studentDataHelpCards.test.js \
             src/config/__tests__/verifiedHelpOverrides.test.js \
             src/config/__tests__/studentAffairsVerifiedOverrides.test.js \
