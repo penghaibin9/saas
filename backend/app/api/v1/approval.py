@@ -1,9 +1,10 @@
 """审批任务 API：正式路由只连接真实数据库服务。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
 
 from app.api.v1.file_contract import validated_local_file_response
+from app.core.context import get_tenant
 from app.core.idempotency import begin as idempotency_begin, finish as idempotency_finish
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
@@ -19,6 +20,8 @@ from app.schemas.approval import (
     ApprovalTemplateVoidRequest,
     ApprovalTransferRequest,
 )
+from app.services import approval_export_service as exportsvc
+from app.services import approval_returned_service as returnedsvc
 from app.services import approval_runtime_service as runtime
 from app.services import approval_template_service as adminsvc
 
@@ -70,7 +73,7 @@ def returned_tasks(
     rectifyStatus: str | None = Query(None, max_length=30),
     user=Depends(require_staff),
 ):
-    items, total = runtime.list_returned(
+    items, total = returnedsvc.list_returned(
         page, pageSize, user=user, keyword=keyword, rectify_status=rectifyStatus
     )
     return success(paginate(items, total, page, pageSize))
@@ -181,9 +184,10 @@ def batch_process(
     return success(result, message="批量处理完成")
 
 
-@router.post("/export", summary="创建审批中心真实 xlsx 导出任务")
+@router.post("/export", summary="创建审批中心后台 xlsx 导出任务")
 def create_export(
     body: ApprovalExportRequest,
+    background_tasks: BackgroundTasks,
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
@@ -195,14 +199,26 @@ def create_export(
     )
     if cached is not None:
         return success(cached, message="导出任务已存在（幂等重放）")
-    result = adminsvc.create_export(body.scope, body.purpose, user=user)
+    result = exportsvc.create_job(body.scope, body.purpose, user=user)
+    tenant = dict(get_tenant() or {})
+    background_tasks.add_task(
+        exportsvc.run_job,
+        result["taskId"],
+        tenant=tenant,
+        user=dict(user or {}),
+    )
     idempotency_finish(handle, result)
     return success(result, message="导出任务已创建")
 
 
-@router.get("/export/{task_id}/download", summary="下载审批中心真实 xlsx（租户+权限校验）")
+@router.get("/export/{task_id}", summary="查询审批中心导出任务状态")
+def export_status(task_id: str, user=Depends(require_staff)):
+    return success(exportsvc.get_job(task_id, user=user))
+
+
+@router.get("/export/{task_id}/download", summary="下载已完成审批中心 xlsx（租户+权限校验）")
 def download_export(task_id: str, user=Depends(require_staff)):
-    path = adminsvc.export_file_path(task_id, user=user)
+    path = exportsvc.export_file_path(task_id, user=user)
     return validated_local_file_response(
         path,
         filename=path.name,
