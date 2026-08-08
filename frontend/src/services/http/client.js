@@ -1,41 +1,33 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-const API_PREFIX = import.meta.env.VITE_API_PREFIX || '/api/v1'
-const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_REQUEST_TIMEOUT_MS || 15000)
-const TOKEN_KEY = 'saas_access_token'
-const REFRESH_KEY = 'saas_refresh_token'
-const OFFLINE_COOLDOWN_MS = 5000
+/**
+ * P2 · 统一请求客户端：解析后端统一响应 {code,bizCode,message,data,traceId,timestamp}。
+ * 后端不可达时进入 15s 离线冷却（期间直接走 mock fallback，页面不白屏）。
+ * P11：不再自动 mock-login——未登录必须经登录页（账号密码=真实库 / 演示账号=演示租户）。
+ * 令牌存 sessionStorage：F5 刷新不掉登录，关浏览器即清（比 localStorage 更安全）。
+ */
+import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
+import { toast } from '@/utils/toast'
 
-const state = {
-  token: '',
-  refreshToken: '',
-  offlineUntil: 0,
-  notified: false
-}
+const TOKEN_KEY = 'gx_pc_token_v1'
+const REFRESH_KEY = 'gx_pc_refresh_v1'
 
 function _load(key) {
-  try { return localStorage.getItem(key) || '' } catch { return '' }
-}
-function _save(key, value) {
-  try {
-    if (value) localStorage.setItem(key, value)
-    else localStorage.removeItem(key)
-  } catch { /* ignore */ }
+  try { return sessionStorage.getItem(key) || '' } catch { return '' }
 }
 
-state.token = _load(TOKEN_KEY)
-state.refreshToken = _load(REFRESH_KEY)
-
-function isWriteMethod(method = 'GET') {
-  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method).toUpperCase())
+function _save(key, val) {
+  try { val ? sessionStorage.setItem(key, val) : sessionStorage.removeItem(key) } catch { /* 忽略 */ }
 }
 
-function canUseMockFallback() {
-  const configured = String(import.meta.env.VITE_USE_MOCK || '').toLowerCase() === 'true'
-  const isProd = !!import.meta.env.PROD
-  return configured && !isProd
-}
+const state = { token: _load(TOKEN_KEY), refreshToken: _load(REFRESH_KEY), offlineUntil: 0, notified: false }
 
-function isBackendOffline() {
+/** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
+const REQUEST_TIMEOUT_MS =
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
+
+/** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
+const OFFLINE_COOLDOWN_MS = 15000
+
+export function isBackendOffline() {
   return Date.now() < state.offlineUntil
 }
 
@@ -44,10 +36,44 @@ function clearOfflineState() {
   state.notified = false
 }
 
+/** 冷却期内跳过真实 fetch，供 mock 层立即回退（不再重复等待超时） */
 function throwOfflineSkip(method) {
-  const e = new Error(`后端暂不可达，跳过 ${method} 请求`)
-  e.offlineSkip = true
-  throw e
+  const err = new Error('后端离线冷却中')
+  err.offlineSkip = true
+  if (!canUseMockFallback() || isWriteMethod(method)) {
+    err.biz = true
+    err.code = isWriteMethod(method) ? 503002 : 503001
+    err.message = isWriteMethod(method)
+      ? '真实接口不可用，写操作禁止 mock 成功'
+      : '真实接口不可用，生产环境已禁用 mock fallback'
+  }
+  throw err
+}
+
+function _holdTokens(access, refresh) {
+  state.token = access || ''
+  state.refreshToken = refresh || ''
+  _save(TOKEN_KEY, state.token)
+  _save(REFRESH_KEY, state.refreshToken)
+}
+
+export function shouldTryReal() {
+  return realApiEnabled()
+}
+
+export function canUseMockFallback() {
+  return allowMockFallback()
+}
+
+export function isWriteMethod(method = 'GET') {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase())
+}
+
+function strictFailure(label, e) {
+  const err = e instanceof Error ? e : new Error(String(e || '真实接口不可用'))
+  err.strict = true
+  err.label = label
+  return err
 }
 
 function markOffline() {
@@ -55,10 +81,9 @@ function markOffline() {
   if (!state.notified) {
     state.notified = true
     try {
-      // 保留开发环境提示；生产环境 canUseMockFallback=false，不会进入此分支的 mock 语义。
-      console.info('后端服务暂不可达')
+      toast.info('后端服务不可达，已自动回退演示数据（mock）')
     } catch {
-      /* ignore */
+      /* toast 不可用时静默 */
     }
   }
 }
@@ -71,10 +96,11 @@ async function rawRequest(path, {
     throwOfflineSkip(methodUp)
   }
   const qs = params
-    ? '?' + Object.entries(params)
-      .filter(([, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&')
+    ? '?' +
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
     : ''
   const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) }
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
@@ -109,9 +135,7 @@ async function rawRequest(path, {
       if (!canUseMockFallback() || isWriteMethod(method)) {
         e.biz = true
         e.code = isWriteMethod(method) ? 503002 : 503001
-        e.message = isWriteMethod(method)
-          ? '真实接口不可用，写操作禁止 mock 成功'
-          : '真实接口不可用，生产环境已禁用 mock fallback'
+        e.message = isWriteMethod(method) ? '真实接口不可用，写操作禁止 mock 成功' : '真实接口不可用，生产环境已禁用 mock fallback'
       }
     }
     throw e
@@ -126,14 +150,6 @@ async function ensureToken() {
   err.biz = true
   err.code = 401001
   throw err
-}
-
-function _holdTokens(accessToken, refreshToken) {
-  state.token = accessToken || ''
-  if (refreshToken !== undefined) state.refreshToken = refreshToken || ''
-  _save(TOKEN_KEY, state.token)
-  _save(REFRESH_KEY, state.refreshToken)
-  clearOfflineState()
 }
 
 function _redirectToLogin() {
@@ -153,7 +169,9 @@ async function tryRefresh() {
   refreshPromise = (async () => {
     try {
       const d = await rawRequest('/auth/refresh', {
-        method: 'POST', auth: false, forceProbe: true,
+        method: 'POST',
+        auth: false,
+        forceProbe: true,
         body: { refreshToken: state.refreshToken }
       })
       _holdTokens(d.accessToken, d.refreshToken || '')
@@ -173,32 +191,39 @@ export function setToken(token) {
   _save(TOKEN_KEY, state.token)
 }
 
-export function setRefreshToken(token) {
-  state.refreshToken = token || ''
-  _save(REFRESH_KEY, state.refreshToken)
-}
-
 export function applyAuthSession(accessToken, refreshToken) {
-  _holdTokens(accessToken || '', refreshToken)
+  if (refreshToken === undefined) {
+    state.token = accessToken || ''
+    _save(TOKEN_KEY, state.token)
+    return
+  }
+  _holdTokens(accessToken, refreshToken)
 }
 
 export function clearAuthSession() {
   _holdTokens('', '')
+  clearOfflineState()
+  try {
+    import('@/security/permissionGate').then((m) => m.clearPermissionPatterns?.()).catch(() => {})
+  } catch {
+    /* ignore */
+  }
 }
 
-export function getToken() { return state.token }
-export function getRefreshToken() { return state.refreshToken }
-export function backendOffline() { return isBackendOffline() }
-export function mockFallbackEnabled() { return canUseMockFallback() }
+export function getToken() {
+  return state.token
+}
 
 export function currentUserFromToken() {
-  if (!state.token) return null
+  const t = state.token
+  if (!t || t.split('.').length !== 3) return null
   try {
-    const parts = state.token.split('.')
-    if (parts.length < 2) return null
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = decodeURIComponent(
-      atob(b64).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+      atob(b64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
     )
     const p = JSON.parse(json)
     return {
@@ -227,7 +252,8 @@ export async function fetchMyAuthContexts() {
 
 export async function switchAuthContext(contextId, clientType = 'PC') {
   const data = await request('/auth/switch-role', {
-    method: 'POST', body: { contextId, clientType }
+    method: 'POST',
+    body: { contextId, clientType }
   })
   if (data && data.accessToken) {
     applyAuthSession(
@@ -250,12 +276,12 @@ export async function issueLoginCaptcha(payload) {
 export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()
   const data = await rawRequest('/auth/login', {
-    method: 'POST', auth: false, forceProbe: true,
-    body: {
-      loginName, password, tenantCode: tenantCode || undefined,
+    method: 'POST',
+    auth: false,
+    forceProbe: true,
+    body: { loginName, password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
-      captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined
-    }
+      captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
   })
   _holdTokens(data.accessToken, data.refreshToken || '')
   return data
@@ -275,7 +301,11 @@ export async function request(path, options = {}) {
 }
 
 export async function logoutRemote() {
-  try { await rawRequest('/auth/logout', { method: 'POST' }) } catch { /* 离线登出静默 */ }
+  try {
+    await rawRequest('/auth/logout', { method: 'POST' })
+  } catch {
+    /* 离线登出静默 */
+  }
   clearAuthSession()
 }
 
@@ -300,35 +330,120 @@ export async function requestUpload(path, file, fieldName = 'file') {
       err.code = payload.code
       err.bizCode = payload.bizCode
       err.details = payload.details
-      err.traceId = payload.traceId
       throw err
     }
     return payload.data
+  } catch (e) {
+    if (!e.biz) {
+      markOffline()
+      e.biz = true
+      e.code = 503002
+      e.message = '真实接口不可用，写操作禁止 mock 成功'
+    }
+    throw e
   } finally {
     clearTimeout(timer)
   }
 }
 
-export async function requestBlob(path, options = {}) {
+export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
   await ensureToken()
-  const params = options.params
   const qs = params
-    ? '?' + Object.entries(params)
-      .filter(([, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+    ? '?' +
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
     : ''
-  const headers = { ...(options.headers || {}) }
-  if (state.token) headers.Authorization = `Bearer ${state.token}`
-  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
-    method: options.method || 'GET', headers
-  })
-  if (!res.ok) {
-    const payload = await res.json().catch(() => null)
-    const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
-    err.biz = true
-    err.code = payload?.code || res.status
-    err.bizCode = payload?.bizCode
-    throw err
+
+  const doFetch = async () => {
+    const headers = {}
+    if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
+    if (body) headers['Content-Type'] = 'application/json'
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15000)
+    try {
+      const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal
+      })
+      if (res.status === 401) {
+        const err = new Error('未登录，请先登录')
+        err.biz = true
+        err.code = 401001
+        throw err
+      }
+      if (!res.ok) {
+        const payload = await res.clone().json().catch(() => null)
+        const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
+        err.biz = true
+        err.code = payload?.code || res.status
+        err.bizCode = payload?.bizCode
+        err.details = payload?.details
+        throw err
+      }
+      return await res.blob()
+    } catch (e) {
+      if (!e.biz) {
+        markOffline()
+        e.biz = true
+        e.code = 503001
+        e.message = '真实接口不可用，下载失败'
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
   }
-  return res.blob()
+
+  try {
+    return await doFetch()
+  } catch (e) {
+    if (e.biz && e.code === 401001) {
+      if (await tryRefresh()) return doFetch()
+      _redirectToLogin()
+    }
+    throw e
+  }
+}
+
+export function withFallback(label, realFn, mockFn) {
+  if (!shouldTryReal()) {
+    if (canUseMockFallback()) return mockFn()
+    return Promise.reject(strictFailure(label, new Error('生产环境已禁用 mock fallback')))
+  }
+  if (canUseMockFallback() && isBackendOffline()) return mockFn()
+  return realFn().catch((e) => {
+    if (e.biz || !canUseMockFallback()) throw strictFailure(label, e)
+    // eslint-disable-next-line no-console
+    console.warn(`[realApi] ${label} 回退 mock：`, e.message)
+    return mockFn()
+  })
+}
+
+export function bizStateHint(err) {
+  const bc = err && (err.bizCode || '')
+  if (bc === 'NO_PERMISSION' || err?.code === 403001) {
+    return { kind: 'no-permission', title: '无访问权限', desc: '你的角色未开通该功能，请联系管理员。' }
+  }
+  if (bc === 'NO_DATA_SCOPE' || err?.code === 403002) {
+    return { kind: 'no-scope', title: '尚未配置管理范围', desc: '你还没有被分配可管理的班级/学院/楼栋，请联系管理员配置后再试。' }
+  }
+  return null
+}
+
+export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
+  if (!shouldTryReal()) {
+    if (!write && canUseMockFallback()) return mockFn()
+    throw strictFailure(label, new Error(write ? '写操作禁止 mock 成功' : '生产环境已禁用 mock fallback'))
+  }
+  if (!write && canUseMockFallback() && isBackendOffline()) return mockFn()
+  try {
+    return await realFn()
+  } catch (e) {
+    if (e.biz || write || !canUseMockFallback()) throw strictFailure(label, e)
+    return mockFn()
+  }
 }
