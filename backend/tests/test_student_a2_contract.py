@@ -17,7 +17,6 @@ def test_formal_student_facade_has_no_mock_dependency_or_memory_business_writes(
     assert "_mockGet" not in source
     assert "_mockCreate" not in source
 
-    # 无真实服务端合同的旧批量动作必须 fail-closed，不能修改浏览器数组后返回成功。
     assert "batchAssignClass()" in source
     assert "ACADEMIC_STATUS_CHANGE_REQUIRED" in source
     assert "batchAssignCounselor()" in source
@@ -67,3 +66,55 @@ def test_student_profile_org_changes_remain_routed_to_academic_status_change():
     assert "ACADEMIC_STATUS_CHANGE_REQUIRED" in frontend
     assert "学院/专业/班级属于学籍事实" in frontend
     assert "必须走学籍异动" in backend
+
+
+def test_student_dashboard_uses_server_authoritative_summary_and_scope_timestamp():
+    api = read("backend/app/api/v1/student.py")
+    service = read("backend/app/services/student_service.py")
+    frontend = read("frontend/src/modules/student/api/student.api.js")
+
+    assert '@router.get("/summary"' in api
+    assert "svc.summary(class_ids=class_ids, student_ids=student_ids)" in api
+    assert "def summary(*, class_ids=None, student_ids=None)" in service
+    assert '"totalStudents": total' in service
+    assert '"accountBinding": {' in service
+    assert '"scopeType": scope_type' in service
+    assert '"asOf": datetime.utcnow()' in service
+    assert "request('/students/summary')" in frontend
+    assert "asOf: summary?.asOf" in frontend
+
+
+def test_identity_filter_is_server_side_and_never_page_local():
+    api = read("backend/app/api/v1/student.py")
+    frontend = read("frontend/src/modules/student/api/student.api.js")
+
+    assert "identityVerifyStatus: params.identityVerifyStatus" in frontend
+    assert "rows.filter((row) => row.identityVerifyStatus" not in frontend
+    assert 'requested_identity != "NOT_CONFIGURED"' in api
+    assert "paginate([], 0, page, pageSize)" in api
+
+
+def test_student_writes_use_stable_idempotency_header_and_server_guard():
+    client = read("frontend/src/services/http/client.js")
+    frontend = read("frontend/src/modules/student/api/student.api.js")
+    api = read("backend/app/api/v1/student.py")
+
+    assert "headers: extraHeaders" in client
+    assert "...(extraHeaders || {})" in client
+    assert "function idempotencyHeaders" in frontend
+    assert "'Idempotency-Key'" in frontend
+    assert "idempotencyHeaders('create'" in frontend
+    assert "idempotencyHeaders('update'" in frontend
+    assert "idempotencyHeaders('void'" in frontend
+    assert "idempotencyHeaders('restore'" in frontend
+    assert "idempotency_guard" in api
+    assert "require_store=True" in api
+
+
+def test_unimplemented_student_business_actions_are_not_advertised_as_enabled():
+    source = read("frontend/src/modules/student/api/student.api.js")
+
+    assert "importStudents: action(false, false" in source
+    assert "changeStatus: action(false, false" in source
+    assert "batchChangeStatus: action(false, false" in source
+    assert "exportStatusRecords: action(false, false" in source
