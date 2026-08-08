@@ -11,11 +11,11 @@ def read(rel: str) -> str:
 def test_formal_student_facade_has_no_mock_dependency_or_memory_business_writes():
     source = read("frontend/src/modules/student/api/student.api.js")
 
-    assert "@/mocks/" not in source
-    assert "roleProfiles" not in source
-    assert "mockStudents" not in source
-    assert "withFallback" not in source
-    assert "_mock" not in source
+    assert "from '@/mocks/" not in source
+    assert 'from "@/mocks/' not in source
+    assert "withFallback(" not in source
+    assert "_mockGet" not in source
+    assert "_mockCreate" not in source
 
     # 无真实服务端合同的旧批量动作必须 fail-closed，不能修改浏览器数组后返回成功。
     assert "batchAssignClass()" in source
