@@ -1,7 +1,8 @@
 """为真实演示沙箱补齐四大业务域的页面与流程状态数据。
 
-主流程由各领域的显式种子负责；本文件负责兜底所有已建 ORM 业务表，并根据
-``status`` 字段注释中声明的状态枚举补齐缺失状态。所有数据仅写入传入租户。
+主流程由各领域的显式种子负责；本文件只兜底适合“独立状态行”的 ORM 业务表。
+任何依赖真实父记录、追加式版本、唯一活动子流程或数据库触发器维持关系完整性的表，
+必须由领域显式 seed / service 构造，禁止用通用 marker 伪造外键。
 """
 from __future__ import annotations
 
@@ -19,6 +20,22 @@ DOMAIN_PREFIXES = (
 DOMAIN_EXACT = {
     "t_teacher_student_scope",
 }
+
+# 这些表不是“页面状态覆盖表”，而是处分 package 11 的关系完整性事实：
+# - decision_version：case_id 必须指向同租户真实 DisciplineCase，且决定类型有严格枚举；
+# - appeal/remove：case_id 必须指向真实主案，并受唯一活动子流程触发器保护；
+# - projection：source_case_id/cs_student_id 必须与主案和服务学生一致；
+# - subflow_lock：只能由真实 appeal/remove 流程创建。
+# generic coverage 过去给所有必填 *_id 填 900... marker，会绕开领域语义并被 MySQL
+# fail-closed 触发器正确拒绝。这里明确排除，要求领域显式 seed/service 负责。
+RELATIONAL_INTEGRITY_TABLES = frozenset({
+    "t_affairs_discipline_decision_version",
+    "t_affairs_discipline_appeal",
+    "t_affairs_discipline_remove_apply",
+    "t_affairs_discipline_subflow_lock",
+    "t_cs_discipline",
+})
+
 _STATUS_TOKEN = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _IGNORE_TOKENS = {
     "JSON", "JSONB", "TODO", "NULL", "TRUE", "FALSE", "ID", "API", "PC",
@@ -29,9 +46,14 @@ _IGNORE_TOKENS = {
 def _domain_tables(db):
     from app.models import Base
     existing = set(inspect(db.get_bind()).get_table_names())
-    return [t for t in Base.metadata.sorted_tables
-            if t.name in existing and "tenant_id" in t.c
-            and (t.name in DOMAIN_EXACT or t.name.startswith(DOMAIN_PREFIXES))]
+    return [
+        table
+        for table in Base.metadata.sorted_tables
+        if table.name in existing
+        and table.name not in RELATIONAL_INTEGRITY_TABLES
+        and "tenant_id" in table.c
+        and (table.name in DOMAIN_EXACT or table.name.startswith(DOMAIN_PREFIXES))
+    ]
 
 
 def declared_statuses(table) -> tuple[str, ...]:
@@ -137,7 +159,8 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
         return {"skipped": True, "reason": "no students"}
 
     inserted: dict[str, int] = {}
-    for seq, table in enumerate(_domain_tables(db), 1):
+    tables = _domain_tables(db)
+    for seq, table in enumerate(tables, 1):
         statuses = declared_statuses(table) or (None,)
         count = 0
         for row_index, status in enumerate(statuses):
@@ -152,14 +175,19 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
         if count:
             inserted[table.name] = count
     db.commit()
-    return {"tables": len(_domain_tables(db)), "inserted": inserted,
-            "insertedRows": sum(inserted.values())}
+    return {
+        "tables": len(tables),
+        "inserted": inserted,
+        "insertedRows": sum(inserted.values()),
+        "explicitRelationshipTables": sorted(RELATIONAL_INTEGRITY_TABLES),
+    }
 
 
 def sandbox_flow_coverage_report(db, tenant_id: int) -> dict:
     missing = []
     covered = []
-    for table in _domain_tables(db):
+    tables = _domain_tables(db)
+    for table in tables:
         statuses = declared_statuses(table) or (None,)
         for status in statuses:
             conditions = [table.c.tenant_id == tenant_id]
@@ -168,5 +196,10 @@ def sandbox_flow_coverage_report(db, tenant_id: int) -> dict:
             count = int(db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0)
             item = {"table": table.name, "status": status, "count": count}
             (covered if count else missing).append(item)
-    return {"covered": covered, "missing": missing,
-            "coveredCount": len(covered), "missingCount": len(missing)}
+    return {
+        "covered": covered,
+        "missing": missing,
+        "coveredCount": len(covered),
+        "missingCount": len(missing),
+        "explicitRelationshipTables": sorted(RELATIONAL_INTEGRITY_TABLES),
+    }
