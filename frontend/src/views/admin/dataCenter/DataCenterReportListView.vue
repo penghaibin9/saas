@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="专题报表"
-    :subtitle="'共 ' + pagination.total + ' 份报表配置 · 作废为逻辑删除，全程留痕可追溯'"
+    :subtitle="'共 ' + pagination.total + ' 份报表配置 · 发布版本冻结，作废全程留痕可追溯'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -28,11 +28,11 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-report="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ row.id.toUpperCase() }} · {{ row.description }}</div>
+          <div class="mp-cell-sub">{{ row.reportNo }} · {{ row.description }}</div>
         </template>
         <template #cell-cycle="{ row }">
           <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.cycleLabel }}</div>
-          <div class="mp-cell-sub">{{ row.scopeName }}</div>
+          <div class="mp-cell-sub">{{ row.scopeName }} · {{ row.caliberLabel }}</div>
         </template>
         <template #cell-status="{ row }">
           <StatusTag :type="row.statusTone" :label="row.statusLabel" dot />
@@ -65,7 +65,7 @@
       <section class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">审计留痕摘要（最近 {{ audits.length }} 条）</span>
-          <span class="mp-note">导出 / 配置变更 / 作废等敏感操作均自动留痕</span>
+          <span class="mp-note">配置变更 / 发布 / 撤回 / 作废均由服务端自动留痕</span>
         </div>
         <div class="mp-card__body">
           <table class="mp-audit">
@@ -108,6 +108,12 @@
           </select>
         </label>
         <label class="dcrl-field">
+          <span class="dcrl-field__label">统计口径</span>
+          <select v-model="form.data.caliber" class="dcrl-input">
+            <option v-for="c in ctx.filterOptions.calibers" :key="c.value" :value="c.value">{{ c.label }}</option>
+          </select>
+        </label>
+        <label class="dcrl-field">
           <span class="dcrl-field__label">数据范围说明</span>
           <input v-model="form.data.scopeName" type="text" class="dcrl-input" placeholder="例如：全校 · 2026 届" />
         </label>
@@ -116,7 +122,7 @@
           <textarea v-model="form.data.description" class="mp-textarea" placeholder="说明报表用途、指标口径与共享范围，便于审计与交接"></textarea>
         </label>
         <p v-if="form.error" class="mp-form-err">{{ form.error }}</p>
-        <p class="mp-note">保存后生成配置版本并写入审计日志；新报表默认为「草稿」状态，发布需具备报表发布权限的角色操作。</p>
+        <p class="mp-note">草稿可编辑；发布后服务端冻结指标版本，必须先撤回才可继续修改工作副本。</p>
       </div>
       <template #footer>
         <AppButton variant="primary" :loading="form.submitting" @click="submitForm">
@@ -130,7 +136,7 @@
       v-model:visible="voidState.visible"
       type="danger"
       title="作废报表"
-      :message="voidState.row ? '确认作废「' + voidState.row.name + '」？作废后停止数据更新并对订阅方隐藏，历史数据与审计记录仍保留可追溯。' : ''"
+      :message="voidState.row ? '确认作废「' + voidState.row.name + '」？已发布历史版本仍永久保留，当前报表停止使用。' : ''"
       confirm-text="确认作废"
       require-reason
       reason-label="作废原因"
@@ -138,40 +144,10 @@
       :submitting="voidState.submitting"
       @confirm="onVoidConfirm"
     />
-
-    <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="primary"
-      title="导出报表清单"
-      :message="ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
-        </div>
-      </div>
-    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 专题报表列表（/admin/data-center/reports）。
- * 新增 / 编辑走 AppDrawer 表单，作废为 danger 二次确认 + 原因必填（逻辑删除）；
- * 页脚展示最近审计留痕摘要；部分演示角色无本页访问权限（渲染 forbidden 状态）。
- */
 import {
   ModulePageShell,
   ModuleToolbar,
@@ -188,7 +164,9 @@ import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', category: '', status: '' })
-const EMPTY_FORM = () => ({ name: '', category: 'ACADEMIC', cycle: 'MONTHLY', scopeName: '', description: '' })
+const EMPTY_FORM = () => ({
+  name: '', category: 'ACADEMIC', cycle: 'MONTHLY', caliber: 'REGISTERED', scopeName: '全校', description: ''
+})
 
 export default {
   name: 'DataCenterReportListView',
@@ -218,7 +196,7 @@ export default {
       columns: [
         { key: 'report', title: '报表' },
         { key: 'categoryLabel', title: '分类', width: '90px' },
-        { key: 'cycle', title: '周期 / 范围' },
+        { key: 'cycle', title: '周期 / 范围 / 口径' },
         { key: 'ownerName', title: '负责人', width: '90px' },
         { key: 'updatedAt', title: '最近更新', width: '140px' },
         { key: 'status', title: '状态', width: '100px' },
@@ -232,10 +210,7 @@ export default {
         error: '',
         data: EMPTY_FORM()
       },
-      voidState: { visible: false, row: null, submitting: false },
-      exportVisible: false,
-      exportPurpose: 'ARCHIVE',
-      exporting: false
+      voidState: { visible: false, row: null, submitting: false }
     }
   },
   computed: {
@@ -259,10 +234,7 @@ export default {
       ]
     },
     toolbarActions() {
-      return [
-        { key: 'createReport', label: '＋ 新增报表配置', variant: 'primary' },
-        { key: 'exportReport', label: '导出报表清单' }
-      ]
+      return [{ key: 'createReport', label: '＋ 新增报表配置', variant: 'primary' }]
         .filter((a) => this.pa[a.key] && this.pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !this.pa[a.key].allowed, disabledReason: this.pa[a.key].reason }))
     }
@@ -276,10 +248,11 @@ export default {
   methods: {
     canEditRow(row) {
       const pa = this.pa.editReport
-      return !!(pa && pa.visible && pa.allowed) && row.status !== 'VOIDED'
+      return !!(pa && pa.visible && pa.allowed) && ['DRAFT', 'WITHDRAWN'].includes(row.status)
     },
     editRowReason(row) {
       if (row.status === 'VOIDED') return '已作废的报表不可编辑'
+      if (row.status === 'PUBLISHED') return '已发布报表必须先进入详情撤回，才能修改工作副本'
       const pa = this.pa.editReport
       return pa && !pa.allowed ? pa.reason : ''
     },
@@ -326,17 +299,12 @@ export default {
       if (res.code === 0) this.audits = res.data
     },
     onToolbar(key) {
-      if (key === 'createReport') {
-        this.form.mode = 'create'
-        this.form.editingId = ''
-        this.form.data = EMPTY_FORM()
-        this.form.error = ''
-        this.form.visible = true
-      }
-      if (key === 'exportReport') {
-        this.exportPurpose = 'ARCHIVE'
-        this.exportVisible = true
-      }
+      if (key !== 'createReport') return
+      this.form.mode = 'create'
+      this.form.editingId = ''
+      this.form.data = EMPTY_FORM()
+      this.form.error = ''
+      this.form.visible = true
     },
     openEdit(row) {
       if (!this.canEditRow(row)) return
@@ -347,6 +315,7 @@ export default {
         name: row.name,
         category: row.category,
         cycle: row.cycle,
+        caliber: row.caliber || 'REGISTERED',
         scopeName: row.scopeName,
         description: row.description
       }
@@ -361,18 +330,17 @@ export default {
       this.form.error = ''
       this.form.submitting = true
       const payload = { ...this.form.data, name }
-      const res =
-        this.form.mode === 'create'
-          ? await dataCenterApi.createReport(payload)
-          : await dataCenterApi.updateReport(this.form.editingId, payload)
+      const res = this.form.mode === 'create'
+        ? await dataCenterApi.createReport(payload)
+        : await dataCenterApi.updateReport(this.form.editingId, payload)
       this.form.submitting = false
       if (res.code === 0) {
         this.form.visible = false
-        toast.success(this.form.mode === 'create' ? '报表配置已创建（草稿），操作已写入审计日志' : '报表配置已更新，操作已写入审计日志')
-        this.load()
-        this.loadAudits()
+        toast.success(this.form.mode === 'create' ? '报表草稿已创建并写入服务端审计' : '报表工作副本已更新并写入服务端审计')
+        await Promise.all([this.load(), this.loadAudits()])
       } else {
         this.form.error = res.message
+        if (res.bizCode === 'DATA_VERSION_CONFLICT') await this.load()
       }
     },
     openVoid(row) {
@@ -383,27 +351,18 @@ export default {
     async onVoidConfirm({ reason }) {
       if (!this.voidState.row) return
       this.voidState.submitting = true
-      const res = await dataCenterApi.voidReport(this.voidState.row.id, { reason })
+      const res = await dataCenterApi.voidReport(this.voidState.row.id, {
+        reason,
+        version: this.voidState.row.version
+      })
       this.voidState.submitting = false
       if (res.code === 0) {
         this.voidState.visible = false
-        toast.success('报表已作废：数据停止更新，作废原因已写入审计日志')
-        this.load()
-        this.loadAudits()
+        toast.success('报表已作废，历史发布版本与审计记录继续保留')
+        await Promise.all([this.load(), this.loadAudits()])
       } else {
         toast.error(res.message)
-      }
-    },
-    async onExportConfirm() {
-      this.exporting = true
-      const res = await dataCenterApi.exportData({ scope: 'REPORT', purpose: this.exportPurpose })
-      this.exporting = false
-      if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入审计日志（演示态，暂未生成实际文件）')
-        this.loadAudits()
-      } else {
-        toast.error(res.message)
+        if (res.bizCode === 'DATA_VERSION_CONFLICT') await this.load()
       }
     }
   }
