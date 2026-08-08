@@ -73,10 +73,10 @@ def test_package10_closeout_sources_lock_authoritative_contract():
     assert 'model_copy(update={"amount": None})' in service
     assert "申请人与复核人必须为不同人员" in service
     assert "APPROVED_AMOUNT_FROZEN" in service
-    assert "legacy._grant_one = _grant_one" in service
     assert "/amount-adjustments/{adjustment_id}/review" in api
     assert "studentAffairs.funding.publicity.manage" in api
-    assert "install_funding_authority()" in router
+    assert "affairs_funding_authority_router" in router
+    assert "install_funding_authority()" not in router
 
 
 def test_package10_mysql_rule_adjustment_and_concurrency(db_mode):

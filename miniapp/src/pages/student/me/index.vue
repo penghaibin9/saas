@@ -99,6 +99,7 @@ export default {
     onListMenu(row) {
       if (row.key === 'privacy') return go('/pages/common/account-security/index')
       if (row.key === 'export') return this.exportData()
+      if (row.key === 'help') return go('/pages/common/help/index')
       toast(row.label + '：即将开放')
     },
     exportData() {

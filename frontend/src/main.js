@@ -9,7 +9,19 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import './config/helpCenterRuntime'
 import { toast } from './utils/toast'
+
+// 小程序 WebView / 售后二维码共用的公开只读帮助页。
+// 与 /admin/help 分离：不暴露管理端导航，不要求管理端 token，也没有业务写入口。
+if (!router.hasRoute('public-help')) {
+  router.addRoute({
+    path: '/help',
+    name: 'public-help',
+    component: () => import('./views/help/PublicHelpView.vue'),
+    meta: { public: true, title: '帮助中心' }
+  })
+}
 
 // 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
 if (!router.hasRoute('unknown-route-fallback')) {

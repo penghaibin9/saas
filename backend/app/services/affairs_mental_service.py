@@ -76,7 +76,13 @@ def _sensitive_view_audit(student_id, reason: str, resource: str) -> None:
 
 
 def psy_scope_ids(db, user):
-    """PSY_STUDENT 逐生授权学生 ID 集。None=按角色全可见；set()=无授权学生。"""
+    """PSY_STUDENT 逐生授权学生 ID 集。None=按角色全可见；set()=无授权学生。
+
+    安全边界：授权身份只使用统一学工安全上下文派生的稳定 teacher_key（工号/登录标识），
+    永不使用 realName / teacher_name 作为身份凭证，避免同名教师互相命中敏感学生范围。
+    历史范围若只有姓名而无 teacher_key，必须补齐稳定键；在补齐前保持 fail-closed。
+    """
+    from app.core.affairs_security import _derive_keys
     from app.core.permissions import is_super_admin
     from app.models import StudentProfile, TeacherStudentScope
 
@@ -84,16 +90,15 @@ def psy_scope_ids(db, user):
     role = u.get("currentRoleCode") or ""
     if is_super_admin(user) or role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"):
         return None
-    uid = str(u.get("userId") or "")
-    ctx = str(u.get("activeContextId") or "")
-    name = u.get("realName") or ""
-    keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "", ctx[4:] if ctx.startswith("ctx_") else "", name) if k}
+    keys = _derive_keys(u)
+    if not keys:
+        return set()
     rows = db.scalars(select(TeacherStudentScope).where(
         TeacherStudentScope.tenant_id == _tid(),
         TeacherStudentScope.scope_type == "PSY_STUDENT",
         TeacherStudentScope.status == "ACTIVE",
         TeacherStudentScope.is_deleted.is_(False),
-        (TeacherStudentScope.teacher_key.in_(keys)) | (TeacherStudentScope.teacher_name.in_(keys)),
+        TeacherStudentScope.teacher_key.in_(keys),
     )).all()
     rows = [r for r in rows if not r.role_code or (r.role_code or "").upper() == role.upper()]
     nos = {r.ref_value for r in rows if r.ref_value}
