@@ -30,15 +30,26 @@
             <StatusTag :type="detail.statusTone" :label="detail.statusLabel" dot />
           </div>
           <div class="mp-card__body">
+            <div v-if="detail.meta" class="dcrd-meta">
+              <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ detail.meta.asOf || '尚未发布' }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ detail.meta.caliberLabel || detail.meta.caliber }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ metaScopeName }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">数据来源</span><span class="mp-kv__v">{{ metaSources }}</span></div>
+              <div v-if="detail.meta.qualityFlags && detail.meta.qualityFlags.length" class="dcrd-quality">
+                <div v-for="flag in detail.meta.qualityFlags" :key="flag.code" class="dcrd-quality__item">
+                  <strong>{{ flag.code }}</strong>：{{ flag.message }}
+                </div>
+              </div>
+            </div>
             <EmptyState
               v-if="!detail.metrics.length"
-              title="尚未生成指标数据"
-              description="草稿报表在发布后按统计周期自动汇聚指标数据"
+              title="当前没有已发布指标快照"
+              description="草稿或已撤回报表不会伪造指标；点击“发布报表”后由服务端读取真实统计并冻结一个可追溯版本。"
             />
             <DataTable v-else :columns="metricColumns" :rows="detail.metrics" row-key="id">
               <template #cell-metric="{ row }">
                 <div class="mp-cell-main">{{ row.name }}</div>
-                <div class="mp-cell-sub">{{ row.caliberLabel }}</div>
+                <div class="mp-cell-sub">{{ row.caliberLabel }} · {{ row.source }}</div>
               </template>
               <template #cell-value="{ row }">
                 <span class="dcrd-value">{{ row.value }}</span>
@@ -95,7 +106,7 @@
                 </text>
               </svg>
             </template>
-            <p v-else class="mp-note">该报表暂无趋势序列（草稿或一次性冻结数据）。</p>
+            <p v-else class="mp-note">当前没有权威历史趋势序列；系统不会用 0 或演示曲线补齐。</p>
           </div>
         </section>
       </div>
@@ -109,15 +120,38 @@
             <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ detail.config.caliberLabel }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ detail.config.scopeName }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">负责人</span><span class="mp-kv__v">{{ detail.config.ownerName }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">当前配置版本</span><span class="mp-kv__v">v{{ detail.version }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">已发布版本</span><span class="mp-kv__v">{{ detail.publishedVersion ? 'v' + detail.publishedVersion : '未发布' }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">创建时间</span><span class="mp-kv__v">{{ detail.config.createdAt }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">最近更新</span><span class="mp-kv__v">{{ detail.config.updatedAt }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">共享范围</span><span class="mp-kv__v">{{ detail.config.shareScope }}</span></div>
             <p class="mp-note" style="margin-top: var(--space-3)">{{ detail.description }}</p>
             <div v-if="detail.voidInfo" class="dcrd-void">
-              <div class="dcrd-void__title">该报表已作废（逻辑删除，永久留痕）</div>
+              <div class="dcrd-void__title">该报表已作废（逻辑作废，永久留痕）</div>
               <div class="dcrd-void__desc">作废原因：{{ detail.voidInfo.reason }}</div>
               <div class="dcrd-void__desc">操作：{{ detail.voidInfo.by }} · {{ detail.voidInfo.time }}</div>
             </div>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">发布版本历史</span>
+            <span class="mp-note">共 {{ versions.length }} 个冻结版本</span>
+          </div>
+          <div class="mp-card__body">
+            <table class="mp-audit">
+              <thead><tr><th>版本</th><th>发布时间</th><th>发布人</th><th>口径</th></tr></thead>
+              <tbody>
+                <tr v-for="v in versions" :key="v.id">
+                  <td>v{{ v.versionNo }}</td>
+                  <td>{{ v.publishedAt }}</td>
+                  <td>{{ v.publishedBy }}</td>
+                  <td>{{ v.caliberLabel }}</td>
+                </tr>
+                <tr v-if="!versions.length"><td colspan="4" class="mp-note">尚无发布版本</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -143,47 +177,25 @@
                 </tr>
               </tbody>
             </table>
-            <p class="mp-note" style="margin-top: var(--space-3)">
-              {{ ctx.exportOptions.policyNote }}
-            </p>
+            <p class="mp-note" style="margin-top: var(--space-3)">{{ ctx.exportOptions.policyNote }}</p>
           </div>
         </section>
       </div>
     </div>
 
     <AppConfirmDialog
-      v-model:visible="exportVisible"
-      type="primary"
-      title="导出报表数据"
-      :message="'导出内容为本报表指标数据与趋势序列。' + ctx.exportOptions.policyNote"
-      confirm-text="确认导出"
-      :submitting="exporting"
-      @confirm="onExportConfirm"
-    >
-      <div class="mp-note" style="margin-bottom: var(--space-2)">导出用途（必选，写入审计日志）</div>
-      <div
-        v-for="p in ctx.exportOptions.purposes"
-        :key="p.value"
-        class="mp-radio"
-        :class="{ 'is-active': exportPurpose === p.value }"
-        @click="exportPurpose = p.value"
-      >
-        <input type="radio" :checked="exportPurpose === p.value" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ p.label }}</div>
-          <div class="mp-radio__desc">{{ p.desc }}</div>
-        </div>
-      </div>
-    </AppConfirmDialog>
+      v-model:visible="stateAction.visible"
+      :type="stateAction.key === 'withdrawReport' ? 'warning' : 'primary'"
+      :title="stateAction.key === 'withdrawReport' ? '撤回已发布报表' : '发布报表'"
+      :message="stateActionMessage"
+      :confirm-text="stateAction.key === 'withdrawReport' ? '确认撤回' : '确认发布'"
+      :submitting="stateAction.submitting"
+      @confirm="confirmStateAction"
+    />
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 报表详情（/admin/data-center/reports/:reportId）。
- * 展示报表配置（mp-kv）、指标数据表、趋势 SVG 与该报表的审计记录；
- * reportId 不存在时渲染 ErrorState；导出强调脱敏 / 水印 / 审计并留痕到本报表。
- */
 import {
   ModulePageShell,
   ModuleToolbar,
@@ -217,6 +229,7 @@ export default {
       error: '',
       detail: null,
       audits: [],
+      versions: [],
       chart: { width: 560, height: 220, left: 52, right: 20, top: 16, bottom: 30 },
       metricColumns: [
         { key: 'metric', title: '指标' },
@@ -224,9 +237,7 @@ export default {
         { key: 'mom', title: '环比', width: '90px' },
         { key: 'yoy', title: '同比', width: '90px' }
       ],
-      exportVisible: false,
-      exportPurpose: 'REPORT_TO_LEADER',
-      exporting: false
+      stateAction: { visible: false, key: '', submitting: false }
     }
   },
   computed: {
@@ -241,11 +252,33 @@ export default {
       const pa = this.ctx.permissionActions.viewReports
       return (pa && pa.reason) || '当前角色未开通专题报表模块权限'
     },
+    metaScopeName() {
+      return (this.detail && this.detail.meta && this.detail.meta.scope && this.detail.meta.scope.scopeName) || '—'
+    },
+    metaSources() {
+      const rows = (this.detail && this.detail.meta && this.detail.meta.source) || []
+      return rows.length ? rows.map((x) => x.module || x).join('、') : '尚未形成已发布来源快照'
+    },
     toolbarActions() {
+      if (!this.detail) return []
       const pa = this.ctx.permissionActions
-      return [{ key: 'exportReport', label: '导出报表数据', variant: 'primary' }]
-        .filter((a) => pa[a.key] && pa[a.key].visible && !!this.detail)
+      const actions = []
+      if (['DRAFT', 'WITHDRAWN'].includes(this.detail.status)) {
+        actions.push({ key: 'publishReport', label: '发布报表', variant: 'primary' })
+      }
+      if (this.detail.status === 'PUBLISHED') {
+        actions.push({ key: 'withdrawReport', label: '撤回发布', variant: 'warning' })
+      }
+      actions.push({ key: 'exportReport', label: '导出报表数据' })
+      return actions
+        .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+    },
+    stateActionMessage() {
+      if (!this.detail) return ''
+      return this.stateAction.key === 'withdrawReport'
+        ? `撤回「${this.detail.name}」后，已发布版本仍永久保留，但当前领导入口不再展示该版本；撤回后可继续编辑工作副本。`
+        : `发布「${this.detail.name}」将由服务端按当前统计口径读取真实数据并冻结一个新版本。发布失败时不会生成半真半假的版本。`
     },
     maxY() {
       if (!this.detail || !this.detail.trend) return 10
@@ -293,7 +326,7 @@ export default {
       const res = await dataCenterApi.getReportDetail(this.reportId)
       if (res.code === 0) {
         this.detail = res.data
-        this.loadAudits()
+        await Promise.all([this.loadAudits(), this.loadVersions()])
       } else {
         this.detail = null
         this.error = res.message
@@ -302,30 +335,32 @@ export default {
     },
     async loadAudits() {
       const res = await dataCenterApi.getAuditLogs({ targetId: this.reportId })
-      if (res.code === 0) this.audits = res.data
+      this.audits = res.code === 0 ? res.data : []
+    },
+    async loadVersions() {
+      const res = await dataCenterApi.getReportVersions(this.reportId)
+      this.versions = res.code === 0 ? (res.data.items || []) : []
     },
     onToolbar(key) {
-      if (key === 'exportReport') {
-        this.exportPurpose = 'REPORT_TO_LEADER'
-        this.exportVisible = true
+      if (key === 'publishReport' || key === 'withdrawReport') {
+        this.stateAction.key = key
+        this.stateAction.visible = true
       }
     },
-    async onExportConfirm() {
+    async confirmStateAction() {
       if (!this.detail) return
-      this.exporting = true
-      const res = await dataCenterApi.exportData({
-        scope: 'REPORT',
-        purpose: this.exportPurpose,
-        targetId: this.detail.id,
-        targetName: this.detail.name
-      })
-      this.exporting = false
+      this.stateAction.submitting = true
+      const res = this.stateAction.key === 'withdrawReport'
+        ? await dataCenterApi.withdrawReport(this.detail.id, this.detail.version)
+        : await dataCenterApi.publishReport(this.detail.id, this.detail.version)
+      this.stateAction.submitting = false
       if (res.code === 0) {
-        this.exportVisible = false
-        toast.success('导出任务 ' + res.data.taskId + ' 已登记并写入本报表审计记录（演示态，暂未生成实际文件）')
-        this.loadAudits()
+        this.stateAction.visible = false
+        toast.success(this.stateAction.key === 'withdrawReport' ? '报表已撤回，发布版本仍保留可追溯' : '报表已发布并冻结服务端指标版本')
+        await this.load()
       } else {
         toast.error(res.message)
+        if (res.bizCode === 'DATA_VERSION_CONFLICT') await this.load()
       }
     }
   }
@@ -370,8 +405,22 @@ export default {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.dcrd-chart__dot {
-  fill: var(--primary-500);
+.dcrd-chart__dot { fill: var(--primary-500); }
+.dcrd-meta {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+}
+.dcrd-quality {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+}
+.dcrd-quality__item {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 .dcrd-void {
   margin-top: var(--space-3);
