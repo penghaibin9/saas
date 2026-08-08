@@ -66,6 +66,16 @@ def test_employment_bound_rows_use_current_master_facts_for_scope_and_class_filt
     assert "cond.append(_class_filter_condition(class_id))" in src
 
 
+def test_employment_student_detail_is_read_in_same_scoped_session():
+    src = _read("backend/app/modules/employment/services/employment_runtime_service.py")
+    block = src[src.index("def get_student_detail"):src.index("def create_student")]
+    assert "student = _assert_emp_id(db, sid, user)" in block
+    assert "return base.get_student_detail" not in block
+    assert "EmpMaterial.is_deleted.is_(False)" in block
+    assert "EmpFollowup.is_deleted.is_(False)" in block
+    assert 'EmpAuditTrail.biz_type == "RECORD"' in block
+
+
 def test_employment_scoped_writes_are_atomic_not_check_then_second_transaction():
     src = _read("backend/app/modules/employment/services/employment_runtime_service.py")
     # 创建复用同一 session；其余正式写直接在 runtime 的 scope-checked session 内落库。
