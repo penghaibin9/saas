@@ -67,7 +67,7 @@ def finish(handle: tuple[str, str] | None, result: Any, ttl: int = TTL_SECONDS) 
         return
     cache_key, fingerprint = handle
     if str(cache_key).startswith("db:"):
-        _finish_db(int(str(cache_key)[3:]), fingerprint, result, state="SUCCESS")
+        _finish_db(int(str(cache_key)[3:]), fingerprint, result, state="SUCCESS", ttl=ttl)
         return
     cache_set_json(cache_key, {"fingerprint": fingerprint, "state": "SUCCESS", "result": result}, ttl)
 
@@ -92,7 +92,7 @@ def fail(handle: tuple[str, str] | None, *, final: bool = False, error: str | No
     if str(cache_key).startswith("db:"):
         _finish_db(int(str(cache_key)[3:]), fingerprint, {"error": error},
                    state="FINAL_FAILED" if final else "RETRYABLE_FAILED",
-                   delete=not final)
+                   delete=not final, ttl=ttl)
         return
     if final:
         cache_set_json(cache_key, {
@@ -167,9 +167,19 @@ def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
             IdempotencyRecord.key_hash == key_hash,
         )).first()
         if row:
+            now = datetime.utcnow()
+            # DB fallback 必须与 Redis 的 TTL 语义一致：过期后同 key 可作为一次新的业务动作使用，
+            # 包括新的 payload。否则 Redis 故障期间写入的 SUCCESS 会永久吞掉以后同内容操作。
+            if row.expires_at is None or row.expires_at <= now:
+                row.state = "PROCESSING"
+                row.fingerprint = fingerprint
+                row.expires_at = now + timedelta(seconds=TTL_SECONDS)
+                row.result_json = None
+                db.commit()
+                return None, ("db:" + str(row.id), fingerprint)
             if row.fingerprint != fingerprint:
                 raise AppException("DATA_CONFLICT", "同一个 Idempotency-Key 不能用于不同请求内容")
-            if row.state == "PROCESSING" and row.expires_at and row.expires_at > datetime.utcnow():
+            if row.state == "PROCESSING":
                 raise AppException("DATA_CONFLICT", "相同请求正在处理中，请勿重复提交")
             if row.state in ("SUCCESS", "DONE"):
                 return row.result_json, None
@@ -177,7 +187,7 @@ def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
                 raise AppException("DATA_CONFLICT", "相同请求已最终失败，请更换 Idempotency-Key 后重试")
             row.state = "PROCESSING"
             row.fingerprint = fingerprint
-            row.expires_at = datetime.utcnow() + timedelta(seconds=TTL_SECONDS)
+            row.expires_at = now + timedelta(seconds=TTL_SECONDS)
             row.result_json = None
             db.commit()
             return None, ("db:" + str(row.id), fingerprint)
@@ -196,7 +206,10 @@ def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
         return None, ("db:" + str(row.id), fingerprint)
 
 
-def _finish_db(row_id: int, fingerprint: str, result: Any, *, state: str, delete: bool = False) -> None:
+def _finish_db(row_id: int, fingerprint: str, result: Any, *, state: str, delete: bool = False,
+               ttl: int = TTL_SECONDS) -> None:
+    from datetime import datetime, timedelta
+
     from app.models.idempotency import IdempotencyRecord
     from app.services.db_service import session
 
@@ -210,4 +223,6 @@ def _finish_db(row_id: int, fingerprint: str, result: Any, *, state: str, delete
             row.state = state
             row.fingerprint = fingerprint
             row.result_json = result
+            # Redis 的成功/最终失败 TTL 从 finish 时重新计时；DB fallback 保持同样语义。
+            row.expires_at = datetime.utcnow() + timedelta(seconds=ttl)
         db.commit()
