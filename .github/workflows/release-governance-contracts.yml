@@ -7,12 +7,14 @@ on:
       - '.github/workflows/**'
       - 'deploy/backup/**'
       - 'deploy/systemd/**'
+      - 'deploy/env/backup.env.example'
   pull_request:
     branches: [main]
     paths:
       - '.github/workflows/**'
       - 'deploy/backup/**'
       - 'deploy/systemd/**'
+      - 'deploy/env/backup.env.example'
   workflow_dispatch:
 
 permissions:
@@ -57,6 +59,29 @@ jobs:
             exit 1
           fi
           echo 'Official checkout/setup/upload/download actions use the current Node-24-era major versions.'
+      - name: Require hardened production backup service
+        shell: bash
+        run: |
+          set -euo pipefail
+          UNIT=deploy/systemd/school-lifecycle-backup.service
+          ENV_EXAMPLE=deploy/env/backup.env.example
+          RUNNER=deploy/backup/backup-runner.sh
+          test -f "$UNIT"
+          test -f "$ENV_EXAMPLE"
+          test -f "$RUNNER"
+          grep -q '^ProtectHome=true$' "$UNIT"
+          grep -q '^Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf$' "$UNIT"
+          grep -q '^Environment=REQUIRE_UPLOAD_BACKUP=1$' "$UNIT"
+          grep -q '^Environment=BACKUP_REQUIRE_OFFSITE=true$' "$UNIT"
+          grep -q '^Environment=BACKUP_REQUIRE_IMMUTABLE_REMOTE=true$' "$UNIT"
+          grep -q '^ReadOnlyPaths=/etc/school-lifecycle/rclone.conf$' "$UNIT"
+          grep -q '^RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf$' "$ENV_EXAMPLE"
+          grep -q '^REQUIRE_UPLOAD_BACKUP=1$' "$ENV_EXAMPLE"
+          grep -q '^BACKUP_REQUIRE_IMMUTABLE_REMOTE=true$' "$ENV_EXAMPLE"
+          grep -q '^BACKUP_IMMUTABLE_REMOTE_CONFIRMED=false$' "$ENV_EXAMPLE"
+          grep -q 'rclone .* cat' "$RUNNER"
+          grep -q 'remote_hash=' "$RUNNER"
+          echo 'Production backup unit is pinned to explicit credentials, required uploads, offsite storage and immutable-storage attestation.'
       - name: Require canonical post-merge main gate
         shell: bash
         run: |
