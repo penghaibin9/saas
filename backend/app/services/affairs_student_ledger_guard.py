@@ -80,11 +80,16 @@ def install() -> None:
         return result
 
     def update_student(student_id, body: dict):
-        expected = require_expected_version(contract.request_version())
         with session() as db:
             row = service._get_stu(db, student_id)
-            # 允许前端把未修改的只读字段原样回传；真正修改由统一主档比较器拒绝。
+            # A2：身份主档禁写优先于版本错误返回。非法改姓名/班级必须明确告诉调用方走正式更正/异动，
+            # 不能因为缺 version 先返回一个误导性的 VALIDATION_ERROR。
             shadow.assert_identity_immutable(db, row, body, "在校服务台账")
+            expected_raw = contract.request_version()
+            if expected_raw is None:
+                expected_raw = body.get("version", body.get("expectedVersion"))
+            expected = require_expected_version(expected_raw)
+
             values = {}
             if body.get("careLevel") is not None:
                 care = str(body["careLevel"]).upper()
@@ -97,8 +102,23 @@ def install() -> None:
                 values["room"] = _text(body.get("room"), "房间", 100)
             if body.get("counselor") is not None:
                 values["counselor"] = _text(body.get("counselor"), "辅导员", 100)
+
+            # 尚未绑定统一主档的历史行只保留迁移期维护能力，仍强制 version；一旦绑定，
+            # name/className 等身份事实全部由上面的 assert_identity_immutable 收敛到主档流程。
+            if not row.student_id:
+                if body.get("name") is not None:
+                    values["name"] = _text(body.get("name"), "姓名", 100)
+                if body.get("className") is not None:
+                    values["class_name"] = _text(body.get("className"), "班级", 100)
+
             if not values:
-                raise AppException("VALIDATION_ERROR", "没有可保存的服务字段")
+                # 只读身份字段原样回传属于真实 no-op；仍要求调用者基于当前 version 提交，
+                # 但不制造一次假更新/假审计/假版本增长。
+                if int(row.version or 0) != expected:
+                    from app.core.optimistic_lock import raise_version_conflict
+                    raise_version_conflict(int(row.version or 0))
+                return {"id": str(row.id), "version": expected, "noChange": True}
+
             atomic_versioned_update(
                 db,
                 CsServiceStudent,
