@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
@@ -41,15 +41,16 @@ def _scope_condition(db, user: dict):
     if not class_ids:
         return EmpStudent.id == -1
     class_ids = {int(i) for i in class_ids}
-    # 已绑定主档按主档当前班级裁决；历史未绑定行仅能按其快照 class_id 收敛。
+    # 已绑定主档必须按主档“当前班级”裁决；只有未绑定 legacy 行才允许按就业快照 class_id 收敛。
+    # 否则学生转班后，旧就业快照仍可能把他暴露给原班辅导员，形成“列表可见、详情 403”的事实裂缝。
     profile_ids = select(StudentProfile.id).where(
         StudentProfile.tenant_id == _tid(),
         StudentProfile.class_id.in_(class_ids),
         StudentProfile.is_deleted.is_(False),
     )
     return or_(
-        EmpStudent.student_id.in_(profile_ids),
-        EmpStudent.class_id.in_([str(i) for i in class_ids]),
+        and_(EmpStudent.student_id.is_not(None), EmpStudent.student_id.in_(profile_ids)),
+        and_(EmpStudent.student_id.is_(None), EmpStudent.class_id.in_([str(i) for i in class_ids])),
     )
 
 
