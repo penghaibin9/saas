@@ -26,6 +26,16 @@ def _create(client, headers, name="A4就业质量月报") -> dict:
     return payload["data"]
 
 
+def _assert_caliber_body_validation(resp) -> None:
+    """Pydantic body 枚举错误遵循全仓冻结合同：HTTP 400 + VALIDATION_ERROR。"""
+    assert resp.status_code == 400, resp.text
+    payload = resp.json()
+    assert payload.get("bizCode") == "VALIDATION_ERROR"
+    assert payload.get("message") == "参数校验失败"
+    details = payload.get("details") or []
+    assert any(item.get("field") == "caliber" for item in details), payload
+
+
 def test_data_center_context_is_server_truth_and_export_is_fail_closed(client, db_mode):
     headers = _headers(client)
     resp = client.get(f"{BASE}/context", headers=headers)
@@ -63,14 +73,14 @@ def test_unsupported_natural_caliber_fails_closed_in_bi_and_reports(client, db_m
         "caliber": "NATURAL",
         "scopeName": "全校",
     })
-    assert create.status_code == 422
+    _assert_caliber_body_validation(create)
 
     row = _create(client, headers, "在册口径更新保护报表")
     update = client.put(f"{BASE}/reports/{row['id']}", headers=headers, json={
         "version": row["version"],
         "caliber": "NATURAL",
     })
-    assert update.status_code == 422
+    _assert_caliber_body_validation(update)
 
 
 def test_report_persists_across_relogin_and_stale_version_conflicts(client, db_mode):
