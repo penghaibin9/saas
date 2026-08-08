@@ -22,6 +22,8 @@ def test_pc_exact_todo_routes_exist_in_generated_route_index():
         # generated index uses domain-specific parameter names; compare normalized static shape.
         normalized = pattern.rsplit("/:", 1)[0]
         assert any(p.startswith(normalized + "/:") for p in patterns), spec
+        assert spec["routeName"].startswith("todo-route:")
+        assert not spec["routeName"].startswith("studentAffairs.")
 
 
 def test_typed_todo_dto_contains_record_route_actions_and_version():
@@ -39,7 +41,7 @@ def test_typed_todo_dto_contains_record_route_actions_and_version():
     )
     dto = _todo_dict(row, client="pc")
     assert dto["recordId"] == "88"
-    assert dto["routeName"] == "studentAffairs.risk.detail"
+    assert dto["routeName"] == "todo-route:student-affairs-risk-detail"
     assert dto["routePath"] == "/admin/student-affairs/risk/88"
     assert dto["routeParams"] == {"recordId": "88"}
     assert dto["query"] == {}
@@ -51,7 +53,7 @@ def test_typed_todo_dto_contains_record_route_actions_and_version():
 def test_unimplemented_detail_route_is_explicitly_non_exact_but_keeps_record_id():
     route = resolve_todo_route("LEAVE_APPROVAL", 55, client="pc")
     assert route == {
-        "routeName": "studentAffairs.leave.queue",
+        "routeName": "todo-route:student-affairs-leave-queue",
         "routeParams": {"recordId": "55"},
         "query": {"status": "PENDING", "recordId": "55"},
         "path": "/admin/student-affairs/leave",
