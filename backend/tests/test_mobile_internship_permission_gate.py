@@ -77,10 +77,15 @@ def test_unregistered_teacher_internship_route_fails_closed(path):
 
 def test_permission_gate_is_installed_on_real_mobile_router():
     source = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
-    start = source.index("api_router.include_router(\n        mobile.router,")
-    end = source.index("\n    from app.core.student_portal_module_gate", start)
-    registration = source[start:end]
-    assert "Depends(enforce_teacher_internship_mobile_permission)" in registration
+    deps = "mobile_legacy_deps = ["
+    versioned = "api_router.include_router(mobile_internship_weekly_versioned.router, dependencies=mobile_legacy_deps)"
+    legacy = "api_router.include_router(mobile.router, dependencies=mobile_legacy_deps)"
+    assert deps in source
+    assert "Depends(enforce_teacher_internship_mobile_permission)" in source
+    assert versioned in source
+    assert legacy in source
+    # 同 URL 的版本化权威路由必须先注册；两者必须复用同一个 fail-closed 权限依赖集。
+    assert source.index(versioned) < source.index(legacy)
 
 
 def test_view_only_teacher_cannot_review_weekly_report_via_real_route(client, db_mode):
