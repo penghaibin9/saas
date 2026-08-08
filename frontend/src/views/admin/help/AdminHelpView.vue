@@ -54,6 +54,33 @@
         </dl>
       </header>
 
+      <section v-if="qualityMetrics" class="help-quality" aria-label="帮助中心近30天质量指标">
+        <div class="help-quality__heading">
+          <div>
+            <p class="help-eyebrow">V3-08 · 近 {{ qualityMetrics.windowDays }} 天</p>
+            <h2>帮助中心质量</h2>
+          </div>
+          <small>只统计真实搜索和用户明确反馈；未打通人工工单前，不伪造“真实自助解决率”。</small>
+        </div>
+        <dl class="help-quality__metrics">
+          <div>
+            <dt>搜索命中率</dt>
+            <dd>{{ formatRate(qualityMetrics.searchHitRate) }}</dd>
+            <small>{{ qualityMetrics.searches }} 次搜索 · {{ metricStatusLabel(qualityMetrics.quality?.search) }}</small>
+          </div>
+          <div>
+            <dt>明确反馈解决率</dt>
+            <dd>{{ formatRate(qualityMetrics.explicitResolutionRate) }}</dd>
+            <small>{{ qualityMetrics.feedbackVotes }} 次反馈 · {{ metricStatusLabel(qualityMetrics.quality?.resolution) }}</small>
+          </div>
+          <div>
+            <dt>真正自助解决率</dt>
+            <dd>—</dd>
+            <small>等待人工升级/工单闭环后计算</small>
+          </div>
+        </dl>
+      </section>
+
       <section class="help-controls" aria-label="帮助筛选">
         <label class="help-control help-control--search">
           <span>直接描述你要办的事或遇到的问题</span>
@@ -222,6 +249,18 @@
           ></iframe>
         </section>
 
+        <section class="help-feedback" aria-label="帮助是否解决问题">
+          <div>
+            <strong>这篇帮助解决你的问题了吗？</strong>
+            <small>你的选择只用于改进帮助质量。</small>
+          </div>
+          <div v-if="!currentFeedback" class="help-feedback__actions">
+            <button type="button" @click="submitArticleFeedback('HELPFUL')">已解决</button>
+            <button type="button" class="is-secondary" @click="submitArticleFeedback('NOT_HELPFUL')">没解决</button>
+          </div>
+          <span v-else class="help-feedback__done">已记录，谢谢反馈。</span>
+        </section>
+
         <footer class="help-article__footer">
           <span>文章编号：{{ currentEntry.id }}</span>
           <span v-if="!currentEntry.quality.isComplete">该条目仍有元数据待治理，不影响当前阅读。</span>
@@ -379,6 +418,12 @@ import {
   resolveHelpRole,
   searchHelpCenter
 } from '@/config/helpCenterModel'
+import {
+  formatHelpRate,
+  helpMetricStatusLabel,
+  loadHelpMetricsSummary,
+  recordHelpMetric
+} from '@/config/help/helpMetrics'
 import { getAuthContext } from '@/security/auth/auth.context'
 
 export default {
@@ -401,7 +446,9 @@ export default {
       queryText: String(this.$route.query.q || ''),
       selectedRole,
       selectedCategory: String(this.$route.query.category || 'all'),
-      homeMode: 'tasks'
+      homeMode: 'tasks',
+      qualityMetrics: null,
+      articleFeedback: {}
     }
   },
   computed: {
@@ -422,6 +469,9 @@ export default {
     },
     currentItem() {
       return this.currentEntry?.item || {}
+    },
+    currentFeedback() {
+      return this.articleFeedback[this.currentId] || ''
     },
     displayRoles() {
       const roles = this.currentItem.roles || this.currentItem.role || []
@@ -463,15 +513,40 @@ export default {
       this.invalidTopic = Boolean(id && !getHelpEntry(id))
     }
   },
+  mounted() {
+    this.refreshQualityMetrics()
+    if (this.currentEntry) this.trackArticleView(this.currentEntry, 'direct_link')
+  },
   methods: {
+    formatRate(value) {
+      return formatHelpRate(value)
+    },
+    metricStatusLabel(value) {
+      return helpMetricStatusLabel(value)
+    },
+    async refreshQualityMetrics() {
+      this.qualityMetrics = await loadHelpMetricsSummary(30)
+    },
+    trackArticleView(entry, source = 'directory') {
+      if (!entry) return
+      void recordHelpMetric({
+        eventType: 'ARTICLE_VIEW',
+        articleId: entry.id,
+        source,
+        category: entry.category,
+        roleGroup: this.selectedRole
+      })
+    },
     onMenu(item) {
       if (item?.path && item.path !== this.$route.path) this.$router.push(item.path)
     },
     selectTopic(id) {
-      if (!getHelpEntry(id)) return
+      const entry = getHelpEntry(id)
+      if (!entry) return
       this.currentId = id
       this.invalidTopic = false
       this.replaceQuery({ topic: id })
+      this.trackArticleView(entry)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     },
     showOverview() {
@@ -487,14 +562,14 @@ export default {
     applyQuickQuestion(question) {
       this.queryText = String(question?.query || question?.label || '').trim()
       this.selectedCategory = 'all'
-      this.syncFiltersToUrl()
+      this.syncFiltersToUrl({ source: 'quick_question' })
     },
     onFilterChange() {
       if (this.selectedCategory !== 'all' && !this.categoryOptions.some((item) => item.value === this.selectedCategory)) {
         this.selectedCategory = 'all'
       }
       this.showOverview()
-      this.syncFiltersToUrl()
+      this.syncFiltersToUrl({ trackSearch: false })
     },
     clearFilters() {
       this.queryText = ''
@@ -505,7 +580,7 @@ export default {
       this.homeMode = 'tasks'
       this.replaceQuery({ topic: undefined, q: undefined, role: undefined, category: undefined })
     },
-    syncFiltersToUrl() {
+    syncFiltersToUrl(options = {}) {
       this.currentId = ''
       this.invalidTopic = false
       this.replaceQuery({
@@ -514,6 +589,30 @@ export default {
         role: this.selectedRole !== 'all' ? this.selectedRole : undefined,
         category: this.selectedCategory !== 'all' ? this.selectedCategory : undefined
       })
+      if (options?.trackSearch !== false && this.queryText) {
+        void recordHelpMetric({
+          eventType: 'SEARCH',
+          query: this.queryText,
+          resultCount: this.filteredEntries.length,
+          source: options?.source || 'search',
+          category: this.selectedCategory,
+          roleGroup: this.selectedRole
+        })
+      }
+    },
+    async submitArticleFeedback(eventType) {
+      if (!this.currentEntry || this.currentFeedback) return
+      const id = this.currentEntry.id
+      const result = await recordHelpMetric({
+        eventType,
+        articleId: id,
+        source: 'article',
+        category: this.currentEntry.category,
+        roleGroup: this.selectedRole
+      })
+      if (!result) return
+      this.articleFeedback = { ...this.articleFeedback, [id]: eventType }
+      void this.refreshQualityMetrics()
     },
     replaceQuery(patch) {
       const query = { ...this.$route.query, ...patch }
@@ -562,6 +661,15 @@ export default {
 .help-metrics div { padding: 13px; border-radius: 14px; background: rgba(255,255,255,.82); border: 1px solid rgba(255,255,255,.9); }
 .help-metrics dt { color: var(--t3); font-size: 11px; }
 .help-metrics dd { margin: 5px 0 0; color: var(--t1); font-size: 22px; font-weight: 800; }
+.help-quality { padding: 18px; border: 1px solid var(--dv); border-radius: 16px; background: linear-gradient(135deg, #f7faff, white); }
+.help-quality__heading { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 14px; }
+.help-quality__heading h2 { margin: 4px 0 0; color: var(--t1); font-size: 18px; }
+.help-quality__heading > small { max-width: 520px; color: var(--t3); line-height: 1.55; }
+.help-quality__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.help-quality__metrics div { padding: 14px; border: 1px solid var(--dv); border-radius: 12px; background: white; }
+.help-quality__metrics dt { color: var(--t3); font-size: 11px; }
+.help-quality__metrics dd { margin: 5px 0; color: var(--t1); font-size: 22px; font-weight: 850; }
+.help-quality__metrics small { color: var(--t3); line-height: 1.45; }
 .help-controls { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, .35fr) minmax(180px, .4fr) auto; gap: 12px; align-items: end; padding: 16px; border: 1px solid var(--dv); border-radius: 16px; background: var(--c0); }
 .help-control { display: grid; gap: 6px; color: var(--t2); font-size: 12px; font-weight: 700; }
 .help-control input,
@@ -618,6 +726,14 @@ export default {
 .help-faq p { margin-bottom: 0; }
 .help-related { display: flex; flex-wrap: wrap; gap: 9px; }
 .help-section--embed iframe { width: 100%; min-height: 680px; border: 1px solid var(--dv); border-radius: 13px; background: white; }
+.help-feedback { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin-top: 20px; padding: 16px; border: 1px solid var(--dv); border-radius: 13px; background: var(--c1); }
+.help-feedback > div:first-child { display: grid; gap: 4px; }
+.help-feedback strong { color: var(--t1); }
+.help-feedback small { color: var(--t3); }
+.help-feedback__actions { display: flex; gap: 8px; }
+.help-feedback__actions button { border: 0; border-radius: 9px; padding: 9px 14px; background: var(--brand); color: white; font-weight: 750; cursor: pointer; }
+.help-feedback__actions button.is-secondary { border: 1px solid var(--dv); background: white; color: var(--t2); }
+.help-feedback__done { color: var(--brand); font-size: 12px; font-weight: 800; }
 .help-article__footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 18px; color: var(--t3); font-size: 11px; }
 .help-section-heading { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 18px; }
 .help-section-heading h2 { margin: 5px 0 0; color: var(--t1); }
@@ -653,6 +769,8 @@ export default {
 @media (max-width: 900px) {
   .help-hero { flex-direction: column; }
   .help-metrics { min-width: 0; }
+  .help-quality__heading { align-items: flex-start; flex-direction: column; }
+  .help-quality__metrics { grid-template-columns: 1fr; }
   .help-controls { grid-template-columns: 1fr 1fr; }
   .help-control--search { grid-column: 1 / -1; }
   .help-intents { grid-template-columns: 1fr; }
@@ -669,6 +787,7 @@ export default {
   .help-control--search { grid-column: auto; }
   .help-metrics { grid-template-columns: 1fr; }
   .help-entry,
+  .help-feedback,
   .help-section-heading,
   .help-journey header > div { align-items: flex-start; flex-direction: column; }
   .help-section--embed iframe { min-height: 520px; }
