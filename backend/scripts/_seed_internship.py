@@ -79,14 +79,28 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
     recs[0].eligibility_status = "QUALIFIED"
 
     role = db.scalars(select(Role).where(
-        Role.tenant_id == tenant_id, Role.role_code == "INTERN_MENTOR")).first()
+        Role.tenant_id == tenant_id, Role.role_code == "INTERN_MENTOR",
+        Role.is_deleted.is_(False))).first()
     if role is None:
         role = Role(tenant_id=tenant_id, role_code="INTERN_MENTOR", role_name="岗位实习指导教师",
                     role_type="SYSTEM", status="ACTIVE")
         db.add(role)
         db.flush()
-    teacher = db.scalars(select(User).where(
-        User.tenant_id == tenant_id, User.login_name == "demo_intern_mentor")).first()
+
+    # 优先复用租户里已经真实分配 INTERN_MENTOR 岗位的在职账号。沙箱在调用本种子前
+    # 已把 teacher2 建成实习指导教师，因此当前批次的可办事实会真实归属于体验账号；
+    # 没有真实岗位账号时才创建不可用于生产登录的 demo_intern_mentor 兼容种子账号。
+    teacher = db.scalars(select(User).join(
+        UserRole, UserRole.user_id == User.id).where(
+        User.tenant_id == tenant_id, User.is_deleted.is_(False), User.status == "ACTIVE",
+        UserRole.tenant_id == tenant_id, UserRole.role_id == role.id,
+        UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
+    ).order_by(
+        (User.login_name == "teacher2").desc(), User.id,
+    )).first()
+    if teacher is None:
+        teacher = db.scalars(select(User).where(
+            User.tenant_id == tenant_id, User.login_name == "demo_intern_mentor")).first()
     if teacher is None:
         fallback = db.scalars(select(User).where(User.tenant_id == tenant_id).order_by(User.id)).first()
         teacher = User(tenant_id=tenant_id, login_name="demo_intern_mentor", real_name="刘强",
@@ -96,7 +110,7 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
         db.flush()
     if not db.scalars(select(UserRole).where(
             UserRole.tenant_id == tenant_id, UserRole.user_id == teacher.id,
-            UserRole.role_id == role.id)).first():
+            UserRole.role_id == role.id, UserRole.is_deleted.is_(False))).first():
         db.add(UserRole(tenant_id=tenant_id, user_id=teacher.id, role_id=role.id, status="ACTIVE"))
     recs[0].advisor_user_id = teacher.id
     recs[0].advisor_name = teacher.real_name
@@ -199,7 +213,7 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
     db.add_all([
         RiskRecord(tenant_id=tenant_id, internship_id=recs[0].id, risk_code="INT-R07",
                    risk_title="连续 3 天打卡异常", risk_level="HIGH", source_module="system",
-                   owner_name="刘强", deadline_at=now + timedelta(days=3), status="PROCESSING",
+                   owner_name=teacher.real_name, deadline_at=now + timedelta(days=3), status="PROCESSING",
                    last_follow_at=now - timedelta(days=1),
                    last_follow_note="07-01 已电话核实客户现场安排"),
         RiskRecord(tenant_id=tenant_id, internship_id=recs[3].id, risk_code="INT-R10",
