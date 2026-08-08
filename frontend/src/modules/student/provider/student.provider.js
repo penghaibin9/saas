@@ -1,7 +1,7 @@
 /**
  * Student Provider — 兼容旧调用面的真实 facade 适配层。
  *
- * A2：正式 provider 不得默认指向 student.api.mock；暂未有真实合同的旧能力
+ * A2：正式 provider 只指向生产 student facade；暂未有真实合同的旧能力
  * 统一 fail-closed，避免未来页面误接回浏览器 fixture。
  */
 import studentApi from '../api/student.api'
