@@ -62,6 +62,15 @@ def test_sandbox_reset_rebuilds_teacher_role_and_stable_mentor_contract(client, 
     assert switched["data"]["currentRole"]["roleCode"] == "GD_MENTOR"
 
     gd_auth = {"Authorization": "Bearer " + switched["data"]["accessToken"]}
-    dashboard = client.get("/api/v1/mobile/teacher/graduation", headers=gd_auth).json()
+    batches = client.get("/api/v1/mobile/teacher/graduation/batches", headers=gd_auth).json()
+    assert batches["code"] == 0, batches
+    batch_id = (batches["data"] or {}).get("selectedBatchId")
+    assert batch_id, batches
+
+    dashboard = client.get(
+        "/api/v1/mobile/teacher/graduation",
+        headers=gd_auth,
+        params={"batchId": batch_id},
+    ).json()
     assert dashboard["code"] == 0, dashboard
     assert dashboard["data"].get("students"), dashboard
