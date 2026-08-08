@@ -15,16 +15,48 @@ DEMO_TID = 1000000000000000003
 SBX_TID = 1000000000000000007
 
 
+def _run_seed_as_school_admin(db, tenant_id: int, tenant_code: str, seeder) -> None:
+    """Seed formal file-backed facts under an explicit tenant/admin context.
+
+    Production file binding is intentionally fail-closed when no actor exists. Seed
+    fixtures are trusted setup code, so they must install the same explicit context a
+    real school-admin request would carry instead of relying on an ambient fallback.
+    """
+    from app.core.context import set_current_user, set_tenant
+
+    set_tenant({
+        "tenantId": str(tenant_id),
+        "tenantCode": tenant_code,
+        "tenantName": tenant_code,
+        "status": "ACTIVE",
+    })
+    set_current_user({
+        "userId": f"pytest-seed-{tenant_id}",
+        "realName": "Pytest Seed Admin",
+        "userType": "ADMIN",
+        "tenantCode": tenant_code,
+        "tenantId": str(tenant_id),
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "loginName": "pytest-seed-admin",
+    })
+    try:
+        seeder(db)
+    finally:
+        set_current_user(None)
+        set_tenant(None)
+
+
 @pytest.fixture()
 def two_tenants(db_mode):
     """在 db_mode 空库上种双租户体系（demo 富数据 + sandbox 最小数据）。"""
     from app.db.session import get_sessionmaker
     from _seed_demo_school import seed_demo_school
-    from _seed_two_tenants import seed_two_tenants
+    from _seed_two_tenants import seed_demo_tenant, seed_sandbox_school
     db = get_sessionmaker()()
     try:
-        seed_demo_school(db)      # 张同学六域富数据
-        seed_two_tenants(db)      # 账号/组织/20 学生/三态样例 + 沙箱
+        _run_seed_as_school_admin(db, DEMO_TID, "demo-school", seed_demo_school)
+        _run_seed_as_school_admin(db, DEMO_TID, "demo-school", seed_demo_tenant)
+        _run_seed_as_school_admin(db, SBX_TID, "sandbox-school", seed_sandbox_school)
     finally:
         db.close()
     return db_mode
