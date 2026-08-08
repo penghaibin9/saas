@@ -4,7 +4,7 @@
  * 只解释仓库当前已经存在的统一错误契约、状态机保护、Excel 预校验和敏感数据边界；
  * 不把“可能原因”写成绕过后端校验的操作建议。
  */
-import { HELP_AUTHORIZATION_PRINCIPLE } from './helpRoleGuidance'
+import { HELP_AUTHORIZATION_PRINCIPLE } from './helpRoleGuidance.js'
 
 const COMMON_ROLES = ['学生', '任课教师', '辅导员', '学院管理员', '教务处管理员', '学工处管理员', '学校管理员']
 
