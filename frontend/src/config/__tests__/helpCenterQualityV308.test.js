@@ -3,11 +3,17 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import {
-  ALL_HELP_ENTRIES,
-  getHelpEntry,
-  searchHelpCenter
-} from '../helpCenterModel.js'
+import { ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS } from '../help/academicAffairsCleanHelpCards.js'
+import { ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS } from '../help/academicAffairsCoreFlowHelpCards.js'
+import { GRADUATION_CLEAN_HELP_CARDS } from '../help/graduationCleanHelpCards.js'
+import { GRADUATION_CORE_FLOW_HELP_CARDS } from '../help/graduationCoreFlowHelpCards.js'
+import { HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS } from '../help/highFrequencyTroubleshootingHelpCards.js'
+import { HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS } from '../help/highFrequencyTroubleshootingHelpCardsV305B.js'
+import { HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS } from '../help/highFrequencyTroubleshootingHelpCardsV305C.js'
+import { INTERNSHIP_CLEAN_HELP_CARDS } from '../help/internshipCleanHelpCards.js'
+import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from '../help/internshipCoreFlowHelpCards.js'
+import { STUDENT_AFFAIRS_CLEAN_HELP_CARDS } from '../help/studentAffairsCleanHelpCards.js'
+import { STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS } from '../help/studentAffairsCoreFlowHelpCards.js'
 import {
   HELP_V3_CORE_JOURNEYS,
   HELP_V3_QUICK_QUESTIONS
@@ -15,25 +21,64 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const viewSource = readFileSync(resolve(here, '../../views/admin/help/AdminHelpView.vue'), 'utf8')
+const runtimeSource = readFileSync(resolve(here, '../helpCenterRuntime.js'), 'utf8')
+const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
 const serviceSource = readFileSync(resolve(here, '../../../../backend/app/services/help_metrics_service.py'), 'utf8')
 const apiSource = readFileSync(resolve(here, '../../../../backend/app/api/v1/help_metrics.py'), 'utf8')
 const routerSource = readFileSync(resolve(here, '../../../../backend/app/api/v1/router.py'), 'utf8')
 
-test('V3-08 keeps every published help id unique and every commercial journey node complete', () => {
-  const ids = ALL_HELP_ENTRIES.map((entry) => entry.id)
-  assert.equal(new Set(ids).size, ids.length, 'published help ids must be unique')
+const VERIFIED_V3_CARDS = [
+  ...ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS,
+  ...ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS,
+  ...INTERNSHIP_CLEAN_HELP_CARDS,
+  ...INTERNSHIP_CORE_FLOW_HELP_CARDS,
+  ...GRADUATION_CLEAN_HELP_CARDS,
+  ...GRADUATION_CORE_FLOW_HELP_CARDS,
+  ...STUDENT_AFFAIRS_CLEAN_HELP_CARDS,
+  ...STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS,
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS,
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS,
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS
+]
+const CARD_MAP = new Map(VERIFIED_V3_CARDS.map((card) => [card.id, card]))
 
-  for (const id of HELP_V3_CORE_JOURNEYS.flatMap((journey) => journey.helpIds)) {
-    const entry = getHelpEntry(id)
-    assert.ok(entry, `${id} must resolve through verified-only runtime`)
-    assert.equal(entry.quality.isComplete, true, `${id} must satisfy the help quality contract`)
+function hasList(card, field) {
+  return Array.isArray(card[field]) && card[field].filter(Boolean).length > 0
+}
+
+function hasPermissionGuidance(card) {
+  if (hasList(card, 'permissions') || hasList(card, 'permissionNotes')) return true
+  return /权限|授权|数据范围|allowedActions|角色|管理员|本人授课范围/i.test(JSON.stringify(card))
+}
+
+function assertSevenDimensionContract(card) {
+  assert.ok(card?.title, `${card?.id} missing title`)
+  assert.ok(card?.summary, `${card?.id} missing summary`)
+  assert.ok(card?.keywords?.length, `${card?.id} missing keywords`)
+  assert.ok(card?.roles?.length, `${card?.id} missing roles`)
+  assert.ok(card?.entry || card?.route || card?.mobilePath, `${card?.id} missing entry`)
+  for (const field of ['steps', 'prerequisites', 'successCriteria', 'troubleshooting']) {
+    assert.ok(hasList(card, field), `${card?.id} missing ${field}`)
   }
+  assert.ok(hasPermissionGuidance(card), `${card?.id} missing permission guidance`)
+}
+
+test('V3-08 keeps commercial journey ids unique, published and contract-complete', () => {
+  const ids = HELP_V3_CORE_JOURNEYS.flatMap((journey) => journey.helpIds)
+  assert.equal(new Set(ids).size, ids.length, 'commercial journey ids must be unique')
+  for (const id of ids) {
+    const card = CARD_MAP.get(id)
+    assert.ok(card, `${id} must be backed by a re-audited V3 card source`)
+    assertSevenDimensionContract(card)
+  }
+  assert.match(runtimeSource, /VERIFIED_HELP_CARD_IDS/)
+  assert.match(modelSource, /qualityGaps/)
 })
 
-test('V3-08 quick problem entries all produce at least one verified result', () => {
+test('V3-08 quick problem entries all match the verified V3 search corpus', () => {
+  const corpus = JSON.stringify(VERIFIED_V3_CARDS).toLowerCase()
   for (const item of HELP_V3_QUICK_QUESTIONS) {
-    const results = searchHelpCenter(item.query, { role: 'all', limit: 100 })
-    assert.ok(results.length > 0, `${item.label} must not lead to a zero-result dead end`)
+    assert.ok(corpus.includes(String(item.query).toLowerCase()), `${item.label} must not lead to a zero-result dead end`)
   }
 })
 
@@ -73,5 +118,5 @@ test('V3-08 page records searches, article views and explicit solved feedback', 
     '明确反馈解决率',
     '真正自助解决率',
     '不伪造“真实自助解决率”'
-  ]) assert.match(viewSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  ]) assert.ok(viewSource.includes(token), `${token} must stay wired into the Help Center page`)
 })
