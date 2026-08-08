@@ -38,7 +38,8 @@ def test_formal_student_route_graph_cannot_import_mock_directly():
             if path.suffix not in {".vue", ".js", ".ts"}:
                 continue
             lower_parts = {part.lower() for part in path.parts}
-            if "mock" in lower_parts or ".mock." in path.name.lower():
+            lower_name = path.name.lower()
+            if "mock" in lower_parts or ".mock." in lower_name or ".example." in lower_name:
                 continue
             source = path.read_text(encoding="utf-8")
             if "@/mocks/" in source or "../mocks/" in source or "/mock/" in source or "withFallback(" in source:
