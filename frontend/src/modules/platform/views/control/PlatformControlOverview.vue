@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <LoadingState v-if="loading" text="正在加载平台总览…" />
-    <ErrorState v-else-if="error" :text="error" @retry="load" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="ov">
       <div class="pco__grid">
         <AppCard v-for="s in statCards" :key="s.label" class="pco__stat">
