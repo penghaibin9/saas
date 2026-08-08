@@ -87,6 +87,34 @@ const FORBIDDEN_IMPORTED_SYMBOLS = new Set([
   'shouldTryReal'
 ])
 
+// 将 A1-A5 已封板 contract 的旧浏览器真值源汇总进 A6。
+// 只在对应文件确实由正式 route graph 可达时检查，避免扫描仓库里的归档/测试 fixture。
+const FILE_FORBIDDEN_TOKENS = new Map([
+  ['frontend/src/modules/approval/api/approval.api.js', [
+    '@/mocks/approval', 'withFallback', 'mockApproval', 'approvalList', 'doneItems', 'returnedItems'
+  ]],
+  ['frontend/src/modules/student/api/student.api.js', [
+    '@/mocks/', 'withFallback(', '_mockGet', '_mockCreate', 'mockStudents', 'roleProfiles'
+  ]],
+  ['frontend/src/modules/employment/api/employment.api.js', [
+    '@/mocks/employment', 'shouldTryReal', 'db.employmentStudents', 'db.materialReviews',
+    'db.followUpRecords', 'db.auditLogs'
+  ]],
+  ['frontend/src/modules/dataCenter/api/dataCenter.api.js', [
+    '@/mocks/dataCenter', 'shouldTryReal', 'overviewMetrics', 'lifecycleFunnel', 'riskStats',
+    'collegeRankings', 'majorRankings', 'classRankings', 'drilldownStudents', 'mockRuntime',
+    'roleProfiles', 'reportList', 'reportDetailMap', 'auditLogs.push', 'reportSeq', 'auditSeq',
+    'taskId: `EXP-', 'Math.round(funnel.totalCount * ratio)'
+  ]],
+  ['frontend/src/modules/platform/api/platformControl.api.js', [
+    'shouldTryReal', 'MOCK_TENANTS', 'MOCK_OVERVIEW', 'mockData', '@/mocks/platform',
+    '回退演示数据', 'ok（演示数据）'
+  ]],
+  ['miniapp/src/services/approvalApi.js', [
+    '@/mocks/', 'realFirst(', 'realFirstStrict(', 'mockRequest(', 'shouldTryReal'
+  ]]
+])
+
 const BUSINESS_OWNED_PREFIXES = [
   'frontend/src/modules/approval/',
   'frontend/src/views/admin/approval/',
@@ -206,26 +234,39 @@ function isBusinessOwned(repoPath) {
 function forbiddenPathReason(repoPath) {
   if (FORBIDDEN_EXACT_FILES.has(repoPath)) return 'A5 纯 mock platform.api.js 不得进入正式依赖图'
   if (/(^|\/)(?:mocks?|__mocks__)(\/|$)/i.test(repoPath)) return '正式依赖图不得进入 mock/mocks 目录'
-  if (/\.mock\.(?:js|mjs|cjs|ts|tsx|jsx|vue)$/i.test(repoPath)) return '正式依赖图不得进入 *.mock.* 文件'
+  if (/\.mock\.(?:js|mjs|cjs|ts|tsx|jsx|vue|json)$/i.test(repoPath)) return '正式依赖图不得进入 *.mock.* 文件'
   return ''
 }
 
 function inspectBusinessSource(repoPath, source, chain, violations) {
-  if (!isBusinessOwned(repoPath)) return
   const code = removeComments(source)
-  const localPatterns = [
-    { label: '_mock* 业务方法', regex: /\b_mock[A-Za-z0-9_]*\s*\(/ },
-    { label: 'MOCK_* 业务事实常量', regex: /\b(?:const|let|var)\s+MOCK_[A-Z0-9_]+\b/ },
-    { label: 'mockStudents 业务事实', regex: /\bmockStudents\b/ },
-    { label: 'roleProfiles 业务事实', regex: /\broleProfiles\b/ },
-    { label: 'withFallback 正式业务回退', regex: /\bwithFallback\s*\(/ },
-    { label: 'shouldTryReal 正式业务回退', regex: /\bshouldTryReal\s*\(/ }
-  ]
-  for (const item of localPatterns) {
-    if (item.regex.test(code)) {
+
+  if (isBusinessOwned(repoPath)) {
+    const localPatterns = [
+      { label: '_mock* 业务方法', regex: /\b_mock[A-Za-z0-9_]*\s*\(/ },
+      { label: 'MOCK_* 业务事实常量', regex: /\b(?:const|let|var)\s+MOCK_[A-Z0-9_]+\b/ },
+      { label: 'mockStudents 业务事实', regex: /\bmockStudents\b/ },
+      { label: 'roleProfiles 业务事实', regex: /\broleProfiles\b/ },
+      { label: 'withFallback 正式业务回退', regex: /\bwithFallback\s*\(/ },
+      { label: 'shouldTryReal 正式业务回退', regex: /\bshouldTryReal\s*\(/ }
+    ]
+    for (const item of localPatterns) {
+      if (item.regex.test(code)) {
+        violations.push({
+          type: 'forbidden-business-symbol',
+          message: `${repoPath} 命中 ${item.label}`,
+          chain
+        })
+      }
+    }
+  }
+
+  const fileTokens = FILE_FORBIDDEN_TOKENS.get(repoPath) || []
+  for (const token of fileTokens) {
+    if (code.includes(token)) {
       violations.push({
-        type: 'forbidden-business-symbol',
-        message: `${repoPath} 命中 ${item.label}`,
+        type: 'stage-contract-regression',
+        message: `${repoPath} 重新出现阶段 A 已封板旧真值源: ${token}`,
         chain
       })
     }
@@ -311,11 +352,12 @@ function scanGraph(graph) {
     }
 
     inspectBusinessSource(repoPath, source, current.chain, violations)
+    const importSource = removeComments(source)
 
-    for (const imp of extractImports(source)) {
+    for (const imp of extractImports(importSource)) {
       inspectImportedSymbols(repoPath, imp, current.chain, violations)
       const resolved = resolveLocalImport(current.file, imp.specifier)
-      if (resolved.kind === 'external' || resolved.kind === 'asset') continue
+      if (resolved.kind === 'external') continue
       if (resolved.kind === 'unresolved') {
         violations.push({
           type: 'unresolved-local-import',
@@ -325,7 +367,6 @@ function scanGraph(graph) {
         continue
       }
 
-      edges += 1
       const targetPath = rel(resolved.file)
       const nextChain = [...current.chain, targetPath]
       const targetReason = forbiddenPathReason(targetPath)
@@ -337,7 +378,9 @@ function scanGraph(graph) {
         })
         continue
       }
+      if (resolved.kind === 'asset') continue
 
+      edges += 1
       if (!visited.has(resolved.file) && !queued.has(resolved.file)) {
         queued.add(resolved.file)
         queue.push({ file: resolved.file, chain: nextChain })
