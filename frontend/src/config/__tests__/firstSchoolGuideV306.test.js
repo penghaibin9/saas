@@ -61,7 +61,10 @@ test('V3-06 preserves hard governance boundaries instead of teaching shortcuts',
   for (const token of ['预检', '授权', 'BLOCKER', '权限', '数据范围']) {
     assert.match(text, new RegExp(token))
   }
-  assert.doesNotMatch(text, /跳过.*BLOCKER|强行.*验收|绕过.*授权/)
+  assert.match(text, /不会教你绕过模块授权/)
+  assert.match(text, /BLOCKER 必须真实消除/)
+  assert.match(text, /未消除前不执行验收封板/)
+  assert.doesNotMatch(text, /可以跳过.*BLOCKER|允许.*绕过.*授权|可直接.*强行验收/)
 })
 
 test('V3-06 is grounded in the real 12-section implementation and acceptance state machine', () => {
