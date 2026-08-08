@@ -1,0 +1,23 @@
+entries:
+  - module: approval-center
+    client: backend
+    route: /api/v1/approvals/export
+    page: backend/app/api/v1/approval.py
+    action: export-job+status+download-ticket+download
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/approvals/export; GET /api/v1/approvals/export/{task_id}; POST /api/v1/approvals/export/{task_id}/download-ticket; GET /api/v1/approvals/export/{task_id}/download
+    backendService: backend/app/services/approval_export_service.py; backend/app/services/approval_template_service.py
+    storageMode: generated-xlsx-to-file-object
+    authMode: authenticated+approval.manage+one-time-ticket
+    dataScope: tenant+operator+frozen-user-permission-snapshot
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 正式路由只创建统一 ExportJob；scheduler 按租户领取任务，带 lease、失败自动重试、进度与 FileObject；下载要求任务版本和一次性票据。approval_template_service.py 中旧同步 helper 不再被正式路由调用，仅为历史兼容扫描登记，后续可独立删除。
