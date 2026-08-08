@@ -57,7 +57,7 @@ def upgrade() -> None:
             sa.Column("version", sa.Integer(), nullable=False, server_default="0"),
             sa.UniqueConstraint("tenant_id", "report_no", name="uk_dc_report_no"),
         )
-        op.create_index("ix_dc_report_tenant", _REPORT, ["tenant_id"])
+        op.create_index("ix_t_data_center_report_tenant_id", _REPORT, ["tenant_id"])
         op.create_index("ix_dc_report_tenant_status_updated", _REPORT, ["tenant_id", "status", "updated_at"])
 
     if not _has_table(bind, _VERSION):
@@ -82,8 +82,8 @@ def upgrade() -> None:
             sa.Column("created_by", sa.BigInteger(), nullable=True),
             sa.UniqueConstraint("tenant_id", "report_id", "version_no", name="uk_dc_report_version"),
         )
-        op.create_index("ix_dc_report_ver_tenant", _VERSION, ["tenant_id"])
-        op.create_index("ix_dc_report_ver_report", _VERSION, ["report_id"])
+        op.create_index("ix_t_data_center_report_version_tenant_id", _VERSION, ["tenant_id"])
+        op.create_index("ix_t_data_center_report_version_report_id", _VERSION, ["report_id"])
         op.create_index("ix_dc_report_ver_tenant_report", _VERSION, ["tenant_id", "report_id", "version_no"])
 
 
