@@ -48,7 +48,7 @@
               description="续假审批 / 销假确认 / 逾期处置，处理后自动跳到下一条" />
           </template>
           <AppGlobalState v-else :state="detailState" :description="detail.error" loading-text="详情加载中…" @retry="loadDetail(selectedId)">
-            <div class="lv-main__body">
+            <div v-if="detail.data" class="lv-main__body">
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }} · {{ detail.data.className }}</span>
@@ -85,7 +85,7 @@
               <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无处理记录" />
             </div>
 
-            <div v-if="actions.length" class="lv-foot">
+            <div v-if="detail.data && actions.length" class="lv-foot">
               <AppPermissionButton :allowed="canBtn(a.code)" v-for="a in actions" :key="a.key" :code="a.code" :variant="a.variant"
                 :danger="a.danger" @click="openAction(a)">{{ a.label }}</AppPermissionButton>
             </div>
