@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   restore-drill:
-    name: Verified backup -> offsite copy -> isolated MySQL -> readiness/login/isolation
+    name: Verified backup -> offsite readback -> isolated MySQL -> readiness/login/isolation
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     services:
@@ -67,9 +67,18 @@ jobs:
       SCHEDULER_MODE: external
       BACKUP_DIR: /tmp/school-lifecycle-backup-drill
       KEEP_DAYS: '2'
-      UPLOAD_DIR: /tmp/nonexistent-upload-dir
+      UPLOAD_DIR: /tmp/school-lifecycle-upload-drill
+      REQUIRE_UPLOAD_BACKUP: '1'
       BACKUP_REQUIRE_OFFSITE: 'true'
       BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-offsite-drill
+      # Local filesystem remote is a CI transport fixture, not a claim of cloud immutability.
+      BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      MAX_BACKUP_AGE_SECONDS: '3600'
+      MAX_RESTORE_SECONDS: '900'
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job
+      MIN_RESTORE_INDEXES: '10'
+      MIN_RESTORE_FOREIGN_KEYS: '1'
+      RESTORE_EVIDENCE_FILE: /tmp/restore-drill-evidence.txt
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -83,6 +92,11 @@ jobs:
           sudo apt-get install -y default-mysql-client rclone
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
+      - name: Validate backup shell syntax
+        run: |
+          bash -n deploy/backup/backup-mysql.sh
+          bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/restore-drill.sh
       - name: Build source database through the real migration chain
         working-directory: backend
         run: |
@@ -90,9 +104,24 @@ jobs:
           alembic upgrade head
           alembic current
           python scripts/_seed_login_accounts_only.py
+          EXPECTED="$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_source.alembic_version LIMIT 1')"
+          test -n "$EXPECTED"
+          echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
+      - name: Prove required upload backup fails closed
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/required-upload-missing "$BACKUP_DIR"
+          if UPLOAD_DIR=/tmp/required-upload-missing REQUIRE_UPLOAD_BACKUP=1 bash deploy/backup/backup-mysql.sh; then
+            echo '::error::database backup unexpectedly succeeded while required uploads were missing'
+            exit 1
+          fi
+          rm -rf "$BACKUP_DIR"
+          echo 'Fail-closed upload contract verified.'
       - name: Prove production runner rejects local-only success
         run: |
           set -euo pipefail
+          mkdir -p "$UPLOAD_DIR"
+          printf 'restore-drill-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
           if BACKUP_RCLONE_REMOTE= bash deploy/backup/backup-runner.sh; then
             echo '::error::backup runner unexpectedly succeeded without an offsite destination'
             exit 1
@@ -101,18 +130,28 @@ jobs:
       - name: Produce and verify local plus offsite backup with production scripts
         run: |
           set -euo pipefail
-          rm -rf "$BACKUP_RCLONE_REMOTE"
-          mkdir -p "$BACKUP_RCLONE_REMOTE"
+          rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" "$UPLOAD_DIR"
+          test -f "$UPLOAD_DIR/sentinel.txt"
           bash deploy/backup/backup-runner.sh
           BACKUP_FILE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'db_backup_source_*.sql.gz' | sort | tail -n1)"
+          UPLOAD_FILE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'uploads_*.tar.gz' | sort | tail -n1)"
           test -n "$BACKUP_FILE"
           test -s "$BACKUP_FILE"
           test -f "${BACKUP_FILE}.sha256"
+          test -n "$UPLOAD_FILE"
+          test -s "$UPLOAD_FILE"
+          test -f "${UPLOAD_FILE}.sha256"
           OFFSITE_FILE="$BACKUP_RCLONE_REMOTE/$(basename "$BACKUP_FILE")"
+          OFFSITE_UPLOAD="$BACKUP_RCLONE_REMOTE/$(basename "$UPLOAD_FILE")"
           test -s "$OFFSITE_FILE"
           test -f "${OFFSITE_FILE}.sha256"
+          test -s "$OFFSITE_UPLOAD"
+          test -f "${OFFSITE_UPLOAD}.sha256"
           cmp -s "$BACKUP_FILE" "$OFFSITE_FILE"
           cmp -s "${BACKUP_FILE}.sha256" "${OFFSITE_FILE}.sha256"
+          cmp -s "$UPLOAD_FILE" "$OFFSITE_UPLOAD"
+          cmp -s "${UPLOAD_FILE}.sha256" "${OFFSITE_UPLOAD}.sha256"
           echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
           echo "OFFSITE_FILE=$OFFSITE_FILE" >> "$GITHUB_ENV"
       - name: Restore only into a disposable local drill database
@@ -123,7 +162,9 @@ jobs:
           DB_NAME: backup_restore_drill
           DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
           TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
-        run: alembic current
+        run: |
+          alembic current
+          test "$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_restore_drill.alembic_version LIMIT 1')" = "$EXPECTED_ALEMBIC_VERSION"
       - name: Start backend from restored database
         env:
           DB_NAME: backup_restore_drill
@@ -183,6 +224,7 @@ jobs:
           name: backup-restore-drill-${{ github.run_id }}
           path: |
             /tmp/ready.json
+            /tmp/restore-drill-evidence.txt
             /tmp/restore-drill-backend.log
             /tmp/school-lifecycle-backup-drill/*.sha256
             /tmp/school-lifecycle-offsite-drill/*.sha256
