@@ -2,11 +2,16 @@
  * SaaS 平台运营控制面能力目录（唯一口径）。
  *
  * 仅平台角色可见。它管理跨学校的租户生命周期、授权、交付、运行和合规，
- * 不提供直接浏览或修改学校业务数据的入口。导航、路由和后续平台角色授权均消费本目录。
+ * 不提供直接浏览或修改学校业务数据的入口。
+ *
+ * Stage B / P1-09：路线图与生产导航分层。
+ * - ROADMAP 保留全部规划能力，便于后续施工复用 capability key / 权限 / 动作定义；
+ * - 正式 PLATFORM_MANAGEMENT_CATALOG 只导出已有真实业务面的条目；
+ * - `view: 'capability'` 说明页绝不再伪装成 implemented 生产菜单。
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
 
-export const PLATFORM_MANAGEMENT_CATALOG = [
+export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-command', label: '平台总控', icon: '◎', description: '经营、租户生命周期和运行事件的跨租户总览。',
     items: [
@@ -85,6 +90,20 @@ export const PLATFORM_MANAGEMENT_CATALOG = [
   }
 ]
 
+export const PLATFORM_CAPABILITY_ONLY_KEYS = Object.freeze(
+  PLATFORM_MANAGEMENT_ROADMAP_CATALOG.flatMap((group) =>
+    group.items.filter((item) => item.view === 'capability').map((item) => item.key)
+  )
+)
+
+export const PLATFORM_MANAGEMENT_CATALOG = PLATFORM_MANAGEMENT_ROADMAP_CATALOG
+  .map((group) => ({ ...group, items: group.items.filter((item) => item.view !== 'capability') }))
+  .filter((group) => group.items.length > 0)
+
+export const PLATFORM_MANAGEMENT_ROADMAP_ITEMS = PLATFORM_MANAGEMENT_ROADMAP_CATALOG.flatMap((group) =>
+  group.items.map((item) => ({ ...item, groupKey: group.key, groupLabel: group.label, groupDescription: group.description }))
+)
+
 export const PLATFORM_MANAGEMENT_ITEMS = PLATFORM_MANAGEMENT_CATALOG.flatMap((group) =>
   group.items.map((item) => ({ ...item, groupKey: group.key, groupLabel: group.label, groupDescription: group.description }))
 )
@@ -92,4 +111,3 @@ export const PLATFORM_MANAGEMENT_ITEMS = PLATFORM_MANAGEMENT_CATALOG.flatMap((gr
 export const PLATFORM_MANAGEMENT_ITEM_MAP = Object.fromEntries(
   PLATFORM_MANAGEMENT_ITEMS.map((item) => [item.key, item])
 )
-
