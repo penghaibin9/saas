@@ -152,8 +152,16 @@ def apply_org_node_in_session(
         row.version = int(getattr(row, "version", 0) or 0) + 1
 
     for attr, val in extras.items():
-        if hasattr(row, attr):
-            setattr(row, attr, val)
+        if not hasattr(row, attr):
+            continue
+        column = row.__table__.columns.get(attr)
+        # PATCH/partial-update callers historically pass None for omitted optional
+        # fields.  Never turn that omission into NULL for a schema-required column
+        # (status/class_status are the important cases); nullable fields may still
+        # be explicitly cleared by callers that send None.
+        if val is None and column is not None and not column.nullable:
+            continue
+        setattr(row, attr, val)
 
     if commit:
         db.commit()
