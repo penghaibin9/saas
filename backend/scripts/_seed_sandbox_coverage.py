@@ -19,12 +19,17 @@ DOMAIN_PREFIXES = (
 DOMAIN_EXACT = {
     "t_teacher_student_scope",
 }
-# 这些表不是可独立造假的“页面状态”，而是由正式处分事务/数据库触发器维护的
-# 追加式事实或活动子流程锁。通用兜底种子若直接 INSERT 会绕开真实业务关系，
-# 既会被生产完整性触发器正确拒绝，也会制造没有主案/流程来源的伪事实。
+# 这些表不是可独立造假的“页面状态”，而是由正式事务/数据库触发器维护的
+# 追加式事实、额度占用或活动子流程锁。通用兜底种子若直接 INSERT 会绕开真实
+# 业务关系，既会被生产完整性触发器正确拒绝，也会制造没有正式来源的伪事实。
+# 它们只能由各领域显式种子/正式服务链路生成。
 _GENERIC_EXCLUDED_TABLES = {
     "t_affairs_discipline_decision_version",
     "t_affairs_discipline_subflow_lock",
+    "t_affairs_funding_batch",
+    "t_affairs_funding_application",
+    "t_affairs_funding_disbursement",
+    "t_affairs_funding_amount_adjustment",
 }
 _STATUS_TOKEN = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _IGNORE_TOKENS = {
