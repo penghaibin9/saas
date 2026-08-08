@@ -5,17 +5,30 @@ P3/A4 范围口径：
 - 数据中心全校 BI（overview/lifecycle/risk/boards/rankings/drilldown）：
   仅 TENANT_ALL 角色可访问；一线角色 403002，禁止把全校数当本班数。
 - A4 正式 BI DTO 附带 meta.asOf/caliber/scope/source/qualityFlags，页面可解释数字来源与质量。
+- 当前只有 REGISTERED 真正实现；NATURAL 未落真实查询条件前 fail-closed，禁止仅换标签复用同一数字。
 """
 from __future__ import annotations
 
 from app.core.timeutil import iso_utc, utc_now
 from fastapi import APIRouter, Depends, Query
 
+from app.core.exceptions import AppException
 from app.core.response import success
 from app.core.security import require_staff
 from app.services import stats_service as svc
 
 router = APIRouter(prefix="/stats", tags=["跨域统计"])
+
+
+def _require_supported_caliber(caliber: str) -> str:
+    value = str(caliber or "REGISTERED").upper()
+    if value != "REGISTERED":
+        raise AppException(
+            "UNSUPPORTED_CALIBER",
+            "NATURAL 自然口径尚未形成跨域真实查询合同，已禁止仅更换标签复用在册数字",
+            http_status=422,
+        )
+    return value
 
 
 def _with_meta(data: dict, *, caliber: str = "REGISTERED", sources: list[str],
@@ -24,7 +37,7 @@ def _with_meta(data: dict, *, caliber: str = "REGISTERED", sources: list[str],
     out["meta"] = {
         "asOf": out.get("updatedAt") or iso_utc(utc_now()),
         "caliber": caliber,
-        "caliberLabel": "在册口径" if caliber == "REGISTERED" else "自然口径",
+        "caliberLabel": "在册口径",
         "scope": {"scopeType": "TENANT_ALL", "scopeName": "全校"},
         "source": [{"module": x, "mode": "REALTIME_MYSQL"} for x in sources],
         "qualityFlags": quality_flags or [],
@@ -34,20 +47,22 @@ def _with_meta(data: dict, *, caliber: str = "REGISTERED", sources: list[str],
 
 @router.get("/overview", summary="数据中心总览（真实聚合·校级）")
 def overview(caliber: str = Query("REGISTERED"), user=Depends(require_staff)):
+    caliber = _require_supported_caliber(caliber)
     svc.require_tenant_all_stats(user)
     return success(_with_meta(
         svc.get_overview(caliber), caliber=caliber,
-        sources=["StudentProfile", "OrientationStudent", "AcademicWarning", "InternshipStudent",
-                 "GraduationStudent", "EmpStudent", "AffairsRiskRecord", "UnifiedTodo"],
+        sources=["StudentProfile", "OrientationStudent", "AcademicWarning", "InternshipRecord",
+                 "GraduationStudent", "EmpStudent", "UnifiedTodo", "WorkflowTask"],
     ))
 
 
 @router.get("/lifecycle", summary="生命周期漏斗（真实·校级）")
 def lifecycle(caliber: str = Query("REGISTERED"), user=Depends(require_staff)):
+    caliber = _require_supported_caliber(caliber)
     svc.require_tenant_all_stats(user)
     return success(_with_meta(
         svc.get_lifecycle(caliber), caliber=caliber,
-        sources=["StudentProfile", "OrientationStudent", "InternshipStudent", "GraduationStudent", "EmpStudent"],
+        sources=["StudentProfile", "OrientationStudent", "InternshipRecord", "GraduationStudent", "EmpStudent"],
     ))
 
 
@@ -55,7 +70,8 @@ def lifecycle(caliber: str = Query("REGISTERED"), user=Depends(require_staff)):
 def risk(user=Depends(require_staff)):
     svc.require_tenant_all_stats(user)
     return success(_with_meta(
-        svc.get_risk_stats(), sources=["AffairsRiskRecord"],
+        svc.get_risk_stats(), sources=["OrientationStudent", "CsServiceStudent", "AcademicStudent",
+                                      "GraduationStudent", "EmpStudent"],
         quality_flags=[{
             "code": "INTERNSHIP_RISK_NOT_UNIFIED", "severity": "INFO",
             "message": "实习域独立风险处置表尚未并入本聚合，接口不以 0 或演示数据补齐。",
@@ -70,6 +86,7 @@ def workbench(user=Depends(require_staff)):
 
 @router.get("/lifecycle-board", summary="生命周期驾驶舱聚合（校级）")
 def lifecycle_board(caliber: str = Query("REGISTERED"), user=Depends(require_staff)):
+    caliber = _require_supported_caliber(caliber)
     svc.require_tenant_all_stats(user)
     data = svc.get_lifecycle_board(caliber)
     flags = []
@@ -81,8 +98,9 @@ def lifecycle_board(caliber: str = Query("REGISTERED"), user=Depends(require_sta
         })
     return success(_with_meta(
         data, caliber=caliber,
-        sources=["StudentProfile", "OrientationStudent", "AcademicWarning", "InternshipStudent",
-                 "GraduationStudent", "EmpStudent"], quality_flags=flags,
+        sources=["StudentProfile", "OrientationStudent", "CsServiceStudent", "AcademicStudent",
+                 "AcademicWarning", "InternshipRecord", "GraduationStudent", "EmpStudent"],
+        quality_flags=flags,
     ))
 
 
@@ -90,11 +108,25 @@ def lifecycle_board(caliber: str = Query("REGISTERED"), user=Depends(require_sta
 def risk_board(user=Depends(require_staff)):
     svc.require_tenant_all_stats(user)
     data = svc.get_risk_board()
-    flags = [{
-        "code": "RISK_STATUS_CALIBER_PARTIAL", "severity": "INFO",
-        "message": "跨域风险处理进度口径尚未统一，byStatus/trend 为空时代表未配置，不代表 0。",
-    }]
-    return success(_with_meta(data, sources=["AffairsRiskRecord", "StudentProfile"], quality_flags=flags))
+    flags = [
+        {
+            "code": "RISK_STATUS_CALIBER_PARTIAL", "severity": "INFO",
+            "message": "跨域风险处理进度口径尚未统一，byStatus 为空时代表未配置，不代表 0。",
+        },
+        {
+            "code": "RISK_TREND_NOT_CONFIGURED", "severity": "INFO",
+            "message": "风险历史趋势快照尚未配置，trend 为空时代表未配置，不代表 0。",
+        },
+        {
+            "code": "INTERNSHIP_RISK_NOT_UNIFIED", "severity": "INFO",
+            "message": "实习域独立风险处置表尚未并入跨域风险聚合。",
+        },
+    ]
+    return success(_with_meta(
+        data,
+        sources=["OrientationStudent", "CsServiceStudent", "AcademicStudent", "GraduationStudent", "EmpStudent"],
+        quality_flags=flags,
+    ))
 
 
 @router.get("/rankings", summary="学院/专业/班级排行（校级）")
@@ -111,7 +143,7 @@ def rankings(level: str = Query("COLLEGE"), collegeId: str | None = Query(None),
     ))
 
 
-@router.get("/drilldown", summary="下钻学生清单（校级）")
+@router.get("/drilldown", summary="下钻学生清单（校级组织维度）")
 def drilldown(collegeId: str | None = Query(None), majorId: str | None = Query(None),
               classId: str | None = Query(None), stage: str | None = Query(None),
               keyword: str | None = Query(None), page: int = Query(1), pageSize: int = Query(10),
@@ -121,4 +153,8 @@ def drilldown(collegeId: str | None = Query(None), majorId: str | None = Query(N
         svc.get_drilldown(college_id=collegeId, major_id=majorId, class_id=classId,
                           stage=stage, keyword=keyword, page=page, page_size=pageSize),
         sources=["StudentProfile"],
+        quality_flags=[{
+            "code": "ORG_DRILLDOWN_ONLY", "severity": "INFO",
+            "message": "本端点仅证明组织/学籍阶段筛选；跨域风险或业务规则命中名单需各域专用查询。",
+        }],
     ))
