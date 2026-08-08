@@ -63,7 +63,9 @@ def _assigned_task(client, hdr, code, class_id, teacher_key="academic01", teache
     """建课→方案→学期→生成批次→分配给指定教师，返回 taskId。"""
     cid = _enabled_course(client, hdr, code)
     _published_bound_program(client, hdr, cid, class_id)
-    tid = _term(client, hdr, year=f"2027-{code}")
+    # yearCode 是正式学年值，不能为了测试唯一性拼入课程编码（如 2027-MT101）。
+    # 教学任务生成会按学年解析开课学期，非法 yearCode 会在真实 MySQL 全回归中触发类型错误。
+    tid = _term(client, hdr, year="2027-2028")
     bid = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
                       json={"termId": str(tid)}).json()["data"]["batchId"]
     task_id = client.get(f"{BASE}/teaching-task-batches/{bid}/tasks",
