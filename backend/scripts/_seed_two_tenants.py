@@ -4,7 +4,7 @@
   组织 2 学院 / 3 专业 / 3 班级；学生 ≥20；六大业务域三态样例；教师范围=看得见即能处理。
   该租户在中间件层强制只读（写操作 403），数据不会被参观者改动。
 - sandbox-school(1000000000000000007) 自由体验租户：账号 admin2 / teacher2 / student2（123456）
-  沙箱种子/重置的唯一实现在 app/services/sandbox_service.py（手动恢复与可选定时任务共用）。
+  沙箱可重置业务数据的唯一实现在 app/services/sandbox_service.py；固定演示账号的多岗位关系在本入口幂等补齐。
 密码只以 pbkdf2 hash 落库（复用全局 hash_password），绝无明文；弱密码账号仅存在于这两个租户。
 所有账号走真实 /api/v1/auth/login，与 mock-login 无关。
 """
@@ -19,9 +19,9 @@ from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, Attenda
                         College, CsLeave, CsServiceStudent, CsWorkOrder, EmpFollowup, EmpJob,
                         EmpMaterial, EmpStudent, GraduationFinal, GraduationProposal,
                         GraduationStudent, InternshipCheckin, InternshipRecord, Major,
-                        OrientationStudent, SchoolClass, StudentContact, StudentProfile,
+                        OrientationStudent, Role, SchoolClass, StudentContact, StudentProfile,
                         TeacherStudentScope, Tenant, TenantBrandConfig, UnifiedMessage,
-                        UnifiedTodo, User, WeeklyReport, WorkflowInstance, WorkflowTask)
+                        UnifiedTodo, User, UserRole, WeeklyReport, WorkflowInstance, WorkflowTask)
 
 DEMO_TID = 1000000000000000003
 DEMO_CODE = "demo-school"
@@ -213,10 +213,50 @@ def seed_demo_tenant(db) -> dict:
 
 # ═══════════════ sandbox-school 自由体验租户（实现见 app/services/sandbox_service.py） ═══════════════
 
+def _ensure_sandbox_teacher_roles(db) -> list[str]:
+    """把 teacher2 的“辅导员 + 实习指导教师”语义落成真实 UserRole，不靠权限放宽。"""
+    teacher = db.scalars(select(User).where(
+        User.tenant_id == SANDBOX_TID,
+        User.login_name == "teacher2",
+        User.is_deleted.is_(False),
+    )).first()
+    if teacher is None:
+        return []
+
+    role_codes = []
+    # COUNSELOR 必须先建/先关联，保证首次登录默认仍保持历史合同；写实习时由客户端显式切 INTERN_MENTOR。
+    for role_code, role_name in (("COUNSELOR", "辅导员"), ("INTERN_MENTOR", "实习指导教师")):
+        role = db.scalars(select(Role).where(
+            Role.tenant_id == SANDBOX_TID,
+            Role.role_code == role_code,
+            Role.is_deleted.is_(False),
+        )).first()
+        if role is None:
+            role = Role(tenant_id=SANDBOX_TID, role_code=role_code, role_name=role_name,
+                        role_type="SYSTEM", status="ACTIVE")
+            db.add(role)
+            db.flush()
+        link = db.scalars(select(UserRole).where(
+            UserRole.tenant_id == SANDBOX_TID,
+            UserRole.user_id == teacher.id,
+            UserRole.role_id == role.id,
+            UserRole.is_deleted.is_(False),
+        )).first()
+        if link is None:
+            db.add(UserRole(tenant_id=SANDBOX_TID, user_id=teacher.id, role_id=role.id,
+                            status="ACTIVE"))
+            db.flush()
+        role_codes.append(role_code)
+    db.commit()
+    return role_codes
+
+
 def seed_sandbox_school(db) -> dict:
-    """沙箱租户全量种子（与运营平台恢复共用 app 层实现）。"""
+    """沙箱租户全量种子（可重置业务数据与运营平台恢复共用 app 层实现）。"""
     from app.services.sandbox_service import seed_sandbox
-    return seed_sandbox(db)
+    out = seed_sandbox(db)
+    out["teacherRoles"] = _ensure_sandbox_teacher_roles(db)
+    return out
 
 
 def seed_two_tenants(db) -> dict:
