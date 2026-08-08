@@ -15,7 +15,6 @@ const DEFAULT_GUARDED_ROUTES = new Set([
 ])
 
 const EDITABLE_SELECTOR = 'input:not([type="hidden"]):not([type="search"]), textarea, select, [contenteditable="true"]'
-const SAVE_TEXT_RE = /(保存|提交|创建|更新|确认新增|确认修改|确认保存)/
 
 function routeName(route) {
   return String(route?.name || '')
@@ -32,7 +31,6 @@ export function installDirtyFormGuard(router, options = {}) {
   const guardedRoutes = new Set(options.routeNames || DEFAULT_GUARDED_ROUTES)
   const message = options.message || '当前表单有未保存修改。离开此页将丢失这些修改，仍要离开吗？'
   let dirty = false
-  let submitWindowUntil = 0
 
   const markDirty = (event) => {
     if (!event?.isTrusted || !isGuarded(router.currentRoute.value, guardedRoutes)) return
@@ -40,14 +38,6 @@ export function installDirtyFormGuard(router, options = {}) {
     if (!(target instanceof Element) || !target.matches(EDITABLE_SELECTOR)) return
     if (target.closest('[data-dirty-ignore="true"], .advanced-filter, .mp-filter, .app-search')) return
     dirty = true
-  }
-
-  const armSubmitWindow = (event) => {
-    if (!event?.isTrusted || !dirty || !isGuarded(router.currentRoute.value, guardedRoutes)) return
-    const button = event.target instanceof Element ? event.target.closest('button, [role="button"]') : null
-    if (!button || button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true') return
-    const text = String(button.textContent || '').replace(/\s+/g, '')
-    if (SAVE_TEXT_RE.test(text)) submitWindowUntil = Date.now() + 5000
   }
 
   const beforeUnload = (event) => {
@@ -58,47 +48,37 @@ export function installDirtyFormGuard(router, options = {}) {
 
   document.addEventListener('input', markDirty, true)
   document.addEventListener('change', markDirty, true)
-  document.addEventListener('click', armSubmitWindow, true)
   window.addEventListener('beforeunload', beforeUnload)
 
   const removeBefore = router.beforeEach((to, from) => {
     if (!dirty || !isGuarded(from, guardedRoutes)) return true
     if (routeName(to) === routeName(from)) return true
 
-    // 保存/提交成功通常紧跟一次路由跳转；这里只给短窗口，不提前清 dirty。
-    // 若请求失败留在原页，dirty 仍保持，后续离开仍会拦截。
-    if (Date.now() <= submitWindowUntil) {
-      dirty = false
-      submitWindowUntil = 0
-      return true
-    }
-
+    // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
+    // 只有真实保存成功后页面显式调用 markSaved()，或用户明确确认丢弃修改，才允许离开。
     if (window.confirm(message)) {
       dirty = false
-      submitWindowUntil = 0
       return true
     }
     return false
   })
 
   const removeAfter = router.afterEach((to, from) => {
-    if (routeName(to) !== routeName(from)) {
+    if (routeName(to) !== routeName(from) && !isGuarded(from, guardedRoutes)) {
       dirty = false
-      submitWindowUntil = 0
     }
   })
 
-  // 为真实保存成功后的显式清理提供统一接口；页面无需复制导航 guard 逻辑。
+  // 页面在真实保存成功回调里可显式调用 markSaved()；失败回调不要调用。
   window.__SAAS_DIRTY_FORM_GUARD__ = {
     markDirty: () => { if (isGuarded(router.currentRoute.value, guardedRoutes)) dirty = true },
-    markSaved: () => { dirty = false; submitWindowUntil = 0 },
+    markSaved: () => { dirty = false },
     isDirty: () => dirty
   }
 
   return () => {
     document.removeEventListener('input', markDirty, true)
     document.removeEventListener('change', markDirty, true)
-    document.removeEventListener('click', armSubmitWindow, true)
     window.removeEventListener('beforeunload', beforeUnload)
     if (typeof removeBefore === 'function') removeBefore()
     if (typeof removeAfter === 'function') removeAfter()
