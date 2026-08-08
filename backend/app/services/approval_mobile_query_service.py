@@ -85,6 +85,28 @@ def _instance_row(inst, profile=None) -> dict:
     }
 
 
+def _applicant_joins(base, *, tid: int, instance_cls, link_cls, profile_cls):
+    """审批申请人 user_id -> 学生主档稳定绑定；无学生档案的职工流程仍通过 outer join 保留。"""
+    from app.models.student_account_link import LINK_ACTIVE
+
+    return (
+        base
+        .outerjoin(
+            link_cls.__table__,
+            (link_cls.tenant_id == tid)
+            & (link_cls.user_id == instance_cls.applicant_id)
+            & (link_cls.link_status == LINK_ACTIVE)
+            & (link_cls.is_deleted.is_(False)),
+        )
+        .outerjoin(
+            profile_cls.__table__,
+            (profile_cls.tenant_id == tid)
+            & (profile_cls.id == link_cls.student_id)
+            & (profile_cls.is_deleted.is_(False)),
+        )
+    )
+
+
 def list_queue(
     mode: str,
     page: int,
@@ -105,7 +127,6 @@ def list_queue(
         raise AppException("INVALID_APPROVAL_QUEUE", "不支持的审批队列", http_status=422)
 
     from app.models import StudentAccountLink, StudentProfile, WorkflowInstance, WorkflowTask
-    from app.models.student_account_link import LINK_ACTIVE
     from app.services import db_service
 
     tid = _tenant_id()
@@ -121,6 +142,13 @@ def list_queue(
                 WorkflowInstance.is_deleted.is_(False),
                 WorkflowInstance.applicant_id == actor,
             ]
+            joins = _applicant_joins(
+                WorkflowInstance.__table__,
+                tid=tid,
+                instance_cls=WorkflowInstance,
+                link_cls=StudentAccountLink,
+                profile_cls=StudentProfile,
+            )
             if biz_type:
                 cond.append(WorkflowInstance.source_biz_type == biz_type)
             if kw:
@@ -129,6 +157,8 @@ def list_queue(
                     WorkflowInstance.title.like(like),
                     WorkflowInstance.source_biz_type.like(like),
                     WorkflowInstance.remark.like(like),
+                    StudentProfile.real_name.like(like),
+                    StudentProfile.student_no.like(like),
                 ]
                 if kw.isdigit():
                     search.extend([
@@ -137,17 +167,16 @@ def list_queue(
                     ])
                 cond.append(or_(*search))
 
-            total = int(db.scalar(
-                select(func.count()).select_from(WorkflowInstance).where(*cond)
-            ) or 0)
-            rows = db.scalars(
-                select(WorkflowInstance)
+            total = int(db.scalar(select(func.count()).select_from(joins).where(*cond)) or 0)
+            rows = db.execute(
+                select(WorkflowInstance, StudentProfile)
+                .select_from(joins)
                 .where(*cond)
                 .order_by(WorkflowInstance.created_at.desc(), WorkflowInstance.id.desc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             ).all()
-            return [_instance_row(inst) for inst in rows], total
+            return [_instance_row(inst, profile) for inst, profile in rows], total
 
         statuses = ["PENDING"] if normalized == "pending" else ["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"]
         cond = [
@@ -162,24 +191,12 @@ def list_queue(
         if biz_type:
             cond.append(WorkflowInstance.source_biz_type == biz_type)
 
-        # StudentAccountLink 是 applicant user_id -> StudentProfile 的稳定绑定；outer join
-        # 保证教师/职工发起的流程不会因为没有学生档案而被过滤掉。
-        joins = (
-            WorkflowTask.__table__
-            .join(WorkflowInstance.__table__, WorkflowInstance.id == WorkflowTask.instance_id)
-            .outerjoin(
-                StudentAccountLink.__table__,
-                (StudentAccountLink.tenant_id == tid)
-                & (StudentAccountLink.user_id == WorkflowInstance.applicant_id)
-                & (StudentAccountLink.link_status == LINK_ACTIVE)
-                & (StudentAccountLink.is_deleted.is_(False)),
-            )
-            .outerjoin(
-                StudentProfile.__table__,
-                (StudentProfile.tenant_id == tid)
-                & (StudentProfile.id == StudentAccountLink.student_id)
-                & (StudentProfile.is_deleted.is_(False)),
-            )
+        joins = _applicant_joins(
+            WorkflowTask.__table__.join(WorkflowInstance.__table__, WorkflowInstance.id == WorkflowTask.instance_id),
+            tid=tid,
+            instance_cls=WorkflowInstance,
+            link_cls=StudentAccountLink,
+            profile_cls=StudentProfile,
         )
         if kw:
             like = f"%{kw}%"
