@@ -8,9 +8,18 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_formal_facade_has_no_browser_report_or_context_truth():
+def test_formal_facade_has_no_browser_report_context_or_kpi_truth():
     src = _read("frontend/src/modules/dataCenter/api/dataCenter.api.js")
     forbidden = (
+        "@/mocks/dataCenter",
+        "shouldTryReal",
+        "overviewMetrics",
+        "lifecycleFunnel",
+        "riskStats",
+        "collegeRankings",
+        "majorRankings",
+        "classRankings",
+        "drilldownStudents",
         "mockRuntime",
         "roleProfiles",
         "reportList",
@@ -19,12 +28,25 @@ def test_formal_facade_has_no_browser_report_or_context_truth():
         "reportSeq",
         "auditSeq",
         "taskId: `EXP-",
+        "Math.round(funnel.totalCount * ratio)",
     )
     for token in forbidden:
         assert token not in src, f"数据驾驶舱正式 facade 禁止浏览器真值：{token}"
-    assert "real('/data-center/context')" in src
-    assert "real('/data-center/reports'" in src
-    assert "real('/data-center/audit-logs'" in src
+
+    for path in (
+        "/data-center/context",
+        "/stats/overview",
+        "/stats/lifecycle-board",
+        "/stats/rankings",
+        "/stats/risk-board",
+        "/stats/drilldown",
+        "/data-center/reports",
+        "/data-center/audit-logs",
+    ):
+        assert path in src
+
+    assert "已禁止浏览器估算" in src
+    assert "已禁止返回全校学生冒充命中名单" in src
     assert "已禁止本地假任务" in src
     assert "已禁止本地假成功" in src
 
@@ -96,7 +118,7 @@ def test_facade_preserves_viewed_version_instead_of_fetching_latest_before_write
     assert "getReportDetail" not in update_block
 
 
-def test_no_fake_export_or_reminder_backend_contract_is_advertised():
+def test_unimplemented_export_reminder_and_unsupported_drilldowns_fail_closed():
     service = _read("backend/app/services/data_center_service.py")
     facade = _read("frontend/src/modules/dataCenter/api/dataCenter.api.js")
     assert '"exportOverview": _permission_action' in service
@@ -104,3 +126,5 @@ def test_no_fake_export_or_reminder_backend_contract_is_advertised():
     assert "hidden=True" in service
     assert "exportData()" in facade and "已禁止本地假任务" in facade
     assert "sendRiskReminder()" in facade and "已禁止本地假成功" in facade
+    assert "metricKey !== 'ALL'" in facade
+    assert "riskLevel" in facade and "已禁止浏览器筛选冒充服务端结果" in facade
