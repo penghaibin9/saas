@@ -28,5 +28,6 @@ test('Stage B continuous approval queue refreshes server truth after actions', (
   assert.match(page, /await this\.load\(true\)/)
   assert.match(api, /allowedActions\.includes\(normalized\)/)
   assert.match(api, /version = Number\(fresh\?\.version\)/)
-  assert.doesNotMatch(page, /task\.status\s*=|a\.status\s*=/)
+  // 只禁止真正的本地赋值；a.status === 'PENDING_REVIEW' 这类比较是合法展示条件。
+  assert.doesNotMatch(page, /\b(?:task|a)\.status\s*=(?!=)/)
 })
