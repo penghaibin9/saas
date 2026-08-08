@@ -2,8 +2,8 @@
  * 就业服务中心生产 API facade（A3 / P0-05）。
  *
  * 正式 /admin/employment/** 路由只允许访问真实 HTTP 服务：
- * - 禁止 import @/mocks/employment/**；
- * - 禁止 shouldTryReal → mock fallback；
+ * - 不连接演示数据源或浏览器内存业务台账；
+ * - 请求失败直接返回真实错误，不切换第二事实源；
  * - 禁止浏览器内存业务写入与假审计；
  * - 尚无正式后端合同的能力统一 fail-closed，并从正式动作配置隐藏。
  */
