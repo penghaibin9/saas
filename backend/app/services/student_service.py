@@ -8,9 +8,10 @@ A2 / P0-02 + P0-03：
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
@@ -43,7 +44,6 @@ def _supported_actions() -> list[str]:
         result.append("RESTORE")
     if has_permission(user, "*") or has_permission(user, "student.export"):
         result.append("EXPORT")
-    # 班级/专业/学院变更不属于学生主档动作：必须走教务学籍异动。
     return sorted(set(result))
 
 
@@ -51,11 +51,7 @@ def _fact_map(student_ids: list[int]) -> dict[int, dict]:
     if not student_ids:
         return {}
     from app.models import StudentContact, StudentProfile
-    from app.models.student_account_link import (
-        LINK_ACTIVE,
-        LINK_SUSPENDED,
-        StudentAccountLink,
-    )
+    from app.models.student_account_link import LINK_ACTIVE, LINK_SUSPENDED, StudentAccountLink
     from app.services import db_service
 
     tenant_id = db_service._tid()
@@ -152,6 +148,73 @@ def _enrich(rows: list[dict]) -> list[dict]:
     return enriched
 
 
+def _scope_conditions(model, class_ids=None, student_ids=None):
+    conditions = []
+    if student_ids is not None:
+        ids = [int(x) for x in student_ids if str(x).isdigit()]
+        conditions.append(model.id.in_(ids) if ids else model.id == -1)
+    elif class_ids is not None:
+        ids = [int(x) for x in class_ids if str(x).isdigit()]
+        conditions.append(model.class_id.in_(ids) if ids else model.id == -1)
+    return conditions
+
+
+def summary(*, class_ids=None, student_ids=None) -> dict:
+    """学生中心权威摘要：只做数据库聚合，不读取浏览器/fixture。"""
+    _require_db()
+    from app.models import StudentProfile
+    from app.models.student_account_link import LINK_ACTIVE, LINK_SUSPENDED, StudentAccountLink
+    from app.services import db_service
+
+    tenant_id = db_service._tid()
+    scope_cond = _scope_conditions(StudentProfile, class_ids, student_ids)
+    with db_service.session() as db:
+        total = int(db.scalar(select(func.count()).select_from(StudentProfile).where(
+            StudentProfile.tenant_id == tenant_id,
+            StudentProfile.is_deleted.is_(False),
+            *scope_cond,
+        )) or 0)
+        visible_ids = select(StudentProfile.id).where(
+            StudentProfile.tenant_id == tenant_id,
+            StudentProfile.is_deleted.is_(False),
+            *scope_cond,
+        )
+        bound = int(db.scalar(select(func.count(func.distinct(StudentAccountLink.student_id))).where(
+            StudentAccountLink.tenant_id == tenant_id,
+            StudentAccountLink.is_deleted.is_(False),
+            StudentAccountLink.link_status == LINK_ACTIVE,
+            StudentAccountLink.student_id.in_(visible_ids),
+        )) or 0)
+        suspended = int(db.scalar(select(func.count(func.distinct(StudentAccountLink.student_id))).where(
+            StudentAccountLink.tenant_id == tenant_id,
+            StudentAccountLink.is_deleted.is_(False),
+            StudentAccountLink.link_status == LINK_SUSPENDED,
+            StudentAccountLink.student_id.in_(visible_ids),
+        )) or 0)
+
+    scope_type = "STUDENT" if student_ids is not None else "CLASS" if class_ids is not None else "TENANT"
+    return {
+        "totalStudents": total,
+        "accountBinding": {
+            "bound": bound,
+            "suspended": suspended,
+            "unbound": max(0, total - bound - suspended),
+        },
+        "identityVerification": {
+            "status": IDENTITY_CAPABILITY_STATUS,
+            "provider": None,
+            "verified": None,
+            "pending": None,
+            "abnormal": None,
+        },
+        "completenessDefinition": COMPLETENESS_DEFINITION,
+        "supportedActions": _supported_actions(),
+        "scopeType": scope_type,
+        "asOf": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "qualityFlags": ["IDENTITY_VERIFICATION_NOT_CONFIGURED"],
+    }
+
+
 def list_students(
     page: int,
     page_size: int,
@@ -168,16 +231,8 @@ def list_students(
     from app.services import db_service
 
     rows, total = db_service.list_students(
-        page,
-        page_size,
-        keyword,
-        college,
-        major,
-        class_name,
-        status,
-        risk_level,
-        class_ids=class_ids,
-        student_ids=student_ids,
+        page, page_size, keyword, college, major, class_name, status, risk_level,
+        class_ids=class_ids, student_ids=student_ids,
     )
     return _enrich(rows), total
 
@@ -185,47 +240,40 @@ def list_students(
 def get_student(student_id: str) -> dict:
     _require_db()
     from app.services import db_service
-
     return _enrich([db_service.get_student(student_id)])[0]
 
 
 def create_student(body) -> dict:
     _require_db()
     from app.services import db_service
-
     return _enrich([db_service.create_student(body)])[0]
 
 
 def restore_student(body) -> dict:
     _require_db()
     from app.services import db_service
-
     return _enrich([db_service.restore_student(body)])[0]
 
 
 def update_student(student_id: str, body) -> dict:
     _require_db()
     from app.services import db_service
-
     return _enrich([db_service.update_student(student_id, body)])[0]
 
 
 def void_student(student_id: str, reason: str) -> dict:
     _require_db()
     from app.services import db_service
-
     return db_service.void_student(student_id, reason)
 
 
 def get_timeline(student_id: str) -> list[dict]:
     _require_db()
     from app.services import db_service
-
     return db_service.get_timeline(student_id)
 
 
 def get_risk_summary(student_id: str) -> dict:
     _require_db()
     from app.services import db_service
-
     return db_service.get_risk_summary(student_id)
