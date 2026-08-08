@@ -1,12 +1,28 @@
 """A5 / P0-07：平台运营正式依赖图必须退出浏览器 mock 事实源。"""
 from pathlib import Path
 
+from app.core.security import create_access_token
+
 ROOT = Path(__file__).resolve().parents[2]
 FRONT = ROOT / "frontend" / "src" / "modules" / "platform"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _headers(*, role: str, user_type: str, tenant_id: str) -> dict:
+    token = create_access_token({
+        "userId": f"a5-{role.lower()}",
+        "realName": "A5验收账号",
+        "userType": user_type,
+        "tid": "platform" if role.startswith("PLATFORM_") else "demo",
+        "tenantId": tenant_id,
+        "activeContextId": "a5-context",
+        "currentRoleCode": role,
+        "clientType": "PC",
+    })
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_platform_control_facade_is_real_only():
@@ -95,3 +111,16 @@ def test_pure_mock_platform_api_is_not_reachable_from_formal_entry_views():
     combined = "\n".join(_read(p) for p in formal_entries)
     assert "@/modules/platform/api/platform.api" not in combined
     assert "@/mocks/platform" not in combined
+
+
+def test_platform_backend_guard_blocks_school_role_even_if_url_is_called_directly(client, db_mode):
+    owner = _headers(role="PLATFORM_SUPER_ADMIN", user_type="PLATFORM_SUPER_ADMIN", tenant_id="0")
+    school = _headers(role="SCHOOL_ADMIN", user_type="ADMIN", tenant_id="1000000000000000001")
+
+    allowed = client.get("/api/v1/platform/overview", headers=owner)
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["code"] == 0
+
+    denied = client.get("/api/v1/platform/overview", headers=school)
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["bizCode"] == "NO_PERMISSION"
