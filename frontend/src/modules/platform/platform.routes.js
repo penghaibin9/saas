@@ -188,35 +188,36 @@ const platformRoutes = {
       component: () => import('@/modules/platform/views/PlatformSyncTaskView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '同步任务与平台日志', requiresAuth: true, permissionKey: 'platform.sync.view' }
     },
-    /* 8 组 26 项控制面中尚未有专属业务页的能力，统一由治理承载页表达边界和权限契约。
-       后续接入真实服务时按 meta.platformCapabilityKey 扩展，禁止另建跨租户旁路。 */
+
+    /* Stage B / P1-09：以下旧 URL 仅保留兼容跳转，不再挂 PlatformCapabilityView 说明壳。
+       真实业务能力尚未闭环时不得进入正式生产导航；旧书签跳到已经存在的上位真实工作区。 */
     {
-      path: 'tenant-lifecycle', name: 'platform-tenant-lifecycle', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '租户生命周期看板', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.view', platformCapabilityKey: 'plt-lifecycle-board' }
+      path: 'tenant-lifecycle', name: 'platform-tenant-lifecycle', redirect: '/admin/platform/tenants',
+      meta: { moduleCode: 'PLATFORM', title: '租户生命周期看板（已下线说明壳）', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.view', legacyCapabilityRedirect: true }
     },
     {
-      // PLAT-09：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      // PLAT-09：真实实现
       path: 'incidents', name: 'platform-incidents', component: () => import('@/modules/platform/views/control/PlatformIncidentView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '告警与事件中心', requiresAuth: true, permissionKey: 'platform.incident.view' }
     },
     {
-      path: 'tenant-transitions', name: 'platform-tenant-transitions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '开通、停用与归档', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.manage', platformCapabilityKey: 'plt-tenant-transitions' }
+      path: 'tenant-transitions', name: 'platform-tenant-transitions', redirect: '/admin/platform/tenants',
+      meta: { moduleCode: 'PLATFORM', title: '开通、停用与归档（兼容入口）', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.manage', legacyCapabilityRedirect: true }
     },
     {
-      path: 'tenant-contacts', name: 'platform-tenant-contacts', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '学校联系人与平台主管理员', requiresAuth: true, permissionKey: 'platform.tenant.contact.manage', platformCapabilityKey: 'plt-tenant-contacts' }
+      path: 'tenant-contacts', name: 'platform-tenant-contacts', redirect: '/admin/platform/tenants',
+      meta: { moduleCode: 'PLATFORM', title: '学校联系人与平台主管理员（兼容入口）', requiresAuth: true, permissionKey: 'platform.tenant.contact.manage', legacyCapabilityRedirect: true }
     },
     {
-      path: 'products', name: 'platform-products', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '产品与增值能力', requiresAuth: true, permissionKey: 'platform.product.view', platformCapabilityKey: 'plt-products' }
+      path: 'products', name: 'platform-products', redirect: '/admin/platform/packages',
+      meta: { moduleCode: 'PLATFORM', title: '产品与增值能力（兼容入口）', requiresAuth: true, permissionKey: 'platform.product.view', legacyCapabilityRedirect: true }
     },
     {
-      path: 'init-templates', name: 'platform-init-templates', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '初始化模板', requiresAuth: true, permissionKey: 'platform.provision.template.manage', platformCapabilityKey: 'plt-init-templates' }
+      path: 'init-templates', name: 'platform-init-templates', redirect: '/admin/platform/provisioning',
+      meta: { moduleCode: 'PLATFORM', title: '初始化模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.provision.template.manage', legacyCapabilityRedirect: true }
     },
     {
-      // PLAT-04：原先是待建占位页（PlatformCapabilityView），现替换为真实实现
+      // PLAT-04：真实实现
       path: 'provisioning', name: 'platform-provisioning', component: () => import('@/modules/platform/views/control/PlatformProvisioningView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '自动开通任务', requiresAuth: true, permissionKey: 'platform.provision.run.view' }
     },
@@ -225,12 +226,12 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '学校开通与首次开户', requiresAuth: true, permissionKey: 'platform.onboarding.view', platformCapabilityKey: 'plt-onboarding-check' }
     },
     {
-      path: 'role-templates', name: 'platform-role-templates', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '平台角色模板', requiresAuth: true, permissionKey: 'platform.role-template.manage', platformCapabilityKey: 'plt-role-templates' }
+      path: 'role-templates', name: 'platform-role-templates', redirect: '/admin/platform/access',
+      meta: { moduleCode: 'PLATFORM', title: '平台角色模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.role-template.manage', legacyCapabilityRedirect: true }
     },
     {
-      path: 'releases', name: 'platform-releases', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', platformCapabilityKey: 'plt-releases' }
+      path: 'releases', name: 'platform-releases', redirect: '/admin/platform/changes',
+      meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关（兼容入口）', requiresAuth: true, permissionKey: 'platform.release.manage', legacyCapabilityRedirect: true }
     },
     {
       // PLAT-10：问题管理、已知错误与事故复盘
@@ -251,23 +252,22 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '备份恢复验证与灾备', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
-      // PLAT-11：卡片唯一正式路由是 /admin/platform/changes，与上面的 releases 占位页
-      // 是不同路由，不合并；变更评估/审批/排期/灰度/回滚在这里，releases 留给其它范围。
+      // PLAT-11：变更评估/审批/排期/灰度/回滚唯一正式业务面
       path: 'changes', name: 'platform-changes',
       component: () => import('@/modules/platform/views/control/PlatformChangeView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '变更、发布、兼容性、灰度与回滚', requiresAuth: true, permissionKey: 'platform.change.manage' }
     },
     {
-      path: 'support-tickets', name: 'platform-support-tickets', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '工单与服务请求', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', platformCapabilityKey: 'plt-support-tickets' }
+      path: 'support-tickets', name: 'platform-support-tickets', redirect: '/admin/platform/customer-success',
+      meta: { moduleCode: 'PLATFORM', title: '工单与服务请求（兼容入口）', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', legacyCapabilityRedirect: true }
     },
     {
-      path: 'support-sessions', name: 'platform-support-sessions', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '受控远程协助', requiresAuth: true, permissionKey: 'platform.support.session.manage', platformCapabilityKey: 'plt-support-sessions' }
+      path: 'support-sessions', name: 'platform-support-sessions', redirect: '/admin/platform/access',
+      meta: { moduleCode: 'PLATFORM', title: '受控远程协助（兼容入口）', requiresAuth: true, permissionKey: 'platform.support.session.manage', legacyCapabilityRedirect: true }
     },
     {
-      path: 'tenant-health', name: 'platform-tenant-health', component: () => import('@/modules/platform/views/PlatformCapabilityView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通', requiresAuth: true, permissionKey: 'platform.customer-health.view', platformCapabilityKey: 'plt-tenant-health' }
+      path: 'tenant-health', name: 'platform-tenant-health', redirect: '/admin/platform/customer-success',
+      meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通（兼容入口）', requiresAuth: true, permissionKey: 'platform.customer-health.view', legacyCapabilityRedirect: true }
     },
     {
       path: 'operator-access', name: 'platform-operator-access', redirect: '/admin/platform/access',
