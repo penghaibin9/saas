@@ -52,7 +52,7 @@ export function installDirtyFormGuard(router, options = {}) {
 
   const removeBefore = router.beforeEach((to, from) => {
     if (!dirty || !isGuarded(from, guardedRoutes)) return true
-    if (routeName(to) === routeName(from)) return true
+    if (String(to?.fullPath || '') === String(from?.fullPath || '')) return true
 
     // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
     // 只有真实保存成功后页面显式调用 markSaved()，或用户明确确认丢弃修改，才允许离开。
@@ -64,7 +64,7 @@ export function installDirtyFormGuard(router, options = {}) {
   })
 
   const removeAfter = router.afterEach((to, from) => {
-    if (routeName(to) !== routeName(from) && !isGuarded(from, guardedRoutes)) {
+    if (String(to?.fullPath || '') !== String(from?.fullPath || '') && !isGuarded(from, guardedRoutes)) {
       dirty = false
     }
   })
