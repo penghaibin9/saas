@@ -19,7 +19,11 @@ def test_students_detail(client, auth_headers, db_mode):
     body = client.get(f"/api/v1/students/{sid}", headers=auth_headers).json()
     assert body["code"] == 0
     d = body["data"]
-    assert d["contacts"] and d["timeline"] and d["statusRecord"]
+    # 真实主档必须给出联系人与历史字段结构；新建/基线样本没有历史事件时 timeline 允许为空，
+    # 不得为了旧测试制造一条假时间线。
+    assert d["contacts"]
+    assert isinstance(d["timeline"], list)
+    assert "statusRecord" in d
     assert "****" in d["phoneMasked"]  # 敏感字段脱敏口径
 
 
