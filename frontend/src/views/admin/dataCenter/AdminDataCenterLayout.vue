@@ -8,18 +8,24 @@
     @menu-select="onMenuSelect"
   >
     <router-view v-if="ctx" :ctx="ctx" />
-    <LoadingState v-else text="正在加载数据中心…" />
+    <ErrorState
+      v-else-if="ctxError"
+      :description="ctxError"
+      @retry="loadContext"
+      @back="$router.push('/admin')"
+    />
+    <LoadingState v-else text="正在加载数据中心真实身份与数据范围…" />
   </BasePortalLayout>
 </template>
 
 <script>
 /**
  * AdminDataCenterLayout — /admin/data-center 父布局。
- * 品牌名 / 角色 / 数据范围全部来自 dataCenterApi.getContext()，禁止硬编码。
- * P6：已移除「演示角色」假切换；切身份须走真实 /auth/switch-role（顶栏/身份体系）。
+ * 品牌名 / 角色 / 数据范围全部来自 dataCenterApi.getContext()。
+ * 上下文服务异常时明确报错并允许重试，绝不构造默认角色/全校范围继续渲染驾驶舱。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import { LoadingState, ErrorState } from '@/components/business'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
 
 const MENUS = [
@@ -32,9 +38,9 @@ const MENUS = [
 
 export default {
   name: 'AdminDataCenterLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, LoadingState, ErrorState },
   data() {
-    return { menus: MENUS, ctx: null }
+    return { menus: MENUS, ctx: null, ctxError: '' }
   },
   computed: {
     brandTitle() {
@@ -54,8 +60,14 @@ export default {
   },
   methods: {
     async loadContext() {
+      this.ctx = null
+      this.ctxError = ''
       const res = await dataCenterApi.getContext()
-      if (res.code === 0) this.ctx = res.data
+      if (res.code === 0 && res.data) {
+        this.ctx = res.data
+      } else {
+        this.ctxError = res.message || '数据中心身份与数据范围加载失败，请重试'
+      }
     },
     onMenuSelect(item) {
       if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
