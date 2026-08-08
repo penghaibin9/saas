@@ -265,6 +265,41 @@ def todos(user: dict) -> dict:
             "scopeMode": scope["mode"], "errors": errors}
 
 
+def weekly_review(user: dict, report_id: str, action: str, comment: str | None = None) -> dict:
+    """周报写链显式透传 actor，避免同步 FastAPI ContextVar 丢失导致二次 owner 校验误拒绝。"""
+    u = _require_teacher(user)
+    if not _impl.db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "SCOPED":
+        detail = _impl.internship_service.get_weekly_report_detail(report_id, user=u)
+        if not _impl.scope_match_row(scope, class_name=detail.get("className"),
+                                     advisor_name=detail.get("advisorName"),
+                                     student_no=detail.get("studentNo")):
+            allowed = False
+            try:
+                with _impl._session() as db:
+                    from app.models import InternshipRecord, StudentProfile, WeeklyReport
+                    w = db.get(WeeklyReport, int(report_id))
+                    rec = db.get(InternshipRecord, w.internship_id) if w else None
+                    if rec and (rec.advisor_name or "").strip() in scope["advisorNames"]:
+                        allowed = True
+                    if rec and rec.student_id:
+                        stu = db.get(StudentProfile, rec.student_id)
+                        if stu is not None and _impl.can_teacher_view_student({}, stu, scope=scope, db=db):
+                            allowed = True
+            except Exception:  # noqa: BLE001
+                allowed = False
+            if not allowed:
+                raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
+    result = _impl.internship_service.review_weekly_report(
+        report_id, action, comment or "", user=u)
+    _impl._audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",
+                       {"operator": u.get("realName"), "action": action,
+                        "comment": (comment or "")[:200]})
+    return result
+
+
 # 保存原入口（模块重载时不把门面自身保存成 original），再把实现模块引用到安全函数。
 if not hasattr(_impl, "_original_resolve_teacher_scope"):
     _impl._original_resolve_teacher_scope = _impl.resolve_teacher_scope
@@ -276,6 +311,7 @@ _impl.resolve_teacher_scope = resolve_teacher_scope
 _impl.my_students = my_students
 _impl.overview = overview
 _impl.todos = todos
+_impl.weekly_review = weekly_review
 _impl._total = _total
 _impl._safe_list = _safe_list
 
