@@ -12,6 +12,11 @@ const ASSET_EXTENSIONS = new Set([
   '.css', '.scss', '.sass', '.less', '.styl', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp',
   '.woff', '.woff2', '.ttf', '.eot', '.json', '.md', '.html'
 ])
+const TRAVERSAL_BOUNDARIES = new Set([
+  // 各 graph 的正式注册关系由 assertRegistration 单独校验；公共布局反向 import 全局 router
+  // 只用于导航，不应让单一业务 graph 扩散成全站所有 route 的依赖图。
+  'frontend/src/router/index.js'
+])
 
 const ENTRY_GRAPHS = [
   {
@@ -69,9 +74,6 @@ const FORBIDDEN_IMPORTED_SYMBOLS = new Set([
   'shouldTryReal'
 ])
 
-// A6 继承 A1-A5 已封板合同，但只匹配“旧实现特征”，不把真实 DTO 字段名本身当违规。
-// 例如 approvalList / overviewMetrics 作为服务端响应字段是合法的；只有本地声明、内存变更、
-// mock import / fallback 调用等能够重新形成浏览器事实源的形态才 fail-closed。
 const FILE_FORBIDDEN_PATTERNS = new Map([
   ['frontend/src/modules/approval/api/approval.api.js', [
     { label: '@/mocks/approval', regex: /@\/mocks\/approval\b/ },
@@ -158,9 +160,13 @@ function stripQuery(specifier) {
 
 function candidateFiles(basePath) {
   const values = [basePath]
-  if (!path.extname(basePath)) {
-    for (const ext of CODE_EXTENSIONS) values.push(`${basePath}${ext}`)
-    for (const ext of CODE_EXTENSIONS) values.push(path.join(basePath, `index${ext}`))
+  const ext = path.extname(basePath).toLowerCase()
+  const hasKnownExtension = CODE_EXTENSIONS.includes(ext) || ASSET_EXTENSIONS.has(ext)
+  // `approval.api` / `student.api` / `orientation.routes` 的点号是模块命名的一部分，不是文件扩展名。
+  // 只有已知代码/资源扩展名才停止补全；其余继续尝试 .js/.vue 等。
+  if (!hasKnownExtension) {
+    for (const codeExt of CODE_EXTENSIONS) values.push(`${basePath}${codeExt}`)
+    for (const codeExt of CODE_EXTENSIONS) values.push(path.join(basePath, `index${codeExt}`))
   }
   return values
 }
@@ -230,7 +236,6 @@ function forbiddenPathReason(repoPath) {
 
 function inspectBusinessSource(repoPath, source, chain, violations) {
   const code = removeComments(source)
-
   if (isBusinessOwned(repoPath)) {
     const localPatterns = [
       { label: '_mock* 业务方法', regex: /\b_mock[A-Za-z0-9_]*\s*\(/ },
@@ -247,9 +252,7 @@ function inspectBusinessSource(repoPath, source, chain, violations) {
 
   const filePatterns = FILE_FORBIDDEN_PATTERNS.get(repoPath) || []
   for (const item of filePatterns) {
-    if (item.regex.test(code)) {
-      violations.push({ type: 'stage-contract-regression', file: repoPath, message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`, chain })
-    }
+    if (item.regex.test(code)) violations.push({ type: 'stage-contract-regression', file: repoPath, message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`, chain })
   }
 }
 
@@ -257,9 +260,7 @@ function inspectImportedSymbols(repoPath, imp, chain, violations) {
   if (!imp.clause) return
   for (const symbol of FORBIDDEN_IMPORTED_SYMBOLS) {
     const regex = new RegExp(`\\b${symbol}\\b`)
-    if (regex.test(imp.clause)) {
-      violations.push({ type: 'forbidden-imported-symbol', file: repoPath, message: `${repoPath} 从 ${imp.specifier} 导入禁用符号 ${symbol}`, chain })
-    }
+    if (regex.test(imp.clause)) violations.push({ type: 'forbidden-imported-symbol', file: repoPath, message: `${repoPath} 从 ${imp.specifier} 导入禁用符号 ${symbol}`, chain })
   }
 }
 
@@ -271,12 +272,7 @@ function assertRegistration(graph, violations) {
   }
   const source = fs.readFileSync(registrationFile, 'utf8')
   if (!source.includes(graph.registration.needle)) {
-    violations.push({
-      type: 'formal-entry-not-registered',
-      file: graph.registration.file,
-      message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（缺少 ${graph.registration.needle}）`,
-      chain: [graph.entry]
-    })
+    violations.push({ type: 'formal-entry-not-registered', file: graph.registration.file, message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（缺少 ${graph.registration.needle}）`, chain: [graph.entry] })
   }
 }
 
@@ -334,6 +330,7 @@ function scanGraph(graph) {
       if (resolved.kind === 'asset') continue
 
       edges += 1
+      if (TRAVERSAL_BOUNDARIES.has(targetPath)) continue
       if (!visited.has(resolved.file) && !queued.has(resolved.file)) {
         queued.add(resolved.file)
         queue.push({ file: resolved.file, chain: nextChain })
