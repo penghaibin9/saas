@@ -36,8 +36,15 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
+    # P1 批次D：教务域并发正确性测试(行锁/唯一约束竞态)原来只有每日定时全量才跑，
+    # PR 阶段不受保护——一个改坏行锁语义的 PR 可以一路绿灯合并，等到凌晨定时任务
+    # 才发现。改为教务源码改动即拉起这几个已知的 MySQL 并发回归。
     (("backend/app/modules/academic_affairs", "backend/app/api/v1/academic"),
-     ["tests/test_aa_p0_authz.py"]),
+     ["tests/test_aa_p0_authz.py",
+      "tests/test_aa_grade_identity_head_concurrency.py",
+      "tests/test_aa_grade_recheck_concurrency.py",
+      "tests/test_aa_status_change_concurrency.py",
+      "tests/test_aa_exam_facade_contract_and_changes.py"]),
     (("backend/app/services/affairs", "backend/app/api/v1/student_affairs",
       "backend/app/api/v1/mobile"),
      ["tests/test_affairs_*.py", "tests/test_portal_affairs*.py", "tests/test_mobile*.py"]),

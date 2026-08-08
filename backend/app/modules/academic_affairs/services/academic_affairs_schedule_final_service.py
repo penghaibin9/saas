@@ -336,28 +336,70 @@ def add_item(batch_id, user, body) -> dict:
         return {**_base._item_row(item), "prePublishReset": reset}
 
 
-def import_items(batch_id, user, items) -> dict:
+def _apply_import_rows(db, batch, items) -> tuple[int, list[dict]]:
+    """排课导入单行处理：与手工排课(add_item)完全同一套 _resolve_task/_build_item 校验与
+    _detect_conflict 冲突检测。dry_run 与 confirm 都只调用这一个函数，避免出现两套会互相
+    漂移的校验逻辑（预检说没问题，确认时才报错）。"""
     imported = 0
     errors = []
-    reset = False
+    for index, source in enumerate(items or [], start=1):
+        try:
+            task = _resolve_task(db, batch, source)
+            item = _build_item(db, batch, task, source, item_source="IMPORT")
+            db.add(item)
+            db.flush()
+            imported += 1
+        except AppException as exc:
+            errors.append({
+                "row": index,
+                "code": exc.code,
+                "message": exc.message,
+                "details": exc.details,
+            })
+    return imported, errors
+
+
+def import_dry_run(batch_id, user, items) -> dict:
+    """排课导入预检：复用 `_apply_import_rows` 与真实确认完全相同的逐行校验，唯一区别是全程
+    包在一个必定回滚的保存点内，不产生任何真实写入——同一份文件内部两行互相冲突（同一教师/
+    教室/班级撞时间）依然能在预检阶段发现，因为保存点内先写入的行对同一事务内后续查询可见。"""
+    with _base.session() as db:
+        batch = _load_batch(db, batch_id, writable=False, lock=False)
+        db.flush()
+        nested = db.begin_nested()
+        try:
+            imported, errors = _apply_import_rows(db, batch, items)
+        finally:
+            nested.rollback()
+        return {
+            "totalRows": len(items or []),
+            "validRows": imported,
+            "invalidRows": len(errors),
+            "errors": errors,
+        }
+
+
+def import_items(batch_id, user, items, *, atomic: bool = True) -> dict:
+    """排课导入确认。`atomic=True`（默认）时任一行失败则整批不写入——与预检"总数/有效数"
+    对不上导致学校误以为已导入成功的问题彻底杜绝；`atomic=False` 时保留逐行尽力导入的
+    PARTIAL 语义，成功的行落库、失败的行进 errors，供学校自行选择。"""
     with _base.session() as db:
         batch = _load_batch(db, batch_id)
         if batch.status not in {"DRAFT", "PRE_PUBLISHED"}:
             raise AppException("DATA_CONFLICT", "已发布课表不可导入", http_status=409)
-        for index, source in enumerate(items or [], start=1):
-            try:
-                task = _resolve_task(db, batch, source)
-                item = _build_item(db, batch, task, source, item_source="IMPORT")
-                db.add(item)
-                db.flush()
-                imported += 1
-            except AppException as exc:
-                errors.append({
-                    "row": index,
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": exc.details,
-                })
+        imported, errors = _apply_import_rows(db, batch, items)
+        if atomic and errors:
+            db.rollback()
+            return {
+                "batchId": str(batch_id),
+                "imported": 0,
+                "conflicts": errors,
+                "errors": errors,
+                "prePublishReset": False,
+                "atomic": True,
+                "committed": False,
+            }
+        reset = False
         if imported and batch.status == "PRE_PUBLISHED":
             batch.status = "DRAFT"
             reset = True
@@ -366,16 +408,18 @@ def import_items(batch_id, user, items) -> dict:
             "AA_SCHEDULE_BATCH",
             batch.id,
             "IMPORT",
-            f"imported={imported};errors={len(errors)};prePublishReset={reset}",
+            f"imported={imported};errors={len(errors)};prePublishReset={reset};atomic={atomic}",
         )
         db.commit()
-    return {
-        "batchId": str(batch_id),
-        "imported": imported,
-        "conflicts": errors,
-        "errors": errors,
-        "prePublishReset": reset,
-    }
+        return {
+            "batchId": str(batch_id),
+            "imported": imported,
+            "conflicts": errors,
+            "errors": errors,
+            "prePublishReset": reset,
+            "atomic": atomic,
+            "committed": True,
+        }
 
 
 def move_item(item_id, user, body) -> dict:
@@ -553,8 +597,21 @@ def publish(batch_id, user) -> dict:
     from app.models import AaScheduleItem, AaSchedulePublish, User
     from app.services.message_event_outbox_service import emit_receiver_notice
 
+    from . import academic_affairs_schedule_truth_service as truth_service
+
     with _base.session() as db:
         batch = _load_batch(db, batch_id)
+        # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，
+        # 同一学期就出现两份 PUBLISHED，学生的正式课表变得没有答案。
+        scope_type, scope_id = truth_service.scope_of(batch)
+        head = truth_service.lock_scope_head(db, batch.term_id, scope_type, scope_id)
+        db.refresh(batch)
+        if batch.status == "SUPERSEDED":
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "该课表批次已被更新版本顶替，不能再次发布",
+                http_status=409,
+            )
         if batch.status == "PUBLISHED":
             last = db.query(AaSchedulePublish).filter(
                 AaSchedulePublish.tenant_id == _base._tid(),
@@ -582,8 +639,11 @@ def publish(batch_id, user) -> dict:
                 http_status=409,
             )
         gate = gate_service.require_publishable(db, batch)
+        # 全校共享资源（教师/教室/班级）跨批次校验：学院级批次内部合法不等于全校合法。
+        school_wide = truth_service.require_no_school_wide_conflict(db, batch)
         batch.status = "PUBLISHED"
         batch.publish_at = datetime.utcnow()
+        truth = truth_service.promote_to_active(db, batch, head)
 
         teacher_keys = {
             row.teacher_key for row in db.query(AaScheduleItem).filter(
@@ -630,7 +690,12 @@ def publish(batch_id, user) -> dict:
             "AA_SCHEDULE_BATCH",
             batch.id,
             "PUBLISH",
-            f"teachers={notified};gateVersion={gate['ruleVersion']}",
+            (
+                f"teachers={notified};gateVersion={gate['ruleVersion']};"
+                f"scope={truth['scopeType']}:{truth['scopeId']};headVersion={truth['headVersion']};"
+                f"superseded={truth['supersededBatchId'] or '-'};"
+                f"schoolWideChecked={school_wide['comparedAgainst']}"
+            ),
         )
         db.commit()
 
@@ -641,4 +706,5 @@ def publish(batch_id, user) -> dict:
         "status": "PUBLISHED",
         "notified": notified,
         "gate": gate,
+        "activeTruth": truth,
     }

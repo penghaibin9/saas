@@ -53,8 +53,16 @@ def test_academic_change_runs_stable_gate_and_changed_regression_only():
 
 
 def test_academic_source_only_still_runs_permission_gate():
+    """P1 批次D：教务源码改动除了权限闸门，还必须带上已知的 MySQL 并发回归——
+    行锁/唯一约束竞态原来只有每日定时全量才受保护，PR 阶段一路绿灯。"""
     mod = _load()
     targets = mod.select([
         "backend/app/modules/academic_affairs/routers/stats_snapshot_router.py",
     ])
-    assert targets == ["tests/test_aa_p0_authz.py"]
+    assert targets == [
+        "tests/test_aa_p0_authz.py",
+        "tests/test_aa_grade_identity_head_concurrency.py",
+        "tests/test_aa_grade_recheck_concurrency.py",
+        "tests/test_aa_status_change_concurrency.py",
+        "tests/test_aa_exam_facade_contract_and_changes.py",
+    ]

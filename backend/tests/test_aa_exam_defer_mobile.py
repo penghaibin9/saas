@@ -56,13 +56,15 @@ def _seed(db_mode):
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件3001",
                                status="ACTIVE"))
     db.commit()
-    ids = {"tt": tt.id, "student": s.id, "studentNo": s.student_no}
+    ids = {"tt": tt.id, "student": s.id, "studentNo": s.student_no, "term": term.id}
     db.close()
     return ids
 
 
-def _batch_with_confirmed_course(client, admin, tt_id):
-    bid = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": "移动缓考测试批次"}).json()["data"]["batchId"]
+def _batch_with_confirmed_course(client, admin, tt_id, term_id):
+    # 建考务批次必须绑定正式学期：termId 是 create_batch 的硬门禁，缺了直接 400。
+    bid = client.post(f"{BASE}/exam/batches", headers=admin,
+                      json={"batchName": "移动缓考测试批次", "termId": str(term_id)}).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
     client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
@@ -84,7 +86,7 @@ def test_defer_pending_counselor_scope_via_mobile(client, db_mode):
     无授权的其他辅导员看不到（PC defer_list 本身不做此过滤，纯靠移动端新聚合）。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"])
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
     did = _apply_defer(client, ids, cid)
 
     mine = client.get(f"{MOB}/teacher/academic/defer/pending", headers=_hdr(client, "counselor01")).json()
@@ -96,7 +98,7 @@ def test_defer_review_counselor_flow_via_mobile(client, db_mode):
     """辅导员移动端通过 → 状态推进 TEACHER_CONFIRM，且推进后不再出现在辅导员自己的待办里。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"])
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
     did = _apply_defer(client, ids, cid)
     hdr = _hdr(client, "counselor01")
 
@@ -112,7 +114,7 @@ def test_defer_pending_teacher_scope_via_mobile(client, db_mode):
     无关教师（teacher01）看不到。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"])
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
     did = _apply_defer(client, ids, cid)
     client.post(f"{MOB}/teacher/academic/defer/{did}/review", headers=_hdr(client, "counselor01"),
                json={"action": "APPROVE"})
@@ -128,7 +130,7 @@ def test_defer_review_teacher_flow_and_return_validation_via_mobile(client, db_m
     """任课教师移动端通过 → COLLEGE_REVIEW；退回原因 <5 字 400。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"])
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
     did = _apply_defer(client, ids, cid)
     client.post(f"{MOB}/teacher/academic/defer/{did}/review", headers=_hdr(client, "counselor01"),
                json={"action": "APPROVE"})
@@ -147,7 +149,7 @@ def test_cross_node_review_403_via_mobile(client, db_mode):
     _check_defer_scope，与 PC 端 e14 同一断言，经 mobile 路径复测）。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"])
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
     did = _apply_defer(client, ids, cid)
     client.post(f"{MOB}/teacher/academic/defer/{did}/review", headers=_hdr(client, "counselor01"),
                json={"action": "APPROVE"})

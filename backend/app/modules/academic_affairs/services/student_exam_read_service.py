@@ -122,7 +122,10 @@ def exam_my(user) -> dict:
 def deferrable_courses(user) -> dict:
     """本人名单内、尚未开考且没有进行中缓考申请的课程。"""
     from app.models import AaDeferredExam, AaExamBatch, AaExamCourse
-    from app.modules.academic_affairs.services import academic_affairs_exam_service as legacy
+    # 绝对导入子模块本身（不是包属性 from-import）：services/__init__.py 把包属性
+    # academic_affairs_exam_service 重新绑定到 facade 之后，任何 from-import 形式都会
+    # 拿到 facade，而这里要用的是 legacy 内部状态常量/审计辅助（不属于 facade 公开契约）。
+    import app.modules.academic_affairs.services.academic_affairs_exam_service as legacy
 
     with session() as db:
         student = _student(db, user)
@@ -159,7 +162,10 @@ def deferrable_courses(user) -> dict:
 def defer_apply(user, body: dict) -> dict:
     """本人申请缓考：名单归属、未开考、无进行中申请、理由完整。"""
     from app.models import AaDeferredExam, AaExamBatch, AaExamCourse, AaExamRoomStudent
-    from app.modules.academic_affairs.services import academic_affairs_exam_service as legacy
+    # 绝对导入子模块本身（不是包属性 from-import）：services/__init__.py 把包属性
+    # academic_affairs_exam_service 重新绑定到 facade 之后，任何 from-import 形式都会
+    # 拿到 facade，而这里要用的是 legacy 内部状态常量/审计辅助（不属于 facade 公开契约）。
+    import app.modules.academic_affairs.services.academic_affairs_exam_service as legacy
 
     data = body or {}
     raw_cid = data.get("examCourseId")

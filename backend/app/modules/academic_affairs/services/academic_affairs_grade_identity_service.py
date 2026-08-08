@@ -8,7 +8,10 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
@@ -55,22 +58,87 @@ def resolve_grade_task_course(db, grade_task):
     return course
 
 
-def next_study_attempt_no(db, acad_student_id: int, course_code: str) -> int:
-    """同一学生、同一稳定课程代码的下一次修读编号。
+def lock_grade_identity(db, acad_student_id: int, course_code: str):
+    """取得并锁定 (学生, 稳定课程代码) 的成绩身份头。
 
-    course_id 指向版本行，同一课程改版后ID会变化，因此修读次数按稳定 course_code 聚合。
-    历史 NULL attempt_no 不参与自动推断，避免按课程名猜测；回填后才进入正式序列。
+    这是所有正式成绩写入的互斥点。返回前该行已持有排他锁，调用方必须在同一事务里完成
+    「读现状 → 判重 → 分配 attempt_no → 写成绩」，锁随事务提交释放。
+    """
+    from app.models import AaGradeIdentityHead
+
+    code = str(course_code or "").strip()
+    if not code:
+        raise AppException(
+            "DATA_CONFLICT",
+            "正式成绩缺少稳定课程代码，无法分配修读次数",
+            http_status=409,
+        )
+
+    def _query():
+        return db.query(AaGradeIdentityHead).filter(
+            AaGradeIdentityHead.tenant_id == _tid(),
+            AaGradeIdentityHead.acad_student_id == int(acad_student_id),
+            AaGradeIdentityHead.course_code == code,
+            AaGradeIdentityHead.is_deleted.is_(False),
+        )
+
+    head = _query().with_for_update().first()
+    if head:
+        return head
+    # 首次写这门课的成绩：建头再锁。并发下另一个事务可能抢先插入，唯一约束会让本次 INSERT 失败；
+    # 用 savepoint 包住，失败时只回滚这一小段而不是整个业务事务，然后改读对方那一行。
+    #
+    # 进 savepoint 前必须先把调用方已有的待写数据 flush 掉：begin_nested() 之后的 flush 会把
+    # session 里所有 pending 对象一起写进这个 savepoint，一旦建头撞唯一键回滚，调用方在本次
+    # 业务里写的成绩行会被一并撤销——业务数据丢在一个本该只影响计数器的地方。
+    db.flush()
+    try:
+        with db.begin_nested():
+            head = AaGradeIdentityHead(
+                tenant_id=_tid(), acad_student_id=int(acad_student_id),
+                course_code=code, current_attempt_no=0,
+            )
+            db.add(head)
+            db.flush()
+    except IntegrityError:
+        head = None
+    return _query().with_for_update().first() or head
+
+
+def next_study_attempt_no(db, acad_student_id: int, course_code: str,
+                          *, source_biz_type: str | None = None) -> int:
+    """分配同一学生、同一稳定课程代码的下一次修读编号。
+
+    原实现是 ``SELECT MAX(attempt_no) + 1``，没有任何互斥：两个事务同时读到 MAX=0 就各自
+    返回 1。正常发布、成绩认定、免修、补考、清考、重修全都会写正式成绩，任意两条路径并发
+    就能给同一个学生同一门课造出两条 attempt_no 相同且都 PASSED 的正式事实——
+    (source_biz_type, source_biz_id) 唯一键拦不住，因为两条来源本来就不同。
+
+    现在先锁成绩身份头，把同一(学生,课程)的分配串行化，计数器落在头上而不是每次重算。
+    course_id 指向版本行、改版后会变，因此修读次数按稳定 course_code 聚合。
+    历史 NULL attempt_no 不参与推断，避免按课程名猜测；回填后才进入正式序列。
     """
     from app.models import AcademicGrade
 
-    max_no = db.scalar(select(func.max(AcademicGrade.attempt_no)).where(
-        AcademicGrade.tenant_id == _tid(),
-        AcademicGrade.acad_student_id == int(acad_student_id),
-        AcademicGrade.course_code == str(course_code).strip(),
-        AcademicGrade.attempt_no.is_not(None),
-        AcademicGrade.is_deleted.is_(False),
-    ))
-    return int(max_no or 0) + 1
+    head = lock_grade_identity(db, acad_student_id, course_code)
+    allocated = int(head.current_attempt_no or 0)
+    if allocated <= 0:
+        # 头是新建的：用存量正式成绩的最大值初始化，保证已有历史数据不被重号。
+        # 此处普通读安全——能走到这里说明本事务是第一个拿到该头锁的，没有并发方已提交的新值。
+        max_no = db.scalar(select(func.max(AcademicGrade.attempt_no)).where(
+            AcademicGrade.tenant_id == _tid(),
+            AcademicGrade.acad_student_id == int(acad_student_id),
+            AcademicGrade.course_code == str(course_code).strip(),
+            AcademicGrade.attempt_no.is_not(None),
+            AcademicGrade.is_deleted.is_(False),
+        ))
+        allocated = int(max_no or 0)
+
+    nxt = allocated + 1
+    head.current_attempt_no = nxt
+    head.last_source_biz_type = (source_biz_type or "").strip().upper() or None
+    head.last_allocated_at = datetime.utcnow()
+    return nxt
 
 
 def source_attempt_no(source_grade) -> int:

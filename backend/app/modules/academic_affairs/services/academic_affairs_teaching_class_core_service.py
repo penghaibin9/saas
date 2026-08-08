@@ -184,6 +184,8 @@ def create_roster_version(db, teaching_class, student_ids, *, source_type: str, 
             roster_version_id=version.id, student_id=student_id,
             source_type=source_type, source_id=source_map.get(student_id), status="ACTIVE",
         ))
+    # sessionmaker 是 autoflush=False，成员必须显式 flush 才对同事务后续读可见（同公开 service）。
+    db.flush()
     locked_class.current_roster_version_id = version.id
     locked_class.current_roster_version_no = next_version
     locked_class.roster_status = "LOCKED"

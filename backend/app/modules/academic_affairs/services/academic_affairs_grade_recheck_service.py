@@ -143,11 +143,23 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
     from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
     with session() as db:
         _require_school(user, db)
-        row = db.get(AaGradeRecheck, int(recheck_id))
-        if not row or row.is_deleted or row.tenant_id != _tid():
+        # 申请行必须先上排他锁再判状态。原来这里是无锁 db.get()，两个教务员并发时可以双双读到
+        # SUBMITTED：一个 REJECT、一个 ADJUST，两边各自 commit，结果是「驳回成功」的回执和被
+        # 改掉的正式成绩同时成立。ADJUST 分支后面虽然锁了成绩行，但那时决策早已分叉。
+        # 锁顺序统一为 AaGradeRecheck → AcademicGrade → AaGradeTask，全流程不得反向加锁。
+        row = db.query(AaGradeRecheck).filter(
+            AaGradeRecheck.id == int(recheck_id),
+            AaGradeRecheck.tenant_id == _tid(),
+            AaGradeRecheck.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not row:
             raise not_found("复查申请不存在")
         if row.status != "SUBMITTED":
-            raise _invalid("仅待复查记录可处理")
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "该成绩复查申请已被处理",
+                http_status=409,
+            )
         act = (action or "").upper()
         if act == "REJECT":
             if not note or len(note.strip()) < 5:

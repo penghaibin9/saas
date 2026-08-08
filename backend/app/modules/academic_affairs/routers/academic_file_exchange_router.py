@@ -1,10 +1,11 @@
 """教务数据交换中心路由（阶段 7 收口）。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Header, Path, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Path, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.file_contract import validated_local_file_response
+from app.core.exceptions import AppException
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
 from app.core.security import require_staff
@@ -108,13 +109,17 @@ async def create_grade_import_job(
 async def create_schedule_import_job(
     batch_id: int = Path(..., ge=1),
     file: UploadFile = File(...),
+    importMode: str = Form("ATOMIC", description="ATOMIC=任一行失败整批不写入（默认）；PARTIAL=逐行尽力导入"),
     user=Depends(require_permission("academicAffairs.schedule.import")),
 ):
+    mode = str(importMode or "ATOMIC").strip().upper()
+    if mode not in {"ATOMIC", "PARTIAL"}:
+        raise AppException("VALIDATION_ERROR", "importMode 仅支持 ATOMIC/PARTIAL")
     item = await _store_import_job(
         file=file,
         biz_type="ACADEMIC_SCHEDULE_IMPORT_SOURCE",
         import_type=exchange.ACADEMIC_SCHEDULE_IMPORT,
-        context={"batchId": batch_id},
+        context={"batchId": batch_id, "importMode": mode},
         user=user,
     )
     return success(item, message=_created_message(item))
@@ -176,6 +181,11 @@ def list_jobs(
 @router.get("/imports/{job_id}", summary="教务导入任务详情并推进扫描后服务端预检")
 def import_detail(job_id: str, user=Depends(require_staff)):
     return success(exchange.refresh_import_job(job_id, user=user))
+
+
+@router.post("/imports/{job_id}/errors-export", summary="把导入任务的失败行打包成可下载 xlsx")
+def export_import_errors(job_id: str, user=Depends(require_staff)):
+    return success(exchange.export_import_errors_xlsx(job_id, user=user), message="错误清单已生成，可用导出票据下载")
 
 
 @router.get("/exports/{job_id}", summary="教务导出任务详情")

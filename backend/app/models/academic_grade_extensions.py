@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Index, Integer, String, UniqueConstraint, event
+from sqlalchemy import BigInteger, Index, Integer, Numeric, String, UniqueConstraint, event
 from sqlalchemy.orm import mapped_column
 
 from app.models.academic import AcademicGrade, AcademicMakeup
@@ -83,6 +83,18 @@ def install_academic_grade_extensions() -> None:
     # "一个成绩明细同时只能有一条有效正式成绩"仍由数据库兜底，历史版本得以完整保留。
     _add_column(AcademicGrade, "active_record_key", mapped_column(
         BigInteger, nullable=True, comment="ACTIVE 版本的 grade_record_id；非 ACTIVE 版本为 NULL"
+    ))
+
+    # P1-GPA：绩点换算策略可版本化配置后，每条成绩第一次计入 GPA 时冻结当时生效的换算结果，
+    # 此后即使租户切换到新版本策略，这条历史记录的绩点也不再重算（AaGpaPointPolicy）。
+    _add_column(AcademicGrade, "gpa_point", mapped_column(
+        Numeric(4, 2), nullable=True, comment="冻结绩点：第一次计入 GPA 时按当时生效策略算出，此后不再随策略升级重算"
+    ))
+    _add_column(AcademicGrade, "gpa_policy_code", mapped_column(
+        String(80), nullable=True, comment="冻结绩点时采用的 AaGpaPointPolicy.policy_code"
+    ))
+    _add_column(AcademicGrade, "gpa_policy_version", mapped_column(
+        Integer, nullable=True, comment="冻结绩点时采用的 AaGpaPointPolicy.policy_version"
     ))
 
     grade_table = AcademicGrade.__table__

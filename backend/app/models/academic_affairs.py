@@ -374,7 +374,11 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class AaScheduleBatch(PKMixin, TenantMixin, CommonMixin, Base):
-    """课表批次（预发布→发布通知→归档）。DRAFT/PRE_PUBLISHED/PUBLISHED/ARCHIVED。"""
+    """课表批次（预发布→发布通知→归档）。DRAFT/PRE_PUBLISHED/PUBLISHED/SUPERSEDED/ARCHIVED。
+
+    SUPERSEDED：同一(学期,范围)下被更新的正式课表顶替。历史批次保留可查，但不再是当前真值——
+    「哪一份是学生现在的正式课表」由 AaScheduleScopeHead 唯一回答，不靠 status=PUBLISHED 猜。
+    """
     __tablename__ = "t_aa_schedule_batch"
 
     term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -382,6 +386,37 @@ class AaScheduleBatch(PKMixin, TenantMixin, CommonMixin, Base):
     college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     publish_at: Mapped[datetime | None] = mapped_column(DateTime)
+    supersedes_batch_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="本批次发布时顶替掉的上一版正式课表批次")
+
+
+class AaScheduleScopeHead(PKMixin, TenantMixin, CommonMixin, Base):
+    """课表范围头：一个(学期,范围)在任一时刻只有一份正式课表。
+
+    没有这张表时，同一学期可以并存多个 PUBLISHED 批次，「学生的正式课表是哪一份」就没有答案；
+    两个学院各自发布、内部都不冲突，全校共享的教师和教室仍会被排两次。发布必须先锁本行，
+    再做全校资源校验，最后 CAS 换 active_batch_id，把旧版本标 SUPERSEDED。
+
+    scope_type=SCHOOL 时 scope_id 落 0（不用 NULL：MySQL 唯一索引里 NULL 互不相等，
+    会让全校范围出现多行，唯一性形同虚设）。
+    """
+    __tablename__ = "t_aa_schedule_scope_head"
+
+    term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False, default="SCHOOL",
+                                            comment="SCHOOL 全校 / COLLEGE 学院")
+    scope_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0,
+                                          comment="COLLEGE 时为 college_id；SCHOOL 固定 0")
+    active_batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                        comment="当前唯一正式课表批次")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0,
+                                         comment="换版计数，供 CAS 与审计追溯")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "term_id", "scope_type", "scope_id",
+                         name="uk_aa_schedule_scope_head"),
+    )
 
 
 class AaScheduleItem(PKMixin, TenantMixin, CommonMixin, Base):
@@ -920,6 +955,12 @@ class AaGradeRecognition(PKMixin, TenantMixin, CommonMixin, Base):
     target_course_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="替代的现计划课程名(快照)")
     attachment_file_ids: Mapped[str | None] = mapped_column(String(500),
                                                             comment="佐证附件 file_id 列表 JSON(→t_file_object,对标正方*附件)")
+    # P0-D06 扩面：认定终审同样直接生成正式及格成绩，佐证就是这门学分的唯一依据。
+    # 与免修共用同一套证据链守卫——申请时冻结绑定清单，终审前逐项复验。
+    evidence_manifest_json: Mapped[str | None] = mapped_column(
+        String(4000), comment="申请时冻结的佐证证据清单：bindingId/fileId/version/sha256/owner/boundAt")
+    evidence_manifest_hash: Mapped[str | None] = mapped_column(
+        String(64), comment="证据清单 sha256；终审前重算比对，不一致即判证据失效")
     reason: Mapped[str | None] = mapped_column(String(500), comment="申请理由")
     review_reason: Mapped[str | None] = mapped_column(String(500), comment="审核意见/驳回原因")
     reviewed_by: Mapped[str | None] = mapped_column(String(100))
@@ -1120,6 +1161,23 @@ class AaExamPatrol(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ASSIGNED")
 
 
+class AaExamTeacherLock(PKMixin, TenantMixin, CommonMixin, Base):
+    """监考/巡考教师时间线互斥锁——纯锁行，不承载业务数据。
+
+    同一个老师的监考冲突检测是"查该教师全部已排场次→比对时段→通过则插入"，这本身不是
+    原子操作：两个并发请求都查到"无冲突"再各自插入，同一个老师就被排进两场同时段的考试。
+    (tenant, teacher_key) 上锁行，写监考/巡考前先取这把锁再做冲突检测+插入，把整条判断-写
+    序列串行化。teacher_key 覆盖监考和巡考共用同一份时间线(监考撞巡考也要拦)。
+    """
+    __tablename__ = "t_aa_exam_teacher_lock"
+
+    teacher_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "teacher_key", name="uk_aa_exam_teacher_lock"),
+    )
+
+
 class AaExamIncident(PKMixin, TenantMixin, CommonMixin, Base):
     """考场异常（缺考/违纪）。缺考触发风险通知；违纪留处分线索引用位。status ACTIVE/VOIDED。"""
     __tablename__ = "t_aa_exam_incident"
@@ -1247,6 +1305,13 @@ class AaExemption(PKMixin, TenantMixin, CommonMixin, Base):
     # 三级施工卡「11-材料归档」§8：免修材料归档标记（nullable，历史行零回填，迁移 aa_bkcx_tier1_r2）
     archive_status: Mapped[str | None] = mapped_column(String(20), default="NOT_ARCHIVED",
                                                         comment="NOT_ARCHIVED/ARCHIVED")
+    # P0-D06 免修证据链：免修终审会直接生成正式及格成绩，材料就是这门学分的唯一依据。
+    # 只校验"文件ID属于本租户"太弱——学生 B 知道学生 A 的 fileId 就能拿来当自己的依据，
+    # 审批期间文件被撤换也无人察觉。申请时把绑定关系冻结成清单并存哈希，终审前重新比对。
+    evidence_manifest_json: Mapped[str | None] = mapped_column(
+        String(4000), comment="申请时冻结的材料证据清单：bindingId/fileId/version/sha256/owner/boundAt")
+    evidence_manifest_hash: Mapped[str | None] = mapped_column(
+        String(64), comment="证据清单 sha256；终审前重算比对，不一致即判证据失效")
 
 
 # ═══════════ 教材管理组（13B；目录/选用/审核/征订/发放/费用，挂教学任务）═══════════

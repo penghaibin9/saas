@@ -54,6 +54,24 @@ def test_unknown_term_code_is_not_silently_treated_as_writable(monkeypatch):
     assert "未匹配到本校正式学期" in exc.value.message
 
 
+def test_guard_code_calls_a_real_existing_term_guard(monkeypatch):
+    """_guard_code 必须打到真实存在的实现上。
+
+    下面几条 _guard_batch 用例把 _guard_code 整个 monkeypatch 掉了，于是真实调用链从未被执行过——
+    正因如此，_guard_code 曾长期指向 academic_affairs_archive_service.guard_term_code_writable
+    （该模块没有这个函数，__getattr__ 落到 core 后 AttributeError 500），把补考/重修/免修整条
+    写入面打穿而无人发现。本用例不打桩，真的走一次解析。
+    """
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
+    from app.modules.academic_affairs.services import academic_affairs_archive_term_guard_facade as term_guard
+
+    monkeypatch.setattr(term_guard, "_tid", lambda: 1)
+    monkeypatch.setattr(term_guard._canonical, "guard_term_writable", lambda _db, _term_id: None)
+
+    resolved = service._guard_code(_Db([_term(9)]), "2025-2026-2")
+    assert resolved.id == 9
+
+
 def test_makeup_batch_guard_backfills_term_id(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_makeup_service as service
 
