@@ -70,3 +70,7 @@ class ApprovalTemplateVoidRequest(BaseModel):
 class ApprovalExportRequest(BaseModel):
     scope: str = Field(..., description="TODO/DONE/RETURNED/CC/TEMPLATE")
     purpose: str = Field(..., min_length=5, max_length=200)
+
+
+class ApprovalExportTicketRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="导出任务乐观锁版本")
