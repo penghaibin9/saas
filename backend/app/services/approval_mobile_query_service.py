@@ -119,6 +119,7 @@ def list_queue(
     """返回教师审批队列。
 
     mode=pending: 待我审批；mode=done: 我已处理；mode=mine: 我发起的。
+    移动端“我”语义始终绑定当前 actor；即使拥有 approval.manage 也不扩大为全租户列表。
     所有筛选均先 WHERE / COUNT，再 OFFSET / LIMIT，保证跨页 total 正确。
     """
     _require_db()
@@ -183,11 +184,10 @@ def list_queue(
             WorkflowTask.tenant_id == tid,
             WorkflowTask.is_deleted.is_(False),
             WorkflowTask.status.in_(statuses),
+            WorkflowTask.assignee_id == actor,
             WorkflowInstance.tenant_id == tid,
             WorkflowInstance.is_deleted.is_(False),
         ]
-        if not db_service._can_manage_all_approvals(user):
-            cond.append(WorkflowTask.assignee_id == actor)
         if biz_type:
             cond.append(WorkflowInstance.source_biz_type == biz_type)
 
