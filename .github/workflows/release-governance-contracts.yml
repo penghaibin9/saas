@@ -89,7 +89,13 @@ jobs:
           FILE=.github/workflows/main-post-merge-acceptance.yml
           test -f "$FILE"
           grep -q '^name: Main post-merge acceptance$' "$FILE"
+          grep -q '^  pull_request:$' "$FILE"
           grep -q 'branches: \[main\]' "$FILE"
+          PR_TRIGGER="$(awk '/^  pull_request:/{flag=1; next} flag && /^  [[:alnum:]_-]+:/{flag=0} flag{print}' "$FILE")"
+          if grep -q '^[[:space:]]*paths:' <<<"$PR_TRIGGER"; then
+            echo '::error::Main / canonical release gate is globally required and must not be suppressed by pull_request.paths.'
+            exit 1
+          fi
           grep -q '^    name: Main / protected branch contract$' "$FILE"
           grep -q 'rules/branches/main' "$FILE"
           grep -q 'main.effective_rules=' "$FILE"
@@ -97,4 +103,4 @@ jobs:
           grep -q 'Main / canonical release gate' "$FILE"
           grep -q '^    name: Main / canonical release gate$' "$FILE"
           grep -q 'needs: \[main-governance,' "$FILE"
-          echo 'Canonical main gate is permanently wired to effective GitHub rulesets or classic branch protection.'
+          echo 'Canonical main gate is permanently wired to every main PR and to effective GitHub rulesets or classic branch protection.'
