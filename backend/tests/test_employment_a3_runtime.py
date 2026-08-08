@@ -142,3 +142,41 @@ def test_employment_export_row_count_matches_scoped_student_list(client, db_mode
         json={"purpose": "A3就业范围一致性验收"}).json()
     assert exported["code"] == 0, exported
     assert exported["data"]["rowCount"] == listed["total"]
+
+
+def test_bound_student_transfer_uses_current_master_scope_not_stale_employment_snapshot(client, db_mode):
+    """学生转出负责班后，就业快照仍写旧班也不能继续出现在原辅导员列表/材料/跟进中。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import EmpStudent, SchoolClass, StudentProfile
+
+    ids = _seed_scoped_rows(db_mode)
+    db = get_sessionmaker()()
+    try:
+        emp = db.get(EmpStudent, int(ids["allowed_emp"]))
+        profile = db.get(StudentProfile, int(emp.student_id))
+        denied_class = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == TID,
+            SchoolClass.class_name == "A3就业越权班",
+            SchoolClass.is_deleted.is_(False),
+        ).order_by(SchoolClass.id.desc())).first()
+        assert denied_class is not None
+        stale_class_id = emp.class_id
+        profile.class_id = denied_class.id
+        db.commit()
+        assert emp.class_id == stale_class_id  # 就业历史快照故意不跟着改，模拟真实转班后的陈旧快照
+    finally:
+        db.close()
+
+    hdr = _hdr(client)
+    students = client.get(f"{BASE}/students?page=1&pageSize=200", headers=hdr).json()["data"]
+    assert ids["allowed_emp"] not in {str(row["id"]) for row in students["items"]}
+
+    detail = client.get(f"{BASE}/students/{ids['allowed_emp']}", headers=hdr)
+    assert detail.status_code == 403 and detail.json()["bizCode"] == "NO_DATA_SCOPE"
+
+    materials = client.get(f"{BASE}/materials?page=1&pageSize=200", headers=hdr).json()["data"]
+    assert ids["allowed_mat"] not in {str(row["id"]) for row in materials["items"]}
+
+    followups = client.get(f"{BASE}/followups?page=1&pageSize=200", headers=hdr).json()["data"]
+    assert ids["allowed_emp"] not in {str(row["studentId"]) for row in followups["items"]}
