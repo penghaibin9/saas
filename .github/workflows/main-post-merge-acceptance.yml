@@ -5,17 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/main-post-merge-acceptance.yml'
-      - 'deploy/backup/**'
-      - 'deploy/systemd/**'
-      - 'backend/requirements.txt'
-      - 'frontend/package.json'
-      - 'frontend/package-lock.json'
-      - 'student-portal/package.json'
-      - 'student-portal/package-lock.json'
-      - 'miniapp/package.json'
-      - 'miniapp/package-lock.json'
   workflow_dispatch:
 
 permissions:
