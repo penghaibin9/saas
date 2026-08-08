@@ -116,8 +116,15 @@ def install() -> None:
                     values["class_name"] = _text(body.get("className"), "班级", 100)
 
             if not values:
-                # A2：只读身份字段原样回传不算业务更新。拒绝空写，避免“什么都没改却成功”
-                # 形成假审计/假保存；调用方应至少提交一个真实服务字段。
+                # 已绑定主档时，页面可能把只读身份字段原样带回。assert_identity_immutable 已验证
+                # 这些值只可能等于主档当前值或历史快照值；此时接受请求但明确返回 noChange，
+                # 不 UPDATE、不记审计、不增长 version，避免把 harmless echo 伪装成一次业务写入。
+                identity_echo = any(
+                    body.get(key) is not None
+                    for key in ("name", "studentNo", "className", "collegeName", "majorName")
+                )
+                if row.student_id and identity_echo:
+                    return {"id": str(row.id), "version": expected, "noChange": True}
                 raise AppException("VALIDATION_ERROR", "没有可保存的服务字段")
 
             atomic_versioned_update(
