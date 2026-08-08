@@ -3,9 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.api.v1 import data_exchange
 from app.core import rbac09_permission_bundles as bundles
 from app.services import file_access_service as file_access
+
+
+# Capture the production default resolver at collection time. Some combined-suite permission tests
+# intentionally replace the mutable module seam to prove fail-closed behavior; this contract file
+# must begin each test from the canonical production policy instead of inheriting another test's
+# runtime replacement. Individual tests may still monkeypatch the resolver after this fixture runs.
+_CANONICAL_DEFAULT_RESOLVER = file_access._default_resolver
+
+
+@pytest.fixture(autouse=True)
+def _restore_canonical_default_resolver(monkeypatch):
+    monkeypatch.setattr(file_access, "_default_resolver", _CANONICAL_DEFAULT_RESOLVER)
 
 
 def _user(user_id: int = 41) -> dict:
@@ -255,7 +269,6 @@ def test_service_policy_is_exact_tenant_short_lived_and_evidenced():
 
 
 def test_service_policy_rejects_human_wildcard_long_token_and_unknown_fields():
-    import pytest
     from app.core.exceptions import AppException
 
     valid = {
