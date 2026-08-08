@@ -326,6 +326,12 @@ def get_course(course_id, user) -> dict:
 
 def list_courses(user, keyword=None, category=None, nature=None, status=None, page=1, page_size=20,
                  owner_teacher_id=None, owner_college_id=None):
+    """课程库列表——关键字/分页下推到 SQL，不再整表拉回内存再切片。
+
+    原实现 `select(AaCourse).where(*conds)...all()` 先取出全部满足分类/性质/状态/
+    开课单位过滤的课程（不受 page_size 限制），关键字过滤和分页都在 Python 里做——
+    这是全校教学任务/排课/GPA策略等多处下拉都会打的高频端点，课程库上千门时每次
+    翻页都整表搬进内存，翻到第 2 页也要先查出全部数据再丢掉前 20 条。"""
     from app.models import AaCourse
     with session() as db:
         conds = [AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False)]
@@ -339,16 +345,20 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
             conds.append(AaCourse.owner_teacher_id == int(owner_teacher_id))
         if owner_college_id:
             conds.append(AaCourse.owner_college_id == int(owner_college_id))
-        rows = db.scalars(select(AaCourse).where(*conds).order_by(AaCourse.id.desc())).all()
+        if keyword:
+            conds.append(or_(
+                AaCourse.course_name.contains(keyword),
+                AaCourse.course_code.contains(keyword),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(AaCourse).where(*conds)) or 0)
+        page = max(1, int(page))
+        page_size = max(1, int(page_size))
+        rows = db.scalars(
+            select(AaCourse).where(*conds).order_by(AaCourse.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
         teacher_names = _resolve_teacher_names(db, [r.owner_teacher_id for r in rows])
-        out = []
-        for c in rows:
-            if keyword and keyword not in (c.course_name or "") and keyword not in (c.course_code or ""):
-                continue
-            out.append(_row(c, teacher_names))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return [_row(c, teacher_names) for c in rows], total
 
 
 def search_teachers(keyword="", limit=20) -> list[dict]:
@@ -389,16 +399,20 @@ def list_course_materials(course_id, user, material_type=None, page=1, page_size
     from app.models import AaCourseMaterial
     with session() as db:
         _get_course_or_404(db, course_id)
-        q = select(AaCourseMaterial).where(
+        conds = [
             AaCourseMaterial.tenant_id == _tid(), AaCourseMaterial.course_id == int(course_id),
-            AaCourseMaterial.status == "ACTIVE", AaCourseMaterial.is_deleted.is_(False))
+            AaCourseMaterial.status == "ACTIVE", AaCourseMaterial.is_deleted.is_(False),
+        ]
         if material_type:
-            q = q.where(AaCourseMaterial.material_type == material_type)
-        rows = db.scalars(q.order_by(AaCourseMaterial.id.desc())).all()
-        out = [_material_row(x) for x in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+            conds.append(AaCourseMaterial.material_type == material_type)
+        total = int(db.scalar(select(func.count()).select_from(AaCourseMaterial).where(*conds)) or 0)
+        page = max(1, int(page))
+        page_size = max(1, int(page_size))
+        rows = db.scalars(
+            select(AaCourseMaterial).where(*conds).order_by(AaCourseMaterial.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_material_row(x) for x in rows], total
 
 
 def add_course_material(course_id, user, body) -> dict:

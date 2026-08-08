@@ -276,12 +276,8 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         if len(rows) > schedule.IMPORT_MAX_ROWS:
             raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {schedule.IMPORT_MAX_ROWS} 行")
         rows = schedule.sanitize_import_rows(rows)
-        return rows, {
-            "totalRows": len(rows),
-            "validRows": len(rows),
-            "invalidRows": 0,
-            "errors": [],
-        }
+        # 真正跑一遍排课冲突检测器（与确认导入同一 _apply_import_rows），不再假装零错误。
+        return rows, schedule.import_dry_run(batch_id, user, rows)
     raise AppException("DATA_CONFLICT", "未知教务导入类型")
 
 
@@ -463,7 +459,8 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
         result = grade.grade_import_confirm(int(context.get("taskId") or 0), user, rows)
     elif import_type == ACADEMIC_SCHEDULE_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
-        result = schedule.import_items(int(context.get("batchId") or 0), user, rows)
+        atomic = str(context.get("importMode") or "ATOMIC").strip().upper() != "PARTIAL"
+        result = schedule.import_items(int(context.get("batchId") or 0), user, rows, atomic=atomic)
     else:
         raise AppException("DATA_CONFLICT", "未知教务导入类型")
     if not isinstance(result, dict):
@@ -475,6 +472,89 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
 
 def confirm_roster_import(job_id: str, *, lease: str, user: dict) -> dict:
     return confirm_academic_import(job_id, lease=lease, user=user)
+
+
+_ERROR_XLSX_HEADERS = ["行号", "字段", "错误代码", "错误信息", "原始值(已脱敏)"]
+
+
+def export_import_errors_xlsx(job_id: str, *, user: dict) -> dict:
+    """把某次导入任务的失败行原样打包成可下载 xlsx，供学校线下核对修正后再次上传。
+
+    直接复用 `refresh_import_job` 阶段已落库、已脱敏的 `ImportRowError`，不重新解析源
+    文件、不重新暴露未脱敏原始值——预检阶段做过的脱敏在这里不会被绕过。
+    """
+    from openpyxl import Workbook
+
+    from app.models.data_exchange import ExportJob
+
+    db = get_sessionmaker()()
+    try:
+        row = jobs._owned_import(db, job_id, user)
+        if row.adapter_type != jobs.IMPORT_ADAPTER_EXCEL:
+            raise AppException("DATA_CONFLICT", "该任务不是教务 Excel 导入")
+        errors = _stored_errors(db, int(row.id))
+        import_type = row.import_type
+    finally:
+        db.close()
+    if not errors:
+        raise AppException("DATA_CONFLICT", "该导入任务没有失败行，无需导出错误清单")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入错误清单"
+    ws.append(_ERROR_XLSX_HEADERS)
+    for item in errors:
+        ws.append([
+            item.get("row") or "",
+            item.get("field") or "",
+            item.get("code") or "",
+            item.get("message") or "",
+            "",  # 存量 ImportRowError 未回传原始快照字段名，此处留空位而非编造内容
+        ])
+    from io import BytesIO
+    buffer = BytesIO()
+    wb.save(buffer)
+    content = buffer.getvalue()
+
+    adapter_ref = f"AA-IMPORT-ERR-{uuid.uuid4().hex}"
+    file_id = jobs._write_generated_file(
+        content,
+        f"{import_type}-导入错误清单.xlsx",
+        biz_id=adapter_ref,
+        user=user,
+        security_level="SENSITIVE",
+    )
+    actor_id = jobs._actor_id(user)
+    db = get_sessionmaker()()
+    try:
+        export_row = ExportJob(
+            tenant_id=jobs._tenant_id(),
+            module_code=ACADEMIC_MODULE_CODE,
+            export_type=f"{import_type}_IMPORT_ERRORS",
+            purpose=f"导入任务 {job_id} 错误行清单",
+            adapter_type="ACADEMIC_IMPORT_ERROR_EXPORT",
+            adapter_ref=adapter_ref,
+            filter_snapshot_json={"importJobId": str(job_id)},
+            data_scope_snapshot_json={
+                "actorUserId": str(user.get("userId") or ""),
+                "roleCode": str(user.get("currentRoleCode") or ""),
+            },
+            status="SUCCEEDED",
+            progress=100,
+            row_count=len(errors),
+            file_object_id=file_id,
+            expires_at=jobs._now() + timedelta(hours=jobs.RECEIPT_TTL_HOURS),
+            operator_id=actor_id,
+            created_by=actor_id,
+            finished_at=jobs._now(),
+            result_json={"fileObjectId": str(file_id), "importJobId": str(job_id)},
+        )
+        db.add(export_row)
+        db.commit()
+        db.refresh(export_row)
+        return jobs._export_row(export_row)
+    finally:
+        db.close()
 
 
 def create_roster_export_job(

@@ -175,6 +175,35 @@ class AaEffectiveGradePolicySnapshot(PKMixin, TenantMixin, CommonMixin, Base):
     decision_json: Mapped[str] = mapped_column(Text, nullable=False, comment="本次成绩事实与有效性判断快照")
 
 
+class AaGradeIdentityHead(PKMixin, TenantMixin, CommonMixin, Base):
+    """正式成绩身份头：(学生, 稳定课程代码) 的修读次数唯一分配点。
+
+    修读次数原来靠 ``MAX(attempt_no) + 1`` 现算，这在并发下必然重号：两个事务同时读到
+    MAX=0，就各自生成 attempt_no=1。而正常发布、成绩认定、免修、补考、清考、重修、复查
+    更正全都会写正式成绩，任意两条路径并发就能给同一个学生同一门课造出两条 attempt_no
+    相同、且都 PASSED 的正式事实——数据库上的 (source_biz_type, source_biz_id) 唯一键
+    拦不住它们，因为两条来源本来就不同。
+
+    本表把「这个学生这门课修读到第几次」变成一行可加锁的权威计数器：写正式成绩前先
+    ``SELECT ... FOR UPDATE`` 锁本行，同一(学生,课程)的所有成绩写入因此串行化。
+    course_code 用稳定课程代码而非 course_id——课程改版后 ID 会变，修读次数必须跨版本连续。
+    """
+    __tablename__ = "t_aa_grade_identity_head"
+
+    acad_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    course_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    current_attempt_no: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, comment="已分配到的最大修读次数；0 表示尚未分配")
+    last_source_biz_type: Mapped[str | None] = mapped_column(
+        String(50), comment="最近一次分配的来源业务类型，便于追溯")
+    last_allocated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "acad_student_id", "course_code",
+                         name="uk_aa_grade_identity_head"),
+    )
+
+
 def _canonical(payload) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

@@ -141,6 +141,14 @@ def test_authoritative_confirm_reloads_and_revalidates_same_file():
     assert "schedule.import_items" in source
 
 
+def test_schedule_dry_run_delegates_to_real_conflict_checker():
+    """回归锁：SCHEDULE 分支不得再硬编码 invalidRows=0，必须调用真实的 import_dry_run。"""
+    source = inspect.getsource(exchange._parse_and_validate)
+    schedule_branch = source.split("ACADEMIC_SCHEDULE_IMPORT")[-1]
+    assert "schedule.import_dry_run(batch_id, user, rows)" in schedule_branch
+    assert '"invalidRows": 0' not in schedule_branch
+
+
 def test_academic_export_is_file_object_and_job_not_blob_contract():
     source = inspect.getsource(exchange.create_roster_export_job)
     assert "jobs._write_generated_file" in source

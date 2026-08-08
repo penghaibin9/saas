@@ -105,6 +105,10 @@ def create_roster_version(db, teaching_class, student_ids, *, source_type: str, 
             source_type=source_type, source_id=source_map.get(student_id),
             status="ACTIVE",
         ))
+    # 本项目 sessionmaker 是 autoflush=False：不显式 flush，同一事务里紧接着读成员表（学院确认
+    # 考试课程 → resolve_versioned_roster → _new_roster_dto）会读到 0 行，把刚建好的名单判为空，
+    # 于是首次确认永远 409。成员必须在返回前落到本事务可见。
+    db.flush()
 
     locked_class.current_roster_version_id = version.id
     locked_class.current_roster_version_no = next_version

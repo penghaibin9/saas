@@ -321,6 +321,13 @@ def upgrade() -> None:
         "SET c.record_version_snapshot=COALESCE(r.version, 0) "
         "WHERE c.record_version_snapshot IS NULL"
     ))
+    # 上面用 JOIN 回填，孤儿变更申请（internship_id 找不到对应实习记录）不在 JOIN 结果里，
+    # 会带着 NULL 活到下面的 NOT NULL，整条 alembic 链在此 1138 报错断掉。兜底补 0——
+    # 与列自身 server_default 一致，含义是"没有可参照的记录版本"，不编造版本号。
+    bind.execute(sa.text(
+        "UPDATE t_internship_change_request SET record_version_snapshot=0 "
+        "WHERE record_version_snapshot IS NULL"
+    ))
     snapshot_column = _columns(bind, "t_internship_change_request").get(
         "record_version_snapshot")
     if snapshot_column is not None and snapshot_column.get("nullable", True):

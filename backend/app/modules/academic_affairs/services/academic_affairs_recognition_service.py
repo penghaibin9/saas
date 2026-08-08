@@ -273,7 +273,8 @@ def review(user, recognition_id, action, reason="") -> dict:
         academic_student = _acad_student_id(db, row.student_id, row.student_name or "")
         if course_code in _passed_course_codes(db, row.student_id):
             raise _invalid("审核期间目标课程已取得及格成绩，认定申请不再有效")
-        attempt_no = next_study_attempt_no(db, academic_student.id, course_code)
+        attempt_no = next_study_attempt_no(db, academic_student.id, course_code,
+                                           source_biz_type="RECOGNITION")
         grade = AcademicGrade(
             tenant_id=_tid(),
             acad_student_id=academic_student.id,

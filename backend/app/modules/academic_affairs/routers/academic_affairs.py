@@ -1246,6 +1246,7 @@ class ScheduleItemBody(BaseModel):
 
 class ScheduleImportBody(BaseModel):
     items: list[dict] = Field(..., description="课表行数组（同一冲突检测器逐行校验）")
+    atomic: bool = Field(True, description="True=任一行失败整批不写入（默认）；False=逐行尽力导入")
 
 
 class VoidBody(BaseModel):
@@ -1271,7 +1272,7 @@ def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Dep
 
 @router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
 def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.import"))):
-    return success(sched_svc.import_items(batchId, user, body.items), message="导入完成")
+    return success(sched_svc.import_items(batchId, user, body.items, atomic=body.atomic), message="导入完成")
 
 
 class ScheduleMoveBody(BaseModel):
@@ -1565,6 +1566,35 @@ def grade_policy_list(user=Depends(require_permission("academicAffairs.grade.pol
 def grade_policy_activate(body: EffectiveGradePolicyBody,
                           user=Depends(require_permission("academicAffairs.grade.policy.manage"))):
     return success(effective_policy_svc.activate_grade_policy(user, body.model_dump()), message="成绩策略已激活")
+
+
+class GpaBandBody(BaseModel):
+    minScore: float = Field(..., ge=0, le=100)
+    maxScore: float = Field(..., ge=0, le=100)
+    point: float = Field(..., ge=0, le=5)
+
+
+class GpaPointPolicyBody(BaseModel):
+    policyCode: Optional[str] = Field(default=None, max_length=80)
+    scaleType: str = Field(default="LINEAR", max_length=20, description="LINEAR/BANDS")
+    linearFailScore: Optional[int] = Field(default=60, ge=0, le=100)
+    linearAnchorScore: Optional[int] = Field(default=50, ge=0, le=100)
+    linearDivisor: Optional[int] = Field(default=10, gt=0, le=100)
+    bands: Optional[list[GpaBandBody]] = None
+    remark: Optional[str] = Field(default=None, max_length=200)
+
+
+@router.get("/gpa-policies", summary="GPA 绩点换算策略版本链")
+def gpa_policy_list(user=Depends(require_permission("academicAffairs.grade.policy.view"))):
+    from app.modules.academic_affairs.services import academic_affairs_gpa_policy_service as gpa_policy_svc
+    return success(gpa_policy_svc.list_gpa_policies(user))
+
+
+@router.post("/gpa-policies/activate", summary="激活新的 GPA 绩点换算策略版本（不改变已冻结的历史绩点）")
+def gpa_policy_activate(body: GpaPointPolicyBody,
+                        user=Depends(require_permission("academicAffairs.grade.policy.manage"))):
+    from app.modules.academic_affairs.services import academic_affairs_gpa_policy_service as gpa_policy_svc
+    return success(gpa_policy_svc.activate_gpa_policy(user, body.model_dump()), message="GPA 绩点策略已激活")
 
 
 @router.post("/grade-tasks/{taskId}/return", summary="教务处退回（教务终审阶段）")
@@ -3440,6 +3470,8 @@ class ExamScheduleBody(BaseModel):
 
 class ExamRoomBody(BaseModel):
     classroomText: Optional[str] = None
+    classroomId: Optional[str] = Field(
+        None, description="教室字典canonical ID；提供时不再靠文本模糊匹配，直接锁定该教室")
     capacity: int = Field(0, ge=0)
     seatMode: Optional[str] = "SEQUENTIAL"
 
@@ -3548,6 +3580,23 @@ def exam_invigs(roomId: int = Path(...), user=Depends(require_permission(_EXAM_V
     return success({"items": exam_svc.list_invigilators(user, roomId)})
 
 
+class ChangeInvigilatorBody(BaseModel):
+    oldTeacherKey: str = Field(..., min_length=1)
+    newTeacherKey: str = Field(..., min_length=1)
+    newTeacherName: Optional[str] = None
+    newRole: Optional[str] = None
+    reason: str = Field(..., min_length=5, description="调整原因，不少于5字")
+
+
+@router.post("/exam/rooms/{roomId}/invigilators/change", summary="发布后调整监考（唯一合法变更入口，必填原因）")
+def exam_invig_change(body: ChangeInvigilatorBody, roomId: int = Path(...),
+                      user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.change_invigilator(
+        user, roomId, body.oldTeacherKey, body.newTeacherKey, body.newTeacherName,
+        body.reason, body.newRole,
+    ), message="已调整")
+
+
 # ── 自动排考引擎（编排时间→切考场→铺座位→配监考；dryRun 只算不落）──
 class ExamAutoTimesBody(BaseModel):
     dates: list[str] = Field(..., min_length=1, description="考试日期列表 YYYY-MM-DD")
@@ -3588,6 +3637,24 @@ class PatrolBody(BaseModel):
 def exam_patrol_add(body: PatrolBody, bid: int = Path(...), user=Depends(require_permission(_EXAM_ARRANGE))):
     return success(exam_svc.assign_patrol(user, bid, body.teacherKey, body.teacherName,
                                           body.patrolDate, body.startTime, body.endTime, body.areaScope), message="已排巡考")
+
+
+class ChangePatrolBody(BaseModel):
+    newTeacherKey: str = Field(..., min_length=1)
+    newTeacherName: Optional[str] = None
+    newPatrolDate: Optional[str] = None
+    newStartTime: Optional[str] = None
+    newEndTime: Optional[str] = None
+    reason: str = Field(..., min_length=5, description="调整原因，不少于5字")
+
+
+@router.post("/exam/patrols/{patrolId}/change", summary="发布后调整巡考（唯一合法变更入口，必填原因）")
+def exam_patrol_change(body: ChangePatrolBody, patrolId: int = Path(...),
+                       user=Depends(require_permission(_EXAM_ARRANGE))):
+    return success(exam_svc.change_patrol(
+        user, patrolId, body.newTeacherKey, body.newTeacherName, body.reason,
+        body.newPatrolDate, body.newStartTime, body.newEndTime,
+    ), message="已调整")
 
 
 @router.get("/exam/batches/{bid}/patrols", summary="巡考列表")
@@ -3689,8 +3756,8 @@ class MakeupBatchBody(BaseModel):
 
 
 class MakeupEnrollBody(BaseModel):
+    gradeId: str = Field(..., min_length=1, description="学生本人当前有效不及格成绩ID，服务器据此推导课程身份")
     acadStudentId: str = Field(..., min_length=1)
-    courseName: str = Field(..., min_length=1)
     originScore: Optional[int] = None
 
 
@@ -3699,8 +3766,7 @@ class MakeupScoreBody(BaseModel):
 
 
 class RetakeApplyBody(BaseModel):
-    courseName: str = Field(..., min_length=1)
-    termCode: Optional[str] = None
+    gradeId: str = Field(..., min_length=1, description="本人当前有效挂科成绩ID，学生/课程/学期均由服务器推导")
     reason: Optional[str] = Field(None, max_length=500)
 
 
@@ -3714,10 +3780,9 @@ class RetakeEnrollBody(BaseModel):
 
 
 class ExemptionApplyBody(BaseModel):
-    courseName: str = Field(..., min_length=1)
-    termCode: Optional[str] = None
+    courseId: str = Field(..., min_length=1, description="课程库具体课程版本ID，课程名/学期由服务器推导")
     reason: Optional[str] = Field(None, max_length=500)
-    materialFileIds: Optional[str] = None
+    materialFileIds: Optional[list] = None
 
 
 class ExemptionReviewBody(BaseModel):
@@ -3777,9 +3842,22 @@ def clearance_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/makeup/batches/{bid}/enroll", summary="纳入补考名单")
+@router.get("/makeup/batches/{bid}/records", summary="补考/清考批次名单（含成绩录入状态）")
+def makeup_batch_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
+                         user=Depends(require_permission(_MK_VIEW))):
+    """补考批次此前只有清考那条 records 路由，补考批次自己没有查名单的入口，
+    教务在页面上看不到已纳入了谁、也无从录分。service 侧本来就是按 batch_id 查、与
+    kind 无关，这里补一条语义正确的通用路由，不另写一套查询。"""
+    items, total = makeup_svc.clearance_records(user, bid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/makeup/batches/{bid}/enroll", summary="纳入补考名单（按gradeId精确纳入，禁止课程名称猜测）")
 def makeup_enroll(body: MakeupEnrollBody, bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
-    return success(makeup_svc.enroll_makeup(user, bid, body.acadStudentId, body.courseName, body.originScore), message="已纳入")
+    return success(
+        makeup_svc.enroll_makeup_by_grade(user, bid, body.gradeId, body.acadStudentId, body.originScore),
+        message="已纳入",
+    )
 
 
 @router.post("/makeup/batches/{bid}/publish", summary="发布补考批次")

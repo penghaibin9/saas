@@ -24,6 +24,7 @@ from app.core.exceptions import AppException, no_data_scope, not_found
 from . import academic_affairs_grade_service as grade_service
 from . import academic_affairs_makeup_core_service as _core
 from . import academic_affairs_teaching_class_service as teaching_class_service
+from . import academic_affairs_exemption_evidence_service as evidence_service
 from .academic_affairs_effective_grade_policy_service import freeze_effective_grade_policy
 from .academic_affairs_grade_identity_service import next_study_attempt_no, source_attempt_no
 from .academic_affairs_roster_consumer_service import consumer_counts, get_consumer_snapshot
@@ -55,9 +56,15 @@ def _guard_term_id(db, term_id):
 
 
 def _guard_code(db, term_code):
-    from . import academic_affairs_archive_service as archive_service
+    """按 termCode 做学期写保护。
 
-    return archive_service.guard_term_code_writable(db, str(term_code or "").strip())
+    termCode→AaTerm 的精确解析只在 ``academic_affairs_archive_term_guard_facade`` 里实现；
+    正式归档 Service 只认 term_id，没有也不该有 ``guard_term_code_writable``——指向它会
+    AttributeError 500，把补考/重修/免修整条写入面打穿。
+    """
+    from . import academic_affairs_archive_term_guard_facade as term_guard
+
+    return term_guard.guard_term_code_writable(db, str(term_code or "").strip())
 
 
 def _current_term(db):
@@ -1003,7 +1010,7 @@ def retake_list(user, status=None, student_only=False, page=1, page_size=50):
 
 
 def exemption_apply(user, body):
-    from app.models import AaCourse, AaExemption, AcademicGrade, FileObject
+    from app.models import AaCourse, AaExemption, AcademicGrade
 
     with _core.session() as db:
         student = _student(db, user)
@@ -1055,13 +1062,8 @@ def exemption_apply(user, body):
         int_ids = [int(value) for value in ids if str(value).isdigit()]
         if len(int_ids) != len(ids):
             raise _core._bad("免修材料附件ID格式不正确")
-        if int_ids:
-            found = db.query(FileObject).filter(
-                FileObject.tenant_id == _core._tid(),
-                FileObject.id.in_(int_ids),
-            ).count()
-            if found != len(set(int_ids)):
-                raise _core._bad("免修材料附件包含无效文件，请重新上传")
+        if len(set(int_ids)) != len(int_ids):
+            raise _core._bad("免修材料附件重复提交")
         row = AaExemption(
             tenant_id=_core._tid(),
             student_id=student.id,
@@ -1078,12 +1080,24 @@ def exemption_apply(user, body):
         )
         db.add(row)
         db.flush()
+        # 材料必须绑定到这条申请本身（要先 flush 拿到 id），归属与安全状态由文件中心统一把关；
+        # 绑定结果冻结成证据清单，终审前重新比对。绑定失败整个申请事务回滚，不留半截申请。
+        evidence = evidence_service.freeze_manifest(
+            db, row, int_ids,
+            actor=get_current_user_ctx() or {},
+            student=student,
+            kind="EXEMPTION",
+            scope={"termCode": row.term_code, "courseId": str(row.course_id or "")},
+        )
         _core._audit(
             db,
             "AA_EXEMPTION",
             row.id,
             "EXEMPTION_APPLY_IDENTITY",
-            f"courseId={course.id};courseCode={course.course_code};version={course.version}",
+            (
+                f"courseId={course.id};courseCode={course.course_code};version={course.version};"
+                f"evidence={evidence['count']};manifestHash={evidence['manifestHash'][:16]}"
+            ),
         )
         db.commit()
         result = _core._ex_dto(row)
@@ -1091,6 +1105,8 @@ def exemption_apply(user, body):
             "courseId": str(course.id),
             "courseCode": course.course_code,
             "courseVersion": course.version,
+            "evidenceCount": evidence["count"],
+            "evidenceManifestHash": evidence["manifestHash"],
         })
         return result
 
@@ -1153,6 +1169,9 @@ def exemption_review(user, exemption_id, action, reason=""):
                 for item in grade_service.effective_grade_rows(active)
             ):
                 raise AppException("APPROVAL_VERSION_CONFLICT", "审批期间该课程已取得及格成绩，申请不再有效", http_status=409)
+            # 终审要凭这些材料生成一条正式的、计学分的及格成绩，所以在写成绩之前重新验一遍证据链：
+            # 绑定是否仍然有效、文件是否仍可用且扫描通过、内容 sha256 与归属人是否还是申请时那份。
+            evidence = evidence_service.require_valid_manifest(db, row)
             grade = db.query(AcademicGrade).filter(
                 AcademicGrade.tenant_id == _core._tid(),
                 AcademicGrade.source_biz_type == "EXEMPTION",
@@ -1160,7 +1179,8 @@ def exemption_review(user, exemption_id, action, reason=""):
                 AcademicGrade.is_deleted.is_(False),
             ).with_for_update().first()
             if not grade:
-                attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code)
+                attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code,
+                                                   source_biz_type="EXEMPTION")
                 grade = AcademicGrade(
                     tenant_id=_core._tid(),
                     acad_student_id=academic_student.id,
@@ -1192,15 +1212,18 @@ def exemption_review(user, exemption_id, action, reason=""):
             grade_service._refresh_aggregates(db, academic_student)
         row.status = next_status
         row.current_node = None if next_status == _core._EX_APPROVED else next_status
-        _core._audit(
-            db,
-            "AA_EXEMPTION",
-            row.id,
-            "EXEMPTION_REVIEW",
-            f"APPROVE->{row.status};courseId={row.course_id}",
-        )
+        detail = f"APPROVE->{row.status};courseId={row.course_id}"
+        if next_status == _core._EX_APPROVED:
+            detail += (
+                f";evidence={len(evidence['entries'])}"
+                f";manifestHash={str(evidence['manifestHash'] or '')[:16]}"
+            )
+        _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_REVIEW", detail)
         db.commit()
-        return _core._ex_dto(row)
+        result = _core._ex_dto(row)
+        if next_status == _core._EX_APPROVED:
+            result["evidenceManifestHash"] = evidence["manifestHash"]
+        return result
 
 
 def exemption_list(user, status=None, student_only=False, page=1, page_size=50):
@@ -1305,7 +1328,8 @@ def merge_deferred(user, defer_id, batch_id):
         academic_student = _academic_student_for_profile(db, deferred.student_id)
         if not academic_student:
             raise not_found("缓考学生学业档案不存在")
-        attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code)
+        attempt_no = next_study_attempt_no(db, academic_student.id, course.course_code,
+                                           source_biz_type="DEFERRED_EXAM")
         row = AcademicMakeup(
             tenant_id=_core._tid(),
             acad_student_id=academic_student.id,

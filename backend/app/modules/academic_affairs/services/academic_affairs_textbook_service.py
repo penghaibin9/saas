@@ -200,19 +200,27 @@ def withdraw_selection(user, sid):
 
 
 def list_selections(user, status=None, page=1, page_size=50):
+    """教材选用列表——数据范围下推到 SQL WHERE，不再整租户拉回内存再按学院过滤+切片。
+
+    原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
+    过滤、按页码切片——学院管理员只该看到自己学院的记录，却要为此让数据库把
+    全校记录先搬进应用内存一遍。"""
     from app.models import AaTextbookSelection
     with session() as db:
         ctx = _ctx(user, db)
-        q = db.query(AaTextbookSelection).filter(AaTextbookSelection.tenant_id == _tid(),
-                                                 AaTextbookSelection.is_deleted.is_(False))
+        conds = [AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.is_deleted.is_(False)]
         if status:
-            q = q.filter(AaTextbookSelection.status == status)
-        rows = q.order_by(AaTextbookSelection.id.desc()).all()
+            conds.append(AaTextbookSelection.status == status)
         if not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
-            rows = [s for s in rows if s.college_id and int(s.college_id) in allowed]
-        total = len(rows)
-        return [_sel_dto(s) for s in rows[(page - 1) * page_size: page * page_size]], total
+            conds.append(AaTextbookSelection.college_id.in_(allowed or [-1]))
+        total = int(db.query(AaTextbookSelection).filter(*conds).count())
+        page = max(1, int(page))
+        page_size = max(1, int(page_size))
+        rows = db.query(AaTextbookSelection).filter(*conds).order_by(
+            AaTextbookSelection.id.desc()
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return [_sel_dto(s) for s in rows], total
 
 
 def _is_school(ctx):
