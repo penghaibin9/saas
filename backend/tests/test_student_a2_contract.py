@@ -27,6 +27,22 @@ def test_formal_student_facade_has_no_mock_dependency_or_memory_business_writes(
     assert "MOVED_TO_AUTHORITATIVE_IMPORT" in source
 
 
+def test_formal_student_route_graph_cannot_import_mock_directly():
+    roots = [
+        ROOT / "frontend/src/views/admin/student",
+        ROOT / "frontend/src/modules/student",
+    ]
+    offenders = []
+    for root in roots:
+        for path in root.rglob("*"):
+            if path.suffix not in {".vue", ".js", ".ts"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            if "@/mocks/" in source or "../mocks/" in source or "withFallback(" in source:
+                offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == [], f"正式学生路由仍可直达 mock/fallback: {offenders}"
+
+
 def test_student_frontend_never_fills_verified_bound_or_fixed_90_when_backend_fact_missing():
     source = read("frontend/src/modules/student/api/student.api.js")
 
