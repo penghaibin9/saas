@@ -19,6 +19,13 @@ DOMAIN_PREFIXES = (
 DOMAIN_EXACT = {
     "t_teacher_student_scope",
 }
+# 这些表不是可独立造假的“页面状态”，而是由正式处分事务/数据库触发器维护的
+# 追加式事实或活动子流程锁。通用兜底种子若直接 INSERT 会绕开真实业务关系，
+# 既会被生产完整性触发器正确拒绝，也会制造没有主案/流程来源的伪事实。
+_GENERIC_EXCLUDED_TABLES = {
+    "t_affairs_discipline_decision_version",
+    "t_affairs_discipline_subflow_lock",
+}
 _STATUS_TOKEN = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _IGNORE_TOKENS = {
     "JSON", "JSONB", "TODO", "NULL", "TRUE", "FALSE", "ID", "API", "PC",
@@ -30,7 +37,8 @@ def _domain_tables(db):
     from app.models import Base
     existing = set(inspect(db.get_bind()).get_table_names())
     return [t for t in Base.metadata.sorted_tables
-            if t.name in existing and "tenant_id" in t.c
+            if t.name in existing and t.name not in _GENERIC_EXCLUDED_TABLES
+            and "tenant_id" in t.c
             and (t.name in DOMAIN_EXACT or t.name.startswith(DOMAIN_PREFIXES))]
 
 
