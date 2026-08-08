@@ -21,6 +21,11 @@ TID = 1000000000000000001
 
 
 def seed_internship(db, tenant_id: int = TID) -> dict:
+    # 全局 Session 明确使用 autoflush=False。调用方可能刚建立 UserRole/教师岗位关系，
+    # 若不先 flush，下面通过 SQL 查询 INTERN_MENTOR 时看不到同一事务里待写的真实关系，
+    # 会错误回退到 synthetic demo_intern_mentor，造成“切到指导教师岗位但队列为空”。
+    # flush 只把当前事务状态送入数据库，不提交；失败仍随整个种子事务回滚。
+    db.flush()
     if db.scalars(select(InternshipRecord).where(InternshipRecord.tenant_id == tenant_id)).first():
         return {"skipped": True}
     now = datetime.now()
