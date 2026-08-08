@@ -15,6 +15,7 @@ from sqlalchemy import and_, case, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.pagination import normalize_page
+from app.core.timeutil import local_now
 from app.services.db_service import _iso, _tid, session
 from app.services.affairs_sla import (
     get_leave_sla,
@@ -90,6 +91,11 @@ def _parse_dt(v):
     return None
 
 
+def _tenant_wall_now() -> datetime:
+    """请假域业务日期当前值：与本模块现有无时区本地时间字段同口径。"""
+    return local_now().replace(tzinfo=None)
+
+
 def _overlap(s1, e1, s2, e2) -> bool:
     if not all([s1, e1, s2, e2]):
         return False
@@ -110,7 +116,6 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 
 
 # ── workflow / 待办 / 消息 helper（范式复用点）──
-
 def _assignee_for(db, node: str, student_id) -> int:
     from app.services.affairs_assignee_service import require_assignee_id
     return require_assignee_id(db, node, student_id=student_id)
@@ -358,7 +363,6 @@ def _check_review_node(db, x, user):
 
 
 # ═══════════ 申请 ═══════════
-
 def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
     # studentId 为字符串且无数字校验（campus_service schema），非数字直接 int() → 未捕获
     # ValueError → HTTP 500；改为显式校验返回 400 VALIDATION_ERROR（历史欠账收口）。
@@ -409,7 +413,6 @@ def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
 
 
 # ═══════════ 审批（多级） ═══════════
-
 def _act_task(db, x, action, reason=""):
     from app.models import WorkflowInstance
     inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
@@ -560,7 +563,6 @@ def resubmit(leave_id, user, expected_version=None, *, self_only: bool = False, 
 
 
 # ═══════════ 销假 ═══════════
-
 def submit_cancel(leave_id, user, proof_note="", expected_version=None, *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveCancelRecord
@@ -637,7 +639,7 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
         if ret:
             if x.start_time and ret < x.start_time:
                 raise AppException("VALIDATION_ERROR", "实际返校时间不能早于请假开始时间")
-            if ret > datetime.utcnow():
+            if ret > _tenant_wall_now():
                 raise AppException("VALIDATION_ERROR", "实际返校时间不能晚于当前时间")
         if rec:
             if ret:
@@ -666,7 +668,6 @@ def confirm_cancel(leave_id, user, action="CONFIRM", actual_return_at=None, reas
 
 
 # ═══════════ 续假 ═══════════
-
 def apply_extension(leave_id, user, new_end, reason="", expected_version=None, *, self_only: bool = False) -> dict:
     with session() as db:
         from app.models import AffairsLeaveExtension
@@ -758,7 +759,6 @@ def approve_extension(leave_id, user, action="APPROVE", reason="", expected_vers
 
 
 # ═══════════ 代登记销假 + 逾期处置 ═══════════
-
 def proxy_cancel(leave_id, user, actual_return_at, note="", expected_version=None) -> dict:
     """辅导员代登记销假（学生无法操作时）→ WAIT_CANCEL_LEAVE。契约 #26。"""
     with session() as db:
@@ -773,7 +773,7 @@ def proxy_cancel(leave_id, user, actual_return_at, note="", expected_version=Non
             raise AppException("VALIDATION_ERROR", "实际返校时间必填")
         if x.start_time and ret < x.start_time:
             raise AppException("VALIDATION_ERROR", "实际返校时间不能早于请假开始时间")
-        if ret > datetime.utcnow():
+        if ret > _tenant_wall_now():
             raise AppException("VALIDATION_ERROR", "实际返校时间不能晚于当前时间")
         exist = db.scalars(select(AffairsLeaveCancelRecord).where(
             AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
@@ -856,7 +856,6 @@ def scan_overdue() -> dict:
 
 
 # ═══════════ 查询 ═══════════
-
 def get_detail(leave_id, user) -> dict:
     with session() as db:
         from app.models import (AffairsAuditTrail, AffairsLeaveCancelRecord, AffairsLeaveExtension)
@@ -891,7 +890,6 @@ def get_detail(leave_id, user) -> dict:
 
 
 # ═══════════ 请假台账 / 统计 / 导出（本模块新增：13A-05 台账 + 统计口径）═══════════
-
 def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
                 date_start=None, date_end=None, followup_only=False, page=1, page_size=20,
                 student_id=None):
