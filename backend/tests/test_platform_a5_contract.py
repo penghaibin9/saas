@@ -25,12 +25,24 @@ def test_platform_control_facade_is_real_only():
 def test_formal_parent_and_dashboard_do_not_use_pure_mock_platform_api():
     layout = _read(FRONT / "views" / "AdminPlatformLayout.vue")
     dashboard = _read(FRONT / "views" / "PlatformDashboardView.vue")
-    for src in (layout, dashboard):
+    overview = _read(FRONT / "views" / "control" / "PlatformControlOverview.vue")
+    for src in (layout, dashboard, overview):
         assert "platform.api" not in src
         assert "platformApi" not in src
     assert "platformControlApi.getContext()" in layout
     assert "ErrorState" in layout and "loadContext" in layout
     assert "PlatformControlOverview" in dashboard
+    assert ':ctx="ctx"' in dashboard
+    assert "ctx.currentRole.roleName" in overview
+    assert "ctx.dataScope.scopeName" in overview
+
+
+def test_overview_refresh_failure_clears_stale_metrics_before_error_state():
+    src = _read(FRONT / "views" / "control" / "PlatformControlOverview.vue")
+    assert "this.ov = null" in src
+    assert "this.error = ''" in src
+    assert 'v-else-if="error"' in src
+    assert "res.message || '平台总览加载失败'" in src
 
 
 def test_remaining_formal_legacy_routes_are_fail_closed_capability_shells():
@@ -55,6 +67,22 @@ def test_capability_shell_has_no_executable_fake_business_action():
     assert "toast." not in src
 
 
+def test_formal_route_graph_does_not_reconnect_superseded_mock_crud_pages():
+    routes = _read(FRONT / "platform.routes.js")
+    dead_mock_pages = (
+        "PlatformTenantListView.vue",
+        "PlatformTenantDetailView.vue",
+        "PlatformPackageView.vue",
+        "PlatformOrderView.vue",
+    )
+    for page in dead_mock_pages:
+        assert page not in routes, page
+    assert "PlatformControlTenants.vue" in routes
+    assert "PlatformControlTenantDetail.vue" in routes
+    assert "PlatformControlPackages.vue" in routes
+    assert "PlatformControlOrders.vue" in routes
+
+
 def test_pure_mock_platform_api_is_not_reachable_from_formal_entry_views():
     formal_entries = [
         FRONT / "views" / "AdminPlatformLayout.vue",
@@ -62,6 +90,7 @@ def test_pure_mock_platform_api_is_not_reachable_from_formal_entry_views():
         FRONT / "views" / "PlatformIntegrationView.vue",
         FRONT / "views" / "PlatformApiAccessView.vue",
         FRONT / "views" / "PlatformSyncTaskView.vue",
+        FRONT / "views" / "control" / "PlatformControlOverview.vue",
     ]
     combined = "\n".join(_read(p) for p in formal_entries)
     assert "@/modules/platform/api/platform.api" not in combined
