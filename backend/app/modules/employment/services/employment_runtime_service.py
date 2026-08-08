@@ -54,6 +54,26 @@ def _scope_condition(db, user: dict):
     )
 
 
+def _class_filter_condition(class_id):
+    """班级筛选沿用与 dataScope 相同的身份事实口径：绑定主档看当前班级，legacy 才看快照。"""
+    raw = str(class_id or "").strip()
+    if not raw:
+        return None
+    try:
+        cid = int(raw)
+    except (TypeError, ValueError):
+        return EmpStudent.id == -1
+    profile_ids = select(StudentProfile.id).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.class_id == cid,
+        StudentProfile.is_deleted.is_(False),
+    )
+    return or_(
+        and_(EmpStudent.student_id.is_not(None), EmpStudent.student_id.in_(profile_ids)),
+        and_(EmpStudent.student_id.is_(None), EmpStudent.class_id == raw),
+    )
+
+
 def _assert_emp_student(db, emp: EmpStudent | None, user: dict) -> EmpStudent:
     if not emp or emp.is_deleted or int(emp.tenant_id) != int(_tid()):
         raise not_found("就业记录不存在或不在当前数据范围内")
@@ -134,7 +154,7 @@ def list_students(page, ps, *, user: dict, keyword=None, class_id=None,
         if scope is not None:
             cond.append(scope)
         if class_id:
-            cond.append(EmpStudent.class_id == str(class_id))
+            cond.append(_class_filter_condition(class_id))
         if destination_type:
             cond.append(EmpStudent.destination_type == destination_type)
         if verify_status:
