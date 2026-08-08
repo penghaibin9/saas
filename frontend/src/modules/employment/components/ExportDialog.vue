@@ -27,6 +27,19 @@
           </label>
         </section>
 
+        <section v-if="options.purposeRequired" class="exd__section">
+          <label class="exd__purpose-label" for="employment-export-purpose">导出用途 *</label>
+          <textarea
+            id="employment-export-purpose"
+            v-model.trim="purpose"
+            class="exd__purpose"
+            rows="3"
+            maxlength="200"
+            placeholder="请填写真实工作用途，不少于 5 个字；将写入服务端审计与文件水印"
+          />
+          <p class="exd__hint">用途与操作者、时间、数据范围共同写入审计记录。</p>
+        </section>
+
         <section class="exd__section">
           <div class="exd__label">脱敏与水印</div>
           <label class="exd__check">
@@ -46,7 +59,10 @@
 
         <div v-if="result" class="exd__result">
           已生成导出文件：<b>{{ result.fileName }}</b>
-          <div class="exd__result-meta">水印：{{ result.watermarkText }} · 审计编号：{{ result.auditId }}</div>
+          <div class="exd__result-meta">
+            {{ result.watermarkText || result.securityNotice || '服务端已启用水印与审计' }}
+            <template v-if="result.auditId || result.taskId"> · 审计/任务编号：{{ result.auditId || result.taskId }}</template>
+          </div>
         </div>
       </div>
 
@@ -54,7 +70,7 @@
         <span class="exd__scope-tip">数据范围：{{ dataScopeName }}</span>
         <div class="exd__ops">
           <AppButton variant="ghost" @click="close">取消</AppButton>
-          <AppButton variant="primary" :disabled="!auditConfirmed || !fieldGroups.length" :loading="busy" @click="doExport">
+          <AppButton variant="primary" :disabled="!canSubmit" :loading="busy" @click="doExport">
             确认导出
           </AppButton>
         </div>
@@ -65,11 +81,8 @@
 
 <script>
 /**
- * ExportDialog — 通用导出弹窗（模块局部组件）。
- * 覆盖：导出范围 / 字段选择 / 数据范围限制提示 / 脱敏选项（默认开）/ 水印说明 / 审计确认。
- * Props:
- *  - options: mock/api exportOptions 下发（scopes/fieldGroups/maskDefault/watermarkNote/auditNotice）
- *  - exportFn(payload)：页面注入的 api 调用
+ * ExportDialog — 就业模块导出弹窗。
+ * A3：正式导出必须填写服务端审计用途；范围与字段能力由 API facade 下发，未实现范围不展示。
  */
 import { AppButton } from '@/components/ui'
 import { toast } from '@/utils/toast'
@@ -87,20 +100,26 @@ export default {
   },
   emits: ['update:visible', 'exported'],
   data() {
-    return { scope: 'FILTERED', fieldGroups: [], mask: true, auditConfirmed: false, busy: false, result: null }
+    return { scope: '', fieldGroups: [], mask: true, auditConfirmed: false, purpose: '', busy: false, result: null }
   },
   computed: {
     hasSensitive() {
       return (this.options.fieldGroups || []).some((g) => g.sensitive && this.fieldGroups.includes(g.key))
+    },
+    canSubmit() {
+      if (!this.auditConfirmed || !this.fieldGroups.length || !this.scope) return false
+      if (this.options.purposeRequired && this.purpose.trim().length < 5) return false
+      return true
     }
   },
   watch: {
     visible(v) {
       if (v) {
-        this.scope = 'FILTERED'
+        this.scope = this.options.scopes?.[0]?.value || ''
         this.fieldGroups = (this.options.fieldGroups || []).filter((g) => !g.sensitive).map((g) => g.key)
         this.mask = this.options.maskDefault !== false
         this.auditConfirmed = false
+        this.purpose = ''
         this.result = null
       }
     }
@@ -110,13 +129,15 @@ export default {
       this.$emit('update:visible', false)
     },
     async doExport() {
+      if (!this.canSubmit) return
       this.busy = true
       try {
         const res = await this.exportFn({
           scope: this.scope,
           fieldGroups: this.fieldGroups,
           mask: this.mask || this.hasSensitive,
-          auditConfirmed: this.auditConfirmed
+          auditConfirmed: this.auditConfirmed,
+          purpose: this.purpose.trim()
         })
         if (res.code === 0) {
           this.result = res.data
@@ -160,10 +181,7 @@ export default {
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-light);
 }
-.exd__header h3 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
+.exd__header h3 { margin: 0; font-size: var(--font-size-lg); }
 .exd__close {
   border: none;
   background: none;
@@ -178,7 +196,9 @@ export default {
   flex-direction: column;
   gap: var(--space-4);
 }
-.exd__label {
+.exd__label,
+.exd__purpose-label {
+  display: block;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
   margin-bottom: var(--space-2);
@@ -193,23 +213,29 @@ export default {
   padding: var(--space-1) 0;
   cursor: pointer;
 }
-.exd__radio-hint {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-xs);
-}
+.exd__radio-hint { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .exd__fields {
   display: block;
   font-style: normal;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
-.exd__check.is-sensitive span {
-  color: var(--warning-700);
-}
+.exd__check.is-sensitive span { color: var(--warning-700); }
 .exd__hint {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+.exd__purpose {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  box-sizing: border-box;
 }
 .exd__section--audit {
   padding: var(--space-3);
@@ -238,12 +264,6 @@ export default {
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-light);
 }
-.exd__scope-tip {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-.exd__ops {
-  display: flex;
-  gap: var(--space-2);
-}
+.exd__scope-tip { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.exd__ops { display: flex; gap: var(--space-2); }
 </style>
