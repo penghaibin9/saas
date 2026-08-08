@@ -37,8 +37,11 @@ def test_formal_student_route_graph_cannot_import_mock_directly():
         for path in root.rglob("*"):
             if path.suffix not in {".vue", ".js", ".ts"}:
                 continue
+            # fixture/mock 目录可以保留给测试，但正式路由依赖图不得 import 它们。
+            if "mock" in {part.lower() for part in path.parts}:
+                continue
             source = path.read_text(encoding="utf-8")
-            if "@/mocks/" in source or "../mocks/" in source or "withFallback(" in source:
+            if "@/mocks/" in source or "../mocks/" in source or "/mock/" in source or "withFallback(" in source:
                 offenders.append(str(path.relative_to(ROOT)))
     assert offenders == [], f"正式学生路由仍可直达 mock/fallback: {offenders}"
 
