@@ -41,7 +41,6 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_authority_service import install as install_funding_authority
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
-from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_risk_transfer_guard import install as install_risk_transfer_guard
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
@@ -87,7 +86,6 @@ for supplemental_router in (
     _mount_supplemental_router(api_router, supplemental_router)
 
 install_affairs_four_end_contract()
-install_returned_view_projection()
 install_activity_checkin_code()
 install_activity_reliability()
 install_dorm_reliability()
