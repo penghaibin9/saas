@@ -15,6 +15,7 @@
       :description="viewReason"
       @back="$router.push('/admin/data-center')"
     />
+
     <div v-else class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
@@ -23,9 +24,16 @@
       <EmptyState
         v-else-if="!rows.length"
         title="没有符合条件的报表"
-        description="可调整筛选条件，或新增一份报表配置"
+        description="当前服务端查询无结果；可调整筛选条件或新增报表草稿。"
       />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
+      <DataTable
+        v-else
+        :columns="columns"
+        :rows="rows"
+        row-key="id"
+        :pagination="pagination"
+        @page-change="onPageChange"
+      >
         <template #cell-report="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
           <div class="mp-cell-sub">{{ row.reportNo }} · {{ row.description }}</div>
@@ -46,9 +54,7 @@
             :title="editRowReason(row)"
             style="margin-left: var(--space-2)"
             @click="openEdit(row)"
-          >
-            编辑
-          </button>
+          >编辑</button>
           <button
             v-if="pa.voidReport && pa.voidReport.visible"
             class="mp-link dcrl-void"
@@ -56,22 +62,25 @@
             :title="voidRowReason(row)"
             style="margin-left: var(--space-2)"
             @click="openVoid(row)"
-          >
-            作废
-          </button>
+          >作废</button>
         </template>
       </DataTable>
 
       <section class="mp-card">
         <div class="mp-card__head">
-          <span class="mp-card__title">审计留痕摘要（最近 {{ audits.length }} 条）</span>
-          <span class="mp-note">配置变更 / 发布 / 撤回 / 作废均由服务端自动留痕</span>
+          <span class="mp-card__title">审计留痕摘要</span>
+          <span class="mp-note">配置变更 / 发布 / 撤回 / 作废均由服务端留痕</span>
         </div>
         <div class="mp-card__body">
-          <table class="mp-audit">
-            <thead>
-              <tr><th>操作人</th><th>时间</th><th>动作</th><th>对象</th><th>说明</th></tr>
-            </thead>
+          <ErrorState v-if="auditError" :description="auditError" @retry="loadAudits" />
+          <LoadingState v-else-if="auditLoading" text="正在读取真实审计记录…" />
+          <EmptyState
+            v-else-if="!audits.length"
+            title="暂无审计记录"
+            description="服务端查询成功，但当前范围内尚无数据中心报表审计记录。"
+          />
+          <table v-else class="mp-audit">
+            <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>对象</th><th>说明</th></tr></thead>
             <tbody>
               <tr v-for="a in audits" :key="a.id">
                 <td class="is-who">{{ a.userName }} · {{ a.roleName }}</td>
@@ -79,9 +88,6 @@
                 <td>{{ a.action }}</td>
                 <td>{{ a.target }}</td>
                 <td>{{ a.detail }}</td>
-              </tr>
-              <tr v-if="!audits.length">
-                <td colspan="5" class="mp-note">暂无审计记录</td>
               </tr>
             </tbody>
           </table>
@@ -171,18 +177,8 @@ const EMPTY_FORM = () => ({
 export default {
   name: 'DataCenterReportListView',
   components: {
-    ModulePageShell,
-    ModuleToolbar,
-    AdvancedFilter,
-    DataTable,
-    StatusTag,
-    LoadingState,
-    ErrorState,
-    EmptyState,
-    AppGlobalState,
-    AppConfirmDialog,
-    AppDrawer,
-    AppButton
+    ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
+    LoadingState, ErrorState, EmptyState, AppGlobalState, AppConfirmDialog, AppDrawer, AppButton
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -191,6 +187,8 @@ export default {
       error: '',
       rows: [],
       audits: [],
+      auditLoading: false,
+      auditError: '',
       filters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
       columns: [
@@ -202,21 +200,12 @@ export default {
         { key: 'status', title: '状态', width: '100px' },
         { key: 'actions', title: '操作', width: '150px' }
       ],
-      form: {
-        visible: false,
-        mode: 'create',
-        editingId: '',
-        submitting: false,
-        error: '',
-        data: EMPTY_FORM()
-      },
+      form: { visible: false, mode: 'create', editingId: '', submitting: false, error: '', data: EMPTY_FORM() },
       voidState: { visible: false, row: null, submitting: false }
     }
   },
   computed: {
-    pa() {
-      return this.ctx.permissionActions
-    },
+    pa() { return this.ctx.permissionActions },
     viewAllowed() {
       const pa = this.pa.viewReports
       return !!(pa && pa.visible && pa.allowed)
@@ -226,11 +215,10 @@ export default {
       return (pa && pa.reason) || '当前角色未开通专题报表模块权限'
     },
     filterFields() {
-      const o = this.ctx
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '报表名称 / 编号' },
-        { key: 'category', label: '报表分类', type: 'select', options: o.filterOptions.reportCategories },
-        { key: 'status', label: '状态', type: 'select', options: o.statusOptions.reportStatus }
+        { key: 'category', label: '报表分类', type: 'select', options: this.ctx.filterOptions.reportCategories },
+        { key: 'status', label: '状态', type: 'select', options: this.ctx.statusOptions.reportStatus }
       ]
     },
     toolbarActions() {
@@ -265,38 +253,34 @@ export default {
       const pa = this.pa.voidReport
       return pa && !pa.allowed ? pa.reason : ''
     },
-    onPageChange(page) {
-      this.pagination.page = page
-      this.load()
-    },
-    search() {
-      this.pagination.page = 1
-      this.load()
-    },
-    reset() {
-      this.filters = EMPTY_FILTERS()
-      this.pagination.page = 1
-      this.load()
-    },
+    onPageChange(page) { this.pagination.page = page; this.load() },
+    search() { this.pagination.page = 1; this.load() },
+    reset() { this.filters = EMPTY_FILTERS(); this.pagination.page = 1; this.load() },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await dataCenterApi.getReports({
-        ...this.filters,
-        page: this.pagination.page,
-        pageSize: this.pagination.pageSize
-      })
+      const res = await dataCenterApi.getReports({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
       if (res.code === 0) {
-        this.rows = res.data.list
-        this.pagination.total = res.data.total
+        this.rows = res.data.list || []
+        this.pagination.total = res.data.total || 0
       } else {
+        this.rows = []
+        this.pagination.total = 0
         this.error = res.message
       }
       this.loading = false
     },
     async loadAudits() {
+      this.auditLoading = true
+      this.auditError = ''
       const res = await dataCenterApi.getAuditLogs({ limit: 6 })
-      if (res.code === 0) this.audits = res.data
+      if (res.code === 0) {
+        this.audits = res.data || []
+      } else {
+        this.audits = []
+        this.auditError = res.message || '审计记录加载失败'
+      }
+      this.auditLoading = false
     },
     onToolbar(key) {
       if (key !== 'createReport') return
@@ -312,21 +296,14 @@ export default {
       this.form.editingId = row.id
       this.form.error = ''
       this.form.data = {
-        name: row.name,
-        category: row.category,
-        cycle: row.cycle,
-        caliber: row.caliber || 'REGISTERED',
-        scopeName: row.scopeName,
-        description: row.description
+        name: row.name, category: row.category, cycle: row.cycle,
+        caliber: row.caliber || 'REGISTERED', scopeName: row.scopeName, description: row.description
       }
       this.form.visible = true
     },
     async submitForm() {
       const name = this.form.data.name.trim()
-      if (name.length < 4) {
-        this.form.error = '报表名称必填且不少于 4 个字'
-        return
-      }
+      if (name.length < 4) { this.form.error = '报表名称必填且不少于 4 个字'; return }
       this.form.error = ''
       this.form.submitting = true
       const payload = { ...this.form.data, name }
@@ -351,10 +328,7 @@ export default {
     async onVoidConfirm({ reason }) {
       if (!this.voidState.row) return
       this.voidState.submitting = true
-      const res = await dataCenterApi.voidReport(this.voidState.row.id, {
-        reason,
-        version: this.voidState.row.version
-      })
+      const res = await dataCenterApi.voidReport(this.voidState.row.id, { reason, version: this.voidState.row.version })
       this.voidState.submitting = false
       if (res.code === 0) {
         this.voidState.visible = false
@@ -371,24 +345,12 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.dcrl-void:not(.is-disabled) {
-  color: var(--danger-600);
-}
-.dcrl-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.dcrl-field__label {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-.dcrl-required {
-  color: var(--danger-600);
-  font-style: normal;
-}
+.dcrl-void:not(.is-disabled) { color: var(--danger-600); }
+.dcrl-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.dcrl-field__label { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.dcrl-required { color: var(--danger-600); font-style: normal; }
 .dcrl-input {
-  height: 34px;
+  min-height: 34px;
   border: 1px solid var(--border-base);
   border-radius: var(--radius-base);
   background: var(--bg-card);
@@ -396,10 +358,6 @@ export default {
   font-size: var(--font-size-sm);
   padding: 0 var(--space-2);
   outline: none;
-  transition: border-color var(--motion-fast) var(--ease-standard);
 }
-.dcrl-input:focus {
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-50);
-}
+.dcrl-input:focus { border-color: var(--primary-500); box-shadow: 0 0 0 3px var(--primary-50); }
 </style>
