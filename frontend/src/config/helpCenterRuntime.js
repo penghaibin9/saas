@@ -12,6 +12,7 @@ import { GRADUATION_CLEAN_HELP_CARDS } from './help/graduationCleanHelpCards'
 import { GRADUATION_CORE_FLOW_HELP_CARDS } from './help/graduationCoreFlowHelpCards'
 import { HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS } from './help/highFrequencyTroubleshootingHelpCards'
 import { HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS } from './help/highFrequencyTroubleshootingHelpCardsV305B'
+import { HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS } from './help/highFrequencyTroubleshootingHelpCardsV305C'
 import { INTERNSHIP_CLEAN_HELP_CARDS } from './help/internshipCleanHelpCards'
 import { INTERNSHIP_CORE_FLOW_HELP_CARDS } from './help/internshipCoreFlowHelpCards'
 import {
@@ -37,6 +38,7 @@ export {
   GRADUATION_CORE_FLOW_HELP_CARDS,
   HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS,
   HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS,
+  HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS,
   HELP_DOCS,
   HELP_FLOWS,
   INTERNSHIP_CLEAN_HELP_CARDS,
@@ -141,6 +143,7 @@ export const VERIFIED_HELP_CARD_IDS = new Set([
   ...STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS.map((item) => item.id),
   ...HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS.map((item) => item.id),
   ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS.map((item) => item.id),
+  ...HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS.map((item) => item.id),
   ...Object.keys(VERIFIED_HELP_OVERRIDES)
 ])
 
@@ -173,6 +176,7 @@ replaceOrRegisterCards(STUDENT_AFFAIRS_CLEAN_HELP_CARDS)
 replaceOrRegisterCards(STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS)
 replaceOrRegisterCards(HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS)
 replaceOrRegisterCards(HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS)
+replaceOrRegisterCards(HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS)
 replaceOrRegisterCards(MOBILE_CLEAN_HELP_CARDS)
 quarantineConfirmedStaleHelp()
 quarantineUnverifiedKnowledge()
@@ -188,7 +192,7 @@ if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-v3-core-ca
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'graduation-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'graduation-clean-cards', label: '毕业设计 · 已核验任务', items: GRADUATION_CLEAN_HELP_CARDS })
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-v3-core-cards')) BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-v3-core-cards', label: '学工中心 · V3四条高频办理线', items: STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS })
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'student-affairs-clean-cards')) BASE_HELP_SECTIONS.unshift({ key: 'student-affairs-clean-cards', label: '学工中心 · 已核验任务', items: STUDENT_AFFAIRS_CLEAN_HELP_CARDS })
-if (!BASE_HELP_SECTIONS.some((section) => section.key === 'troubleshooting-v3-cards')) BASE_HELP_SECTIONS.unshift({ key: 'troubleshooting-v3-cards', label: '高频故障库 · V3自助排障', items: [...HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS, ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS] })
+if (!BASE_HELP_SECTIONS.some((section) => section.key === 'troubleshooting-v3-cards')) BASE_HELP_SECTIONS.unshift({ key: 'troubleshooting-v3-cards', label: '高频故障库 · V3自助排障', items: [...HIGH_FREQUENCY_TROUBLESHOOTING_HELP_CARDS, ...HIGH_FREQUENCY_TROUBLESHOOTING_V305B_CARDS, ...HIGH_FREQUENCY_TROUBLESHOOTING_V305C_CARDS] })
 if (!BASE_HELP_SECTIONS.some((section) => section.key === 'mobile-cards')) BASE_HELP_SECTIONS.unshift({ key: 'mobile-cards', label: '微信小程序 · 已核验高频任务', items: MOBILE_CLEAN_HELP_CARDS })
 
 export const HELP_CARDS = BASE_HELP_CARDS
