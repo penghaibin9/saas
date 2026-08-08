@@ -77,14 +77,8 @@ const FILE_FORBIDDEN_PATTERNS = new Map([
     { label: '@/mocks/approval', regex: /@\/mocks\/approval\b/ },
     { label: 'withFallback()', regex: /\bwithFallback\s*\(/ },
     { label: 'mockApproval', regex: /\bmockApproval\b/ },
-    {
-      label: '审批旧内存台账声明',
-      regex: /\b(?:const|let|var)\s+(?:approvalList|doneItems|returnedItems)\b/
-    },
-    {
-      label: '审批旧内存台账写入',
-      regex: /\b(?:approvalList|doneItems|returnedItems)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse)\s*\(/
-    }
+    { label: '审批旧内存台账声明', regex: /\b(?:const|let|var)\s+(?:approvalList|doneItems|returnedItems)\b/ },
+    { label: '审批旧内存台账写入', regex: /\b(?:approvalList|doneItems|returnedItems)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse)\s*\(/ }
   ]],
   ['frontend/src/modules/student/api/student.api.js', [
     { label: '@/mocks/', regex: /@\/mocks\// },
@@ -97,31 +91,19 @@ const FILE_FORBIDDEN_PATTERNS = new Map([
   ['frontend/src/modules/employment/api/employment.api.js', [
     { label: '@/mocks/employment', regex: /@\/mocks\/employment\b/ },
     { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
-    {
-      label: '就业旧浏览器 db 事实源',
-      regex: /\bdb\s*\.\s*(?:employmentStudents|materialReviews|followUpRecords|auditLogs)\b/
-    }
+    { label: '就业旧浏览器 db 事实源', regex: /\bdb\s*\.\s*(?:employmentStudents|materialReviews|followUpRecords|auditLogs)\b/ }
   ]],
   ['frontend/src/modules/dataCenter/api/dataCenter.api.js', [
     { label: '@/mocks/dataCenter', regex: /@\/mocks\/dataCenter\b/ },
     { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
-    {
-      label: '驾驶舱旧本地 KPI/report 事实声明',
-      regex: /\b(?:const|let|var)\s+(?:overviewMetrics|lifecycleFunnel|riskStats|collegeRankings|majorRankings|classRankings|drilldownStudents|mockRuntime|roleProfiles|reportList|reportDetailMap|reportSeq|auditSeq)\b/
-    },
+    { label: '驾驶舱旧本地 KPI/report 事实声明', regex: /\b(?:const|let|var)\s+(?:overviewMetrics|lifecycleFunnel|riskStats|collegeRankings|majorRankings|classRankings|drilldownStudents|mockRuntime|roleProfiles|reportList|reportDetailMap|reportSeq|auditSeq)\b/ },
     { label: '驾驶舱旧本地审计写入', regex: /\bauditLogs\s*\.\s*push\s*\(/ },
     { label: '驾驶舱浏览器伪导出任务', regex: /\btaskId\s*:\s*`EXP-/ },
-    {
-      label: '驾驶舱浏览器比例估算',
-      regex: /Math\.round\s*\(\s*funnel\.totalCount\s*\*\s*ratio\s*\)/
-    }
+    { label: '驾驶舱浏览器比例估算', regex: /Math\.round\s*\(\s*funnel\.totalCount\s*\*\s*ratio\s*\)/ }
   ]],
   ['frontend/src/modules/platform/api/platformControl.api.js', [
     { label: 'shouldTryReal()', regex: /\bshouldTryReal\s*\(/ },
-    {
-      label: '平台旧 MOCK_TENANTS/MOCK_OVERVIEW 声明',
-      regex: /\b(?:const|let|var)\s+(?:MOCK_TENANTS|MOCK_OVERVIEW)\b/
-    },
+    { label: '平台旧 MOCK_TENANTS/MOCK_OVERVIEW 声明', regex: /\b(?:const|let|var)\s+(?:MOCK_TENANTS|MOCK_OVERVIEW)\b/ },
     { label: 'mockData', regex: /\bmockData\b/ },
     { label: '@/mocks/platform', regex: /@\/mocks\/platform\b/ },
     { label: '回退演示数据', regex: /回退演示数据/ },
@@ -188,9 +170,7 @@ function resolveLocalImport(fromFile, specifier) {
   let basePath = null
   if (clean.startsWith('@/')) {
     const srcRoot = packageSrcRoot(fromFile)
-    if (!srcRoot) {
-      return { kind: 'unresolved', reason: `无法为 @/ 别名确定 package src root: ${rel(fromFile)}` }
-    }
+    if (!srcRoot) return { kind: 'unresolved', reason: `无法为 @/ 别名确定 package src root: ${rel(fromFile)}` }
     basePath = path.join(srcRoot, clean.slice(2))
   } else if (clean.startsWith('./') || clean.startsWith('../')) {
     basePath = path.resolve(path.dirname(fromFile), clean)
@@ -199,15 +179,11 @@ function resolveLocalImport(fromFile, specifier) {
   }
 
   for (const candidate of candidateFiles(basePath)) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return { kind: isCodeFile(candidate) ? 'code' : 'asset', file: candidate }
-    }
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return { kind: isCodeFile(candidate) ? 'code' : 'asset', file: candidate }
   }
 
   const ext = path.extname(basePath).toLowerCase()
-  if (ASSET_EXTENSIONS.has(ext)) {
-    return { kind: 'unresolved', reason: `本地资源 import 不存在: ${specifier}` }
-  }
+  if (ASSET_EXTENSIONS.has(ext)) return { kind: 'unresolved', reason: `本地资源 import 不存在: ${specifier}` }
   return { kind: 'unresolved', reason: `本地代码 import 无法解析: ${specifier}` }
 }
 
@@ -222,8 +198,6 @@ function extractImports(source) {
   }
 
   let match
-  // 静态 import/export 的 clause 只允许真正的 import 语法字符，禁止用 [\s\S]*? 跨越业务代码
-  // 一路吞到后面的 from，从而把普通 DTO / 文本误当成 import clause。
   const staticFrom = /\b(import|export)\s+(?:type\s+)?([A-Za-z0-9_$*{},\s]+?)\s+from\s*(['"])([^'"]+)\3/g
   while ((match = staticFrom.exec(source))) push(match[4], match[2], match[1])
 
@@ -240,9 +214,7 @@ function extractImports(source) {
 }
 
 function removeComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1 ')
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ')
 }
 
 function isBusinessOwned(repoPath) {
@@ -269,20 +241,14 @@ function inspectBusinessSource(repoPath, source, chain, violations) {
       { label: 'shouldTryReal 正式业务回退', regex: /\bshouldTryReal\s*\(/ }
     ]
     for (const item of localPatterns) {
-      if (item.regex.test(code)) {
-        violations.push({ type: 'forbidden-business-symbol', message: `${repoPath} 命中 ${item.label}`, chain })
-      }
+      if (item.regex.test(code)) violations.push({ type: 'forbidden-business-symbol', file: repoPath, message: `${repoPath} 命中 ${item.label}`, chain })
     }
   }
 
   const filePatterns = FILE_FORBIDDEN_PATTERNS.get(repoPath) || []
   for (const item of filePatterns) {
     if (item.regex.test(code)) {
-      violations.push({
-        type: 'stage-contract-regression',
-        message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`,
-        chain
-      })
+      violations.push({ type: 'stage-contract-regression', file: repoPath, message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`, chain })
     }
   }
 }
@@ -292,11 +258,7 @@ function inspectImportedSymbols(repoPath, imp, chain, violations) {
   for (const symbol of FORBIDDEN_IMPORTED_SYMBOLS) {
     const regex = new RegExp(`\\b${symbol}\\b`)
     if (regex.test(imp.clause)) {
-      violations.push({
-        type: 'forbidden-imported-symbol',
-        message: `${repoPath} 从 ${imp.specifier} 导入禁用符号 ${symbol}`,
-        chain
-      })
+      violations.push({ type: 'forbidden-imported-symbol', file: repoPath, message: `${repoPath} 从 ${imp.specifier} 导入禁用符号 ${symbol}`, chain })
     }
   }
 }
@@ -304,13 +266,14 @@ function inspectImportedSymbols(repoPath, imp, chain, violations) {
 function assertRegistration(graph, violations) {
   const registrationFile = abs(graph.registration.file)
   if (!fs.existsSync(registrationFile)) {
-    violations.push({ type: 'missing-registration-file', message: `${graph.registration.file} 不存在`, chain: [graph.entry] })
+    violations.push({ type: 'missing-registration-file', file: graph.registration.file, message: `${graph.registration.file} 不存在`, chain: [graph.entry] })
     return
   }
   const source = fs.readFileSync(registrationFile, 'utf8')
   if (!source.includes(graph.registration.needle)) {
     violations.push({
       type: 'formal-entry-not-registered',
+      file: graph.registration.file,
       message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（缺少 ${graph.registration.needle}）`,
       chain: [graph.entry]
     })
@@ -321,16 +284,10 @@ function scanGraph(graph) {
   const violations = []
   const entryFile = abs(graph.entry)
   if (!fs.existsSync(entryFile)) {
-    return {
-      graph,
-      violations: [{ type: 'missing-entry', message: `正式入口不存在: ${graph.entry}`, chain: [graph.entry] }],
-      visited: new Set(),
-      edges: 0
-    }
+    return { graph, violations: [{ type: 'missing-entry', file: graph.entry, message: `正式入口不存在: ${graph.entry}`, chain: [graph.entry] }], visited: new Set(), edges: 0 }
   }
 
   assertRegistration(graph, violations)
-
   const visited = new Set()
   const queued = new Set([entryFile])
   const queue = [{ file: entryFile, chain: [graph.entry] }]
@@ -345,7 +302,7 @@ function scanGraph(graph) {
 
     const pathReason = forbiddenPathReason(repoPath)
     if (pathReason) {
-      violations.push({ type: 'forbidden-path', message: `${repoPath}: ${pathReason}`, chain: current.chain })
+      violations.push({ type: 'forbidden-path', file: repoPath, message: `${repoPath}: ${pathReason}`, chain: current.chain })
       continue
     }
 
@@ -353,23 +310,17 @@ function scanGraph(graph) {
     try {
       source = fs.readFileSync(current.file, 'utf8')
     } catch (error) {
-      violations.push({ type: 'read-error', message: `无法读取 ${repoPath}: ${error.message}`, chain: current.chain })
+      violations.push({ type: 'read-error', file: repoPath, message: `无法读取 ${repoPath}: ${error.message}`, chain: current.chain })
       continue
     }
 
     inspectBusinessSource(repoPath, source, current.chain, violations)
-    const importSource = removeComments(source)
-
-    for (const imp of extractImports(importSource)) {
+    for (const imp of extractImports(removeComments(source))) {
       inspectImportedSymbols(repoPath, imp, current.chain, violations)
       const resolved = resolveLocalImport(current.file, imp.specifier)
       if (resolved.kind === 'external') continue
       if (resolved.kind === 'unresolved') {
-        violations.push({
-          type: 'unresolved-local-import',
-          message: `${repoPath}: ${resolved.reason}`,
-          chain: [...current.chain, imp.specifier]
-        })
+        violations.push({ type: 'unresolved-local-import', file: repoPath, message: `${repoPath}: ${resolved.reason}`, chain: [...current.chain, imp.specifier] })
         continue
       }
 
@@ -377,7 +328,7 @@ function scanGraph(graph) {
       const nextChain = [...current.chain, targetPath]
       const targetReason = forbiddenPathReason(targetPath)
       if (targetReason) {
-        violations.push({ type: 'forbidden-path', message: `${targetPath}: ${targetReason}`, chain: nextChain })
+        violations.push({ type: 'forbidden-path', file: targetPath, message: `${targetPath}: ${targetReason}`, chain: nextChain })
         continue
       }
       if (resolved.kind === 'asset') continue
@@ -393,20 +344,24 @@ function scanGraph(graph) {
   const reachable = new Set([...visited].map(rel))
   for (const required of graph.requiredReachable || []) {
     if (!reachable.has(required)) {
-      violations.push({
-        type: 'required-real-facade-not-reachable',
-        message: `${graph.entry} 未能到达阶段封板真实 facade: ${required}`,
-        chain: [graph.entry, required]
-      })
+      violations.push({ type: 'required-real-facade-not-reachable', file: graph.entry, message: `${graph.entry} 未能到达阶段封板真实 facade: ${required}`, chain: [graph.entry, required] })
     }
   }
-
   return { graph, violations, visited: reachable, edges }
 }
 
+function escapeAnnotation(value) {
+  return String(value || '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A').replace(/,/g, '%2C')
+}
+
 function printViolation(graph, violation) {
+  const chain = violation.chain?.length ? violation.chain.join(' -> ') : ''
   console.error(`\n❌ [${graph.phase} · ${graph.name}] ${violation.message}`)
-  if (violation.chain?.length) console.error(`   依赖链: ${violation.chain.join(' -> ')}`)
+  if (chain) console.error(`   依赖链: ${chain}`)
+  const file = violation.file || graph.entry || 'scripts/check/check-formal-route-dependency-graph.mjs'
+  const title = `A6 ${graph.phase} · ${graph.name}`
+  const detail = chain ? `${violation.message} | 依赖链: ${chain}` : violation.message
+  console.error(`::error file=${escapeAnnotation(file)},title=${escapeAnnotation(title)}::${escapeAnnotation(detail)}`)
 }
 
 function run() {
@@ -416,10 +371,7 @@ function run() {
   console.log('A6 正式路由依赖图门禁')
   console.log(`仓库: ${REPO_ROOT}`)
   for (const result of results) {
-    console.log(
-      `${result.violations.length ? '❌' : '✅'} ${result.graph.phase} · ${result.graph.name}: ` +
-      `${result.visited.size} 个代码节点 / ${result.edges} 条本地依赖边 / ${result.violations.length} 个违规`
-    )
+    console.log(`${result.violations.length ? '❌' : '✅'} ${result.graph.phase} · ${result.graph.name}: ${result.visited.size} 个代码节点 / ${result.edges} 条本地依赖边 / ${result.violations.length} 个违规`)
   }
 
   if (failures.length) {
