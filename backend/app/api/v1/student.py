@@ -30,6 +30,12 @@ _PICKER_PERMS = (
     "academicAffairs.roster.view",
 )
 
+_STUDENT_CONTEXT_PERMS = (
+    "student.profile.view",
+    "studentAffairs.student.view",
+    "campusService.student.view",
+)
+
 
 def _can_pick_students(user) -> bool:
     return has_permission(user, "*") or any(has_permission(user, p) for p in _PICKER_PERMS)
@@ -37,6 +43,15 @@ def _can_pick_students(user) -> bool:
 
 def _can_view_profile(user) -> bool:
     return has_permission(user, "*") or has_permission(user, "student.profile.view")
+
+
+def _can_view_student_context(user) -> bool:
+    """成长时间线/风险摘要的读取能力。
+
+    这两类信息属于学生工作上下文，不应因为 graduation/internship 等仅选择器权限而扩散；
+    允许正式学生主档权限、学工学生查看、在校服务学生查看，最终仍由 dataScope 收敛到目标学生。
+    """
+    return has_permission(user, "*") or any(has_permission(user, p) for p in _STUDENT_CONTEXT_PERMS)
 
 
 def _check_target_scope(student_id: str, user) -> None:
@@ -277,15 +292,15 @@ def void_student(
 
 @router.get("/{student_id}/timeline", summary="学生成长时间线")
 def student_timeline(student_id: str, user=Depends(require_staff)):
-    if not _can_view_profile(user):
-        raise AppException("NO_PERMISSION", "无权查看学生主档")
+    if not _can_view_student_context(user):
+        raise AppException("NO_PERMISSION", "无权查看学生成长时间线")
     _check_target_scope(student_id, user)
     return success({"items": svc.get_timeline(student_id)})
 
 
 @router.get("/{student_id}/risk-summary", summary="学生风险摘要")
 def student_risk(student_id: str, user=Depends(require_staff)):
-    if not _can_view_profile(user):
-        raise AppException("NO_PERMISSION", "无权查看学生主档")
+    if not _can_view_student_context(user):
+        raise AppException("NO_PERMISSION", "无权查看学生风险摘要")
     _check_target_scope(student_id, user)
     return success(svc.get_risk_summary(student_id))
