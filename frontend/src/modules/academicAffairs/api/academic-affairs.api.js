@@ -1130,7 +1130,10 @@ export const academicAffairsMakeupApi = {
   makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params) },
   listBatches(params = {}) { return callList(`${BASE}/makeup/batches`, params) },
   createBatch(body) { return call(() => request(`${BASE}/makeup/batches`, { method: 'POST', body })) },
+  // 纳入只认 gradeId：课程、版本、修读次数、原始分全部由服务器从这条正式成绩推导，
+  // 前端不再传 courseName/originScore（传了也会被 422 挡下）。
   enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
+  batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params) },
   publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
   score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
   collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },

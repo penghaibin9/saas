@@ -219,19 +219,24 @@ def _check_college_scope(ctx, college_id):
 
 
 def list_courses(user, bid, page=1, page_size=100):
+    """数据范围下推到 SQL WHERE：学院教务员的范围收敛不再是"整批次查出来再在
+    Python 里挑本院的、丢掉分页之外的"，而是直接让数据库只返回该学院范围内的分页结果。"""
     from app.models import AaExamCourse
     with session() as db:
         ctx = _ctx(user, db)
         _get_batch(db, bid)
-        q = db.query(AaExamCourse).filter(AaExamCourse.batch_id == bid, AaExamCourse.tenant_id == _tid(),
-                                          AaExamCourse.status != "REMOVED", AaExamCourse.is_deleted.is_(False))
-        rows = q.order_by(AaExamCourse.id).all()
-        # 学院教务员只看本院
+        conds = [AaExamCourse.batch_id == bid, AaExamCourse.tenant_id == _tid(),
+                AaExamCourse.status != "REMOVED", AaExamCourse.is_deleted.is_(False)]
         if not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
-            rows = [c for c in rows if c.college_id and int(c.college_id) in allowed]
-        total = len(rows)
-        return [_course_dto(c) for c in rows[(page - 1) * page_size: page * page_size]], total
+            conds.append(AaExamCourse.college_id.in_(allowed or [-1]))
+        total = int(db.query(AaExamCourse).filter(*conds).count())
+        page = max(1, int(page))
+        page_size = max(1, int(page_size))
+        rows = db.query(AaExamCourse).filter(*conds).order_by(
+            AaExamCourse.id
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return [_course_dto(c) for c in rows], total
 
 
 def confirm_course(user, cid, action):
