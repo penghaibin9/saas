@@ -10,6 +10,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
 const runtimeSource = readFileSync(resolve(here, '../helpCenterRuntime.js'), 'utf8')
 const viewSource = readFileSync(resolve(here, '../../views/admin/help/AdminHelpView.vue'), 'utf8')
+const implementationSource = readFileSync(
+  resolve(here, '../../../../backend/app/services/system_implementation_service.py'),
+  'utf8'
+)
 
 function firstSchoolGuide() {
   const base = FOUNDATION_HELP_CARDS.find((item) => item.id === 'sys-card-first-school-setup')
@@ -58,6 +62,25 @@ test('V3-06 preserves hard governance boundaries instead of teaching shortcuts',
     assert.match(text, new RegExp(token))
   }
   assert.doesNotMatch(text, /跳过.*BLOCKER|强行.*验收|绕过.*授权/)
+})
+
+test('V3-06 is grounded in the real 12-section implementation and acceptance state machine', () => {
+  for (const token of [
+    'SECTION_DEFINITIONS',
+    'school_opening',
+    'role_permission',
+    'organization',
+    'identity_import',
+    'business_relation',
+    'security_audit',
+    'go_live_check',
+    'module_business',
+    'READY_FOR_ACCEPTANCE',
+    '阻断项不能通过人工确认绕过',
+    'IMPLEMENTATION_ACCEPTANCE_SUMMARY_FROZEN'
+  ]) assert.match(implementationSource, new RegExp(token))
+  assert.match(implementationSource, /project\.status = "READY_FOR_ACCEPTANCE" if ready else "VERIFYING"/)
+  assert.match(implementationSource, /if project\.status != "READY_FOR_ACCEPTANCE"/)
 })
 
 test('V3-06 remains the first verified priority task and is rendered with next-step guidance', () => {
