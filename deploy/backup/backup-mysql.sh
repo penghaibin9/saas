@@ -10,6 +10,7 @@ DB_NAME="${DB_NAME:-saas_lifecycle}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/school-lifecycle}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 UPLOAD_DIR="${UPLOAD_DIR:-/var/www/school-lifecycle/uploads}"
+REQUIRE_UPLOAD_BACKUP="${REQUIRE_UPLOAD_BACKUP:-0}"
 
 mkdir -p -- "$BACKUP_DIR"
 test -d "$BACKUP_DIR"
@@ -34,7 +35,13 @@ trap - EXIT
 if [ -d "$UPLOAD_DIR" ]; then
   upload_file="$BACKUP_DIR/uploads_${timestamp}.tar.gz"
   tar -czf "$upload_file" -C "$(dirname "$UPLOAD_DIR")" "$(basename "$UPLOAD_DIR")"
+  test -s "$upload_file"
   sha256sum "$upload_file" > "${upload_file}.sha256"
+elif [ "$REQUIRE_UPLOAD_BACKUP" = "1" ] || [ "$REQUIRE_UPLOAD_BACKUP" = "true" ]; then
+  echo "required upload directory is missing: $UPLOAD_DIR" >&2
+  exit 1
+else
+  echo "[$(date -Is)] WARN: upload directory not present; upload archive skipped: $UPLOAD_DIR" >&2
 fi
 
 # BACKUP_DIR is an explicit, validated directory; only known backup patterns expire.
