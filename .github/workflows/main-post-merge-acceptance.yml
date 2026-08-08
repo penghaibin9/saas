@@ -30,23 +30,51 @@ jobs:
     name: Main / protected branch contract
     runs-on: ubuntu-24.04
     steps:
-      - name: Require GitHub to report main as protected
+      - name: Require effective GitHub protection on main
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          payload="$(curl -fsS \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H 'Accept: application/vnd.github+json' \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/branches/main")"
-          protected="$(jq -r '.protected' <<<"$payload")"
-          echo "main.protected=$protected"
-          if [ "$protected" != 'true' ]; then
-            echo '::error::main is not protected. Configure the required main ruleset/branch protection before release.'
-            exit 1
+          api_get() {
+            curl -fsS \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          branch_payload="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/branches/main")"
+          classic_protected="$(jq -r '.protected' <<<"$branch_payload")"
+          effective_rules="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/rules/branches/main")"
+          effective_count="$(jq 'length' <<<"$effective_rules")"
+          echo "main.classic_protected=$classic_protected"
+          echo "main.effective_rules=$effective_count"
+
+          if [ "$effective_count" -gt 0 ]; then
+            deletion="$(jq '[.[] | select(.type == "deletion")] | length' <<<"$effective_rules")"
+            non_fast_forward="$(jq '[.[] | select(.type == "non_fast_forward")] | length' <<<"$effective_rules")"
+            pull_request="$(jq '[.[] | select(.type == "pull_request")] | length' <<<"$effective_rules")"
+            canonical_check="$(jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | select(.context == "Main / canonical release gate")] | length' <<<"$effective_rules")"
+            strict_checks="$(jq '[.[] | select(.type == "required_status_checks" and .parameters.strict_required_status_checks_policy == true)] | length' <<<"$effective_rules")"
+            printf 'rules.deletion=%s\nrules.non_fast_forward=%s\nrules.pull_request=%s\nrules.canonical_check=%s\nrules.strict_checks=%s\n' \
+              "$deletion" "$non_fast_forward" "$pull_request" "$canonical_check" "$strict_checks"
+            test "$deletion" -gt 0
+            test "$non_fast_forward" -gt 0
+            test "$pull_request" -gt 0
+            test "$canonical_check" -gt 0
+            test "$strict_checks" -gt 0
+            echo 'main is protected by effective GitHub rulesets.'
+            exit 0
           fi
+
+          if [ "$classic_protected" = 'true' ]; then
+            echo 'main is protected by classic branch protection.'
+            exit 0
+          fi
+
+          echo '::error::main has neither effective ruleset protection nor classic branch protection.'
+          exit 1
 
   migrated-schema:
     name: Main / Alembic + migrated-schema contracts
