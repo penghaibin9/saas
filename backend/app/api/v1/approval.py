@@ -1,10 +1,9 @@
 """审批任务 API：正式路由只连接真实数据库服务。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from app.api.v1.file_contract import validated_local_file_response
-from app.core.context import get_tenant
 from app.core.idempotency import begin as idempotency_begin, finish as idempotency_finish
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
@@ -12,6 +11,7 @@ from app.schemas.approval import (
     ApprovalActionRequest,
     ApprovalBatchRequest,
     ApprovalExportRequest,
+    ApprovalExportTicketRequest,
     ApprovalRejectRequest,
     ApprovalResubmitRequest,
     ApprovalReturnRequest,
@@ -184,10 +184,9 @@ def batch_process(
     return success(result, message="批量处理完成")
 
 
-@router.post("/export", summary="创建审批中心后台 xlsx 导出任务")
+@router.post("/export", summary="创建审批中心异步 xlsx 导出任务")
 def create_export(
     body: ApprovalExportRequest,
-    background_tasks: BackgroundTasks,
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
@@ -200,13 +199,6 @@ def create_export(
     if cached is not None:
         return success(cached, message="导出任务已存在（幂等重放）")
     result = exportsvc.create_job(body.scope, body.purpose, user=user)
-    tenant = dict(get_tenant() or {})
-    background_tasks.add_task(
-        exportsvc.run_job,
-        result["taskId"],
-        tenant=tenant,
-        user=dict(user or {}),
-    )
     idempotency_finish(handle, result)
     return success(result, message="导出任务已创建")
 
@@ -216,12 +208,27 @@ def export_status(task_id: str, user=Depends(require_staff)):
     return success(exportsvc.get_job(task_id, user=user))
 
 
-@router.get("/export/{task_id}/download", summary="下载已完成审批中心 xlsx（租户+权限校验）")
-def download_export(task_id: str, user=Depends(require_staff)):
-    path = exportsvc.export_file_path(task_id, user=user)
+@router.post("/export/{task_id}/download-ticket", summary="创建审批导出一次性下载票据")
+def export_download_ticket(
+    body: ApprovalExportTicketRequest,
+    task_id: str,
+    user=Depends(require_staff),
+):
+    return success(
+        exportsvc.create_download_ticket(task_id, body.expectedVersion, user=user)
+    )
+
+
+@router.get("/export/{task_id}/download", summary="使用一次性票据下载审批中心 xlsx")
+def download_export(
+    task_id: str,
+    ticket: str = Query(..., min_length=20),
+    user=Depends(require_staff),
+):
+    path, filename = exportsvc.consume_download_ticket(task_id, ticket, user=user)
     return validated_local_file_response(
         path,
-        filename=path.name,
+        filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         audit_action="APPROVAL_EXPORT_DOWNLOAD",
         audit_target=f"approval-export:{task_id}",
