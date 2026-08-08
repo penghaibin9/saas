@@ -71,6 +71,25 @@ def _h(data):
     return {"Authorization": "Bearer " + data["data"]["accessToken"]}
 
 
+def _running_internship_batch_id(tenant_id: int) -> str:
+    """按生产显式批次合同选择该租户当前 RUNNING 实习批次。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch
+
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(select(InternshipBatch).where(
+            InternshipBatch.tenant_id == tenant_id,
+            InternshipBatch.status == "RUNNING",
+            InternshipBatch.is_deleted.is_(False),
+        ).order_by(InternshipBatch.id.desc())).first()
+        assert row is not None, f"tenant {tenant_id} missing RUNNING internship batch"
+        return str(row.id)
+    finally:
+        db.close()
+
+
 def _platform_h():
     from app.core.security import create_access_token
     token = create_access_token({
@@ -143,7 +162,9 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
                     json={"loginName": "student01", "password": "demo"})
     assert r.status_code == 403
     assert "accessToken" not in (r.json().get("data") or {})
-    # 真实登录不受影响
+    # production 密码登录的验证码/风控存储按设计要求 Redis；本用例只验证 mock-login 关闭。
+    # 恢复 test 环境后再验证真实账号链仍正常，避免把“生产无 Redis 应 fail-closed”误判成回归。
+    monkeypatch.setattr(settings, "APP_ENV", "test")
     assert _login(client, "student")["code"] == 0
 
 
@@ -190,7 +211,8 @@ def test_teacher_scope_visibility(client, two_tenants):
 
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     sbx_t = _h(_login(client, "teacher2"))
-    it = client.get("/api/v1/mobile/teacher/internship", headers=sbx_t).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=sbx_t,
+                    params={"batchId": _running_internship_batch_id(SBX_TID)}).json()
     reports = it["data"]["weeklyReports"]
     assert len(reports) >= 1
     rid = reports[0]["id"]
@@ -209,7 +231,8 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
 def test_demo_tenant_is_readonly(client, two_tenants):
     """正式演示租户：看得见但写操作被只读锁拦截（403 + 指引去沙箱）。"""
     demo_t = _h(_login(client, "teacher"))
-    it = client.get("/api/v1/mobile/teacher/internship", headers=demo_t).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=demo_t,
+                    params={"batchId": _running_internship_batch_id(DEMO_TID)}).json()
     assert it["code"] == 0
     reports = it["data"]["weeklyReports"]
     assert len(reports) >= 1  # 看得见
