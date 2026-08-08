@@ -40,11 +40,25 @@ export class StaffLoginPage {
     const oldToken = await this.token()
     await target.click()
     await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
-    await expect.poll(() => this.token()).not.toBe(oldToken)
+    await expect.poll(() => this.token(), { timeout: 15_000 }).not.toBe(oldToken)
   }
 
   async token() {
-    return this.page.evaluate(() => sessionStorage.getItem('gx_pc_token_v1') || '')
+    // 身份切换会轮换 token 并触发导航；evaluate 恰好撞上旧 document 被销毁时应重试，
+    // 不能把正常导航误判成产品失败。
+    let lastError
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        await this.page.waitForLoadState('domcontentloaded', { timeout: 5_000 }).catch(() => {})
+        return await this.page.evaluate(() => sessionStorage.getItem('gx_pc_token_v1') || '')
+      } catch (error) {
+        lastError = error
+        const message = String(error?.message || error)
+        if (!/Execution context was destroyed|navigation|Cannot find context/i.test(message)) throw error
+        await this.page.waitForTimeout(100)
+      }
+    }
+    throw lastError
   }
 
   async currentRoleText() {
