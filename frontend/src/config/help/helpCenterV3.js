@@ -27,7 +27,11 @@ export const HELP_V3_QUICK_QUESTIONS = Object.freeze([
   { label: '为什么提示数据冲突 / 409？', query: '409' },
   { label: '为什么发布被阻断？', query: '发布' },
   { label: '为什么导入失败？错误行在哪？', query: '错误行' },
-  { label: '为什么处理后待办还在？', query: '待办' }
+  { label: '为什么处理后待办还在？', query: '待办' },
+  { label: '为什么提示登录失效 / 401？', query: '401' },
+  { label: '为什么模块未开通或变成只读？', query: '模块未授权' },
+  { label: '为什么文件上传失败或上传后不能提交？', query: '文件上传' },
+  { label: '为什么导出一直处理中或下载不了？', query: '导出任务' }
 ])
 
 /**
