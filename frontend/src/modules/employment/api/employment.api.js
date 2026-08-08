@@ -1,697 +1,541 @@
 /**
- * 07 就业服务中心 — mock API（页面唯一数据入口，接真实后端时仅替换本文件实现）。
- * 约定：
- *  - 返回 envelope：{ code, message, data, timestamp, requestId }
- *  - 所有写操作（新增/编辑/作废/审核/批量/导入/导出）真实变更内存 mock 并写入审计日志。
- *  - 删除一律逻辑作废，禁止物理删除。
- *  - 数据范围：辅导员(CLASS)只见本班，学院角色(COLLEGE)见本院，SCHOOL 见全部。
+ * 就业服务中心生产 API facade（A3 / P0-05）。
+ *
+ * 正式 /admin/employment/** 路由只允许访问真实 HTTP 服务：
+ * - 禁止 import @/mocks/employment/**；
+ * - 禁止 shouldTryReal → mock fallback；
+ * - 禁止浏览器内存业务写入与假审计；
+ * - 尚无正式后端合同的能力统一 fail-closed，并从正式动作配置隐藏。
  */
-import * as db from '@/mocks/employment/employment.mock'
-import { request, shouldTryReal } from '@/services/http/client'
-import { maskPhone, maskIdCard, maskSalary } from '@/security'
+import { currentUserFromToken, request } from '@/services/http/client'
+import { setPermissionPatterns, setRbacLoadFailed } from '@/security/permissionGate'
 
-const delay = (ms = 160) => new Promise((r) => setTimeout(r, ms))
-let seq = 0
-const envelope = (data, code = 0, message = 'ok') => ({
-  code,
-  message,
-  data,
-  timestamp: Date.now(),
-  requestId: `emp-mock-${Date.now()}-${++seq}`
-})
-const fail = (message, code = 1) => envelope(null, code, message)
-const clone = (v) => JSON.parse(JSON.stringify(v))
-const kw = (t, k) => !k || String(t || '').includes(k)
+function ok(data, message = 'ok') {
+  return Promise.resolve({ code: 0, data, message })
+}
 
-/* ---------------- 上下文 ---------------- */
-const currentRole = () => db.roles.find((r) => r.roleId === db.state.currentRoleId) || db.roles[0]
+function fail(message, bizCode = 'UNSUPPORTED_ACTION') {
+  return Promise.resolve({ code: 1, bizCode, data: null, message })
+}
 
-const rolePerm = () => db.permissionActionsByRole[db.state.currentRoleId] || db.permissionActionsByRole.EMP_TEACHER
+function toErr(error, fallback = '真实接口不可用，请稍后重试') {
+  return {
+    code: Number(error?.code) === 0 ? 1 : Number(error?.code || 1),
+    bizCode: error?.bizCode || error?.errorCode || 'REQUEST_FAILED',
+    data: null,
+    message: error?.message || fallback
+  }
+}
 
-/** 权限动作快照：{ key: { allowed, visible, reason } } */
-function buildPermissionActions() {
-  const conf = rolePerm()
-  const hidden = conf.hidden || []
-  return Object.fromEntries(
-    Object.entries(conf.actions).map(([key, allowed]) => [
-      key,
-      { allowed, visible: !hidden.includes(key), reason: allowed ? '' : conf.disabledReason || '当前角色无此操作权限' }
-    ])
-  )
+async function call(fn, fallback) {
+  try {
+    return ok(await fn())
+  } catch (error) {
+    return toErr(error, fallback)
+  }
+}
+
+async function callList(path, params = {}, fallback = '列表加载失败') {
+  try {
+    const data = await request(path, { params })
+    return ok({
+      list: data?.items || [],
+      total: Number(data?.total || 0),
+      page: Number(data?.page || params.page || 1),
+      pageSize: Number(data?.pageSize || params.pageSize || 20)
+    })
+  } catch (error) {
+    return toErr(error, fallback)
+  }
+}
+
+function hasPermission(patterns = [], code) {
+  const list = Array.isArray(patterns) ? patterns.map(String) : []
+  if (list.includes('*') || list.includes(code)) return true
+  return list.some((pattern) => {
+    if (pattern.endsWith('.*')) return code === pattern.slice(0, -2) || code.startsWith(pattern.slice(0, -1))
+    if (pattern.startsWith('*.')) return code.endsWith(pattern.slice(1))
+    return false
+  })
+}
+
+function action(patterns, code, reason, { visible = true, readonly = false, readonlyReason = '' } = {}) {
+  const permitted = !!code && hasPermission(patterns, code)
+  const allowed = permitted && !readonly
+  return {
+    visible: !!visible,
+    allowed,
+    reason: allowed ? '' : (readonly && permitted ? (readonlyReason || '当前学校为只读环境') : reason)
+  }
+}
+
+function unsupportedAction(reason) {
+  return { visible: false, allowed: false, reason }
+}
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]))
+  }
+  return value
+}
+
+function idempotencyHeaders(actionName, payload = {}) {
+  const raw = JSON.stringify(canonical({ actionName, payload }))
+  let hash = 2166136261
+  for (let i = 0; i < raw.length; i += 1) {
+    hash ^= raw.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return { 'Idempotency-Key': `employment-${actionName}-${(hash >>> 0).toString(16).padStart(8, '0')}` }
+}
+
+const STATUS_OPTIONS = {
+  destinationType: [
+    { value: 'SIGNED', label: '签约就业' },
+    { value: 'FLEXIBLE', label: '灵活就业' },
+    { value: 'FURTHER_STUDY', label: '升学' },
+    { value: 'ENLISTED', label: '入伍' },
+    { value: 'STARTUP', label: '自主创业' },
+    { value: 'FREELANCE', label: '自由职业' },
+    { value: 'UNEMPLOYED', label: '待就业' }
+  ],
+  verifyStatus: [
+    { value: 'PENDING_VERIFY', label: '待核验' },
+    { value: 'VERIFIED', label: '已核验' },
+    { value: 'RETURNED', label: '已退回' }
+  ],
+  materialStatus: [
+    { value: 'SUBMITTED', label: '待审核' },
+    { value: 'REVIEWING', label: '审核中' },
+    { value: 'APPROVED', label: '已通过' },
+    { value: 'RETURNED', label: '退回补充' },
+    { value: 'REJECTED', label: '已驳回' }
+  ],
+  materialType: [
+    { value: 'AGREEMENT', label: '就业协议' },
+    { value: 'CONTRACT', label: '劳动合同' },
+    { value: 'OFFER', label: '录用通知' },
+    { value: 'STUDY_PROOF', label: '升学证明' },
+    { value: 'ENLIST_PROOF', label: '入伍证明' },
+    { value: 'STARTUP_PROOF', label: '创业证明' },
+    { value: 'OTHER', label: '其他材料' }
+  ],
+  helpLevel: [
+    { value: 'NORMAL', label: '常规跟进' },
+    { value: 'KEY_HELP', label: '重点帮扶' }
+  ],
+  recordStatus: [
+    { value: 'ACTIVE', label: '有效' },
+    { value: 'VOIDED', label: '已作废' }
+  ],
+  followUpWay: [
+    { value: 'PHONE', label: '电话联系' },
+    { value: 'FACE', label: '面谈' },
+    { value: 'RECOMMEND', label: '岗位推荐' },
+    { value: 'VISIT', label: '走访' }
+  ],
+  followUpStatus: [
+    { value: 'OPEN', label: '跟进中' },
+    { value: 'CLOSED', label: '已闭环' },
+    { value: 'VOIDED', label: '已作废' }
+  ],
+  companyStatus: [
+    { value: 'ACTIVE', label: '合作中' },
+    { value: 'DISABLED', label: '已停用' }
+  ],
+  jobStatus: [
+    { value: 'OPEN', label: '招聘中' },
+    { value: 'CLOSED', label: '已停止' }
+  ],
+  riskLevel: [
+    { value: 'LOW', label: '低风险' },
+    { value: 'MEDIUM', label: '中风险' },
+    { value: 'HIGH', label: '高风险' }
+  ]
+}
+
+const FIELD_COLUMNS = {
+  studentList: [
+    { key: 'name', title: '姓名', locked: true, default: true },
+    { key: 'studentNo', title: '学号', default: true },
+    { key: 'className', title: '班级', default: true },
+    { key: 'destinationType', title: '去向类型', default: true },
+    { key: 'companyName', title: '单位 / 院校', default: true },
+    { key: 'jobTitle', title: '岗位', default: false },
+    { key: 'salaryRange', title: '薪资区间', sensitive: true, default: false },
+    { key: 'phone', title: '手机号', sensitive: true, default: false },
+    { key: 'verifyStatus', title: '核验状态', default: true },
+    { key: 'materialStatus', title: '材料状态', default: true },
+    { key: 'helpLevel', title: '帮扶级别', default: true },
+    { key: 'updateTime', title: '更新时间', default: false },
+    { key: 'actions', title: '操作', locked: true, default: true }
+  ],
+  materialList: [
+    { key: 'name', title: '学生', locked: true, default: true },
+    { key: 'className', title: '班级', default: true },
+    { key: 'materialType', title: '材料类型', default: true },
+    { key: 'fileName', title: '材料文件', default: true },
+    { key: 'submitTime', title: '提交时间', default: true },
+    { key: 'status', title: '审核状态', default: true },
+    { key: 'reviewer', title: '审核人', default: false },
+    { key: 'actions', title: '操作', locked: true, default: true }
+  ],
+  unemployedList: [
+    { key: 'name', title: '姓名', locked: true, default: true },
+    { key: 'className', title: '班级', default: true },
+    { key: 'unemployedReason', title: '未就业原因', default: true },
+    { key: 'helpLevel', title: '帮扶级别', default: true },
+    { key: 'riskLevel', title: '风险', default: true },
+    { key: 'assignedTeacher', title: '负责老师', default: true },
+    { key: 'lastFollowUpTime', title: '最近跟进', default: true },
+    { key: 'followUpCount', title: '跟进次数', default: false },
+    { key: 'actions', title: '操作', locked: true, default: true }
+  ],
+  followUpList: [
+    { key: 'studentName', title: '学生', locked: true, default: true },
+    { key: 'className', title: '班级', default: true },
+    { key: 'followTime', title: '跟进时间', default: true },
+    { key: 'way', title: '跟进方式', default: true },
+    { key: 'content', title: '跟进内容', default: true },
+    { key: 'result', title: '结果', default: true },
+    { key: 'operator', title: '记录人', default: false },
+    { key: 'status', title: '状态', default: true },
+    { key: 'actions', title: '操作', locked: true, default: true }
+  ]
+}
+
+const BATCH_ACTIONS = {
+  studentList: [
+    { key: 'batchMarkStatus', label: '批量标记去向', permission: 'employment.record.batchMarkStatus' }
+  ],
+  materialList: [],
+  unemployedList: [
+    { key: 'batchAssign', label: '批量分配就业老师', permission: 'employment.unemployed.assign' }
+  ],
+  followUpList: []
+}
+
+const EXPORT_GROUPS = {
+  studentList: [{ key: 'base', label: '就业台账', fields: ['姓名', '学号', '班级', '去向', '单位', '核验', '帮扶'] }],
+  materialList: [{ key: 'base', label: '就业台账导出', fields: ['当前正式导出按就业学生台账生成'] }],
+  unemployedList: [{ key: 'base', label: '就业台账导出', fields: ['当前正式导出按就业学生台账生成'] }],
+  followUpList: [{ key: 'base', label: '就业台账导出', fields: ['当前正式导出按就业学生台账生成'] }]
+}
+
+function exportOptions(listKey) {
+  return {
+    scopes: [{ value: 'SCOPE_ALL', label: '当前账号数据范围内全部' }],
+    fieldGroups: EXPORT_GROUPS[listKey] || EXPORT_GROUPS.studentList,
+    maskDefault: true,
+    idCardPlainForbidden: true,
+    watermarkNote: '文件由服务端生成，按当前 dataScope 收敛，敏感字段脱敏并记录导出用途。',
+    auditNotice: '本次导出将写入服务端审计，请填写真实用途。',
+    purposeRequired: true
+  }
+}
+
+function permissionActions(patterns, readonlyTenant, readonlyReason) {
+  const opts = { readonly: readonlyTenant, readonlyReason }
+  return {
+    'employment.record.view': action(patterns, 'employment.student.view', '无就业学生查看权限'),
+    'employment.record.create': action(patterns, 'employment.student.manage', '无就业学生维护权限', opts),
+    'employment.record.edit': action(patterns, 'employment.student.manage', '无就业学生维护权限', opts),
+    'employment.record.void': action(patterns, 'employment.student.manage', '无就业学生维护权限', opts),
+    'employment.record.import': unsupportedAction('就业导入尚未接入正式文件任务链'),
+    'employment.record.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
+    'employment.record.batchRemind': unsupportedAction('批量提醒尚未接入正式消息发送链'),
+    'employment.record.batchMarkStatus': action(patterns, 'employment.student.manage', '无就业学生维护权限', opts),
+    'employment.material.review': action(patterns, 'employment.material.approve', '无就业材料审核权限', opts),
+    'employment.material.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
+    'employment.followup.create': action(patterns, 'employment.followup.manage', '无就业跟进维护权限', opts),
+    'employment.followup.edit': unsupportedAction('跟进记录编辑尚无正式后端合同；请新增更正记录或作废重建'),
+    'employment.followup.void': action(patterns, 'employment.followup.manage', '无就业跟进维护权限', opts),
+    'employment.followup.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
+    'employment.unemployed.assign': action(patterns, 'employment.unemployed.assign', '无就业老师分配权限', opts),
+    'employment.unemployed.markEmployed': action(patterns, 'employment.unemployed.manage', '无未就业学生维护权限', opts),
+    'employment.unemployed.markKeyHelp': action(patterns, 'employment.unemployed.manage', '无未就业学生维护权限', opts),
+    'employment.unemployed.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
+    'employment.company.create': action(patterns, 'employment.company.manage', '无企业维护权限', opts),
+    'employment.company.edit': unsupportedAction('企业编辑尚无正式后端合同'),
+    'employment.company.disable': action(patterns, 'employment.company.manage', '无企业维护权限', opts),
+    'employment.company.import': unsupportedAction('企业导入尚未接入正式文件任务链'),
+    'employment.company.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
+    'employment.job.create': action(patterns, 'employment.job.manage', '无岗位维护权限', opts),
+    'employment.job.edit': unsupportedAction('岗位编辑尚无正式后端合同'),
+    'employment.job.disable': action(patterns, 'employment.job.manage', '无岗位维护权限', opts),
+    'employment.audit.view': action(patterns, 'employment.audit.view', '无就业审计查看权限'),
+    'employment.columns.setting': action(patterns, 'employment.student.view', '无就业学生查看权限')
+  }
 }
 
 export async function getEmploymentContext() {
-  await delay(80)
-  const role = currentRole()
-  return envelope({
-    tenantBrandConfig: clone(db.tenantBrandConfig),
-    currentRole: clone(role),
-    roles: clone(db.roles),
-    dataScope: clone(role.dataScope),
-    permissionActions: buildPermissionActions()
-  })
-}
+  const tokenUser = currentUserFromToken() || {}
+  let schoolName = '管理端'
+  let platformDisplayName = '高校学生全生命周期管理平台'
+  let roleName = tokenUser.currentRoleCode || tokenUser.userType || '当前身份'
+  let roleCode = tokenUser.currentRoleCode || ''
+  let permissionPatterns = []
+  let readonlyTenant = false
+  let readonlyReason = ''
+  let permissionServiceError = ''
+  let currentRole = { roleId: roleCode, roleCode, roleName }
 
-export async function switchEmploymentRole(roleId) {
-  await delay(60)
-  if (!db.roles.some((r) => r.roleId === roleId)) return fail('角色不存在')
-  db.state.currentRoleId = roleId
-  return getEmploymentContext()
-}
-
-/* ---------------- 数据范围过滤 ---------------- */
-function scopeFilter(list) {
-  const role = currentRole()
-  if (role.dataScope.code === 'CLASS') return list.filter((s) => ['CL01', 'CL02'].includes(s.classId))
-  if (role.dataScope.code === 'COLLEGE') return list.filter((s) => s.collegeId === 'C01')
-  return list
-}
-
-/* ---------------- 审计 ---------------- */
-function pushAudit(bizType, bizId, action, detail, before = '', after = '') {
-  const role = currentRole()
-  db.auditLogs.unshift({
-    id: `emp-a-${Date.now()}-${++seq}`,
-    time: db.nowText(),
-    operator: `${role.roleName}（演示账号）`,
-    roleName: role.roleName,
-    bizType,
-    bizId,
-    action,
-    detail,
-    before,
-    after
-  })
-}
-
-/* ---------------- 字典 / 配置 ---------------- */
-export async function getStatusOptions() {
-  await delay(40)
-  return envelope(clone(db.statusOptions))
-}
-export async function getFilterOptions() {
-  await delay(40)
-  return envelope(clone(db.filterOptions))
-}
-export async function getFieldColumns(listKey) {
-  await delay(40)
-  return envelope(clone(db.fieldColumns[listKey] || []))
-}
-export async function getBatchActions(listKey) {
-  await delay(40)
-  return envelope(clone(db.batchActions[listKey] || []))
-}
-export async function getImportTemplate(key) {
-  await delay(40)
-  return envelope(clone(db.importTemplates[key] || null))
-}
-export async function getExportOptions(listKey) {
-  await delay(40)
-  return envelope({
-    scopes: clone(db.exportOptions.scopes),
-    fieldGroups: clone(db.exportOptions.fieldGroups[listKey] || []),
-    maskDefault: db.exportOptions.maskDefault,
-    idCardPlainForbidden: db.exportOptions.idCardPlainForbidden,
-    watermarkNote: db.exportOptions.watermarkNote,
-    auditNotice: db.exportOptions.auditNotice
-  })
-}
-
-/* ---------------- 看板 ---------------- */
-export async function getEmploymentDashboard() {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/dashboard')) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  return envelope(clone(db.dashboardSummary))
-}
-
-/* ---------------- 就业学生台账 ---------------- */
-function maskStudent(s) {
-  return { ...s, phone: maskPhone(s.phone), idCard: maskIdCard(s.idCard), salaryRange: s.salaryRange ? maskSalary(s.salaryRange) : '' }
-}
-
-export async function getEmploymentStudents(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/students', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', classId = '', destinationType = '', verifyStatus = '', helpLevel = '', recordStatus = '', page = 1, pageSize = 10 } = params
-  let list = scopeFilter(db.employmentStudents)
-  list = list.filter(
-    (s) =>
-      (kw(s.name, keyword) || kw(s.studentNo, keyword) || kw(s.companyName, keyword)) &&
-      (!classId || s.classId === classId) &&
-      (!destinationType || s.destinationType === destinationType) &&
-      (!verifyStatus || s.verifyStatus === verifyStatus) &&
-      (!helpLevel || s.helpLevel === helpLevel) &&
-      (recordStatus ? s.recordStatus === recordStatus : true)
-  )
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)).map(maskStudent), total, page, pageSize })
-}
-
-export async function getEmploymentStudentDetail(id) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/students/${id}`)) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const s = db.employmentStudents.find((x) => x.id === id)
-  if (!s) return fail('学生就业记录不存在')
-  const materials = db.employmentMaterials.filter((m) => m.studentId === id)
-  const followUps = db.followUpRecords.filter((f) => f.studentId === id)
-  const audits = db.auditLogs.filter((a) => a.bizId === id || materials.some((m) => m.id === a.bizId) || followUps.some((f) => f.id === a.bizId))
-  return envelope({ student: maskStudent(clone(s)), materials: clone(materials), followUps: clone(followUps), auditLogs: clone(audits) })
-}
-
-export async function createEmploymentRecord(payload) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/students', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  if (!payload?.name || !payload?.studentNo) return fail('姓名与学号为必填项')
-  const id = `emp-s-${Date.now()}`
-  const record = {
-    id,
-    studentId: id,
-    grade: '2026届',
-    gender: '—',
-    collegeId: 'C01',
-    collegeName: db.filterOptions.colleges[0].label,
-    majorName: '—',
-    classId: payload.classId || 'CL01',
-    className: db.filterOptions.classes.find((c) => c.value === (payload.classId || 'CL01'))?.label || '',
-    phone: payload.phone || '',
-    idCard: '',
-    contractType: '',
-    signDate: payload.signDate || '',
-    isMatchMajor: true,
-    fromInternship: false,
-    verifyStatus: 'PENDING_VERIFY',
-    materialStatus: 'SUBMITTED',
-    helpLevel: 'NORMAL',
-    riskLevel: 'LOW',
-    recordStatus: 'ACTIVE',
-    voidReason: '',
-    counselor: '—',
-    employmentTeacher: '—',
-    unemployedReason: '',
-    lastFollowUpTime: '',
-    followUpCount: 0,
-    updateTime: db.nowText(),
-    ...payload
-  }
-  db.employmentStudents.unshift(record)
-  pushAudit('RECORD', id, '新增就业记录', `${record.name}（${record.studentNo}）· ${record.companyName || '未填单位'}`, '', 'ACTIVE')
-  return envelope({ id })
-}
-
-export async function updateEmploymentRecord(id, payload) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/students/${id}`, { method: 'PUT', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const s = db.employmentStudents.find((x) => x.id === id)
-  if (!s) return fail('记录不存在')
-  const before = `${s.destinationType}/${s.companyName || '-'}`
-  Object.assign(s, payload, { updateTime: db.nowText() })
-  pushAudit('RECORD', id, '编辑就业信息', `${s.name} 就业信息更新`, before, `${s.destinationType}/${s.companyName || '-'}`)
-  return envelope({ id })
-}
-
-export async function voidEmploymentRecord(id, { reason }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/students/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const s = db.employmentStudents.find((x) => x.id === id)
-  if (!s) return fail('记录不存在')
-  if (!reason || reason.trim().length < 5) return fail('作废原因不少于 5 个字')
-  s.recordStatus = 'VOIDED'
-  s.voidReason = reason
-  s.updateTime = db.nowText()
-  pushAudit('RECORD', id, '作废就业记录', `${s.name}：${reason}`, 'ACTIVE', 'VOIDED')
-  return envelope({ id })
-}
-
-export async function batchRemindStudents(ids = []) {
-  await delay()
-  pushAudit('RECORD', ids.join(','), '批量提醒', `向 ${ids.length} 名学生发送就业填报/更新提醒`)
-  return envelope({ count: ids.length })
-}
-
-export async function batchMarkDestination(ids = [], destinationType) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/students/mark-destination', { method: 'POST', body: { ids, destinationType } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const label = db.statusOptions.destinationType.find((d) => d.value === destinationType)?.label || destinationType
-  ids.forEach((id) => {
-    const s = db.employmentStudents.find((x) => x.id === id)
-    if (s) {
-      s.destinationType = destinationType
-      s.verifyStatus = 'PENDING_VERIFY'
-      s.updateTime = db.nowText()
+  try {
+    const me = await request('/auth/me')
+    schoolName = me?.tenantName || me?.user?.tenantName || me?.tenant?.name || schoolName
+    platformDisplayName = me?.platformDisplayName || platformDisplayName
+    const realName = me?.realName || me?.user?.realName || ''
+    try {
+      const rc = await request('/rbac/current-context')
+      setRbacLoadFailed(false)
+      permissionPatterns = Array.isArray(rc?.permissionPatterns) ? rc.permissionPatterns : []
+      readonlyTenant = !!rc?.readonlyTenant
+      readonlyReason = rc?.readonlyReason || ''
+      const cr = rc?.currentRole || {}
+      roleName = cr.roleName || roleName
+      roleCode = cr.roleCode || roleCode
+      currentRole = {
+        roleId: cr.contextId || roleCode,
+        roleCode,
+        roleName: realName ? `${realName} · ${roleName}` : roleName,
+        contextId: cr.contextId || ''
+      }
+    } catch (error) {
+      permissionServiceError = error?.message || '权限服务加载失败'
+      setRbacLoadFailed(true, permissionServiceError)
+      permissionPatterns = []
     }
-  })
-  pushAudit('RECORD', ids.join(','), '批量标记去向', `${ids.length} 名学生去向标记为「${label}」，待核验`)
-  return envelope({ count: ids.length })
-}
+  } catch (error) {
+    permissionServiceError = error?.message || '身份服务加载失败'
+    setRbacLoadFailed(true, permissionServiceError)
+  }
 
-/* ---------------- 材料审核 ---------------- */
-export async function getEmploymentMaterials(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/materials', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', status = '', materialType = '', page = 1, pageSize = 10 } = params
-  const scopedIds = new Set(scopeFilter(db.employmentStudents).map((s) => s.id))
-  let list = db.employmentMaterials.filter(
-    (m) => scopedIds.has(m.studentId) && (kw(m.name, keyword) || kw(m.fileName, keyword)) && (!status || m.status === status) && (!materialType || m.materialType === materialType)
-  )
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
-}
-
-export async function getMaterialReviewDetail(id) {
-  await delay()
-  const m = db.employmentMaterials.find((x) => x.id === id)
-  if (!m) return fail('材料不存在')
-  const student = db.employmentStudents.find((s) => s.id === m.studentId)
-  const history = db.auditLogs.filter((a) => a.bizId === id)
-  return envelope({ material: clone(m), student: student ? maskStudent(clone(student)) : null, auditLogs: clone(history) })
-}
-
-export async function approveMaterial(id, { comment = '' } = {}) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/materials/${id}/approve`, { method: 'POST', body: { comment } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const m = db.employmentMaterials.find((x) => x.id === id)
-  if (!m) return fail('材料不存在')
-  const before = m.status
-  const role = currentRole()
-  Object.assign(m, { status: 'APPROVED', reviewer: role.roleName, reviewTime: db.nowText(), returnReason: '' })
-  const s = db.employmentStudents.find((x) => x.id === m.studentId)
-  if (s) {
-    s.materialStatus = 'APPROVED'
-    s.verifyStatus = 'VERIFIED'
-    s.updateTime = db.nowText()
-  }
-  pushAudit('MATERIAL', id, '审核通过', `通过《${m.fileName}》${comment ? ' · ' + comment : ''}`, before, 'APPROVED')
-  return envelope({ id })
-}
-
-export async function returnMaterial(id, { reason }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/materials/${id}/return`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const m = db.employmentMaterials.find((x) => x.id === id)
-  if (!m) return fail('材料不存在')
-  if (!reason || reason.trim().length < 5) return fail('退回原因不少于 5 个字')
-  const before = m.status
-  const role = currentRole()
-  Object.assign(m, { status: 'RETURNED', reviewer: role.roleName, reviewTime: db.nowText(), returnReason: reason })
-  const s = db.employmentStudents.find((x) => x.id === m.studentId)
-  if (s) {
-    s.materialStatus = 'RETURNED'
-    s.verifyStatus = 'RETURNED'
-    s.updateTime = db.nowText()
-  }
-  pushAudit('MATERIAL', id, '退回材料', `退回《${m.fileName}》：${reason}`, before, 'RETURNED')
-  return envelope({ id })
-}
-
-export async function batchReviewMaterials(ids = [], { pass, reason = '' }) {
-  await delay()
-  if (!pass && (!reason || reason.trim().length < 5)) return fail('批量退回必须填写原因（不少于 5 个字）')
-  for (const id of ids) {
-    if (pass) await approveMaterial(id, { comment: '批量通过' })
-    else await returnMaterial(id, { reason })
-  }
-  pushAudit('MATERIAL', ids.join(','), pass ? '批量通过材料' : '批量退回材料', `${ids.length} 份材料${pass ? '通过' : `退回：${reason}`}`)
-  return envelope({ count: ids.length })
-}
-
-/* ---------------- 未就业学生 ---------------- */
-export async function getUnemployedStudents(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/unemployed', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', helpLevel = '', riskLevel = '', page = 1, pageSize = 10 } = params
-  let list = scopeFilter(db.employmentStudents).filter(
-    (s) =>
-      s.destinationType === 'UNEMPLOYED' &&
-      s.recordStatus === 'ACTIVE' &&
-      (kw(s.name, keyword) || kw(s.studentNo, keyword)) &&
-      (!helpLevel || s.helpLevel === helpLevel) &&
-      (!riskLevel || s.riskLevel === riskLevel)
-  )
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({
-    list: clone(list.slice(start, start + pageSize)).map((s) => ({ ...maskStudent(s), assignedTeacher: s.employmentTeacher })),
-    total,
-    page,
-    pageSize
+  setPermissionPatterns(permissionPatterns)
+  const roReason = readonlyReason || '当前学校为只读环境，禁止业务写入'
+  return ok({
+    tenantBrandConfig: {
+      schoolName,
+      platformDisplayName,
+      watermarkText: `${schoolName} · 就业服务中心`
+    },
+    roles: [],
+    currentRole,
+    dataScope: { code: 'SERVER_ENFORCED', name: '按当前身份配置的后端数据范围' },
+    permissionPatterns,
+    permissionActions: permissionActions(permissionPatterns, readonlyTenant, roReason),
+    permissionServiceError,
+    readonlyTenant,
+    readonlyReason: readonlyTenant ? roReason : ''
   })
 }
 
-export async function markEmployed(ids = []) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/unemployed/mark-employed', { method: 'POST', body: { ids } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
+export function switchEmploymentRole() {
+  return fail('就业模块不提供本地角色切换；请使用全局身份切换，服务端会重新签发权限上下文', 'USE_GLOBAL_ROLE_SWITCH')
+}
+
+export function getStatusOptions() {
+  return ok(STATUS_OPTIONS)
+}
+
+export function getFilterOptions() {
+  return call(() => request('/employment/options'), '就业筛选条件加载失败')
+}
+
+export function getFieldColumns(listKey) {
+  return ok(FIELD_COLUMNS[listKey] || [])
+}
+
+export function getBatchActions(listKey) {
+  return ok(BATCH_ACTIONS[listKey] || [])
+}
+
+export function getImportTemplate() {
+  return ok(null, '正式就业导入未开放')
+}
+
+export function getExportOptions(listKey) {
+  return ok(exportOptions(listKey))
+}
+
+export function getEmploymentDashboard() {
+  return call(() => request('/employment/dashboard'), '就业看板加载失败')
+}
+
+export function getEmploymentStudents(params = {}) {
+  return callList('/employment/students', params, '就业学生列表加载失败')
+}
+
+export function getEmploymentStudentDetail(id) {
+  return call(() => request(`/employment/students/${id}`), '就业学生详情加载失败')
+}
+
+export function createEmploymentRecord(payload) {
+  return call(() => request('/employment/students', {
+    method: 'POST', body: payload, headers: idempotencyHeaders('student-create', payload)
+  }), '新增就业记录失败')
+}
+
+export function updateEmploymentRecord(id, payload) {
+  return call(() => request(`/employment/students/${id}`, {
+    method: 'PUT', body: payload, headers: idempotencyHeaders('student-update', { id, ...payload })
+  }), '更新就业记录失败')
+}
+
+export function voidEmploymentRecord(id, { reason }) {
+  return call(() => request(`/employment/students/${id}/void`, {
+    method: 'POST', body: { reason }, headers: idempotencyHeaders('student-void', { id, reason })
+  }), '作废就业记录失败')
+}
+
+export function batchRemindStudents() {
+  return fail('批量提醒尚未接入正式消息发送链，已禁止浏览器内存假成功')
+}
+
+export function batchMarkDestination(ids = [], destinationType) {
+  const body = { ids, destinationType }
+  return call(() => request('/employment/students/mark-destination', {
+    method: 'POST', body, headers: idempotencyHeaders('mark-destination', body)
+  }), '批量标记就业去向失败')
+}
+
+export function getEmploymentMaterials(params = {}) {
+  return callList('/employment/materials', params, '就业材料列表加载失败')
+}
+
+export function getMaterialReviewDetail(id) {
+  return call(() => request(`/employment/materials/${id}`), '就业材料详情加载失败')
+}
+
+export function approveMaterial(id, { comment = '' } = {}) {
+  const body = { comment }
+  return call(() => request(`/employment/materials/${id}/approve`, {
+    method: 'POST', body, headers: idempotencyHeaders('material-approve', { id, ...body })
+  }), '材料审核通过失败')
+}
+
+export function returnMaterial(id, { reason }) {
+  const body = { reason }
+  return call(() => request(`/employment/materials/${id}/return`, {
+    method: 'POST', body, headers: idempotencyHeaders('material-return', { id, ...body })
+  }), '材料退回失败')
+}
+
+export function batchReviewMaterials() {
+  return fail('材料批量审核尚无正式批量事务合同，已关闭该入口')
+}
+
+export function getUnemployedStudents(params = {}) {
+  return callList('/employment/unemployed', params, '未就业学生列表加载失败')
+}
+
+export function markEmployed(ids = []) {
+  const body = { ids }
+  return call(() => request('/employment/unemployed/mark-employed', {
+    method: 'POST', body, headers: idempotencyHeaders('mark-employed', body)
+  }), '标记已就业失败')
+}
+
+export function markKeyHelp(ids = []) {
+  const body = { ids }
+  return call(() => request('/employment/unemployed/mark-key-help', {
+    method: 'POST', body, headers: idempotencyHeaders('mark-key-help', body)
+  }), '标记重点帮扶失败')
+}
+
+export function assignEmploymentTeacher(ids = [], { teacher }) {
+  const body = { ids, teacher }
+  return call(() => request('/employment/unemployed/assign-teacher', {
+    method: 'POST', body, headers: idempotencyHeaders('assign-teacher', body)
+  }), '分配就业老师失败')
+}
+
+export function getFollowUpRecords(params = {}) {
+  return callList('/employment/followups', params, '就业跟进列表加载失败')
+}
+
+export function createFollowUp(payload) {
+  return call(() => request('/employment/followups', {
+    method: 'POST', body: payload, headers: idempotencyHeaders('followup-create', payload)
+  }), '新增就业跟进失败')
+}
+
+export function updateFollowUp() {
+  return fail('跟进记录编辑尚无正式后端合同；请作废错误记录后新增一条更正记录')
+}
+
+export function voidFollowUp(id, { reason }) {
+  const body = { reason }
+  return call(() => request(`/employment/followups/${id}/void`, {
+    method: 'POST', body, headers: idempotencyHeaders('followup-void', { id, reason })
+  }), '作废就业跟进失败')
+}
+
+export function getCompanies(params = {}) {
+  return callList('/employment/companies', params, '企业列表加载失败')
+}
+
+export function createCompany(payload) {
+  return call(() => request('/employment/companies', { method: 'POST', body: payload }), '新增企业失败')
+}
+
+export function updateCompany() {
+  return fail('企业编辑尚无正式后端合同，已禁止内存修改')
+}
+
+export function disableCompany(id, { reason }) {
+  return call(() => request(`/employment/companies/${id}/disable`, { method: 'POST', body: { reason } }), '停用企业失败')
+}
+
+export function getJobs(params = {}) {
+  return callList('/employment/jobs', params, '岗位列表加载失败')
+}
+
+export function createJob(payload) {
+  return call(() => request('/employment/jobs', { method: 'POST', body: payload }), '新增岗位失败')
+}
+
+export function updateJob() {
+  return fail('岗位编辑尚无正式后端合同，已禁止内存修改')
+}
+
+export function disableJob(id, { reason }) {
+  return call(() => request(`/employment/jobs/${id}/disable`, { method: 'POST', body: { reason } }), '停用岗位失败')
+}
+
+export function getCompanyRelatedStudents() {
+  return fail('企业关联就业学生聚合尚无正式后端合同')
+}
+
+export function validateImport() {
+  return fail('就业导入尚未接入正式文件任务链，已禁止本地模拟校验')
+}
+
+export function confirmImport() {
+  return fail('就业导入尚未接入正式文件任务链，已禁止本地模拟导入')
+}
+
+export function createExport(listKey, payload = {}) {
+  const purpose = String(payload.purpose || '').trim()
+  if (purpose.length < 5) return fail('导出用途必填且不少于 5 个字', 'VALIDATION_ERROR')
+  if (payload.scope && payload.scope !== 'SCOPE_ALL') {
+    return fail('当前正式就业导出仅支持“当前账号数据范围内全部”；筛选/选中冻结导出尚未开放', 'UNSUPPORTED_EXPORT_SCOPE')
   }
-  await delay()
-  ids.forEach((id) => {
-    const s = db.employmentStudents.find((x) => x.id === id)
-    if (s) {
-      s.destinationType = 'SIGNED'
-      s.verifyStatus = 'PENDING_VERIFY'
-      s.helpLevel = 'NORMAL'
-      s.riskLevel = 'LOW'
-      s.updateTime = db.nowText()
+  const body = { purpose }
+  return call(async () => {
+    const data = await request('/export/domain/employment', {
+      method: 'POST', body, headers: idempotencyHeaders('export', { listKey, purpose })
+    })
+    return {
+      ...data,
+      downloadUrl: data?.taskId ? `/api/v1/export/tasks/${data.taskId}/download` : '',
+      watermarkText: data?.securityNotice || '服务端水印与审计已启用',
+      auditId: data?.taskId || ''
     }
-  })
-  pushAudit('RECORD', ids.join(','), '标记已就业', `${ids.length} 名学生标记为已就业（待核验）`, 'UNEMPLOYED', 'SIGNED')
-  return envelope({ count: ids.length })
+  }, '就业数据导出失败')
 }
 
-export async function markKeyHelp(ids = []) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/unemployed/mark-key-help', { method: 'POST', body: { ids } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  ids.forEach((id) => {
-    const s = db.employmentStudents.find((x) => x.id === id)
-    if (s) {
-      s.helpLevel = 'KEY_HELP'
-      s.riskLevel = 'HIGH'
-      s.updateTime = db.nowText()
-    }
-  })
-  pushAudit('RECORD', ids.join(','), '标记重点帮扶', `${ids.length} 名学生纳入重点帮扶`, 'NORMAL', 'KEY_HELP')
-  return envelope({ count: ids.length })
-}
-
-export async function assignEmploymentTeacher(ids = [], { teacher }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/unemployed/assign-teacher', { method: 'POST', body: { ids, teacher } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  if (!teacher) return fail('请选择就业老师')
-  ids.forEach((id) => {
-    const s = db.employmentStudents.find((x) => x.id === id)
-    if (s) {
-      s.employmentTeacher = teacher
-      s.updateTime = db.nowText()
-    }
-  })
-  pushAudit('RECORD', ids.join(','), '批量分配就业老师', `${ids.length} 名未就业学生分配给 ${teacher}`)
-  return envelope({ count: ids.length })
-}
-
-/* ---------------- 跟进记录 ---------------- */
-export async function getFollowUpRecords(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/followups', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', status = '', page = 1, pageSize = 10 } = params
-  const scopedIds = new Set(scopeFilter(db.employmentStudents).map((s) => s.id))
-  let list = db.followUpRecords.filter(
-    (f) => scopedIds.has(f.studentId) && (kw(f.studentName, keyword) || kw(f.content, keyword)) && (!status || f.status === status)
-  )
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
-}
-
-export async function createFollowUp(payload) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/followups', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  if (!payload?.studentId || !payload?.content) return fail('学生与跟进内容为必填项')
-  const s = db.employmentStudents.find((x) => x.id === payload.studentId)
-  const id = `emp-f-${Date.now()}`
-  db.followUpRecords.unshift({
-    id,
-    studentId: payload.studentId,
-    studentName: s?.name || payload.studentName || '',
-    className: s?.className || '',
-    followTime: db.nowText(),
-    way: payload.way || 'PHONE',
-    content: payload.content,
-    result: payload.result || '',
-    nextPlan: payload.nextPlan || '',
-    operator: `${currentRole().roleName}（演示账号）`,
-    status: 'OPEN',
-    voidReason: ''
-  })
-  if (s) {
-    s.lastFollowUpTime = db.nowText()
-    s.followUpCount += 1
-  }
-  pushAudit('FOLLOWUP', id, '新增跟进', `${s?.name || ''}：${payload.content}`, '', 'OPEN')
-  return envelope({ id })
-}
-
-export async function updateFollowUp(id, payload) {
-  await delay()
-  const f = db.followUpRecords.find((x) => x.id === id)
-  if (!f) return fail('跟进记录不存在')
-  Object.assign(f, payload)
-  pushAudit('FOLLOWUP', id, '编辑跟进', `${f.studentName} 跟进记录更新`)
-  return envelope({ id })
-}
-
-export async function voidFollowUp(id, { reason }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/followups/${id}/void`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const f = db.followUpRecords.find((x) => x.id === id)
-  if (!f) return fail('跟进记录不存在')
-  if (!reason || reason.trim().length < 5) return fail('作废原因不少于 5 个字')
-  f.status = 'VOIDED'
-  f.voidReason = reason
-  pushAudit('FOLLOWUP', id, '作废跟进', `${f.studentName}：${reason}`, 'OPEN', 'VOIDED')
-  return envelope({ id })
-}
-
-/* ---------------- 企业与岗位 ---------------- */
-export async function getCompanies(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/companies', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', status = '', page = 1, pageSize = 10 } = params
-  let list = db.companyList.filter((c) => (kw(c.name, keyword) || kw(c.industry, keyword)) && (!status || c.status === status))
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
-}
-
-export async function createCompany(payload) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/companies', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  if (!payload?.name || !payload?.creditCode) return fail('企业名称与统一社会信用代码为必填项')
-  const id = `emp-c-${Date.now()}`
-  db.companyList.unshift({
-    id,
-    contactPerson: '',
-    contactPhone: '',
-    nature: '',
-    city: '',
-    cooperationLevel: '常规合作',
-    status: 'ACTIVE',
-    disableReason: '',
-    jobCount: 0,
-    hiredCount: 0,
-    ...payload
-  })
-  pushAudit('COMPANY', id, '新增企业', payload.name, '', 'ACTIVE')
-  return envelope({ id })
-}
-
-export async function updateCompany(id, payload) {
-  await delay()
-  const c = db.companyList.find((x) => x.id === id)
-  if (!c) return fail('企业不存在')
-  Object.assign(c, payload)
-  pushAudit('COMPANY', id, '编辑企业', `${c.name} 信息更新`)
-  return envelope({ id })
-}
-
-export async function disableCompany(id, { reason }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/companies/${id}/disable`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const c = db.companyList.find((x) => x.id === id)
-  if (!c) return fail('企业不存在')
-  if (!reason || reason.trim().length < 5) return fail('停用原因不少于 5 个字')
-  c.status = 'DISABLED'
-  c.disableReason = reason
-  db.jobList.filter((j) => j.companyId === id).forEach((j) => (j.status = 'CLOSED'))
-  pushAudit('COMPANY', id, '停用企业', `${c.name}：${reason}`, 'ACTIVE', 'DISABLED')
-  return envelope({ id })
-}
-
-export async function getJobs(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/jobs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { keyword = '', status = '', companyId = '', page = 1, pageSize = 10 } = params
-  let list = db.jobList.filter(
-    (j) => (kw(j.title, keyword) || kw(j.companyName, keyword)) && (!status || j.status === status) && (!companyId || j.companyId === companyId)
-  )
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
-}
-
-export async function createJob(payload) {
-  if (shouldTryReal()) {
-    try { return envelope(await request('/employment/jobs', { method: 'POST', body: payload })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  if (!payload?.title || !payload?.companyId) return fail('岗位名称与所属企业为必填项')
-  const c = db.companyList.find((x) => x.id === payload.companyId)
-  const id = `emp-j-${Date.now()}`
-  db.jobList.unshift({
-    id,
-    companyName: c?.name || '',
-    category: '',
-    salaryRange: '',
-    headcount: 1,
-    signedCount: 0,
-    status: 'OPEN',
-    disableReason: '',
-    publishTime: db.nowText().slice(0, 10),
-    ...payload
-  })
-  if (c) c.jobCount += 1
-  pushAudit('JOB', id, '新增岗位', `${c?.name || ''} · ${payload.title}`, '', 'OPEN')
-  return envelope({ id })
-}
-
-export async function updateJob(id, payload) {
-  await delay()
-  const j = db.jobList.find((x) => x.id === id)
-  if (!j) return fail('岗位不存在')
-  Object.assign(j, payload)
-  pushAudit('JOB', id, '编辑岗位', `${j.companyName} · ${j.title} 信息更新`)
-  return envelope({ id })
-}
-
-export async function disableJob(id, { reason }) {
-  if (shouldTryReal()) {
-    try { return envelope(await request(`/employment/jobs/${id}/disable`, { method: 'POST', body: { reason } })) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const j = db.jobList.find((x) => x.id === id)
-  if (!j) return fail('岗位不存在')
-  if (!reason || reason.trim().length < 5) return fail('停用原因不少于 5 个字')
-  j.status = 'CLOSED'
-  j.disableReason = reason
-  pushAudit('JOB', id, '停用岗位', `${j.companyName} · ${j.title}：${reason}`, 'OPEN', 'CLOSED')
-  return envelope({ id })
-}
-
-export async function getCompanyRelatedStudents(companyId) {
-  await delay()
-  const c = db.companyList.find((x) => x.id === companyId)
-  if (!c) return fail('企业不存在')
-  const students = scopeFilter(db.employmentStudents).filter((s) => s.companyName === c.name && s.recordStatus === 'ACTIVE')
-  const jobs = db.jobList.filter((j) => j.companyId === companyId)
-  return envelope({ company: clone(c), students: clone(students).map(maskStudent), jobs: clone(jobs) })
-}
-
-/* ---------------- 导入 / 导出 ---------------- */
-export async function validateImport(templateKey, fileName = '') {
-  await delay(400)
-  const tpl = db.importTemplates[templateKey]
-  if (!tpl) return fail('导入模板不存在')
-  /* 模拟解析结果：部分行校验失败 */
-  const rows =
-    templateKey === 'studentList'
-      ? [
-          { row: 2, data: '2023010115 / 宋雨霏 / 签约就业 / 杭州云启科技', valid: true, error: '' },
-          { row: 3, data: '2023010116 / 韩立诚 / 签约就业 / 宁波数联智能', valid: true, error: '' },
-          { row: 4, data: '2023010117 / 何嘉树 / （空） / 未知企业', valid: false, error: '去向类型为必填项' },
-          { row: 5, data: '2023019999 / 陌生学生 / 升学 / —', valid: false, error: '学号不在当前数据范围内' }
-        ]
-      : [
-          { row: 2, data: '苏州启航电子有限公司 / 91320500MA1XXXX', valid: true, error: '' },
-          { row: 3, data: '（空企业名）/ 913205XX', valid: false, error: '企业名称为必填项；信用代码格式错误' }
-        ]
-  return envelope({ fileName: fileName || tpl.fileName, total: rows.length, validCount: rows.filter((r) => r.valid).length, rows })
-}
-
-export async function confirmImport(templateKey, { validCount = 0, fileName = '' } = {}) {
-  await delay(400)
-  const tpl = db.importTemplates[templateKey]
-  if (!tpl) return fail('导入模板不存在')
-  pushAudit('IMPORT', templateKey, '执行导入', `${tpl.name}：导入 ${validCount} 条校验通过数据（${fileName}），失败数据未导入`)
-  return envelope({ imported: validCount, skipped: 0, receiptId: `emp-imp-${Date.now()}` })
-}
-
-export async function createExport(listKey, payload = {}) {
-  await delay(400)
-  const role = currentRole()
-  if (!payload.auditConfirmed) return fail('请先勾选导出审计确认')
-  const masked = payload.mask !== false
-  const detail = `导出${listKey}（范围：${payload.scope || 'FILTERED'}；字段组：${(payload.fieldGroups || []).join('/') || '默认'}；${masked ? '敏感字段已脱敏' : '未脱敏'}；含水印）`
-  pushAudit('EXPORT', listKey, '导出数据', detail)
-  return envelope({
-    fileName: `${db.tenantBrandConfig.schoolName}-${listKey}-${Date.now()}.xlsx`,
-    masked,
-    watermarkText: `${db.tenantBrandConfig.schoolName} · ${role.roleName} · ${db.nowText()}`,
-    auditId: db.auditLogs[0].id
-  })
-}
-
-/* ---------------- 审计日志 ---------------- */
-export async function getAuditLogs(params = {}) {
-  if (shouldTryReal()) {
-    try { const d = await request('/employment/audit-logs', { params }); return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 }) }
-    catch (e) { if (e.biz) return fail(e.message, e.code) }
-  }
-  await delay()
-  const { bizType = '', keyword = '', page = 1, pageSize = 20 } = params
-  let list = db.auditLogs.filter((a) => (!bizType || a.bizType === bizType) && (kw(a.detail, keyword) || kw(a.operator, keyword)))
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return envelope({ list: clone(list.slice(start, start + pageSize)), total, page, pageSize })
+export function getAuditLogs(params = {}) {
+  return callList('/employment/audit-logs', params, '就业审计加载失败')
 }
