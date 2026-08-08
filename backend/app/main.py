@@ -18,6 +18,8 @@ from typing import Any
 from fastapi import FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.routing import APIRoute
+from fastapi.utils import generate_unique_id
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -33,6 +35,20 @@ from app.core.security import (
 from app.middleware.context import RequestContextMiddleware
 
 APP_VERSION = getattr(settings, "APP_VERSION", None) or "1.0.0"
+
+# 部分历史路由（graduation / academic_affairs / mobile 等域）存在“新版本前置遮蔽旧版本
+# 但保留旧实现”的兼容注册模式：两个不同的 APIRoute 对象共享同一个函数名 + path + method，
+# 生产环境不受影响（openapi_url 在 prod 下为 None，不会生成 Schema），但本地/联调环境
+# 生成 OpenAPI Schema 时 FastAPI 会因 operation_id 撞车打印 UserWarning。这里只在“默认算法
+# 生成的 ID 已被占用”时才追加序号，不改变任何路由注册顺序/优先级/遮蔽关系。
+_operation_id_seen: dict[str, int] = {}
+
+
+def _dedupe_operation_id(route: APIRoute) -> str:
+    base = generate_unique_id(route)
+    seq = _operation_id_seen.get(base, 0)
+    _operation_id_seen[base] = seq + 1
+    return base if seq == 0 else f"{base}__dup{seq}"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 _log = logging.getLogger("app.startup")
@@ -387,6 +403,7 @@ def create_app() -> FastAPI:
         redoc_url=None if _is_prod else "/redoc",
         openapi_url=None if _is_prod else "/openapi.json",
         lifespan=lifespan,
+        generate_unique_id_function=_dedupe_operation_id,
     )
 
     app.add_middleware(RequestContextMiddleware)
