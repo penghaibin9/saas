@@ -1,7 +1,7 @@
 """A4 / P0-06 数据驾驶舱服务端真值 API。"""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -12,12 +12,16 @@ from app.services import data_center_service as svc
 
 router = APIRouter(prefix="/data-center", tags=["data-center"])
 
+# A4 当前只有 REGISTERED 的查询条件真正落到各域真实表。
+# NATURAL 不能只换标签继续复用同一组数字，因此正式 API 暂不接受。
+SupportedCaliber = Literal["REGISTERED"]
+
 
 class ReportCreateBody(BaseModel):
     name: str
     category: str = "ACADEMIC"
     cycle: str = "MONTHLY"
-    caliber: str = "REGISTERED"
+    caliber: SupportedCaliber = "REGISTERED"
     scopeName: str = "全校"
     description: str = ""
     query: dict[str, Any] = Field(default_factory=dict)
@@ -29,7 +33,7 @@ class ReportUpdateBody(BaseModel):
     name: str | None = None
     category: str | None = None
     cycle: str | None = None
-    caliber: str | None = None
+    caliber: SupportedCaliber | None = None
     scopeName: str | None = None
     description: str | None = None
     query: dict[str, Any] | None = None
@@ -46,7 +50,15 @@ class VoidBody(VersionBody):
 
 @router.get("/context", summary="驾驶舱真实角色/数据范围/品牌上下文")
 def context(user=Depends(require_staff)):
-    return success(svc.get_context(user))
+    data = svc.get_context(user)
+    # 服务端只广告真实可执行的统计口径；未实现 NATURAL 前禁止前端出现假切换。
+    filters = data.get("filterOptions") if isinstance(data, dict) else None
+    if isinstance(filters, dict):
+        filters["calibers"] = [
+            item for item in (filters.get("calibers") or [])
+            if item.get("value") == "REGISTERED"
+        ]
+    return success(data)
 
 
 @router.get("/reports", summary="专题报表列表（MySQL 真值）")
