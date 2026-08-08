@@ -88,6 +88,10 @@ def install() -> None:
             expected_raw = contract.request_version()
             if expected_raw is None:
                 expected_raw = body.get("version", body.get("expectedVersion"))
+            # HTTP / PC / 移动端必须由调用者显式携带 version；只有没有任何请求上下文的
+            # 内部服务调用才使用事务内刚读取的版本做 CAS，仍由 atomic UPDATE 防并发覆盖。
+            if expected_raw is None and not contract.request_path():
+                expected_raw = int(row.version or 0)
             expected = require_expected_version(expected_raw)
 
             values = {}
@@ -103,7 +107,7 @@ def install() -> None:
             if body.get("counselor") is not None:
                 values["counselor"] = _text(body.get("counselor"), "辅导员", 100)
 
-            # 尚未绑定统一主档的历史行只保留迁移期维护能力，仍强制 version；一旦绑定，
+            # 尚未绑定统一主档的历史行只保留迁移期维护能力，仍强制 version/CAS；一旦绑定，
             # name/className 等身份事实全部由上面的 assert_identity_immutable 收敛到主档流程。
             if not row.student_id:
                 if body.get("name") is not None:
@@ -112,8 +116,7 @@ def install() -> None:
                     values["class_name"] = _text(body.get("className"), "班级", 100)
 
             if not values:
-                # 只读身份字段原样回传属于真实 no-op；仍要求调用者基于当前 version 提交，
-                # 但不制造一次假更新/假审计/假版本增长。
+                # 只读身份字段原样回传属于真实 no-op；不制造一次假更新/假审计/假版本增长。
                 if int(row.version or 0) != expected:
                     raise AppException(
                         "APPROVAL_VERSION_CONFLICT",
