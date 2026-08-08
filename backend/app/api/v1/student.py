@@ -54,6 +54,19 @@ def _can_view_student_context(user) -> bool:
     return has_permission(user, "*") or any(has_permission(user, p) for p in _STUDENT_CONTEXT_PERMS)
 
 
+def _can_update_profile(user) -> bool:
+    return (
+        has_permission(user, "*")
+        or has_permission(user, "student.profile.update")
+        or has_permission(user, "student.profile.manage")
+    )
+
+
+def _require_update_permission(user) -> None:
+    if not _can_update_profile(user):
+        raise AppException("NO_PERMISSION", "无权限执行该操作（student.profile.update）", http_status=403)
+
+
 def _check_target_scope(student_id: str, user) -> None:
     """详情/写操作目标学生范围校验；越租户仍由 service 报 not_found。"""
     class_ids, student_ids = student_directory_scope(user)
@@ -150,8 +163,6 @@ def list_students(
 
     requested_identity = str(identityVerifyStatus or "").strip().upper()
     if requested_identity and requested_identity != "NOT_CONFIGURED":
-        # 当前身份核验能力未接入，因此不存在可被权威查询的 VERIFIED/PENDING/UNKNOWN 行。
-        # 直接返回全局 0，禁止在分页后做页内过滤并伪造 total。
         return success(paginate([], 0, page, pageSize))
 
     class_ids, student_ids = student_directory_scope(user)
@@ -196,7 +207,6 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
 
 
 _P_CREATE = require_any_permission("student.profile.create", "student.profile.manage")
-_P_UPDATE = require_any_permission("student.profile.update", "student.profile.manage")
 _P_RESTORE = require_permission("student.profile.restore")
 
 
@@ -243,14 +253,17 @@ def restore_student(
         return success(row, message=row.get("message") or "已恢复该学生主档")
 
 
-@router.put("/{student_id}", summary="更新学生主档", dependencies=[Depends(_P_UPDATE)])
+@router.put("/{student_id}", summary="更新学生主档")
 def update_student(
     student_id: str,
     body: StudentUpdateRequest,
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    # A2：目标数据范围优先于动作权限裁决。跨范围稳定返回 NO_DATA_SCOPE；
+    # 同范围但没有 student.profile.update/manage 仍严格返回 NO_PERMISSION。
     _check_target_scope(student_id, user)
+    _require_update_permission(user)
     payload = {"studentId": student_id, **body.model_dump()}
     with idempotency_guard(
         user, "student-update", idempotency_key, payload, require_store=True
@@ -266,7 +279,7 @@ def update_student(
         return success(row, message="已保存")
 
 
-@router.post("/{student_id}/void", summary="作废学生主档", dependencies=[Depends(_P_UPDATE)])
+@router.post("/{student_id}/void", summary="作废学生主档")
 def void_student(
     student_id: str,
     body: StudentVoidRequest,
@@ -274,6 +287,7 @@ def void_student(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     _check_target_scope(student_id, user)
+    _require_update_permission(user)
     payload = {"studentId": student_id, "reason": body.reason}
     with idempotency_guard(
         user, "student-void", idempotency_key, payload, require_store=True
