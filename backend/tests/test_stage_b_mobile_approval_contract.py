@@ -24,7 +24,9 @@ def test_stage_b_queue_filters_and_counts_before_pagination():
     offset_pos = QUERY_SOURCE.index(".offset((page - 1) * page_size)", count_pos)
     assert count_pos < offset_pos
     assert "WorkflowInstance.applicant_id == actor" in QUERY_SOURCE
+    assert "WorkflowTask.assignee_id == actor" in QUERY_SOURCE
     assert 'statuses = ["PENDING"] if normalized == "pending"' in QUERY_SOURCE
+    assert "即使拥有 approval.manage 也不扩大为全租户列表" in QUERY_SOURCE
 
 
 def test_stage_b_mobile_queue_endpoint_is_registered():
