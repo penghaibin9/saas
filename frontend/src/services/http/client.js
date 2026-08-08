@@ -1,33 +1,41 @@
-/**
- * P2 · 统一请求客户端：解析后端统一响应 {code,bizCode,message,data,traceId,timestamp}。
- * 后端不可达时进入 15s 离线冷却（期间直接走 mock fallback，页面不白屏）。
- * P11：不再自动 mock-login——未登录必须经登录页（账号密码=真实库 / 演示账号=演示租户）。
- * 令牌存 sessionStorage：F5 刷新不掉登录，关浏览器即清（比 localStorage 更安全）。
- */
-import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
-import { toast } from '@/utils/toast'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const API_PREFIX = import.meta.env.VITE_API_PREFIX || '/api/v1'
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_REQUEST_TIMEOUT_MS || 15000)
+const TOKEN_KEY = 'saas_access_token'
+const REFRESH_KEY = 'saas_refresh_token'
+const OFFLINE_COOLDOWN_MS = 5000
 
-const TOKEN_KEY = 'gx_pc_token_v1'
-const REFRESH_KEY = 'gx_pc_refresh_v1'
+const state = {
+  token: '',
+  refreshToken: '',
+  offlineUntil: 0,
+  notified: false
+}
 
 function _load(key) {
-  try { return sessionStorage.getItem(key) || '' } catch { return '' }
+  try { return localStorage.getItem(key) || '' } catch { return '' }
+}
+function _save(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch { /* ignore */ }
 }
 
-function _save(key, val) {
-  try { val ? sessionStorage.setItem(key, val) : sessionStorage.removeItem(key) } catch { /* 忽略 */ }
+state.token = _load(TOKEN_KEY)
+state.refreshToken = _load(REFRESH_KEY)
+
+function isWriteMethod(method = 'GET') {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method).toUpperCase())
 }
 
-const state = { token: _load(TOKEN_KEY), refreshToken: _load(REFRESH_KEY), offlineUntil: 0, notified: false }
+function canUseMockFallback() {
+  const configured = String(import.meta.env.VITE_USE_MOCK || '').toLowerCase() === 'true'
+  const isProd = !!import.meta.env.PROD
+  return configured && !isProd
+}
 
-/** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
-const REQUEST_TIMEOUT_MS =
-  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
-
-/** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
-const OFFLINE_COOLDOWN_MS = 15000
-
-export function isBackendOffline() {
+function isBackendOffline() {
   return Date.now() < state.offlineUntil
 }
 
@@ -36,44 +44,10 @@ function clearOfflineState() {
   state.notified = false
 }
 
-/** 冷却期内跳过真实 fetch，供 mock 层立即回退（不再重复等待超时） */
 function throwOfflineSkip(method) {
-  const err = new Error('后端离线冷却中')
-  err.offlineSkip = true
-  if (!canUseMockFallback() || isWriteMethod(method)) {
-    err.biz = true
-    err.code = isWriteMethod(method) ? 503002 : 503001
-    err.message = isWriteMethod(method)
-      ? '真实接口不可用，写操作禁止 mock 成功'
-      : '真实接口不可用，生产环境已禁用 mock fallback'
-  }
-  throw err
-}
-
-function _holdTokens(access, refresh) {
-  state.token = access || ''
-  state.refreshToken = refresh || ''
-  _save(TOKEN_KEY, state.token)
-  _save(REFRESH_KEY, state.refreshToken)
-}
-
-export function shouldTryReal() {
-  return realApiEnabled()
-}
-
-export function canUseMockFallback() {
-  return allowMockFallback()
-}
-
-export function isWriteMethod(method = 'GET') {
-  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase())
-}
-
-function strictFailure(label, e) {
-  const err = e instanceof Error ? e : new Error(String(e || '真实接口不可用'))
-  err.strict = true
-  err.label = label
-  return err
+  const e = new Error(`后端暂不可达，跳过 ${method} 请求`)
+  e.offlineSkip = true
+  throw e
 }
 
 function markOffline() {
@@ -81,26 +55,28 @@ function markOffline() {
   if (!state.notified) {
     state.notified = true
     try {
-      toast.info('后端服务不可达，已自动回退演示数据（mock）')
+      // 保留开发环境提示；生产环境 canUseMockFallback=false，不会进入此分支的 mock 语义。
+      console.info('后端服务暂不可达')
     } catch {
-      /* toast 不可用时静默 */
+      /* ignore */
     }
   }
 }
 
-async function rawRequest(path, { method = 'GET', params, body, auth = true, forceProbe = false } = {}) {
+async function rawRequest(path, {
+  method = 'GET', params, body, auth = true, forceProbe = false, headers: extraHeaders = {}
+} = {}) {
   const methodUp = String(method || 'GET').toUpperCase()
   if (!forceProbe && isBackendOffline() && canUseMockFallback() && !isWriteMethod(methodUp)) {
     throwOfflineSkip(methodUp)
   }
   const qs = params
-    ? '?' +
-      Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join('&')
+    ? '?' + Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&')
     : ''
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) }
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -119,7 +95,7 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true, for
       const err = new Error(payload.message || `业务错误 ${payload.code}`)
       err.biz = true
       err.code = payload.code
-      err.bizCode = payload.bizCode           // NO_PERMISSION / NO_DATA_SCOPE：供页面渲染统一无权限/无范围态
+      err.bizCode = payload.bizCode
       err.details = payload.details
       err.traceId = payload.traceId
       throw err
@@ -133,7 +109,9 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true, for
       if (!canUseMockFallback() || isWriteMethod(method)) {
         e.biz = true
         e.code = isWriteMethod(method) ? 503002 : 503001
-        e.message = isWriteMethod(method) ? '真实接口不可用，写操作禁止 mock 成功' : '真实接口不可用，生产环境已禁用 mock fallback'
+        e.message = isWriteMethod(method)
+          ? '真实接口不可用，写操作禁止 mock 成功'
+          : '真实接口不可用，生产环境已禁用 mock fallback'
       }
     }
     throw e
@@ -144,14 +122,20 @@ async function rawRequest(path, { method = 'GET', params, body, auth = true, for
 
 async function ensureToken() {
   if (state.token) return
-  // P11：绝不自动免密登录。未登录直接抛业务 401，由路由守卫送回登录页。
   const err = new Error('未登录，请先登录')
   err.biz = true
   err.code = 401001
   throw err
 }
 
-/** 会话失效统一处理：清令牌回登录页（带回跳地址） */
+function _holdTokens(accessToken, refreshToken) {
+  state.token = accessToken || ''
+  if (refreshToken !== undefined) state.refreshToken = refreshToken || ''
+  _save(TOKEN_KEY, state.token)
+  _save(REFRESH_KEY, state.refreshToken)
+  clearOfflineState()
+}
+
 function _redirectToLogin() {
   _holdTokens('', '')
   try {
@@ -162,10 +146,6 @@ function _redirectToLogin() {
   } catch { /* 非浏览器环境忽略 */ }
 }
 
-/** 401 时用 refreshToken 换新 access（一次性轮换）；失败则清空登录态。
- *  单飞去重：refreshToken 后端一次性即失效，多个请求同时 401 若各自发起 refresh，
- *  只有第一个能换到新 token，其余会收到「已使用」401 并清空本已刷新成功的登录态，
- *  导致用户被误踢回登录页。这里让并发调用共享同一个 in-flight Promise，只真正请求一次。 */
 let refreshPromise = null
 async function tryRefresh() {
   if (!state.refreshToken) return false
@@ -173,9 +153,7 @@ async function tryRefresh() {
   refreshPromise = (async () => {
     try {
       const d = await rawRequest('/auth/refresh', {
-        method: 'POST',
-        auth: false,
-        forceProbe: true,
+        method: 'POST', auth: false, forceProbe: true,
         body: { refreshToken: state.refreshToken }
       })
       _holdTokens(d.accessToken, d.refreshToken || '')
@@ -190,57 +168,37 @@ async function tryRefresh() {
   return refreshPromise
 }
 
-/** 外部注入 token（如账号密码登录成功后） */
 export function setToken(token) {
   state.token = token || ''
   _save(TOKEN_KEY, state.token)
 }
 
-/**
- * 写入完整会话（access + refresh）。
- * refreshToken 传 undefined 表示保留原 refresh（兼容 mock 切换只换 access）。
- */
-export function applyAuthSession(accessToken, refreshToken) {
-  if (refreshToken === undefined) {
-    state.token = accessToken || ''
-    _save(TOKEN_KEY, state.token)
-    return
-  }
-  _holdTokens(accessToken, refreshToken)
+export function setRefreshToken(token) {
+  state.refreshToken = token || ''
+  _save(REFRESH_KEY, state.refreshToken)
 }
 
-/**
- * 主动退出或身份校验不匹配时清除完整会话。
- * 不能只清 access token，否则 refresh token 仍可能在下一次请求中恢复会话。
- */
+export function applyAuthSession(accessToken, refreshToken) {
+  _holdTokens(accessToken || '', refreshToken)
+}
+
 export function clearAuthSession() {
   _holdTokens('', '')
-  clearOfflineState()
-  try {
-    // 动态 import 会绕开循环依赖；登出必须清权限门缓存，避免下个账号继承菜单/路由权限。
-    import('@/security/permissionGate').then((m) => m.clearPermissionPatterns?.()).catch(() => {})
-  } catch {
-    /* ignore */
-  }
 }
 
-/** 当前已登录令牌（sessionStorage：F5 不掉登录，关浏览器即清） */
-export function getToken() {
-  return state.token
-}
+export function getToken() { return state.token }
+export function getRefreshToken() { return state.refreshToken }
+export function backendOffline() { return isBackendOffline() }
+export function mockFallbackEnabled() { return canUseMockFallback() }
 
-/** 从 JWT 令牌解出当前用户（仅本地读取 payload 做前端路由判断，真正鉴权仍以后端 403 为准）。
- *  未登录 / 令牌非法时返回 null。 */
 export function currentUserFromToken() {
-  const t = state.token
-  if (!t || t.split('.').length !== 3) return null
+  if (!state.token) return null
   try {
-    const b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const parts = state.token.split('.')
+    if (parts.length < 2) return null
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = decodeURIComponent(
-      atob(b64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
+      atob(b64).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
     )
     const p = JSON.parse(json)
     return {
@@ -258,7 +216,6 @@ export function currentUserFromToken() {
   }
 }
 
-/** 拉取本人可用身份（GET /auth/me） */
 export async function fetchMyAuthContexts() {
   const me = await request('/auth/me')
   return {
@@ -268,17 +225,11 @@ export async function fetchMyAuthContexts() {
   }
 }
 
-/**
- * 真实身份切换（POST /auth/switch-role）。
- * 成功后持有新令牌；调用方应刷新页面以重建菜单/数据范围/工作台。
- */
 export async function switchAuthContext(contextId, clientType = 'PC') {
   const data = await request('/auth/switch-role', {
-    method: 'POST',
-    body: { contextId, clientType }
+    method: 'POST', body: { contextId, clientType }
   })
   if (data && data.accessToken) {
-    // DB 路径会发新 refresh；mock 可能只换 access —— 有则替换，无则保留
     applyAuthSession(
       data.accessToken,
       Object.prototype.hasOwnProperty.call(data, 'refreshToken') ? (data.refreshToken || '') : undefined
@@ -287,33 +238,29 @@ export async function switchAuthContext(contextId, clientType = 'PC') {
   return data
 }
 
-/** 是否为平台超级管理员（老板本人）——用于 /admin/platform 路由守卫 */
 export function isPlatformSuperAdmin() {
   const u = currentUserFromToken()
   return !!u && (u.currentRoleCode === 'PLATFORM_SUPER_ADMIN' || u.userType === 'PLATFORM_SUPER_ADMIN')
 }
 
-/** 获取短时、单次图形验证码。 */
 export async function issueLoginCaptcha(payload) {
   return rawRequest('/auth/captcha', { method: 'POST', auth: false, forceProbe: true, body: payload })
 }
 
-/** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
 export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()
   const data = await rawRequest('/auth/login', {
-    method: 'POST',
-    auth: false,
-    forceProbe: true,
-    body: { loginName, password, tenantCode: tenantCode || undefined,
+    method: 'POST', auth: false, forceProbe: true,
+    body: {
+      loginName, password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
-      captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
+      captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined
+    }
   })
   _holdTokens(data.accessToken, data.refreshToken || '')
   return data
 }
 
-/** 请求入口（必须已登录；401 自动刷新一次并重试，刷新失败回登录页） */
 export async function request(path, options = {}) {
   await ensureToken()
   try {
@@ -321,23 +268,17 @@ export async function request(path, options = {}) {
   } catch (e) {
     if (e.biz && e.code === 401001) {
       if (await tryRefresh()) return rawRequest(path, options)
-      _redirectToLogin() // 会话彻底失效：回登录页，不让页面停在半死状态
+      _redirectToLogin()
     }
     throw e
   }
 }
 
-/** 登出：服务端 jti 黑名单 + 吊销 refresh，本地清空 */
 export async function logoutRemote() {
-  try {
-    await rawRequest('/auth/logout', { method: 'POST' })
-  } catch {
-    /* 离线登出静默 */
-  }
+  try { await rawRequest('/auth/logout', { method: 'POST' }) } catch { /* 离线登出静默 */ }
   clearAuthSession()
 }
 
-/** multipart 文件上传（FormData；浏览器自带 boundary，勿手工设 Content-Type） */
 export async function requestUpload(path, file, fieldName = 'file') {
   await ensureToken()
   const fd = new FormData()
@@ -359,126 +300,35 @@ export async function requestUpload(path, file, fieldName = 'file') {
       err.code = payload.code
       err.bizCode = payload.bizCode
       err.details = payload.details
+      err.traceId = payload.traceId
       throw err
     }
     return payload.data
-  } catch (e) {
-    if (!e.biz) {
-      markOffline()
-      e.biz = true
-      e.code = 503002
-      e.message = '真实接口不可用，写操作禁止 mock 成功'
-    }
-    throw e
   } finally {
     clearTimeout(timer)
   }
 }
 
-/** 二进制下载（Excel 模板/导出文件等）：复用现有 token/baseURL/401 刷新机制 */
-export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
+export async function requestBlob(path, options = {}) {
   await ensureToken()
+  const params = options.params
   const qs = params
-    ? '?' +
-      Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join('&')
+    ? '?' + Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
     : ''
-
-  const doFetch = async () => {
-    const headers = {}
-    if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
-    if (body) headers['Content-Type'] = 'application/json'
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 15000)
-    try {
-      const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal
-      })
-      if (res.status === 401) {
-        const err = new Error('未登录，请先登录')
-        err.biz = true
-        err.code = 401001
-        throw err
-      }
-      if (!res.ok) {
-        const payload = await res.clone().json().catch(() => null)
-        const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
-        err.biz = true
-        err.code = payload?.code || res.status
-        err.bizCode = payload?.bizCode
-        err.details = payload?.details
-        throw err
-      }
-      return await res.blob()
-    } catch (e) {
-      if (!e.biz) {
-        markOffline()
-        e.biz = true
-        e.code = 503001
-        e.message = '真实接口不可用，下载失败'
-      }
-      throw e
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
-  try {
-    return await doFetch()
-  } catch (e) {
-    if (e.biz && e.code === 401001) {
-      if (await tryRefresh()) return doFetch()
-      _redirectToLogin()
-    }
-    throw e
-  }
-}
-
-/** mock 兜底包裹：真实调用失败（后端挂/业务错）时执行 mockFn，页面不白屏 */
-export function withFallback(label, realFn, mockFn) {
-  if (!shouldTryReal()) {
-    if (canUseMockFallback()) return mockFn()
-    return Promise.reject(strictFailure(label, new Error('生产环境已禁用 mock fallback')))
-  }
-  if (canUseMockFallback() && isBackendOffline()) return mockFn()
-  return realFn().catch((e) => {
-    if (e.biz || !canUseMockFallback()) throw strictFailure(label, e)
-    // eslint-disable-next-line no-console
-    console.warn(`[realApi] ${label} 回退 mock：`, e.message)
-    return mockFn()
+  const headers = { ...(options.headers || {}) }
+  if (state.token) headers.Authorization = `Bearer ${state.token}`
+  const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
+    method: options.method || 'GET', headers
   })
-}
-
-/**
- * 统一 无权限 / 无数据范围 前端态文案（§10）。页面三态（AppGlobalState）据此渲染干净空态，
- * 不白屏、不直出后端技术异常。返回 null 表示非权限/范围类错误，走各页常规错误处理。
- */
-export function bizStateHint(err) {
-  const bc = err && (err.bizCode || '')
-  if (bc === 'NO_PERMISSION' || err?.code === 403001) {
-    return { kind: 'no-permission', title: '无访问权限', desc: '你的角色未开通该功能，请联系管理员。' }
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null)
+    const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
+    err.biz = true
+    err.code = payload?.code || res.status
+    err.bizCode = payload?.bizCode
+    throw err
   }
-  if (bc === 'NO_DATA_SCOPE' || err?.code === 403002) {
-    return { kind: 'no-scope', title: '尚未配置管理范围', desc: '你还没有被分配可管理的班级/学院/楼栋，请联系管理员配置后再试。' }
-  }
-  return null
-}
-
-export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
-  if (!shouldTryReal()) {
-    if (!write && canUseMockFallback()) return mockFn()
-    throw strictFailure(label, new Error(write ? '写操作禁止 mock 成功' : '生产环境已禁用 mock fallback'))
-  }
-  if (!write && canUseMockFallback() && isBackendOffline()) return mockFn()
-  try {
-    return await realFn()
-  } catch (e) {
-    if (e.biz || write || !canUseMockFallback()) throw strictFailure(label, e)
-    return mockFn()
-  }
+  return res.blob()
 }
