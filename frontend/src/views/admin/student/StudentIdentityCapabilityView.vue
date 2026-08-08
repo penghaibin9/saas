@@ -70,18 +70,10 @@ function normalizeCapability(result) {
   }
 
   const capability = String(data.capabilityStatus || '').toUpperCase()
-  if (capability === 'NOT_CONFIGURED') {
-    return { state: 'NOT_CONFIGURED', notice: data.notice || message }
-  }
-  if (capability === 'FORBIDDEN') {
-    return { state: 'FORBIDDEN', notice: data.notice || message }
-  }
-  if (capability === 'ERROR') {
-    return { state: 'ERROR', notice: data.notice || message }
-  }
-  if (Number(data.total || 0) === 0) {
-    return { state: 'EMPTY', notice: data.notice || '' }
-  }
+  if (capability === 'NOT_CONFIGURED') return { state: 'NOT_CONFIGURED', notice: data.notice || message }
+  if (capability === 'FORBIDDEN') return { state: 'FORBIDDEN', notice: data.notice || message }
+  if (capability === 'ERROR') return { state: 'ERROR', notice: data.notice || message }
+  if (Number(data.total || 0) === 0) return { state: 'EMPTY', notice: data.notice || '' }
   return { state: 'READY', notice: data.notice || '' }
 }
 
@@ -123,8 +115,6 @@ export default {
     }
   }
 }
-
-export { normalizeCapability }
 </script>
 
 <style scoped>
