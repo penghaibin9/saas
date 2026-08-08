@@ -25,8 +25,8 @@ test('Stage B B4 covers internship batch/company and same-domain long forms', ()
   }
 })
 
-test('Stage B B4 does not clear dirty state merely because a save button was clicked', () => {
-  assert.match(guard, /submitWindowUntil = Date\.now\(\) \+ 5000/)
-  assert.match(guard, /若请求失败留在原页，dirty 仍保持/)
-  assert.match(guard, /markSaved/)
+test('Stage B B4 is fail-closed: click save never creates a bypass window', () => {
+  assert.match(guard, /只有真实保存成功后页面显式调用 markSaved\(\)/)
+  assert.match(guard, /markSaved:\s*\(\) => \{ dirty = false \}/)
+  assert.doesNotMatch(guard, /submitWindowUntil|SAVE_TEXT_RE|Date\.now\(\) \+ 5000/)
 })
