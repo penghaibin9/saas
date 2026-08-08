@@ -31,7 +31,9 @@ export const HELP_V3_QUICK_QUESTIONS = Object.freeze([
   { label: '为什么提示登录失效 / 401？', query: '401' },
   { label: '为什么模块未开通或变成只读？', query: '模块未授权' },
   { label: '为什么文件上传失败或上传后不能提交？', query: '文件上传' },
-  { label: '为什么导出一直处理中或下载不了？', query: '导出任务' }
+  { label: '为什么导出一直处理中或下载不了？', query: '导出任务' },
+  { label: '为什么提示参数校验失败 / 400？', query: '校验失败' },
+  { label: '为什么提示数据不存在 / 404？', query: '404' }
 ])
 
 /**
