@@ -13,51 +13,37 @@ const ASSET_EXTENSIONS = new Set([
   '.woff', '.woff2', '.ttf', '.eot', '.json', '.md', '.html'
 ])
 const TRAVERSAL_BOUNDARIES = new Set([
-  // 各 graph 的正式注册关系由 assertRegistration 单独校验；公共布局反向 import 全局 router
-  // 只用于导航，不应让单一业务 graph 扩散成全站所有 route 的依赖图。
   'frontend/src/router/index.js'
 ])
 
 const ENTRY_GRAPHS = [
   {
-    phase: 'A1',
-    name: '审批中心 PC 正式路由',
-    entry: 'frontend/src/modules/approval/approval.routes.js',
+    phase: 'A1', name: '审批中心 PC 正式路由', entry: 'frontend/src/modules/approval/approval.routes.js',
     registration: { file: 'frontend/src/router/index.js', needle: "@/modules/approval/approval.routes" },
     requiredReachable: ['frontend/src/modules/approval/api/approval.api.js']
   },
   {
-    phase: 'A2',
-    name: '学生中心 PC 正式路由',
-    entry: 'frontend/src/modules/student/student.routes.js',
+    phase: 'A2', name: '学生中心 PC 正式路由', entry: 'frontend/src/modules/student/student.routes.js',
     registration: { file: 'frontend/src/router/index.js', needle: "@/modules/student/student.routes" },
     requiredReachable: ['frontend/src/modules/student/api/student.api.js']
   },
   {
-    phase: 'A3',
-    name: '就业中心 PC 正式路由',
-    entry: 'frontend/src/modules/employment/employment.routes.js',
+    phase: 'A3', name: '就业中心 PC 正式路由', entry: 'frontend/src/modules/employment/employment.routes.js',
     registration: { file: 'frontend/src/router/index.js', needle: "@/modules/employment/employment.routes" },
     requiredReachable: ['frontend/src/modules/employment/api/employment.api.js']
   },
   {
-    phase: 'A4',
-    name: '数据驾驶舱 PC 正式路由',
-    entry: 'frontend/src/modules/dataCenter/dataCenter.routes.js',
+    phase: 'A4', name: '数据驾驶舱 PC 正式路由', entry: 'frontend/src/modules/dataCenter/dataCenter.routes.js',
     registration: { file: 'frontend/src/router/index.js', needle: "@/modules/dataCenter/dataCenter.routes" },
     requiredReachable: ['frontend/src/modules/dataCenter/api/dataCenter.api.js']
   },
   {
-    phase: 'A5',
-    name: '平台运营 PC 正式路由',
-    entry: 'frontend/src/modules/platform/platform.routes.js',
+    phase: 'A5', name: '平台运营 PC 正式路由', entry: 'frontend/src/modules/platform/platform.routes.js',
     registration: { file: 'frontend/src/router/index.js', needle: "@/modules/platform/platform.routes" },
     requiredReachable: ['frontend/src/modules/platform/api/platformControl.api.js']
   },
   {
-    phase: 'A1',
-    name: '教师小程序审批正式页',
-    entry: 'miniapp/src/pages/teacher/approval/index.vue',
+    phase: 'A1', name: '教师小程序审批正式页', entry: 'miniapp/src/pages/teacher/approval/index.vue',
     registration: { file: 'miniapp/src/pages.json', needle: '"path": "pages/teacher/approval/index"' },
     requiredReachable: ['miniapp/src/services/approvalApi.js']
   }
@@ -67,11 +53,12 @@ const FORBIDDEN_EXACT_FILES = new Set([
   'frontend/src/modules/platform/api/platform.api.js'
 ])
 
+// 这些符号本身就是 A 阶段已禁止的演示事实源；shouldTryReal 只是全局环境选择器，
+// 只有在 A1-A5 业务域内重新被调用时才按 FILE_FORBIDDEN_PATTERNS / localPatterns 阻断。
 const FORBIDDEN_IMPORTED_SYMBOLS = new Set([
   'mockStudents',
   'roleProfiles',
-  'withFallback',
-  'shouldTryReal'
+  'withFallback'
 ])
 
 const FILE_FORBIDDEN_PATTERNS = new Map([
@@ -137,15 +124,12 @@ const BUSINESS_OWNED_PREFIXES = [
 function rel(absPath) {
   return path.relative(REPO_ROOT, absPath).split(path.sep).join('/')
 }
-
 function abs(repoPath) {
   return path.join(REPO_ROOT, ...repoPath.split('/'))
 }
-
 function isCodeFile(filePath) {
   return CODE_EXTENSIONS.includes(path.extname(filePath).toLowerCase())
 }
-
 function packageSrcRoot(fromFile) {
   const relative = rel(fromFile)
   for (const pkg of ['frontend', 'miniapp', 'student-portal']) {
@@ -153,24 +137,19 @@ function packageSrcRoot(fromFile) {
   }
   return null
 }
-
 function stripQuery(specifier) {
   return String(specifier || '').split('?')[0].split('#')[0]
 }
-
 function candidateFiles(basePath) {
   const values = [basePath]
   const ext = path.extname(basePath).toLowerCase()
   const hasKnownExtension = CODE_EXTENSIONS.includes(ext) || ASSET_EXTENSIONS.has(ext)
-  // `approval.api` / `student.api` / `orientation.routes` 的点号是模块命名的一部分，不是文件扩展名。
-  // 只有已知代码/资源扩展名才停止补全；其余继续尝试 .js/.vue 等。
   if (!hasKnownExtension) {
     for (const codeExt of CODE_EXTENSIONS) values.push(`${basePath}${codeExt}`)
     for (const codeExt of CODE_EXTENSIONS) values.push(path.join(basePath, `index${codeExt}`))
   }
   return values
 }
-
 function resolveLocalImport(fromFile, specifier) {
   const clean = stripQuery(specifier)
   let basePath = null
@@ -183,16 +162,13 @@ function resolveLocalImport(fromFile, specifier) {
   } else {
     return { kind: 'external' }
   }
-
   for (const candidate of candidateFiles(basePath)) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return { kind: isCodeFile(candidate) ? 'code' : 'asset', file: candidate }
   }
-
   const ext = path.extname(basePath).toLowerCase()
   if (ASSET_EXTENSIONS.has(ext)) return { kind: 'unresolved', reason: `本地资源 import 不存在: ${specifier}` }
   return { kind: 'unresolved', reason: `本地代码 import 无法解析: ${specifier}` }
 }
-
 function extractImports(source) {
   const imports = []
   const seen = new Set()
@@ -202,38 +178,29 @@ function extractImports(source) {
     seen.add(key)
     imports.push({ specifier, clause, kind })
   }
-
   let match
   const staticFrom = /\b(import|export)\s+(?:type\s+)?([A-Za-z0-9_$*{},\s]+?)\s+from\s*(['"])([^'"]+)\3/g
   while ((match = staticFrom.exec(source))) push(match[4], match[2], match[1])
-
   const sideEffectImport = /\bimport\s*(['"])([^'"]+)\1/g
   while ((match = sideEffectImport.exec(source))) push(match[2], '', 'import')
-
   const dynamicImport = /\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g
   while ((match = dynamicImport.exec(source))) push(match[2], '', 'dynamic-import')
-
   const requireImport = /\brequire\s*\(\s*(['"])([^'"]+)\1\s*\)/g
   while ((match = requireImport.exec(source))) push(match[2], '', 'require')
-
   return imports
 }
-
 function removeComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ')
 }
-
 function isBusinessOwned(repoPath) {
   return BUSINESS_OWNED_PREFIXES.some((prefix) => repoPath === prefix || repoPath.startsWith(prefix))
 }
-
 function forbiddenPathReason(repoPath) {
   if (FORBIDDEN_EXACT_FILES.has(repoPath)) return 'A5 纯 mock platform.api.js 不得进入正式依赖图'
   if (/(^|\/)(?:mocks?|__mocks__)(\/|$)/i.test(repoPath)) return '正式依赖图不得进入 mock/mocks 目录'
   if (/\.mock\.(?:js|mjs|cjs|ts|tsx|jsx|vue|json)$/i.test(repoPath)) return '正式依赖图不得进入 *.mock.* 文件'
   return ''
 }
-
 function inspectBusinessSource(repoPath, source, chain, violations) {
   const code = removeComments(source)
   if (isBusinessOwned(repoPath)) {
@@ -249,13 +216,11 @@ function inspectBusinessSource(repoPath, source, chain, violations) {
       if (item.regex.test(code)) violations.push({ type: 'forbidden-business-symbol', file: repoPath, message: `${repoPath} 命中 ${item.label}`, chain })
     }
   }
-
   const filePatterns = FILE_FORBIDDEN_PATTERNS.get(repoPath) || []
   for (const item of filePatterns) {
     if (item.regex.test(code)) violations.push({ type: 'stage-contract-regression', file: repoPath, message: `${repoPath} 重新出现阶段 A 已封板旧真值源实现: ${item.label}`, chain })
   }
 }
-
 function inspectImportedSymbols(repoPath, imp, chain, violations) {
   if (!imp.clause) return
   for (const symbol of FORBIDDEN_IMPORTED_SYMBOLS) {
@@ -263,7 +228,6 @@ function inspectImportedSymbols(repoPath, imp, chain, violations) {
     if (regex.test(imp.clause)) violations.push({ type: 'forbidden-imported-symbol', file: repoPath, message: `${repoPath} 从 ${imp.specifier} 导入禁用符号 ${symbol}`, chain })
   }
 }
-
 function assertRegistration(graph, violations) {
   const registrationFile = abs(graph.registration.file)
   if (!fs.existsSync(registrationFile)) {
@@ -275,33 +239,28 @@ function assertRegistration(graph, violations) {
     violations.push({ type: 'formal-entry-not-registered', file: graph.registration.file, message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（缺少 ${graph.registration.needle}）`, chain: [graph.entry] })
   }
 }
-
 function scanGraph(graph) {
   const violations = []
   const entryFile = abs(graph.entry)
   if (!fs.existsSync(entryFile)) {
     return { graph, violations: [{ type: 'missing-entry', file: graph.entry, message: `正式入口不存在: ${graph.entry}`, chain: [graph.entry] }], visited: new Set(), edges: 0 }
   }
-
   assertRegistration(graph, violations)
   const visited = new Set()
   const queued = new Set([entryFile])
   const queue = [{ file: entryFile, chain: [graph.entry] }]
   let edges = 0
-
   while (queue.length) {
     const current = queue.shift()
     const repoPath = rel(current.file)
     queued.delete(current.file)
     if (visited.has(current.file)) continue
     visited.add(current.file)
-
     const pathReason = forbiddenPathReason(repoPath)
     if (pathReason) {
       violations.push({ type: 'forbidden-path', file: repoPath, message: `${repoPath}: ${pathReason}`, chain: current.chain })
       continue
     }
-
     let source = ''
     try {
       source = fs.readFileSync(current.file, 'utf8')
@@ -309,7 +268,6 @@ function scanGraph(graph) {
       violations.push({ type: 'read-error', file: repoPath, message: `无法读取 ${repoPath}: ${error.message}`, chain: current.chain })
       continue
     }
-
     inspectBusinessSource(repoPath, source, current.chain, violations)
     for (const imp of extractImports(removeComments(source))) {
       inspectImportedSymbols(repoPath, imp, current.chain, violations)
@@ -319,7 +277,6 @@ function scanGraph(graph) {
         violations.push({ type: 'unresolved-local-import', file: repoPath, message: `${repoPath}: ${resolved.reason}`, chain: [...current.chain, imp.specifier] })
         continue
       }
-
       const targetPath = rel(resolved.file)
       const nextChain = [...current.chain, targetPath]
       const targetReason = forbiddenPathReason(targetPath)
@@ -328,7 +285,6 @@ function scanGraph(graph) {
         continue
       }
       if (resolved.kind === 'asset') continue
-
       edges += 1
       if (TRAVERSAL_BOUNDARIES.has(targetPath)) continue
       if (!visited.has(resolved.file) && !queued.has(resolved.file)) {
@@ -337,7 +293,6 @@ function scanGraph(graph) {
       }
     }
   }
-
   const reachable = new Set([...visited].map(rel))
   for (const required of graph.requiredReachable || []) {
     if (!reachable.has(required)) {
@@ -346,11 +301,9 @@ function scanGraph(graph) {
   }
   return { graph, violations, visited: reachable, edges }
 }
-
 function escapeAnnotation(value) {
   return String(value || '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A').replace(/,/g, '%2C')
 }
-
 function printViolation(graph, violation) {
   const chain = violation.chain?.length ? violation.chain.join(' -> ') : ''
   console.error(`\n❌ [${graph.phase} · ${graph.name}] ${violation.message}`)
@@ -360,24 +313,19 @@ function printViolation(graph, violation) {
   const detail = chain ? `${violation.message} | 依赖链: ${chain}` : violation.message
   console.error(`::error file=${escapeAnnotation(file)},title=${escapeAnnotation(title)}::${escapeAnnotation(detail)}`)
 }
-
 function run() {
   const results = ENTRY_GRAPHS.map(scanGraph)
   const failures = results.flatMap((result) => result.violations.map((violation) => ({ result, violation })))
-
   console.log('A6 正式路由依赖图门禁')
   console.log(`仓库: ${REPO_ROOT}`)
   for (const result of results) {
     console.log(`${result.violations.length ? '❌' : '✅'} ${result.graph.phase} · ${result.graph.name}: ${result.visited.size} 个代码节点 / ${result.edges} 条本地依赖边 / ${result.violations.length} 个违规`)
   }
-
   if (failures.length) {
     for (const { result, violation } of failures) printViolation(result.graph, violation)
     console.error(`\nA6 FAIL：发现 ${failures.length} 个正式路由 mock/回退/依赖图违规。`)
     process.exit(1)
   }
-
   console.log('\n✅ A6 PASS：A1-A5 正式入口依赖图无法到达已禁止的 mock 事实源/回退实现；正式真实 facade 仍可达。')
 }
-
 run()
