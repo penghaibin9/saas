@@ -57,6 +57,37 @@ def test_employment_runtime_is_fail_closed_and_scopes_before_pagination():
     assert "_assert_material" in src and "_assert_followup" in src
 
 
+def test_employment_bound_rows_use_current_master_facts_for_scope_and_class_filter():
+    src = _read("backend/app/modules/employment/services/employment_runtime_service.py")
+    assert "EmpStudent.student_id.is_not(None)" in src
+    assert "EmpStudent.student_id.is_(None)" in src
+    assert "def _class_filter_condition" in src
+    assert "StudentProfile.class_id == cid" in src
+    assert "cond.append(_class_filter_condition(class_id))" in src
+
+
+def test_employment_scoped_writes_are_atomic_not_check_then_second_transaction():
+    src = _read("backend/app/modules/employment/services/employment_runtime_service.py")
+    # 创建复用同一 session；其余正式写直接在 runtime 的 scope-checked session 内落库。
+    assert "base.create_student(body, db=db)" in src
+    for delegated in (
+        "return base.update_student(",
+        "return base.void_student(",
+        "return base.batch_mark_destination(",
+        "return base.approve_material(",
+        "return base.return_material(",
+        "return base.mark_employed(",
+        "return base.mark_key_help(",
+        "return base.assign_teacher(",
+        "return base.create_followup(",
+        "return base.void_followup(",
+    ):
+        assert delegated not in src
+    assert "rows = _assert_emp_ids(db, ids, user)" in src
+    assert "material, emp = _assert_material(db, mid, user)" in src
+    assert "followup, _ = _assert_followup(db, fid, user)" in src
+
+
 def test_employment_export_reuses_scoped_runtime():
     src = _read("backend/app/services/domain_export_service.py")
     assert 'if domain == "employment":' in src
