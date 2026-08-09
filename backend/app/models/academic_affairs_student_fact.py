@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Index, Integer, String, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
+from app.models.student import StudentProfile
 
 
 class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
@@ -40,4 +41,34 @@ class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
     source_ref_id: Mapped[int | None] = mapped_column(BigInteger)
     source_quality: Mapped[str] = mapped_column(
         String(20), nullable=False, default="EXACT", comment="EXACT/DERIVED/INFERRED/UNKNOWN"
+    )
+
+
+@event.listens_for(StudentProfile, "after_insert", propagate=True)
+def _bootstrap_new_student_academic_fact(_mapper, connection, target: StudentProfile) -> None:
+    """Keep every newly-created profile and its version-1 academic fact atomic.
+
+    Existing rows are handled by the Alembic baseline backfill. This mapper hook is
+    intentionally insert-only: later status/organization changes must go through the
+    canonical Stage C1 append command, never an automatic update hook that could hide
+    a bypass. Raw SQL profile inserts remain detectable by reconciliation/bypass gates.
+    """
+    connection.execute(
+        StudentAcademicFact.__table__.insert().values(
+            tenant_id=int(target.tenant_id),
+            student_id=int(target.id),
+            version_no=1,
+            valid_from=target.created_at or datetime.utcnow(),
+            valid_to=None,
+            student_status=target.student_status or "NORMAL",
+            college_id=target.college_id,
+            major_id=target.major_id,
+            class_id=target.class_id,
+            grade=target.grade,
+            source_type="PROFILE_CREATE",
+            source_ref_id=None,
+            source_quality="EXACT",
+            created_at=target.created_at or datetime.utcnow(),
+            created_by=target.created_by,
+        )
     )
