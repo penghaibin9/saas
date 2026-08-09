@@ -82,19 +82,19 @@ import { AppStatusTag } from '@/components/common'
 import SecureFileList from '@/components/file/SecureFileList.vue'
 import { fileSdk } from '@/services/file/fileSdk'
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
-import { allowByPatterns } from '@/modules/internship/composables/permission'
-import { getPermissionPatterns } from '@/security/permissionGate'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipStudentMaterialEntryView',
   components: { ModulePageShell, AppButton, AppStatusTag, SecureFileList },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return { detail: null, loading: false, syncing: false, error: '' }
   },
   computed: {
     internshipId() { return String(this.$route.params.id || '') },
-    canSync() { return allowByPatterns(getPermissionPatterns(), 'internship.archive.manage') },
+    canSync() { return canCode(this.ctx, 'internship.archive.manage') },
     studentTitle() {
       return this.detail
         ? `${this.detail.studentName || '学生'} · ${this.detail.studentNo || '—'} · 真实材料版本链`
