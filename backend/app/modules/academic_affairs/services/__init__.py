@@ -54,6 +54,11 @@ from . import academic_affairs_change_safety_guard
 
 academic_affairs_change_safety_guard.install()
 
+# Stage C1：在包 5 安全层之后叠加 temporal fact / future-effective 语义；不得绕过原门禁。
+from . import academic_affairs_change_temporal_guard
+
+academic_affairs_change_temporal_guard.install()
+
 # 包 1：正式成绩更正统一命令——申请不改正式成绩，终审追加版本且与工作流同事务。
 from . import academic_affairs_grade_correction_command
 
