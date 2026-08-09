@@ -89,6 +89,8 @@ def test_future_fact_append_fails_closed_without_changing_projection():
         create_baseline_student_academic_fact(
             db, s, valid_from=datetime.utcnow() - timedelta(days=30), source_quality="EXACT"
         )
+        db.commit()
+        db.refresh(s)
         before_version = int(s.version or 0)
         with pytest.raises(AppException) as exc:
             append_student_academic_fact(
