@@ -86,8 +86,6 @@ def _validate_precreated_table(bind) -> None:
         )
 
     unique_names = {str(item.get("name") or "") for item in inspector.get_unique_constraints(_TABLE)}
-    # MySQL may expose a UNIQUE constraint as an index only. Accept either representation,
-    # but require the exact stable name so model/migration parity remains deterministic.
     if "uk_aa_student_fact_version" not in unique_names and "uk_aa_student_fact_version" not in index_names:
         raise RuntimeError(f"{_TABLE} missing uk_aa_student_fact_version")
 
@@ -99,6 +97,12 @@ def upgrade() -> None:
         _validate_precreated_table(bind)
     else:
         _create_table()
+
+    # Older migrations may have queried table readiness through the StudentProfile
+    # after_insert hook before this revision existed and cached False on this same
+    # Alembic connection. Once C1 has validated/created the table, later data migrations
+    # in the same upgrade chain must bootstrap new profiles normally.
+    bind.info["stage_c1_academic_fact_table_ready"] = True
 
     # Existing data has a trustworthy *current* projection but no universally reliable
     # historical start date. Do not invent one: establish a migration-time baseline and
@@ -128,6 +132,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # This revision owns the logical introduction of the table even when a fresh-database
-    # 0001 metadata.create_all happened to materialize it earlier in the same upgrade chain.
     op.drop_table(_TABLE)
