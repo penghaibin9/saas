@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Stage C1 static gate: formal StudentProfile academic fields have one write command.
+"""Stage C1/C2 static gate: one academic write command + historical consumer boundaries.
 
 The scanner checks production ``backend/app`` for direct writes to current academic
 projection fields. Compatibility implementations may remain importable only when a
 formal facade boundary is asserted below; otherwise they are not exempt.
+
+Stage C2 additionally proves that formal selection eligibility and historical program
+resolution cross the ``StudentAcademicFact`` boundary instead of reading current
+``StudentProfile`` academic fields as their authority.
 """
 from __future__ import annotations
 
@@ -134,6 +138,8 @@ def formal_boundary_assertions() -> list[str]:
     service_dir = APP / "modules/academic_affairs/services"
     major_public = (service_dir / "academic_affairs_major_split_public_service.py").read_text(encoding="utf-8")
     org_public = (service_dir / "academic_affairs_org_fact_facade.py").read_text(encoding="utf-8")
+    selection_final = (service_dir / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
+    program_resolver = (service_dir / "student_program_resolution_service.py").read_text(encoding="utf-8")
     services_init = (service_dir / "__init__.py").read_text(encoding="utf-8")
     student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
     lifecycle = (APP / "services/student_academic_lifecycle_service.py").read_text(encoding="utf-8")
@@ -150,6 +156,26 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("formal student_service still calls legacy db_service.void_student direct-write")
     if "student_academic_lifecycle_service" not in student_service or "append_student_academic_fact" not in lifecycle:
         errors.append("formal student void is not bound to the Stage C1 AcademicFact lifecycle service")
+
+    # Stage C2: formal selection must feed canonical validation from AcademicFact, not
+    # the StudentProfile object returned by account resolution.
+    if "academic_affairs_selection_final_service as academic_affairs_selection_service" not in services_init:
+        errors.append("services package no longer binds formal selection to final facade")
+    if "def _selection_academic_identity" not in selection_final or "resolve_student_academic_fact" not in selection_final:
+        errors.append("formal selection facade no longer resolves StudentAcademicFact eligibility identity")
+    if "academic_identity," not in selection_final or "_base._validate_enroll(" not in selection_final:
+        errors.append("formal selection validation is no longer fed by the AcademicFact identity proxy")
+    if "academicFactId=" not in selection_final or "selectionEffectiveAt=" not in selection_final:
+        errors.append("formal selection audit no longer records the AcademicFact decision provenance")
+
+    # Stage C2: historical program lookup needs a dedicated as_of boundary so callers
+    # cannot combine historical bindings with current StudentProfile major/class/grade.
+    if "def resolve_student_program_at" not in program_resolver or "resolve_student_academic_fact" not in program_resolver:
+        errors.append("historical program resolver no longer consumes StudentAcademicFact(as_of)")
+    if "ACADEMIC_FACT_MISSING" not in program_resolver:
+        errors.append("historical program resolver no longer fails closed when AcademicFact is missing")
+    if "if as_of is not None:" not in program_resolver or "resolve_student_program_at(" not in program_resolver:
+        errors.append("credit requirement historical path no longer uses the AcademicFact program resolver")
     return errors
 
 
@@ -159,11 +185,14 @@ def main() -> int:
         violations.extend(scan_file(path))
     violations.extend(formal_boundary_assertions())
     if violations:
-        print("Stage C1 academic-fact bypass gate FAILED:")
+        print("Stage C1/C2 academic-fact gate FAILED:")
         for item in violations:
             print(f"::error::{item}")
         return 1
-    print("Stage C1 academic-fact bypass gate OK: formal direct academic Profile writes = 0")
+    print(
+        "Stage C1/C2 academic-fact gate OK: formal direct academic Profile writes = 0; "
+        "selection/program historical consumers are fact-bound"
+    )
     return 0
 
 
