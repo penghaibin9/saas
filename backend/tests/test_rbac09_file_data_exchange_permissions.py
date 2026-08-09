@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from app.api.v1 import data_exchange
 from app.core import rbac09_permission_bundles as bundles
 from app.services import file_access_service as file_access
+
+
+def _canonical_default_resolver():
+    """Load the committed production default policy without inheriting mutable pytest seams."""
+    module_path = Path(file_access.__file__).resolve()
+    spec = importlib.util.spec_from_file_location("_rbac09_file_access_contract", module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module._default_resolver
 
 
 def _user(user_id: int = 41) -> dict:
@@ -72,7 +85,6 @@ def test_legacy_alias_is_audited_without_widening_tenant_scope(monkeypatch):
     assert legacy == "systemAdmin.user.import"
     assert recorded == [("systemAdmin.user.import", bundles.DATA_EXCHANGE_CONFIRM)]
 
-    # 兼容旧账号导入权限时只能保留本人任务和既有动作，不能升级成全校任务查看。
     assert bundles.has_permission_compat(_user(), bundles.DATA_EXCHANGE_VIEW_OWN) is True
     assert bundles.has_permission_compat(_user(), bundles.DATA_EXCHANGE_VIEW_TENANT) is False
 
@@ -105,35 +117,24 @@ def test_file_governance_permission_never_bypasses_business_content_relation(mon
         biz_type="MENTAL",
         biz_id="student-9001",
     )
+    canonical = _canonical_default_resolver()
     monkeypatch.setattr(
         file_access,
         "has_permission",
         lambda user, code: code == "systemAdmin.file.manage",
     )
 
-    # 历史导入符号只用于平滑升级，始终拒绝内容管理员旁路。
+    # RBAC-09 governance roles never become file-content administrators.
     assert file_access._is_file_admin(actor) is False
-    assert file_access._default_resolver(None, ordinary, [], actor, "meta") is False
-    assert file_access._default_resolver(None, mental, [], actor, "meta") is False
+    assert canonical(None, ordinary, [], actor, "meta") is False
+    assert canonical(None, mental, [], actor, "meta") is False
 
-    # BUSINESS_OBJECT/TENANT 只描述文件归属，不描述当前访问者，不能作为内容授权。
-    assert file_access._default_resolver(
-        None,
-        ordinary,
-        [_binding("BUSINESS_OBJECT")],
-        actor,
-        "meta",
-    ) is False
-    assert file_access._default_resolver(
-        None,
-        ordinary,
-        [_binding("TENANT")],
-        actor,
-        "meta",
-    ) is False
+    # BUSINESS_OBJECT/TENANT only describe ownership; they are not subject authorization.
+    assert canonical(None, ordinary, [_binding("BUSINESS_OBJECT")], actor, "meta") is False
+    assert canonical(None, ordinary, [_binding("TENANT")], actor, "meta") is False
 
-    # 明确指向当前主体的绑定仍然是合法关系。
-    assert file_access._default_resolver(
+    # An explicit binding to the current subject remains a legitimate business relationship.
+    assert canonical(
         None,
         ordinary,
         [_binding("USER", str(actor["userId"]))],
@@ -141,8 +142,10 @@ def test_file_governance_permission_never_bypasses_business_content_relation(mon
         "meta",
     ) is True
 
+    # The committed production default policy preserves owner access. Runtime tests may inject a
+    # stricter resolver seam independently; that must not rewrite the canonical contract itself.
     owner = _user(88)
-    assert file_access._default_resolver(None, ordinary, [], owner, "download") is True
+    assert canonical(None, ordinary, [], owner, "download") is True
 
 
 def test_scan_operator_can_retry_but_cannot_download_infected_file(monkeypatch):
@@ -174,7 +177,6 @@ def test_scan_operator_can_retry_but_cannot_download_infected_file(monkeypatch):
         "viewAudit",
     ]
 
-    # 即使是文件所有者和扫描操作员，感染/拒绝文件也不能通过下载安全门。
     monkeypatch.undo()
     monkeypatch.setattr(file_access, "current_tenant_id", lambda: actor["tenantId"])
     assert file_access.authorize_file_object(
@@ -255,7 +257,6 @@ def test_service_policy_is_exact_tenant_short_lived_and_evidenced():
 
 
 def test_service_policy_rejects_human_wildcard_long_token_and_unknown_fields():
-    import pytest
     from app.core.exceptions import AppException
 
     valid = {
