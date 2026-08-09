@@ -1,5 +1,5 @@
 <template>
-  <div v-if="modelValue" class="app-step-guide__mask" aria-hidden="true">
+  <div v-if="modelValue" class="app-step-guide__mask">
     <div class="app-step-guide" role="dialog" aria-modal="false" aria-label="页面操作引导" @click.stop>
       <div class="app-step-guide__badge">{{ current + 1 }} / {{ steps.length }}</div>
       <h3 class="app-step-guide__title">{{ step.title }}</h3>
