@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -13,11 +14,20 @@ from app.modules.academic_affairs.services.academic_affairs_fact_reconciliation_
     scan_current_projection,
 )
 
+EVIDENCE_PATH = Path("test-results/stage-c1-reconciliation.json")
+
 
 def _compact(value, limit: int = 4):
     if isinstance(value, list):
         return value[:limit]
     return value
+
+
+def _write_evidence(payload: dict) -> None:
+    EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    EVIDENCE_PATH.write_text(
+        json.dumps(payload, ensure_ascii=False, default=str, indent=2), encoding="utf-8"
+    )
 
 
 def main() -> int:
@@ -50,15 +60,17 @@ def main() -> int:
                     "overlapStudentIds": _compact(details.get("overlapStudentIds") or []),
                     "drifts": _compact(details.get("drifts") or []),
                 }
-                encoded = json.dumps(diagnostic, ensure_ascii=False, default=str)
-                # GitHub Actions turns this into a searchable check annotation. Keep the
-                # exact fail-closed decision unchanged; this only exposes root-cause data.
-                print(f"::error title=Stage C1 academic fact reconciliation::{encoded}")
+                print(
+                    "::error title=Stage C1 academic fact reconciliation::"
+                    + json.dumps(diagnostic, ensure_ascii=False, default=str)
+                )
         finally:
             tenant_db.close()
             set_tenant(None)
 
-    print(json.dumps({"tenants": results, "unresolved": unresolved}, ensure_ascii=False, default=str))
+    payload = {"tenants": results, "unresolved": unresolved}
+    _write_evidence(payload)
+    print(json.dumps(payload, ensure_ascii=False, default=str))
     if unresolved:
         print(f"::error title=Stage C1 academic fact reconciliation total::unresolved={unresolved}")
         return 1
