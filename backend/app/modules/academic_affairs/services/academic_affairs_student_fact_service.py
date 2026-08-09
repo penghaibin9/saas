@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
@@ -141,7 +141,9 @@ def append_student_academic_fact(
     Future-effective approvals must *not* call this command early. They remain pending
     until their effective time and then invoke this command from the scheduled apply
     path. A missing baseline or projection/fact drift fails closed instead of silently
-    laundering an earlier direct-write bypass.
+    laundering an earlier direct-write bypass. Major changes additionally create a
+    deterministic ProgramTransitionAssessment before the fact switch, so program
+    binding ambiguity is explicit evidence rather than an implicit guess.
     """
     from app.models import StudentProfile
     from app.models.academic_affairs_student_fact import StudentAcademicFact
@@ -225,6 +227,22 @@ def append_student_academic_fact(
             http_status=409,
         )
 
+    program_assessment = None
+    if target["major_id"] is not None and int(target["major_id"] or 0) != int(current.major_id or 0):
+        from app.modules.academic_affairs.services.academic_affairs_program_transition_service import (
+            assess_program_transition_in_session,
+        )
+
+        program_assessment = assess_program_transition_in_session(
+            db,
+            student=student,
+            source_fact=current,
+            to_major_id=int(target["major_id"]),
+            target_class_id=(int(target["class_id"]) if target["class_id"] is not None else None),
+            source_type=(source_type or "").upper(),
+            source_ref_id=(int(source_ref_id) if source_ref_id is not None else None),
+        )
+
     current.valid_to = at
     next_fact = StudentAcademicFact(
         tenant_id=_tid(),
@@ -266,6 +284,14 @@ def append_student_academic_fact(
     db.flush()
     db.refresh(student)
     db.refresh(next_fact)
+
+    if program_assessment is not None:
+        from app.modules.academic_affairs.services.academic_affairs_program_transition_service import (
+            mark_program_transition_applied_in_session,
+        )
+
+        mark_program_transition_applied_in_session(db, program_assessment, next_fact)
+
     return next_fact, student
 
 
