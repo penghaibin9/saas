@@ -50,6 +50,11 @@ from . import academic_affairs_graduation_truth_guard
 
 academic_affairs_graduation_truth_guard.install()
 
+# Stage C3：预览/正式预审共用同一 evaluator；正式预审和终审追加不可变 Run/Decision。
+from . import academic_affairs_graduation_immutable_service
+
+academic_affairs_graduation_immutable_service.install()
+
 # 包 5：异动详情范围、所属学期与真实工作流受理人 fail-closed。
 from . import academic_affairs_change_safety_guard
 
