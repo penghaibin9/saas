@@ -41,7 +41,7 @@ def upgrade() -> None:
     correction = "t_aa_post_archive_correction_case"
 
     cols = _columns(bind, decision)
-    if decision and cols:
+    if cols:
         if "decision_no" not in cols:
             op.add_column(decision, sa.Column("decision_no", sa.Integer(), nullable=True))
             op.execute(sa.text(f"UPDATE {decision} SET decision_no = 1 WHERE decision_no IS NULL"))
@@ -67,10 +67,12 @@ def upgrade() -> None:
             )
 
         indexes = _index_names(bind, decision)
-        if "ix_aa_grad_decision_supersedes_id" not in indexes:
-            op.create_index("ix_aa_grad_decision_supersedes_id", decision, ["supersedes_id"], unique=False)
-        if "ix_aa_grad_decision_correction_case_id" not in indexes:
-            op.create_index("ix_aa_grad_decision_correction_case_id", decision, ["correction_case_id"], unique=False)
+        supersedes_index = "ix_t_aa_graduation_decision_fact_supersedes_id"
+        correction_index = "ix_t_aa_graduation_decision_fact_correction_case_id"
+        if supersedes_index not in indexes:
+            op.create_index(supersedes_index, decision, ["supersedes_id"], unique=False)
+        if correction_index not in indexes:
+            op.create_index(correction_index, decision, ["correction_case_id"], unique=False)
         if "ix_aa_grad_decision_latest" not in indexes:
             op.create_index(
                 "ix_aa_grad_decision_latest", decision,
@@ -78,7 +80,7 @@ def upgrade() -> None:
             )
 
     cols = _columns(bind, correction)
-    if correction and cols:
+    if cols:
         if "official_fact_type" not in cols:
             op.add_column(correction, sa.Column("official_fact_type", sa.String(length=50), nullable=True))
         if "official_fact_id" not in cols:
@@ -117,8 +119,8 @@ def downgrade() -> None:
         indexes = _index_names(bind, decision)
         for name in (
             "ix_aa_grad_decision_latest",
-            "ix_aa_grad_decision_correction_case_id",
-            "ix_aa_grad_decision_supersedes_id",
+            "ix_t_aa_graduation_decision_fact_correction_case_id",
+            "ix_t_aa_graduation_decision_fact_supersedes_id",
         ):
             if name in indexes:
                 op.drop_index(name, table_name=decision)
