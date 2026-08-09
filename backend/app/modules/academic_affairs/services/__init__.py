@@ -19,6 +19,7 @@ from . import academic_affairs_exam_facade as academic_affairs_exam_service
 from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
 from . import academic_affairs_recognition_public_service as academic_affairs_recognition_service
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
+from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
 
 # V2-03 最终规则安全层必须成为包级可见入口，并显式绑定到公开排课/自动排课服务。
