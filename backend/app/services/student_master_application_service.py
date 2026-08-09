@@ -106,14 +106,19 @@ def _ensure_restore_baseline_in_session(db, student: StudentProfile) -> None:
 
     If a voided historical profile has no fact at all, create an explicitly INFERRED
     baseline from its current RECYCLED projection before restoring it. Existing facts
-    are never rewritten or silently reconciled here.
+    are never rewritten or silently reconciled here.  This transaction-local helper is
+    explicitly tenant-scoped because controlled restore/import can run without an HTTP
+    tenant ContextVar while still owning a tenant-filtered StudentProfile row.
     """
     from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
         create_baseline_student_academic_fact,
         resolve_student_academic_fact,
     )
 
-    if resolve_student_academic_fact(db, int(student.id), required=False) is not None:
+    tenant_id = int(student.tenant_id)
+    if resolve_student_academic_fact(
+        db, int(student.id), required=False, tenant_id=tenant_id
+    ) is not None:
         return
     create_baseline_student_academic_fact(
         db,
@@ -121,6 +126,7 @@ def _ensure_restore_baseline_in_session(db, student: StudentProfile) -> None:
         valid_from=student.updated_at or student.created_at or datetime.utcnow(),
         source_type="VOIDED_RESTORE_BASELINE",
         source_quality="INFERRED",
+        tenant_id=tenant_id,
     )
 
 
@@ -359,7 +365,7 @@ def restore_voided_student_in_session(
     reason: str,
     actor: dict | None = None,
 ) -> dict:
-    """受控恢复作废主档；RECYCLED→NORMAL 必须追加 AcademicFact。"""
+    """受控恢复作废主档；RECYCLED→NORMAL 必须追加 AcademicFact，且不动登录账号。"""
     no = str(student_no or "").strip()
     why = str(reason or "").strip()
     if not no:
@@ -407,6 +413,8 @@ def restore_voided_student_in_session(
     if str(s.remark or "").startswith("VOID:"):
         s.remark = None
 
+    # 主档恢复只恢复 AcademicFact/Profile 业务身份；登录账号恢复是独立受控流程，
+    # 这里不动登录账号、账号绑定或认证凭据。
     after = {
         "studentStatus": s.student_status,
         "currentStage": s.current_stage,
