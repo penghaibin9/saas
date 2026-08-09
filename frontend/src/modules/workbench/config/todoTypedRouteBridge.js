@@ -13,7 +13,7 @@ function routeWithQuery(item) {
 
 /**
  * P1-07 typed todo bridge：服务端 routePath/query 直接成为本条待办的 typedRouteTarget。
- * 不再为了兼容旧 openTodo() 往全局 TODO_TYPE_ROUTES 写“每条记录专属键”，避免长会话中
+ * 不再为了兼容旧 openTodo() 往全局静态路由映射写“每条记录专属键”，避免长会话中
  * 随刷新/分页不断累积记录级路由和跨记录残留。静态 todoType 映射仅由消费端作为旧 DTO 兜底。
  */
 export function adaptTypedTodo(item) {
