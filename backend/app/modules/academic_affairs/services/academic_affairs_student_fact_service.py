@@ -228,7 +228,9 @@ def append_student_academic_fact(
         )
 
     program_assessment = None
-    if target["major_id"] is not None and int(target["major_id"] or 0) != int(current.major_id or 0):
+    # Filling a previously-unknown major is data completion, not a transfer. Only a
+    # real existing-major -> different-major cutover creates transition assessment debt.
+    if current.major_id is not None and target["major_id"] is not None and int(target["major_id"]) != int(current.major_id):
         from app.modules.academic_affairs.services.academic_affairs_program_transition_service import (
             assess_program_transition_in_session,
         )
