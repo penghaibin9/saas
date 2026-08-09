@@ -262,7 +262,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install cryptography
+          pip install cryptography pytest-timeout
       - name: Alembic 单 head
         run: |
           set -e
@@ -293,7 +293,7 @@ jobs:
           retention-days: 14
       - name: 在迁移库上跑 Stage C1/C2/C3 + P0 专项（不用 create_all）
         run: |
-          timeout 35m pytest -q -p no:warnings \
+          timeout 35m pytest -vv -p no:warnings \
             tests/test_stage_c1_academic_fact.py \
             tests/test_stage_c1_future_effective.py \
             tests/test_stage_c1_major_split_fact.py \
@@ -311,4 +311,4 @@ jobs:
             tests/test_graduation_credit_dedup.py \
             tests/test_discipline_package11_integrity.py \
             tests/test_funding_package10_closeout.py \
-            --durations=30
+            --timeout=180 --timeout-method=signal --durations=30
