@@ -18,3 +18,9 @@ test('student material entry reads the authoritative material center, not local 
   assert.match(page, /fileSdk\.download/)
   assert.doesNotMatch(page, /mock|fixture|fakeData/i)
 })
+
+test('read-only material viewers never see or invoke archive-manage sync action', () => {
+  assert.match(page, /v-if="canSync"[\s\S]*同步旧材料/)
+  assert.match(page, /allowByPatterns\(getPermissionPatterns\(\), 'internship\.archive\.manage'\)/)
+  assert.match(page, /if \(!this\.canSync \|\| !this\.detail \|\| this\.syncing\) return/)
+})

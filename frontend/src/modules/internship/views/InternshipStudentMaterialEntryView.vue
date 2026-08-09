@@ -8,7 +8,7 @@
   >
     <template #actions>
       <AppButton variant="ghost" @click="$router.back()">返回</AppButton>
-      <AppButton variant="secondary" :loading="syncing" :disabled="!detail" @click="sync">同步旧材料</AppButton>
+      <AppButton v-if="canSync" variant="secondary" :loading="syncing" :disabled="!detail" @click="sync">同步旧材料</AppButton>
       <AppButton variant="ghost" :loading="loading" @click="load">刷新</AppButton>
     </template>
 
@@ -40,7 +40,7 @@
         <SecureFileList
           :items="detail.items || []"
           :loading="loading"
-          empty-text="尚未登记真实材料版本；可执行“同步旧材料”建立版本链。"
+          empty-text="尚未登记真实材料版本；有归档管理权限的账号可执行“同步旧材料”建立版本链。"
           @preview="preview"
           @download="download"
           @refresh="load"
@@ -82,6 +82,8 @@ import { AppStatusTag } from '@/components/common'
 import SecureFileList from '@/components/file/SecureFileList.vue'
 import { fileSdk } from '@/services/file/fileSdk'
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
+import { allowByPatterns } from '@/modules/internship/composables/permission'
+import { getPermissionPatterns } from '@/security/permissionGate'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -92,6 +94,7 @@ export default {
   },
   computed: {
     internshipId() { return String(this.$route.params.id || '') },
+    canSync() { return allowByPatterns(getPermissionPatterns(), 'internship.archive.manage') },
     studentTitle() {
       return this.detail
         ? `${this.detail.studentName || '学生'} · ${this.detail.studentNo || '—'} · 真实材料版本链`
@@ -113,7 +116,7 @@ export default {
       }
     },
     async sync() {
-      if (!this.detail || this.syncing) return
+      if (!this.canSync || !this.detail || this.syncing) return
       this.syncing = true
       try {
         const result = await internshipMaterialCenterApi.sync(this.internshipId)
