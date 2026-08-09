@@ -60,6 +60,45 @@ def test_trace_is_deterministic_for_the_same_business_evidence():
     assert validate_decision_trace(first) is first
 
 
+def test_builder_requires_explicit_time_and_rule_version_for_determinism():
+    with pytest.raises(AppException):
+        _trace(evaluated_at=None)
+    with pytest.raises(AppException):
+        _trace(rule_version=None)
+
+
+def test_v1_action_and_decision_scope_is_fail_closed():
+    with pytest.raises(AppException):
+        _trace(action="DROP")
+    with pytest.raises(AppException):
+        _trace(decision="APPROVED")
+    with pytest.raises(AppException):
+        _trace(domain="GRADUATION", action="ENROLL", decision="DENIED", rule_code="DISCIPLINE_BLOCK")
+
+
+def test_validate_recomputes_trace_id_and_rejects_tampered_business_evidence():
+    trace = _trace()
+    tampered = dict(trace)
+    tampered["target"] = {**trace["target"], "courseCode": "MUTATED"}
+    # traceId is still a syntactically valid UUID; validation must prove the evidence
+    # fingerprint, not merely accept the UUID shape.
+    with pytest.raises(AppException):
+        validate_decision_trace(tampered)
+
+
+def test_validate_rejects_unknown_fields_and_wrong_shapes():
+    trace = _trace()
+    extra = dict(trace)
+    extra["debugSql"] = "select * from internal_table"
+    with pytest.raises(AppException):
+        validate_decision_trace(extra)
+
+    wrong_shape = dict(trace)
+    wrong_shape["subject"] = ["not-an-object"]
+    with pytest.raises(AppException):
+        validate_decision_trace(wrong_shape)
+
+
 def test_renderer_uses_only_business_provided_resolution():
     trace = _trace()
     student = render_zh_cn(trace, audience="student")
@@ -84,7 +123,7 @@ def test_teacher_rendering_keeps_support_metadata_without_changing_reason():
 
 def test_invalid_domain_rule_pair_fails_closed():
     with pytest.raises(AppException):
-        _trace(domain="GRADUATION", rule_code="PREREQUISITE_NOT_MET")
+        _trace(domain="GRADUATION", action="EVALUATE", rule_code="PREREQUISITE_NOT_MET")
     with pytest.raises(AppException):
         _trace(rule_code="NOT_A_REAL_RULE")
 
