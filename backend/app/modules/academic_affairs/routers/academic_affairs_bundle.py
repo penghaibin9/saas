@@ -23,6 +23,7 @@ _EXTENSION_ROUTER_MODULES = (
     "program_quality_router",
     "semester_pilot_router",
     "stats_snapshot_router",
+    "status_change_temporal_router",
     "student_evaluation_router",
     "student_exam_router",
     "teaching_class_router",
