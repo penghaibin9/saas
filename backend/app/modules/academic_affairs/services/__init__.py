@@ -65,6 +65,11 @@ from . import academic_affairs_change_temporal_guard
 
 academic_affairs_change_temporal_guard.install()
 
+# Stage C3：正式归档确认必须在同事务生成不可变 Manifest；归档后纠错仅追加 V2+，不重开学期。
+from . import academic_affairs_archive_manifest_service
+
+academic_affairs_archive_manifest_service.install()
+
 # Stage C3：ARCHIVED 是不可逆历史事实；正式归档入口不得再走普通 unfreeze 回退到 DRAFT/PUBLISHED。
 from . import academic_affairs_archive_immutable_guard
 
