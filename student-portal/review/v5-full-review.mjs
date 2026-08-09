@@ -148,7 +148,8 @@ async function inspectThemes(page) {
   for (const theme of config.themes) {
     await page.goto(`${baseUrl}${theme.route}`, { waitUntil: 'domcontentloaded' })
     await waitStable(page)
-    const button = page.locator(`.sp-theme__item[title="${theme.label}"]`)
+    const themeGroup = page.getByRole('group', { name: '切换门户主题' })
+    const button = themeGroup.getByRole('button', { name: `切换为${theme.label}` })
     const found = await button.count()
     if (found) await button.click()
     await sleep(450)
@@ -159,7 +160,7 @@ async function inspectThemes(page) {
         htmlTheme: document.documentElement.dataset.spTheme || '',
         primary: app ? getComputedStyle(app).getPropertyValue('--pri').trim() : '',
         cardBackground: card ? getComputedStyle(card).backgroundColor : '',
-        themeButtons: document.querySelectorAll('.sp-theme__item').length
+        themeButtons: document.querySelectorAll('.sp-theme-switch__item').length
       }
     })
     const layout = await analyzeLayout(page)

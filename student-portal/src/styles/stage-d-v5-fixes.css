@@ -1,0 +1,5 @@
+/* Stage D · V5 真浏览器收口：只修已由 Chromium 证实的可读性问题。 */
+html[data-sp-theme='blue'] .home-chip small,
+html[data-sp-theme='blue'] .home-stage :where(span, small) {
+  color: #58738b !important;
+}

@@ -75,7 +75,7 @@
                 <strong>{{ itemLabel(item.item) }}</strong>
                 <StatusTag :text="itemResultText(item)" :tone="itemResult(item) === 'PASS' ? 'success' : 'warn'" />
               </div>
-              <p>{{ item.evidence || itemEvidenceFallback(item) }}</p>
+              <p>{{ itemEvidenceText(item) }}</p>
             </div>
           </article>
         </div>
@@ -114,6 +114,7 @@ import AcademicDecisionTraceCard from '../../components/academic/AcademicDecisio
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
+import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
 
 const loading = ref(true)
 const error = ref('')
@@ -166,6 +167,15 @@ function itemLabel(code) { return ITEM_LABELS[String(code || '').toUpperCase()] 
 function itemTone(item) { return itemResult(item) === 'PASS' ? 'is-pass' : 'is-pending' }
 function itemEvidenceFallback(item) {
   return itemResult(item) === 'PASS' ? '学校业务系统已经记录满足该项条件的有效事实。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
+}
+function itemEvidenceText(item) {
+  const raw = String(item?.evidence || '').trim()
+  const match = raw.match(/^student_status=([A-Z0-9_]+)$/)
+  if (match) {
+    const localized = localizeVisibleEnumText(match[1])
+    return `当前学籍状态：${localized === match[1] ? '状态待确认' : localized}`
+  }
+  return raw || itemEvidenceFallback(item)
 }
 
 async function load() {
