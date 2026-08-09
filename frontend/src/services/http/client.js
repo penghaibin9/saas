@@ -69,6 +69,14 @@ export function isWriteMethod(method = 'GET') {
   return !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase())
 }
 
+function authContextChangedError() {
+  const err = new Error('身份已切换，本次写操作未自动重放；请在当前身份下重新确认操作')
+  err.biz = true
+  err.code = 409001
+  err.bizCode = 'AUTH_CONTEXT_CHANGED'
+  return err
+}
+
 function strictFailure(label, e) {
   const err = e instanceof Error ? e : new Error(String(e || '真实接口不可用'))
   err.strict = true
@@ -245,7 +253,7 @@ export function currentUserFromToken() {
     const json = decodeURIComponent(
       atob(b64)
         .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
         .join('')
     )
     const p = JSON.parse(json)
@@ -331,16 +339,23 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 export async function request(path, options = {}) {
   await ensureToken()
   const tokenAtStart = state.token
+  const safeToReplayAcrossContext = !isWriteMethod(options.method)
   try {
     return await rawRequest(path, options)
   } catch (e) {
     if (e.biz && e.code === 401001) {
-      // 请求若是旧身份发出的，而会话已在期间轮换，直接用当前新 token 重试，禁止拿旧 refresh 抢救。
-      if (state.token && state.token !== tokenAtStart) return rawRequest(path, options)
-      // 身份切换仍在服务端处理中时，等新会话落地再重试；不要与 switch-role 并发 refresh。
+      // 只有幂等读请求允许在身份已经切换后自动重放；写请求必须由用户在新身份下重新确认。
+      if (state.token && state.token !== tokenAtStart) {
+        if (safeToReplayAcrossContext) return rawRequest(path, options)
+        throw authContextChangedError()
+      }
+      // 身份切换仍在服务端处理中时，等新会话落地；仍禁止跨身份自动重放写请求。
       if (roleSwitchPromise && path !== '/auth/switch-role') {
         await roleSwitchPromise
-        if (state.token && state.token !== tokenAtStart) return rawRequest(path, options)
+        if (state.token && state.token !== tokenAtStart) {
+          if (safeToReplayAcrossContext) return rawRequest(path, options)
+          throw authContextChangedError()
+        }
       }
       if (await tryRefresh()) return rawRequest(path, options)
       _redirectToLogin() // 会话彻底失效：回登录页，不让页面停在半死状态
@@ -401,6 +416,7 @@ export async function requestUpload(path, file, fieldName = 'file') {
 export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
   await ensureToken()
   const tokenAtStart = state.token
+  const safeToReplayAcrossContext = !isWriteMethod(method)
   const qs = params
     ? '?' +
       Object.entries(params)
@@ -455,10 +471,16 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
     return await doFetch()
   } catch (e) {
     if (e.biz && e.code === 401001) {
-      if (state.token && state.token !== tokenAtStart) return doFetch()
+      if (state.token && state.token !== tokenAtStart) {
+        if (safeToReplayAcrossContext) return doFetch()
+        throw authContextChangedError()
+      }
       if (roleSwitchPromise && path !== '/auth/switch-role') {
         await roleSwitchPromise
-        if (state.token && state.token !== tokenAtStart) return doFetch()
+        if (state.token && state.token !== tokenAtStart) {
+          if (safeToReplayAcrossContext) return doFetch()
+          throw authContextChangedError()
+        }
       }
       if (await tryRefresh()) return doFetch()
       _redirectToLogin()
