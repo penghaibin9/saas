@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教务归档 · 控制台"
-    subtitle="按学年学期归档 · 9数据域完整性检查 · 确认归档封存学期"
+    subtitle="按学年学期归档 · 数据域完整性检查 · 确认归档后历史事实不可普通解冻"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -30,19 +30,23 @@
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" @click="doCheck">完整性检查</AppButton>
               <AppButton v-if="current.status === 'READY'" size="small" variant="primary" @click="doConfirm(false)">确认归档</AppButton>
               <AppButton v-if="current.status === 'MISSING_ITEMS'" size="small" variant="warning" @click="doConfirm(true)">强制归档</AppButton>
-              <AppButton v-if="current.status === 'ARCHIVED'" size="small" variant="ghost" @click="doUnfreeze">特批解冻</AppButton>
               <AppButton v-if="!['ARCHIVED','CANCELLED'].includes(current.status)" size="small" variant="ghost" @click="doCancel">取消</AppButton>
             </div>
           </div>
           <div v-if="current.missingCount != null" class="aaar-summary">
-            <span :class="{ 'is-bad': current.missingCount }">缺失数据域 {{ current.missingCount }} / 9</span>
-            <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（学期已封存）</span>
+            <span :class="{ 'is-bad': current.missingCount }">阻断数据域 {{ current.missingCount }}</span>
+            <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（历史事实已封存）</span>
           </div>
-          <div class="aaar-section-title">9 数据域完整性</div>
+          <AppInlineAlert
+            v-if="current.status === 'ARCHIVED'"
+            type="info"
+            description="该学期已经形成正式归档事实，普通解冻入口已关闭。后续发现错误时必须走归档后纠错，保留原归档版本、纠错原因和新版本审计链。"
+          />
+          <div class="aaar-section-title">数据域完整性</div>
           <EmptyState v-if="!items.length" title="未检查" description="点击「完整性检查」聚合各数据域" />
           <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
             <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
-            <template #cell-present="{ row }"><StatusTag :type="row.present ? 'success' : 'danger'" :label="row.present ? '有数据' : '缺失'" dot /></template>
+            <template #cell-present="{ row }"><StatusTag :type="row.present ? 'success' : 'danger'" :label="row.present ? '通过' : '阻断'" dot /></template>
           </DataTable>
         </template>
       </div>
@@ -51,7 +55,7 @@
     <AppDrawer :visible="createVisible" title="新建归档批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaar-form">
         <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择要归档的学期（一学期一批次）" :disabled="saving" /></AppFormItem>
-        <AppInlineAlert type="warning" description="确认归档后该学期将被封存（status→ARCHIVED），此后该学期教务写操作应被拦截；如需修改须走特批解冻。" />
+        <AppInlineAlert type="warning" description="确认归档后该学期将成为不可普通回退的历史事实，教务写操作会被拦截；如后续发现错误，必须走归档后纠错并保留原版本。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -61,23 +65,18 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
-    <AppConfirmDialog
-      v-model:visible="reasonDialog.visible" title="特批解冻（仅学校管理员）" type="danger"
-      require-reason phrase-scene-key="aa.archive.unfreeze" reason-label="解冻原因（≥5字）"
-      :submitting="reasonDialog.submitting" @confirm="onReasonConfirm"
-    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 教务归档 · 控制台（/admin/academic-affairs/archive）：批次+9数据域完整性检查+确认归档封存。 */
+/** 教务归档 · 控制台（/admin/academic-affairs/archive）：批次+数据域完整性检查+不可逆归档封存。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
-const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', MISSING_ITEMS: '有缺失', ARCHIVED: '已归档', CANCELLED: '已取消' }
+const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', MISSING_ITEMS: '有阻断', ARCHIVED: '已归档', CANCELLED: '已取消' }
 
 export default {
   name: 'AaArchiveConsoleView',
@@ -88,8 +87,7 @@ export default {
       loading: true, rows: [], current: null, items: [],
       itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'present', title: '完整性' }, { key: 'remark', title: '备注' }],
       createVisible: false, form: { termId: '' }, formError: '', saving: false,
-      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
-      reasonDialog: { visible: false, submitting: false, action: null }
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
     }
   },
   async created() {
@@ -125,32 +123,13 @@ export default {
     },
     doConfirm(force) {
       this.confirmTitle = force ? '强制归档' : '确认归档'
-      this.confirmMessage = `确认归档「${this.current.batchName}」？归档后该学期将被封存，教务写操作受限。` + (force ? '（存在缺失数据域，强制归档）' : '')
+      this.confirmMessage = `确认归档「${this.current.batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。` + (force ? '（当前存在阻断数据域，请再次确认是否符合强制归档政策）' : '')
       this.pendingAction = async () => {
         const res = await api.confirm(this.current.batchId, force)
         if (res.code === 0) { toast.success('已归档'); await this.load(); const b = this.rows.find(x => x.batchId === this.current.batchId); if (b) await this.select(b) }
         else toast.error(res.message)
       }
       this.confirmVisible = true
-    },
-    doUnfreeze() {
-      this.reasonDialog = {
-        visible: true, submitting: false,
-        action: async (reason) => {
-          const res = await api.unfreeze(this.current.batchId, reason)
-          if (res.code !== 0) { toast.error(res.message); return false }
-          toast.success('已解冻'); await this.load(); await this.select(this.current); return true
-        }
-      }
-    },
-    /** 失败时保留弹窗与已填内容，仅成功才关闭 */
-    async onReasonConfirm({ reason }) {
-      const action = this.reasonDialog.action
-      if (!action) return
-      this.reasonDialog.submitting = true
-      const ok = await action(reason)
-      this.reasonDialog.submitting = false
-      if (ok) this.reasonDialog.visible = false
     },
     doCancel() {
       this.confirmTitle = '取消批次'; this.confirmMessage = `确认取消归档批次「${this.current.batchName}」？`
