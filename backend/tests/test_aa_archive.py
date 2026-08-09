@@ -121,7 +121,11 @@ def test_ar3_archived_batch_cannot_be_unfrozen(client, db_mode, monkeypatch):
     assert client.post(f"{BASE}/archive/batches/{bid}/unfreeze", headers=admin, json={"reason": "x"}).status_code == 400
     r = client.post(f"{BASE}/archive/batches/{bid}/unfreeze", headers=admin, json={"reason": "发现成绩漏归档需补"})
     assert r.status_code == 409
-    assert r.json()["code"] == "TERM_ARCHIVED"
+    body = r.json()
+    # Public API uses the platform-wide numeric error envelope; the internal
+    # AppException code remains TERM_ARCHIVED and is covered by the unit contract.
+    assert body["code"] != 0
+    assert "归档后纠错" in body["message"]
     from app.db.session import get_sessionmaker
     from app.models import AaTerm
     db = get_sessionmaker()()
