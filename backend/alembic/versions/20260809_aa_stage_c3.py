@@ -1,7 +1,7 @@
 """Stage C3: immutable graduation runs, archive manifests and correction cases.
 
 Revision ID: 20260809_aa_stage_c3
-Revises: 20260809_aa_fact_c1
+Revises: 20260809_aa_prog_transition_c1
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260809_aa_stage_c3"
-down_revision = "20260809_aa_fact_c1"
+down_revision = "20260809_aa_prog_transition_c1"
 branch_labels = None
 depends_on = None
 
