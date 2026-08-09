@@ -90,12 +90,18 @@ def _rule_for(item: dict) -> str:
 
 
 def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
-    """Explain an existing evaluator result; return None for an all-PASS decision."""
+    """Explain an existing evaluator result; return None for an all-PASS decision.
+
+    The evaluator's raw evidence may contain model IDs, internal enum values or provider
+    exception names. Student-facing DecisionTrace therefore carries only the already-made
+    node item/result classification; the deterministic rule text supplies the explanation.
+    Administrative preview APIs still receive the full evaluator ``items`` separately.
+    """
     if str(evaluated.get("overall") or "").upper() == "SYSTEM_PASSED":
         return None
     items = list(evaluated.get("items") or [])
     failed = [item for item in items if str(item.get("result") or "").upper() != "PASS"]
-    blocker = failed[0] if failed else {"item": "UNKNOWN", "result": "UNKNOWN", "owner": "AA_STAFF"}
+    blocker = failed[0] if failed else {"item": "UNKNOWN", "result": "UNKNOWN"}
     rule_code = _rule_for(blocker)
     snapshot = evaluated.get("inputSnapshot") or {}
     at = snapshot.get("evaluatedAt") or datetime.utcnow().isoformat()
@@ -104,8 +110,6 @@ def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
     safe_failed = [{
         "item": str(item.get("item") or "UNKNOWN"),
         "result": str(item.get("result") or "UNKNOWN"),
-        "owner": str(item.get("owner") or ""),
-        "evidence": str(item.get("evidence") or ""),
     } for item in failed]
     safe_passed = [{
         "item": str(item.get("item") or "UNKNOWN"),

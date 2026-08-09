@@ -24,11 +24,63 @@ def __getattr__(name):
     return getattr(_base, name)
 
 
+def _student_graduation_evidence(item: dict) -> str:
+    """Keep useful business evidence while removing implementation-only diagnostics."""
+    result = str(item.get("result") or "UNKNOWN").upper()
+    raw = str(item.get("evidence") or "").strip()
+    if raw.lower().startswith("student_status="):
+        return (
+            "当前学籍状态已满足毕业资格核验要求。"
+            if result == "PASS"
+            else "当前学籍状态暂不满足毕业资格核验要求，请联系教务老师核对。"
+        )
+
+    lowered = raw.lower()
+    technical_markers = (
+        "traceback", "sqlalchemy", "operationalerror", "integrityerror", "dataerror",
+        "programid", "bindingid", "refid", "tenant", "permission", "scope=",
+        "select ", "insert ", "update ", "delete ",
+    )
+    if "供数查询失败" in raw or any(marker in lowered for marker in technical_markers):
+        return "相关业务数据暂时无法完成核验，请稍后重试或联系负责老师。"
+    if raw:
+        return raw[:300]
+    return (
+        "学校业务系统已记录满足该项条件的有效事实。"
+        if result == "PASS"
+        else "当前正式数据还不足以确认该项通过，请按规则说明处理后重新核验。"
+    )
+
+
+def _student_graduation_items(items) -> list[dict]:
+    """Project evaluator items onto the student-safe contract.
+
+    Raw evaluator rows may contain programId/programBindingId/refId, internal owner codes
+    and provider exception names. The student UI only needs item/result/business evidence,
+    so every other field is dropped at the API boundary rather than relying on the UI to
+    remember to hide it.
+    """
+    safe = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        result = str(item.get("result") or "UNKNOWN").upper()
+        if result not in {"PASS", "FAIL", "UNKNOWN"}:
+            result = "UNKNOWN"
+        safe.append({
+            "item": str(item.get("item") or "UNKNOWN").upper(),
+            "result": result,
+            "evidence": _student_graduation_evidence({**item, "result": result}),
+        })
+    return safe
+
+
 def graduation_progress_my(user) -> dict:
     """本人毕业进度：共享 evaluator 的实时只读结果 + 最近正式审核元数据。
 
     该函数绝不写 ``GraduationEvaluationRun``。因此学生频繁刷新不会制造正式审核历史，
     同时也不会继续读取可变 ``AaGraduationAuditResult.item_results_json`` 作为当前事实。
+    原始 evaluator item 只在服务端参与解释，学生响应必须经过字段白名单投影。
     """
     from app.models import AaGraduationAuditResult
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation
@@ -47,8 +99,7 @@ def graduation_progress_my(user) -> dict:
         return {
             "hasAudit": bool(formal),
             "overall": evaluated["overall"],
-            "items": evaluated["items"],
-            "inputHash": evaluated["inputHash"],
+            "items": _student_graduation_items(evaluated["items"]),
             "formalRunCreated": False,
             "decisionTrace": decision_trace,
             "decisionText": decision_text,
