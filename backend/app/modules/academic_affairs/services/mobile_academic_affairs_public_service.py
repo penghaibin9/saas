@@ -6,6 +6,9 @@
 Stage C3：学生 PC / 学生小程序的毕业进度必须和正式毕业预审调用同一个只读 evaluator。
 学生刷新只做实时自查，不创建 ``GraduationEvaluationRun``；最新正式预审结果只作为
 formal status/conclusion 元数据展示，不能再反过来充当学生当前毕业判定的事实源。
+
+Stage D：毕业解释严格消费同一 evaluator 已生成的结果，不重新计算毕业资格；学生端只拿
+确定性人话说明和脱敏 DecisionTrace，不暴露租户、权限、SQL、模型主键等内部信息。
 """
 from __future__ import annotations
 
@@ -29,10 +32,12 @@ def graduation_progress_my(user) -> dict:
     """
     from app.models import AaGraduationAuditResult
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation
+    from .academic_affairs_graduation_decision_trace import build_graduation_student_explanation
 
     with session() as db:
         student = _base._me(db, user)
         evaluated = graduation.evaluate_student(db, student)
+        decision_trace, decision_text = build_graduation_student_explanation(student, evaluated)
         formal = db.scalars(select(AaGraduationAuditResult).where(
             AaGraduationAuditResult.tenant_id == _tid(),
             AaGraduationAuditResult.student_id == student.id,
@@ -45,6 +50,8 @@ def graduation_progress_my(user) -> dict:
             "items": evaluated["items"],
             "inputHash": evaluated["inputHash"],
             "formalRunCreated": False,
+            "decisionTrace": decision_trace,
+            "decisionText": decision_text,
             "conclusion": formal.conclusion if formal else None,
             "status": formal.status if formal else None,
             "formalOverall": formal.overall if formal else None,

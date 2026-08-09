@@ -1,9 +1,12 @@
 """Stage C3 shared graduation evaluator + immutable formal runs/decisions.
 
-Preview and formal precheck both call :func:`evaluate_student`.  Preview is strictly
+Preview and formal precheck both call :func:`evaluate_student`. Preview is strictly
 read-only; only the explicit formal precheck command appends ``GraduationEvaluationRun``.
 The legacy ``AaGraduationAuditResult`` row remains the current work-queue projection so
 existing pages stay compatible, but it is no longer the historical source of truth.
+
+Stage D only explains the evaluator output after it has been produced; explanation never
+changes ``overall``/items and never creates a formal run.
 """
 from __future__ import annotations
 
@@ -36,8 +39,8 @@ def _strict_overall(items: list[dict]) -> str:
     """Formal Stage C3 decision is PASS only when every required evidence item is PASS.
 
     The legacy work-queue projection historically treated selected UNKNOWN domains as
-    non-blocking hints.  That is acceptable for a preview UI, but it is not acceptable
-    for an immutable formal run that can later anchor a graduation decision.  Missing,
+    non-blocking hints. That is acceptable for a preview UI, but it is not acceptable
+    for an immutable formal run that can later anchor a graduation decision. Missing,
     unavailable, or ambiguous evidence must remain visible as SYSTEM_ABNORMAL until a
     human/process supplies a formal resolution; UNKNOWN must never silently become PASS.
     """
@@ -69,7 +72,7 @@ def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> di
     """Single read-only evaluator used by both preview and formal runs.
 
     It also captures the effective-dated academic identity used at the evaluation
-    instant.  Missing/overlapping facts fail closed before a formal PASS can exist.
+    instant. Missing/overlapping facts fail closed before a formal PASS can exist.
     """
     from .academic_affairs_student_fact_service import resolve_student_academic_fact
 
@@ -104,21 +107,25 @@ def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> di
 
 
 def evaluate_preview(student_id, user) -> dict:
-    """Read-only preview.  Never creates a GraduationEvaluationRun."""
+    """Read-only preview. Never creates a GraduationEvaluationRun."""
     graduation_service._require_review_role(user)
     with graduation_service.session() as db:
         from app.models import StudentProfile
+        from .academic_affairs_graduation_decision_trace import build_graduation_student_explanation
 
         student = db.get(StudentProfile, int(student_id))
         if not student or student.is_deleted or student.tenant_id != _tid():
             raise not_found("学生不存在")
         evaluated = evaluate_student(db, student)
+        decision_trace, decision_text = build_graduation_student_explanation(student, evaluated)
         return {
             "studentId": str(student.id),
             "overall": evaluated["overall"],
             "items": evaluated["items"],
             "inputHash": evaluated["inputHash"],
             "formalRunCreated": False,
+            "decisionTrace": decision_trace,
+            "decisionText": decision_text,
         }
 
 
@@ -182,7 +189,7 @@ def precheck(batch_id, user) -> dict:
             db.flush()
             run_ids.append(str(run.id))
 
-            # Compatibility/current projection only.  Historical readers use the run.
+            # Compatibility/current projection only. Historical readers use the run.
             result.item_results_json = _json(evaluated["items"])
             result.overall = evaluated["overall"]
             result.status = evaluated["overall"]

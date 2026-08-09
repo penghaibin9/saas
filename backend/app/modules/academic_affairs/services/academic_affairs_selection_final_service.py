@@ -6,7 +6,9 @@
 - 学生退课继续遵守既有 ``EnrollBody.selectionCourseId`` 请求契约；
 - 学生可选课程保持 Router 既有 ``{"items": list}`` 返回契约；
 - Stage C2：正式选课资格只消费选课动作生效时点的 ``StudentAcademicFact``，
-  ``StudentProfile`` 仅继续提供姓名/学号等非学籍身份快照。
+  ``StudentProfile`` 仅继续提供姓名/学号等非学籍身份快照；
+- Stage D：不重跑任何规则，仅把 canonical Service 已经做出的拒绝决定附加为
+  deterministic ``DecisionTrace``，保留原 code/message/http 契约。
 
 其余业务函数显式委托 ``academic_affairs_selection_service``，不修改模块对象，
 不依赖导入顺序安装 monkey patch。
@@ -18,6 +20,8 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from app.core.exceptions import AppException, not_found
+
+from . import academic_affairs_selection_decision_trace as selection_trace
 
 _base = importlib.import_module(
     ".academic_affairs_selection_service",
@@ -143,9 +147,26 @@ def student_enroll(user, body):
         ).with_for_update().first()
         if not batch:
             raise not_found("选课批次不存在")
-        _base._guard_batch_writable(db, batch)
+        try:
+            _base._guard_batch_writable(db, batch)
+        except AppException as exc:
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+            ) from exc
         if course.status != _base._COURSE_OPEN:
-            raise _base._core._invalid("课程已取消或不可选")
+            exc = _base._core._invalid("课程已取消或不可选")
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+                rule_code="SELECTION_LOCKED",
+            )
 
         my_records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
@@ -155,7 +176,15 @@ def student_enroll(user, body):
         ).all()
         active_round = _base._active_round(db, batch.id)
         if active_round and not active_round.allow_enroll:
-            raise _base._core._invalid("当前轮次不允许选课")
+            exc = _base._core._invalid("当前轮次不允许选课")
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+                rule_code="SELECTION_LOCKED",
+            )
 
         has_reselect_qualification = any(
             record.status == _base._REC_COURSE_CANCELLED
@@ -165,15 +194,24 @@ def student_enroll(user, body):
             batch.status == _base._BATCH_CLOSED
             and has_reselect_qualification
         )
-        _base._validate_enroll(
-            db,
-            batch,
-            course,
-            academic_identity,
-            my_records,
-            float(course.credit or 0),
-            allow_reselect_closed=allow_reselect_closed,
-        )
+        try:
+            _base._validate_enroll(
+                db,
+                batch,
+                course,
+                academic_identity,
+                my_records,
+                float(course.credit or 0),
+                allow_reselect_closed=allow_reselect_closed,
+            )
+        except AppException as exc:
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+            ) from exc
 
         lottery = bool(
             batch.status == _base._BATCH_OPEN
@@ -191,7 +229,15 @@ def student_enroll(user, body):
                 AaSelectionCourse.selected_count: AaSelectionCourse.selected_count + 1,
             }, synchronize_session=False)
             if not updated:
-                raise _base._core._conflict("课程容量已满")
+                exc = _base._core._conflict("课程容量已满")
+                raise selection_trace.attach_selection_trace(
+                    exc,
+                    db=db,
+                    student=student,
+                    course=course,
+                    evaluated_at=selection_effective_at,
+                    rule_code="COURSE_FULL",
+                )
 
         existing = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
@@ -205,7 +251,15 @@ def student_enroll(user, body):
                 _base._REC_LOST,
                 _base._REC_COURSE_CANCELLED,
             }:
-                raise _base._core._conflict("已存在有效选课记录")
+                exc = _base._core._conflict("已存在有效选课记录")
+                raise selection_trace.attach_selection_trace(
+                    exc,
+                    db=db,
+                    student=student,
+                    course=course,
+                    evaluated_at=selection_effective_at,
+                    rule_code="ALREADY_SELECTED",
+                )
             existing.status = next_status
             existing.round_id = active_round.id if active_round else None
             existing.enrolled_at = selection_effective_at if next_status == _base._REC_SELECTED else None
