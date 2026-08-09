@@ -1,5 +1,12 @@
 <template>
-  <view v-if="!helpUrl" class="help-fallback page-wrap">
+  <view v-if="loading" class="help-fallback page-wrap">
+    <view class="help-fallback__card card">
+      <text class="help-fallback__icon">?</text>
+      <text class="help-fallback__title">正在打开帮助中心</text>
+      <text class="help-fallback__desc">正在准备当前学校的帮助上下文，请稍候。</text>
+    </view>
+  </view>
+  <view v-else-if="!helpUrl" class="help-fallback page-wrap">
     <view class="help-fallback__card card">
       <text class="help-fallback__icon">?</text>
       <text class="help-fallback__title">帮助中心尚未配置访问地址</text>
@@ -18,6 +25,7 @@
 
 <script>
 import { ENV } from '@/config/env'
+import { realRequest } from '@/services/request'
 import { useSessionStore } from '@/stores/session'
 
 function normalizeHelpRole(session) {
@@ -40,16 +48,44 @@ function appendQuery(url, params) {
   return `${source}${source.includes('?') ? '&' : '?'}${query}`
 }
 
+function appendFragment(url, params) {
+  const source = String(url || '').trim()
+  if (!source) return ''
+  const fragment = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
+  if (!fragment) return source
+  return `${source}${source.includes('#') ? '&' : '#'}${fragment}`
+}
+
 export default {
   data() {
-    return { helpUrl: '' }
+    return { helpUrl: '', loading: true }
   },
-  onLoad() {
+  async onLoad() {
     const session = useSessionStore()
-    this.helpUrl = appendQuery(ENV.helpCenterUrl, {
+    const baseUrl = appendQuery(ENV.helpCenterUrl, {
       role: normalizeHelpRole(session),
       source: 'miniapp'
     })
+    if (!baseUrl) {
+      this.loading = false
+      return
+    }
+
+    let metricToken = ''
+    if (!ENV.useMock && session.logged) {
+      try {
+        const metricSession = await realRequest('/help/metrics/public-session', { method: 'POST' })
+        metricToken = String(metricSession?.metricToken || '')
+      } catch (e) {
+        // 遥测失败不能阻塞用户查帮助；公开正文仍可正常打开。
+        metricToken = ''
+      }
+    }
+    this.helpUrl = appendFragment(baseUrl, { hm: metricToken })
+    this.loading = false
   },
   methods: {
     back() {

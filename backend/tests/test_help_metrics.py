@@ -98,6 +98,61 @@ def test_help_metric_feedback_is_real_but_not_true_self_service_rate(client, aut
     assert metrics["trueSelfServiceResolutionRate"] is None
 
 
+def test_public_help_metric_capability_records_without_exposing_main_login_token(client, auth_headers, db_mode):
+    issued = client.post("/api/v1/help/metrics/public-session", headers=auth_headers)
+    assert issued.status_code == 200, issued.text
+    session = _data(issued)
+    token = session["metricToken"]
+    assert token.startswith("hm1.")
+    assert session["expiresIn"] == 600
+
+    public_headers = {"Authorization": f"Bearer {token}"}
+    recorded = client.post(
+        "/api/v1/help/metrics/public/events",
+        headers=public_headers,
+        json={
+            "eventType": "SEARCH",
+            "query": "成绩 409",
+            "resultCount": 2,
+            "source": "miniapp",
+            "category": "教务",
+            "roleGroup": "student",
+        },
+    )
+    assert recorded.status_code == 200, recorded.text
+    assert _data(recorded) == {"recorded": True, "action": "HELP_SEARCH_HIT"}
+
+    db = get_sessionmaker()()
+    try:
+        row = db.scalars(
+            select(SecurityAuditLog)
+            .where(
+                SecurityAuditLog.tenant_id == TENANT_ID,
+                SecurityAuditLog.resource == "HELP_CENTER",
+                SecurityAuditLog.action == "HELP_SEARCH_HIT",
+            )
+            .order_by(SecurityAuditLog.id.desc())
+            .limit(1)
+        ).first()
+        assert row is not None
+        assert (row.detail_json or {}).get("source") == "miniapp"
+    finally:
+        db.close()
+
+    # capability 不是 JWT 主登录令牌，不能拿去读学校级汇总或访问其它 authenticated API。
+    denied = client.get("/api/v1/help/metrics/summary?days=30", headers=public_headers)
+    assert denied.status_code == 401, denied.text
+
+    prefix, payload, signature = token.split(".")
+    tampered = f"{prefix}.{payload}.{signature[:-1]}{'A' if signature[-1] != 'A' else 'B'}"
+    rejected = client.post(
+        "/api/v1/help/metrics/public/events",
+        headers={"Authorization": f"Bearer {tampered}"},
+        json={"eventType": "ARTICLE_VIEW", "articleId": "aa-card-grade-entry"},
+    )
+    assert rejected.status_code == 401, rejected.text
+
+
 def test_help_metric_api_fails_closed_on_invalid_or_unauthorized_requests(client, auth_headers, db_mode):
     blank = client.post(
         "/api/v1/help/metrics/events",

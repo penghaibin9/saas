@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import unauthorized
 from app.core.permissions import enforce_permission
 from app.core.response import success
 from app.core.security import get_current_user
@@ -24,8 +25,7 @@ class HelpMetricEvent(BaseModel):
     roleGroup: str | None = Field(default=None, max_length=60)
 
 
-@router.post("/events", summary="记录帮助搜索/阅读/解决反馈（不保存搜索原文）")
-def record_help_metric(body: HelpMetricEvent, user=Depends(get_current_user)):
+def _record(body: HelpMetricEvent):
     return success(svc.record_event(
         event_type=body.eventType,
         article_id=body.articleId or "",
@@ -35,6 +35,31 @@ def record_help_metric(body: HelpMetricEvent, user=Depends(get_current_user)):
         category=body.category or "",
         role_group=body.roleGroup or "",
     ))
+
+
+def _require_public_metric_session(authorization: str | None = Header(default=None)) -> dict:
+    raw = str(authorization or "").strip()
+    if not raw.lower().startswith("bearer "):
+        raise unauthorized("缺少帮助指标会话")
+    return svc.bind_public_metric_session(raw[7:].strip())
+
+
+@router.post("/events", summary="记录帮助搜索/阅读/解决反馈（不保存搜索原文）")
+def record_help_metric(body: HelpMetricEvent, user=Depends(get_current_user)):
+    return _record(body)
+
+
+@router.post("/public-session", summary="为公开帮助页签发短时、仅指标用途的会话")
+def issue_public_help_metric_session(user=Depends(get_current_user)):
+    return success(svc.issue_public_metric_session(user))
+
+
+@router.post("/public/events", summary="公开帮助页记录低敏帮助指标")
+def record_public_help_metric(
+    body: HelpMetricEvent,
+    session=Depends(_require_public_metric_session),
+):
+    return _record(body)
 
 
 @router.get("/summary", summary="近 N 天 Help Center 质量/自助服务指标")

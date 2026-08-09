@@ -95,6 +95,19 @@
           <h3>相关入口</h3>
           <ul><li v-for="(item, index) in currentItem.related" :key="index">{{ item.label || stringify(item) }}</li></ul>
         </section>
+
+        <section class="ph-feedback" aria-label="帮助反馈">
+          <div>
+            <strong>这篇帮助解决了你的问题吗？</strong>
+            <p>反馈只用于改进帮助内容，不会改变任何业务数据。</p>
+          </div>
+          <div class="ph-feedback__actions">
+            <button type="button" :disabled="feedbackStatus === 'saving' || feedbackStatus === 'saved'" @click="submitArticleFeedback('HELPFUL')">已解决</button>
+            <button type="button" :disabled="feedbackStatus === 'saving' || feedbackStatus === 'saved'" @click="submitArticleFeedback('NOT_HELPFUL')">没解决</button>
+          </div>
+          <small v-if="feedbackStatus === 'saved'">感谢反馈，我们会用它持续清洗帮助内容。</small>
+          <small v-else-if="feedbackStatus === 'failed'">本次反馈暂未记录，不影响继续查看帮助。</small>
+        </section>
       </article>
 
       <template v-else>
@@ -129,8 +142,9 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { recordHelpMetric, recordPublicHelpMetric } from '@/config/help/helpMetrics'
 import {
   HELP_ROLE_OPTIONS,
   getHelpCategories,
@@ -149,6 +163,11 @@ const role = ref(allowedRoles.has(initialRole) ? initialRole : 'all')
 const category = ref(String(route.query.category || 'all'))
 const query = ref(String(route.query.q || ''))
 const topic = ref(String(route.query.topic || ''))
+const feedbackStatus = ref('')
+const publicMetricToken = readPublicMetricToken(route.hash)
+const metricSource = String(route.query.source || 'public-help').slice(0, 40)
+const viewedTopics = new Set()
+let searchMetricTimer = null
 
 const categories = computed(() => getHelpCategories(role.value))
 const currentEntry = computed(() => getHelpEntry(topic.value))
@@ -166,6 +185,30 @@ watch(role, () => {
   topic.value = ''
 })
 watch([role, category, query, topic], syncUrl)
+watch([query, role, category], scheduleSearchMetric, { immediate: true })
+watch(currentEntry, (entry) => {
+  feedbackStatus.value = ''
+  if (!entry || viewedTopics.has(entry.id)) return
+  viewedTopics.add(entry.id)
+  void emitHelpMetric({
+    eventType: 'ARTICLE_VIEW',
+    articleId: entry.id,
+    category: entry.category
+  })
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  if (searchMetricTimer) clearTimeout(searchMetricTimer)
+})
+
+function readPublicMetricToken(hash) {
+  try {
+    const params = new URLSearchParams(String(hash || '').replace(/^#/, ''))
+    return String(params.get('hm') || '').trim()
+  } catch {
+    return ''
+  }
+}
 
 function syncUrl() {
   const next = {}
@@ -174,7 +217,45 @@ function syncUrl() {
   if (query.value) next.q = query.value
   if (topic.value) next.topic = topic.value
   if (route.query.source) next.source = route.query.source
-  router.replace({ path: '/help', query: next }).catch(() => {})
+  router.replace({ path: '/help', query: next, hash: route.hash }).catch(() => {})
+}
+
+async function emitHelpMetric(payload) {
+  const body = {
+    ...payload,
+    source: metricSource,
+    roleGroup: role.value,
+    category: payload.category || (category.value !== 'all' ? category.value : '')
+  }
+  return publicMetricToken
+    ? recordPublicHelpMetric(body, publicMetricToken)
+    : recordHelpMetric(body)
+}
+
+function scheduleSearchMetric() {
+  if (searchMetricTimer) clearTimeout(searchMetricTimer)
+  const term = String(query.value || '').trim()
+  if (!term) return
+  searchMetricTimer = setTimeout(() => {
+    void emitHelpMetric({
+      eventType: 'SEARCH',
+      query: term,
+      resultCount: results.value.length,
+      category: category.value !== 'all' ? category.value : ''
+    })
+  }, 500)
+}
+
+async function submitArticleFeedback(eventType) {
+  const entry = currentEntry.value
+  if (!entry || feedbackStatus.value === 'saving' || feedbackStatus.value === 'saved') return
+  feedbackStatus.value = 'saving'
+  const result = await emitHelpMetric({
+    eventType,
+    articleId: entry.id,
+    category: entry.category
+  })
+  feedbackStatus.value = result ? 'saved' : 'failed'
 }
 
 function openTopic(id) {
@@ -242,6 +323,12 @@ function stringify(value) {
 .ph-faq { padding: 10px 0; border-bottom: 1px solid #edf0f5; }
 .ph-faq summary { cursor: pointer; font-weight: 600; }
 .ph-faq p { margin: 8px 0 0; color: #5b6578; line-height: 1.7; }
+.ph-feedback { display: grid; gap: 12px; margin-top: 24px; padding: 16px; border: 1px solid #dce5f5; border-radius: 13px; background: #f8faff; }
+.ph-feedback p { margin: 5px 0 0; color: #667085; font-size: 13px; }
+.ph-feedback__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ph-feedback button { min-height: 36px; padding: 0 14px; border: 1px solid #bfd0f2; border-radius: 9px; background: #fff; color: #275ebf; cursor: pointer; }
+.ph-feedback button:disabled { cursor: default; opacity: .55; }
+.ph-feedback small { color: #667085; }
 .ph-empty { margin-top: 18px; padding: 28px 18px; text-align: center; border: 1px dashed #cfd8e8; border-radius: 14px; background: #fff; }
 .ph-empty p { max-width: 620px; margin: 8px auto 14px; color: #667085; line-height: 1.7; }
 .ph-empty button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 9px; background: #367ef2; color: #fff; cursor: pointer; }

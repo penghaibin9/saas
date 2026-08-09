@@ -8,6 +8,7 @@ import {
   HELP_V3_HOME_INTENTS,
   HELP_V3_QUICK_QUESTIONS
 } from '../help/helpCenterV3.js'
+import { matchesHelpSearchText, tokenizeHelpQuery } from '../helpCenterModel.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
@@ -49,6 +50,18 @@ test('V3 model resolves journey nodes only through published help entries and ro
   assert.match(modelSource, /journey\.helpIds\.map\(getHelpEntry\)\.filter\(Boolean\)/)
   assert.match(modelSource, /isHelpVisibleForRole\(entry\.item, role\)/)
   assert.match(modelSource, /export function getV3HomeModel/)
+})
+
+test('question-style search tokenizes Chinese natural language and mixed error codes', () => {
+  const tokens = tokenizeHelpQuery('为什么成绩提交不了 409')
+  for (const token of ['成绩', '提交', '409']) assert.ok(tokens.includes(token), `${token} should be searchable`)
+  assert.ok(!tokens.includes('为什么'))
+  assert.ok(!tokens.includes('不了'))
+
+  const corpus = '成绩录入 提交 发布 版本冲突 409 错误处理'
+  assert.equal(matchesHelpSearchText(corpus, '为什么成绩提交不了'), true)
+  assert.equal(matchesHelpSearchText(corpus, '成绩 409'), true)
+  assert.equal(matchesHelpSearchText(corpus, '实习 409'), false)
 })
 
 test('V3 page leads with self-service intents and supports next-step and escalation guidance', () => {

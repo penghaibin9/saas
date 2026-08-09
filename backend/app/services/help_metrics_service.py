@@ -3,18 +3,24 @@
 复用既有 append-only ``t_security_audit_log``，不新增迁移：
 - 搜索仅保存不可逆指纹、长度与命中数，不保存用户自由文本；
 - 文章浏览与“已解决/未解决”反馈只保存 help id 和低敏维度；
-- 真正“无需人工解决率”在未打通工单/人工升级链前明确不可用，不用反馈率冒充。
+- 真正“无需人工解决率”在未打通工单/人工升级链前明确不可用，不用反馈率冒充；
+- 小程序 WebView 使用 10 分钟、仅 Help Metrics 可验证的 HMAC capability，不把主登录 token 放进 URL。
 """
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta
 from hashlib import sha256
+import hmac
+import json
 import re
+import time
 
 from sqlalchemy import func, select
 
-from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException
+from app.core.config import settings
+from app.core.context import get_current_user_ctx, set_current_user, set_tenant
+from app.core.exceptions import AppException, unauthorized
 from app.db.session import db_enabled, get_sessionmaker
 from app.models import SecurityAuditLog
 from app.services import db_service
@@ -31,6 +37,8 @@ _SEARCH_ACTIONS = {HELP_METRIC_ACTIONS["SEARCH_HIT"], HELP_METRIC_ACTIONS["SEARC
 _FEEDBACK_ACTIONS = {HELP_METRIC_ACTIONS["HELPFUL"], HELP_METRIC_ACTIONS["NOT_HELPFUL"]}
 _ALL_ACTIONS = set(HELP_METRIC_ACTIONS.values())
 _SAFE_TOKEN = re.compile(r"[^0-9A-Za-z_.:\-\u4e00-\u9fff]+")
+_PUBLIC_METRIC_TOKEN_VERSION = "hm1"
+PUBLIC_METRIC_TOKEN_TTL_SECONDS = 600
 
 # 这些是跃科 Help Center 的运营目标，不是拿来伪造当前达标率的静态数字。
 QUALITY_TARGETS = {
@@ -72,6 +80,87 @@ def _status(value: float | None, sample: int, *, minimum: int, target: float) ->
     if sample < minimum or value is None:
         return "INSUFFICIENT_DATA"
     return "HEALTHY" if value >= target else "NEEDS_ATTENTION"
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + ("=" * (-len(value) % 4)))
+
+
+def _public_metric_signature(encoded_payload: str) -> str:
+    signing_input = f"{_PUBLIC_METRIC_TOKEN_VERSION}.{encoded_payload}".encode("utf-8")
+    digest = hmac.new(settings.jwt_secret.encode("utf-8"), signing_input, sha256).digest()
+    return _b64url_encode(digest)
+
+
+def issue_public_metric_session(user: dict | None = None) -> dict:
+    """签发短时、最小权限 capability，供已登录小程序把租户上下文带入公开帮助页。"""
+    actor = user or get_current_user_ctx() or {}
+    tenant_id = str(actor.get("tenantId") or "").strip()
+    user_id = str(actor.get("userId") or "").strip()
+    if not tenant_id or not tenant_id.isdigit() or not user_id:
+        raise AppException("VALIDATION_ERROR", "当前登录上下文缺少可用的学校或用户标识")
+
+    payload = {
+        "purpose": "HELP_METRICS_PUBLIC",
+        "tenantId": tenant_id,
+        "tenantCode": _safe_token(actor.get("tenantCode"), max_length=60),
+        "userId": _safe_token(user_id, max_length=80),
+        "exp": int(time.time()) + PUBLIC_METRIC_TOKEN_TTL_SECONDS,
+    }
+    encoded = _b64url_encode(json.dumps(
+        payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8"))
+    token = f"{_PUBLIC_METRIC_TOKEN_VERSION}.{encoded}.{_public_metric_signature(encoded)}"
+    return {"metricToken": token, "expiresIn": PUBLIC_METRIC_TOKEN_TTL_SECONDS}
+
+
+def bind_public_metric_session(token: str) -> dict:
+    """校验 capability 并只为当前 Help Metrics 请求绑定租户/操作者上下文。"""
+    parts = str(token or "").strip().split(".")
+    if len(parts) != 3 or parts[0] != _PUBLIC_METRIC_TOKEN_VERSION:
+        raise unauthorized("帮助指标会话无效或已失效")
+    encoded, signature = parts[1], parts[2]
+    expected = _public_metric_signature(encoded)
+    if not hmac.compare_digest(signature, expected):
+        raise unauthorized("帮助指标会话无效或已失效")
+    try:
+        payload = json.loads(_b64url_decode(encoded).decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise unauthorized("帮助指标会话无效或已失效") from exc
+
+    if payload.get("purpose") != "HELP_METRICS_PUBLIC":
+        raise unauthorized("帮助指标会话用途无效")
+    try:
+        expires_at = int(payload.get("exp") or 0)
+    except (TypeError, ValueError) as exc:
+        raise unauthorized("帮助指标会话无效或已失效") from exc
+    if expires_at <= int(time.time()):
+        raise unauthorized("帮助指标会话已过期，请重新打开帮助中心")
+
+    tenant_id = str(payload.get("tenantId") or "").strip()
+    tenant_code = _safe_token(payload.get("tenantCode"), max_length=60)
+    user_id = _safe_token(payload.get("userId"), max_length=80)
+    if not tenant_id.isdigit() or not user_id:
+        raise unauthorized("帮助指标会话缺少学校或用户上下文")
+
+    user = {
+        "userId": user_id,
+        "tenantId": tenant_id,
+        "tenantCode": tenant_code,
+        "helpMetricCapability": True,
+    }
+    set_current_user(user)
+    set_tenant({
+        "tenantId": tenant_id,
+        "tenantCode": tenant_code,
+        "tenantName": "",
+        "status": "ACTIVE",
+    })
+    return user
 
 
 def record_event(*, event_type: str, article_id: str = "", query: str = "",

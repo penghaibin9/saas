@@ -21,6 +21,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const viewSource = readFileSync(resolve(here, '../../views/admin/help/AdminHelpView.vue'), 'utf8')
+const publicViewSource = readFileSync(resolve(here, '../../views/help/PublicHelpView.vue'), 'utf8')
+const metricClientSource = readFileSync(resolve(here, '../help/helpMetrics.js'), 'utf8')
 const runtimeSource = readFileSync(resolve(here, '../helpCenterRuntime.js'), 'utf8')
 const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
 const serviceSource = readFileSync(resolve(here, '../../../../backend/app/services/help_metrics_service.py'), 'utf8')
@@ -107,7 +109,7 @@ test('V3-08 API separates event collection from school-level metric reading', ()
   assert.match(routerSource, /help_metrics_router/)
 })
 
-test('V3-08 page records searches, article views and explicit solved feedback', () => {
+test('V3-08 management page records searches, article views and explicit solved feedback', () => {
   for (const token of [
     'recordHelpMetric',
     "eventType: 'SEARCH'",
@@ -119,4 +121,22 @@ test('V3-08 page records searches, article views and explicit solved feedback', 
     '真正自助解决率',
     '不伪造“真实自助解决率”'
   ]) assert.ok(viewSource.includes(token), `${token} must stay wired into the Help Center page`)
+})
+
+test('V3-08 public help surface records tenant-aware search, view and feedback through scoped capability', () => {
+  for (const token of [
+    'recordPublicHelpMetric',
+    "eventType: 'SEARCH'",
+    "eventType: 'ARTICLE_VIEW'",
+    "submitArticleFeedback('HELPFUL')",
+    "submitArticleFeedback('NOT_HELPFUL')",
+    'publicMetricToken'
+  ]) assert.ok(publicViewSource.includes(token), `${token} must stay wired into public help`)
+
+  assert.match(metricClientSource, /help\/metrics\/public\/events/)
+  assert.match(apiSource, /@router\.post\("\/public-session"/)
+  assert.match(apiSource, /@router\.post\("\/public\/events"/)
+  assert.match(serviceSource, /HELP_METRICS_PUBLIC/)
+  assert.match(serviceSource, /PUBLIC_METRIC_TOKEN_TTL_SECONDS\s*=\s*600/)
+  assert.doesNotMatch(publicViewSource, /gx_pc_token_v1|getToken\(/)
 })
