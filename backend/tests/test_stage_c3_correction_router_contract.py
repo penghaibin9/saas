@@ -3,13 +3,13 @@ from __future__ import annotations
 
 
 def test_post_archive_correction_routes_are_registered_on_public_bundle():
-    from fastapi import FastAPI
-
     from app.modules.academic_affairs.routers.academic_affairs_bundle import build_router
 
-    app = FastAPI()
-    app.include_router(build_router())
-    paths = {route.path for route in app.routes if getattr(route, "path", None)}
+    # FastAPI 0.141 keeps app.include_router(...) as a lazy _IncludedRouter. The
+    # academic-affairs bundle is the formal unit consumed by route_registration, so
+    # assert its concrete route table rather than an internal application expansion.
+    bundle = build_router()
+    paths = {route.path for route in bundle.routes if getattr(route, "path", None)}
     assert "/academic-affairs/archive/batches/{batch_id}/manifest/verify" in paths
     assert "/academic-affairs/archive/batches/{batch_id}/corrections" in paths
     assert "/academic-affairs/archive/corrections/{case_id}" in paths
