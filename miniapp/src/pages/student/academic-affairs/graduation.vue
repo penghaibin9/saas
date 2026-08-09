@@ -3,6 +3,13 @@
     <MobileNavBar variant="brand" title="毕业进度" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
+        <MobileAcademicDecisionCard
+          v-if="data.decisionTrace || data.decisionText"
+          class="gr__decision"
+          :trace="data.decisionTrace"
+          :content="data.decisionText"
+          audience="student"
+        />
         <view class="gr__empty" v-if="!data.hasAudit"><text>{{ data.note || '尚未纳入毕业预审' }}</text></view>
         <template v-else>
           <view class="gr__overall" :class="data.overall === 'SYSTEM_PASSED' ? 'is-ok' : 'is-warn'">
@@ -25,11 +32,13 @@
 </template>
 
 <script>
+import MobileAcademicDecisionCard from '@/components/MobileAcademicDecisionCard.vue'
 import { studentApi } from '@/services/studentApi'
 const ITEM = { STATUS: '学籍在籍', CREDIT: '学分达标', INTERNSHIP: '岗位实习', GRADUATION_DESIGN: '毕业设计',
   DISCIPLINE: '处分情况', EMPLOYMENT: '就业填报', ARCHIVE: '档案归档' }
 const CONC = { GRADUATED: '毕业', COMPLETED: '结业', DELAYED: '延期毕业' }
 export default {
+  components: { MobileAcademicDecisionCard },
   data() { return { data: null, state: 'loading', ITEM } },
   onLoad() { this.load() },
   methods: {
@@ -46,6 +55,7 @@ export default {
 </script>
 
 <style scoped>
+.gr__decision { margin-bottom: var(--space-4); }
 .gr__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .gr__overall { border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); color: #fff; }
 .gr__overall.is-ok { background: #16a34a; }

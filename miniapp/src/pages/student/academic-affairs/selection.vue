@@ -8,6 +8,13 @@
 
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="loaded">
+        <MobileAcademicDecisionCard
+          v-if="decisionError"
+          class="sl__decision"
+          :trace="decisionError.decisionTrace"
+          :message="decisionError.message"
+          audience="student"
+        />
         <template v-if="tab === 'courses'">
           <MobileGlobalState v-if="!groups.length" state="empty" title="暂无开放中的选课批次" description="教务处开放选课后会显示在这里。" />
           <view v-for="g in groups" :key="g.batch.batchId" class="sl__group">
@@ -49,12 +56,19 @@
 </template>
 
 <script>
+import MobileAcademicDecisionCard from '@/components/MobileAcademicDecisionCard.vue'
 import { studentApi } from '@/services/studentApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 export default {
-  data() { return { groups: [], selections: [], state: 'loading', loaded: false, tab: 'courses', acting: null } },
+  components: { MobileAcademicDecisionCard },
+  data() {
+    return {
+      groups: [], selections: [], state: 'loading', loaded: false,
+      tab: 'courses', acting: null, decisionError: null
+    }
+  },
   computed: {
     mySelected() { return this.selections.filter((r) => r.status === 'SELECTED') }
   },
@@ -75,15 +89,19 @@ export default {
     enroll(c) {
       if (this.acting) return
       this.acting = c.selectionCourseId
+      this.decisionError = null
       studentApi.enrollSelection(c.selectionCourseId).then(() => {
         uni.showToast({ title: '选课成功', icon: 'success' })
         this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '选课失败，请稍后重试'))
-        .finally(() => { this.acting = null })
+      }).catch((e) => {
+        if (e && e.decisionTrace) this.decisionError = e
+        toast(e && e.biz ? normalizeError(e).text : '选课失败，请稍后重试')
+      }).finally(() => { this.acting = null })
     },
     drop(c) {
       if (this.acting) return
       this.acting = c.selectionCourseId
+      this.decisionError = null
       studentApi.dropSelection(c.selectionCourseId).then(() => {
         uni.showToast({ title: '已退课', icon: 'success' })
         this.load()
@@ -98,6 +116,7 @@ export default {
 .sl__tabs { display: flex; background: var(--bg-card); padding: 0 var(--page-padding-mobile); border-bottom: 1px solid var(--border-light); }
 .sl__tab { flex: 1; text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-base); color: var(--text-secondary); }
 .sl__tab.is-active { color: var(--brand-primary); font-weight: var(--font-weight-semibold); border-bottom: 2px solid var(--brand-primary); }
+.sl__decision { margin-bottom: var(--space-4); }
 .sl__group + .sl__group { margin-top: var(--space-4); }
 .sl__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .sl__btn { flex-shrink: 0; min-height: 32px; padding: 0 var(--space-3); font-size: var(--font-size-sm); margin-left: var(--space-2); }

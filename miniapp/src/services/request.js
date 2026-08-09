@@ -1,7 +1,7 @@
 /**
  * 统一请求封装（P10：上线质量收口版）
  * ------------------------------------------------------------
- * - realRequest()：uni.request 调后端，解析统一响应 {code,bizCode,message,data,traceId}。
+ * - realRequest()：uni.request 调后端，解析统一响应 {code,bizCode,message,data,traceId,decisionTrace}。
  * - realUpload()/realDownload()：文件上传下载沿用同一 token 与 401 单飞刷新。
  * - 401 刷新单飞：多接口同时 401 只发一次 /auth/refresh，其余排队等结果。
  * - refresh 失败：清 token 并跳转登录页（不再进入奇怪状态）。
@@ -323,6 +323,7 @@ function executeRealRequest(path, effectivePath, {
             traceId: body.traceId,
             bizCode: body.bizCode,
             details: body.details,
+            decisionTrace: body.decisionTrace,
             httpStatus: res.statusCode
           })
           return
