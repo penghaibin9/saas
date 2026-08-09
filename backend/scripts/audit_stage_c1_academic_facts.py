@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+# Direct script execution sets sys.path[0] to backend/scripts, so the sibling ``app``
+# package is otherwise invisible. Keep the audit runnable both as a file and from CI.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from sqlalchemy import select
 
@@ -32,8 +39,6 @@ def _write_evidence(payload: dict) -> None:
 
 
 def _error_annotation(title: str, message: str) -> None:
-    # file/line is intentional: GitHub persists file-scoped workflow commands as
-    # check-run annotations, while generic ::error output is not reliably queryable.
     safe_title = str(title).replace("\n", " ")
     safe_message = str(message).replace("\n", " ")
     print(
