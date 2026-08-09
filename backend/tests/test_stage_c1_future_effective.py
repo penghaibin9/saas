@@ -26,6 +26,7 @@ def _activate():
 @pytest.mark.usefixtures("db_mode")
 def test_future_final_approval_does_not_change_profile_until_due_then_applies_once():
     from app.models import AaStatusChange, StudentProfile
+    from app.models.academic_affairs_student_fact import StudentAcademicFact
 
     change_id, student_id, base_version = _seed_change_at_final()
     future_at = datetime.utcnow() + timedelta(days=1)
@@ -69,9 +70,10 @@ def test_future_final_approval_does_not_change_profile_until_due_then_applies_on
         assert student.student_status == "SUSPENDED"
         assert int(student.version or 0) == base_version + 1
         assert change.status == "EFFECTIVE"
-        facts = db.query(type(resolve_student_academic_fact(db, student_id))).filter_by(
-            tenant_id=TID, student_id=student_id
-        ).order_by("version_no").all()
+        facts = db.query(StudentAcademicFact).filter(
+            StudentAcademicFact.tenant_id == TID,
+            StudentAcademicFact.student_id == student_id,
+        ).order_by(StudentAcademicFact.version_no).all()
         assert len(facts) == 2
         assert facts[0].valid_to == due_at
         assert facts[1].valid_from == due_at
@@ -84,7 +86,6 @@ def test_future_final_approval_does_not_change_profile_until_due_then_applies_on
 
     db = get_sessionmaker()()
     try:
-        from app.models.academic_affairs_student_fact import StudentAcademicFact
         assert db.query(StudentAcademicFact).filter(
             StudentAcademicFact.tenant_id == TID,
             StudentAcademicFact.student_id == student_id,
