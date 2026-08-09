@@ -5,7 +5,8 @@
 2. 学生端历史考试包含正式 FINISHED 状态；
 3. 缓考提交必须再次证明 examCourseId 属于本人考试名单，防止猜 ID 代他人/跨课程申请。
 
-缓考审批状态机、审计格式继续复用 academic_affairs_exam_service，避免形成第二套规则。
+缓考审批状态机、审计格式继续复用考务公开契约，避免形成第二套规则；本模块不得直接读取
+legacy exam service 的下划线私有状态或审计/DTO 辅助函数。
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.modules.academic_affairs.services import academic_affairs_exam_public_contract as exam_contract
 from app.services.db_service import _tid, session
 from app.services.mobile_student_service import _require_student, resolve_student
 
@@ -122,17 +124,13 @@ def exam_my(user) -> dict:
 def deferrable_courses(user) -> dict:
     """本人名单内、尚未开考且没有进行中缓考申请的课程。"""
     from app.models import AaDeferredExam, AaExamBatch, AaExamCourse
-    # 绝对导入子模块本身（不是包属性 from-import）：services/__init__.py 把包属性
-    # academic_affairs_exam_service 重新绑定到 facade 之后，任何 from-import 形式都会
-    # 拿到 facade，而这里要用的是 legacy 内部状态常量/审计辅助（不属于 facade 公开契约）。
-    import app.modules.academic_affairs.services.academic_affairs_exam_service as legacy
 
     with session() as db:
         student = _student(db, user)
         zone, zone_name = _tenant_timezone(db)
         active = {int(row.exam_course_id) for row in db.scalars(select(AaDeferredExam).where(
             AaDeferredExam.tenant_id == _tid(), AaDeferredExam.student_id == student.id,
-            AaDeferredExam.status.notin_([legacy._D_REJECTED, legacy._D_APPROVED]),
+            AaDeferredExam.status.notin_(list(exam_contract.DEFER_TERMINAL_STATUSES)),
             AaDeferredExam.is_deleted.is_(False),
         )).all()}
         seen = set()
@@ -162,10 +160,6 @@ def deferrable_courses(user) -> dict:
 def defer_apply(user, body: dict) -> dict:
     """本人申请缓考：名单归属、未开考、无进行中申请、理由完整。"""
     from app.models import AaDeferredExam, AaExamBatch, AaExamCourse, AaExamRoomStudent
-    # 绝对导入子模块本身（不是包属性 from-import）：services/__init__.py 把包属性
-    # academic_affairs_exam_service 重新绑定到 facade 之后，任何 from-import 形式都会
-    # 拿到 facade，而这里要用的是 legacy 内部状态常量/审计辅助（不属于 facade 公开契约）。
-    import app.modules.academic_affairs.services.academic_affairs_exam_service as legacy
 
     data = body or {}
     raw_cid = data.get("examCourseId")
@@ -200,7 +194,7 @@ def defer_apply(user, body: dict) -> dict:
         active = db.scalars(select(AaDeferredExam).where(
             AaDeferredExam.tenant_id == _tid(), AaDeferredExam.student_id == student.id,
             AaDeferredExam.exam_course_id == course.id,
-            AaDeferredExam.status.notin_([legacy._D_REJECTED, legacy._D_APPROVED]),
+            AaDeferredExam.status.notin_(list(exam_contract.DEFER_TERMINAL_STATUSES)),
             AaDeferredExam.is_deleted.is_(False),
         )).first()
         if active:
@@ -209,11 +203,13 @@ def defer_apply(user, body: dict) -> dict:
             tenant_id=_tid(), student_id=student.id, student_no=student.student_no,
             student_name=student.real_name, exam_course_id=course.id, course_name=course.course_name,
             reason_type=reason_type, reason=reason, apply_at=datetime.utcnow(),
-            current_node="COUNSELOR", status=legacy._D_COUNSELOR,
+            current_node="COUNSELOR", status=exam_contract.DEFER_STATUS_COUNSELOR_REVIEW,
         )
         db.add(row)
         db.flush()
-        legacy._audit(db, "DEFERRED_EXAM", row.id, "DEFER_APPLY_SUBMIT", f"缓考申请 {course.course_name}")
+        exam_contract.record_exam_audit(
+            db, "DEFERRED_EXAM", row.id, "DEFER_APPLY_SUBMIT", f"缓考申请 {course.course_name}"
+        )
         db.commit()
         db.refresh(row)
-        return legacy._defer_dto(row)
+        return exam_contract.deferred_exam_dto(row)
