@@ -17,11 +17,29 @@ _UNSET = object()
 _VALID_QUALITY = {"EXACT", "DERIVED", "INFERRED", "UNKNOWN"}
 
 
-def _fact_query(db, student_id: int):
+def _resolved_tenant_id(tenant_id: int | None = None) -> int:
+    """Use an explicit tenant for transaction-local read helpers when one is supplied.
+
+    Formal request/write paths still rely on the ambient tenant context.  Import and
+    controlled-restore application services already own a tenant-scoped DB transaction,
+    so their read-only fact lookup must not fail merely because there is no HTTP context.
+    """
+    if tenant_id is not None:
+        try:
+            value = int(tenant_id)
+        except (TypeError, ValueError) as exc:
+            raise AppException("TENANT_CONTEXT_REQUIRED", "租户标识非法，拒绝读取学籍事实") from exc
+        if value <= 0:
+            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝读取学籍事实")
+        return value
+    return _tid()
+
+
+def _fact_query(db, student_id: int, *, tenant_id: int | None = None):
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
     return db.query(StudentAcademicFact).filter(
-        StudentAcademicFact.tenant_id == _tid(),
+        StudentAcademicFact.tenant_id == _resolved_tenant_id(tenant_id),
         StudentAcademicFact.student_id == int(student_id),
     )
 
@@ -33,16 +51,19 @@ def resolve_student_academic_fact(
     *,
     for_update: bool = False,
     required: bool = True,
+    tenant_id: int | None = None,
 ):
     """Resolve exactly one fact effective at ``as_of``.
 
     More than one match is a hard integrity failure; silently choosing one would make
-    historical transcripts and eligibility nondeterministic.
+    historical transcripts and eligibility nondeterministic.  ``tenant_id`` is only an
+    explicit transaction-local read scope for callers that already own a tenant-scoped
+    command; ordinary request paths continue to use the ambient tenant context.
     """
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
     moment = as_of or datetime.utcnow()
-    q = _fact_query(db, student_id).filter(
+    q = _fact_query(db, student_id, tenant_id=tenant_id).filter(
         StudentAcademicFact.valid_from <= moment,
         or_(StudentAcademicFact.valid_to.is_(None), StudentAcademicFact.valid_to > moment),
     ).order_by(StudentAcademicFact.version_no.desc())
@@ -77,20 +98,24 @@ def create_baseline_student_academic_fact(
     source_ref_id: int | None = None,
     source_quality: str = "INFERRED",
     created_by: int | None = None,
+    tenant_id: int | None = None,
 ):
     """Create the one-time version-1 baseline for a student with no fact rows."""
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
+    resolved_tid = _resolved_tenant_id(tenant_id)
+    if int(student.tenant_id) != resolved_tid:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "学生主档不属于当前租户，拒绝创建学籍事实")
     quality = (source_quality or "").upper()
     if quality not in _VALID_QUALITY:
         raise AppException("VALIDATION_ERROR", f"非法事实来源质量：{source_quality}")
-    existing = _fact_query(db, int(student.id)).with_for_update().first()
+    existing = _fact_query(db, int(student.id), tenant_id=resolved_tid).with_for_update().first()
     if existing:
         raise AppException(
             "ACADEMIC_FACT_BASELINE_EXISTS", "学生已存在学籍事实，不允许重复创建基线", http_status=409
         )
     row = StudentAcademicFact(
-        tenant_id=_tid(),
+        tenant_id=resolved_tid,
         student_id=int(student.id),
         version_no=1,
         valid_from=valid_from,
@@ -144,17 +169,21 @@ def append_student_academic_fact(
     laundering an earlier direct-write bypass. Major changes additionally create a
     deterministic ProgramTransitionAssessment before the fact switch, so program
     binding ambiguity is explicit evidence rather than an implicit guess.
+
+    For an immediate command the effective timestamp is chosen *after* the current
+    StudentProfile/fact rows are locked.  This avoids a request-start timestamp racing
+    a just-created baseline in the same second.  An explicit business effective time is
+    preserved exactly and still cannot be in the future or before the current fact.
     """
     from app.models import StudentProfile
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
-    now = datetime.utcnow()
-    at = effective_at or now
-    if at > now:
+    requested_at = effective_at
+    if requested_at is not None and requested_at > datetime.utcnow():
         raise AppException(
             "ACADEMIC_FACT_FUTURE_NOT_DUE",
             "未来生效学籍变更尚未到生效时间，不允许提前修改当前主档",
-            details={"studentId": str(student_id), "effectiveAt": at.isoformat()},
+            details={"studentId": str(student_id), "effectiveAt": requested_at.isoformat()},
             http_status=409,
         )
     quality = (source_quality or "").upper()
@@ -186,11 +215,16 @@ def append_student_academic_fact(
             http_status=409,
         )
     current = active[0]
+    at = requested_at if requested_at is not None else datetime.utcnow()
     if at < current.valid_from:
         raise AppException(
             "ACADEMIC_FACT_TIME_CONFLICT",
             "生效时间早于当前事实起点，不允许倒写当前事实链",
-            details={"studentId": str(student_id), "currentValidFrom": current.valid_from.isoformat()},
+            details={
+                "studentId": str(student_id),
+                "effectiveAt": at.isoformat(),
+                "currentValidFrom": current.valid_from.isoformat(),
+            },
             http_status=409,
         )
     if _projection_tuple(current) != _projection_tuple(student):
