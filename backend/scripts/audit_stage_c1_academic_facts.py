@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when any active tenant has unresolved Stage C1 academic fact reconciliation."""
+"""Fail when any tenant has unresolved Stage C1 academic fact reconciliation."""
 from __future__ import annotations
 
 import json
@@ -12,6 +12,12 @@ from app.models import Tenant
 from app.modules.academic_affairs.services.academic_affairs_fact_reconciliation_service import (
     scan_current_projection,
 )
+
+
+def _compact(value, limit: int = 4):
+    if isinstance(value, list):
+        return value[:limit]
+    return value
 
 
 def main() -> int:
@@ -32,13 +38,29 @@ def main() -> int:
             result = scan_current_projection(tenant_db)
             results.append(result)
             unresolved += int(result["unresolved"])
+            if int(result["unresolved"]):
+                details = result.get("details") or {}
+                diagnostic = {
+                    "tenantId": result.get("tenantId"),
+                    "activeProfiles": result.get("activeProfiles"),
+                    "missingCurrentFact": result.get("missingCurrentFact"),
+                    "overlappingCurrentFact": result.get("overlappingCurrentFact"),
+                    "projectionDrift": result.get("projectionDrift"),
+                    "missingStudentIds": _compact(details.get("missingStudentIds") or []),
+                    "overlapStudentIds": _compact(details.get("overlapStudentIds") or []),
+                    "drifts": _compact(details.get("drifts") or []),
+                }
+                encoded = json.dumps(diagnostic, ensure_ascii=False, default=str)
+                # GitHub Actions turns this into a searchable check annotation. Keep the
+                # exact fail-closed decision unchanged; this only exposes root-cause data.
+                print(f"::error title=Stage C1 academic fact reconciliation::{encoded}")
         finally:
             tenant_db.close()
             set_tenant(None)
 
     print(json.dumps({"tenants": results, "unresolved": unresolved}, ensure_ascii=False, default=str))
     if unresolved:
-        print(f"::error::Stage C1 academic fact reconciliation unresolved={unresolved}")
+        print(f"::error title=Stage C1 academic fact reconciliation total::unresolved={unresolved}")
         return 1
     print("Stage C1 academic fact reconciliation OK: unresolved=0")
     return 0
