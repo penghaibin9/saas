@@ -178,7 +178,21 @@ jobs:
         run: python -m compileall -q app tests
       - name: Run complete backend regression
         working-directory: backend
-        run: timeout 85m pytest -q -p no:warnings --durations=40
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 85m pytest -q -p no:warnings --durations=40 \
+            --junitxml=backend-full-junit.xml 2>&1 | tee backend-full-pytest.log
+      - name: Upload backend regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-backend-regression-${{ github.sha }}
+          path: |
+            backend/backend-full-junit.xml
+            backend/backend-full-pytest.log
+          if-no-files-found: warn
+          retention-days: 14
 
   admin-pc:
     name: Main / admin PC production build
