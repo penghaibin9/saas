@@ -22,6 +22,7 @@ from app.services.db_service import _tid
 from . import academic_affairs_archive_service as archive_service
 
 _CORRECTION_TYPES = {"GRADE", "GRADUATION"}
+_CORRECTION_STATUSES = {"PENDING_SECOND_APPROVAL", "APPLIED", "REJECTED"}
 
 
 def _json(payload) -> str:
@@ -32,14 +33,37 @@ def _hash(payload) -> str:
     return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
 
-def _actor_id() -> int | None:
+def _actor_id(db=None) -> int | None:
+    """Resolve a stable numeric actor id without trusting display/login strings.
+
+    Production tokens normally carry the database user id. Compatibility/mock tokens
+    may carry ``u_<login>`` instead; for a high-risk archive action we resolve that
+    login back to the tenant-scoped ``t_user.id`` rather than storing NULL or comparing
+    two unstable strings for the two-person rule.
+    """
     from app.core.context import get_current_user_ctx
 
-    raw = (get_current_user_ctx() or {}).get("userId")
+    ctx = get_current_user_ctx() or {}
+    raw = ctx.get("userId")
     try:
-        return int(raw) if raw not in (None, "") else None
+        value = int(raw) if raw not in (None, "") else None
     except (TypeError, ValueError):
+        value = None
+    if value and value > 0:
+        return value
+    if db is None:
         return None
+    login = str(ctx.get("loginName") or "").strip()
+    if not login:
+        return None
+    from app.models import User
+
+    user_id = db.scalar(select(User.id).where(
+        User.tenant_id == _tid(),
+        User.login_name == login,
+        User.is_deleted.is_(False),
+    ))
+    return int(user_id) if user_id else None
 
 
 def _max_numeric_ids(payload) -> int | None:
@@ -120,6 +144,36 @@ def _latest_manifest(db, batch_id):
     ).order_by(ArchiveManifest.version_no.desc()).limit(1)).first()
 
 
+def _case_dto(case, *, detail: bool = False) -> dict:
+    payload = {
+        "caseId": str(case.id),
+        "archiveBatchId": str(case.archive_batch_id),
+        "correctionNo": int(case.correction_no),
+        "businessType": case.business_type,
+        "targetRef": case.target_ref,
+        "reason": case.reason,
+        "riskLevel": case.risk_level,
+        "status": case.status,
+        "requestedBy": str(case.created_by) if case.created_by is not None else None,
+        "secondApprovedBy": str(case.second_approved_by) if case.second_approved_by is not None else None,
+        "appliedAt": case.applied_at.isoformat() if case.applied_at else None,
+        "officialFactType": case.official_fact_type,
+        "officialFactId": str(case.official_fact_id) if case.official_fact_id is not None else None,
+        "resultingManifestId": str(case.resulting_manifest_id) if case.resulting_manifest_id is not None else None,
+        "createdAt": case.created_at.isoformat() if case.created_at else None,
+    }
+    if detail:
+        try:
+            payload["correction"] = json.loads(case.correction_json or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload["correction"] = None
+        try:
+            payload["evidenceManifest"] = json.loads(case.evidence_manifest or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload["evidenceManifest"] = None
+    return payload
+
+
 def confirm_archive(user, batch_id, force=False):
     """Create immutable Manifest V1 in the same transaction as ARCHIVED."""
     from app.models import AaArchiveBatch, AaTerm, ArchiveManifest
@@ -127,6 +181,9 @@ def confirm_archive(user, batch_id, force=False):
     core = archive_service._core
     with core.session() as db:
         core._require_school(core._ctx(user, db))
+        actor = _actor_id(db)
+        if actor is None:
+            raise AppException("NO_PERMISSION", "缺少可审计的操作人身份，禁止执行正式归档", http_status=403)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -153,7 +210,6 @@ def confirm_archive(user, batch_id, force=False):
         if batch.status != "READY":
             raise core._invalid("仅语义完整性检查通过（READY）的批次可确认归档")
 
-        # Do not trust a stale READY projection: recompute immediately before sealing.
         counts, hashes, max_ids = _live_manifest_parts(db, batch)
         existing = _latest_manifest(db, batch.id)
         if existing:
@@ -180,9 +236,9 @@ def confirm_archive(user, batch_id, force=False):
             reason=reason,
             supersedes_id=None,
             archived_at=archived_at,
-            archived_by=_actor_id(),
+            archived_by=actor,
             created_at=archived_at,
-            created_by=_actor_id(),
+            created_by=actor,
         )
         db.add(manifest)
         db.flush()
@@ -200,7 +256,7 @@ def confirm_archive(user, batch_id, force=False):
             db,
             batch.id,
             "ARCHIVE_CONFIRM_IMMUTABLE",
-            f"manifestId={manifest.id};version=1;hash={manifest.manifest_hash}",
+            f"manifestId={manifest.id};version=1;hash={manifest.manifest_hash};actor={actor}",
         )
         db.commit()
         payload = core._batch_dto(batch)
@@ -210,12 +266,18 @@ def confirm_archive(user, batch_id, force=False):
 
 
 def verify_manifest(user, batch_id) -> dict:
-    """Verify immutable manifest chain and current ARCHIVED projection."""
-    from app.models import AaArchiveBatch, ArchiveManifest
+    """Verify immutable manifest chain, correction lineage and ARCHIVED projection."""
+    from app.models import (
+        AaArchiveBatch,
+        AcademicGrade,
+        ArchiveManifest,
+        GraduationDecisionFact,
+        PostArchiveCorrectionCase,
+    )
 
     core = archive_service._core
     with core.session() as db:
-        core._ctx(user, db)
+        core._require_school(core._ctx(user, db))
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -232,6 +294,7 @@ def verify_manifest(user, batch_id) -> dict:
         problems: list[str] = []
         previous = None
         versions = []
+        manifest_ids = {int(row.id) for row in manifests}
         for manifest in manifests:
             payload = _manifest_payload(
                 batch=batch,
@@ -255,9 +318,103 @@ def verify_manifest(user, batch_id) -> dict:
                              "hash": manifest.manifest_hash,
                              "supersedesId": str(manifest.supersedes_id) if manifest.supersedes_id else None})
             previous = manifest
+
+        applied_cases = db.scalars(select(PostArchiveCorrectionCase).where(
+            PostArchiveCorrectionCase.tenant_id == _tid(),
+            PostArchiveCorrectionCase.archive_batch_id == batch.id,
+            PostArchiveCorrectionCase.status == "APPLIED",
+            PostArchiveCorrectionCase.is_deleted.is_(False),
+        ).order_by(PostArchiveCorrectionCase.correction_no)).all()
+        for case in applied_cases:
+            prefix = f"CORRECTION#{case.correction_no}"
+            if not case.official_fact_type or not case.official_fact_id:
+                problems.append(f"{prefix}:OFFICIAL_FACT_MISSING")
+                continue
+            if not case.resulting_manifest_id or int(case.resulting_manifest_id) not in manifest_ids:
+                problems.append(f"{prefix}:RESULTING_MANIFEST_MISSING")
+            if case.business_type == "GRADE":
+                fact = db.query(AcademicGrade).filter(
+                    AcademicGrade.id == int(case.official_fact_id),
+                    AcademicGrade.tenant_id == _tid(),
+                    AcademicGrade.source_biz_type == "POST_ARCHIVE",
+                    AcademicGrade.source_biz_id == case.id,
+                    AcademicGrade.is_deleted.is_(False),
+                ).first()
+                if not fact or case.official_fact_type != "ACADEMIC_GRADE":
+                    problems.append(f"{prefix}:GRADE_FACT_LINEAGE_BROKEN")
+            elif case.business_type == "GRADUATION":
+                fact = db.query(GraduationDecisionFact).filter(
+                    GraduationDecisionFact.id == int(case.official_fact_id),
+                    GraduationDecisionFact.tenant_id == _tid(),
+                    GraduationDecisionFact.correction_case_id == case.id,
+                ).first()
+                if not fact or case.official_fact_type != "GRADUATION_DECISION":
+                    problems.append(f"{prefix}:GRADUATION_FACT_LINEAGE_BROKEN")
+            else:
+                problems.append(f"{prefix}:UNSUPPORTED_BUSINESS_TYPE")
         if batch.status != "ARCHIVED":
             problems.append("BATCH_NOT_ARCHIVED")
-        return {"ok": not problems, "reason": None if not problems else ";".join(problems), "versions": versions}
+        return {
+            "ok": not problems,
+            "reason": None if not problems else ";".join(problems),
+            "versions": versions,
+            "appliedCorrections": len(applied_cases),
+        }
+
+
+def list_correction_cases(user, batch_id, *, status=None, page=1, page_size=20) -> dict:
+    """Two-person reviewer work queue; WHERE/COUNT/OFFSET-LIMIT at DB layer."""
+    from app.models import AaArchiveBatch, PostArchiveCorrectionCase
+
+    core = archive_service._core
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
+    normalized_status = str(status or "").strip().upper() or None
+    if normalized_status and normalized_status not in _CORRECTION_STATUSES:
+        raise AppException("VALIDATION_ERROR", f"非法纠错状态：{status}")
+    with core.session() as db:
+        core._require_school(core._ctx(user, db))
+        batch = db.query(AaArchiveBatch).filter(
+            AaArchiveBatch.id == int(batch_id),
+            AaArchiveBatch.tenant_id == _tid(),
+            AaArchiveBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("归档批次不存在")
+        query = db.query(PostArchiveCorrectionCase).filter(
+            PostArchiveCorrectionCase.tenant_id == _tid(),
+            PostArchiveCorrectionCase.archive_batch_id == batch.id,
+            PostArchiveCorrectionCase.is_deleted.is_(False),
+        )
+        if normalized_status:
+            query = query.filter(PostArchiveCorrectionCase.status == normalized_status)
+        total = query.count()
+        rows = query.order_by(
+            PostArchiveCorrectionCase.correction_no.desc(),
+            PostArchiveCorrectionCase.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return {
+            "items": [_case_dto(row) for row in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        }
+
+
+def get_correction_case(user, case_id) -> dict:
+    from app.models import PostArchiveCorrectionCase
+
+    core = archive_service._core
+    with core.session() as db:
+        core._require_school(core._ctx(user, db))
+        case = db.query(PostArchiveCorrectionCase).filter(
+            PostArchiveCorrectionCase.id == int(case_id),
+            PostArchiveCorrectionCase.tenant_id == _tid(),
+            PostArchiveCorrectionCase.is_deleted.is_(False),
+        ).first()
+        if not case:
+            raise not_found("归档后纠错单不存在")
+        return _case_dto(case, detail=True)
 
 
 def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
@@ -282,11 +439,11 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
 
     with core.session() as db:
         core._require_school(core._ctx(user, db))
-        requester = _actor_id()
+        requester = _actor_id(db)
         if requester is None:
             raise AppException(
                 "NO_PERMISSION",
-                "当前操作人缺少稳定数字 userId，禁止发起高风险归档后纠错",
+                "当前操作人无法解析到租户内稳定账号，禁止发起高风险归档后纠错",
                 http_status=403,
             )
         batch = db.query(AaArchiveBatch).filter(
@@ -325,8 +482,7 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
         core._audit(db, batch.id, "POST_ARCHIVE_CORRECTION_CREATE",
                     f"caseId={case.id};type={business_type};target={target_ref};requester={requester}")
         db.commit()
-        return {"caseId": str(case.id), "correctionNo": case.correction_no,
-                "status": case.status, "businessType": case.business_type}
+        return _case_dto(case)
 
 
 def approve_correction_case(user, case_id) -> dict:
@@ -337,9 +493,9 @@ def approve_correction_case(user, case_id) -> dict:
     core = archive_service._core
     with core.session() as db:
         core._require_school(core._ctx(user, db))
-        actor = _actor_id()
+        actor = _actor_id(db)
         if actor is None:
-            raise AppException("NO_PERMISSION", "当前操作人缺少稳定数字 userId，禁止执行高风险归档纠错", http_status=403)
+            raise AppException("NO_PERMISSION", "当前操作人无法解析到租户内稳定账号，禁止执行高风险归档纠错", http_status=403)
         case = db.query(PostArchiveCorrectionCase).filter(
             PostArchiveCorrectionCase.id == int(case_id),
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -369,8 +525,6 @@ def approve_correction_case(user, case_id) -> dict:
         if not previous:
             raise AppException("DATA_CONFLICT", "原 ArchiveManifest 缺失，已拒绝纠错", http_status=409)
 
-        # Critical Stage C3 invariant: the designated domain command creates the new
-        # official fact *before* Manifest V2 is assembled, in this same transaction.
         official = apply_official_correction_fact(db, batch, case, actor)
 
         counts = json.loads(previous.domain_counts_json)
@@ -467,5 +621,7 @@ def approve_correction_case(user, case_id) -> dict:
 def install() -> None:
     archive_service.confirm_archive = confirm_archive
     archive_service.verify_manifest = verify_manifest
+    archive_service.list_correction_cases = list_correction_cases
+    archive_service.get_correction_case = get_correction_case
     archive_service.create_correction_case = create_correction_case
     archive_service.approve_correction_case = approve_correction_case
