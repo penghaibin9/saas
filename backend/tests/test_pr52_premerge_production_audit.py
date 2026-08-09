@@ -60,13 +60,18 @@ def test_external_scheduler_runs_approval_export_worker_for_each_tenant():
     assert scheduler.index("approval_export.run_pending(") < scheduler.index("def job_academic_future_effective")
 
 
-def test_approval_batch_and_export_use_durable_idempotency_entrypoint():
+def test_approval_batch_and_export_use_durable_idempotency_guard_and_full_fingerprint():
     routes = read("backend/app/api/v1/approval.py")
     idem = read("backend/app/core/idempotency.py")
 
-    assert "begin_required as idempotency_begin" in routes
+    assert "from app.core.idempotency import idempotency_guard" in routes
+    assert routes.count("require_store=True") >= 2
     assert '"approval-batch"' in routes
     assert '"approval-export"' in routes
+    # Approval comments are auditable business input and therefore part of the batch fingerprint.
+    batch = routes.split('@router.post("/batch"', 1)[1].split('@router.post("/export"', 1)[0]
+    assert '"comment": body.comment' in batch
+    assert "guard.success(result)" in batch
     assert "def begin_required(" in idem
     assert '"IDEMPOTENCY_STORE_UNAVAILABLE"' in idem
     assert "cached, handle = _begin_db(user, operation, key, payload)" in idem
