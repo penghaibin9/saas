@@ -9,7 +9,7 @@ from app.db.session import get_sessionmaker
 from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
     resolve_student_academic_fact,
 )
-from tests.test_aa_major_split import BASE, _hdr, _mk_batch, _seed, _submit_all
+from tests.test_aa_major_split import BASE, TID, _hdr, _mk_batch, _seed, _submit_all
 
 
 @pytest.mark.usefixtures("db_mode")
@@ -33,8 +33,11 @@ def test_formal_major_split_confirm_appends_fact_and_preserves_preconfirm_identi
     try:
         sid = ids["stus"]["FL2401"]
         profile = db.get(StudentProfile, sid)
-        old = resolve_student_academic_fact(db, sid, before_confirm)
-        current = resolve_student_academic_fact(db, sid)
+        # This is a raw DB-session assertion outside request middleware; keep the test
+        # tenant explicit rather than weakening the production resolver's fail-closed
+        # ambient tenant contract.
+        old = resolve_student_academic_fact(db, sid, before_confirm, tenant_id=TID)
+        current = resolve_student_academic_fact(db, sid, tenant_id=TID)
         facts = db.query(StudentAcademicFact).filter(
             StudentAcademicFact.tenant_id == profile.tenant_id,
             StudentAcademicFact.student_id == sid,
