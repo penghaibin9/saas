@@ -25,8 +25,12 @@ test('Stage B B4 covers internship batch/company and same-domain long forms', ()
   }
 })
 
-test('Stage B B4 is fail-closed: click save never creates a bypass window', () => {
-  assert.match(guard, /只有真实保存成功后页面显式调用 markSaved\(\)/)
-  assert.match(guard, /markSaved:\s*\(\) => \{ dirty = false \}/)
+test('Stage B B4 is fail-closed: save and failed navigation never create a bypass window', () => {
+  assert.match(guard, /真正导航成功后才在 afterEach 清理/)
+  assert.match(guard, /let pendingDiscardFrom = ''/)
+  assert.match(guard, /pendingDiscardFrom = String\(from\?\.fullPath \|\| ''\)/)
+  assert.match(guard, /router\.afterEach\(\(to, from, failure\)/)
+  assert.match(guard, /!failure && pendingDiscardFrom && pendingDiscardFrom === fromPath && toPath !== fromPath/)
+  assert.match(guard, /markSaved:\s*\(\) => \{[\s\S]*dirty = false[\s\S]*pendingDiscardFrom = ''/)
   assert.doesNotMatch(guard, /submitWindowUntil|SAVE_TEXT_RE|Date\.now\(\) \+ 5000/)
 })

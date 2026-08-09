@@ -731,7 +731,9 @@ export default {
     },
     openTodo(t) {
       const type = t && t.todoType
+      const typedTarget = String(t?.typedRouteTarget || '').trim()
       const path =
+        typedTarget ||
         (type && TODO_TYPE_ROUTES[type]) ||
         (type
           ? `/admin/approval/todos?todoType=${encodeURIComponent(type)}&status=PENDING`

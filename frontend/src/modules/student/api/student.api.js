@@ -440,12 +440,20 @@ export const studentApi = {
     return fail('批量直改学籍状态已禁用；每名学生必须保留独立异动申请、审批与历史事实。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
   },
 
-  getIdentityRecords(params = {}) {
-    return ok({
-      list: [], total: 0, page: params.page || 1, pageSize: params.pageSize || 20,
-      capabilityStatus: 'NOT_CONFIGURED',
-      notice: '身份核验依赖第三方实名/人脸核验服务，当前环境未配置；新生人工信息核验请到“数字迎新 › 信息核验”。'
-    })
+  async getIdentityRecords(params = {}) {
+    return safe(async () => {
+      const data = await request('/students/identity-records', {
+        params: { page: params.page || 1, pageSize: params.pageSize || 20 }
+      })
+      return ok({
+        list: Array.isArray(data?.items) ? data.items : (Array.isArray(data?.list) ? data.list : []),
+        total: Number(data?.total || 0),
+        page: Number(data?.page || params.page || 1),
+        pageSize: Number(data?.pageSize || params.pageSize || 20),
+        capabilityStatus: String(data?.capabilityStatus || 'ERROR').toUpperCase(),
+        notice: data?.notice || ''
+      })
+    }, '身份核验能力状态加载失败')
   },
   reviewIdentityRecord() {
     return fail('第三方身份核验服务未配置，无真实核验记录可复核。', 'CAPABILITY_NOT_CONFIGURED')

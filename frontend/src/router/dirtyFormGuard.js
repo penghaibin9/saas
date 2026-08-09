@@ -31,6 +31,7 @@ export function installDirtyFormGuard(router, options = {}) {
   const guardedRoutes = new Set(options.routeNames || DEFAULT_GUARDED_ROUTES)
   const message = options.message || '当前表单有未保存修改。离开此页将丢失这些修改，仍要离开吗？'
   let dirty = false
+  let pendingDiscardFrom = ''
 
   const markDirty = (event) => {
     if (!event?.isTrusted || !isGuarded(router.currentRoute.value, guardedRoutes)) return
@@ -38,6 +39,7 @@ export function installDirtyFormGuard(router, options = {}) {
     if (!(target instanceof Element) || !target.matches(EDITABLE_SELECTOR)) return
     if (target.closest('[data-dirty-ignore="true"], .advanced-filter, .mp-filter, .app-search')) return
     dirty = true
+    pendingDiscardFrom = ''
   }
 
   const beforeUnload = (event) => {
@@ -51,28 +53,47 @@ export function installDirtyFormGuard(router, options = {}) {
   window.addEventListener('beforeunload', beforeUnload)
 
   const removeBefore = router.beforeEach((to, from) => {
-    if (!dirty || !isGuarded(from, guardedRoutes)) return true
+    if (!dirty || !isGuarded(from, guardedRoutes)) {
+      pendingDiscardFrom = ''
+      return true
+    }
     if (String(to?.fullPath || '') === String(from?.fullPath || '')) return true
 
     // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
-    // 只有真实保存成功后页面显式调用 markSaved()，或用户明确确认丢弃修改，才允许离开。
+    // 用户确认丢弃时也只记录“本次离开已确认”，真正导航成功后才在 afterEach 清理。
+    // 若后续权限/业务 guard 取消或导航失败，dirty 必须继续保留，下一次离开仍会提醒。
     if (window.confirm(message)) {
-      dirty = false
+      pendingDiscardFrom = String(from?.fullPath || '')
       return true
     }
+    pendingDiscardFrom = ''
     return false
   })
 
-  const removeAfter = router.afterEach((to, from) => {
-    if (String(to?.fullPath || '') !== String(from?.fullPath || '') && !isGuarded(from, guardedRoutes)) {
+  const removeAfter = router.afterEach((to, from, failure) => {
+    const fromPath = String(from?.fullPath || '')
+    const toPath = String(to?.fullPath || '')
+    if (!failure && pendingDiscardFrom && pendingDiscardFrom === fromPath && toPath !== fromPath) {
+      dirty = false
+    }
+    pendingDiscardFrom = ''
+    if (!failure && toPath !== fromPath && !isGuarded(from, guardedRoutes)) {
       dirty = false
     }
   })
 
   // 页面在真实保存成功回调里可显式调用 markSaved()；失败回调不要调用。
   window.__SAAS_DIRTY_FORM_GUARD__ = {
-    markDirty: () => { if (isGuarded(router.currentRoute.value, guardedRoutes)) dirty = true },
-    markSaved: () => { dirty = false },
+    markDirty: () => {
+      if (isGuarded(router.currentRoute.value, guardedRoutes)) {
+        dirty = true
+        pendingDiscardFrom = ''
+      }
+    },
+    markSaved: () => {
+      dirty = false
+      pendingDiscardFrom = ''
+    },
     isDirty: () => dirty
   }
 

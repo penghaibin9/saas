@@ -4,10 +4,18 @@ import test from 'node:test'
 
 const gate = fs.readFileSync(new URL('../src/views/admin/student/StudentIdentityCapabilityView.vue', import.meta.url), 'utf8')
 const routes = fs.readFileSync(new URL('../src/modules/student/student.routes.js', import.meta.url), 'utf8')
+const api = fs.readFileSync(new URL('../src/modules/student/api/student.api.js', import.meta.url), 'utf8')
 
 test('Stage B B5 identity route passes through capability-state gate', () => {
   assert.match(routes, /path:\s*'identity'[\s\S]*StudentIdentityCapabilityView\.vue/)
   assert.match(gate, /studentApi\.getIdentityRecords\(\{ page: 1, pageSize: 1 \}\)/)
+})
+
+test('Stage B B5 capability fact comes from formal backend API, not browser hardcode', () => {
+  assert.match(api, /async getIdentityRecords\(params = \{\}\)/)
+  assert.match(api, /request\('\/students\/identity-records'/)
+  assert.match(api, /capabilityStatus:\s*String\(data\?\.capabilityStatus \|\| 'ERROR'\)/)
+  assert.doesNotMatch(api, /getIdentityRecords\(params = \{\}\) \{\s*return ok\(\{[\s\S]*capabilityStatus:\s*'NOT_CONFIGURED'/)
 })
 
 test('Stage B B5 distinguishes NOT_CONFIGURED EMPTY FORBIDDEN ERROR', () => {

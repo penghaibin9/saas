@@ -191,6 +191,31 @@ def student_summary(user=Depends(require_staff)):
     return success(svc.summary(class_ids=class_ids, student_ids=student_ids))
 
 
+@router.get("/identity-records", summary="身份核验能力与记录")
+def identity_records(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    user=Depends(require_staff),
+):
+    """返回身份核验的服务端权威能力状态。
+
+    当前仓库尚未接入第三方实名/人脸核验 provider，因此服务端明确 fail-closed 为
+    NOT_CONFIGURED。固定路径必须位于 /{student_id} 之前；未来接入 provider 时只在服务端
+    替换此能力的数据源，前端状态机无需再硬编码环境事实。
+    """
+    if not _can_view_profile(user):
+        raise AppException("NO_PERMISSION", "无权查看学生身份核验信息", http_status=403)
+    return success({
+        "items": [],
+        "list": [],
+        "total": 0,
+        "page": page,
+        "pageSize": pageSize,
+        "capabilityStatus": "NOT_CONFIGURED",
+        "notice": "身份核验依赖第三方实名/人脸核验服务，当前服务端未配置；新生人工信息核验请到“数字迎新 › 信息核验”。",
+    })
+
+
 @router.get("/{student_id}", summary="学生 360 详情")
 def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends(require_staff)):
     is_picker = (mode or "").strip().lower() == "picker"
