@@ -76,6 +76,12 @@ from . import academic_affairs_archive_manifest_service
 
 academic_affairs_archive_manifest_service.install()
 
+# Stage C3：高风险归档命令必须有稳定 actor。真实账号优先用 DB id；旧签名身份
+# 只生成租户绑定的确定性审计 key，不参与授权，仅用于不可变证据和双人复核比较。
+from . import academic_affairs_archive_actor_identity
+
+academic_affairs_archive_actor_identity.install(academic_affairs_archive_manifest_service)
+
 # Stage C3：ARCHIVED 是不可逆历史事实；正式归档入口不得再走普通 unfreeze 回退到 DRAFT/PUBLISHED。
 from . import academic_affairs_archive_immutable_guard
 
