@@ -45,6 +45,12 @@ from . import academic_affairs_object_scope_guard
 
 academic_affairs_object_scope_guard.install()
 
+# Stage C2：对象级范围门禁之后再包一层历史身份；学期成绩单只能读取
+# AcademicFact(as_of=term.start_date)，累计成绩单禁止隐式拿当前专业当 header。
+from . import academic_affairs_transcript_historical_facade
+
+academic_affairs_transcript_historical_facade.install()
+
 # 包 4：毕业资格跨域事实必须命中正式完成状态、成绩和归档证据。
 from . import academic_affairs_graduation_truth_guard
 
