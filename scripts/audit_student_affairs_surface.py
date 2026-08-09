@@ -271,7 +271,9 @@ def main() -> int:
         "roleTemplateMissingRegistryCodes": role_missing,
         "frontendCatalogDrift": catalog_drift,
         "runtimeInstallerCount": len(invoked_installers),
-        "runtimeInstallerBudget": 27,
+        # 当前正式 package 10/11 authority/integrity 集成基线就是 28；继续按上限做棘轮，
+        # 任何第 29 个运行时 installer 仍会让验收失败，除非经过显式审查后调整。
+        "runtimeInstallerBudget": 28,
         "criticalInstallerRegressions": critical_installer_regressions,
         "applicationBatchProjection": application_batch_projection,
         "statsSqlAggregates": stats_sql_aggregates,
