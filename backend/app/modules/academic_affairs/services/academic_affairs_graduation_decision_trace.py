@@ -6,7 +6,7 @@ it never recalculates credits, program bindings, internship, design or disciplin
 """
 from __future__ import annotations
 
-from datetime import datetime
+from app.core.exceptions import AppException
 
 from .academic_affairs_decision_trace import build_decision_trace, render_zh_cn
 
@@ -89,6 +89,26 @@ def _rule_for(item: dict) -> str:
     return "ACADEMIC_DATA_UNKNOWN"
 
 
+def _evaluator_identity(evaluated: dict) -> tuple[str, str]:
+    """Read the exact evaluator time/version; never fabricate missing audit identity."""
+    snapshot = evaluated.get("inputSnapshot")
+    if not isinstance(snapshot, dict):
+        raise AppException(
+            "DATA_CONFLICT",
+            "毕业核验结果缺少 evaluator 输入快照，无法生成可审计 DecisionTrace",
+            http_status=409,
+        )
+    evaluated_at = str(snapshot.get("evaluatedAt") or "").strip()
+    evaluator_version = str(snapshot.get("evaluatorVersion") or "").strip()
+    if not evaluated_at or not evaluator_version:
+        raise AppException(
+            "DATA_CONFLICT",
+            "毕业核验结果缺少 evaluator 时间或版本，无法生成可审计 DecisionTrace",
+            http_status=409,
+        )
+    return evaluated_at, evaluator_version
+
+
 def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
     """Explain an existing evaluator result; return None for an all-PASS decision.
 
@@ -96,6 +116,10 @@ def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
     exception names. Student-facing DecisionTrace therefore carries only the already-made
     node item/result classification; the deterministic rule text supplies the explanation.
     Administrative preview APIs still receive the full evaluator ``items`` separately.
+
+    ``evaluatedAt`` and ``evaluatorVersion`` are part of the decision evidence. Missing
+    values are rejected instead of being replaced with the current clock/default version,
+    because a fabricated identity would make an incomplete evaluator result appear audited.
     """
     if str(evaluated.get("overall") or "").upper() == "SYSTEM_PASSED":
         return None
@@ -103,9 +127,7 @@ def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
     failed = [item for item in items if str(item.get("result") or "").upper() != "PASS"]
     blocker = failed[0] if failed else {"item": "UNKNOWN", "result": "UNKNOWN"}
     rule_code = _rule_for(blocker)
-    snapshot = evaluated.get("inputSnapshot") or {}
-    at = snapshot.get("evaluatedAt") or datetime.utcnow().isoformat()
-    evaluator_version = snapshot.get("evaluatorVersion") or "STAGE_C3_V1"
+    evaluated_at, evaluator_version = _evaluator_identity(evaluated)
 
     safe_failed = [{
         "item": str(item.get("item") or "UNKNOWN"),
@@ -121,13 +143,13 @@ def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
         action="EVALUATE",
         decision="DENIED",
         rule_code=rule_code,
-        rule_version=str(evaluator_version),
+        rule_version=evaluator_version,
         subject={"studentId": _masked_student_ref(student)},
         target={"scope": "CURRENT_GRADUATION_EVALUATION"},
         failed_nodes=safe_failed,
         passed_nodes=safe_passed,
         available_resolutions=list(_RESOLUTIONS.get(rule_code, [])),
-        evaluated_at=at,
+        evaluated_at=evaluated_at,
     )
 
 

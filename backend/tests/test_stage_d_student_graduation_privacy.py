@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+from app.core.exceptions import AppException
 from app.modules.academic_affairs.services.academic_affairs_graduation_decision_trace import (
     build_graduation_decision_trace,
 )
@@ -55,8 +58,13 @@ def test_student_graduation_projection_drops_internal_evaluator_metadata():
         assert forbidden not in text
 
 
-def test_student_graduation_decision_trace_drops_raw_evidence_and_owner_codes():
-    evaluated = {
+def _evaluated_snapshot(**snapshot_overrides):
+    snapshot = {
+        "evaluatorVersion": "STAGE_C3_V1",
+        "evaluatedAt": "2026-08-10T00:20:00",
+    }
+    snapshot.update(snapshot_overrides)
+    return {
         "overall": "SYSTEM_ABNORMAL",
         "items": [{
             "item": "INTERNSHIP",
@@ -65,14 +73,34 @@ def test_student_graduation_decision_trace_drops_raw_evidence_and_owner_codes():
             "evidence": "供数查询失败：OperationalError",
             "refId": "internal-model-id",
         }],
-        "inputSnapshot": {
-            "evaluatorVersion": "STAGE_C3_V1",
-            "evaluatedAt": "2026-08-10T00:20:00",
-        },
+        "inputSnapshot": snapshot,
     }
-    trace = build_graduation_decision_trace(SimpleNamespace(student_no="2024012301"), evaluated)
+
+
+def test_student_graduation_decision_trace_drops_raw_evidence_and_owner_codes():
+    trace = build_graduation_decision_trace(
+        SimpleNamespace(student_no="2024012301"),
+        _evaluated_snapshot(),
+    )
     failed = trace["failedNodes"][0]
     assert failed == {"item": "INTERNSHIP", "result": "FAIL"}
     text = str(trace)
     for forbidden in ("OperationalError", "internal-model-id", "AA_STAFF", "refId", "evidence"):
         assert forbidden not in text
+
+
+def test_graduation_trace_refuses_to_invent_missing_evaluator_identity():
+    student = SimpleNamespace(student_no="2024012301")
+
+    no_snapshot = _evaluated_snapshot()
+    no_snapshot.pop("inputSnapshot")
+    with pytest.raises(AppException):
+        build_graduation_decision_trace(student, no_snapshot)
+
+    missing_time = _evaluated_snapshot(evaluatedAt="")
+    with pytest.raises(AppException):
+        build_graduation_decision_trace(student, missing_time)
+
+    missing_version = _evaluated_snapshot(evaluatorVersion="")
+    with pytest.raises(AppException):
+        build_graduation_decision_trace(student, missing_version)
