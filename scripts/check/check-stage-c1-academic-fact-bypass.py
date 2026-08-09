@@ -5,10 +5,11 @@ The scanner checks production ``backend/app`` for direct writes to current acade
 projection fields. Compatibility implementations may remain importable only when a
 formal facade boundary is asserted below; otherwise they are not exempt.
 
-Stage C2 proves selection eligibility and historical program resolution cross the
-``StudentAcademicFact`` boundary. Stage C3 proves student graduation progress and
-formal precheck share one read-only evaluator, formal graduation/archive history is
-append-only, and ordinary ARCHIVED -> mutable-state rollback cannot reappear.
+Stage C2 proves selection eligibility, historical program resolution and transcript
+identity cross the ``StudentAcademicFact`` boundary. Stage C3 proves student graduation
+progress and formal precheck share one read-only evaluator, formal graduation/archive
+history is append-only, post-archive correction is operator-accessible, and ordinary
+ARCHIVED -> mutable-state rollback cannot reappear.
 """
 from __future__ import annotations
 
@@ -134,10 +135,12 @@ def scan_file(path: pathlib.Path) -> list[str]:
 
 def formal_boundary_assertions() -> list[str]:
     service_dir = APP / "modules/academic_affairs/services"
+    router_dir = APP / "modules/academic_affairs/routers"
     major_public = (service_dir / "academic_affairs_major_split_public_service.py").read_text(encoding="utf-8")
     org_public = (service_dir / "academic_affairs_org_fact_facade.py").read_text(encoding="utf-8")
     selection_final = (service_dir / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
     program_resolver = (service_dir / "student_program_resolution_service.py").read_text(encoding="utf-8")
+    transcript_history = (service_dir / "academic_affairs_transcript_historical_facade.py").read_text(encoding="utf-8")
     services_init = (service_dir / "__init__.py").read_text(encoding="utf-8")
     student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
     lifecycle = (APP / "services/student_academic_lifecycle_service.py").read_text(encoding="utf-8")
@@ -145,6 +148,8 @@ def formal_boundary_assertions() -> list[str]:
     mobile_public = (service_dir / "mobile_academic_affairs_public_service.py").read_text(encoding="utf-8")
     archive_manifest = (service_dir / "academic_affairs_archive_manifest_service.py").read_text(encoding="utf-8")
     archive_guard = (service_dir / "academic_affairs_archive_immutable_guard.py").read_text(encoding="utf-8")
+    archive_correction_router = (router_dir / "archive_correction_router.py").read_text(encoding="utf-8")
+    router_bundle = (router_dir / "academic_affairs_bundle.py").read_text(encoding="utf-8")
     stage_c3_models = (APP / "models/academic_affairs_stage_c3.py").read_text(encoding="utf-8")
     archive_view = (
         ROOT / "frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue"
@@ -180,6 +185,12 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("historical program resolver no longer fails closed when AcademicFact is missing")
     if "if as_of is not None:" not in program_resolver or "resolve_student_program_at(" not in program_resolver:
         errors.append("credit requirement historical path no longer uses the AcademicFact program resolver")
+    if "academic_affairs_transcript_historical_facade.install()" not in services_init:
+        errors.append("formal transcript no longer installs Stage C2 historical identity facade")
+    if "resolve_student_academic_fact" not in transcript_history or "as_of=term.start_date" not in transcript_history:
+        errors.append("historical transcript identity no longer resolves AcademicFact at term.start_date")
+    if "NO_IMPLICIT_CURRENT_PROFILE" not in transcript_history:
+        errors.append("cumulative transcript can again imply today's academic identity as historical header")
 
     # Stage C3: one read-only evaluator feeds both student progress and formal immutable runs.
     for model_name in (
@@ -202,14 +213,12 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("formal graduation decision no longer references immutable evaluation_run_id")
     if "def graduation_progress_my" not in mobile_public or "graduation.evaluate_student" not in mobile_public:
         errors.append("student PC/miniapp graduation progress no longer uses the shared read-only evaluator")
-    # Comments/docstrings may mention the legacy field while documenting why it is forbidden.
-    # Only executable-style JSON decoding of that projection is considered a regression here.
     if "json.loads(" in mobile_public and "item_results_json" in mobile_public:
         errors.append("student graduation progress reverted to mutable AaGraduationAuditResult item projection")
     if '"formalRunCreated": False' not in mobile_public:
         errors.append("student graduation refresh no longer asserts read-only/no-formal-run semantics")
 
-    # Stage C3: permanent archive + versioned correction chain.
+    # Stage C3: permanent archive + versioned correction chain + usable controlled API.
     if "academic_affairs_archive_manifest_service.install()" not in services_init:
         errors.append("formal archive service no longer installs immutable manifest service")
     if "academic_affairs_archive_immutable_guard.install(academic_affairs_archive_service)" not in services_init:
@@ -222,6 +231,17 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("post-archive correction scope is no longer limited to GRADE/GRADUATION")
     if "case.created_by" not in archive_manifest or "second approval" not in archive_manifest.lower():
         errors.append("post-archive correction no longer enforces a distinct second approver")
+    if '"archive_correction_router"' not in router_bundle:
+        errors.append("post-archive correction router is no longer registered in public academic bundle")
+    for required_path in (
+        "/batches/{batch_id}/manifest/verify",
+        "/batches/{batch_id}/corrections",
+        "/corrections/{case_id}/approve",
+    ):
+        if required_path not in archive_correction_router:
+            errors.append(f"post-archive correction API missing: {required_path}")
+    if 'require_permission("academicAffairs.archive.manage")' not in archive_correction_router:
+        errors.append("post-archive correction API lost archive.manage permission guard")
     for forbidden in ("api.unfreeze", "doUnfreeze", "特批解冻"):
         if forbidden in archive_view:
             errors.append(f"archive console resurrected ordinary unfreeze UI: {forbidden}")
@@ -240,8 +260,8 @@ def main() -> int:
         return 1
     print(
         "Stage C1/C2/C3 governance gate OK: Profile academic direct-writes=0; "
-        "historical consumers are fact-bound; student/formal graduation share one evaluator; "
-        "archive formal history is immutable"
+        "selection/program/transcript history is fact-bound; student/formal graduation share one evaluator; "
+        "archive history is immutable and correction uses controlled V2+ API"
     )
     return 0
 
