@@ -8,8 +8,8 @@ formal facade boundary is asserted below; otherwise they are not exempt.
 Stage C2 proves selection eligibility, historical program resolution and transcript
 identity cross the ``StudentAcademicFact`` boundary. Stage C3 proves student graduation
 progress and formal precheck share one read-only evaluator, formal graduation/archive
-history is append-only, post-archive correction is operator-accessible, and ordinary
-ARCHIVED -> mutable-state rollback cannot reappear.
+history is append-only, and approved post-archive correction creates a real new official
+GRADE/GRADUATION fact plus Manifest V2+ without ordinary ARCHIVED rollback.
 """
 from __future__ import annotations
 
@@ -147,10 +147,14 @@ def formal_boundary_assertions() -> list[str]:
     graduation_immutable = (service_dir / "academic_affairs_graduation_immutable_service.py").read_text(encoding="utf-8")
     mobile_public = (service_dir / "mobile_academic_affairs_public_service.py").read_text(encoding="utf-8")
     archive_manifest = (service_dir / "academic_affairs_archive_manifest_service.py").read_text(encoding="utf-8")
+    post_archive_fact = (service_dir / "academic_affairs_post_archive_fact_service.py").read_text(encoding="utf-8")
     archive_guard = (service_dir / "academic_affairs_archive_immutable_guard.py").read_text(encoding="utf-8")
     archive_correction_router = (router_dir / "archive_correction_router.py").read_text(encoding="utf-8")
     router_bundle = (router_dir / "academic_affairs_bundle.py").read_text(encoding="utf-8")
     stage_c3_models = (APP / "models/academic_affairs_stage_c3.py").read_text(encoding="utf-8")
+    stage_c3_migration = (
+        ROOT / "backend/alembic/versions/20260809_aa_stage_c3_fact_v2.py"
+    ).read_text(encoding="utf-8")
     archive_view = (
         ROOT / "frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue"
     ).read_text(encoding="utf-8")
@@ -218,7 +222,7 @@ def formal_boundary_assertions() -> list[str]:
     if '"formalRunCreated": False' not in mobile_public:
         errors.append("student graduation refresh no longer asserts read-only/no-formal-run semantics")
 
-    # Stage C3: permanent archive + versioned correction chain + usable controlled API.
+    # Stage C3: permanent archive + usable two-person correction + a real new official fact.
     if "academic_affairs_archive_manifest_service.install()" not in services_init:
         errors.append("formal archive service no longer installs immutable manifest service")
     if "academic_affairs_archive_immutable_guard.install(academic_affairs_archive_service)" not in services_init:
@@ -229,8 +233,30 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("archive correction no longer appends a superseding manifest version")
     if '_CORRECTION_TYPES = {"GRADE", "GRADUATION"}' not in archive_manifest:
         errors.append("post-archive correction scope is no longer limited to GRADE/GRADUATION")
-    if "case.created_by" not in archive_manifest or "second approval" not in archive_manifest.lower():
-        errors.append("post-archive correction no longer enforces a distinct second approver")
+    if "case.created_by is None" not in archive_manifest or "int(case.created_by) == int(actor)" not in archive_manifest:
+        errors.append("post-archive correction no longer fail-closes missing/same-person second approval identity")
+    if "apply_official_correction_fact(db, batch, case, actor)" not in archive_manifest:
+        errors.append("post-archive approval no longer creates a real official domain fact before Manifest V2+")
+    if "case.official_fact_type" not in archive_manifest or "case.official_fact_id" not in archive_manifest:
+        errors.append("PostArchiveCorrectionCase no longer links the exact official fact it produced")
+    for required in ("decision_no", "supersedes_id", "correction_case_id", "official_fact_type", "official_fact_id"):
+        if required not in stage_c3_models:
+            errors.append(f"Stage C3 corrected-fact lineage field missing from ORM: {required}")
+    for required in ("uk_aa_grad_decision_version", "uk_aa_grad_decision_correction_case", "official_fact_id"):
+        if required not in stage_c3_migration:
+            errors.append(f"Stage C3 corrected-fact migration contract missing: {required}")
+    if 'original.record_status = "SUPERSEDED"' not in post_archive_fact or "AcademicGrade(" not in post_archive_fact:
+        errors.append("GRADE post-archive correction no longer preserves old grade and appends new AcademicGrade")
+    if "AaGradeCorrection(" not in post_archive_fact or "freeze_effective_grade_policy(" not in post_archive_fact:
+        errors.append("GRADE post-archive correction lost correction/effective-policy evidence chain")
+    if "grade_service._refresh_aggregates" not in post_archive_fact:
+        errors.append("GRADE post-archive correction no longer refreshes current credit/GPA projection")
+    if "GraduationEvaluationRun(" not in post_archive_fact or "GraduationDecisionFact(" not in post_archive_fact:
+        errors.append("GRADUATION post-archive correction no longer appends Run#N + Decision#N")
+    if "supersedes_id=previous.id" not in post_archive_fact or "correction_case_id=case.id" not in post_archive_fact:
+        errors.append("GRADUATION corrected decision lost supersedes/correction-case lineage")
+    if "append_student_academic_fact(" not in post_archive_fact:
+        errors.append("GRADUATION correction no longer changes academic status through canonical AcademicFact append")
     if '"archive_correction_router"' not in router_bundle:
         errors.append("post-archive correction router is no longer registered in public academic bundle")
     for required_path in (
@@ -261,7 +287,7 @@ def main() -> int:
     print(
         "Stage C1/C2/C3 governance gate OK: Profile academic direct-writes=0; "
         "selection/program/transcript history is fact-bound; student/formal graduation share one evaluator; "
-        "archive history is immutable and correction uses controlled V2+ API"
+        "ARCHIVED correction is two-person, appends a real official fact, and supersedes Manifest V1 with V2+"
     )
     return 0
 
