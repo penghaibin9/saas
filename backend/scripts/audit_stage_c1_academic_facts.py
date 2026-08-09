@@ -15,6 +15,7 @@ from app.modules.academic_affairs.services.academic_affairs_fact_reconciliation_
 )
 
 EVIDENCE_PATH = Path("test-results/stage-c1-reconciliation.json")
+ANNOTATION_FILE = "backend/scripts/audit_stage_c1_academic_facts.py"
 
 
 def _compact(value, limit: int = 4):
@@ -27,6 +28,16 @@ def _write_evidence(payload: dict) -> None:
     EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
     EVIDENCE_PATH.write_text(
         json.dumps(payload, ensure_ascii=False, default=str, indent=2), encoding="utf-8"
+    )
+
+
+def _error_annotation(title: str, message: str) -> None:
+    # file/line is intentional: GitHub persists file-scoped workflow commands as
+    # check-run annotations, while generic ::error output is not reliably queryable.
+    safe_title = str(title).replace("\n", " ")
+    safe_message = str(message).replace("\n", " ")
+    print(
+        f"::error file={ANNOTATION_FILE},line=1,col=1,title={safe_title}::{safe_message}"
     )
 
 
@@ -60,9 +71,9 @@ def main() -> int:
                     "overlapStudentIds": _compact(details.get("overlapStudentIds") or []),
                     "drifts": _compact(details.get("drifts") or []),
                 }
-                print(
-                    "::error title=Stage C1 academic fact reconciliation::"
-                    + json.dumps(diagnostic, ensure_ascii=False, default=str)
+                _error_annotation(
+                    "Stage C1 academic fact reconciliation",
+                    json.dumps(diagnostic, ensure_ascii=False, default=str),
                 )
         finally:
             tenant_db.close()
@@ -72,7 +83,10 @@ def main() -> int:
     _write_evidence(payload)
     print(json.dumps(payload, ensure_ascii=False, default=str))
     if unresolved:
-        print(f"::error title=Stage C1 academic fact reconciliation total::unresolved={unresolved}")
+        _error_annotation(
+            "Stage C1 academic fact reconciliation total",
+            f"unresolved={unresolved}",
+        )
         return 1
     print("Stage C1 academic fact reconciliation OK: unresolved=0")
     return 0
