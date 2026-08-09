@@ -32,6 +32,20 @@ def _hash(payload) -> str:
     return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
 
+def _strict_overall(items: list[dict]) -> str:
+    """Formal Stage C3 decision is PASS only when every required evidence item is PASS.
+
+    The legacy work-queue projection historically treated selected UNKNOWN domains as
+    non-blocking hints.  That is acceptable for a preview UI, but it is not acceptable
+    for an immutable formal run that can later anchor a graduation decision.  Missing,
+    unavailable, or ambiguous evidence must remain visible as SYSTEM_ABNORMAL until a
+    human/process supplies a formal resolution; UNKNOWN must never silently become PASS.
+    """
+    if not items:
+        return "SYSTEM_ABNORMAL"
+    return "SYSTEM_PASSED" if all(str(item.get("result") or "").upper() == "PASS" for item in items) else "SYSTEM_ABNORMAL"
+
+
 def _actor_id() -> int | None:
     _name, _role, raw = graduation_service._op()
     try:
@@ -62,7 +76,7 @@ def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> di
     at = evaluated_at or datetime.utcnow()
     fact = resolve_student_academic_fact(db, int(student.id), as_of=at, required=True)
     items = list(graduation_service._run_items(db, student))
-    overall = graduation_service._overall(items)
+    overall = _strict_overall(items)
     snapshot = {
         "evaluatorVersion": _EVALUATOR_VERSION,
         "evaluatedAt": at.isoformat(),
