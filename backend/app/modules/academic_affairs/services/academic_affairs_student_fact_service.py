@@ -36,6 +36,33 @@ def _resolved_tenant_id(tenant_id: int | None = None) -> int:
     return _tid()
 
 
+def _resolved_command_tenant_id(db, student_id: int, tenant_id: int | None = None) -> int:
+    """Resolve write tenant without allowing an arbitrary student-id tenant lookup.
+
+    Request commands use the ambient tenant as usual. A transaction-local application
+    service may run without HTTP context only after it has already loaded the exact
+    ``StudentProfile`` into this SQLAlchemy Session through its own tenant-filtered
+    query. In that case the persistent identity-map row is sufficient proof of the
+    transaction's owned tenant; a raw id that is not already owned by the session still
+    fails closed.
+    """
+    if tenant_id is not None:
+        return _resolved_tenant_id(tenant_id)
+    try:
+        return _tid()
+    except AppException as exc:
+        if exc.code != "TENANT_CONTEXT_REQUIRED":
+            raise
+
+    from sqlalchemy.orm.util import identity_key
+    from app.models import StudentProfile
+
+    loaded = db.identity_map.get(identity_key(StudentProfile, int(student_id)))
+    if loaded is None or int(getattr(loaded, "tenant_id", 0) or 0) <= 0:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入学籍事实")
+    return int(loaded.tenant_id)
+
+
 def _fact_query(db, student_id: int, *, tenant_id: int | None = None):
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
@@ -178,13 +205,14 @@ def append_student_academic_fact(
     preserved exactly and still cannot be in the future or before the current fact.
 
     ``tenant_id`` is accepted only for transaction-local application services that
-    already selected the target row by tenant. Request paths omit it and therefore keep
-    using the ambient fail-closed tenant context.
+    already selected the target row by tenant. If such a service omits it, the command
+    may reuse only an already-loaded persistent StudentProfile from the same Session;
+    it never discovers a tenant from an arbitrary id.
     """
     from app.models import StudentProfile
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
-    resolved_tid = _resolved_tenant_id(tenant_id)
+    resolved_tid = _resolved_command_tenant_id(db, student_id, tenant_id)
     requested_at = effective_at
     if requested_at is not None and requested_at > datetime.utcnow():
         raise AppException(
