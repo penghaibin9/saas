@@ -48,9 +48,9 @@ function _isProd() {
 }
 
 /**
- * 页面切换/身份切换与 4s HTTP 超时都可能以 AbortError 结束一次 current-context 请求。
- * 这类瞬时中止不等于 RBAC 服务已经故障：只允许原地重试一次，第二次仍失败就继续 fail-closed。
- * 业务错误（401/403/5xx 的统一业务错误对象）不重试，避免掩盖真实权限或服务故障。
+ * 身份切换会执行整页工作台重建，随后业务深链又可能立即发生第二次导航。
+ * 浏览器会把这些旧 document 上的 current-context fetch 以 AbortError 结束；它不代表
+ * RBAC 服务故障。只允许对明确的取消/Abort 做有限重试，真实 401/403/5xx 绝不重试。
  */
 function _isRetryablePermissionAbort(error) {
   const name = String(error?.name || '').toLowerCase()
@@ -64,13 +64,25 @@ function _isRetryablePermissionAbort(error) {
     message.includes('the user aborted a request')
 }
 
+function _retryDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function _loadPermissionContext(requestFn) {
-  try {
-    return await requestFn('/rbac/current-context')
-  } catch (error) {
-    if (!_isRetryablePermissionAbort(error)) throw error
-    return requestFn('/rbac/current-context')
+  const maxAttempts = 3
+  let lastError = null
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      // RBAC 是安全门禁真值：必须探测真实后端，不得被普通读请求的 mock/offline 冷却短路。
+      return await requestFn('/rbac/current-context', { forceProbe: true })
+    } catch (error) {
+      lastError = error
+      if (!_isRetryablePermissionAbort(error) || attempt === maxAttempts - 1) throw error
+      // 等待整页替换/深链导航完成后再发下一次，避免连续把请求挂在即将销毁的 document 上。
+      await _retryDelay(90 * (attempt + 1))
+    }
   }
+  throw lastError
 }
 
 /** 由 getContext 落库当前身份权限码模式集（与后端 enforce_permission 同一套码）。 */
@@ -126,7 +138,7 @@ export function clearPermissionPatterns() {
 
 /**
  * 冷加载时拉取 /rbac/current-context 并落库 patterns，避免「先进页再 403」。
- * 可识别的 AbortError/取消只重试一次；再次失败或真实业务错误仍保持 patterns=null，
+ * 可识别的导航 Abort/取消做有限重试；达到上限或遇真实业务错误仍保持 patterns=null，
  * 并标记 rbacLoadFailed（不得伪装成无权限，也不得 fail-open）。
  */
 export async function ensurePermissionPatterns(requestFn) {
