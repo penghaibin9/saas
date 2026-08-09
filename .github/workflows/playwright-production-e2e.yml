@@ -130,21 +130,25 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_internship_sandbox.py
 
-      - name: Install and start staff PC
+      - name: Install, build and start staff PC
+        env:
+          VITE_API_BASE_URL: http://127.0.0.1:8000
         run: |
           cd frontend
           npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          npm run build
+          nohup npm run preview -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
           echo $! > ../e2e/runtime-logs/frontend.pid
 
-      - name: Install and start student PC
+      - name: Install, build and start student PC
         env:
           VITE_BASE: /portal/
           VITE_API_BASE_URL: http://127.0.0.1:8000
         run: |
           cd student-portal
           npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          npm run build
+          nohup npm run preview -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
           echo $! > ../e2e/runtime-logs/student-portal.pid
 
       - name: Wait for browser applications
