@@ -17,6 +17,13 @@
       <button class="sp-btn sp-btn--ghost" type="button" @click="load">重新加载</button>
     </section>
     <template v-else>
+      <AcademicDecisionTraceCard
+        v-if="decisionError"
+        class="selection-decision"
+        :trace="decisionError.decisionTrace"
+        :message="decisionError.message"
+      />
+
       <section class="selection-summary">
         <article class="summary-card"><span>开放批次</span><b>{{ groups.length }}</b></article>
         <article class="summary-card"><span>本人已选</span><b>{{ selectedRecords.length }}</b></article>
@@ -111,6 +118,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import AcademicDecisionTraceCard from '../../components/academic/AcademicDecisionTraceCard.vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
@@ -120,6 +128,7 @@ const ui = useUiStore()
 const loading = ref(true)
 const error = ref('')
 const actingId = ref('')
+const decisionError = ref(null)
 const tab = ref('courses')
 const rawGroups = ref([])
 const records = ref([])
@@ -188,6 +197,7 @@ function recordTone(status) {
 async function load() {
   loading.value = true
   error.value = ''
+  decisionError.value = null
   try {
     const [coursesResult, recordsResult] = await Promise.all([
       portalApi.academicCourseSelection(),
@@ -205,11 +215,13 @@ async function enroll(course) {
   const id = course?.selectionCourseId
   if (!id || actingId.value || !canEnroll(course)) return
   actingId.value = String(id)
+  decisionError.value = null
   try {
     await portalApi.academicEnroll({ selectionCourseId: id })
     ui.notify('选课成功')
     await load()
   } catch (e) {
+    if (e?.decisionTrace) decisionError.value = e
     ui.notify(e?.message || '选课失败')
   } finally {
     actingId.value = ''
@@ -221,6 +233,7 @@ async function drop(course) {
   const confirmed = window.confirm(`确认退选“${course.courseName || '该课程'}”？`)
   if (!confirmed) return
   actingId.value = String(id)
+  decisionError.value = null
   try {
     await portalApi.academicDrop({ selectionCourseId: id })
     ui.notify('已退课')
@@ -242,6 +255,7 @@ onMounted(load)
 .selection-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
 .selection-hero p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
 .selection-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.selection-decision { margin-bottom: 14px; }
 .selection-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .summary-card { padding: 16px 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
 .summary-card span { display: block; color: var(--t3); font-size: 12px; }
