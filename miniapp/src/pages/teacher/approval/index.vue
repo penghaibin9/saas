@@ -223,7 +223,7 @@ export default {
             }
             toast(action === 'RETURN' ? '已退回修改，申请人可修改后重提' : action === 'REJECT' ? '已驳回终止原流程' : '审批已通过')
             // 连续工作队列：动作成功后重新读取真实第一页，下一条自然顶上来；不在本地伪造终态。
-            await this.load(true)
+            await this.load()
           } catch (e) {
             const err = normalizeError(e)
             if (err.kind === 'conflict') {
