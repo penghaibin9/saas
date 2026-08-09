@@ -98,16 +98,15 @@ def test_future_final_approval_does_not_change_profile_until_due_then_applies_on
 
 @pytest.mark.usefixtures("db_mode")
 def test_scheduled_router_is_registered_as_formal_extension():
-    from fastapi import FastAPI
     from app.modules.academic_affairs.routers.academic_affairs_bundle import build_router
 
-    # FastAPI 0.141 may keep include_router entries as internal _IncludedRouter nodes
-    # until an application expands the aggregate router.  Validate the same public
-    # registration shape production uses instead of assuming every intermediate node
-    # has a .path attribute.
-    app = FastAPI()
-    app.include_router(build_router())
-    paths = {route.path for route in app.routes if getattr(route, "path", None)}
+    # FastAPI 0.141 stores app.include_router(...) as a lazy internal _IncludedRouter,
+    # so app.routes is not a reliable expanded-route view anymore. The bundle itself is
+    # the formal registration unit used by route_registration; assert its concrete route
+    # table directly so this test detects a missing extension without depending on an
+    # internal FastAPI expansion implementation detail.
+    bundle = build_router()
+    paths = {route.path for route in bundle.routes if getattr(route, "path", None)}
     assert "/academic-affairs/status-changes/scheduled" in paths
 
 
