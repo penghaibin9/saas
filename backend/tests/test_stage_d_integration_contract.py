@@ -1,7 +1,15 @@
 """Stage D integration guard: explanation stays downstream of existing business truth."""
 from __future__ import annotations
 
+import ast
 import inspect
+import textwrap
+
+
+def _reads_attribute(source: str, attribute: str) -> bool:
+    """Detect executable attribute access without matching docstrings/comments."""
+    tree = ast.parse(textwrap.dedent(source))
+    return any(isinstance(node, ast.Attribute) and node.attr == attribute for node in ast.walk(tree))
 
 
 def test_selection_trace_is_attached_after_canonical_rule_decision():
@@ -42,7 +50,10 @@ def test_graduation_trace_consumes_existing_evaluator_result_only():
     assert "evaluated = graduation.evaluate_student(db, student)" in progress
     assert "build_graduation_student_explanation(student, evaluated)" in progress
     assert '"formalRunCreated": False' in progress
-    assert "item_results_json" not in progress
+    # The function docstring explicitly documents that mutable item_results_json is no
+    # longer authoritative. A raw substring test therefore created a false red light.
+    # Inspect executable AST instead: any real model attribute read would fail this gate.
+    assert not _reads_attribute(progress, "item_results_json")
 
 
 def test_stage_d_has_no_llm_authority_or_technical_student_leakage():
