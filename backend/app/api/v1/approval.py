@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.api.v1.file_contract import validated_local_file_response
-from app.core.idempotency import begin as idempotency_begin, finish as idempotency_finish
+from app.core.idempotency import begin_required as idempotency_begin, finish as idempotency_finish
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
 from app.schemas.approval import (
