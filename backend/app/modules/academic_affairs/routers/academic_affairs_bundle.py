@@ -34,6 +34,19 @@ _EXTENSION_ROUTER_MODULES = (
 )
 
 
+def _mount_routes(parent: APIRouter, child: APIRouter) -> None:
+    """Flatten an already-built child router into the public aggregate.
+
+    FastAPI 0.141 can preserve nested ``include_router`` calls as internal
+    ``_IncludedRouter`` nodes until a later expansion step.  The academic-affairs
+    bundle is itself included by the application registry, so leaving another nested
+    layer can make formal extension routes disappear from the final public route table.
+    Copy the concrete child route objects instead; the application-level academic
+    dependencies are still attached once by ``route_registration``.
+    """
+    parent.routes.extend(list(child.routes))
+
+
 def build_router() -> APIRouter:
     """在注册时读取包内已完成初始化的真实子 Router，避开循环导入留下的旧模块引用。"""
     from app.modules.academic_affairs.routers import scheduling_rule_router as live_rule_router
@@ -42,18 +55,17 @@ def build_router() -> APIRouter:
     # 阶段 7：精确同路径适配器必须先于历史同步 StreamingResponse Router 注册。
     # 旧页面合同不变，但实际生成先进入 FileObject + ExportJob + 一次性票据。
     compat_module = importlib.import_module(f"{__package__}.academic_export_compat_router")
-    router.include_router(compat_module.router)
-    router.include_router(base_router.router)
+    _mount_routes(router, compat_module.router)
+    _mount_routes(router, base_router.router)
     package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
         module = getattr(package, module_name, None)
         if module is None:
             module = importlib.import_module(f"{__package__}.{module_name}")
-        router.include_router(module.router)
+        _mount_routes(router, module.router)
 
-    # 该独立路由会在服务 Facade 初始化期间经历循环导入；此时 include_router 可能读取到
-    # 尚未装配完成的旧 APIRouter。注册阶段直接复制当前真实 APIRoute，随后由上层统一附加模块依赖。
-    router.routes.extend(list(live_rule_router.router.routes))
+    # 该独立路由会在服务 Facade 初始化期间经历循环导入；注册阶段读取当前真实 Router。
+    _mount_routes(router, live_rule_router.router)
     return router
 
 
