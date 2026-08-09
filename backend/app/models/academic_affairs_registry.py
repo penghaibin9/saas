@@ -31,6 +31,12 @@ from app.models.academic_affairs_effective_grade import (
 from app.models.academic_affairs_gpa_policy import AaGpaPointPolicy
 from app.models.academic_affairs_program_transition import ProgramTransitionAssessment
 from app.models.academic_affairs_student_fact import StudentAcademicFact
+from app.models.academic_affairs_stage_c3 import (
+    ArchiveManifest,
+    GraduationDecisionFact,
+    GraduationEvaluationRun,
+    PostArchiveCorrectionCase,
+)
 
 
 # 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
@@ -63,4 +69,8 @@ __all__ = [
     "AaGpaPointPolicy",
     "StudentAcademicFact",
     "ProgramTransitionAssessment",
+    "GraduationEvaluationRun",
+    "GraduationDecisionFact",
+    "ArchiveManifest",
+    "PostArchiveCorrectionCase",
 ]
