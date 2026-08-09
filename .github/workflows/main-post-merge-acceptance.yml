@@ -1,0 +1,272 @@
+name: Main post-merge acceptance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-post-merge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  main-governance:
+    name: Main / protected branch contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require effective GitHub protection on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_get() {
+            curl -fsS \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          branch_payload="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/branches/main")"
+          classic_protected="$(jq -r '.protected' <<<"$branch_payload")"
+          effective_rules="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/rules/branches/main")"
+          effective_count="$(jq 'length' <<<"$effective_rules")"
+          echo "main.classic_protected=$classic_protected"
+          echo "main.effective_rules=$effective_count"
+
+          if [ "$effective_count" -gt 0 ]; then
+            deletion="$(jq '[.[] | select(.type == "deletion")] | length' <<<"$effective_rules")"
+            non_fast_forward="$(jq '[.[] | select(.type == "non_fast_forward")] | length' <<<"$effective_rules")"
+            pull_request="$(jq '[.[] | select(.type == "pull_request")] | length' <<<"$effective_rules")"
+            canonical_check="$(jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | select(.context == "Main / canonical release gate")] | length' <<<"$effective_rules")"
+            strict_checks="$(jq '[.[] | select(.type == "required_status_checks" and .parameters.strict_required_status_checks_policy == true)] | length' <<<"$effective_rules")"
+            printf 'rules.deletion=%s\nrules.non_fast_forward=%s\nrules.pull_request=%s\nrules.canonical_check=%s\nrules.strict_checks=%s\n' \
+              "$deletion" "$non_fast_forward" "$pull_request" "$canonical_check" "$strict_checks"
+            test "$deletion" -gt 0
+            test "$non_fast_forward" -gt 0
+            test "$pull_request" -gt 0
+            test "$canonical_check" -gt 0
+            test "$strict_checks" -gt 0
+            echo 'main is protected by effective GitHub rulesets.'
+            exit 0
+          fi
+
+          if [ "$classic_protected" = 'true' ]; then
+            classic="$(api_get "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/branches/main/protection")"
+            classic_strict="$(jq -r '.required_status_checks.strict == true' <<<"$classic")"
+            classic_contexts="$(jq '[((.required_status_checks.contexts // [])[]?) | select(. == "Main / canonical release gate")] | length' <<<"$classic")"
+            classic_checks="$(jq '[((.required_status_checks.checks // [])[]?) | select(.context == "Main / canonical release gate")] | length' <<<"$classic")"
+            classic_pull_request="$(jq -r '.required_pull_request_reviews != null' <<<"$classic")"
+            classic_admins="$(jq -r '(.enforce_admins | type) == "object" and .enforce_admins.enabled == true' <<<"$classic")"
+            classic_no_force_push="$(jq -r '(.allow_force_pushes | type) == "object" and .allow_force_pushes.enabled == false' <<<"$classic")"
+            classic_no_deletion="$(jq -r '(.allow_deletions | type) == "object" and .allow_deletions.enabled == false' <<<"$classic")"
+            printf 'classic.strict=%s\nclassic.canonical_contexts=%s\nclassic.canonical_checks=%s\nclassic.pull_request=%s\nclassic.enforce_admins=%s\nclassic.no_force_push=%s\nclassic.no_deletion=%s\n' \
+              "$classic_strict" "$classic_contexts" "$classic_checks" "$classic_pull_request" \
+              "$classic_admins" "$classic_no_force_push" "$classic_no_deletion"
+            test "$classic_strict" = 'true'
+            test "$((classic_contexts + classic_checks))" -gt 0
+            test "$classic_pull_request" = 'true'
+            test "$classic_admins" = 'true'
+            test "$classic_no_force_push" = 'true'
+            test "$classic_no_deletion" = 'true'
+            echo 'main is protected by strict classic branch protection.'
+            exit 0
+          fi
+
+          echo '::error::main has neither an effective ruleset nor equally strict classic branch protection.'
+          exit 1
+
+  migrated-schema:
+    name: Main / Alembic + migrated-schema contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_migrated
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migrated?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migrated?charset=utf8mb4
+      SECRET_KEY: main-post-merge-migrated-schema-only
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Enforce one Alembic head and upgrade clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          HEAD_COUNT="$(alembic heads | grep -c '(head)' || true)"
+          alembic heads
+          test "$HEAD_COUNT" = '1'
+          mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          alembic upgrade head
+          alembic current
+      - name: Verify migrated schema parity
+        working-directory: backend
+        run: python ../scripts/check/check-migrated-schema-parity.py
+      - name: Run migrated-schema P0 contracts
+        working-directory: backend
+        run: |
+          timeout 30m pytest -q -p no:warnings \
+            tests/test_domain_import.py \
+            tests/test_import_tenant_isolation.py \
+            tests/test_graduation_credit_dedup.py \
+            tests/test_discipline_package11_integrity.py \
+            tests/test_funding_package10_closeout.py \
+            --durations=20
+
+  backend-full:
+    name: Main / backend full MySQL regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      SECRET_KEY: main-post-merge-backend-only
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile backend
+        working-directory: backend
+        run: python -m compileall -q app tests
+      - name: Run complete backend regression
+        working-directory: backend
+        run: timeout 85m pytest -q -p no:warnings --durations=40
+
+  admin-pc:
+    name: Main / admin PC production build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  student-pc:
+    name: Main / student PC production build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: student-portal
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  miniapp:
+    name: Main / H5 + WeChat production build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: miniapp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build:h5
+      - run: npm run build:mp-weixin
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+  release-gate:
+    name: Main / canonical release gate
+    if: always()
+    needs: [main-governance, migrated-schema, backend-full, admin-pc, student-pc, miniapp]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail closed unless governance and every final-main gate passed
+        env:
+          MAIN_GOVERNANCE: ${{ needs.main-governance.result }}
+          MIGRATED: ${{ needs.migrated-schema.result }}
+          BACKEND: ${{ needs.backend-full.result }}
+          ADMIN_PC: ${{ needs.admin-pc.result }}
+          STUDENT_PC: ${{ needs.student-pc.result }}
+          MINIAPP: ${{ needs.miniapp.result }}
+        run: |
+          set -euo pipefail
+          printf 'main_governance=%s\nmigrated=%s\nbackend=%s\nadmin_pc=%s\nstudent_pc=%s\nminiapp=%s\n' \
+            "$MAIN_GOVERNANCE" "$MIGRATED" "$BACKEND" "$ADMIN_PC" "$STUDENT_PC" "$MINIAPP"
+          test "$MAIN_GOVERNANCE" = success
+          test "$MIGRATED" = success
+          test "$BACKEND" = success
+          test "$ADMIN_PC" = success
+          test "$STUDENT_PC" = success
+          test "$MINIAPP" = success
+          echo 'Canonical main post-merge acceptance passed.'
