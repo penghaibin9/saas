@@ -20,7 +20,7 @@ log = logging.getLogger("app.scheduler")
 
 # 频率（秒）
 INTERVAL_DELIVERY = 15          # 消息投递 / Outbox
-INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出
+INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导出
 INTERVAL_ACADEMIC_EFFECTIVE = 60 # Stage C1：已批准的未来生效学籍异动
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
 INTERVAL_EXPIRE_NUDGE = 120     # 失效 + 紧急确认催办
@@ -181,10 +181,11 @@ def job_expire_and_nudge() -> None:
 
 
 def job_student_affairs_background() -> None:
-    """学工高频后台任务：申诉补偿、请假导出与档案包异步生成。"""
+    """学工/审批高频后台任务：补偿、异步导出与档案包生成。"""
     from app.services import affairs_appeal_repair_service as repair
     from app.services import affairs_archive_service as archive
     from app.services import affairs_leave_export_service as leave_export
+    from app.services import approval_export_service as approval_export
 
     for tenant_id in _schedulable_tenant_ids():
         set_tenant({"tenantId": str(tenant_id)})
@@ -196,6 +197,12 @@ def job_student_affairs_background() -> None:
             _run_isolated(
                 f"affairs_leave_export:{tenant_id}",
                 lambda: leave_export.run_pending(limit=2, worker_id=f"scheduler-affairs:{tenant_id}"),
+            )
+            _run_isolated(
+                f"approval_export:{tenant_id}",
+                lambda: approval_export.run_pending(
+                    limit=2, worker_id=f"scheduler-approval:{tenant_id}"
+                ),
             )
             _run_isolated(
                 f"affairs_archive_package:{tenant_id}",
