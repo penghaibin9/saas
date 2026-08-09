@@ -56,6 +56,10 @@ def build_router() -> APIRouter:
     # 旧页面合同不变，但实际生成先进入 FileObject + ExportJob + 一次性票据。
     compat_module = importlib.import_module(f"{__package__}.academic_export_compat_router")
     _mount_routes(router, compat_module.router)
+    # Stage D：选课 final service 已完成行锁/学籍事实/DecisionTrace 收口，必须让精确
+    # HTTP 路径先命中 final adapter；历史大 Router 继续保留以降低长期分支冲突。
+    selection_final_module = importlib.import_module(f"{__package__}.academic_selection_final_router")
+    _mount_routes(router, selection_final_module.router)
     _mount_routes(router, base_router.router)
     package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
