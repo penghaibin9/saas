@@ -164,7 +164,9 @@ function _redirectToLogin() {
 
 let refreshPromise = null
 async function tryRefresh() {
-  if (!state.refreshToken) return false
+  const refreshTokenAtStart = state.refreshToken
+  const accessTokenAtStart = state.token
+  if (!refreshTokenAtStart) return false
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
@@ -172,11 +174,20 @@ async function tryRefresh() {
         method: 'POST',
         auth: false,
         forceProbe: true,
-        body: { refreshToken: state.refreshToken }
+        body: { refreshToken: refreshTokenAtStart }
       })
+      // 身份切换/重新登录可能在 refresh 飞行期间已经替换整套会话。
+      // 旧 refresh 的迟到成功不得把新角色 token 覆盖回旧角色。
+      if (state.token !== accessTokenAtStart || state.refreshToken !== refreshTokenAtStart) {
+        return !!state.token
+      }
       _holdTokens(d.accessToken, d.refreshToken || '')
       return true
     } catch {
+      // 同理，旧 refresh 的迟到失败不能清空刚由 switch-role/login 写入的新会话。
+      if (state.token !== accessTokenAtStart || state.refreshToken !== refreshTokenAtStart) {
+        return !!state.token
+      }
       _holdTokens('', '')
       return false
     } finally {
@@ -289,11 +300,16 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 
 export async function request(path, options = {}) {
   await ensureToken()
+  const accessTokenAtStart = state.token
   try {
     return await rawRequest(path, options)
   } catch (e) {
     if (e.biz && e.code === 401001) {
+      // 该 401 如果属于身份切换前的旧 token，新会话已经可用时直接重试，禁止再拿旧 refresh 竞争。
+      if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)
       if (await tryRefresh()) return rawRequest(path, options)
+      // refresh 等待期间也可能完成 switch-role/login；再次保护，避免误跳登录页。
+      if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)
       _redirectToLogin()
     }
     throw e
@@ -348,6 +364,7 @@ export async function requestUpload(path, file, fieldName = 'file') {
 
 export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
   await ensureToken()
+  const accessTokenAtStart = state.token
   const qs = params
     ? '?' +
       Object.entries(params)
@@ -402,7 +419,9 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
     return await doFetch()
   } catch (e) {
     if (e.biz && e.code === 401001) {
+      if (state.token && state.token !== accessTokenAtStart) return doFetch()
       if (await tryRefresh()) return doFetch()
+      if (state.token && state.token !== accessTokenAtStart) return doFetch()
       _redirectToLogin()
     }
     throw e
