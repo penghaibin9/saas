@@ -31,39 +31,107 @@ def _stu_token(real_name, student_no):
 
 
 def _seed(db_mode, *, tasks, rooms):
-    """建 学期+课表批次+教室+教学任务。tasks/rooms 为轻量 dict 列表。"""
+    """自建正式排课事实链：学期+作息节次+APPROVED教学任务批次+READY任务+课表批次+教室。
+
+    自动排课公开入口已经按课表批次的 term_id 解析正式教学任务批次，不能再把
+    AaScheduleBatch.id 冒充 AaTeachingTask.batch_id，也不能依赖共享测试库遗留任务/节次。
+    """
     from app.db.session import get_sessionmaker
-    from app.models import AaClassroom, AaScheduleBatch, AaTeachingTask, AaTerm
+    from app.models import (AaClassroom, AaCourse, AaScheduleBatch, AaTeachingTask,
+                            AaTeachingTaskBatch, AaTerm, AaTimeSlot)
     db = get_sessionmaker()()
-    term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
+    term = AaTerm(
+        tenant_id=TID,
+        year_code="2024-2025",
+        term_no=1,
+        status="PUBLISHED",
+        is_current=True,
+        teaching_weeks=18,
+    )
     db.add(term); db.flush()
-    b = AaScheduleBatch(tenant_id=TID, term_id=term.id, batch_name="自动排课测试批次", status="DRAFT")
+
+    # 正式排课规则 fail-closed：没有启用作息节次不能自动排课。
+    for slot_no in range(1, 9):
+        db.add(AaTimeSlot(
+            tenant_id=TID,
+            slot_no=slot_no,
+            slot_name=f"第{slot_no}节",
+            start_time="00:00",
+            end_time="23:59",
+            enabled=True,
+            status="ENABLED",
+        ))
+    db.flush()
+
+    task_batch = AaTeachingTaskBatch(
+        tenant_id=TID,
+        term_id=term.id,
+        batch_name="自动排课测试教学任务批次",
+        status="APPROVED",
+    )
+    db.add(task_batch); db.flush()
+
+    b = AaScheduleBatch(
+        tenant_id=TID,
+        term_id=term.id,
+        batch_name="自动排课测试批次",
+        status="DRAFT",
+    )
     db.add(b); db.flush()
+
     room_ids = []
     for r in rooms:
-        c = AaClassroom(tenant_id=TID, building_code=r.get("bld", "A"), building_name=r.get("bld", "A") + "栋",
-                        room_code=r["code"], capacity=r.get("cap", 60),
-                        room_type=r.get("type", "LECTURE"),
-                        is_exclusive=r.get("exclusive", False),
-                        exam_seats=r.get("examSeats"),
-                        status=r.get("status", "AVAILABLE"))
+        c = AaClassroom(
+            tenant_id=TID,
+            building_code=r.get("bld", "A"),
+            building_name=r.get("bld", "A") + "栋",
+            room_code=r["code"],
+            capacity=r.get("cap", 60),
+            room_type=r.get("type", "LECTURE"),
+            is_exclusive=r.get("exclusive", False),
+            exam_seats=r.get("examSeats"),
+            status=r.get("status", "AVAILABLE"),
+        )
         db.add(c); db.flush()
         room_ids.append(c.id)
+
     task_ids = []
-    for t in tasks:
-        x = AaTeachingTask(tenant_id=TID, batch_id=b.id, course_id=t.get("courseId", 1),
-                           course_name=t["course"], class_id=t.get("classId", 1),
-                           teaching_class_name=t.get("className", "软件2401"),
-                           teacher_key=t.get("teacher"), teacher_name=t.get("teacherName", "王老师"),
-                           expected_students=t.get("headcount", 40),
-                           weekly_hours=t.get("weekly", 2),
-                           required_room_type=t.get("roomType"),
-                           no_auto_schedule=t.get("noAuto", False),
-                           status="CONFIRMED")
+    for index, t in enumerate(tasks, start=1):
+        course = AaCourse(
+            tenant_id=TID,
+            course_code=f"AUTO_{term.id}_{index}",
+            course_name=t["course"],
+            credit=1,
+        )
+        db.add(course); db.flush()
+        x = AaTeachingTask(
+            tenant_id=TID,
+            batch_id=task_batch.id,
+            course_id=course.id,
+            course_name=t["course"],
+            class_id=t.get("classId", index),
+            teaching_class_name=t.get("className", f"软件240{index}"),
+            teacher_key=t.get("teacher"),
+            teacher_name=t.get("teacherName", "王老师"),
+            expected_students=t.get("headcount", 40),
+            weekly_hours=t.get("weekly", 2),
+            total_hours=t.get("weekly", 2) * 18,
+            start_week=1,
+            end_week=18,
+            required_room_type=t.get("roomType"),
+            no_auto_schedule=t.get("noAuto", False),
+            status="READY",
+        )
         db.add(x); db.flush()
         task_ids.append(x.id)
     db.commit()
-    ids = {"term": term.id, "batch": b.id, "rooms": room_ids, "tasks": task_ids}
+    ids = {
+        "term": term.id,
+        "batch": b.id,
+        "taskBatch": task_batch.id,
+        "rooms": room_ids,
+        "tasks": task_ids,
+    }
     db.close()
     return ids
 
@@ -107,7 +175,7 @@ def test_dry_run_does_not_persist(client, db_mode):
                 rooms=[{"code": "101", "cap": 60}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto?dryRun=true",
                     headers=_hdr(client, "school_admin01"))
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     assert r.json()["data"]["placedSessions"] == 2
     assert r.json()["data"]["dryRun"] is True
     assert _items(ids["batch"]) == []  # 只算不落
@@ -151,6 +219,7 @@ def test_capacity_respected_not_silently_relaxed(client, db_mode):
                 tasks=[{"course": "大课", "teacher": "t01", "weekly": 2, "headcount": 100}],
                 rooms=[{"code": "101", "cap": 30}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     d = r.json()["data"]
     assert d["placedSessions"] == 0
     assert d["missedTasks"] == 1
@@ -165,6 +234,7 @@ def test_room_type_match(client, db_mode):
                 tasks=[{"course": "程序设计", "teacher": "t01", "weekly": 2, "roomType": "COMPUTER"}],
                 rooms=[{"code": "101", "cap": 60, "type": "LECTURE"}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     d = r.json()["data"]
     assert d["missedTasks"] == 1
     assert d["misses"][0]["reason"] == "NO_ROOM_TYPE"
@@ -176,6 +246,7 @@ def test_exclusive_room_skipped(client, db_mode):
                 tasks=[{"course": "高数", "teacher": "t01", "weekly": 2}],
                 rooms=[{"code": "R01", "cap": 60, "exclusive": True}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     assert r.json()["data"]["missedTasks"] == 1
     assert r.json()["data"]["roomPoolSize"] == 0
 
@@ -185,6 +256,7 @@ def test_no_teacher_assigned_reported(client, db_mode):
                 tasks=[{"course": "高数", "teacher": None, "weekly": 2}],
                 rooms=[{"code": "101", "cap": 60}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     m = r.json()["data"]["misses"][0]
     assert m["reason"] == "NO_TEACHER"
     assert "分配任课教师" in m["detail"]
@@ -196,6 +268,7 @@ def test_no_auto_schedule_task_excluded(client, db_mode):
                 tasks=[{"course": "顶岗实习", "teacher": "t01", "weekly": 20, "noAuto": True}],
                 rooms=[{"code": "101", "cap": 60}])
     r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     d = r.json()["data"]
     assert d["placedSessions"] == 0
     assert d["missedTasks"] == 0, "标记不排课的任务不应计入漏排"
@@ -217,11 +290,12 @@ def test_clear_auto_preserves_manual(client, db_mode):
                           classroom_text="手工教室", status="EFFECTIVE", source="MANUAL"))
     db.commit(); db.close()
 
-    client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    r_auto = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r_auto.status_code == 200, r_auto.text
     assert len([i for i in _items(ids["batch"]) if i["source"] == "AUTO"]) == 2
 
     r = client.delete(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     assert r.json()["data"]["cleared"] == 2
     left = _items(ids["batch"])
     assert len(left) == 1
@@ -243,7 +317,8 @@ def test_auto_avoids_manual_occupied_slot(client, db_mode):
                           start_week=1, end_week=18, week_parity="ALL",
                           status="EFFECTIVE", source="MANUAL"))
     db.commit(); db.close()
-    client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     auto = [i for i in _items(ids["batch"]) if i["source"] == "AUTO"]
     assert len(auto) == 1
     assert not (auto[0]["wd"] == 1 and auto[0]["slot"] == 1), "自动排课撞上了人工排课的时段"
@@ -257,8 +332,10 @@ def test_incremental_does_not_duplicate(client, db_mode):
                 tasks=[{"course": "高数", "teacher": "t01", "weekly": 2}],
                 rooms=[{"code": "101", "cap": 60}])
     h = _hdr(client, "school_admin01")
-    client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=h)
+    r1 = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=h)
+    assert r1.status_code == 200, r1.text
     r2 = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=h)
+    assert r2.status_code == 200, r2.text
     assert r2.json()["data"]["placedSessions"] == 0, "第二次不应重复排课"
     assert len(_items(ids["batch"])) == 2
 
@@ -271,7 +348,7 @@ def test_miss_report_groups_by_reason(client, db_mode):
                        {"course": "机房课", "teacher": "t02", "weekly": 2, "roomType": "COMPUTER"}],
                 rooms=[{"code": "101", "cap": 30, "type": "LECTURE"}])
     r = client.get(f"{BASE}/scheduling/batches/{ids['batch']}/miss-report", headers=_hdr(client, "school_admin01"))
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     d = r.json()["data"]
     assert d["missedTasks"] == 2
     reasons = {s["reason"] for s in d["summary"]}
@@ -301,7 +378,8 @@ def test_forbidden_slots_respected(client, db_mode):
     db.add(AaScheduleRule(tenant_id=TID, batch_id=ids["batch"], rule_key="AUTO_FORBIDDEN",
                           rule_value_json='[{"weekday":1}]', status="ENABLED"))
     db.commit(); db.close()
-    client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     assert all(i["wd"] != 1 for i in _items(ids["batch"])), "禁排时段被违反"
 
 
@@ -316,7 +394,8 @@ def test_teacher_availability_respected(client, db_mode):
     db.add(AaTeacherAvailability(tenant_id=TID, teacher_key="t01", term_id=ids["term"],
                                  weekday=1, slot_no=1, status="ADOPTED"))
     db.commit(); db.close()
-    client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    r = client.post(f"{BASE}/scheduling/batches/{ids['batch']}/auto", headers=_hdr(client, "school_admin01"))
+    assert r.status_code == 200, r.text
     its = _items(ids["batch"])
     assert not any(i["wd"] == 1 and i["slot"] == 1 for i in its)
 
