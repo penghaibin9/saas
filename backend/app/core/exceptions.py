@@ -49,12 +49,22 @@ CODE_HTTP = {
 class AppException(Exception):
     """业务异常：service/api 层抛出，由全局处理器转统一失败响应。"""
 
-    def __init__(self, code: str, message: str, details=None, http_status: int | None = None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        details=None,
+        http_status: int | None = None,
+        decision_trace: dict | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
         self.details = details
         self.http_status = http_status or CODE_HTTP.get(code, 400)
+        # Stage D additive envelope field. Existing callers are unchanged; only academic
+        # business rules that already made a decision may attach a deterministic trace.
+        self.decision_trace = decision_trace
 
 
 # 常用快捷构造
@@ -98,10 +108,10 @@ def register_exception_handlers(app: FastAPI) -> None:
                                  request.url.path, detail={"message": exc.message})
             except Exception:  # noqa: BLE001
                 pass
-        return JSONResponse(
-            status_code=exc.http_status,
-            content=fail(exc.code, exc.message, exc.details),
-        )
+        body = fail(exc.code, exc.message, exc.details)
+        if exc.decision_trace is not None:
+            body["decisionTrace"] = exc.decision_trace
+        return JSONResponse(status_code=exc.http_status, content=body)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc(_: Request, exc: RequestValidationError):
