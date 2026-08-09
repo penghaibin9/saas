@@ -60,6 +60,11 @@ from . import academic_affairs_change_temporal_guard
 
 academic_affairs_change_temporal_guard.install()
 
+# Stage C3：ARCHIVED 是不可逆历史事实；正式归档入口不得再走普通 unfreeze 回退到 DRAFT/PUBLISHED。
+from . import academic_affairs_archive_immutable_guard
+
+academic_affairs_archive_immutable_guard.install(academic_affairs_archive_service)
+
 # 包 1：正式成绩更正统一命令——申请不改正式成绩，终审追加版本且与工作流同事务。
 from . import academic_affairs_grade_correction_command
 
