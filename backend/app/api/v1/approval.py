@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.api.v1.file_contract import validated_local_file_response
-from app.core.idempotency import begin_required as idempotency_begin, finish as idempotency_finish
+from app.core.idempotency import idempotency_guard
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
 from app.schemas.approval import (
@@ -159,29 +159,32 @@ def batch_process(
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
-    cached, handle = idempotency_begin(
+    payload = {
+        "action": body.action,
+        "items": [{"taskId": x.taskId, "version": x.version} for x in body.items],
+        "targetUserId": body.targetUserId,
+        "reason": body.reason,
+        "comment": body.comment,
+    }
+    with idempotency_guard(
         user,
         "approval-batch",
         idempotency_key,
-        {
-            "action": body.action,
-            "items": [{"taskId": x.taskId, "version": x.version} for x in body.items],
-            "targetUserId": body.targetUserId,
-            "reason": body.reason,
-        },
-    )
-    if cached is not None:
-        return success(cached, message="批量处理完成（幂等重放）")
-    result = runtime.batch_process(
-        [x.model_dump() for x in body.items],
-        body.action,
-        user=user,
-        reason=body.reason,
-        target_user_id=body.targetUserId,
-        comment=body.comment,
-    )
-    idempotency_finish(handle, result)
-    return success(result, message="批量处理完成")
+        payload,
+        require_store=True,
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="批量处理完成（幂等重放）")
+        result = runtime.batch_process(
+            [x.model_dump() for x in body.items],
+            body.action,
+            user=user,
+            reason=body.reason,
+            target_user_id=body.targetUserId,
+            comment=body.comment,
+        )
+        guard.success(result)
+        return success(result, message="批量处理完成")
 
 
 @router.post("/export", summary="创建审批中心异步 xlsx 导出任务")
@@ -190,17 +193,18 @@ def create_export(
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
-    cached, handle = idempotency_begin(
+    with idempotency_guard(
         user,
         "approval-export",
         idempotency_key,
         {"scope": body.scope, "purpose": body.purpose},
-    )
-    if cached is not None:
-        return success(cached, message="导出任务已存在（幂等重放）")
-    result = exportsvc.create_job(body.scope, body.purpose, user=user)
-    idempotency_finish(handle, result)
-    return success(result, message="导出任务已创建")
+        require_store=True,
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="导出任务已存在（幂等重放）")
+        result = exportsvc.create_job(body.scope, body.purpose, user=user)
+        guard.success(result)
+        return success(result, message="导出任务已创建")
 
 
 @router.get("/export/{task_id}", summary="查询审批中心导出任务状态")
