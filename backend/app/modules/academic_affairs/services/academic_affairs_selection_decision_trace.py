@@ -32,6 +32,9 @@ _RESOLUTIONS = {
     "ALREADY_SELECTED": [
         {"code": "VIEW_MY_SELECTIONS", "label": "查看“我的选课”确认当前有效记录"},
     ],
+    "COURSE_ALREADY_PASSED": [
+        {"code": "VIEW_PASSED_GRADE", "label": "查看该课程已通过的正式成绩；如需再次修读，请按学校重修流程办理"},
+    ],
     "PREREQUISITE_NOT_MET": [
         {"code": "COMPLETE_PREREQUISITES", "label": "先完成并通过缺失的先修课程"},
     ],
@@ -49,6 +52,9 @@ _RESOLUTIONS = {
     ],
     "COURSE_RULE_BROKEN": [
         {"code": "CONTACT_ACADEMIC_ADMIN", "label": "联系教务管理员修复选课规则配置"},
+    ],
+    "TERM_ARCHIVED": [
+        {"code": "CONTACT_POST_ARCHIVE_CORRECTION", "label": "该学期已归档；如确需更正，请联系教务老师按归档后纠错流程处理"},
     ],
     "SELECTION_LOCKED": [
         {"code": "CHECK_SELECTION_WINDOW", "label": "查看当前选课轮次或批次状态"},
