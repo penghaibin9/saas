@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, String, UniqueConstraint, event
+from sqlalchemy import BigInteger, DateTime, Index, Integer, String, UniqueConstraint, event, inspect
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
@@ -44,6 +44,22 @@ class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
     )
 
 
+def _fact_table_ready(connection) -> bool:
+    """Check table presence once per pooled connection.
+
+    During ``alembic upgrade head`` the ORM is imported before the C1 migration runs.
+    Older data migrations must therefore be allowed to insert StudentProfile rows while
+    the fact table does not exist yet; the C1 migration backfills those rows later.
+    """
+    key = "stage_c1_academic_fact_table_ready"
+    cached = connection.info.get(key)
+    if cached is not None:
+        return bool(cached)
+    ready = inspect(connection).has_table(StudentAcademicFact.__tablename__)
+    connection.info[key] = bool(ready)
+    return bool(ready)
+
+
 @event.listens_for(StudentProfile, "after_insert", propagate=True)
 def _bootstrap_new_student_academic_fact(_mapper, connection, target: StudentProfile) -> None:
     """Keep every newly-created profile and its version-1 academic fact atomic.
@@ -53,6 +69,8 @@ def _bootstrap_new_student_academic_fact(_mapper, connection, target: StudentPro
     canonical Stage C1 append command, never an automatic update hook that could hide
     a bypass. Raw SQL profile inserts remain detectable by reconciliation/bypass gates.
     """
+    if not _fact_table_ready(connection):
+        return
     connection.execute(
         StudentAcademicFact.__table__.insert().values(
             tenant_id=int(target.tenant_id),
