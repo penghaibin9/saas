@@ -1,20 +1,9 @@
 #!/usr/bin/env python3
-"""Stage C1 static gate: formal StudentProfile academic fields have one write command.
-
-This intentionally scans production ``backend/app`` only. It performs lightweight AST
-symbol inference for variables loaded from StudentProfile and reports direct writes to
-student_status/college_id/major_id/class_id/grade. Creating a new StudentProfile is
-allowed; changing an existing profile must go through academic_affairs_student_fact_service.
-
-The old internal major-split implementation is excluded only because the formal router
-is bound to academic_affairs_major_split_public_service.confirm; a companion assertion
-below fails if that override disappears.
-"""
+"""Stage C1 static gate: formal StudentProfile academic fields have one write command."""
 from __future__ import annotations
 
 import ast
 import pathlib
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 APP = ROOT / "backend" / "app"
@@ -25,6 +14,7 @@ ALLOW_DIRECT_FILES = {
 NONFORMAL_LEGACY_FILES = {
     "backend/app/modules/academic_affairs/services/academic_affairs_major_split_service.py",
 }
+PROFILE_HELPER_CALLS = {"_get_profile", "resolve_student", "_student_profile"}
 
 
 def rel(path: pathlib.Path) -> str:
@@ -33,6 +23,22 @@ def rel(path: pathlib.Path) -> str:
 
 def contains_student_profile(node: ast.AST | None) -> bool:
     return bool(node) and any(isinstance(item, ast.Name) and item.id == "StudentProfile" for item in ast.walk(node))
+
+
+def is_known_profile_load(value: ast.AST, tracked: set[str]) -> bool:
+    if contains_student_profile(value) and not (
+        isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "StudentProfile"
+    ):
+        return True
+    if isinstance(value, ast.Name) and value.id in tracked:
+        return True
+    if isinstance(value, ast.Call):
+        func = value.func
+        if isinstance(func, ast.Name) and func.id in PROFILE_HELPER_CALLS:
+            return True
+        if isinstance(func, ast.Attribute) and func.attr in PROFILE_HELPER_CALLS:
+            return True
+    return False
 
 
 def infer_loaded_profile_vars(tree: ast.AST) -> set[str]:
@@ -44,18 +50,29 @@ def infer_loaded_profile_vars(tree: ast.AST) -> set[str]:
             if not isinstance(node, ast.Assign) or len(node.targets) != 1:
                 continue
             target = node.targets[0]
-            if not isinstance(target, ast.Name):
-                continue
-            name = target.id
-            value = node.value
-            is_profile_load = contains_student_profile(value) and not (
-                isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "StudentProfile"
-            )
-            is_alias = isinstance(value, ast.Name) and value.id in tracked
-            if (is_profile_load or is_alias) and name not in tracked:
-                tracked.add(name)
+            if isinstance(target, ast.Name) and is_known_profile_load(node.value, tracked) and target.id not in tracked:
+                tracked.add(target.id)
                 changed = True
     return tracked
+
+
+def scan_update_calls(tree: ast.AST, relative: str) -> list[str]:
+    violations = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "update":
+            continue
+        if not contains_student_profile(node):
+            continue
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Dict):
+                continue
+            for key in child.keys:
+                if isinstance(key, ast.Attribute) and isinstance(key.value, ast.Name):
+                    if key.value.id == "StudentProfile" and key.attr in ACADEMIC_FIELDS:
+                        violations.append(
+                            f"{relative}:{getattr(key, 'lineno', node.lineno)}: StudentProfile.{key.attr} direct update mapping"
+                        )
+    return violations
 
 
 def scan_file(path: pathlib.Path) -> list[str]:
@@ -63,15 +80,13 @@ def scan_file(path: pathlib.Path) -> list[str]:
     if relative in ALLOW_DIRECT_FILES or relative in NONFORMAL_LEGACY_FILES:
         return []
     try:
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=relative)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
     except (UnicodeDecodeError, SyntaxError) as exc:
         return [f"{relative}: parse error: {exc}"]
 
     tracked = infer_loaded_profile_vars(tree)
-    violations: list[str] = []
+    violations = scan_update_calls(tree, relative)
     for node in ast.walk(tree):
-        # s.major_id = ... where s was loaded from StudentProfile.
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
@@ -80,50 +95,33 @@ def scan_file(path: pathlib.Path) -> list[str]:
                         violations.append(
                             f"{relative}:{getattr(target, 'lineno', '?')}: direct {target.value.id}.{target.attr} write"
                         )
-        # setattr(s, "grade", ...)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setattr":
             if len(node.args) >= 2 and isinstance(node.args[0], ast.Name) and node.args[0].id in tracked:
                 field = node.args[1].value if isinstance(node.args[1], ast.Constant) else None
                 if field in ACADEMIC_FIELDS:
-                    violations.append(
-                        f"{relative}:{node.lineno}: setattr({node.args[0].id}, {field}) bypass"
-                    )
-        # query(StudentProfile).update({StudentProfile.grade: ...}) and Core update mappings.
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.value.id == "StudentProfile" and node.attr in ACADEMIC_FIELDS:
-                parent_is_read = False
-                # Attribute references are common in SELECT/WHERE. Only flag when the same
-                # line contains an update-style mapping key marker, detected from source line.
-                line = source.splitlines()[node.lineno - 1] if node.lineno <= len(source.splitlines()) else ""
-                if ".update(" in line or "StudentProfile.version" in line:
-                    parent_is_read = True
-                if parent_is_read and node.attr != "version":
-                    violations.append(f"{relative}:{node.lineno}: StudentProfile.{node.attr} update mapping")
-
+                    violations.append(f"{relative}:{node.lineno}: setattr({node.args[0].id}, {field}) bypass")
     return sorted(set(violations))
 
 
-def assert_major_split_formal_override() -> list[str]:
-    public_path = APP / "modules" / "academic_affairs" / "services" / "academic_affairs_major_split_public_service.py"
-    init_path = APP / "modules" / "academic_affairs" / "services" / "__init__.py"
-    public = public_path.read_text(encoding="utf-8")
-    init = init_path.read_text(encoding="utf-8")
+def formal_boundary_assertions() -> list[str]:
+    public = (APP / "modules/academic_affairs/services/academic_affairs_major_split_public_service.py").read_text(encoding="utf-8")
+    services_init = (APP / "modules/academic_affairs/services/__init__.py").read_text(encoding="utf-8")
+    student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
     errors = []
     if "def confirm(user, batch_id)" not in public or "append_student_academic_fact" not in public:
         errors.append("formal major-split confirm is not the Stage C1 AcademicFact override")
-    if "academic_affairs_major_split_public_service as academic_affairs_major_split_service" not in init:
+    if "academic_affairs_major_split_public_service as academic_affairs_major_split_service" not in services_init:
         errors.append("services package no longer binds formal major-split to public facade")
+    if "db_service.void_student" in student_service:
+        errors.append("formal student_service still calls legacy db_service.void_student direct-write")
     return errors
 
 
 def main() -> int:
-    violations: list[str] = []
+    violations = []
     for path in sorted(APP.rglob("*.py")):
-        relative = rel(path)
-        if "/__pycache__/" in relative:
-            continue
         violations.extend(scan_file(path))
-    violations.extend(assert_major_split_formal_override())
+    violations.extend(formal_boundary_assertions())
     if violations:
         print("Stage C1 academic-fact bypass gate FAILED:")
         for item in violations:
