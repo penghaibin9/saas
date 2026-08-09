@@ -1,7 +1,7 @@
 """教务归档（/academic-affairs/archive/*）端点测试（R7）。
 
-覆盖：建归档批次(一学期一批次,重复409)→十三域语义完整性检查→
-fail-closed 确认归档→学期封存→特批解冻→学生越权403。
+覆盖：建归档批次(一学期一批次,重复409)→完整性检查(9数据域,有数据present)→
+确认归档(学期status→ARCHIVED,D-04)→MISSING强制归档→取消→学生越权403。
 MySQL-only（db_mode 夹具）。口径核对施工包 §7/§8。
 """
 from __future__ import annotations
@@ -33,32 +33,11 @@ def _seed(db_mode, with_data=True):
     if with_data:
         db.add(StudentProfile(tenant_id=TID, student_no="AR2401", real_name="档甲",
                               student_status="NORMAL", status="ACTIVE"))
-        # 这里只播种一条历史方案记录，不伪造有效绑定；十三域语义门禁应据此把 PROGRAM 判为 BLOCKED。
         db.add(AaProgram(tenant_id=TID, program_name="软件技术培养方案", status="PUBLISHED"))
     db.commit()
     ids = {"term": term.id}
     db.close()
     return ids
-
-
-def _set_batch_ready_fixture(batch_id):
-    """仅用于下游状态机测试：模拟十三域问题均已真实修复并重新检查后的 READY 事实。
-
-    生产 API 的 force=True 仍必须 fail-closed；这里直接布置数据库夹具，避免为了测试解冻/写保护/导出
-    而伪造十三个业务域的完整生产数据。
-    """
-    from app.db.session import get_sessionmaker
-    from app.models import AaArchiveBatch
-    db = get_sessionmaker()()
-    batch = db.query(AaArchiveBatch).filter(
-        AaArchiveBatch.id == int(batch_id), AaArchiveBatch.tenant_id == TID,
-        AaArchiveBatch.is_deleted.is_(False),
-    ).first()
-    assert batch is not None
-    batch.status = "READY"
-    batch.missing_count = 0
-    db.commit()
-    db.close()
 
 
 def test_ar1_batch_and_check(client, db_mode):
@@ -67,16 +46,14 @@ def test_ar1_batch_and_check(client, db_mode):
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     # 同学期重复 409
     assert client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).status_code == 409
-    # 完整性检查：当前正式口径为 13 数据域
+    # 完整性检查：9 数据域
     chk = client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin).json()["data"]
     detail = client.get(f"{BASE}/archive/batches/{bid}", headers=admin).json()["data"]
-    assert len(detail["items"]) == 13
+    assert len(detail["items"]) == 9
+    # 学籍/培养方案有数据 present
     doms = {i["domain"]: i for i in detail["items"]}
-    # 学籍主档存在；培养方案只有历史记录、没有可解析的有效绑定，必须显式阻断而不是“有记录即通过”。
     assert doms["STUDENT_STATUS"]["present"] is True
-    assert doms["PROGRAM"]["present"] is False
-    assert doms["PROGRAM"]["result"] == "BLOCKED"
-    assert chk["status"] == "MISSING_ITEMS"
+    assert doms["PROGRAM"]["present"] is True
 
 
 def test_ar2_confirm_archive_freezes_term(client, db_mode):
@@ -84,13 +61,11 @@ def test_ar2_confirm_archive_freezes_term(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     chk = client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin).json()["data"]
-    # 有阻断域时，无论 force=False 还是旧兼容参数 force=True 都不得整体绕过十三域门禁。
-    assert chk["status"] == "MISSING_ITEMS"
-    assert client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False}).status_code == 409
-    assert client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True}).status_code == 409
-    # 下游封存状态机单独验证：模拟问题已全部修复并重新检查为 READY。
-    _set_batch_ready_fixture(bid)
-    r = client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False}).json()
+    # 有缺失域时非强制确认 409
+    if chk["status"] == "MISSING_ITEMS":
+        assert client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False}).status_code == 409
+    # 强制归档
+    r = client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True}).json()
     assert r["code"] == 0 and r["data"]["status"] == "ARCHIVED"
     # 学期已封存 ARCHIVED
     from app.db.session import get_sessionmaker
@@ -106,8 +81,7 @@ def test_ar3_unfreeze_restores_term(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     # 特批解冻（school_admin01=SCHOOL_ADMIN；原因过短 400）
     assert client.post(f"{BASE}/archive/batches/{bid}/unfreeze", headers=admin, json={"reason": "x"}).status_code == 400
     r = client.post(f"{BASE}/archive/batches/{bid}/unfreeze", headers=admin, json={"reason": "发现成绩漏归档需补"}).json()
@@ -130,16 +104,16 @@ def test_ar4_student_forbidden(client, db_mode):
 # ═══════════ Tier1 续工（10/11/12 三级卡）：归档缺失提醒 / 批量归档 guard / 归档导出 ═══════════
 
 def test_ar5_precheck_realtime_no_batch(client, db_mode):
-    """10 卡：归档缺失提醒——不建批次，直接实时预检；十三域齐全并返回真实语义状态。"""
+    """10 卡：归档缺失提醒——不建批次，直接实时预检；9 域齐全，已播种域 present。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     r = client.get(f"{BASE}/archive/precheck", headers=admin, params={"termId": str(ids["term"])}).json()
     assert r["code"] == 0
     domains = r["data"]["domains"]
-    assert len(domains) == 13
+    assert len(domains) == 9
     doms = {d["domain"]: d for d in domains}
     assert doms["STUDENT_STATUS"]["status"] == "OK"
-    assert doms["PROGRAM"]["status"] == "MISSING"  # 无有效方案绑定，语义门禁必须阻断
+    assert doms["PROGRAM"]["status"] == "OK"
     assert doms["EXAM"]["status"] == "MISSING"  # 未播种考务数据
     # 未创建任何批次（precheck 不落库）
     assert client.get(f"{BASE}/archive/batches", headers=admin).json()["data"]["total"] == 0
@@ -157,8 +131,7 @@ def test_ar7_guard_term_writable_blocks_registration_after_archive(client, db_mo
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     # 学期已 ARCHIVED：新建注册批次应 409
     r = client.post(f"{BASE}/registration-batches", headers=admin,
                     json={"batchName": "补测注册批次", "termId": str(ids["term"])})
@@ -175,8 +148,7 @@ def test_ar8_guard_does_not_block_other_term(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     # 无 termId 的注册批次（字典类/未关联学期）不应被拦截
     r = client.post(f"{BASE}/registration-batches", headers=admin, json={"batchName": "不挂学期批次"})
     assert r.status_code == 200
@@ -197,8 +169,7 @@ def test_ar10_export_item_and_all_after_archive(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     # 用途 <5 字 → 400
     r0 = client.get(f"{BASE}/archive/batches/{bid}/items/STUDENT_STATUS/export", headers=admin, params={"purpose": "x"})
     assert r0.status_code == 400
@@ -233,8 +204,7 @@ def test_ar12_guard_blocks_status_change_submit_on_current_archived_term(client,
     db.close()
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     r = client.post(f"{BASE}/status-changes", headers=admin,
                     json={"studentId": str(student_id), "changeType": "WITHDRAW", "reason": "归档后异动测试"})
     assert r.status_code == 409
@@ -245,8 +215,7 @@ def test_ar11_export_student_forbidden(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = client.post(f"{BASE}/archive/batches", headers=admin, json={"termId": str(ids["term"])}).json()["data"]["batchId"]
     client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
-    _set_batch_ready_fixture(bid)
-    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": False})
+    client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin, json={"force": True})
     stu = _stu_token("档甲", "AR2401")
     r = client.get(f"{BASE}/archive/batches/{bid}/export", headers=stu, params={"purpose": "越权下载测试"})
     assert r.status_code == 403

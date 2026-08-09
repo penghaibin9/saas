@@ -135,7 +135,7 @@
               </view>
               <view class="ir__next is-warning">
                 <text class="ir__next-label">处理原则</text>
-                <text class="ir__next-text">超范围不直接认定作弊，应结合学生说明和实际工作情况人工判断。</text>
+                <text class="ir__next-text">超范围不直接认定作弊，应结合学生说明、定位信息和实际工作情况人工判断。</text>
               </view>
               <view class="ir__actions">
                 <button class="btn btn-ghost flex-1" :disabled="acting" @click="ck(c, 'reject')">异常计入</button>
@@ -153,7 +153,6 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
-import { loadWeeklyReviewQueue, reviewWeeklyVersioned } from '@/services/weeklyReviewApi'
 import { normalizeError } from '@/services/request'
 import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
@@ -213,7 +212,7 @@ export default {
     load(done) {
       this.state = 'loading'
       this.pagedReset()
-      loadWeeklyReviewQueue().then((d) => {
+      teacherApi.getWeeklyReports().then((d) => {
         d.reports.forEach((r) => { if (!r._body) r._body = 'idle' })
         this.data = d
         this.tabs[0].badge = d.reports.filter((r) => r.status === 'PENDING_REVIEW').length
@@ -279,16 +278,10 @@ export default {
           toast('当前为离线数据，无法批阅，请恢复网络后重试')
           return
         }
-        if (!Number.isInteger(Number(w.version)) || Number(w.version) < 0) {
-          toast('周报版本已失效，请刷新后重试')
-          this.load()
-          return
-        }
         this.acting = true
-        reviewWeeklyVersioned(w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '', Number(w.version))
+        teacherApi.reviewWeekly(w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '')
           .then((res) => {
             w.status = res.status || (type === 'pass' ? 'APPROVED' : 'RETURNED')
-            w.version = Number(res.version ?? w.version)
             w.feedback = r.content || ''
             toast('已' + label)
             this.load()

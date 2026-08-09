@@ -1,4 +1,4 @@
-"""毕业设计域演示种子：覆盖选题到归档准备的业务链，不伪造生产备案事实。"""
+"""毕业设计域演示种子：覆盖选题到归档的完整业务链。"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -181,22 +181,12 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
                            gd_student_id=stus[6].id, level="HIGH", status="PROCESSING",
                            assignee="王芳", handle_note="已约谈学生并制定每周指导计划",
                            detected_at=now - timedelta(days=7)),
-        # 生产归档守卫要求：FILED 必须具备完整 checklist、真实文件证据和学生确认哈希。
-        # 演示种子没有走真实上传/签署链路，因此只能如实停在“待提交”，不能伪造已备案。
-        GraduationArchiveRecord(
-            tenant_id=tenant_id, gd_student_id=stus[5].id,
-            checklist_json=[
-                {"item": "taskbook", "label": "任务书（已确认）", "present": False},
-                {"item": "proposal", "label": "开题报告（已通过）", "present": False},
-                {"item": "midterm", "label": "中期检查（已通过）", "present": False},
-                {"item": "final", "label": "成果定稿（已通过）", "present": True},
-                {"item": "review", "label": "教师评阅（已完成）", "present": True},
-                {"item": "defenseScore", "label": "答辩评分（已确认）", "present": True},
-                {"item": "grade", "label": "成绩（已发布）", "present": True},
-            ],
-            missing_items=["任务书（已确认）", "开题报告（已通过）", "中期检查（已通过）"],
-            status="PENDING_SUBMIT", generated_at=now - timedelta(days=2),
-        ),
+        GraduationArchiveRecord(tenant_id=tenant_id, gd_student_id=stus[5].id,
+                                checklist_json=[{"item": "论文定稿", "required": True, "present": True},
+                                                {"item": "答辩记录", "required": True, "present": True}],
+                                missing_items=[], status="FILED", generated_at=now - timedelta(days=2),
+                                submitted_at=now - timedelta(days=1), verified_by="教务处",
+                                filed_at=now, archive_batch_no="GD-ARCHIVE-2026-01"),
         GraduationPeerReview(tenant_id=tenant_id, gd_student_id=stus[4].id,
                              reviewer_gd_student_id=stus[5].id, gd_final_id=finals[1].id,
                              opinion="建议补充异常场景测试", rectify_note="已补充12条异常用例",

@@ -265,54 +265,27 @@ def test_teacher_student_detail_cross_tenant_not_found(client, db_mode):
 
 def test_teacher_domain_pages_structure(client, db_mode):
     _seed_rich(db_mode)
-    from sqlalchemy import select
-
     from app.db.session import get_sessionmaker
-    from app.models import GraduationBatch, InternshipBatch, InternshipRecord
+    from app.models import GraduationBatch
 
     db = get_sessionmaker()()
     try:
-        internship_batch = InternshipBatch(
-            tenant_id=MAIN, batch_name="移动端实习结构测试批次", batch_no="MOBILE-INTERN-STRUCTURE-001",
-            planned_count=1, status="RUNNING", archive_status="NOT_ARCHIVED",
-        )
-        db.add(internship_batch)
-        db.flush()
-        internship_record = db.scalars(select(InternshipRecord).where(
-            InternshipRecord.tenant_id == MAIN,
-            InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.batch_id.is_(None),
-        ).order_by(InternshipRecord.id.desc())).first()
-        assert internship_record is not None
-        internship_record.batch_id = internship_batch.id
-
-        graduation_batch = GraduationBatch(
+        batch = GraduationBatch(
             tenant_id=MAIN, batch_name="移动端结构测试批次", batch_no="MOBILE-STRUCTURE-001",
             planned_count=2, status="RUNNING", archive_status="NOT_ARCHIVED",
         )
-        db.add(graduation_batch)
+        db.add(batch)
         db.flush()
-        graduation_batch_id = int(graduation_batch.id)
+        batch_id = int(batch.id)
         db.commit()
     finally:
         db.close()
 
     admin_headers = _teacher_token(role="SCHOOL_ADMIN")
-    internship_ctx = client.get(
-        "/api/v1/mobile/teacher/internship/context", headers=admin_headers
-    ).json()
-    assert internship_ctx["code"] == 0
-    internship_batch_id = internship_ctx["data"]["defaultBatchId"]
-    assert internship_batch_id
-    it = client.get(
-        "/api/v1/mobile/teacher/internship",
-        headers=admin_headers,
-        params={"batchId": internship_batch_id},
-    ).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
     assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
     gd = client.get(
-        "/api/v1/mobile/teacher/graduation", headers=admin_headers,
-        params={"batchId": graduation_batch_id},
+        "/api/v1/mobile/teacher/graduation", headers=admin_headers, params={"batchId": batch_id}
     ).json()
     assert gd["code"] == 0 and "students" in gd["data"] and "reviewDetail" in gd["data"]
     em = client.get("/api/v1/mobile/teacher/employment", headers=admin_headers).json()

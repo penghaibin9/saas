@@ -20,72 +20,44 @@ _REQUEST_WRAPPER_PATCHED = False
 
 @pytest.fixture(autouse=True)
 def _seed_authoritative_tenant_for_db_tests(request):
-    """Seed and bind the canonical active tenant after ``db_mode`` resets the schema.
-
-    ``db_mode`` is an explicit trusted test-database boundary.  Production service
-    writes are fail-closed when no tenant ContextVar exists, so DB-backed tests must
-    install the same authoritative tenant context that their seeded rows use.  This
-    fixture deliberately does *not* install a user/actor context: actor-sensitive
-    policies (notably formal file binding) remain fail-closed and must opt in to an
-    explicit actor in the fixture that owns that operation.
-    """
+    """Seed the canonical active tenant after ``db_mode`` resets the schema."""
     if "db_mode" not in request.fixturenames:
         yield
         return
 
     request.getfixturevalue("db_mode")
 
-    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import Tenant
 
-    set_tenant({
-        "tenantId": str(TEST_TENANT_ID),
-        "tenantCode": "demo",
-        "tenantName": "测试学校",
-        "status": "ACTIVE",
-    })
+    db = get_sessionmaker()()
     try:
-        db = get_sessionmaker()()
-        try:
-            if db.get(Tenant, TEST_TENANT_ID) is None:
-                db.add(
-                    Tenant(
-                        id=TEST_TENANT_ID,
-                        tenant_code="demo",
-                        school_name="测试学校",
-                        short_name="测试学校",
-                        deploy_mode="SAAS",
-                        db_mode="SHARED",
-                        status="ACTIVE",
-                    )
+        if db.get(Tenant, TEST_TENANT_ID) is None:
+            db.add(
+                Tenant(
+                    id=TEST_TENANT_ID,
+                    tenant_code="demo",
+                    school_name="测试学校",
+                    short_name="测试学校",
+                    deploy_mode="SAAS",
+                    db_mode="SHARED",
+                    status="ACTIVE",
                 )
-                db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-
-        yield
+            )
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
-        set_tenant(None)
+        db.close()
+
+    yield
 
 
 def _stable_test_user_id(claims: dict) -> int | None:
-    """Return an existing stable DB id when the token already carries one.
-
-    Real password-login/switch-role tokens use ``db-<user.id>``.  The synthetic
-    BIGINT namespace below is only for legacy tests whose tokens do not identify a
-    persisted user.  Replacing a real ``db-`` identity with a synthetic id would
-    make correctly assigned internship records disappear from the mentor's scope.
-    """
     raw = claims.get("userId")
-    normalized = str(raw or "").strip()
-    if normalized.startswith("db-"):
-        normalized = normalized[3:]
     try:
-        parsed = int(normalized)
+        parsed = int(raw)
     except (TypeError, ValueError):
         parsed = 0
     if parsed > 0:

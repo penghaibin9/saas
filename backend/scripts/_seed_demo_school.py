@@ -13,9 +13,9 @@ from sqlalchemy import select
 
 from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, AttendanceException,
                         CsLeave, CsServiceStudent, CsWorkOrder, EmpJob, EmpStudent,
-                        GraduationProposal, GraduationStudent, InternshipBatch, InternshipRecord,
-                        OrientationStudent, StudentContact, StudentProfile, TeacherStudentScope,
-                        UnifiedMessage, UnifiedTodo, WeeklyReport, WorkflowInstance, WorkflowTask)
+                        GraduationProposal, GraduationStudent, InternshipRecord, OrientationStudent,
+                        StudentContact, StudentProfile, TeacherStudentScope, UnifiedMessage,
+                        UnifiedTodo, WeeklyReport, WorkflowInstance, WorkflowTask)
 
 TID2 = 1000000000000000003
 DEMO_NAME = "张同学"
@@ -80,14 +80,8 @@ def seed_demo_school(db) -> dict:
                            warn_type="MULTI_FAIL", level="LOW", reason="数据结构不及格，请关注补考",
                            status="PENDING_HANDLE", owner=COUNSELOR, record_status="ACTIVE",
                            trigger_time=now - timedelta(days=2)))
-    # 实习：显式归属 RUNNING 批次；生产查询禁止无 batchId 静默回退全历史。
-    batch = InternshipBatch(tenant_id=TID2, batch_name="2026届演示实习批次",
-                            batch_no="DEMO-INT-2026", start_date=datetime(2026, 3, 2),
-                            end_date=datetime(2026, 8, 28), status="RUNNING")
-    db.add(batch)
-    db.flush()
-    rec = InternshipRecord(tenant_id=TID2, student_id=p.id, batch_id=batch.id,
-                           enterprise_name="星河数字创意有限公司",
+    # 实习：在岗 + 一份已批周报 + 一份待批周报 + 一条待处理打卡异常（指导老师=李导师）
+    rec = InternshipRecord(tenant_id=TID2, student_id=p.id, enterprise_name="星河数字创意有限公司",
                            position_name="UI设计实习生", advisor_name=MENTOR,
                            enterprise_mentor_name="周主管", status="ONBOARD", risk_level="LOW",
                            intern_start_date=datetime(2026, 3, 2), intern_end_date=datetime(2026, 8, 28))

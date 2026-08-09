@@ -4,7 +4,7 @@
   组织 2 学院 / 3 专业 / 3 班级；学生 ≥20；六大业务域三态样例；教师范围=看得见即能处理。
   该租户在中间件层强制只读（写操作 403），数据不会被参观者改动。
 - sandbox-school(1000000000000000007) 自由体验租户：账号 admin2 / teacher2 / student2（123456）
-  沙箱可重置业务数据的唯一实现在 app/services/sandbox_service.py；固定演示账号的多岗位关系在本入口幂等补齐。
+  沙箱种子/重置的唯一实现在 app/services/sandbox_service.py（手动恢复与可选定时任务共用）。
 密码只以 pbkdf2 hash 落库（复用全局 hash_password），绝无明文；弱密码账号仅存在于这两个租户。
 所有账号走真实 /api/v1/auth/login，与 mock-login 无关。
 """
@@ -17,12 +17,11 @@ from sqlalchemy import func, select
 from app.core.security import hash_password
 from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, AttendanceException,
                         College, CsLeave, CsServiceStudent, CsWorkOrder, EmpFollowup, EmpJob,
-                        EmpMaterial, EmpStudent, GraduationFinal, GraduationMentor,
-                        GraduationMentorAssignment, GraduationProposal, GraduationStudent,
-                        InternshipCheckin, InternshipRecord, Major, OrientationStudent, Role,
-                        SchoolClass, StudentContact, StudentProfile, TeacherStudentScope, Tenant,
-                        TenantBrandConfig, UnifiedMessage, UnifiedTodo, User, UserRole,
-                        WeeklyReport, WorkflowInstance, WorkflowTask)
+                        EmpMaterial, EmpStudent, GraduationFinal, GraduationProposal,
+                        GraduationStudent, InternshipCheckin, InternshipRecord, Major,
+                        OrientationStudent, SchoolClass, StudentContact, StudentProfile,
+                        TeacherStudentScope, Tenant, TenantBrandConfig, UnifiedMessage,
+                        UnifiedTodo, User, WeeklyReport, WorkflowInstance, WorkflowTask)
 
 DEMO_TID = 1000000000000000003
 DEMO_CODE = "demo-school"
@@ -214,105 +213,10 @@ def seed_demo_tenant(db) -> dict:
 
 # ═══════════════ sandbox-school 自由体验租户（实现见 app/services/sandbox_service.py） ═══════════════
 
-def _ensure_sandbox_teacher_roles(db) -> list[str]:
-    """把 teacher2 的多岗位与稳定毕设导师身份落库，不靠姓名授权或角色扩权。"""
-    teacher = db.scalars(select(User).where(
-        User.tenant_id == SANDBOX_TID,
-        User.login_name == "teacher2",
-        User.is_deleted.is_(False),
-    )).first()
-    if teacher is None:
-        return []
-
-    role_codes = []
-    # COUNSELOR 必须先建/先关联，首次登录保持历史默认；进入实习/毕设办理时显式切换对应岗位。
-    role_specs = (
-        ("COUNSELOR", "辅导员"),
-        ("INTERN_MENTOR", "实习指导教师"),
-        ("GD_MENTOR", "毕业设计指导教师"),
-    )
-    for role_code, role_name in role_specs:
-        role = db.scalars(select(Role).where(
-            Role.tenant_id == SANDBOX_TID,
-            Role.role_code == role_code,
-            Role.is_deleted.is_(False),
-        )).first()
-        if role is None:
-            role = Role(tenant_id=SANDBOX_TID, role_code=role_code, role_name=role_name,
-                        role_type="SYSTEM", status="ACTIVE")
-            db.add(role)
-            db.flush()
-        link = db.scalars(select(UserRole).where(
-            UserRole.tenant_id == SANDBOX_TID,
-            UserRole.user_id == teacher.id,
-            UserRole.role_id == role.id,
-            UserRole.is_deleted.is_(False),
-        )).first()
-        if link is None:
-            db.add(UserRole(tenant_id=SANDBOX_TID, user_id=teacher.id, role_id=role.id,
-                            status="ACTIVE"))
-            db.flush()
-        role_codes.append(role_code)
-
-    mentor = db.scalars(select(GraduationMentor).where(
-        GraduationMentor.tenant_id == SANDBOX_TID,
-        GraduationMentor.teacher_no == "teacher2",
-        GraduationMentor.is_deleted.is_(False),
-    )).first()
-    if mentor is None:
-        mentor = GraduationMentor(
-            tenant_id=SANDBOX_TID,
-            teacher_no="teacher2",
-            teacher_name=SBX_TEACHER_NAME,
-            mentor_type="INTERNAL",
-            title="讲师",
-            college_name="体验学院",
-            major_name="电子商务",
-            research_direction="数字商务与运营",
-            max_capacity=20,
-            current_count=1,
-            qualification_status="QUALIFIED",
-        )
-        db.add(mentor)
-        db.flush()
-
-    gd_student = db.scalars(select(GraduationStudent).where(
-        GraduationStudent.tenant_id == SANDBOX_TID,
-        GraduationStudent.student_no == SBX_STUDENT_NO,
-        GraduationStudent.is_deleted.is_(False),
-    )).first()
-    if gd_student is not None:
-        gd_student.mentor_id = mentor.id
-        gd_student.advisor_name = mentor.teacher_name
-        assignment = db.scalars(select(GraduationMentorAssignment).where(
-            GraduationMentorAssignment.tenant_id == SANDBOX_TID,
-            GraduationMentorAssignment.gd_student_id == gd_student.id,
-            GraduationMentorAssignment.mentor_id == mentor.id,
-            GraduationMentorAssignment.is_deleted.is_(False),
-        )).first()
-        if assignment is None:
-            db.add(GraduationMentorAssignment(
-                tenant_id=SANDBOX_TID,
-                gd_student_id=gd_student.id,
-                mentor_id=mentor.id,
-                assign_source="SANDBOX_SEED",
-                assign_reason="固定体验账号真实导师关系",
-                status="ACTIVE",
-                confirmed_by_mentor=True,
-                confirmed_at=datetime.now(),
-                assigned_by="sandbox-seed",
-                assigned_at=datetime.now(),
-            ))
-    db.commit()
-    return role_codes
-
-
 def seed_sandbox_school(db) -> dict:
-    """沙箱租户全量种子（可重置业务数据与运营平台恢复共用 app 层实现）。"""
+    """沙箱租户全量种子（与运营平台恢复共用 app 层实现）。"""
     from app.services.sandbox_service import seed_sandbox
-    out = seed_sandbox(db)
-    out["teacherRoles"] = _ensure_sandbox_teacher_roles(db)
-    return out
+    return seed_sandbox(db)
 
 
 def seed_two_tenants(db) -> dict:

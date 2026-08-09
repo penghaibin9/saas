@@ -265,108 +265,6 @@ def todos(user: dict) -> dict:
             "scopeMode": scope["mode"], "errors": errors}
 
 
-def internship(user: dict, batch_id=None) -> dict:
-    """教师实习聚合从 domain 第一层就带 actor，保证“列表可见”与“写操作可处理”同一范围合同。"""
-    u = _require_teacher(user)
-    if not _impl.db_enabled():
-        return {"hasData": False, "weeklyReports": [], "abnormalCheckins": [], "stats": {}}
-    scope = resolve_teacher_scope(u)
-    source_errors: list[dict] = []
-
-    def _src(source: str, fn, **kw):
-        try:
-            return fn(1, 50, user=u, **kw)
-        except Exception as exc:  # noqa: BLE001
-            code = getattr(exc, "code", None) or "SOURCE_UNAVAILABLE"
-            _LOG.warning("mobile_teacher_internship_source_unavailable source=%s code=%s",
-                         source, code)
-            source_errors.append({"source": source, "errorCode": str(code), "available": False})
-            return [], 0
-
-    batch_kw = {"batch_id": batch_id} if batch_id else {}
-    reports, _ = _src("weeklyReportPending", _impl.internship_service.list_weekly_reports,
-                      status="PENDING_REVIEW", **batch_kw)
-    overdue, _ = _src("weeklyReportOverdue", _impl.internship_service.list_weekly_reports,
-                      status="OVERDUE", **batch_kw)
-    excs, _ = _src("attendanceException", _impl.internship_service.list_attendance_exceptions,
-                   status="PENDING_HANDLE", **batch_kw)
-
-    seen = {str(r.get("id")) for r in reports}
-    for row in overdue:
-        if str(row.get("id")) not in seen:
-            reports.append(row)
-            seen.add(str(row.get("id")))
-
-    # domain 已按同一 actor 收敛；这里再做一次门面级匹配作为纵深防御，不扩大任何范围。
-    if scope["mode"] == "SCOPED":
-        advisor_map = _impl._advisor_map(
-            [int(r.get("internId") or 0) for r in reports]
-            + [int(e.get("internId") or e.get("internshipId") or 0) for e in excs]
-        )
-        reports = [r for r in reports if _impl.scope_match_row(
-            scope,
-            class_name=r.get("className"),
-            advisor_name=advisor_map.get(int(r.get("internId") or 0)),
-            student_no=r.get("studentNo"),
-        )]
-        excs = [e for e in excs if _impl.scope_match_row(
-            scope,
-            class_name=e.get("className"),
-            advisor_name=advisor_map.get(int(e.get("internId") or e.get("internshipId") or 0)),
-            student_no=e.get("studentNo"),
-        )]
-
-    try:
-        stats = _impl.internship_service.get_dashboard_summary()
-    except Exception:  # noqa: BLE001
-        stats = {"pendingReports": len(reports), "abnormal": len(excs)}
-    return {
-        "hasData": bool(reports or excs),
-        "weeklyReports": reports,
-        "abnormalCheckins": excs,
-        "stats": stats,
-        "scopeMode": scope["mode"],
-        "available": not source_errors,
-        "errors": source_errors,
-    }
-
-
-def weekly_review(user: dict, report_id: str, action: str, comment: str | None = None,
-                  expected_version=None) -> dict:
-    """周报写链显式透传 actor + 客户端版本，保留 owner 校验与乐观锁。"""
-    u = _require_teacher(user)
-    if not _impl.db_enabled():
-        raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
-    scope = resolve_teacher_scope(u)
-    if scope.get("mode") == "SCOPED":
-        detail = _impl.internship_service.get_weekly_report_detail(report_id, user=u)
-        if not _impl.scope_match_row(scope, class_name=detail.get("className"),
-                                     advisor_name=detail.get("advisorName"),
-                                     student_no=detail.get("studentNo")):
-            allowed = False
-            try:
-                with _impl._session() as db:
-                    from app.models import InternshipRecord, StudentProfile, WeeklyReport
-                    w = db.get(WeeklyReport, int(report_id))
-                    rec = db.get(InternshipRecord, w.internship_id) if w else None
-                    if rec and (rec.advisor_name or "").strip() in scope["advisorNames"]:
-                        allowed = True
-                    if rec and rec.student_id:
-                        stu = db.get(StudentProfile, rec.student_id)
-                        if stu is not None and _impl.can_teacher_view_student({}, stu, scope=scope, db=db):
-                            allowed = True
-            except Exception:  # noqa: BLE001
-                allowed = False
-            if not allowed:
-                raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
-    result = _impl.internship_service.review_weekly_report(
-        report_id, action, comment or "", user=u, expected_version=expected_version)
-    _impl._audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",
-                       {"operator": u.get("realName"), "action": action,
-                        "comment": (comment or "")[:200]})
-    return result
-
-
 # 保存原入口（模块重载时不把门面自身保存成 original），再把实现模块引用到安全函数。
 if not hasattr(_impl, "_original_resolve_teacher_scope"):
     _impl._original_resolve_teacher_scope = _impl.resolve_teacher_scope
@@ -378,8 +276,6 @@ _impl.resolve_teacher_scope = resolve_teacher_scope
 _impl.my_students = my_students
 _impl.overview = overview
 _impl.todos = todos
-_impl.internship = internship
-_impl.weekly_review = weekly_review
 _impl._total = _total
 _impl._safe_list = _safe_list
 

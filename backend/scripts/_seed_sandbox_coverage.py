@@ -2,10 +2,6 @@
 
 主流程由各领域的显式种子负责；本文件负责兜底所有已建 ORM 业务表，并根据
 ``status`` 字段注释中声明的状态枚举补齐缺失状态。所有数据仅写入传入租户。
-
-毕业设计移动端已采用显式 batchId 合同，因此覆盖种子还必须先把活动毕设学生
-归入真实 RUNNING 批次；不能只造一条孤立 t_gd_batch 状态行，否则教师能看到
-“批次”菜单却无法选择自己学生所在批次。
 """
 from __future__ import annotations
 
@@ -23,18 +19,6 @@ DOMAIN_PREFIXES = (
 DOMAIN_EXACT = {
     "t_teacher_student_scope",
 }
-# 这些表不是可独立造假的“页面状态”，而是由正式事务/数据库触发器维护的
-# 追加式事实、额度占用或活动子流程锁。通用兜底种子若直接 INSERT 会绕开真实
-# 业务关系，既会被生产完整性触发器正确拒绝，也会制造没有正式来源的伪事实。
-# 它们只能由各领域显式种子/正式服务链路生成。
-_GENERIC_EXCLUDED_TABLES = {
-    "t_affairs_discipline_decision_version",
-    "t_affairs_discipline_subflow_lock",
-    "t_affairs_funding_batch",
-    "t_affairs_funding_application",
-    "t_affairs_funding_disbursement",
-    "t_affairs_funding_amount_adjustment",
-}
 _STATUS_TOKEN = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _IGNORE_TOKENS = {
     "JSON", "JSONB", "TODO", "NULL", "TRUE", "FALSE", "ID", "API", "PC",
@@ -46,8 +30,7 @@ def _domain_tables(db):
     from app.models import Base
     existing = set(inspect(db.get_bind()).get_table_names())
     return [t for t in Base.metadata.sorted_tables
-            if t.name in existing and t.name not in _GENERIC_EXCLUDED_TABLES
-            and "tenant_id" in t.c
+            if t.name in existing and "tenant_id" in t.c
             and (t.name in DOMAIN_EXACT or t.name.startswith(DOMAIN_PREFIXES))]
 
 
@@ -146,59 +129,6 @@ def _row_values(table, tenant_id: int, status: str | None, seq: int,
     return values
 
 
-def _ensure_graduation_batch_context(db, tenant_id: int) -> dict:
-    """给沙箱活动毕设学生建立真实 RUNNING 批次上下文。
-
-    教师移动端批次列表从自己可访问的 GraduationStudent.batch_id 反推可选批次，
-    因此仅存在 t_gd_batch 行仍然是无效数据。这里显式创建/复用正式批次，并只为
-    batch_id 为空的活动学生补关系；已有历史批次事实绝不改写。
-    """
-    from app.models import GraduationBatch, GraduationStudent
-
-    batch = db.scalars(select(GraduationBatch).where(
-        GraduationBatch.tenant_id == tenant_id,
-        GraduationBatch.status == "RUNNING",
-        GraduationBatch.is_deleted.is_(False),
-    ).order_by(GraduationBatch.id.desc())).first()
-    if batch is None:
-        batch = GraduationBatch(
-            tenant_id=tenant_id,
-            batch_name="2026届毕业设计体验批次",
-            batch_no="GD-SANDBOX-2026",
-            academic_year="2025-2026",
-            grade_year="2026届",
-            college_scope="体验学院",
-            start_date=datetime(2026, 2, 23),
-            end_date=datetime(2026, 7, 31),
-            planned_count=10,
-            status="RUNNING",
-            stage_config=[
-                {"code": "TOPIC_SELECTING", "name": "选题"},
-                {"code": "GUIDING", "name": "开题与指导"},
-                {"code": "MIDTERM", "name": "中期检查"},
-                {"code": "FINAL_CHECK", "name": "成果检查"},
-                {"code": "DEFENSE", "name": "答辩"},
-            ],
-            rules_config={"demo": True, "explicitBatchContext": True},
-            remark="真实演示沙箱固定批次；用于教师/学生显式批次上下文",
-        )
-        db.add(batch)
-        db.flush()
-
-    rows = db.scalars(select(GraduationStudent).where(
-        GraduationStudent.tenant_id == tenant_id,
-        GraduationStudent.record_status == "ACTIVE",
-        GraduationStudent.is_deleted.is_(False),
-        GraduationStudent.batch_id.is_(None),
-    ).order_by(GraduationStudent.id)).all()
-    for row in rows:
-        row.batch_id = batch.id
-    if rows:
-        batch.planned_count = max(int(batch.planned_count or 0), len(rows))
-    db.flush()
-    return {"batchId": str(batch.id), "assignedStudents": len(rows)}
-
-
 def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
     from app.models import StudentProfile
     student_id = db.scalar(select(StudentProfile.id).where(
@@ -206,7 +136,6 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
     if student_id is None:
         return {"skipped": True, "reason": "no students"}
 
-    graduation_batch = _ensure_graduation_batch_context(db, tenant_id)
     inserted: dict[str, int] = {}
     for seq, table in enumerate(_domain_tables(db), 1):
         statuses = declared_statuses(table) or (None,)
@@ -224,7 +153,7 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
             inserted[table.name] = count
     db.commit()
     return {"tables": len(_domain_tables(db)), "inserted": inserted,
-            "insertedRows": sum(inserted.values()), "graduationBatch": graduation_batch}
+            "insertedRows": sum(inserted.values())}
 
 
 def sandbox_flow_coverage_report(db, tenant_id: int) -> dict:

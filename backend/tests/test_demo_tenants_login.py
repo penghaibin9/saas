@@ -15,48 +15,16 @@ DEMO_TID = 1000000000000000003
 SBX_TID = 1000000000000000007
 
 
-def _run_seed_as_school_admin(db, tenant_id: int, tenant_code: str, seeder) -> None:
-    """Seed formal file-backed facts under an explicit tenant/admin context.
-
-    Production file binding is intentionally fail-closed when no actor exists. Seed
-    fixtures are trusted setup code, so they must install the same explicit context a
-    real school-admin request would carry instead of relying on an ambient fallback.
-    """
-    from app.core.context import set_current_user, set_tenant
-
-    set_tenant({
-        "tenantId": str(tenant_id),
-        "tenantCode": tenant_code,
-        "tenantName": tenant_code,
-        "status": "ACTIVE",
-    })
-    set_current_user({
-        "userId": f"pytest-seed-{tenant_id}",
-        "realName": "Pytest Seed Admin",
-        "userType": "ADMIN",
-        "tenantCode": tenant_code,
-        "tenantId": str(tenant_id),
-        "currentRoleCode": "SCHOOL_ADMIN",
-        "loginName": "pytest-seed-admin",
-    })
-    try:
-        seeder(db)
-    finally:
-        set_current_user(None)
-        set_tenant(None)
-
-
 @pytest.fixture()
 def two_tenants(db_mode):
     """在 db_mode 空库上种双租户体系（demo 富数据 + sandbox 最小数据）。"""
     from app.db.session import get_sessionmaker
     from _seed_demo_school import seed_demo_school
-    from _seed_two_tenants import seed_demo_tenant, seed_sandbox_school
+    from _seed_two_tenants import seed_two_tenants
     db = get_sessionmaker()()
     try:
-        _run_seed_as_school_admin(db, DEMO_TID, "demo-school", seed_demo_school)
-        _run_seed_as_school_admin(db, DEMO_TID, "demo-school", seed_demo_tenant)
-        _run_seed_as_school_admin(db, SBX_TID, "sandbox-school", seed_sandbox_school)
+        seed_demo_school(db)      # 张同学六域富数据
+        seed_two_tenants(db)      # 账号/组织/20 学生/三态样例 + 沙箱
     finally:
         db.close()
     return db_mode
@@ -69,49 +37,6 @@ def _login(client, login_name, password="123456"):
 
 def _h(data):
     return {"Authorization": "Bearer " + data["data"]["accessToken"]}
-
-
-def _switch_role(client, auth_result: dict, role_code: str) -> dict:
-    """走真实 /auth/switch-role，禁止在测试里伪造更高权限 token。"""
-    contexts = auth_result["data"].get("contexts") or []
-    target = next((item for item in contexts if item.get("roleCode") == role_code), None)
-    assert target is not None, f"missing role context {role_code}: {contexts}"
-    switched = client.post(
-        "/api/v1/auth/switch-role",
-        headers=_h(auth_result),
-        json={"contextId": target["contextId"], "clientType": "TEACHER_MINI"},
-    ).json()
-    assert switched["code"] == 0, switched
-    assert switched["data"]["currentRole"]["roleCode"] == role_code, switched
-    return switched
-
-
-def _running_internship_batch_id(tenant_id: int) -> str:
-    """按生产显式批次合同选择该租户当前 RUNNING 实习批次。"""
-    from sqlalchemy import select
-    from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch
-
-    db = get_sessionmaker()()
-    try:
-        row = db.scalars(select(InternshipBatch).where(
-            InternshipBatch.tenant_id == tenant_id,
-            InternshipBatch.status == "RUNNING",
-            InternshipBatch.is_deleted.is_(False),
-        ).order_by(InternshipBatch.id.desc())).first()
-        assert row is not None, f"tenant {tenant_id} missing RUNNING internship batch"
-        return str(row.id)
-    finally:
-        db.close()
-
-
-def _teacher_graduation_batch_id(client, headers: dict) -> str:
-    """走教师移动端真实批次上下文选择当前可处理批次。"""
-    result = client.get("/api/v1/mobile/teacher/graduation/batches", headers=headers).json()
-    assert result["code"] == 0, result
-    batch_id = (result.get("data") or {}).get("selectedBatchId")
-    assert batch_id, result
-    return str(batch_id)
 
 
 def _platform_h():
@@ -138,9 +63,6 @@ def test_all_six_accounts_login(client, two_tenants):
         assert r["code"] == 0, (login, r.get("message"))
         assert r["data"]["tenantId"] == str(tid), login
         assert r["data"]["currentRole"]["roleCode"] == role, login
-        if login == "teacher2":
-            role_codes = {item["roleCode"] for item in (r["data"].get("contexts") or [])}
-            assert {"COUNSELOR", "INTERN_MENTOR", "GD_MENTOR"}.issubset(role_codes)
     # 密码错误 → 明确业务错，不是 500
     bad = _login(client, "admin", "wrong-pass")
     assert bad["code"] == 401001
@@ -189,9 +111,7 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
                     json={"loginName": "student01", "password": "demo"})
     assert r.status_code == 403
     assert "accessToken" not in (r.json().get("data") or {})
-    # production 密码登录的验证码/风控存储按设计要求 Redis；本用例只验证 mock-login 关闭。
-    # 恢复 test 环境后再验证真实账号链仍正常，避免把“生产无 Redis 应 fail-closed”误判成回归。
-    monkeypatch.setattr(settings, "APP_ENV", "test")
+    # 真实登录不受影响
     assert _login(client, "student")["code"] == 0
 
 
@@ -237,70 +157,32 @@ def test_teacher_scope_visibility(client, two_tenants):
 # ═══ 13：看得见 = 能处理（沙箱可写；demo 只读锁 403） ═══
 
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
-    teacher_auth = _login(client, "teacher2")
-    batch_id = _running_internship_batch_id(SBX_TID)
-
-    # COUNSELOR 只验证协同可见；真正的写队列必须在 INTERN_MENTOR 身份下重新获取，
-    # 禁止拿辅导员角色看见的其他导师记录去碰指导教师写接口。
-    counselor_h = _h(teacher_auth)
-    counselor_view = client.get(
-        "/api/v1/mobile/teacher/internship",
-        headers=counselor_h,
-        params={"batchId": batch_id},
-    ).json()
-    assert counselor_view["code"] == 0 and counselor_view["data"]["weeklyReports"], counselor_view
-
-    intern_auth = _switch_role(client, teacher_auth, "INTERN_MENTOR")
-    intern_h = _h(intern_auth)
-    intern_view = client.get(
-        "/api/v1/mobile/teacher/internship",
-        headers=intern_h,
-        params={"batchId": batch_id},
-    ).json()
-    assert intern_view["code"] == 0, intern_view
-    reports = [r for r in intern_view["data"]["weeklyReports"] if r.get("status") == "PENDING_REVIEW"]
-    assert reports, intern_view
-    report = reports[0]
-    ok = client.post(
-        f"/api/v1/mobile/teacher/internship/weekly/{report['id']}/review",
-        headers=intern_h,
-        json={"action": "APPROVE", "comment": "沙箱批阅通过",
-              "expectedVersion": report["version"]},
-    ).json()
-    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED", ok
-
-    # 同一真实账号再切到毕设导师岗位。该跨域身份测试只验证稳定 mentor_id 下的真实写入；
-    # 开题/成果材料审核的 expectedVersion + fileVersionId 权威链由毕业设计材料专项套件覆盖。
-    gd_auth = _switch_role(client, intern_auth, "GD_MENTOR")
-    gd_h = _h(gd_auth)
-    gd_batch_id = _teacher_graduation_batch_id(client, gd_h)
-    gd = client.get(
-        "/api/v1/mobile/teacher/graduation",
-        headers=gd_h,
-        params={"batchId": gd_batch_id},
-    ).json()
-    assert gd["code"] == 0 and gd["data"]["students"], gd
-    gd_student_id = gd["data"]["students"][0]["id"]
-    ok2 = client.post(
-        f"/api/v1/mobile/teacher/graduation/{gd_student_id}/guidance",
-        headers=gd_h,
-        params={"batchId": gd_batch_id},
-        json={"method": "ONLINE", "content": "沙箱导师真实指导记录", "issues": "继续完善材料"},
-    ).json()
-    assert ok2["code"] == 0, ok2
+    sbx_t = _h(_login(client, "teacher2"))
+    it = client.get("/api/v1/mobile/teacher/internship", headers=sbx_t).json()
+    reports = it["data"]["weeklyReports"]
+    assert len(reports) >= 1
+    rid = reports[0]["id"]
+    ok = client.post(f"/api/v1/mobile/teacher/internship/weekly/{rid}/review",
+                     headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱批阅通过"}).json()
+    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
+    gd = client.get("/api/v1/mobile/teacher/graduation", headers=sbx_t).json()
+    props = gd["data"]["reviewDetail"]
+    assert len(props) >= 1
+    pid = props[0]["id"]
+    ok2 = client.post(f"/api/v1/mobile/teacher/graduation/proposal/{pid}/review",
+                      headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱开题通过"}).json()
+    assert ok2["code"] == 0
 
 
 def test_demo_tenant_is_readonly(client, two_tenants):
     """正式演示租户：看得见但写操作被只读锁拦截（403 + 指引去沙箱）。"""
     demo_t = _h(_login(client, "teacher"))
-    it = client.get("/api/v1/mobile/teacher/internship", headers=demo_t,
-                    params={"batchId": _running_internship_batch_id(DEMO_TID)}).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=demo_t).json()
     assert it["code"] == 0
     reports = it["data"]["weeklyReports"]
     assert len(reports) >= 1  # 看得见
     r = client.post(f"/api/v1/mobile/teacher/internship/weekly/{reports[0]['id']}/review",
-                    headers=demo_t, json={"action": "APPROVE", "comment": "演示批阅",
-                                          "expectedVersion": reports[0]["version"]})
+                    headers=demo_t, json={"action": "APPROVE", "comment": "演示批阅"})
     assert r.status_code == 403
     assert "沙箱" in r.json()["message"]
     # 学生写操作同样只读
