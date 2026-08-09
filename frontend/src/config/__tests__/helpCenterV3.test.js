@@ -8,7 +8,7 @@ import {
   HELP_V3_HOME_INTENTS,
   HELP_V3_QUICK_QUESTIONS
 } from '../help/helpCenterV3.js'
-import { matchesHelpSearchText, tokenizeHelpQuery } from '../helpCenterModel.js'
+import { matchesHelpSearchText, tokenizeHelpQuery } from '../help/helpSearch.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
@@ -50,6 +50,7 @@ test('V3 model resolves journey nodes only through published help entries and ro
   assert.match(modelSource, /journey\.helpIds\.map\(getHelpEntry\)\.filter\(Boolean\)/)
   assert.match(modelSource, /isHelpVisibleForRole\(entry\.item, role\)/)
   assert.match(modelSource, /export function getV3HomeModel/)
+  assert.match(modelSource, /matchesHelpSearchText\(entry\.searchText, q\)/)
 })
 
 test('question-style search tokenizes Chinese natural language and mixed error codes', () => {
