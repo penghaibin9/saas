@@ -29,6 +29,7 @@ from app.models.academic_affairs_effective_grade import (
     AaGradeIdentityHead,
 )
 from app.models.academic_affairs_gpa_policy import AaGpaPointPolicy
+from app.models.academic_affairs_student_fact import StudentAcademicFact
 
 
 # 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
@@ -59,4 +60,5 @@ __all__ = [
     "AaGradeCorrection",
     "AaGradeIdentityHead",
     "AaGpaPointPolicy",
+    "StudentAcademicFact",
 ]
