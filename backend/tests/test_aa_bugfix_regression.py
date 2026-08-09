@@ -9,6 +9,8 @@ from datetime import datetime
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
+COLLEGE_REVIEW_PERM = "academicAffairs.grade.collegeReview"
+ACADEMIC_PUBLISH_PERM = "academicAffairs.grade.publish"
 
 
 def _hdr(client, login_name):
@@ -43,6 +45,76 @@ def _ensure_grade_policy(db):
     db.add(row)
     db.flush()
     return row
+
+
+def _grant_review_permission(db, login_name, real_name, permission_code):
+    """为回归链创建真实启用受理人及专属权限角色。"""
+    from app.models import Permission, Role, RolePermission, User, UserRole
+
+    user = db.query(User).filter(User.tenant_id == TID, User.login_name == login_name).first()
+    if user is None:
+        user = User(
+            tenant_id=TID,
+            login_name=login_name,
+            real_name=real_name,
+            password_hash="x",
+            user_type="ADMIN",
+            status="ACTIVE",
+        )
+        db.add(user)
+        db.flush()
+
+    permission = db.query(Permission).filter(Permission.permission_code == permission_code).first()
+    if permission is None:
+        permission = Permission(
+            permission_code=permission_code,
+            permission_name=permission_code,
+            module_code="academicAffairs",
+            action="REVIEW",
+        )
+        db.add(permission)
+        db.flush()
+
+    role_code = (
+        "BUGFIX_COLLEGE_REVIEW"
+        if permission_code == COLLEGE_REVIEW_PERM
+        else "BUGFIX_ACADEMIC_PUBLISH"
+    )
+    role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == role_code).first()
+    if role is None:
+        role = Role(
+            tenant_id=TID,
+            role_code=role_code,
+            role_name=role_code,
+            status="ACTIVE",
+        )
+        db.add(role)
+        db.flush()
+
+    if db.query(UserRole).filter(
+        UserRole.tenant_id == TID,
+        UserRole.user_id == user.id,
+        UserRole.role_id == role.id,
+    ).first() is None:
+        db.add(UserRole(
+            tenant_id=TID,
+            user_id=user.id,
+            role_id=role.id,
+            status="ACTIVE",
+        ))
+    if db.query(RolePermission).filter(
+        RolePermission.tenant_id == TID,
+        RolePermission.role_id == role.id,
+        RolePermission.permission_id == permission.id,
+    ).first() is None:
+        db.add(RolePermission(
+            tenant_id=TID,
+            role_id=role.id,
+            permission_id=permission.id,
+            status="ACTIVE",
+        ))
+    db.flush()
+    return user
 
 
 def _seed_grade_context(*, course_code, course_name, class_id=None, with_task=False, credit=3):
@@ -108,15 +180,59 @@ def _seed_grade_context(*, course_code, course_name, class_id=None, with_task=Fa
 
 
 def _seed_students(n=1):
+    """创建真实学院→专业→班级→学生，并配置成绩审批真实受理人。"""
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile, TeacherStudentScope
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件BUG01", grade="2026", status="ACTIVE")
+    college = College(tenant_id=TID, college_name="软件BUG学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(
+        tenant_id=TID,
+        college_id=college.id,
+        major_name="软件BUG专业",
+        status="ACTIVE",
+    )
+    db.add(major); db.flush()
+
+    college_user = _grant_review_permission(
+        db, "college_admin01", "张晓明", COLLEGE_REVIEW_PERM,
+    )
+    _grant_review_permission(
+        db, "school_admin01", "陈校", ACADEMIC_PUBLISH_PERM,
+    )
+    college.secretary_id = int(college_user.id)
+    db.add(TeacherStudentScope(
+        tenant_id=TID,
+        teacher_key="college_admin01",
+        teacher_name="张晓明",
+        role_code="COLLEGE_ADMIN",
+        scope_type="COLLEGE",
+        ref_value=college.college_name,
+        status="ACTIVE",
+    ))
+
+    a = SchoolClass(
+        tenant_id=TID,
+        major_id=major.id,
+        class_name="软件BUG01",
+        grade="2026",
+        status="ACTIVE",
+    )
     db.add(a); db.flush()
     sids = []
     for i in range(n):
-        s = StudentProfile(tenant_id=TID, student_no=f"BUG{i:03d}", real_name=f"修{i}", class_id=a.id,
-                           current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+        s = StudentProfile(
+            tenant_id=TID,
+            student_no=f"BUG{i:03d}",
+            real_name=f"修{i}",
+            class_id=a.id,
+            college_id=college.id,
+            major_id=major.id,
+            current_stage="ON_CAMPUS",
+            student_status="REGISTERED",
+            status="ACTIVE",
+        )
         db.add(s); db.flush(); sids.append(s.id)
     db.commit(); cid = a.id; db.close()
     return sids, cid
@@ -156,6 +272,7 @@ def test_bf2_midterm_persists_on_list_records(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
+        "courseName": "期中回显课",
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
         "adminSupplementReason": "测试管理员补录成绩任务"})
     assert created.status_code == 200, created.text
@@ -196,28 +313,33 @@ def test_bf5_publish_then_transcript_consistent(client, db_mode):
     ctx = _seed_grade_context(
         course_code="BUG-BF5", course_name="发布一致课", class_id=cid, with_task=True, credit=3.5,
     )
-    hdr = _hdr(client, "school_admin01")
-    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+    school_hdr = _hdr(client, "school_admin01")
+    college_hdr = _hdr(client, "college_admin01")
+    created = client.post(f"{BASE}/grade-tasks", headers=school_hdr, json={
         "teachingTaskId": str(ctx["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70})
     assert created.status_code == 200, created.text
     tid = created.json()["data"]["gradeTaskId"]
-    score = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+    score = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
     assert score.status_code == 200, score.text
-    submit = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
+    submit = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
     assert submit.status_code == 200, submit.text
-    review = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    review = client.post(
+        f"{BASE}/grade-tasks/{tid}/college-review",
+        headers=college_hdr,
+        json={"action": "APPROVE"},
+    )
     assert review.status_code == 200, review.text
-    pub_resp = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    pub_resp = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     assert pub_resp.status_code == 200, pub_resp.text
     pub = pub_resp.json()
     assert pub["data"]["status"] == "PUBLISHED"
     assert pub["data"].get("warningScanOk") is True
-    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=hdr).json()["data"]
+    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=school_hdr).json()["data"]
     assert any(g["courseName"] == "发布一致课" and g["score"] == 87 and g["source"] == "PUBLISH"
                for g in tr["items"])
     # 重复发布
-    again = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    again = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     assert again.status_code in (409, 400)
 
 
@@ -234,6 +356,7 @@ def test_bf6_import_midterm_and_class_guard(client, db_mode):
     db.add(other); db.commit(); db.close()
     created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
         "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
+        "courseName": "导入期中课",
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
         "adminSupplementReason": "测试管理员补录成绩任务"})
     assert created.status_code == 200, created.text
