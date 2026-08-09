@@ -47,6 +47,32 @@ function _isProd() {
   }
 }
 
+/**
+ * 页面切换/身份切换与 4s HTTP 超时都可能以 AbortError 结束一次 current-context 请求。
+ * 这类瞬时中止不等于 RBAC 服务已经故障：只允许原地重试一次，第二次仍失败就继续 fail-closed。
+ * 业务错误（401/403/5xx 的统一业务错误对象）不重试，避免掩盖真实权限或服务故障。
+ */
+function _isRetryablePermissionAbort(error) {
+  const name = String(error?.name || '').toLowerCase()
+  const code = String(error?.code || '').toLowerCase()
+  const message = String(error?.message || '').toLowerCase()
+  return name === 'aborterror' ||
+    code === 'abort_err' ||
+    code === 'err_canceled' ||
+    message.includes('signal is aborted') ||
+    message.includes('aborted without reason') ||
+    message.includes('the user aborted a request')
+}
+
+async function _loadPermissionContext(requestFn) {
+  try {
+    return await requestFn('/rbac/current-context')
+  } catch (error) {
+    if (!_isRetryablePermissionAbort(error)) throw error
+    return requestFn('/rbac/current-context')
+  }
+}
+
 /** 由 getContext 落库当前身份权限码模式集（与后端 enforce_permission 同一套码）。 */
 export function setPermissionPatterns(patterns) {
   _patterns = Array.isArray(patterns) ? patterns : null
@@ -100,7 +126,8 @@ export function clearPermissionPatterns() {
 
 /**
  * 冷加载时拉取 /rbac/current-context 并落库 patterns，避免「先进页再 403」。
- * 失败时正式环境保持 patterns=null，并标记 rbacLoadFailed（不得伪装成无权限）。
+ * 可识别的 AbortError/取消只重试一次；再次失败或真实业务错误仍保持 patterns=null，
+ * 并标记 rbacLoadFailed（不得伪装成无权限，也不得 fail-open）。
  */
 export async function ensurePermissionPatterns(requestFn) {
   if (Array.isArray(_patterns) && !_rbacLoadFailed) return _patterns
@@ -108,7 +135,7 @@ export async function ensurePermissionPatterns(requestFn) {
   if (typeof requestFn !== 'function') return null
   _ensurePromise = (async () => {
     try {
-      const ctx = await requestFn('/rbac/current-context')
+      const ctx = await _loadPermissionContext(requestFn)
       setRbacLoadFailed(false)
       if (ctx && ctx.moduleAccessHealthy === false) {
         setModuleAccessHealth(false, ctx.moduleAccessError || '模块授权计算失败')
