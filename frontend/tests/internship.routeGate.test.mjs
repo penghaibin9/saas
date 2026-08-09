@@ -5,7 +5,13 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { setPermissionPatterns, clearPermissionPatterns, canEnterRoute } from '../src/security/permissionGate.js'
+import {
+  setPermissionPatterns,
+  clearPermissionPatterns,
+  canEnterRoute,
+  ensurePermissionPatterns,
+  getRbacLoadFailed,
+} from '../src/security/permissionGate.js'
 import { getVisibleNavPlan } from '../src/config/navPlan.js'
 
 test('未纳入业务门禁的公共路由一律放行', () => {
@@ -46,6 +52,49 @@ test('校级管理员(*)：任何受管业务路由放行', () => {
 test('学院负责人(internship.*)：实习域全放行', () => {
   setPermissionPatterns(['internship.*'])
   assert.equal(canEnterRoute({ moduleCode: 'INTERNSHIP', permissionKey: 'internship.batch.manage' }), true)
+  clearPermissionPatterns()
+})
+
+test('RBAC 冷加载：一次 AbortError 仅重试一次，成功后不得落 permission-service fatal', async () => {
+  clearPermissionPatterns()
+  let calls = 0
+  const result = await ensurePermissionPatterns(async (path) => {
+    assert.equal(path, '/rbac/current-context')
+    calls += 1
+    if (calls === 1) {
+      const error = new Error('signal is aborted without reason')
+      error.name = 'AbortError'
+      throw error
+    }
+    return {
+      permissionPatterns: ['internship.leave.approve'],
+      moduleEntitlements: ['internship'],
+      moduleAccessHealthy: true,
+    }
+  })
+
+  assert.deepEqual(result, ['internship.leave.approve'])
+  assert.equal(calls, 2, '瞬时 AbortError 应且仅应追加一次重试')
+  assert.equal(getRbacLoadFailed(), '', '重试成功后不得保留权限服务失败状态')
+  assert.equal(canEnterRoute({ moduleCode: 'INTERNSHIP', permissionKey: 'internship.leave.approve' }), true)
+  clearPermissionPatterns()
+})
+
+test('RBAC 冷加载：真实业务错误不重试并继续 fail-closed', async () => {
+  clearPermissionPatterns()
+  let calls = 0
+  const result = await ensurePermissionPatterns(async () => {
+    calls += 1
+    const error = new Error('权限上下文不可用')
+    error.biz = true
+    error.code = 503001
+    throw error
+  })
+
+  assert.equal(result, null)
+  assert.equal(calls, 1, '真实业务/服务错误不得用重试掩盖')
+  assert.equal(getRbacLoadFailed(), '权限上下文不可用')
+  assert.equal(canEnterRoute({ moduleCode: 'INTERNSHIP', permissionKey: 'internship.leave.approve' }), false)
   clearPermissionPatterns()
 })
 
