@@ -6,9 +6,9 @@ projection fields. Compatibility implementations may remain importable only when
 formal facade boundary is asserted below; otherwise they are not exempt.
 
 Stage C2 proves selection eligibility and historical program resolution cross the
-``StudentAcademicFact`` boundary. Stage C3 proves formal graduation and archive flows
-append immutable evidence and that ordinary ARCHIVED -> mutable-state rollback cannot
-reappear through either the formal service or the archive console UI.
+``StudentAcademicFact`` boundary. Stage C3 proves student graduation progress and
+formal precheck share one read-only evaluator, formal graduation/archive history is
+append-only, and ordinary ARCHIVED -> mutable-state rollback cannot reappear.
 """
 from __future__ import annotations
 
@@ -142,6 +142,7 @@ def formal_boundary_assertions() -> list[str]:
     student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
     lifecycle = (APP / "services/student_academic_lifecycle_service.py").read_text(encoding="utf-8")
     graduation_immutable = (service_dir / "academic_affairs_graduation_immutable_service.py").read_text(encoding="utf-8")
+    mobile_public = (service_dir / "mobile_academic_affairs_public_service.py").read_text(encoding="utf-8")
     archive_manifest = (service_dir / "academic_affairs_archive_manifest_service.py").read_text(encoding="utf-8")
     archive_guard = (service_dir / "academic_affairs_archive_immutable_guard.py").read_text(encoding="utf-8")
     stage_c3_models = (APP / "models/academic_affairs_stage_c3.py").read_text(encoding="utf-8")
@@ -180,7 +181,7 @@ def formal_boundary_assertions() -> list[str]:
     if "if as_of is not None:" not in program_resolver or "resolve_student_program_at(" not in program_resolver:
         errors.append("credit requirement historical path no longer uses the AcademicFact program resolver")
 
-    # Stage C3: immutable graduation runs and decisions.
+    # Stage C3: one read-only evaluator feeds both student progress and formal immutable runs.
     for model_name in (
         "class GraduationEvaluationRun",
         "class GraduationDecisionFact",
@@ -191,12 +192,20 @@ def formal_boundary_assertions() -> list[str]:
             errors.append(f"Stage C3 immutable model missing: {model_name}")
     if "academic_affairs_graduation_immutable_service.install()" not in services_init:
         errors.append("formal graduation service no longer installs Stage C3 immutable evaluator")
+    if "def _strict_overall" not in graduation_immutable or "all(" not in graduation_immutable:
+        errors.append("formal graduation evaluator no longer fails closed on UNKNOWN/non-PASS evidence")
     if "GraduationEvaluationRun(" not in graduation_immutable or "run_no=run_no" not in graduation_immutable:
         errors.append("formal graduation precheck no longer appends immutable Run#N")
     if "formalRunCreated\": False" not in graduation_immutable:
         errors.append("graduation preview no longer explicitly proves it creates no formal run")
     if "GraduationDecisionFact(" not in graduation_immutable or "evaluation_run_id=run.id" not in graduation_immutable:
         errors.append("formal graduation decision no longer references immutable evaluation_run_id")
+    if "def graduation_progress_my" not in mobile_public or "graduation.evaluate_student" not in mobile_public:
+        errors.append("student PC/miniapp graduation progress no longer uses the shared read-only evaluator")
+    if "item_results_json" in mobile_public:
+        errors.append("student graduation progress reverted to mutable AaGraduationAuditResult item projection")
+    if '"formalRunCreated": False' not in mobile_public:
+        errors.append("student graduation refresh no longer asserts read-only/no-formal-run semantics")
 
     # Stage C3: permanent archive + versioned correction chain.
     if "academic_affairs_archive_manifest_service.install()" not in services_init:
@@ -229,7 +238,8 @@ def main() -> int:
         return 1
     print(
         "Stage C1/C2/C3 governance gate OK: Profile academic direct-writes=0; "
-        "historical consumers are fact-bound; graduation/archive formal history is immutable"
+        "historical consumers are fact-bound; student/formal graduation share one evaluator; "
+        "archive formal history is immutable"
     )
     return 0
 
