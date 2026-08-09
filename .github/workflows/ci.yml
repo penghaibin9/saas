@@ -283,6 +283,14 @@ jobs:
         run: python ../scripts/check/check-migrated-schema-parity.py
       - name: Stage C1 学籍事实 reconciliation 归零
         run: python scripts/audit_stage_c1_academic_facts.py
+      - name: 上传 Stage C1 reconciliation 证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-c1-reconciliation-${{ github.sha }}
+          path: backend/test-results/stage-c1-reconciliation.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: 在迁移库上跑 P0 专项（不用 create_all）
         run: |
           timeout 25m pytest -q -p no:warnings \
