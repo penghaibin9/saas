@@ -2,9 +2,8 @@
 
 A2 / P0-02 + P0-03：
 - 正式 `/students` 链路必须使用真实数据库；DB 不可用时 fail-closed，禁止回落内存学生。
-- 身份核验、账号绑定、主档完整度都来自明确事实；缺事实返回 UNKNOWN/NOT_CONFIGURED，
-  绝不补 VERIFIED / BOUND / 固定 90%。
-- 学生主档写入继续复用 db_service 的事务、乐观锁、审计与学籍异动边界。
+- 身份核验、账号绑定、主档完整度都来自明确事实；缺事实返回 UNKNOWN/NOT_CONFIGURED。
+- Stage C1：作废生命周期进入 StudentAcademicFact，禁止再调用 db_service 的历史 direct-write。
 """
 from __future__ import annotations
 
@@ -160,7 +159,6 @@ def _scope_conditions(model, class_ids=None, student_ids=None):
 
 
 def summary(*, class_ids=None, student_ids=None) -> dict:
-    """学生中心权威摘要：只做数据库聚合，不读取浏览器/fixture。"""
     _require_db()
     from app.models import StudentProfile
     from app.models.student_account_link import LINK_ACTIVE, LINK_SUSPENDED, StudentAccountLink
@@ -263,8 +261,9 @@ def update_student(student_id: str, body) -> dict:
 
 def void_student(student_id: str, reason: str) -> dict:
     _require_db()
-    from app.services import db_service
-    return db_service.void_student(student_id, reason)
+    from app.services.student_academic_lifecycle_service import void_student as canonical_void_student
+
+    return canonical_void_student(student_id, reason)
 
 
 def get_timeline(student_id: str) -> list[dict]:
