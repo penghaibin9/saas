@@ -136,6 +136,9 @@ def test_restore_reuses_original_id_and_records_states(db_mode):
     """恢复复用原 studentId，并返回作废前后状态供审计记录。"""
     from app.db.session import get_sessionmaker
     from app.models import StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
+        append_student_academic_fact,
+    )
     from app.services import student_master_application_service as master
 
     db = get_sessionmaker()()
@@ -145,8 +148,18 @@ def test_restore_reuses_original_id_and_records_states(db_mode):
         sid = created.student_id
 
         s = db.get(StudentProfile, sid)
+        # Stage C1 forbids test setup from creating a projection/fact drift by assigning
+        # student_status directly. Model a real formal void: first append the RECYCLED
+        # academic fact, then apply the non-academic soft-delete projection fields.
+        _fact, s = append_student_academic_fact(
+            db,
+            sid,
+            student_status="RECYCLED",
+            source_type="PROFILE_VOID_TEST",
+            expected_student_version=int(s.version or 0),
+            tenant_id=TID,
+        )
         s.is_deleted = True
-        s.student_status = "RECYCLED"
         s.remark = "VOID:误作废"
         db.flush()
 
