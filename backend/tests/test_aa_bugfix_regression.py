@@ -1,5 +1,11 @@
-"""教务中心 Bug 修复回归：学分小数 / 期中回显 / 成绩任务去重 / 发布后成绩单一致。"""
+"""教务中心 Bug 修复回归：学分小数 / 期中回显 / 成绩任务去重 / 发布后成绩单一致。
+
+本文件使用当前正式合同：成绩任务必须绑定 AaCourse 具体版本与权威 AaTerm；
+普通发布链必须来自真实教学任务和正式名单版本，管理员特殊补录不得伪装普通教学任务发布。
+"""
 from __future__ import annotations
+
+from datetime import datetime
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
@@ -9,6 +15,96 @@ def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
                        json={"loginName": login_name, "password": "any"}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def _ensure_grade_policy(db):
+    from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
+
+    row = db.query(AaEffectiveGradePolicy).filter(
+        AaEffectiveGradePolicy.tenant_id == TID,
+        AaEffectiveGradePolicy.status == "ACTIVE",
+        AaEffectiveGradePolicy.is_deleted.is_(False),
+    ).first()
+    if row:
+        return row
+    row = AaEffectiveGradePolicy(
+        tenant_id=TID,
+        policy_code="BUGFIX_TEST_POLICY",
+        policy_version=1,
+        active_scope_key="BASE",
+        attempt_strategy="LATEST_ATTEMPT",
+        makeup_strategy="CAP_AND_OVERRIDE",
+        makeup_cap=60,
+        retake_strategy="REPLACE_IF_PASSED",
+        recognition_priority=75,
+        effective_from_term_id=None,
+        status="ACTIVE",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _seed_grade_context(*, course_code, course_name, class_id=None, with_task=False, credit=3):
+    """创建真实课程版本 + 权威学期；需要时再创建真实教学任务。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
+
+    db = get_sessionmaker()()
+    term = AaTerm(
+        tenant_id=TID,
+        year_code=f"2090-{course_code[-2:]}" if course_code[-2:].isdigit() else "2090-2091",
+        term_no=1,
+        term_name=f"{course_name}测试学期",
+        start_date=datetime(2090, 9, 1),
+        end_date=datetime(2091, 1, 15),
+        status="PUBLISHED",
+        is_current=False,
+    )
+    db.add(term); db.flush()
+    course = AaCourse(
+        tenant_id=TID,
+        course_code=course_code,
+        course_name=course_name,
+        credit=credit,
+        version=1,
+        status="ENABLED",
+    )
+    db.add(course); db.flush()
+    _ensure_grade_policy(db)
+
+    task = None
+    batch = None
+    if with_task:
+        batch = AaTeachingTaskBatch(
+            tenant_id=TID,
+            term_id=term.id,
+            batch_name=f"{course_name}教学任务批次",
+            status="APPROVED",
+        )
+        db.add(batch); db.flush()
+        task = AaTeachingTask(
+            tenant_id=TID,
+            batch_id=batch.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_name=course.course_name,
+            class_id=class_id,
+            teacher_key="school_admin01",
+            status="READY",
+        )
+        db.add(task); db.flush()
+
+    result = {
+        "term_id": term.id,
+        "term_code": f"{term.year_code}-{term.term_no}",
+        "course_id": course.id,
+        "teaching_task_id": task.id if task else None,
+        "batch_id": batch.id if batch else None,
+    }
+    db.commit()
+    db.close()
+    return result
 
 
 def _seed_students(n=1):
@@ -55,12 +151,15 @@ def test_bf1_program_half_credit_persists(client, db_mode):
 
 def test_bf2_midterm_persists_on_list_records(client, db_mode):
     """期中分保存后 GET records 必须回读 midtermScore（PC 刷新映射依赖此字段）。"""
-    sids, _ = _seed_students(1)
+    sids, cid = _seed_students(1)
+    ctx = _seed_grade_context(course_code="BUG-BF2", course_name="期中回显课", class_id=cid)
     hdr = _hdr(client, "school_admin01")
-    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "期中回显课", "termCode": "2026-1", "credit": 3,
+    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert created.status_code == 200, created.text
+    tid = created.json()["data"]["gradeTaskId"]
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 70}).json()
     assert r["data"]["midtermScore"] == 90
@@ -72,19 +171,14 @@ def test_bf2_midterm_persists_on_list_records(client, db_mode):
 
 
 def test_bf3_duplicate_grade_task_same_teaching_task_409(client, db_mode):
-    """同一教学任务不可产生多条有效成绩任务。"""
+    """同一真实教学任务不可产生多条有效成绩任务。"""
+    ctx = _seed_grade_context(course_code="BUG-BF3", course_name="去重课", with_task=True)
     hdr = _hdr(client, "school_admin01")
-    from app.db.session import get_sessionmaker
-    from app.models import AaTeachingTask
-    db = get_sessionmaker()()
-    tt = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=1, course_name="去重课",
-                        teacher_key="school_admin01", status="READY")
-    db.add(tt); db.commit(); tt_id = tt.id; db.close()
     r1 = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "teachingTaskId": str(tt_id), "usualRatio": 30, "finalRatio": 70})
+        "teachingTaskId": str(ctx["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70})
     assert r1.status_code == 200, r1.text
     r2 = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "teachingTaskId": str(tt_id), "usualRatio": 30, "finalRatio": 70})
+        "teachingTaskId": str(ctx["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70})
     assert r2.status_code == 409, r2.text
 
 
@@ -97,18 +191,26 @@ def test_bf4_teacher_must_bind_teaching_task(client, db_mode):
 
 
 def test_bf5_publish_then_transcript_consistent(client, db_mode):
-    """发布后成绩单与录入总评一致；重复发布幂等冲突。"""
-    sids, _ = _seed_students(1)
+    """真实教学任务发布后成绩单与录入总评一致；重复发布幂等冲突。"""
+    sids, cid = _seed_students(1)
+    ctx = _seed_grade_context(
+        course_code="BUG-BF5", course_name="发布一致课", class_id=cid, with_task=True, credit=3.5,
+    )
     hdr = _hdr(client, "school_admin01")
-    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "发布一致课", "termCode": "2026-BUG", "credit": 3.5,
-        "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
-    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
+    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "teachingTaskId": str(ctx["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70})
+    assert created.status_code == 200, created.text
+    tid = created.json()["data"]["gradeTaskId"]
+    score = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
-    client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
-    pub = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr).json()
+    assert score.status_code == 200, score.text
+    submit = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
+    assert submit.status_code == 200, submit.text
+    review = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    assert review.status_code == 200, review.text
+    pub_resp = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    assert pub_resp.status_code == 200, pub_resp.text
+    pub = pub_resp.json()
     assert pub["data"]["status"] == "PUBLISHED"
     assert pub["data"].get("warningScanOk") is True
     tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=hdr).json()["data"]
@@ -121,7 +223,8 @@ def test_bf5_publish_then_transcript_consistent(client, db_mode):
 
 def test_bf6_import_midterm_and_class_guard(client, db_mode):
     """Excel 导入支持期中；非本班学生整批拒绝。"""
-    sids, cid = _seed_students(1)
+    _sids, cid = _seed_students(1)
+    ctx = _seed_grade_context(course_code="BUG-BF6", course_name="导入期中课", class_id=cid)
     hdr = _hdr(client, "school_admin01")
     from app.db.session import get_sessionmaker
     from app.models import StudentProfile
@@ -129,10 +232,12 @@ def test_bf6_import_midterm_and_class_guard(client, db_mode):
     other = StudentProfile(tenant_id=TID, student_no="OTHERBUG", real_name="外班", class_id=cid + 99999,
                            current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
     db.add(other); db.commit(); db.close()
-    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "导入期中课", "termCode": "2026-1", "credit": 3, "classId": str(cid),
+    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert created.status_code == 200, created.text
+    tid = created.json()["data"]["gradeTaskId"]
     # 外班学生 → 整批 409
     bad = client.post(f"{BASE}/grade-tasks/{tid}/import/confirm", headers=hdr, json={
         "rows": [{"studentNo": "OTHERBUG", "usualScore": 80, "midtermScore": 80, "finalScore": 80}]})
