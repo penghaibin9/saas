@@ -1,9 +1,10 @@
 """Stage C3 immutable archive manifest and post-archive correction flow.
 
-ARCHIVED is permanent.  Confirmation re-evaluates all archive domains in the same
-transaction and appends Manifest V1.  A post-archive correction never reopens the term;
-it appends a ``PostArchiveCorrectionCase`` fact and, after a different operator gives
-second approval, appends Manifest V(N+1) superseding the previous manifest.
+ARCHIVED is permanent. Confirmation re-evaluates all archive domains in the same
+transaction and appends Manifest V1. A post-archive correction never reopens the term;
+it appends a ``PostArchiveCorrectionCase`` workflow row and, after a *different*
+operator gives second approval, invokes the designated GRADE/GRADUATION command to
+append the new official fact and Manifest V(N+1) in one database transaction.
 
 First production scope is intentionally limited to GRADE and GRADUATION.
 """
@@ -251,7 +252,8 @@ def verify_manifest(user, batch_id) -> dict:
                 if manifest.version_no != previous.version_no + 1 or manifest.supersedes_id != previous.id:
                     problems.append(f"V{manifest.version_no}:BAD_SUPERSEDES")
             versions.append({"manifestId": str(manifest.id), "versionNo": manifest.version_no,
-                             "hash": manifest.manifest_hash, "supersedesId": str(manifest.supersedes_id) if manifest.supersedes_id else None})
+                             "hash": manifest.manifest_hash,
+                             "supersedesId": str(manifest.supersedes_id) if manifest.supersedes_id else None})
             previous = manifest
         if batch.status != "ARCHIVED":
             problems.append("BATCH_NOT_ARCHIVED")
@@ -260,7 +262,7 @@ def verify_manifest(user, batch_id) -> dict:
 
 def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
                            correction, evidence_manifest, risk_level="HIGH") -> dict:
-    """Open an append-only correction request; no historical data is mutated yet."""
+    """Open a controlled correction request; no historical official fact is mutated yet."""
     from app.models import AaArchiveBatch, PostArchiveCorrectionCase
 
     core = archive_service._core
@@ -280,6 +282,13 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
 
     with core.session() as db:
         core._require_school(core._ctx(user, db))
+        requester = _actor_id()
+        if requester is None:
+            raise AppException(
+                "NO_PERMISSION",
+                "当前操作人缺少稳定数字 userId，禁止发起高风险归档后纠错",
+                http_status=403,
+            )
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -308,26 +317,29 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
             evidence_manifest=_json(evidence_manifest),
             risk_level=str(risk_level or "HIGH").upper(),
             status="PENDING_SECOND_APPROVAL",
-            created_by=_actor_id(),
-            updated_by=_actor_id(),
+            created_by=requester,
+            updated_by=requester,
         )
         db.add(case)
         db.flush()
         core._audit(db, batch.id, "POST_ARCHIVE_CORRECTION_CREATE",
-                    f"caseId={case.id};type={business_type};target={target_ref}")
+                    f"caseId={case.id};type={business_type};target={target_ref};requester={requester}")
         db.commit()
         return {"caseId": str(case.id), "correctionNo": case.correction_no,
                 "status": case.status, "businessType": case.business_type}
 
 
 def approve_correction_case(user, case_id) -> dict:
-    """Different second approver applies the correction fact and appends Manifest V2+."""
+    """Different second approver appends official fact + Manifest V2+ atomically."""
     from app.models import AaArchiveBatch, ArchiveManifest, PostArchiveCorrectionCase
+    from .academic_affairs_post_archive_fact_service import apply_official_correction_fact
 
     core = archive_service._core
-    actor = _actor_id()
     with core.session() as db:
         core._require_school(core._ctx(user, db))
+        actor = _actor_id()
+        if actor is None:
+            raise AppException("NO_PERMISSION", "当前操作人缺少稳定数字 userId，禁止执行高风险归档纠错", http_status=403)
         case = db.query(PostArchiveCorrectionCase).filter(
             PostArchiveCorrectionCase.id == int(case_id),
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -337,9 +349,13 @@ def approve_correction_case(user, case_id) -> dict:
             raise not_found("归档后纠错单不存在")
         if case.status != "PENDING_SECOND_APPROVAL":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该纠错单当前状态不可二次审批")
-        if actor is None:
-            raise AppException("NO_PERMISSION", "当前操作人缺少稳定 userId，禁止执行高风险归档纠错", http_status=403)
-        if case.created_by is not None and int(case.created_by) == int(actor):
+        if case.created_by is None:
+            raise AppException(
+                "DATA_CONFLICT",
+                "该高风险纠错单缺少发起人审计身份，无法证明双人复核，禁止应用",
+                http_status=409,
+            )
+        if int(case.created_by) == int(actor):
             raise AppException("NO_PERMISSION", "归档后纠错必须由不同操作人二次审批", http_status=403)
 
         batch = db.query(AaArchiveBatch).filter(
@@ -353,6 +369,10 @@ def approve_correction_case(user, case_id) -> dict:
         if not previous:
             raise AppException("DATA_CONFLICT", "原 ArchiveManifest 缺失，已拒绝纠错", http_status=409)
 
+        # Critical Stage C3 invariant: the designated domain command creates the new
+        # official fact *before* Manifest V2 is assembled, in this same transaction.
+        official = apply_official_correction_fact(db, batch, case, actor)
+
         counts = json.loads(previous.domain_counts_json)
         hashes = json.loads(previous.domain_hashes_json)
         max_ids = json.loads(previous.max_ids_json)
@@ -364,14 +384,26 @@ def approve_correction_case(user, case_id) -> dict:
             "reason": case.reason,
             "correction": json.loads(case.correction_json),
             "evidenceManifest": json.loads(case.evidence_manifest),
+            "requestedBy": int(case.created_by),
             "secondApprovedBy": actor,
+            "officialFactType": official["factType"],
+            "officialFactId": str(official["factId"]),
+            "beforeHash": official["beforeHash"],
+            "afterHash": official["afterHash"],
+            "officialSnapshot": official["snapshot"],
+            "lineage": official["lineage"],
         }
-        # The correction itself is the appended formal fact.  The old domain hash is
-        # never changed; V(N+1) derives a new domain hash from old hash + correction.
         hashes[case.business_type] = _hash({
             "previousDomainHash": hashes.get(case.business_type),
-            "postArchiveCorrection": correction_fact,
+            "officialCorrectionFact": correction_fact,
         })
+        old_max = max_ids.get(case.business_type)
+        try:
+            old_max_int = int(old_max) if old_max is not None else 0
+        except (TypeError, ValueError):
+            old_max_int = 0
+        max_ids[case.business_type] = max(old_max_int, int(official["factId"]))
+
         version_no = int(previous.version_no) + 1
         reason = f"归档后纠错 #{case.correction_no}: {case.reason}"
         payload = _manifest_payload(
@@ -404,15 +436,27 @@ def approve_correction_case(user, case_id) -> dict:
         db.flush()
         case.second_approved_by = actor
         case.applied_at = now
+        case.official_fact_type = official["factType"]
+        case.official_fact_id = int(official["factId"])
         case.resulting_manifest_id = manifest.id
         case.status = "APPLIED"
         case.updated_by = actor
-        core._audit(db, batch.id, "POST_ARCHIVE_CORRECTION_APPLY",
-                    f"caseId={case.id};manifestV={version_no};manifestId={manifest.id}")
+        core._audit(
+            db,
+            batch.id,
+            "POST_ARCHIVE_CORRECTION_APPLY",
+            (
+                f"caseId={case.id};type={case.business_type};officialFact={official['factType']}:"
+                f"{official['factId']};manifestV={version_no};manifestId={manifest.id};"
+                f"requester={case.created_by};secondApprover={actor}"
+            ),
+        )
         db.commit()
         return {
             "caseId": str(case.id),
             "status": case.status,
+            "officialFactType": case.official_fact_type,
+            "officialFactId": str(case.official_fact_id),
             "manifestId": str(manifest.id),
             "manifestVersion": manifest.version_no,
             "manifestHash": manifest.manifest_hash,
