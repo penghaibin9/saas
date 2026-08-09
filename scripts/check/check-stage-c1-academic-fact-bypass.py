@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Stage C1 static gate: formal StudentProfile academic fields have one write command."""
+"""Stage C1 static gate: formal StudentProfile academic fields have one write command.
+
+The scanner checks production ``backend/app`` for direct writes to current academic
+projection fields. Compatibility implementations may remain importable only when a
+formal facade boundary is asserted below; otherwise they are not exempt.
+"""
 from __future__ import annotations
 
 import ast
@@ -13,6 +18,7 @@ ALLOW_DIRECT_FILES = {
 }
 NONFORMAL_LEGACY_FILES = {
     "backend/app/modules/academic_affairs/services/academic_affairs_major_split_service.py",
+    "backend/app/modules/academic_affairs/services/academic_affairs_org_service.py",
 }
 PROFILE_HELPER_CALLS = {"_get_profile", "resolve_student", "_student_profile"}
 
@@ -56,6 +62,23 @@ def infer_loaded_profile_vars(tree: ast.AST) -> set[str]:
     return tracked
 
 
+def enclosing_function_lines(tree: ast.AST, function_name: str) -> tuple[int, int] | None:
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
+            return int(node.lineno), int(getattr(node, "end_lineno", node.lineno))
+    return None
+
+
+def _legacy_dead_code_line(relative: str, tree: ast.AST, line: int) -> bool:
+    # The historical db_service void implementation remains for compatibility callers,
+    # but formal student_service is hard-bound to student_academic_lifecycle_service.
+    # Exempt only that one function body, never the whole db_service module.
+    if relative != "backend/app/services/db_service.py":
+        return False
+    bounds = enclosing_function_lines(tree, "void_student")
+    return bool(bounds and bounds[0] <= line <= bounds[1])
+
+
 def scan_update_calls(tree: ast.AST, relative: str) -> list[str]:
     violations = []
     for node in ast.walk(tree):
@@ -69,9 +92,11 @@ def scan_update_calls(tree: ast.AST, relative: str) -> list[str]:
             for key in child.keys:
                 if isinstance(key, ast.Attribute) and isinstance(key.value, ast.Name):
                     if key.value.id == "StudentProfile" and key.attr in ACADEMIC_FIELDS:
-                        violations.append(
-                            f"{relative}:{getattr(key, 'lineno', node.lineno)}: StudentProfile.{key.attr} direct update mapping"
-                        )
+                        line = int(getattr(key, "lineno", node.lineno))
+                        if not _legacy_dead_code_line(relative, tree, line):
+                            violations.append(
+                                f"{relative}:{line}: StudentProfile.{key.attr} direct update mapping"
+                            )
     return violations
 
 
@@ -92,28 +117,39 @@ def scan_file(path: pathlib.Path) -> list[str]:
             for target in targets:
                 if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
                     if target.value.id in tracked and target.attr in ACADEMIC_FIELDS:
-                        violations.append(
-                            f"{relative}:{getattr(target, 'lineno', '?')}: direct {target.value.id}.{target.attr} write"
-                        )
+                        line = int(getattr(target, "lineno", 0) or 0)
+                        if not _legacy_dead_code_line(relative, tree, line):
+                            violations.append(
+                                f"{relative}:{line or '?'}: direct {target.value.id}.{target.attr} write"
+                            )
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setattr":
             if len(node.args) >= 2 and isinstance(node.args[0], ast.Name) and node.args[0].id in tracked:
                 field = node.args[1].value if isinstance(node.args[1], ast.Constant) else None
-                if field in ACADEMIC_FIELDS:
+                if field in ACADEMIC_FIELDS and not _legacy_dead_code_line(relative, tree, int(node.lineno)):
                     violations.append(f"{relative}:{node.lineno}: setattr({node.args[0].id}, {field}) bypass")
     return sorted(set(violations))
 
 
 def formal_boundary_assertions() -> list[str]:
-    public = (APP / "modules/academic_affairs/services/academic_affairs_major_split_public_service.py").read_text(encoding="utf-8")
-    services_init = (APP / "modules/academic_affairs/services/__init__.py").read_text(encoding="utf-8")
+    service_dir = APP / "modules/academic_affairs/services"
+    major_public = (service_dir / "academic_affairs_major_split_public_service.py").read_text(encoding="utf-8")
+    org_public = (service_dir / "academic_affairs_org_fact_facade.py").read_text(encoding="utf-8")
+    services_init = (service_dir / "__init__.py").read_text(encoding="utf-8")
     student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
+    lifecycle = (APP / "services/student_academic_lifecycle_service.py").read_text(encoding="utf-8")
     errors = []
-    if "def confirm(user, batch_id)" not in public or "append_student_academic_fact" not in public:
+    if "def confirm(user, batch_id)" not in major_public or "append_student_academic_fact" not in major_public:
         errors.append("formal major-split confirm is not the Stage C1 AcademicFact override")
     if "academic_affairs_major_split_public_service as academic_affairs_major_split_service" not in services_init:
         errors.append("services package no longer binds formal major-split to public facade")
+    if "def adjust_student_class(user, body)" not in org_public or "append_student_academic_fact" not in org_public:
+        errors.append("formal class adjustment is not the Stage C1 AcademicFact override")
+    if "academic_affairs_org_fact_facade as academic_affairs_org_service" not in services_init:
+        errors.append("services package no longer binds formal org service to AcademicFact facade")
     if "db_service.void_student" in student_service:
         errors.append("formal student_service still calls legacy db_service.void_student direct-write")
+    if "student_academic_lifecycle_service" not in student_service or "append_student_academic_fact" not in lifecycle:
+        errors.append("formal student void is not bound to the Stage C1 AcademicFact lifecycle service")
     return errors
 
 
