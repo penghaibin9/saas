@@ -29,6 +29,7 @@ from app.models.academic_affairs_effective_grade import (
     AaGradeIdentityHead,
 )
 from app.models.academic_affairs_gpa_policy import AaGpaPointPolicy
+from app.models.academic_affairs_program_transition import ProgramTransitionAssessment
 from app.models.academic_affairs_student_fact import StudentAcademicFact
 
 
@@ -61,4 +62,5 @@ __all__ = [
     "AaGradeIdentityHead",
     "AaGpaPointPolicy",
     "StudentAcademicFact",
+    "ProgramTransitionAssessment",
 ]
