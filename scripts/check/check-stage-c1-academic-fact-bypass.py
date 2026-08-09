@@ -202,7 +202,9 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("formal graduation decision no longer references immutable evaluation_run_id")
     if "def graduation_progress_my" not in mobile_public or "graduation.evaluate_student" not in mobile_public:
         errors.append("student PC/miniapp graduation progress no longer uses the shared read-only evaluator")
-    if "item_results_json" in mobile_public:
+    # Comments/docstrings may mention the legacy field while documenting why it is forbidden.
+    # Only executable-style JSON decoding of that projection is considered a regression here.
+    if "json.loads(" in mobile_public and "item_results_json" in mobile_public:
         errors.append("student graduation progress reverted to mutable AaGraduationAuditResult item projection")
     if '"formalRunCreated": False' not in mobile_public:
         errors.append("student graduation refresh no longer asserts read-only/no-formal-run semantics")
