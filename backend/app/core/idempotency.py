@@ -62,6 +62,39 @@ def begin(user: dict, operation: str, key: str | None, payload: Any) -> tuple[An
     return None, (cache_key, fingerprint)
 
 
+def begin_required(user: dict, operation: str, key: str | None, payload: Any):
+    """Begin idempotency and require a durable store whenever a key was supplied.
+
+    Redis remains the fast path. If Redis is unavailable, fall back to the database
+    record table; if neither store can reserve the request, fail closed instead of
+    executing a critical write without idempotency protection.
+    """
+    cached, handle = begin(user, operation, key, payload)
+    raw_key = (key or "").strip()
+    if not raw_key or handle is not None or cached is not None:
+        return cached, handle
+
+    from app.db.session import db_enabled
+    if db_enabled():
+        try:
+            cached, handle = _begin_db(user, operation, key, payload)
+        except AppException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise AppException(
+                "IDEMPOTENCY_STORE_UNAVAILABLE",
+                "幂等存储不可用，请稍后重试",
+                http_status=503,
+            ) from exc
+    if handle is None and cached is None:
+        raise AppException(
+            "IDEMPOTENCY_STORE_UNAVAILABLE",
+            "幂等存储不可用，请稍后重试",
+            http_status=503,
+        )
+    return cached, handle
+
+
 def finish(handle: tuple[str, str] | None, result: Any, ttl: int = TTL_SECONDS) -> None:
     if handle is None:
         return
@@ -122,14 +155,10 @@ def idempotency_guard(user: dict, operation: str, key: str | None, payload: Any,
          result = execute()
          g.success(result)
     """
-    cached, handle = begin(user, operation, key, payload)
-    if require_store and (key or "").strip() and handle is None and cached is None:
-        from app.db.session import db_enabled
-        if db_enabled():
-            cached, handle = _begin_db(user, operation, key, payload)
-        if handle is None and cached is None and (key or "").strip():
-            raise AppException("IDEMPOTENCY_STORE_UNAVAILABLE", "幂等存储不可用，请稍后重试",
-                               http_status=503)
+    if require_store:
+        cached, handle = begin_required(user, operation, key, payload)
+    else:
+        cached, handle = begin(user, operation, key, payload)
     guard = _Guard(handle, cached)
     try:
         yield guard
