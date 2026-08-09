@@ -18,19 +18,20 @@ _VALID_QUALITY = {"EXACT", "DERIVED", "INFERRED", "UNKNOWN"}
 
 
 def _resolved_tenant_id(tenant_id: int | None = None) -> int:
-    """Use an explicit tenant for transaction-local read helpers when one is supplied.
+    """Use an explicit tenant for transaction-local helpers when one is supplied.
 
-    Formal request/write paths still rely on the ambient tenant context.  Import and
-    controlled-restore application services already own a tenant-scoped DB transaction,
-    so their read-only fact lookup must not fail merely because there is no HTTP context.
+    Formal request/write paths still rely on the ambient tenant context. Import and
+    controlled-restore application services may already own a tenant-scoped database
+    transaction without an HTTP ContextVar; they must pass that tenant explicitly
+    rather than weakening the global fail-closed tenant guard.
     """
     if tenant_id is not None:
         try:
             value = int(tenant_id)
         except (TypeError, ValueError) as exc:
-            raise AppException("TENANT_CONTEXT_REQUIRED", "租户标识非法，拒绝读取学籍事实") from exc
+            raise AppException("TENANT_CONTEXT_REQUIRED", "租户标识非法，拒绝访问学籍事实") from exc
         if value <= 0:
-            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝读取学籍事实")
+            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝访问学籍事实")
         return value
     return _tid()
 
@@ -56,8 +57,8 @@ def resolve_student_academic_fact(
     """Resolve exactly one fact effective at ``as_of``.
 
     More than one match is a hard integrity failure; silently choosing one would make
-    historical transcripts and eligibility nondeterministic.  ``tenant_id`` is only an
-    explicit transaction-local read scope for callers that already own a tenant-scoped
+    historical transcripts and eligibility nondeterministic. ``tenant_id`` is only an
+    explicit transaction-local scope for callers that already own a tenant-scoped
     command; ordinary request paths continue to use the ambient tenant context.
     """
     from app.models.academic_affairs_student_fact import StudentAcademicFact
@@ -160,6 +161,7 @@ def append_student_academic_fact(
     source_quality: str = "EXACT",
     expected_student_version: int | None = None,
     created_by: int | None = None,
+    tenant_id: int | None = None,
 ):
     """Atomically switch current academic fact and StudentProfile projection.
 
@@ -171,13 +173,18 @@ def append_student_academic_fact(
     binding ambiguity is explicit evidence rather than an implicit guess.
 
     For an immediate command the effective timestamp is chosen *after* the current
-    StudentProfile/fact rows are locked.  This avoids a request-start timestamp racing
-    a just-created baseline in the same second.  An explicit business effective time is
+    StudentProfile/fact rows are locked. This avoids a request-start timestamp racing
+    a just-created baseline in the same second. An explicit business effective time is
     preserved exactly and still cannot be in the future or before the current fact.
+
+    ``tenant_id`` is accepted only for transaction-local application services that
+    already selected the target row by tenant. Request paths omit it and therefore keep
+    using the ambient fail-closed tenant context.
     """
     from app.models import StudentProfile
     from app.models.academic_affairs_student_fact import StudentAcademicFact
 
+    resolved_tid = _resolved_tenant_id(tenant_id)
     requested_at = effective_at
     if requested_at is not None and requested_at > datetime.utcnow():
         raise AppException(
@@ -191,7 +198,7 @@ def append_student_academic_fact(
         raise AppException("VALIDATION_ERROR", f"非法事实来源质量：{source_quality}")
 
     student = db.query(StudentProfile).filter(
-        StudentProfile.tenant_id == _tid(),
+        StudentProfile.tenant_id == resolved_tid,
         StudentProfile.id == int(student_id),
         StudentProfile.is_deleted.is_(False),
     ).with_for_update().first()
@@ -205,7 +212,9 @@ def append_student_academic_fact(
             http_status=409,
         )
 
-    active = _fact_query(db, student_id).filter(StudentAcademicFact.valid_to.is_(None)).with_for_update().all()
+    active = _fact_query(db, student_id, tenant_id=resolved_tid).filter(
+        StudentAcademicFact.valid_to.is_(None)
+    ).with_for_update().all()
     if len(active) != 1:
         code = "ACADEMIC_FACT_BASELINE_MISSING" if not active else "ACADEMIC_FACT_OVERLAP"
         raise AppException(
@@ -248,7 +257,7 @@ def append_student_academic_fact(
     ):
         raise AppException("DATA_CONFLICT", "学籍事实没有发生变化，无需追加新版本", http_status=409)
 
-    overlap = _fact_query(db, student_id).filter(
+    overlap = _fact_query(db, student_id, tenant_id=resolved_tid).filter(
         StudentAcademicFact.id != current.id,
         StudentAcademicFact.valid_from <= at,
         or_(StudentAcademicFact.valid_to.is_(None), StudentAcademicFact.valid_to > at),
@@ -281,7 +290,7 @@ def append_student_academic_fact(
 
     current.valid_to = at
     next_fact = StudentAcademicFact(
-        tenant_id=_tid(),
+        tenant_id=resolved_tid,
         student_id=int(student_id),
         version_no=int(current.version_no) + 1,
         valid_from=at,
@@ -300,7 +309,7 @@ def append_student_academic_fact(
 
     loaded_version = int(student.version or 0)
     changed = db.query(StudentProfile).filter(
-        StudentProfile.tenant_id == _tid(),
+        StudentProfile.tenant_id == resolved_tid,
         StudentProfile.id == int(student_id),
         StudentProfile.version == loaded_version,
         StudentProfile.is_deleted.is_(False),
