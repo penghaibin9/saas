@@ -4,10 +4,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, Index, Integer, String, UniqueConstraint, event, inspect
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
 from app.models.student import StudentProfile
+
+
+_FACT_DATETIME = DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
 
 
 class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
@@ -17,6 +21,10 @@ class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
     reads must resolve this ledger by ``as_of`` instead of reading today's profile.
     Facts are append-oriented: a transition only closes the current row's
     ``valid_to`` and inserts the next version.
+
+    MySQL uses DATETIME(6) here because second-only precision can collapse a pre-change
+    read and the following fact switch into the same timestamp, making historical
+    replay nondeterministic under fast consecutive operations.
     """
 
     __tablename__ = "t_aa_student_academic_fact"
@@ -28,8 +36,8 @@ class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    valid_from: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    valid_to: Mapped[datetime | None] = mapped_column(DateTime)
+    valid_from: Mapped[datetime] = mapped_column(_FACT_DATETIME, nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(_FACT_DATETIME)
 
     student_status: Mapped[str] = mapped_column(String(50), nullable=False)
     college_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -45,18 +53,22 @@ class StudentAcademicFact(PKMixin, TenantMixin, AuditTimeMixin, Base):
 
 
 def _fact_table_ready(connection) -> bool:
-    """Check table presence once per pooled connection.
+    """Check table presence without permanently caching a pre-migration ``False``.
 
-    During ``alembic upgrade head`` the ORM is imported before the C1 migration runs.
-    Older data migrations must therefore be allowed to insert StudentProfile rows while
-    the fact table does not exist yet; the C1 migration backfills those rows later.
+    During ``alembic upgrade head`` the ORM can be imported before the C1 migration
+    creates this table.  A pooled connection that observed "missing" must check again
+    later; otherwise all StudentProfile inserts on that connection would silently miss
+    their version-1 fact even after the migration completed.  ``True`` is safe to cache,
+    ``False`` is deliberately not cached.
     """
     key = "stage_c1_academic_fact_table_ready"
-    cached = connection.info.get(key)
-    if cached is not None:
-        return bool(cached)
+    if connection.info.get(key) is True:
+        return True
     ready = inspect(connection).has_table(StudentAcademicFact.__tablename__)
-    connection.info[key] = bool(ready)
+    if ready:
+        connection.info[key] = True
+    else:
+        connection.info.pop(key, None)
     return bool(ready)
 
 
@@ -71,12 +83,13 @@ def _bootstrap_new_student_academic_fact(_mapper, connection, target: StudentPro
     """
     if not _fact_table_ready(connection):
         return
+    created_at = target.created_at or datetime.utcnow()
     connection.execute(
         StudentAcademicFact.__table__.insert().values(
             tenant_id=int(target.tenant_id),
             student_id=int(target.id),
             version_no=1,
-            valid_from=target.created_at or datetime.utcnow(),
+            valid_from=created_at,
             valid_to=None,
             student_status=target.student_status or "NORMAL",
             college_id=target.college_id,
@@ -86,7 +99,7 @@ def _bootstrap_new_student_academic_fact(_mapper, connection, target: StudentPro
             source_type="PROFILE_CREATE",
             source_ref_id=None,
             source_quality="EXACT",
-            created_at=target.created_at or datetime.utcnow(),
+            created_at=created_at,
             created_by=target.created_by,
         )
     )
