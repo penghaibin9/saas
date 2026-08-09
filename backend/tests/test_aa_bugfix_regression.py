@@ -270,7 +270,7 @@ def test_bf2_midterm_persists_on_list_records(client, db_mode):
     sids, cid = _seed_students(1)
     ctx = _seed_grade_context(course_code="BUG-BF2", course_name="期中回显课", class_id=cid)
     hdr = _hdr(client, "school_admin01")
-    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+    created = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
         "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
         "courseName": "期中回显课",
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
@@ -354,7 +354,7 @@ def test_bf6_import_midterm_and_class_guard(client, db_mode):
     other = StudentProfile(tenant_id=TID, student_no="OTHERBUG", real_name="外班", class_id=cid + 99999,
                            current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
     db.add(other); db.commit(); db.close()
-    created = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+    created = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
         "courseId": str(ctx["course_id"]), "termId": str(ctx["term_id"]), "classId": str(cid),
         "courseName": "导入期中课",
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
