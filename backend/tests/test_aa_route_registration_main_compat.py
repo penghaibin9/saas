@@ -65,8 +65,12 @@ def test_shared_main_registry_contains_only_narrow_academic_bundle_extension():
 def test_academic_extensions_are_aggregated_inside_domain_package():
     assert "academic_affairs_bundle as academic_affairs" not in PACKAGE
     assert "不得提前加载聚合器" in PACKAGE
-    assert "router.include_router(base_router.router)" in BUNDLE
-    assert "def build_router()" in BUNDLE
+    # FastAPI 0.141 keeps include_router as a lazy internal node. The domain bundle is
+    # itself included by the application registry, so one nested layer would make
+    # extension routes disappear from the final public table. The bundle must flatten
+    # concrete child routes before route_registration attaches the single aa dependency.
+    assert "def _mount_routes(" in BUNDLE
+    assert "_mount_routes(router, base_router.router)" in BUNDLE
     for token in (
         "dashboard_readiness_router",
         "dynamic_grade_router",
