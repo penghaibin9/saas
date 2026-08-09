@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Stage C1/C2 static gate: one academic write command + historical consumer boundaries.
+"""Stage C1/C2/C3 static gate: academic facts, historical consumers and immutable history.
 
 The scanner checks production ``backend/app`` for direct writes to current academic
 projection fields. Compatibility implementations may remain importable only when a
 formal facade boundary is asserted below; otherwise they are not exempt.
 
-Stage C2 additionally proves that formal selection eligibility and historical program
-resolution cross the ``StudentAcademicFact`` boundary instead of reading current
-``StudentProfile`` academic fields as their authority.
+Stage C2 proves selection eligibility and historical program resolution cross the
+``StudentAcademicFact`` boundary. Stage C3 proves formal graduation and archive flows
+append immutable evidence and that ordinary ARCHIVED -> mutable-state rollback cannot
+reappear through either the formal service or the archive console UI.
 """
 from __future__ import annotations
 
@@ -74,9 +75,6 @@ def enclosing_function_lines(tree: ast.AST, function_name: str) -> tuple[int, in
 
 
 def _legacy_dead_code_line(relative: str, tree: ast.AST, line: int) -> bool:
-    # The historical db_service void implementation remains for compatibility callers,
-    # but formal student_service is hard-bound to student_academic_lifecycle_service.
-    # Exempt only that one function body, never the whole db_service module.
     if relative != "backend/app/services/db_service.py":
         return False
     bounds = enclosing_function_lines(tree, "void_student")
@@ -143,7 +141,16 @@ def formal_boundary_assertions() -> list[str]:
     services_init = (service_dir / "__init__.py").read_text(encoding="utf-8")
     student_service = (APP / "services/student_service.py").read_text(encoding="utf-8")
     lifecycle = (APP / "services/student_academic_lifecycle_service.py").read_text(encoding="utf-8")
+    graduation_immutable = (service_dir / "academic_affairs_graduation_immutable_service.py").read_text(encoding="utf-8")
+    archive_manifest = (service_dir / "academic_affairs_archive_manifest_service.py").read_text(encoding="utf-8")
+    archive_guard = (service_dir / "academic_affairs_archive_immutable_guard.py").read_text(encoding="utf-8")
+    stage_c3_models = (APP / "models/academic_affairs_stage_c3.py").read_text(encoding="utf-8")
+    archive_view = (
+        ROOT / "frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue"
+    ).read_text(encoding="utf-8")
     errors = []
+
+    # Stage C1: one formal current-academic write path.
     if "def confirm(user, batch_id)" not in major_public or "append_student_academic_fact" not in major_public:
         errors.append("formal major-split confirm is not the Stage C1 AcademicFact override")
     if "academic_affairs_major_split_public_service as academic_affairs_major_split_service" not in services_init:
@@ -157,8 +164,7 @@ def formal_boundary_assertions() -> list[str]:
     if "student_academic_lifecycle_service" not in student_service or "append_student_academic_fact" not in lifecycle:
         errors.append("formal student void is not bound to the Stage C1 AcademicFact lifecycle service")
 
-    # Stage C2: formal selection must feed canonical validation from AcademicFact, not
-    # the StudentProfile object returned by account resolution.
+    # Stage C2: formal consumers cross AcademicFact/as_of boundaries.
     if "academic_affairs_selection_final_service as academic_affairs_selection_service" not in services_init:
         errors.append("services package no longer binds formal selection to final facade")
     if "def _selection_academic_identity" not in selection_final or "resolve_student_academic_fact" not in selection_final:
@@ -167,15 +173,47 @@ def formal_boundary_assertions() -> list[str]:
         errors.append("formal selection validation is no longer fed by the AcademicFact identity proxy")
     if "academicFactId=" not in selection_final or "selectionEffectiveAt=" not in selection_final:
         errors.append("formal selection audit no longer records the AcademicFact decision provenance")
-
-    # Stage C2: historical program lookup needs a dedicated as_of boundary so callers
-    # cannot combine historical bindings with current StudentProfile major/class/grade.
     if "def resolve_student_program_at" not in program_resolver or "resolve_student_academic_fact" not in program_resolver:
         errors.append("historical program resolver no longer consumes StudentAcademicFact(as_of)")
     if "ACADEMIC_FACT_MISSING" not in program_resolver:
         errors.append("historical program resolver no longer fails closed when AcademicFact is missing")
     if "if as_of is not None:" not in program_resolver or "resolve_student_program_at(" not in program_resolver:
         errors.append("credit requirement historical path no longer uses the AcademicFact program resolver")
+
+    # Stage C3: immutable graduation runs and decisions.
+    for model_name in (
+        "class GraduationEvaluationRun",
+        "class GraduationDecisionFact",
+        "class ArchiveManifest",
+        "class PostArchiveCorrectionCase",
+    ):
+        if model_name not in stage_c3_models:
+            errors.append(f"Stage C3 immutable model missing: {model_name}")
+    if "academic_affairs_graduation_immutable_service.install()" not in services_init:
+        errors.append("formal graduation service no longer installs Stage C3 immutable evaluator")
+    if "GraduationEvaluationRun(" not in graduation_immutable or "run_no=run_no" not in graduation_immutable:
+        errors.append("formal graduation precheck no longer appends immutable Run#N")
+    if "formalRunCreated\": False" not in graduation_immutable:
+        errors.append("graduation preview no longer explicitly proves it creates no formal run")
+    if "GraduationDecisionFact(" not in graduation_immutable or "evaluation_run_id=run.id" not in graduation_immutable:
+        errors.append("formal graduation decision no longer references immutable evaluation_run_id")
+
+    # Stage C3: permanent archive + versioned correction chain.
+    if "academic_affairs_archive_manifest_service.install()" not in services_init:
+        errors.append("formal archive service no longer installs immutable manifest service")
+    if "academic_affairs_archive_immutable_guard.install(academic_affairs_archive_service)" not in services_init:
+        errors.append("formal archive service no longer blocks ordinary ARCHIVED unfreeze")
+    if "TERM_ARCHIVED" not in archive_guard or "reject_archive_unfreeze" not in archive_guard:
+        errors.append("ARCHIVED -> mutable-state rollback guard is missing")
+    if "ArchiveManifest(" not in archive_manifest or "supersedes_id=previous.id" not in archive_manifest:
+        errors.append("archive correction no longer appends a superseding manifest version")
+    if '_CORRECTION_TYPES = {"GRADE", "GRADUATION"}' not in archive_manifest:
+        errors.append("post-archive correction scope is no longer limited to GRADE/GRADUATION")
+    if "case.created_by" not in archive_manifest or "second approval" not in archive_manifest.lower():
+        errors.append("post-archive correction no longer enforces a distinct second approver")
+    for forbidden in ("api.unfreeze", "doUnfreeze", "特批解冻"):
+        if forbidden in archive_view:
+            errors.append(f"archive console resurrected ordinary unfreeze UI: {forbidden}")
     return errors
 
 
@@ -185,13 +223,13 @@ def main() -> int:
         violations.extend(scan_file(path))
     violations.extend(formal_boundary_assertions())
     if violations:
-        print("Stage C1/C2 academic-fact gate FAILED:")
+        print("Stage C1/C2/C3 governance gate FAILED:")
         for item in violations:
             print(f"::error::{item}")
         return 1
     print(
-        "Stage C1/C2 academic-fact gate OK: formal direct academic Profile writes = 0; "
-        "selection/program historical consumers are fact-bound"
+        "Stage C1/C2/C3 governance gate OK: Profile academic direct-writes=0; "
+        "historical consumers are fact-bound; graduation/archive formal history is immutable"
     )
     return 0
 
