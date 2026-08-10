@@ -72,7 +72,8 @@ done
 
 docs_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/docs" 2>/dev/null || true)"
 [ "$docs_code" = "404" ] && pass "生产文档端点关闭" || failure "/docs HTTP=$docs_code"
-unauth="$(curl -fsS --max-time 5 "$BASE_URL/api/v1/mobile/me/overview" 2>/dev/null || true)"
+# 401 本来就是期望结果，不能用 curl -f 吞掉响应体，否则永远匹配不到业务码 401001。
+unauth="$(curl -sS --max-time 5 "$BASE_URL/api/v1/mobile/me/overview" 2>/dev/null || true)"
 printf '%s' "$unauth" | grep -q '401001' && pass "未登录访问被拒绝" || failure "鉴权冒烟失败"
 
 printf '== 发布验收：FAIL=%s ==\n' "$fail"
