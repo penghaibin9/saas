@@ -26,14 +26,23 @@ def _stu_token(real_name, student_no):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile
+    from tests.support_grade_review_identity import seed_grade_review_identity
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2301", grade="2023", status="ACTIVE")
+    college = College(tenant_id=TID, college_name="移动端教务回归学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=TID, college_id=college.id, major_name="移动端教务回归专业", status="ACTIVE")
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2301", grade="2023", status="ACTIVE")
     db.add(a); db.flush()
-    s = StudentProfile(tenant_id=TID, student_no="AAM01", real_name="移动甲", class_id=a.id, grade="2023",
-                       major_id=1, current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+    seed_grade_review_identity(db, college_ids=[college.id])
+    s = StudentProfile(
+        tenant_id=TID, student_no="AAM01", real_name="移动甲",
+        college_id=college.id, major_id=major.id, class_id=a.id, grade="2023",
+        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
     db.add(s); db.flush()
-    ids = {"class": a.id, "student": s.id}
+    ids = {"college": college.id, "major": major.id, "class": a.id, "student": s.id}
     db.commit()
     db.close()
     return ids
@@ -177,7 +186,14 @@ def test_mb2_transcript_my(client, db_mode):
 
 def test_mb3_status_and_submit_change(client, db_mode):
     ids = _seed(db_mode)
-    _ensure_term()
+    from app.db.session import get_sessionmaker
+    from tests.support_status_change_identity import seed_status_change_identity
+
+    db = get_sessionmaker()()
+    seed_status_change_identity(db, class_ids=[ids["class"]], college_ids=[ids["college"]])
+    db.commit()
+    db.close()
+
     stu = _stu_token("移动甲", "AAM01")
     st = client.get(f"{MB}/academic/status/my", headers=stu).json()["data"]
     assert st["studentStatus"] == "REGISTERED" and st["enrolled"] is True
