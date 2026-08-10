@@ -3,11 +3,11 @@
 共享 ``app.models`` 只需一行导入本注册表；新增教务模型继续在本文件维护，
 避免长期分支反复改动全系统模型聚合文件。
 """
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Text
 from sqlalchemy.dialects import mysql
 
 from app.models.academic_grade_extensions import install_academic_grade_extensions
-from app.models.academic_affairs import AaStatusChange
+from app.models.academic_affairs import AaGraduationAuditResult, AaStatusChange
 from app.models.academic_affairs_teaching_class import (
     AaTeachingClass,
     AaTeachingClassMember,
@@ -49,6 +49,12 @@ from app.models.academic_affairs_stage_c3 import (
 # seconds while StudentAcademicFact keeps microseconds, which can manufacture a false
 # "effective time before current fact" conflict.
 AaStatusChange.__table__.c.effective_date.type = DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
+
+# Graduation immutable evidence has grown beyond the legacy seven-item projection.
+# Existing databases are upgraded by 20260810_grad_audit_text; keep metadata/create_all
+# on the same TEXT contract so FAST_TEST_SCHEMA and fresh installs cannot recreate the
+# historical VARCHAR(4000) capacity bug.
+AaGraduationAuditResult.__table__.c.item_results_json.type = Text()
 
 
 # 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
