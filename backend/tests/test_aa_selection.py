@@ -16,35 +16,17 @@ def _hdr(client, login_name):
 
 
 def _stu_token(real_name, student_no):
-    """学生请求必须携带真实数据库账号 id，由稳定账号绑定解析本人。"""
-    from app.core.security import create_access_token
-    from app.db.session import get_sessionmaker
-    from app.models import User
+    """使用正式 DB 登录链生成 token，禁止测试自行伪造真实账号上下文。"""
+    from app.services.auth_service_db import login_with_password
 
-    db = get_sessionmaker()()
-    try:
-        user = db.query(User).filter(
-            User.tenant_id == TID,
-            User.login_name == student_no,
-            User.user_type == "STUDENT",
-            User.status == "ACTIVE",
-            User.is_deleted.is_(False),
-        ).first()
-        assert user is not None, f"missing student account for {student_no}"
-        user_id = int(user.id)
-    finally:
-        db.close()
-    return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"db-{user_id}", "loginName": student_no,
-        "realName": real_name, "studentNo": student_no,
-        "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+    data = login_with_password(student_no, "Test@123456", client_type="MP")
+    return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
 def _seed(db_mode):
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, College, Major, SchoolClass, StudentProfile, User
+    from app.models import AaCourse, College, Major, Role, SchoolClass, StudentProfile, User, UserRole
     from app.services import student_account_link_service as link_service
 
     db = get_sessionmaker()()
@@ -67,12 +49,25 @@ def _seed(db_mode):
                         major_id=major.id, class_id=klass.id, grade="2024",
                         student_status="SUSPENDED", status="ACTIVE")
     db.add_all([s1, s2, s3]); db.flush()
+
+    student_role = db.query(Role).filter(
+        Role.tenant_id == TID, Role.role_code == "STUDENT", Role.is_deleted.is_(False)
+    ).first()
+    if student_role is None:
+        student_role = Role(tenant_id=TID, role_code="STUDENT", role_name="学生", status="ACTIVE")
+        db.add(student_role); db.flush()
+    else:
+        student_role.status = "ACTIVE"
+
     for student in (s1, s2, s3):
         user = User(
             tenant_id=TID, login_name=student.student_no, real_name=student.real_name,
             password_hash=hash_password("Test@123456"), user_type="STUDENT", status="ACTIVE",
         )
         db.add(user); db.flush()
+        db.add(UserRole(
+            tenant_id=TID, user_id=int(user.id), role_id=int(student_role.id), status="ACTIVE"
+        ))
         link_service.bind_in_session(
             db, tenant_id=TID, student_id=int(student.id), user_id=int(user.id),
             source="TEST_FIXTURE", login_name=student.student_no, student_no=student.student_no,
