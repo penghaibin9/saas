@@ -1,7 +1,4 @@
 # 2U4G 非容器部署站点。替换域名和证书路径后放到 /etc/nginx/conf.d/。
-# 本文件位于 nginx http{} 内；生产安全头、请求体上限和限流统一由 security-*.conf 提供，
-# 避免 systemd / Docker / 手工部署形成多套安全事实源。
-
 upstream school_lifecycle_backend {
     server 127.0.0.1:8000;
     keepalive 32;
@@ -23,12 +20,10 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     server_tokens off;
-
-    # 安全响应头 / 请求体上限 / 限流 / 静态目录封禁：统一走 PR #62 收敛后的安全合同。
+    # 安全响应头 / 请求体上限 / 限流 / 静态目录封禁：统一走安全合同片段。
     # 前提：http{} 里已 include security-http.conf。
     include /etc/nginx/conf.d/security-server.conf;
 
-    # HSTS 只应出现在 HTTPS server；其余响应头由 security-server.conf 统一提供。
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     location /api/ {
@@ -42,34 +37,15 @@ server {
         proxy_connect_timeout 5s;
         proxy_read_timeout 60s;
     }
-
     location = /health { proxy_pass http://school_lifecycle_backend/health; }
     location = /health/ready { proxy_pass http://school_lifecycle_backend/health/ready; }
     location ~ ^/(docs|redoc|openapi.json) { return 404; }
+    location ~ ^/(uploads|exports)/ { return 404; }
 
-    # 小程序 H5。
     location ^~ /miniapp/ {
         root /var/www/school-lifecycle;
         try_files $uri $uri/ /miniapp/index.html;
     }
-
-    # 学生 PC 门户与本次 release 原子切换到 /var/www/school-lifecycle/portal。
-    location ^~ /portal/assets/ {
-        root /var/www/school-lifecycle;
-        try_files $uri =404;
-        expires 1y;
-        access_log off;
-    }
-    location ^~ /portal/ {
-        root /var/www/school-lifecycle;
-        try_files $uri $uri/ /portal/index.html;
-    }
-    location = /portal/index.html {
-        root /var/www/school-lifecycle;
-        expires -1;
-    }
-
-    # PC 管理端。
     location / {
         root /var/www/school-lifecycle/pc;
         try_files $uri $uri/ /index.html;
