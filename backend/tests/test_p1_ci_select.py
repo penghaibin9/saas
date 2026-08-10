@@ -47,13 +47,14 @@ def test_academic_change_runs_stable_gate_and_changed_regression_only():
         "backend/tests/test_aa_prerequisite_api_real.py",
     ])
     assert "tests/test_aa_p0_authz.py" in targets
+    assert "tests/test_aa_route_registration_main_compat.py" in targets
     assert "tests/test_aa_prerequisite_api_real.py" in targets
     assert "tests/test_aa_*.py" not in targets
     assert "tests/test_portal_academic*.py" not in targets
 
 
 def test_academic_source_only_still_runs_permission_gate():
-    """P1 批次D：教务源码改动除了权限闸门，还必须带上已知的 MySQL 并发回归——
+    """P1 批次D：教务源码改动除了权限/路由闸门，还必须带上已知的 MySQL 并发回归——
     行锁/唯一约束竞态原来只有每日定时全量才受保护，PR 阶段一路绿灯。"""
     mod = _load()
     targets = mod.select([
@@ -61,8 +62,25 @@ def test_academic_source_only_still_runs_permission_gate():
     ])
     assert targets == [
         "tests/test_aa_p0_authz.py",
+        "tests/test_aa_route_registration_main_compat.py",
         "tests/test_aa_grade_identity_head_concurrency.py",
         "tests/test_aa_grade_recheck_concurrency.py",
         "tests/test_aa_status_change_concurrency.py",
         "tests/test_aa_exam_facade_contract_and_changes.py",
     ]
+
+
+def test_large_pr_uses_full_regression_with_main_failure_baseline():
+    """大 PR 必须跑全量；只豁免 main 已知失败，禁止新增失败。"""
+    root = Path(__file__).resolve().parents[2]
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert 'push:\n    branches: [ "main" ]' in workflow
+    assert "CHANGED_COUNT" in workflow
+    assert 'if [ "$CHANGED_COUNT" -ge 150 ]' in workflow
+    assert "--junitxml=test-results/backend-full.xml" in workflow
+    assert "compare-pytest-junit-baseline.py" in workflow
+    assert "backend-known-failures-main.txt" in workflow
+    assert '--base-ref "${{ github.event.pull_request.base.sha }}"' in workflow
+    assert 'github.event_name }}" = "schedule"' in workflow
+    assert "timeout 80m pytest -q" in workflow
+    assert "select_pytest_targets.py" in workflow

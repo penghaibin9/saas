@@ -1,7 +1,8 @@
 """为真实演示沙箱补齐四大业务域的页面与流程状态数据。
 
-主流程由各领域的显式种子负责；本文件负责兜底所有已建 ORM 业务表，并根据
-``status`` 字段注释中声明的状态枚举补齐缺失状态。所有数据仅写入传入租户。
+主流程由各领域的显式种子负责；本文件只兜底适合“独立状态行”的 ORM 业务表。
+任何依赖真实父记录、追加式版本、唯一活动子流程或数据库规则维持关系完整性的表，
+必须由领域显式 seed / service 构造，禁止用通用 marker 伪造外键。
 """
 from __future__ import annotations
 
@@ -16,9 +17,17 @@ DOMAIN_PREFIXES = (
     "t_affairs_", "t_cs_", "t_internship_", "t_attendance_exception",
     "t_weekly_report", "t_risk_record", "t_emp_", "t_gd_",
 )
-DOMAIN_EXACT = {
-    "t_teacher_student_scope",
-}
+DOMAIN_EXACT = {"t_teacher_student_scope"}
+
+# 即使未来模型把某些关系列改为 nullable，这些 package 11 事实仍不得由 generic seed 构造。
+RELATIONAL_INTEGRITY_TABLES = frozenset({
+    "t_affairs_discipline_decision_version",
+    "t_affairs_discipline_appeal",
+    "t_affairs_discipline_remove_apply",
+    "t_affairs_discipline_subflow_lock",
+    "t_cs_discipline",
+})
+
 _STATUS_TOKEN = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 _IGNORE_TOKENS = {
     "JSON", "JSONB", "TODO", "NULL", "TRUE", "FALSE", "ID", "API", "PC",
@@ -26,12 +35,52 @@ _IGNORE_TOKENS = {
 }
 
 
-def _domain_tables(db):
+def _domain_candidates(db):
     from app.models import Base
     existing = set(inspect(db.get_bind()).get_table_names())
-    return [t for t in Base.metadata.sorted_tables
-            if t.name in existing and "tenant_id" in t.c
-            and (t.name in DOMAIN_EXACT or t.name.startswith(DOMAIN_PREFIXES))]
+    return [
+        table for table in Base.metadata.sorted_tables
+        if table.name in existing
+        and "tenant_id" in table.c
+        and (table.name in DOMAIN_EXACT or table.name.startswith(DOMAIN_PREFIXES))
+    ]
+
+
+def required_relation_columns(table) -> tuple[str, ...]:
+    """返回 generic seed 无法安全解析的必填关系 ID。
+
+    tenant_id 由调用方给定，student_id 会解析为本租户真实学生；其余必填 *_id
+    都必须来自真实父记录，绝不能使用 900... marker 猜造。
+    """
+    safe_ids = {"id", "tenant_id", "student_id"}
+    return tuple(
+        column.name for column in table.c
+        if column.name.endswith("_id")
+        and column.name not in safe_ids
+        and not column.nullable
+        and column.default is None
+        and column.server_default is None
+    )
+
+
+def requires_explicit_relationship_seed(table) -> bool:
+    return table.name in RELATIONAL_INTEGRITY_TABLES or bool(required_relation_columns(table))
+
+
+def _domain_tables(db):
+    return [table for table in _domain_candidates(db) if not requires_explicit_relationship_seed(table)]
+
+
+def _explicit_relationship_report(db) -> dict[str, list[str]]:
+    report: dict[str, list[str]] = {}
+    for table in _domain_candidates(db):
+        if not requires_explicit_relationship_seed(table):
+            continue
+        reasons = list(required_relation_columns(table))
+        if table.name in RELATIONAL_INTEGRITY_TABLES:
+            reasons.append("DOMAIN_INTEGRITY_CONTRACT")
+        report[table.name] = reasons
+    return report
 
 
 def declared_statuses(table) -> tuple[str, ...]:
@@ -39,7 +88,6 @@ def declared_statuses(table) -> tuple[str, ...]:
         return ()
     comment = str(table.c.status.comment or "")
     tokens = [x for x in _STATUS_TOKEN.findall(comment) if x not in _IGNORE_TOKENS]
-    # 仅把明确以斜杠/枚举形式声明的状态作为覆盖目标；普通说明回退 ACTIVE。
     unique = []
     for token in tokens:
         if token not in unique:
@@ -58,6 +106,7 @@ def _value_for(column, seq: int, row_index: int, student_id: int):
         raise AssertionError("tenant_id is supplied separately")
     if name == "student_id":
         return student_id
+    # 这里只可能处理可选关系 ID；必填关系 ID 已被 requires_explicit_relationship_seed 排除。
     if name.endswith("_id") or name in {"assignee_id", "applicant_id", "receiver_id"}:
         return marker
     if isinstance(typ, Boolean):
@@ -115,7 +164,6 @@ def _row_values(table, tenant_id: int, status: str | None, seq: int,
         if column.name == "version":
             values[column.name] = 0
             continue
-        # 有 Python/服务端默认的可选列交给模型默认；必要列和关键展示列显式填充。
         important = any(k in column.name for k in (
             "name", "title", "code", "no", "student_id", "content", "reason",
             "detail", "type", "level", "date", "time", "_at", "_json",
@@ -137,7 +185,8 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
         return {"skipped": True, "reason": "no students"}
 
     inserted: dict[str, int] = {}
-    for seq, table in enumerate(_domain_tables(db), 1):
+    tables = _domain_tables(db)
+    for seq, table in enumerate(tables, 1):
         statuses = declared_statuses(table) or (None,)
         count = 0
         for row_index, status in enumerate(statuses):
@@ -152,14 +201,19 @@ def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
         if count:
             inserted[table.name] = count
     db.commit()
-    return {"tables": len(_domain_tables(db)), "inserted": inserted,
-            "insertedRows": sum(inserted.values())}
+    return {
+        "tables": len(tables),
+        "inserted": inserted,
+        "insertedRows": sum(inserted.values()),
+        "explicitRelationshipTables": _explicit_relationship_report(db),
+    }
 
 
 def sandbox_flow_coverage_report(db, tenant_id: int) -> dict:
     missing = []
     covered = []
-    for table in _domain_tables(db):
+    tables = _domain_tables(db)
+    for table in tables:
         statuses = declared_statuses(table) or (None,)
         for status in statuses:
             conditions = [table.c.tenant_id == tenant_id]
@@ -168,5 +222,10 @@ def sandbox_flow_coverage_report(db, tenant_id: int) -> dict:
             count = int(db.scalar(select(func.count()).select_from(table).where(*conditions)) or 0)
             item = {"table": table.name, "status": status, "count": count}
             (covered if count else missing).append(item)
-    return {"covered": covered, "missing": missing,
-            "coveredCount": len(covered), "missingCount": len(missing)}
+    return {
+        "covered": covered,
+        "missing": missing,
+        "coveredCount": len(covered),
+        "missingCount": len(missing),
+        "explicitRelationshipTables": _explicit_relationship_report(db),
+    }

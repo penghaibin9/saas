@@ -20,14 +20,34 @@ const clone = (v) => JSON.parse(JSON.stringify(v))
 const currentRole = () => meta.roles.find((r) => r.roleId === meta.state.currentRoleId) || meta.roles[0]
 const rolePerm = () => meta.permissionActionsByRole[meta.state.currentRoleId] || meta.permissionActionsByRole.ORI_TEACHER
 
+// Stage B / P1-04：正式按钮必须同时满足“角色有权限”和“后端已实现该能力”。
+// 这些操作目前没有真实写/导入导出端点；UI 统一置灰，底层函数仍 501 fail-closed，
+// 防止用户看到正常可点击按钮后才在最后一步失败。
+const UNSUPPORTED_ACTIONS = Object.freeze({
+  'orientation.student.import': '当前后端尚未提供迎新导入正式能力',
+  'orientation.student.export': '当前后端尚未提供迎新导出正式能力',
+  'orientation.student.batchRemind': '当前后端尚未提供迎新批量提醒正式能力',
+  'orientation.student.batchAssign': '当前后端尚未提供迎新批量分配辅导员正式能力',
+  'orientation.progress.export': '当前后端尚未提供迎新进度导出正式能力',
+  'orientation.payment.export': '当前后端尚未提供迎新缴费导出正式能力',
+  'orientation.material.export': '当前后端尚未提供迎新材料导出正式能力',
+  'orientation.dorm.export': '当前后端尚未提供迎新住宿导出正式能力',
+  'orientation.exception.export': '当前后端尚未提供迎新异常导出正式能力',
+  'orientation.followup.edit': '当前后端尚未提供异常跟进编辑正式能力'
+})
+
 function buildPermissionActions() {
   const conf = rolePerm()
   const hidden = conf.hidden || []
   return Object.fromEntries(
-    Object.entries(conf.actions).map(([key, allowed]) => [
-      key,
-      { allowed, visible: !hidden.includes(key), reason: allowed ? '' : conf.disabledReason || '当前角色无此操作权限' }
-    ])
+    Object.entries(conf.actions).map(([key, roleAllowed]) => {
+      const unsupportedReason = UNSUPPORTED_ACTIONS[key] || ''
+      const allowed = roleAllowed && !unsupportedReason
+      const reason = !roleAllowed
+        ? conf.disabledReason || '当前角色无此操作权限'
+        : unsupportedReason
+      return [key, { allowed, visible: !hidden.includes(key), reason }]
+    })
   )
 }
 

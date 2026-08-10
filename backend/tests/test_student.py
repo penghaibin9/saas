@@ -1,21 +1,29 @@
-"""学生主档第一批 API。"""
+"""学生主档第一批 API。
+
+A2 后正式学生 API 已 fail-closed：需要数据的测试必须显式启用真实 DB fixture，
+不再依赖 DB 关闭时的内存学生回退。
+"""
 from __future__ import annotations
 
 import pytest
 
 
-def test_students_list(client, auth_headers):
+def test_students_list(client, auth_headers, db_mode):
     body = client.get("/api/v1/students", headers=auth_headers).json()
     assert body["code"] == 0
     assert isinstance(body["data"]["items"], list) and body["data"]["total"] >= 1
 
 
-def test_students_detail(client, auth_headers):
+def test_students_detail(client, auth_headers, db_mode):
     sid = client.get("/api/v1/students", headers=auth_headers).json()["data"]["items"][0]["id"]
     body = client.get(f"/api/v1/students/{sid}", headers=auth_headers).json()
     assert body["code"] == 0
     d = body["data"]
-    assert d["contacts"] and d["timeline"] and d["statusRecord"]
+    # 真实主档必须给出联系人与历史字段结构；新建/基线样本没有历史事件时 timeline 允许为空，
+    # 不得为了旧测试制造一条假时间线。
+    assert d["contacts"]
+    assert isinstance(d["timeline"], list)
+    assert "statusRecord" in d
     assert "****" in d["phoneMasked"]  # 敏感字段脱敏口径
 
 
@@ -65,7 +73,7 @@ def test_void_student_is_logical_delete(client, auth_headers, org_class):
     assert all(r["id"] != sid for r in items)
 
 
-def test_void_requires_reason(client, auth_headers):
+def test_void_requires_reason(client, auth_headers, db_mode):
     sid = client.get("/api/v1/students", headers=auth_headers).json()["data"]["items"][0]["id"]
     resp = client.post(f"/api/v1/students/{sid}/void", headers=auth_headers, json={"reason": "短"})
     assert resp.json()["code"] in (400001, 422001)

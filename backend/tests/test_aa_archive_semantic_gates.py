@@ -145,7 +145,6 @@ def test_graduation_gate_does_not_cross_term_when_dates_missing():
 def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_archive_core_service as core
-    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
 
     batch = SimpleNamespace(id=1, status="MISSING_ITEMS", missing_count=2)
     fake_db = SimpleNamespace()
@@ -160,7 +159,7 @@ def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
     monkeypatch.setattr(core, "_get_batch", lambda _db, _bid: batch)
 
     with pytest.raises(AppException) as exc:
-        service.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
+        core.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
 
     assert exc.value.http_status == 409
     assert "整体强制归档已停用" in exc.value.message

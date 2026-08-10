@@ -5,6 +5,9 @@
 2. 专业 + 学生入学年级当前绑定；
 3. 同一班级或专业年级范围内，按生效时间选择历史绑定；
 4. 无法唯一证明时返回 MISSING/AMBIGUOUS，不擅自给出毕业结论。
+
+Stage C2：凡调用方要求 ``as_of`` 历史语义，必须先把 ``StudentProfile`` 转为该时点的
+``StudentAcademicFact`` 再解析方案，禁止“方案绑定按历史、学生专业却读 current profile”的半历史状态。
 """
 from __future__ import annotations
 
@@ -136,15 +139,71 @@ def resolve_student_program(db, student, *, tenant_id: int, as_of=None) -> Progr
         "未找到班级、专业年级或生效日期内历史培养方案绑定",
     )
 
+
+def resolve_student_program_at(db, student, *, tenant_id: int, as_of) -> ProgramResolution:
+    """按历史学籍事实解析培养方案；缺少可证明 AcademicFact 时 fail-closed 为 MISSING。
+
+    ``StudentProfile`` 只作为稳定 student_id 入口。专业、班级、年级全部来自 ``as_of`` 时点的
+    AcademicFact，避免今天转专业后把过去学期的方案也解释成新专业方案。
+    """
+    from .academic_affairs_student_fact_service import resolve_student_academic_fact
+
+    if not student or not getattr(student, "id", None):
+        return ProgramResolution(None, None, "MISSING", "NO_STUDENT", "学生不存在，无法解析培养方案")
+    resolved_at = _naive_utc(as_of)
+    if resolved_at is None:
+        return ProgramResolution(
+            None,
+            None,
+            "MISSING",
+            "ACADEMIC_FACT_AS_OF_REQUIRED",
+            "历史培养方案解析必须提供有效 as_of 时点",
+        )
+    fact = resolve_student_academic_fact(
+        db,
+        int(student.id),
+        as_of=resolved_at,
+        required=False,
+    )
+    if fact is None:
+        return ProgramResolution(
+            None,
+            None,
+            "MISSING",
+            "ACADEMIC_FACT_MISSING",
+            "该历史时点没有可证明的学生学籍事实，禁止按当前主档猜培养方案",
+        )
+    if int(getattr(fact, "tenant_id", 0) or 0) != int(tenant_id):
+        return ProgramResolution(
+            None,
+            None,
+            "MISSING",
+            "ACADEMIC_FACT_TENANT_MISMATCH",
+            "历史学籍事实不属于当前租户，禁止解析培养方案",
+        )
+    return resolve_student_program(
+        db,
+        fact,
+        tenant_id=int(tenant_id),
+        as_of=resolved_at,
+    )
+
+
 def credit_requirement_payload(db, student, *, tenant_id: int, earned_credits=0, as_of=None) -> dict:
     """把培养方案解析结果转换为所有学分页面共用的正式合同。
 
     未解析时 ``requiredCredits`` / ``missingCredits`` 必须为 ``None``，
     禁止使用学校无依据的默认学分或把未知解释为通过。
+    历史 ``as_of`` 请求必须先消费 StudentAcademicFact。
     """
-    resolution = resolve_student_program(
-        db, student, tenant_id=int(tenant_id), as_of=as_of
-    )
+    if as_of is not None:
+        resolution = resolve_student_program_at(
+            db, student, tenant_id=int(tenant_id), as_of=as_of
+        )
+    else:
+        resolution = resolve_student_program(
+            db, student, tenant_id=int(tenant_id), as_of=None
+        )
     earned = float(earned_credits or 0)
     program = resolution.program if resolution.status == "RESOLVED" else None
     required = (

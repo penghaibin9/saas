@@ -1,607 +1,544 @@
 /**
- * 审批中心 API（mock 实现，待办/审批闭环）。
- * 契约：所有方法返回 Promise<{ code, data, message }>，code=0 成功。
- * 真实后端阶段仅替换实现，方法签名冻结不变（与 internship 等模块同约定）。
- * 页面禁止直接 import mocks，必须经本文件获取数据；写操作真实变更内存数据并写入审计留痕。
+ * 审批中心生产 API facade。
+ * 只消费真实后端事实；禁止 mock fallback、浏览器内存写入和前端合成终态。
  */
-import {
-  tenantBrandConfig,
-  roleProfiles,
-  statusOptions,
-  filterOptions,
-  batchActions,
-  todoSummary,
-  approvalList,
-  approvalDetailMap,
-  approvalTimelineMap,
-  returnedItems,
-  doneItems,
-  ccItems,
-  transferTargets,
-  approvalTemplates,
-  auditLogs
-} from '@/mocks/approval/approval.mock'
+import { request } from '@/services/http/client'
 
-import { MOCK_DELAY_MS } from '@/utils/mockDelay'
+const BIZ_TYPES = [
+  ['PROFILE_CORRECTION', '信息更正'],
+  ['COMPANY_CHANGE', '实习变更'],
+  ['MATERIAL_VERIFY', '材料核验'],
+  ['LEAVE', '请假审批'],
+  ['AID', '困难认定'],
+  ['FUNDING', '奖助评定'],
+  ['DISCIPLINE', '违纪认定'],
+  ['DISCIPLINE_REMOVE', '违纪解除'],
+  ['AA_STATUS_CHANGE', '学籍异动'],
+  ['AA_GRADE_TASK', '成绩审核'],
+  ['AA_GRADE_CHANGE', '成绩更正'],
+  ['AA_SCHEDULE_CHANGE', '调停课审批']
+].map(([value, label]) => ({ value, label }))
 
-const DELAY = MOCK_DELAY_MS
-const URGENCY_WEIGHT = { OVERDUE: 0, URGENT: 1, NORMAL: 2 }
-
-/** 演示默认角色：学院管理员（可通过 switchRole 切换体验其余 4 个角色） */
-let activeRoleCode = 'COLLEGE_ADMIN'
-let seq = 500
-
-function ok(data) {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ code: 0, data, message: 'ok' }), DELAY)
-  })
+const BIZ_LABEL = Object.fromEntries(BIZ_TYPES.map((x) => [x.value, x.label]))
+const ROLE_LABEL = {
+  COUNSELOR: '辅导员',
+  COLLEGE_ADMIN: '学院管理员',
+  ACADEMIC_TEACHER: '任课教师',
+  ACADEMIC_ADMIN: '教务管理员',
+  STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  SCHOOL_ADMIN: '学校管理员'
 }
 
-function fail(message) {
-  return Promise.resolve({ code: 1, data: null, message })
+const FILTER_OPTIONS = {
+  bizTypes: BIZ_TYPES,
+  urgencies: [
+    { value: 'OVERDUE', label: '已超时' },
+    { value: 'NEAR_DEADLINE', label: '临期' },
+    { value: 'NORMAL', label: '正常' }
+  ],
+  doneResults: [
+    { value: 'APPROVED', label: '已通过' },
+    { value: 'RETURNED', label: '已退回修改' },
+    { value: 'REJECTED', label: '已驳回终止' },
+    { value: 'TRANSFERRED', label: '已转办' }
+  ],
+  rectifyStatuses: [
+    { value: 'PENDING_RESUBMIT', label: '待整改重报' },
+    { value: 'RESUBMITTED', label: '已重新提交' },
+    { value: 'CLOSED', label: '已关闭' }
+  ],
+  templateStatuses: [
+    { value: 'ENABLED', label: '启用' },
+    { value: 'VOIDED', label: '作废' }
+  ],
+  templateNodeRoles: Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))
 }
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value))
+const BATCH_ACTIONS = [
+  { key: 'batchApprove', label: '批量通过' },
+  { key: 'batchReturn', label: '批量退回' },
+  { key: 'batchTransfer', label: '批量转交' }
+]
+
+const todoVersions = new Map()
+const templateVersions = new Map()
+const pendingIdempotencyKeys = new Map()
+let latestTransferTargets = []
+
+function ok(data, message = '成功') {
+  return { code: 0, message, data }
 }
 
-function paginate(list, { page = 1, pageSize = 10 } = {}) {
-  const total = list.length
-  const start = (page - 1) * pageSize
-  return { list: list.slice(start, start + pageSize), total, page, pageSize }
-}
-
-function profile() {
-  return roleProfiles[activeRoleCode]
-}
-
-function pushAudit(action, target, detail) {
-  auditLogs.unshift({
-    id: 'al-' + ++seq,
-    who: profile().currentRole.userName,
-    roleName: profile().currentRole.roleName,
-    time: '刚刚',
-    action,
-    target,
-    detail
-  })
-}
-
-/** 当前角色数据范围内的在办待办（业务类型口径 + 未转交 + 待审批） */
-function scopedTodos() {
-  const p = profile()
-  return approvalList.filter(
-    (t) => t.status === 'PENDING_REVIEW' && !t.transferred && p.todoBizTypes.includes(t.bizType)
-  )
-}
-
-function timelineOf(taskId) {
-  if (!approvalTimelineMap[taskId]) approvalTimelineMap[taskId] = []
-  return approvalTimelineMap[taskId]
-}
-
-function findPendingTask(taskId) {
-  const task = approvalList.find((t) => t.taskId === taskId)
-  if (!task) return { error: '审批任务不存在或已被撤销' }
-  if (task.status !== 'PENDING_REVIEW') return { error: '该任务已办结，请勿重复操作' }
-  if (task.transferred) return { error: '该任务已转交他人办理，不可重复操作' }
-  if (!profile().todoBizTypes.includes(task.bizType)) {
-    return { error: '该任务不在当前角色的数据范围内' }
+function fail(error) {
+  return {
+    code: Number(error?.code) || -1,
+    bizCode: error?.bizCode || '',
+    message: error?.message || '请求失败，请稍后重试',
+    details: error?.details,
+    traceId: error?.traceId,
+    data: null
   }
-  return { task }
 }
 
-function operatorLabel() {
-  const role = profile().currentRole
-  return role.userName + ' · ' + role.roleName
-}
-
-function appendDone(task, result, resultLabel, comment, node) {
-  doneItems.unshift({
-    id: 'dn-' + ++seq,
-    taskId: task.taskId,
-    bizTypeLabel: task.bizTypeLabel,
-    title: task.title,
-    applicantName: task.applicant.name,
-    className: task.applicant.className,
-    node: node || task.currentNode,
-    result,
-    resultLabel,
-    finishTime: '刚刚',
-    comment: comment || '',
-    roleCode: activeRoleCode
-  })
-}
-
-function doApprove(task, comment) {
-  task.status = 'APPROVED'
-  task.statusLabel = '已通过'
-  task.finishTime = '刚刚'
-  timelineOf(task.taskId).push({
-    who: operatorLabel(),
-    action: '审批通过',
-    time: '刚刚',
-    comment: comment ? comment.trim() : '',
-    tone: 'success'
-  })
-  appendDone(task, 'APPROVED', '已通过', comment && comment.trim())
-}
-
-function doReturn(task, reason) {
-  const handledNode = task.currentNode
-  task.status = 'RETURNED'
-  task.statusLabel = '已退回'
-  task.currentNode = '已退回申请人'
-  task.finishTime = '刚刚'
-  timelineOf(task.taskId).push({
-    who: operatorLabel(),
-    action: '退回申请',
-    time: '刚刚',
-    comment: reason.trim(),
-    tone: 'danger'
-  })
-  appendDone(task, 'RETURNED', '已退回', reason.trim(), handledNode)
-  returnedItems.unshift({
-    id: 'rt-' + ++seq,
-    taskId: task.taskId,
-    bizTypeLabel: task.bizTypeLabel,
-    title: task.title,
-    applicantName: task.applicant.name,
-    className: task.applicant.className,
-    reason: reason.trim(),
-    returnedBy: profile().currentRole.userName,
-    returnTime: '刚刚',
-    rectifyStatus: 'PENDING_RESUBMIT',
-    rectifyStatusLabel: '待整改重报',
-    roleCode: activeRoleCode
-  })
-}
-
-function doTransfer(task, target, note) {
-  task.transferred = true
-  task.transferHint = '已转交 ' + target.userName + '（' + target.roleName + '）办理'
-  timelineOf(task.taskId).push({
-    who: operatorLabel(),
-    action: '转交给 ' + target.userName + '（' + target.roleName + '）',
-    time: '刚刚',
-    comment: note ? note.trim() : '',
-    tone: 'warning'
-  })
-}
-
-function findTransferTarget(targetUserId) {
-  return transferTargets.find((t) => t.userId === targetUserId)
-}
-
-function validateTemplatePayload(payload = {}) {
-  if (!payload.name || !payload.name.trim()) return '模板名称必填'
-  if (!payload.bizType) return '请选择适用业务类型'
-  const nodes = Array.isArray(payload.nodes) ? payload.nodes : []
-  if (!nodes.length) return '至少配置 1 个审批节点'
-  for (let i = 0; i < nodes.length; i++) {
-    if (!nodes[i].name || !nodes[i].name.trim()) return '第 ' + (i + 1) + ' 个节点名称必填'
-    if (!nodes[i].role) return '第 ' + (i + 1) + ' 个节点须指定办理角色'
-    if (!Number(nodes[i].sla) || Number(nodes[i].sla) <= 0) {
-      return '第 ' + (i + 1) + ' 个节点时限须为大于 0 的小时数'
-    }
+async function safe(fn) {
+  try {
+    return ok(await fn())
+  } catch (error) {
+    return fail(error)
   }
-  return ''
 }
 
-function normalizeTemplateNodes(nodes) {
-  return nodes.map((n) => {
-    const roleOption = filterOptions.templateNodeRoles.find((r) => r.value === n.role)
-    return {
-      name: n.name.trim(),
+function hasPattern(patterns, target) {
+  const list = Array.isArray(patterns) ? patterns : []
+  return list.some((p) => {
+    if (p === '*' || p === target) return true
+    if (p.endsWith('.*')) return target.startsWith(p.slice(0, -1))
+    return false
+  })
+}
+
+function actionMeta(visible, allowed, reason = '') {
+  return { visible: !!visible, allowed: !!allowed, reason: allowed ? '' : reason }
+}
+
+function fmtTime(value) {
+  if (!value) return ''
+  return String(value).replace('T', ' ').slice(0, 16)
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']'
+  return '{' + Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',') + '}'
+}
+
+function createIdempotencyKey(operation) {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  return `approval-${operation}-${suffix}`.slice(0, 128)
+}
+
+async function idempotentPost(operation, path, body) {
+  const fingerprint = `${operation}:${stableStringify(body)}`
+  let key = pendingIdempotencyKeys.get(fingerprint)
+  if (!key) {
+    key = createIdempotencyKey(operation)
+    pendingIdempotencyKeys.set(fingerprint, key)
+  }
+  // await 抛错时后续 delete 不会执行，因此网络不确定失败会自然保留同一 key 供重试。
+  const data = await request(path, {
+    method: 'POST',
+    body,
+    headers: { 'Idempotency-Key': key }
+  })
+  pendingIdempotencyKeys.delete(fingerprint)
+  return data
+}
+
+function mapStatus(status) {
+  const raw = String(status || '').toUpperCase()
+  const table = {
+    PENDING: ['PENDING_REVIEW', '待审批'],
+    APPROVED: ['APPROVED', '已通过'],
+    RETURNED: ['RETURNED', '已退回修改'],
+    REJECTED: ['REJECTED', '已驳回终止'],
+    TRANSFERRED: ['TRANSFERRED', '已转办']
+  }
+  return table[raw] || [raw || 'UNKNOWN', raw || '未知']
+}
+
+function taskRow(t = {}) {
+  const [status, statusLabel] = mapStatus(t.status)
+  const urgency = t.urgency || 'NORMAL'
+  return {
+    taskId: String(t.taskId || ''),
+    instanceId: String(t.instanceId || ''),
+    bizType: t.sourceBizType || 'GENERAL',
+    bizTypeLabel: BIZ_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
+    title: t.title || '',
+    applicant: {
+      name: t.applicantName || '—',
+      studentNo: t.studentNo || '',
+      className: t.className || ''
+    },
+    applicantName: t.applicantName || '—',
+    className: t.className || '',
+    submitTime: fmtTime(t.submittedAt),
+    deadline: fmtTime(t.deadlineAt),
+    urgency,
+    urgencyLabel: {
+      OVERDUE: '已超时',
+      NEAR_DEADLINE: '临期',
+      URGENT: '临期',
+      NORMAL: '正常'
+    }[urgency] || urgency,
+    status,
+    statusLabel,
+    currentNode: t.nodeName || t.nodeCode || '',
+    transferred: String(t.status || '').toUpperCase() === 'TRANSFERRED',
+    version: Number(t.version ?? 0),
+    allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : [],
+    instanceStatus: t.instanceStatus || '',
+    actedAt: t.actedAt || '',
+    actionReason: t.actionReason || '',
+    sourceBizId: t.sourceBizId || ''
+  }
+}
+
+function timelineRow(h = {}) {
+  const status = String(h.action || '').toUpperCase()
+  const labels = {
+    PENDING: '进入审批',
+    APPROVED: '审批通过',
+    RETURNED: '退回修改',
+    REJECTED: '驳回终止',
+    TRANSFERRED: '转办'
+  }
+  return {
+    who: h.assigneeName || (h.assigneeId ? `办理人 ${h.assigneeId}` : '系统'),
+    action: labels[status] || status,
+    comment: h.comment || '',
+    time: fmtTime(h.actedAt || h.createdAt),
+    tone: status === 'APPROVED' ? 'success' : status === 'REJECTED' ? 'danger' : status === 'RETURNED' ? 'warning' : 'default'
+  }
+}
+
+function doneRow(t = {}) {
+  const row = taskRow(t)
+  const raw = String(t.status || '').toUpperCase()
+  return {
+    ...row,
+    result: raw,
+    resultLabel: mapStatus(raw)[1],
+    comment: t.actionReason || '',
+    finishTime: fmtTime(t.actedAt),
+    node: row.currentNode
+  }
+}
+
+function returnedRow(t = {}) {
+  const row = taskRow(t)
+  const rs = t.rectifyStatus || 'PENDING_RESUBMIT'
+  return {
+    id: `return-${row.taskId}`,
+    ...row,
+    reason: t.actionReason || '',
+    returnedBy: t.actorName || '当前办理人',
+    returnTime: fmtTime(t.actedAt),
+    rectifyStatus: rs,
+    rectifyStatusLabel: {
+      PENDING_RESUBMIT: '待整改重报',
+      RESUBMITTED: '已重新提交',
+      CLOSED: '已关闭'
+    }[rs] || rs
+  }
+}
+
+function templateRow(t = {}) {
+  const mapped = {
+    id: String(t.id || ''),
+    name: t.name || '',
+    bizType: t.bizType || '',
+    bizTypeLabel: BIZ_LABEL[t.bizType] || t.bizType || '审批',
+    version: `v${t.definitionVersion || 1}`,
+    rowVersion: Number(t.rowVersion ?? 0),
+    status: t.status || 'ENABLED',
+    statusLabel: t.status === 'VOIDED' ? '已作废' : t.status === 'ENABLED' ? '启用' : t.status,
+    updatedBy: t.updatedBy || '系统',
+    updatedAt: fmtTime(t.updatedAt),
+    voidReason: t.voidReason || '',
+    nodes: (t.nodes || []).map((n) => ({
+      name: n.name,
       role: n.role,
-      roleLabel: roleOption ? roleOption.label : n.role,
-      sla: Number(n.sla)
+      roleLabel: ROLE_LABEL[n.role] || n.role,
+      sla: n.sla,
+      nodeCode: n.nodeCode
+    }))
+  }
+  templateVersions.set(mapped.id, mapped.rowVersion)
+  return mapped
+}
+
+async function resolveBatchItems(selected = []) {
+  const out = []
+  for (const value of selected) {
+    const taskId = String(typeof value === 'object' ? (value.taskId || value.id || '') : value)
+    if (!taskId) continue
+    let version = typeof value === 'object' ? value.version : todoVersions.get(taskId)
+    if (version === undefined || version === null) {
+      const detail = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
+      version = detail.version
+      todoVersions.set(taskId, version)
     }
-  })
+    out.push({ taskId, version: Number(version) })
+  }
+  return out
 }
 
-function bizTypeLabelOf(bizType) {
-  const hit = filterOptions.bizTypes.find((b) => b.value === bizType)
-  return hit ? hit.label : bizType
+async function loadTransferTargets(taskIds = []) {
+  const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [taskIds])
+    .map((x) => String(typeof x === 'object' ? (x.taskId || x.id || '') : x))
+    .filter(Boolean))]
+  if (!ids.length) {
+    latestTransferTargets = []
+    return []
+  }
+  const lists = await Promise.all(ids.map((taskId) =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/transfer-targets`)
+  ))
+  const first = Array.isArray(lists[0]) ? lists[0] : []
+  const allowedSets = lists.slice(1).map((rows) => new Set((rows || []).map((x) => String(x.userId))))
+  latestTransferTargets = first.filter((row) => allowedSets.every((set) => set.has(String(row.userId))))
+  return latestTransferTargets
 }
 
-/* P2 · 真实后端桥（失败自动回退本文件 mock 实现） */
-import { withFallback, shouldTryReal } from '@/services/http/client'
-import * as realApi from '@/services/http/adapters'
+async function getContextRaw() {
+  const [brand, authCtx] = await Promise.all([
+    request('/tenant/brand'),
+    request('/rbac/current-context')
+  ])
+  const patterns = Array.isArray(authCtx.permissionPatterns) ? authCtx.permissionPatterns : []
+  const manage = hasPattern(patterns, 'approval.manage') || hasPattern(patterns, '*')
+  const currentRole = authCtx.currentRole || {}
+  const dataScope = authCtx.dataScope || {}
+  latestTransferTargets = []
+  const single = actionMeta(true, true)
+  const batch = actionMeta(true, manage, '批量办理仅限具备 approval.manage 的管理角色')
+  const adminOnly = actionMeta(true, manage, '当前身份缺少 approval.manage 权限')
+  return {
+    tenantBrandConfig: {
+      schoolName: brand.schoolName || '',
+      platformName: brand.platformDisplayName || '',
+      watermarkText: brand.watermarkText || ''
+    },
+    currentRole: {
+      ...currentRole,
+      roleName: currentRole.roleName || currentRole.roleCode || '当前身份'
+    },
+    dataScope: {
+      ...dataScope,
+      scopeName: dataScope.scopeName || dataScope.name || '当前数据范围'
+    },
+    permissionPatterns: patterns,
+    permissionActions: {
+      approveTask: single,
+      returnTask: single,
+      rejectTask: single,
+      transferTask: single,
+      batchApprove: batch,
+      batchReturn: batch,
+      batchTransfer: batch,
+      exportRecords: adminOnly,
+      viewTemplates: adminOnly,
+      createTemplate: adminOnly,
+      editTemplate: adminOnly,
+      voidTemplate: adminOnly,
+      exportTemplates: adminOnly,
+      viewAuditLog: adminOnly
+    },
+    filterOptions: FILTER_OPTIONS,
+    batchActions: BATCH_ACTIONS,
+    transferTargets: [],
+    realApi: true
+  }
+}
 
 export const approvalApi = {
-  /** 品牌 / 当前角色 / 数据范围 / 权限动作 / 字典 / 可切换角色（页面初始化统一获取） */
-  getContext() {
-    return this._mockGetContext().then((res) => {
-      if (!shouldTryReal()) return res
-      return realApi.enrichContext(res).catch(() => res)
-    })
-  },
+  getContext: () => safe(getContextRaw),
 
-  _mockGetContext() {
-    const p = profile()
-    return ok({
-      tenantBrandConfig: clone(tenantBrandConfig),
-      currentRole: clone(p.currentRole),
-      dataScope: clone(p.dataScope),
-      permissionActions: clone(p.permissionActions),
-      statusOptions: clone(statusOptions),
-      filterOptions: clone(filterOptions),
-      batchActions: clone(batchActions),
-      availableRoles: Object.values(roleProfiles).map((r) => ({
-        roleCode: r.currentRole.roleCode,
-        roleName: r.currentRole.roleName,
-        userName: r.currentRole.userName
-      })),
-      transferTargets: clone(
-        transferTargets.filter((t) => t.userId !== p.currentRole.userId)
-      ),
-      todoCount: scopedTodos().length
-    })
-  },
+  getTodoSummary: () => safe(async () => {
+    const d = await request('/approvals/summary')
+    return {
+      ...d,
+      byBizType: (d.byBizType || []).map((x) => {
+        const label = BIZ_LABEL[x.bizType] || x.bizType || '审批'
+        return {
+          ...x,
+          label,
+          bizTypeLabel: label,
+          earliest: fmtTime(x.earliest),
+          overdue: Number(x.overdue || 0)
+        }
+      }),
+      overdueList: (d.overdueList || []).map(taskRow)
+    }
+  }),
 
-  /** 切换演示角色（切换后由调用方重新 getContext 刷新上下文） */
-  switchRole(roleCode) {
-    const target = roleProfiles[roleCode]
-    if (!target) return fail('角色不存在或未授权，无法切换')
-    activeRoleCode = roleCode
-    return ok({
-      roleCode: target.currentRole.roleCode,
-      roleName: target.currentRole.roleName,
-      userName: target.currentRole.userName
-    })
-  },
-
-  /** 待办统计（按当前角色数据范围实时重算，业务类型 / 紧急度 / 超时联动写操作） */
-  getTodoSummary() {
-    return withFallback('approvals.summary', () => realApi.getTodoSummary(), () => this._mockGetTodoSummary())
-  },
-
-  _mockGetTodoSummary() {
-    const p = profile()
-    const list = scopedTodos()
-    const byBizType = p.todoBizTypes.map((bizType) => {
-      const items = list.filter((t) => t.bizType === bizType)
-      const earliest = items.length
-        ? items.map((t) => t.submitTime).sort((a, b) => a.localeCompare(b))[0]
-        : ''
-      return {
-        bizType,
-        label: bizTypeLabelOf(bizType),
-        count: items.length,
-        earliest,
-        overdue: items.filter((t) => t.urgency === 'OVERDUE').length
+  getTodos: (params = {}) => safe(async () => {
+    const d = await request('/approvals/tasks', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        keyword: params.keyword,
+        bizType: params.bizType,
+        urgency: params.urgency,
+        submitDate: params.submitDate
       }
     })
-    const overdueList = list
-      .filter((t) => t.urgency === 'OVERDUE')
-      .map((t) => ({
-        taskId: t.taskId,
-        title: t.title,
-        bizTypeLabel: t.bizTypeLabel,
-        applicantName: t.applicant.name,
-        className: t.applicant.className,
-        deadline: t.deadline
-      }))
-    return ok({
-      todayTag: todoSummary.todayTag,
-      total: list.length,
-      todayNew: list.filter((t) => t.submitTime.startsWith(todoSummary.todayTag)).length,
-      nearDeadline: list.filter((t) => t.urgency === 'URGENT').length,
-      overdue: list.filter((t) => t.urgency === 'OVERDUE').length,
-      byBizType,
-      overdueList
-    })
-  },
+    const list = (d.items || []).map(taskRow)
+    list.forEach((x) => todoVersions.set(x.taskId, x.version))
+    return { list, total: Number(d.total || 0) }
+  }),
 
-  /** 我的待办（按角色数据范围过滤业务类型，支持筛选 + 分页，超时/临期置顶） */
-  getTodos(params = {}) {
-    return withFallback('approvals.todos', () => realApi.getApprovalTodos(params), () => this._mockGetTodos(params))
-  },
-
-  _mockGetTodos(params = {}) {
-    let list = [...scopedTodos()]
-    if (params.bizType) list = list.filter((t) => t.bizType === params.bizType)
-    if (params.urgency) list = list.filter((t) => t.urgency === params.urgency)
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter(
-        (t) =>
-          t.title.includes(kw) ||
-          t.applicant.name.includes(kw) ||
-          t.applicant.studentNo.includes(kw) ||
-          t.taskId.includes(kw)
-      )
-    }
-    if (params.submitDate) {
-      const md = params.submitDate.slice(5)
-      list = list.filter((t) => t.submitTime.startsWith(md))
-    }
-    list.sort((a, b) => {
-      const w = URGENCY_WEIGHT[a.urgency] - URGENCY_WEIGHT[b.urgency]
-      return w !== 0 ? w : a.submitTime.localeCompare(b.submitTime)
-    })
-    return ok(paginate(clone(list), params))
-  },
-
-  /** 审批详情（业务字段 + 时间线 + 加签建议；taskId 不存在返回失败供页面 ErrorState） */
-  getApprovalDetail(taskId) {
-    if (/^\d+$/.test(String(taskId))) {
-      return withFallback('approvals.detail', () => realApi.getApprovalDetail(taskId), () => this._mockGetApprovalDetail(taskId))
-    }
-    return this._mockGetApprovalDetail(taskId)
-  },
-
-  _mockGetApprovalDetail(taskId) {
-    const task = approvalList.find((t) => t.taskId === taskId)
-    if (!task) return fail('审批任务不存在或已被撤销，请返回列表刷新后重试')
-    const detail = approvalDetailMap[taskId] || {
-      taskId,
-      fields: [],
-      applyNote: '',
-      attachments: [],
+  getApprovalDetail: (taskId) => safe(async () => {
+    const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
+    const task = taskRow(d)
+    todoVersions.set(task.taskId, task.version)
+    return {
+      task,
+      detail: {
+        fields: d.sourceBizId ? [{ label: '业务记录', value: d.sourceBizId, masked: false }] : [],
+        applyNote: '',
+        attachments: Array.isArray(d.attachments) ? d.attachments : []
+      },
+      timeline: (d.history || []).map(timelineRow),
       suggestions: []
     }
-    return ok({
-      task: clone(task),
-      detail: clone(detail),
-      timeline: clone(timelineOf(taskId)),
-      suggestions: clone(detail.suggestions || [])
+  }),
+
+  getTransferTargets: (taskIds) => safe(async () => loadTransferTargets(taskIds)),
+
+  approveTask: (taskId, payload = {}) => safe(async () =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/approve`, {
+      method: 'POST',
+      body: { comment: payload.comment || '', version: payload.version }
     })
-  },
+  ),
 
-  /** 通过（意见选填；更新状态 + 时间线 + 已办 + 审计，待办统计随之联动） */
-  approveTask(taskId, { comment, version } = {}) {
-    if (/^\d+$/.test(String(taskId))) {
-      return withFallback('approvals.approve', () => realApi.approveTask(taskId, { comment, version }), () => this._mockApproveTask(taskId, { comment }))
-    }
-    return this._mockApproveTask(taskId, { comment })
-  },
+  returnTask: (taskId, payload = {}) => safe(async () =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/return`, {
+      method: 'POST',
+      body: { reason: payload.reason || '', version: payload.version }
+    })
+  ),
 
-  _mockApproveTask(taskId, { comment } = {}) {
-    const { task, error } = findPendingTask(taskId)
-    if (error) return fail(error)
-    doApprove(task, comment)
-    pushAudit(
-      '审批通过',
-      task.taskId + ' ' + task.title,
-      (comment && comment.trim() ? '审批意见：' + comment.trim() + '；' : '') + '结果已同步申请人'
-    )
-    return ok({ taskId, status: 'APPROVED', statusLabel: '已通过' })
-  },
+  rejectTask: (taskId, payload = {}) => safe(async () =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/reject`, {
+      method: 'POST',
+      body: { reason: payload.reason || '', version: payload.version }
+    })
+  ),
 
-  /** 退回（原因必填 ≥5 字；写入退回记录并留痕，结果同步申请人） */
-  returnTask(taskId, { reason, version } = {}) {
-    if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
-    if (/^\d+$/.test(String(taskId))) {
-      return withFallback('approvals.return', () => realApi.returnTask(taskId, { reason, version }), () => this._mockReturnTask(taskId, { reason }))
-    }
-    return this._mockReturnTask(taskId, { reason })
-  },
-
-  _mockReturnTask(taskId, { reason } = {}) {
-    if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
-    const { task, error } = findPendingTask(taskId)
-    if (error) return fail(error)
-    doReturn(task, reason)
-    pushAudit('退回审批', task.taskId + ' ' + task.title, '退回原因：' + reason.trim() + '；已同步申请人整改')
-    return ok({ taskId, status: 'RETURNED', statusLabel: '已退回' })
-  },
-
-  /** 转交（校验目标存在且非本人；状态不变、办理人转移并留痕） */
-  transferTask(taskId, { targetUserId, note } = {}) {
-    const target = findTransferTarget(targetUserId)
-    if (!target) return fail('转交对象不存在或不在可选范围内')
-    if (target.userId === profile().currentRole.userId) return fail('不能将任务转交给本人')
-    const { task, error } = findPendingTask(taskId)
-    if (error) return fail(error)
-    doTransfer(task, target, note)
-    pushAudit(
-      '转交任务',
-      task.taskId + ' ' + task.title,
-      '转交给 ' + target.userName + '（' + target.roleName + '）' + (note && note.trim() ? '；说明：' + note.trim() : '')
-    )
-    return ok({ taskId, transferredTo: target.userName })
-  },
-
-  /** 批量通过（逐条应用单条校验，返回成功 / 跳过数量） */
-  batchApprove(ids = []) {
-    if (!ids.length) return fail('请先勾选需要批量通过的待办')
-    let succeeded = 0
-    const skipped = []
-    ids.forEach((id) => {
-      const { task, error } = findPendingTask(id)
-      if (error) {
-        skipped.push(id)
-        return
+  transferTask: (taskId, payload = {}) => safe(async () =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/transfer`, {
+      method: 'POST',
+      body: {
+        targetUserId: payload.targetUserId,
+        comment: payload.note || payload.comment || '',
+        version: payload.version
       }
-      doApprove(task, '')
-      succeeded++
     })
-    if (!succeeded) return fail('所选任务均不可操作（已办结、已转交或不在数据范围内）')
-    pushAudit('批量通过', succeeded + ' 条待办', '逐条通过并留痕' + (skipped.length ? '；跳过 ' + skipped.length + ' 条不可操作任务' : ''))
-    return ok({ succeeded, skipped: skipped.length })
-  },
+  ),
 
-  /** 批量退回（原因必填 ≥5 字，逐条应用同校验） */
-  batchReturn(ids = [], { reason } = {}) {
-    if (!ids.length) return fail('请先勾选需要批量退回的待办')
-    if (!reason || reason.trim().length < 5) return fail('退回原因必填且不少于 5 个字')
-    let succeeded = 0
-    const skipped = []
-    ids.forEach((id) => {
-      const { task, error } = findPendingTask(id)
-      if (error) {
-        skipped.push(id)
-        return
+  batchApprove: (selected = []) => safe(async () => {
+    const items = await resolveBatchItems(selected)
+    const body = { action: 'APPROVE', items }
+    return idempotentPost('batch-approve', '/approvals/batch', body)
+  }),
+
+  batchReturn: (selected = [], payload = {}) => safe(async () => {
+    const items = await resolveBatchItems(selected)
+    const body = { action: 'RETURN', items, reason: payload.reason || '' }
+    return idempotentPost('batch-return', '/approvals/batch', body)
+  }),
+
+  batchTransfer: (selected = [], payload = {}) => safe(async () => {
+    const items = await resolveBatchItems(selected)
+    const body = {
+      action: 'TRANSFER',
+      items,
+      targetUserId: payload.targetUserId,
+      comment: payload.note || ''
+    }
+    const d = await idempotentPost('batch-transfer', '/approvals/batch', body)
+    const target = latestTransferTargets.find((x) => String(x.userId) === String(payload.targetUserId))
+    return { ...d, transferredTo: target?.userName || payload.targetUserId }
+  }),
+
+  getDoneItems: (params = {}) => safe(async () => {
+    const d = await request('/approvals/tasks/done', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        keyword: params.keyword,
+        bizType: params.bizType,
+        result: params.result
       }
-      doReturn(task, reason)
-      succeeded++
     })
-    if (!succeeded) return fail('所选任务均不可操作（已办结、已转交或不在数据范围内）')
-    pushAudit('批量退回', succeeded + ' 条待办', '统一退回原因：' + reason.trim() + (skipped.length ? '；跳过 ' + skipped.length + ' 条' : ''))
-    return ok({ succeeded, skipped: skipped.length })
-  },
+    return { list: (d.items || []).map(doneRow), total: Number(d.total || 0) }
+  }),
 
-  /** 批量转交（校验目标存在，逐条应用同校验） */
-  batchTransfer(ids = [], { targetUserId, note } = {}) {
-    if (!ids.length) return fail('请先勾选需要批量转交的待办')
-    const target = findTransferTarget(targetUserId)
-    if (!target) return fail('转交对象不存在或不在可选范围内')
-    if (target.userId === profile().currentRole.userId) return fail('不能将任务转交给本人')
-    let succeeded = 0
-    const skipped = []
-    ids.forEach((id) => {
-      const { task, error } = findPendingTask(id)
-      if (error) {
-        skipped.push(id)
-        return
+  getCcItems: (params = {}) => safe(async () => {
+    const d = await request('/approvals/cc', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        keyword: params.keyword,
+        readStatus: params.readStatus
       }
-      doTransfer(task, target, note)
-      succeeded++
     })
-    if (!succeeded) return fail('所选任务均不可操作（已办结、已转交或不在数据范围内）')
-    pushAudit(
-      '批量转交',
-      succeeded + ' 条待办',
-      '转交给 ' + target.userName + '（' + target.roleName + '）' + (skipped.length ? '；跳过 ' + skipped.length + ' 条' : '')
-    )
-    return ok({ succeeded, skipped: skipped.length, transferredTo: target.userName })
-  },
-
-  /** 已办记录（当前角色经手，支持结果 / 业务类型 / 关键词筛选 + 分页） */
-  getDoneItems(params = {}) {
-    let list = doneItems.filter((d) => d.roleCode === activeRoleCode)
-    if (params.result) list = list.filter((d) => d.result === params.result)
-    if (params.bizType) {
-      const label = bizTypeLabelOf(params.bizType)
-      list = list.filter((d) => d.bizTypeLabel === label)
+    return {
+      list: (d.items || []).map((x) => ({
+        ...x,
+        bizTypeLabel: BIZ_LABEL[x.sourceBizType] || x.sourceBizType || '审批',
+        readStatusLabel: x.readStatus === 'READ' ? '已读' : '未读'
+      })),
+      total: Number(d.total || 0)
     }
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter((d) => d.title.includes(kw) || d.applicantName.includes(kw))
-    }
-    return ok(paginate(clone(list), params))
-  },
+  }),
 
-  /** 抄送记录（当前角色名下） */
-  getCcItems(params = {}) {
-    let list = ccItems.filter((c) => c.roleCode === activeRoleCode)
-    if (params.readStatus) list = list.filter((c) => c.readStatus === params.readStatus)
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter((c) => c.title.includes(kw) || c.applicantName.includes(kw))
-    }
-    return ok(paginate(clone(list), params))
-  },
+  getReturnedItems: (params = {}) => safe(async () => {
+    const d = await request('/approvals/tasks/returned', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        keyword: params.keyword,
+        rectifyStatus: params.rectifyStatus
+      }
+    })
+    return { list: (d.items || []).map(returnedRow), total: Number(d.total || 0) }
+  }),
 
-  /** 退回记录（当前角色发起的退回，含整改状态） */
-  getReturnedItems(params = {}) {
-    let list = returnedItems.filter((r) => r.roleCode === activeRoleCode)
-    if (params.rectifyStatus) list = list.filter((r) => r.rectifyStatus === params.rectifyStatus)
-    if (params.keyword) {
-      const kw = params.keyword.trim()
-      list = list.filter((r) => r.title.includes(kw) || r.applicantName.includes(kw))
-    }
-    return ok(paginate(clone(list), params))
-  },
+  getTemplates: (params = {}) => safe(async () => {
+    const d = await request('/approvals/templates', {
+      params: {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        keyword: params.keyword,
+        bizType: params.bizType,
+        status: params.status
+      }
+    })
+    return { list: (d.items || []).map(templateRow), total: Number(d.total || 0) }
+  }),
 
-  /** 审批模板列表（查看权限由页面按 permissionActions 控制，此处做兜底校验） */
-  getTemplates(params = {}) {
-    const pa = profile().permissionActions
-    if (!pa.viewTemplates.allowed) return fail(pa.viewTemplates.reason || '当前角色无权查看审批模板')
-    let list = [...approvalTemplates]
-    if (params.bizType) list = list.filter((t) => t.bizType === params.bizType)
-    if (params.status) list = list.filter((t) => t.status === params.status)
-    if (params.keyword) list = list.filter((t) => t.name.includes(params.keyword.trim()))
-    return ok(paginate(clone(list), params))
-  },
+  createTemplate: (payload = {}) => safe(async () => {
+    const d = await request('/approvals/templates', { method: 'POST', body: payload })
+    return templateRow(d)
+  }),
 
-  /** 新增模板（名称 / 业务类型 / 节点校验，初始版本 V1） */
-  createTemplate(payload = {}) {
-    const pa = profile().permissionActions
-    if (!pa.createTemplate.allowed) return fail(pa.createTemplate.reason || '当前角色无权新增审批模板')
-    const invalid = validateTemplatePayload(payload)
-    if (invalid) return fail(invalid)
-    const tpl = {
-      id: 'tpl-' + ++seq,
-      name: payload.name.trim(),
-      bizType: payload.bizType,
-      bizTypeLabel: bizTypeLabelOf(payload.bizType),
-      nodes: normalizeTemplateNodes(payload.nodes),
-      status: 'ENABLED',
-      statusLabel: '启用中',
-      version: 'V1',
-      updatedBy: profile().currentRole.userName,
-      updatedAt: '刚刚',
-      voidReason: ''
-    }
-    approvalTemplates.unshift(tpl)
-    pushAudit('新增审批模板', tpl.name, '适用业务：' + tpl.bizTypeLabel + '，节点数 ' + tpl.nodes.length + '，初始版本 V1')
-    return ok(clone(tpl))
-  },
+  updateTemplate: (templateId, payload = {}) => safe(async () => {
+    const version = templateVersions.get(String(templateId))
+    if (version === undefined) throw new Error('模板版本缺失，请刷新列表后重试')
+    return templateRow(await request(`/approvals/templates/${encodeURIComponent(templateId)}`, {
+      method: 'PUT',
+      body: { ...payload, version }
+    }))
+  }),
 
-  /** 编辑模板（已作废模板不可编辑，版本号自动 +1） */
-  updateTemplate(id, payload = {}) {
-    const pa = profile().permissionActions
-    if (!pa.editTemplate.allowed) return fail(pa.editTemplate.reason || '当前角色无权编辑审批模板')
-    const tpl = approvalTemplates.find((t) => t.id === id)
-    if (!tpl) return fail('模板不存在或已被删除')
-    if (tpl.status === 'VOIDED') return fail('已作废模板不可编辑，如需启用请新建模板')
-    const invalid = validateTemplatePayload(payload)
-    if (invalid) return fail(invalid)
-    const prevVersion = tpl.version
-    tpl.name = payload.name.trim()
-    tpl.bizType = payload.bizType
-    tpl.bizTypeLabel = bizTypeLabelOf(payload.bizType)
-    tpl.nodes = normalizeTemplateNodes(payload.nodes)
-    tpl.version = 'V' + (Number(String(tpl.version).replace('V', '')) + 1)
-    tpl.updatedBy = profile().currentRole.userName
-    tpl.updatedAt = '刚刚'
-    pushAudit('更新审批模板', tpl.name, '版本 ' + prevVersion + ' → ' + tpl.version + '，节点数 ' + tpl.nodes.length)
-    return ok(clone(tpl))
-  },
+  voidTemplate: (templateId, payload = {}) => safe(async () => {
+    const version = templateVersions.get(String(templateId))
+    if (version === undefined) throw new Error('模板版本缺失，请刷新列表后重试')
+    return templateRow(await request(`/approvals/templates/${encodeURIComponent(templateId)}/void`, {
+      method: 'POST',
+      body: { reason: payload.reason || '', version }
+    }))
+  }),
 
-  /** 作废模板（逻辑作废留痕，原因必填 ≥5 字，历史单据可追溯） */
-  voidTemplate(id, { reason } = {}) {
-    const pa = profile().permissionActions
-    if (!pa.voidTemplate.allowed) return fail(pa.voidTemplate.reason || '当前角色无权作废审批模板')
-    if (!reason || reason.trim().length < 5) return fail('作废原因必填且不少于 5 个字')
-    const tpl = approvalTemplates.find((t) => t.id === id)
-    if (!tpl) return fail('模板不存在或已被删除')
-    if (tpl.status === 'VOIDED') return fail('该模板已是作废状态')
-    tpl.status = 'VOIDED'
-    tpl.statusLabel = '已作废'
-    tpl.voidReason = reason.trim()
-    tpl.updatedBy = profile().currentRole.userName
-    tpl.updatedAt = '刚刚'
-    pushAudit('作废审批模板', tpl.name, '作废原因：' + reason.trim() + '；历史单据保留可追溯')
-    return ok({ id, status: 'VOIDED', statusLabel: '已作废' })
-  },
+  exportRecords: (payload = {}) => safe(async () => {
+    const body = { scope: payload.scope, purpose: payload.purpose }
+    return idempotentPost('export', '/approvals/export', body)
+  }),
 
-  /** 导出（默认脱敏 + 水印，生成审计编号并留痕） */
-  exportRecords({ scope, purpose } = {}) {
-    const scopeLabels = {
-      TODO: '待办清单',
-      DONE: '已办记录',
-      CC: '抄送记录',
-      RETURNED: '退回记录',
-      TEMPLATE: '审批模板'
-    }
-    const label = scopeLabels[scope] || '审批记录'
-    const auditId = 'AUD-' + String(++seq).padStart(4, '0')
-    pushAudit(
-      '导出记录',
-      label,
-      '字段已脱敏、文件含水印，审计编号 ' + auditId + (purpose ? '；导出用途：' + purpose : '')
-    )
-    return ok({ taskId: 'EXP-' + seq, masked: true, watermark: true, auditId })
-  },
-
-  /** 审计留痕（队首最新） */
-  getAuditLogs() {
-    return ok(clone(auditLogs))
-  }
+  getAuditLogs: () => safe(async () => request('/approvals/audit', { params: { limit: 20 } }))
 }
-
-export default approvalApi

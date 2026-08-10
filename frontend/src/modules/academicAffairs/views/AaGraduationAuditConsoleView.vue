@@ -10,46 +10,115 @@
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard title="当前批次">
-        <div class="agc-batch-bar">
-          <div class="agc-batch-select">
-            <AppGraduationBatchPicker
-              v-model="batchId"
-              :options="batchOptions"
-              :disabled="loadingBatches"
-              :placeholder="loadingBatches ? '批次加载中…' : '选择批次'"
-              @change="onBatchChange"
-            />
+      <section class="agc-overview" aria-label="毕业审核批次健康概览">
+        <div class="agc-overview__top">
+          <div class="agc-overview__copy">
+            <span class="agc-eyebrow">当前毕业审核批次</span>
+            <h2>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</h2>
+            <p>
+              {{ currentBatch
+                ? batchHealthDescription
+                : '选择批次后，这里会基于现有应审、系统通过、系统异常、已终审和已归档事实给出办理优先级。' }}
+            </p>
+            <div class="agc-batch-select">
+              <AppGraduationBatchPicker
+                v-model="batchId"
+                :options="batchOptions"
+                :disabled="loadingBatches"
+                :placeholder="loadingBatches ? '批次加载中…' : '选择批次'"
+                @change="onBatchChange"
+              />
+            </div>
           </div>
-          <template v-if="currentBatch">
-            <span class="agc-chip">应审 {{ currentBatch.total }}</span>
-            <span class="agc-chip is-pass">系统通过 {{ currentBatch.passed }}</span>
-            <span class="agc-chip is-warn">系统异常 {{ currentBatch.abnormal }}</span>
-            <span class="agc-chip is-final">已终审 {{ currentBatch.concluded }}</span>
-            <span class="agc-chip is-archive">已归档 {{ currentBatch.archived }}</span>
-          </template>
-        </div>
-        <EmptyState v-if="!loadingBatches && !batches.length" title="暂无审核批次" description="请先到「审核批次」页新建批次并执行预审" />
-      </AppSectionCard>
 
-      <div class="agc-tabs">
-        <button v-for="t in tabs" :key="t.key" :class="['agc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+          <aside v-if="currentBatch" :class="['agc-decision', batchHealthTone]">
+            <span>当前结论</span>
+            <strong>{{ batchHealthLabel }}</strong>
+            <div class="agc-progress-row">
+              <small>终审覆盖度</small>
+              <b>{{ finalProgressPct }}%</b>
+            </div>
+            <div class="agc-progress" aria-hidden="true">
+              <i :style="{ width: `${finalProgressPct}%` }"></i>
+            </div>
+            <div class="agc-next">
+              <small>建议下一动作</small>
+              <b>{{ batchNextAction }}</b>
+            </div>
+          </aside>
+        </div>
+
+        <div v-if="currentBatch" class="agc-metrics">
+          <article>
+            <span>应审学生</span>
+            <strong>{{ batchTotal }}</strong>
+            <small>本批次纳入审核范围</small>
+          </article>
+          <article class="is-pass">
+            <span>系统通过</span>
+            <strong>{{ batchPassed }}</strong>
+            <small>共享毕业核验器通过</small>
+          </article>
+          <article :class="{ 'is-risk': batchAbnormal > 0 }">
+            <span>系统异常</span>
+            <strong>{{ batchAbnormal }}</strong>
+            <small>{{ batchAbnormal ? '优先核对责任模块证据' : '当前无系统异常' }}</small>
+          </article>
+          <article class="is-final">
+            <span>已终审</span>
+            <strong>{{ batchConcluded }}</strong>
+            <small>已形成正式终审结论</small>
+          </article>
+          <article class="is-archive">
+            <span>已归档</span>
+            <strong>{{ batchArchived }}</strong>
+            <small>按既有归档范围收敛</small>
+          </article>
+        </div>
+
+        <EmptyState
+          v-if="!loadingBatches && !batches.length"
+          title="暂无审核批次"
+          description="请先到「审核批次」页新建批次并执行预审"
+        />
+      </section>
+
+      <div class="agc-tabs" aria-label="毕业审核工作区">
+        <button
+          v-for="t in tabs"
+          :key="t.key"
+          :class="['agc-tab', { 'is-active': tab === t.key }]"
+          @click="switchTab(t.key)"
+        >{{ t.label }}</button>
       </div>
 
       <template v-if="!batchId">
-        <EmptyState title="请先选择批次" description="从上方下拉选择一个审核批次" />
+        <EmptyState title="请先选择批次" description="从上方选择一个审核批次后再进入具体审核工作区" />
       </template>
 
-      <!-- 学分 / 实践 / 毕设联动 / 实习联动 / 处分联动 / 费用结清 · 单项透视 -->
       <template v-else-if="['credit', 'practice', 'thesis', 'internship', 'discipline', 'fee'].includes(tab)">
-        <AppInlineAlert v-if="tab === 'fee'" type="warning"
-          description="费用结清默认 UNKNOWN（不阻断）。财务未对接前，可由教务处人工勾选 CLEARED/OWED 过渡，禁止假装已自动通过。" />
+        <AppInlineAlert
+          v-if="tab === 'fee'"
+          type="warning"
+          description="费用结清默认 UNKNOWN（不阻断）。财务未对接前，可由教务处人工勾选 CLEARED/OWED 过渡，禁止假装已自动通过。"
+        />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" :title="`暂无${currentTabLabel}数据`" description="批次尚未执行预审，或该项供数为空" />
-        <DataTable v-else :columns="itemColumns" :rows="rows" row-key="resultId" :pagination="pagination" @page-change="onPageChange">
-          <template #cell-result="{ row }"><AppStatusTag :type="gradItemColor(itemOf(row).result)" dot>{{ itemResultLabel(itemOf(row).result) }}</AppStatusTag></template>
-          <template #cell-evidence="{ row }"><span class="agc-evidence">{{ itemOf(row).evidence || '—' }}</span></template>
+        <DataTable
+          v-else
+          :columns="itemColumns"
+          :rows="rows"
+          row-key="resultId"
+          :pagination="pagination"
+          @page-change="onPageChange"
+        >
+          <template #cell-result="{ row }">
+            <AppStatusTag :type="gradItemColor(itemOf(row).result)" dot>{{ itemResultLabel(itemOf(row).result) }}</AppStatusTag>
+          </template>
+          <template #cell-evidence="{ row }">
+            <span class="agc-evidence">{{ itemOf(row).evidence || '—' }}</span>
+          </template>
           <template #cell-ops="{ row }">
             <template v-if="tab === 'fee'">
               <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'CLEARED')">勾选已结清</button>
@@ -61,7 +130,6 @@
         </DataTable>
       </template>
 
-      <!-- 课程达成审核：必修 + 选修两项并列 -->
       <template v-else-if="tab === 'course'">
         <ErrorState v-if="error" :description="error" @retry="loadCourseTab" />
         <LoadingState v-else-if="loading" />
@@ -69,24 +137,35 @@
           <AppSectionCard title="必修全通过">
             <EmptyState v-if="!courseRequiredRows.length" title="暂无必修数据" description="批次尚未执行预审" />
             <DataTable v-else :columns="itemColumns" :rows="courseRequiredRows" row-key="resultId">
-              <template #cell-result="{ row }"><AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_REQUIRED').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_REQUIRED').result) }}</AppStatusTag></template>
-              <template #cell-evidence="{ row }"><span class="agc-evidence">{{ itemOf(row, 'COURSE_REQUIRED').evidence || '—' }}</span></template>
+              <template #cell-result="{ row }">
+                <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_REQUIRED').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_REQUIRED').result) }}</AppStatusTag>
+              </template>
+              <template #cell-evidence="{ row }">
+                <span class="agc-evidence">{{ itemOf(row, 'COURSE_REQUIRED').evidence || '—' }}</span>
+              </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
             </DataTable>
           </AppSectionCard>
           <AppSectionCard title="选修学分达标">
             <EmptyState v-if="!courseElectiveRows.length" title="暂无选修数据" description="批次尚未执行预审" />
             <DataTable v-else :columns="itemColumns" :rows="courseElectiveRows" row-key="resultId">
-              <template #cell-result="{ row }"><AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_ELECTIVE').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_ELECTIVE').result) }}</AppStatusTag></template>
-              <template #cell-evidence="{ row }"><span class="agc-evidence">{{ itemOf(row, 'COURSE_ELECTIVE').evidence || '—' }}</span></template>
+              <template #cell-result="{ row }">
+                <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_ELECTIVE').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_ELECTIVE').result) }}</AppStatusTag>
+              </template>
+              <template #cell-evidence="{ row }">
+                <span class="agc-evidence">{{ itemOf(row, 'COURSE_ELECTIVE').evidence || '—' }}</span>
+              </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
             </DataTable>
           </AppSectionCard>
         </template>
       </template>
 
-      <!-- 毕业资格终审：仅 ACADEMIC_REVIEW（学院初审已通过，待教务处终审） -->
       <template v-else-if="tab === 'final'">
+        <AppInlineAlert
+          type="warning"
+          description="教务终审会写入毕业/结业/延毕学籍终态，属于不可逆业务动作；请在十项证据和学院初审均核对完成后操作。"
+        />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" title="暂无待终审名单" description="需学院初审通过（ACADEMIC_REVIEW）后才进入本队列" />
@@ -96,7 +175,6 @@
         </DataTable>
       </template>
 
-      <!-- 毕业学生名单：终审已出结论（毕业/结业/延毕）的三组名单，供查阅核对，不含写操作 -->
       <template v-else-if="tab === 'roster'">
         <ErrorState v-if="error" :description="error" @retry="loadRosterTab" />
         <LoadingState v-else-if="loading" />
@@ -112,7 +190,6 @@
         </template>
       </template>
 
-      <!-- 不通过原因：系统异常/学院退回/教务终审延毕三组，逐生汇总不通过原因，供跟进整改 -->
       <template v-else-if="tab === 'reason'">
         <ErrorState v-if="error" :description="error" @retry="loadReasonTab" />
         <LoadingState v-else-if="loading" />
@@ -128,7 +205,6 @@
         </template>
       </template>
 
-      <!-- 审核结果：全量总览 -->
       <template v-else-if="tab === 'results'">
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -141,7 +217,6 @@
         </DataTable>
       </template>
 
-      <!-- 审核归档 -->
       <template v-else-if="tab === 'archive'">
         <AppSectionCard title="归档操作">
           <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档（ARCHIVED）；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
@@ -159,9 +234,14 @@
     <AppDrawer :visible="detail.visible" title="预审结果详情（十项）" mode="modal" size="xlarge" @close="detail.visible = false">
       <template v-if="detail.row">
         <div class="agc-detail-head">
-          <div class="agc-detail-name">{{ detail.row.realName || ('学生 ' + detail.row.studentId) }}</div>
-          <AppStatusTag :type="overallColor(detail.row.overall)" dot>{{ overallLabel(detail.row.overall) }}</AppStatusTag>
-          <AppStatusTag :type="detail.row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ statusLabel(detail.row.status) }}</AppStatusTag>
+          <div>
+            <span class="agc-eyebrow">学生审核事实</span>
+            <div class="agc-detail-name">{{ detail.row.realName || ('学生 ' + detail.row.studentId) }}</div>
+          </div>
+          <div class="agc-detail-tags">
+            <AppStatusTag :type="overallColor(detail.row.overall)" dot>{{ overallLabel(detail.row.overall) }}</AppStatusTag>
+            <AppStatusTag :type="detail.row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ statusLabel(detail.row.status) }}</AppStatusTag>
+          </div>
         </div>
         <div class="agc-items">
           <div v-for="it in detail.row.items" :key="it.item" class="agc-item">
@@ -218,12 +298,8 @@
 <script>
 /**
  * 毕业资格审核 · 审核工作台（/admin/academic-affairs/graduation/audit-console?tab=）。
- * 十项跨域供数三态判定的下游八个叶子（学分/课程/实践达成审核、毕设/实习/处分状态联动、毕业资格终审、
- * 毕业学生名单、不通过原因、审核结果、审核归档）共享同一批次选择与详情抽屉，避免为每个叶子各建一套
- * 重复列表页。「毕业学生名单」复用既有 rosters 三名单接口（补全学院/专业/班级展示）；「不通过原因」
- * 复用既有 results 列表按 status 过滤（SYSTEM_ABNORMAL/REJECTED/DELAYED 三态），逐生汇总不通过项证据
- * + 学院退回意见，均为只读展示，不新增写操作。
- * 「审核批次」（建批次/圈定/预审）仍在既有 AaGraduationBatchView.vue（/graduation），本页不重复。
+ * 十项跨域供数三态判定的下游叶子共享同一批次选择与详情抽屉。
+ * Stage D 只提升信息架构，不在前端重新计算毕业资格，也不制造 DecisionTrace。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppGraduationBatchPicker, AppRadioGroup } from '@/components/common'
@@ -243,7 +319,6 @@ const TAB_CONFIG = {
   thesis: { label: '毕设状态联动', item: 'GRADUATION_DESIGN' },
   internship: { label: '实习状态联动', item: 'INTERNSHIP' },
   discipline: { label: '处分状态联动', item: 'DISCIPLINE' },
-  // 费用结清：无财务对接时默认 UNKNOWN（不阻断）。教务处可人工勾选 CLEARED/OWED 过渡，不得假装已自动通过。
   fee: { label: '费用结清', item: 'FEE' },
   final: { label: '毕业资格终审', status: 'ACADEMIC_REVIEW' },
   roster: { label: '毕业学生名单' },
@@ -251,9 +326,7 @@ const TAB_CONFIG = {
   results: { label: '审核结果' },
   archive: { label: '审核归档', status: 'ARCHIVED' }
 }
-// 仅 GRADUATION_DESIGN / INTERNSHIP 的 refId 语义已核实（对应目标模块详情页路径参数），处分域暂无可核实的
-// 详情路由（学工中心处分导航正在从 campusService 迁移至 studentAffairs，未提供稳定 :id 详情页），故不建跳转，
-// 只展示证据文本，避免死链接/假按钮。
+
 const LINK_ITEM = {
   GRADUATION_DESIGN: (refId) => `/admin/graduation/students/${refId}`,
   INTERNSHIP: (refId) => `/admin/internship/students/${refId}`
@@ -261,7 +334,11 @@ const LINK_ITEM = {
 
 export default {
   name: 'AaGraduationAuditConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag, AppGraduationBatchPicker, AppRadioGroup },
+  components: {
+    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
+    AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag,
+    AppGraduationBatchPicker, AppRadioGroup
+  },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -311,6 +388,46 @@ export default {
   computed: {
     currentTabLabel() { return TAB_CONFIG[this.tab] ? TAB_CONFIG[this.tab].label : '' },
     currentBatch() { return this.batches.find((b) => b.batchId === this.batchId) || null },
+    batchTotal() { return Number(this.currentBatch?.total || 0) },
+    batchPassed() { return Number(this.currentBatch?.passed || 0) },
+    batchAbnormal() { return Number(this.currentBatch?.abnormal || 0) },
+    batchConcluded() { return Number(this.currentBatch?.concluded || 0) },
+    batchArchived() { return Number(this.currentBatch?.archived || 0) },
+    unconcludedCount() { return Math.max(this.batchTotal - this.batchConcluded, 0) },
+    finalProgressPct() {
+      if (!this.batchTotal) return 0
+      return Math.max(0, Math.min(100, Math.round(this.batchConcluded / this.batchTotal * 100)))
+    },
+    batchHealthLabel() {
+      if (!this.currentBatch) return ''
+      if (!this.batchTotal) return '等待预审结果'
+      if (this.batchAbnormal > 0) return '存在系统异常'
+      if (this.unconcludedCount > 0) return '审核进行中'
+      return '终审结论已形成'
+    },
+    batchHealthTone() {
+      if (!this.batchTotal) return 'is-neutral'
+      if (this.batchAbnormal > 0) return 'is-warning'
+      if (this.unconcludedCount > 0) return 'is-info'
+      return 'is-success'
+    },
+    batchHealthDescription() {
+      if (!this.currentBatch) return ''
+      if (!this.batchTotal) return '当前批次尚无可核验结果；先回到审核批次执行预审。'
+      if (this.batchAbnormal > 0) {
+        return `当前有 ${this.batchAbnormal} 名系统异常，另有 ${this.unconcludedCount} 名尚未形成终审结论；应先核对异常证据和责任模块。`
+      }
+      if (this.unconcludedCount > 0) {
+        return `已终审 ${this.batchConcluded}/${this.batchTotal} 人，尚有 ${this.unconcludedCount} 人未形成终审结论；继续按学院初审 → 教务终审推进。`
+      }
+      return `本批次 ${this.batchTotal} 名学生均已形成终审结论；已归档 ${this.batchArchived} 人。延毕等结论按既有规则不强制进入本次归档。`
+    },
+    batchNextAction() {
+      if (!this.currentBatch || !this.batchTotal) return '返回审核批次执行预审'
+      if (this.batchAbnormal > 0) return '先处理系统异常与责任模块证据'
+      if (this.unconcludedCount > 0) return '继续学院初审与教务终审'
+      return '复核结论名单与归档范围'
+    },
     batchOptions() {
       return this.batches.map((b) => ({
         value: b.batchId,
@@ -404,37 +521,51 @@ export default {
       if (this.tab === 'roster') { this.loadRosterTab(); return }
       if (this.tab === 'reason') { this.loadReasonTab(); return }
       if (!this.batchId) { this.rows = []; this.pagination.total = 0; return }
-      this.loading = true; this.error = ''
+      this.loading = true
+      this.error = ''
       const cfg = TAB_CONFIG[this.tab] || {}
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       if (cfg.item) params.item = cfg.item
       if (cfg.status) params.status = cfg.status
       const res = await academicAffairsApi.getGradResults(this.batchId, params)
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total } else { this.error = res.message }
+      if (res.code === 0) {
+        this.rows = res.data.list
+        this.pagination.total = res.data.total
+      } else {
+        this.error = res.message
+      }
       this.loading = false
     },
     async loadCourseTab() {
       if (!this.batchId) { this.courseRequiredRows = []; this.courseElectiveRows = []; return }
-      this.loading = true; this.error = ''
+      this.loading = true
+      this.error = ''
       const [req, ele] = await Promise.all([
         academicAffairsApi.getGradResults(this.batchId, { item: 'COURSE_REQUIRED', pageSize: 100 }),
         academicAffairsApi.getGradResults(this.batchId, { item: 'COURSE_ELECTIVE', pageSize: 100 })
       ])
-      if (req.code === 0) this.courseRequiredRows = req.data.list; else this.error = req.message
-      if (ele.code === 0) this.courseElectiveRows = ele.data.list; else this.error = this.error || ele.message
+      if (req.code === 0) this.courseRequiredRows = req.data.list
+      else this.error = req.message
+      if (ele.code === 0) this.courseElectiveRows = ele.data.list
+      else this.error = this.error || ele.message
       this.loading = false
     },
     async loadRosterTab() {
       if (!this.batchId) { this.rosterData = null; return }
-      this.loading = true; this.error = ''
+      this.loading = true
+      this.error = ''
       const res = await academicAffairsApi.getGradRosters(this.batchId)
-      if (res.code === 0) this.rosterData = res.data; else this.error = res.message
+      if (res.code === 0) this.rosterData = res.data
+      else this.error = res.message
       this.loading = false
     },
     async loadReasonTab() {
-      if (!this.batchId) { this.reasonRows = { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] }; return }
-      this.loading = true; this.error = ''
-      // 三态状态各一次独立查询（复用既有 status 过滤参数），非 OR 组合查询：批次规模有限，三次并行请求成本可接受
+      if (!this.batchId) {
+        this.reasonRows = { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] }
+        return
+      }
+      this.loading = true
+      this.error = ''
       const results = await Promise.all(GRAD_FAIL_GROUPS.map((g) =>
         academicAffairsApi.getGradResults(this.batchId, { status: g.status, pageSize: 200 })))
       const next = {}
@@ -442,7 +573,10 @@ export default {
       GRAD_FAIL_GROUPS.forEach((g, idx) => {
         const r = results[idx]
         if (r.code === 0) next[g.status] = r.data.list
-        else { next[g.status] = []; firstErr = firstErr || r.message }
+        else {
+          next[g.status] = []
+          firstErr = firstErr || r.message
+        }
       })
       this.reasonRows = next
       this.error = firstErr
@@ -461,9 +595,7 @@ export default {
       this.finalConclusion = 'GRADUATED'
     },
     openFinal(row) { this.openDetail(row) },
-    openCollegeReject() {
-      this.collegeRejectDlg.visible = true
-    },
+    openCollegeReject() { this.collegeRejectDlg.visible = true },
     async doCollegeReject({ reason }) {
       this.detailBusy = true
       const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', reason)
@@ -516,28 +648,197 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.agc-batch-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.agc-batch-select { width: 260px; }
-.aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; min-width: 260px; }
-.agc-chip { padding: 4px 10px; border-radius: 12px; font-size: 12px; background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
-.agc-chip.is-pass { background: var(--success-50, #eafff3); color: var(--success-600, #16a34a); }
-.agc-chip.is-warn { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
-.agc-chip.is-final { background: var(--primary-50, #eff6ff); color: var(--primary-600, #2563eb); }
-.agc-chip.is-archive { background: var(--fill-200, #e5e6eb); color: var(--text-500, #86909c); }
+
+.agc-overview {
+  overflow: hidden;
+  border: 1px solid #dbe6f6;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 91% 10%, rgba(59, 130, 246, .13), transparent 30%),
+    linear-gradient(135deg, #fff 0%, #f9fbff 60%, #f1f6ff 100%);
+  box-shadow: 0 20px 48px -40px rgba(37, 99, 235, .55);
+}
+.agc-overview__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  padding: 24px 26px 20px;
+}
+.agc-overview__copy h2 {
+  margin: 7px 0 6px;
+  color: #17233a;
+  font-size: 24px;
+  letter-spacing: -.02em;
+}
+.agc-overview__copy > p {
+  max-width: 760px;
+  margin: 0;
+  color: #64748b;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+.agc-eyebrow {
+  color: #2468d8;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+.agc-batch-select { width: min(420px, 100%); margin-top: 15px; }
+
+.agc-decision {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 18px;
+  border: 1px solid #dbe8fb;
+  border-radius: 15px;
+  background: rgba(255,255,255,.80);
+}
+.agc-decision > span,
+.agc-progress-row small,
+.agc-next small { color: #8793a5; font-size: 10px; }
+.agc-decision > strong { color: #235ea8; font-size: 18px; }
+.agc-decision.is-warning { border-color: #f0d7ad; }
+.agc-decision.is-warning > strong { color: #a85b0b; }
+.agc-decision.is-success { border-color: #c7ead3; }
+.agc-decision.is-success > strong { color: #18794e; }
+.agc-decision.is-neutral { border-color: #dde3ea; }
+.agc-decision.is-neutral > strong { color: #536174; }
+.agc-progress-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 3px; }
+.agc-progress-row b { color: #334155; font-size: 11px; font-variant-numeric: tabular-nums; }
+.agc-progress { height: 6px; overflow: hidden; border-radius: 999px; background: #e9eef6; }
+.agc-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #72a7ee, #2f6fd2); }
+.agc-decision.is-warning .agc-progress i { background: linear-gradient(90deg, #f7c66c, #d97706); }
+.agc-decision.is-success .agc-progress i { background: linear-gradient(90deg, #68d391, #16a34a); }
+.agc-next { display: grid; gap: 3px; margin-top: 5px; padding-top: 9px; border-top: 1px solid #e8edf4; }
+.agc-next b { color: #27364c; font-size: 11px; line-height: 1.5; }
+
+.agc-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid rgba(201, 216, 238, .75);
+  background: rgba(255,255,255,.72);
+}
+.agc-metrics article {
+  min-width: 0;
+  padding: 16px 18px;
+  border-right: 1px solid #e8eef7;
+}
+.agc-metrics article:last-child { border-right: 0; }
+.agc-metrics span,
+.agc-metrics strong,
+.agc-metrics small { display: block; }
+.agc-metrics span { color: #7a8798; font-size: 10.5px; }
+.agc-metrics strong { margin-top: 5px; color: #172033; font-size: 23px; font-variant-numeric: tabular-nums; }
+.agc-metrics small { margin-top: 4px; color: #98a3b3; font-size: 9.8px; line-height: 1.45; }
+.agc-metrics article.is-pass strong { color: #18794e; }
+.agc-metrics article.is-final strong { color: #2468d8; }
+.agc-metrics article.is-archive strong { color: #64748b; }
+.agc-metrics article.is-risk { background: #fffbf2; }
+.agc-metrics article.is-risk strong { color: #b45f0b; }
+
+.aa-select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-300, #d0d3d9);
+  border-radius: 8px;
+  background: var(--bg-white, #fff);
+  color: var(--text-900, #1f2329);
+  font-size: 13px;
+  min-width: 260px;
+}
 .agc-roster-toolbar { display: flex; margin-bottom: 4px; }
 .agc-roster-search { min-width: 220px; }
-.agc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); flex-wrap: wrap; }
-.agc-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; white-space: nowrap; }
-.agc-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
-.agc-evidence { color: var(--text-500, #86909c); font-size: 12px; }
-.agc-conclusion { color: var(--success-600, #16a34a); font-weight: 500; }
-.agc-detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.agc-detail-name { font-size: 16px; font-weight: 600; }
-.agc-items { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-.agc-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.agc-item__label { min-width: 76px; color: var(--text-700, #4e5969); }
-.agc-item__ev { color: var(--text-400, #8a9099); font-size: 12px; }
-.agc-actions { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-color, #e5e7eb); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.agc-actions__title { width: 100%; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+
+.agc-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 5px;
+  border: 1px solid #e3eaf3;
+  border-radius: 13px;
+  background: #f7f9fc;
+}
+.agc-tab {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+.agc-tab:hover { color: #2f5f9f; background: #fff; }
+.agc-tab.is-active {
+  color: #205fb4;
+  border-color: #dbe7f7;
+  background: #fff;
+  box-shadow: 0 5px 14px -12px rgba(30, 64, 175, .55);
+  font-weight: 650;
+}
+
+.agc-evidence { color: var(--text-500, #6b7789); font-size: 12px; line-height: 1.6; }
+.agc-conclusion { color: var(--success-600, #16a34a); font-weight: 600; }
+.agc-detail-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e9edf3;
+}
+.agc-detail-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agc-detail-name { margin-top: 4px; font-size: 17px; font-weight: 650; color: #172033; }
+.agc-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.agc-item {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid #e7edf5;
+  border-radius: 11px;
+  background: #fbfcfe;
+  font-size: 12px;
+}
+.agc-item__label { color: #3f4d61; font-weight: 600; }
+.agc-item__ev { min-width: 0; color: #788497; font-size: 11px; line-height: 1.5; word-break: break-word; }
+.agc-actions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.agc-actions__title { width: 100%; font-weight: 650; font-size: 13px; margin-bottom: 4px; }
 .agc-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
+@media (max-width: 1080px) {
+  .agc-overview__top { grid-template-columns: 1fr; }
+  .agc-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .agc-metrics article { border-bottom: 1px solid #e8eef7; }
+}
+@media (max-width: 760px) {
+  .agc-overview__top { padding: 20px; }
+  .agc-overview__copy h2 { font-size: 21px; }
+  .agc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agc-items { grid-template-columns: 1fr; }
+  .agc-detail-head { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 520px) {
+  .agc-metrics { grid-template-columns: 1fr; }
+  .agc-metrics article { border-right: 0; }
+  .agc-tab { width: 100%; text-align: left; }
+}
 </style>

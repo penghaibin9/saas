@@ -130,10 +130,20 @@ def test_student_cannot_update(client, db_mode):
 # ── 12 审计 ──
 
 def test_update_writes_audit(client, db_mode):
+    from app.core.context import get_tenant, set_tenant
     from app.services import audit_log
+
     client.put(ADMIN_URL.format(tid=MAIN_TID), headers=_headers(client, "platform_admin01"),
                json={"enabled": True, "requiredPackage": "standard"})
-    items, total = audit_log.query(action="TENANT_STUDENT_PORTAL_CONFIG")
+
+    # HTTP 请求完成后 RequestContextMiddleware 会正确清理租户上下文；这里是测试代码直接调用
+    # tenant-scoped service，因此必须显式建立查询所属租户，而不是放松生产 _tid() 的 fail-closed。
+    previous_tenant = get_tenant()
+    set_tenant({"tenantId": str(MAIN_TID)})
+    try:
+        items, total = audit_log.query(action="TENANT_STUDENT_PORTAL_CONFIG")
+    finally:
+        set_tenant(previous_tenant)
     assert total >= 1
     assert items[0]["detail"].get("action") == "UPDATE"
 

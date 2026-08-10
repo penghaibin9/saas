@@ -46,6 +46,7 @@ def make_router(client: str) -> APIRouter:
     """client: admin / student-mini / teacher-mobile"""
     router = APIRouter(prefix=f"/{client}", tags=[f"04·待办与消息（{client}）"])
     guard = get_current_user if client == "student-mini" else require_staff
+    route_client = "studentMini" if client == "student-mini" else ("teacherMini" if client == "teacher-mobile" else "pc")
 
     @router.get("/todos", summary="待办列表", name=f"{client}_todos_list")
     def list_todos(status: Optional[str] = Query(default=None, description="PENDING / DONE"),
@@ -54,7 +55,7 @@ def make_router(client: str) -> APIRouter:
                    pageSize: int = Query(default=20, ge=1, le=100),
                    user=Depends(guard)):
         if _use_real_db():
-            items, total = svc.list_todos(user, status, todoType, page, pageSize)
+            items, total = svc.list_todos(user, status, todoType, page, pageSize, client=route_client)
             return success(paginate(items, total, page, pageSize))
         items = [t for t in MOCK_TODOS
                  if (not status or t["status"] == status)
@@ -102,7 +103,7 @@ def make_router(client: str) -> APIRouter:
     @router.get("/todos/{todo_id}", summary="待办详情", name=f"{client}_todo_detail")
     def todo_detail(todo_id: str, user=Depends(guard)):
         if _use_real_db():
-            d = svc.get_todo(user, todo_id)
+            d = svc.get_todo(user, todo_id, client=route_client)
             if not d:
                 raise not_found("待办不存在")
             return success(d)

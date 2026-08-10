@@ -60,6 +60,10 @@ def test_both_clients_read_real_roster_worklist_and_secure_submit():
 
 
 def test_student_evaluation_router_is_explicitly_registered():
+    from app.modules.academic_affairs.routers import (
+        academic_affairs_bundle, student_evaluation_router,
+    )
+
     router = _read(
         "app/modules/academic_affairs/routers/student_evaluation_router.py"
     )
@@ -71,8 +75,16 @@ def test_student_evaluation_router_is_explicitly_registered():
     assert 'prefix="/academic-affairs/evaluation"' in router
     assert '@router.get("/my-student-tasks"' in router
     assert "student_evaluation_router" in bundle
-    assert "router.include_router(module.router)" in bundle
     assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in registration
+    child_routes = {
+        (route.path, tuple(sorted(route.methods or set())))
+        for route in student_evaluation_router.router.routes
+    }
+    public_routes = {
+        (route.path, tuple(sorted(route.methods or set())))
+        for route in academic_affairs_bundle.build_router().routes
+    }
+    assert child_routes <= public_routes
 
 
 def test_existing_pc_and_miniapp_contracts_stay_compatible():

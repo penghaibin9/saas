@@ -113,7 +113,9 @@ def test_create_company_job(client, auth_headers, db_mode):
 def test_dashboard_and_audit(client, auth_headers, db_mode):
     ids = _seed(db_mode)
     dash = client.get("/api/v1/employment/dashboard", headers=auth_headers).json()
-    assert dash["code"] == 0 and any(k["label"] == "毕业生总数" for k in dash["data"]["kpis"])
+    assert dash["code"] == 0
+    ledger_total = next(k for k in dash["data"]["kpis"] if k["label"] == "就业台账人数")
+    assert ledger_total["value"] == "1"
     client.post(f"/api/v1/employment/materials/{ids['material']}/approve", headers=auth_headers, json={})
     au = client.get("/api/v1/employment/audit-logs?bizType=MATERIAL", headers=auth_headers).json()
     assert au["code"] == 0 and au["data"]["total"] >= 1

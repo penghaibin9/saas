@@ -16,7 +16,8 @@ export const teacherApi = {
   getTodos: () => realFirst('teacher.todos', () => real.teacherTodosReal(), () => mockRequest({ filters: M.todoFilters, list: M.teacherTodos })),
   getApprovals: () => realFirst('teacher.approvals', () => real.teacherApprovalsReal(), () => mockRequest(M.approvals)),
   actApproval: (id, type, reason) => real.actApproval(id, type, reason),
-  reviewWeekly: (id, action, comment) => real.reviewWeeklyReal(id, action, comment),
+  reviewWeekly: (id, action, comment, expectedVersion) =>
+    real.reviewWeeklyReal(id, action, comment, expectedVersion),
   reviewProposal: (id, action, comment, expectedVersion, fileVersionId) =>
     real.reviewProposalReal(id, action, comment, expectedVersion, fileVersionId),
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),

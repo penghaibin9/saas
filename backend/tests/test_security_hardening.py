@@ -43,12 +43,20 @@ def test_login_rate_limit_10_per_minute(client):
     assert r["code"] == 429001 and r["bizCode"] == "RATE_LIMITED"
 
 
-def test_password_login_lockout(client, db_mode):
+def test_password_login_lockout(client, db_mode, monkeypatch):
+    # 图形验证码门禁有独立专项覆盖；本用例保留真实 HTTP 登录链，只隔离挑战层，
+    # 验证错误密码计数、锁定和审计不会因验证码策略升级而失去回归保护。
+    from app.api.v1 import auth as auth_api
+    monkeypatch.setattr(auth_api.captcha_svc, "enforce_login_captcha",
+                        lambda *_args, **_kwargs: None)
     # 演示账号密码不出现在断言/仓库：仅用错误口令触发锁定路径
+    failure_codes = set()
     for i in range(5):
         r = client.post("/api/v1/auth/login",
                         json={"loginName": "admin_demo", "password": f"wrong-{i}"}).json()
         assert r["code"] == 401001
+        failure_codes.add(r["bizCode"])
+    assert "CAPTCHA_REQUIRED" in failure_codes
     locked = client.post("/api/v1/auth/login",
                          json={"loginName": "admin_demo", "password": "wrong-final"}).json()
     assert locked["code"] == 401001 and "锁定" in locked["message"]

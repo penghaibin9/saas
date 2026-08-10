@@ -4,12 +4,36 @@ import './styles/tokens.css'
 import './styles/element-theme.css'
 // PC 管理端高对比视觉皮肤：只覆盖外观，不改变菜单、路由与业务结构。
 import './styles/high-contrast-skin.css'
+// Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
+import './styles/stage-b-responsive-nav.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
+
+// Stage B 高频工作流：给“某个实习学生的材料”一个稳定真实深链。
+// 页面直接读取 /internship/material-center/{internshipId} 的真实版本链，不造第二份材料数据。
+if (!router.hasRoute('internship-student-materials')) {
+  router.addRoute({
+    path: '/admin/internship/students/:id/materials',
+    component: () => import('@/modules/internship/views/AdminInternshipLayout.vue'),
+    meta: { moduleCode: 'INTERNSHIP' },
+    children: [{
+      path: '',
+      name: 'internship-student-materials',
+      component: () => import('@/modules/internship/views/InternshipStudentMaterialEntryView.vue'),
+      meta: {
+        moduleCode: 'INTERNSHIP',
+        title: '学生实习材料',
+        requiresAuth: true,
+        permissionKey: 'internship.archive.view'
+      }
+    }]
+  })
+}
 
 // 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
 if (!router.hasRoute('unknown-route-fallback')) {
@@ -19,6 +43,9 @@ if (!router.hasRoute('unknown-route-fallback')) {
     redirect: '/workbench'
   })
 }
+
+// Stage B / B4：统一未保存表单保护。第一批覆盖实习批次/企业，同域长表单由 guard 单一维护。
+installDirtyFormGuard(router)
 
 const app = createApp(App)
 // 统一轻提示兼容门面：业务页可使用 this.$message.success/error/warning/info，

@@ -6,13 +6,62 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
 from app.models import (
     AttendanceException, EmpCompany, InternshipApplication, InternshipAuditTrail,
     InternshipBatch, InternshipLeave, InternshipMatch, InternshipPosition, InternshipRecord, RiskRecord,
     Role, StudentProfile, User, UserRole, WeeklyReport,
 )
+from app.models.file import FileObject
 
 TID = 1000000000000000001
+
+
+def _seed_binding_actor(db, tenant_id: int) -> tuple[User, dict]:
+    """为无 HTTP 请求的正式文件种子提供明确、可追溯的系统操作人。"""
+    owner = db.scalars(select(User).where(
+        User.tenant_id == tenant_id,
+        User.is_deleted.is_(False),
+        User.status == "ACTIVE",
+    ).order_by(User.id)).first()
+    if owner is None:
+        raise RuntimeError("岗位实习种子缺少可用的租户内系统操作人，拒绝创建正式业务文件")
+    return owner, {
+        "userId": f"db-{owner.id}",
+        "loginName": owner.login_name,
+        "realName": "岗位实习演示数据初始化",
+        "userType": "ADMIN",
+        "tenantId": str(tenant_id),
+        "currentRoleCode": "SCHOOL_ADMIN",
+    }
+
+
+def _seed_temp_file(db, *, tenant_id: int, owner_id: int, file_key: str,
+                    file_name: str, sha256: str) -> FileObject:
+    """种子也走 TEMP_PRIVATE -> 正式业务绑定，不再向业务表写伪造 fileId。"""
+    row = FileObject(
+        tenant_id=tenant_id,
+        file_key=file_key,
+        file_name=file_name,
+        ext="pdf",
+        mime_type="application/pdf",
+        size_bytes=1024,
+        sha256=sha256,
+        biz_type="TEMP_PRIVATE",
+        biz_id=None,
+        owner_user_id=owner_id,
+        visibility="PRIVATE",
+        status="AVAILABLE",
+        storage_backend="local",
+        storage_zone="ACTIVE",
+        upload_source="SYSTEM_SEED",
+        scan_required=False,
+        scan_status="NOT_REQUIRED",
+        remark="岗位实习演示数据正式文件种子",
+    )
+    db.add(row)
+    db.flush()
+    return row
 
 
 def seed_internship(db, tenant_id: int = TID) -> dict:
@@ -96,52 +145,82 @@ def seed_internship(db, tenant_id: int = TID) -> dict:
     recs[0].advisor_user_id = teacher.id
     recs[0].advisor_name = teacher.real_name
 
-    db.add_all([
-        InternshipApplication(
-            tenant_id=tenant_id, record_id=recs[0].id, student_id=students[0].id, batch_id=batch.id,
-            application_type="POSITION", volunteer_no=1, position_id=position.id,
-            company_name=company.name, position_name=position.title, work_address=position.work_location,
-            contact_name="周明", contact_phone="13800001234", application_note="第一志愿，专业对口",
-            status="PENDING_REVIEW", submitted_at=now - timedelta(days=4),
-        ),
-        InternshipApplication(
-            tenant_id=tenant_id, record_id=recs[1].id, student_id=students[1].id, batch_id=batch.id,
-            application_type="SELF_ARRANGED", volunteer_no=0, company_name="星辰网络技术有限公司",
-            position_name="软件测试实习生", work_address="苏州工业园区", contact_name="陈经理",
-            contact_phone="13900005678", evidence_file_id="demo-internship-agreement-01",
-            application_note="学生自主联系，协议及资质材料齐全", status="APPROVED",
-            submitted_at=now - timedelta(days=12), reviewed_by_name="实习就业处",
-            reviewed_at=now - timedelta(days=10), review_comment="材料完整，同意",
-        ),
-        InternshipMatch(
-            tenant_id=tenant_id, record_id=recs[2].id, student_id=students[2].id,
-            position_id=position.id, company_id=company.id, match_type="AUTO_MAJOR", score=92,
-            major_hit=True, enterprise_hit=True, conflict_flag=True,
-            conflict_reason="岗位容量临近上限，需人工确认名额", status="CONFLICT",
-            remark="系统自动匹配后转人工复核",
-        ),
-        InternshipLeave(
-            tenant_id=tenant_id, internship_id=recs[3].id, student_id=students[3].id,
-            leave_type="SICK", start_date=(now + timedelta(days=20)).strftime("%Y-%m-%d"),
-            end_date=(now + timedelta(days=21)).strftime("%Y-%m-%d"), days=2,
-            reason="发热就医，已上传门诊证明", status="APPROVED",
-            apply_by_name=students[3].real_name, review_by_name="刘强",
-            review_at=now - timedelta(days=1), review_comment="证明有效，同意请假",
-            file_id="demo-intern-leave-proof-01",
-        ),
-        InternshipAuditTrail(
-            tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
-            action="ASSIGN_POSITION", operator_name="实习就业处",
-            detail_json={"companyName": company.name, "positionName": position.title},
-            occurred_at=now - timedelta(days=8),
-        ),
-        InternshipAuditTrail(
-            tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
-            action="ASSIGN_ADVISOR", operator_name="实习就业处",
-            detail_json={"advisorUserId": str(teacher.id), "advisorName": teacher.real_name},
-            occurred_at=now - timedelta(days=7),
-        ),
-    ])
+    # 正式业务文件不能再用字符串占位。无请求 seed 显式绑定 system actor，
+    # 并创建真实 TEMP_PRIVATE FileObject，让生产钩子完成同事务正式绑定。
+    previous_tenant = get_tenant()
+    previous_actor = get_current_user_ctx()
+    owner, seed_actor = _seed_binding_actor(db, tenant_id)
+    set_tenant({"tenantId": str(tenant_id), "tenantCode": "seed-internship"})
+    set_current_user(seed_actor)
+    try:
+        application_evidence = _seed_temp_file(
+            db,
+            tenant_id=tenant_id,
+            owner_id=owner.id,
+            file_key="seed/internship/self-arranged-agreement-01.pdf",
+            file_name="自主实习协议演示材料.pdf",
+            sha256="8d59f8b87a6d8274e33574d90d0f0f32045cb185944c698604c8a4c82e46d9a1",
+        )
+        leave_proof = _seed_temp_file(
+            db,
+            tenant_id=tenant_id,
+            owner_id=owner.id,
+            file_key="seed/internship/leave-proof-01.pdf",
+            file_name="实习请假门诊证明演示材料.pdf",
+            sha256="9dbff84b78a2d534686d62a2b45ee4c70a65b4bb37a87cd00c816b11751ca28c",
+        )
+
+        db.add_all([
+            InternshipApplication(
+                tenant_id=tenant_id, record_id=recs[0].id, student_id=students[0].id, batch_id=batch.id,
+                application_type="POSITION", volunteer_no=1, position_id=position.id,
+                company_name=company.name, position_name=position.title, work_address=position.work_location,
+                contact_name="周明", contact_phone="13800001234", application_note="第一志愿，专业对口",
+                status="PENDING_REVIEW", submitted_at=now - timedelta(days=4),
+            ),
+            InternshipApplication(
+                tenant_id=tenant_id, record_id=recs[1].id, student_id=students[1].id, batch_id=batch.id,
+                application_type="SELF_ARRANGED", volunteer_no=0, company_name="星辰网络技术有限公司",
+                position_name="软件测试实习生", work_address="苏州工业园区", contact_name="陈经理",
+                contact_phone="13900005678", evidence_file_id=str(application_evidence.id),
+                application_note="学生自主联系，协议及资质材料齐全", status="APPROVED",
+                submitted_at=now - timedelta(days=12), reviewed_by_name="实习就业处",
+                reviewed_at=now - timedelta(days=10), review_comment="材料完整，同意",
+            ),
+            InternshipMatch(
+                tenant_id=tenant_id, record_id=recs[2].id, student_id=students[2].id,
+                position_id=position.id, company_id=company.id, match_type="AUTO_MAJOR", score=92,
+                major_hit=True, enterprise_hit=True, conflict_flag=True,
+                conflict_reason="岗位容量临近上限，需人工确认名额", status="CONFLICT",
+                remark="系统自动匹配后转人工复核",
+            ),
+            InternshipLeave(
+                tenant_id=tenant_id, internship_id=recs[3].id, student_id=students[3].id,
+                leave_type="SICK", start_date=(now + timedelta(days=20)).strftime("%Y-%m-%d"),
+                end_date=(now + timedelta(days=21)).strftime("%Y-%m-%d"), days=2,
+                reason="发热就医，已上传门诊证明", status="APPROVED",
+                apply_by_name=students[3].real_name, review_by_name="刘强",
+                review_at=now - timedelta(days=1), review_comment="证明有效，同意请假",
+                file_id=str(leave_proof.id),
+            ),
+            InternshipAuditTrail(
+                tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
+                action="ASSIGN_POSITION", operator_name="实习就业处",
+                detail_json={"companyName": company.name, "positionName": position.title},
+                occurred_at=now - timedelta(days=8),
+            ),
+            InternshipAuditTrail(
+                tenant_id=tenant_id, target_id=recs[0].id, target_type="INTERN_STUDENT",
+                action="ASSIGN_ADVISOR", operator_name="实习就业处",
+                detail_json={"advisorUserId": str(teacher.id), "advisorName": teacher.real_name},
+                occurred_at=now - timedelta(days=7),
+            ),
+        ])
+        # 在 system actor 上下文仍有效时立即触发正式文件绑定钩子；不能依赖后续偶然 flush。
+        db.flush()
+    finally:
+        set_current_user(previous_actor)
+        set_tenant(previous_tenant)
 
     # 打卡异常 3 条（1 条连续 3 天，待核实）
     db.add_all([

@@ -19,7 +19,7 @@
       </section>
 
       <section class="mp-card">
-        <header class="mp-card__head"><span class="mp-card__title">受控操作权限</span><span class="mp-note">高风险动作需二次确认、原因和审计</span></header>
+        <header class="mp-card__head"><span class="mp-card__title">受控操作权限</span><span class="mp-note">能力未接真实服务前不提供可执行按钮；接入后高风险动作必须二次确认、原因和审计</span></header>
         <div class="mp-card__body pcv-actions">
           <div v-for="item in capability.actions" :key="item.key" class="pcv-action">
             <code>{{ item.key }}</code><span>{{ item.label }}</span>
@@ -37,7 +37,7 @@
 </template>
 
 <script>
-/** 平台控制面通用承载页：先固化租户边界与权限契约，真实服务按能力码接入。 */
+/** 平台控制面通用承载页：固化租户边界与权限契约；未接真实服务的能力不执行任何浏览器业务写入。 */
 import { ModulePageShell, ModuleHero, StatusTag } from '@/components/business'
 import { PLATFORM_MANAGEMENT_ITEM_MAP } from '@/modules/platform/platformManagementCatalog'
 
@@ -46,9 +46,15 @@ const FALLBACK = { key: 'unknown', label: '平台运营能力', groupLabel: '平
 export default {
   name: 'PlatformCapabilityView',
   components: { ModulePageShell, ModuleHero, StatusTag },
-  props: { ctx: { type: Object, required: true } },
+  props: {
+    ctx: { type: Object, required: true },
+    capabilityKey: { type: String, default: '' }
+  },
   computed: {
-    capability() { return PLATFORM_MANAGEMENT_ITEM_MAP[this.$route.meta.platformCapabilityKey] || FALLBACK },
+    capability() {
+      const key = this.capabilityKey || this.$route.meta.platformCapabilityKey
+      return PLATFORM_MANAGEMENT_ITEM_MAP[key] || FALLBACK
+    },
     heroStats() {
       return [
         { label: '权限码', value: this.capability.permissionKey || '—', tone: 'info' },
@@ -74,7 +80,8 @@ export default {
       return [
         '平台能力只能由平台角色进入，学校角色不可见；学校业务菜单也不会向平台角色开放。',
         '订单确认 → 授权生效 → 自动开通 → 学校初始化检查为唯一交付链路，禁止人工绕过任一步。',
-        '本页后续接入真实 API 时必须复用 capability key、权限码和不可篡改审计，不得另建旁路入口。'
+        '未接真实 API 的能力仅展示合同与边界，不提供浏览器假写入、假任务或假成功。',
+        '接入真实 API 时必须复用 capability key、权限码、version/原因/影响预览与不可篡改审计，不得另建旁路入口。'
       ]
     }
   }

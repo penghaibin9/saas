@@ -4,7 +4,11 @@
 - 发布批次和学生选课显式按 ORM 模型加行锁，禁止 ``type(query_result)`` 反查；
 - CLOSED 补选资格只认本人真实 ``COURSE_CANCELLED`` 记录，不信任前端标志；
 - 学生退课继续遵守既有 ``EnrollBody.selectionCourseId`` 请求契约；
-- 学生可选课程保持 Router 既有 ``{"items": list}`` 返回契约。
+- 学生可选课程保持 Router 既有 ``{"items": list}`` 返回契约；
+- Stage C2：正式选课资格只消费选课动作生效时点的 ``StudentAcademicFact``，
+  ``StudentProfile`` 仅继续提供姓名/学号等非学籍身份快照；
+- Stage D：不重跑任何规则，仅把 canonical Service 已经做出的拒绝决定附加为
+  deterministic ``DecisionTrace``，保留原 code/message/http 契约。
 
 其余业务函数显式委托 ``academic_affairs_selection_service``，不修改模块对象，
 不依赖导入顺序安装 monkey patch。
@@ -13,8 +17,11 @@ from __future__ import annotations
 
 import importlib
 from datetime import datetime
+from types import SimpleNamespace
 
 from app.core.exceptions import AppException, not_found
+
+from . import academic_affairs_selection_decision_trace as selection_trace
 
 _base = importlib.import_module(
     ".academic_affairs_selection_service",
@@ -24,6 +31,32 @@ _base = importlib.import_module(
 
 def __getattr__(name):
     return getattr(_base, name)
+
+
+def _selection_academic_identity(db, student, *, effective_at: datetime):
+    """解析本次选课决定使用的权威学籍事实；缺失/重叠一律 fail-closed。
+
+    选课资格是一次实时业务决定，因此 ``selection_effective_at`` 就是本次动作的
+    服务端时间。后续 StudentProfile 发生转专业/转班/年级更正时，本次决定不会
+    再回头读取 current projection；正式历史读取应继续使用 AcademicFact/as_of。
+    """
+    from .academic_affairs_student_fact_service import resolve_student_academic_fact
+
+    fact = resolve_student_academic_fact(
+        db,
+        int(student.id),
+        as_of=effective_at,
+        required=True,
+    )
+    identity = SimpleNamespace(
+        id=int(student.id),
+        student_status=fact.student_status,
+        college_id=fact.college_id,
+        major_id=fact.major_id,
+        class_id=fact.class_id,
+        grade=fact.grade,
+    )
+    return identity, fact
 
 
 def student_courses(user, batch_id=None):
@@ -94,6 +127,12 @@ def student_enroll(user, body):
 
     with _base._core.session() as db:
         student = _base._load_student(db)
+        selection_effective_at = datetime.utcnow()
+        academic_identity, academic_fact = _selection_academic_identity(
+            db,
+            student,
+            effective_at=selection_effective_at,
+        )
         course = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == int(body.selectionCourseId),
             AaSelectionCourse.tenant_id == _base._core._tid(),
@@ -108,9 +147,26 @@ def student_enroll(user, body):
         ).with_for_update().first()
         if not batch:
             raise not_found("选课批次不存在")
-        _base._guard_batch_writable(db, batch)
+        try:
+            _base._guard_batch_writable(db, batch)
+        except AppException as exc:
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+            ) from exc
         if course.status != _base._COURSE_OPEN:
-            raise _base._core._invalid("课程已取消或不可选")
+            exc = _base._core._invalid("课程已取消或不可选")
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+                rule_code="SELECTION_LOCKED",
+            )
 
         my_records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
@@ -120,7 +176,15 @@ def student_enroll(user, body):
         ).all()
         active_round = _base._active_round(db, batch.id)
         if active_round and not active_round.allow_enroll:
-            raise _base._core._invalid("当前轮次不允许选课")
+            exc = _base._core._invalid("当前轮次不允许选课")
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+                rule_code="SELECTION_LOCKED",
+            )
 
         has_reselect_qualification = any(
             record.status == _base._REC_COURSE_CANCELLED
@@ -130,15 +194,24 @@ def student_enroll(user, body):
             batch.status == _base._BATCH_CLOSED
             and has_reselect_qualification
         )
-        _base._validate_enroll(
-            db,
-            batch,
-            course,
-            student,
-            my_records,
-            float(course.credit or 0),
-            allow_reselect_closed=allow_reselect_closed,
-        )
+        try:
+            _base._validate_enroll(
+                db,
+                batch,
+                course,
+                academic_identity,
+                my_records,
+                float(course.credit or 0),
+                allow_reselect_closed=allow_reselect_closed,
+            )
+        except AppException as exc:
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+            ) from exc
 
         lottery = bool(
             batch.status == _base._BATCH_OPEN
@@ -156,7 +229,15 @@ def student_enroll(user, body):
                 AaSelectionCourse.selected_count: AaSelectionCourse.selected_count + 1,
             }, synchronize_session=False)
             if not updated:
-                raise _base._core._conflict("课程容量已满")
+                exc = _base._core._conflict("课程容量已满")
+                raise selection_trace.attach_selection_trace(
+                    exc,
+                    db=db,
+                    student=student,
+                    course=course,
+                    evaluated_at=selection_effective_at,
+                    rule_code="COURSE_FULL",
+                )
 
         existing = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
@@ -164,17 +245,24 @@ def student_enroll(user, body):
             AaSelectionRecord.selection_course_id == course.id,
             AaSelectionRecord.is_deleted.is_(False),
         ).with_for_update().first()
-        now = datetime.utcnow()
         if existing:
             if existing.status not in {
                 _base._REC_DROPPED,
                 _base._REC_LOST,
                 _base._REC_COURSE_CANCELLED,
             }:
-                raise _base._core._conflict("已存在有效选课记录")
+                exc = _base._core._conflict("已存在有效选课记录")
+                raise selection_trace.attach_selection_trace(
+                    exc,
+                    db=db,
+                    student=student,
+                    course=course,
+                    evaluated_at=selection_effective_at,
+                    rule_code="ALREADY_SELECTED",
+                )
             existing.status = next_status
             existing.round_id = active_round.id if active_round else None
-            existing.enrolled_at = now if next_status == _base._REC_SELECTED else None
+            existing.enrolled_at = selection_effective_at if next_status == _base._REC_SELECTED else None
             existing.dropped_at = None
             existing.drop_reason = None
             existing.adjust_reason = None
@@ -192,7 +280,7 @@ def student_enroll(user, body):
                 credit=course.credit,
                 round_id=active_round.id if active_round else None,
                 status=next_status,
-                enrolled_at=now if next_status == _base._REC_SELECTED else None,
+                enrolled_at=selection_effective_at if next_status == _base._REC_SELECTED else None,
             )
             db.add(record)
 
@@ -203,7 +291,9 @@ def student_enroll(user, body):
             "SELECTION_ENROLL",
             (
                 f"studentNo={student.student_no} course={course.course_name} "
-                f"status={next_status};reselect={allow_reselect_closed}"
+                f"status={next_status};reselect={allow_reselect_closed};"
+                f"academicFactId={academic_fact.id};academicFactVersion={academic_fact.version_no};"
+                f"selectionEffectiveAt={selection_effective_at.isoformat()}"
             ),
         )
         db.commit()

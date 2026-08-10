@@ -12,9 +12,11 @@ def test_student_affairs_history_export_requires_full_scope_before_querying_rows
     source = _read("backend/app/services/domain_export_service.py")
 
     guard_call = 'if domain == "student-affairs":\n        _require_student_affairs_full_scope(user)'
+    scoped_query = "items, total = _call_list(list_path, domain=domain, user=user)"
     assert guard_call in source
     assert 'ctx.scope_type != "TENANT_ALL"' in source
-    assert source.index(guard_call) < source.index("items, total = _call_list(list_path)")
+    assert scoped_query in source
+    assert source.index(guard_call) < source.index(scoped_query)
 
 
 def test_student_message_detail_never_routes_students_into_teacher_pages():

@@ -94,11 +94,12 @@ def test_t03_staleness_is_computed_per_backup_type(db_mode):
         # 不管测试库当前状态如何都能保证本用例自己造的数据是唯一数据源。
         db.query(BackupEvidence).delete()
         db.commit()
-        # DATABASE_DUMP 阈值 2 天：3 天前的成功备份应判定过期
+        # DATABASE_DUMP 阈值 2 天：超过 48 小时即应判定过期，不能等到第 3 个整天结束。
         db.add(BackupEvidence(
             backup_type="DATABASE_DUMP", method="MANUAL_CONFIRMED", status="SUCCEEDED",
             location_ref="old-backup", detail_json={},
-            started_at=now - timedelta(days=3), finished_at=now - timedelta(days=3)))
+            started_at=now - timedelta(days=2, minutes=1),
+            finished_at=now - timedelta(days=2, minutes=1)))
         # SCHEMA_INTEGRITY 阈值 7 天：1 天前的成功自检不算过期
         db.add(BackupEvidence(
             backup_type="SCHEMA_INTEGRITY", method="SCHEMA_INSPECT", status="SUCCEEDED",

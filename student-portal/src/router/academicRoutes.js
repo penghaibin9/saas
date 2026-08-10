@@ -35,7 +35,7 @@ export const academicRoute = {
     academicSection('level-exam', 'academic-level-exam', '等级考试', '等级考试', '报名开放中的等级考试并查看报名状态'),
     academicSection('major-split', 'academic-major-split', '专业分流', '专业分流', '填写专业分流志愿并查看录取结果'),
     academicSection('recognition', 'academic-recognition', '成绩认定', '成绩认定与课程替代', '提交校外课程成绩认定或课程替代申请'),
-    academicSection('graduation', 'academic-graduation', '毕业自查', '毕业资格自查', '逐项查看毕业条件、缺口和证据来源'),
+    { path: 'graduation', name: 'academic-graduation', meta: { modulePath: 'academic' }, component: () => import('../views/academic/StudentGraduationAuditView.vue') },
     { path: 'all', name: 'academic-all', meta: { modulePath: 'academic' }, component: () => import('../views/academic/AcademicLegacySafeView.vue') }
   ]
 }

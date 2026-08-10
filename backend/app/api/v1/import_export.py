@@ -18,7 +18,6 @@ from app.core.import_export_auth import (
     enforce_import_perm,
     enforce_student_export,
 )
-from app.core.permissions import require_permission
 from app.core.response import success
 from app.core.security import require_staff
 from app.schemas.placeholder import ExportCreateRequest, ImportValidateRequest
@@ -157,8 +156,9 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
 
 @export_router.post("/students", summary="学生主档导出（真实 xlsx：脱敏 + 水印 + 审计 + 限流）")
 def export_students(body: ExportStudentsRequest,
-                    user=Depends(require_permission("student.export")),
+                    user=Depends(require_staff),
                     idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    # 精确 student.export 或“学工学生查看 + 已收窄 dataScope”由统一策略裁决，禁止角色名特判。
     enforce_student_export(user)
     cached, handle = idempotency_begin(user, "student-export", idempotency_key,
                                        {"purpose": body.purpose})

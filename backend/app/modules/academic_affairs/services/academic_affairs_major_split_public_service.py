@@ -1,12 +1,14 @@
 """专业分流统一公开入口。
 
 学生志愿相关入口只使用当前账号的稳定学生主档绑定；管理端批次、分配、调剂和确认
-继续复用既有状态机。本模块不修改旧 Service 函数对象，也不依赖导入顺序安装身份守卫。
+继续复用既有状态机。Stage C1 起正式 confirm 不再调用旧服务里的 Profile direct-write，
+而是在整批事务中追加 StudentAcademicFact 并同步当前 Profile 投影。
 """
 from __future__ import annotations
 
 import importlib
 import json
+from datetime import datetime
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import not_found
@@ -148,3 +150,125 @@ def my_volunteer(user, batch_id=None):
             query = query.filter(AaMajorSplitVolunteer.batch_id == int(batch_id))
         rows = query.order_by(AaMajorSplitVolunteer.id.desc()).all()
         return [_legacy._v_dto(row) for row in rows]
+
+
+def confirm(user, batch_id) -> dict:
+    """Stage C1 canonical major-split cutover.
+
+    The whole batch is one transaction. Every student transition shares one effective
+    timestamp and goes through ``append_student_academic_fact``. Any stale source major,
+    missing fact, overlap or projection drift aborts the *entire* batch so there is no
+    partially-applied cohort.
+    """
+    from app.models import AaMajorSplitBatch, AaMajorSplitVolunteer, Major, StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
+        append_student_academic_fact,
+    )
+
+    with _legacy.session() as db:
+        _legacy._require_school(user, db)
+        batch = db.query(AaMajorSplitBatch).filter(
+            AaMajorSplitBatch.id == int(batch_id),
+            AaMajorSplitBatch.tenant_id == _legacy._tid(),
+            AaMajorSplitBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("分流批次不存在")
+        if batch.status != "ALLOCATED":
+            raise _legacy._invalid("仅已分配批次可确认")
+
+        unallocated = db.query(AaMajorSplitVolunteer).filter(
+            AaMajorSplitVolunteer.tenant_id == _legacy._tid(),
+            AaMajorSplitVolunteer.batch_id == batch.id,
+            AaMajorSplitVolunteer.status == "UNALLOCATED",
+            AaMajorSplitVolunteer.is_deleted.is_(False),
+        ).count()
+        if unallocated:
+            raise _legacy._invalid(f"尚有 {unallocated} 名学生未分配到专业，请先人工调剂后再确认")
+
+        volunteers = db.query(AaMajorSplitVolunteer).filter(
+            AaMajorSplitVolunteer.tenant_id == _legacy._tid(),
+            AaMajorSplitVolunteer.batch_id == batch.id,
+            AaMajorSplitVolunteer.status == "ALLOCATED",
+            AaMajorSplitVolunteer.is_deleted.is_(False),
+        ).order_by(AaMajorSplitVolunteer.student_id).with_for_update().all()
+        if not volunteers:
+            raise _legacy._invalid("没有可确认的已分配学生")
+
+        effective_at = datetime.utcnow()
+        confirmed = 0
+        classes_created = 0
+        for volunteer in volunteers:
+            profile = db.query(StudentProfile).filter(
+                StudentProfile.id == int(volunteer.student_id),
+                StudentProfile.tenant_id == _legacy._tid(),
+                StudentProfile.is_deleted.is_(False),
+            ).with_for_update().first()
+            if not profile:
+                raise _legacy._invalid(f"学生 {volunteer.student_no} 主档不存在，整批确认已取消")
+            if batch.source_major_id and int(profile.major_id or 0) != int(batch.source_major_id):
+                raise _legacy._invalid(
+                    f"学生 {volunteer.student_no} 当前专业已变化，整批确认已取消，请重新分配"
+                )
+            if batch.grade and (profile.grade or "") != batch.grade:
+                raise _legacy._invalid(
+                    f"学生 {volunteer.student_no} 当前年级已变化，整批确认已取消，请重新核对"
+                )
+            if not volunteer.result_major_id:
+                raise _legacy._invalid(f"学生 {volunteer.student_no} 缺少分流目标专业")
+
+            target_major_id = int(volunteer.result_major_id)
+            major = db.query(Major).filter(
+                Major.id == target_major_id,
+                Major.tenant_id == _legacy._tid(),
+                Major.is_deleted.is_(False),
+            ).first()
+            if not major:
+                raise _legacy._invalid(f"学生 {volunteer.student_no} 的目标专业已失效，整批确认已取消")
+
+            old_major, old_class = profile.major_id, profile.class_id
+            target_class_id, created = _legacy._resolve_split_class(
+                db, target_major_id, batch.grade or profile.grade, major
+            )
+            if created:
+                classes_created += 1
+
+            _fact, projected = append_student_academic_fact(
+                db,
+                int(profile.id),
+                effective_at=effective_at,
+                college_id=(major.college_id if major.college_id else profile.college_id),
+                major_id=target_major_id,
+                class_id=target_class_id,
+                source_type="MAJOR_SPLIT",
+                source_ref_id=int(batch.id),
+                source_quality="EXACT",
+                expected_student_version=int(profile.version or 0),
+            )
+            volunteer.status = "CONFIRMED"
+            confirmed += 1
+            _legacy._audit(
+                db,
+                batch.id,
+                "SPLIT_APPLY_STUDENT",
+                f"{volunteer.student_no} 专业 {old_major}→{projected.major_id} "
+                f"班级 {old_class}→{projected.class_id} "
+                f"（第{volunteer.result_choice_rank or '调剂'}志愿，绩点{volunteer.gpa_snapshot}，"
+                f"academicFactVersion={_fact.version_no}）",
+            )
+
+        batch.status = "CONFIRMED"
+        _legacy._audit(
+            db,
+            batch.id,
+            "SPLIT_CONFIRM",
+            f"分流生效 {confirmed} 人，新建班级 {classes_created}，effectiveAt={effective_at.isoformat()}",
+        )
+        db.commit()
+        return {
+            "batchId": str(batch.id),
+            "confirmed": confirmed,
+            "classesCreated": classes_created,
+            "status": batch.status,
+            "effectiveAt": effective_at.isoformat(),
+        }

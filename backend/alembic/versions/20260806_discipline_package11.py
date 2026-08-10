@@ -141,43 +141,29 @@ def _add_contract_columns() -> None:
         """))
 
 
+def _preflight_service_students() -> None:
+    """迁移只校验共享台账；存在重复时阻断，禁止跨业务自动合并或软删除。"""
+    duplicate = op.get_bind().execute(sa.text("""
+        SELECT tenant_id, student_id, COUNT(*) AS active_count
+          FROM t_cs_service_student
+         WHERE is_deleted = 0
+           AND student_id IS NOT NULL
+         GROUP BY tenant_id, student_id
+        HAVING COUNT(*) > 1
+         ORDER BY tenant_id, student_id
+         LIMIT 1
+    """)).mappings().first()
+    if duplicate:
+        raise RuntimeError(
+            "package 11 preflight failed: duplicate active CsServiceStudent rows; "
+            f"tenant_id={duplicate['tenant_id']}, "
+            f"student_id={duplicate['student_id']}, "
+            f"active_count={duplicate['active_count']}"
+        )
+
+
 def _repair_service_students_and_projections() -> None:
-    # 先把重复服务学生投影统一指向最早的正确台账，再软删重复行。
-    op.execute(sa.text("""
-        UPDATE t_cs_discipline d
-        JOIN t_cs_service_student old_s
-          ON old_s.id = d.cs_student_id
-         AND old_s.tenant_id = d.tenant_id
-        JOIN (
-            SELECT tenant_id, student_id, MIN(id) AS keep_id
-              FROM t_cs_service_student
-             WHERE is_deleted = 0 AND student_id IS NOT NULL
-             GROUP BY tenant_id, student_id
-        ) keep_s
-          ON keep_s.tenant_id = old_s.tenant_id
-         AND keep_s.student_id = old_s.student_id
-           SET d.cs_student_id = keep_s.keep_id
-         WHERE d.is_deleted = 0
-           AND d.cs_student_id <> keep_s.keep_id
-    """))
-    op.execute(sa.text("""
-        UPDATE t_cs_service_student s
-        JOIN (
-            SELECT tenant_id, student_id, MIN(id) AS keep_id
-              FROM t_cs_service_student
-             WHERE is_deleted = 0 AND student_id IS NOT NULL
-             GROUP BY tenant_id, student_id
-        ) keep_s
-          ON keep_s.tenant_id = s.tenant_id
-         AND keep_s.student_id = s.student_id
-           SET s.is_deleted = 1,
-               s.record_status = 'VOID',
-               s.void_reason = 'PACKAGE11_DUPLICATE_SERVICE_STUDENT',
-               s.updated_at = CURRENT_TIMESTAMP,
-               s.version = COALESCE(s.version, 0) + 1
-         WHERE s.is_deleted = 0
-           AND s.id <> keep_s.keep_id
-    """))
+    # 只补建处分需要的服务学生台账，并只修复处分域投影；不改动其他业务域台账。
 
     # 对所有已有处分主案补建真实 CsServiceStudent，禁止再借用 StudentProfile.id。
     op.execute(sa.text("""
@@ -578,6 +564,7 @@ def _create_triggers() -> None:
 
 def upgrade() -> None:
     _require_mysql()
+    _preflight_service_students()
     _create_tables()
     _add_contract_columns()
     _repair_service_students_and_projections()

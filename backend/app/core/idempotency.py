@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -26,6 +27,21 @@ def _cache_key(user: dict, operation: str, raw_key: str) -> str:
     user_id = str(user.get("userId") or "-")
     key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
     return f"idempotency:{tenant_id}:{user_id}:{operation}:{key_hash}"
+
+
+def _db_handle_key(row_id: int, reservation_token: str) -> str:
+    return f"db:{int(row_id)}:{reservation_token}"
+
+
+def _parse_db_handle_key(cache_key: str) -> tuple[int, str]:
+    parts = str(cache_key or "").split(":", 2)
+    if len(parts) != 3 or parts[0] != "db" or not parts[1].isdigit() or not parts[2]:
+        raise AppException(
+            "IDEMPOTENCY_STORE_UNAVAILABLE",
+            "幂等执行凭据无效，请重新发起请求",
+            http_status=503,
+        )
+    return int(parts[1]), parts[2]
 
 
 def begin(user: dict, operation: str, key: str | None, payload: Any) -> tuple[Any | None, tuple[str, str] | None]:
@@ -62,12 +78,53 @@ def begin(user: dict, operation: str, key: str | None, payload: Any) -> tuple[An
     return None, (cache_key, fingerprint)
 
 
+def begin_required(user: dict, operation: str, key: str | None, payload: Any):
+    """Begin idempotency and require a durable store whenever a key was supplied.
+
+    Redis remains the fast path. If Redis is unavailable, fall back to the database
+    record table; if neither store can reserve the request, fail closed instead of
+    executing a critical write without idempotency protection.
+    """
+    cached, handle = begin(user, operation, key, payload)
+    raw_key = (key or "").strip()
+    if not raw_key or handle is not None or cached is not None:
+        return cached, handle
+
+    from app.db.session import db_enabled
+    if db_enabled():
+        try:
+            cached, handle = _begin_db(user, operation, key, payload)
+        except AppException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise AppException(
+                "IDEMPOTENCY_STORE_UNAVAILABLE",
+                "幂等存储不可用，请稍后重试",
+                http_status=503,
+            ) from exc
+    if handle is None and cached is None:
+        raise AppException(
+            "IDEMPOTENCY_STORE_UNAVAILABLE",
+            "幂等存储不可用，请稍后重试",
+            http_status=503,
+        )
+    return cached, handle
+
+
 def finish(handle: tuple[str, str] | None, result: Any, ttl: int = TTL_SECONDS) -> None:
     if handle is None:
         return
     cache_key, fingerprint = handle
     if str(cache_key).startswith("db:"):
-        _finish_db(int(str(cache_key)[3:]), fingerprint, result, state="SUCCESS")
+        row_id, reservation_token = _parse_db_handle_key(cache_key)
+        _finish_db(
+            row_id,
+            fingerprint,
+            reservation_token,
+            result,
+            state="SUCCESS",
+            ttl=ttl,
+        )
         return
     cache_set_json(cache_key, {"fingerprint": fingerprint, "state": "SUCCESS", "result": result}, ttl)
 
@@ -78,7 +135,15 @@ def abort(handle: tuple[str, str] | None) -> None:
         return
     cache_key, fingerprint = handle
     if str(cache_key).startswith("db:"):
-        _finish_db(int(str(cache_key)[3:]), fingerprint, None, state="RETRYABLE_FAILED", delete=True)
+        row_id, reservation_token = _parse_db_handle_key(cache_key)
+        _finish_db(
+            row_id,
+            fingerprint,
+            reservation_token,
+            None,
+            state="RETRYABLE_FAILED",
+            delete=True,
+        )
         return
     cache_delete(cache_key)
 
@@ -90,9 +155,16 @@ def fail(handle: tuple[str, str] | None, *, final: bool = False, error: str | No
         return
     cache_key, fingerprint = handle
     if str(cache_key).startswith("db:"):
-        _finish_db(int(str(cache_key)[3:]), fingerprint, {"error": error},
-                   state="FINAL_FAILED" if final else "RETRYABLE_FAILED",
-                   delete=not final)
+        row_id, reservation_token = _parse_db_handle_key(cache_key)
+        _finish_db(
+            row_id,
+            fingerprint,
+            reservation_token,
+            {"error": error},
+            state="FINAL_FAILED" if final else "RETRYABLE_FAILED",
+            delete=not final,
+            ttl=ttl,
+        )
         return
     if final:
         cache_set_json(cache_key, {
@@ -122,14 +194,10 @@ def idempotency_guard(user: dict, operation: str, key: str | None, payload: Any,
          result = execute()
          g.success(result)
     """
-    cached, handle = begin(user, operation, key, payload)
-    if require_store and (key or "").strip() and handle is None and cached is None:
-        from app.db.session import db_enabled
-        if db_enabled():
-            cached, handle = _begin_db(user, operation, key, payload)
-        if handle is None and cached is None and (key or "").strip():
-            raise AppException("IDEMPOTENCY_STORE_UNAVAILABLE", "幂等存储不可用，请稍后重试",
-                               http_status=503)
+    if require_store:
+        cached, handle = begin_required(user, operation, key, payload)
+    else:
+        cached, handle = begin(user, operation, key, payload)
     guard = _Guard(handle, cached)
     try:
         yield guard
@@ -144,6 +212,12 @@ def idempotency_guard(user: dict, operation: str, key: str | None, payload: Any,
 
 
 def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
+    """Reserve one DB idempotency row under a row lock.
+
+    The reservation token is unique to this execution.  It prevents a slow/stale worker
+    from finishing an older reservation after the TTL expired and a newer request already
+    reclaimed the same raw Idempotency-Key.
+    """
     from datetime import datetime, timedelta
 
     from sqlalchemy import select
@@ -165,26 +239,45 @@ def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
             IdempotencyRecord.user_id == user_id,
             IdempotencyRecord.operation == operation,
             IdempotencyRecord.key_hash == key_hash,
-        )).first()
+        ).with_for_update()).first()
         if row:
+            now = datetime.utcnow()
+            # DB fallback 必须与 Redis 的 TTL 语义一致：过期后同 key 可作为一次新的业务动作使用。
+            # FOR UPDATE 保证同一时刻只有一个请求能把过期/可重试记录重新抢占为 PROCESSING。
+            if row.expires_at is None or row.expires_at <= now:
+                reservation_token = uuid.uuid4().hex
+                row.state = "PROCESSING"
+                row.fingerprint = fingerprint
+                row.expires_at = now + timedelta(seconds=TTL_SECONDS)
+                row.result_json = {"reservationToken": reservation_token}
+                db.commit()
+                return None, (_db_handle_key(row.id, reservation_token), fingerprint)
             if row.fingerprint != fingerprint:
                 raise AppException("DATA_CONFLICT", "同一个 Idempotency-Key 不能用于不同请求内容")
-            if row.state == "PROCESSING" and row.expires_at and row.expires_at > datetime.utcnow():
+            if row.state == "PROCESSING":
                 raise AppException("DATA_CONFLICT", "相同请求正在处理中，请勿重复提交")
             if row.state in ("SUCCESS", "DONE"):
                 return row.result_json, None
             if row.state == "FINAL_FAILED":
                 raise AppException("DATA_CONFLICT", "相同请求已最终失败，请更换 Idempotency-Key 后重试")
+            reservation_token = uuid.uuid4().hex
             row.state = "PROCESSING"
             row.fingerprint = fingerprint
-            row.expires_at = datetime.utcnow() + timedelta(seconds=TTL_SECONDS)
-            row.result_json = None
+            row.expires_at = now + timedelta(seconds=TTL_SECONDS)
+            row.result_json = {"reservationToken": reservation_token}
             db.commit()
-            return None, ("db:" + str(row.id), fingerprint)
+            return None, (_db_handle_key(row.id, reservation_token), fingerprint)
+
+        reservation_token = uuid.uuid4().hex
         row = IdempotencyRecord(
-            tenant_id=tenant_id, user_id=user_id, operation=operation,
-            key_hash=key_hash, fingerprint=fingerprint, state="PROCESSING",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            operation=operation,
+            key_hash=key_hash,
+            fingerprint=fingerprint,
+            state="PROCESSING",
             expires_at=datetime.utcnow() + timedelta(seconds=TTL_SECONDS),
+            result_json={"reservationToken": reservation_token},
         )
         db.add(row)
         try:
@@ -193,21 +286,52 @@ def _begin_db(user: dict, operation: str, key: str | None, payload: Any):
         except IntegrityError:
             db.rollback()
             return _begin_db(user, operation, key, payload)
-        return None, ("db:" + str(row.id), fingerprint)
+        return None, (_db_handle_key(row.id, reservation_token), fingerprint)
 
 
-def _finish_db(row_id: int, fingerprint: str, result: Any, *, state: str, delete: bool = False) -> None:
+def _finish_db(
+    row_id: int,
+    fingerprint: str,
+    reservation_token: str,
+    result: Any,
+    *,
+    state: str,
+    delete: bool = False,
+    ttl: int = TTL_SECONDS,
+) -> bool:
+    """Finish only the reservation owned by this exact execution.
+
+    A stale executor must never overwrite a newer PROCESSING/SUCCESS reservation after
+    TTL-based reclaim.  Returning False is intentional: the caller's business result may
+    already exist, but this old reservation no longer owns the idempotency record.
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import select
+
     from app.models.idempotency import IdempotencyRecord
     from app.services.db_service import session
 
     with session() as db:
-        row = db.get(IdempotencyRecord, row_id)
+        row = db.scalars(select(IdempotencyRecord).where(
+            IdempotencyRecord.id == int(row_id),
+        ).with_for_update()).first()
         if not row:
-            return
+            return False
+        current_meta = row.result_json if isinstance(row.result_json, dict) else {}
+        if (
+            row.state != "PROCESSING"
+            or row.fingerprint != fingerprint
+            or current_meta.get("reservationToken") != reservation_token
+        ):
+            return False
         if delete or state == "RETRYABLE_FAILED":
             db.delete(row)
         else:
             row.state = state
             row.fingerprint = fingerprint
             row.result_json = result
+            # Redis 的成功/最终失败 TTL 从 finish 时重新计时；DB fallback 保持同样语义。
+            row.expires_at = datetime.utcnow() + timedelta(seconds=ttl)
         db.commit()
+        return True
