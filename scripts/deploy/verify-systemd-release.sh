@@ -51,6 +51,12 @@ if [ -x "$APP_ROOT/current/backend/.venv/bin/python" ] && [ -d "$APP_ROOT/curren
   else
     failure "ClamAV 文件扫描运行依赖异常"
   fi
+  if (cd "$APP_ROOT/current/backend" \
+      && "$APP_ROOT/current/backend/.venv/bin/python" scripts/check_production_storage.py >/dev/null); then
+    pass "文件存储后端真实探针正常"
+  else
+    failure "文件存储后端真实探针失败"
+  fi
 else
   failure "发布目录或共享 venv 不存在"
 fi
