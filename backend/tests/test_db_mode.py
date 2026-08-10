@@ -61,10 +61,39 @@ def test_students_filter_and_paginate_in_database(client, auth_headers, db_mode)
     assert all(item["studentNo"] != "2026OTHER" for item in by_class["items"])
 
 
+def _make_student_org_class() -> str:
+    """正式学生补录要求真实学院/专业/班级；只为本文件的建档用例建立局部组织事实。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+
+    tenant_id = 1000000000000000001
+    db = get_sessionmaker()()
+    try:
+        college = College(tenant_id=tenant_id, college_name="DB模式学院", status="ACTIVE")
+        db.add(college); db.flush()
+        major = Major(tenant_id=tenant_id, college_id=college.id, major_name="DB模式专业", status="ACTIVE")
+        db.add(major); db.flush()
+        school_class = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major.id,
+            class_name="DB模式2601班",
+            grade="2026",
+            status="ACTIVE",
+            class_status="NORMAL",
+        )
+        db.add(school_class); db.flush()
+        class_id = str(school_class.id)
+        db.commit()
+        return class_id
+    finally:
+        db.close()
+
+
 def test_student_create_void_db(client, auth_headers, db_mode):
+    class_id = _make_student_org_class()
     created = client.post("/api/v1/students", headers=auth_headers,
                           json={"studentNo": "2099115999", "realName": "库中新生",
-                                "phone": "13800001111"}).json()["data"]
+                                "phone": "13800001111", "classId": class_id}).json()["data"]
     assert created["phoneMasked"] == "138****1111"
     void = client.post(f"/api/v1/students/{created['id']}/void", headers=auth_headers,
                        json={"reason": "重复建档需要作废"}).json()["data"]
@@ -77,24 +106,60 @@ def test_approval_flow_db(client, auth_headers, db_mode):
     tasks = client.get("/api/v1/approvals/tasks", headers=auth_headers).json()["data"]["items"]
     assert len(tasks) == 1 and tasks[0]["status"] == "PENDING"
     tid = tasks[0]["taskId"]
-    no_reason = client.post(f"/api/v1/approvals/tasks/{tid}/reject", headers=auth_headers, json={})
+    no_reason = client.post(f"/api/v1/approvals/tasks/{tid}/reject", headers=auth_headers,
+                            json={"version": 0})
     assert no_reason.json()["code"] in (400001, 422001)
     ok = client.post(f"/api/v1/approvals/tasks/{tid}/approve", headers=auth_headers,
-                     json={"comment": "同意"}).json()["data"]
+                     json={"comment": "同意", "version": 0}).json()["data"]
     assert ok["status"] == "APPROVED"
     processed = client.get("/api/v1/approvals/processed", headers=auth_headers).json()["data"]["items"]
     assert any(p["taskId"] == tid for p in processed)
 
 
 def test_todos_messages_db(client, auth_headers, db_mode):
-    todos = client.get("/api/v1/todos", headers=auth_headers).json()["data"]
+    """工作台待办/消息必须按真实登录 userId 收敛，并走 DB-backed 正式端点。"""
+    from sqlalchemy import select
+
+    from app.core.security import decode_token
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage, UnifiedTodo
+    from app.services.message_identity import resolve_message_user_id
+    from app.services.workbench_todo_service import _uid as resolve_todo_user_id
+
+    claims = decode_token(auth_headers["Authorization"].removeprefix("Bearer "))
+    todo_user_id = resolve_todo_user_id(claims)
+    message_user_id = resolve_message_user_id(claims)
+    assert todo_user_id > 0 and message_user_id > 0
+
+    db = get_sessionmaker()()
+    try:
+        todo = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == 1000000000000000001,
+            UnifiedTodo.status == "PENDING",
+        ).limit(1)).first()
+        message = db.scalars(select(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == 1000000000000000001,
+            UnifiedMessage.status == "UNREAD",
+        ).limit(1)).first()
+        assert todo is not None and message is not None
+        todo.assignee_id = todo_user_id
+        message.receiver_id = message_user_id
+        message.receiver_user_id = None  # 覆盖历史 receiver_id 兼容读取路径
+        db.commit()
+    finally:
+        db.close()
+
+    todos = client.get("/api/v1/admin/todos", headers=auth_headers).json()["data"]
     assert todos["total"] == 1
     todo_id = todos["items"][0]["todoId"]
-    assert client.post(f"/api/v1/todos/{todo_id}/done", headers=auth_headers).json()["data"]["status"] == "DONE"
-    msgs = client.get("/api/v1/messages", headers=auth_headers).json()["data"]
+    done = client.post(f"/api/v1/admin/todos/{todo_id}/complete", headers=auth_headers, json={}).json()["data"]
+    assert done["status"] == "DONE"
+
+    msgs = client.get("/api/v1/admin/messages", headers=auth_headers).json()["data"]
     assert msgs["total"] == 1
     mid = msgs["items"][0]["messageId"]
-    assert client.post(f"/api/v1/messages/{mid}/read", headers=auth_headers).json()["data"]["status"] == "READ"
+    read = client.post(f"/api/v1/admin/messages/{mid}/read", headers=auth_headers).json()["data"]
+    assert read["readStatus"] == "READ"
 
 
 def test_audit_persisted_db(client, auth_headers, db_mode):
@@ -117,7 +182,7 @@ def test_p4_upload_real(client, auth_headers, db_mode, tmp_path):
     assert resp["code"] == 0
     meta = resp["data"]
     assert meta["fileId"].isdigit() and meta["sha256"] and meta["sizeBytes"] > 0
-    got = client.get(f"/api/v1/files/meta/{meta['fileId']}", headers=auth_headers).json()["data"]
+    got = client.get(f"/api/v1/files/{meta['fileId']}", headers=auth_headers).json()["data"]
     assert got["fileName"] == "测试.txt"
     bad = client.post("/api/v1/files", headers=auth_headers,
                       files={"file": ("evil.exe", _io.BytesIO(b"x"), "application/octet-stream")}).json()
