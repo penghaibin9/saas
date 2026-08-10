@@ -33,7 +33,7 @@ def _seed(db_mode, n=2):
 
 
 def _ensure_term():
-    """成绩特殊补录已收紧为正式 termId；老测试不得继续拿自由文本 termCode 代替权威学期。"""
+    """成绩主链必须绑定正式 termId；老测试不得继续拿自由文本 termCode 代替权威学期。"""
     from app.db.session import get_sessionmaker
     from app.models import AaTerm
 
@@ -62,7 +62,7 @@ def _ensure_term():
 
 
 def _class_id():
-    """特殊补录必须绑定明确行政班；复用本测试刚建立的正式班级。"""
+    """复用本测试刚建立的正式行政班。"""
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass
 
@@ -104,14 +104,30 @@ def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4)
 
 def _task(client, hdr, usual=30, midterm=0, final=70, *,
           course_name="高等数学", course_code="GD101", credit=4):
+    """建立普通正式教学任务，让成绩测试继续验证提交→审核→发布主链。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+
     term_id = _ensure_term()
     course_id = _enabled_course(client, hdr, code=course_code, name=course_name, credit=credit)
-    r = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
-        "courseId": str(course_id), "courseName": course_name,
-        "classId": str(_class_id()),
-        "termId": str(term_id), "termCode": "2026-2027-1", "credit": credit,
-        "usualRatio": usual, "midtermRatio": midterm, "finalRatio": final,
-        "adminSupplementReason": "测试管理员补录成绩任务"})
+    class_id = _class_id()
+    db = get_sessionmaker()()
+    batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=term_id, batch_name=f"{course_name}成绩回归任务批次", status="APPROVED")
+    db.add(batch); db.flush()
+    teaching_task = AaTeachingTask(
+        tenant_id=TID, batch_id=batch.id, course_id=int(course_id), course_code=course_code,
+        course_name=course_name, class_id=class_id, teaching_class_name="软件2601",
+        teacher_key="academic01", teacher_name="赵敏", expected_students=None,
+        weekly_hours=4, total_hours=72, start_week=1, end_week=18, status="READY")
+    db.add(teaching_task); db.flush()
+    teaching_task_id = int(teaching_task.id)
+    db.commit()
+    db.close()
+
+    r = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "teachingTaskId": str(teaching_task_id),
+        "usualRatio": usual, "midtermRatio": midterm, "finalRatio": final})
     assert r.status_code == 200, r.text
     return r.json()["data"]["gradeTaskId"]
 
@@ -149,7 +165,8 @@ def test_g2_ratio_not_100_422(client, db_mode):
         "courseId": str(course_id), "courseName": "比例异常课", "classId": str(_class_id()),
         "termId": str(term_id), "usualRatio": 40, "finalRatio": 70,
         "adminSupplementReason": "测试管理员补录成绩任务"})
-    assert r.status_code == 422, r.text
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == 422001
 
 
 def test_g3_incomplete_submit_409(client, db_mode):
@@ -252,7 +269,8 @@ def test_g11_midterm_ratio_sum_must_100(client, db_mode):
     bad = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
         **common, "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
     })
-    assert bad.status_code == 422, bad.text
+    assert bad.status_code == 400, bad.text
+    assert bad.json()["code"] == 422001
     ok = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
         **common, "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
     })
