@@ -1,4 +1,4 @@
-"""pytest 鍏叡澶瑰叿锛氬己鍒堕殧绂荤敓浜?MySQL锛岄粯璁?mock 妯″紡锛堜笉璇诲啓 saas_lifecycle锛夈€?""
+"""pytest 公共夹具：强制隔离生产 MySQL，默认 mock 模式（不读写 saas_lifecycle）。"""
 from __future__ import annotations
 
 import os
@@ -6,16 +6,16 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-# 蹇呴』鍦?import app 涔嬪墠瑕嗙洊锛堥槻姝?shell `export $(grep .env)` 鎶?DB_ENABLED=true 甯﹁繘 pytest锛?
+# 必须在 import app 之前覆盖（防止 shell `export $(grep .env)` 把 DB_ENABLED=true 带进 pytest）
 os.environ["APP_ENV"] = "test"
 os.environ["DB_ENABLED"] = "false"
 os.environ["DATABASE_URL"] = ""
-# 娴嬭瘯濂椾欢鍦ㄧ嫭绔嬫祴璇曞簱閲岃嚜寤虹鎴凤紝绾﹀畾涓荤鎴?= demo(MAIN_TENANT_ID 1000000000000000001)锛?
-# 涓庣敓浜у簱閲岀殑鐪熷疄绉熸埛鏃犲叧銆傜敓浜ч粯璁ょ鎴峰凡浜?2026-07-28 鏀舵暃涓?sandbox-school锛屾晠姝ゅ
-# 蹇呴』鏄惧紡閽変綇娴嬭瘯鑷繁鐨勭鎴风害瀹氾紝鍚﹀垯 mock-login 浼氳В鏋愬埌娌欑绉熸埛鑰屼笌澶瑰叿鏁版嵁璺ㄧ鎴蜂笉鍙銆?
+# 测试套件在独立测试库里自建租户，约定主租户 = demo(MAIN_TENANT_ID 1000000000000000001)，
+# 与生产库里的真实租户无关。生产默认租户已于 2026-07-28 收敛为 sandbox-school，故此处
+# 必须显式钉住测试自己的租户约定，否则 mock-login 会解析到沙箱租户而与夹具数据跨租户不可见。
 os.environ["DEFAULT_TENANT_CODE"] = "demo"
-# MySQL-only 鏀跺彛锛氫紭鍏堜娇鐢ㄦ樉寮?TEST_DATABASE_URL銆?
-# 鑻ヨ繘绋嬬幆澧冩湭鎻愪緵锛屽垯鍏滃簳璇诲彇 backend/.env 涓殑 TEST_DATABASE_URL锛岄伩鍏嶆嫾鍑?saas_user:@...銆?
+# MySQL-only 收口：优先使用显式 TEST_DATABASE_URL。
+# 若进程环境未提供，则兜底读取 backend/.env 中的 TEST_DATABASE_URL，避免拼出 saas_user:@...。
 if "TEST_DATABASE_URL" not in os.environ:
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():
@@ -28,7 +28,7 @@ if "TEST_DATABASE_URL" not in os.environ:
                 os.environ["TEST_DATABASE_URL"] = v.strip()
                 break
 if "TEST_DATABASE_URL" not in os.environ:
-    raise RuntimeError("TEST_DATABASE_URL 鏈厤缃紝鎷掔粷鍥炶惤 SQLite锛涜鍦?backend/.env 鏄惧紡鎻愪緵 MySQL 娴嬭瘯搴撹繛鎺ヤ覆銆?)
+    raise RuntimeError("TEST_DATABASE_URL 未配置，拒绝回落 SQLite；请在 backend/.env 显式提供 MySQL 测试库连接串。")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -167,9 +167,9 @@ class GraduationBatchAwareClient:
                 if exists is None:
                     db.add(GraduationFinal(
                         tenant_id=MAIN_TENANT_ID, gd_student_id=int(gd_student_id),
-                        final_type="瀹氱", version="v-test", submit_at=datetime.utcnow(),
+                        final_type="定稿", version="v-test", submit_at=datetime.utcnow(),
                         status="APPROVED", plagiarism_rate="10.0%",
-                        plagiarism_status="宸叉娴?, attachments_json=["test-final-file"],
+                        plagiarism_status="已检测", attachments_json=["test-final-file"],
                     ))
                     db.commit()
             finally:
@@ -379,7 +379,7 @@ class GraduationBatchAwareClient:
                     exists = GraduationTaskBook(
                         tenant_id=MAIN_TENANT_ID, gd_student_id=int(stu.id),
                         status="CONFIRMED", taskbook_version=1,
-                        objective="娴嬭瘯浠诲姟涔︾洰鏍?, content="娴嬭瘯浠诲姟涔﹀唴瀹?,
+                        objective="测试任务书目标", content="测试任务书内容",
                         confirmed_at=datetime.utcnow(), history_json=[],
                     )
                     db.add(exists)
@@ -510,9 +510,9 @@ class GraduationBatchAwareClient:
 
     def _create_default_batch(self, headers) -> str | None:
         body = {
-            "batchName": "娴嬭瘯榛樿姣曚笟璁捐鎵规",
+            "batchName": "测试默认毕业设计批次",
             "batchNo": f"GD-AUTO-{time.time_ns()}",
-            "gradeYear": "2026灞?,
+            "gradeYear": "2026届",
             "plannedCount": 200,
         }
         try:
@@ -586,10 +586,10 @@ class GraduationBatchAwareClient:
             return
         if method == "POST" and path.endswith("/confirm") and "/api/v1/graduation/gd-taskbooks/" in path:
             if kwargs.get("json") in (None, {}):
-                kwargs["json"] = {"proxyReason": "娴嬭瘯绠＄悊鍛樹唬纭浠诲姟涔?}
+                kwargs["json"] = {"proxyReason": "测试管理员代确认任务书"}
         if method == "POST" and path == "/api/v1/mobile/graduation/taskbook/confirm":
             if kwargs.get("json") in (None, {}):
-                kwargs["json"] = {"signature": "娴嬭瘯瀛︾敓纭浠诲姟涔?, "acknowledged": True}
+                kwargs["json"] = {"signature": "测试学生确认任务书", "acknowledged": True}
             self._ensure_mobile_taskbook_confirm_payload(method, path, kwargs)
         if not self._is_sensitive(path):
             return
@@ -805,13 +805,13 @@ class GraduationBatchAwareClient:
 
 @pytest.fixture()
 def client() -> TestClient:
-    """閫氱敤 HTTP 瀹㈡埛绔細涓嶅緱鑷姩琛ュ弬鏁般€佹敼韬唤鎴栧啓涓氬姟鏁版嵁銆?""
+    """通用 HTTP 客户端：不得自动补参数、改身份或写业务数据。"""
     return TestClient(app)
 
 
 @pytest.fixture()
 def graduation_client() -> GraduationBatchAwareClient:
-    """姣曚笟璁捐鏃ф祴璇曟樉寮忎娇鐢ㄧ殑鍏煎瀹㈡埛绔紱绂佹鍏朵粬涓氬姟娴嬭瘯闅愬紡缁ф壙銆?""
+    """毕业设计旧测试显式使用的兼容客户端；禁止其他业务测试隐式继承。"""
     return GraduationBatchAwareClient(TestClient(app))
 
 
@@ -826,17 +826,17 @@ MAIN_TENANT_ID = 1000000000000000001
 
 
 def make_org_class(tenant_id: int = MAIN_TENANT_ID) -> str:
-    """寤烘。蹇呴』鎸傜湡瀹炲闄?涓撲笟/鐝骇銆傝繑鍥?classId 瀛楃涓层€?""
+    """建档必须挂真实学院/专业/班级。返回 classId 字符串。"""
     from uuid import uuid4
     from app.db.session import get_sessionmaker
     from app.models.org import College, Major, SchoolClass
     db = get_sessionmaker()()
     try:
-        col = College(tenant_id=tenant_id, college_name=f"瀛﹂櫌-{uuid4().hex[:6]}", status="ACTIVE")
+        col = College(tenant_id=tenant_id, college_name=f"学院-{uuid4().hex[:6]}", status="ACTIVE")
         db.add(col); db.flush()
-        maj = Major(tenant_id=tenant_id, college_id=col.id, major_name=f"涓撲笟-{uuid4().hex[:6]}", status="ACTIVE")
+        maj = Major(tenant_id=tenant_id, college_id=col.id, major_name=f"专业-{uuid4().hex[:6]}", status="ACTIVE")
         db.add(maj); db.flush()
-        cls = SchoolClass(tenant_id=tenant_id, major_id=maj.id, class_name=f"鐝骇-{uuid4().hex[:6]}",
+        cls = SchoolClass(tenant_id=tenant_id, major_id=maj.id, class_name=f"班级-{uuid4().hex[:6]}",
                           grade="2026", status="ACTIVE", class_status="NORMAL")
         db.add(cls); db.flush()
         cid = cls.id
@@ -853,21 +853,21 @@ def _reset_security_state():
     yield
 
 
-_TRANSIENT_DDL_ERRNOS = ("1050", "1051", "1146", "1205", "1684")  # 琛ㄥ凡瀛樺湪/琛ㄥ凡涓嶅瓨鍦?琛ㄥ畾涔夎繛閿佺己澶?閿佺瓑寰呰秴鏃?骞跺彂DDL鍐茬獊鈥斺€斿潎涓虹珵鎬佸壇浜х墿
+_TRANSIENT_DDL_ERRNOS = ("1050", "1051", "1146", "1205", "1684")  # 表已存在/表已不存在/表定义连锁缺失/锁等待超时/并发DDL冲突——均为竞态副产物
 
 
 def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
-    """MySQL 骞跺彂 DDL 绔炴€侀噸璇曞寘瑁咃細鏈粨搴撳涓?worktree/瀛愭櫤鑳戒綋骞惰璺?pytest 鏃跺叡鐢ㄥ悓涓€寮?
-    TEST_DATABASE_URL 鐗╃悊 MySQL 搴擄紙student_lifecycle_test锛夛紝db_mode 姣忔祴璇曚竴娆″叏閲?
-    drop_all+create_all锛堣鐩栧叏閮?~250 寮犺〃锛屼笉姝㈡湰娆℃敼鍔ㄦ秹鍙婄殑琛級锛屽苟鍙戝満鏅笅浼氭挒瑙侊細
-    - 1684 "...was skipped since its definition is being modified by concurrent DDL statement"锛?
-    - 1051 Unknown table锛堟湰浼氳瘽 DROP 鏃讹紝琛ㄥ凡琚彟涓€骞跺彂浼氳瘽鍏堣 drop 鎺夛級锛?
-    - 1050 Table already exists锛堟湰浼氳瘽 CREATE 鏃讹紝琛ㄥ凡琚彟涓€骞跺彂浼氳瘽鍏堣寤哄ソ锛夛紱
-    - 1146 Table doesn't exist锛堝悓涓€ create_all() 鍐咃紝鍓嶄竴寮犺〃鍥?1684 琚烦杩囧悗杩為攣鏁堝簲锛夛紱
-    - 1205 Lock wait timeout exceeded锛堝苟鍙?drop/create 鎶㈣〃閿侊級銆?
-    鍧囦笌涓氬姟閫昏緫/琛ㄧ粨鏋勬湰韬棤鍏筹紝绾熀纭€璁炬柦灞傜珵鎬侊紝閲嶈瘯鍗冲彲鎭㈠锛坉rop_all/create_all 鑷甫
-    checkfirst锛屾瘡娆￠噸璇曢兘浼氶噸鏂版煡璇㈠綋鍓嶇湡瀹炵姸鎬侊紝涓嶄細閲嶅鎶ラ敊鍚屼竴寮犺〃锛夈€傚彧鍚炴帀杩欏嚑绫?errno锛?
-    鍏朵綑寮傚父锛堢湡瀹炵殑 schema/杩炴帴鏁呴殰锛夌収甯告姏鍑猴紝涓嶆帺鐩栥€?""
+    """MySQL 并发 DDL 竞态重试包装：本仓库多个 worktree/子智能体并行跑 pytest 时共用同一张
+    TEST_DATABASE_URL 物理 MySQL 库（student_lifecycle_test），db_mode 每测试一次全量
+    drop_all+create_all（覆盖全部 ~250 张表，不止本次改动涉及的表），并发场景下会撞见：
+    - 1684 "...was skipped since its definition is being modified by concurrent DDL statement"；
+    - 1051 Unknown table（本会话 DROP 时，表已被另一并发会话先行 drop 掉）；
+    - 1050 Table already exists（本会话 CREATE 时，表已被另一并发会话先行建好）；
+    - 1146 Table doesn't exist（同一 create_all() 内，前一张表因 1684 被跳过后连锁效应）；
+    - 1205 Lock wait timeout exceeded（并发 drop/create 抢表锁）。
+    均与业务逻辑/表结构本身无关，纯基础设施层竞态，重试即可恢复（drop_all/create_all 自带
+    checkfirst，每次重试都会重新查询当前真实状态，不会重复报错同一张表）。只吞掉这几类 errno，
+    其余异常（真实的 schema/连接故障）照常抛出，不掩盖。"""
     from sqlalchemy.exc import OperationalError, ProgrammingError
     for i in range(attempts):
         try:
@@ -880,17 +880,17 @@ def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
 
 
 def _drop_all_mysql(engine, metadata):
-    """drop_all锛屼絾鍏堝叧澶栭敭妫€鏌ャ€?
+    """drop_all，但先关外键检查。
 
-    璧峰洜锛氶儴鍒嗚縼绉诲缓鐨勮〃鍦?ORM 閲屾病鏈夊搴?model锛堜緥濡傚寘10 鐨?
-    t_affairs_funding_amount_adjustment锛宻ervice 璧拌８ SQL + _table_exists 鍏滃簳锛夛紝
-    鑰屽畠甯︿竴涓寚鍚?t_affairs_funding_application 鐨勫閿€俶etadata 閲岀湅涓嶈杩欏紶瀛愯〃锛?
-    drop_all 鎺掍笉鍑烘纭『搴忥紝鍦ㄤ换浣曠湡璺戣繃 alembic 鐨勫簱涓婇兘浼氭挒 3730
-    "Cannot drop table ... referenced by a foreign key constraint"銆?
-    鍙湪 create_all 寤虹殑搴撲笂鎵嶇宸т笉鍑洪棶棰樷€斺€旈偅姝ｅソ鎺╃洊浜嗚縼绉诲簱涓?ORM 搴撶殑鍒嗚銆?
+    起因：部分迁移建的表在 ORM 里没有对应 model（例如包10 的
+    t_affairs_funding_amount_adjustment，service 走裸 SQL + _table_exists 兜底），
+    而它带一个指向 t_affairs_funding_application 的外键。metadata 里看不见这张子表，
+    drop_all 排不出正确顺序，在任何真跑过 alembic 的库上都会撞 3730
+    "Cannot drop table ... referenced by a foreign key constraint"。
+    只在 create_all 建的库上才碰巧不出问题——那正好掩盖了迁移库与 ORM 库的分裂。
 
-    娴嬭瘯搴撶殑 teardown 鏈潵灏辨槸瑕佹竻绌轰竴鍒囷紝鍏虫帀澶栭敭椤哄簭绾︽潫鏄畨鍏ㄧ殑锛涚湡瀹炵殑 schema
-    鏁呴殰浠嶄細鐓у父鎶涘嚭锛堣繖閲屽彧褰卞搷鍒犻櫎椤哄簭锛屼笉鍚炰换浣曢敊璇級銆?""
+    测试库的 teardown 本来就是要清空一切，关掉外键顺序约束是安全的；真实的 schema
+    故障仍会照常抛出（这里只影响删除顺序，不吞任何错误）。"""
     from sqlalchemy import text
     with engine.begin() as conn:
         conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
@@ -902,7 +902,7 @@ def _drop_all_mysql(engine, metadata):
 
 @pytest.fixture(scope="session")
 def _session_mysql_schema():
-    """FAST_TEST_SCHEMA 妯″紡锛氫細璇濆彧寤轰竴娆?schema锛屽崟鐢ㄤ緥鍙竻绌烘暟鎹€?""
+    """FAST_TEST_SCHEMA 模式：会话只建一次 schema，单用例只清空数据。"""
     from app.core.config import settings
     from app.db.session import reset_state, get_engine
     from app.db.base import metadata
@@ -925,10 +925,10 @@ def _session_mysql_schema():
 
 @pytest.fixture()
 def db_mode(tmp_path, request):
-    """鐪熷簱妯″紡澶瑰叿銆傛暟鎹簱鏉ヨ嚜 TEST_DATABASE_URL锛圡ySQL-only 鏀跺彛鍚庨粯璁?MySQL锛夈€?
-    - MySQL锛氬湪涓撶敤 student_lifecycle_test 搴撲笂 drop+create 閲嶅缓骞插噣琛ㄧ粨鏋勶紙姣忔祴璇曢殧绂伙級銆?
-    - sqlite锛堝惈 :memory:锛夛細legacy 涓存椂婕旂ず锛屾敼鐢ㄦ瘡娴嬭瘯鐙珛 tmp 鏂囦欢锛涗笉寰楀綋 MySQL 楠屾敹銆?
-    MySQL 涓嶅彲杈炬椂鏈す鍏蜂細鐩存帴杩炴帴澶辫触鎶ラ敊锛堜笉闈欓粯鍥炶惤 sqlite 鍐掑厖閫氳繃锛夈€?""
+    """真库模式夹具。数据库来自 TEST_DATABASE_URL（MySQL-only 收口后默认 MySQL）。
+    - MySQL：在专用 student_lifecycle_test 库上 drop+create 重建干净表结构（每测试隔离）。
+    - sqlite（含 :memory:）：legacy 临时演示，改用每测试独立 tmp 文件；不得当 MySQL 验收。
+    MySQL 不可达时本夹具会直接连接失败报错（不静默回落 sqlite 冒充通过）。"""
     from app.core.config import settings
     from app.db.session import reset_state
     test_url = os.environ.get("TEST_DATABASE_URL") or settings.TEST_DATABASE_URL
@@ -941,8 +941,8 @@ def db_mode(tmp_path, request):
     try:
         from app.db.base import metadata
         from sqlalchemy import text
-        # 鍏变韩娴嬭瘯搴撳彲鑳藉悓鏃惰鍏朵粬鏈湴宸ヤ綔鏍戜娇鐢紱鎶?MySQL 鍏冩暟鎹攣绛夊緟
-        # 闄愬埗鍦ㄧ煭绐楀彛鍐咃紝浜ょ粰涓嬮潰鐨?DDL 閲嶈瘯閫昏緫澶勭悊锛岄伩鍏?pytest 鏃犻檺鎸傝捣銆?
+        # 共享测试库可能同时被其他本地工作树使用；把 MySQL 元数据锁等待
+        # 限制在短窗口内，交给下面的 DDL 重试逻辑处理，避免 pytest 无限挂起。
         from sqlalchemy import event
         from app.db.session import get_engine, get_sessionmaker
         fast_schema = os.environ.get("FAST_TEST_SCHEMA") == "1" and not is_sqlite
@@ -953,11 +953,11 @@ def db_mode(tmp_path, request):
             engine = get_engine()
             with engine.begin() as conn:
                 conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-                # FAST 妯″紡鍙敤浜庢湰鍦板洖褰掞細鐢?DELETE 娓呯悊鏁版嵁鑰屼笉鏄€愯〃 TRUNCATE銆?
-                # MySQL 鍦?Windows 鏈湴瀹炰緥涓婂澶ч噺 TRUNCATE 浼氶绻佽繘鍏?
-                # 鈥渨aiting for handler commit鈥濓紝鍗充娇娌℃湁澶栭儴浜嬪姟涔熶細鎷栨參鐢氳嚦瑙﹀彂
-                # 鍘熺敓瀹㈡埛绔穿婧冿紱鍏抽棴澶栭敭鍚?DELETE 瓒充互娓呯悊姣忎釜娴嬭瘯浜х敓鐨勫皯閲忔暟鎹紝
-                # 涓斾笉鎷垮厓鏁版嵁 DDL 閿併€?
+                # FAST 模式只用于本地回归：用 DELETE 清理数据而不是逐表 TRUNCATE。
+                # MySQL 在 Windows 本地实例上对大量 TRUNCATE 会频繁进入
+                # “waiting for handler commit”，即使没有外部事务也会拖慢甚至触发
+                # 原生客户端崩溃；关闭外键后 DELETE 足以清理每个测试产生的少量数据，
+                # 且不拿元数据 DDL 锁。
                 from sqlalchemy import inspect as sa_inspect
                 from sqlalchemy.exc import OperationalError
                 existing = set(sa_inspect(conn).get_table_names())
@@ -967,12 +967,12 @@ def db_mode(tmp_path, request):
                     try:
                         conn.execute(text(f"DELETE FROM `{table.name}`"))
                     except OperationalError as e:
-                        # 閮ㄥ垎琛紙濡傚寘11 t_affairs_discipline_decision_version锛夋寕浜?
-                        # BEFORE DELETE/UPDATE 纭笉鍙彉瑙﹀彂鍣細鐢熶骇璇箟鏄?搴旂敤杩愯鏃跺嚟鎹?
-                        # 鏃犳硶鍒犻櫎/淇敼璇ヨ〃浠讳綍涓€琛?锛岃Е鍙戝櫒涓嶅尯鍒嗘祴璇曞簱涓庣敓浜у簱锛孌ELETE
-                        # 涓€寰嬭 SIGNAL 鎷掔粷锛坋rrno 1644锛夈€俆RUNCATE 鍦?MySQL 閲屾槸 DDL锛?
-                        # 涓嶇粡杩囪绾цЕ鍙戝櫒锛屽彲浠ユ竻绌鸿〃涓斾笉闇€瑕佺粰瑙﹀彂鍣ㄥ姞浠讳綍缁曡繃鍙ｅ瓙
-                        # 锛堝簲鐢ㄦ湇鍔′唬鐮佷粠涓嶇鍙?TRUNCATE锛屼笉鍙彉鎵胯涓嶅彈褰卞搷锛夈€?
+                        # 部分表（如包11 t_affairs_discipline_decision_version）挂了
+                        # BEFORE DELETE/UPDATE 硬不可变触发器：生产语义是"应用运行时凭据
+                        # 无法删除/修改该表任何一行"，触发器不区分测试库与生产库，DELETE
+                        # 一律被 SIGNAL 拒绝（errno 1644）。TRUNCATE 在 MySQL 里是 DDL，
+                        # 不经过行级触发器，可以清空表且不需要给触发器加任何绕过口子
+                        # （应用服务代码从不签发 TRUNCATE，不可变承诺不受影响）。
                         if "1644" in str(e.orig):
                             conn.execute(text(f"TRUNCATE TABLE `{table.name}`"))
                         else:
@@ -992,7 +992,7 @@ def db_mode(tmp_path, request):
                 _ddl_with_retry(lambda: metadata.create_all(bind=engine))
             else:
                 metadata.create_all(bind=engine)
-        # 鏈€灏忕瀛?
+        # 最小种子
         from datetime import datetime, timedelta
         from app.models import (StudentContact, StudentProfile, UnifiedMessage, UnifiedTodo,
                                 WorkflowInstance, WorkflowTask)
@@ -1000,7 +1000,7 @@ def db_mode(tmp_path, request):
         db = get_sessionmaker()()
         import zlib
         actor_id = (zlib.crc32(b"u_school_admin01") & 0x7FFFFFFF) or 1
-        s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="璧典竴鍑?,
+        s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="赵一凡",
                            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
         db.add(s); db.flush()
         db.add(StudentContact(tenant_id=TID, student_id=s.id, contact_type="PHONE",
@@ -1008,22 +1008,22 @@ def db_mode(tmp_path, request):
                               verified_status="VERIFIED"))
         inst = WorkflowInstance(tenant_id=TID, workflow_code="wf_student", source_module="student",
                                 source_biz_type="PROFILE_CORRECTION", source_biz_id=s.id,
-                                applicant_id=actor_id, title="璧典竴鍑?路 瀛︾睄淇℃伅鍙樻洿", status="RUNNING",
-                                remark="璧典竴鍑?)
+                                applicant_id=actor_id, title="赵一凡 · 学籍信息变更", status="RUNNING",
+                                remark="赵一凡")
         db.add(inst); db.flush()
         task = WorkflowTask(tenant_id=TID, instance_id=inst.id, node_code="COUNSELOR_REVIEW",
                             assignee_id=actor_id, status="PENDING",
                             deadline_at=datetime.utcnow() + timedelta(days=2))
         db.add(task)
         db.add(UnifiedTodo(tenant_id=TID, source_module="student", source_biz_id=1, todo_type="APPROVAL",
-                           assignee_id=actor_id, title="澶勭悊瀛︾睄鍙樻洿瀹℃壒", status="PENDING"))
-        db.add(UnifiedMessage(tenant_id=TID, receiver_id=actor_id, title="娴嬭瘯娑堟伅", status="UNREAD"))
+                           assignee_id=actor_id, title="处理学籍变更审批", status="PENDING"))
+        db.add(UnifiedMessage(tenant_id=TID, receiver_id=actor_id, title="测试消息", status="UNREAD"))
         db.commit()
         ids = {"student": s.id, "task": task.id}
         db.close()
         yield ids
     finally:
-        # setup 澶辫触涔熷繀椤昏繕鍘燂紝閬垮厤姹℃煋鍚庣画 mock 娴嬭瘯锛?03 / 璇蛋鐪熷簱锛?
+        # setup 失败也必须还原，避免污染后续 mock 测试（503 / 误走真库）
         settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
         reset_state()
 
