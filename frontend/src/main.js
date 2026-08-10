@@ -10,6 +10,8 @@ import './styles/golden-refinement.css'
 import './styles/golden-refinement-final.css'
 // Golden 业务页 rollout：学工 / 岗位实习 / 毕业设计代表性看板，页面唯一锚点生效。
 import './styles/golden-business-rollout.css'
+// Screenshot C 最终收口：平衡学工指标区并去除毕设重复上下文层。
+import './styles/golden-business-rollout-final.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
