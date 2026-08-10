@@ -128,6 +128,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
+      - name: 租户隔离棘轮门禁（禁止新增未带租户校验的裸 Session.get）
+        run: python scripts/audit_tenant_queries.py --gate
       - name: 选择最小必要测试集合
         id: select
         run: |
@@ -317,6 +319,47 @@ jobs:
           python -m alembic current
       - name: 迁移库与 ORM 模型一致性
         run: python ../scripts/check/check-migrated-schema-parity.py
+      - name: 导出「全新安装」结构快照
+        run: |
+          python ../scripts/check/dump-mysql-schema.py \
+            --url "$DATABASE_URL" --out /tmp/schema-fresh.txt
+      # ── 迁移升级路径收敛门禁（P0）────────────────────────────────
+      # 0001 跑的是 metadata.create_all（"用今天的 ORM 建表"），不是冻结的历史 DDL。
+      # 于是"老学校一路升级"和"新学校全新安装"理论上会走到不同的结构，
+      # 而后续迁移里"表已存在就 return"的兼容写法会把差异继续掩盖。
+      # 这里用一个历史基线 commit 真建一个"老库"，一路升到 HEAD，再和全新安装逐字段比对。
+      - name: 用历史基线 commit 建「老库」并一路升级到 HEAD
+        env:
+          # 2026-07-07 的基线（当时迁移链只有 14 个版本），代表最早一批装机的学校。
+          MIGRATION_BASELINE_SHA: 21ab58bf72a3f4f2ccc196bddb07adac42905d7f
+          OLD_DB_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_upgraded"
+        run: |
+          set -e
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "CREATE DATABASE student_lifecycle_upgraded CHARACTER SET utf8mb4"
+          git worktree add /tmp/oldtree "$MIGRATION_BASELINE_SHA"
+          # 用基线版本的迁移链把"老库"建起来（依赖仍用 HEAD 已安装的那套）
+          (cd /tmp/oldtree/backend && DATABASE_URL="$OLD_DB_URL" python -m alembic upgrade head)
+          (cd /tmp/oldtree/backend && DATABASE_URL="$OLD_DB_URL" python -m alembic current)
+          # 再用 HEAD 的迁移链把这个老库升到最新
+          DATABASE_URL="$OLD_DB_URL" python -m alembic upgrade head
+          DATABASE_URL="$OLD_DB_URL" python -m alembic current
+          python ../scripts/check/dump-mysql-schema.py \
+            --url "$OLD_DB_URL" --out /tmp/schema-upgraded.txt
+      - name: 比对两条安装路径的库结构（不一致即不得发版）
+        run: |
+          python ../scripts/check/compare-schema-dumps.py \
+            --upgraded /tmp/schema-upgraded.txt --fresh /tmp/schema-fresh.txt
+      - name: 上传两条路径的结构快照
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-path-schemas-${{ github.sha }}
+          path: |
+            /tmp/schema-fresh.txt
+            /tmp/schema-upgraded.txt
+          if-no-files-found: warn
+          retention-days: 14
       - name: Stage C1 学籍事实 reconciliation 归零
         run: python scripts/audit_stage_c1_academic_facts.py
       - name: 上传 Stage C1 reconciliation 证据

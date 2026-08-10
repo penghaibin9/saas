@@ -28,8 +28,11 @@ def _tenant_model_names() -> set[str]:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     try:
         from app.db.base import Base  # noqa: WPS433
-    except Exception:  # noqa: BLE001 — 拿不到 ORM 时退化为"全部当作租户模型"（更保守）
-        return set()
+    except Exception as exc:  # noqa: BLE001
+        # 不能静默退化：拿不到 ORM 就分不清租户表和控制面表，基线会整体错位，
+        # 门禁要么全放行要么全拦住，两种都比直接报错更坏。
+        raise SystemExit(
+            f"无法加载 ORM 模型，租户门禁无法判定（请在装好后端依赖的环境运行）：{exc}")
     names = set()
     for mapper in Base.registry.mappers:
         model = mapper.class_
