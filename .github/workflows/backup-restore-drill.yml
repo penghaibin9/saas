@@ -2,7 +2,6 @@ name: Backup restore drill
 
 on:
   schedule:
-    # Weekly full-stack recovery evidence. Disposable CI infrastructure only.
     - cron: '45 18 * * 0'
   workflow_dispatch:
 
@@ -15,9 +14,9 @@ concurrency:
 
 jobs:
   full-restore-drill:
-    name: Encrypted offsite backup -> isolated MySQL -> application readiness
+    name: Offsite backup -> isolated MySQL -> application readiness
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 60
     services:
       mysql:
         image: mysql:8.0
@@ -66,7 +65,6 @@ jobs:
       BACKUP_REQUIRE_OFFSITE: 'true'
       BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-offsite-drill
       BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
-      BACKUP_REQUIRE_ENCRYPTION: 'true'
       MAX_BACKUP_AGE_SECONDS: '3600'
       MAX_RESTORE_SECONDS: '900'
       REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job
@@ -82,26 +80,19 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
-      - name: Install MySQL client, rclone, age and backend dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-mysql-client rclone age
+          sudo apt-get install -y default-mysql-client rclone
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-      - name: Create ephemeral recovery identity
-        run: |
-          set -euo pipefail
-          age-keygen -o /tmp/restore-drill.agekey
-          chmod 600 /tmp/restore-drill.agekey
-          echo "BACKUP_AGE_RECIPIENT=$(age-keygen -y /tmp/restore-drill.agekey)" >> "$GITHUB_ENV"
-          echo "BACKUP_AGE_IDENTITY_FILE=/tmp/restore-drill.agekey" >> "$GITHUB_ENV"
       - name: Validate governance contracts
         run: |
           python scripts/check/data-governance-contracts.py
           bash -n deploy/backup/backup-mysql.sh
           bash -n deploy/backup/backup-runner.sh
           bash -n deploy/backup/restore-drill.sh
-      - name: Build source database through the current migration chain
+      - name: Build source database through current migrations
         working-directory: backend
         run: |
           mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
@@ -110,22 +101,13 @@ jobs:
           EXPECTED="$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_source.alembic_version LIMIT 1')"
           test -n "$EXPECTED"
           echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
-      - name: Produce upload evidence and verified encrypted offsite backup set
+      - name: Produce verified offsite backup set
         run: |
           mkdir -p "$UPLOAD_DIR"
           printf 'restore-drill-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
           rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           bash deploy/backup/backup-runner.sh
-      - name: Verify only encrypted data artifacts were committed offsite
-        run: |
-          set -euo pipefail
-          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'db_*.sql.gz.age' -print -quit)"
-          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'uploads_*.tar.gz.age' -print -quit)"
-          if find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f \( -name 'db_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -print -quit | grep -q .; then
-            echo '::error::unencrypted backup artifact reached offsite storage'
-            exit 1
-          fi
       - name: Stage restore only from offsite objects
         run: |
           set -euo pipefail
@@ -137,9 +119,9 @@ jobs:
           test -s "$MANIFEST"
           test -s "${MANIFEST}.sha256"
           echo "RESTORE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
-      - name: Restore encrypted offsite set into disposable database
+      - name: Restore offsite set into disposable database
         run: bash deploy/backup/restore-drill.sh "$RESTORE_MANIFEST" backup_restore_drill
-      - name: Verify Alembic state on restored database
+      - name: Verify Alembic state
         working-directory: backend
         env:
           DB_NAME: backup_restore_drill
@@ -162,7 +144,7 @@ jobs:
           done
           cat /tmp/restore-drill-backend.log
           exit 1
-      - name: Verify readiness and restored tenant identities
+      - name: Verify readiness and tenant identities
         run: |
           curl -fsS -H "X-Ops-Token: $INTERNAL_OPS_TOKEN" http://127.0.0.1:8000/health/ready > /tmp/ready.json
           python - <<'PY'
@@ -188,14 +170,10 @@ jobs:
 
           demo = login('demo-school', 'admin')
           sandbox = login('sandbox-school', 'admin2')
-          demo_data = demo.get('data') or {}
-          sandbox_data = sandbox.get('data') or {}
-          assert demo_data != sandbox_data, (demo_data, sandbox_data)
-          print('restore_login_demo=ok restore_login_sandbox=ok')
+          assert (demo.get('data') or {}) != (sandbox.get('data') or {})
           PY
       - name: Verify recovery evidence integrity
         run: |
-          grep -Eq '^encryption_format=age$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
           cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
           sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"

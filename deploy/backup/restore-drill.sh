@@ -17,15 +17,6 @@ MIN_RESTORE_INDEXES="${MIN_RESTORE_INDEXES:-1}"
 MIN_RESTORE_FOREIGN_KEYS="${MIN_RESTORE_FOREIGN_KEYS:-0}"
 MIN_ACTIVE_TENANTS="${MIN_ACTIVE_TENANTS:-0}"
 RESTORE_EVIDENCE_FILE="${RESTORE_EVIDENCE_FILE:-}"
-BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-}"
-ALLOW_LEGACY_UNENCRYPTED_RESTORE="${ALLOW_LEGACY_UNENCRYPTED_RESTORE:-false}"
-
-is_true() {
-  case "${1,,}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 
 case "$DB_HOST" in
   127.0.0.1|localhost|::1) ;;
@@ -44,23 +35,21 @@ fi
 
 test -s "$manifest_file"
 backup_dir="$(cd "$(dirname "$manifest_file")" && pwd)"
-if [ -f "${manifest_file}.sha256" ]; then
-  (
-    cd "$backup_dir"
-    sha256sum -c "$(basename "${manifest_file}.sha256")"
-  )
-else
+if [ ! -f "${manifest_file}.sha256" ]; then
   echo "restore drill requires manifest checksum sidecar: ${manifest_file}.sha256" >&2
   exit 1
 fi
+(
+  cd "$backup_dir"
+  sha256sum -c "$(basename "${manifest_file}.sha256")"
+)
 manifest_sha256="$(sha256sum "$manifest_file" | awk '{print $1}')"
 
 mapfile -t fields < <(python3 - "$manifest_file" <<'PY'
 import json, sys
 from pathlib import Path
 m = json.load(open(sys.argv[1], encoding="utf-8"))
-schema = int(m.get("schemaVersion", 0))
-if schema not in {1, 2}:
+if m.get("schemaVersion") != 1:
     raise SystemExit("unsupported manifest schema")
 
 def safe_name(value):
@@ -70,9 +59,6 @@ def safe_name(value):
         raise SystemExit(f"unsafe manifest filename: {value!r}")
     return value
 
-enc = m.get("encryption") or {}
-fmt = enc.get("format") if schema >= 2 else "none"
-print(schema)
 print(m.get("backupSetId") or "")
 print(int(m["createdAtEpoch"]))
 print(safe_name(m["database"]["file"]))
@@ -80,31 +66,17 @@ print(m["database"]["sha256"])
 print(safe_name(m["uploads"].get("file")))
 print(m["uploads"].get("sha256") or "")
 print("true" if m["uploads"].get("required") else "false")
-print(fmt or "none")
 PY
 )
 
-schema_version="${fields[0]}"
-backup_set_id="${fields[1]}"
-created_epoch="${fields[2]}"
-db_name="${fields[3]}"
-db_hash="${fields[4]}"
-upload_name="${fields[5]}"
-upload_hash="${fields[6]}"
-upload_required="${fields[7]}"
-encryption_format="${fields[8]}"
+backup_set_id="${fields[0]}"
+created_epoch="${fields[1]}"
+db_name="${fields[2]}"
+db_hash="${fields[3]}"
+upload_name="${fields[4]}"
+upload_hash="${fields[5]}"
+upload_required="${fields[6]}"
 db_file="$backup_dir/$db_name"
-
-if [ "$encryption_format" = "age" ]; then
-  command -v age >/dev/null 2>&1 || { echo "age is required to restore encrypted backup sets" >&2; exit 1; }
-  if [ -z "$BACKUP_AGE_IDENTITY_FILE" ] || [ ! -r "$BACKUP_AGE_IDENTITY_FILE" ]; then
-    echo "BACKUP_AGE_IDENTITY_FILE must point to a readable recovery identity for age-encrypted backups" >&2
-    exit 1
-  fi
-elif ! is_true "$ALLOW_LEGACY_UNENCRYPTED_RESTORE"; then
-  echo "unencrypted backup restore is blocked; set ALLOW_LEGACY_UNENCRYPTED_RESTORE=true only for controlled legacy recovery" >&2
-  exit 1
-fi
 
 verify_object() {
   local name="$1" expected_hash="$2"
@@ -118,25 +90,16 @@ verify_object() {
   test "$(sha256sum "$file" | awk '{print $1}')" = "$expected_hash"
 }
 
-decrypt_to_stdout() {
-  local file="$1"
-  if [ "$encryption_format" = "age" ]; then
-    age --decrypt -i "$BACKUP_AGE_IDENTITY_FILE" "$file"
-  else
-    cat "$file"
-  fi
-}
-
 verify_object "$db_name" "$db_hash"
-decrypt_to_stdout "$db_file" | gzip -t
+gzip -t "$db_file"
 
 upload_entry_count=0
 if [ -n "$upload_name" ]; then
   verify_object "$upload_name" "$upload_hash"
-  decrypt_to_stdout "$backup_dir/$upload_name" | tar -tzf - >/dev/null
+  tar -tzf "$backup_dir/$upload_name" >/dev/null
   upload_restore_dir="$(mktemp -d "${TMPDIR:-/tmp}/school-lifecycle-upload-restore.XXXXXX")"
   trap 'rm -rf -- "$upload_restore_dir"' EXIT
-  decrypt_to_stdout "$backup_dir/$upload_name" | tar -xzf - -C "$upload_restore_dir"
+  tar -xzf "$backup_dir/$upload_name" -C "$upload_restore_dir"
   upload_entry_count="$(find "$upload_restore_dir" -mindepth 1 -print | wc -l | tr -d ' ')"
   if [ "$upload_entry_count" -lt 1 ]; then
     echo "upload archive restored no entries" >&2
@@ -158,9 +121,8 @@ MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER")
 export MYSQL_PWD="$DB_PASSWORD"
 restore_started_epoch="$(date +%s)"
 "${MYSQL[@]}" -e "DROP DATABASE IF EXISTS \`${drill_db}\`; CREATE DATABASE \`${drill_db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-decrypt_to_stdout "$db_file" | gunzip -c | "${MYSQL[@]}" "$drill_db"
+gunzip -c "$db_file" | "${MYSQL[@]}" "$drill_db"
 restore_seconds="$(( $(date +%s) - restore_started_epoch ))"
-
 if [ "$restore_seconds" -gt "$MAX_RESTORE_SECONDS" ]; then
   echo "restore exceeded RTO threshold: restore=${restore_seconds}s max=${MAX_RESTORE_SECONDS}s" >&2
   exit 1
@@ -215,8 +177,6 @@ if [ -n "$RESTORE_EVIDENCE_FILE" ]; then
 backup_set_id=$backup_set_id
 manifest=$(basename "$manifest_file")
 manifest_sha256=$manifest_sha256
-manifest_schema_version=$schema_version
-encryption_format=$encryption_format
 backup_age_seconds=$backup_age_seconds
 max_backup_age_seconds=$MAX_BACKUP_AGE_SECONDS
 restore_seconds=$restore_seconds
@@ -240,4 +200,4 @@ EVIDENCE
 fi
 
 unset MYSQL_PWD
-echo "restore drill complete: db=${drill_db} encryption=${encryption_format} tables=${table_count} indexes=${index_count} foreign_keys=${foreign_key_count} tenants=${tenant_rows} uploads=${upload_entry_count} restore_seconds=${restore_seconds} backup_age_seconds=${backup_age_seconds}"
+echo "restore drill complete: db=${drill_db} tables=${table_count} indexes=${index_count} foreign_keys=${foreign_key_count} tenants=${tenant_rows} uploads=${upload_entry_count} restore_seconds=${restore_seconds} backup_age_seconds=${backup_age_seconds}"

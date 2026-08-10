@@ -22,9 +22,9 @@ concurrency:
 
 jobs:
   contracts-and-runtime:
-    name: Encrypted backup / offsite / restore fail-closed contracts
+    name: Backup set / offsite / restore fail-closed contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.0
@@ -54,7 +54,6 @@ jobs:
       BACKUP_REQUIRE_OFFSITE: 'true'
       BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-governance-offsite
       BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
-      BACKUP_REQUIRE_ENCRYPTION: 'true'
       MAX_BACKUP_AGE_SECONDS: '3600'
       MAX_RESTORE_SECONDS: '300'
       REQUIRED_RESTORE_TABLES: alembic_version,t_tenant
@@ -65,17 +64,10 @@ jobs:
       RESTORE_EVIDENCE_FILE: /tmp/data-governance-restore-evidence.txt
     steps:
       - uses: actions/checkout@v4
-      - name: Install MySQL client, rclone and age
+      - name: Install MySQL client and rclone
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-mysql-client rclone age
-      - name: Create ephemeral recovery identity
-        run: |
-          set -euo pipefail
-          age-keygen -o /tmp/data-governance.agekey
-          chmod 600 /tmp/data-governance.agekey
-          echo "BACKUP_AGE_RECIPIENT=$(age-keygen -y /tmp/data-governance.agekey)" >> "$GITHUB_ENV"
-          echo "BACKUP_AGE_IDENTITY_FILE=/tmp/data-governance.agekey" >> "$GITHUB_ENV"
+          sudo apt-get install -y default-mysql-client rclone
       - name: Validate static governance contracts
         run: |
           python scripts/check/data-governance-contracts.py
@@ -96,13 +88,6 @@ jobs:
           SQL
           mkdir -p "$UPLOAD_DIR"
           printf 'governance-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
-      - name: Prove encryption fails closed
-        run: |
-          set -euo pipefail
-          if BACKUP_AGE_RECIPIENT= BACKUP_REQUIRE_ENCRYPTION=true bash deploy/backup/backup-mysql.sh; then
-            echo '::error::encrypted backup unexpectedly succeeded without a recovery recipient'
-            exit 1
-          fi
       - name: Prove uploads fail closed
         run: |
           set -euo pipefail
@@ -117,7 +102,7 @@ jobs:
             echo '::error::production runner unexpectedly succeeded without offsite storage'
             exit 1
           fi
-      - name: Produce manifest-committed encrypted offsite backup
+      - name: Produce manifest-committed offsite backup
         run: |
           rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" "$UPLOAD_DIR"
@@ -126,24 +111,13 @@ jobs:
           test -s "$MANIFEST"
           test -s "${MANIFEST}.sha256"
           echo "MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
-      - name: Verify only encrypted data artifacts were committed offsite
-        run: |
-          set -euo pipefail
-          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'db_*.sql.gz.age' -print -quit)"
-          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'uploads_*.tar.gz.age' -print -quit)"
-          if find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f \( -name 'db_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -print -quit | grep -q .; then
-            echo '::error::unencrypted backup artifact reached offsite storage'
-            exit 1
-          fi
-      - name: Restore from the encrypted offsite committed set
+      - name: Restore from the offsite committed set
         env:
           EXPECTED_ALEMBIC_VERSION: governance_contract
         run: bash deploy/backup/restore-drill.sh "$MANIFEST" governance_restore_test
-      - name: Verify upload payload and tamper-evident recovery evidence
+      - name: Verify recovery evidence integrity
         run: |
-          grep -Eq '^encryption_format=age$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^upload_entry_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
           cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
           sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"
-          cat "$RESTORE_EVIDENCE_FILE"

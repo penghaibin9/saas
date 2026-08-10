@@ -23,12 +23,10 @@ def require(path: str, *needles: str) -> None:
 require(
     "deploy/backup/backup-mysql.sh",
     "REQUIRE_UPLOAD_BACKUP",
-    "BACKUP_REQUIRE_ENCRYPTION",
-    "BACKUP_AGE_RECIPIENT",
-    "schemaVersion\": 2",
     "MIN_LOCAL_BACKUP_SETS",
     "retention_pruned_backup_set",
     "manifest_",
+    "schemaVersion",
     "sha256sum",
 )
 require(
@@ -36,8 +34,6 @@ require(
     "BACKUP_REQUIRE_OFFSITE",
     "BACKUP_REQUIRE_IMMUTABLE_REMOTE",
     "BACKUP_IMMUTABLE_REMOTE_CONFIRMED",
-    "BACKUP_REQUIRE_ENCRYPTION",
-    "BACKUP_AGE_RECIPIENT",
     "RCLONE_CONFIG",
     " cat ",
     "manifest is copied last",
@@ -46,12 +42,10 @@ require(
 require(
     "deploy/backup/restore-drill.sh",
     "restore drill refuses non-local",
-    "BACKUP_AGE_IDENTITY_FILE",
-    "ALLOW_LEGACY_UNENCRYPTED_RESTORE",
     "manifest checksum sidecar",
+    "manifest_sha256",
     "MAX_BACKUP_AGE_SECONDS",
     "MAX_RESTORE_SECONDS",
-    "manifest_sha256",
     "upload_entry_count",
 )
 require(
@@ -59,7 +53,6 @@ require(
     "REQUIRE_UPLOAD_BACKUP=1",
     "BACKUP_REQUIRE_OFFSITE=true",
     "BACKUP_REQUIRE_IMMUTABLE_REMOTE=true",
-    "BACKUP_REQUIRE_ENCRYPTION=true",
     "ProtectHome=true",
     "RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf",
 )
@@ -72,26 +65,22 @@ require(
 require(
     "deploy/env/backup.env.example",
     "MIN_LOCAL_BACKUP_SETS=8",
-    "BACKUP_REQUIRE_ENCRYPTION=true",
-    "BACKUP_AGE_RECIPIENT=",
     "MAX_BACKUP_AGE_SECONDS=21600",
     "MAX_RESTORE_SECONDS=7200",
     "BACKUP_IMMUTABLE_REMOTE_CONFIRMED=false",
 )
 require(
     ".github/workflows/data-governance-contracts.yml",
-    "age-keygen",
-    "BACKUP_REQUIRE_ENCRYPTION: 'true'",
-    "BACKUP_AGE_IDENTITY_FILE",
-    "Prove encryption fails closed",
+    "Prove uploads fail closed",
+    "Prove local-only backup is rejected",
+    "manifest_sha256",
     "sha256sum -c",
 )
 require(
     ".github/workflows/backup-restore-drill.yml",
-    "age-keygen",
-    "BACKUP_REQUIRE_ENCRYPTION: 'true'",
-    "BACKUP_AGE_IDENTITY_FILE",
-    "Verify only encrypted data artifacts were committed offsite",
+    "Stage restore only from offsite objects",
+    "Verify recovery evidence integrity",
+    "manifest_sha256",
 )
 require(
     ".github/dependabot.yml",
