@@ -41,6 +41,10 @@ jobs:
         run: node scripts/check/check-formal-route-dependency-graph.mjs
       - name: Stage C1/C2/C3 学籍事实/历史/不可变门禁
         run: python scripts/check/check-stage-c1-academic-fact-bypass.py
+      - name: 生产 Nginx 安全合同（所有部署方式同一条基线）
+        run: python scripts/check/check-nginx-security-contract.py
+      - name: 禁止新增 create_all 型迁移
+        run: python scripts/check/check-migration-time-travel.py
 
   internship-production-gates:
     name: 岗位实习生产闸门
@@ -315,6 +319,9 @@ jobs:
         run: |
           set -e
           mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          # 与生产一致的排序规则（见 deploy/docker/docker-compose.mysql.yml）
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "ALTER DATABASE student_lifecycle_migrated CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
           python -m alembic upgrade head
           python -m alembic current
       - name: 迁移库与 ORM 模型一致性
@@ -330,7 +337,7 @@ jobs:
       # docs/06-开发施工与质量验收/迁移基线重建-待办.md）。这里先冻结现状、禁止变坏。
       - name: 禁止新增 create_all 型迁移
         run: python ../scripts/check/check-migration-time-travel.py
-      - name: 上传全新安装的结构快照（供与真实学校库比对）
+      - name: 上传全新安装的结构快照
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -370,3 +377,89 @@ jobs:
             tests/test_funding_package10_closeout.py \
             --timeout=180 --timeout-method=signal --durations=30
 
+  # ── 升级路径收敛门禁 ────────────────────────────────────────────────
+  # 老学校一路升上来的库，必须等于新学校全新装出来的库。
+  #
+  # 2026-08-10：此前不收敛（245/427 张表、3583 处列/索引差异），根因是
+  # 0001 用 metadata.create_all 抢建了 291 张本该由正式迁移建的表，
+  # 后续正式建表迁移全部命中"表已存在就 return"。已修复：
+  #   - 0001 不再抢建那 291 张表（清单冻结在迁移文件里）；
+  #   - 新增 20260810_schema_reconcile 把既有老库补齐到同一结构。
+  # 当前实测差异 = 0，本门禁应保持绿；再变红说明又有人往回写了。
+  migration-path-convergence:
+    name: 迁移升级路径收敛门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: conv_fresh
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: 全新安装路径
+        env:
+          FRESH_DB_URL: "mysql+pymysql://root:root@127.0.0.1:3306/conv_fresh?charset=utf8mb4"
+        run: |
+          set -e
+          mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          # 排序规则必须与生产一致（deploy/docker/docker-compose.mysql.yml 声明
+          # collation-server=utf8mb4_unicode_ci）。用 MySQL 8 默认的 0900_ai_ci
+          # 建库会让比对结果掺进环境噪音，门禁结论就不可信了。
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "ALTER DATABASE conv_fresh CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+          DATABASE_URL="$FRESH_DB_URL" python -m alembic upgrade head
+          python ../scripts/check/dump-mysql-schema.py \
+            --url "$FRESH_DB_URL" --out /tmp/schema-fresh.txt
+      - name: 老库升级路径
+        env:
+          # 2026-07-14 的基线，是能被完整重放的最早 commit 之一
+          #（更早的 commit 迁移链本身就断：0015 revision 缺失 / alembic_version
+          #  列宽不足 33 字符 / 多 head，均已实测）。
+          MIGRATION_BASELINE_SHA: 50d6a2f0043b98d6a018fe7be498cd197d406d54
+          OLD_DB_URL: "mysql+pymysql://root:root@127.0.0.1:3306/conv_upgraded?charset=utf8mb4"
+        run: |
+          set -e
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "CREATE DATABASE conv_upgraded CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+          git worktree add /tmp/oldtree "$MIGRATION_BASELINE_SHA"
+          (cd /tmp/oldtree/backend && DATABASE_URL="$OLD_DB_URL" python -m alembic upgrade head)
+          DATABASE_URL="$OLD_DB_URL" python -m alembic upgrade head
+          DATABASE_URL="$OLD_DB_URL" python -m alembic current
+          python ../scripts/check/dump-mysql-schema.py \
+            --url "$OLD_DB_URL" --out /tmp/schema-upgraded.txt
+      - name: 比对两条安装路径的库结构
+        run: |
+          python ../scripts/check/compare-schema-dumps.py \
+            --upgraded /tmp/schema-upgraded.txt --fresh /tmp/schema-fresh.txt
+      - name: 上传两条路径的结构快照
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-path-schemas-${{ github.sha }}
+          path: |
+            /tmp/schema-fresh.txt
+            /tmp/schema-upgraded.txt
+          if-no-files-found: warn
+          retention-days: 30

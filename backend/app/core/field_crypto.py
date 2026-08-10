@@ -97,7 +97,8 @@ def hash_sensitive(value, field_type: str = "generic") -> str | None:
 
     刻意**不**随 FIELD_ENCRYPTION_KEY 一起轮换：检索哈希一旦变化，历史行的
     检索列就全部失配。它用独立的 SENSITIVE_SEARCH_HMAC_KEY（未配置时回落到
-    字段加密密钥，保持既有哈希继续命中）。要换这把钥匙必须整表重算检索列。
+    字段加密密钥，仅兼容尚未开始密钥轮换的旧部署）。一旦存在历史加密密钥，
+    启动安全检查会要求显式固定 SENSITIVE_SEARCH_HMAC_KEY，禁止搜索哈希随主钥漂移。
     """
     if value is None or value == "":
         return None
@@ -197,18 +198,29 @@ def key_rotation_status() -> dict:
 
 
 def assert_field_encryption_safe() -> None:
-    """生产禁止默认字段加密密钥；历史密钥必须是可用的 Fernet 密钥。"""
+    """校验字段加密与检索哈希的生产/轮换安全合同。"""
     from app.core.config import settings
-    for kid, key in settings.field_encryption_previous_keys.items():
+    previous_keys = settings.field_encryption_previous_keys
+    for kid, key in previous_keys.items():
         try:
             Fernet(key.encode())
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 f"FIELD_ENCRYPTION_PREVIOUS_KEYS 中版本 {kid} 不是合法 Fernet 密钥：{exc}") from exc
+
+    # 一旦 previous keys 非空就说明已经进入加密密钥轮换。若此时仍让搜索 HMAC
+    # 回落到当前 FIELD_ENCRYPTION_KEY，新写哈希会立刻改钥，而历史 hash 列不会重算，
+    # 去重/手机号身份证检索会静默失配。轮换前必须先把原 HMAC key 显式钉住。
+    if previous_keys and not (settings.SENSITIVE_SEARCH_HMAC_KEY or "").strip():
+        raise RuntimeError(
+            "检测到 FIELD_ENCRYPTION_PREVIOUS_KEYS（已进入字段加密密钥轮换），"
+            "必须先显式设置稳定的 SENSITIVE_SEARCH_HMAC_KEY；若此前一直留空，"
+            "请在换 FIELD_ENCRYPTION_KEY 前把原 FIELD_ENCRYPTION_KEY 的值固定到该项")
+
     if not settings.is_prod:
         return
     key = (settings.field_encryption_key or "").strip()
     if not key or key == _DEFAULT_DEV_KEY or len(key) < 32:
         raise RuntimeError("生产环境必须设置独立 FIELD_ENCRYPTION_KEY（非开发默认值，长度合格）")
-    if _DEFAULT_DEV_KEY in settings.field_encryption_previous_keys.values():
+    if _DEFAULT_DEV_KEY in previous_keys.values():
         raise RuntimeError("生产环境 FIELD_ENCRYPTION_PREVIOUS_KEYS 不得包含开发默认密钥")

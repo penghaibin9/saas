@@ -24,12 +24,14 @@ server {
 
     # ② index.html 不缓存
     location = /index.html {
+        include /etc/nginx/conf.d/security-headers.conf;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
     # ③ 静态资源长缓存
     location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
         expires 1y;
+        include /etc/nginx/conf.d/security-headers.conf;
         add_header Cache-Control "public, max-age=31536000, immutable";
         access_log off;
     }
@@ -41,10 +43,9 @@ server {
     gzip_vary on;
     gzip_types text/plain text/css application/json application/javascript image/svg+xml;
 
-    # ⑤ 基础安全响应头
-    add_header X-Frame-Options        "SAMEORIGIN"                        always;
-    add_header X-Content-Type-Options "nosniff"                           always;
-    add_header Referrer-Policy        "strict-origin-when-cross-origin"   always;
+    # ⑤ 安全基线：统一走安全合同片段，不在此处各写一份
+    # 前提：http{} 里已 include security-http.conf（提供 $csp_header 与 limit_req_zone）。
+    include /etc/nginx/conf.d/security-server.conf;
 
     # ⑥ 【预留】API 反向代理（后端未接入，保持注释；后端接入后同 pc-frontend 示例）
     # location /api/ {
