@@ -80,7 +80,7 @@ test.describe.serial('Golden PC visual evidence', () => {
     await captureGolden(page, testInfo, 'golden-workbench-b')
   })
 
-  test('Student master · 1440x1000 success-state evidence', async ({ page }, testInfo) => {
+  test('Student master · Screenshot G · 1440x1000 success-state evidence', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await page.goto(`${config.staffBaseUrl}/admin/student/list`)
@@ -90,10 +90,10 @@ test.describe.serial('Golden PC visual evidence', () => {
     await expect(page.locator('body')).not.toContainText('暂无学生主档访问权限')
     await expect(page.locator('body')).not.toContainText('正在加载数据…')
 
-    await captureGolden(page, testInfo, 'golden-student-master-b')
+    await captureGolden(page, testInfo, 'golden-student-master-g')
   })
 
-  test('Selection console · 1440x1000 populated success-state evidence', async ({ page }, testInfo) => {
+  test('Selection console · Screenshot G · 1440x1000 populated success-state evidence', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(config.multiRole)
@@ -121,6 +121,6 @@ test.describe.serial('Golden PC visual evidence', () => {
     await expect(page.locator('.aasel-batch').filter({ hasText: batchName })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('正在加载数据…')
 
-    await captureGolden(page, testInfo, 'golden-selection-console-b')
+    await captureGolden(page, testInfo, 'golden-selection-console-g')
   })
 })
