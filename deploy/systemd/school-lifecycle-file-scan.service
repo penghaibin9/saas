@@ -1,0 +1,34 @@
+[Unit]
+Description=School Lifecycle file security scan worker
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current/backend
+EnvironmentFile=/etc/school-lifecycle/backend.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=/opt/school-lifecycle/current/backend
+# 正式环境高风险附件必须先通过 ClamAV；依赖不可用时 worker 拒绝启动，避免“上传后永久卡住”被误认为正常。
+ExecStartPre=/opt/school-lifecycle/current/backend/.venv/bin/python /opt/school-lifecycle/current/backend/scripts/check_production_file_scan.py
+ExecStart=/opt/school-lifecycle/current/backend/.venv/bin/python -m app.workers.file_scan_worker
+Restart=always
+RestartSec=10
+TimeoutStartSec=90
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/school-lifecycle/shared/uploads /opt/school-lifecycle/shared/exports
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
