@@ -1,0 +1,52 @@
+version: 2
+reviewedAt: 2026-08-06
+architectureDecision: docs/help/architecture/ADR-001-runtime-content-source.md
+runtime:
+  route: /admin/help
+  routeName: admin-help
+  view: frontend/src/views/admin/help/AdminHelpView.vue
+  model: frontend/src/config/helpCenterModel.js
+  sources:
+    - frontend/src/config/helpContent.js
+    - frontend/src/config/help/
+  visualAssets: frontend/public/help
+  sourceOfTruth: frontend-runtime
+
+governance:
+  root: docs/help
+  sourceOfTruth: governance-and-evidence
+  auditReport: docs/help/AUDIT_REPORT.md
+  coverageMatrix: docs/help/COVERAGE_MATRIX.md
+  styleGuide: docs/help/STYLE_GUIDE.md
+  definitionOfDone: docs/help/maintenance/definition-of-done.md
+  reviewChecklist: docs/help/maintenance/content-review-checklist.md
+  assetInventory: docs/help/assets/inventory.yml
+
+draftRunbooks:
+  - id: onboarding.school-initial-setup
+    title: 学校首次开通后应该先配置什么
+    path: docs/help/getting-started/school-initial-setup.md
+    status: draft
+  - id: student.create
+    title: 如何新增一名学生
+    path: docs/help/modules/student/create-student.md
+    status: draft
+  - id: student.import
+    title: 如何批量导入学生
+    path: docs/help/modules/student/import-students.md
+    status: draft
+  - id: system.permission.troubleshooting
+    title: 为什么看不到菜单、按钮或学生数据
+    path: docs/help/modules/system/data-permission.md
+    status: draft
+  - id: mobile.student-scan-profile
+    title: 如何使用手机扫码采集学生资料
+    path: docs/help/mobile/student-scan-profile.md
+    status: draft
+
+statusPolicy:
+  - draft
+  - reviewed
+  - published
+  - stale
+  - archived
