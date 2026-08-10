@@ -107,7 +107,7 @@ def test_todos_messages_db(client, db_mode):
     """待办/消息正式列表 smoke；不再依赖已下线的 /mock 构造接口。"""
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
-    from app.models.base import User
+    from app.models import User
 
     db = get_sessionmaker()()
     user_id = "990000000000000001"
