@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 29 precisely validated academic nodeids, and 1 rbac09 nodeid.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 45 precisely validated academic nodeids, and 1 rbac09 nodeid.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -88,22 +88,6 @@ tests/test_aa_recognition.py::test_target_already_passed_409
 tests/test_aa_recognition.py::test_target_course_picker_and_attachment
 tests/test_aa_resource_ext.py::test_c1_resource_conflict_booking_overlaps_schedule
 tests/test_aa_resource_ext.py::test_o1_resource_occupancy_aggregates_booking_and_schedule
-tests/test_aa_schedule_change.py::test_c10a_archive_only_terminal_states
-tests/test_aa_schedule_change.py::test_c10b_archive_ignores_active_status_param
-tests/test_aa_schedule_change.py::test_c11_notify_precise_delivery_uses_real_user_id
-tests/test_aa_schedule_change.py::test_c12_notify_gracefully_skips_missing_accounts
-tests/test_aa_schedule_change.py::test_c13_detail_fields_for_notice_print
-tests/test_aa_schedule_change.py::test_c1_adjust_full_chain_applied
-tests/test_aa_schedule_change.py::test_c2_conflict_precheck_rejected
-tests/test_aa_schedule_change.py::test_c3_stop_requires_makeup
-tests/test_aa_schedule_change.py::test_c4_cancel_window
-tests/test_aa_schedule_change.py::test_c5_student_forbidden
-tests/test_aa_schedule_change.py::test_c6_course_scope_denied
-tests/test_aa_schedule_change.py::test_c7_reject_requires_reason
-tests/test_aa_schedule_change.py::test_c8a_conflict_check_none
-tests/test_aa_schedule_change.py::test_c8b_conflict_check_found
-tests/test_aa_schedule_change.py::test_c8c_conflict_check_not_own_task_403
-tests/test_aa_schedule_change.py::test_c9_stats_extended_aggregation
 tests/test_aa_schedule_change_mobile.py::test_cancel_flow_via_mobile
 tests/test_aa_schedule_change_mobile.py::test_conflict_check_and_submit_flow_via_mobile
 tests/test_aa_schedule_change_mobile.py::test_cross_scope_submit_403_via_mobile
@@ -228,5 +212,3 @@ tests/test_student_shadow_dual_read.py::test_unbound_legacy_row_still_editable
 tests/test_students_scope.py::test_counselor_cross_class_detail_and_write_403
 tests/test_students_scope.py::test_counselor_export_scoped
 tests/test_teacher_identity_p0b.py::test_duplicate_name_mentors_cannot_cross_access
-tests/test_teacher_scope.py::test_header_cannot_switch_tenant_with_token
-tests/test_teacher_scope.py::test_mobile_weekly_review_scope_and_conflict
