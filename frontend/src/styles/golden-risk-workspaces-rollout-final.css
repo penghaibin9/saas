@@ -1,9 +1,9 @@
 /* Screenshot B -> C · Student Affairs risk metrics only.
  * Restore the intended five-card desktop rhythm using the real AppMetricCard classes.
- * The student-affairs layout owns a flex-basis on .sa-grid--metrics, so this final
- * pass explicitly takes over display + width + flex sizing for the risk workspace.
+ * The risk page has a stable DOM contract: TaskContextBar is immediately followed by
+ * the metric grid. Use that adjacency as the page anchor instead of a broad :has().
  */
-#app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics {
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
   display: grid !important;
   width: 100% !important;
   max-width: none;
@@ -14,7 +14,7 @@
   margin-bottom: 4px;
 }
 
-#app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics .app-metric-card {
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card {
   min-width: 0;
   min-height: 108px;
   max-height: 112px;
@@ -26,34 +26,34 @@
   box-shadow: 0 14px 30px -30px rgba(15, 40, 90, .6);
 }
 
-#app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics .app-metric-card__title {
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__title {
   font-size: 12.5px;
   line-height: 1.35;
 }
 
-#app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics .app-metric-card__value {
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__value {
   font-size: 30px;
   line-height: 1;
 }
 
-#app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics .app-metric-card__footer {
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__footer {
   min-height: 12px;
 }
 
 @media (max-width: 1280px) {
-  #app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 
 @media (max-width: 860px) {
-  #app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
 @media (max-width: 560px) {
-  #app .base-portal-layout .student-affairs-ui-scope:has(.task-context-bar):has(.sa-grid--metrics):has(.dt) .sa-grid--metrics {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
     grid-template-columns: 1fr !important;
   }
 }
