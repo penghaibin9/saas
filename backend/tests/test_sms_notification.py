@@ -12,10 +12,11 @@ DEMO = 1000000000000000003
 def sms_on():
     """打开 SMS 开关（用 mock provider），测试后还原。"""
     from app.core.config import settings
-    old = settings.SMS_ENABLED
+    old = settings.SMS_ENABLED, settings.SMS_PROVIDER
     settings.SMS_ENABLED = "true"
+    settings.SMS_PROVIDER = "mock"
     yield
-    settings.SMS_ENABLED = old
+    settings.SMS_ENABLED, settings.SMS_PROVIDER = old
 
 
 def _logs_count(tenant_id, result=None):

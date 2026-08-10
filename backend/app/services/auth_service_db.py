@@ -12,7 +12,7 @@ from sqlalchemy import and_, select
 
 from app.core.exceptions import AppException
 from app.core.config import settings
-from app.core.redis_client import cache_delete, cache_get_json, cache_set_json
+from app.core.redis_client import cache_delete, cache_get, cache_get_json, cache_set, cache_set_json
 from app.core.security import create_access_token, hash_password, verify_password
 from app.services.auth_challenge_service import login_guard_key
 from app.core.token_store import (block_jti, issue_refresh, login_locked,
@@ -41,6 +41,17 @@ def _subject_cache_key(user_ctx: dict) -> str:
             f"{user_ctx.get('userId') or '-'}")
 
 
+def _force_revalidate_key(user_id: str | int, tenant_id: str | int) -> str:
+    return f"auth:force-db:{tenant_id}:{user_id}"
+
+
+def force_subject_revalidation(user_id: str | int, tenant_id: str | int) -> None:
+    """密码重置等高危写入前设置；旧 access token 此后绕过 L1 判定并查库比对版本。"""
+    ok = cache_set(_force_revalidate_key(user_id, tenant_id), "1", settings.JWT_EXPIRES_IN)
+    if (settings.is_prod or str(settings.APP_ENV or "").lower() == "staging") and not ok:
+        raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
+
+
 def invalidate_subject_cache(user_id: str | int, tenant_id: str | int,
                              context_id: str | None = None) -> None:
     """Invalidate a known subject cache entry after security-sensitive writes."""
@@ -54,6 +65,9 @@ def invalidate_tenant_subject_caches(tenant_id: str | int) -> int:
 
 
 def _subject_cache_matches(user_ctx: dict) -> bool:
+    if cache_get(_force_revalidate_key(
+            user_ctx.get("userId") or "-", user_ctx.get("tenantId") or "0")) == "1":
+        return False
     cached = cache_get_json(_subject_cache_key(user_ctx))
     if not isinstance(cached, dict):
         return False

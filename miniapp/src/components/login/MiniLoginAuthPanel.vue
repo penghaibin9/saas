@@ -28,6 +28,7 @@
       <text class="section-title">使用{{ isTeacher ? '工号' : '学号' }}和密码登录</text>
       <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
       <input v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
+      <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
       <view v-if="accountCaptcha.required" class="captcha-row"><input v-model="accountCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="accountCaptcha.image" mode="aspectFill" @click="loadCaptcha('account')" /></view>
       <view class="tenant-box" @click="tenantOpen = !tenantOpen">
         <view><text class="tenant-box__title">学校编码</text><text class="tenant-box__hint">仅多校同账号时填写</text></view><text>{{ tenantOpen ? '收起' : '填写' }}</text>
@@ -254,6 +255,7 @@ export default {
     },
     focusAccount() { toast('请使用学校分配的学号和密码登录办理迎新事项') },
     switchEntry() { relaunch('/pages/login/index') },
+    openPasswordReset() { go(`/pages/login/reset/index?entry=${this.isTeacher ? 'teacher' : 'student'}`) },
     // 正文已内置在小程序包内（见 config/legalDocs.js），无需依赖外链和业务域名配置，
     // 因此任何环境下都能打开，不会再出现"未配置链接"的死路。
     openDoc(kind) {
@@ -272,6 +274,7 @@ export default {
 button::after { border: none; }.wx-button,.account-button { display: flex; align-items: center; justify-content: center; height: 47px; margin: 18px 0 0; border: 0; border-radius: 11px; color: #fff; background: #07c160; font-size: 14px; font-weight: 600; }.account-button { background: linear-gradient(135deg, #15948b, #0f766e); }.is-teacher .account-button { background: linear-gradient(135deg, #2f70ea, #1f56c9); }.wx-button[disabled],.account-button[disabled] { opacity: .62; }
 .divider { display: flex; align-items: center; gap: 11px; margin: 18px 0; color: #9aa7b8; font-size: 10px; }.divider view { flex: 1; height: 1px; background: #e7ebf0; }.section-title { display: block; margin-bottom: 10px; color: #40536d; font-size: 12px; font-weight: 600; }.field { box-sizing: border-box; width: 100%; height: 46px; margin-top: 10px; padding: 0 13px; border: 1px solid #dce4ed; border-radius: 10px; color: #10233f; background: #f9fbfd; font-size: 13px; }.field__placeholder { color: #9aa7b8; }.field--tenant { margin-top: 8px; }
 .tenant-box { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; color: #536780; font-size: 11px; }.tenant-box view { display: flex; flex-direction: column; }.tenant-box__title { color: #40536d; font-size: 12px; font-weight: 600; }.tenant-box__hint { margin-top: 2px; color: #9aa7b8; font-size: 9px; }
+.forgot-entry { display: block; margin-top: 10px; color: #0f766e; text-align: right; font-size: 11px; }
 .agreement { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 0; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box.on { border-color: #15948b; background: #15948b; }.is-teacher .agreement__box.on { border-color: #2563eb; background: #2563eb; }.agreement__link { color: #15948b; }.is-teacher .agreement__link { color: #2563eb; }
 .orientation-card,.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }.orientation-card__badge { color: #0f766e; font-size: 10px; font-weight: 600; }.orientation-card__title { margin-top: 5px; font-size: 14px; font-weight: 700; }.orientation-card__desc { margin-top: 4px; color: #536780; font-size: 10px; }
 .feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row > view { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.is-teacher .feature-row__mark { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }

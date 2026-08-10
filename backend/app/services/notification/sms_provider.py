@@ -12,6 +12,8 @@ class SmsResult:
     request_id: str | None = None
     error: str | None = None
     provider: str | None = None
+    provider_code: str | None = None
+    retryable: bool = True
 
 
 class SmsProvider:

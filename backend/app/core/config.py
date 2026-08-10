@@ -161,6 +161,13 @@ class Settings(BaseSettings):
     SMS_RATE_LIMIT_PER_MINUTE: int = 30 # 每租户每分钟发送上限
     SMS_MAX_RETRY: int = 2              # 发送失败重试次数
     SMS_TEMPLATE_PASSWORD_RESET: str = ""  # 找回密码专用模板；不得复用于登录
+    SMS_TENCENT_SDK_APP_ID: str = ""   # 腾讯云短信应用 SDK AppID（不是账号 AppID）
+    SMS_TENCENT_REGION: str = "ap-guangzhou"
+    SMS_REQUEST_TIMEOUT_SECONDS: int = 5
+    PASSWORD_RESET_CODE_TTL_SECONDS: int = 300
+    PASSWORD_RESET_TOKEN_TTL_SECONDS: int = 300
+    PASSWORD_RESET_RESEND_SECONDS: int = 60
+    PASSWORD_RESET_MAX_VERIFY_ATTEMPTS: int = 5
 
     model_config = SettingsConfigDict(
         env_file=".env",
