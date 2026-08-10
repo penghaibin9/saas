@@ -26,6 +26,16 @@ function runId() {
   return String(raw).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
 }
 
+function numericUserIdFromToken(token, loginName) {
+  const parts = String(token || '').split('.')
+  if (parts.length < 2) throw new Error(`Golden counselor ${loginName} access token is not a JWT`)
+  const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+  const raw = String(payload.userId || payload.sub || '')
+  const matched = raw.match(/(\d+)$/)
+  if (!matched) throw new Error(`Golden counselor ${loginName} JWT has no numeric User.id: ${raw}`)
+  return matched[1]
+}
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -68,11 +78,8 @@ async function ensureLeaveCounselorAssignment() {
   const classId = String(profile.classId || profile.class?.id || '')
   if (!classId) throw new Error(`Golden leave student ${studentB.username} has no classId`)
 
-  const teachers = items(await admin.get('/directory/teachers', { keyword: counselorA.username }))
-  const teacher = teachers.find((item) => String(item.loginName || '') === counselorA.username)
-    || teachers.find((item) => String(item.label || item.name || '').includes('辅导员A'))
-  const userId = String(teacher?.value || teacher?.id || teacher?.userId || '')
-  if (!userId) throw new Error(`Golden counselor ${counselorA.username} not found in teacher directory`)
+  const counselorApi = await loginApi(counselorA)
+  const userId = numericUserIdFromToken(counselorApi.token, counselorA.username)
 
   const active = items(await admin.get('/student-affairs/counselor-assignments', {
     classId, userId, status: 'ACTIVE', page: 1, pageSize: 50
