@@ -69,6 +69,7 @@ require(
     "BACKUP_REQUIRE_IMMUTABLE_REMOTE=true",
     "ProtectHome=true",
     "RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf",
+    "TimeoutStartSec=5h",
 )
 require(
     "deploy/systemd/school-lifecycle-backup.timer",
@@ -82,6 +83,7 @@ require(
     "BACKUP_REQUIRE_OFFSITE=true",
     "ProtectHome=true",
     "ReadOnlyPaths=/var/lib/school-lifecycle-backup",
+    "TimeoutStartSec=10min",
 )
 require(
     "deploy/systemd/school-lifecycle-backup-watchdog.timer",
@@ -95,6 +97,13 @@ require(
     "MAX_BACKUP_AGE_SECONDS=21600",
     "MAX_RESTORE_SECONDS=7200",
     "BACKUP_IMMUTABLE_REMOTE_CONFIRMED=false",
+)
+require(
+    "deploy/README-data-governance.md",
+    "FIELD_ENCRYPTION_KEY",
+    "FIELD_ENCRYPTION_PREVIOUS_KEYS",
+    "outside the application server",
+    "TimeoutStartSec",
 )
 require(
     ".github/workflows/data-governance-contracts.yml",

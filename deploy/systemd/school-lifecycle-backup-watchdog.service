@@ -13,6 +13,8 @@ Environment=BACKUP_DIR=/var/lib/school-lifecycle-backup
 Environment=BACKUP_REQUIRE_OFFSITE=true
 Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf
 ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-watchdog.sh
+# The watchdog must fail visibly instead of hanging forever when the offsite provider/network stalls.
+TimeoutStartSec=10min
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
