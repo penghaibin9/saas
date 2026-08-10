@@ -20,7 +20,9 @@ export async function guard(to, from, next) {
   }
 
   const forceRoute = to.name === 'force-password-change'
-  if (session.user?.mustChangePassword) {
+  // 登录响应中的强制改密状态会单独持久化，因此刷新浏览器后即使 user 内存快照尚未恢复，
+  // 也不能先进入 portal-config 或任何业务页面。真正不可绕过的授权仍由后端统一门禁负责。
+  if (session.mustChangePassword || session.user?.mustChangePassword) {
     return forceRoute ? next() : next({ name: 'force-password-change' })
   }
   // 已完成强制改密后禁止继续停留在恢复页。
