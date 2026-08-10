@@ -78,7 +78,7 @@ def _class_id():
     return class_id
 
 
-def _enabled_course(client, hdr, *, code="GRADE101", name="高等数学", credit=4):
+def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4):
     """通过课程库正式状态机建立稳定 courseId，而不是在成绩任务中继续使用自由文本课程。"""
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code,
@@ -103,7 +103,7 @@ def _enabled_course(client, hdr, *, code="GRADE101", name="高等数学", credit
 
 
 def _task(client, hdr, usual=30, midterm=0, final=70, *,
-          course_name="高等数学", course_code="GRADE101", credit=4):
+          course_name="高等数学", course_code="GD101", credit=4):
     term_id = _ensure_term()
     course_id = _enabled_course(client, hdr, code=course_code, name=course_name, credit=credit)
     r = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
@@ -144,7 +144,7 @@ def test_g2_ratio_not_100_422(client, db_mode):
     _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
     term_id = _ensure_term()
-    course_id = _enabled_course(client, hdr, code="GRADE-G2", name="比例异常课")
+    course_id = _enabled_course(client, hdr, code="GD102", name="比例异常课")
     r = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
         "courseId": str(course_id), "courseName": "比例异常课", "classId": str(_class_id()),
         "termId": str(term_id), "usualRatio": 40, "finalRatio": 70,
@@ -229,7 +229,7 @@ def test_g10_midterm_three_component(client, db_mode):
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
     tid = _task(client, hdr, usual=30, midterm=30, final=40,
-                course_name="钳工实训", course_code="GRADE-G10", credit=3)
+                course_name="钳工实训", course_code="GD110", credit=3)
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
     assert r["data"]["totalScore"] == 91
@@ -244,7 +244,7 @@ def test_g11_midterm_ratio_sum_must_100(client, db_mode):
     _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
     term_id = _ensure_term()
-    course_id = _enabled_course(client, hdr, code="GRADE-G11", name="比例三分项课")
+    course_id = _enabled_course(client, hdr, code="GD111", name="比例三分项课")
     common = {
         "courseId": str(course_id), "courseName": "比例三分项课", "classId": str(_class_id()),
         "termId": str(term_id), "adminSupplementReason": "测试管理员补录成绩任务",
