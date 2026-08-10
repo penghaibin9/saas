@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids and 4 DB-mode stale-contract nodeids after precise MySQL validation.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, and 2 precisely validated academic nodeids.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -12,7 +12,6 @@ tests/test_aa_academic_task_mobile.py::test_cross_teacher_act_403_via_mobile
 tests/test_aa_academic_task_mobile.py::test_my_tasks_scope_via_mobile
 tests/test_aa_academic_task_mobile.py::test_reject_reason_validation_and_flow_via_mobile
 tests/test_aa_archive.py::test_ar10_export_item_and_all_after_archive
-tests/test_aa_archive.py::test_ar1_batch_and_check
 tests/test_aa_archive.py::test_ar2_confirm_archive_freezes_term
 tests/test_aa_archive.py::test_ar3_unfreeze_restores_term
 tests/test_aa_archive.py::test_ar5_precheck_realtime_no_batch
@@ -100,7 +99,6 @@ tests/test_aa_mobile.py::test_mb3_status_and_submit_change
 tests/test_aa_mobile.py::test_mb4_graduation_progress_my
 tests/test_aa_mobile.py::test_mb5_teacher_schedule_my
 tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report
-tests/test_aa_orgs.py::test_o1_college_major_class_crud
 tests/test_aa_orgs.py::test_o3_class_adjust_moves_student
 tests/test_aa_orgs.py::test_o6_validation_and_guard
 tests/test_aa_orgs.py::test_o8_counselor_binding_syncs_scope
