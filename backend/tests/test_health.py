@@ -54,3 +54,40 @@ def test_health_ready_audit_log_degrades_on_db_write_failure():
         settings.DB_ENABLED = old_enabled
         audit_log._DB_HEALTH.clear()
         audit_log._DB_HEALTH.update(old_health)
+
+
+def test_health_ready_file_scan_required_unhealthy_is_not_ready(monkeypatch):
+    """正式附件扫描依赖不可用时不得返回 READY，避免附件全卡隔离区却假绿。"""
+    from app.services import file_scan_service
+
+    monkeypatch.setattr(file_scan_service, "health_snapshot", lambda: {
+        "enabled": True,
+        "required": True,
+        "engineHealthy": False,
+        "queueDepth": 2,
+        "deadJobs": 0,
+    })
+    resp = client.get("/health/ready")
+    assert resp.status_code == 503
+    data = resp.json()["data"]
+    assert data["status"] == "DEGRADED"
+    assert data["checks"]["fileScan"]["ok"] is False
+    assert data["checks"]["fileScan"]["queueDepth"] == 2
+
+
+def test_health_ready_file_scan_dead_job_is_not_ready(monkeypatch):
+    """扫描任务进入 DEAD 代表人工处置前不能把试点环境判定为完全就绪。"""
+    from app.services import file_scan_service
+
+    monkeypatch.setattr(file_scan_service, "health_snapshot", lambda: {
+        "enabled": True,
+        "required": True,
+        "engineHealthy": True,
+        "queueDepth": 0,
+        "deadJobs": 1,
+    })
+    resp = client.get("/health/ready")
+    assert resp.status_code == 503
+    data = resp.json()["data"]
+    assert data["checks"]["fileScan"]["ok"] is False
+    assert data["checks"]["fileScan"]["deadJobs"] == 1
