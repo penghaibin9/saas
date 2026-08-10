@@ -37,16 +37,10 @@ _TODO_PENDING = "PENDING"
 
 
 def _uid(user: dict | None) -> int:
-    """令牌 userId → 数字用户 ID。`db-123`/`u_123` 前缀剥离；不可解析返回 0（调用方按 fail-closed 处理）。"""
-    raw = str((user or {}).get("userId") or "")
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 0
+    """使用全系统统一身份映射解析待办办理人；无法解析时继续 fail-closed。"""
+    from app.services.message_identity import resolve_message_user_id
+
+    return int(resolve_message_user_id(user or {}) or 0)
 
 
 def _is_student(user: dict | None) -> bool:

@@ -62,6 +62,24 @@ test('production session skeleton contains no fixed student or teacher identity'
   assert.match(session, /name: '', studentNo: '', className: ''/)
 })
 
+test('teacher login accepts the backend academic role codes', () => {
+  const login = read('src/components/login/MiniLoginAuthPanel.vue')
+  const roles = read('src/config/roles.config.js')
+  assert.match(login, /roleKeyFromBackendRole\(roleCode\)/)
+  assert.match(roles, /ACADEMIC_TEACHER: ROLE\.ACADEMIC/)
+  assert.match(roles, /ACADEMIC_ADMIN: ROLE\.ACADEMIC/)
+})
+
+test('real teacher contexts drive identity switching with canonical role keys', () => {
+  const roles = read('src/config/roles.config.js')
+  const session = read('src/stores/session.js')
+  assert.match(roles, /INTERN_MENTOR: ROLE\.INTERN_MENTOR/)
+  assert.match(roles, /roleKeyFromBackendRole\(roleCode\)/)
+  assert.match(session, /this\.availableRoles = \[\.\.\.new Set\(this\.availableContexts/)
+  assert.match(session, /roleKeyFromBackendRole\(item\.roleCode \|\| item\.contextType\) === roleKey/)
+  assert.doesNotMatch(session, /item\.roleCode === roleKey/)
+})
+
 test('high-frequency message, todo and risk pages use final database pagination endpoints', () => {
   const messages = read('src/pages/student/messages/index.vue')
   const todos = read('src/pages/teacher/todos/index.vue')

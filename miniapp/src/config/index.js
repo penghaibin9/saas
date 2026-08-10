@@ -2,7 +2,7 @@
  * 配置聚合入口 + 品牌主题应用
  */
 import { tenantBrandConfig } from './brand.config'
-import roleConfigs, { ROLE, getRoleConfig, hasAction, teacherIdentities } from './roles.config'
+import roleConfigs, { ROLE, getRoleConfig, hasAction, roleKeyFromBackendRole, teacherIdentities } from './roles.config'
 
 /**
  * 将 tenantBrandConfig 的品牌色写入 CSS 变量，实现按学校换肤。
@@ -24,4 +24,4 @@ export function applyBrandTheme(brand = tenantBrandConfig) {
   // #endif
 }
 
-export { tenantBrandConfig, roleConfigs, ROLE, getRoleConfig, hasAction, teacherIdentities }
+export { tenantBrandConfig, roleConfigs, ROLE, getRoleConfig, hasAction, roleKeyFromBackendRole, teacherIdentities }
