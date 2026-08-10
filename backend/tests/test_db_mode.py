@@ -62,9 +62,24 @@ def test_students_filter_and_paginate_in_database(client, auth_headers, db_mode)
 
 
 def test_student_create_void_db(client, auth_headers, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+    db = get_sessionmaker()()
+    college = College(tenant_id=1000000000000000001, college_name="建档测试学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=college.tenant_id, college_id=college.id,
+                  major_name="建档测试专业", status="ACTIVE")
+    db.add(major); db.flush()
+    school_class = SchoolClass(tenant_id=college.tenant_id, major_id=major.id,
+                               class_name="建档测试班", grade="2026", status="ACTIVE",
+                               class_status="NORMAL")
+    db.add(school_class); db.commit(); db.close()
     created = client.post("/api/v1/students", headers=auth_headers,
                           json={"studentNo": "2099115999", "realName": "库中新生",
-                                "phone": "13800001111"}).json()["data"]
+                                "phone": "13800001111",
+                                "collegeId": str(college.id),
+                                "majorId": str(major.id),
+                                "classId": str(school_class.id)}).json()["data"]
     assert created["phoneMasked"] == "138****1111"
     void = client.post(f"/api/v1/students/{created['id']}/void", headers=auth_headers,
                        json={"reason": "重复建档需要作废"}).json()["data"]
@@ -77,10 +92,12 @@ def test_approval_flow_db(client, auth_headers, db_mode):
     tasks = client.get("/api/v1/approvals/tasks", headers=auth_headers).json()["data"]["items"]
     assert len(tasks) == 1 and tasks[0]["status"] == "PENDING"
     tid = tasks[0]["taskId"]
-    no_reason = client.post(f"/api/v1/approvals/tasks/{tid}/reject", headers=auth_headers, json={})
+    version = tasks[0]["version"]
+    no_reason = client.post(f"/api/v1/approvals/tasks/{tid}/reject", headers=auth_headers,
+                            json={"version": version})
     assert no_reason.json()["code"] in (400001, 422001)
     ok = client.post(f"/api/v1/approvals/tasks/{tid}/approve", headers=auth_headers,
-                     json={"comment": "同意"}).json()["data"]
+                     json={"comment": "同意", "version": version}).json()["data"]
     assert ok["status"] == "APPROVED"
     processed = client.get("/api/v1/approvals/processed", headers=auth_headers).json()["data"]["items"]
     assert any(p["taskId"] == tid for p in processed)
@@ -98,7 +115,8 @@ def test_todos_messages_db(client, auth_headers, db_mode):
 
 
 def test_audit_persisted_db(client, auth_headers, db_mode):
-    client.post("/api/v1/audit/mock-record", headers=auth_headers)
+    # 用真实被审计动作（登出）产生记录；/audit/mock-record 已删除。
+    client.post("/api/v1/authz/logout", headers=auth_headers)
     body = client.get("/api/v1/audit/logs", headers=auth_headers).json()["data"]
     assert body["total"] >= 1  # 从 t_security_audit_log 读出
     from app.db.session import get_sessionmaker
@@ -117,7 +135,7 @@ def test_p4_upload_real(client, auth_headers, db_mode, tmp_path):
     assert resp["code"] == 0
     meta = resp["data"]
     assert meta["fileId"].isdigit() and meta["sha256"] and meta["sizeBytes"] > 0
-    got = client.get(f"/api/v1/files/meta/{meta['fileId']}", headers=auth_headers).json()["data"]
+    got = client.get(f"/api/v1/files/{meta['fileId']}", headers=auth_headers).json()["data"]
     assert got["fileName"] == "测试.txt"
     bad = client.post("/api/v1/files", headers=auth_headers,
                       files={"file": ("evil.exe", _io.BytesIO(b"x"), "application/octet-stream")}).json()
@@ -169,9 +187,10 @@ def test_p4_export_uses_all_database_pages(client, auth_headers, db_mode, monkey
 
 
 def test_p4_audit_filters(client, auth_headers, db_mode):
-    client.post("/api/v1/audit/mock-record", headers=auth_headers)
-    body = client.get("/api/v1/audit/logs?action=MOCK", headers=auth_headers).json()["data"]
+    client.post("/api/v1/authz/logout", headers=auth_headers)
+    body = client.get("/api/v1/audit/logs?action=LOGOUT", headers=auth_headers).json()["data"]
     assert body["total"] >= 1
-    assert all(i["action"] == "MOCK" for i in body["items"])
+    assert all(i["action"] == "LOGOUT" for i in body["items"])
     empty = client.get("/api/v1/audit/logs?operator=不存在的人", headers=auth_headers).json()["data"]
     assert empty["total"] == 0
+

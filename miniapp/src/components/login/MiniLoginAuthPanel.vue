@@ -72,23 +72,11 @@
 </template>
 
 <script>
-import { tenantBrandConfig, ROLE } from '@/config'
+import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
 import { clearTokens, realRequest, setRefreshToken, setToken } from '@/services/request'
 import { go, relaunch, toast } from '@/utils/nav'
-
-const ROLE_MAP = {
-  STUDENT: ROLE.STUDENT,
-  COUNSELOR: ROLE.COUNSELOR,
-  GD_MENTOR: ROLE.MENTOR,
-  MENTOR: ROLE.MENTOR,
-  INTERN_MENTOR: ROLE.INTERN_MENTOR,
-  EMPLOYMENT: ROLE.EMPLOYMENT,
-  ACADEMIC: ROLE.ACADEMIC,
-  COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
-  GD_DEFENSE_EXPERT: ROLE.GD_DEFENSE_EXPERT
-}
 
 export default {
   name: 'MiniLoginAuthPanel',
@@ -154,7 +142,7 @@ export default {
     completeLogin(data) {
       if (!this.assertEntryRole(data)) return
       const roleCode = data.currentRole?.roleCode || ''
-      const roleKey = ROLE_MAP[roleCode]
+      const roleKey = roleKeyFromBackendRole(roleCode)
       // 未识别的角色编码禁止默认落到辅导员：会让该账号看到与自己身份不符的菜单和数据范围，
       // 并在几乎每个业务动作上收到 403，还误导为"系统故障"。失败关闭，提示联系管理员配置。
       if (!roleKey) {
