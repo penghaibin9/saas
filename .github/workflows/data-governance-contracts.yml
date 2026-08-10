@@ -6,7 +6,7 @@ on:
     paths:
       - 'deploy/backup/**'
       - 'deploy/env/backup.env.example'
-      - 'deploy/systemd/school-lifecycle-backup.*'
+      - 'deploy/systemd/school-lifecycle-backup*'
       - '.github/dependabot.yml'
       - '.github/workflows/data-governance-contracts.yml'
       - '.github/workflows/backup-restore-drill.yml'
@@ -73,6 +73,7 @@ jobs:
           python scripts/check/data-governance-contracts.py
           bash -n deploy/backup/backup-mysql.sh
           bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/backup-watchdog.sh
           bash -n deploy/backup/restore-drill.sh
       - name: Build synthetic governed source data
         run: |
@@ -111,6 +112,20 @@ jobs:
           test -s "$MANIFEST"
           test -s "${MANIFEST}.sha256"
           echo "MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+      - name: Verify backup watchdog sees healthy committed set
+        run: bash deploy/backup/backup-watchdog.sh
+      - name: Prove watchdog detects missing remote commit marker
+        run: |
+          set -euo pipefail
+          LOCAL_MANIFEST="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'manifest_*.json' | sort | tail -n1)"
+          REMOTE_MANIFEST="$BACKUP_RCLONE_REMOTE/$(basename "$LOCAL_MANIFEST")"
+          mv "$REMOTE_MANIFEST" "${REMOTE_MANIFEST}.hidden"
+          if bash deploy/backup/backup-watchdog.sh; then
+            echo '::error::watchdog unexpectedly accepted a backup with no remote commit marker'
+            exit 1
+          fi
+          mv "${REMOTE_MANIFEST}.hidden" "$REMOTE_MANIFEST"
+          bash deploy/backup/backup-watchdog.sh
       - name: Restore from the offsite committed set
         env:
           EXPECTED_ALEMBIC_VERSION: governance_contract

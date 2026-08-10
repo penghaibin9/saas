@@ -1,0 +1,28 @@
+[Unit]
+Description=School Lifecycle backup watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current
+EnvironmentFile=/etc/school-lifecycle/backup.env
+Environment=BACKUP_DIR=/var/lib/school-lifecycle-backup
+Environment=BACKUP_REQUIRE_OFFSITE=true
+Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf
+ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-watchdog.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadOnlyPaths=/var/lib/school-lifecycle-backup
+ReadOnlyPaths=/etc/school-lifecycle/rclone.conf
+
+[Install]
+WantedBy=multi-user.target

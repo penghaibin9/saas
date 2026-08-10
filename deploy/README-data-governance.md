@@ -22,6 +22,17 @@ Production backup also:
 - prevents two backup jobs running at the same time;
 - retains complete backup sets together instead of deleting individual files independently.
 
+## Automatic stale-backup watchdog
+
+A backup system can fail silently when its timer stops running. `backup-watchdog.sh` independently checks the newest committed backup and fails if:
+
+- no completed manifest exists;
+- the newest backup is older than the configured RPO window;
+- local database/upload objects or their checksums are missing or invalid;
+- the offsite manifest commit marker is missing or differs from the local committed manifest.
+
+`school-lifecycle-backup-watchdog.timer` runs this check hourly. It reuses the same optional failure webhook as the backup job, so there is no second alert configuration to maintain.
+
 ## Recovery objectives
 
 Baseline:
@@ -29,7 +40,7 @@ Baseline:
 - RPO <= 6 hours;
 - RTO <= 2 hours.
 
-The systemd timer runs four times per day: 01:15, 07:15, 13:15 and 19:15.
+The backup timer runs four times per day: 01:15, 07:15, 13:15 and 19:15. The watchdog checks backup freshness hourly.
 
 Local retention keeps at least 8 complete sets by default, which gives at least 48 hours of local recovery points at the default cadence.
 
@@ -70,7 +81,7 @@ Only these production steps need manual setup:
 1. Fill `/etc/school-lifecycle/backup.env` with the real upload path and offsite rclone target.
 2. Configure `/etc/school-lifecycle/rclone.conf` for the backup bucket.
 3. In the cloud storage console, enable versioning/immutable retention and storage-side encryption, then set `BACKUP_IMMUTABLE_REMOTE_CONFIRMED=true`.
-4. Install and enable `school-lifecycle-backup.service` and `.timer`.
+4. Install the backup and watchdog systemd service/timer files and enable both timers.
 5. Trigger one manual backup and one isolated restore drill to confirm everything works.
 
 Everything else should be automated by the scripts and CI rather than requiring day-to-day manual operation.

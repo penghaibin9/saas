@@ -40,6 +40,14 @@ require(
     "flock",
 )
 require(
+    "deploy/backup/backup-watchdog.sh",
+    "MAX_BACKUP_AGE_SECONDS",
+    "no_completed_backup_manifest",
+    "backup_stale_age_",
+    "remote_manifest_hash_mismatch",
+    "backup_watchdog=PASS",
+)
+require(
     "deploy/backup/restore-drill.sh",
     "restore drill refuses non-local",
     "manifest checksum sidecar",
@@ -63,6 +71,19 @@ require(
     "AccuracySec=1s",
 )
 require(
+    "deploy/systemd/school-lifecycle-backup-watchdog.service",
+    "backup-watchdog.sh",
+    "BACKUP_REQUIRE_OFFSITE=true",
+    "ProtectHome=true",
+    "ReadOnlyPaths=/var/lib/school-lifecycle-backup",
+)
+require(
+    "deploy/systemd/school-lifecycle-backup-watchdog.timer",
+    "OnCalendar=hourly",
+    "Persistent=true",
+    "school-lifecycle-backup-watchdog.service",
+)
+require(
     "deploy/env/backup.env.example",
     "MIN_LOCAL_BACKUP_SETS=8",
     "MAX_BACKUP_AGE_SECONDS=21600",
@@ -73,6 +94,8 @@ require(
     ".github/workflows/data-governance-contracts.yml",
     "Prove uploads fail closed",
     "Prove local-only backup is rejected",
+    "Verify backup watchdog sees healthy committed set",
+    "Prove watchdog detects missing remote commit marker",
     "manifest_sha256",
     "sha256sum -c",
 )
