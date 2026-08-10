@@ -74,6 +74,8 @@ def _program(client, hdr, *, major_id, grade_year, total_credits, courses, bindi
             "courseId": str(course_id), "courseName": course_name,
             "openTermNo": open_term_no, "module": "专业核心", "credit": credit})
         assert added.status_code == 200, added.text
+    from tests.support_program_quality_fixture import seed_program_quality_requirements
+    seed_program_quality_requirements(pid, total_credits=total_credits)
     submitted = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
     college = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
@@ -189,9 +191,14 @@ def test_tt3_program_credit_shortfall_blocks_submit(client, db_mode):
     assert created.status_code == 200, created.text
     pid = created.json()["data"]["programId"]
     added = client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={
-        "courseId": str(cid), "courseName": "程序设计", "credit": 4})
+        "courseId": str(cid), "courseName": "程序设计", "openTermNo": 1,
+        "module": "专业核心", "credit": 4})
     assert added.status_code == 200, added.text
-    assert client.post(f"{BASE}/programs/{pid}/submit", headers=hdr).status_code == 400
+    from tests.support_program_quality_fixture import seed_program_quality_requirements
+    seed_program_quality_requirements(pid, total_credits=120)
+    blocked = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert blocked.status_code == 409, blocked.text
+    assert "TOTAL_CREDIT_INSUFFICIENT" in blocked.text and "课程学分合计" in blocked.text
 
 
 def test_tt4_batch_submit_with_unassigned_409(client, db_mode):
