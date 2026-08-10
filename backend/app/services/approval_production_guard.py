@@ -76,7 +76,9 @@ def persisted_allowed_actions(
     resolved_tid = int(tenant_id or getattr(task, "tenant_id", 0) or 0)
     if not resolved_tid:
         return []
-    base_actions = list(actions or ["APPROVE", "RETURN", "REJECT", "TRANSFER"])
+    base_actions = list(
+        ["APPROVE", "RETURN", "REJECT", "TRANSFER"] if actions is None else actions
+    )
     key = (str(getattr(inst, "workflow_code", "") or ""), str(getattr(task, "node_code", "") or ""))
     cached = policy_cache.get(key) if policy_cache is not None else None
     if cached is None:
