@@ -125,7 +125,7 @@ jobs:
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
-          python scripts/e2e_bootstrap_student_affairs_accounts.py
+          python scripts/e2e_bootstrap_affairs_counselor_ci.py
 
       - name: Seed isolated internship prerequisites
         working-directory: backend
