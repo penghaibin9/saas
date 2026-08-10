@@ -5,6 +5,7 @@
  */
 import { defineStore } from 'pinia'
 import { portalApi } from '../services/portalApi'
+import { useSessionStore } from './session'
 
 const SAFE_DEFAULT = {
   enabled: false, portalName: '学生服务门户', portalUrl: '/portal/',
@@ -27,6 +28,15 @@ export const usePortalConfigStore = defineStore('sp-portal-config', {
   },
   actions: {
     async load() {
+      // 登录响应已明确要求首次改密时，不能先去调用 portal-config 等业务接口。
+      // 服务端也会以 PASSWORD_CHANGE_REQUIRED 拒绝；这里避免无意义 403 并让路由守卫立刻送入安全恢复页。
+      const session = useSessionStore()
+      if (session.user?.mustChangePassword) {
+        this.config = { ...SAFE_DEFAULT }
+        this.error = ''
+        this.loaded = true
+        return this.config
+      }
       try {
         this.config = await portalApi.portalConfig()
         this.error = ''
