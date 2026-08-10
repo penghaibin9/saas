@@ -18,6 +18,8 @@ import './styles/golden-business-ops-rollout.css'
 import './styles/golden-business-ops-rollout-final.css'
 // Golden 风险工作区 rollout：学工风险 / 实习风险 / 毕设风险与归档。
 import './styles/golden-risk-workspaces-rollout.css'
+// Screenshot C：仅恢复学工风险指标区的五列桌面节奏；实习与毕设 B 保持冻结。
+import './styles/golden-risk-workspaces-rollout-final.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
