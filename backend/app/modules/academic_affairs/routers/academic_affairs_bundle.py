@@ -35,7 +35,8 @@ _EXTENSION_ROUTER_MODULES = (
 )
 
 
-def _mount_routes(parent: APIRouter, child: APIRouter) -> None:
+def _mount_routes(parent: APIRouter, child: APIRouter, *,
+                  skip_existing_shapes: frozenset[str] = frozenset()) -> None:
     """Flatten an already-built child router into the public aggregate.
 
     FastAPI 0.141 can preserve nested ``include_router`` calls as internal
@@ -45,6 +46,10 @@ def _mount_routes(parent: APIRouter, child: APIRouter) -> None:
     Copy the concrete child route objects instead; the application-level academic
     dependencies are still attached once by ``route_registration``.
     """
+    if not skip_existing_shapes:
+        parent.routes.extend(list(child.routes))
+        return
+
     def route_key(route):
         path = re.sub(r"\{[^/{}]+\}", "{}", getattr(route, "path", ""))
         return path, tuple(sorted(getattr(route, "methods", set()) or set()))
@@ -55,7 +60,7 @@ def _mount_routes(parent: APIRouter, child: APIRouter) -> None:
     }
     for route in child.routes:
         key = route_key(route)
-        if key in existing:
+        if key[0] in skip_existing_shapes and key in existing:
             continue
         parent.routes.append(route)
         existing.add(key)
@@ -76,7 +81,14 @@ def build_router() -> APIRouter:
     _mount_routes(router, selection_final_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
-    _mount_routes(router, base_router.router)
+    _mount_routes(
+        router,
+        base_router.router,
+        skip_existing_shapes=frozenset({
+            "/academic-affairs/scheduling/rules",
+            "/academic-affairs/scheduling/rules/{}",
+        }),
+    )
     package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
         module = getattr(package, module_name, None)
