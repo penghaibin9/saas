@@ -84,7 +84,7 @@ test('V3-08 quick problem entries all match the verified V3 search corpus', () =
   }
 })
 
-test('V3-08 metrics persist real low-sensitivity events without storing search plaintext', () => {
+test('V3-08 metrics persist real low-sensitivity events without storing enumerable search plaintext', () => {
   for (const token of [
     'HELP_SEARCH_HIT',
     'HELP_SEARCH_NO_RESULT',
@@ -93,12 +93,15 @@ test('V3-08 metrics persist real low-sensitivity events without storing search p
     'HELP_FEEDBACK_NOT_HELPFUL',
     'queryFingerprint',
     'sha256',
+    'hmac.new',
+    'help-search-fingerprint:v2:',
     'SecurityAuditLog'
-  ]) assert.match(serviceSource, new RegExp(token))
+  ]) assert.match(serviceSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 
   assert.match(serviceSource, /trueSelfServiceResolutionRate[^\n]*None/)
   assert.match(serviceSource, /需打通真实人工升级\/工单闭环后才能计算/)
   assert.doesNotMatch(serviceSource, /detail(?:\.update)?\([^)]*["']query["']\s*:/s)
+  assert.doesNotMatch(serviceSource, /sha256\(\(["']help-search:v1:/)
 })
 
 test('V3-08 API separates event collection from school-level metric reading', () => {
@@ -121,6 +124,14 @@ test('V3-08 management page records searches, article views and explicit solved 
     '真正自助解决率',
     '不伪造“真实自助解决率”'
   ]) assert.ok(viewSource.includes(token), `${token} must stay wired into the Help Center page`)
+})
+
+test('V3-08 metric writes stay non-blocking and never use the global auth redirect request path', () => {
+  assert.match(metricClientSource, /getToken/)
+  assert.match(metricClientSource, /postMetric/)
+  assert.match(metricClientSource, /help\/metrics\/events/)
+  assert.match(metricClientSource, /help\/metrics\/public\/events/)
+  assert.doesNotMatch(metricClientSource, /request\(['"]\/help\/metrics\/events/)
 })
 
 test('V3-08 public help surface records tenant-aware search, view and feedback through scoped capability', () => {
