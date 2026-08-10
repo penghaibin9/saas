@@ -5,6 +5,7 @@ import { items, loginApi } from '../lib/api-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
+const saAdmin = { tenant: 'sandbox-school', username: 'e2e_sa_admin', password: 'E2eTest@2026' }
 const counselorA = { tenant: 'sandbox-school', username: 'e2e_counselor_a', password: 'E2eTest@2026' }
 const studentB = { tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026' }
 
@@ -59,7 +60,40 @@ async function setBatchStorage(page, key, value) {
   }, { storageKey: key, storageValue: value })
 }
 
+async function ensureLeaveCounselorAssignment() {
+  const admin = await loginApi(saAdmin)
+  const profiles = items(await admin.get('/students', { keyword: studentB.username, page: 1, pageSize: 50 }))
+  const profile = profiles.find((item) => String(item.studentNo || item.loginName || '') === studentB.username)
+  if (!profile) throw new Error(`Golden leave student ${studentB.username} not found`)
+  const classId = String(profile.classId || profile.class?.id || '')
+  if (!classId) throw new Error(`Golden leave student ${studentB.username} has no classId`)
+
+  const teachers = items(await admin.get('/directory/teachers', { keyword: counselorA.username }))
+  const teacher = teachers.find((item) => String(item.loginName || '') === counselorA.username)
+    || teachers.find((item) => String(item.label || item.name || '').includes('辅导员A'))
+  const userId = String(teacher?.value || teacher?.id || teacher?.userId || '')
+  if (!userId) throw new Error(`Golden counselor ${counselorA.username} not found in teacher directory`)
+
+  const active = items(await admin.get('/student-affairs/counselor-assignments', {
+    classId, userId, status: 'ACTIVE', page: 1, pageSize: 50
+  })).find((item) => String(item.userId || '') === userId && String(item.classId || '') === classId)
+
+  if (!active) {
+    await admin.post('/student-affairs/counselor-assignments', {
+      classId: Number(classId),
+      userId: Number(userId),
+      dutyType: 'TEMP',
+      effectiveFrom: isoDay(-1),
+      effectiveTo: isoDay(7),
+      reason: 'Golden UI 隔离截图：临时代办请假初审，不替换学校主辅导员'
+    })
+  }
+
+  return { classId, userId }
+}
+
 async function prepareLeaveFixture() {
+  const assignment = await ensureLeaveCounselorAssignment()
   const api = await loginApi(studentB)
   const marker = runId()
   const applied = await api.post('/portal/affairs/leave', {
@@ -68,7 +102,7 @@ async function prepareLeaveFixture() {
     endTime: isoDay(41),
     reason: `Golden UI 连续审批验收 ${marker} · 学生返乡办理家庭事务`
   })
-  return { leaveId: String(applied.id || applied.leaveId || ''), marker }
+  return { leaveId: String(applied.id || applied.leaveId || ''), marker, assignment }
 }
 
 async function prepareGraduationOpsFixture() {
