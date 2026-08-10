@@ -15,10 +15,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  canonical-release-gate:
-    name: Main / canonical release gate
+  workflow-contract:
+    name: Main / workflow contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate all workflow YAML
+        run: |
+          python -m pip install --disable-pip-version-check PyYAML==6.0.2
+          python scripts/check/validate-github-workflows.py
+      - name: Reject canonical bypass patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=.github/workflows/main-canonical-release-gate.yml
+          if grep -Eq 'pull_request\.number|select_pytest_targets|backend-known-failures|compare-pytest-junit-baseline|continue-on-error|pytest[^\n]*--lf' "$FILE"; then
+            echo "Canonical release gate contains a bypass/special-case/baseline path"
+            exit 1
+          fi
+
+  migrated-schema:
+    name: Main / fresh Alembic schema truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migrated
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_migrated
+      DB_ENABLED: "true"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_migrated
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography pytest-timeout
+      - name: Require exactly one Alembic head
+        run: |
+          set -euo pipefail
+          HEADS=$(python -m alembic heads | grep -c "(head)")
+          python -m alembic heads
+          test "$HEADS" = "1"
+      - name: Upgrade an empty MySQL 8 database to head
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          python -m alembic upgrade head
+          python -m alembic current
+      - name: Require migrated schema to match ORM
+        run: python ../scripts/check/check-migrated-schema-parity.py
+      - name: Run migration-backed P0 facts without create_all
+        run: |
+          timeout 35m pytest -q -p no:warnings \
+            tests/test_stage_c1_academic_fact.py \
+            tests/test_stage_c1_future_effective.py \
+            tests/test_stage_c2_historical_consumers.py \
+            tests/test_stage_c3_archive_immutability.py \
+            tests/test_import_tenant_isolation.py \
+            tests/test_graduation_credit_dedup.py \
+            --timeout=180 --timeout-method=signal --durations=20
+
+  backend-full-regression:
+    name: Main / backend full regression shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: "1"
+      SHARD_TOTAL: "4"
+      SHARD_INDEX: ${{ matrix.shard }}
     services:
       mysql:
         image: mysql:8.0
@@ -32,39 +132,157 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=15
-    env:
-      APP_ENV: test
-      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
-      FAST_TEST_SCHEMA: "1"
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
-        working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Validate workflow syntax
-        run: python scripts/check/validate-github-workflows.py
-      - name: Run canonical PR regression gate
+          pip install cryptography pytest-timeout
+      - name: Select deterministic test-file shard
+        id: shard
         shell: bash
-        working-directory: backend
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.number }}" = "52" ]; then
-            pytest -q -p no:warnings \
-              tests/test_restore_verification_workflow.py \
-              tests/test_aa_route_registration_main_compat.py::test_academic_extensions_are_aggregated_inside_domain_package
-            exit 0
-          fi
+          FILES=$(python - <<'PY'
+          import os
+          from pathlib import Path
+          shard = int(os.environ['SHARD_INDEX'])
+          total = int(os.environ['SHARD_TOTAL'])
+          files = sorted(str(p) for p in Path('tests').rglob('test_*.py'))
+          selected = [p for i, p in enumerate(files) if i % total == shard]
+          if not selected:
+              raise SystemExit('empty pytest shard')
+          print(' '.join(selected))
+          PY
+          )
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "Shard ${SHARD_INDEX}/${SHARD_TOTAL}: $(wc -w <<<"$FILES" | tr -d ' ') test files"
+      - name: Run every backend test in this shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 85m pytest ${{ steps.shard.outputs.files }} -q -p no:warnings --durations=30
 
-          TARGETS="$(python ../scripts/check/select_pytest_targets.py)"
-          test -n "$TARGETS"
-          echo "Canonical targets: $TARGETS"
-          pytest $TARGETS -q -p no:warnings --durations=20
+  frontend-production:
+    name: Main / PC production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  student-portal-production:
+    name: Main / student portal production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: student-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: student-portal/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: VITE_BASE=/portal/ VITE_API_BASE_URL= npm run build
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+
+  miniapp-production:
+    name: Main / miniapp production builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: miniapp
+    env:
+      VITE_API_BASE_URL: https://school-ci.invalid
+      VITE_USE_MOCK: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:h5
+      - run: npm run build:mp-weixin
+      - name: Reject localhost API in production outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIlE 'https?://(localhost|127\.0\.0\.1)(:8000)?' dist/build/h5 dist/build/mp-weixin | grep -q .; then
+            echo "Production miniapp output contains localhost API"
+            exit 1
+          fi
+      - run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+  deployment-contract:
+    name: Main / deployment contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run production deployment contract tests
+        run: pytest tests/test_school_trial_deploy_contract.py -q -p no:warnings
+
+  canonical-release-gate:
+    name: Main / canonical release gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - workflow-contract
+      - migrated-schema
+      - backend-full-regression
+      - frontend-production
+      - student-portal-production
+      - miniapp-production
+      - deployment-contract
+    steps:
+      - name: Require every authoritative release check to succeed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ needs.workflow-contract.result }}" = "success"
+          test "${{ needs.migrated-schema.result }}" = "success"
+          test "${{ needs.backend-full-regression.result }}" = "success"
+          test "${{ needs.frontend-production.result }}" = "success"
+          test "${{ needs.student-portal-production.result }}" = "success"
+          test "${{ needs.miniapp-production.result }}" = "success"
+          test "${{ needs.deployment-contract.result }}" = "success"
+          echo "Canonical release truth is green: fresh schema + full MySQL backend + all clients + deployment contract"
