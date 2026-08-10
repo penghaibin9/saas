@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, and 2 precisely validated academic nodeids.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, and 13 precisely validated academic nodeids.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -18,17 +18,6 @@ tests/test_aa_archive.py::test_ar5_precheck_realtime_no_batch
 tests/test_aa_archive.py::test_ar7_guard_term_writable_blocks_registration_after_archive
 tests/test_aa_archive_grade_policy_guard.py::test_archive_grade_policy_guard_is_installed
 tests/test_aa_archive_grade_policy_guard.py::test_policy_debt_changes_grade_archive_result_to_blocked
-tests/test_aa_autoschedule.py::test_auto_avoids_manual_occupied_slot
-tests/test_aa_autoschedule.py::test_auto_schedule_places_sessions
-tests/test_aa_autoschedule.py::test_capacity_respected_not_silently_relaxed
-tests/test_aa_autoschedule.py::test_clear_auto_preserves_manual
-tests/test_aa_autoschedule.py::test_dry_run_does_not_persist
-tests/test_aa_autoschedule.py::test_exclusive_room_skipped
-tests/test_aa_autoschedule.py::test_incremental_does_not_duplicate
-tests/test_aa_autoschedule.py::test_miss_report_groups_by_reason
-tests/test_aa_autoschedule.py::test_no_auto_schedule_task_excluded
-tests/test_aa_autoschedule.py::test_no_teacher_assigned_reported
-tests/test_aa_autoschedule.py::test_room_type_match
 tests/test_aa_bugfix_regression.py::test_bf2_midterm_persists_on_list_records
 tests/test_aa_bugfix_regression.py::test_bf3_duplicate_grade_task_same_teaching_task_409
 tests/test_aa_bugfix_regression.py::test_bf5_publish_then_transcript_consistent
