@@ -29,6 +29,7 @@ from typing import Optional
 from sqlalchemy import and_, func, or_, select
 
 from app.services.db_service import _iso, _tid, session
+from app.services.todo_route_registry import resolve_todo_route
 
 # 契约兼容：返回结构对齐 docs/05 §04 待办审批消息 API（前端 PC + 小程序均按此消费）
 _TODO_DONE = "DONE"
@@ -125,13 +126,27 @@ def _priority(row) -> str:
     return "NORMAL"
 
 
-def _todo_dict(row) -> dict:
+def _todo_dict(row, *, client: str = "pc") -> dict:
+    record_id = str(row.source_biz_id) if row.source_biz_id else None
+    route = resolve_todo_route(row.todo_type, record_id, client=client)
+    allowed_actions = ["COMPLETE"] if row.status == _TODO_PENDING else []
+    if route:
+        allowed_actions.insert(0, "OPEN")
     return {
         "todoId": str(row.id),
         "todoType": row.todo_type,
         "title": row.title,
         "bizType": row.source_biz_type,
-        "bizId": str(row.source_biz_id) if row.source_biz_id else None,
+        "bizId": record_id,
+        # P1-07 typed deep-link DTO：所有客户端只消费这些字段，不再按标题/todoType 猜路由。
+        "recordId": record_id,
+        "routeName": route.get("routeName") if route else None,
+        "routeParams": route.get("routeParams") if route else {},
+        "query": route.get("query") if route else {},
+        "routePath": route.get("path") if route else None,
+        "routeExact": bool(route and route.get("exact")),
+        "allowedActions": allowed_actions,
+        "version": int(getattr(row, "version", 0) or 0),
         "sourceModule": row.source_module,
         "priority": _priority(row),
         "status": row.status,
@@ -156,7 +171,7 @@ def _msg_dict(row) -> dict:
 # ────────────────────────── 待办 ──────────────────────────
 
 def list_todos(user: dict, status: Optional[str] = None, todo_type: Optional[str] = None,
-               page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+               page: int = 1, page_size: int = 20, *, client: str = "pc") -> tuple[list[dict], int]:
     from app.models import UnifiedTodo
     with session() as db:
         vis = _visibility_cond(db, user)
@@ -172,7 +187,7 @@ def list_todos(user: dict, status: Optional[str] = None, todo_type: Optional[str
                           .order_by(UnifiedTodo.status.asc(), UnifiedTodo.due_at.is_(None).asc(),
                                     UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
                           .offset(max(0, (page - 1) * page_size)).limit(page_size)).all()
-        return [_todo_dict(r) for r in rows], int(total)
+        return [_todo_dict(r, client=client) for r in rows], int(total)
 
 
 def count_todos(user: dict) -> dict:
@@ -222,7 +237,7 @@ def summary(user: dict) -> dict:
         }
 
 
-def get_todo(user: dict, todo_id: str) -> dict | None:
+def get_todo(user: dict, todo_id: str, *, client: str = "pc") -> dict | None:
     """详情：不在可见范围内一律返回 None（由路由层转 404，不泄漏存在性）。"""
     from app.models import UnifiedTodo
     with session() as db:
@@ -238,7 +253,7 @@ def get_todo(user: dict, todo_id: str) -> dict | None:
             UnifiedTodo.is_deleted.is_(False), vis))
         if not row:
             return None
-        d = _todo_dict(row)
+        d = _todo_dict(row, client=client)
         d["actions"] = ["COMPLETE"] if row.status == _TODO_PENDING else []
         return d
 

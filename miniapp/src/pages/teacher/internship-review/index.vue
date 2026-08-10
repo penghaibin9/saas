@@ -278,8 +278,14 @@ export default {
           toast('当前为离线数据，无法批阅，请恢复网络后重试')
           return
         }
+        if (!Number.isInteger(w.expectedVersion) || w.expectedVersion < 0) {
+          toast('周报版本已失效，正在刷新')
+          this.load()
+          return
+        }
         this.acting = true
-        teacherApi.reviewWeekly(w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '')
+        teacherApi.reviewWeekly(
+          w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '', w.expectedVersion)
           .then((res) => {
             w.status = res.status || (type === 'pass' ? 'APPROVED' : 'RETURNED')
             w.feedback = r.content || ''

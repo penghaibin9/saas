@@ -17,8 +17,8 @@
  * - STUDENT 已纳入 permissionGate.GUARDED_MODULES，写不存在的码会对所有人 fail-closed。
  * - status / corrections / risk-tags 三页已接真实后端（教务学籍异动、教务信息更正、
  *   学工风险中枢），权限码已收紧为各自后端端点的真实集合。
- * - identity（身份核验）依赖学校未采购的第三方实名/人脸核验服务，后端无表无端点，
- *   真实环境返回空台账并说明，权限暂用查看口径 STU_VIEW_ANY。
+ * - identity（身份核验）依赖学校未采购的第三方实名/人脸核验服务；Stage B / B5 入口先读取
+ *   capability 状态并明确区分 NOT_CONFIGURED / EMPTY / FORBIDDEN / ERROR，权限仍用查看口径 STU_VIEW_ANY。
  */
 
 /** 查看类页面的权限口径：与 navPlan._STU_VIEW_ANY / 后端 list_students 三处一致。
@@ -89,7 +89,7 @@ export const studentRoutes = [
       {
         path: 'identity',
         name: 'student-identity',
-        component: () => import('@/views/admin/student/StudentIdentityView.vue'),
+        component: () => import('@/views/admin/student/StudentIdentityCapabilityView.vue'),
         meta: { moduleCode: 'STUDENT', title: '身份核验记录', requiresAuth: true, permissionAny: STU_VIEW_ANY }
       },
       {

@@ -49,7 +49,10 @@ def _tenant(monkeypatch):
 
 
 def test_safety_guard_is_installed_on_public_change_service():
-    assert service.submit is guard.strict_submit
+    # Stage C1 temporal guard is intentionally the outer public wrapper; its frozen
+    # inner entry must still be the Package 5 strict safety guard.
+    assert getattr(service.submit, "_stage_c1_temporal_guard", False)
+    assert service._stage_c1_pre_temporal_submit is guard.strict_submit
     assert service.review is guard.strict_review
     assert service.get_change is guard.strict_get_change
     assert service._assignee_for is guard.strict_assignee_for

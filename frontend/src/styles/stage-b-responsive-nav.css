@@ -1,0 +1,101 @@
+/* Stage B / B3：管理端 <900px 仍必须可操作导航。
+ * BasePortalLayout 旧规则会隐藏 rail + aside 并要求用户拉宽窗口；本覆盖层在全局样式最后加载，
+ * 把一级导航改成横向可滚动轨、二/三级导航改成受控高度菜单区，避免窄屏失去导航能力。
+ */
+@media (max-width: 900px) {
+  .base-portal-layout .bpl-mobilehint {
+    display: none !important;
+  }
+
+  .base-portal-layout .bpl-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .base-portal-layout .bpl-rail {
+    display: flex !important;
+    position: sticky;
+    top: 56px;
+    z-index: 35;
+    width: 100%;
+    height: auto;
+    min-height: 64px;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4px;
+    padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .base-portal-layout .bpl-rail__item {
+    flex: 0 0 76px;
+    min-width: 76px;
+    min-height: 54px;
+    padding: 6px 4px;
+    border-radius: 10px;
+  }
+
+  .base-portal-layout .bpl-rail__ic {
+    width: 20px;
+    height: 20px;
+  }
+
+  .base-portal-layout .bpl-rail__lb {
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .base-portal-layout .bpl-rail__sp {
+    display: none;
+  }
+
+  .base-portal-layout .bpl-aside,
+  .base-portal-layout .bpl-aside.is-hidden {
+    display: block !important;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    max-height: 260px;
+    flex: 0 0 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, .24));
+  }
+
+  .base-portal-layout .bpl-tree,
+  .base-portal-layout .bpl-menu {
+    padding: 10px 12px 12px;
+  }
+
+  .base-portal-layout .bpl-submods__item,
+  .base-portal-layout .bpl-menu__item {
+    min-height: 42px;
+  }
+
+  .base-portal-layout .bpl-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .base-portal-layout .bpl-rail {
+    top: 52px;
+  }
+
+  .base-portal-layout .bpl-aside,
+  .base-portal-layout .bpl-aside.is-hidden {
+    max-height: 220px;
+  }
+}

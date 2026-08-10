@@ -1,0 +1,23 @@
+entries:
+  - module: employment
+    client: admin-pc
+    route: /admin/employment/students
+    page: frontend/src/modules/employment/api/employment.api.js; frontend/src/modules/employment/components/ExportDialog.vue
+    action: export+download
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/export/domain/employment; GET /api/v1/export/tasks/{taskId}/download
+    backendService: backend/app/services/domain_export_service.py; backend/app/modules/employment/services/employment_runtime_service.py
+    storageMode: generated-local-xlsx+export-task
+    authMode: authenticated+employment.export+task-owner-or-export-manager
+    dataScope: tenant+current-employment-student-affairs-scope
+    versioned: false
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: A3正式就业导出只允许当前账号dataScope内全部；服务端复用employment_runtime_service进行范围收敛，导出用途必填并写入水印与审计，下载继续执行租户、权限和任务归属校验。

@@ -157,6 +157,7 @@ async def lifespan(app: FastAPI):
                 affairs_appeal_repair_service,
                 affairs_archive_service,
                 affairs_leave_export_service,
+                approval_export_service,
             )
 
             db = get_sessionmaker()()
@@ -172,6 +173,9 @@ async def lifespan(app: FastAPI):
                     affairs_appeal_repair_service.repair_pending(limit=100)
                     affairs_leave_export_service.run_pending(
                         limit=2, worker_id=f"web-affairs:{tenant_id}",
+                    )
+                    approval_export_service.run_pending(
+                        limit=2, worker_id=f"web-approval:{tenant_id}",
                     )
                     affairs_archive_service.run_pending_packages(limit=2)
                 except Exception:  # noqa: BLE001

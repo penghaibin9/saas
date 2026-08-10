@@ -8,19 +8,21 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <router-view v-if="ctx" :ctx="ctx" />
-    <LoadingState v-else text="正在加载平台运营中心…" />
+    <ErrorState v-if="error" :description="error" @retry="loadContext" />
+    <LoadingState v-else-if="loading" text="正在校验平台身份与数据范围…" />
+    <router-view v-else-if="ctx" :ctx="ctx" />
   </BasePortalLayout>
 </template>
 
 <script>
 /**
- * AdminPlatformLayout — /admin/platform 父布局（SaaS 运营方视角）。
- * 平台显示名 / 角色 / 数据范围全部来自 platformApi.getContext()，禁止硬编码。
+ * A5 / P0-07 平台运营父布局。
+ * 身份、角色、dataScope 只来自真实 auth/RBAC；平台角色另由 /platform/overview 强校验。
+ * 任何请求失败均 fail-closed，禁止构造 PLATFORM_OPS/区域演示身份。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
-import { platformApi } from '@/modules/platform/api/platform.api'
+import { ErrorState, LoadingState } from '@/components/business'
+import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { PLATFORM_MANAGEMENT_CATALOG } from '@/modules/platform/platformManagementCatalog'
 
 const MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
@@ -29,9 +31,9 @@ const MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
 
 export default {
   name: 'AdminPlatformLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, ErrorState, LoadingState },
   data() {
-    return { menus: MENUS, ctx: null }
+    return { menus: MENUS, ctx: null, loading: true, error: '' }
   },
   computed: {
     activeKey() {
@@ -42,36 +44,22 @@ export default {
       return hit ? hit.key : 'plt-command'
     }
   },
-  async created() {
-    const res = await platformApi.getContext()
-    if (res.code === 0) this.ctx = res.data
+  created() {
+    this.loadContext()
   },
   methods: {
+    async loadContext() {
+      this.loading = true
+      this.error = ''
+      this.ctx = null
+      const res = await platformControlApi.getContext()
+      if (res.code === 0) this.ctx = res.data
+      else this.error = res.message || '平台身份校验失败'
+      this.loading = false
+    },
     onMenuSelect(item) {
       if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
     }
   }
 }
 </script>
-
-<style scoped>
-.pl-scope {
-  font-size: var(--font-size-xs);
-  color: var(--primary-700);
-  background: var(--primary-50);
-  border: 1px solid var(--primary-100);
-  border-radius: var(--radius-full);
-  padding: 0 var(--space-3);
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-.pl-user {
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--border-base);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-</style>

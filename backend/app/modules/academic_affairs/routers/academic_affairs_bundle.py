@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 
 from fastapi import APIRouter
 
@@ -15,6 +16,7 @@ from . import academic_affairs as base_router
 
 _EXTENSION_ROUTER_MODULES = (
     "academic_file_exchange_router",
+    "archive_correction_router",
     "dashboard_readiness_router",
     "dynamic_grade_router",
     "exam_incident_closure_router",
@@ -23,6 +25,7 @@ _EXTENSION_ROUTER_MODULES = (
     "program_quality_router",
     "semester_pilot_router",
     "stats_snapshot_router",
+    "status_change_temporal_router",
     "student_evaluation_router",
     "student_exam_router",
     "teaching_class_router",
@@ -30,6 +33,37 @@ _EXTENSION_ROUTER_MODULES = (
     "term_detail_router",
     "textbook_closure_router",
 )
+
+
+def _mount_routes(parent: APIRouter, child: APIRouter, *,
+                  skip_existing_shapes: frozenset[str] = frozenset()) -> None:
+    """Flatten an already-built child router into the public aggregate.
+
+    FastAPI 0.141 can preserve nested ``include_router`` calls as internal
+    ``_IncludedRouter`` nodes until a later expansion step.  The academic-affairs
+    bundle is itself included by the application registry, so leaving another nested
+    layer can make formal extension routes disappear from the final public route table.
+    Copy the concrete child route objects instead; the application-level academic
+    dependencies are still attached once by ``route_registration``.
+    """
+    if not skip_existing_shapes:
+        parent.routes.extend(list(child.routes))
+        return
+
+    def route_key(route):
+        path = re.sub(r"\{[^/{}]+\}", "{}", getattr(route, "path", ""))
+        return path, tuple(sorted(getattr(route, "methods", set()) or set()))
+
+    existing = {
+        route_key(route)
+        for route in parent.routes
+    }
+    for route in child.routes:
+        key = route_key(route)
+        if key[0] in skip_existing_shapes and key in existing:
+            continue
+        parent.routes.append(route)
+        existing.add(key)
 
 
 def build_router() -> APIRouter:
@@ -40,18 +74,28 @@ def build_router() -> APIRouter:
     # 阶段 7：精确同路径适配器必须先于历史同步 StreamingResponse Router 注册。
     # 旧页面合同不变，但实际生成先进入 FileObject + ExportJob + 一次性票据。
     compat_module = importlib.import_module(f"{__package__}.academic_export_compat_router")
-    router.include_router(compat_module.router)
-    router.include_router(base_router.router)
+    _mount_routes(router, compat_module.router)
+    # Stage D：选课 final service 已完成行锁/学籍事实/DecisionTrace 收口，必须让精确
+    # HTTP 路径先命中 final adapter；历史大 Router 继续保留以降低长期分支冲突。
+    selection_final_module = importlib.import_module(f"{__package__}.academic_selection_final_router")
+    _mount_routes(router, selection_final_module.router)
+    # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
+    _mount_routes(router, live_rule_router.router)
+    _mount_routes(
+        router,
+        base_router.router,
+        skip_existing_shapes=frozenset({
+            "/academic-affairs/scheduling/rules",
+            "/academic-affairs/scheduling/rules/{}",
+        }),
+    )
     package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
         module = getattr(package, module_name, None)
         if module is None:
             module = importlib.import_module(f"{__package__}.{module_name}")
-        router.include_router(module.router)
+        _mount_routes(router, module.router)
 
-    # 该独立路由会在服务 Facade 初始化期间经历循环导入；此时 include_router 可能读取到
-    # 尚未装配完成的旧 APIRouter。注册阶段直接复制当前真实 APIRoute，随后由上层统一附加模块依赖。
-    router.routes.extend(list(live_rule_router.router.routes))
     return router
 
 

@@ -54,9 +54,16 @@ def test_transfer_own_student_success(client, db_mode):
                     json={"newTeacher": "赵老师"})
     assert r.status_code == 200 and r.json()["code"] == 0
 
-    # get_student_detail 返回 {"student": {...}, "materials": ...}，归属字段在 student 子对象里
-    detail = client.get(f"/api/v1/employment/students/{ids['mine']}", headers=hdr).json()["data"]
-    assert detail["student"]["employmentTeacher"] == "赵老师"
+    # 转交后旧负责人必须立即失去详情权限；归属变更直接从数据库核验，避免用越权读取做断言。
+    detail = client.get(f"/api/v1/employment/students/{ids['mine']}", headers=hdr)
+    assert detail.status_code == 403 and detail.json()["code"] == 403002
+    from app.db.session import get_sessionmaker
+    from app.models import EmpStudent
+    db = get_sessionmaker()()
+    try:
+        assert db.get(EmpStudent, ids["mine"]).employment_teacher == "赵老师"
+    finally:
+        db.close()
     # 转交后不再出现在「我负责的学生」里
     mine = client.get(f"{MOB}/teacher/employment/my-students", headers=hdr).json()["data"]["list"]
     assert not any(s["id"] == str(ids["mine"]) for s in mine)

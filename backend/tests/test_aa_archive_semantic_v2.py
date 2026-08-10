@@ -96,7 +96,7 @@ def test_archive_precheck_page_shows_semantic_status_and_drill_route():
 
     for field in ("blockingCount", "blockedDomains", "ruleCode", "evidence", "domain.route"):
         assert field in source
-    assert "当前不可归档" in source
+    assert "当前仍有业务阻断，暂不可归档" in source
     assert "去处理" in source
     assert "按业务完成状态判断能否归档" in source
 

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="isCreate ? '新增学生主档' : '编辑学生信息' + (form.name ? ' · ' + form.name : '')"
-    :subtitle="isCreate ? '建档后默认「已录取 / 待核验」，进入迎新与身份核验流程' : '仅提交本次实际修改的字段，全程审计留痕'"
+    :subtitle="isCreate ? '建档后形成真实学生主档；身份核验能力按服务端状态显示，不预设成功或待核验' : '仅提交本次实际修改的字段，全程审计留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     watermark-purpose="学生主档维护"
@@ -43,8 +43,8 @@
               </select>
             </label>
             <label class="se-field">
-              <span class="se-field__label">班级 *</span>
-              <select v-model="form.classId" class="se-field__control">
+              <span class="se-field__label">班级 * <small v-if="!isCreate">（变更请走教务学籍异动）</small></span>
+              <select v-model="form.classId" class="se-field__control" :disabled="!isCreate">
                 <option value="">请选择班级</option>
                 <option v-for="c in ctx.filterOptions.classes" :key="c.value" :value="c.value">{{ c.label }}</option>
               </select>
@@ -54,8 +54,8 @@
               <input v-model="form.phone" class="se-field__control" placeholder="学生本人手机号" />
             </label>
             <label class="se-field">
-              <span class="se-field__label">身份证号</span>
-              <input v-model="form.idCard" class="se-field__control" placeholder="用于实名核验" />
+              <span class="se-field__label">身份证号 <small v-if="!isCreate">（更正请走信息更正审核）</small></span>
+              <input v-model="form.idCard" class="se-field__control" :disabled="!isCreate" placeholder="用于身份信息建档" />
             </label>
           </div>
         </div>
@@ -98,13 +98,6 @@
 </template>
 
 <script>
-/**
- * 学生主档新增 / 编辑独立编辑页（2026-07-10 第二批交互改造）：
- *   新增 /admin/student/list/new；编辑 /admin/student/:studentId/edit?no=学号（可刷新、可深链）。
- * 原列表页「新增/编辑主档」抽屉字段多、多区块，按交互形态基准改独立编辑页；数据源与原抽屉一致
- * （既有列表接口按学号定位，无单条接口不造假）；编辑仅提交脏字段，防止把脱敏展示值写回主档。
- * 权限沿用 ctx.permissionActions.createStudent / editStudent（不扩大权限）。
- */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton } from '@/components/ui'
@@ -126,9 +119,7 @@ export default {
       submitting: false,
       form: EMPTY_FORM(),
       initial: EMPTY_FORM(),
-      /* 乐观锁版本：保存时回传，服务端版本已变则 409，提示刷新 */
       loadedVersion: null,
-      /* 受控恢复：复用原档案与历史关联，需原因≥5字并二次确认 */
       restoreDialog: { visible: false, reason: '', hint: '', error: '', submitting: false }
     }
   },
@@ -212,7 +203,6 @@ export default {
       if (this.isCreate) {
         res = await studentApi.createStudent({ ...this.form })
       } else {
-        /* 仅提交脏字段：未改动的（可能是脱敏展示值的）字段不回写 */
         const payload = {}
         for (const k of Object.keys(this.form)) {
           if (this.form[k] !== this.initial[k]) payload[k] = this.form[k]
@@ -227,10 +217,9 @@ export default {
       }
       this.submitting = false
       if (res.code === 0) {
-        toast.success(this.isCreate ? '建档成功，已进入待核验队列（已留痕）' : '学生信息已更新（已留痕）')
+        toast.success(this.isCreate ? '建档成功（已留痕；身份核验服务状态以服务端事实为准）' : '学生信息已更新（已留痕）')
         this.backToList()
       } else if (this.isCreate && this.isVoidedConflict(res)) {
-        // 学号属于已作废档案：不静默复活，转入受控恢复（需权限 + 原因 + 二次确认）
         this.restoreDialog.visible = true
         this.restoreDialog.hint = res.message
         this.restoreDialog.reason = ''
@@ -239,13 +228,10 @@ export default {
         this.formError = res.message
       }
     },
-
-    /** 后端用独立错误码区分「作废档案」与普通重复学号，不靠中文串匹配。 */
     isVoidedConflict(res) {
       return res?.bizCode === 'VOIDED_PROFILE_EXISTS'
         || String(res?.message || '').includes('已作废档案')
     },
-
     async doRestore() {
       const reason = String(this.restoreDialog.reason || '').trim()
       if (reason.length < 5) {

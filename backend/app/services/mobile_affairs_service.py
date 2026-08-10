@@ -60,7 +60,9 @@ def leave_my(user) -> dict:
 
 def aid_my(user) -> dict:
     from app.models import AidApply, AidObjection
-    L = {"DRAFT": "草稿", "COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复审",
+    # 困难认定核心状态机把“退回学生修改”落为 DRAFT；这个投影属于正式学生自视图合同，
+    # 直接在权威 service 中表达，禁止再靠 router 启动期 monkey-patch 改写。
+    L = {"DRAFT": "已退回待修改", "COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复审",
          "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中", "APPROVED": "已认定",
          "REJECTED": "已驳回", "RETURNED": "已退回", "CANCELLED": "已取消"}
     with session() as db:
@@ -80,7 +82,7 @@ def aid_my(user) -> dict:
                 "finalLevel": x.final_level, "status": x.status,
                 "statusLabel": L.get(x.status, x.status),
                 "returnReason": getattr(x, "return_reason", None) or "",
-                "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status == "RETURNED" else [])
+                "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status in {"DRAFT", "RETURNED"} else [])
                     + (["SUBMIT_OBJECTION"] if x.status == "PUBLICITY" and not pending else []),
                 "hasPendingObjection": pending,
             })

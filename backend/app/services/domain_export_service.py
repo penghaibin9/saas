@@ -75,10 +75,16 @@ def _import_service(mod_name):
     raise ModuleNotFoundError(f"服务模块未找到：app.services.{mod_name} 或 app.modules.*.services.{mod_name}")
 
 
-def _call_list(path):
-    mod_name, fn_name = path.split(".")
-    fn = getattr(_import_service(mod_name), fn_name)
-    items, total = fn(1, MAX_EXPORT_ROWS)
+def _call_list(path, *, domain: str, user: dict):
+    # A3：就业正式导出必须与正式 PC 列表共用同一 dataScope；禁止绕过 runtime 直接导出全租户。
+    if domain == "employment":
+        from app.modules.employment.services import employment_runtime_service
+        items, total = employment_runtime_service.list_students(
+            1, MAX_EXPORT_ROWS, user=user)
+    else:
+        mod_name, fn_name = path.split(".")
+        fn = getattr(_import_service(mod_name), fn_name)
+        items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:
         raise AppException(
             "VALIDATION_ERROR",
@@ -112,7 +118,7 @@ def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
     if domain == "student-affairs":
         _require_student_affairs_full_scope(user)
     title, list_path, cols = DOMAINS[domain]
-    items, total = _call_list(list_path)
+    items, total = _call_list(list_path, domain=domain, user=user)
     from openpyxl import Workbook
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title=title[:28])

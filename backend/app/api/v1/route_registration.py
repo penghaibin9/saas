@@ -253,13 +253,14 @@ def register_platform_routes(api_router: APIRouter) -> None:
 
 
 def register_all_routes(api_router: APIRouter) -> None:
-    from app.api.v1 import academic, approval, campus_service, excel, orientation, student, student_affairs
+    from app.api.v1 import academic, approval, approval_mobile, campus_service, excel, orientation, student, student_affairs
     from app.modules.academic_affairs.routers import academic_affairs_bundle as academic_affairs
     from app.modules.employment.routers import employment
     deps = build_deps()
     register_core_routes(api_router)
     api_router.include_router(student.router)
     api_router.include_router(approval.router)
+    api_router.include_router(approval_mobile.router)
     register_internship_routes(api_router, deps)
     api_router.include_router(orientation.router, dependencies=deps["orientation"])
     api_router.include_router(campus_service.router, dependencies=deps["cs"])

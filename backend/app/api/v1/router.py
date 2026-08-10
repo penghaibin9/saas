@@ -21,6 +21,7 @@ from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_route
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
+from app.api.v1.data_center import router as data_center_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
@@ -41,7 +42,6 @@ from app.services.affairs_four_end_terminal_guard import install as install_affa
 from app.services.affairs_funding_authority_service import install as install_funding_authority
 from app.services.affairs_history_dry_run_guard import install as install_history_dry_run_guard
 from app.services.affairs_history_import_guard import install as install_history_import_guard
-from app.services.affairs_returned_view_service import install as install_returned_view_projection
 from app.services.affairs_risk_evidence_guard import install as install_risk_evidence_guard
 from app.services.affairs_risk_transfer_guard import install as install_risk_transfer_guard
 from app.services.affairs_stats_integrity_guard import install as install_stats_integrity_guard
@@ -83,11 +83,11 @@ for supplemental_router in (
     affairs_student_returned_router,
     affairs_leave_self_router,
     mobile_performance_router,
+    data_center_router,
 ):
     _mount_supplemental_router(api_router, supplemental_router)
 
 install_affairs_four_end_contract()
-install_returned_view_projection()
 install_activity_checkin_code()
 install_activity_reliability()
 install_dorm_reliability()

@@ -18,6 +18,7 @@ Actions 的一次性 MySQL：
 from __future__ import annotations
 
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -178,6 +179,11 @@ def validate_review_sandbox() -> dict[str, int]:
         session.close()
 
 
+def _annotation_message(exc: Exception) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    return detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def main() -> int:
     set_nullable(True)
     seed_session = get_sessionmaker()()
@@ -202,7 +208,9 @@ def main() -> int:
             "notNullRestored": True,
         })
         return 0
-    except Exception:
+    except Exception as exc:
+        print(f"::error title=Student Portal V5 seed::{_annotation_message(exc)}", file=sys.stderr)
+        traceback.print_exc()
         if seed_session.is_active:
             seed_session.rollback()
         raise
@@ -212,8 +220,8 @@ def main() -> int:
         if not restored_not_null:
             try:
                 set_nullable(False)
-            except Exception:
-                pass
+            except Exception as restore_exc:
+                print(f"::error title=Student Portal V5 constraint restore::{_annotation_message(restore_exc)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

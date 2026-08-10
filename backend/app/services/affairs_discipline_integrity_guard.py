@@ -60,13 +60,15 @@ def _ensure_cs_student(db, student_id: int):
     if not profile:
         raise not_found("学生主档不存在，无法建立处分投影")
 
-    existing = db.scalars(select(CsServiceStudent).where(
+    existing_rows = db.scalars(select(CsServiceStudent).where(
         CsServiceStudent.tenant_id == tenant_id,
         CsServiceStudent.student_id == student_id,
         CsServiceStudent.is_deleted.is_(False),
-    ).order_by(CsServiceStudent.id).with_for_update()).first()
-    if existing:
-        return existing
+    ).order_by(CsServiceStudent.id).with_for_update()).all()
+    if len(existing_rows) > 1:
+        raise AppException("DATA_CONFLICT", "服务学生台账存在重复活动记录，请先完成数据治理")
+    if existing_rows:
+        return existing_rows[0]
 
     if db.get_bind().dialect.name == "mysql" and _has_column(
             db, "t_cs_service_student", "active_student_id"):
@@ -91,13 +93,15 @@ def _ensure_cs_student(db, student_id: int):
             "class_id": str(profile.class_id) if profile.class_id is not None else None,
             "grade": profile.grade,
         })
-        existing = db.scalars(select(CsServiceStudent).where(
+        created_rows = db.scalars(select(CsServiceStudent).where(
             CsServiceStudent.tenant_id == tenant_id,
             CsServiceStudent.student_id == student_id,
             CsServiceStudent.is_deleted.is_(False),
-        ).order_by(CsServiceStudent.id).with_for_update()).first()
-        if existing:
-            return existing
+        ).order_by(CsServiceStudent.id).with_for_update()).all()
+        if len(created_rows) > 1:
+            raise AppException("DATA_CONFLICT", "服务学生台账存在重复活动记录，请先完成数据治理")
+        if created_rows:
+            return created_rows[0]
         raise AppException("DATA_CONFLICT", "服务学生台账并发创建失败，请重试")
 
     record = CsServiceStudent(

@@ -6,6 +6,7 @@
 import { request } from '@/services/http'
 import { getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
+import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
 function identityKey() {
   const token = String(getToken() || '')
@@ -30,7 +31,10 @@ export function fetchWorkbenchSnapshot() {
     '/admin/workbench-snapshot',
     { params: { pageSize: 8 } },
     5_000
-  )
+  ).then((snapshot) => {
+    if (!snapshot || typeof snapshot !== 'object') return snapshot
+    return { ...snapshot, todos: adaptTypedTodoPage(snapshot.todos) }
+  })
 }
 
 export async function fetchTodoSummary() {
@@ -56,6 +60,7 @@ export function fetchTodoList(params = {}) {
     })
   }
   return workbenchRead('todo-list', '/admin/todos', { params: requested }, 5_000)
+    .then(adaptTypedTodoPage)
 }
 
 export async function fetchMessageCount() {

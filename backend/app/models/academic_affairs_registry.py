@@ -3,7 +3,11 @@
 共享 ``app.models`` 只需一行导入本注册表；新增教务模型继续在本文件维护，
 避免长期分支反复改动全系统模型聚合文件。
 """
+from sqlalchemy import DateTime
+from sqlalchemy.dialects import mysql
+
 from app.models.academic_grade_extensions import install_academic_grade_extensions
+from app.models.academic_affairs import AaStatusChange
 from app.models.academic_affairs_teaching_class import (
     AaTeachingClass,
     AaTeachingClassMember,
@@ -29,6 +33,22 @@ from app.models.academic_affairs_effective_grade import (
     AaGradeIdentityHead,
 )
 from app.models.academic_affairs_gpa_policy import AaGpaPointPolicy
+from app.models.academic_affairs_program_transition import ProgramTransitionAssessment
+from app.models.academic_affairs_student_fact import StudentAcademicFact
+from app.models.academic_affairs_stage_c3 import (
+    ArchiveManifest,
+    GraduationDecisionFact,
+    GraduationEvaluationRun,
+    PostArchiveCorrectionCase,
+)
+
+
+# Stage C1 temporal integrity: the migration already upgrades effective_date to
+# DATETIME(6). Keep ORM metadata/create_all on the exact same precision too; otherwise
+# fast-schema tests (and any metadata-created local DB) truncate the due time to whole
+# seconds while StudentAcademicFact keeps microseconds, which can manufacture a false
+# "effective time before current fact" conflict.
+AaStatusChange.__table__.c.effective_date.type = DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
 
 
 # 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
@@ -59,4 +79,10 @@ __all__ = [
     "AaGradeCorrection",
     "AaGradeIdentityHead",
     "AaGpaPointPolicy",
+    "StudentAcademicFact",
+    "ProgramTransitionAssessment",
+    "GraduationEvaluationRun",
+    "GraduationDecisionFact",
+    "ArchiveManifest",
+    "PostArchiveCorrectionCase",
 ]

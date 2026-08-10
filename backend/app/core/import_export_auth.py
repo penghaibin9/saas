@@ -115,7 +115,21 @@ def enforce_student_import(user: dict) -> None:
 
 
 def enforce_student_export(user: dict) -> None:
-    enforce_export_perm(user, "students")
+    """学生主档导出：精确导出权，或“学工学生查看 + 已收窄数据范围”。
+
+    辅导员的产品合同是可导出本人负责班级，而不是获得全校 student.export。
+    因此不靠角色名特判，也不把 read 权限直接升级成全量导出：只有 studentAffairs.student.view
+    且 student_directory_scope 明确返回班级/学生集合时才允许，实际行集继续由导出 service 使用同一 scope。
+    """
+    if has_permission(user, "student.export"):
+        return
+    if has_permission(user, "studentAffairs.student.view"):
+        from app.core.affairs_security import student_directory_scope
+
+        class_ids, student_ids = student_directory_scope(user)
+        if class_ids is not None or student_ids is not None:
+            return
+    raise no_permission("无权限执行该操作（student.export）")
 
 
 def _user_key(user: dict | None) -> str:
@@ -144,7 +158,12 @@ def assert_export_download(user: dict, *, task_tenant_id: int, task_created_by: 
     if not domain:
         raise not_found("导出任务不存在或文件已清理")
     auth = DOMAIN_AUTH[domain]
-    if not auth.export_perm or not has_permission(user, auth.export_perm):
+    if domain == "students":
+        try:
+            enforce_student_export(user)
+        except AppException:
+            raise not_found("导出任务不存在或文件已清理")
+    elif not auth.export_perm or not has_permission(user, auth.export_perm):
         raise not_found("导出任务不存在或文件已清理")
     from app.services.message_identity import resolve_message_user_id
     uid = resolve_message_user_id(user)

@@ -1,23 +1,21 @@
-"""学生主档 API。
+"""学生主档正式 API。
 
-两种语义：
-1) 主档管理：student.profile.view / manage，未知角色 fail-closed（空范围）。
-2) 公共选择器：?mode=picker，仅最小字段，且必须按数据范围过滤，无写能力。
+A2 约束：正式路由只连接真实 student_service；数据范围、权限、状态、版本、幂等和审计
+都在服务端执行。学生列表兼容旧页面查询字段，但统一在数据库分页前收敛。
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from app.core.affairs_security import no_data_scope, student_directory_scope
 from app.core.exceptions import AppException
-from app.core.permissions import (has_permission, require_any_permission,
-                                  require_permission)
+from app.core.idempotency import idempotency_guard
+from app.core.permissions import has_permission, require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.student import (StudentCreateRequest, StudentRestoreRequest,
-                                 StudentUpdateRequest, StudentVoidRequest)
+from app.schemas.student import StudentCreateRequest, StudentRestoreRequest, StudentUpdateRequest, StudentVoidRequest
 from app.services import mock_audit_service as audit
 from app.services import student_service as svc
 
@@ -32,6 +30,12 @@ _PICKER_PERMS = (
     "academicAffairs.roster.view",
 )
 
+_STUDENT_CONTEXT_PERMS = (
+    "student.profile.view",
+    "studentAffairs.student.view",
+    "campusService.student.view",
+)
+
 
 def _can_pick_students(user) -> bool:
     return has_permission(user, "*") or any(has_permission(user, p) for p in _PICKER_PERMS)
@@ -41,34 +45,57 @@ def _can_view_profile(user) -> bool:
     return has_permission(user, "*") or has_permission(user, "student.profile.view")
 
 
+def _can_view_student_context(user) -> bool:
+    """成长时间线/风险摘要的读取能力。
+
+    这两类信息属于学生工作上下文，不应因为 graduation/internship 等仅选择器权限而扩散；
+    允许正式学生主档权限、学工学生查看、在校服务学生查看，最终仍由 dataScope 收敛到目标学生。
+    """
+    return has_permission(user, "*") or any(has_permission(user, p) for p in _STUDENT_CONTEXT_PERMS)
+
+
+def _can_update_profile(user) -> bool:
+    return (
+        has_permission(user, "*")
+        or has_permission(user, "student.profile.update")
+        or has_permission(user, "student.profile.manage")
+    )
+
+
+def _require_update_permission(user) -> None:
+    if not _can_update_profile(user):
+        raise AppException("NO_PERMISSION", "无权限执行该操作（student.profile.update）", http_status=403)
+
+
 def _check_target_scope(student_id: str, user) -> None:
     """详情/写操作目标学生范围校验；越租户仍由 service 报 not_found。"""
     class_ids, student_ids = student_directory_scope(user)
     if class_ids is None and student_ids is None:
         return
-    # 空集合：明确无范围
     if student_ids is not None and len(student_ids) == 0:
         raise no_data_scope("该学生不在您的数据范围内")
     if class_ids is not None and len(class_ids) == 0 and student_ids is None:
         raise no_data_scope("该学生不在您的数据范围内")
     from sqlalchemy import select
-
     from app.models import StudentProfile
     from app.services.db_service import _tid, session
+
     try:
         sid = int(student_id)
     except (TypeError, ValueError):
         return
     with session() as db:
-        s = db.scalars(select(StudentProfile).where(
-            StudentProfile.id == sid, StudentProfile.tenant_id == _tid(),
-            StudentProfile.is_deleted.is_(False))).first()
-        if s is None:
+        row = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == sid,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )).first()
+        if row is None:
             return
         if student_ids is not None:
-            if s.id in student_ids:
+            if row.id in student_ids:
                 return
-        elif s.class_id is not None and s.class_id in class_ids:
+        elif row.class_id is not None and row.class_id in class_ids:
             return
     raise no_data_scope("该学生不在您的数据范围内")
 
@@ -86,25 +113,107 @@ def _to_picker_item(row: dict) -> dict:
     }
 
 
+def _class_name(class_id: Optional[str], explicit_name: Optional[str]) -> Optional[str]:
+    if explicit_name:
+        return explicit_name
+    raw = str(class_id or "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit():
+        raise AppException("VALIDATION_ERROR", "classId 必须是数字 ID")
+    from sqlalchemy import select
+    from app.models import SchoolClass
+    from app.services.db_service import _tid, session
+
+    with session() as db:
+        row = db.scalars(select(SchoolClass).where(
+            SchoolClass.id == int(raw),
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.is_deleted.is_(False),
+        )).first()
+        if not row:
+            raise AppException("VALIDATION_ERROR", "班级不存在或不属于当前租户")
+        return row.class_name
+
+
 @router.get("", summary="学生列表（主档或选择器）")
-def list_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                  keyword: Optional[str] = None, college: Optional[str] = None,
-                  major: Optional[str] = None, className: Optional[str] = None,
-                  status: Optional[str] = None, riskLevel: Optional[str] = None,
-                  mode: Optional[str] = Query(None, description="picker=最小字段选择器"),
-                  user=Depends(require_staff)):
+def list_students(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: Optional[str] = None,
+    college: Optional[str] = None,
+    collegeId: Optional[str] = None,
+    major: Optional[str] = None,
+    majorId: Optional[str] = None,
+    className: Optional[str] = None,
+    classId: Optional[str] = None,
+    status: Optional[str] = None,
+    studentStatus: Optional[str] = None,
+    identityVerifyStatus: Optional[str] = None,
+    riskLevel: Optional[str] = None,
+    mode: Optional[str] = Query(None, description="picker=最小字段选择器"),
+    user=Depends(require_staff),
+):
     is_picker = (mode or "").strip().lower() == "picker"
     if is_picker:
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
     elif not _can_view_profile(user) and not _can_pick_students(user):
         raise AppException("NO_PERMISSION", "无权查看学生主档")
+
+    requested_identity = str(identityVerifyStatus or "").strip().upper()
+    if requested_identity and requested_identity != "NOT_CONFIGURED":
+        return success(paginate([], 0, page, pageSize))
+
     class_ids, student_ids = student_directory_scope(user)
-    items, total = svc.list_students(page, pageSize, keyword, college, major, className, status, riskLevel,
-                                     class_ids=class_ids, student_ids=student_ids)
+    items, total = svc.list_students(
+        page,
+        pageSize,
+        keyword,
+        collegeId or college,
+        majorId or major,
+        _class_name(classId, className),
+        studentStatus or status,
+        riskLevel,
+        class_ids=class_ids,
+        student_ids=student_ids,
+    )
     if is_picker or not _can_view_profile(user):
         items = [_to_picker_item(x) for x in items]
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/summary", summary="学生中心权威摘要")
+def student_summary(user=Depends(require_staff)):
+    if not _can_view_profile(user) and not _can_pick_students(user):
+        raise AppException("NO_PERMISSION", "无权查看学生中心摘要")
+    class_ids, student_ids = student_directory_scope(user)
+    return success(svc.summary(class_ids=class_ids, student_ids=student_ids))
+
+
+@router.get("/identity-records", summary="身份核验能力与记录")
+def identity_records(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    user=Depends(require_staff),
+):
+    """返回身份核验的服务端权威能力状态。
+
+    当前仓库尚未接入第三方实名/人脸核验 provider，因此服务端明确 fail-closed 为
+    NOT_CONFIGURED。固定路径必须位于 /{student_id} 之前；未来接入 provider 时只在服务端
+    替换此能力的数据源，前端状态机无需再硬编码环境事实。
+    """
+    if not _can_view_profile(user):
+        raise AppException("NO_PERMISSION", "无权查看学生身份核验信息", http_status=403)
+    return success({
+        "items": [],
+        "list": [],
+        "total": 0,
+        "page": page,
+        "pageSize": pageSize,
+        "capabilityStatus": "NOT_CONFIGURED",
+        "notice": "身份核验依赖第三方实名/人脸核验服务，当前服务端未配置；新生人工信息核验请到“数字迎新 › 信息核验”。",
+    })
 
 
 @router.get("/{student_id}", summary="学生 360 详情")
@@ -114,7 +223,6 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
     elif not _can_view_profile(user):
-        # 无主档查看权：仅返回最小字段（若有域内学生查看权）
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权查看学生主档")
         is_picker = True
@@ -123,71 +231,115 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
     return success(_to_picker_item(row) if is_picker else row)
 
 
-# 学籍维护动作已拆细：create / update / restore 各自独立权限码，不再用一个
-# 过宽的 student.profile.manage 包办。manage 暂时并列接受，避免存量角色（学工等）
-# 的既有功能在本次拆分中被一刀切断；角色矩阵见 core/permissions.py。
 _P_CREATE = require_any_permission("student.profile.create", "student.profile.manage")
-_P_UPDATE = require_any_permission("student.profile.update", "student.profile.manage")
-_P_RESTORE = require_permission("student.profile.restore")  # 恢复不接受 manage 兜底
+_P_RESTORE = require_permission("student.profile.restore")
 
 
 @router.post("", summary="学生补录（新增学生主档）", dependencies=[Depends(_P_CREATE)])
-def create_student(body: StudentCreateRequest, user=Depends(require_staff)):
-    row = svc.create_student(body)
-    audit.record("学生补录", method="POST", path="/api/v1/students", status_code=200,
-                 target_type="student", target_id=row["id"])
-    return success(row, message="建档成功")
+def create_student(
+    body: StudentCreateRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    payload = body.model_dump()
+    with idempotency_guard(
+        user, "student-create", idempotency_key, payload, require_store=True
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="建档成功（幂等重放）")
+        row = svc.create_student(body)
+        audit.record(
+            "学生补录", method="POST", path="/api/v1/students", status_code=200,
+            target_type="student", target_id=row["id"],
+        )
+        guard.success(row)
+        return success(row, message="建档成功")
 
 
-@router.post("/restore", summary="恢复已作废学生主档（受控动作）",
-             dependencies=[Depends(_P_RESTORE)])
-def restore_student(body: StudentRestoreRequest, user=Depends(require_staff)):
-    """恢复复用原 studentId 与全部历史关联，属高危动作：单独权限 + 原因≥5字 + 审计。
+@router.post("/restore", summary="恢复已作废学生主档（受控动作）", dependencies=[Depends(_P_RESTORE)])
+def restore_student(
+    body: StudentRestoreRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    payload = body.model_dump()
+    with idempotency_guard(
+        user, "student-restore", idempotency_key, payload, require_store=True
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="学生主档已恢复（幂等重放）")
+        row = svc.restore_student(body)
+        audit.record_critical(
+            "恢复作废学生主档", method="POST", path="/api/v1/students/restore", status_code=200,
+            target_type="student", target_id=row["id"],
+            detail={"studentNo": body.studentNo, "reason": body.reason},
+        )
+        guard.success(row)
+        return success(row, message=row.get("message") or "已恢复该学生主档")
 
-    不自动恢复登录账号——账号启用与密码重置由「师生账号」单独处理。
-    """
-    row = svc.restore_student(body)
-    audit.record_critical(
-        "恢复作废学生主档", method="POST", path="/api/v1/students/restore", status_code=200,
-        target_type="student", target_id=row["id"],
-        detail={"studentNo": body.studentNo, "reason": body.reason})
-    return success(row, message=row.get("message") or "已恢复该学生主档")
 
-
-@router.put("/{student_id}", summary="更新学生主档", dependencies=[Depends(_P_UPDATE)])
-def update_student(student_id: str, body: StudentUpdateRequest, user=Depends(require_staff)):
+@router.put("/{student_id}", summary="更新学生主档")
+def update_student(
+    student_id: str,
+    body: StudentUpdateRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    # A2：目标数据范围优先于动作权限裁决。跨范围稳定返回 NO_DATA_SCOPE；
+    # 同范围但没有 student.profile.update/manage 仍严格返回 NO_PERMISSION。
     _check_target_scope(student_id, user)
-    row = svc.update_student(student_id, body)
-    audit.record("更新学生", method="PUT", path=f"/api/v1/students/{student_id}", status_code=200,
-                 target_type="student", target_id=student_id)
-    return success(row, message="已保存")
+    _require_update_permission(user)
+    payload = {"studentId": student_id, **body.model_dump()}
+    with idempotency_guard(
+        user, "student-update", idempotency_key, payload, require_store=True
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="已保存（幂等重放）")
+        row = svc.update_student(student_id, body)
+        audit.record(
+            "更新学生", method="PUT", path=f"/api/v1/students/{student_id}", status_code=200,
+            target_type="student", target_id=student_id,
+        )
+        guard.success(row)
+        return success(row, message="已保存")
 
 
-@router.post("/{student_id}/void", summary="作废学生主档", dependencies=[Depends(_P_UPDATE)])
-def void_student(student_id: str, body: StudentVoidRequest, user=Depends(require_staff)):
+@router.post("/{student_id}/void", summary="作废学生主档")
+def void_student(
+    student_id: str,
+    body: StudentVoidRequest,
+    user=Depends(require_staff),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
     _check_target_scope(student_id, user)
-    # DB 模式：作废与高危审计同事务；mock 模式仍走 record_critical
-    from app.db.session import db_enabled
-    result = svc.void_student(student_id, body.reason)
-    if not db_enabled():
+    _require_update_permission(user)
+    payload = {"studentId": student_id, "reason": body.reason}
+    with idempotency_guard(
+        user, "student-void", idempotency_key, payload, require_store=True
+    ) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="已作废（幂等重放）")
+        result = svc.void_student(student_id, body.reason)
         audit.record_critical(
             "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",
             status_code=200, target_type="student", target_id=student_id,
-            detail={"reason": body.reason})
-    return success(result, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
+            detail={"reason": body.reason},
+        )
+        guard.success(result)
+        return success(result, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
 
 
 @router.get("/{student_id}/timeline", summary="学生成长时间线")
 def student_timeline(student_id: str, user=Depends(require_staff)):
-    if not _can_view_profile(user):
-        raise AppException("NO_PERMISSION", "无权查看学生主档")
+    if not _can_view_student_context(user):
+        raise AppException("NO_PERMISSION", "无权查看学生成长时间线")
     _check_target_scope(student_id, user)
     return success({"items": svc.get_timeline(student_id)})
 
 
 @router.get("/{student_id}/risk-summary", summary="学生风险摘要")
 def student_risk(student_id: str, user=Depends(require_staff)):
-    if not _can_view_profile(user):
-        raise AppException("NO_PERMISSION", "无权查看学生主档")
+    if not _can_view_student_context(user):
+        raise AppException("NO_PERMISSION", "无权查看学生风险摘要")
     _check_target_scope(student_id, user)
     return success(svc.get_risk_summary(student_id))

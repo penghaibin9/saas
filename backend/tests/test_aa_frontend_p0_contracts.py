@@ -84,7 +84,7 @@ def test_student_selection_uses_dedicated_server_authoritative_workspace():
     assert "portalApi.academicEnroll" in view
     assert "portalApi.academicDrop" in view
     assert "await load()" in view
-    assert "余量、冲突和选退课窗口以服务器最终校验为准" in view
+    assert "所有资格、冲突、容量和时间窗口都由服务器最终校验" in view
     assert "window.prompt" not in view
 
 
