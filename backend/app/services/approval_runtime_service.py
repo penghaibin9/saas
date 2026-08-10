@@ -113,9 +113,26 @@ def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
     return rows
 
 
-def list_tasks(page, page_size, *, user=None, keyword=None, biz_type=None):
+def list_tasks(
+    page,
+    page_size,
+    *,
+    user=None,
+    keyword=None,
+    biz_type=None,
+    urgency=None,
+    submit_date=None,
+):
     _require_db()
-    rows, total = base.list_tasks(page, page_size, user=user, keyword=keyword, biz_type=biz_type)
+    rows, total = base.list_tasks(
+        page,
+        page_size,
+        user=user,
+        keyword=keyword,
+        biz_type=biz_type,
+        urgency=urgency,
+        submit_date=submit_date,
+    )
     return _enrich_rows(rows, user=user), total
 
 
@@ -186,6 +203,7 @@ def get_task(task_id: str, *, user=None) -> dict:
 
 
 def summary(*, user=None) -> dict:
+    """待办统计全部由数据库聚合；仅展示型 overdueList 限制 10 行。"""
     _require_db()
     from sqlalchemy import func, select
     from app.models import WorkflowInstance, WorkflowTask
@@ -193,6 +211,7 @@ def summary(*, user=None) -> dict:
 
     now = datetime.utcnow()
     start = datetime(now.year, now.month, now.day)
+    near_until = now + timedelta(hours=24)
     cond = [
         WorkflowTask.tenant_id == _tid(),
         WorkflowTask.is_deleted.is_(False),
@@ -202,25 +221,39 @@ def summary(*, user=None) -> dict:
     ]
     if not db_service._can_manage_all_approvals(user):
         cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+
+    join_from = WorkflowTask.__table__.join(
+        WorkflowInstance.__table__, WorkflowInstance.id == WorkflowTask.instance_id
+    )
     with db_service.session() as db:
-        q = select(WorkflowTask, WorkflowInstance).join(
-            WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id
-        ).where(*cond)
-        rows = db.execute(q.order_by(WorkflowTask.deadline_at, WorkflowTask.id).limit(500)).all()
-        total = int(db.scalar(
-            select(func.count()).select_from(WorkflowTask).join(
-                WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id
-            ).where(*cond)
-        ) or 0)
-        today = sum(1 for t, _ in rows if t.created_at and t.created_at >= start)
-        overdue = [(t, i) for t, i in rows if t.deadline_at and t.deadline_at < now]
-        near = [(t, i) for t, i in rows if t.deadline_at and now <= t.deadline_at <= now + timedelta(hours=24)]
-        by = {}
-        for _, inst in rows:
-            key = inst.source_biz_type or "GENERAL"
-            by[key] = by.get(key, 0) + 1
-        overdue_rows = [db_service._task_row(t, i) for t, i in overdue[:10]]
-        for item, (task, inst) in zip(overdue_rows, overdue[:10]):
+        def _count(*extra) -> int:
+            return int(db.scalar(
+                select(func.count()).select_from(join_from).where(*cond, *extra)
+            ) or 0)
+
+        total = _count()
+        today = _count(WorkflowTask.created_at >= start)
+        overdue_count = _count(WorkflowTask.deadline_at < now)
+        near_count = _count(
+            WorkflowTask.deadline_at >= now,
+            WorkflowTask.deadline_at <= near_until,
+        )
+        grouped = db.execute(
+            select(WorkflowInstance.source_biz_type, func.count())
+            .select_from(join_from)
+            .where(*cond)
+            .group_by(WorkflowInstance.source_biz_type)
+            .order_by(WorkflowInstance.source_biz_type)
+        ).all()
+        overdue = db.execute(
+            select(WorkflowTask, WorkflowInstance)
+            .select_from(join_from)
+            .where(*cond, WorkflowTask.deadline_at < now)
+            .order_by(WorkflowTask.deadline_at, WorkflowTask.id)
+            .limit(10)
+        ).all()
+        overdue_rows = [db_service._task_row(t, i) for t, i in overdue]
+        for item, (task, inst) in zip(overdue_rows, overdue):
             item["instanceStatus"] = inst.status
             item["sourceBizId"] = str(inst.source_biz_id)
             item["deadlineAt"] = task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None
@@ -229,11 +262,14 @@ def summary(*, user=None) -> dict:
         return {
             "total": total,
             "todayNew": today,
-            "overdue": len(overdue),
-            "nearDeadline": len(near),
-            "byBizType": [{"bizType": k, "count": v} for k, v in sorted(by.items())],
+            "overdue": overdue_count,
+            "nearDeadline": near_count,
+            "byBizType": [
+                {"bizType": biz_type or "GENERAL", "count": int(count or 0)}
+                for biz_type, count in grouped
+            ],
             "overdueList": overdue_rows,
-            "asOf": datetime.now().isoformat(timespec="seconds"),
+            "asOf": now.isoformat(timespec="seconds"),
         }
 
 
