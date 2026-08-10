@@ -20,6 +20,30 @@ async function settleVisual(page) {
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 }
 
+async function browserApi(page, token, method, path, body) {
+  return page.evaluate(async ({ apiBaseUrl, tokenValue, requestMethod, requestPath, requestBody }) => {
+    const response = await fetch(`${apiBaseUrl}${requestPath}`, {
+      method: requestMethod,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${tokenValue}`,
+        ...(requestBody === undefined ? {} : { 'Content-Type': 'application/json' })
+      },
+      body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
+    })
+    const text = await response.text()
+    let json = null
+    try { json = JSON.parse(text) } catch { json = { message: text.slice(0, 500) } }
+    return { status: response.status, json }
+  }, {
+    apiBaseUrl: config.apiBaseUrl,
+    tokenValue: token,
+    requestMethod: method,
+    requestPath: path,
+    requestBody: body
+  })
+}
+
 async function captureGolden(page, testInfo, name) {
   await settleVisual(page)
   const viewportPath = testInfo.outputPath(`${name}-1440x1000.png`)
@@ -69,16 +93,32 @@ test.describe.serial('Golden PC visual evidence', () => {
     await captureGolden(page, testInfo, 'golden-student-master-b')
   })
 
-  test('Selection console · 1440x1000 success-state evidence', async ({ page }, testInfo) => {
+  test('Selection console · 1440x1000 populated success-state evidence', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(config.multiRole)
     await login.switchRole(/教务处管理员|教务管理员|教务老师|ACADEMIC_ADMIN/)
+
+    const token = await login.token()
+    const batchName = `Golden 视觉验收批次 ${Date.now()}`
+    const created = await browserApi(
+      page,
+      token,
+      'POST',
+      '/academic-affairs/selection/batches',
+      { batchName, remark: 'Playwright Golden visual evidence · isolated E2E database only' }
+    )
+    expect(created.status, JSON.stringify(created.json)).toBe(200)
+    expect(created.json?.code, JSON.stringify(created.json)).toBe(0)
+
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/selection`)
 
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/selection/)
     await expect(page.locator('.aasel-layout')).toBeVisible()
     await expect(page.locator('.aasel-list-card')).toBeVisible()
+    await expect(page.locator('.aasel-hero')).toBeVisible()
+    await expect(page.locator('.aasel-metrics')).toBeVisible()
+    await expect(page.locator('.aasel-batch').filter({ hasText: batchName })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('正在加载数据…')
 
     await captureGolden(page, testInfo, 'golden-selection-console-b')
