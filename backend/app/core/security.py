@@ -12,11 +12,11 @@ import time
 from typing import Optional
 
 import jwt
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 
 from app.core.config import settings
 from app.core.context import set_current_user
-from app.core.exceptions import no_permission, unauthorized
+from app.core.exceptions import AppException, no_permission, unauthorized
 
 
 def assert_secret_safe() -> None:
@@ -40,7 +40,6 @@ def assert_prod_flags_safe() -> None:
         raise RuntimeError("生产环境禁止显式开启 MOCK_LOGIN_ENABLED（免密演示登录）")
     if not settings.DB_ENABLED:
         raise RuntimeError("生产环境必须设置 DB_ENABLED=true")
-    # MySQL 连接必须完整：DATABASE_URL 或 DB_* 分项
     url = (settings.DATABASE_URL or "").strip()
     if not url:
         if not (settings.DB_HOST and settings.DB_NAME and settings.DB_USER):
@@ -118,8 +117,8 @@ def _optional_positive_int_claim(claims: dict, key: str) -> int | None:
     return value
 
 
-def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
-    """FastAPI 依赖：要求登录，返回当前用户上下文并写入 contextvar。"""
+def get_current_user(request: Request, authorization: Optional[str] = Header(default=None)) -> dict:
+    """FastAPI 依赖：要求登录，逐请求复核真实账号并执行首次改密强门禁。"""
     token = _extract_bearer(authorization)
     if not token:
         raise unauthorized("未提供认证令牌")
@@ -128,7 +127,6 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     if jti_blocked(claims.get("jti")):
         from app.core.exceptions import unauthorized as _unauth
         raise _unauth("令牌已登出失效，请重新登录")
-    # 租户绑定在 RequestContextMiddleware._bind_token_tenant 完成（async 上下文才能正确传播 contextvar）
     user = {
         "userId": claims.get("userId"),
         "loginName": claims.get("loginName") or claims.get("username"),
@@ -145,20 +143,29 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
         "collegeIds": claims.get("collegeIds"),
         "majorId": claims.get("majorId"),
         "majorIds": claims.get("majorIds"),
-        "guardianPhoneHash": claims.get("guardianPhoneHash"),  # 学生PC门户·家长proxy令牌标识
+        "guardianPhoneHash": claims.get("guardianPhoneHash"),
         "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),
     }
-    # DB 账号逐请求复核角色归属。mock 账号不接库，保持原有演示链路。
     if str(user.get("userId") or "").startswith("db-"):
         from app.services.auth_service_db import validate_token_subject
         validate_token_subject(user)
-    # Redis 可用时所有 worker 共享限流；不可用时 token_store 自动退回进程内保护，
-    # 不因缓存故障阻断正常鉴权。租户与用户双层桶避免单校/单账号挤占全部资源。
+        # 强制改密必须使用数据库实时真值，而不是只信登录响应/JWT。这样管理员重置密码后，
+        # 已存在的 access token 也不能继续操作业务；仅保留改密、me、logout 最小恢复链。
+        from app.services.password_change_gate import (
+            is_password_change_allowlisted,
+            must_change_password_for_subject,
+        )
+        if must_change_password_for_subject(user) and not is_password_change_allowlisted(request.url.path):
+            raise AppException(
+                "PASSWORD_CHANGE_REQUIRED",
+                "首次登录或密码被管理员重置后必须先修改初始密码",
+                details={"action": "CHANGE_PASSWORD", "path": "/api/v1/auth/change-password"},
+                http_status=403,
+            )
     tenant_id = str(user.get("tenantId") or "")
     user_id = str(user.get("userId") or "")
     if tenant_id and user_id:
-        from app.core.exceptions import AppException
         from app.core.token_store import rate_limit
         if not rate_limit(f"api:tenant:{tenant_id}", settings.TENANT_API_RATE_LIMIT_PER_SECOND, 1):
             raise AppException("RATE_LIMITED", "当前学校请求过于集中，请稍后重试")
@@ -168,15 +175,10 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     return user
 
 
-# 教职工/管理端 userType 白名单（全仓 userType 词表核验：教职工侧仅以下五类，
-# 非教职工为 STUDENT/GUARDIAN）。改用白名单而非「排除 STUDENT/GUARDIAN」黑名单：
-# 空值、拼写错误、未来新增的非教职工类型一律拒绝，避免黑名单漏项而放行（P2-1 加固）。
-# ★ 新增教职工 userType 必须同步登记此集合，否则该类账号访问 PC 管理端会被 403。
 STAFF_USER_TYPES = frozenset({
     "TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN",
 })
 
-# 学校移动教师端不得接受平台跨租户身份。新增学校侧教职工 userType 时必须显式登记。
 MOBILE_STAFF_USER_TYPES = frozenset({"TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN"})
 
 
@@ -194,7 +196,6 @@ def require_mobile_staff(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
-# ── 真实口令（pbkdf2_sha256，标准库实现；生产可平滑替换 bcrypt/argon2）──
 import hashlib
 import secrets
 
