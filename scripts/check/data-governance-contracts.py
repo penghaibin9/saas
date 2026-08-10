@@ -24,6 +24,8 @@ require(
     "deploy/backup/backup-mysql.sh",
     "REQUIRE_UPLOAD_BACKUP",
     "MIN_LOCAL_BACKUP_SETS",
+    "cleanup_incomplete",
+    "committed=1",
     "unsafe upload entry is not allowed",
     "retention_pruned_backup_set",
     "manifest_",
@@ -97,6 +99,7 @@ require(
 require(
     ".github/workflows/data-governance-contracts.yml",
     "Prove uploads fail closed",
+    "failed backup left orphan files",
     "Prove unsafe upload entries are rejected",
     "Prove local-only backup is rejected",
     "Verify backup watchdog sees healthy committed set",

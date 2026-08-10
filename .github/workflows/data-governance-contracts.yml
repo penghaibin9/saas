@@ -89,11 +89,18 @@ jobs:
           SQL
           mkdir -p "$UPLOAD_DIR"
           printf 'governance-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
-      - name: Prove uploads fail closed
+      - name: Prove uploads fail closed and clean up incomplete files
         run: |
           set -euo pipefail
+          rm -rf "$BACKUP_DIR"
+          mkdir -p "$BACKUP_DIR"
           if UPLOAD_DIR=/tmp/definitely-missing REQUIRE_UPLOAD_BACKUP=1 bash deploy/backup/backup-mysql.sh; then
             echo '::error::backup unexpectedly succeeded without required uploads'
+            exit 1
+          fi
+          if [ -n "$(find "$BACKUP_DIR" -maxdepth 1 -type f -print -quit)" ]; then
+            echo '::error::failed backup left orphan files in the governed backup directory'
+            find "$BACKUP_DIR" -maxdepth 1 -type f -printf '%f\n'
             exit 1
           fi
       - name: Prove unsafe upload entries are rejected
@@ -101,12 +108,17 @@ jobs:
           set -euo pipefail
           UNSAFE_BACKUP_DIR=/tmp/school-lifecycle-unsafe-upload-backup
           rm -rf "$UNSAFE_BACKUP_DIR"
+          mkdir -p "$UNSAFE_BACKUP_DIR"
           ln -s /etc/passwd "$UPLOAD_DIR/unsafe-link"
           if BACKUP_DIR="$UNSAFE_BACKUP_DIR" bash deploy/backup/backup-mysql.sh; then
             echo '::error::backup unexpectedly accepted a symbolic link inside uploads'
             exit 1
           fi
           rm -f "$UPLOAD_DIR/unsafe-link"
+          if [ -n "$(find "$UNSAFE_BACKUP_DIR" -maxdepth 1 -type f -print -quit)" ]; then
+            echo '::error::failed unsafe-upload backup left orphan files'
+            exit 1
+          fi
           rm -rf "$UNSAFE_BACKUP_DIR"
       - name: Prove local-only backup is rejected
         run: |

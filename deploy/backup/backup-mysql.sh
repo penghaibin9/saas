@@ -33,11 +33,18 @@ upload_file="$BACKUP_DIR/uploads_${timestamp}.tar.gz"
 upload_temp="${upload_file}.partial"
 manifest_file="$BACKUP_DIR/manifest_${timestamp}.json"
 manifest_temp="${manifest_file}.partial"
+committed=0
 
-cleanup_partial() {
+cleanup_incomplete() {
   rm -f -- "$db_temp" "$upload_temp" "$manifest_temp"
+  if [ "$committed" != "1" ]; then
+    rm -f -- \
+      "$db_file" "${db_file}.sha256" \
+      "$upload_file" "${upload_file}.sha256" \
+      "$manifest_file" "${manifest_file}.sha256"
+  fi
 }
-trap cleanup_partial EXIT
+trap cleanup_incomplete EXIT
 
 write_sidecar() {
   local file="$1"
@@ -133,6 +140,7 @@ PY
 test -s "$manifest_temp"
 mv -- "$manifest_temp" "$manifest_file"
 write_sidecar "$manifest_file"
+committed=1
 
 # Prune complete backup sets together and always keep a minimum number of valid recovery points.
 python3 - "$BACKUP_DIR" "$KEEP_DAYS" "$MIN_LOCAL_BACKUP_SETS" <<'PY'
