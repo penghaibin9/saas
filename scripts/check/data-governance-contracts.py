@@ -145,10 +145,73 @@ require(
     "*.env",
     "rclone.conf",
 )
+
+# Active production/operations documents must point to the same governed recovery model.
+production_docs = [
+    "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+    "docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md",
+    "docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md",
+    "docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md",
+    "docs/07-部署运维交付与商业化/ops/10校SaaS上线性能与容灾基线.md",
+]
+for doc in production_docs:
+    require(doc, "deploy/README-data-governance.md")
+
+require(
+    "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+    "RPO ≤ 6 小时",
+    "school-lifecycle-backup-watchdog.timer",
+)
+forbid(
+    "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+    "crontab 每天 02:00",
+)
+require(
+    "docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md",
+    "school-lifecycle-backup.service/.timer",
+    "每 6 小时一个恢复点",
+)
+forbid(
+    "docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md",
+    "backup-mysql.sh` + crontab 02:00",
+)
+require(
+    "docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md",
+    "RPO ≤ 6 小时",
+    "school-lifecycle-backup-watchdog.timer",
+)
+forbid(
+    "docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md",
+    "每日 02:00 备份 MySQL 与 uploads",
+)
+require(
+    "docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md",
+    "RPO ≤ 6 小时",
+    "manifest",
+    "restore-drill.sh",
+)
+forbid(
+    "docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md",
+    "restore-mysql.sh",
+)
+require(
+    "docs/07-部署运维交付与商业化/ops/10校SaaS上线性能与容灾基线.md",
+    "RPO ≤ 6 小时",
+    "不承诺 5 分钟 PITR",
+    "school-lifecycle-backup-watchdog.timer",
+)
+forbid(
+    "docs/07-部署运维交付与商业化/ops/10校SaaS上线性能与容灾基线.md",
+    "RPO 不超过 5 分钟",
+    "CHANGE REPLICATION SOURCE TO",
+)
+
 require(
     ".github/workflows/data-governance-contracts.yml",
     "**/*.env",
     "**/rclone.conf",
+    "生产上线runbook.md",
+    "10校SaaS上线性能与容灾基线.md",
     "Prove uploads fail closed",
     "failed backup left orphan files",
     "Prove unsafe upload entries are rejected",
