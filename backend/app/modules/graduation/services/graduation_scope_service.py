@@ -274,6 +274,8 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         # 已绑定 mentor_id 时只认导师台账 teacher_no；历史无 ID 的数据才按姓名快照兼容。
         if getattr(student, "mentor_id", None):
             return False
+        if _name_is_ambiguous(db, student.tenant_id, real_name):
+            return False
         return (student.advisor_name or "").strip() == real_name
 
     if role == "GD_REVIEWER":
