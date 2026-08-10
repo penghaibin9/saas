@@ -13,6 +13,8 @@ C10 归档：仅返回终态记录，服务层强制过滤（即使误传在途 
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -24,10 +26,16 @@ def _hdr(client, login_name):
 
 
 def _seed(db_mode):
+    """调停课必须回链真实组织树；学院审批受理人由后续 READY 教学任务夹具按学院绑定。"""
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2601", grade="2026", status="ACTIVE")
+    col = College(tenant_id=TID, college_name="调停课回归学院", status="ACTIVE")
+    db.add(col); db.flush()
+    maj = Major(tenant_id=TID, college_id=col.id, major_name="调停课软件技术", status="ACTIVE")
+    db.add(maj); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2601", grade="2026", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="SC001", real_name="课表甲", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
@@ -37,24 +45,125 @@ def _seed(db_mode):
     return ids
 
 
+def _term(client, hdr):
+    """正式排课使用稳定 termId + 18 教学周，禁止继续硬编码 termId=1。"""
+    start = date(2098, 9, 1)
+    created = client.post(f"{BASE}/terms", headers=hdr, json={
+        "yearCode": "2098-2099", "termNo": 1, "termName": "调停课回归学期",
+        "startDate": start.isoformat(), "endDate": (start + timedelta(days=200)).isoformat(),
+        "teachingWeeks": 18,
+    })
+    assert created.status_code == 200, created.text
+    term_id = created.json()["data"]["termId"]
+    published = client.post(f"{BASE}/terms/{term_id}/publish", headers=hdr)
+    assert published.status_code == 200, published.text
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaTimeSlot
+
+    db = get_sessionmaker()()
+    slot_times = {
+        1: ("08:00", "08:45"), 2: ("08:55", "09:40"),
+        3: ("10:00", "10:45"), 4: ("10:55", "11:40"),
+        5: ("14:00", "14:45"), 6: ("14:55", "15:40"),
+        7: ("16:00", "16:45"), 8: ("16:55", "17:40"),
+    }
+    for slot_no, (start_time, end_time) in slot_times.items():
+        slot = db.query(AaTimeSlot).filter(
+            AaTimeSlot.tenant_id == TID,
+            AaTimeSlot.slot_no == slot_no,
+            AaTimeSlot.is_deleted.is_(False),
+        ).first()
+        if slot is None:
+            db.add(AaTimeSlot(
+                tenant_id=TID, slot_no=slot_no, slot_name=f"第{slot_no}节",
+                start_time=start_time, end_time=end_time, enabled=True, status="ENABLED",
+            ))
+        else:
+            slot.start_time = start_time
+            slot.end_time = end_time
+            slot.enabled = True
+            slot.status = "ENABLED"
+    db.commit(); db.close()
+    return str(term_id)
+
+
 def _batch(client, hdr):
-    return client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": "1"}).json()["data"]["batchId"]
+    term_id = _term(client, hdr)
+    response = client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": term_id})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["batchId"]
+
+
+def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
+    """每个课位显式回链唯一 READY 教学任务；不再依赖共享 MySQL 残留或模糊匹配。"""
+    from app.db.session import get_sessionmaker
+    from app.models import (AaCourse, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch,
+                            Major, SchoolClass)
+    from tests.support_schedule_change_identity import seed_schedule_change_identity
+
+    db = get_sessionmaker()()
+    schedule_batch = db.get(AaScheduleBatch, int(bid))
+    assert schedule_batch is not None
+    cls = db.get(SchoolClass, int(class_id))
+    assert cls is not None
+    major = db.get(Major, int(cls.major_id)) if cls.major_id else None
+    assert major is not None and major.college_id
+    college_id = int(major.college_id)
+    seed_schedule_change_identity(db, college_ids=[college_id])
+
+    seq = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID).count() + 101
+    course_code = f"SC{seq:03d}"
+    course = AaCourse(
+        tenant_id=TID, course_code=course_code, course_name=course_name,
+        nature="REQUIRED", credit=4, status="ENABLED",
+    )
+    db.add(course); db.flush()
+    task_batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=int(schedule_batch.term_id),
+        batch_name=f"调停课回归教学任务批次-{seq}", college_id=college_id, status="APPROVED",
+    )
+    db.add(task_batch); db.flush()
+    task = AaTeachingTask(
+        tenant_id=TID, batch_id=task_batch.id, course_id=course.id,
+        course_code=course_code, course_name=course_name,
+        class_id=int(class_id), teaching_class_name=cls.class_name,
+        teacher_key=teacher_key, teacher_name=teacher_name,
+        status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
+    )
+    db.add(task); db.flush()
+    task_id = int(task.id)
+    db.commit(); db.close()
+    return task_id
 
 
 def _item(client, hdr, bid, class_id, **kw):
     body = {"weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
             "teacherKey": "academic01", "teacherName": "赵敏", "classId": str(class_id),
-            "className": "软件2601", "classroom": "A101", "courseName": "高等数学", **kw}
-    return client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body).json()["data"]["itemId"]
+            "className": "软件2601", "classroom": "A101", "courseName": "高等数学"}
+    body.update(kw)
+    task_id = _ready_task(
+        bid, int(body["classId"]), body["teacherKey"], body["teacherName"], body["courseName"])
+    body["taskId"] = str(task_id)
+    response = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["itemId"]
+
+
+def _publish_batch(client, hdr, bid):
+    prepublished = client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=hdr)
+    assert prepublished.status_code == 200, prepublished.text
+    published = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    assert published.status_code == 200, published.text
 
 
 def _published_item(client, hdr, cid, **extra_items):
-    """建批次 + 排 1 节课 + 发布，返回 (batchId, originItemId)。extra_items 可再排额外课位占位。"""
+    """建正式批次 + READY 教学任务课位 + 预发布 + 发布，返回 (batchId, originItemId)。"""
     bid = _batch(client, hdr)
     origin = _item(client, hdr, bid, cid)
     for kw in extra_items.get("extra", []):
         _item(client, hdr, bid, cid, **kw)
-    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    _publish_batch(client, hdr, bid)
     return bid, origin
 
 
@@ -151,7 +260,7 @@ def test_c6_course_scope_denied(client, db_mode):
     bid = _batch(client, admin)
     # 课位教师为 other_teacher，非 academic01
     origin = _item(client, admin, bid, ids["class"], teacherKey="other_teacher", teacherName="他人")
-    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=admin)
+    _publish_batch(client, admin, bid)
     teacher = _hdr(client, "academic01")   # ACADEMIC_TEACHER：COURSE 范围，仅本人课位
     r = _submit(client, teacher, origin)
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
@@ -205,7 +314,7 @@ def test_c8c_conflict_check_not_own_task_403(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = _batch(client, admin)
     origin = _item(client, admin, bid, ids["class"], teacherKey="other_teacher", teacherName="他人")
-    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=admin)
+    _publish_batch(client, admin, bid)
     teacher = _hdr(client, "academic01")
     r = _conflict_check(client, teacher, origin)
     assert r.status_code == 403
