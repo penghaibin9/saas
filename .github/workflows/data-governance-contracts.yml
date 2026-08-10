@@ -11,6 +11,9 @@ on:
       - '.github/workflows/data-governance-contracts.yml'
       - '.github/workflows/backup-restore-drill.yml'
       - 'scripts/check/data-governance-contracts.py'
+      - '.gitignore'
+      - '**/*.env'
+      - '**/rclone.conf'
   workflow_dispatch:
 
 permissions:

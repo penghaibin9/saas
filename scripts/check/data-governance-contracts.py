@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +19,25 @@ def require(path: str, *needles: str) -> None:
     missing = [needle for needle in needles if needle not in value]
     if missing:
         raise SystemExit(f"{path} missing governance contracts: {missing}")
+
+
+def reject_tracked_runtime_secrets() -> None:
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    bad = []
+    for item in tracked:
+        name = Path(item).name
+        if name == "rclone.conf" or name.endswith(".env"):
+            bad.append(item)
+    if bad:
+        raise SystemExit(
+            "runtime secret/config files must not be tracked: " + ", ".join(sorted(bad))
+        )
 
 
 require(
@@ -107,7 +127,14 @@ require(
     "10-minute systemd timeout",
 )
 require(
+    ".gitignore",
+    "*.env",
+    "rclone.conf",
+)
+require(
     ".github/workflows/data-governance-contracts.yml",
+    "**/*.env",
+    "**/rclone.conf",
     "Prove uploads fail closed",
     "failed backup left orphan files",
     "Prove unsafe upload entries are rejected",
@@ -131,4 +158,5 @@ require(
     "timezone: Asia/Singapore",
 )
 
+reject_tracked_runtime_secrets()
 print("data governance contracts: PASS")
