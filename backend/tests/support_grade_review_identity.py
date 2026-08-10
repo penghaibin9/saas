@@ -1,11 +1,14 @@
-"""成绩审核真实受理人夹具。
+"""成绩审核真实受理人与有效成绩策略夹具。
 
-成绩提交已经 fail-closed：工作流节点必须解析到真实启用账号，禁止 assignee_id=0。
-本模块只为真库端到端测试种出与生产一致的最小身份图，不修改生产权限判断：
+成绩提交/发布已经 fail-closed：工作流节点必须解析到真实启用账号，正式成绩也必须冻结生效策略。
+本模块只为真库端到端测试种出与生产一致的最小事实图，不修改生产权限或策略判断：
 - 学院审核：学院 secretary_id 对应启用账号，并通过角色持有 academicAffairs.grade.collegeReview；
-- 教务终审：唯一校级启用账号通过角色持有 academicAffairs.grade.publish，且不绑定学院范围。
+- 教务终审：唯一校级启用账号通过角色持有 academicAffairs.grade.publish，且不绑定学院范围；
+- 正式成绩：租户至少存在一条 ACTIVE BASE 策略，发布时仍由生产 resolver 正常解析并冻结快照。
 """
 from __future__ import annotations
+
+from datetime import datetime
 
 TID = 1000000000000000001
 COLLEGE_REVIEW_PERM = "academicAffairs.grade.collegeReview"
@@ -97,11 +100,42 @@ def _ensure_account(db, login_name):
     return user
 
 
+def _ensure_base_grade_policy(db):
+    """种出生产允许的租户级 BASE 策略；禁止用 bypass 绕过正式成绩策略冻结。"""
+    from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
+
+    row = db.query(AaEffectiveGradePolicy).filter(
+        AaEffectiveGradePolicy.tenant_id == TID,
+        AaEffectiveGradePolicy.status == "ACTIVE",
+        AaEffectiveGradePolicy.active_scope_key == "BASE",
+        AaEffectiveGradePolicy.is_deleted.is_(False),
+    ).first()
+    if row is None:
+        row = AaEffectiveGradePolicy(
+            tenant_id=TID,
+            policy_code="TEST_BASE_POLICY",
+            policy_version=1,
+            active_scope_key="BASE",
+            attempt_strategy="LATEST_ATTEMPT",
+            makeup_strategy="CAP_AND_OVERRIDE",
+            makeup_cap=60,
+            retake_strategy="REPLACE_IF_PASSED",
+            recognition_priority=75,
+            effective_from_term_id=None,
+            status="ACTIVE",
+            activated_at=datetime.utcnow(),
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
 def seed_grade_review_identity(db, *, college_ids=()):
-    """种出成绩审核两级真实受理人，并把指定学院秘书绑定到学院审核账号。"""
+    """种出成绩审核两级真实受理人、学院绑定和 ACTIVE BASE 成绩策略。"""
     from app.models import College
 
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
+    _ensure_base_grade_policy(db)
     for college_id in college_ids:
         college = db.get(College, int(college_id))
         if college is not None:
