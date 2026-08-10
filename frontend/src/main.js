@@ -4,6 +4,8 @@ import './styles/tokens.css'
 import './styles/element-theme.css'
 // PC 管理端高对比视觉皮肤：只覆盖外观，不改变菜单、路由与业务结构。
 import './styles/high-contrast-skin.css'
+// Golden 页面二次精修：仅学生主档与选课控制台的唯一 DOM 锚点生效。
+import './styles/golden-refinement.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
