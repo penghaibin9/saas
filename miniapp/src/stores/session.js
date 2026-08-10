@@ -3,11 +3,10 @@
  * 统一维护当前登录用户、当前角色/身份与真实身份快照；具体业务权限由服务端上下文下发。
  */
 import { defineStore } from 'pinia'
-import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
+import { getRoleConfig, hasAction, roleKeyFromBackendRole, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
-import { setForcePasswordChange } from '@/security/passwordChangeGate'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
@@ -32,7 +31,6 @@ export const useSessionStore = defineStore('session', {
     mockUser: null,
     availableRoles: [],
     availableContexts: [],
-    mustChangePassword: false,
     identity: {
       userId: null, studentId: null, studentNo: null, realName: null,
       roleCode: null, roleName: null
@@ -77,8 +75,11 @@ export const useSessionStore = defineStore('session', {
       if (!d) return
       const role = d.currentRole || {}
       this.availableContexts = d.availableContexts || d.contexts || []
-      this.mustChangePassword = !!(d.user && d.user.mustChangePassword)
-      setForcePasswordChange(this.mustChangePassword)
+      this.availableRoles = [...new Set(this.availableContexts
+        .map((item) => roleKeyFromBackendRole(item.roleCode || item.contextType))
+        .filter(Boolean))]
+      const currentRoleKey = roleKeyFromBackendRole(role.roleCode || role.contextType)
+      if (currentRoleKey) this.currentRole = currentRoleKey
       this.identity = {
         ...this.identity,
         userId: d.userId != null ? d.userId : this.identity.userId,
@@ -130,9 +131,8 @@ export const useSessionStore = defineStore('session', {
       this.clearBusinessContexts()
       try {
         if (shouldTryReal()) {
-          const cfg = getRoleConfig(roleKey)
           const ctx = this.availableContexts.find((item) =>
-            item.roleCode === roleKey || item.roleCode === cfg.roleCode || item.contextType === roleKey)
+            roleKeyFromBackendRole(item.roleCode || item.contextType) === roleKey)
           if (!ctx) throw { code: 'NO_CONTEXT', biz: true, message: '当前账号没有该身份' }
           const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
           this.currentRole = roleKey
@@ -155,8 +155,6 @@ export const useSessionStore = defineStore('session', {
       this.availableRoles = []
       this.availableContexts = []
       this.realUser = null
-      this.mustChangePassword = false
-      setForcePasswordChange(false)
       this.identity = { userId: null, studentId: null, studentNo: null, realName: null,
         roleCode: null, roleName: null }
       clearTokens()
@@ -169,7 +167,6 @@ export const useSessionStore = defineStore('session', {
           logged: this.logged,
           currentRole: this.currentRole,
           availableRoles: this.availableRoles,
-          mustChangePassword: this.mustChangePassword,
           isTeacher: getRoleConfig(this.currentRole).side === 'teacher',
           user: {
             name: u.name, studentNo: u.studentNo, className: u.className,
@@ -186,8 +183,6 @@ export const useSessionStore = defineStore('session', {
         if (s && s.logged) {
           this.currentRole = s.currentRole
           this.availableRoles = s.availableRoles || []
-          this.mustChangePassword = !!s.mustChangePassword
-          setForcePasswordChange(this.mustChangePassword)
           this.logged = true
           const skeleton = initialUser(s.isTeacher ? 'teacher' : 'student')
           const saved = s.user || {}
