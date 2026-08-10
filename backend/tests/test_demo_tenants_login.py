@@ -111,8 +111,14 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
                     json={"loginName": "student01", "password": "demo"})
     assert r.status_code == 403
     assert "accessToken" not in (r.json().get("data") or {})
-    # 真实登录不受影响
-    assert _login(client, "student")["code"] == 0
+
+    # 真实密码登录仍存在，但 production 风控必须依赖共享 Redis；当前测试环境未配置
+    # Redis 时应 fail-closed，不能退化到单进程内存并签发令牌。
+    real = client.post("/api/v1/auth/login",
+                       json={"loginName": "student", "password": "123456"})
+    assert real.status_code == 503
+    assert real.json()["bizCode"] == "AUTH_STORE_UNAVAILABLE"
+    assert "accessToken" not in (real.json().get("data") or {})
 
 
 # ═══ 8-10：双租户严格隔离 ═══
