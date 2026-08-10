@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  HELP_ROLE_OPTIONS,
   buildHelpSearchText,
   isHelpVisibleForRole,
   normalizeHelpRole,
@@ -23,6 +24,24 @@ test('role filtering is permissive for unknown legacy metadata', () => {
   assert.equal(isHelpVisibleForRole({ roles: ['学生'] }, 'student'), true)
   assert.equal(isHelpVisibleForRole({ roles: ['学生'] }, 'teacher'), false)
   assert.equal(isHelpVisibleForRole({ roles: ['学生'] }, 'school-admin'), true)
+})
+
+test('fine-grained role filters narrow recommendations without changing auth-role resolution', () => {
+  const optionValues = new Set(HELP_ROLE_OPTIONS.map((item) => item.value))
+  for (const value of ['academic-admin', 'college-admin', 'counselor', 'student-affairs-admin', 'psychology-teacher', 'funding-teacher', 'course-teacher', 'internship-mentor', 'graduation-role']) {
+    assert.ok(optionValues.has(value), `missing fine role option ${value}`)
+  }
+
+  assert.equal(resolveHelpRole('COUNSELOR'), 'student-affairs')
+  assert.equal(resolveHelpRole('ACADEMIC_TEACHER'), 'teacher')
+  assert.equal(isHelpVisibleForRole({ roles: ['辅导员', '学院管理员'] }, 'counselor'), true)
+  assert.equal(isHelpVisibleForRole({ roles: ['心理老师'] }, 'counselor'), false)
+  assert.equal(isHelpVisibleForRole({ roles: ['心理老师', '学工处管理员'] }, 'psychology-teacher'), true)
+  assert.equal(isHelpVisibleForRole({ roles: ['资助老师'] }, 'psychology-teacher'), false)
+  assert.equal(isHelpVisibleForRole({ roles: ['任课教师', '教务处管理员'] }, 'course-teacher'), true)
+  assert.equal(isHelpVisibleForRole({ roles: ['实习指导教师', '企业导师'] }, 'internship-mentor'), true)
+  assert.equal(isHelpVisibleForRole({ roles: ['毕设管理员', '答辩专家'] }, 'graduation-role'), true)
+  assert.equal(isHelpVisibleForRole({ roles: [] }, 'funding-teacher'), true)
 })
 
 test('search text includes nested steps, faq and warnings', () => {
