@@ -96,7 +96,7 @@ def _ensure_term():
     return term_id
 
 
-def _enabled_course(client, admin, *, code="MB-GRADE101", name="高数", credit=4):
+def _enabled_course(client, admin, *, code="MB101", name="高数", credit=4):
     created = client.post(f"{AA}/courses", headers=admin, json={
         "courseCode": code, "courseName": name, "category": "MAJOR_CORE", "nature": "REQUIRED",
         "credit": credit, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
@@ -113,13 +113,39 @@ def _enabled_course(client, admin, *, code="MB-GRADE101", name="高数", credit=
     return course_id
 
 
+def _seed_ready_task(term_id, class_id, teacher_key):
+    """手工排课也必须回链同学期 READY 教学任务；不再依赖共享 MySQL 残留。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
+
+    db = get_sessionmaker()()
+    college = College(tenant_id=TID, college_name="移动端课表回归学院", status="ACTIVE")
+    db.add(college); db.flush()
+    course = AaCourse(tenant_id=TID, course_code="MS101", course_name="高数", credit=4, status="ENABLED")
+    db.add(course); db.flush()
+    batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=int(term_id), batch_name="移动端课表回归教学任务批次",
+        college_id=college.id, status="APPROVED")
+    db.add(batch); db.flush()
+    db.add(AaTeachingTask(
+        tenant_id=TID, batch_id=batch.id, course_id=course.id, course_name="高数",
+        class_id=int(class_id), teaching_class_name="软件2301",
+        teacher_key=teacher_key, teacher_name="王老师", status="READY",
+        weekly_hours=1, total_hours=18, start_week=1, end_week=18,
+    ))
+    db.commit()
+    db.close()
+
+
 def _published_schedule(client, admin, class_id, teacher_key="counselor01"):
     term_id = _ensure_term()
+    _seed_ready_task(term_id, class_id, teacher_key)
     created = client.post(f"{AA}/schedule-batches", headers=admin, json={"termId": str(term_id)})
     assert created.status_code == 200, created.text
     bid = created.json()["data"]["batchId"]
     item = client.post(f"{AA}/schedule-batches/{bid}/items", headers=admin, json={
-        "weekday": 1, "slotNo": 1, "teacherKey": teacher_key, "teacherName": "王老师",
+        "weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
+        "teacherKey": teacher_key, "teacherName": "王老师",
         "classId": str(class_id), "className": "软件2301", "classroom": "A101", "courseName": "高数"})
     assert item.status_code == 200, item.text
     published = client.post(f"{AA}/schedule-batches/{bid}/publish", headers=admin)
