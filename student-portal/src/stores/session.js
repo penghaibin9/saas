@@ -1,15 +1,29 @@
 /**
  * 会话 store（学生 PC 门户）。token 独立 sp_token_v1；仅 STUDENT 可进入。
- * 登出只清理 sp_token_v1，不影响 miniapp / frontend 管理端登录态。
+ * 登出只清理学生门户自身会话，不影响 miniapp / frontend 管理端登录态。
  */
 import { defineStore } from 'pinia'
 import { portalApi } from '../services/portalApi'
 import { clearSession, getToken, setRefreshToken, setToken } from '../services/request'
 
+const FORCE_PASSWORD_CHANGE_KEY = 'sp_force_password_change_v1'
+
+function readForcePasswordChange() {
+  try { return localStorage.getItem(FORCE_PASSWORD_CHANGE_KEY) === '1' } catch { return false }
+}
+
+function writeForcePasswordChange(required) {
+  try {
+    if (required) localStorage.setItem(FORCE_PASSWORD_CHANGE_KEY, '1')
+    else localStorage.removeItem(FORCE_PASSWORD_CHANGE_KEY)
+  } catch { /* 服务端门禁仍是最终真值 */ }
+}
+
 export const useSessionStore = defineStore('sp-session', {
   state: () => ({
     user: null,          // { userId, realName, userType, roleCode, studentNo, mustChangePassword }
     ready: false,
+    mustChangePassword: readForcePasswordChange(),
     token: getToken()    // 响应式镜像 localStorage 令牌：isLoggedIn 若直接读 getToken() 是无响应式依赖的 getter，
                          // 会缓存应用初始化时的首值（未登录=false），登录后置入令牌也不重算 → 守卫永远判未登录。
   }),
@@ -26,7 +40,9 @@ export const useSessionStore = defineStore('sp-session', {
       const userType = (u.userType || '').toUpperCase()
       if (userType !== 'STUDENT' && roleCode.toUpperCase() !== 'STUDENT') {
         clearSession()
+        writeForcePasswordChange(false)
         this.user = null
+        this.mustChangePassword = false
         this.token = ''
         const e = new Error('请使用学生账号登录学生门户')
         e.notStudent = true
@@ -35,17 +51,21 @@ export const useSessionStore = defineStore('sp-session', {
       setToken(data.accessToken || '')
       setRefreshToken(data.refreshToken || '')
       this.token = data.accessToken || ''
+      this.mustChangePassword = !!u.mustChangePassword
+      writeForcePasswordChange(this.mustChangePassword)
       this.user = {
         userId: u.userId, realName: u.realName, userType,
         roleCode: roleCode || 'STUDENT', studentNo: u.studentNo || data.studentNo || null,
-        mustChangePassword: !!u.mustChangePassword
+        mustChangePassword: this.mustChangePassword
       }
       this.ready = true
       return this.user
     },
     logout() {
       clearSession()
+      writeForcePasswordChange(false)
       this.user = null
+      this.mustChangePassword = false
       this.token = ''
       this.ready = false
     }
