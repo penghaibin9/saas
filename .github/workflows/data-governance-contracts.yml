@@ -9,6 +9,7 @@ on:
       - 'deploy/systemd/school-lifecycle-backup.*'
       - '.github/dependabot.yml'
       - '.github/workflows/data-governance-contracts.yml'
+      - '.github/workflows/backup-restore-drill.yml'
       - 'scripts/check/data-governance-contracts.py'
   workflow_dispatch:
 
@@ -21,9 +22,9 @@ concurrency:
 
 jobs:
   contracts-and-runtime:
-    name: Backup set / offsite / restore fail-closed contracts
+    name: Encrypted backup / offsite / restore fail-closed contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.0
@@ -49,9 +50,11 @@ jobs:
       UPLOAD_DIR: /tmp/school-lifecycle-governance-uploads
       REQUIRE_UPLOAD_BACKUP: '1'
       KEEP_DAYS: '2'
+      MIN_LOCAL_BACKUP_SETS: '2'
       BACKUP_REQUIRE_OFFSITE: 'true'
       BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-governance-offsite
       BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      BACKUP_REQUIRE_ENCRYPTION: 'true'
       MAX_BACKUP_AGE_SECONDS: '3600'
       MAX_RESTORE_SECONDS: '300'
       REQUIRED_RESTORE_TABLES: alembic_version,t_tenant
@@ -62,10 +65,17 @@ jobs:
       RESTORE_EVIDENCE_FILE: /tmp/data-governance-restore-evidence.txt
     steps:
       - uses: actions/checkout@v4
-      - name: Install MySQL client and rclone
+      - name: Install MySQL client, rclone and age
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-mysql-client rclone
+          sudo apt-get install -y default-mysql-client rclone age
+      - name: Create ephemeral recovery identity
+        run: |
+          set -euo pipefail
+          age-keygen -o /tmp/data-governance.agekey
+          chmod 600 /tmp/data-governance.agekey
+          echo "BACKUP_AGE_RECIPIENT=$(age-keygen -y /tmp/data-governance.agekey)" >> "$GITHUB_ENV"
+          echo "BACKUP_AGE_IDENTITY_FILE=/tmp/data-governance.agekey" >> "$GITHUB_ENV"
       - name: Validate static governance contracts
         run: |
           python scripts/check/data-governance-contracts.py
@@ -86,6 +96,13 @@ jobs:
           SQL
           mkdir -p "$UPLOAD_DIR"
           printf 'governance-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
+      - name: Prove encryption fails closed
+        run: |
+          set -euo pipefail
+          if BACKUP_AGE_RECIPIENT= BACKUP_REQUIRE_ENCRYPTION=true bash deploy/backup/backup-mysql.sh; then
+            echo '::error::encrypted backup unexpectedly succeeded without a recovery recipient'
+            exit 1
+          fi
       - name: Prove uploads fail closed
         run: |
           set -euo pipefail
@@ -100,19 +117,33 @@ jobs:
             echo '::error::production runner unexpectedly succeeded without offsite storage'
             exit 1
           fi
-      - name: Produce manifest-committed offsite backup
+      - name: Produce manifest-committed encrypted offsite backup
         run: |
           rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" "$UPLOAD_DIR"
           bash deploy/backup/backup-runner.sh
           MANIFEST="$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -name 'manifest_*.json' | sort | tail -n1)"
           test -s "$MANIFEST"
+          test -s "${MANIFEST}.sha256"
           echo "MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
-      - name: Restore from the offsite committed set
+      - name: Verify only encrypted data artifacts were committed offsite
+        run: |
+          set -euo pipefail
+          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'db_*.sql.gz.age' -print -quit)"
+          test -n "$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f -name 'uploads_*.tar.gz.age' -print -quit)"
+          if find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -type f \( -name 'db_*.sql.gz' -o -name 'uploads_*.tar.gz' \) -print -quit | grep -q .; then
+            echo '::error::unencrypted backup artifact reached offsite storage'
+            exit 1
+          fi
+      - name: Restore from the encrypted offsite committed set
         env:
           EXPECTED_ALEMBIC_VERSION: governance_contract
         run: bash deploy/backup/restore-drill.sh "$MANIFEST" governance_restore_test
-      - name: Verify upload payload was part of restore evidence
+      - name: Verify upload payload and tamper-evident recovery evidence
         run: |
+          grep -Eq '^encryption_format=age$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^upload_entry_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
+          sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"
           cat "$RESTORE_EVIDENCE_FILE"
