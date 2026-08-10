@@ -16,6 +16,8 @@ import './styles/golden-business-rollout-final.css'
 import './styles/golden-business-ops-rollout.css'
 // Screenshot C：仅收紧毕设学生台账的页面上下文条。
 import './styles/golden-business-ops-rollout-final.css'
+// Golden 风险工作区 rollout：学工风险 / 实习风险 / 毕设风险与归档。
+import './styles/golden-risk-workspaces-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
