@@ -8,6 +8,7 @@ const VIEWPORT = { width: 1440, height: 1000 }
 const saAdmin = config.sandboxAdmin
 const counselorA = { tenant: 'sandbox-school', username: 'e2e_counselor_a', password: 'E2eTest@2026' }
 const studentB = { tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026' }
+const graduationOpsStudent = { tenant: 'sandbox-school', username: 'E2E20260003', password: 'E2eTest@2026' }
 
 function isoDay(offset) {
   const date = new Date()
@@ -153,13 +154,13 @@ async function prepareGraduationOpsFixture() {
     batch = { ...batch, ...(await admin.post(`/graduation/batches/${batch.id}/activate`, {})), status: 'RUNNING' }
   }
 
-  const profiles = items(await admin.get('/students', { keyword: config.student.username, page: 1, pageSize: 50 }))
-  const profile = profiles.find((item) => String(item.studentNo || item.loginName || '') === config.student.username)
-  if (!profile) throw new Error(`Golden ops student ${config.student.username} not found`)
+  const profiles = items(await admin.get('/students', { keyword: graduationOpsStudent.username, page: 1, pageSize: 50 }))
+  const profile = profiles.find((item) => String(item.studentNo || item.loginName || '') === graduationOpsStudent.username)
+  if (!profile) throw new Error(`Golden ops student ${graduationOpsStudent.username} not found`)
 
   let gdStudent = items(await admin.get('/graduation/gd-students', {
-    batchId: String(batch.id), keyword: config.student.username, page: 1, pageSize: 50
-  })).find((item) => String(item.studentNo || '') === config.student.username)
+    batchId: String(batch.id), keyword: graduationOpsStudent.username, page: 1, pageSize: 50
+  })).find((item) => String(item.studentNo || '') === graduationOpsStudent.username)
 
   if (!gdStudent) {
     gdStudent = await admin.post('/graduation/gd-students', {
@@ -180,6 +181,16 @@ async function prepareGraduationOpsFixture() {
   return { batchId: String(batch.id), batchName: batch.batchName, gdStudentId: String(gdStudent.id) }
 }
 
+async function closeGraduationOpsFixture(fixture) {
+  if (!fixture?.batchId) return
+  const admin = await loginApi(config.sandboxAdmin)
+  try {
+    await admin.post(`/graduation/batches/${fixture.batchId}/close`, {})
+  } catch (error) {
+    if (!/仅「进行中」批次可结束|已结束|CLOSED/.test(error.message)) throw error
+  }
+}
+
 test.describe.serial('Golden rollout · high-frequency operations · Batch 2', () => {
   let leaveFixture
   let internshipFixture
@@ -189,6 +200,10 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     leaveFixture = await prepareLeaveFixture()
     internshipFixture = await loadInternshipFixture()
     graduationFixture = await prepareGraduationOpsFixture()
+  })
+
+  test.afterAll(async () => {
+    await closeGraduationOpsFixture(graduationFixture)
   })
 
   test('Student Affairs leave approval · Screenshot A', async ({ page }, testInfo) => {
