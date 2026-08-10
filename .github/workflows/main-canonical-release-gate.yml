@@ -261,6 +261,23 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_deploy_contract
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_deploy_contract
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
