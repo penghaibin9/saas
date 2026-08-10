@@ -1,0 +1,118 @@
+name: Data governance contracts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/backup/**'
+      - 'deploy/env/backup.env.example'
+      - 'deploy/systemd/school-lifecycle-backup.*'
+      - '.github/dependabot.yml'
+      - '.github/workflows/data-governance-contracts.yml'
+      - 'scripts/check/data-governance-contracts.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-governance-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts-and-runtime:
+    name: Backup set / offsite / restore fail-closed contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: governance_source
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: governance_source
+      BACKUP_DIR: /tmp/school-lifecycle-governance-backup
+      UPLOAD_DIR: /tmp/school-lifecycle-governance-uploads
+      REQUIRE_UPLOAD_BACKUP: '1'
+      KEEP_DAYS: '2'
+      BACKUP_REQUIRE_OFFSITE: 'true'
+      BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-governance-offsite
+      BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      MAX_BACKUP_AGE_SECONDS: '3600'
+      MAX_RESTORE_SECONDS: '300'
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant
+      MIN_RESTORE_TABLES: '2'
+      MIN_RESTORE_INDEXES: '2'
+      MIN_RESTORE_FOREIGN_KEYS: '0'
+      MIN_ACTIVE_TENANTS: '2'
+      RESTORE_EVIDENCE_FILE: /tmp/data-governance-restore-evidence.txt
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MySQL client and rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client rclone
+      - name: Validate static governance contracts
+        run: |
+          python scripts/check/data-governance-contracts.py
+          bash -n deploy/backup/backup-mysql.sh
+          bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/restore-drill.sh
+      - name: Build synthetic governed source data
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot governance_source <<'SQL'
+          CREATE TABLE alembic_version (version_num VARCHAR(64) PRIMARY KEY);
+          INSERT INTO alembic_version VALUES ('governance_contract');
+          CREATE TABLE t_tenant (
+            id BIGINT PRIMARY KEY,
+            tenant_code VARCHAR(64) NOT NULL UNIQUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+          );
+          INSERT INTO t_tenant VALUES (1001, 'school-a', FALSE), (1002, 'school-b', FALSE);
+          SQL
+          mkdir -p "$UPLOAD_DIR"
+          printf 'governance-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
+      - name: Prove uploads fail closed
+        run: |
+          set -euo pipefail
+          if UPLOAD_DIR=/tmp/definitely-missing REQUIRE_UPLOAD_BACKUP=1 bash deploy/backup/backup-mysql.sh; then
+            echo '::error::backup unexpectedly succeeded without required uploads'
+            exit 1
+          fi
+      - name: Prove local-only backup is rejected
+        run: |
+          set -euo pipefail
+          if BACKUP_RCLONE_REMOTE= bash deploy/backup/backup-runner.sh; then
+            echo '::error::production runner unexpectedly succeeded without offsite storage'
+            exit 1
+          fi
+      - name: Produce manifest-committed offsite backup
+        run: |
+          rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" "$UPLOAD_DIR"
+          bash deploy/backup/backup-runner.sh
+          MANIFEST="$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -name 'manifest_*.json' | sort | tail -n1)"
+          test -s "$MANIFEST"
+          echo "MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+      - name: Restore from the offsite committed set
+        env:
+          EXPECTED_ALEMBIC_VERSION: governance_contract
+        run: bash deploy/backup/restore-drill.sh "$MANIFEST" governance_restore_test
+      - name: Verify upload payload was part of restore evidence
+        run: |
+          grep -Eq '^upload_entry_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          cat "$RESTORE_EVIDENCE_FILE"

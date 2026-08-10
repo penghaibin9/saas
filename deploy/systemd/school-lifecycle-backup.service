@@ -1,0 +1,36 @@
+[Unit]
+Description=School Lifecycle verified offsite backup
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current
+EnvironmentFile=/etc/school-lifecycle/backend.env
+EnvironmentFile=/etc/school-lifecycle/backup.env
+Environment=BACKUP_DIR=/var/lib/school-lifecycle-backup
+Environment=UPLOAD_DIR=/opt/school-lifecycle/shared/uploads
+Environment=REQUIRE_UPLOAD_BACKUP=1
+Environment=BACKUP_REQUIRE_OFFSITE=true
+Environment=BACKUP_REQUIRE_IMMUTABLE_REMOTE=true
+Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf
+ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-runner.sh
+StateDirectory=school-lifecycle-backup
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadOnlyPaths=/opt/school-lifecycle/shared/uploads
+ReadOnlyPaths=/etc/school-lifecycle/rclone.conf
+
+[Install]
+WantedBy=multi-user.target
