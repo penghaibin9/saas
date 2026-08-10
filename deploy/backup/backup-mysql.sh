@@ -57,10 +57,14 @@ write_sidecar() {
 }
 
 echo "[$(date -Is)] starting MySQL backup: ${DB_NAME}@${DB_HOST}:${DB_PORT}"
+# Keep the production backup account least-privileged. This recovery design does not use
+# replication/binlog coordinates, tablespace DDL, or GTID state, so do not request those
+# mysqldump features (which can require server-admin privileges such as RELOAD/PROCESS).
 MYSQL_PWD="$DB_PASSWORD" mysqldump \
   -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
   --single-transaction --quick --routines --events --triggers \
-  --hex-blob --default-character-set=utf8mb4 --source-data=2 \
+  --hex-blob --default-character-set=utf8mb4 \
+  --no-tablespaces --set-gtid-purged=OFF \
   "$DB_NAME" | gzip -9 > "$db_temp"
 
 test -s "$db_temp"
