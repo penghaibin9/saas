@@ -29,14 +29,28 @@ _DB_HEALTH = {"lastFailure": None, "consecutiveFailures": 0}
 # 普通动作（看了个页面）丢一条审计可以接受；下列动作不行——
 # "业务 COMMIT 成功 + 审计 INSERT 失败 + 接口仍返回成功" 等于销毁了唯一的责任证据。
 # 命中时 record() 会把落库异常抛给调用方，由上层回滚/返回失败。
+#
+# 注意：这里同时保留历史动作名和当前生产路由真正发出的动作名。此前只列了抽象名，
+# 实际 PLATFORM_TENANT_DISABLE / ROLE_PERMISSION_SAVE / EXPORT 等完全命不中，导致
+# “看起来启用了 fail-closed，真实高危操作仍 fail-open”。
 CRITICAL_ACTIONS = frozenset({
-    "TENANT_SUSPEND", "TENANT_RESUME", "TENANT_DELETE",       # 停用/恢复/删除学校
-    "TENANT_PLAN_CHANGE", "TENANT_QUOTA_CHANGE",              # 改套餐 / 改配额
-    "ROLE_PERMISSION_CHANGE", "ROLE_DELETE", "ROLE_ASSIGN",   # 角色授权变更
-    "SENSITIVE_REVEAL",                                       # 查看身份证/手机号原文
-    "BULK_EXPORT",                                            # 批量导出隐私数据
-    "ADMIN_PASSWORD_RESET", "ACCOUNT_UNLOCK",                 # 重置管理员 / 解锁
-    "BREAK_GLASS",                                            # 应急提权
+    # 历史/兼容动作名
+    "TENANT_SUSPEND", "TENANT_RESUME", "TENANT_DELETE",
+    "TENANT_PLAN_CHANGE", "TENANT_QUOTA_CHANGE",
+    "ROLE_PERMISSION_CHANGE", "ROLE_DELETE", "ROLE_ASSIGN",
+    "SENSITIVE_REVEAL", "BULK_EXPORT",
+    "ADMIN_PASSWORD_RESET", "ACCOUNT_UNLOCK", "BREAK_GLASS",
+    # 平台控制面真实动作名
+    "PLATFORM_TENANT_ENABLE", "PLATFORM_TENANT_DISABLE",
+    "PLATFORM_TENANT_EXTEND_TRIAL", "PLATFORM_TENANT_CONVERT_PAID",
+    "PLATFORM_TENANT_EXPIRE", "PLATFORM_TENANT_CHANGE_PACKAGE",
+    "PLATFORM_TENANT_QUOTA", "PLATFORM_PACKAGE_UPDATE",
+    "PLATFORM_FEATURES_UPDATE", "PLATFORM_RULES_UPDATE",
+    "PLATFORM_WORKFLOW_UPDATE", "PLATFORM_USER_ENABLE",
+    "PLATFORM_USER_DISABLE", "PLATFORM_USER_RESET_PWD",
+    # 学校端真实动作名
+    "ROLE_PERMISSION_SAVE", "USER_ROLE_ASSIGN", "RESET_PASSWORD",
+    "SENSITIVE_VIEW", "EXPORT",
 })
 
 
