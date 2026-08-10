@@ -22,6 +22,14 @@ SERVICE_USER="${SERVICE_USER:-schoolapp}"
 RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d_%H%M%S)}"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
 BACKUP_DIR="$APP_ROOT/backups"
+ENV_RUNNER="$SOURCE_ROOT/scripts/deploy/run-with-envfile.py"
+
+env_value() {
+  python3 "$ENV_RUNNER" --get "$ENV_FILE" "$1"
+}
+run_with_env() {
+  python3 "$ENV_RUNNER" "$ENV_FILE" -- "$@"
+}
 
 ENV_FILE="$ENV_FILE" SOURCE_ROOT="$SOURCE_ROOT" bash "$SOURCE_ROOT/scripts/deploy/preflight-linux.sh"
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --home "$APP_ROOT" --shell /usr/sbin/nologin "$SERVICE_USER"
@@ -29,18 +37,23 @@ install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$APP_ROOT/releases" "$APP_ROOT
   "$APP_ROOT/shared/exports" "$BACKUP_DIR" /var/www/school-lifecycle
 install -d -m 700 /etc/school-lifecycle
 
-# Load root-owned deployment secrets without printing them, then take a verified DB backup.
-set -a
-# shellcheck disable=SC1090
-. "$ENV_FILE"
-set +a
+# EnvironmentFile 是数据文件，不允许用 shell `source`。强密码含 &, $, 空格等字符也必须安全。
+DB_PASSWORD_VALUE="$(env_value DB_PASSWORD)"
+DB_HOST_VALUE="$(env_value DB_HOST)"; DB_HOST_VALUE="${DB_HOST_VALUE:-127.0.0.1}"
+DB_PORT_VALUE="$(env_value DB_PORT)"; DB_PORT_VALUE="${DB_PORT_VALUE:-3306}"
+DB_USER_VALUE="$(env_value DB_USER)"
+DB_NAME_VALUE="$(env_value DB_NAME)"
+[ -n "$DB_PASSWORD_VALUE" ] && [ -n "$DB_USER_VALUE" ] && [ -n "$DB_NAME_VALUE" ] \
+  || { echo "Database backup settings are incomplete." >&2; exit 1; }
+
 backup_file="$BACKUP_DIR/pre_release_${RELEASE_ID}.sql.gz"
-MYSQL_PWD="$DB_PASSWORD" mysqldump -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" \
-  -u"$DB_USER" --single-transaction --quick --routines --events --triggers --hex-blob \
-  --default-character-set=utf8mb4 "$DB_NAME" | gzip -9 > "$backup_file.partial"
+MYSQL_PWD="$DB_PASSWORD_VALUE" mysqldump -h"$DB_HOST_VALUE" -P"$DB_PORT_VALUE" \
+  -u"$DB_USER_VALUE" --single-transaction --quick --routines --events --triggers --hex-blob \
+  --default-character-set=utf8mb4 "$DB_NAME_VALUE" | gzip -9 > "$backup_file.partial"
 gzip -t "$backup_file.partial"
 mv "$backup_file.partial" "$backup_file"
 sha256sum "$backup_file" > "$backup_file.sha256"
+unset DB_PASSWORD_VALUE
 
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
 # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
@@ -65,9 +78,10 @@ else
   rsync -a "$SOURCE_ROOT/student-portal/dist/" "$RELEASE_DIR/student-portal/dist/"
 fi
 
-(cd "$RELEASE_DIR/backend" && "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
+# Alembic/应用检查进程通过安全 env runner 获取完整生产环境，绝不 eval EnvironmentFile。
+(cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
 # 动态校验仓库唯一 head 与数据库 current；禁止任何部署脚本写死具体 revision。
-(cd "$RELEASE_DIR/backend" && "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
+(cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
 
 previous="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
 if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
