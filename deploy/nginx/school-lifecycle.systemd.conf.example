@@ -79,8 +79,8 @@ server {
     location ^~ /portal/assets/ {
         root /var/www/school-lifecycle;
         try_files $uri =404;
+        # expires 自带 Cache-Control，不使用子级 add_header，避免覆盖 server 级 HSTS/CSP 等安全头。
         expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
         access_log off;
     }
     location ^~ /portal/ {
@@ -89,7 +89,8 @@ server {
     }
     location = /portal/index.html {
         root /var/www/school-lifecycle;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        # no-cache 且保留 server 级安全头；子 location 不再声明 add_header。
+        expires -1;
     }
 
     # PC 管理端。
@@ -99,12 +100,11 @@ server {
     }
     location = /index.html {
         root /var/www/school-lifecycle/pc;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
     }
     location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
         root /var/www/school-lifecycle/pc;
         try_files $uri =404;
         expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
     }
 }
