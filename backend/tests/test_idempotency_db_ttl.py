@@ -20,7 +20,7 @@ def test_db_idempotency_success_expires_and_key_can_be_reused(db_mode):
     try:
         cached, handle = _begin_db(user, operation, key, {"content": "第一次"})
         assert cached is None and handle is not None and handle[0].startswith("db:")
-        row_id = int(handle[0][3:])
+        row_id = int(handle[0].split(":", 2)[1])
         finish(handle, {"id": "first"})
 
         cached, replay_handle = _begin_db(user, operation, key, {"content": "第一次"})
