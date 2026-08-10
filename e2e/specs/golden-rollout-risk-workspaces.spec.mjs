@@ -2,7 +2,6 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
-import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const graduationRiskStudent = { tenant: 'sandbox-school', username: 'E2E20260003', password: 'E2eTest@2026' }
@@ -52,14 +51,20 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
+async function openWithApiSession(page, api, path) {
+  await page.addInitScript(({ token }) => {
+    window.sessionStorage.setItem('gx_pc_token_v1', token)
+  }, { token: api.token })
+  await page.goto(`${config.staffBaseUrl}${path}`)
+}
+
 async function setBatchStorage(page, key, value) {
   await page.evaluate(({ storageKey, storageValue }) => {
     window.localStorage.setItem(storageKey, String(storageValue))
   }, { storageKey: key, storageValue: value })
 }
 
-async function prepareStudentAffairsRisk() {
-  const api = await loginApi(config.sandboxAdmin)
+async function prepareStudentAffairsRisk(api) {
   const profiles = items(await api.get('/students', { keyword: 'E2E20260002', page: 1, pageSize: 50 }))
   const profile = profiles.find((item) => String(item.studentNo || item.loginName || '') === 'E2E20260002')
   if (!profile) throw new Error('Golden risk student E2E20260002 not found')
@@ -76,9 +81,8 @@ async function prepareStudentAffairsRisk() {
   return { riskId: String(created.riskId || created.id || ''), studentNo: 'E2E20260002' }
 }
 
-async function prepareInternshipRisk() {
+async function prepareInternshipRisk(api) {
   const fixture = await loadInternshipFixture()
-  const api = await loginApi(config.sandboxAdmin)
   const marker = runId()
   const complaint = await api.post('/internship/complaints', {
     source: 'STUDENT',
@@ -95,8 +99,7 @@ async function prepareInternshipRisk() {
   return { ...fixture, complaintId: String(complaint.id), riskId: String(linked.riskId || '') }
 }
 
-async function prepareGraduationRisk() {
-  const api = await loginApi(config.sandboxAdmin)
+async function prepareGraduationRisk(api) {
   const marker = runId()
   const batchNo = `PW-GOLD-RISK-${marker}`
   let batch = items(await api.get('/graduation/batches', { keyword: batchNo, page: 1, pageSize: 50 }))
@@ -167,9 +170,8 @@ async function prepareGraduationRisk() {
   return { batchId: String(batch.id), batchName: batch.batchName, riskId: String(risks[0].id || '') }
 }
 
-async function closeGraduationRiskFixture(fixture) {
+async function closeGraduationRiskFixture(api, fixture) {
   if (!fixture?.batchId) return
-  const api = await loginApi(config.sandboxAdmin)
   try {
     await api.post(`/graduation/batches/${fixture.batchId}/close`, {})
   } catch (error) {
@@ -178,24 +180,25 @@ async function closeGraduationRiskFixture(fixture) {
 }
 
 test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3', () => {
+  let adminApi
   let affairsFixture
   let internshipFixture
   let graduationFixture
 
   test.beforeAll(async () => {
-    affairsFixture = await prepareStudentAffairsRisk()
-    internshipFixture = await prepareInternshipRisk()
-    graduationFixture = await prepareGraduationRisk()
+    adminApi = await loginApi(config.sandboxAdmin)
+    affairsFixture = await prepareStudentAffairsRisk(adminApi)
+    internshipFixture = await prepareInternshipRisk(adminApi)
+    graduationFixture = await prepareGraduationRisk(adminApi)
   })
 
   test.afterAll(async () => {
-    await closeGraduationRiskFixture(graduationFixture)
+    await closeGraduationRiskFixture(adminApi, graduationFixture)
   })
 
   test('Student Affairs risk warning · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-    await page.goto(`${config.staffBaseUrl}/admin/student-affairs/risk`)
+    await openWithApiSession(page, adminApi, '/admin/student-affairs/risk')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/risk/)
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
@@ -208,7 +211,7 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
 
   test('Internship risk board · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    await openWithApiSession(page, adminApi, '/admin/internship/risks')
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
     await page.goto(`${config.staffBaseUrl}/admin/internship/risks?batchId=${encodeURIComponent(internshipFixture.batchId)}&panel=board`)
 
@@ -223,7 +226,7 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
 
   test('Graduation risk workspace · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    await openWithApiSession(page, adminApi, '/admin/graduation/risk-archive?tab=risk')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
     await page.goto(`${config.staffBaseUrl}/admin/graduation/risk-archive?tab=risk&batchId=${encodeURIComponent(graduationFixture.batchId)}`)
 
