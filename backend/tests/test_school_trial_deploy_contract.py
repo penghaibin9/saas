@@ -112,6 +112,10 @@ def test_systemd_nginx_exposes_portal_but_not_raw_files():
     assert "location /exports/ { return 404; }" in text
     assert "Content-Security-Policy" in text
     assert "school_auth_limit" in text
+    # Nginx 的 add_header 默认是“子级一旦声明就不继承父级”。SPA index/assets
+    # 不能为了 Cache-Control 再写 add_header，否则会丢 HSTS/CSP/X-Frame 等安全头。
+    assert "add_header Cache-Control" not in text
+    assert "expires -1;" in text
 
 
 def test_file_scan_service_is_supervised_and_fail_closed():
