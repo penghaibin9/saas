@@ -1,0 +1,67 @@
+/* Screenshot E → F micro-refinement. Page-anchored, visual-only. */
+
+/* Student master: keep the new hero, but return more vertical space to the data table. */
+#app .base-portal-layout .mps:has(.sl-voided-toggle) > .mps__head {
+  min-height: 118px;
+  padding: 20px 22px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title-wrap {
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title-wrap::before {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title {
+  font-size: 26px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) {
+  gap: 10px;
+  padding: 16px 18px 12px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__fields {
+  gap: 11px 14px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__field {
+  gap: 5px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control {
+  height: 40px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops {
+  margin-top: 0;
+  padding-top: 9px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops .app-button,
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .sl-voided-toggle {
+  min-height: 36px;
+}
+
+/* Selection console: prevent CJK batch names from breaking one character before “次”. */
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero {
+  min-height: 276px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero h2 {
+  max-width: 29ch;
+  font-size: 25px;
+  line-height: 1.17;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  text-wrap: wrap;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article {
+  min-height: 112px;
+}
