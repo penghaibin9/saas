@@ -117,19 +117,22 @@ def test_approval_flow_db(client, auth_headers, db_mode):
 
 
 def test_todos_messages_db(client, auth_headers, db_mode):
-    """工作台待办/消息必须按真实登录 userId 收敛，并走 DB-backed 正式端点。"""
+    """工作台待办/消息必须按真实数字 userId 收敛，并走 DB-backed 正式端点。"""
     from sqlalchemy import select
 
-    from app.core.security import decode_token
+    from app.core.security import create_access_token, decode_token
     from app.db.session import get_sessionmaker
     from app.models import UnifiedMessage, UnifiedTodo
     from app.services.message_identity import resolve_message_user_id
     from app.services.workbench_todo_service import _uid as resolve_todo_user_id
 
     claims = decode_token(auth_headers["Authorization"].removeprefix("Bearer "))
+    claims = {key: value for key, value in claims.items() if key not in {"exp", "iat", "jti"}}
+    claims["userId"] = "u_51001"
+    scoped_headers = {"Authorization": "Bearer " + create_access_token(claims)}
     todo_user_id = resolve_todo_user_id(claims)
     message_user_id = resolve_message_user_id(claims)
-    assert todo_user_id > 0 and message_user_id > 0
+    assert todo_user_id == message_user_id == 51001
 
     db = get_sessionmaker()()
     try:
@@ -149,16 +152,16 @@ def test_todos_messages_db(client, auth_headers, db_mode):
     finally:
         db.close()
 
-    todos = client.get("/api/v1/admin/todos", headers=auth_headers).json()["data"]
+    todos = client.get("/api/v1/admin/todos", headers=scoped_headers).json()["data"]
     assert todos["total"] == 1
     todo_id = todos["items"][0]["todoId"]
-    done = client.post(f"/api/v1/admin/todos/{todo_id}/complete", headers=auth_headers, json={}).json()["data"]
+    done = client.post(f"/api/v1/admin/todos/{todo_id}/complete", headers=scoped_headers, json={}).json()["data"]
     assert done["status"] == "DONE"
 
-    msgs = client.get("/api/v1/admin/messages", headers=auth_headers).json()["data"]
+    msgs = client.get("/api/v1/admin/messages", headers=scoped_headers).json()["data"]
     assert msgs["total"] == 1
     mid = msgs["items"][0]["messageId"]
-    read = client.post(f"/api/v1/admin/messages/{mid}/read", headers=auth_headers).json()["data"]
+    read = client.post(f"/api/v1/admin/messages/{mid}/read", headers=scoped_headers).json()["data"]
     assert read["readStatus"] == "READ"
 
 
