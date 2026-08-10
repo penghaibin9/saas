@@ -102,11 +102,12 @@ export const STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS = [
     prerequisites: [
       '谈话至少选择一名真实可访问学生；正式谈话内容不少于 20 字。PSYCHOLOGY 类型正文对未授权角色始终遮蔽。',
       '心理转介事由摘要 5–500 字；回访、危机升级依据、关闭结论均为 5–300 字。',
-      '心理逐生范围只认 t_teacher_student_scope.teacher_key 的稳定工号/登录标识；realName / teacher_name 不再作为授权凭证，同名教师不能共享敏感学生范围。'
+      '当前 main 的 PSY_STUDENT 逐生范围优先使用 t_teacher_student_scope.teacher_key 的用户/上下文稳定标识，但仍兼容 teacher_name / realName 旧数据兜底；因此现阶段不能把姓名视为已彻底退出授权链。学校应优先补齐 teacher_key，并在同名教师场景由管理员核对授权记录。'
     ],
     permissions: [
       '普通谈话页面使用 studentAffairs.talk.view 并受 CLASS/COLLEGE/TENANT_ALL 等学工范围约束；心理明细页面使用 studentAffairs.risk.psyDetail.view，但页面权限仍不等于可看任意学生原文。',
-      '心理名单按 PSY_STUDENT 逐生授权；列表恒为摘要。查看原文明细还要求允许角色 + 查看原因不少于 5 字 + SENSITIVE_VIEW 安全审计成功；审计故障时 503 fail-closed。'
+      '心理名单按 PSY_STUDENT 逐生授权；列表恒为摘要。查看原文明细还要求允许角色 + 查看原因不少于 5 字 + SENSITIVE_VIEW 安全审计成功；审计故障时 503 fail-closed。',
+      '角色名称和帮助筛选不能作为授权凭证；当前 teacher_name 兼容仅用于承接历史范围数据，不能据此宣传“同名天然安全”。'
     ],
     steps: [
       '创建谈话计划后产生每生一条 PLANNED / SCHEDULED 记录；填写真实谈话后进入 COMPLETED，需继续关注则直接进入 FOLLOW_UP。',
@@ -115,9 +116,9 @@ export const STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS = [
       '确需危机升级时执行 ESCALATE，生成 source=MENTAL、risk_level=CRITICAL、status=NEW 的正式风险，并把 risk_id 回链到心理转介。',
       '风险进入既有 sa-card-risk-handle 流程继续 ASSIGNED/PROCESSING/FOLLOWING/ESCALATED/CLOSED；心理转介和风险是关联的两个事实，不互相冒充。'
     ],
-    successCriteria: ['谈话、家校、心理转介、风险分别留独立记录并通过关联 ID 串联；360 只展示允许的摘要事实。', '心理原文未授权永不泄露；同名老师不会因为姓名相同获得对方 PSY_STUDENT 范围；危机风险由风险中枢正式闭环。'],
-    troubleshooting: ['能看到“需关注”但看不到心理正文是正常最小暴露，不是页面故障。', '心理老师/辅导员看不到某生：核对稳定 teacher_key 的 PSY_STUDENT 授权，不通过 realName 补授权。', '敏感查看返回 503：安全审计不可用时系统故意拒绝明文，应修审计链而不是关闭保护。'],
+    successCriteria: ['谈话、家校、心理转介、风险分别留独立记录并通过关联 ID 串联；360 只展示允许的摘要事实。', '心理原文仍受逐生范围、允许角色、查看原因和安全审计多重约束；teacher_key 应作为学校治理的首选稳定身份，历史 teacher_name 兜底需持续清理。', '危机风险由风险中枢正式闭环。'],
+    troubleshooting: ['能看到“需关注”但看不到心理正文是正常最小暴露，不是页面故障。', '心理老师/辅导员看不到某生：先核对 PSY_STUDENT 的 teacher_key；若学校仍有历史 teacher_name 授权，尤其同名教师场景，应由管理员核对并逐步回填稳定标识，不建议继续新增姓名授权。', '敏感查看返回 503：安全审计不可用时系统故意拒绝明文，应修审计链而不是关闭保护。'],
     nextSteps: ['一般关怀可继续跟进/家校/办结；转成正式风险后进入风险处置卡，风险关闭后再按实际情况关闭心理转介。'],
-    contactAdminWhen: ['PSY_STUDENT 已用正确 teacher_key 授权但仍看不到目标学生。', '发现任何未填写查看原因、未写安全审计却返回心理原文的情况，应立即按安全缺陷处理。']
+    contactAdminWhen: ['PSY_STUDENT 已用正确 teacher_key 授权但仍看不到目标学生。', '发现同名教师可能命中历史 teacher_name 范围时，应由管理员立即核对并迁移为稳定 teacher_key。', '发现任何未填写查看原因、未写安全审计却返回心理原文的情况，应立即按安全缺陷处理。']
   }
 ]
