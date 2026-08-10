@@ -1,7 +1,7 @@
 """审批任务服务：真实审批语义、租户隔离、办理人校验与服务端筛选统一收口。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from app.core.context import current_tenant_id, get_current_user_ctx
@@ -70,10 +70,19 @@ def _matches(row: dict, keyword: str | None = None, biz_type: str | None = None)
     return kw in haystack.lower()
 
 
-def _db_list(page: int, page_size: int, *, user: dict | None, processed: bool,
-             keyword: str | None = None, biz_type: str | None = None,
-             result: str | None = None) -> tuple[list[dict], int]:
-    """审批列表真实服务端查询。搜索、业务类型与结果过滤必须在分页前执行。"""
+def _db_list(
+    page: int,
+    page_size: int,
+    *,
+    user: dict | None,
+    processed: bool,
+    keyword: str | None = None,
+    biz_type: str | None = None,
+    result: str | None = None,
+    urgency: str | None = None,
+    submit_date: str | None = None,
+) -> tuple[list[dict], int]:
+    """审批列表真实服务端查询。所有筛选必须在 COUNT / OFFSET / LIMIT 前进入 SQL。"""
     from sqlalchemy import func, or_, select
     from app.models import WorkflowInstance, WorkflowTask
     from app.services import db_service
@@ -84,6 +93,21 @@ def _db_list(page: int, page_size: int, *, user: dict | None, processed: bool,
         tenant_id = 0
     if not tenant_id:
         raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文")
+
+    now = datetime.utcnow()
+    near_until = now + timedelta(hours=24)
+    requested_urgency = str(urgency or "").strip().upper()
+    if requested_urgency and requested_urgency not in {"OVERDUE", "NEAR_DEADLINE", "NORMAL"}:
+        raise AppException("VALIDATION_ERROR", "不支持的审批紧急度筛选")
+
+    date_start = date_end = None
+    raw_date = str(submit_date or "").strip()
+    if raw_date:
+        try:
+            date_start = datetime.strptime(raw_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise AppException("VALIDATION_ERROR", "submitDate 必须为 YYYY-MM-DD") from exc
+        date_end = date_start + timedelta(days=1)
 
     with db_service.session() as db:
         statuses = ["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"] if processed else ["PENDING"]
@@ -115,6 +139,16 @@ def _db_list(page: int, page_size: int, *, user: dict | None, processed: bool,
                 search_cond.append(WorkflowTask.id == int(kw))
             cond.append(or_(*search_cond))
 
+        if not processed and requested_urgency:
+            if requested_urgency == "OVERDUE":
+                cond.append(WorkflowTask.deadline_at < now)
+            elif requested_urgency == "NEAR_DEADLINE":
+                cond.extend((WorkflowTask.deadline_at >= now, WorkflowTask.deadline_at <= near_until))
+            else:
+                cond.append(or_(WorkflowTask.deadline_at.is_(None), WorkflowTask.deadline_at > near_until))
+        if not processed and date_start is not None and date_end is not None:
+            cond.extend((WorkflowTask.created_at >= date_start, WorkflowTask.created_at < date_end))
+
         base = (select(WorkflowTask, WorkflowInstance)
                 .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
                 .where(*cond))
@@ -128,17 +162,36 @@ def _db_list(page: int, page_size: int, *, user: dict | None, processed: bool,
         return [db_service._task_row(task, inst) for task, inst in rows], total
 
 
-def list_tasks(page: int, page_size: int, status: Optional[str] = None,
-               user: dict | None = None, keyword: str | None = None,
-               biz_type: str | None = None) -> tuple[list[dict], int]:
+def list_tasks(
+    page: int,
+    page_size: int,
+    status: Optional[str] = None,
+    user: dict | None = None,
+    keyword: str | None = None,
+    biz_type: str | None = None,
+    urgency: str | None = None,
+    submit_date: str | None = None,
+) -> tuple[list[dict], int]:
     if db_enabled():
         # 对外待办只允许 PENDING；历史 status 参数仅保留函数兼容性，不允许绕过待办口径。
-        return _db_list(page, page_size, user=user, processed=False,
-                        keyword=keyword, biz_type=biz_type)
+        return _db_list(
+            page,
+            page_size,
+            user=user,
+            processed=False,
+            keyword=keyword,
+            biz_type=biz_type,
+            urgency=urgency,
+            submit_date=submit_date,
+        )
     rows = [r for r in _visible(_TASKS, user) if r["status"] == "PENDING"]
     if status:
         rows = [r for r in rows if r["status"] == status]
     rows = [r for r in rows if _matches(r, keyword, biz_type)]
+    if urgency:
+        rows = [r for r in rows if str(r.get("urgency") or "NORMAL").upper() == str(urgency).upper()]
+    if submit_date:
+        rows = [r for r in rows if str(r.get("submittedAt") or "").startswith(str(submit_date))]
     return page_slice(rows, page, page_size), len(rows)
 
 
