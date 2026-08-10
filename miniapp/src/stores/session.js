@@ -3,7 +3,7 @@
  * 统一维护当前登录用户、当前角色/身份与真实身份快照；具体业务权限由服务端上下文下发。
  */
 import { defineStore } from 'pinia'
-import { getRoleConfig, hasAction, ROLE } from '@/config/roles.config'
+import { getRoleConfig, hasAction, roleKeyFromBackendRole, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
@@ -75,6 +75,11 @@ export const useSessionStore = defineStore('session', {
       if (!d) return
       const role = d.currentRole || {}
       this.availableContexts = d.availableContexts || d.contexts || []
+      this.availableRoles = [...new Set(this.availableContexts
+        .map((item) => roleKeyFromBackendRole(item.roleCode || item.contextType))
+        .filter(Boolean))]
+      const currentRoleKey = roleKeyFromBackendRole(role.roleCode || role.contextType)
+      if (currentRoleKey) this.currentRole = currentRoleKey
       this.identity = {
         ...this.identity,
         userId: d.userId != null ? d.userId : this.identity.userId,
@@ -126,9 +131,8 @@ export const useSessionStore = defineStore('session', {
       this.clearBusinessContexts()
       try {
         if (shouldTryReal()) {
-          const cfg = getRoleConfig(roleKey)
           const ctx = this.availableContexts.find((item) =>
-            item.roleCode === roleKey || item.roleCode === cfg.roleCode || item.contextType === roleKey)
+            roleKeyFromBackendRole(item.roleCode || item.contextType) === roleKey)
           if (!ctx) throw { code: 'NO_CONTEXT', biz: true, message: '当前账号没有该身份' }
           const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
           this.currentRole = roleKey

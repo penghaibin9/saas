@@ -125,7 +125,6 @@ const activeModulePath = computed(() => route.meta?.modulePath || rawPath.value)
 const showAcademicContext = computed(() => activeModulePath.value === 'academic')
 const shellClasses = computed(() => ({
   'is-home': route.name === 'home',
-  'is-compact': route.name !== 'home',
   [`route-${String(activeModulePath.value || 'home').replace(/[^a-z0-9-]/gi, '-')}`]: true,
   [`view-${String(route.name || 'page').replace(/[^a-z0-9-]/gi, '-')}`]: true
 }))

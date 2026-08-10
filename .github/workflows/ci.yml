@@ -128,6 +128,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
+      - name: 租户隔离棘轮门禁（禁止新增未带租户校验的裸 Session.get）
+        run: python scripts/audit_tenant_queries.py --gate
       - name: 选择最小必要测试集合
         id: select
         run: |
@@ -317,6 +319,25 @@ jobs:
           python -m alembic current
       - name: 迁移库与 ORM 模型一致性
         run: python ../scripts/check/check-migrated-schema-parity.py
+      - name: 导出「全新安装」结构快照
+        run: |
+          python ../scripts/check/dump-mysql-schema.py \
+            --url "$DATABASE_URL" --out /tmp/schema-fresh.txt
+      # ── 迁移"时间旅行"门禁（P0 止损）──────────────────────────────
+      # 0001 等 12 个迁移跑的是 metadata.create_all（"用今天的 ORM 建表"），
+      # 不是冻结的历史 DDL，所以老库和新库理论上会走到不同结构。
+      # 历史链已实测无法从旧 commit 重放，真正的修复是一次迁移基线重建（见
+      # docs/06-开发施工与质量验收/迁移基线重建-待办.md）。这里先冻结现状、禁止变坏。
+      - name: 禁止新增 create_all 型迁移
+        run: python ../scripts/check/check-migration-time-travel.py
+      - name: 上传全新安装的结构快照（供与真实学校库比对）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-install-schema-${{ github.sha }}
+          path: /tmp/schema-fresh.txt
+          if-no-files-found: warn
+          retention-days: 30
       - name: Stage C1 学籍事实 reconciliation 归零
         run: python scripts/audit_stage_c1_academic_facts.py
       - name: 上传 Stage C1 reconciliation 证据
@@ -348,3 +369,4 @@ jobs:
             tests/test_discipline_package11_integrity.py \
             tests/test_funding_package10_closeout.py \
             --timeout=180 --timeout-method=signal --durations=30
+

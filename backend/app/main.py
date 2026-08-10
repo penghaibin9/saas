@@ -179,6 +179,23 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(_password_reset_sms_loop(), name="password-reset-sms"))
 
+        async def _audit_outbox_loop():
+            """t_audit_outbox 消费者：此前只有生产者，事件永远停在 PENDING。"""
+            from anyio import to_thread
+            from app.modules.internship.services.internship_audit_service import process_pending
+            while True:
+                try:
+                    await to_thread.run_sync(
+                        lambda: process_pending(limit=100, worker_id="web-audit-outbox"))
+                    await asyncio.sleep(15)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.audit").exception("audit outbox worker failed")
+                    await asyncio.sleep(30)
+
+        tasks.append(asyncio.create_task(_audit_outbox_loop(), name="audit-outbox"))
+
         def _student_affairs_background_once():
             from sqlalchemy import select
 

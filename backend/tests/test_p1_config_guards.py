@@ -76,6 +76,12 @@ def test_development_allows_dev_defaults():
         sec.settings = old
 
 
+def test_default_cors_allows_current_student_portal_dev_port():
+    origins = Settings.model_fields["CORS_ORIGINS"].default.split(",")
+    assert "http://localhost:5200" in origins
+    assert "http://127.0.0.1:5200" in origins
+
+
 def test_jwt_secret_conflict_rejected():
     with pytest.raises((ValidationError, ValueError)):
         Settings(JWT_SECRET="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

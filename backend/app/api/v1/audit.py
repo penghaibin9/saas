@@ -54,8 +54,5 @@ def audit_logs(action: Optional[str] = Query(default=None),
     return success(paginate(items, total, page, pageSize))
 
 
-@alias_router.post("/mock-record", summary="写入一条演示审计记录（联调用）")
-def mock_record(user=Depends(get_current_user)):
-    _ensure_audit_viewer(user)
-    audit_log.record("MOCK", "demo", detail={"path": "/api/v1/audit/mock-record", "method": "POST"})
-    return success({"recorded": True}, message="已写入内存审计队列（DB_ENABLED=true 后写 t_security_audit_log）")
+# /audit/mock-record 已删除：审计表禁止提供"往里塞假记录"的对外入口。
+# 审计只能由真实业务动作产生；联调请直接触发对应业务接口后查 /audit/logs。
