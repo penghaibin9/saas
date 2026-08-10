@@ -212,6 +212,9 @@ services:
     restart: unless-stopped
     volumes:
       - ../nginx/nginx.mysql.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/security-http.conf:/etc/nginx/conf.d/security-http.conf:ro
+      - ../nginx/security-server.conf:/etc/nginx/conf.d/security-server.conf:ro
+      - ../nginx/security-headers.conf:/etc/nginx/conf.d/security-headers.conf:ro
       - ../../frontend/dist:/usr/share/nginx/html/pc:ro
       - ../../miniapp/dist/build/h5:/usr/share/nginx/html/miniapp:ro
     ports:

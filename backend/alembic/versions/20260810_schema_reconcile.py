@@ -112,6 +112,7 @@ def upgrade() -> None:
         except Exception as exc:  # noqa: BLE001
             stats["failed"] += 1
             _log.warning("排序规则统一失败 table=%s err=%s", table, exc)
+            raise
 
     # ── ② 补齐列定义（默认值 / 可空性 / 类型）──────────────────────────
     state = _column_state(bind, schema)
@@ -134,6 +135,7 @@ def upgrade() -> None:
         except Exception as exc:  # noqa: BLE001
             stats["failed"] += 1
             _log.warning("列补齐失败 %s.%s err=%s", table, column, exc)
+            raise
 
     # ── ③ 索引对齐 ────────────────────────────────────────────────────
     have = _index_names(bind, schema)
@@ -151,6 +153,7 @@ def upgrade() -> None:
         except Exception as exc:  # noqa: BLE001
             stats["failed"] += 1
             _log.warning("建索引失败 %s.%s err=%s", item["table"], item["name"], exc)
+            raise
     for item in data["drop_idx"]:
         key = (item["table"], item["name"])
         if key not in have or key in protected:
