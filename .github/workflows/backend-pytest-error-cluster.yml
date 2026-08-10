@@ -13,16 +13,20 @@ on:
       - backend/tests/test_sandbox_13a_seed.py
       - backend/tests/test_wx_login.py
       - backend/tests/test_graduation_package9_contract.py
+      - backend/tests/test_auth_captcha_redis_fail_closed.py
+      - backend/tests/test_auth_challenge_service.py
       - backend/scripts/_seed_demo_school.py
       - backend/scripts/_seed_two_tenants.py
       - backend/scripts/_seed_sandbox_coverage.py
       - backend/scripts/_seed_graduation.py
       - backend/app/services/sandbox_service.py
+      - backend/app/services/auth_challenge_service.py
       - backend/app/modules/graduation/services/graduation_package9_guard.py
       - backend/app/modules/graduation/services/graduation_archive_consistency.py
       - backend/app/db/**
       - backend/app/models/**
       - backend/app/core/security.py
+      - backend/app/core/config.py
       - backend/app/api/v1/auth.py
 
 permissions:
@@ -34,10 +38,10 @@ concurrency:
 
 jobs:
   mysql-error-cluster:
-    name: Backend errors / seed+package9
+    name: Backend errors / seed+auth+package9
     if: github.head_ref == 'fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: backend
@@ -71,11 +75,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Precise original error nodeid
+      - name: Precise original setup-error nodeid
         run: |
           timeout 8m pytest \
             tests/test_demo_tenants_login.py::test_all_six_accounts_login \
             -q -p no:warnings
+      - name: Precise auth production contract nodeid
+        run: |
+          timeout 8m pytest \
+            tests/test_demo_tenants_login.py::test_mock_login_403_in_production \
+            -q -p no:warnings
+      - name: Auth production captcha fail-closed regression
+        run: |
+          timeout 10m pytest \
+            tests/test_auth_captcha_redis_fail_closed.py \
+            tests/test_auth_challenge_service.py \
+            -q -p no:warnings --durations=20
       - name: Affected fixture files
         shell: bash
         run: |
