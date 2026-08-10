@@ -110,6 +110,7 @@ fi
 for path in \
   backend/scripts/check_alembic_current.py \
   backend/scripts/check_production_file_scan.py \
+  backend/scripts/check_production_storage.py \
   deploy/systemd/school-lifecycle-backend.service \
   deploy/systemd/school-lifecycle-scheduler.service \
   deploy/systemd/school-lifecycle-file-scan.service \
