@@ -11,7 +11,7 @@ async function openWithApiSession(page, api, path) {
   await page.goto(`${config.staffBaseUrl}${path}`)
 }
 
-test('Golden risk layout contract · capture computed metric grid evidence', async ({ page }, testInfo) => {
+test('Golden risk layout contract · five metric cards stay in one desktop row', async ({ page }, testInfo) => {
   await page.setViewportSize(VIEWPORT)
   const api = await loginApi(config.sandboxAdmin)
   await openWithApiSession(page, api, '/admin/student-affairs/risk')
@@ -79,6 +79,14 @@ test('Golden risk layout contract · capture computed metric grid evidence', asy
   const body = Buffer.from(JSON.stringify(evidence, null, 2), 'utf8')
   await testInfo.attach('student-affairs-risk-layout-contract', { body, contentType: 'application/json' })
 
+  const columns = String(evidence.gridTemplateColumns || '').trim().split(/\s+/).filter(Boolean)
+  const rowTops = new Set(evidence.cards.map((card) => card.top))
+
   expect(evidence.innerWidth).toBe(VIEWPORT.width)
+  expect(evidence.media1280).toBe(false)
   expect(evidence.display).toBe('grid')
+  expect(columns).toHaveLength(5)
+  expect(evidence.cards).toHaveLength(5)
+  expect(evidence.cards.every((card) => !String(card.gridColumn).includes('span 2'))).toBe(true)
+  expect(rowTops.size).toBe(1)
 })
