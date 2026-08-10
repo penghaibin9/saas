@@ -5,6 +5,7 @@ set -u
 
 ROOT="${SOURCE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
+ENV_RUNNER="$ROOT/scripts/deploy/run-with-envfile.py"
 fail=0
 warn=0
 pass() { printf '  [PASS] %s\n' "$1"; }
@@ -29,11 +30,19 @@ disk_kb="$(df -Pk /opt 2>/dev/null | awk 'NR==2 {print $4}' || printf 0)"
 
 if [ ! -f "$ENV_FILE" ]; then
   failure "缺少 $ENV_FILE"
+elif [ ! -f "$ENV_RUNNER" ]; then
+  failure "缺少安全 EnvironmentFile loader：$ENV_RUNNER"
 else
   pass "生产环境文件存在"
   mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || printf unknown)"
   [ "$mode" = "600" ] && pass "环境文件权限为 600" || warning "环境文件权限=$mode，建议 chmod 600"
-  getv() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | tr -d '\r'; }
+
+  if python3 "$ENV_RUNNER" "$ENV_FILE" -- /usr/bin/true >/dev/null 2>&1; then
+    pass "EnvironmentFile 语法可安全解析"
+  else
+    failure "EnvironmentFile 含不支持/不安全语法"
+  fi
+  getv() { python3 "$ENV_RUNNER" --get "$ENV_FILE" "$1" 2>/dev/null || true; }
 
   app_env="$(getv APP_ENV)"
   deployment_mode="$(getv DEPLOYMENT_MODE)"
@@ -108,6 +117,7 @@ PY
 fi
 
 for path in \
+  scripts/deploy/run-with-envfile.py \
   backend/scripts/check_alembic_current.py \
   backend/scripts/check_production_file_scan.py \
   backend/scripts/check_production_storage.py \
