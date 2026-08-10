@@ -27,7 +27,7 @@
         <button class="secondary" type="button" :disabled="loading" @click="leave">退出当前账号</button>
       </form>
 
-      <p class="footnote">如果你不知道当前初始密码，请联系本校系统管理员重置；不要把密码发送给技术支持人员。</p>
+      <p class="footnote">如果你不知道当前初始密码，请联系账号所属学校或平台管理员重置；不要把密码发送给技术支持人员。</p>
     </section>
   </main>
 </template>
@@ -38,6 +38,10 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'ForcePasswordChangeView',
+  props: {
+    // 学校端与 SaaS 控制面共用同一安全组件，但改密后应回到各自的登录入口。
+    loginRoute: { type: String, default: '/login' }
+  },
   data() {
     return {
       loading: false,
@@ -75,7 +79,7 @@ export default {
         // 强制重新登录，确保新会话拿到最新权限/身份版本，绝不继续复用初始密码会话。
         clearAuthSession()
         toast.success('密码已修改，请使用新密码重新登录')
-        await this.$router.replace('/login')
+        await this.$router.replace(this.loginRoute)
       } catch (e) {
         this.error = e?.message || '修改密码失败，请稍后重试'
       } finally {
@@ -84,7 +88,7 @@ export default {
     },
     async leave() {
       await logoutRemote()
-      await this.$router.replace('/login')
+      await this.$router.replace(this.loginRoute)
     }
   }
 }
