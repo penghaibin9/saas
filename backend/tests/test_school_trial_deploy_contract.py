@@ -95,6 +95,19 @@ def test_release_serializes_apply_and_injects_public_origin_into_h5():
     assert "miniapp H5 contains a localhost API origin" in text
 
 
+def test_release_builds_before_quiesce_then_backs_up_before_migration():
+    text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
+    # 耗时构建必须发生在停服务之前；静默窗口内先 stop，再取最后一致备份，再迁移。
+    build_pos = text.index("npm run build:h5")
+    stop_pos = text.index('systemctl stop "${ACTIVE_OLD_SERVICES[@]}"')
+    backup_pos = text.index("mysqldump")
+    migrate_pos = text.index("-m alembic upgrade head")
+    switch_pos = text.index('mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"')
+    assert build_pos < stop_pos < backup_pos < migrate_pos < switch_pos
+    assert "release_failure_guard" in text
+    assert "ACTIVE_OLD_SERVICES" in text
+
+
 def test_release_verification_probes_scan_and_storage():
     text = (ROOT / "scripts/deploy/verify-systemd-release.sh").read_text(encoding="utf-8")
     assert "scripts/check_production_file_scan.py" in text
