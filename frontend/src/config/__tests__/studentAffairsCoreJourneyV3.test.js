@@ -75,16 +75,21 @@ test('discipline card locks effective projection, appeal and removal subflow', (
 
 test('care card locks sensitive psychology scope and explicit risk handoff', () => {
   const text = body('sa-v3-care-risk')
-  for (const token of ['PLANNED', 'SCHEDULED', 'COMPLETED', 'FOLLOW_UP', 'REFERRED', 'FOLLOWING', 'ESCALATED', 'CLOSED', 'PSY_STUDENT', 'teacher_key', 'SENSITIVE_VIEW', 'MENTAL', 'CRITICAL', 'NEW']) assert.match(text, new RegExp(token))
+  for (const token of ['PLANNED', 'SCHEDULED', 'COMPLETED', 'FOLLOW_UP', 'REFERRED', 'FOLLOWING', 'ESCALATED', 'CLOSED', 'PSY_STUDENT', 'teacher_key', 'teacher_name', 'SENSITIVE_VIEW', 'MENTAL', 'CRITICAL', 'NEW']) assert.match(text, new RegExp(token))
   assert.match(text, /不自动诊断|不会根据文本自动诊断/)
-  assert.match(text, /同名.*不能|realName/)
+  assert.match(text, /旧数据兜底|历史 teacher_name/)
+  assert.match(text, /同名教师.*核对|同名.*管理员/)
   assert.match(text, /审计.*503|503.*fail-closed/)
 })
 
-test('psychology backend source cannot authorize by display name', () => {
+test('psychology help discloses the current legacy display-name compatibility instead of claiming it is gone', () => {
+  const text = body('sa-v3-care-risk')
   assert.match(mentalSource, /TeacherStudentScope\.teacher_key\.in_\(keys\)/)
-  assert.doesNotMatch(mentalSource, /TeacherStudentScope\.teacher_name\.in_\(keys\)/)
-  assert.doesNotMatch(mentalSource, /name\s*=\s*u\.get\("realName"\)/)
+  assert.match(mentalSource, /TeacherStudentScope\.teacher_name\.in_\(keys\)/)
+  assert.match(mentalSource, /name\s*=\s*u\.get\("realName"\)/)
+  assert.match(text, /teacher_name \/ realName 旧数据兜底/)
+  assert.match(text, /不能把姓名视为已彻底退出授权链/)
+  assert.match(text, /不建议继续新增姓名授权/)
 })
 
 test('V3-04 core cards are wired through verified-only runtime', () => {
