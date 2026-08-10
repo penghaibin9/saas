@@ -1,6 +1,7 @@
 """Help Center V3-08 真实指标 API / MySQL 回归。"""
 from __future__ import annotations
 
+from hashlib import sha256
 import json
 
 from sqlalchemy import select
@@ -56,6 +57,9 @@ def test_help_search_metric_real_mysql_roundtrip(client, auth_headers, db_mode):
         # 自由文本不得进入 append-only 审计明文。
         assert query not in json.dumps(detail, ensure_ascii=False)
         assert "query" not in detail
+        # 低熵搜索词不能退回可被常用词字典枚举的裸 SHA-256 指纹。
+        legacy_digest = sha256(("help-search:v1:" + query.lower()).encode("utf-8")).hexdigest()
+        assert detail["queryFingerprint"] != legacy_digest
     finally:
         db.close()
 
