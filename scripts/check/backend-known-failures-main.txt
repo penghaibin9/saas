@@ -3,6 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids after precise MySQL validation.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -230,19 +231,6 @@ tests/test_db_mode.py::test_approval_flow_db
 tests/test_db_mode.py::test_p4_upload_real
 tests/test_db_mode.py::test_student_create_void_db
 tests/test_db_mode.py::test_todos_messages_db
-tests/test_demo_tenants_login.py::test_all_six_accounts_login
-tests/test_demo_tenants_login.py::test_demo_tenant_is_readonly
-tests/test_demo_tenants_login.py::test_mock_login_403_in_production
-tests/test_demo_tenants_login.py::test_password_hashed_not_plaintext
-tests/test_demo_tenants_login.py::test_platform_can_restore_only_the_fixed_sandbox
-tests/test_demo_tenants_login.py::test_sandbox_baseline_is_protected_but_new_rows_are_deletable
-tests/test_demo_tenants_login.py::test_sandbox_reset_confirm_only_affects_sandbox
-tests/test_demo_tenants_login.py::test_sandbox_reset_dry_run_no_change
-tests/test_demo_tenants_login.py::test_student_stats_403
-tests/test_demo_tenants_login.py::test_student_token_carries_student_no
-tests/test_demo_tenants_login.py::test_teacher_can_process_visible_items_in_sandbox
-tests/test_demo_tenants_login.py::test_teacher_scope_visibility
-tests/test_demo_tenants_login.py::test_tenant_isolation_both_ways
 tests/test_domain_export.py::test_export_all_six_domains
 tests/test_domain_export.py::test_export_domain_success
 tests/test_load_smoke.py::test_concurrent_service_apply_20
@@ -265,9 +253,6 @@ tests/test_saas_role_templates_unit.py::test_frontend_exposes_batch_account_crea
 tests/test_saas_role_templates_unit.py::test_identity_import_api_has_no_raw_json_account_creation_bypass
 tests/test_saas_role_templates_unit.py::test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher
 tests/test_saas_role_templates_unit.py::test_non_advisor_role_cannot_inherit_advisor_relation_from_same_account
-tests/test_sandbox_13a_seed.py::test_sandbox_13a_seed_idempotent
-tests/test_sandbox_13a_seed.py::test_sandbox_reset_covers_and_reseeds_13a
-tests/test_sandbox_13a_seed.py::test_sandbox_seeds_13a_domains
 tests/test_security_hardening.py::test_password_login_lockout
 tests/test_student_affairs_p0_p1_closeout.py::test_permission_registry_and_generated_catalog_are_zero_drift
 tests/test_student_portal_config.py::test_update_writes_audit
@@ -279,9 +264,3 @@ tests/test_students_scope.py::test_counselor_export_scoped
 tests/test_teacher_identity_p0b.py::test_duplicate_name_mentors_cannot_cross_access
 tests/test_teacher_scope.py::test_header_cannot_switch_tenant_with_token
 tests/test_teacher_scope.py::test_mobile_weekly_review_scope_and_conflict
-tests/test_wx_login.py::test_one_wechat_can_select_between_two_schools
-tests/test_wx_login.py::test_wx_bind_bad_token
-tests/test_wx_login.py::test_wx_bind_then_openid_login
-tests/test_wx_login.py::test_wx_bind_wrong_password
-tests/test_wx_login.py::test_wx_login_first_time_needs_bind
-tests/test_wx_login.py::test_wx_login_not_configured
