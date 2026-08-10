@@ -7,16 +7,24 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 
 revision = "20260809_pwreset_sms_job"
 down_revision = "20260808_aa_gpa_policy"
 branch_labels = None
 depends_on = None
 
+TABLE = "t_password_reset_sms_job"
+
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    # 0001 是 metadata.create_all 活基线：全新库会提前按当前 ORM 建出本表。
+    # 存量库没有本表时才执行显式 DDL，兼容两条部署路径且不触碰已有数据。
+    if TABLE in inspect(bind).get_table_names():
+        return
     op.create_table(
-        "t_password_reset_sms_job",
+        TABLE,
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("tenant_id", sa.BigInteger(), nullable=False),
         sa.Column("request_id", sa.String(100), nullable=False),
@@ -39,12 +47,14 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=False, server_default="0"),
         sa.UniqueConstraint("request_id", name="uk_password_reset_sms_request"),
     )
-    op.create_index("ix_password_reset_sms_tenant", "t_password_reset_sms_job", ["tenant_id"])
-    op.create_index("ix_password_reset_sms_user", "t_password_reset_sms_job", ["user_id"])
-    op.create_index("ix_password_reset_sms_expires", "t_password_reset_sms_job", ["expires_at"])
-    op.create_index("ix_password_reset_sms_claim", "t_password_reset_sms_job",
+    op.create_index("ix_password_reset_sms_tenant", TABLE, ["tenant_id"])
+    op.create_index("ix_password_reset_sms_user", TABLE, ["user_id"])
+    op.create_index("ix_password_reset_sms_expires", TABLE, ["expires_at"])
+    op.create_index("ix_password_reset_sms_claim", TABLE,
                     ["status", "next_retry_at", "lease_expires_at", "id"])
 
 
 def downgrade() -> None:
-    op.drop_table("t_password_reset_sms_job")
+    bind = op.get_bind()
+    if TABLE in inspect(bind).get_table_names():
+        op.drop_table(TABLE)
