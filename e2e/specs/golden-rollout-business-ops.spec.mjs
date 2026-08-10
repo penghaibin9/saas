@@ -206,7 +206,7 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await closeGraduationOpsFixture(graduationFixture)
   })
 
-  test('Student Affairs leave approval · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs leave approval · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(counselorA)
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/leave`)
@@ -221,10 +221,10 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await expect(page.locator('.lv-foot')).toBeVisible()
     expect(leaveFixture.leaveId).not.toBe('')
 
-    await capture(page, testInfo, 'rollout-ops-leave-a')
+    await capture(page, testInfo, 'rollout-ops-leave-b')
   })
 
-  test('Internship student ledger · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship student ledger · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -235,10 +235,10 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-ops-internship-students-a')
+    await capture(page, testInfo, 'rollout-ops-internship-students-b')
   })
 
-  test('Graduation student ledger · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation student ledger · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -249,6 +249,6 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-ops-graduation-students-a')
+    await capture(page, testInfo, 'rollout-ops-graduation-students-b')
   })
 })
