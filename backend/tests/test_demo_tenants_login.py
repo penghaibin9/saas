@@ -1,7 +1,8 @@
 """真实双租户演示登录改造测试：
 demo-school(admin/teacher/student·123456·只读) + sandbox-school(admin2/teacher2/student2·123456·可重置)。
 覆盖：真实登录、hash 落库、生产 mock-login 关闭、双租户隔离、学生 stats 403、
-教师范围看得见=能处理（沙箱）、demo 只读锁、沙箱重置 dry-run/confirm。"""
+教师数据范围、沙箱授权写入、demo 只读锁、沙箱重置 dry-run/confirm。
+"""
 from __future__ import annotations
 
 import sys
@@ -37,6 +38,15 @@ def _login(client, login_name, password="123456"):
 
 def _h(data):
     return {"Authorization": "Bearer " + data["data"]["accessToken"]}
+
+
+def _default_internship_batch(client, headers):
+    """教师端先通过权威上下文选择批次，不再依赖已停用的隐式全历史回退。"""
+    ctx = client.get("/api/v1/mobile/teacher/internship/context", headers=headers).json()
+    assert ctx["code"] == 0
+    batch_id = ctx["data"]["defaultBatchId"]
+    assert batch_id
+    return batch_id
 
 
 def _platform_h():
@@ -160,47 +170,79 @@ def test_teacher_scope_visibility(client, two_tenants):
     assert ok2["code"] == 0
 
 
-# ═══ 13：看得见 = 能处理（沙箱可写；demo 只读锁 403） ═══
+# ═══ 13：沙箱可写，但写权限必须与当前 RBAC + 批次合同一致 ═══
 
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
-    sbx_t = _h(_login(client, "teacher2"))
-    it = client.get("/api/v1/mobile/teacher/internship", headers=sbx_t).json()
-    reports = it["data"]["weeklyReports"]
+    # 辅导员可看本班实习周报，但当前生产权限明确是只读协同，不能借“看得见”扩大成批阅权。
+    counselor_h = _h(_login(client, "teacher2"))
+    counselor_batch = _default_internship_batch(client, counselor_h)
+    counselor_view = client.get(
+        "/api/v1/mobile/teacher/internship",
+        headers=counselor_h,
+        params={"batchId": counselor_batch},
+    ).json()
+    assert counselor_view["code"] == 0
+    reports = counselor_view["data"]["weeklyReports"]
     assert len(reports) >= 1
-    rid = reports[0]["id"]
-    ok = client.post(f"/api/v1/mobile/teacher/internship/weekly/{rid}/review",
-                     headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱批阅通过"}).json()
+    visible = reports[0]
+    denied = client.post(
+        f"/api/v1/mobile/teacher/internship/weekly/{visible['id']}/review",
+        headers=counselor_h,
+        json={
+            "action": "APPROVE",
+            "comment": "辅导员不应获得实习周报批阅权",
+            "expectedVersion": visible["version"],
+        },
+    )
+    assert denied.status_code == 403
+    assert denied.json()["code"] == 403001
+
+    # 同一沙箱中，具备 SCHOOL_ADMIN 权限的账号按“上下文选批次 + 乐观锁版本”合同可真实写入。
+    admin_h = _h(_login(client, "admin2"))
+    admin_batch = _default_internship_batch(client, admin_h)
+    admin_view = client.get(
+        "/api/v1/mobile/teacher/internship",
+        headers=admin_h,
+        params={"batchId": admin_batch},
+    ).json()
+    assert admin_view["code"] == 0
+    pending = next(
+        (row for row in admin_view["data"]["weeklyReports"] if row["status"] == "PENDING_REVIEW"),
+        None,
+    )
+    assert pending is not None
+    ok = client.post(
+        f"/api/v1/mobile/teacher/internship/weekly/{pending['id']}/review",
+        headers=admin_h,
+        json={
+            "action": "APPROVE",
+            "comment": "沙箱管理员按当前合同批阅通过",
+            "expectedVersion": pending["version"],
+        },
+    ).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
-    gd = client.get("/api/v1/mobile/teacher/graduation", headers=sbx_t).json()
-    props = gd["data"]["reviewDetail"]
-    assert len(props) >= 1
-    pid = props[0]["id"]
-    ok2 = client.post(f"/api/v1/mobile/teacher/graduation/proposal/{pid}/review",
-                      headers=sbx_t, json={"action": "APPROVE", "comment": "沙箱开题通过"}).json()
-    assert ok2["code"] == 0
+
+    # 毕设写入已迁移到“权威材料版本 + expectedVersion + fileVersionId”合同，
+    # 具体并发写链由毕业设计材料域专项用例覆盖；本测试只保留双租户种子可见性，不再用旧无版本请求伪造成功。
+    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_h).json()
+    assert gd["code"] == 0 and len(gd["data"]["reviewDetail"]) >= 1
 
 
 def test_demo_tenant_is_readonly(client, two_tenants):
-    """正式演示租户：看得见但写操作被只读锁拦截（403 + 指引去沙箱）。"""
-    demo_t = _h(_login(client, "teacher"))
-    it = client.get("/api/v1/mobile/teacher/internship", headers=demo_t).json()
-    assert it["code"] == 0
-    reports = it["data"]["weeklyReports"]
-    assert len(reports) >= 1  # 看得见
-    r = client.post(f"/api/v1/mobile/teacher/internship/weekly/{reports[0]['id']}/review",
-                    headers=demo_t, json={"action": "APPROVE", "comment": "演示批阅"})
+    """正式演示租户的同一合法学生写操作必须被只读锁拦截，而沙箱对照组可真实落库。"""
+    # 用同角色、同接口做 demo/sandbox 对照，避免把“辅导员本来就没有批阅权限”的 RBAC 403
+    # 误判成 demo 只读中间件 403。
+    stu = _h(_login(client, "student"))
+    r = client.post("/api/v1/mobile/campus-service/apply", headers=stu,
+                    json={"serviceKey": "证明开具", "reason": "演示环境提交应被只读锁拦截"})
     assert r.status_code == 403
     assert "沙箱" in r.json()["message"]
-    # 学生写操作同样只读
-    stu = _h(_login(client, "student"))
-    r2 = client.post("/api/v1/mobile/campus-service/apply", headers=stu,
-                     json={"serviceKey": "证明开具", "reason": "演示环境提交应被只读锁拦截"})
-    assert r2.status_code == 403
-    # 沙箱学生正常提交（对照组）
+    assert r.json()["code"] == 403001
+
     stu2 = _h(_login(client, "student2"))
-    r3 = client.post("/api/v1/mobile/campus-service/apply", headers=stu2,
+    r2 = client.post("/api/v1/mobile/campus-service/apply", headers=stu2,
                      json={"serviceKey": "证明开具", "reason": "沙箱提交应成功入库"}).json()
-    assert r3["code"] == 0
+    assert r2["code"] == 0
 
 
 # ═══ 14-15：沙箱重置 dry-run 不落库 / confirm 只影响沙箱 ═══
