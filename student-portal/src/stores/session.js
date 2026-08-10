@@ -8,7 +8,7 @@ import { clearSession, getToken, setRefreshToken, setToken } from '../services/r
 
 export const useSessionStore = defineStore('sp-session', {
   state: () => ({
-    user: null,          // { userId, realName, userType, roleCode, studentNo }
+    user: null,          // { userId, realName, userType, roleCode, studentNo, mustChangePassword }
     ready: false,
     token: getToken()    // 响应式镜像 localStorage 令牌：isLoggedIn 若直接读 getToken() 是无响应式依赖的 getter，
                          // 会缓存应用初始化时的首值（未登录=false），登录后置入令牌也不重算 → 守卫永远判未登录。
@@ -37,7 +37,8 @@ export const useSessionStore = defineStore('sp-session', {
       this.token = data.accessToken || ''
       this.user = {
         userId: u.userId, realName: u.realName, userType,
-        roleCode: roleCode || 'STUDENT', studentNo: u.studentNo || data.studentNo || null
+        roleCode: roleCode || 'STUDENT', studentNo: u.studentNo || data.studentNo || null,
+        mustChangePassword: !!u.mustChangePassword
       }
       this.ready = true
       return this.user
