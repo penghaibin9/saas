@@ -222,3 +222,4 @@ from app.models.national_standard import (NationalMajorCatalog, NationalStandard
                                           SchoolMajorStandardBinding)
 
 from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)
+from app.models.password_reset import PasswordResetSmsJob  # noqa: F401

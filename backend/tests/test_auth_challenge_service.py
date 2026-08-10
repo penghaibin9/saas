@@ -94,6 +94,15 @@ def test_captcha_scene_rejects_wrong_client_type():
     assert bind_exc.value.code == "VALIDATION_ERROR"
 
 
+@pytest.mark.parametrize("client_type", ["TEACHER_PC", "TEACHER_MINI"])
+def test_password_reset_captcha_accepts_teacher_clients(client_type):
+    data = svc.issue_captcha(svc.PASSWORD_RESET, "school", "teacher", "nonce", client_type)
+    svc.verify_captcha(
+        data["captchaId"], data["devCode"], svc.PASSWORD_RESET,
+        "school", "teacher", "nonce", client_type,
+    )
+
+
 def test_wx_bind_request_preserves_and_accepts_client_type():
     from app.api.v1.auth import WxBindRequest
 

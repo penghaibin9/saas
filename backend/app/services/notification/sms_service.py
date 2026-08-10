@@ -10,15 +10,17 @@
 from __future__ import annotations
 
 import time
+import threading
 
 from app.core.config import settings
+from app.core.field_crypto import mask_phone
 from app.db.session import db_enabled, get_sessionmaker
-from app.services.db_service import _mask_phone
 from app.services.notification.providers.aliyun_sms_provider import AliyunSmsProvider
 from app.services.notification.providers.mock_sms_provider import MockSmsProvider
 from app.services.notification.providers.tencent_sms_provider import TencentSmsProvider
 
 _RATE: dict = {}
+_RATE_LOCK = threading.Lock()
 
 
 def _cfg(name: str, default):
@@ -43,23 +45,55 @@ def get_provider(name: str | None = None):
     return MockSmsProvider()
 
 
+def password_reset_ready() -> bool:
+    """密码找回是强依赖链路：调用前先做全局配置健康检查。"""
+    if not _sms_enabled():
+        return False
+    name = str(_cfg("SMS_PROVIDER", "mock") or "mock").strip().lower()
+    if name == "mock":
+        return not (settings.is_prod or str(settings.APP_ENV or "").lower() == "staging")
+    common = bool(settings.SMS_ACCESS_KEY_ID and settings.SMS_ACCESS_KEY_SECRET
+                  and settings.SMS_SIGN_NAME and settings.SMS_TEMPLATE_PASSWORD_RESET)
+    if name == "aliyun":
+        return common
+    if name == "tencent":
+        return common and bool(settings.SMS_TENCENT_SDK_APP_ID)
+    return False
+
+
 def _template_id(template_code: str) -> str:
     return {
         "TODO": settings.SMS_TEMPLATE_TODO,
         "REJECTED": settings.SMS_TEMPLATE_REJECTED,
         "WARNING": settings.SMS_TEMPLATE_WARNING,
         "GUARDIAN_CONSENT": settings.SMS_TEMPLATE_GUARDIAN_CONSENT,
+        "PASSWORD_RESET": settings.SMS_TEMPLATE_PASSWORD_RESET,
     }.get((template_code or "").upper(), "") or (template_code or "")
 
 
 def _rate_ok(tenant_id: int) -> bool:
     bucket = int(time.time() // 60)
+    limit = max(int(settings.SMS_RATE_LIMIT_PER_MINUTE or 30), 1)
+    from app.core.redis_client import _prefix, get_redis
+    redis = get_redis()
+    if redis is not None:
+        key = _prefix(f"sms:rate:{tenant_id}:{bucket}")
+        count = int(redis.incr(key))
+        if count == 1:
+            redis.expire(key, 70)
+        return count <= limit
+    if settings.is_prod or str(settings.APP_ENV or "").lower() == "staging":
+        raise RuntimeError("SMS_RATE_STORE_UNAVAILABLE")
     key = (tenant_id, bucket)
-    count = _RATE.get(key, 0)
-    if count >= max(int(settings.SMS_RATE_LIMIT_PER_MINUTE or 30), 1):
-        return False
-    _RATE[key] = count + 1
-    return True
+    with _RATE_LOCK:
+        count = _RATE.get(key, 0)
+        if count >= limit:
+            return False
+        _RATE[key] = count + 1
+        # 防止长期运行时旧分钟桶无限增长。
+        for old in [item for item in _RATE if item[1] < bucket - 2]:
+            _RATE.pop(old, None)
+        return True
 
 
 def _log(tenant_id, task_id, biz_type, provider, phone_masked, result,
@@ -106,29 +140,32 @@ def _task(tenant_id, biz_type, template_code, receiver_name, phone_masked,
 
 def send_sms(tenant_id: int, phone: str | None, template_code: str,
              params: dict | None = None, biz_type: str = "TODO",
-             receiver_name: str | None = None, provider=None) -> dict:
+             receiver_name: str | None = None, provider=None,
+             sensitive_params: bool = False) -> dict:
     """发送一条短信。返回状态，绝不把发送异常转成业务成功。"""
     params = params or {}
-    masked = _mask_phone(phone) if phone else ""
+    stored_params = ({"redacted": True, "keys": sorted(params)}
+                     if sensitive_params else params)
+    masked = mask_phone(phone) if phone else ""
     try:
         if not _sms_enabled():
             task_id = _task(
                 tenant_id, biz_type, template_code, receiver_name, masked,
-                params, "SKIPPED", last_error="SMS_ENABLED=false")
+                stored_params, "SKIPPED", last_error="SMS_ENABLED=false")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="SMS 未开启（默认关闭）")
             return {"status": "SKIPPED", "reason": "SMS_ENABLED=false"}
         if not phone or len(str(phone)) < 7:
             task_id = _task(
                 tenant_id, biz_type, template_code, receiver_name, masked,
-                params, "SKIPPED", last_error="缺手机号")
+                stored_params, "SKIPPED", last_error="缺手机号")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="缺手机号")
             return {"status": "SKIPPED", "reason": "缺手机号"}
         if not _rate_ok(tenant_id):
             task_id = _task(
                 tenant_id, biz_type, template_code, receiver_name, masked,
-                params, "SKIPPED", last_error="超出发送频率")
+                stored_params, "SKIPPED", last_error="超出发送频率")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="超出每分钟发送上限")
             return {"status": "SKIPPED", "reason": "超出发送频率"}
@@ -141,7 +178,7 @@ def send_sms(tenant_id: int, phone: str | None, template_code: str,
             if response.success:
                 task_id = _task(
                     tenant_id, biz_type, template_code, receiver_name,
-                    masked, params, "SENT", retry_count=attempt)
+                    masked, stored_params, "SENT", retry_count=attempt)
                 _log(
                     tenant_id, task_id, biz_type,
                     response.provider or sms_provider.name, masked, "SUCCESS",
@@ -151,15 +188,17 @@ def send_sms(tenant_id: int, phone: str | None, template_code: str,
                     "retries": attempt,
                 }
             last_error = response.error
+            if not response.retryable:
+                break
         task_id = _task(
             tenant_id, biz_type, template_code, receiver_name, masked,
-            params, "FAILED", retry_count=attempts - 1,
+            stored_params, "FAILED", retry_count=attempt,
             last_error=last_error)
         _log(tenant_id, task_id, biz_type, sms_provider.name, masked, "FAIL",
              reason=last_error)
         return {
             "status": "FAILED", "reason": last_error,
-            "retries": attempts - 1,
+            "retries": attempt,
         }
     except Exception as error:
         _log(tenant_id, None, biz_type, "-", masked, "FAIL",
@@ -185,3 +224,12 @@ def notify_guardian_consent(tenant_id, phone, name, params=None, provider=None):
     return send_sms(
         tenant_id, phone, "GUARDIAN_CONSENT", params,
         "INTERNSHIP_GUARDIAN_CONSENT", name, provider)
+
+
+def notify_password_reset(tenant_id, phone, code, provider=None):
+    """发送密码重置验证码；验证码只交给 provider，任务和日志中永不落明文。"""
+    return send_sms(
+        tenant_id, phone, "PASSWORD_RESET",
+        # 已审核腾讯云模板 2708325 只有一个变量：{1}=验证码。
+        {"code": str(code)},
+        "PASSWORD_RESET", None, provider, sensitive_params=True)

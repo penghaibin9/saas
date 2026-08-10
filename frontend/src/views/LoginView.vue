@@ -55,6 +55,7 @@
         <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a>
       </footer>
     </section>
+    <PasswordResetDialog v-if="resetVisible" :login-name="form.loginName" :tenant-code="form.tenantCode" @close="resetVisible = false" @done="resetDone" />
   </main>
 </template>
 
@@ -62,13 +63,14 @@
 import { DEFAULT_PLATFORM_NAME } from '@/config/portalConfig'
 import { isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
 import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
+import PasswordResetDialog from '@/components/auth/PasswordResetDialog.vue'
 import { toast } from '@/utils/toast'
 
 const REMEMBER_KEY = 'staff_login_name'
 
 export default {
   name: 'LoginView',
-  components: { LoginCaptcha },
+  components: { LoginCaptcha, PasswordResetDialog },
   data() {
     return {
       platformName: DEFAULT_PLATFORM_NAME,
@@ -77,6 +79,7 @@ export default {
       agree: false,
       loading: false,
       error: '',
+      resetVisible: false,
       captcha: { required: false, id: '', code: '', image: '', loading: false, nonce: `web-${Date.now()}-${Math.random()}` },
       form: { tenantCode: '', loginName: '', password: '' }
     }
@@ -137,7 +140,13 @@ export default {
       }
     },
     onForgot() {
-      toast.info('请联系本校系统管理员重置密码')
+      this.resetVisible = true
+    },
+    resetDone(loginName) {
+      this.form.loginName = loginName || this.form.loginName
+      this.form.password = ''
+      this.resetVisible = false
+      toast.success('密码已重置，请使用新密码登录')
     }
   }
 }

@@ -3,6 +3,7 @@
   "pages": [
     {"path": "pages/login/index", "style": {"navigationBarTitleText": "选择登录身份", "navigationStyle": "custom"}},
     {"path": "pages/login/student/index", "style": {"navigationBarTitleText": "学生登录", "navigationStyle": "custom"}},
+    {"path": "pages/login/reset/index", "style": {"navigationBarTitleText": "短信重置密码", "navigationStyle": "custom"}},
     {"path": "pages/login/teacher/index", "style": {"navigationBarTitleText": "教师登录", "navigationStyle": "custom"}},
     {"path": "pages/common/message-detail/index", "style": {"navigationBarTitleText": "消息详情", "navigationStyle": "custom"}},
     {"path": "pages/common/search/index", "style": {"navigationBarTitleText": "搜索", "navigationStyle": "custom"}},
