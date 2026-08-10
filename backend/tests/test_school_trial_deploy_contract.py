@@ -1,6 +1,7 @@
 """学校试点部署合同：静态验证脚本语法和关键生产闸门，防止后续回退。"""
 from __future__ import annotations
 
+import base64
 import subprocess
 import sys
 from pathlib import Path
@@ -86,6 +87,14 @@ def test_release_script_carries_all_three_clients_and_scan_worker():
     assert "scripts/check_alembic_current.py" in text
 
 
+def test_release_serializes_apply_and_injects_public_origin_into_h5():
+    text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
+    assert "flock -n 9" in text
+    assert 'PUBLIC_BASE_URL_VALUE="$(env_value PUBLIC_BASE_URL)"' in text
+    assert 'VITE_API_BASE_URL="$PUBLIC_BASE_URL_VALUE" VITE_USE_MOCK=false npm run build:h5' in text
+    assert "miniapp H5 contains a localhost API origin" in text
+
+
 def test_release_verification_probes_scan_and_storage():
     text = (ROOT / "scripts/deploy/verify-systemd-release.sh").read_text(encoding="utf-8")
     assert "scripts/check_production_file_scan.py" in text
@@ -133,6 +142,7 @@ def test_systemd_env_example_contains_trial_security_dependencies():
         "APP_ENV=production",
         "DB_ENABLED=true",
         "DB_DRIVER=mysql",
+        "PUBLIC_BASE_URL=https://",
         "REDIS_URL=",
         "FIELD_ENCRYPTION_KEY=",
         "INTERNAL_OPS_TOKEN=",
@@ -140,3 +150,17 @@ def test_systemd_env_example_contains_trial_security_dependencies():
         "CLAMAV_ENABLED=true",
     ):
         assert key in text
+
+
+def test_documented_field_key_shape_matches_fernet_contract():
+    # Fernet key 的真实合同是“32 raw bytes 经 urlsafe-base64 编码”，不是任意长度字符串。
+    sample = base64.urlsafe_b64encode(b"x" * 32).decode()
+    raw = base64.urlsafe_b64decode(sample.encode())
+    assert len(raw) == 32
+    for relative in (
+        "scripts/check/preflight-school-trial.sh",
+        "scripts/deploy/preflight-linux.sh",
+    ):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert "urlsafe_b64decode" in text
+        assert "len(raw) == 32" in text
