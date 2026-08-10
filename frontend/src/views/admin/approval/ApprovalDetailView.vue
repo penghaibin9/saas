@@ -109,16 +109,19 @@
     />
 
     <AppDrawer v-model:visible="transferDrawer" title="转办任务">
-      <p class="mp-note">原任务保留 TRANSFERRED 留痕，并给目标办理人生成新的 PENDING 任务。</p>
-      <div v-for="t in ctx.transferTargets" :key="t.userId" class="mp-radio" :class="{ 'is-active': transferForm.targetUserId === t.userId }" @click="transferForm.targetUserId = t.userId">
-        <input type="radio" :checked="transferForm.targetUserId === t.userId" />
-        <div><div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div><div class="mp-radio__desc">{{ t.orgName || '本校' }} · 当前在办 {{ t.pendingCount }} 条</div></div>
-      </div>
-      <p v-if="!ctx.transferTargets.length" class="mp-note">当前没有可转办的同租户教职工账号。</p>
+      <p class="mp-note">原任务保留 TRANSFERRED 留痕；仅展示同时满足当前节点责任角色与数据范围的目标办理人。</p>
+      <p v-if="transferTargetsLoading" class="mp-note">正在核验当前任务的可转办人员…</p>
+      <template v-else>
+        <div v-for="t in transferTargets" :key="t.userId" class="mp-radio" :class="{ 'is-active': transferForm.targetUserId === t.userId }" @click="transferForm.targetUserId = t.userId">
+          <input type="radio" :checked="transferForm.targetUserId === t.userId" />
+          <div><div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div><div class="mp-radio__desc">{{ t.orgName || '当前数据范围' }} · 当前在办 {{ t.pendingCount }} 条</div></div>
+        </div>
+        <p v-if="!transferTargets.length && !transferError" class="mp-note">当前任务没有满足节点角色与数据范围的可转办人员。</p>
+      </template>
       <label class="mp-note dv-label">转办说明（选填）</label>
       <textarea v-model="transferForm.note" class="mp-textarea" placeholder="请说明转办原因或办理重点"></textarea>
       <p v-if="transferError" class="mp-form-err">{{ transferError }}</p>
-      <template #footer><AppButton variant="ghost" @click="transferDrawer = false">取消</AppButton><AppButton variant="primary" :loading="submitting" @click="submitTransfer">确认转办</AppButton></template>
+      <template #footer><AppButton variant="ghost" @click="transferDrawer = false">取消</AppButton><AppButton variant="primary" :loading="submitting" :disabled="transferTargetsLoading" @click="submitTransfer">确认转办</AppButton></template>
     </AppDrawer>
   </ModulePageShell>
 </template>
@@ -140,6 +143,7 @@ export default {
       detail: { fields: [], attachments: [], applyNote: '' }, timeline: [], suggestions: [],
       comment: '', formError: '', submitting: false,
       returnDialog: false, rejectDialog: false, transferDrawer: false,
+      transferTargets: [], transferTargetsLoading: false,
       transferForm: { targetUserId: '', note: '' }, transferError: ''
     }
   },
@@ -215,10 +219,25 @@ export default {
       this.submitting = false; this.rejectDialog = false
       await this.finishAction(res, '已驳回终止：原流程已结束，正在进入下一条待办')
     },
-    openTransfer() { if (!this.canAction('transferTask', 'TRANSFER')) return; this.transferForm = { targetUserId: '', note: '' }; this.transferError = ''; this.transferDrawer = true },
+    async openTransfer() {
+      if (!this.canAction('transferTask', 'TRANSFER')) return
+      this.transferForm = { targetUserId: '', note: '' }
+      this.transferError = ''
+      this.transferTargets = []
+      this.transferDrawer = true
+      this.transferTargetsLoading = true
+      const res = await approvalApi.getTransferTargets([this.task.taskId])
+      this.transferTargetsLoading = false
+      if (res.code === 0) this.transferTargets = res.data
+      else this.transferError = res.message
+    },
     async submitTransfer() {
       this.transferError = ''
       if (!this.transferForm.targetUserId) { this.transferError = '请选择转办对象'; return }
+      if (!this.transferTargets.some((x) => String(x.userId) === String(this.transferForm.targetUserId))) {
+        this.transferError = '该人员已不在当前任务可转办范围，请重新打开转办列表'
+        return
+      }
       this.submitting = true
       const res = await approvalApi.transferTask(this.task.taskId, { targetUserId: this.transferForm.targetUserId, note: this.transferForm.note, version: this.task.version })
       this.submitting = false
