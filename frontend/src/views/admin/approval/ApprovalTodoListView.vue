@@ -121,23 +121,24 @@
         已选 {{ selected.length }} 条待办仅展示对全部任务都满足“当前节点角色 + 数据范围”的可转办人员。
       </p>
       <p v-if="transferTargetsLoading" class="mp-note">正在核验所选任务的可转办人员…</p>
-      <div
-        v-for="t in transferTargets"
-        v-else
-        :key="t.userId"
-        class="mp-radio"
-        :class="{ 'is-active': transferForm.targetUserId === t.userId }"
-        @click="transferForm.targetUserId = t.userId"
-      >
-        <input type="radio" :checked="transferForm.targetUserId === t.userId" style="margin-top: 3px" />
-        <div>
-          <div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div>
-          <div class="mp-radio__desc">{{ t.orgName || '当前数据范围' }} · 当前在办 {{ t.pendingCount }} 条</div>
+      <template v-else>
+        <div
+          v-for="t in transferTargets"
+          :key="t.userId"
+          class="mp-radio"
+          :class="{ 'is-active': transferForm.targetUserId === t.userId }"
+          @click="transferForm.targetUserId = t.userId"
+        >
+          <input type="radio" :checked="transferForm.targetUserId === t.userId" style="margin-top: 3px" />
+          <div>
+            <div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div>
+            <div class="mp-radio__desc">{{ t.orgName || '当前数据范围' }} · 当前在办 {{ t.pendingCount }} 条</div>
+          </div>
         </div>
-      </div>
-      <p v-if="!transferTargetsLoading && !transferTargets.length && !transferError" class="mp-note">
-        所选任务没有共同满足节点角色与数据范围的可转办人员。
-      </p>
+        <p v-if="!transferTargets.length && !transferError" class="mp-note">
+          所选任务没有共同满足节点角色与数据范围的可转办人员。
+        </p>
+      </template>
       <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">转交说明（选填）</label>
       <textarea
         v-model="transferForm.note"
