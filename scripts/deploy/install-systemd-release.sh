@@ -25,14 +25,28 @@ BACKUP_DIR="$APP_ROOT/backups"
 ENV_RUNNER="$SOURCE_ROOT/scripts/deploy/run-with-envfile.py"
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
 
-# 生产证据必须能证明“验收的是哪个 commit”。源码目录有 .git 时自动取 HEAD；
-# 离线发布包没有 .git 时必须由发布流水线显式传 RELEASE_COMMIT，禁止用时间戳冒充版本身份。
+# 生产证据必须证明“验收的是哪个 commit”，且 git 工作区内容必须真的等于该 commit。
+# 过去仅把 `git rev-parse HEAD` 写进 marker、再 rsync 当前工作区，会把未提交改动/未跟踪文件
+# 一起带进 release，形成“证据写 A，实际运行 B”的假不可变发布。git 来源现在只允许干净 checkout，
+# 并直接用 git archive 从候选 commit 物化 release；离线发布包仍必须显式提供 RELEASE_COMMIT。
 SOURCE_COMMIT="${RELEASE_COMMIT:-}"
-if [ -z "$SOURCE_COMMIT" ] && command -v git >/dev/null 2>&1; then
-  SOURCE_COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
+SOURCE_IS_GIT=0
+if command -v git >/dev/null 2>&1 && git -C "$SOURCE_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SOURCE_IS_GIT=1
+  GIT_COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
+  [[ "$GIT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve source git commit." >&2; exit 1; }
+  if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "$GIT_COMMIT" ]; then
+    echo "RELEASE_COMMIT does not match source checkout HEAD." >&2
+    exit 1
+  fi
+  if [ -n "$(git -C "$SOURCE_ROOT" status --porcelain --untracked-files=all)" ]; then
+    echo "Source checkout is dirty; commit/stash/remove untracked release inputs before production deploy." >&2
+    exit 1
+  fi
+  SOURCE_COMMIT="$GIT_COMMIT"
 fi
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
-  echo "Cannot establish immutable release commit. Use a git checkout or set RELEASE_COMMIT to the 40-char candidate SHA." >&2
+  echo "Cannot establish immutable release commit. Use a clean git checkout or set RELEASE_COMMIT for a trusted offline package." >&2
   exit 1
 }
 
@@ -67,11 +81,20 @@ DB_NAME_VALUE="$(env_value DB_NAME)"
 
 # 先在旧版本仍服务时完成所有耗时构建；真正停业务的窗口只包含备份、迁移、切换和启动。
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
-# tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
-rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
-  --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
+if [ "$SOURCE_IS_GIT" = "1" ]; then
+  # 只从已确认的 commit tree 物化，绝不把工作区未提交/未跟踪内容混进生产 release。
+  git -C "$SOURCE_ROOT" archive --format=tar "$SOURCE_COMMIT" | tar -xf - -C "$RELEASE_DIR"
+else
+  # 可信离线发布包没有 .git；调用方必须显式传 RELEASE_COMMIT，包自身不能靠时间戳冒充版本。
+  # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
+  rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
+    --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
+fi
 printf '%s\n' "$SOURCE_COMMIT" > "$RELEASE_DIR/.release-commit"
 chmod 444 "$RELEASE_DIR/.release-commit"
+# 从这里开始，所有会影响运行态/迁移/服务单元的脚本都必须取自不可变 RELEASE_DIR，
+# 不能再回到部署期间可能被更新的 SOURCE_ROOT。
+ENV_RUNNER="$RELEASE_DIR/scripts/deploy/run-with-envfile.py"
 python3 -m venv "$RELEASE_DIR/backend/.venv"
 "$RELEASE_DIR/backend/.venv/bin/pip" install --disable-pip-version-check -r "$RELEASE_DIR/backend/requirements.txt"
 
@@ -85,10 +108,12 @@ if command -v npm >/dev/null 2>&1; then
   (cd "$RELEASE_DIR/student-portal" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
     && VITE_BASE=/portal/ VITE_API_BASE_URL= npm run build)
 else
+  # git checkout 的 prebuilt dist 通常是未跟踪文件，无法证明属于 SOURCE_COMMIT，禁止拿来发布。
+  [ "$SOURCE_IS_GIT" != "1" ] || { echo "Node/npm is required for git-backed production releases." >&2; exit 1; }
   [ -f "$SOURCE_ROOT/frontend/dist/index.html" ] \
     && [ -f "$SOURCE_ROOT/miniapp/dist/build/h5/index.html" ] \
     && [ -f "$SOURCE_ROOT/student-portal/dist/index.html" ] \
-    || { echo "Node missing and one or more prebuilt dist outputs are missing" >&2; exit 1; }
+    || { echo "Node missing and one or more trusted offline prebuilt dist outputs are missing" >&2; exit 1; }
   rsync -a "$SOURCE_ROOT/frontend/dist/" "$RELEASE_DIR/frontend/dist/"
   rsync -a "$SOURCE_ROOT/miniapp/dist/build/h5/" "$RELEASE_DIR/miniapp/dist/build/h5/"
   rsync -a "$SOURCE_ROOT/student-portal/dist/" "$RELEASE_DIR/student-portal/dist/"
@@ -165,15 +190,15 @@ ln -sfnT "$APP_ROOT/current/miniapp/dist/build/h5" /var/www/school-lifecycle/min
 ln -sfnT "$APP_ROOT/current/student-portal/dist" /var/www/school-lifecycle/portal
 chown -R "$SERVICE_USER:$SERVICE_USER" "$RELEASE_DIR" "$APP_ROOT/shared"
 
-install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-backend.service" /etc/systemd/system/
-install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-scheduler.service" /etc/systemd/system/
-install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-file-scan.service" /etc/systemd/system/
+install -m 644 "$RELEASE_DIR/deploy/systemd/school-lifecycle-backend.service" /etc/systemd/system/
+install -m 644 "$RELEASE_DIR/deploy/systemd/school-lifecycle-scheduler.service" /etc/systemd/system/
+install -m 644 "$RELEASE_DIR/deploy/systemd/school-lifecycle-file-scan.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
 systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
 QUIESCED=0
 
-if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$SOURCE_ROOT/scripts/deploy/verify-systemd-release.sh"; then
+if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$RELEASE_DIR/scripts/deploy/verify-systemd-release.sh"; then
   if [ -n "$previous" ] && [ -d "$previous" ]; then
     ln -sfnT "$previous" "$APP_ROOT/current.rollback"
     mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current"
