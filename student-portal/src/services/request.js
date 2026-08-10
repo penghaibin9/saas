@@ -1,6 +1,6 @@
 /**
  * 学生 PC 门户 · 统一请求层。
- * - token 独立 key：sp_token_v1（不碰 miniapp / frontend 管理端的 token）。
+ * - token 独立 key：sp_token_v1（不碰 miniapp / frontend 管理端的 token），存 sessionStorage。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
  * - 401 单飞刷新并重试一次；刷新失败才清会话，避免长表单因 access token 到期直接丢失。
  * - 绝不调用 /auth/mock-login，绝不免密。
@@ -18,32 +18,56 @@ const API_BASE = (() => {
   return '' // 生产同源：/api/v1 由 Nginx 反代
 })()
 
-export function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' }
-}
-export function setToken(t) {
-  try { localStorage.setItem(TOKEN_KEY, t || '') } catch { /* ignore */ }
-}
-export function getRefreshToken() {
-  try { return localStorage.getItem(REFRESH_KEY) || '' } catch { return '' }
-}
-export function setRefreshToken(t) {
-  try { localStorage.setItem(REFRESH_KEY, t || '') } catch { /* ignore */ }
-}
-export function clearSession() {
+// 会话令牌一律用 sessionStorage，不用 localStorage。
+// 学生门户大量跑在机房/图书馆的公用电脑上：localStorage 关掉浏览器还在，
+// 下一个学生打开就直接是上一个人的登录态。sessionStorage 随标签页结束即清。
+// 迁移期：读取时兼容一次旧 localStorage 值，读到就搬进 sessionStorage 并把旧的删掉，
+// 已登录的学生不会被这次改动踢下线。
+function _readLegacy(key) {
   try {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
-    localStorage.removeItem(INTERNSHIP_BATCH_KEY)
-    localStorage.removeItem(GD_TEMP_FILES_KEY)
+    const legacy = localStorage.getItem(key)
+    if (legacy) {
+      sessionStorage.setItem(key, legacy)
+      localStorage.removeItem(key)
+      return legacy
+    }
+  } catch { /* ignore */ }
+  return ''
+}
+function _get(key) {
+  try { return sessionStorage.getItem(key) || _readLegacy(key) } catch { return '' }
+}
+function _set(key, value) {
+  try {
+    if (value) sessionStorage.setItem(key, value)
+    else sessionStorage.removeItem(key)
+    localStorage.removeItem(key)   // 确保旧值不会残留在磁盘上
   } catch { /* ignore */ }
 }
 
+export function getToken() {
+  return _get(TOKEN_KEY)
+}
+export function setToken(t) {
+  _set(TOKEN_KEY, t || '')
+}
+export function getRefreshToken() {
+  return _get(REFRESH_KEY)
+}
+export function setRefreshToken(t) {
+  _set(REFRESH_KEY, t || '')
+}
+export function clearSession() {
+  for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY]) {
+    try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
+  }
+}
+
 function readTempFiles() {
-  try { return JSON.parse(localStorage.getItem(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
+  try { return JSON.parse(_get(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
 }
 function writeTempFiles(value) {
-  try { localStorage.setItem(GD_TEMP_FILES_KEY, JSON.stringify(value || {})) } catch { /* ignore */ }
+  _set(GD_TEMP_FILES_KEY, JSON.stringify(value || {}))
 }
 function rememberTempFile(fileId) {
   if (!fileId) return
@@ -87,7 +111,7 @@ function cleanupStaleGraduationTemps() {
 function selectedInternshipBatch(path) {
   if (!String(path || '').startsWith('/portal/internship')) return ''
   try {
-    const value = String(localStorage.getItem(INTERNSHIP_BATCH_KEY) || '').trim()
+    const value = String(_get(INTERNSHIP_BATCH_KEY) || '').trim()
     return /^\d+$/.test(value) ? value : ''
   } catch { return '' }
 }

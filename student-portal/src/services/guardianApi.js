@@ -9,14 +9,28 @@ const API_BASE = (() => {
   return ''
 })()
 
+// 令牌存 sessionStorage 而非 localStorage：家长可能在公用电脑或孩子的电脑上登录，
+// localStorage 关掉浏览器还在，等于把家长会话留在别人机器上。
+// 迁移期兼容一次旧 localStorage 值，搬进 sessionStorage 后立刻删除旧值。
 export function getGuardianToken() {
-  try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' }
+  try {
+    const current = sessionStorage.getItem(TOKEN_KEY)
+    if (current) return current
+    const legacy = localStorage.getItem(TOKEN_KEY)
+    if (legacy) {
+      sessionStorage.setItem(TOKEN_KEY, legacy)
+      localStorage.removeItem(TOKEN_KEY)
+      return legacy
+    }
+  } catch { /* storage unavailable */ }
+  return ''
 }
 
 export function setGuardianToken(token) {
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token)
-    else localStorage.removeItem(TOKEN_KEY)
+    if (token) sessionStorage.setItem(TOKEN_KEY, token)
+    else sessionStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(TOKEN_KEY)   // 旧值不得残留在磁盘上
   } catch { /* storage unavailable */ }
 }
 
