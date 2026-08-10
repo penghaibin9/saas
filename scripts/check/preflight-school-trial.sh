@@ -83,6 +83,7 @@ for path in \
   deploy/systemd/school-lifecycle-scheduler.service \
   deploy/systemd/school-lifecycle-file-scan.service \
   backend/scripts/check_production_file_scan.py \
+  backend/scripts/check_production_storage.py \
   backend/scripts/check_alembic_current.py \
   student-portal/package.json \
   deploy/nginx/school-lifecycle.systemd.conf.example; do
@@ -93,6 +94,8 @@ grep -q 'student-portal' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本已收编学生 PC" || fail "发布脚本未收编 student-portal"
 grep -q 'school-lifecycle-file-scan' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本已收编 file-scan worker" || fail "发布脚本未收编 file-scan worker"
+grep -q 'check_production_storage.py' "$ROOT/scripts/deploy/verify-systemd-release.sh" \
+  && pass "发布验收已收编文件存储真实探针" || fail "发布验收缺少文件存储真实探针"
 grep -Eq 'location[[:space:]]+\^~[[:space:]]+/portal/' "$ROOT/deploy/nginx/school-lifecycle.systemd.conf.example" \
   && pass "Nginx 模板包含 /portal/" || fail "Nginx 模板缺 /portal/"
 grep -Eq 'location[[:space:]]+/uploads/' "$ROOT/deploy/nginx/school-lifecycle.systemd.conf.example" \
