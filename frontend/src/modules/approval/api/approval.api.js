@@ -125,18 +125,14 @@ async function idempotentPost(operation, path, body) {
     key = createIdempotencyKey(operation)
     pendingIdempotencyKeys.set(fingerprint, key)
   }
-  try {
-    const data = await request(path, {
-      method: 'POST',
-      body,
-      headers: { 'Idempotency-Key': key }
-    })
-    pendingIdempotencyKeys.delete(fingerprint)
-    return data
-  } catch (error) {
-    // 网络超时/响应丢失后保留同一 key；用户按相同业务输入重试时由服务端重放而不是重复执行。
-    throw error
-  }
+  // await 抛错时后续 delete 不会执行，因此网络不确定失败会自然保留同一 key 供重试。
+  const data = await request(path, {
+    method: 'POST',
+    body,
+    headers: { 'Idempotency-Key': key }
+  })
+  pendingIdempotencyKeys.delete(fingerprint)
+  return data
 }
 
 function mapStatus(status) {
