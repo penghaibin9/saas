@@ -54,15 +54,7 @@ DB_NAME_VALUE="$(env_value DB_NAME)"
 [ -n "$DB_PASSWORD_VALUE" ] && [ -n "$DB_USER_VALUE" ] && [ -n "$DB_NAME_VALUE" ] \
   || { echo "Database backup settings are incomplete." >&2; exit 1; }
 
-backup_file="$BACKUP_DIR/pre_release_${RELEASE_ID}.sql.gz"
-MYSQL_PWD="$DB_PASSWORD_VALUE" mysqldump -h"$DB_HOST_VALUE" -P"$DB_PORT_VALUE" \
-  -u"$DB_USER_VALUE" --single-transaction --quick --routines --events --triggers --hex-blob \
-  --default-character-set=utf8mb4 "$DB_NAME_VALUE" | gzip -9 > "$backup_file.partial"
-gzip -t "$backup_file.partial"
-mv "$backup_file.partial" "$backup_file"
-sha256sum "$backup_file" > "$backup_file.sha256"
-unset DB_PASSWORD_VALUE
-
+# 先在旧版本仍服务时完成所有耗时构建；真正停业务的窗口只包含备份、迁移、切换和启动。
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
 # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
@@ -95,12 +87,54 @@ if grep -RIlE 'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?' "$RELEASE_DIR/miniap
   exit 1
 fi
 
+previous="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
+ACTIVE_OLD_SERVICES=()
+for svc in school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan; do
+  if systemctl is-active --quiet "$svc" 2>/dev/null; then
+    ACTIVE_OLD_SERVICES+=("$svc")
+  fi
+done
+QUIESCED=0
+ACTIVATED=0
+
+# 如果静默窗口内任一步骤异常退出，至少恢复原 current 并把原先正在运行的服务拉起。
+# 数据库 migration 不自动 downgrade；因此生产迁移仍必须遵守 expand/contract 向后兼容合同。
+release_failure_guard() {
+  status=$?
+  if [ "$status" -ne 0 ] && [ "$QUIESCED" = "1" ]; then
+    if [ "$ACTIVATED" = "1" ] && [ -n "$previous" ] && [ -d "$previous" ]; then
+      ln -sfnT "$previous" "$APP_ROOT/current.rollback" || true
+      mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current" || true
+    fi
+    if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
+      systemctl start "${ACTIVE_OLD_SERVICES[@]}" >/dev/null 2>&1 || true
+    fi
+  fi
+  exit "$status"
+}
+trap release_failure_guard EXIT
+
+# 单机生产部署进入短暂静默窗口：先停 Web 和所有后台写入者，再在同一静默点取备份。
+# 这样备份不会落后于迁移前最后一笔业务写入，旧代码也不会在 Alembic 期间继续写库。
+if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
+  systemctl stop "${ACTIVE_OLD_SERVICES[@]}"
+fi
+QUIESCED=1
+
+backup_file="$BACKUP_DIR/pre_release_${RELEASE_ID}.sql.gz"
+MYSQL_PWD="$DB_PASSWORD_VALUE" mysqldump -h"$DB_HOST_VALUE" -P"$DB_PORT_VALUE" \
+  -u"$DB_USER_VALUE" --single-transaction --quick --routines --events --triggers --hex-blob \
+  --default-character-set=utf8mb4 "$DB_NAME_VALUE" | gzip -9 > "$backup_file.partial"
+gzip -t "$backup_file.partial"
+mv "$backup_file.partial" "$backup_file"
+sha256sum "$backup_file" > "$backup_file.sha256"
+unset DB_PASSWORD_VALUE
+
 # Alembic/应用检查进程通过安全 env runner 获取完整生产环境，绝不 eval EnvironmentFile。
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
 # 动态校验仓库唯一 head 与数据库 current；禁止任何部署脚本写死具体 revision。
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
 
-previous="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
 if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
   legacy_current="$APP_ROOT/releases/legacy_current_${RELEASE_ID}"
   mv -- "$APP_ROOT/current" "$legacy_current"
@@ -108,6 +142,7 @@ if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
 fi
 ln -sfnT "$RELEASE_DIR" "$APP_ROOT/current.next"
 mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
+ACTIVATED=1
 
 for static_path in \
   /var/www/school-lifecycle/pc \
@@ -128,6 +163,7 @@ install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-file-scan.service" 
 systemctl daemon-reload
 systemctl enable school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
 systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
+QUIESCED=0
 
 if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$SOURCE_ROOT/scripts/deploy/verify-systemd-release.sh"; then
   if [ -n "$previous" ] && [ -d "$previous" ]; then
@@ -139,4 +175,5 @@ if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$SOURCE_ROOT/scripts/deploy
   exit 1
 fi
 
+trap - EXIT
 echo "Release $RELEASE_ID installed. Backup: $backup_file"
