@@ -29,9 +29,9 @@ export const usePortalConfigStore = defineStore('sp-portal-config', {
   actions: {
     async load() {
       // 登录响应已明确要求首次改密时，不能先去调用 portal-config 等业务接口。
-      // 服务端也会以 PASSWORD_CHANGE_REQUIRED 拒绝；这里避免无意义 403 并让路由守卫立刻送入安全恢复页。
+      // 状态单独持久化，刷新浏览器后也先进入改密恢复链；服务端 PASSWORD_CHANGE_REQUIRED 仍是最终真值。
       const session = useSessionStore()
-      if (session.user?.mustChangePassword) {
+      if (session.mustChangePassword || session.user?.mustChangePassword) {
         this.config = { ...SAFE_DEFAULT }
         this.error = ''
         this.loaded = true
