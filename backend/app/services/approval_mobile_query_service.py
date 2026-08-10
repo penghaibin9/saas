@@ -43,7 +43,7 @@ def _actor_id(user) -> int:
     return value
 
 
-def _task_row(task, inst, profile=None) -> dict:
+def _task_row(task, inst, profile=None, *, allowed_actions: list[str] | None = None) -> dict:
     return {
         "taskId": str(task.id),
         "instanceId": str(inst.id),
@@ -60,7 +60,7 @@ def _task_row(task, inst, profile=None) -> dict:
         "submittedAt": task.created_at.isoformat(timespec="seconds") if task.created_at else None,
         "actedAt": task.acted_at.isoformat(timespec="seconds") if task.acted_at else None,
         "deadlineAt": task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None,
-        "allowedActions": ["APPROVE", "RETURN", "REJECT", "TRANSFER"] if task.status == "PENDING" else [],
+        "allowedActions": list(allowed_actions or []) if task.status == "PENDING" else [],
     }
 
 
@@ -129,6 +129,7 @@ def list_queue(
 
     from app.models import StudentAccountLink, StudentProfile, WorkflowInstance, WorkflowTask
     from app.services import db_service
+    from app.services.approval_production_guard import persisted_allowed_actions
 
     tid = _tenant_id()
     actor = _actor_id(user)
@@ -227,4 +228,19 @@ def list_queue(
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
-        return [_task_row(task, inst, profile) for task, inst, profile in rows], total
+        policy_cache: dict = {}
+        return [
+            _task_row(
+                task,
+                inst,
+                profile,
+                allowed_actions=persisted_allowed_actions(
+                    db,
+                    task,
+                    inst,
+                    tenant_id=tid,
+                    policy_cache=policy_cache,
+                ) if normalized == "pending" else [],
+            )
+            for task, inst, profile in rows
+        ], total
