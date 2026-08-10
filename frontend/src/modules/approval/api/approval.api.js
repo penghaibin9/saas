@@ -62,6 +62,7 @@ const BATCH_ACTIONS = [
 
 const todoVersions = new Map()
 const templateVersions = new Map()
+const pendingIdempotencyKeys = new Map()
 let latestTransferTargets = []
 
 function ok(data, message = '成功') {
@@ -103,6 +104,39 @@ function actionMeta(visible, allowed, reason = '') {
 function fmtTime(value) {
   if (!value) return ''
   return String(value).replace('T', ' ').slice(0, 16)
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']'
+  return '{' + Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',') + '}'
+}
+
+function createIdempotencyKey(operation) {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  return `approval-${operation}-${suffix}`.slice(0, 128)
+}
+
+async function idempotentPost(operation, path, body) {
+  const fingerprint = `${operation}:${stableStringify(body)}`
+  let key = pendingIdempotencyKeys.get(fingerprint)
+  if (!key) {
+    key = createIdempotencyKey(operation)
+    pendingIdempotencyKeys.set(fingerprint, key)
+  }
+  try {
+    const data = await request(path, {
+      method: 'POST',
+      body,
+      headers: { 'Idempotency-Key': key }
+    })
+    pendingIdempotencyKeys.delete(fingerprint)
+    return data
+  } catch (error) {
+    // 网络超时/响应丢失后保留同一 key；用户按相同业务输入重试时由服务端重放而不是重复执行。
+    throw error
+  }
 }
 
 function mapStatus(status) {
@@ -245,17 +279,33 @@ async function resolveBatchItems(selected = []) {
   return out
 }
 
+async function loadTransferTargets(taskIds = []) {
+  const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [taskIds])
+    .map((x) => String(typeof x === 'object' ? (x.taskId || x.id || '') : x))
+    .filter(Boolean))]
+  if (!ids.length) {
+    latestTransferTargets = []
+    return []
+  }
+  const lists = await Promise.all(ids.map((taskId) =>
+    request(`/approvals/tasks/${encodeURIComponent(taskId)}/transfer-targets`)
+  ))
+  const first = Array.isArray(lists[0]) ? lists[0] : []
+  const allowedSets = lists.slice(1).map((rows) => new Set((rows || []).map((x) => String(x.userId))))
+  latestTransferTargets = first.filter((row) => allowedSets.every((set) => set.has(String(row.userId))))
+  return latestTransferTargets
+}
+
 async function getContextRaw() {
-  const [brand, authCtx, transferTargets] = await Promise.all([
+  const [brand, authCtx] = await Promise.all([
     request('/tenant/brand'),
-    request('/rbac/current-context'),
-    request('/approvals/transfer-targets').catch(() => [])
+    request('/rbac/current-context')
   ])
   const patterns = Array.isArray(authCtx.permissionPatterns) ? authCtx.permissionPatterns : []
   const manage = hasPattern(patterns, 'approval.manage') || hasPattern(patterns, '*')
   const currentRole = authCtx.currentRole || {}
   const dataScope = authCtx.dataScope || {}
-  latestTransferTargets = Array.isArray(transferTargets) ? transferTargets : []
+  latestTransferTargets = []
   const single = actionMeta(true, true)
   const batch = actionMeta(true, manage, '批量办理仅限具备 approval.manage 的管理角色')
   const adminOnly = actionMeta(true, manage, '当前身份缺少 approval.manage 权限')
@@ -292,7 +342,7 @@ async function getContextRaw() {
     },
     filterOptions: FILTER_OPTIONS,
     batchActions: BATCH_ACTIONS,
-    transferTargets: latestTransferTargets,
+    transferTargets: [],
     realApi: true
   }
 }
@@ -318,14 +368,14 @@ export const approvalApi = {
         page: params.page || 1,
         pageSize: params.pageSize || 10,
         keyword: params.keyword,
-        bizType: params.bizType
+        bizType: params.bizType,
+        urgency: params.urgency,
+        submitDate: params.submitDate
       }
     })
-    let list = (d.items || []).map(taskRow)
-    if (params.urgency) list = list.filter((x) => x.urgency === params.urgency)
-    if (params.submitDate) list = list.filter((x) => String(x.submitTime || '').startsWith(params.submitDate))
+    const list = (d.items || []).map(taskRow)
     list.forEach((x) => todoVersions.set(x.taskId, x.version))
-    return { list, total: params.urgency || params.submitDate ? list.length : Number(d.total || 0) }
+    return { list, total: Number(d.total || 0) }
   }),
 
   getApprovalDetail: (taskId) => safe(async () => {
@@ -343,6 +393,8 @@ export const approvalApi = {
       suggestions: []
     }
   }),
+
+  getTransferTargets: (taskIds) => safe(async () => loadTransferTargets(taskIds)),
 
   approveTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/approve`, {
@@ -378,28 +430,25 @@ export const approvalApi = {
 
   batchApprove: (selected = []) => safe(async () => {
     const items = await resolveBatchItems(selected)
-    return request('/approvals/batch', { method: 'POST', body: { action: 'APPROVE', items } })
+    const body = { action: 'APPROVE', items }
+    return idempotentPost('batch-approve', '/approvals/batch', body)
   }),
 
   batchReturn: (selected = [], payload = {}) => safe(async () => {
     const items = await resolveBatchItems(selected)
-    return request('/approvals/batch', {
-      method: 'POST',
-      body: { action: 'RETURN', items, reason: payload.reason || '' }
-    })
+    const body = { action: 'RETURN', items, reason: payload.reason || '' }
+    return idempotentPost('batch-return', '/approvals/batch', body)
   }),
 
   batchTransfer: (selected = [], payload = {}) => safe(async () => {
     const items = await resolveBatchItems(selected)
-    const d = await request('/approvals/batch', {
-      method: 'POST',
-      body: {
-        action: 'TRANSFER',
-        items,
-        targetUserId: payload.targetUserId,
-        comment: payload.note || ''
-      }
-    })
+    const body = {
+      action: 'TRANSFER',
+      items,
+      targetUserId: payload.targetUserId,
+      comment: payload.note || ''
+    }
+    const d = await idempotentPost('batch-transfer', '/approvals/batch', body)
     const target = latestTransferTargets.find((x) => String(x.userId) === String(payload.targetUserId))
     return { ...d, transferredTo: target?.userName || payload.targetUserId }
   }),
@@ -484,12 +533,10 @@ export const approvalApi = {
     }))
   }),
 
-  exportRecords: (payload = {}) => safe(async () =>
-    request('/approvals/export', {
-      method: 'POST',
-      body: { scope: payload.scope, purpose: payload.purpose }
-    })
-  ),
+  exportRecords: (payload = {}) => safe(async () => {
+    const body = { scope: payload.scope, purpose: payload.purpose }
+    return idempotentPost('export', '/approvals/export', body)
+  }),
 
   getAuditLogs: () => safe(async () => request('/approvals/audit', { params: { limit: 20 } }))
 }
