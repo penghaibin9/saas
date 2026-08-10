@@ -205,6 +205,9 @@ def student_enroll(user, body):
                 allow_reselect_closed=allow_reselect_closed,
             )
         except AppException as exc:
+            message = str(getattr(exc, "message", "") or str(exc))
+            if "上课时间冲突" in message:
+                _base._core._record_conflict_reject(db, batch, course, student, message)
             raise selection_trace.attach_selection_trace(
                 exc,
                 db=db,
@@ -380,7 +383,7 @@ def lock_batch(user, batch_id):
         if batch.status != _base._BATCH_CLOSED:
             raise _base._core._invalid("仅已关闭选课批次可锁定名单")
         validate_selection_lock(db, batch)
-        result = apply_locked_roster_projection(db, batch, actor_user=user)
+        apply_locked_roster_projection(db, batch)
         batch.status = _base._BATCH_LOCKED
         batch.locked_at = datetime.utcnow()
         _base._core._audit(
@@ -390,4 +393,5 @@ def lock_batch(user, batch_id):
             "锁定选课名单并生成教学班名单版本",
         )
         db.commit()
-        return result
+        db.refresh(batch)
+        return _base._core._batch_dto(batch)
