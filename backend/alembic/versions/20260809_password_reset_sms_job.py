@@ -1,7 +1,7 @@
 """学生密码重置短信可靠投递作业。
 
 Revision ID: 20260809_pwreset_sms_job
-Revises: 20260808_aa_gpa_policy
+Revises: 20260810_package11_historical_audit
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "20260809_pwreset_sms_job"
-down_revision = "20260808_aa_gpa_policy"
+down_revision = "20260810_package11_historical_audit"
 branch_labels = None
 depends_on = None
 
