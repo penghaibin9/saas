@@ -83,8 +83,10 @@ def _program(client, hdr, *, major_id, grade_year, total_credits, courses, bindi
     academic = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
     for binding_grade, class_id in bindings:
-        bound = client.post(f"{BASE}/programs/{pid}/bind", headers=hdr, json={
-            "gradeYear": binding_grade, "classId": str(class_id)})
+        body = {"gradeYear": binding_grade}
+        if class_id is not None:
+            body["classId"] = str(class_id)
+        bound = client.post(f"{BASE}/programs/{pid}/bind", headers=hdr, json=body)
         assert bound.status_code == 200, bound.text
     return pid
 
@@ -166,7 +168,12 @@ def test_tt1_full_chain(client, db_mode):
     assert r.json()["data"]["status"] == "TEACHER_CONFIRMED"
     b = client.post(f"{BASE}/teaching-task-batches/{bid}/submit", headers=hdr)
     assert b.status_code == 200, b.text
-    assert b.json()["data"]["status"] == "APPROVED"
+    assert b.json()["data"]["status"] == "COLLEGE_CONFIRMED"
+    reviewed = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
+                           json={"action": "APPROVE"})
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["data"]["status"] == "APPROVED"
+    assert _tasks(client, hdr, bid)[0]["status"] == "READY"
 
 
 def test_tt2_generate_idempotent(client, db_mode):
@@ -198,7 +205,9 @@ def test_tt3_program_credit_shortfall_blocks_submit(client, db_mode):
     seed_program_quality_requirements(pid, total_credits=120)
     blocked = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert blocked.status_code == 409, blocked.text
-    assert "TOTAL_CREDIT_INSUFFICIENT" in blocked.text and "课程学分合计" in blocked.text
+    payload = blocked.json()
+    assert payload["bizCode"] == "PROGRAM_VALIDATION_BLOCKED"
+    assert "课程与实践学分合计" in payload["message"] and "毕业总学分 120" in payload["message"]
 
 
 def test_tt4_batch_submit_with_unassigned_409(client, db_mode):
@@ -237,7 +246,12 @@ def test_tt6_review_return_then_reconfirm(client, db_mode):
     _published_bound_program(client, hdr, cid, ids["class"], ids["major"])
     bid = _generate(client, hdr, _term(client, hdr))["batchId"]
     task_id = _tasks(client, hdr, bid)[0]["taskId"]
-    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr, json={"teacherName": "王老师"})
+    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
+                           json={"teacherName": "王老师"})
+    assert assigned.status_code == 200, assigned.text
+    confirmed = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr,
+                            json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
     assert client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr).status_code == 200
     bad = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
                       json={"action": "RETURN", "reason": "短"})
@@ -257,8 +271,7 @@ def test_tt7_merge_then_split(client, db_mode):
     cid = _enabled_course(client, hdr, code="TT701")
     _program(client, hdr, major_id=ids["major"], grade_year="2026", total_credits=4,
              courses=[(cid, "程序设计", 4, 1)],
-             bindings=[("2026", ids["class1"]), ("2026B", ids["class2"])],
-             name="合班测试方案")
+             bindings=[("2026", None)], name="合班测试方案")
     g = _generate(client, hdr, _term(client, hdr))
     assert g["tasksGenerated"] == 2
     bid = g["batchId"]
@@ -304,8 +317,7 @@ def test_tt8_merge_validation(client, db_mode):
     ids2 = _seed_two_classes(db_mode, grade="2027")
     cid3 = _enabled_course(client, hdr, code="TT803")
     _program(client, hdr, major_id=ids2["major"], grade_year="2027", total_credits=4,
-             courses=[(cid3, "课程", 4, 1)],
-             bindings=[("2027", ids2["class1"]), ("2027B", ids2["class2"])],
+             courses=[(cid3, "课程", 4, 1)], bindings=[("2027", None)],
              name="重复合并校验方案")
     g2 = _generate(client, hdr, _term(client, hdr, year_code="2027-2028"))
     bid2 = g2["batchId"]
@@ -377,8 +389,7 @@ def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _enabled_course(client, hdr, code="TT1101")
     _program(client, hdr, major_id=ids["major"], grade_year="2026", total_credits=4,
-             courses=[(cid, "程序设计", 4, 1)],
-             bindings=[("2026", ids["class1"]), ("2026B", ids["class2"])],
+             courses=[(cid, "程序设计", 4, 1)], bindings=[("2026", None)],
              name="调整校验方案")
     tid = _term(client, hdr)
     g = _generate(client, hdr, tid)
