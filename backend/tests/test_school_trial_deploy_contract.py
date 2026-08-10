@@ -29,11 +29,18 @@ def test_trial_shell_scripts_parse(relative: str):
 
 def test_release_script_carries_all_three_clients_and_scan_worker():
     text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
-    assert 'frontend' in text
-    assert 'miniapp' in text
-    assert 'student-portal' in text
-    assert 'school-lifecycle-file-scan' in text
-    assert 'scripts/check_alembic_current.py' in text
+    assert "frontend" in text
+    assert "miniapp" in text
+    assert "student-portal" in text
+    assert "school-lifecycle-file-scan" in text
+    assert "scripts/check_alembic_current.py" in text
+
+
+def test_release_verification_probes_scan_and_storage():
+    text = (ROOT / "scripts/deploy/verify-systemd-release.sh").read_text(encoding="utf-8")
+    assert "scripts/check_production_file_scan.py" in text
+    assert "scripts/check_production_storage.py" in text
+    assert (ROOT / "backend/scripts/check_production_storage.py").is_file()
 
 
 def test_deploy_scripts_do_not_pin_an_alembic_revision():
