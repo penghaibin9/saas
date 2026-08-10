@@ -14,6 +14,8 @@ import './styles/golden-business-rollout.css'
 import './styles/golden-business-rollout-final.css'
 // Golden 高频操作页 rollout：请假连续审批 / 实习学生台账 / 毕设学生台账。
 import './styles/golden-business-ops-rollout.css'
+// Screenshot C：仅收紧毕设学生台账的页面上下文条。
+import './styles/golden-business-ops-rollout-final.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
