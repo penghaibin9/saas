@@ -182,35 +182,27 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     assert r.status_code == 200
     cid = r.json()["data"]["changeId"]
     assert r.json()["data"]["status"] == "SUBMITTED"
-    # 学院审通过 → COLLEGE_REVIEW（待教务处审）
     r1 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
     assert r1["data"]["status"] == "COLLEGE_REVIEW"
-    # 教务处终审通过 → 系统改写课表 → APPLIED
     r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["newItemId"] and r2["data"]["applied"]["notified"]["channel"] == "STATUS_CHANGED"
-    # 原课位 CHANGED（原周1第1节不再出现在生效课表），新项落到目标周3第2节
     cv = client.get(f"{BASE}/schedule-batches/{r2['data']['batchId']}/class-view?classId={ids['class']}",
                     headers=admin).json()["data"]["items"]
     slots = {(i["weekday"], i["slotNo"]) for i in cv}
     assert (3, 2) in slots and (1, 1) not in slots
 
 
-# ── C2 提交即目标冲突预检 → 409，单据不落库 ──
 def test_c2_conflict_precheck_rejected(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    # 额外占位：周3第2节已被同教师占用
-    _, origin = _published_item(client, admin, ids["class"],
-                                extra=[{"weekday": 3, "slotNo": 2}])
+    _, origin = _published_item(client, admin, ids["class"], extra=[{"weekday": 3, "slotNo": 2}])
     r = _submit(client, admin, origin, targetWeekday=3, targetSlotNo=2)
     assert r.status_code == 409 and "冲突" in r.json()["message"]
-    # 台账中无该单据（未落库）
     lst = client.get(f"{BASE}/schedule-change", headers=admin).json()["data"]
     assert lst["total"] == 0
 
 
-# ── C3 停课未填补课安排 → 400 ──
 def test_c3_stop_requires_makeup(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -218,23 +210,19 @@ def test_c3_stop_requires_makeup(client, db_mode):
     r = client.post(f"{BASE}/schedule-change", headers=admin,
                     json={"originItemId": str(origin), "changeType": "STOP", "reason": "教室设备故障停课"})
     assert r.status_code == 400
-    # 补齐补课安排后可提交
     r2 = client.post(f"{BASE}/schedule-change", headers=admin,
                      json={"originItemId": str(origin), "changeType": "STOP",
                            "reason": "教室设备故障停课", "makeupPlan": "顺延至第10周补齐"})
     assert r2.status_code == 200 and r2.json()["data"]["changeType"] == "STOP"
 
 
-# ── C4 撤销仅限终审前；APPLIED 后 409 ──
 def test_c4_cancel_window(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
     cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    # SUBMITTED 可撤销
     rc = client.post(f"{BASE}/schedule-change/{cid}/cancel", headers=admin, json={"reason": "自行取消"}).json()
     assert rc["data"]["status"] == "CANCELLED"
-    # 另一单走到 APPLIED 后撤销 → 409
     cid2 = _submit(client, admin, origin).json()["data"]["changeId"]
     client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
     client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
@@ -242,7 +230,6 @@ def test_c4_cancel_window(client, db_mode):
     assert r409.status_code == 409
 
 
-# ── C5 越权：学生令牌 → 403 ──
 def test_c5_student_forbidden(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -253,20 +240,17 @@ def test_c5_student_forbidden(client, db_mode):
     assert client.get(f"{BASE}/schedule-change", headers=stu).status_code == 403
 
 
-# ── C6 数据范围(COURSE)：非本人课位发起 → 403 NO_DATA_SCOPE ──
 def test_c6_course_scope_denied(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     bid = _batch(client, admin)
-    # 课位教师为 other_teacher，非 academic01
     origin = _item(client, admin, bid, ids["class"], teacherKey="other_teacher", teacherName="他人")
     _publish_batch(client, admin, bid)
-    teacher = _hdr(client, "academic01")   # ACADEMIC_TEACHER：COURSE 范围，仅本人课位
+    teacher = _hdr(client, "academic01")
     r = _submit(client, teacher, origin)
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
-# ── C7 驳回需原因≥5 字 → REJECTED ──
 def test_c7_reject_requires_reason(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -279,14 +263,11 @@ def test_c7_reject_requires_reason(client, db_mode):
     assert ok["data"]["status"] == "REJECTED"
 
 
-# ══════════ Tier1 续工：07 冲突检测 / 08 统计 / 09 归档 ══════════
-
 def _conflict_check(client, hdr, origin, **kw):
     body = {"originItemId": str(origin), "targetWeekday": 3, "targetSlotNo": 2, **kw}
     return client.post(f"{BASE}/schedule-change/conflict-check", headers=hdr, json=body)
 
 
-# ── C8a 冲突预检：无冲突 → {"conflict": None}，不落库（台账仍为空）──
 def test_c8a_conflict_check_none(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -297,7 +278,6 @@ def test_c8a_conflict_check_none(client, db_mode):
     assert client.get(f"{BASE}/schedule-change", headers=admin).json()["data"]["total"] == 0
 
 
-# ── C8b 冲突预检：目标课位已被占用 → 返回冲突详情（不抛异常，只读） ──
 def test_c8b_conflict_check_found(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -308,7 +288,6 @@ def test_c8b_conflict_check_found(client, db_mode):
     assert conflict and conflict["type"] in ("TEACHER", "CLASS", "CLASSROOM")
 
 
-# ── C8c 冲突预检：传他人课位 originItemId → 403（防越权探测他人课表） ──
 def test_c8c_conflict_check_not_own_task_403(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -320,7 +299,6 @@ def test_c8c_conflict_check_not_own_task_403(client, db_mode):
     assert r.status_code == 403
 
 
-# ── C9 统计扩展：byCollege / topTeachers 聚合，且旧字段 total/byType/byStatus 向后兼容 ──
 def test_c9_stats_extended_aggregation(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import College, Major, SchoolClass, StudentProfile
@@ -336,12 +314,10 @@ def test_c9_stats_extended_aggregation(client, db_mode):
     db.add(stu); db.flush()
     class_id = cls.id
     db.commit(); db.close()
-
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, class_id)
     r = _submit(client, admin, origin)
     assert r.status_code == 200
-
     stat = client.get(f"{BASE}/schedule-change/stats", headers=admin).json()["data"]
     assert stat["total"] >= 1 and stat["byType"].get("ADJUST", 0) >= 1
     assert stat["byStatus"].get("SUBMITTED", 0) >= 1
@@ -349,21 +325,17 @@ def test_c9_stats_extended_aggregation(client, db_mode):
     assert any(t["teacherKey"] == "academic01" for t in stat["topTeachers"])
 
 
-# ── C10a 归档：仅返回终态记录（APPLIED/REJECTED/CANCELLED），在途单不出现 ──
 def test_c10a_archive_only_terminal_states(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    # 一单撤销（终态 CANCELLED），目标周5第1节（空闲，不与原课位/彼此冲突）
     r_cancel = _submit(client, admin, origin, targetWeekday=5, targetSlotNo=1)
     assert r_cancel.status_code == 200, r_cancel.text
     cid_cancel = r_cancel.json()["data"]["changeId"]
     client.post(f"{BASE}/schedule-change/{cid_cancel}/cancel", headers=admin, json={"reason": "计划有变"})
-    # 一单仍在途（SUBMITTED，不应出现在归档），目标周6第1节（另一空闲课位）
     r_active = _submit(client, admin, origin, targetWeekday=6, targetSlotNo=1)
     assert r_active.status_code == 200, r_active.text
     cid_active = r_active.json()["data"]["changeId"]
-
     arc = client.get(f"{BASE}/schedule-change/archive", headers=admin).json()["data"]
     ids_in_archive = {x["changeId"] for x in arc["items"]}
     assert cid_cancel in ids_in_archive
@@ -371,29 +343,19 @@ def test_c10a_archive_only_terminal_states(client, db_mode):
     assert all(x["status"] in ("APPLIED", "REJECTED", "CANCELLED") for x in arc["items"])
 
 
-# ── C10b 归档：即使误传在途 status 也被服务层强制忽略（仍只回终态） ──
 def test_c10b_archive_ignores_active_status_param(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]  # SUBMITTED，在途
+    cid = _submit(client, admin, origin).json()["data"]["changeId"]
     arc = client.get(f"{BASE}/schedule-change/archive", headers=admin,
                      params={"status": "SUBMITTED"}).json()["data"]
     assert all(x["changeId"] != cid for x in arc["items"])
 
 
-# ══════════ 05 调停课通知（三级施工卡 05）：APPLIED 精确送达 + 通知单打印数据 ══════════
-#
-# 本轮修复真实 bug：_apply_schedule() 此前用 x.applicant_id（未剥离 'db-' 前缀，uid.isdigit()
-# 恒 False → 恒 None → receiver_id 回退成 0，等价于旧 publish() 的广播反模式）当"教师"receiver_id，
-# 用 t_student_profile.id（与 t_user.id 是两套独立自增主键空间）当"学生"receiver_id——两者都不在
-# 移动端读消息时按当前登录 user_id 过滤所用的 id 空间内，师生实际永远收不到本通知。
-# 现按 login_name 精确匹配 t_user 解析真实账号（教师：teacher_key；学生：student_no），
-# 对齐 internship_service.remind_weekly_report 的既有精确送达范式（施工包 D-11）。
-
 def test_c11_notify_precise_delivery_uses_real_user_id(client, db_mode):
-    """教师 + 学生均已建立登录账号：APPLIED 后精确投递 2 条 STATUS_CHANGED 消息，
-    receiver_id 必须命中各自真实 t_user.id（不是 applicant_id 原值，也不是 student_profile.id）。"""
+    """教师 + 学生均有真实账号：终审响应仍标 STATUS_CHANGED，消息中心按事件模板落 WORKFLOW_RESULT；
+    receiver_id/receiver_user_id 必须都命中真实 t_user.id，禁止 0 号广播或学生档案 id 冒充账号 id。"""
     from app.db.session import get_sessionmaker
     from app.models import UnifiedMessage, User
     ids = _seed(db_mode)
@@ -406,28 +368,27 @@ def test_c11_notify_precise_delivery_uses_real_user_id(client, db_mode):
     db.add(teacher_acc); db.add(student_acc); db.flush()
     teacher_uid, student_uid = teacher_acc.id, student_acc.id
     db.commit(); db.close()
-
     _, origin = _published_item(client, admin, ids["class"])
     cid = _submit(client, admin, origin).json()["data"]["changeId"]
     client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
     r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 1, "teacher": 1, "channel": "STATUS_CHANGED"}
-
     db2 = get_sessionmaker()()
     msgs = db2.query(UnifiedMessage).filter(
         UnifiedMessage.tenant_id == TID, UnifiedMessage.source_module == "academic-affairs",
-        UnifiedMessage.source_biz_id == int(cid), UnifiedMessage.message_type == "STATUS_CHANGED").all()
+        UnifiedMessage.source_biz_id == int(cid), UnifiedMessage.message_type == "WORKFLOW_RESULT").all()
     db2.close()
     assert len(msgs) == 2, f"应精确投递 2 条(1 师+1 生)，实得 {len(msgs)}"
     receiver_ids = {m.receiver_id for m in msgs}
-    assert receiver_ids == {teacher_uid, student_uid}, "receiver_id 必须命中真实账号 id，不得是 0/档案 id/其他值"
+    receiver_user_ids = {m.receiver_user_id for m in msgs}
+    assert receiver_ids == {teacher_uid, student_uid}
+    assert receiver_user_ids == {teacher_uid, student_uid}
     assert 0 not in receiver_ids
 
 
 def test_c12_notify_gracefully_skips_missing_accounts(client, db_mode):
-    """教师/学生均未建立登录账号（_seed 默认场景）：APPLIED 精确投递优雅得 0 条，
-    不 500、不回退成 receiver_id=0 广播（不伪造送达成功）。"""
+    """教师/学生均未建立登录账号：APPLIED 成功，但不得伪造 WORKFLOW_RESULT 消息或 0 号广播。"""
     from app.db.session import get_sessionmaker
     from app.models import UnifiedMessage
     ids = _seed(db_mode)
@@ -438,24 +399,21 @@ def test_c12_notify_gracefully_skips_missing_accounts(client, db_mode):
     r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 0, "teacher": 0, "channel": "STATUS_CHANGED"}
-
     db = get_sessionmaker()()
     cnt = db.query(UnifiedMessage).filter(
         UnifiedMessage.tenant_id == TID, UnifiedMessage.source_biz_id == int(cid),
-        UnifiedMessage.message_type == "STATUS_CHANGED").count()
+        UnifiedMessage.message_type == "WORKFLOW_RESULT").count()
     db.close()
-    assert cnt == 0, "无账号映射时不应插入任何 receiver_id=0 的广播消息冒充已送达"
+    assert cnt == 0, "无账号映射时不应插入任何 0 号广播消息冒充已送达"
 
 
 def test_c13_detail_fields_for_notice_print(client, db_mode):
-    """详情接口需覆盖通知单打印页（05 卡 §5.1）展示所需的全部字段。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
     cid = _submit(client, admin, origin).json()["data"]["changeId"]
     client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
     client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-
     d = client.get(f"{BASE}/schedule-change/{cid}", headers=admin).json()["data"]
     assert d["status"] == "APPLIED"
     for key in ("changeId", "changeType", "changeTypeLabel", "courseName", "className",
@@ -468,8 +426,6 @@ def test_c13_detail_fields_for_notice_print(client, db_mode):
 
 
 def test_c14_op_uid_resolves_db_prefix_not_mock_prefix():
-    """_op_uid() 单测回归：真实账号登录 userId='db-N' 须剥离前缀取整数；mock 演示 'u_xxx'
-    解析不到应返回 None（此前 uid.isdigit() 未剥离 'db-' 前缀，两种登录下 applicant_id 恒 None）。"""
     from app.core.context import get_current_user_ctx, set_current_user
     from app.modules.academic_affairs.services.academic_affairs_schedule_change_service import _op_uid
     saved = get_current_user_ctx()
