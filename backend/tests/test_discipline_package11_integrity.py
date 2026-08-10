@@ -55,12 +55,19 @@ def test_package11_static_contracts_are_installed():
     assert "DISCIPLINE_PROJECTION_STUDENT_MISMATCH" in migration
     assert "DISCIPLINE_DECISION_IMMUTABLE" in migration
     assert "DISCIPLINE_ACTIVE_SUBFLOW_EXISTS" in migration
+    assert "def _preflight_service_students()" in migration
+    upgrade_block = migration.split("def upgrade() -> None:", 1)[1].split("def downgrade() -> None:", 1)[0]
+    assert upgrade_block.index("_preflight_service_students()") < upgrade_block.index("_create_tables()")
+    assert "PACKAGE11_DUPLICATE_SERVICE_STUDENT" not in migration
     assert "_ensure_cs_student" in guard
+    assert "if len(existing_rows) > 1:" in guard
+    assert "if len(created_rows) > 1:" in guard
     assert "appeal_todo._ensure_todo" in guard
     assert "emit_receiver_notice" in guard
     assert "db.commit()" in guard
     assert "decision-review" in api
     assert "affairs_discipline_integrity_router" in router
+    assert not Path("../.github/workflows/package11-closeout-patch.yml").exists()
 
 
 def test_package11_mysql_projection_versions_and_subflow_mutex(db_mode, monkeypatch):

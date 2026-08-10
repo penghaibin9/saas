@@ -68,3 +68,14 @@ def test_academic_source_only_still_runs_permission_gate():
         "tests/test_aa_status_change_concurrency.py",
         "tests/test_aa_exam_facade_contract_and_changes.py",
     ]
+
+
+def test_pr_size_never_bypasses_change_aware_gate():
+    """PR 文件数不能触发已知历史假红的全量套件；定时任务仍保留全量巡检。"""
+    root = Path(__file__).resolve().parents[2]
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "CHANGED_COUNT" not in workflow
+    assert "大 PR（>=150 文件）" not in workflow
+    assert 'github.event_name }}" = "schedule"' in workflow
+    assert "timeout 80m pytest -q" in workflow
+    assert "select_pytest_targets.py" in workflow

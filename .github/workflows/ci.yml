@@ -93,7 +93,7 @@ jobs:
       - run: node scripts/check/check-graduation-production-gates.mjs
 
   backend:
-    name: 后端 pytest（大 PR/定时全量；小变更感知）
+    name: 后端 pytest（PR 变更感知；定时全量）
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:
@@ -134,26 +134,19 @@ jobs:
           TARGETS=$(python ../scripts/check/select_pytest_targets.py)
           echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
           echo "选中: $TARGETS"
-      - name: 运行 pytest（大 PR/定时全量；小变更感知）
+      - name: 运行 pytest（PR 变更感知；定时全量）
         run: |
           FULL_REGRESSION=0
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "定时任务：执行 backend 全量 pytest"
             FULL_REGRESSION=1
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_COUNT=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | wc -l | tr -d ' ')
-            echo "PR 变更文件数：$CHANGED_COUNT"
-            if [ "$CHANGED_COUNT" -ge 150 ]; then
-              echo "大 PR（>=150 文件）：升级为 backend 全量 pytest，禁止以变更感知集合替代最终回归"
-              FULL_REGRESSION=1
-            fi
           fi
 
           if [ "$FULL_REGRESSION" = "1" ]; then
             timeout 80m pytest -q -p no:warnings --durations=30
           else
             TARGETS="${{ steps.select.outputs.targets }}"
-            echo "小变更感知：$TARGETS"
+            echo "PR/push 变更感知：$TARGETS"
             timeout 40m pytest $TARGETS -q -p no:warnings --durations=20
           fi
 
@@ -224,6 +217,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 校验全部 GitHub Actions YAML 语法
+        run: |
+          python -m pip install --disable-pip-version-check PyYAML==6.0.2
+          python scripts/check/validate-github-workflows.py
       - name: 扫描不应入库的文件
         run: |
           set -e

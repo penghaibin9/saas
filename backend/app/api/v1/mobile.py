@@ -1145,7 +1145,9 @@ def teacher_approval_reject(task_id: str, body: dict = Body(default={}),
 def teacher_weekly_review(report_id: str, body: dict = Body(...),
                           user=Depends(get_current_user)):
     return success(tea.weekly_review(user, report_id, str(body.get("action") or "").upper(),
-                                     body.get("comment") or ""), message="批阅完成")
+                                     body.get("comment") or "",
+                                     expected_version=body.get("expectedVersion")),
+                   message="批阅完成")
 
 
 @internship_teacher_mobile.post("/weekly/{report_id}/remind",

@@ -114,10 +114,11 @@ def test_mobile_weekly_review_scope_and_conflict(client, db_mode):
     assert deny["code"] == 403001
     # 指导老师批阅 → 200；重复批阅 → 409
     ok = client.post(f"/api/v1/mobile/teacher/internship/weekly/{ids['wr']}/review",
-                     headers=mentor, json={"action": "APPROVE", "comment": "写得不错"}).json()
+                     headers=mentor,
+                     json={"action": "APPROVE", "comment": "写得不错", "expectedVersion": 0}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
     dup = client.post(f"/api/v1/mobile/teacher/internship/weekly/{ids['wr']}/review",
-                      headers=mentor, json={"action": "APPROVE"}).json()
+                      headers=mentor, json={"action": "APPROVE", "expectedVersion": 0}).json()
     assert dup["code"] == 409001
 
 
@@ -177,7 +178,9 @@ def test_mock_token_carries_tenant(client):
 def test_header_cannot_switch_tenant_with_token(client, db_mode):
     """带主租户令牌 + X-Tenant: demo-school 头 → 数据仍是主租户（令牌优先）。"""
     _seed_scope_case(db_mode)
-    h = _token("u-teacher", "王辅导", "COUNSELOR")
+    # 本用例只验证租户绑定，使用租户管理员避免普通教师的 DEFAULT_DENY
+    # 数据范围把“未越权但无可见记录”误判为切租户。
+    h = _token("u-tenant-admin", "租户管理员", "SCHOOL_ADMIN")
     h["X-Tenant"] = "demo-school"
     r = client.get("/api/v1/mobile/teacher/risk-students", headers=h).json()
     assert r["code"] == 0

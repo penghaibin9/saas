@@ -2404,7 +2404,8 @@ def approval_act(user: dict, task_id: str, action: str, reason: str | None = Non
     return result
 
 
-def weekly_review(user: dict, report_id: str, action: str, comment: str | None = None) -> dict:
+def weekly_review(user: dict, report_id: str, action: str, comment: str | None = None,
+                  *, expected_version=None) -> dict:
     """实习周报批阅（APPROVE/RETURN）。SCOPED 教师只能批阅范围内学生的周报。"""
     u = _require_teacher(user)
     if not db_enabled():
@@ -2433,7 +2434,8 @@ def weekly_review(user: dict, report_id: str, action: str, comment: str | None =
                 allowed = False
             if not allowed:
                 raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
-    result = internship_service.review_weekly_report(report_id, action, comment or "")
+    result = internship_service.review_weekly_report(
+        report_id, action, comment or "", expected_version=expected_version)
     _audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
