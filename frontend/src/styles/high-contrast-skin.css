@@ -364,8 +364,8 @@
 /* --------------------------------------------------------------------------
  * Golden Foundation · 2026-08-10
  * 目标：提升管理 PC 的信息可读性与层级质感，不改变路由、权限、状态机与业务结构。
- * 这组覆盖优先服务 Workbench / 学生主档 / 选课控制台三张 Golden 页面，随后再决定
- * 是否向其它业务页推广；因此只使用已存在的结构类，不新增业务语义。
+ * 这组覆盖只包含 BasePortalLayout 壳层，以及 Workbench / 选课控制台已有唯一结构类；
+ * 不使用通用业务卡片选择器，避免让其它业务页被动跟随本 PR 改样式。
  * -------------------------------------------------------------------------- */
 
 /* 壳层：减少“厚重后台”感，保留清透学院蓝的识别度。 */
@@ -397,18 +397,6 @@
   padding: 24px 28px 36px;
 }
 
-#app .base-portal-layout .mp-card,
-#app .base-portal-layout .app-card,
-#app .base-portal-layout .wb-v2__panel {
-  border-radius: 14px;
-  box-shadow: 0 8px 28px -24px color-mix(in srgb, var(--deep1) 35%, transparent);
-}
-
-#app .base-portal-layout .mp-card:hover,
-#app .base-portal-layout .app-card:hover {
-  box-shadow: 0 12px 30px -24px color-mix(in srgb, var(--deep1) 42%, transparent);
-}
-
 /* Workbench Golden：先修读得清，再谈装饰。原实现大量 8–11px 文案在 1440p 下过小。 */
 #app .base-portal-layout .wb-v2__layout {
   grid-template-columns: minmax(0, 1fr) 296px;
@@ -418,6 +406,11 @@
 #app .base-portal-layout .wb-v2__main,
 #app .base-portal-layout .wb-v2__context {
   gap: 14px;
+}
+
+#app .base-portal-layout .wb-v2__panel {
+  border-radius: 14px;
+  box-shadow: 0 8px 28px -24px color-mix(in srgb, var(--deep1) 35%, transparent);
 }
 
 #app .base-portal-layout .wb-v2__hero {
