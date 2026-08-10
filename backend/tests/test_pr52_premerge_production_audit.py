@@ -35,8 +35,9 @@ def test_transfer_and_reject_flags_are_persisted_policy_driven():
     assert _action_flags(disabled, active_node) == {"REJECT": True, "TRANSFER": False}
 
 
-def test_transfer_guard_requires_current_node_role_membership_and_atomic_write():
+def test_transfer_guard_requires_current_node_role_membership_scope_and_atomic_write():
     guard = read("backend/app/services/approval_production_guard.py")
+    scope_guard = read("backend/app/services/approval_transfer_scope_service.py")
 
     assert "definition.allow_transfer" in guard
     assert "definition.allow_reject" in guard
@@ -48,6 +49,41 @@ def test_transfer_guard_requires_current_node_role_membership_and_atomic_write()
     assert "atomic_versioned_update(" in guard
     assert 'expected_status="PENDING"' in guard
     assert '"targetRole": role_code' in guard
+    assert '"targetScope": target_scope' in guard
+
+    guarded_transfer = guard.split("def guarded_transfer(", 1)[1].split("def guarded_transfer_targets(", 1)[0]
+    assert "assert_transfer_target_scope(" in guarded_transfer
+    assert guarded_transfer.index("_assert_target_role(") < guarded_transfer.index("assert_transfer_target_scope(")
+    assert guarded_transfer.index("assert_transfer_target_scope(") < guarded_transfer.index("atomic_versioned_update(")
+
+    assert 'strategy != "ROLE_AND_SCOPE"' in scope_guard
+    assert "data_scope_code" in scope_guard
+    assert "simulate_access(" in scope_guard
+    assert "无法验证当前审批对象的数据范围" in scope_guard
+    assert "fail-closed" in scope_guard
+
+
+def test_transfer_scope_policy_requires_role_and_scope_and_normalizes_school_scope():
+    from app.services.approval_transfer_scope_service import _node_scope_code
+
+    assert _node_scope_code(SimpleNamespace(
+        assignee_strategy="ROLE_AND_SCOPE",
+        data_scope_code="SCHOOL",
+    )) == "TENANT"
+
+    with pytest.raises(AppException) as exc:
+        _node_scope_code(SimpleNamespace(
+            assignee_strategy="ROLE_ONLY",
+            data_scope_code="COLLEGE",
+        ))
+    assert exc.value.code == "NO_PERMISSION"
+
+    with pytest.raises(AppException) as exc:
+        _node_scope_code(SimpleNamespace(
+            assignee_strategy="ROLE_AND_SCOPE",
+            data_scope_code="",
+        ))
+    assert exc.value.code == "NO_PERMISSION"
 
 
 def test_external_scheduler_runs_approval_export_worker_for_each_tenant():
