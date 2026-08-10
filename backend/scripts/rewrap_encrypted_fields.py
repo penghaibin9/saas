@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """换钥后的重加密任务：把所有 `*_encrypted` 列刷成当前密钥版本。
 
-换钥完整流程（缺一步就会解不开历史数据）：
+换钥完整流程（缺一步就会解不开历史数据，或让历史检索哈希失配）：
 
 1. 生成新密钥：`python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`
-2. 把**旧**密钥写进 FIELD_ENCRYPTION_PREVIOUS_KEYS，格式 `旧版本号:旧密钥`
-3. 把**新**密钥写进 FIELD_ENCRYPTION_KEY，FIELD_ENCRYPTION_KEY_ID 递增
-4. 重启服务（此时新写入用新钥，历史密文仍能用旧钥解开）
-5. 跑本脚本：先 `--dry-run` 看清有多少行、有没有解不开的，再实跑
-6. `--dry-run` 显示 legacy/旧版本行数归零后，才可以从配置里移除旧密钥
+2. **先固定搜索 HMAC**：若 SENSITIVE_SEARCH_HMAC_KEY 此前留空，必须在更换主钥前把
+   当前（旧）FIELD_ENCRYPTION_KEY 的值写入 SENSITIVE_SEARCH_HMAC_KEY。搜索哈希不能
+   随加密主钥轮换，否则历史手机号/身份证 hash 列会与新查询永久失配。
+3. 把**旧**密钥写进 FIELD_ENCRYPTION_PREVIOUS_KEYS，格式 `旧版本号:旧密钥`
+4. 把**新**密钥写进 FIELD_ENCRYPTION_KEY，FIELD_ENCRYPTION_KEY_ID 递增
+5. 重启服务（此时新写入用新钥，历史密文仍能用旧钥解开；搜索 HMAC 保持不变）
+6. 跑本脚本：先 `--dry-run` 看清有多少行、有没有解不开的，再实跑
+7. `--dry-run` 显示 legacy/旧版本行数归零后，才可以从配置里移除旧密钥
 
 用法：
     python scripts/rewrap_encrypted_fields.py --dry-run
     python scripts/rewrap_encrypted_fields.py --batch-size 500
 
-注意：本脚本只改密文列，不改业务语义；SENSITIVE_SEARCH_HMAC_KEY 不在此处理
-（检索哈希与加密密钥解耦，换它需要整表重算检索列，属于另一件事）。
+注意：本脚本只改密文列，不改业务语义；SENSITIVE_SEARCH_HMAC_KEY 一旦用于既有
+检索哈希就必须保持稳定。要换这把钥匙必须整表重算检索列，属于另一件事。
 """
 from __future__ import annotations
 
@@ -47,6 +50,9 @@ def main() -> int:
 
     from app.db.session import get_sessionmaker
 
+    # 在扫描/写库前先验证轮换合同；尤其禁止 previous keys 已生效而搜索 HMAC
+    # 仍隐式跟随当前 FIELD_ENCRYPTION_KEY 的危险配置。
+    fc.assert_field_encryption_safe()
     status = fc.key_rotation_status()
     current_kid = status["currentKeyId"]
     print(f"当前密钥版本 = {current_kid}；可用历史版本 = {status['previousKeyIds'] or '无'}")
