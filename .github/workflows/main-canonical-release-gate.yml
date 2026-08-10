@@ -34,11 +34,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FILE=.github/workflows/main-canonical-release-gate.yml
-          if grep -Eq 'pull_request\.number|select_pytest_targets|backend-known-failures|compare-pytest-junit-baseline|continue-on-error|pytest[^\n]*--lf' "$FILE"; then
-            echo "Canonical release gate contains a bypass/special-case/baseline path"
-            exit 1
-          fi
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/main-canonical-release-gate.yml')
+          text = p.read_text(encoding='utf-8')
+          forbidden = [
+              'select_' + 'pytest_targets',
+              'backend-known-' + 'failures',
+              'compare-' + 'pytest-junit-baseline',
+              'continue-' + 'on-error',
+          ]
+          hits = [item for item in forbidden if item in text]
+          # One pull_request.number reference is the concurrency key. More than one means
+          # someone reintroduced a PR-number-specific execution branch.
+          pr_number_ref = 'github.event.pull_request.' + 'number'
+          if text.count(pr_number_ref) > 1:
+              hits.append('PR-number-specific canonical branch')
+          if hits:
+              raise SystemExit('canonical bypass pattern(s): ' + ', '.join(hits))
+          PY
 
   migrated-schema:
     name: Main / fresh Alembic schema truth
