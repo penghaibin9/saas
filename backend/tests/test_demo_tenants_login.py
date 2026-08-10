@@ -222,10 +222,10 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     ).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
 
-    # 毕设写入已迁移到“权威材料版本 + expectedVersion + fileVersionId”合同，
-    # 具体并发写链由毕业设计材料域专项用例覆盖；本测试只保留双租户种子可见性，不再用旧无版本请求伪造成功。
-    gd = client.get("/api/v1/mobile/teacher/graduation", headers=admin_h).json()
-    assert gd["code"] == 0 and len(gd["data"]["reviewDetail"]) >= 1
+    # 毕设工作台同样已升级为“必须显式选择 batchId”；旧测试无 batch 直接读 reviewDetail
+    # 已不再是合法客户端合同。真正的材料批阅继续由毕业设计域 expectedVersion/fileVersionId 专项覆盖。
+    gd_without_batch = client.get("/api/v1/mobile/teacher/graduation", headers=admin_h)
+    assert gd_without_batch.status_code == 422
 
 
 def test_demo_tenant_is_readonly(client, two_tenants):
