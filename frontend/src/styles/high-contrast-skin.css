@@ -364,8 +364,8 @@
 /* --------------------------------------------------------------------------
  * Golden Foundation · 2026-08-10
  * 目标：提升管理 PC 的信息可读性与层级质感，不改变路由、权限、状态机与业务结构。
- * 这组覆盖只包含 BasePortalLayout 壳层，以及 Workbench / 选课控制台已有唯一结构类；
- * 不使用通用业务卡片选择器，避免让其它业务页被动跟随本 PR 改样式。
+ * 这组覆盖只包含 BasePortalLayout 壳层，以及 Workbench / 学生主档 / 选课控制台的唯一结构锚点；
+ * 不使用无锚点的通用业务卡片选择器，避免让其它业务页被动跟随本 PR 改样式。
  * -------------------------------------------------------------------------- */
 
 /* 壳层：减少“厚重后台”感，保留清透学院蓝的识别度。 */
@@ -489,6 +489,52 @@
 #app .base-portal-layout .wb-v2__favorite-grid button,
 #app .base-portal-layout .wb-v2__quick > div button {
   border-radius: 12px;
+}
+
+/* 学生主档 Golden：用该页唯一的“显示已作废”插槽作为锚点，绝不改共享组件本体。 */
+#app .base-portal-layout .af:has(.sl-voided-toggle) {
+  padding: 16px 18px;
+  gap: 16px;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px -24px color-mix(in srgb, var(--deep1) 34%, transparent);
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .af__fields {
+  gap: 14px;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .af__field {
+  gap: 6px;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .af__label {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .af__control {
+  height: 40px;
+  border-radius: 10px;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .dt {
+  border-radius: 14px;
+  box-shadow: 0 12px 32px -28px color-mix(in srgb, var(--deep1) 40%, transparent);
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .dt .dt__th {
+  padding-block: 13px;
+  letter-spacing: 0.025em;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .dt .dt__td {
+  padding-block: 14px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .mp-note {
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* 选课控制台 Golden：保留主从控制台结构，把“微缩字”提升到可持续办公尺寸。 */
