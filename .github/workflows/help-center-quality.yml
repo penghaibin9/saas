@@ -89,6 +89,7 @@ jobs:
             src/config/__tests__/mobileOperationsHelpCards.test.js \
             src/config/__tests__/studentAffairsMobileKnowledgeCleaningV2.test.js \
             src/config/__tests__/helpCenterV3.test.js \
+            src/config/__tests__/pageContextHelpV307.test.js \
             src/config/__tests__/helpCenterQualityV308.test.js \
             src/config/__tests__/roleScopeOwnershipHelpV3.test.js \
             src/config/__tests__/internshipCoreJourneyV3.test.js \
