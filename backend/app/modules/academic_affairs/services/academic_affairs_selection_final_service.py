@@ -382,8 +382,15 @@ def lock_batch(user, batch_id):
         _base._guard_batch_writable(db, batch)
         if batch.status != _base._BATCH_CLOSED:
             raise _base._core._invalid("仅已关闭选课批次可锁定名单")
-        validate_selection_lock(db, batch)
-        apply_locked_roster_projection(db, batch)
+        validation = validate_selection_lock(db, batch)
+        if not validation.get("valid"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课名单校验未通过",
+                details={"issues": list(validation.get("issues") or [])},
+                http_status=409,
+            )
+        apply_locked_roster_projection(db, validation)
         batch.status = _base._BATCH_LOCKED
         batch.locked_at = datetime.utcnow()
         _base._core._audit(
