@@ -1,7 +1,7 @@
 """选课管理（/academic-affairs/selection/*）端点测试（SM-09 冻结状态机）。
 
 历史夹具已对齐当前生产合同：正式 termId、真实学生账号绑定、StudentAcademicFact 自动基线、
-稳定 courseCode。业务状态机、容量、越权、冲突、锁定和归档断言保持原强度。
+稳定 courseCode、正式 READY 教学任务与名单锁定前置。业务状态机、容量、越权、冲突、锁定和归档断言保持原强度。
 """
 from __future__ import annotations
 
@@ -109,6 +109,46 @@ def _ensure_term():
         db.close()
 
 
+def _ready_tasks(ids, *, with_conflict_slots=False):
+    """名单锁定与冲突判断必须回链同学期的正式 READY 教学任务。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
+
+    db = get_sessionmaker()()
+    term_id = _ensure_term()
+    klass = db.get(SchoolClass, int(ids["class"]))
+    c1 = db.get(AaCourse, int(ids["course1"]))
+    c2 = db.get(AaCourse, int(ids["course2"]))
+    assert klass is not None and c1 is not None and c2 is not None
+    seq = db.query(AaTeachingTaskBatch).filter(AaTeachingTaskBatch.tenant_id == TID).count() + 1
+    batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=int(term_id), batch_name=f"选课回归教学任务批次-{seq}",
+        college_id=int(ids["college"]), status="APPROVED",
+    )
+    db.add(batch); db.flush()
+    tasks = []
+    for idx, course in enumerate((c1, c2), start=1):
+        task = AaTeachingTask(
+            tenant_id=TID, batch_id=batch.id, course_id=course.id,
+            course_code=course.course_code, course_name=course.course_name,
+            class_id=int(ids["class"]), teaching_class_name=klass.class_name,
+            teacher_key=f"selection_teacher_{idx}", teacher_name=f"选课教师{idx}",
+            status="READY", weekly_hours=2, total_hours=36, start_week=1, end_week=18,
+        )
+        db.add(task); db.flush()
+        tasks.append(task)
+    if with_conflict_slots:
+        for task, course in zip(tasks, (c1, c2)):
+            db.add(AaScheduleItem(
+                tenant_id=TID, batch_id=1, task_id=task.id, course_id=course.id,
+                course_name=course.course_name, weekday=1, slot_no=1,
+                start_week=1, end_week=18, week_parity="ALL", status="EFFECTIVE",
+            ))
+    task_ids = tuple(int(task.id) for task in tasks)
+    db.commit(); db.close()
+    return task_ids
+
+
 def _new_batch(client, admin, name):
     resp = client.post(
         f"{BASE}/selection/batches", headers=admin,
@@ -118,11 +158,13 @@ def _new_batch(client, admin, name):
     return resp.json()["data"]["batchId"]
 
 
-def _make_open_batch(client, admin, course_id, capacity=5, name="2024秋选修"):
+def _make_open_batch(client, admin, course_id, capacity=5, name="2024秋选修", teaching_task_id=None):
     """正式学期建批次→加课程→发布→开选，返回 (batchId, selectionCourseId)。"""
     bid = _new_batch(client, admin, name)
-    add = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
-                      json={"courseId": str(course_id), "capacity": capacity, "minCapacity": 1})
+    body = {"courseId": str(course_id), "capacity": capacity, "minCapacity": 1}
+    if teaching_task_id is not None:
+        body["teachingTaskId"] = str(teaching_task_id)
+    add = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin, json=body)
     assert add.status_code == 200, add.text
     scid = add.json()["data"]["selectionCourseId"]
     publish = client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
@@ -150,7 +192,10 @@ def test_s1_full_lifecycle(client, db_mode):
     assert client.post(f"{BASE}/selection/student/drop", headers=stu,
                        json={"selectionCourseId": str(scid)}).json()["data"]["status"] == "DROPPED"
     assert client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin).json()["data"]["status"] == "CLOSED"
-    assert client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin).json()["data"]["status"] == "LOCKED"
+    cancelled = client.post(f"{BASE}/selection/courses/{scid}/cancel", headers=admin)
+    assert cancelled.status_code == 200 and cancelled.json()["data"]["status"] == "COURSE_CANCELLED"
+    locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    assert locked.status_code == 200 and locked.json()["data"]["status"] == "LOCKED"
     assert client.post(f"{BASE}/selection/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
 
 
@@ -223,12 +268,14 @@ def test_s8_lock_non_closed_409(client, db_mode):
 def test_s9_adjust_after_lock(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    bid, scid = _make_open_batch(client, admin, ids["course1"])
+    task_id, _ = _ready_tasks(ids)
+    bid, scid = _make_open_batch(client, admin, ids["course1"], teaching_task_id=task_id)
     stu = _stu_token("选甲", "SEL2401")
     rid = client.post(f"{BASE}/selection/student/enroll", headers=stu,
                       json={"selectionCourseId": str(scid)}).json()["data"]["recordId"]
-    client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin)
-    client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    assert client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin).status_code == 200
+    locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    assert locked.status_code == 200, locked.text
     assert client.post(f"{BASE}/selection/records/{rid}/adjust", headers=admin,
                        json={"reason": "x"}).status_code == 400
     r = client.post(f"{BASE}/selection/records/{rid}/adjust", headers=admin,
@@ -350,32 +397,10 @@ def test_s14_reselect_flow(client, db_mode):
     assert r.json()["code"] == 0 and r.json()["data"]["status"] == "SELECTED"
 
 
-def _seed_conflict_tasks(ids):
-    """构造两门课程各自的教学任务+同一时段课表项，供冲突报表测试复用。"""
-    from app.db.session import get_sessionmaker
-    from app.models import AaScheduleItem, AaTeachingTask
-
-    db = get_sessionmaker()()
-    tt1 = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=ids["course1"], course_name="职业素养选修")
-    tt2 = AaTeachingTask(tenant_id=TID, batch_id=1, course_id=ids["course2"], course_name="人工智能导论")
-    db.add_all([tt1, tt2]); db.flush()
-    si1 = AaScheduleItem(tenant_id=TID, batch_id=1, task_id=tt1.id, course_id=ids["course1"],
-                         course_name="职业素养选修", weekday=1, slot_no=1, start_week=1, end_week=18,
-                         week_parity="ALL", status="EFFECTIVE")
-    si2 = AaScheduleItem(tenant_id=TID, batch_id=1, task_id=tt2.id, course_id=ids["course2"],
-                         course_name="人工智能导论", weekday=1, slot_no=1, start_week=1, end_week=18,
-                         week_parity="ALL", status="EFFECTIVE")
-    db.add_all([si1, si2])
-    db.commit()
-    tt1_id, tt2_id = tt1.id, tt2.id
-    db.close()
-    return tt1_id, tt2_id
-
-
 def test_s15_conflict_report(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    tt1_id, tt2_id = _seed_conflict_tasks(ids)
+    tt1_id, tt2_id = _ready_tasks(ids, with_conflict_slots=True)
     bid = _new_batch(client, admin, "冲突批次")
     a1 = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
                      json={"courseId": str(ids["course1"]), "teachingTaskId": str(tt1_id),
@@ -412,7 +437,7 @@ def test_s15_conflict_report(client, db_mode):
 def test_s16_selection_result_merged_into_schedule(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    tt1_id, _tt2_id = _seed_conflict_tasks(ids)
+    tt1_id, _tt2_id = _ready_tasks(ids, with_conflict_slots=True)
     bid = _new_batch(client, admin, "结果批次")
     add = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
                       json={"courseId": str(ids["course1"]), "teachingTaskId": str(tt1_id),
@@ -428,7 +453,8 @@ def test_s16_selection_result_merged_into_schedule(client, db_mode):
                     params={"studentId": str(ids["s1"])}).json()
     assert not any(it["source"] == "ENROLLED" for it in sv["data"]["items"])
     assert client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin).status_code == 200
-    assert client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin).status_code == 200
+    locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    assert locked.status_code == 200, locked.text
     sv2 = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
                      params={"studentId": str(ids["s1"])}).json()
     enrolled = [it for it in sv2["data"]["items"] if it["source"] == "ENROLLED"]
@@ -439,12 +465,17 @@ def test_s17_archive_list_detail_export(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     bid = _new_batch(client, admin, "归档批次")
-    assert client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
-                       json={"courseId": str(ids["course1"]), "capacity": 5, "minCapacity": 1}).status_code == 200
+    added = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
+                        json={"courseId": str(ids["course1"]), "capacity": 5, "minCapacity": 1})
+    assert added.status_code == 200, added.text
+    scid = added.json()["data"]["selectionCourseId"]
     assert client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin).status_code == 200
     assert client.post(f"{BASE}/selection/batches/{bid}/open", headers=admin).status_code == 200
     assert client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin).status_code == 200
-    assert client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin).status_code == 200
+    cancelled = client.post(f"{BASE}/selection/courses/{scid}/cancel", headers=admin)
+    assert cancelled.status_code == 200 and cancelled.json()["data"]["status"] == "COURSE_CANCELLED"
+    locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
+    assert locked.status_code == 200, locked.text
     assert client.get(f"{BASE}/selection/archive/{bid}", headers=admin).status_code == 409
     assert client.post(f"{BASE}/selection/archive/{bid}/export", headers=admin,
                        json={"purpose": "测试导出台账"}).status_code == 409
