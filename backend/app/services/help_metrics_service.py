@@ -1,7 +1,7 @@
 """Help Center V3-08 质量/自助率指标。
 
 复用既有 append-only ``t_security_audit_log``，不新增迁移：
-- 搜索仅保存不可逆指纹、长度与命中数，不保存用户自由文本；
+- 搜索仅保存带服务端密钥的不可枚举 HMAC 指纹、长度与命中数，不保存用户自由文本；
 - 文章浏览与“已解决/未解决”反馈只保存 help id 和低敏维度；
 - 真正“无需人工解决率”在未打通工单/人工升级链前明确不可用，不用反馈率冒充；
 - 小程序 WebView 使用 10 分钟、仅 Help Metrics 可验证的 HMAC capability，不把主登录 token 放进 URL。
@@ -58,7 +58,13 @@ def _query_fingerprint(value: object) -> tuple[str, int]:
     normalized = " ".join(str(value or "").strip().lower().split())[:200]
     if not normalized:
         return "", 0
-    digest = sha256(("help-search:v1:" + normalized).encode("utf-8")).hexdigest()
+    # 搜索词通常是低熵自然语言，裸 SHA-256 可被常用词字典枚举反推。
+    # 使用服务端秘密做 domain-separated HMAC；数据库泄露时无法离线枚举原查询。
+    digest = hmac.new(
+        settings.jwt_secret.encode("utf-8"),
+        ("help-search-fingerprint:v2:" + normalized).encode("utf-8"),
+        sha256,
+    ).hexdigest()
     return digest, len(normalized)
 
 
