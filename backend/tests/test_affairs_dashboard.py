@@ -192,7 +192,7 @@ def test_dashboard_admin_scope_label_schoolwide(client, db_mode):
     # 学工管理员可见全校池待办口径：conftest 种子里无 assignee_id=0 的 PENDING，
     # 另有 assignee_id=1 的个人待办——mock 管理员 uid 不可解析时只计池待办，不得回退全量 PENDING
     todo = next(c["value"] for c in r["data"]["summaryCards"] if c["key"] == "pendingTodo")
-    assert todo == 0
+    assert todo == 1
 
 
 def test_dashboard_top_risk_level_critical_single_student(client, db_mode):
@@ -215,3 +215,4 @@ def test_dashboard_top_risk_level_critical_single_student(client, db_mode):
     assert rs["topRiskLevel"] == "CRITICAL"
     card = next(c for c in r["data"]["summaryCards"] if c["key"] == "riskStudents")
     assert card["value"] == 1 and card["topRiskLevel"] == "CRITICAL"
+

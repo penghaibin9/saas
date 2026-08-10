@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.field_crypto import (encrypt_field, mask_id_card_encrypted, mask_phone,
-                                   mask_phone_encrypted)
+from app.core.field_crypto import (encrypt_field, looks_like_fernet, mask_id_card_encrypted,
+                                   mask_phone, mask_phone_encrypted, split_key_id)
 
 
 # ── 1. 解密后再脱敏 ────────────────────────────────────────────────────────
@@ -19,7 +19,9 @@ from app.core.field_crypto import (encrypt_field, mask_id_card_encrypted, mask_p
 def test_mask_phone_encrypted_decrypts_before_masking():
     plain = "13812345678"
     cipher = encrypt_field(plain)
-    assert cipher and cipher.startswith("gAAAA"), "前提：encrypt_field 产出 Fernet 密文"
+    # 密文信封为 `k<密钥版本>:<Fernet密文>`，版本号用于换钥后选对解密密钥。
+    assert cipher and looks_like_fernet(cipher), "前提：encrypt_field 产出 Fernet 密文"
+    assert split_key_id(cipher)[0], "新写入的密文必须带密钥版本号"
     masked = mask_phone_encrypted(cipher)
     assert masked == mask_phone(plain) == "138****5678"
     assert "gAAAA" not in masked, "脱敏结果不得残留密文片段"
@@ -95,7 +97,7 @@ def test_correction_value_helpers_roundtrip_plaintext():
 
     plain = "110101199001011234"
     stored = aa._correction_store_value("ID_CARD", plain)
-    assert stored != plain and stored.startswith("gAAAA"), "证件号必须加密落库"
+    assert stored != plain and looks_like_fernet(stored), "证件号必须加密落库"
     assert aa._correction_plain_value("ID_CARD", stored) == plain
     audit = aa._correction_audit_value("ID_CARD", plain)
     assert plain not in audit and audit.endswith("1234"), "审计只能出现脱敏值"
