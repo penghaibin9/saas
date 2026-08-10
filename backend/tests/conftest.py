@@ -1001,7 +1001,7 @@ def db_mode(tmp_path, request):
         admin = User(tenant_id=TID, login_name="school_admin01", real_name="陈校",
                      password_hash="x", user_type="SCHOOL_ADMIN", status="ACTIVE")
         db.add(admin); db.flush()
-        college = College(tenant_id=TID, college_name="信息工程学院", status="ACTIVE")
+        college = College(tenant_id=TID, college_name="默认测试学院", status="ACTIVE")
         db.add(college); db.flush()
         major = Major(tenant_id=TID, college_id=college.id, major_name="软件技术", status="ACTIVE")
         db.add(major); db.flush()
