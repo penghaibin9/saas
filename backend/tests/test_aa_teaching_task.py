@@ -396,12 +396,28 @@ def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
     bid = g["batchId"]
     tasks = _tasks(client, hdr, bid)
     t1, t2 = tasks[0]["taskId"], tasks[1]["taskId"]
-    client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=hdr, json={"teacherName": "王老师"})
-    client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=hdr, json={"teacherName": "王老师"})
-    client.post(f"{BASE}/teaching-tasks/merge", headers=hdr, json={"taskIds": [t1, t2]})
+    a1 = client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=hdr,
+                     json={"teacherName": "王老师", "teacherKey": "academic01"})
+    a2 = client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=hdr,
+                     json={"teacherName": "王老师", "teacherKey": "academic01"})
+    assert a1.status_code == 200 and a2.status_code == 200
+    merged = client.post(f"{BASE}/teaching-tasks/merge", headers=hdr, json={"taskIds": [t1, t2]})
+    assert merged.status_code == 200, merged.text
     merged_adjust = client.post(f"{BASE}/teaching-tasks/{t2}/adjust", headers=hdr,
                                 json={"weeklyHours": 4, "reason": "尝试调整已并入成员任务"})
     assert merged_adjust.status_code == 409
+
+    # 排课正式门禁只接受同学期、已终审 READY 的教学任务；merge survivor 也必须完成正式确认链。
+    confirmed = client.post(f"{BASE}/teaching-tasks/{t1}/teacher-act", headers=hdr,
+                            json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
+    college = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr)
+    assert college.status_code == 200, college.text
+    reviewed = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
+                           json={"action": "APPROVE"})
+    assert reviewed.status_code == 200, reviewed.text
+    ready = {row["taskId"]: row for row in _tasks(client, hdr, bid)}[t1]
+    assert ready["status"] == "READY"
 
     sb_resp = client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": str(tid)})
     assert sb_resp.status_code == 200, sb_resp.text
