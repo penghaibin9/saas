@@ -1,0 +1,34 @@
+version: 1
+reviewedAt: 2026-08-06
+root: frontend/public/help
+assetType: interactive-visual
+privacyReview: pending-content-review
+notes:
+  - 这些文件是 HTML 业务地图或流程指南，不是逐步操作截图。
+  - 文件存在已经核验；内容准确性、个人信息和当前版本一致性仍需逐文件复核。
+assets:
+  - academic-affairs-exam-map.html
+  - academic-affairs-flow-guide.html
+  - academic-affairs-grade-warning-map.html
+  - academic-affairs-quality-archive-map.html
+  - academic-affairs-relationship-overview.html
+  - academic-affairs-schedule-selection-map.html
+  - academic-affairs-student-graduation-map.html
+  - academic-affairs-teaching-preparation-map.html
+  - graduation-design-flow-guide.html
+  - graduation-final-defense-map.html
+  - graduation-guidance-midterm-map.html
+  - graduation-module-relationship-map.html
+  - graduation-score-risk-archive-map.html
+  - graduation-topic-proposal-map.html
+  - internship-daily-guidance-map.html
+  - internship-flow-guide.html
+  - internship-module-relationship-map.html
+  - internship-risk-change-map.html
+  - internship-score-archive-map.html
+  - internship-start-onboarding-map.html
+  - student-affairs-campus-life-map.html
+  - student-affairs-flow-guide.html
+  - student-affairs-growth-archive-map.html
+  - student-affairs-relationship-overview.html
+  - student-affairs-risk-care-map.html
