@@ -12,10 +12,14 @@ on:
       - backend/tests/test_demo_tenants_login.py
       - backend/tests/test_sandbox_13a_seed.py
       - backend/tests/test_wx_login.py
+      - backend/tests/test_graduation_package9_contract.py
       - backend/scripts/_seed_demo_school.py
       - backend/scripts/_seed_two_tenants.py
       - backend/scripts/_seed_sandbox_coverage.py
+      - backend/scripts/_seed_graduation.py
       - backend/app/services/sandbox_service.py
+      - backend/app/modules/graduation/services/graduation_package9_guard.py
+      - backend/app/modules/graduation/services/graduation_archive_consistency.py
       - backend/app/db/**
       - backend/app/models/**
       - backend/app/core/security.py
@@ -30,10 +34,10 @@ concurrency:
 
 jobs:
   mysql-error-cluster:
-    name: Backend errors / demo+sandbox+wx
+    name: Backend errors / seed+package9
     if: github.head_ref == 'fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
@@ -67,7 +71,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Run current 22-error cluster
+      - name: Precise original error nodeid
+        run: |
+          timeout 8m pytest \
+            tests/test_demo_tenants_login.py::test_all_six_accounts_login \
+            -q -p no:warnings
+      - name: Affected fixture files
         shell: bash
         run: |
           set -euo pipefail
@@ -75,7 +84,7 @@ jobs:
           XML="test-results/error-cluster/raw.xml"
           RAW_LOG="test-results/error-cluster/raw.log"
           set +e
-          timeout 20m pytest \
+          timeout 18m pytest \
             tests/test_demo_tenants_login.py \
             tests/test_sandbox_13a_seed.py \
             tests/test_wx_login.py \
@@ -96,7 +105,11 @@ jobs:
           python ../scripts/check/sanitize_pytest_junit.py "$XML"
           mv "$XML" test-results/error-cluster/sanitized.xml
           rm -f "$RAW_LOG"
-          echo "Targeted pytest exit code: $PYTEST_EXIT"
+          exit "$PYTEST_EXIT"
+      - name: Graduation Package 9 domain regression
+        run: |
+          timeout 12m pytest tests/test_graduation_package9_contract.py \
+            -q -p no:warnings --durations=20
       - name: Upload secret-safe diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,20 +121,3 @@ jobs:
             backend/test-results/error-cluster/pytest-exit.txt
           if-no-files-found: warn
           retention-days: 14
-      - name: Preserve targeted outcome
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          STATUS_FILE="test-results/error-cluster/pytest-exit.txt"
-          if [ ! -f "$STATUS_FILE" ]; then
-            exit 2
-          fi
-          STATUS=$(cat "$STATUS_FILE")
-          if [ "$STATUS" = "0" ]; then
-            exit 0
-          fi
-          if [ "$STATUS" = "1" ]; then
-            exit 1
-          fi
-          exit 2
