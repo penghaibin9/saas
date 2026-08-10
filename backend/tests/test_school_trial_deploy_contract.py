@@ -150,15 +150,24 @@ def test_deploy_scripts_do_not_pin_an_alembic_revision():
         assert "Alembic 唯一 head=0111" not in text
 
 
-def test_systemd_nginx_exposes_portal_but_not_raw_files():
-    text = (ROOT / "deploy/nginx/school-lifecycle.systemd.conf.example").read_text(encoding="utf-8")
-    assert "location ^~ /portal/" in text
-    assert "location /uploads/ { return 404; }" in text
-    assert "location /exports/ { return 404; }" in text
-    assert "Content-Security-Policy" in text
-    assert "school_auth_limit" in text
-    assert "add_header Cache-Control" not in text
-    assert "expires -1;" in text
+def test_systemd_nginx_exposes_portal_and_reuses_unified_security_contract():
+    site = (ROOT / "deploy/nginx/school-lifecycle.systemd.conf.example").read_text(encoding="utf-8")
+    security_server = (ROOT / "deploy/nginx/security-server.conf").read_text(encoding="utf-8")
+    security_headers = (ROOT / "deploy/nginx/security-headers.conf").read_text(encoding="utf-8")
+
+    # 学生门户仍由 systemd 原子 release 暴露，安全策略则必须复用 PR #62 收敛后的唯一事实源。
+    assert "location ^~ /portal/" in site
+    assert "include /etc/nginx/conf.d/security-server.conf;" in site
+    assert "location ^~ /uploads/" in security_server
+    assert "location ^~ /exports/" in security_server
+    assert "Content-Security-Policy" in security_headers
+    assert "zone=auth_limit" in security_server
+
+    # Nginx add_header 会覆盖继承；凡站点层自行写 Cache-Control 的 location 都必须重新带安全头。
+    assert site.count("add_header Cache-Control") == site.count(
+        "include /etc/nginx/conf.d/security-headers.conf;"
+    )
+    assert "expires -1;" in site
 
 
 def test_file_scan_service_is_supervised_and_fail_closed():
