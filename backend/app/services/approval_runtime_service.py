@@ -205,7 +205,7 @@ def get_task(task_id: str, *, user=None) -> dict:
 def summary(*, user=None) -> dict:
     """待办统计全部由数据库聚合；仅展示型 overdueList 限制 10 行。"""
     _require_db()
-    from sqlalchemy import func, select
+    from sqlalchemy import case, func, select
     from app.models import WorkflowInstance, WorkflowTask
     from app.services import db_service
 
@@ -239,7 +239,12 @@ def summary(*, user=None) -> dict:
             WorkflowTask.deadline_at <= near_until,
         )
         grouped = db.execute(
-            select(WorkflowInstance.source_biz_type, func.count())
+            select(
+                WorkflowInstance.source_biz_type,
+                func.count(),
+                func.min(WorkflowTask.created_at),
+                func.sum(case((WorkflowTask.deadline_at < now, 1), else_=0)),
+            )
             .select_from(join_from)
             .where(*cond)
             .group_by(WorkflowInstance.source_biz_type)
@@ -265,8 +270,13 @@ def summary(*, user=None) -> dict:
             "overdue": overdue_count,
             "nearDeadline": near_count,
             "byBizType": [
-                {"bizType": biz_type or "GENERAL", "count": int(count or 0)}
-                for biz_type, count in grouped
+                {
+                    "bizType": biz_type or "GENERAL",
+                    "count": int(count or 0),
+                    "earliest": earliest.isoformat(timespec="seconds") if earliest else None,
+                    "overdue": int(group_overdue or 0),
+                }
+                for biz_type, count, earliest, group_overdue in grouped
             ],
             "overdueList": overdue_rows,
             "asOf": now.isoformat(timespec="seconds"),
