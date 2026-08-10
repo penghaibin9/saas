@@ -6,9 +6,12 @@
 
 /* ========================================================================== */
 /* Student Affairs dashboard — turn the real summary into a decision-first hero. */
+/* `.sa-grid--priority` exists only on StudentAffairsDashboardView. Keep every */
+/* Student Affairs dashboard rule under that root so shared `.sa-*` utility */
+/* classes on archive / funding / dorm / mental-health pages are not affected. */
 /* ========================================================================== */
 
-#app .base-portal-layout .sa-summary-strip {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -25,7 +28,7 @@
   box-shadow: 0 18px 42px -30px color-mix(in srgb, var(--deep1) 74%, transparent);
 }
 
-#app .base-portal-layout .sa-summary-strip::after {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip::after {
   content: '';
   position: absolute;
   z-index: -1;
@@ -40,14 +43,14 @@
     0 0 0 92px rgba(255, 255, 255, 0.018);
 }
 
-#app .base-portal-layout .sa-summary-strip__eyebrow {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__eyebrow {
   color: rgba(219, 234, 254, 0.88);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
 
-#app .base-portal-layout .sa-summary-strip__title {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__title {
   margin-top: 6px;
   max-width: 26ch;
   color: #fff;
@@ -56,7 +59,7 @@
   letter-spacing: -0.018em;
 }
 
-#app .base-portal-layout .sa-summary-strip__text {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__text {
   max-width: 760px;
   margin-top: 6px;
   color: rgba(219, 234, 254, 0.82);
@@ -64,9 +67,9 @@
   line-height: 1.65;
 }
 
-#app .base-portal-layout .sa-summary-strip__actions .app-button,
-#app .base-portal-layout .sa-summary-strip__actions .mp-btn,
-#app .base-portal-layout .sa-summary-strip__actions button {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__actions .app-button,
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__actions .mp-btn,
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__actions button {
   min-height: 38px;
   border-color: rgba(255, 255, 255, 0.28);
   border-radius: 10px;
@@ -76,24 +79,24 @@
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
-#app .base-portal-layout .sa-summary-strip__actions button:hover {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__actions button:hover {
   border-color: rgba(255, 255, 255, 0.48);
   background: rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
 }
 
-#app .base-portal-layout .sa-summary-strip__actions button:focus-visible {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-summary-strip__actions button:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.78);
   outline-offset: 2px;
 }
 
-#app .base-portal-layout .sa-grid--priority {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--priority {
   gap: 16px;
   grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
 }
 
-#app .base-portal-layout .sa-grid--priority > *,
-#app .base-portal-layout .sa-grid--two > * {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--priority > *,
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--two > * {
   overflow: hidden;
   border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
   border-radius: 16px;
@@ -101,33 +104,33 @@
   box-shadow: 0 14px 34px -30px color-mix(in srgb, var(--deep1) 46%, transparent);
 }
 
-#app .base-portal-layout .sa-grid--priority > * {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--priority > * {
   min-height: 250px;
 }
 
-#app .base-portal-layout .sa-list > * {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-list > * {
   min-height: 58px;
   padding-block: 12px;
   border-bottom-color: color-mix(in srgb, var(--card-b) 72%, transparent);
   transition: background 160ms ease, padding-inline 160ms ease;
 }
 
-#app .base-portal-layout .sa-list > *:hover {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-list > *:hover {
   padding-inline: 8px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--pri-bg) 42%, #fff);
 }
 
-#app .base-portal-layout .sa-risk-row {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-risk-row {
   border-radius: 12px;
 }
 
-#app .base-portal-layout .sa-grid--metrics {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
 
-#app .base-portal-layout .sa-grid--metrics > * {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics > * {
   min-height: 112px;
   border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
   border-radius: 15px;
@@ -136,29 +139,29 @@
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:hover {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics > *:hover {
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--pri) 22%, var(--card-b));
   box-shadow: 0 16px 34px -28px color-mix(in srgb, var(--deep1) 50%, transparent);
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:nth-child(n + 7) {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics > *:nth-child(n + 7) {
   grid-column: span 2;
 }
 
-#app .base-portal-layout .sa-actions button,
-#app .base-portal-layout .sa-bridge button {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-actions button,
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-bridge button {
   min-height: 38px;
   border-radius: 10px;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
-#app .base-portal-layout .sa-actions button:hover,
-#app .base-portal-layout .sa-bridge button:hover {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-actions button:hover,
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-bridge button:hover {
   transform: translateY(-1px);
 }
 
-#app .base-portal-layout .sa-updated-hint {
+#app .base-portal-layout .mps:has(.sa-grid--priority) .sa-updated-hint {
   color: var(--t3);
   font-size: 12px;
   line-height: 1.55;
@@ -532,11 +535,11 @@
 }
 
 @media (max-width: 1280px) {
-  #app .base-portal-layout .sa-grid--metrics {
+  #app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  #app .base-portal-layout .sa-grid--metrics > *:nth-child(n + 7) {
+  #app .base-portal-layout .mps:has(.sa-grid--priority) .sa-grid--metrics > *:nth-child(n + 7) {
     grid-column: auto;
   }
 
