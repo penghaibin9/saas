@@ -1,0 +1,194 @@
+name: Backup restore drill
+
+on:
+  schedule:
+    - cron: '45 18 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-restore-drill:
+    name: Offsite backup -> isolated MySQL -> application readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: backup_source
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: backup_source
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_source?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_source?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: backup-restore-drill
+      JWT_SECRET: backup-restore-drill-secret-at-least-32-bytes
+      MOCK_LOGIN_ENABLED: 'false'
+      INTERNAL_OPS_TOKEN: backup-restore-drill-ops-token-20260810
+      SCHEDULER_MODE: external
+      BACKUP_DIR: /tmp/school-lifecycle-backup-drill
+      KEEP_DAYS: '2'
+      MIN_LOCAL_BACKUP_SETS: '2'
+      UPLOAD_DIR: /tmp/school-lifecycle-upload-drill
+      REQUIRE_UPLOAD_BACKUP: '1'
+      BACKUP_REQUIRE_OFFSITE: 'true'
+      BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-offsite-drill
+      BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      MAX_BACKUP_AGE_SECONDS: '3600'
+      MAX_RESTORE_SECONDS: '900'
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job
+      MIN_RESTORE_TABLES: '10'
+      MIN_RESTORE_INDEXES: '10'
+      MIN_RESTORE_FOREIGN_KEYS: '1'
+      MIN_ACTIVE_TENANTS: '2'
+      RESTORE_EVIDENCE_FILE: /tmp/restore-drill-evidence.txt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client rclone
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+      - name: Validate governance contracts
+        run: |
+          python scripts/check/data-governance-contracts.py
+          bash -n deploy/backup/backup-mysql.sh
+          bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/restore-drill.sh
+      - name: Build source database through current migrations
+        working-directory: backend
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          alembic upgrade head
+          python scripts/_seed_login_accounts_only.py
+          EXPECTED="$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_source.alembic_version LIMIT 1')"
+          test -n "$EXPECTED"
+          echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
+      - name: Produce verified offsite backup set
+        run: |
+          mkdir -p "$UPLOAD_DIR"
+          printf 'restore-drill-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
+          rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          bash deploy/backup/backup-runner.sh
+      - name: Stage restore only from offsite objects
+        run: |
+          set -euo pipefail
+          STAGE=/tmp/school-lifecycle-offsite-stage
+          rm -rf "$STAGE" "$BACKUP_DIR"
+          mkdir -p "$STAGE"
+          rclone copy "$BACKUP_RCLONE_REMOTE" "$STAGE"
+          MANIFEST="$(find "$STAGE" -maxdepth 1 -name 'manifest_*.json' | sort | tail -n1)"
+          test -s "$MANIFEST"
+          test -s "${MANIFEST}.sha256"
+          echo "RESTORE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+      - name: Restore offsite set into disposable database
+        run: bash deploy/backup/restore-drill.sh "$RESTORE_MANIFEST" backup_restore_drill
+      - name: Verify Alembic state
+        working-directory: backend
+        env:
+          DB_NAME: backup_restore_drill
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
+          TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
+        run: |
+          alembic current
+          test "$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_restore_drill.alembic_version LIMIT 1')" = "$EXPECTED_ALEMBIC_VERSION"
+      - name: Start backend from restored database
+        env:
+          DB_NAME: backup_restore_drill
+          DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
+          TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/backup_restore_drill?charset=utf8mb4
+        run: |
+          cd backend
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/restore-drill-backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/restore-drill-backend.log
+          exit 1
+      - name: Verify readiness and tenant identities
+        run: |
+          curl -fsS -H "X-Ops-Token: $INTERNAL_OPS_TOKEN" http://127.0.0.1:8000/health/ready > /tmp/ready.json
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          def login(tenant, username):
+              req = urllib.request.Request(
+                  'http://127.0.0.1:8000/api/v1/auth/login',
+                  data=json.dumps({
+                      'tenantCode': tenant,
+                      'loginName': username,
+                      'password': '123456',
+                      'clientType': 'PC',
+                  }).encode(),
+                  headers={'Content-Type': 'application/json'},
+                  method='POST',
+              )
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  body = json.loads(response.read())
+              assert body.get('code') == 0, body
+              return body
+
+          demo = login('demo-school', 'admin')
+          sandbox = login('sandbox-school', 'admin2')
+          assert (demo.get('data') or {}) != (sandbox.get('data') or {})
+          PY
+      - name: Verify recovery evidence integrity
+        run: |
+          grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
+          cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
+          sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-restore-drill-${{ github.run_id }}
+          path: |
+            /tmp/ready.json
+            /tmp/restore-drill-evidence.txt
+            /tmp/restore-drill-evidence.txt.sha256
+            /tmp/restore-drill-backend.log
+            /tmp/school-lifecycle-offsite-stage/manifest_*.json
+            /tmp/school-lifecycle-offsite-stage/manifest_*.json.sha256
+            /tmp/school-lifecycle-offsite-stage/*.sha256
+          if-no-files-found: warn
+          retention-days: 30
