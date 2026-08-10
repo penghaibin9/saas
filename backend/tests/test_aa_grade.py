@@ -32,11 +32,43 @@ def _seed(db_mode, n=2):
     return sids
 
 
+def _ensure_term():
+    """成绩特殊补录已收紧为正式 termId；老测试不得继续拿自由文本 termCode 代替权威学期。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+
+    db = get_sessionmaker()()
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == TID,
+        AaTerm.year_code == "2026-2027",
+        AaTerm.term_no == 1,
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        term = AaTerm(
+            tenant_id=TID,
+            year_code="2026-2027",
+            term_no=1,
+            term_name="2026-2027第1学期",
+            status="PUBLISHED",
+            is_current=True,
+        )
+        db.add(term)
+        db.flush()
+    term_id = int(term.id)
+    db.commit()
+    db.close()
+    return term_id
+
+
 def _task(client, hdr, usual=30, final=70):
-    return client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "高等数学", "termCode": "2026-2027-1", "credit": 4,
+    term_id = _ensure_term()
+    r = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "高等数学", "termId": str(term_id), "termCode": "2026-2027-1", "credit": 4,
         "usualRatio": usual, "finalRatio": final,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert r.status_code == 200, r.text
+    return r.json()["data"]["gradeTaskId"]
 
 
 def _submit_and_approve(client, hdr, tid):
@@ -66,8 +98,9 @@ def test_g1_compose_publish_project(client, db_mode):
 
 def test_g2_ratio_not_100_422(client, db_mode):
     hdr = _hdr(client, "school_admin01")
+    term_id = _ensure_term()
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 40, "finalRatio": 70,
+        "courseName": "X", "termId": str(term_id), "usualRatio": 40, "finalRatio": 70,
         "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
 
 
@@ -148,10 +181,13 @@ def test_g10_midterm_three_component(client, db_mode):
     """成绩分项扩展(正方对标)：平时30+期中30+期末40 三分项按比例合成总评；期中未录则未录全。"""
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
-    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "钳工实训", "termCode": "2026-1", "credit": 3,
+    term_id = _ensure_term()
+    r0 = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "courseName": "钳工实训", "termId": str(term_id), "termCode": "2026-2027-1", "credit": 3,
         "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert r0.status_code == 200, r0.text
+    tid = r0.json()["data"]["gradeTaskId"]
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
     assert r["data"]["totalScore"] == 91  # 80*.3 + 90*.3 + 100*.4 = 24+27+40
@@ -164,11 +200,12 @@ def test_g10_midterm_three_component(client, db_mode):
 
 def test_g11_midterm_ratio_sum_must_100(client, db_mode):
     hdr = _hdr(client, "school_admin01")
+    term_id = _ensure_term()
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
+        "courseName": "X", "termId": str(term_id), "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
         "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
     assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
+        "courseName": "Y", "termId": str(term_id), "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
         "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 200
 
 
