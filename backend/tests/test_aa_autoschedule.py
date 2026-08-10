@@ -31,14 +31,21 @@ def _stu_token(real_name, student_no):
 
 
 def _seed(db_mode, *, tasks, rooms):
-    """建 学期+课表批次+教室+教学任务。tasks/rooms 为轻量 dict 列表。"""
+    """建学期+课表批次+正式教学任务批次+教室+READY 教学任务。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaClassroom, AaScheduleBatch, AaTeachingTask, AaTerm
+    from app.models import AaClassroom, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch, AaTerm
     db = get_sessionmaker()()
     term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
     db.add(term); db.flush()
     b = AaScheduleBatch(tenant_id=TID, term_id=term.id, batch_name="自动排课测试批次", status="DRAFT")
     db.add(b); db.flush()
+    task_batch = AaTeachingTaskBatch(
+        tenant_id=TID,
+        term_id=term.id,
+        batch_name="自动排课测试教学任务批次",
+        status="APPROVED",
+    )
+    db.add(task_batch); db.flush()
     room_ids = []
     for r in rooms:
         c = AaClassroom(tenant_id=TID, building_code=r.get("bld", "A"), building_name=r.get("bld", "A") + "栋",
@@ -51,7 +58,7 @@ def _seed(db_mode, *, tasks, rooms):
         room_ids.append(c.id)
     task_ids = []
     for t in tasks:
-        x = AaTeachingTask(tenant_id=TID, batch_id=b.id, course_id=t.get("courseId", 1),
+        x = AaTeachingTask(tenant_id=TID, batch_id=task_batch.id, course_id=t.get("courseId", 1),
                            course_name=t["course"], class_id=t.get("classId", 1),
                            teaching_class_name=t.get("className", "软件2401"),
                            teacher_key=t.get("teacher"), teacher_name=t.get("teacherName", "王老师"),
@@ -59,7 +66,7 @@ def _seed(db_mode, *, tasks, rooms):
                            weekly_hours=t.get("weekly", 2),
                            required_room_type=t.get("roomType"),
                            no_auto_schedule=t.get("noAuto", False),
-                           status="CONFIRMED")
+                           status="READY")
         db.add(x); db.flush()
         task_ids.append(x.id)
     db.commit()
