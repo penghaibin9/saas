@@ -6,6 +6,8 @@ import './styles/element-theme.css'
 import './styles/high-contrast-skin.css'
 // Golden 页面二次精修：仅学生主档与选课控制台的唯一 DOM 锚点生效。
 import './styles/golden-refinement.css'
+// Screenshot F 微调：收紧学生筛选区并修正选课长标题断行。
+import './styles/golden-refinement-final.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
