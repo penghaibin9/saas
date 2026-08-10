@@ -110,7 +110,7 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     graduationFixture = await prepareGraduationDashboardFixture()
   })
 
-  test('Student affairs dashboard · Screenshot B', async ({ page }, testInfo) => {
+  test('Student affairs dashboard · Screenshot C', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/dashboard`)
@@ -121,10 +121,10 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('正在加载学工看板真实数据…')
 
-    await capture(page, testInfo, 'rollout-student-affairs-b')
+    await capture(page, testInfo, 'rollout-student-affairs-c')
   })
 
-  test('Internship dashboard · Screenshot B', async ({ page }, testInfo) => {
+  test('Internship dashboard · Screenshot C', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -136,10 +136,10 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await expect(page.locator('#idb-todos')).toBeVisible()
     await expect(page.locator('body')).not.toContainText(/请先选择实习批次|存在多个进行中批次/)
 
-    await capture(page, testInfo, 'rollout-internship-b')
+    await capture(page, testInfo, 'rollout-internship-c')
   })
 
-  test('Graduation dashboard · Screenshot B', async ({ page }, testInfo) => {
+  test('Graduation dashboard · Screenshot C', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -147,10 +147,11 @@ test.describe.serial('Golden rollout · representative business pages', () => {
 
     await expect(page).toHaveURL(/\/admin\/graduation/)
     await expect(page.locator('.gdb-page')).toBeVisible()
-    await expect(page.locator('.gdb-command-bar')).toBeVisible()
+    await expect(page.locator('.gdb-page > .mh')).toBeVisible()
+    await expect(page.locator('.gdb-modstats')).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('请先选择或创建毕设批次')
 
-    await capture(page, testInfo, 'rollout-graduation-b')
+    await capture(page, testInfo, 'rollout-graduation-c')
   })
 })
