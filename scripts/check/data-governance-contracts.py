@@ -21,6 +21,13 @@ def require(path: str, *needles: str) -> None:
         raise SystemExit(f"{path} missing governance contracts: {missing}")
 
 
+def forbid(path: str, *needles: str) -> None:
+    value = text(path)
+    present = [needle for needle in needles if needle in value]
+    if present:
+        raise SystemExit(f"{path} contains forbidden governance contracts: {present}")
+
+
 def reject_tracked_runtime_secrets() -> None:
     tracked = subprocess.run(
         ["git", "ls-files"],
@@ -51,6 +58,13 @@ require(
     "manifest_",
     "schemaVersion",
     "sha256sum",
+    "--no-tablespaces",
+    "--set-gtid-purged=OFF",
+)
+forbid(
+    "deploy/backup/backup-mysql.sh",
+    "--source-data",
+    "--master-data",
 )
 require(
     "deploy/backup/backup-runner.sh",
