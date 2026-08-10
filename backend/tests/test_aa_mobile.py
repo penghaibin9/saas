@@ -40,9 +40,9 @@ def _seed(db_mode):
 
 
 def _ensure_term():
-    """移动端旧测试不得继续用魔法 termId=1，统一复用正式学期主数据。"""
+    """移动端测试使用可排课的正式学期：稳定 termId + 教学周 + 正式节次。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaTerm
+    from app.models import AaTerm, AaTimeSlot
 
     db = get_sessionmaker()()
     term = db.query(AaTerm).filter(
@@ -57,15 +57,60 @@ def _ensure_term():
             year_code="2023-2024",
             term_no=1,
             term_name="2023-2024第1学期",
+            teaching_weeks=18,
             status="PUBLISHED",
             is_current=True,
         )
         db.add(term)
         db.flush()
+    else:
+        term.teaching_weeks = 18
+        term.status = "PUBLISHED"
+
+    slot_times = {
+        1: ("08:00", "08:45"), 2: ("08:55", "09:40"),
+        3: ("10:00", "10:45"), 4: ("10:55", "11:40"),
+        5: ("14:00", "14:45"), 6: ("14:55", "15:40"),
+        7: ("16:00", "16:45"), 8: ("16:55", "17:40"),
+    }
+    for slot_no, (start, end) in slot_times.items():
+        slot = db.query(AaTimeSlot).filter(
+            AaTimeSlot.tenant_id == TID,
+            AaTimeSlot.slot_no == slot_no,
+            AaTimeSlot.is_deleted.is_(False),
+        ).first()
+        if not slot:
+            db.add(AaTimeSlot(
+                tenant_id=TID, slot_no=slot_no, slot_name=f"第{slot_no}节",
+                start_time=start, end_time=end, enabled=True, status="ENABLED",
+            ))
+        else:
+            slot.enabled = True
+            slot.status = "ENABLED"
+            slot.start_time = start
+            slot.end_time = end
+
     term_id = int(term.id)
     db.commit()
     db.close()
     return term_id
+
+
+def _enabled_course(client, admin, *, code="MB-GRADE101", name="高数", credit=4):
+    created = client.post(f"{AA}/courses", headers=admin, json={
+        "courseCode": code, "courseName": name, "category": "MAJOR_CORE", "nature": "REQUIRED",
+        "credit": credit, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
+        "examMode": "EXAM",
+    })
+    assert created.status_code == 200, created.text
+    course_id = created.json()["data"]["courseId"]
+    submitted = client.post(f"{AA}/courses/{course_id}/submit", headers=admin)
+    assert submitted.status_code == 200, submitted.text
+    college = client.post(f"{AA}/courses/{course_id}/review", headers=admin, json={"action": "APPROVE"})
+    assert college.status_code == 200, college.text
+    academic = client.post(f"{AA}/courses/{course_id}/review", headers=admin, json={"action": "APPROVE"})
+    assert academic.status_code == 200, academic.text
+    return course_id
 
 
 def _published_schedule(client, admin, class_id, teacher_key="counselor01"):
@@ -87,25 +132,30 @@ def test_mb1_schedule_my(client, db_mode):
     admin = _hdr(client, "school_admin01")
     _published_schedule(client, admin, ids["class"])
     r = client.get(f"{MB}/academic/schedule/my", headers=_stu_token("移动甲", "AAM01")).json()
-    assert r["code"] == 0 and len(r["data"]["items"]) == 1  # 按行政班推导出本班课表
+    assert r["code"] == 0 and len(r["data"]["items"]) == 1
 
 
 def test_mb2_transcript_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     term_id = _ensure_term()
-    created = client.post(f"{AA}/grade-tasks", headers=admin, json={
-        "courseName": "高数", "termId": str(term_id), "termCode": "2023-2024-1", "credit": 4,
+    course_id = _enabled_course(client, admin)
+    created = client.post(f"{AA}/grade-tasks/identity", headers=admin, json={
+        "courseId": str(course_id), "courseName": "高数", "classId": str(ids["class"]),
+        "termId": str(term_id), "termCode": "2023-2024-1", "credit": 4,
         "usualRatio": 30, "finalRatio": 70,
         "adminSupplementReason": "测试管理员补录成绩任务"})
     assert created.status_code == 200, created.text
     tid = created.json()["data"]["gradeTaskId"]
-    client.post(f"{AA}/grade-tasks/{tid}/scores", headers=admin,
-                json={"studentId": str(ids["student"]), "usualScore": 85, "finalScore": 90})
-    # R1 起成绩发布必须走完整审核链：提交→学院审→教务终审发布（school_admin01 在审核角色白名单内可代行）
-    client.post(f"{AA}/grade-tasks/{tid}/submit", headers=admin)
-    client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{AA}/grade-tasks/{tid}/publish", headers=admin)
+    score = client.post(f"{AA}/grade-tasks/{tid}/scores", headers=admin,
+                        json={"studentId": str(ids["student"]), "usualScore": 85, "finalScore": 90})
+    assert score.status_code == 200, score.text
+    submitted = client.post(f"{AA}/grade-tasks/{tid}/submit", headers=admin)
+    assert submitted.status_code == 200, submitted.text
+    reviewed = client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin, json={"action": "APPROVE"})
+    assert reviewed.status_code == 200, reviewed.text
+    published = client.post(f"{AA}/grade-tasks/{tid}/publish", headers=admin)
+    assert published.status_code == 200, published.text
     r = client.get(f"{MB}/academic/transcript/my", headers=_stu_token("移动甲", "AAM01")).json()
     assert any(g["courseName"] == "高数" for g in r["data"]["items"])
 
@@ -115,7 +165,6 @@ def test_mb3_status_and_submit_change(client, db_mode):
     stu = _stu_token("移动甲", "AAM01")
     st = client.get(f"{MB}/academic/status/my", headers=stu).json()["data"]
     assert st["studentStatus"] == "REGISTERED" and st["enrolled"] is True
-    # 学生本人发起休学申请（唯一学生写入口）
     r = client.post(f"{MB}/academic/status-change", headers=stu,
                     json={"changeType": "SUSPEND", "reason": "身体原因申请休学一年"}).json()
     assert r["data"]["changeType"] == "SUSPEND" and r["data"]["studentId"] == str(ids["student"])
@@ -124,15 +173,17 @@ def test_mb3_status_and_submit_change(client, db_mode):
 def test_mb4_graduation_progress_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    bid = client.post(f"{AA}/graduation-audit-batches", headers=admin, json={
-        "batchName": "2023届", "gradeYear": "2023"}).json()["data"]["batchId"]
-    client.post(f"{AA}/graduation-audit-batches/{bid}/generate", headers=admin,
-                json={"studentIds": [str(ids["student"])]})
-    client.post(f"{AA}/graduation-audit-batches/{bid}/precheck", headers=admin)
+    created = client.post(f"{AA}/graduation-audit-batches", headers=admin, json={
+        "batchName": "2023届", "gradeYear": "2023"})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    generated = client.post(f"{AA}/graduation-audit-batches/{bid}/generate", headers=admin,
+                            json={"studentIds": [str(ids["student"])]})
+    assert generated.status_code == 200, generated.text
+    precheck = client.post(f"{AA}/graduation-audit-batches/{bid}/precheck", headers=admin)
+    assert precheck.status_code == 200, precheck.text
     r = client.get(f"{MB}/academic/graduation/my", headers=_stu_token("移动甲", "AAM01")).json()["data"]
     assert r["hasAudit"] is True
-    # 毕业预审供数维度（此前断言 7 已过时——precheck `_run_items` 现无条件产出 11 项；
-    # 改为校验维度键集合而非 magic number，增删维度时能精确定位差异，不再静默漂移）。
     assert {it["item"] for it in r["items"]} == {
         "STATUS", "CREDIT", "COURSE_REQUIRED", "COURSE_ELECTIVE", "PRACTICE",
         "INTERNSHIP", "GRADUATION_DESIGN", "DISCIPLINE", "EMPLOYMENT", "ARCHIVE", "FEE"}
