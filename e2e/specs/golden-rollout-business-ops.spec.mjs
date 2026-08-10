@@ -62,8 +62,7 @@ async function setBatchStorage(page, key, value) {
 async function prepareLeaveFixture() {
   const api = await loginApi(studentB)
   const marker = runId()
-  const applied = await api.post('/portal/affairs/service-apply', {
-    serviceKey: 'LEAVE',
+  const applied = await api.post('/portal/affairs/leave', {
     leaveType: 'PERSONAL',
     startTime: isoDay(40),
     endTime: isoDay(41),
