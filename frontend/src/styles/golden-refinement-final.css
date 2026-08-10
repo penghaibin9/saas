@@ -65,3 +65,224 @@
 #app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article {
   min-height: 112px;
 }
+
+/* ========================================================================== */
+/* Screenshot F → G · top-tier polish. Keep typography scale and structure.    */
+/* ========================================================================== */
+
+/* Student master: premium control-panel feel, quieter depth, clearer actions. */
+#app .base-portal-layout .mps:has(.sl-voided-toggle) > .mps__head {
+  border-color: color-mix(in srgb, var(--pri) 22%, transparent);
+  box-shadow: 0 16px 38px -28px color-mix(in srgb, var(--deep1) 76%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__actions .app-button,
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops .app-button {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__actions .app-button:hover,
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops .app-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) {
+  border-color: color-mix(in srgb, var(--pri) 11%, var(--card-b));
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--pri-bg) 18%, #fff) 100%);
+  box-shadow: 0 10px 30px -28px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control:focus,
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control:focus-visible {
+  outline: none;
+  border-color: var(--pri-500);
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 11%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) ~ .dt {
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  box-shadow: 0 14px 34px -32px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__th {
+  letter-spacing: 0.012em;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) tbody tr .dt__td {
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) tbody tr:hover .dt__td {
+  background: color-mix(in srgb, var(--pri-bg) 24%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) tbody tr:hover .dt__td:first-child {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--pri) 62%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link {
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:first-child {
+  color: var(--pri-h);
+  background: color-mix(in srgb, var(--pri-bg) 82%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pri) 8%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:nth-of-type(2) {
+  color: var(--t2);
+  background: transparent;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:nth-of-type(3) {
+  color: var(--err);
+  background: transparent;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:hover {
+  transform: translateY(-1px);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:nth-of-type(2):hover {
+  color: var(--pri-h);
+  background: var(--pri-bg);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:nth-of-type(3):hover {
+  color: var(--danger-700);
+  background: var(--err-l);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__pager button {
+  border-radius: 8px;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__pager button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 12%, transparent);
+}
+
+/* Selection console: calmer runtime hero and stronger master/detail navigation. */
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-list-card,
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section {
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  box-shadow: 0 14px 34px -32px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch {
+  position: relative;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--pri) 24%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch.is-active {
+  border-color: color-mix(in srgb, var(--pri) 48%, var(--card-b));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pri-bg) 86%, #fff), #fff 78%);
+  box-shadow:
+    inset 3px 0 0 var(--pri),
+    0 10px 24px -22px color-mix(in srgb, var(--pri) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 3px 0 0 var(--pri),
+    0 0 0 3px color-mix(in srgb, var(--pri) 12%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero {
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  box-shadow: 0 20px 44px -30px color-mix(in srgb, var(--deep1) 78%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero h2 {
+  text-wrap: balance;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 34px -26px rgba(10, 38, 92, 0.42);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article {
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--pri-bg) 12%, #fff) 100%);
+  box-shadow: 0 10px 24px -24px color-mix(in srgb, var(--deep1) 42%, transparent);
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--pri) 22%, var(--card-b));
+  box-shadow: 0 14px 28px -24px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics strong {
+  font-variant-numeric: tabular-nums;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section-head {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pri-bg) 18%, #fff), #fff);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-inline-empty {
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  background: color-mix(in srgb, var(--pri-bg) 12%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .app-button,
+#app .base-portal-layout .mps:has(.aasel-layout) .mp-link {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .app-button:hover:not(:disabled),
+#app .base-portal-layout .mps:has(.aasel-layout) .mp-link:hover {
+  transform: translateY(-1px);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .app-button:focus-visible,
+#app .base-portal-layout .mps:has(.aasel-layout) .mp-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 12%, transparent);
+}
