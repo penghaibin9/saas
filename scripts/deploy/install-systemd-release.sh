@@ -43,26 +43,32 @@ mv "$backup_file.partial" "$backup_file"
 sha256sum "$backup_file" > "$backup_file.sha256"
 
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
-# 注意：tmp/ 不排除——backend/scripts/sync_moe_*.py 三个国标库同步脚本的
-# --input/--manifest/--manifest-input 参数直接读取 ../tmp/moe-*.json|.docx，
-# 见 docs/03-业务模块设计/系统管理中心/10-国家标准全文库实施记录与运维手册.md §4；
-# 排除后首次部署跑同步命令会因文件不存在而失败。
+# tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
   --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
 python3 -m venv "$RELEASE_DIR/backend/.venv"
 "$RELEASE_DIR/backend/.venv/bin/pip" install --disable-pip-version-check -r "$RELEASE_DIR/backend/requirements.txt"
 
+# 三个客户端必须属于同一个 release；禁止只更新管理端/小程序而漏掉学生 PC。
 if command -v npm >/dev/null 2>&1; then
   (cd "$RELEASE_DIR/frontend" && NODE_OPTIONS=--max-old-space-size=1536 npm ci && npm run build)
   (cd "$RELEASE_DIR/miniapp" && NODE_OPTIONS=--max-old-space-size=1536 npm ci && npm run build:h5)
+  (cd "$RELEASE_DIR/student-portal" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
+    && VITE_BASE=/portal/ VITE_API_BASE_URL= npm run build)
 else
-  [ -f "$SOURCE_ROOT/frontend/dist/index.html" ] && [ -f "$SOURCE_ROOT/miniapp/dist/build/h5/index.html" ] \
-    || { echo "Node missing and prebuilt dist missing" >&2; exit 1; }
+  [ -f "$SOURCE_ROOT/frontend/dist/index.html" ] \
+    && [ -f "$SOURCE_ROOT/miniapp/dist/build/h5/index.html" ] \
+    && [ -f "$SOURCE_ROOT/student-portal/dist/index.html" ] \
+    || { echo "Node missing and one or more prebuilt dist outputs are missing" >&2; exit 1; }
   rsync -a "$SOURCE_ROOT/frontend/dist/" "$RELEASE_DIR/frontend/dist/"
   rsync -a "$SOURCE_ROOT/miniapp/dist/build/h5/" "$RELEASE_DIR/miniapp/dist/build/h5/"
+  rsync -a "$SOURCE_ROOT/student-portal/dist/" "$RELEASE_DIR/student-portal/dist/"
 fi
 
 (cd "$RELEASE_DIR/backend" && "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
+# 动态校验仓库唯一 head 与数据库 current；禁止任何部署脚本写死具体 revision。
+(cd "$RELEASE_DIR/backend" && "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
+
 previous="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
 if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
   legacy_current="$APP_ROOT/releases/legacy_current_${RELEASE_ID}"
@@ -71,28 +77,35 @@ if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
 fi
 ln -sfnT "$RELEASE_DIR" "$APP_ROOT/current.next"
 mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
-for static_path in /var/www/school-lifecycle/pc /var/www/school-lifecycle/miniapp; do
+
+for static_path in \
+  /var/www/school-lifecycle/pc \
+  /var/www/school-lifecycle/miniapp \
+  /var/www/school-lifecycle/portal; do
   if [ -e "$static_path" ] && [ ! -L "$static_path" ]; then
     mv -- "$static_path" "${static_path}.pre_systemd_${RELEASE_ID}"
   fi
 done
 ln -sfnT "$APP_ROOT/current/frontend/dist" /var/www/school-lifecycle/pc
 ln -sfnT "$APP_ROOT/current/miniapp/dist/build/h5" /var/www/school-lifecycle/miniapp
+ln -sfnT "$APP_ROOT/current/student-portal/dist" /var/www/school-lifecycle/portal
 chown -R "$SERVICE_USER:$SERVICE_USER" "$RELEASE_DIR" "$APP_ROOT/shared"
 
 install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-backend.service" /etc/systemd/system/
 install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-scheduler.service" /etc/systemd/system/
+install -m 644 "$SOURCE_ROOT/deploy/systemd/school-lifecycle-file-scan.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable school-lifecycle-backend school-lifecycle-scheduler
-systemctl restart school-lifecycle-backend school-lifecycle-scheduler
+systemctl enable school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
+systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
 
-if ! APP_ROOT="$APP_ROOT" bash "$SOURCE_ROOT/scripts/deploy/verify-systemd-release.sh"; then
+if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$SOURCE_ROOT/scripts/deploy/verify-systemd-release.sh"; then
   if [ -n "$previous" ] && [ -d "$previous" ]; then
     ln -sfnT "$previous" "$APP_ROOT/current.rollback"
     mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current"
-    systemctl restart school-lifecycle-backend school-lifecycle-scheduler
+    systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
     echo "Application symlink rolled back to $previous; database migration was intentionally not downgraded." >&2
   fi
   exit 1
 fi
+
 echo "Release $RELEASE_ID installed. Backup: $backup_file"
