@@ -1,11 +1,24 @@
 import './help/helpRoleGuidanceRuntime.js'
 
+/**
+ * 帮助筛选只决定“优先给谁看”，不参与后端授权。
+ * 保留原 5 个粗粒度入口兼容 authRole 自动映射，同时增加老师真实会使用的细分筛选。
+ */
 export const HELP_ROLE_OPTIONS = [
   { value: 'all', label: '全部角色' },
   { value: 'school-admin', label: '学校管理员' },
-  { value: 'academic', label: '教务人员' },
-  { value: 'student-affairs', label: '学工人员 / 辅导员' },
-  { value: 'teacher', label: '教师 / 指导教师' },
+  { value: 'academic', label: '教务人员（全部）' },
+  { value: 'academic-admin', label: '教务处管理员' },
+  { value: 'college-admin', label: '学院管理员' },
+  { value: 'student-affairs', label: '学工人员（全部）' },
+  { value: 'counselor', label: '辅导员 / 班主任' },
+  { value: 'student-affairs-admin', label: '学工处管理员' },
+  { value: 'psychology-teacher', label: '心理老师' },
+  { value: 'funding-teacher', label: '资助老师' },
+  { value: 'teacher', label: '教师 / 指导教师（全部）' },
+  { value: 'course-teacher', label: '任课 / 录分教师' },
+  { value: 'internship-mentor', label: '实习指导 / 企业导师' },
+  { value: 'graduation-role', label: '毕设导师 / 评阅 / 答辩' },
   { value: 'student', label: '学生' }
 ]
 
@@ -47,6 +60,22 @@ const ROLE_VISIBILITY = {
   student: new Set(['student'])
 }
 
+/**
+ * 细分角色只做推荐过滤。这里故意不塞进 ROLE_ALIASES：
+ * resolveHelpRole(authRole) 仍稳定返回原来的粗粒度角色，避免帮助 UI 反向影响认证语义。
+ */
+const FINE_ROLE_FILTERS = Object.freeze({
+  'academic-admin': /^(academic_admin|teaching_admin|教务人员|教务管理员|教务处管理员)$/i,
+  'college-admin': /^(college_admin|学院管理员|学院教务|学院学工|院领导)$/i,
+  counselor: /^(counselor|head_teacher|class_teacher|辅导员|班主任)$/i,
+  'student-affairs-admin': /^(student_affairs_admin|学工人员|学工管理员|学工处管理员|学生处管理员)$/i,
+  'psychology-teacher': /^(psychology_teacher|心理老师)$/i,
+  'funding-teacher': /^(funding_teacher|资助老师)$/i,
+  'course-teacher': /^(academic_teacher|course_teacher|grade_teacher|任课教师|录分教师)$/i,
+  'internship-mentor': /^(intern_mentor|internship_teacher|enterprise_mentor|实习指导教师|实习指导老师|企业导师)$/i,
+  'graduation-role': /^(graduation_admin|graduation_teacher|gd_college_admin|gd_major_admin|gd_mentor|gd_reviewer|gd_defense_secretary|gd_defense_expert|gd_grade_admin|毕业设计指导教师|毕业设计指导老师|毕设指导教师|毕设导师|毕设管理员|评阅教师|答辩秘书|答辩专家|答辩评委)$/i
+})
+
 export function tokenizeHelpRoles(value) {
   const source = Array.isArray(value) ? value : value ? [value] : []
   return source
@@ -78,9 +107,19 @@ export function getHelpRoleTokens(item) {
 }
 
 export function isHelpVisibleForRole(item, selectedRole = 'all') {
+  const selected = String(selectedRole || 'all').trim().toLowerCase()
+  const tokens = getHelpRoleTokens(item)
+
+  // 用户主动选择细分角色时，按任务卡原始角色文本做相关性收敛；
+  // 没有角色元数据的通用帮助仍显示，避免公共故障卡被误隐藏。
+  const fineMatcher = FINE_ROLE_FILTERS[selected]
+  if (fineMatcher) {
+    if (!tokens.length) return true
+    return tokens.some((token) => fineMatcher.test(String(token).trim()))
+  }
+
   const role = normalizeHelpRole(selectedRole) || 'all'
   if (role === 'all' || role === 'school-admin') return true
-  const tokens = getHelpRoleTokens(item)
   if (!tokens.length) return true
   const normalized = tokens.map(normalizeHelpRole).filter(Boolean)
   // 帮助筛选只做相关性推荐，不是授权边界。真正能否操作以后端 permissionCode + 数据范围 + 业务关系 + 状态机为准。
