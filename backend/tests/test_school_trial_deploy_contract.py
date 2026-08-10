@@ -139,6 +139,21 @@ def test_release_is_bound_to_candidate_commit_and_runtime_evidence():
     assert '"crossTenantNegativeSmoke": "SEPARATE_EVIDENCE_REQUIRED"' in accept_text
 
 
+def test_git_release_bytes_match_candidate_and_runtime_assets_come_from_release():
+    text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
+    # git-backed production releases cannot claim HEAD while rsyncing dirty/untracked worktree bytes.
+    assert "status --porcelain --untracked-files=all" in text
+    assert 'archive --format=tar "$SOURCE_COMMIT"' in text
+    assert 'RELEASE_COMMIT does not match source checkout HEAD' in text
+    assert 'Node/npm is required for git-backed production releases.' in text
+    # Migration env loader, systemd units and post-switch verification all come from immutable release bytes.
+    assert 'ENV_RUNNER="$RELEASE_DIR/scripts/deploy/run-with-envfile.py"' in text
+    assert '"$RELEASE_DIR/deploy/systemd/school-lifecycle-backend.service"' in text
+    assert '"$RELEASE_DIR/deploy/systemd/school-lifecycle-scheduler.service"' in text
+    assert '"$RELEASE_DIR/deploy/systemd/school-lifecycle-file-scan.service"' in text
+    assert 'bash "$RELEASE_DIR/scripts/deploy/verify-systemd-release.sh"' in text
+
+
 def test_deploy_scripts_do_not_pin_an_alembic_revision():
     for relative in (
         "scripts/deploy/preflight-linux.sh",
