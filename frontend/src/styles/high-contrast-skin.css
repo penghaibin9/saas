@@ -640,3 +640,48 @@
     grid-template-columns: minmax(280px, 310px) minmax(0, 1fr);
   }
 }
+
+/* Screenshot B → C：只修 B 图中仍可见的可读性与长文本韧性。 */
+#app .base-portal-layout .wb-v2__stat-card em,
+#app .base-portal-layout .wb-v2__type-strip button,
+#app .base-portal-layout .wb-v2__todo-main small,
+#app .base-portal-layout .wb-v2__todo-due,
+#app .base-portal-layout .wb-v2__rhythm small,
+#app .base-portal-layout .wb-v2__favorite-grid button small,
+#app .base-portal-layout .wb-v2__help small,
+#app .base-portal-layout .wb-v2__risk small {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .dt .dt__td:last-child {
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) ~ .dt .dt__td:last-child .sl-gap {
+  margin-left: 10px;
+}
+
+#app .base-portal-layout .aasel-batch-top strong {
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+#app .base-portal-layout .aasel-hero-main {
+  min-width: 0;
+}
+
+#app .base-portal-layout .aasel-hero h2 {
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+#app .base-portal-layout .aasel-next-card > p {
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .aasel-metrics small {
+  font-size: 11.5px;
+}
