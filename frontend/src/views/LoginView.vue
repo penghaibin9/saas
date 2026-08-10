@@ -1,5 +1,6 @@
 <template>
-  <main class="login-page">
+  <ForcePasswordChangeView v-if="$route.query.forcePasswordChange === '1'" />
+  <main v-else class="login-page">
     <section class="brand-panel" aria-labelledby="login-title">
       <div class="brand-mark"><span>校</span>{{ platformName }}</div>
       <div class="brand-copy">
@@ -64,13 +65,14 @@ import { DEFAULT_PLATFORM_NAME } from '@/config/portalConfig'
 import { isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
 import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 import PasswordResetDialog from '@/components/auth/PasswordResetDialog.vue'
+import ForcePasswordChangeView from '@/views/ForcePasswordChangeView.vue'
 import { toast } from '@/utils/toast'
 
 const REMEMBER_KEY = 'staff_login_name'
 
 export default {
   name: 'LoginView',
-  components: { LoginCaptcha, PasswordResetDialog },
+  components: { LoginCaptcha, PasswordResetDialog, ForcePasswordChangeView },
   data() {
     return {
       platformName: DEFAULT_PLATFORM_NAME,
@@ -128,6 +130,12 @@ export default {
           else localStorage.removeItem(REMEMBER_KEY)
         } catch {
           // 记住账号失败不阻断真实认证链路。
+        }
+        if (data?.user?.mustChangePassword) {
+          // 前端跳转只负责体验；真正不可绕过的强制门禁在后端 get_current_user。
+          toast.info('首次登录需要先修改初始密码')
+          await this.$router.replace({ path: '/login', query: { forcePasswordChange: '1' } })
+          return
         }
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
         const redirect = typeof this.$route.query.redirect === 'string' ? this.$route.query.redirect : ''
