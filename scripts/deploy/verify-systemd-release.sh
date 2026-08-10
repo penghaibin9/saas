@@ -4,6 +4,7 @@ set -u
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 APP_ROOT="${APP_ROOT:-/opt/school-lifecycle}"
 ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
+ENV_RUNNER="$APP_ROOT/current/scripts/deploy/run-with-envfile.py"
 fail=0
 pass() { printf '  [PASS] %s\n' "$1"; }
 failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
@@ -11,13 +12,13 @@ failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
 if [ ! -f "$ENV_FILE" ]; then
   failure "缺少生产环境文件 $ENV_FILE"
   ops_token=""
+elif [ ! -f "$ENV_RUNNER" ]; then
+  failure "当前 release 缺少安全 EnvironmentFile loader"
+  ops_token=""
 else
-  # 与 systemd 使用同一 EnvironmentFile。只加载，不打印。
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
-  ops_token="${INTERNAL_OPS_TOKEN:-}"
+  # systemd EnvironmentFile 是数据文件，不可 shell source；这里只安全读取探针令牌。
+  ops_token="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" INTERNAL_OPS_TOKEN 2>/dev/null || true)"
+  [ -n "$ops_token" ] && pass "运维探针令牌可安全读取" || failure "INTERNAL_OPS_TOKEN 无法读取"
 fi
 
 for svc in school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan; do
@@ -38,27 +39,29 @@ ready="$(curl -fsS --max-time 15 -H "X-Ops-Token: $ops_token" "$BASE_URL/health/
 printf '%s' "$health" | grep -q '"status":"UP"' && pass "/health UP" || failure "/health 异常"
 printf '%s' "$ready" | grep -q '"status":"READY"' && pass "/health/ready READY" || failure "/health/ready 未就绪"
 
-if [ -x "$APP_ROOT/current/backend/.venv/bin/python" ] && [ -d "$APP_ROOT/current/backend" ]; then
-  if (cd "$APP_ROOT/current/backend" \
-      && "$APP_ROOT/current/backend/.venv/bin/python" scripts/check_alembic_current.py >/dev/null); then
+if [ -x "$APP_ROOT/current/backend/.venv/bin/python" ] && [ -d "$APP_ROOT/current/backend" ] && [ -f "$ENV_RUNNER" ]; then
+  run_backend_check() {
+    (cd "$APP_ROOT/current/backend" \
+      && python3 "$ENV_RUNNER" "$ENV_FILE" -- \
+        "$APP_ROOT/current/backend/.venv/bin/python" "$1" >/dev/null)
+  }
+  if run_backend_check scripts/check_alembic_current.py; then
     pass "数据库迁移与仓库动态 head 一致"
   else
     failure "数据库迁移未到当前仓库唯一 head"
   fi
-  if (cd "$APP_ROOT/current/backend" \
-      && "$APP_ROOT/current/backend/.venv/bin/python" scripts/check_production_file_scan.py >/dev/null); then
+  if run_backend_check scripts/check_production_file_scan.py; then
     pass "ClamAV 文件扫描运行依赖正常"
   else
     failure "ClamAV 文件扫描运行依赖异常"
   fi
-  if (cd "$APP_ROOT/current/backend" \
-      && "$APP_ROOT/current/backend/.venv/bin/python" scripts/check_production_storage.py >/dev/null); then
+  if run_backend_check scripts/check_production_storage.py; then
     pass "文件存储后端真实探针正常"
   else
     failure "文件存储后端真实探针失败"
   fi
 else
-  failure "发布目录或共享 venv 不存在"
+  failure "发布目录、共享 venv 或安全 EnvironmentFile loader 不存在"
 fi
 
 for entry in \
