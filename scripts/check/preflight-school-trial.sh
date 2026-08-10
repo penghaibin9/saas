@@ -4,16 +4,25 @@
 set -u
 ENV_FILE="${1:-backend/.env}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENV_RUNNER="$ROOT/scripts/deploy/run-with-envfile.py"
 FAIL=0; WARN=0
 pass(){ echo "  [PASS] $1"; }
 warn(){ echo "  [WARN] $1"; WARN=$((WARN+1)); }
 fail(){ echo "  [FAIL] $1"; FAIL=$((FAIL+1)); }
-getv(){ grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r'; }
+getv(){ python3 "$ENV_RUNNER" --get "$ENV_FILE" "$1" 2>/dev/null || true; }
 
 echo "== 学校试点静态准入预检：$ENV_FILE =="
 if [ ! -f "$ENV_FILE" ]; then
   fail "未找到 $ENV_FILE（生产必须提供 .env/EnvironmentFile）"
+elif [ ! -f "$ENV_RUNNER" ]; then
+  fail "缺少安全 EnvironmentFile loader"
 else
+  if python3 "$ENV_RUNNER" "$ENV_FILE" -- /usr/bin/true >/dev/null 2>&1; then
+    pass "EnvironmentFile 语法可安全解析"
+  else
+    fail "EnvironmentFile 含不支持/不安全语法"
+  fi
+
   APP_ENV_V="$(getv APP_ENV)"
   DEPLOY_V="$(getv DEPLOYMENT_MODE)"
   DEBUG_V="$(getv DEBUG)"
@@ -79,6 +88,7 @@ for dir in frontend student-portal miniapp; do
 done
 
 for path in \
+  scripts/deploy/run-with-envfile.py \
   deploy/systemd/school-lifecycle-backend.service \
   deploy/systemd/school-lifecycle-scheduler.service \
   deploy/systemd/school-lifecycle-file-scan.service \
@@ -96,6 +106,12 @@ grep -q 'school-lifecycle-file-scan' "$ROOT/scripts/deploy/install-systemd-relea
   && pass "发布脚本已收编 file-scan worker" || fail "发布脚本未收编 file-scan worker"
 grep -q 'check_production_storage.py' "$ROOT/scripts/deploy/verify-systemd-release.sh" \
   && pass "发布验收已收编文件存储真实探针" || fail "发布验收缺少文件存储真实探针"
+if grep -Eq '^[[:space:]]*\.[[:space:]]+"?\$ENV_FILE|source[[:space:]]+"?\$ENV_FILE' \
+  "$ROOT/scripts/deploy/install-systemd-release.sh" "$ROOT/scripts/deploy/verify-systemd-release.sh"; then
+  fail "发布脚本仍把 EnvironmentFile 当 shell 代码 source"
+else
+  pass "发布脚本不会 eval/source EnvironmentFile"
+fi
 grep -Eq 'location[[:space:]]+\^~[[:space:]]+/portal/' "$ROOT/deploy/nginx/school-lifecycle.systemd.conf.example" \
   && pass "Nginx 模板包含 /portal/" || fail "Nginx 模板缺 /portal/"
 grep -Eq 'location[[:space:]]+/uploads/' "$ROOT/deploy/nginx/school-lifecycle.systemd.conf.example" \
