@@ -16,6 +16,7 @@ SHELL_SCRIPTS = (
     "scripts/deploy/preflight-linux.sh",
     "scripts/deploy/install-systemd-release.sh",
     "scripts/deploy/verify-systemd-release.sh",
+    "scripts/deploy/accept-production-release.sh",
 )
 
 
@@ -97,7 +98,6 @@ def test_release_serializes_apply_and_injects_public_origin_into_h5():
 
 def test_release_builds_before_quiesce_then_backs_up_before_migration():
     text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
-    # 耗时构建必须发生在停服务之前；静默窗口内先 stop，再取最后一致备份，再迁移。
     build_pos = text.index("npm run build:h5")
     stop_pos = text.index('systemctl stop "${ACTIVE_OLD_SERVICES[@]}"')
     backup_pos = text.index("mysqldump")
@@ -121,8 +121,25 @@ def test_release_verification_probes_scan_storage_and_public_tls():
     assert (ROOT / "backend/scripts/check_production_storage.py").is_file()
 
 
+def test_release_is_bound_to_candidate_commit_and_runtime_evidence():
+    install_text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
+    accept_text = (ROOT / "scripts/deploy/accept-production-release.sh").read_text(encoding="utf-8")
+    assert "SOURCE_COMMIT" in install_text
+    assert ".release-commit" in install_text
+    assert "accept-production-release.sh" in install_text
+    assert "EXPECTED_RELEASE_COMMIT" in accept_text
+    assert "TARGET_SERVER_RUNTIME_ACCEPTANCE" in accept_text
+    assert '"status": "PASS"' in accept_text
+    assert "preflight-linux.sh" in accept_text
+    assert "verify-systemd-release.sh" in accept_text
+    assert "sha256sum -c" in accept_text
+    # 证据文件绝不能把尚未执行的恢复演练/真实角色/跨租户冒烟伪装为 PASS。
+    assert '"restoreDrill": "SEPARATE_EVIDENCE_REQUIRED"' in accept_text
+    assert '"realRoleBusinessSmoke": "SEPARATE_EVIDENCE_REQUIRED"' in accept_text
+    assert '"crossTenantNegativeSmoke": "SEPARATE_EVIDENCE_REQUIRED"' in accept_text
+
+
 def test_deploy_scripts_do_not_pin_an_alembic_revision():
-    # 旧事故：部署脚本把 head 写死为 0111，仓库新增迁移后发布验收必然失真。
     for relative in (
         "scripts/deploy/preflight-linux.sh",
         "scripts/deploy/install-systemd-release.sh",
@@ -140,8 +157,6 @@ def test_systemd_nginx_exposes_portal_but_not_raw_files():
     assert "location /exports/ { return 404; }" in text
     assert "Content-Security-Policy" in text
     assert "school_auth_limit" in text
-    # Nginx 的 add_header 默认是“子级一旦声明就不继承父级”。SPA index/assets
-    # 不能为了 Cache-Control 再写 add_header，否则会丢 HSTS/CSP/X-Frame 等安全头。
     assert "add_header Cache-Control" not in text
     assert "expires -1;" in text
 
@@ -172,7 +187,6 @@ def test_systemd_env_example_contains_trial_security_dependencies():
 
 
 def test_documented_field_key_shape_matches_fernet_contract():
-    # Fernet key 的真实合同是“32 raw bytes 经 urlsafe-base64 编码”，不是任意长度字符串。
     sample = base64.urlsafe_b64encode(b"x" * 32).decode()
     raw = base64.urlsafe_b64decode(sample.encode())
     assert len(raw) == 32
