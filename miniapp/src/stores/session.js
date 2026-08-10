@@ -7,6 +7,7 @@ import { getRoleConfig, hasAction, roleKeyFromBackendRole, ROLE } from '@/config
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
+import { setForcePasswordChange } from '@/security/passwordChangeGate'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
 const STORAGE_KEY = 'gx_session_v1'
@@ -31,6 +32,7 @@ export const useSessionStore = defineStore('session', {
     mockUser: null,
     availableRoles: [],
     availableContexts: [],
+    mustChangePassword: false,
     identity: {
       userId: null, studentId: null, studentNo: null, realName: null,
       roleCode: null, roleName: null
@@ -80,6 +82,8 @@ export const useSessionStore = defineStore('session', {
         .filter(Boolean))]
       const currentRoleKey = roleKeyFromBackendRole(role.roleCode || role.contextType)
       if (currentRoleKey) this.currentRole = currentRoleKey
+      this.mustChangePassword = !!(d.user && d.user.mustChangePassword)
+      setForcePasswordChange(this.mustChangePassword)
       this.identity = {
         ...this.identity,
         userId: d.userId != null ? d.userId : this.identity.userId,
@@ -155,6 +159,8 @@ export const useSessionStore = defineStore('session', {
       this.availableRoles = []
       this.availableContexts = []
       this.realUser = null
+      this.mustChangePassword = false
+      setForcePasswordChange(false)
       this.identity = { userId: null, studentId: null, studentNo: null, realName: null,
         roleCode: null, roleName: null }
       clearTokens()
@@ -167,6 +173,7 @@ export const useSessionStore = defineStore('session', {
           logged: this.logged,
           currentRole: this.currentRole,
           availableRoles: this.availableRoles,
+          mustChangePassword: this.mustChangePassword,
           isTeacher: getRoleConfig(this.currentRole).side === 'teacher',
           user: {
             name: u.name, studentNo: u.studentNo, className: u.className,
@@ -183,6 +190,8 @@ export const useSessionStore = defineStore('session', {
         if (s && s.logged) {
           this.currentRole = s.currentRole
           this.availableRoles = s.availableRoles || []
+          this.mustChangePassword = !!s.mustChangePassword
+          setForcePasswordChange(this.mustChangePassword)
           this.logged = true
           const skeleton = initialUser(s.isTeacher ? 'teacher' : 'student')
           const saved = s.user || {}
