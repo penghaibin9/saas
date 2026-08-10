@@ -205,7 +205,8 @@ def org_scope_status(user: dict | None = None) -> dict:
     }
 
 
-def can_access_student(db, student: GraduationStudent | None) -> bool:
+def can_access_student(db, student: GraduationStudent | None, *,
+                       _prechecked_name_ambiguous: bool | None = None) -> bool:
     if student is None:
         return False
     role, real_name = _ctx()
@@ -274,7 +275,9 @@ def can_access_student(db, student: GraduationStudent | None) -> bool:
         # 已绑定 mentor_id 时只认导师台账 teacher_no；历史无 ID 的数据才按姓名快照兼容。
         if getattr(student, "mentor_id", None):
             return False
-        if _name_is_ambiguous(db, student.tenant_id, real_name):
+        ambiguous = (_prechecked_name_ambiguous if _prechecked_name_ambiguous is not None
+                     else _name_is_ambiguous(db, student.tenant_id, real_name))
+        if ambiguous:
             return False
         return (student.advisor_name or "").strip() == real_name
 
@@ -314,4 +317,15 @@ def accessible_student_ids(db, tenant_id: int, batch_id=None) -> list[int]:
     if batch_id is not None and batch_id != "":
         q = q.where(GraduationStudent.batch_id == int(batch_id))
     students = db.scalars(q).all()
-    return [int(student.id) for student in students if can_access_student(db, student)]
+    role, real_name = _ctx()
+    # 同一次列表/统计/导出只查一次姓名歧义；禁止对每名历史学生重复查询 User（N+1）。
+    prechecked_ambiguous = None
+    from sqlalchemy.orm import Session as _OrmSession
+    if isinstance(db, _OrmSession) and role in {"GD_MENTOR", "COUNSELOR"} and any(
+            not getattr(student, "mentor_id", None) for student in students):
+        prechecked_ambiguous = _name_is_ambiguous(db, tenant_id, real_name)
+    return [
+        int(student.id) for student in students
+        if can_access_student(
+            db, student, _prechecked_name_ambiguous=prechecked_ambiguous)
+    ]

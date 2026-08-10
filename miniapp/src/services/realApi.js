@@ -49,9 +49,9 @@ export function actApproval(id, type, reason) {
 /* ══════════ P10 · 教师端写操作（mobile 范围接口，真实落库+审计） ══════════ */
 
 /** 实习周报批阅：action=APPROVE/RETURN（退回需 comment ≥5 字） */
-export const reviewWeeklyReal = (reportId, action, comment) =>
+export const reviewWeeklyReal = (reportId, action, comment, expectedVersion) =>
   realRequest(`/mobile/teacher/internship/weekly/${reportId}/review`,
-    { method: 'POST', data: { action, comment: comment || '' } })
+    { method: 'POST', data: { action, comment: comment || '', expectedVersion } })
 
 /** 毕设开题批阅：action=APPROVE/REJECT（驳回需 comment ≥5 字） */
 export const reviewProposalReal = (proposalId, action, comment, expectedVersion, fileVersionId) =>
@@ -1044,7 +1044,8 @@ export async function teacherInternshipReal() {
     submitTime: r.submittedAt || r.submitTime || '—', status: r.status,
     // 跨端状态文案单一来源：透传后端 statusLabel（如"待批阅/逾期未交"），与 PC 端一致，
     // 不再让移动端 MobileStatusTag 的通用映射（待审核/已逾期）与 PC 分叉。
-    statusLabel: r.statusLabel || '',
+    statusLabel: r.statusLabel || '', expectedVersion: Number(r.version),
+    version: Number(String(r.reportVersion || '').replace(/^v/i, '')) || 1,
     overdue: r.status === 'OVERDUE', tasks: r.workContent || '', gain: r.harvestContent || '',
     problem: r.planContent || '' }))
   const abnormal = (d.abnormalCheckins || []).map((e) => ({

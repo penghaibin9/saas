@@ -62,9 +62,9 @@ _RELATION_SCOPED_ROLES = {
 def _real_name_is_ambiguous(real_name: str) -> bool:
     """本租户内是否存在 ≥2 个同名账号——若是，姓名不足以证明身份，不得用于范围匹配。
 
-    仅在「能证明重名」时返回 True：命中 0 个（无账号的历史/外聘导师）或 1 个都返回 False，
-    保持既有数据可用，只堵同名越权。查不到库（旧库无表/连接异常）时保守返回 False，
-    维持原有可见性，不因基础设施问题把老师锁在门外。
+    仅在「能证明唯一」时允许姓名兜底：命中 0 个（无账号的历史/外聘导师）或 1 个
+    保持既有数据可用；查询失败时按身份不明确处理，宁可要求补稳定关系，也不能重新
+    开放同名横向越权。
     """
     name = (real_name or "").strip()
     if not name:
@@ -79,7 +79,7 @@ def _real_name_is_ambiguous(real_name: str) -> bool:
             ).limit(2)).all()
         return len(rows) >= 2
     except Exception:  # noqa: BLE001
-        return False
+        return True
 
 
 def resolve_teacher_scope(user: dict) -> dict:
@@ -2435,7 +2435,7 @@ def weekly_review(user: dict, report_id: str, action: str, comment: str | None =
             if not allowed:
                 raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
     result = internship_service.review_weekly_report(
-        report_id, action, comment or "", expected_version=expected_version)
+        report_id, action, comment or "", user=u, expected_version=expected_version)
     _audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result

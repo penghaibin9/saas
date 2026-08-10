@@ -69,6 +69,13 @@ def test_package11_static_contracts_are_installed():
     assert "affairs_discipline_integrity_router" in router
     assert not Path("../.github/workflows/package11-closeout-patch.yml").exists()
 
+    forward_audit = Path(
+        "alembic/versions/20260810_package11_historical_audit.py").read_text("utf-8")
+    assert 'down_revision = "20260809_aa_stage_c3_fact_v2"' in forward_audit
+    assert "PACKAGE11_DUPLICATE_SERVICE_STUDENT" in forward_audit
+    assert "manual shared-ledger governance required" in forward_audit
+    assert "UPDATE t_cs_service_student" not in forward_audit
+
 
 def test_package11_mysql_projection_versions_and_subflow_mutex(db_mode, monkeypatch):
     from app.db.session import get_sessionmaker

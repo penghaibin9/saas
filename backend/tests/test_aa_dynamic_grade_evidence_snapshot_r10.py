@@ -116,7 +116,9 @@ def test_r10_models_and_migration_are_additive():
 
 
 def test_r10_routes_are_registered_through_domain_bundle():
-    from app.modules.academic_affairs.routers import dynamic_grade_router, stats_snapshot_router
+    from app.modules.academic_affairs.routers import (
+        academic_affairs_bundle, dynamic_grade_router, stats_snapshot_router,
+    )
 
     root = Path(__file__).resolve().parents[1]
     registration = (root / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
@@ -127,7 +129,10 @@ def test_r10_routes_are_registered_through_domain_bundle():
     assert 'api_router.include_router(academic_affairs.router, dependencies=deps["aa"])' in registration
     assert "dynamic_grade_router" in bundle
     assert "stats_snapshot_router" in bundle
-    assert "router.include_router(module.router)" in bundle
+    public_routes = {
+        (route.path, tuple(sorted(route.methods or set())))
+        for route in academic_affairs_bundle.build_router().routes
+    }
 
     dynamic_routes = {
         (route.path, tuple(sorted(route.methods or set())))
@@ -135,6 +140,7 @@ def test_r10_routes_are_registered_through_domain_bundle():
     }
     assert ("/academic-affairs/grade-tasks/{task_id}/scheme", ("PUT",)) in dynamic_routes
     assert ("/academic-affairs/grade-tasks/{task_id}/component-scores", ("POST",)) in dynamic_routes
+    assert dynamic_routes <= public_routes
 
     stats_routes = {
         (route.path, tuple(sorted(route.methods or set())))
@@ -143,6 +149,7 @@ def test_r10_routes_are_registered_through_domain_bundle():
     assert ("/academic-affairs/stats/snapshots", ("POST",)) in stats_routes
     assert ("/academic-affairs/stats/snapshots", ("GET",)) in stats_routes
     assert ("/academic-affairs/stats/snapshots/{snapshot_id}", ("GET",)) in stats_routes
+    assert stats_routes <= public_routes
 
 
 def test_r10_public_services_are_explicit_and_do_not_assert_facade_module_locations():

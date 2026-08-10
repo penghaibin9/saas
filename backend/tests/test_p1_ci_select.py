@@ -70,12 +70,17 @@ def test_academic_source_only_still_runs_permission_gate():
     ]
 
 
-def test_pr_size_never_bypasses_change_aware_gate():
-    """PR 文件数不能触发已知历史假红的全量套件；定时任务仍保留全量巡检。"""
+def test_large_pr_uses_full_regression_with_main_failure_baseline():
+    """大 PR 必须跑全量；只豁免 main 已知失败，禁止新增失败。"""
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "CHANGED_COUNT" not in workflow
-    assert "大 PR（>=150 文件）" not in workflow
+    assert 'push:\n    branches: [ "main" ]' in workflow
+    assert "CHANGED_COUNT" in workflow
+    assert 'if [ "$CHANGED_COUNT" -ge 150 ]' in workflow
+    assert "--junitxml=test-results/backend-full.xml" in workflow
+    assert "compare-pytest-junit-baseline.py" in workflow
+    assert "backend-known-failures-main.txt" in workflow
+    assert '--base-ref "${{ github.event.pull_request.base.sha }}"' in workflow
     assert 'github.event_name }}" = "schedule"' in workflow
     assert "timeout 80m pytest -q" in workflow
     assert "select_pytest_targets.py" in workflow

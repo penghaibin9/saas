@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 
 from fastapi import APIRouter
 
@@ -44,7 +45,20 @@ def _mount_routes(parent: APIRouter, child: APIRouter) -> None:
     Copy the concrete child route objects instead; the application-level academic
     dependencies are still attached once by ``route_registration``.
     """
-    parent.routes.extend(list(child.routes))
+    def route_key(route):
+        path = re.sub(r"\{[^/{}]+\}", "{}", getattr(route, "path", ""))
+        return path, tuple(sorted(getattr(route, "methods", set()) or set()))
+
+    existing = {
+        route_key(route)
+        for route in parent.routes
+    }
+    for route in child.routes:
+        key = route_key(route)
+        if key in existing:
+            continue
+        parent.routes.append(route)
+        existing.add(key)
 
 
 def build_router() -> APIRouter:
@@ -60,6 +74,8 @@ def build_router() -> APIRouter:
     # HTTP 路径先命中 final adapter；历史大 Router 继续保留以降低长期分支冲突。
     selection_final_module = importlib.import_module(f"{__package__}.academic_selection_final_router")
     _mount_routes(router, selection_final_module.router)
+    # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
+    _mount_routes(router, live_rule_router.router)
     _mount_routes(router, base_router.router)
     package = importlib.import_module(__package__)
     for module_name in _EXTENSION_ROUTER_MODULES:
@@ -68,8 +84,6 @@ def build_router() -> APIRouter:
             module = importlib.import_module(f"{__package__}.{module_name}")
         _mount_routes(router, module.router)
 
-    # 该独立路由会在服务 Facade 初始化期间经历循环导入；注册阶段读取当前真实 Router。
-    _mount_routes(router, live_rule_router.router)
     return router
 
 

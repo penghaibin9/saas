@@ -1,6 +1,8 @@
 """教师范围精确化测试：有权限 / 无权限 / 跨租户 / 写操作范围 / mock-login 生产关闭。"""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 MAIN = 1000000000000000001
 DEMO = 1000000000000000003
 
@@ -186,3 +188,15 @@ def test_header_cannot_switch_tenant_with_token(client, db_mode):
     assert r["code"] == 0
     names = [x["name"] for x in r["data"]["list"]]
     assert "甲一" in names or "乙二" in names  # 看到的仍是主租户数据（头没有生效）
+
+
+def test_teacher_name_ambiguity_lookup_failure_fails_closed(monkeypatch):
+    from app.services import _mobile_teacher_service_impl as impl
+
+    @contextmanager
+    def broken_session():
+        raise RuntimeError("identity store unavailable")
+        yield
+
+    monkeypatch.setattr(impl, "_session", broken_session)
+    assert impl._real_name_is_ambiguous("同名老师") is True
