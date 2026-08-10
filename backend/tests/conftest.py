@@ -994,11 +994,22 @@ def db_mode(tmp_path, request):
                 metadata.create_all(bind=engine)
         # 最小种子
         from datetime import datetime, timedelta
-        from app.models import (StudentContact, StudentProfile, UnifiedMessage, UnifiedTodo,
-                                WorkflowInstance, WorkflowTask)
+        from app.models import (College, Major, SchoolClass, StudentContact, StudentProfile,
+                                UnifiedMessage, UnifiedTodo, User, WorkflowInstance, WorkflowTask)
         TID = 1000000000000000001
         db = get_sessionmaker()()
+        admin = User(tenant_id=TID, login_name="school_admin01", real_name="陈校",
+                     password_hash="x", user_type="SCHOOL_ADMIN", status="ACTIVE")
+        db.add(admin); db.flush()
+        college = College(tenant_id=TID, college_name="信息工程学院", status="ACTIVE")
+        db.add(college); db.flush()
+        major = Major(tenant_id=TID, college_id=college.id, major_name="软件技术", status="ACTIVE")
+        db.add(major); db.flush()
+        school_class = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件测试班",
+                                   grade="2026", status="ACTIVE", class_status="NORMAL")
+        db.add(school_class); db.flush()
         s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="赵一凡",
+                           college_id=college.id, major_id=major.id, class_id=school_class.id,
                            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
         db.add(s); db.flush()
         db.add(StudentContact(tenant_id=TID, student_id=s.id, contact_type="PHONE",
@@ -1006,18 +1017,19 @@ def db_mode(tmp_path, request):
                               verified_status="VERIFIED"))
         inst = WorkflowInstance(tenant_id=TID, workflow_code="wf_student", source_module="student",
                                 source_biz_type="PROFILE_CORRECTION", source_biz_id=s.id,
-                                applicant_id=1, title="赵一凡 · 学籍信息变更", status="RUNNING",
+                                applicant_id=admin.id, title="赵一凡 · 学籍信息变更", status="RUNNING",
                                 remark="赵一凡")
         db.add(inst); db.flush()
         task = WorkflowTask(tenant_id=TID, instance_id=inst.id, node_code="COUNSELOR_REVIEW",
-                            assignee_id=1, status="PENDING",
+                            assignee_id=admin.id, status="PENDING",
                             deadline_at=datetime.utcnow() + timedelta(days=2))
         db.add(task)
         db.add(UnifiedTodo(tenant_id=TID, source_module="student", source_biz_id=1, todo_type="APPROVAL",
-                           assignee_id=1, title="处理学籍变更审批", status="PENDING"))
-        db.add(UnifiedMessage(tenant_id=TID, receiver_id=1, title="测试消息", status="UNREAD"))
+                           assignee_id=admin.id, title="处理学籍变更审批", status="PENDING"))
+        db.add(UnifiedMessage(tenant_id=TID, receiver_id=admin.id, title="测试消息", status="UNREAD"))
         db.commit()
-        ids = {"student": s.id, "task": task.id}
+        ids = {"student": s.id, "task": task.id, "admin": admin.id,
+               "college": college.id, "major": major.id, "class": school_class.id}
         db.close()
         yield ids
     finally:

@@ -8,7 +8,7 @@ const source = fs.readFileSync(
 ).replace(/\r\n/g, '\n')
 
 test('editing a staff account persists selected roles through the formal assignment endpoint', () => {
-  const submit = source.match(/async submitForm\(\)[\s\S]*?\n    \},\n    async openDetail/)[0]
+  const submit = source.match(/async submitForm\(\)[\s\S]*?\n[ ]{4}\},\n[ ]{4}async openDetail/)[0]
   assert.match(submit, /systemApi\.updateUser\(this\.form\.id, this\.form\.value\)/)
   assert.match(submit, /systemApi\.assignUserRoles\(this\.form\.id, this\.form\.value\.roles \|\| \[\]\)/)
   assert.match(submit, /角色身份保存失败/)
