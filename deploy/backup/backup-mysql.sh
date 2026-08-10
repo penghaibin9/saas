@@ -68,6 +68,11 @@ upload_hash=""
 upload_size=0
 
 if [ -d "$UPLOAD_DIR" ]; then
+  unsafe_upload_entry="$(find "$UPLOAD_DIR" \( -type l -o -type b -o -type c -o -type p -o -type s \) -print -quit)"
+  if [ -n "$unsafe_upload_entry" ]; then
+    echo "unsafe upload entry is not allowed in governed backups: $unsafe_upload_entry" >&2
+    exit 1
+  fi
   tar -czf "$upload_temp" -C "$(dirname "$UPLOAD_DIR")" "$(basename "$UPLOAD_DIR")"
   test -s "$upload_temp"
   tar -tzf "$upload_temp" >/dev/null

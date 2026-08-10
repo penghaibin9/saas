@@ -96,6 +96,18 @@ jobs:
             echo '::error::backup unexpectedly succeeded without required uploads'
             exit 1
           fi
+      - name: Prove unsafe upload entries are rejected
+        run: |
+          set -euo pipefail
+          UNSAFE_BACKUP_DIR=/tmp/school-lifecycle-unsafe-upload-backup
+          rm -rf "$UNSAFE_BACKUP_DIR"
+          ln -s /etc/passwd "$UPLOAD_DIR/unsafe-link"
+          if BACKUP_DIR="$UNSAFE_BACKUP_DIR" bash deploy/backup/backup-mysql.sh; then
+            echo '::error::backup unexpectedly accepted a symbolic link inside uploads'
+            exit 1
+          fi
+          rm -f "$UPLOAD_DIR/unsafe-link"
+          rm -rf "$UNSAFE_BACKUP_DIR"
       - name: Prove local-only backup is rejected
         run: |
           set -euo pipefail

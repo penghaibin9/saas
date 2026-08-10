@@ -96,10 +96,26 @@ gzip -t "$db_file"
 upload_entry_count=0
 if [ -n "$upload_name" ]; then
   verify_object "$upload_name" "$upload_hash"
-  tar -tzf "$backup_dir/$upload_name" >/dev/null
+  python3 - "$backup_dir/$upload_name" <<'PY'
+import sys
+import tarfile
+from pathlib import PurePosixPath
+
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "r:gz") as archive:
+    members = archive.getmembers()
+    if not members:
+        raise SystemExit("upload archive is empty")
+    for member in members:
+        path = PurePosixPath(member.name)
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit(f"unsafe upload archive member path: {member.name!r}")
+        if not (member.isfile() or member.isdir()):
+            raise SystemExit(f"unsafe upload archive member type: {member.name!r}")
+PY
   upload_restore_dir="$(mktemp -d "${TMPDIR:-/tmp}/school-lifecycle-upload-restore.XXXXXX")"
   trap 'rm -rf -- "$upload_restore_dir"' EXIT
-  tar -xzf "$backup_dir/$upload_name" -C "$upload_restore_dir"
+  tar --no-same-owner --no-same-permissions -xzf "$backup_dir/$upload_name" -C "$upload_restore_dir"
   upload_entry_count="$(find "$upload_restore_dir" -mindepth 1 -print | wc -l | tr -d ' ')"
   if [ "$upload_entry_count" -lt 1 ]; then
     echo "upload archive restored no entries" >&2
