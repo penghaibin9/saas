@@ -1,8 +1,11 @@
 name: Backend pytest debt baseline - 4 shards
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
+    paths:
+      - scripts/check/backend-full-baseline-trigger.txt
 
 permissions:
   contents: read
@@ -14,7 +17,7 @@ concurrency:
 jobs:
   backend-shard:
     name: Backend baseline shard ${{ matrix.shard }}/4
-    if: github.head_ref == 'fix/backend-pytest-debt-20260810'
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
@@ -125,7 +128,7 @@ jobs:
 
   aggregate-baseline:
     name: Merge 4 shards and compare main ledger
-    if: always() && github.head_ref == 'fix/backend-pytest-debt-20260810'
+    if: always() && (github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/backend-pytest-debt-20260810')
     needs: backend-shard
     runs-on: ubuntu-latest
     timeout-minutes: 10
