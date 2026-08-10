@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 13 precisely validated academic nodeids, and 1 rbac09 nodeid.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 29 precisely validated academic nodeids, and 1 rbac09 nodeid.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -42,18 +42,7 @@ tests/test_aa_evaluation_mobile.py::test_my_tasks_and_submit_flow_via_mobile
 tests/test_aa_exam.py::test_e11_archived_readonly_409
 tests/test_aa_exam.py::test_e13_archive_list_readonly
 tests/test_aa_exam.py::test_e1_full_lifecycle
-tests/test_aa_grade.py::test_g10_midterm_three_component
-tests/test_aa_grade.py::test_g11_midterm_ratio_sum_must_100
-tests/test_aa_grade.py::test_g1_compose_publish_project
-tests/test_aa_grade.py::test_g3_incomplete_submit_409
-tests/test_aa_grade.py::test_g4_fail_list
-tests/test_aa_grade.py::test_g5_analysis
-tests/test_aa_grade.py::test_g6_fail_list_no_n_plus_one
-tests/test_aa_grade.py::test_g7_publish_without_review_409
 tests/test_aa_grade.py::test_g8_analysis_enhanced_and_group
-tests/test_aa_grade.py::test_g8_exception_list
-tests/test_aa_grade.py::test_g9_analysis_export_xlsx
-tests/test_aa_grade.py::test_g9_exception_list_filter_flag_and_student_403
 tests/test_aa_grade_recheck.py::test_grade_recheck_full_flow
 tests/test_aa_grade_recheck_audit.py::test_ra1_records_show_source_and_change_history
 tests/test_aa_grade_recheck_audit.py::test_ra2_audit_full_lifecycle_visible_to_academic_admin_with_biztype_filter
@@ -82,11 +71,6 @@ tests/test_aa_graduation.py::test_gr7_roster_org_names
 tests/test_aa_graduation.py::test_gr8_college_reject_reason_roundtrip
 tests/test_aa_home_task_routes_v2.py::test_student_pc_has_task_home_and_independent_academic_routes
 tests/test_aa_main_migration_compat.py::test_academic_and_current_main_heads_are_joined_without_ddl
-tests/test_aa_mobile.py::test_mb1_schedule_my
-tests/test_aa_mobile.py::test_mb2_transcript_my
-tests/test_aa_mobile.py::test_mb3_status_and_submit_change
-tests/test_aa_mobile.py::test_mb4_graduation_progress_my
-tests/test_aa_mobile.py::test_mb5_teacher_schedule_my
 tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report
 tests/test_aa_orgs.py::test_o3_class_adjust_moves_student
 tests/test_aa_orgs.py::test_o6_validation_and_guard
