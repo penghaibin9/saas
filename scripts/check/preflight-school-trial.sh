@@ -29,6 +29,7 @@ else
   MOCK_V="$(getv MOCK_LOGIN_ENABLED)"
   DB_ENABLED_V="$(getv DB_ENABLED)"
   DB_DRIVER_V="$(getv DB_DRIVER)"
+  PUBLIC_V="$(getv PUBLIC_BASE_URL)"
   CORS_V="$(getv CORS_ORIGINS)"
   JWT_V="$(getv JWT_SECRET)"; [ -n "$JWT_V" ] || JWT_V="$(getv JWT_SECRET_KEY)"
   FIELD_V="$(getv FIELD_ENCRYPTION_KEY)"
@@ -44,13 +45,32 @@ else
   [ "$DEBUG_V" = "false" ] && pass "DEBUG=false" || fail "DEBUG 必须为 false"
   [ "$MOCK_V" = "false" ] && pass "mock-login 已关闭" || fail "MOCK_LOGIN_ENABLED 必须为 false"
   [ "$DB_ENABLED_V" = "true" ] && [ "$DB_DRIVER_V" = "mysql" ] && pass "真实 MySQL 已启用" || fail "试点必须 DB_ENABLED=true + DB_DRIVER=mysql"
+  if [[ "$PUBLIC_V" == https://* ]] && [ -n "${PUBLIC_V#https://}" ] \
+      && [[ "${PUBLIC_V#https://}" != */* ]] && [[ "$PUBLIC_V" != *'替换'* ]]; then
+    pass "PUBLIC_BASE_URL 为 HTTPS origin"
+  else
+    fail "PUBLIC_BASE_URL 必须是明确 HTTPS origin（仅 scheme+host[:port]，禁止路径）"
+  fi
   [ -n "$CORS_V" ] && [ "$CORS_V" != "*" ] && [[ "$CORS_V" == https://* ]] && pass "CORS 为 HTTPS 白名单" || fail "CORS 必须收敛到 HTTPS 域名"
   [ "${#JWT_V}" -ge 32 ] && [[ "$JWT_V" != *'change-me'* ]] && [[ "$JWT_V" != *'dev-secret'* ]] && [[ "$JWT_V" != *'替换'* ]] \
     && pass "JWT_SECRET 已替换" || fail "JWT_SECRET 未替换或过短"
 
   default_field_key="jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
-  [ "${#FIELD_V}" -ge 32 ] && [ "$FIELD_V" != "$default_field_key" ] && [[ "$FIELD_V" != *'替换'* ]] \
-    && pass "FIELD_ENCRYPTION_KEY 已独立配置" || fail "FIELD_ENCRYPTION_KEY 仍是默认/占位值"
+  if [ "$FIELD_V" != "$default_field_key" ] && [[ "$FIELD_V" != *'替换'* ]] \
+      && python3 - "$FIELD_V" <<'PY'
+import base64, sys
+try:
+    raw = base64.urlsafe_b64decode(sys.argv[1].encode())
+    ok = len(raw) == 32 and base64.urlsafe_b64encode(raw).decode() == sys.argv[1]
+except Exception:
+    ok = False
+raise SystemExit(0 if ok else 1)
+PY
+  then
+    pass "FIELD_ENCRYPTION_KEY 为有效独立 Fernet key"
+  else
+    fail "FIELD_ENCRYPTION_KEY 必须由 Fernet.generate_key() 生成，不能只满足字符串长度"
+  fi
   [ -n "$REDIS_V" ] && [[ "$REDIS_V" != *'替换'* ]] && pass "Redis 已配置" || fail "正式多 worker 必须配置 Redis"
   [ "${#OPS_V}" -ge 24 ] && [[ "$OPS_V" != *'替换'* ]] && pass "INTERNAL_OPS_TOKEN 已配置" || fail "运维探针令牌未配置"
   [ "$SCHED_V" = "external" ] && pass "调度使用独立进程" || fail "正式 2 worker 部署必须 SCHEDULER_MODE=external"
@@ -78,7 +98,7 @@ else
   fi
 fi
 
-# 三端生产 API 地址不得硬编码本机地址。
+# 三端生产 API 地址不得硬编码本机地址。PUBLIC_BASE_URL 是 miniapp H5 的权威构建源。
 for dir in frontend student-portal miniapp; do
   if grep -RIl "localhost:8000\|127.0.0.1:8000" "$ROOT/$dir"/.env* 2>/dev/null | grep -q .; then
     fail "$dir 构建环境仍含 localhost:8000/127.0.0.1:8000"
@@ -102,6 +122,8 @@ done
 
 grep -q 'student-portal' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本已收编学生 PC" || fail "发布脚本未收编 student-portal"
+grep -q 'VITE_API_BASE_URL="$PUBLIC_BASE_URL_VALUE"' "$ROOT/scripts/deploy/install-systemd-release.sh" \
+  && pass "发布脚本会向 miniapp H5 注入正式 API origin" || fail "miniapp H5 未绑定 PUBLIC_BASE_URL"
 grep -q 'school-lifecycle-file-scan' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本已收编 file-scan worker" || fail "发布脚本未收编 file-scan worker"
 grep -q 'check_production_storage.py' "$ROOT/scripts/deploy/verify-systemd-release.sh" \
