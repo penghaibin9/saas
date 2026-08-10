@@ -98,7 +98,8 @@ def test_todos_messages_db(client, auth_headers, db_mode):
 
 
 def test_audit_persisted_db(client, auth_headers, db_mode):
-    client.post("/api/v1/audit/mock-record", headers=auth_headers)
+    # 用真实被审计动作（登出）产生记录；/audit/mock-record 已删除。
+    client.post("/api/v1/authz/logout", headers=auth_headers)
     body = client.get("/api/v1/audit/logs", headers=auth_headers).json()["data"]
     assert body["total"] >= 1  # 从 t_security_audit_log 读出
     from app.db.session import get_sessionmaker
@@ -169,9 +170,9 @@ def test_p4_export_uses_all_database_pages(client, auth_headers, db_mode, monkey
 
 
 def test_p4_audit_filters(client, auth_headers, db_mode):
-    client.post("/api/v1/audit/mock-record", headers=auth_headers)
-    body = client.get("/api/v1/audit/logs?action=MOCK", headers=auth_headers).json()["data"]
+    client.post("/api/v1/authz/logout", headers=auth_headers)
+    body = client.get("/api/v1/audit/logs?action=LOGOUT", headers=auth_headers).json()["data"]
     assert body["total"] >= 1
-    assert all(i["action"] == "MOCK" for i in body["items"])
+    assert all(i["action"] == "LOGOUT" for i in body["items"])
     empty = client.get("/api/v1/audit/logs?operator=不存在的人", headers=auth_headers).json()["data"]
     assert empty["total"] == 0

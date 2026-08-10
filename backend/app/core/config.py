@@ -116,10 +116,10 @@ class Settings(BaseSettings):
     SCHEDULER_MODE: str = "web"
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
-    # 5173=管理端 Vite；5188=历史兼容；5199=学生 PC 门户（student-portal）
+    # 5173=管理端 Vite；5188=小程序 H5；5200=学生 PC 门户（5199 保留兼容）
     CORS_ORIGINS: str = (
-        "http://localhost:5173,http://localhost:5174,http://localhost:5188,http://localhost:5189,http://localhost:5190,http://localhost:5199,"
-        "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5188,http://127.0.0.1:5189,http://127.0.0.1:5190,http://127.0.0.1:5199"
+        "http://localhost:5173,http://localhost:5174,http://localhost:5188,http://localhost:5189,http://localhost:5190,http://localhost:5199,http://localhost:5200,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5188,http://127.0.0.1:5189,http://127.0.0.1:5190,http://127.0.0.1:5199,http://127.0.0.1:5200"
     )
 
     # ── 任务 BACKEND-OVERNIGHT 追加（与旧键并存，旧键继续生效）──
@@ -132,6 +132,16 @@ class Settings(BaseSettings):
     # 32 字节）。此为开发默认值，生产必须经 .env / 环境变量覆盖为独立密钥且妥善保管——
     # 密钥一旦轮换，此前密文将无法解密（需先用旧密钥读出、用新密钥重新写入）。
     FIELD_ENCRYPTION_KEY: str = "jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
+    # 当前写入使用的密钥版本号。新写入的密文会带 `k<版本>:` 前缀，读取时按前缀选密钥。
+    FIELD_ENCRYPTION_KEY_ID: str = "1"
+    # 历史密钥（换钥后仍需解出旧密文）。格式：`版本号:密钥` 用逗号分隔，例如
+    # FIELD_ENCRYPTION_PREVIOUS_KEYS=1:oldkeyA...,2:oldkeyB...
+    # 换钥流程：把旧密钥挪进这里 → 换 FIELD_ENCRYPTION_KEY/KEY_ID → 跑重加密任务
+    # → 确认无旧版本密文后才可移除。灾备备份必须同时备份本项，否则库恢复了也解不开。
+    FIELD_ENCRYPTION_PREVIOUS_KEYS: str = ""
+    # 可检索 HMAC 专用密钥。留空则沿用 FIELD_ENCRYPTION_KEY（历史行为，保证既有
+    # 检索哈希继续命中）。一旦设置就不能再改，否则所有既有检索哈希全部失配。
+    SENSITIVE_SEARCH_HMAC_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # legacy 配置名；正式令牌统一读取 JWT_EXPIRES_IN
     UPLOAD_DIR: str = "./uploads"
     EXPORT_DIR: str = "./exports"
@@ -259,6 +269,28 @@ class Settings(BaseSettings):
     @property
     def field_encryption_key(self) -> str:
         return self.FIELD_ENCRYPTION_KEY
+
+    @property
+    def field_encryption_key_id(self) -> str:
+        return (self.FIELD_ENCRYPTION_KEY_ID or "1").strip()
+
+    @property
+    def field_encryption_previous_keys(self) -> dict[str, str]:
+        """{版本号: 密钥}，供解密历史密文使用。"""
+        out: dict[str, str] = {}
+        for item in (self.FIELD_ENCRYPTION_PREVIOUS_KEYS or "").split(","):
+            item = item.strip()
+            if not item or ":" not in item:
+                continue
+            kid, _, key = item.partition(":")
+            kid, key = kid.strip(), key.strip()
+            if kid and key:
+                out[kid] = key
+        return out
+
+    @property
+    def sensitive_search_hmac_key(self) -> str:
+        return (self.SENSITIVE_SEARCH_HMAC_KEY or "").strip() or self.FIELD_ENCRYPTION_KEY
 
     @property
     def jwt_secret(self) -> str:
