@@ -5,7 +5,7 @@ import { items, loginApi } from '../lib/api-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
-const saAdmin = { tenant: 'sandbox-school', username: 'e2e_sa_admin', password: 'E2eTest@2026' }
+const saAdmin = config.sandboxAdmin
 const counselorA = { tenant: 'sandbox-school', username: 'e2e_counselor_a', password: 'E2eTest@2026' }
 const studentB = { tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026' }
 
