@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+ENV_RUNNER = ROOT / "scripts/deploy/run-with-envfile.py"
 
 SHELL_SCRIPTS = (
     "scripts/check/preflight-school-trial.sh",
@@ -25,6 +27,54 @@ def test_trial_shell_scripts_parse(relative: str):
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_environment_file_loader_does_not_shell_evaluate_secrets(tmp_path: Path):
+    special = "A&b$ c#d!@%=:+-_(trial)"
+    env_file = tmp_path / "backend.env"
+    env_file.write_text(
+        "APP_ENV=production\n"
+        f"DB_PASSWORD={special}\n"
+        "QUOTED_VALUE='value with spaces & $ signs'\n",
+        encoding="utf-8",
+    )
+
+    get_result = subprocess.run(
+        [sys.executable, str(ENV_RUNNER), "--get", str(env_file), "DB_PASSWORD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert get_result.returncode == 0, get_result.stderr
+    assert get_result.stdout == special
+
+    exec_result = subprocess.run(
+        [
+            sys.executable,
+            str(ENV_RUNNER),
+            str(env_file),
+            "--",
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['DB_PASSWORD']); print(os.environ['QUOTED_VALUE'])",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert exec_result.returncode == 0, exec_result.stderr
+    assert exec_result.stdout.splitlines() == [special, "value with spaces & $ signs"]
+
+
+def test_release_scripts_never_source_environment_file():
+    for relative in (
+        "scripts/deploy/install-systemd-release.sh",
+        "scripts/deploy/verify-systemd-release.sh",
+    ):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert '. "$ENV_FILE"' not in text
+        assert "source $ENV_FILE" not in text
+        assert "run-with-envfile.py" in text
 
 
 def test_release_script_carries_all_three_clients_and_scan_worker():
