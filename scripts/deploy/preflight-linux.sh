@@ -14,7 +14,7 @@ failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
 
 printf '== 2U4G 非容器部署预检（只读）==\n'
 
-for cmd in python3 nginx mysql mysqldump redis-cli curl rsync gzip sha256sum systemctl; do
+for cmd in python3 nginx mysql mysqldump redis-cli curl rsync gzip sha256sum systemctl flock; do
   command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || failure "$cmd 未安装"
 done
 for cmd in node npm; do
@@ -48,6 +48,7 @@ else
   deployment_mode="$(getv DEPLOYMENT_MODE)"
   debug="$(getv DEBUG)"
   mock="$(getv MOCK_LOGIN_ENABLED)"
+  public_base="$(getv PUBLIC_BASE_URL)"
   cors="$(getv CORS_ORIGINS)"
   jwt="$(getv JWT_SECRET)"
   [ -n "$jwt" ] || jwt="$(getv JWT_SECRET_KEY)"
@@ -65,6 +66,13 @@ else
   [ "${mock,,}" = "false" ] && pass "mock-login 已关闭" || failure "MOCK_LOGIN_ENABLED 必须为 false"
   [ "${db_enabled,,}" = "true" ] && pass "DB_ENABLED=true" || failure "DB_ENABLED 必须为 true"
   [ "${db_driver,,}" = "mysql" ] && pass "DB_DRIVER=mysql" || failure "正式试点只允许 MySQL"
+
+  if [[ "$public_base" == https://* ]] && [ -n "${public_base#https://}" ] \
+      && [[ "${public_base#https://}" != */* ]] && [[ "$public_base" != *'替换'* ]]; then
+    pass "PUBLIC_BASE_URL 为 HTTPS origin"
+  else
+    failure "PUBLIC_BASE_URL 必须是明确 HTTPS origin（仅 scheme+host[:port]，禁止路径）"
+  fi
   [ -n "$cors" ] && [[ "$cors" != *'*'* ]] && [[ "$cors" == https://* ]] \
     && pass "CORS 为 HTTPS 白名单" || failure "CORS 必须是明确的 HTTPS 域名"
   [ "${#jwt}" -ge 32 ] && [[ "$jwt" != *'替换'* ]] && [[ "$jwt" != *'dev-secret'* ]] \
@@ -75,8 +83,21 @@ else
     && pass "运维探针令牌已配置" || failure "INTERNAL_OPS_TOKEN 未配置或过短"
 
   default_field_key="jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
-  [ "${#field_key}" -ge 32 ] && [ "$field_key" != "$default_field_key" ] && [[ "$field_key" != *'替换'* ]] \
-    && pass "敏感字段加密密钥已独立配置" || failure "FIELD_ENCRYPTION_KEY 仍为默认/占位值"
+  if [ "$field_key" != "$default_field_key" ] && [[ "$field_key" != *'替换'* ]] \
+      && python3 - "$field_key" <<'PY'
+import base64, sys
+try:
+    raw = base64.urlsafe_b64decode(sys.argv[1].encode())
+    ok = len(raw) == 32 and base64.urlsafe_b64encode(raw).decode() == sys.argv[1]
+except Exception:
+    ok = False
+raise SystemExit(0 if ok else 1)
+PY
+  then
+    pass "FIELD_ENCRYPTION_KEY 为有效独立 Fernet key"
+  else
+    failure "FIELD_ENCRYPTION_KEY 必须由 Fernet.generate_key() 生成，不能只满足字符串长度"
+  fi
 
   [ "${clamav_enabled,,}" = "true" ] && pass "CLAMAV_ENABLED=true" || failure "正式试点必须启用 ClamAV 文件扫描"
 
