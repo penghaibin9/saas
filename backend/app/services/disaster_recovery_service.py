@@ -201,8 +201,9 @@ def governance_overview() -> dict:
             stale = True
             days_since = None
             if latest_success and latest_success.finished_at:
-                days_since = (now - latest_success.finished_at).days
-                stale = days_since > threshold
+                age = now - latest_success.finished_at
+                days_since = max(0, int(age.total_seconds() // 86400))
+                stale = age > timedelta(days=threshold)
             by_type[backup_type] = {
                 "hasEvidence": latest_success is not None,
                 "lastSuccessAt": latest_success.finished_at.isoformat() if latest_success and latest_success.finished_at else None,
