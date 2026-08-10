@@ -6,6 +6,7 @@ configuration:
 
 * TRANSFER is allowed only when the workflow definition explicitly allows transfer.
 * The transfer target must hold the current node's configured approver role.
+* The transfer target must also pass the current node's ROLE_AND_SCOPE data-scope check.
 * REJECT respects ``WorkflowDefinition.allow_reject``.
 * ``allowedActions`` is projected from the same persisted flags so clients do not
   advertise actions that the server will refuse.
@@ -195,13 +196,14 @@ def install(runtime_module):
         return original_reject(task_id, reason, user=user, version=version)
 
     def guarded_transfer(task_id, target_user_id, comment, *, user=None, version=None):
-        """Atomic transfer with workflow switch + node-role target authorization."""
+        """Atomic transfer with workflow switch + node role/scope target authorization."""
         runtime_module._require_db()
         from sqlalchemy import select
         from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
         from app.models import User, WorkflowInstance, WorkflowTask
         from app.services import db_service
         from app.services import mock_audit_service as audit
+        from app.services.approval_transfer_scope_service import assert_transfer_target_scope
 
         require_expected_version(version)
         try:
@@ -243,6 +245,15 @@ def install(runtime_module):
             _assert_target_role(
                 db, tenant_id=tenant_id, target_id=target_id, role_code=role_code,
             )
+            target_scope = assert_transfer_target_scope(
+                db,
+                tenant_id=tenant_id,
+                task=task,
+                inst=inst,
+                node=node,
+                target=target,
+                role_code=role_code,
+            )
 
             atomic_versioned_update(
                 db, WorkflowTask, entity_id=int(task_id), tenant_id=tenant_id,
@@ -272,6 +283,7 @@ def install(runtime_module):
                     "action": "TRANSFERRED",
                     "to": str(target_id),
                     "targetRole": role_code,
+                    "targetScope": target_scope,
                     "newTaskId": str(new_task.id),
                 },
                 db=db,
