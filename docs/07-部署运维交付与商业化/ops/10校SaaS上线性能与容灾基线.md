@@ -2,6 +2,8 @@
 
 适用基线：10 所学校、每校约 1 万名学生，约 10 万学生主档；高峰按 10% 学生在 10 分钟内打开小程序估算。该规模不要求分库分表，先使用 MySQL 单库多租户、Redis、多后端实例和异步任务即可。是否扩容以压测和监控结果为准，不以学生总数直接判断。
 
+> **生产备份与恢复以 `deploy/README-data-governance.md` 为唯一权威口径。** 当前正式承诺是完整 DB+uploads 恢复点 **RPO ≤ 6 小时、RTO ≤ 2 小时**。本文不再宣称尚未落地的 5 分钟 PITR/Binlog 异地连续归档能力。
+
 ## 一、生产拓扑
 
 - Nginx：2 个后端副本的统一入口，启用连接复用、请求速率和连接数保护。
@@ -66,33 +68,25 @@ python scripts/audit_tenant_queries.py
 
 分页接口必须设置上限，默认每页 20、最大 100；导出超过 5000 行改为后台任务。列表查询禁止逐行加载关系，优先一次 join/select-in 批量加载。上线前用真实数量级脱敏数据执行 `EXPLAIN ANALYZE`，重点检查消息、待办、预警、审计、首页聚合和导出查询。
 
-## 四、备份与 Binlog 恢复
+## 四、正式生产备份与恢复
 
-MySQL 必须配置：
+当前正式灾备基线不是 PITR，而是**可验证的完整恢复点**：
 
-```ini
-[mysqld]
-server-id=1
-log_bin=mysql-bin
-binlog_format=ROW
-binlog_expire_logs_seconds=604800
-sync_binlog=1
-innodb_flush_log_at_trx_commit=1
-slow_query_log=ON
-long_query_time=0.5
-```
+1. `school-lifecycle-backup.timer` 每天 01:15 / 07:15 / 13:15 / 19:15 触发；
+2. `backup-runner.sh` 生成同一 manifest 绑定的 MySQL + uploads + SHA-256；
+3. 数据和 checksum 先复制到异地，逐对象通过 `rclone cat` 回读并重新计算 SHA-256；
+4. manifest 最后上传，作为异地恢复点 commit marker；
+5. 本地默认至少保留 8 个完整恢复点，旧恢复点按整套清理；
+6. `school-lifecycle-backup-watchdog.timer` 每小时检查最新恢复点是否超过 RPO、是否残缺、异地 manifest 是否丢失或损坏；
+7. `restore-drill.sh` 只允许恢复到本地隔离库，并验证 Alembic、表/索引/FK、租户、uploads、RPO/RTO 与恢复证据。
 
-每天 02:00 执行 `deploy/backup/backup-mysql.sh`（Windows 使用 `.ps1`），生成压缩全量备份、SHA256 和 Binlog 起点。备份必须复制到不同故障域的对象存储；本机保留 14 天，异地至少保留 30 天。
+目标：**RPO ≤ 6 小时，RTO ≤ 2 小时。**
 
-时间点恢复（PITR）演练步骤：
+对象存储必须位于不同故障域，并在云端开启版本化、不可变/WORM 保留和存储侧加密。真实生产首次上线必须完成一次“正式备份 → watchdog PASS → 从异地完整集恢复到隔离库”的人工验收；日常运行之后自动化。
 
-1. 建立隔离的恢复库，绝不直接覆盖生产库。
-2. 校验备份 SHA256，用 restore 脚本恢复最近一次全量备份。
-3. 从备份头部的 `CHANGE REPLICATION SOURCE TO` 注释确认 Binlog 文件和位置。
-4. 使用 `mysqlbinlog --start-position=<pos> --stop-datetime='YYYY-MM-DD HH:MM:SS' mysql-bin.00xxxx | mysql <恢复库>` 回放到故障前时间点。
-5. 校验租户数、学生数、关键业务表数量、抽样业务流程和跨租户隔离，再制定切换方案。
+当前 PR #66 **不承诺 5 分钟 PITR**，也不要求备份账号获取复制坐标所需的额外管理权限。若未来业务合同明确要求分钟级 RPO，应另开独立灾备项目设计 Binlog 持续异地归档、加密、保留、回放与自动演练，验收通过后才能修改对外 RPO 承诺。
 
-目标：RPO 不超过 5 分钟（取决于 Binlog 异地同步），RTO 不超过 2 小时。每月至少一次自动可读性校验，每季度一次完整恢复演练并记录实际 RPO/RTO。
+另外，数据库中的敏感字段使用应用字段加密密钥。必须在应用服务器/Git 之外保留受保护的 `FIELD_ENCRYPTION_KEY`/历史密钥恢复副本，否则“数据库恢复成功”不等于“敏感字段可正常解密”。
 
 ## 五、监控与告警阈值
 
@@ -108,7 +102,7 @@ long_query_time=0.5
 | Redis 延迟 | p95 > 20 ms | 不可用超过 1 分钟或命中率骤降 |
 | Redis 内存 | > 70% | > 85% 或发生 eviction |
 | 磁盘 | > 70% | > 85% |
-| 备份 | 24 小时无成功备份 | 校验失败或 48 小时无可用备份 |
+| 备份 | 最新恢复点接近 6 小时 RPO 上限 | watchdog 失败、异地 commit marker/校验失败或已超过 RPO |
 | 调度任务 | 一次失败 | 连续三次失败或延迟超过一个周期 |
 
 ## 六、上线检查清单
@@ -120,6 +114,9 @@ long_query_time=0.5
 - [ ] Web 容器 `SCHEDULER_MODE=external`，只有一个 Scheduler 实例。
 - [ ] 首页只有一个 `/mobile/home` 请求，冷缓存和热缓存结果一致。
 - [ ] 以 10 校峰值模型完成 30 分钟压测，记录 p95、错误率、DB 池和 Redis 指标。
-- [ ] 全量备份、SHA256、异地复制成功；在隔离库完成恢复和 Binlog 回放。
+- [ ] 正式 backup service 与 hourly watchdog 已安装启用；最新 DB+uploads manifest 完整且异地 SHA-256 回读成功。
+- [ ] 对象存储版本化、不可变/WORM 保留、存储侧加密已开启，并留存云端配置证据。
+- [ ] 已从异地完整备份集恢复到隔离库并验证 readiness、租户隔离与附件；实际 RPO/RTO 已记录。
+- [ ] 生产字段加密密钥历史已有一份服务器/Git 之外的受保护恢复副本。
 - [ ] 告警接收人、升级路径和维护窗口已确认。
 - [ ] 发布前保留旧应用镜像和数据库变更回滚方案；涉及数据回填时只前滚修复，不盲目降级结构。
