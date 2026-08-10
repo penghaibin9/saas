@@ -23,6 +23,11 @@ RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d_%H%M%S)}"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
 BACKUP_DIR="$APP_ROOT/backups"
 ENV_RUNNER="$SOURCE_ROOT/scripts/deploy/run-with-envfile.py"
+LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
+
+# 单机发布必须串行。两个终端同时跑 migration/symlink 会破坏“原子发布”的前提。
+exec 9>"$LOCK_FILE"
+flock -n 9 || { echo "Another school-lifecycle release is already running." >&2; exit 1; }
 
 env_value() {
   python3 "$ENV_RUNNER" --get "$ENV_FILE" "$1"
@@ -36,6 +41,9 @@ id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --home "$APP_ROOT" --shel
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$APP_ROOT/releases" "$APP_ROOT/shared/uploads" \
   "$APP_ROOT/shared/exports" "$BACKUP_DIR" /var/www/school-lifecycle
 install -d -m 700 /etc/school-lifecycle
+
+PUBLIC_BASE_URL_VALUE="$(env_value PUBLIC_BASE_URL)"
+[ -n "$PUBLIC_BASE_URL_VALUE" ] || { echo "PUBLIC_BASE_URL is required for production client builds." >&2; exit 1; }
 
 # EnvironmentFile 是数据文件，不允许用 shell `source`。强密码含 &, $, 空格等字符也必须安全。
 DB_PASSWORD_VALUE="$(env_value DB_PASSWORD)"
@@ -65,7 +73,10 @@ python3 -m venv "$RELEASE_DIR/backend/.venv"
 # 三个客户端必须属于同一个 release；禁止只更新管理端/小程序而漏掉学生 PC。
 if command -v npm >/dev/null 2>&1; then
   (cd "$RELEASE_DIR/frontend" && NODE_OPTIONS=--max-old-space-size=1536 npm ci && npm run build)
-  (cd "$RELEASE_DIR/miniapp" && NODE_OPTIONS=--max-old-space-size=1536 npm ci && npm run build:h5)
+  # miniapp/.env* 故意不复制进 release；生产 H5 必须由权威 PUBLIC_BASE_URL 显式注入，
+  # 否则 env.js 会回退 http://localhost:8000，构建虽绿但学校浏览器实际不可用。
+  (cd "$RELEASE_DIR/miniapp" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
+    && VITE_API_BASE_URL="$PUBLIC_BASE_URL_VALUE" VITE_USE_MOCK=false npm run build:h5)
   (cd "$RELEASE_DIR/student-portal" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
     && VITE_BASE=/portal/ VITE_API_BASE_URL= npm run build)
 else
@@ -76,6 +87,12 @@ else
   rsync -a "$SOURCE_ROOT/frontend/dist/" "$RELEASE_DIR/frontend/dist/"
   rsync -a "$SOURCE_ROOT/miniapp/dist/build/h5/" "$RELEASE_DIR/miniapp/dist/build/h5/"
   rsync -a "$SOURCE_ROOT/student-portal/dist/" "$RELEASE_DIR/student-portal/dist/"
+fi
+
+# 无论现场构建还是使用预构建产物，正式 H5 都不得携带 localhost API 地址。
+if grep -RIlE 'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?' "$RELEASE_DIR/miniapp/dist/build/h5" >/dev/null 2>&1; then
+  echo "miniapp H5 contains a localhost API origin; release aborted." >&2
+  exit 1
 fi
 
 # Alembic/应用检查进程通过安全 env runner 获取完整生产环境，绝不 eval EnvironmentFile。
