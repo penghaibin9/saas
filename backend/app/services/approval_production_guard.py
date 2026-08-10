@@ -56,6 +56,42 @@ def _action_flags(definition, node) -> dict[str, bool]:
     }
 
 
+def persisted_allowed_actions(
+    db,
+    task,
+    inst,
+    actions: list[str] | None = None,
+    *,
+    tenant_id: int | None = None,
+    policy_cache: dict | None = None,
+) -> list[str]:
+    """Project client actions from the exact persisted workflow policy.
+
+    PC and miniapp call paths share this helper so ``allow_reject`` / ``allow_transfer``
+    cannot drift between clients.  ``policy_cache`` is request-local only and avoids
+    repeating definition/node lookups for rows from the same workflow node.
+    """
+    if str(getattr(task, "status", "") or "").upper() != "PENDING" or inst is None:
+        return []
+    resolved_tid = int(tenant_id or getattr(task, "tenant_id", 0) or 0)
+    if not resolved_tid:
+        return []
+    base_actions = list(actions or ["APPROVE", "RETURN", "REJECT", "TRANSFER"])
+    key = (str(getattr(inst, "workflow_code", "") or ""), str(getattr(task, "node_code", "") or ""))
+    cached = policy_cache.get(key) if policy_cache is not None else None
+    if cached is None:
+        cached = _load_policy(db, task, inst, resolved_tid)
+        if policy_cache is not None:
+            policy_cache[key] = cached
+    definition, node = cached
+    flags = _action_flags(definition, node)
+    if not flags["REJECT"]:
+        base_actions = [x for x in base_actions if x != "REJECT"]
+    if not flags["TRANSFER"]:
+        base_actions = [x for x in base_actions if x != "TRANSFER"]
+    return base_actions
+
+
 def _assert_transfer_policy(definition, node) -> str:
     flags = _action_flags(definition, node)
     if not flags["TRANSFER"]:
@@ -118,6 +154,7 @@ def _apply_action_policy(rows: list[dict], runtime_module) -> list[dict]:
             WorkflowInstance.is_deleted.is_(False),
         )).all() if instance_ids else []
         inst_map = {int(x.id): x for x in instances}
+        policy_cache: dict = {}
 
         for row in rows:
             try:
@@ -130,14 +167,14 @@ def _apply_action_policy(rows: list[dict], runtime_module) -> list[dict]:
             if not inst:
                 row["allowedActions"] = []
                 continue
-            definition, node = _load_policy(db, task, inst, tenant_id)
-            flags = _action_flags(definition, node)
-            actions = list(row.get("allowedActions") or [])
-            if not flags["REJECT"]:
-                actions = [x for x in actions if x != "REJECT"]
-            if not flags["TRANSFER"]:
-                actions = [x for x in actions if x != "TRANSFER"]
-            row["allowedActions"] = actions
+            row["allowedActions"] = persisted_allowed_actions(
+                db,
+                task,
+                inst,
+                list(row.get("allowedActions") or []),
+                tenant_id=tenant_id,
+                policy_cache=policy_cache,
+            )
     return rows
 
 
@@ -154,9 +191,24 @@ def install(runtime_module):
         row = original_get_task(task_id, user=user)
         return _apply_action_policy([row], runtime_module)[0]
 
-    def guarded_list_tasks(page, page_size, *, user=None, keyword=None, biz_type=None):
+    def guarded_list_tasks(
+        page,
+        page_size,
+        *,
+        user=None,
+        keyword=None,
+        biz_type=None,
+        urgency=None,
+        submit_date=None,
+    ):
         rows, total = original_list_tasks(
-            page, page_size, user=user, keyword=keyword, biz_type=biz_type,
+            page,
+            page_size,
+            user=user,
+            keyword=keyword,
+            biz_type=biz_type,
+            urgency=urgency,
+            submit_date=submit_date,
         )
         return _apply_action_policy(rows, runtime_module), total
 
@@ -298,39 +350,41 @@ def install(runtime_module):
                 "transferredTo": target.real_name or target.login_name or str(target_id),
             })
 
-    def guarded_transfer_targets(*, user=None, limit=100):
-        """Return only users who are members of at least one active transferable node role."""
+    def guarded_transfer_targets(task_id, *, user=None, limit=100):
+        """Return only role + scope eligible targets for this exact pending task."""
         runtime_module._require_db()
         from sqlalchemy import func, select
-        from app.models import (
-            Role,
-            User,
-            UserRole,
-            WorkflowDefinition,
-            WorkflowNodeDefinition,
-            WorkflowTask,
-        )
+        from app.models import Role, User, UserRole, WorkflowInstance, WorkflowTask
         from app.services import db_service
+        from app.services.approval_transfer_scope_service import assert_transfer_target_scope
         from app.services.message_identity import resolve_message_user_id
 
         tenant_id = runtime_module._tid()
         me = resolve_message_user_id(runtime_module._user(user))
         cap = min(max(int(limit), 1), 200)
         with db_service.session() as db:
-            role_codes = list(db.scalars(select(WorkflowNodeDefinition.approver_role_code).join(
-                WorkflowDefinition,
-                WorkflowDefinition.id == WorkflowNodeDefinition.workflow_definition_id,
-            ).where(
-                WorkflowNodeDefinition.tenant_id == tenant_id,
-                WorkflowNodeDefinition.is_deleted.is_(False),
-                WorkflowNodeDefinition.status.in_(("ACTIVE", "active")),
-                WorkflowDefinition.tenant_id == tenant_id,
-                WorkflowDefinition.is_deleted.is_(False),
-                WorkflowDefinition.allow_transfer.is_(True),
-            ).distinct()))
-            role_codes = [str(x).strip() for x in role_codes if str(x or "").strip()]
-            if not role_codes:
-                return []
+            try:
+                task_id_int = int(task_id)
+            except (TypeError, ValueError):
+                raise not_found("审批任务不存在")
+            task = db.scalars(select(WorkflowTask).where(
+                WorkflowTask.id == task_id_int,
+                WorkflowTask.tenant_id == tenant_id,
+                WorkflowTask.is_deleted.is_(False),
+                WorkflowTask.status == "PENDING",
+            )).first()
+            if not task:
+                raise not_found("审批任务不存在或已办结")
+            db_service._assert_task_assignee(db, task, user)
+            inst = db.scalars(select(WorkflowInstance).where(
+                WorkflowInstance.id == task.instance_id,
+                WorkflowInstance.tenant_id == tenant_id,
+                WorkflowInstance.is_deleted.is_(False),
+            )).first()
+            if not inst:
+                raise not_found("审批实例不存在")
+            definition, node = _load_policy(db, task, inst, tenant_id)
+            role_code = _assert_transfer_policy(definition, node)
 
             pairs = db.execute(select(User, Role).join(
                 UserRole,
@@ -348,16 +402,32 @@ def install(runtime_module):
                 Role.tenant_id == tenant_id,
                 Role.is_deleted.is_(False),
                 Role.status.in_(("ACTIVE", "active")),
-                Role.role_code.in_(role_codes),
+                Role.role_code == role_code,
             ).order_by(User.id, Role.id)).all()
 
-            candidates: dict[int, tuple[object, object]] = {}
+            candidates: dict[int, tuple[object, object, str]] = {}
             for row, role in pairs:
-                if int(row.id) == int(me or 0) or str(row.user_type or "").upper() == "STUDENT":
+                uid = int(row.id)
+                if uid == int(me or 0) or str(row.user_type or "").upper() == "STUDENT":
                     continue
-                candidates.setdefault(int(row.id), (row, role))
+                if uid in candidates:
+                    continue
+                try:
+                    target_scope = assert_transfer_target_scope(
+                        db,
+                        tenant_id=tenant_id,
+                        task=task,
+                        inst=inst,
+                        node=node,
+                        target=row,
+                        role_code=role_code,
+                    )
+                except AppException:
+                    continue
+                candidates[uid] = (row, role, target_scope)
                 if len(candidates) >= cap:
                     break
+
             ids = list(candidates)
             pending_map = {}
             if ids:
@@ -377,9 +447,10 @@ def install(runtime_module):
                 "userName": row.real_name or row.login_name or str(uid),
                 "roleName": role.role_name or role.role_code,
                 "roleCode": role.role_code,
+                "scopeCode": target_scope,
                 "orgName": "",
                 "pendingCount": pending_map.get(uid, 0),
-            } for uid, (row, role) in candidates.items()]
+            } for uid, (row, role, target_scope) in candidates.items()]
 
     runtime_module.get_task = guarded_get_task
     runtime_module.list_tasks = guarded_list_tasks
