@@ -108,10 +108,16 @@ def test_release_builds_before_quiesce_then_backs_up_before_migration():
     assert "ACTIVE_OLD_SERVICES" in text
 
 
-def test_release_verification_probes_scan_and_storage():
+def test_release_verification_probes_scan_storage_and_public_tls():
     text = (ROOT / "scripts/deploy/verify-systemd-release.sh").read_text(encoding="utf-8")
     assert "scripts/check_production_file_scan.py" in text
     assert "scripts/check_production_storage.py" in text
+    assert "PUBLIC_BASE_URL" in text
+    assert "--resolve" in text
+    assert "strict-transport-security" in text
+    assert "content-security-policy" in text
+    assert "/uploads/__release_probe__" in text
+    assert "/exports/__release_probe__" in text
     assert (ROOT / "backend/scripts/check_production_storage.py").is_file()
 
 
