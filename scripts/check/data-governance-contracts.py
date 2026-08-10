@@ -103,7 +103,8 @@ require(
     "FIELD_ENCRYPTION_KEY",
     "FIELD_ENCRYPTION_PREVIOUS_KEYS",
     "outside the application server",
-    "TimeoutStartSec",
+    "systemd after 5 hours",
+    "10-minute systemd timeout",
 )
 require(
     ".github/workflows/data-governance-contracts.yml",
