@@ -1,19 +1,6 @@
 # 2U4G 非容器部署站点。替换域名和证书路径后放到 /etc/nginx/conf.d/。
-# 本文件位于 nginx http{} 内：同时定义连接/请求限流区，避免 systemd 部署比 Docker 安全基线更弱。
-limit_conn_zone $binary_remote_addr zone=school_per_ip_conn:10m;
-map $request_method $school_write_limit_key {
-    default "";
-    POST $binary_remote_addr;
-    PUT $binary_remote_addr;
-    PATCH $binary_remote_addr;
-    DELETE $binary_remote_addr;
-}
-map $request_uri $school_auth_limit_key {
-    default "";
-    ~^/api/v1/auth/(login|wx-login|wx-bind|password-reset) $binary_remote_addr;
-}
-limit_req_zone $school_write_limit_key zone=school_write_limit:10m rate=30r/s;
-limit_req_zone $school_auth_limit_key zone=school_auth_limit:10m rate=5r/s;
+# 本文件位于 nginx http{} 内；生产安全头、请求体上限和限流统一由 security-*.conf 提供，
+# 避免 systemd / Docker / 手工部署形成多套安全事实源。
 
 upstream school_lifecycle_backend {
     server 127.0.0.1:8000;
@@ -36,20 +23,15 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     server_tokens off;
-    client_max_body_size 50m;
 
+    # 安全响应头 / 请求体上限 / 限流 / 静态目录封禁：统一走 PR #62 收敛后的安全合同。
+    # 前提：http{} 里已 include security-http.conf。
+    include /etc/nginx/conf.d/security-server.conf;
+
+    # HSTS 只应出现在 HTTPS server；其余响应头由 security-server.conf 统一提供。
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    # 与当前 Docker 生产模板保持同一 CSP 口径；后续单独收紧 unsafe-inline/unsafe-eval 时必须三端截图回归。
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; font-src 'self' data:; object-src 'none'; frame-ancestors 'self'" always;
 
     location /api/ {
-        limit_conn school_per_ip_conn 50;
-        limit_req zone=school_write_limit burst=60 nodelay;
-        limit_req zone=school_auth_limit burst=10 nodelay;
         proxy_pass http://school_lifecycle_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -65,10 +47,6 @@ server {
     location = /health/ready { proxy_pass http://school_lifecycle_backend/health/ready; }
     location ~ ^/(docs|redoc|openapi.json) { return 404; }
 
-    # 附件和导出只能走后端鉴权接口；静态目录一律禁止公网直读。
-    location /uploads/ { return 404; }
-    location /exports/ { return 404; }
-
     # 小程序 H5。
     location ^~ /miniapp/ {
         root /var/www/school-lifecycle;
@@ -79,7 +57,6 @@ server {
     location ^~ /portal/assets/ {
         root /var/www/school-lifecycle;
         try_files $uri =404;
-        # expires 自带 Cache-Control，不使用子级 add_header，避免覆盖 server 级 HSTS/CSP 等安全头。
         expires 1y;
         access_log off;
     }
@@ -89,7 +66,6 @@ server {
     }
     location = /portal/index.html {
         root /var/www/school-lifecycle;
-        # no-cache 且保留 server 级安全头；子 location 不再声明 add_header。
         expires -1;
     }
 
@@ -100,11 +76,14 @@ server {
     }
     location = /index.html {
         root /var/www/school-lifecycle/pc;
-        expires -1;
+        include /etc/nginx/conf.d/security-headers.conf;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
     location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)$ {
         root /var/www/school-lifecycle/pc;
         try_files $uri =404;
         expires 1y;
+        include /etc/nginx/conf.d/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable";
     }
 }
