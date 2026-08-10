@@ -18,14 +18,23 @@ def _hdr(client, login_name):
 
 def _seed(db_mode, n=2):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile
+    from tests.support_grade_review_identity import seed_grade_review_identity
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2601", grade="2026", status="ACTIVE")
+    college = College(tenant_id=TID, college_name="成绩回归学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=TID, college_id=college.id, major_name="成绩回归专业", status="ACTIVE")
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2601", grade="2026", status="ACTIVE")
     db.add(a); db.flush()
+    seed_grade_review_identity(db, college_ids=[college.id])
     sids = []
     for i in range(n):
-        s = StudentProfile(tenant_id=TID, student_no=f"G{i:03d}", real_name=f"成绩{i}", class_id=a.id,
-                           current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+        s = StudentProfile(
+            tenant_id=TID, student_no=f"G{i:03d}", real_name=f"成绩{i}",
+            college_id=college.id, major_id=major.id, class_id=a.id,
+            current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
         db.add(s); db.flush(); sids.append(s.id)
     db.commit()
     db.close()
@@ -133,8 +142,7 @@ def _task(client, hdr, usual=30, midterm=0, final=70, *,
 
 
 def _submit_and_approve(client, hdr, tid):
-    """走完提交→学院审通过→（回到 ACADEMIC_REVIEW，供调用方自行发布）。
-    school_admin01(SCHOOL_ADMIN) 同时在 _REVIEW_ROLES 白名单内，可代行教务处/学院两级动作。"""
+    """走完提交→学院审通过→（回到 ACADEMIC_REVIEW，供调用方自行发布）。"""
     s = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
     assert s.status_code == 200, s.text
     r = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
