@@ -73,7 +73,6 @@ def test_all_six_accounts_login(client, two_tenants):
         assert r["code"] == 0, (login, r.get("message"))
         assert r["data"]["tenantId"] == str(tid), login
         assert r["data"]["currentRole"]["roleCode"] == role, login
-    # 密码错误 → 明确业务错，不是 500
     bad = _login(client, "admin", "wrong-pass")
     assert bad["code"] == 401001
 
@@ -93,8 +92,6 @@ def test_student_token_carries_student_no(client, two_tenants):
     assert c2["tenantId"] == str(SBX_TID) and c2["studentNo"] == "2026S0001"
 
 
-# ═══ 16：123456 不明文落库 ═══
-
 def test_password_hashed_not_plaintext(client, two_tenants):
     from sqlalchemy import select
     from app.db.session import get_sessionmaker
@@ -111,8 +108,6 @@ def test_password_hashed_not_plaintext(client, two_tenants):
         db.close()
 
 
-# ═══ 7：production 下 mock-login 403 ═══
-
 def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "APP_ENV", "production")
@@ -122,8 +117,6 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
     assert r.status_code == 403
     assert "accessToken" not in (r.json().get("data") or {})
 
-    # 真实密码登录仍存在，但 production 风控必须依赖共享 Redis；当前测试环境未配置
-    # Redis 时应 fail-closed，不能退化到单进程内存并签发令牌。
     real = client.post("/api/v1/auth/login",
                        json={"loginName": "student", "password": "123456"})
     assert real.status_code == 503
@@ -131,33 +124,24 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
     assert "accessToken" not in (real.json().get("data") or {})
 
 
-# ═══ 8-10：双租户严格隔离 ═══
-
 def test_tenant_isolation_both_ways(client, two_tenants):
     demo_t = _h(_login(client, "teacher"))
     sbx_t = _h(_login(client, "teacher2"))
-    # demo 教师看不到沙箱学生（按学号查 → 404 不泄露存在性）
     r1 = client.get("/api/v1/mobile/teacher/student/2026S0001", headers=demo_t).json()
     assert r1["code"] == 404001
-    # 沙箱教师看不到 demo 学生
     r2 = client.get("/api/v1/mobile/teacher/student/2026D0006", headers=sbx_t).json()
     assert r2["code"] == 404001
-    # 学生自视图各自只见本租户本人
     s_demo = client.get("/api/v1/mobile/me/overview", headers=_h(_login(client, "student"))).json()
     assert s_demo["data"]["student"]["studentNo"] == "2026D0006"
     s_sbx = client.get("/api/v1/mobile/me/overview", headers=_h(_login(client, "student2"))).json()
     assert s_sbx["data"]["student"]["studentNo"] == "2026S0001"
 
 
-# ═══ 11：学生访问 stats → 403 ═══
-
 def test_student_stats_403(client, two_tenants):
     for login in ("student", "student2"):
         r = client.get("/api/v1/stats/overview", headers=_h(_login(client, login))).json()
         assert r["code"] == 403001, login
 
-
-# ═══ 12：教师只能看到自己范围内的学生 ═══
 
 def test_teacher_scope_visibility(client, two_tenants):
     demo_t = _h(_login(client, "teacher"))
@@ -170,10 +154,7 @@ def test_teacher_scope_visibility(client, two_tenants):
     assert ok2["code"] == 0
 
 
-# ═══ 13：沙箱可写，但写权限必须与当前 RBAC + 批次合同一致 ═══
-
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
-    # 辅导员可看本班实习周报，但当前生产权限明确是只读协同，不能借“看得见”扩大成批阅权。
     counselor_h = _h(_login(client, "teacher2"))
     counselor_batch = _default_internship_batch(client, counselor_h)
     counselor_view = client.get(
@@ -197,7 +178,6 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     assert denied.status_code == 403
     assert denied.json()["code"] == 403001
 
-    # 同一沙箱中，具备 SCHOOL_ADMIN 权限的账号按“上下文选批次 + 乐观锁版本”合同可真实写入。
     admin_h = _h(_login(client, "admin2"))
     admin_batch = _default_internship_batch(client, admin_h)
     admin_view = client.get(
@@ -222,16 +202,14 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     ).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
 
-    # 毕设工作台同样已升级为“必须显式选择 batchId”；旧测试无 batch 直接读 reviewDetail
-    # 已不再是合法客户端合同。真正的材料批阅继续由毕业设计域 expectedVersion/fileVersionId 专项覆盖。
     gd_without_batch = client.get("/api/v1/mobile/teacher/graduation", headers=admin_h)
-    assert gd_without_batch.status_code == 422
+    assert gd_without_batch.status_code == 400
+    body = gd_without_batch.json()
+    assert body["bizCode"] == "VALIDATION_ERROR"
+    assert body["code"] == 422001
 
 
 def test_demo_tenant_is_readonly(client, two_tenants):
-    """正式演示租户的同一合法学生写操作必须被只读锁拦截，而沙箱对照组可真实落库。"""
-    # 用同角色、同接口做 demo/sandbox 对照，避免把“辅导员本来就没有批阅权限”的 RBAC 403
-    # 误判成 demo 只读中间件 403。
     stu = _h(_login(client, "student"))
     r = client.post("/api/v1/mobile/campus-service/apply", headers=stu,
                     json={"serviceKey": "证明开具", "reason": "演示环境提交应被只读锁拦截"})
@@ -244,8 +222,6 @@ def test_demo_tenant_is_readonly(client, two_tenants):
                      json={"serviceKey": "证明开具", "reason": "沙箱提交应成功入库"}).json()
     assert r2["code"] == 0
 
-
-# ═══ 14-15：沙箱重置 dry-run 不落库 / confirm 只影响沙箱 ═══
 
 def _count_students(db, tid):
     from sqlalchemy import func, select
@@ -262,7 +238,7 @@ def test_sandbox_reset_dry_run_no_change(client, two_tenants):
         before = _count_students(db, SBX_TID)
         report = reset_sandbox(db, dry_run=True)
         assert report["dryRun"] is True and report["wouldRemove"]
-        assert _count_students(db, SBX_TID) == before  # 未落库
+        assert _count_students(db, SBX_TID) == before
     finally:
         db.close()
 
@@ -273,22 +249,19 @@ def test_sandbox_reset_confirm_only_affects_sandbox(client, two_tenants):
     db = get_sessionmaker()()
     try:
         demo_before = _count_students(db, DEMO_TID)
-        # 沙箱先产生一条脏数据（学生提交申请）
         stu2 = _h(_login(client, "student2"))
         client.post("/api/v1/mobile/campus-service/apply", headers=stu2,
                     json={"serviceKey": "证明开具", "reason": "重置前的脏数据一条"})
         report = reset_sandbox(db, dry_run=False)
         assert report["removed"] and report["reseeded"]
-        assert _count_students(db, SBX_TID) == 100    # 重建后回到完整演示学校基线
-        assert _count_students(db, DEMO_TID) == demo_before  # demo 不受影响
-        # 重置后账号仍可登录
+        assert _count_students(db, SBX_TID) == 100
+        assert _count_students(db, DEMO_TID) == demo_before
         assert _login(client, "student2")["code"] == 0
     finally:
         db.close()
 
 
 def test_sandbox_baseline_is_protected_but_new_rows_are_deletable(client, two_tenants):
-    """预制行不可删；现场新增行未进入基线索引，仍可正常软删。"""
     from sqlalchemy import func, select
     from app.core.exceptions import AppException
     from app.db.session import get_sessionmaker
