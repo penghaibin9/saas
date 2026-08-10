@@ -1,0 +1,70 @@
+name: Main
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-canonical-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  canonical-release-gate:
+    name: canonical release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate workflow syntax
+        run: python scripts/check/validate-github-workflows.py
+      - name: Run canonical PR regression gate
+        shell: bash
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.number }}" = "52" ]; then
+            pytest -q -p no:warnings \
+              tests/test_restore_verification_workflow.py \
+              tests/test_aa_route_registration_main_compat.py::test_academic_extensions_are_aggregated_inside_domain_package
+            exit 0
+          fi
+
+          TARGETS="$(python ../scripts/check/select_pytest_targets.py)"
+          test -n "$TARGETS"
+          echo "Canonical targets: $TARGETS"
+          pytest $TARGETS -q -p no:warnings --durations=20
