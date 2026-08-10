@@ -238,7 +238,7 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await capture(page, testInfo, 'rollout-ops-internship-students-b')
   })
 
-  test('Graduation student ledger · Screenshot B', async ({ page }, testInfo) => {
+  test('Graduation student ledger · Screenshot C', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -249,6 +249,6 @@ test.describe.serial('Golden rollout · high-frequency operations · Batch 2', (
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-ops-graduation-students-b')
+    await capture(page, testInfo, 'rollout-ops-graduation-students-c')
   })
 })
