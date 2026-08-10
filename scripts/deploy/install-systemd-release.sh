@@ -25,6 +25,17 @@ BACKUP_DIR="$APP_ROOT/backups"
 ENV_RUNNER="$SOURCE_ROOT/scripts/deploy/run-with-envfile.py"
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
 
+# 生产证据必须能证明“验收的是哪个 commit”。源码目录有 .git 时自动取 HEAD；
+# 离线发布包没有 .git 时必须由发布流水线显式传 RELEASE_COMMIT，禁止用时间戳冒充版本身份。
+SOURCE_COMMIT="${RELEASE_COMMIT:-}"
+if [ -z "$SOURCE_COMMIT" ] && command -v git >/dev/null 2>&1; then
+  SOURCE_COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
+fi
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "Cannot establish immutable release commit. Use a git checkout or set RELEASE_COMMIT to the 40-char candidate SHA." >&2
+  exit 1
+}
+
 # 单机发布必须串行。两个终端同时跑 migration/symlink 会破坏“原子发布”的前提。
 exec 9>"$LOCK_FILE"
 flock -n 9 || { echo "Another school-lifecycle release is already running." >&2; exit 1; }
@@ -59,6 +70,8 @@ install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
 # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
   --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
+printf '%s\n' "$SOURCE_COMMIT" > "$RELEASE_DIR/.release-commit"
+chmod 444 "$RELEASE_DIR/.release-commit"
 python3 -m venv "$RELEASE_DIR/backend/.venv"
 "$RELEASE_DIR/backend/.venv/bin/pip" install --disable-pip-version-check -r "$RELEASE_DIR/backend/requirements.txt"
 
@@ -97,8 +110,6 @@ done
 QUIESCED=0
 ACTIVATED=0
 
-# 如果静默窗口内任一步骤异常退出，至少恢复原 current 并把原先正在运行的服务拉起。
-# 数据库 migration 不自动 downgrade；因此生产迁移仍必须遵守 expand/contract 向后兼容合同。
 release_failure_guard() {
   status=$?
   if [ "$status" -ne 0 ] && [ "$QUIESCED" = "1" ]; then
@@ -115,7 +126,6 @@ release_failure_guard() {
 trap release_failure_guard EXIT
 
 # 单机生产部署进入短暂静默窗口：先停 Web 和所有后台写入者，再在同一静默点取备份。
-# 这样备份不会落后于迁移前最后一笔业务写入，旧代码也不会在 Alembic 期间继续写库。
 if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
   systemctl stop "${ACTIVE_OLD_SERVICES[@]}"
 fi
@@ -130,9 +140,7 @@ mv "$backup_file.partial" "$backup_file"
 sha256sum "$backup_file" > "$backup_file.sha256"
 unset DB_PASSWORD_VALUE
 
-# Alembic/应用检查进程通过安全 env runner 获取完整生产环境，绝不 eval EnvironmentFile。
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
-# 动态校验仓库唯一 head 与数据库 current；禁止任何部署脚本写死具体 revision。
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
 
 if [ -e "$APP_ROOT/current" ] && [ ! -L "$APP_ROOT/current" ]; then
@@ -175,5 +183,11 @@ if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$SOURCE_ROOT/scripts/deploy
   exit 1
 fi
 
+# 生产主机证据不是 CI 截图：重新从已激活 release 自身执行预检+运行时验收，
+# 并把 commit/主机指纹/备份校验写成 0600 JSON。任何一步失败都不产生 PASS 证据。
+EXPECTED_RELEASE_COMMIT="$SOURCE_COMMIT" BACKUP_FILE="$backup_file" \
+  APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" \
+  bash "$RELEASE_DIR/scripts/deploy/accept-production-release.sh"
+
 trap - EXIT
-echo "Release $RELEASE_ID installed. Backup: $backup_file"
+echo "Release $RELEASE_ID installed. Commit: $SOURCE_COMMIT. Backup: $backup_file"
