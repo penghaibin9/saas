@@ -1,0 +1,55 @@
+/* Screenshot B -> C · Student Affairs risk metrics only.
+ * Restore the intended five-card desktop rhythm using the real AppMetricCard classes.
+ */
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+  width: 100%;
+  max-width: none;
+  flex: 0 0 auto;
+  align-self: stretch;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .app-metric-card {
+  min-height: 108px;
+  max-height: 112px;
+  padding: 13px 15px;
+  gap: 6px;
+  border-color: #dce5f2;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 14px 30px -30px rgba(15, 40, 90, .6);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .app-metric-card__title {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .app-metric-card__value {
+  font-size: 30px;
+  line-height: 1;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .app-metric-card__footer {
+  min-height: 12px;
+}
+
+@media (max-width: 1280px) {
+  #app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  #app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+    grid-template-columns: 1fr !important;
+  }
+}
