@@ -2,6 +2,8 @@
 
 > 面向：把系统部署到一台服务器供一所学校试点。按步骤执行；🟦=运维执行，🟩=脚本/模板已备。
 > 配套：`scripts/check/preflight-school-trial.*`（上线前预检）、`scripts/check/smoke-school-trial.*`（部署后冒烟）、`docs/07-部署运维交付与商业化/deploy/生产环境变量清单.md`、`nginx部署检查清单.md`、`HTTPS证书配置说明.md`。
+>
+> **备份/恢复只认 `deploy/README-data-governance.md`。** 正式 Linux 生产不要再用“单独 cron 调 `backup-mysql.sh`”作为上线方案。
 
 ## 阶段 0 · 准备
 1. 🟦 服务器：2C4G 起、Ubuntu 22 / 同类；开放 80/443（8000/3306 不对公网）。
@@ -36,9 +38,10 @@
 14. 🟩 就绪：`curl https://你的域名/health/ready` → `READY`。
 
 ## 阶段 5 · 运维
-15. 🟦 部署每日备份（`deploy/backup/backup-mysql.sh` + crontab 02:00）；每月做一次恢复演练（见运维手册）。
-16. 🟦 配监控告警（见《商用就绪度评估》建议）。
+15. 🟦 **一次性安装生产数据治理**：按 `deploy/README-data-governance.md` 配置 `backup.env` 与 rclone 异地目标，开启对象存储版本化/不可变保留/存储侧加密；安装 `school-lifecycle-backup.service/.timer` 和 `school-lifecycle-backup-watchdog.service/.timer`。正式基线为每 6 小时一个恢复点、watchdog 每小时检查。
+16. 🟦 首次上线只需人工验证一次：手动触发 1 次正式备份 → watchdog 通过 → 在隔离库执行 1 次恢复演练。之后由 systemd/CI 自动运行。生产字段加密密钥的受保护恢复副本必须放在应用服务器与 Git 之外。
+17. 🟦 配监控告警（见《商用就绪度评估》建议），并把 backup/watchdog systemd 失败纳入告警。
 
 ## 回滚
-17. 🟦 版本回滚：切回上一个稳定 tag → 重新 build → 重启；**改表前必先备份**，出问题优先恢复备份（见备份恢复演练手册）。
-18. 🟦 部署失败：保留旧 `dist/` 与旧后端进程，nginx 指回旧站点，先恢复可用再排查。
+18. 🟦 版本回滚：切回上一个稳定 tag → 重新 build → 重启；**改表前必须确认存在最新的 manifest-committed 完整恢复点**，数据库恢复只在隔离验证后按恢复流程执行。
+19. 🟦 部署失败：保留旧 `dist/` 与旧后端进程，nginx 指回旧站点，先恢复可用再排查。
