@@ -28,6 +28,7 @@ def _stu_token(real_name, student_no):
 
 def _seed(db_mode):
     """构造正式教学事实与官方 LOCKED 名单，供所有评教历史链复用。"""
+    from app.core.context import set_tenant
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -114,10 +115,15 @@ def _seed(db_mode):
         )
         student_ids[student_no] = int(student.id)
 
-    teaching_class = tc_service.ensure_teaching_class_for_task(
-        db, int(tt.id), initialize_admin_roster=True
-    )
-    db.flush()
+    # 正式 teaching-class service 必须依赖 request/tenant context；测试夹具也不得绕过租户隔离。
+    set_tenant({"tenantId": str(TID)})
+    try:
+        teaching_class = tc_service.ensure_teaching_class_for_task(
+            db, int(tt.id), initialize_admin_roster=True
+        )
+        db.flush()
+    finally:
+        set_tenant(None)
     assert teaching_class.roster_status == "LOCKED"
     assert teaching_class.current_roster_version_id is not None
 
