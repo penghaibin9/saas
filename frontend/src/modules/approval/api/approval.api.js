@@ -354,10 +354,16 @@ export const approvalApi = {
     const d = await request('/approvals/summary')
     return {
       ...d,
-      byBizType: (d.byBizType || []).map((x) => ({
-        ...x,
-        bizTypeLabel: BIZ_LABEL[x.bizType] || x.bizType || '审批'
-      })),
+      byBizType: (d.byBizType || []).map((x) => {
+        const label = BIZ_LABEL[x.bizType] || x.bizType || '审批'
+        return {
+          ...x,
+          label,
+          bizTypeLabel: label,
+          earliest: fmtTime(x.earliest),
+          overdue: Number(x.overdue || 0)
+        }
+      }),
       overdueList: (d.overdueList || []).map(taskRow)
     }
   }),
