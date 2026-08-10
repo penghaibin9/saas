@@ -12,13 +12,17 @@ failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
 if [ ! -f "$ENV_FILE" ]; then
   failure "缺少生产环境文件 $ENV_FILE"
   ops_token=""
+  public_base=""
 elif [ ! -f "$ENV_RUNNER" ]; then
   failure "当前 release 缺少安全 EnvironmentFile loader"
   ops_token=""
+  public_base=""
 else
-  # systemd EnvironmentFile 是数据文件，不可 shell source；这里只安全读取探针令牌。
+  # systemd EnvironmentFile 是数据文件，不可 shell source；这里只安全读取非业务运行参数。
   ops_token="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" INTERNAL_OPS_TOKEN 2>/dev/null || true)"
+  public_base="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" PUBLIC_BASE_URL 2>/dev/null || true)"
   [ -n "$ops_token" ] && pass "运维探针令牌可安全读取" || failure "INTERNAL_OPS_TOKEN 无法读取"
+  [ -n "$public_base" ] && pass "PUBLIC_BASE_URL 可安全读取" || failure "PUBLIC_BASE_URL 无法读取"
 fi
 
 for svc in school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan; do
@@ -34,6 +38,7 @@ printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/upl
 printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/exports/' \
   && pass "Nginx 包含 exports 保护规则" || failure "Nginx 缺少 /exports/ 保护规则"
 
+# 后端本机探针：区分应用本身故障与 Nginx/TLS 故障。
 health="$(curl -fsS --max-time 5 "$BASE_URL/health" 2>/dev/null || true)"
 ready="$(curl -fsS --max-time 15 -H "X-Ops-Token: $ops_token" "$BASE_URL/health/ready" 2>/dev/null || true)"
 printf '%s' "$health" | grep -q '"status":"UP"' && pass "/health UP" || failure "/health 异常"
@@ -79,11 +84,52 @@ for link in \
   [ -L "$link" ] && [ -e "$link/index.html" ] && pass "$link 原子静态链接正常" || failure "$link 静态链接异常"
 done
 
+# 不能只看 nginx -T：真实 TLS 虚拟主机必须能返回三端页面、安全头和文件拒绝规则。
+# --resolve 强制从本机 127.0.0.1 命中正式 server_name，同时仍按真实域名校验证书/SNI。
+if [[ "$public_base" == https://* ]]; then
+  read -r public_host public_port < <(python3 - "$public_base" <<'PY'
+from urllib.parse import urlsplit
+import sys
+u = urlsplit(sys.argv[1])
+if u.scheme != "https" or not u.hostname or (u.path not in ("", "/")) or u.query or u.fragment:
+    raise SystemExit(1)
+print(u.hostname, u.port or 443)
+PY
+  ) || true
+  if [ -n "${public_host:-}" ] && [ -n "${public_port:-}" ]; then
+    resolve_arg="${public_host}:${public_port}:127.0.0.1"
+    for path in / /portal/ /miniapp/; do
+      code="$(curl -sS --max-time 10 --resolve "$resolve_arg" -o /dev/null -w '%{http_code}' "${public_base}${path}" 2>/dev/null || true)"
+      [ "$code" = "200" ] && pass "公网 TLS ${path} HTTP 200" || failure "公网 TLS ${path} HTTP=$code"
+    done
+
+    for path in / /portal/index.html; do
+      headers="$(curl -sS --max-time 10 --resolve "$resolve_arg" -D - -o /dev/null "${public_base}${path}" 2>/dev/null || true)"
+      for header in strict-transport-security content-security-policy x-frame-options x-content-type-options; do
+        printf '%s\n' "$headers" | grep -qi "^${header}:" \
+          && pass "${path} 包含 ${header}" || failure "${path} 缺少 ${header}"
+      done
+    done
+
+    for path in /uploads/__release_probe__ /exports/__release_probe__; do
+      code="$(curl -sS --max-time 10 --resolve "$resolve_arg" -o /dev/null -w '%{http_code}' "${public_base}${path}" 2>/dev/null || true)"
+      [ "$code" = "404" ] && pass "公网 ${path} 被静态拒绝" || failure "公网 ${path} HTTP=$code，预期 404"
+    done
+
+    public_unauth="$(curl -sS --max-time 10 --resolve "$resolve_arg" "${public_base}/api/v1/mobile/me/overview" 2>/dev/null || true)"
+    printf '%s' "$public_unauth" | grep -q '401001' && pass "公网 API 未登录访问被拒绝" || failure "公网 API 鉴权冒烟失败"
+  else
+    failure "PUBLIC_BASE_URL 无法解析为 HTTPS origin"
+  fi
+else
+  failure "PUBLIC_BASE_URL 必须为 HTTPS origin"
+fi
+
 docs_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/docs" 2>/dev/null || true)"
 [ "$docs_code" = "404" ] && pass "生产文档端点关闭" || failure "/docs HTTP=$docs_code"
 # 401 本来就是期望结果，不能用 curl -f 吞掉响应体，否则永远匹配不到业务码 401001。
 unauth="$(curl -sS --max-time 5 "$BASE_URL/api/v1/mobile/me/overview" 2>/dev/null || true)"
-printf '%s' "$unauth" | grep -q '401001' && pass "未登录访问被拒绝" || failure "鉴权冒烟失败"
+printf '%s' "$unauth" | grep -q '401001' && pass "后端本机未登录访问被拒绝" || failure "后端本机鉴权冒烟失败"
 
 printf '== 发布验收：FAIL=%s ==\n' "$fail"
 [ "$fail" -eq 0 ]
