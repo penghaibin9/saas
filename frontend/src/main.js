@@ -8,6 +8,8 @@ import './styles/high-contrast-skin.css'
 import './styles/golden-refinement.css'
 // Screenshot F 微调：收紧学生筛选区并修正选课长标题断行。
 import './styles/golden-refinement-final.css'
+// Golden 业务页 rollout：学工 / 岗位实习 / 毕业设计代表性看板，页面唯一锚点生效。
+import './styles/golden-business-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
