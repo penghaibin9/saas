@@ -1,27 +1,30 @@
 /* Screenshot B → C final rollout refinement. Page-anchored, visual-only. */
 
-/* Student Affairs: balance nine real metrics as 5 + 4 centered cards. */
-#app .base-portal-layout .sa-grid--metrics {
+/* Student Affairs dashboard only: balance nine real metrics as 5 + 4 centered cards.
+ * The priority grid immediately precedes the dashboard metric grid; that adjacency is
+ * the stable page anchor and prevents these span rules leaking into risk/stats pages.
+ */
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics {
   grid-template-columns: repeat(10, minmax(0, 1fr));
 }
 
-#app .base-portal-layout .sa-grid--metrics > * {
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > * {
   grid-column: span 2;
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:nth-child(6) {
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > *:nth-child(6) {
   grid-column: 2 / span 2;
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:nth-child(7) {
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > *:nth-child(7) {
   grid-column: 4 / span 2;
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:nth-child(8) {
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > *:nth-child(8) {
   grid-column: 6 / span 2;
 }
 
-#app .base-portal-layout .sa-grid--metrics > *:nth-child(9) {
+#app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > *:nth-child(9) {
   grid-column: 8 / span 2;
 }
 
@@ -45,11 +48,11 @@
 }
 
 @media (max-width: 1280px) {
-  #app .base-portal-layout .sa-grid--metrics {
+  #app .base-portal-layout .sa-grid--priority + .sa-grid--metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  #app .base-portal-layout .sa-grid--metrics > * {
+  #app .base-portal-layout .sa-grid--priority + .sa-grid--metrics > * {
     grid-column: auto;
   }
 }
