@@ -70,7 +70,10 @@ def test_academic_extensions_are_aggregated_inside_domain_package():
     # extension routes disappear from the final public table. The bundle must flatten
     # concrete child routes before route_registration attaches the single aa dependency.
     assert "def _mount_routes(" in BUNDLE
-    assert "_mount_routes(router, base_router.router)" in BUNDLE
+    assert re.search(
+        r"_mount_routes\(\s*router,\s*base_router\.router(?:\s*,|\s*\))",
+        BUNDLE,
+    )
     for token in (
         "dashboard_readiness_router",
         "dynamic_grade_router",
