@@ -114,6 +114,20 @@ def test_search_hmac_does_not_change_when_encryption_key_rotates(rotate):
         settings.SENSITIVE_SEARCH_HMAC_KEY = ""
 
 
+def test_rotation_requires_explicit_stable_search_hmac_key(rotate, monkeypatch):
+    """出现历史加密钥匙后，搜索 HMAC 不能再隐式跟随当前主钥。"""
+    old_key = Fernet.generate_key().decode()
+    new_key = Fernet.generate_key().decode()
+    rotate(new_key, "2", previous=f"1:{old_key}")
+    monkeypatch.setattr(settings, "SENSITIVE_SEARCH_HMAC_KEY", "", raising=False)
+
+    with pytest.raises(RuntimeError, match="SENSITIVE_SEARCH_HMAC_KEY"):
+        fc.assert_field_encryption_safe()
+
+    monkeypatch.setattr(settings, "SENSITIVE_SEARCH_HMAC_KEY", old_key, raising=False)
+    fc.assert_field_encryption_safe()
+
+
 def test_invalid_previous_key_is_rejected_at_startup(rotate):
     rotate(Fernet.generate_key().decode(), "2", previous="1:这不是一把合法密钥")
     with pytest.raises(RuntimeError):

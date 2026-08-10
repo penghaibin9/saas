@@ -1,0 +1,3890 @@
+{
+ "mod_cols": [
+  {
+   "table": "t_aa_classroom",
+   "column": "capacity",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "room_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'LECTURE'",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'AVAILABLE'",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_course",
+   "column": "is_all_major",
+   "ddl": "tinyint(1) NOT NULL COMMENT '是否全校通用（Tier1 R2 补）'",
+   "add": false
+  },
+  {
+   "table": "t_aa_grade_task",
+   "column": "midterm_ratio",
+   "ddl": "int NOT NULL COMMENT '期中占比%(0=不启用期中)'",
+   "add": false
+  },
+  {
+   "table": "t_aa_registration",
+   "column": "eligibility_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资格核验结果 PENDING/ELIGIBLE/INELIGIBLE'",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED' COMMENT 'SUBMITTED/COLLEGE_REVIEW/ACADEMIC_REVIEW/APPROVED/REJECTED/CANCELLED/APPLIED'",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_schedule_item",
+   "column": "source",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'MANUAL/IMPORT/AUTO 手工/导入/自动排课(供漏排分析与重排边界识别)'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "capacity",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "min_capacity",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "selected_count",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OPEN'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "re_enroll",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SELECTED'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_aa_status_change",
+   "column": "decision_version",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_aa_teaching_task",
+   "column": "no_auto_schedule",
+   "ddl": "tinyint(1) NOT NULL COMMENT '不参与自动排课(如顶岗实习/集中实训/校外课程),自动排课跳过且不计入漏排'",
+   "add": false
+  },
+  {
+   "table": "t_acad_makeup",
+   "column": "kind",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'MAKEUP 常规补考 / CLEARANCE 毕业清考'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "activity_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVITY'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_credit",
+   "column": "credit_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SECOND_CLASS'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_credit",
+   "column": "credit_value",
+   "ddl": "decimal(6,2) NOT NULL DEFAULT '0.00'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_credit",
+   "column": "source",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVITY'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_credit",
+   "column": "granted_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_credit",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_signup",
+   "column": "signup_status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENROLLED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_signup",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_signup",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_signup",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_activity_signup",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_aid_objection",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_aid_objection",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_aid_objection",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_aid_objection",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_aid_objection",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_archive_package",
+   "column": "generation_attempts",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_affairs_attachment",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_attachment",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_attachment",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_attachment",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "club_type",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'INTEREST'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "member_count",
+   "ddl": "int NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_annual_review",
+   "column": "result",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PASS'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_annual_review",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_annual_review",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_annual_review",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_annual_review",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "role",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MEMBER'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_club_member",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "appeal_status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NONE'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "max_score",
+   "ddl": "decimal(6,2) NULL DEFAULT '100.00'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "sort_order",
+   "ddl": "int NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_counselor_eval_indicator",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "appeal_type",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MISSING'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "claim_credit_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SECOND_CLASS'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_appeal",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "sort_order",
+   "ddl": "int NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_credit_category",
+   "column": "weight",
+   "ddl": "decimal(6,2) NULL DEFAULT '1.00' COMMENT '类目加权系数（成绩单加权汇总；默认1）'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_discipline_appeal",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_discipline_appeal",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_discipline_appeal",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_discipline_appeal",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_discipline_appeal",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "item_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'REDUCTION'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_fee_reduction",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_disbursement",
+   "column": "bank_status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_disbursement",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_disbursement",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_disbursement",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_disbursement",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "dev_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PARTY'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "current_stage",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'APPLICANT'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ONGOING'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev_stage",
+   "column": "occurred_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev_stage",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev_stage",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev_stage",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_league_dev_stage",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_org_position",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_org_position",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_org_position",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_org_position",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_org_position",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "level",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'FOCUS'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'REFERRED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "loan_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ORIGIN'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'REGISTERED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_loan",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "org_type",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'STUDENT_UNION'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "level",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SCHOOL'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_student_org",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "hours",
+   "ddl": "decimal(6,2) NOT NULL DEFAULT '0.00'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_monthly",
+   "column": "rating",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PASS'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_monthly",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_monthly",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_monthly",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_monthly",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_post",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_post",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_post",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_post",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_post",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_record",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'APPLIED'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_record",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_record",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL DEFAULT now()",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_record",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_affairs_work_study_record",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_cs_discipline",
+   "column": "cs_student_id",
+   "ddl": "bigint NULL",
+   "add": false
+  },
+  {
+   "table": "t_cs_dorm_exception",
+   "column": "cs_student_id",
+   "ddl": "bigint NULL",
+   "add": false
+  },
+  {
+   "table": "t_cs_dorm_record",
+   "column": "cs_student_id",
+   "ddl": "bigint NULL",
+   "add": false
+  },
+  {
+   "table": "t_cs_grant",
+   "column": "cs_student_id",
+   "ddl": "bigint NULL",
+   "add": false
+  },
+  {
+   "table": "t_cs_work_order",
+   "column": "cs_student_id",
+   "ddl": "bigint NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "visibility",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "security_level",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "storage_backend",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "storage_zone",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "legal_hold",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "upload_source",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "scan_required",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "scan_status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_file_object",
+   "column": "scan_attempts",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_archive_record",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NOT_GENERATED'",
+   "add": false
+  },
+  {
+   "table": "t_gd_archive_record",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_archive_record",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_archive_record",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_archive_record",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "absent",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "round_no",
+   "ddl": "int NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_defense_score",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_grade",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_gd_grade",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_grade",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_grade",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_grade",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_guidance",
+   "column": "method",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ONLINE'",
+   "add": false
+  },
+  {
+   "table": "t_gd_guidance",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_guidance",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_guidance",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_guidance",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "mentor_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'INTERNAL'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "max_capacity",
+   "ddl": "int NOT NULL DEFAULT '8'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "current_count",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "qualification_status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING_REVIEW'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "assign_source",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MANUAL'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "confirmed_by_mentor",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "rectify_attempts",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_peer_review",
+   "column": "task_version",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'CHECKING'",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "threshold",
+   "ddl": "int NOT NULL DEFAULT '30'",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "over_threshold",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_plagiarism",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_review",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ASSIGNED'",
+   "add": false
+  },
+  {
+   "table": "t_gd_review",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_review",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_review",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_review",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "level",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MEDIUM'",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OPEN'",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_risk_case",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "taskbook_version",
+   "ddl": "int NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING_CONFIRM'",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "choice_order",
+   "ddl": "int NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "created_by",
+   "ddl": "varchar(100) COLLATE utf8mb4_unicode_ci NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_choice",
+   "column": "updated_by",
+   "ddl": "varchar(100) COLLATE utf8mb4_unicode_ci NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "round_no",
+   "ddl": "int NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "max_choices",
+   "ddl": "int NOT NULL DEFAULT '3'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "created_by",
+   "ddl": "varchar(100) COLLATE utf8mb4_unicode_ci NULL",
+   "add": false
+  },
+  {
+   "table": "t_gd_topic_round",
+   "column": "updated_by",
+   "ddl": "varchar(100) COLLATE utf8mb4_unicode_ci NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "student_confirm_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "enterprise_confirm_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "school_confirm_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "esign_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NONE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_agreement",
+   "column": "esign_provider",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'INTERNAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "volunteer_no",
+   "ddl": "int NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "status",
+   "ddl": "varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_application",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "completeness",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ARCHIVED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_archive",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_batch_plan",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_batch_plan",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_batch_plan",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_change_request",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_change_request",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_change_request",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "communication_type",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PHONE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "direction",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SCHOOL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "follow_up_required",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "follow_up_done",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NORMAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_communication_log",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "source",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'STUDENT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "severity",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MEDIUM'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "confidential_level",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NORMAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'RECEIVED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_complaint",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DRAFT/PENDING_REVIEW/APPROVED/REJECTED/EXPIRED/REVOKED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "template_version",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DRAFT/ACTIVE/RETIRED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "applicable",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'NOT_APPLICABLE/MISSING/PENDING/VALID/REJECTED/EXPIRED/SUPERSEDED/REVOKED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_consent",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DRAFT/PENDING_REVIEW/APPROVED/EXPIRED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "attendance_score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "skill_score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "attitude_score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "collaboration_score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "safety_score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "recommend_hire",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "source",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SCHOOL_RECORDED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "submit_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "school_review_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_eval",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "inspection_type",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'ONSITE/REMOTE/DOCUMENT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "inspection_required",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DRAFT/SUBMITTED/APPROVED/REJECTED/EXPIRED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "package_version",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "row_count",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "file_count",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "w_checkin",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "w_weekly",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "w_monthly",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "w_enterprise",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "w_school",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "pass_line",
+   "ddl": "float NOT NULL DEFAULT '60'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "is_pass",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "incomplete",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING_CALC'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_final_score",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "method",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ONSITE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "to_risk",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "notify_counselor",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NORMAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_guidance",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "incident_type",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "severity",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'LOW/MEDIUM/HIGH/CRITICAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "injury_flag",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'REPORTED/EMERGENCY_HANDLING/INVESTIGATING/RECTIFYING/PENDING_REVIEW/CLOSED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_incident",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_insurance",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NOT_SUBMITTED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_insurance",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_insurance",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_intention",
+   "column": "status",
+   "ddl": "varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_intention",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_intention",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_intention",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_intention",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "leave_type",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PERSONAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "days",
+   "ddl": "float NOT NULL DEFAULT '1'",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_leave",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "makeup_type",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MISSING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "match_type",
+   "ddl": "varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'MANUAL'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "score",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "major_hit",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "enterprise_hit",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "conflict_flag",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "status",
+   "ddl": "varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'RECOMMENDED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_match",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_ack",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_ack",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_ack",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_task_progress",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NOT_STARTED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_task_progress",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_plan_task_progress",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_process_report",
+   "column": "word_count",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_process_report",
+   "column": "status",
+   "ddl": "varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING_REVIEW'",
+   "add": false
+  },
+  {
+   "table": "t_internship_process_report",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_process_report",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'AGREED/PARTIAL/PAID/DISCREPANCY/UNCONFIRMED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "studied_minutes",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "attempt_count",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "passed",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "commitment_confirmed",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "review_mode",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'ONLINE_QUIZ/TEACHER_REVIEW'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'PENDING/PASSED/FAILED/EXPIRED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "course_version",
+   "ddl": "varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "required_minutes",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "passing_score",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "max_attempts",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "require_commitment",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DRAFT/ACTIVE/RETIRED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "checkin_weight",
+   "ddl": "int NOT NULL DEFAULT '20'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "weekly_weight",
+   "ddl": "int NOT NULL DEFAULT '20'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "monthly_weight",
+   "ddl": "int NOT NULL DEFAULT '10'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "enterprise_weight",
+   "ddl": "int NOT NULL DEFAULT '30'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "school_weight",
+   "ddl": "int NOT NULL DEFAULT '20'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "pass_line",
+   "ddl": "float NOT NULL DEFAULT '60'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_score_config",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "applicable",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "guardian_consent_required",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "status",
+   "ddl": "varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'NOT_REQUIRED/DRAFT/PENDING_COLLEGE/PENDING_SCHOOL/APPROVED/REJECTED/WITHDRAWN/EXPIRED/SUPERSEDED'",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "updated_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL COMMENT '逻辑删除'",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "version",
+   "ddl": "int NOT NULL COMMENT '乐观锁'",
+   "add": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "column": "created_at",
+   "ddl": "datetime NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "submit_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "school_review_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING'",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_student_eval",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "method",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ONSITE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "rectify_status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NONE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "method",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ONSITE'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "status",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "plan_type",
+   "ddl": "varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'VISIT'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "is_deleted",
+   "ddl": "tinyint(1) NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "version",
+   "ddl": "int NOT NULL DEFAULT '0'",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "created_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_internship_visit_plan",
+   "column": "updated_at",
+   "ddl": "datetime NULL",
+   "add": false
+  },
+  {
+   "table": "t_unified_message",
+   "column": "require_ack",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_unified_message",
+   "column": "content_version",
+   "ddl": "int NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_unified_message",
+   "column": "pinned",
+   "ddl": "tinyint(1) NOT NULL",
+   "add": false
+  },
+  {
+   "table": "t_affairs_funding_batch",
+   "column": "reserved_amount",
+   "ddl": "decimal(16,2) NOT NULL DEFAULT 0.00 COMMENT '已原子占用金额'",
+   "add": false
+  }
+ ],
+ "drop_idx": [
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_t_aa_classroom_building_code"
+  },
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_t_aa_classroom_room_code"
+  },
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_t_aa_classroom_status"
+  },
+  {
+   "table": "t_aa_schedule_batch",
+   "name": "ix_aa_sched_batch_supersedes"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_applicant_id"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_batch_id"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_change_type"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_class_id"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_origin_item_id"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_status"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_teacher_key"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_term_id"
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_t_aa_schedule_change_workflow_instance_id"
+  },
+  {
+   "table": "t_aa_schedule_item",
+   "name": "ix_aa_sched_item_room"
+  },
+  {
+   "table": "t_aa_schedule_item",
+   "name": "ix_aa_sched_item_source"
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "name": "ix_t_aa_selection_batch_status"
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "name": "ix_t_aa_selection_batch_term_id"
+  },
+  {
+   "table": "t_aa_selection_course",
+   "name": "ix_t_aa_selection_course_batch_id"
+  },
+  {
+   "table": "t_aa_selection_course",
+   "name": "ix_t_aa_selection_course_status"
+  },
+  {
+   "table": "t_aa_selection_course",
+   "name": "ix_t_aa_selection_course_teacher_key"
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_t_aa_selection_record_batch_id"
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_t_aa_selection_record_selection_course_id"
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_t_aa_selection_record_status"
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_t_aa_selection_record_student_id"
+  },
+  {
+   "table": "t_acad_makeup",
+   "name": "ix_acad_makeup_kind"
+  },
+  {
+   "table": "t_affairs_counselor_assessment",
+   "name": "ix_t_affairs_counselor_assessment_counselor_id"
+  },
+  {
+   "table": "t_affairs_leave_cancel_record",
+   "name": "ix_t_affairs_leave_cancel_record_student_id"
+  },
+  {
+   "table": "t_affairs_leave_cancel_record",
+   "name": "ix_t_affairs_leave_cancel_record_workflow_instance_id"
+  },
+  {
+   "table": "t_affairs_leave_extension",
+   "name": "ix_t_affairs_leave_extension_student_id"
+  },
+  {
+   "table": "t_affairs_leave_extension",
+   "name": "ix_t_affairs_leave_extension_workflow_instance_id"
+  }
+ ],
+ "add_idx": [
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_aa_classroom_building",
+   "cols": [
+    "building_code"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_aa_classroom_room",
+   "cols": [
+    "room_code"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_aa_classroom_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_classroom",
+   "name": "ix_aa_classroom_tenant",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_batch",
+   "name": "ix_t_aa_schedule_batch_supersedes_batch_id",
+   "cols": [
+    "supersedes_batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_aa_schedule_change_teacher",
+   "cols": [
+    "tenant_id",
+    "teacher_key"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_aa_schedule_change_tenant_status",
+   "cols": [
+    "tenant_id",
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_change",
+   "name": "ix_aa_schedule_change_term",
+   "cols": [
+    "tenant_id",
+    "term_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_item",
+   "name": "ix_t_aa_schedule_item_classroom_id",
+   "cols": [
+    "classroom_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_schedule_item",
+   "name": "ix_t_aa_schedule_item_source",
+   "cols": [
+    "source"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "name": "ix_aa_sel_batch_status",
+   "cols": [
+    "tenant_id",
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_batch",
+   "name": "ix_aa_sel_batch_term",
+   "cols": [
+    "tenant_id",
+    "term_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "name": "ix_aa_sel_course_batch",
+   "cols": [
+    "tenant_id",
+    "batch_id",
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_course",
+   "name": "ix_aa_sel_course_teacher",
+   "cols": [
+    "tenant_id",
+    "teacher_key"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_aa_sel_record_course",
+   "cols": [
+    "tenant_id",
+    "selection_course_id",
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_aa_selection_record",
+   "name": "ix_aa_sel_record_student",
+   "cols": [
+    "tenant_id",
+    "student_id",
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_acad_makeup",
+   "name": "ix_t_acad_makeup_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_acad_makeup",
+   "name": "ix_t_acad_makeup_kind",
+   "cols": [
+    "kind"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_acad_retake",
+   "name": "ix_t_acad_retake_apply_id",
+   "cols": [
+    "apply_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_affairs_activity",
+   "name": "ix_activity_tenant_type_status_start",
+   "cols": [
+    "tenant_id",
+    "activity_type",
+    "status",
+    "start_at"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_affairs_archive_package",
+   "name": "ix_t_affairs_archive_package_generation_lease_token",
+   "cols": [
+    "generation_lease_token"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_affairs_archive_package",
+   "name": "ix_t_affairs_archive_package_generation_lease_until",
+   "cols": [
+    "generation_lease_until"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_affairs_psy_referral",
+   "name": "ix_psy_referral_tenant_student",
+   "cols": [
+    "tenant_id",
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_affairs_volunteer_record",
+   "name": "ix_volunteer_tenant_student",
+   "cols": [
+    "tenant_id",
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_gd_mentor",
+   "name": "ix_t_gd_mentor_qualification_status",
+   "cols": [
+    "qualification_status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_gd_mentor_assignment",
+   "name": "ix_t_gd_mentor_assignment_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_gd_midterm",
+   "name": "ix_t_gd_midterm_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_gd_task_book",
+   "name": "ix_t_gd_task_book_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_gd_topic_change_request",
+   "name": "ix_t_gd_topic_change_request_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "name": "ix_ix_exempt_intern",
+   "cols": [
+    "tenant_id",
+    "internship_id",
+    "check_code",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "name": "ix_t_internship_compliance_exemption_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "name": "ix_t_internship_compliance_exemption_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_exemption",
+   "name": "ix_t_internship_compliance_exemption_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "name": "ix_t_internship_compliance_template_template_code",
+   "cols": [
+    "template_code"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_compliance_template",
+   "name": "ix_t_internship_compliance_template_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_ix_consent_intern",
+   "cols": [
+    "tenant_id",
+    "internship_id",
+    "consent_type",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_t_internship_consent_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_t_internship_consent_content_hash",
+   "cols": [
+    "content_hash"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_t_internship_consent_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_t_internship_consent_student_id",
+   "cols": [
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_consent",
+   "name": "ix_t_internship_consent_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "name": "ix_ix_emerg_company",
+   "cols": [
+    "tenant_id",
+    "company_id",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "name": "ix_t_internship_emergency_plan_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "name": "ix_t_internship_emergency_plan_company_id",
+   "cols": [
+    "company_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_emergency_plan",
+   "name": "ix_t_internship_emergency_plan_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "name": "ix_ix_ent_insp_tenant_company",
+   "cols": [
+    "tenant_id",
+    "company_id",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "name": "ix_t_internship_enterprise_inspection_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "name": "ix_t_internship_enterprise_inspection_company_id",
+   "cols": [
+    "company_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_enterprise_inspection",
+   "name": "ix_t_internship_enterprise_inspection_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "name": "ix_ix_evpkg_target",
+   "cols": [
+    "tenant_id",
+    "package_type",
+    "target_id",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "name": "ix_t_internship_evidence_package_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "name": "ix_t_internship_evidence_package_package_sha256",
+   "cols": [
+    "package_sha256"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_evidence_package",
+   "name": "ix_t_internship_evidence_package_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_ix_incident_batch",
+   "cols": [
+    "tenant_id",
+    "batch_id",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_company_id",
+   "cols": [
+    "company_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_idempotency_key",
+   "cols": [
+    "idempotency_key"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_student_id",
+   "cols": [
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_incident",
+   "name": "ix_t_internship_incident_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_makeup",
+   "name": "ix_t_internship_makeup_status",
+   "cols": [
+    "status"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "name": "ix_t_internship_remuneration_record_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "name": "ix_t_internship_remuneration_record_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "name": "ix_t_internship_remuneration_record_position_id",
+   "cols": [
+    "position_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_remuneration_record",
+   "name": "ix_t_internship_remuneration_record_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "name": "ix_t_internship_safety_completion_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "name": "ix_t_internship_safety_completion_course_id",
+   "cols": [
+    "course_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "name": "ix_t_internship_safety_completion_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "name": "ix_t_internship_safety_completion_student_id",
+   "cols": [
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_completion",
+   "name": "ix_t_internship_safety_completion_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "name": "ix_t_internship_safety_course_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_safety_course",
+   "name": "ix_t_internship_safety_course_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "name": "ix_ix_filing_intern",
+   "cols": [
+    "tenant_id",
+    "internship_id",
+    "is_deleted"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "name": "ix_t_internship_special_filing_batch_id",
+   "cols": [
+    "batch_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "name": "ix_t_internship_special_filing_internship_id",
+   "cols": [
+    "internship_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "name": "ix_t_internship_special_filing_student_id",
+   "cols": [
+    "student_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_internship_special_filing",
+   "name": "ix_t_internship_special_filing_tenant_id",
+   "cols": [
+    "tenant_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_risk_record",
+   "name": "ix_t_risk_record_source_id",
+   "cols": [
+    "source_id"
+   ],
+   "unique": false
+  },
+  {
+   "table": "t_risk_record",
+   "name": "ix_t_risk_record_source_type",
+   "cols": [
+    "source_type"
+   ],
+   "unique": false
+  }
+ ]
+}

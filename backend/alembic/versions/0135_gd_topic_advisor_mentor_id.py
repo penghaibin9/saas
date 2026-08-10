@@ -29,7 +29,9 @@ def upgrade() -> None:
           WHERE is_deleted = 0 AND teacher_name IS NOT NULL AND teacher_name <> ''
           GROUP BY tenant_id, teacher_name
           HAVING COUNT(*) = 1
-        ) m ON m.tenant_id = t.tenant_id AND m.teacher_name = t.advisor_name
+        ) m ON m.tenant_id = t.tenant_id
+          AND CONVERT(m.teacher_name USING utf8mb4) COLLATE utf8mb4_unicode_ci
+            = CONVERT(t.advisor_name USING utf8mb4) COLLATE utf8mb4_unicode_ci
         SET t.advisor_mentor_id = m.mentor_id
         WHERE t.advisor_mentor_id IS NULL AND t.is_deleted = 0
     """))

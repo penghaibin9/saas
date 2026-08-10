@@ -102,3 +102,22 @@ def test_outbox_consumer_drains_pending_events(db_mode):
     finally:
         db.close()
         set_tenant(None)
+
+
+def test_external_scheduler_runs_audit_outbox_consumer(monkeypatch):
+    """生产 SCHEDULER_MODE=external 时也必须消费审计 outbox。"""
+    from scripts import run_scheduled_jobs as scheduler
+    from app.modules.internship.services import internship_audit_service as svc
+
+    calls: list[dict] = []
+    monkeypatch.setattr(scheduler, "_schedulable_tenant_ids", lambda: [])
+    monkeypatch.setattr(scheduler, "_refresh_delivery_metrics", lambda: None)
+    monkeypatch.setattr(
+        svc,
+        "process_pending",
+        lambda **kwargs: calls.append(kwargs) or {"processed": 0, "failed": 0},
+    )
+
+    scheduler.job_delivery_and_outbox()
+
+    assert calls == [{"limit": 80, "worker_id": "scheduler-audit-outbox"}]

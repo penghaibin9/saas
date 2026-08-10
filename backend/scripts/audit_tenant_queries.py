@@ -18,6 +18,11 @@ SAFE_MARKERS = ("tenant_id", "_tid(", "current_tenant_id", "tenant_scope", "tena
 BASELINE = Path(__file__).resolve().parents[1] / "scripts" / "tenant-query-baseline.txt"
 
 
+def _normalize_location(value: str) -> str:
+    """Make baseline locations portable across Windows and Linux runners."""
+    return value.strip().replace("\\", "/")
+
+
 def _tenant_model_names() -> set[str]:
     """带 tenant_id 列的 ORM 模型名集合。
 
@@ -97,7 +102,7 @@ def main() -> int:
             start = max(0, node.lineno - 1)
             end = min(len(lines), getattr(node, "end_lineno", node.lineno) + 3)
             statement = " ".join(lines[start:end])
-            location = f"{path.relative_to(ROOT)}:{node.lineno}"
+            location = _normalize_location(f"{path.relative_to(ROOT)}:{node.lineno}")
             if (name == "get" and isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and node.func.value.id.lower() in {"db", "session"}):
@@ -131,7 +136,11 @@ def main() -> int:
         # 新增一处未带租户校验的裸取行 = 直接拦住 PR。
         old = set()
         if BASELINE.exists():
-            old = {l.strip() for l in BASELINE.read_text(encoding="utf-8").splitlines() if l.strip()}
+            old = {
+                _normalize_location(line)
+                for line in BASELINE.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            }
         now = set(direct_gets)
         added = sorted(now - old)
         removed = len(old - now)

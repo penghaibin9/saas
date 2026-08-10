@@ -134,6 +134,7 @@ def job_delivery_and_outbox() -> None:
     from app.services import message_event_outbox_service as msg_outbox
     from app.services import message_campaign_service as camp_svc
     from app.services import password_reset_service as password_reset_svc
+    from app.modules.internship.services import internship_audit_service as internship_audit
 
     for tenant_id in _schedulable_tenant_ids():
         set_tenant({"tenantId": str(tenant_id)})
@@ -155,6 +156,15 @@ def job_delivery_and_outbox() -> None:
                     limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id))
         finally:
             set_tenant(None)
+
+    # 审计 outbox 自身携带 tenant_id，消费者按行落到对应租户的安全审计表，
+    # 因此全局消费一次即可，不能只挂在 SCHEDULER_MODE=web 的 lifespan 中。
+    # 生产 compose 固定 external scheduler；没有这一步 PENDING 会永久堆积。
+    _run_isolated(
+        "internship_audit_outbox",
+        lambda: internship_audit.process_pending(
+            limit=80, worker_id="scheduler-audit-outbox"),
+    )
     _refresh_delivery_metrics()
 
 

@@ -33,6 +33,7 @@
 """
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 
@@ -41,18 +42,11 @@ VERSIONS = Path(__file__).resolve().parents[2] / "backend" / "alembic" / "versio
 # 历史欠账清单（冻结于 2026-08-10）。只允许**减少**，不允许增加。
 # 逐项收口方式：把 create_all 换成显式 op.create_table，并确认对既有库幂等。
 KNOWN_CREATE_ALL = {
+    # 0001 仍用 create_all 建"全仓没有任何正式建表脚本、只能由 ORM 生成"的那 133 张表。
+    # 它已经不再抢建有正式迁移的 291 张表（清单冻结在 0001 里），双路径实测收敛为 0 差异。
+    # 想彻底收口，需要把这 133 张表也各自补上显式 op.create_table —— 那是下一步，
+    # 在那之前这一条允许存在，但**不许再新增第二条**。
     "0001_init_core_tables.py",
-    "0002_tenant_portal_config.py",
-    "0044_13a_psy_referral.py",
-    "0051_gd_core_table_baseline.py",
-    "0053_internship_core_tables_baseline.py",
-    "0070_13b_r4_classroom.py",
-    "0106_runtime_preset_masters.py",
-    "0142_gd_excellent_delay_workflows.py",
-    "20260807_aa_grade_snapshot_cols.py",
-    "20260809_aa_academic_fact_c1.py",
-    "20260809_password_reset_sms_job.py",
-    "4c722c7c33fa_add_t_feedback.py",
 }
 
 
@@ -65,8 +59,18 @@ def main() -> int:
     found = set()
     for path in sorted(VERSIONS.glob("*.py")):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if "metadata.create_all" in text or "metadata.drop_all" in text:
-            found.add(path.name)
+        # 只看真实调用：文档字符串/注释里提到 create_all 这几个字不算违规，
+        # 否则"解释为什么不能用 create_all"的迁移反而会被自己拦下。
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("create_all", "drop_all")):
+                found.add(path.name)
+                break
 
     added = sorted(found - KNOWN_CREATE_ALL)
     fixed = sorted(KNOWN_CREATE_ALL - found)
@@ -91,4 +95,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
