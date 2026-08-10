@@ -132,6 +132,7 @@ def job_delivery_and_outbox() -> None:
     from app.services import message_delivery_service as delivery_svc
     from app.services import message_event_outbox_service as msg_outbox
     from app.services import message_campaign_service as camp_svc
+    from app.services import password_reset_service as password_reset_svc
 
     for tenant_id in _schedulable_tenant_ids():
         set_tenant({"tenantId": str(tenant_id)})
@@ -147,6 +148,10 @@ def job_delivery_and_outbox() -> None:
             _run_isolated(
                 f"repair_publishing:{tenant_id}",
                 lambda: camp_svc.repair_publishing_without_jobs(limit=20))
+            _run_isolated(
+                f"password_reset_sms:{tenant_id}",
+                lambda: password_reset_svc.process_delivery_jobs(
+                    limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id))
         finally:
             set_tenant(None)
     _refresh_delivery_metrics()

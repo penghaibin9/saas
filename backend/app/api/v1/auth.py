@@ -1,7 +1,7 @@
 """认证：mock 登录 / 当前用户 / 切换身份。路径对齐用户需求 §四。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.config import settings
 from app.core.response import success
@@ -65,6 +65,60 @@ class CaptchaRequest(BaseModel):
 def captcha(body: CaptchaRequest):
     return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.loginName,
                                              body.clientNonce, body.clientType))
+
+
+class PasswordResetRequest(BaseModel):
+    tenantCode: str | None = Field(None, max_length=100)
+    loginName: str = Field(..., min_length=1, max_length=100)
+    captchaId: str = Field(..., min_length=1, max_length=100)
+    captchaCode: str = Field(..., min_length=4, max_length=12)
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+    clientType: str = Field("PC", max_length=40)
+
+
+class PasswordResetVerifyRequest(BaseModel):
+    requestId: str = Field(..., min_length=10, max_length=100)
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+    clientType: str = Field("PC", max_length=40)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    resetToken: str = Field(..., min_length=20, max_length=200)
+    newPassword: str = Field(..., min_length=8, max_length=128)
+    confirmPassword: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post("/password-reset/request", summary="学生/教师短信找回密码：发送验证码（统一响应，避免账号枚举）")
+def request_password_reset(body: PasswordResetRequest, background_tasks: BackgroundTasks):
+    captcha_svc.verify_captcha(
+        body.captchaId, body.captchaCode, captcha_svc.PASSWORD_RESET,
+        body.tenantCode, body.loginName, body.clientNonce, body.clientType,
+    )
+    from app.services import password_reset_service
+    result, delivery = password_reset_service.begin_reset(
+        body.loginName, body.tenantCode, body.clientNonce, body.clientType,
+    )
+    if delivery is not None:
+        background_tasks.add_task(password_reset_service.dispatch_code, delivery)
+    return success(result, message="若账号存在且已绑定手机号，验证码将发送到该手机号")
+
+
+@router.post("/password-reset/verify", summary="学生/教师短信找回密码：校验一次性验证码")
+def verify_password_reset(body: PasswordResetVerifyRequest):
+    from app.services import password_reset_service
+    return success(password_reset_service.verify_reset_code(
+        body.requestId, body.code, body.clientNonce, body.clientType,
+    ), message="身份验证通过")
+
+
+@router.post("/password-reset/confirm", summary="学生/教师短信找回密码：设置新密码并注销旧会话")
+def confirm_password_reset(body: PasswordResetConfirmRequest):
+    if body.newPassword != body.confirmPassword:
+        raise AppException("VALIDATION_ERROR", "两次输入的新密码不一致")
+    from app.services import password_reset_service
+    return success(password_reset_service.confirm_reset(body.resetToken, body.newPassword),
+                   message="密码已重置，请使用新密码登录")
 
 
 @router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")

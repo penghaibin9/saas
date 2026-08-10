@@ -298,6 +298,18 @@ export async function issueLoginCaptcha(payload) {
   return rawRequest('/auth/captcha', { method: 'POST', auth: false, forceProbe: true, body: payload })
 }
 
+export async function requestPasswordResetCode(payload) {
+  return rawRequest('/auth/password-reset/request', { method: 'POST', auth: false, forceProbe: true, body: payload })
+}
+
+export async function verifyPasswordResetCode(payload) {
+  return rawRequest('/auth/password-reset/verify', { method: 'POST', auth: false, forceProbe: true, body: payload })
+}
+
+export async function confirmPasswordReset(payload) {
+  return rawRequest('/auth/password-reset/confirm', { method: 'POST', auth: false, forceProbe: true, body: payload })
+}
+
 /** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
 export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()

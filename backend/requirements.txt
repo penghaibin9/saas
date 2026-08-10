@@ -22,3 +22,6 @@ cos-python-sdk-v5>=1.9,<2.0
 qcloud-python-sts>=3.1,<4.0
 # SYS-05 业务关系注册表（docs/architecture/business-relation-registry.yaml）解析。
 PyYAML>=6.0,<7.0
+# 短信真实 Provider（按 SMS_PROVIDER 选择，代码中延迟导入）。
+alibabacloud_dysmsapi20170525>=3.1,<4.0
+tencentcloud-sdk-python-sms>=3.0,<4.0

@@ -51,6 +51,7 @@
       </div>
       <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
     </section>
+    <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" @close="resetVisible = false" @done="resetDone" />
   </main>
 </template>
 
@@ -61,6 +62,7 @@ import { useSessionStore } from '../../stores/session'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useUiStore } from '../../stores/ui'
 import LoginCaptcha from '../../components/auth/LoginCaptcha.vue'
+import PasswordResetDialog from '../../components/auth/PasswordResetDialog.vue'
 import { portalApi } from '../../services/portalApi'
 
 const REMEMBER_KEY = 'student_portal_login_name'
@@ -78,6 +80,7 @@ const loading = ref(false)
 const showPwd = ref(false)
 const remember = ref(false)
 const agree = ref(false)
+const resetVisible = ref(false)
 const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: `student-${Date.now()}-${Math.random()}` })
 const platformName = computed(() => cfg.brand?.platformName || cfg.portalName || '学生服务门户')
 const brandLogo = computed(() => cfg.brand?.logo || '')
@@ -95,7 +98,14 @@ onMounted(() => {
 })
 
 function forgotPassword() {
-  ui.notify('找回密码短信仅用于身份验证；功能开通前请联系学校管理员重置')
+  resetVisible.value = true
+}
+
+function resetDone(account) {
+  loginName.value = account || loginName.value
+  password.value = ''
+  resetVisible.value = false
+  ui.notify('密码已重置，请使用新密码登录')
 }
 
 async function refreshCaptcha() {

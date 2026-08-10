@@ -101,6 +101,7 @@ async def _cancel_tasks(tasks: list) -> None:
 # 「该跑迁移了」这件事在启动日志里说清楚，不阻止启动、不自动改库结构。
 _REQUIRED_TABLES = {
     "t_student_account_link": "学生账号绑定（学号更正后仍能登录/收消息）",
+    "t_password_reset_sms_job": "学生密码重置短信可靠投递",
 }
 
 
@@ -163,6 +164,21 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(_sandbox_loop(), name="sandbox-midnight-reset"))
 
     if db_enabled():
+        async def _password_reset_sms_loop():
+            from anyio import to_thread
+            from app.services.password_reset_service import process_delivery_jobs
+            while True:
+                try:
+                    await to_thread.run_sync(lambda: process_delivery_jobs(limit=30, worker_id="web-password-reset"))
+                    await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    return
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("app.password_reset").exception("password reset SMS worker failed")
+                    await asyncio.sleep(5)
+
+        tasks.append(asyncio.create_task(_password_reset_sms_loop(), name="password-reset-sms"))
+
         def _student_affairs_background_once():
             from sqlalchemy import select
 
