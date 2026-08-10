@@ -360,3 +360,244 @@
     display: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * Golden Foundation · 2026-08-10
+ * 目标：提升管理 PC 的信息可读性与层级质感，不改变路由、权限、状态机与业务结构。
+ * 这组覆盖优先服务 Workbench / 学生主档 / 选课控制台三张 Golden 页面，随后再决定
+ * 是否向其它业务页推广；因此只使用已存在的结构类，不新增业务语义。
+ * -------------------------------------------------------------------------- */
+
+/* 壳层：减少“厚重后台”感，保留清透学院蓝的识别度。 */
+#app .base-portal-layout .bpl-topbar {
+  min-height: 60px;
+  height: 60px;
+  padding-inline: 20px;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--deep1) 18%, transparent);
+}
+
+#app .base-portal-layout .bpl-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--pri) 28%, transparent);
+}
+
+#app .base-portal-layout .bpl-cmdk {
+  height: 38px;
+  border-radius: 10px;
+}
+
+#app .base-portal-layout .bpl-cmdk:hover,
+#app .base-portal-layout .bpl-cmdk.is-open {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pri) 18%, transparent);
+}
+
+#app .base-portal-layout .bpl-main {
+  padding: 24px 28px 36px;
+}
+
+#app .base-portal-layout .mp-card,
+#app .base-portal-layout .app-card,
+#app .base-portal-layout .wb-v2__panel {
+  border-radius: 14px;
+  box-shadow: 0 8px 28px -24px color-mix(in srgb, var(--deep1) 35%, transparent);
+}
+
+#app .base-portal-layout .mp-card:hover,
+#app .base-portal-layout .app-card:hover {
+  box-shadow: 0 12px 30px -24px color-mix(in srgb, var(--deep1) 42%, transparent);
+}
+
+/* Workbench Golden：先修读得清，再谈装饰。原实现大量 8–11px 文案在 1440p 下过小。 */
+#app .base-portal-layout .wb-v2__layout {
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 18px;
+}
+
+#app .base-portal-layout .wb-v2__main,
+#app .base-portal-layout .wb-v2__context {
+  gap: 14px;
+}
+
+#app .base-portal-layout .wb-v2__hero {
+  min-height: 220px;
+  padding: 28px 32px;
+  border-radius: 16px;
+  box-shadow: 0 18px 42px -24px rgba(10, 83, 222, 0.7);
+}
+
+#app .base-portal-layout .wb-v2__hero-art .wb-v2__glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#app .base-portal-layout .wb-v2__action-grid {
+  gap: 12px;
+}
+
+#app .base-portal-layout .wb-v2__action-card {
+  min-height: 112px;
+  padding: 16px 17px;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px -24px rgba(18, 62, 130, 0.72);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+#app .base-portal-layout .wb-v2__action-card:hover,
+#app .base-portal-layout .wb-v2__stat-card:hover,
+#app .base-portal-layout .wb-v2__favorite-grid button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px -24px rgba(18, 62, 130, 0.68);
+}
+
+#app .base-portal-layout .wb-v2__section-head h2 {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+#app .base-portal-layout .wb-v2__section-head p,
+#app .base-portal-layout .wb-v2__stat-card small,
+#app .base-portal-layout .wb-v2__type-strip > span,
+#app .base-portal-layout .wb-v2__text-btn {
+  font-size: 12px;
+}
+
+#app .base-portal-layout .wb-v2__stat-card em,
+#app .base-portal-layout .wb-v2__type-strip button {
+  font-size: 11px;
+}
+
+#app .base-portal-layout .wb-v2__todo-main strong,
+#app .base-portal-layout .wb-v2__rhythm strong,
+#app .base-portal-layout .wb-v2__favorite-grid button strong {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .wb-v2__todo-main small,
+#app .base-portal-layout .wb-v2__todo-due,
+#app .base-portal-layout .wb-v2__rhythm small,
+#app .base-portal-layout .wb-v2__favorite-grid button small,
+#app .base-portal-layout .wb-v2__help small,
+#app .base-portal-layout .wb-v2__risk small {
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .wb-v2__time,
+#app .base-portal-layout .wb-v2__help strong,
+#app .base-portal-layout .wb-v2__risk strong,
+#app .base-portal-layout .wb-v2__quick > div button {
+  font-size: 11.5px;
+}
+
+#app .base-portal-layout .wb-v2__stat-card,
+#app .base-portal-layout .wb-v2__favorite-grid button,
+#app .base-portal-layout .wb-v2__quick > div button {
+  border-radius: 12px;
+}
+
+/* 选课控制台 Golden：保留主从控制台结构，把“微缩字”提升到可持续办公尺寸。 */
+#app .base-portal-layout .aasel-layout {
+  grid-template-columns: minmax(300px, 330px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+#app .base-portal-layout .aasel-list-card,
+#app .base-portal-layout .aasel-section,
+#app .base-portal-layout .aasel-placeholder {
+  border-radius: 16px;
+  box-shadow: 0 12px 32px -28px rgba(15, 23, 42, 0.46);
+}
+
+#app .base-portal-layout .aasel-list-head {
+  padding: 18px 18px 15px;
+}
+
+#app .base-portal-layout .aasel-eyebrow,
+#app .base-portal-layout .aasel-batch p,
+#app .base-portal-layout .aasel-batch-next span,
+#app .base-portal-layout .aasel-batch-next b,
+#app .base-portal-layout .aasel-hero-meta span,
+#app .base-portal-layout .aasel-next-card > span,
+#app .base-portal-layout .aasel-next-action small,
+#app .base-portal-layout .aasel-metrics span,
+#app .base-portal-layout .aasel-section-head p,
+#app .base-portal-layout .aasel-inline-empty p,
+#app .base-portal-layout .aasel-capacity > div:first-child {
+  font-size: 12px;
+}
+
+#app .base-portal-layout .aasel-batch-top strong,
+#app .base-portal-layout .aasel-next-card > p,
+#app .base-portal-layout .aasel-next-action b,
+#app .base-portal-layout .aasel-inline-empty strong {
+  font-size: 13px;
+}
+
+#app .base-portal-layout .aasel-batch {
+  gap: 10px;
+  padding: 14px 15px;
+  border-radius: 13px;
+}
+
+#app .base-portal-layout .aasel-hero {
+  padding: 25px 27px;
+  border-radius: 18px;
+}
+
+#app .base-portal-layout .aasel-hero h2 {
+  font-size: 26px;
+}
+
+#app .base-portal-layout .aasel-next-card {
+  padding: 18px;
+  border-radius: 14px;
+}
+
+#app .base-portal-layout .aasel-next-card > strong {
+  font-size: 18px;
+}
+
+#app .base-portal-layout .aasel-metrics {
+  gap: 12px;
+}
+
+#app .base-portal-layout .aasel-metrics article {
+  padding: 16px 17px;
+  border-radius: 13px;
+}
+
+#app .base-portal-layout .aasel-metrics strong {
+  font-size: 23px;
+}
+
+#app .base-portal-layout .aasel-metrics small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+#app .base-portal-layout .aasel-section-head {
+  padding: 18px 20px;
+}
+
+#app .base-portal-layout .aasel-table-wrap {
+  padding: 6px 12px 12px;
+}
+
+@media (max-width: 1480px) {
+  #app .base-portal-layout .wb-v2__layout {
+    grid-template-columns: minmax(0, 1fr) 286px;
+  }
+}
+
+@media (max-width: 1280px) {
+  #app .base-portal-layout .bpl-main {
+    padding-inline: 22px;
+  }
+
+  #app .base-portal-layout .aasel-layout {
+    grid-template-columns: minmax(280px, 310px) minmax(0, 1fr);
+  }
+}
