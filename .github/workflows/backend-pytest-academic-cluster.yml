@@ -1,0 +1,127 @@
+name: Backend pytest academic debt probes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/tests/test_aa_*.py'
+      - 'backend/tests/test_academic_*.py'
+      - 'backend/app/modules/academic_affairs/**'
+      - 'backend/app/api/v1/academic*.py'
+      - 'backend/app/services/academic*.py'
+      - 'backend/requirements.txt'
+      - 'scripts/check/sanitize_pytest_junit.py'
+      - 'scripts/check/summarize_pytest_junit_diagnostics.py'
+      - '.github/workflows/backend-pytest-academic-cluster.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-academic-debt-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Academic debt / ${{ matrix.case }}
+    if: github.head_ref == 'fix/backend-pytest-debt-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: archive
+            nodeid: tests/test_aa_archive.py::test_ar1_batch_and_check
+          - case: autoschedule
+            nodeid: tests/test_aa_autoschedule.py::test_auto_schedule_places_sessions
+          - case: grade
+            nodeid: tests/test_aa_grade.py::test_g1_compose_publish_project
+          - case: evaluation
+            nodeid: tests/test_aa_evaluation.py::test_ev1_full_flow
+          - case: schedule-change
+            nodeid: tests/test_aa_schedule_change.py::test_c1_adjust_full_chain_applied
+          - case: selection
+            nodeid: tests/test_aa_selection.py::test_s1_full_lifecycle
+          - case: teaching-task
+            nodeid: tests/test_aa_teaching_task.py::test_tt1_full_chain
+          - case: graduation
+            nodeid: tests/test_aa_graduation.py::test_gr1_precheck_passed
+          - case: orgs
+            nodeid: tests/test_aa_orgs.py::test_o1_college_major_class_crud
+          - case: mobile
+            nodeid: tests/test_aa_mobile.py::test_mb1_schedule_my
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Run representative historical nodeid
+        id: pytest
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="test-results/academic-debt/${{ matrix.case }}"
+          XML="$DIR/raw.xml"
+          RAW="$DIR/raw.log"
+          mkdir -p "$DIR"
+          set +e
+          timeout 12m pytest '${{ matrix.nodeid }}' -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$rc" > "$DIR/pytest-exit.txt"
+          if [ -f "$XML" ]; then
+            python ../scripts/check/summarize_pytest_junit_diagnostics.py "$XML" --output "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+            python ../scripts/check/sanitize_pytest_junit.py "$XML"
+            mv "$XML" "$DIR/sanitized.xml"
+          else
+            printf '# Secret-safe pytest diagnostics\n\nJUnit XML was not produced; pytest exit code: `%s`.\n' "$rc" > "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$RAW"
+          exit 0
+      - name: Upload secret-safe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-debt-${{ matrix.case }}
+          path: backend/test-results/academic-debt/${{ matrix.case }}/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve real pytest result
+        if: always()
+        shell: bash
+        run: exit '${{ steps.pytest.outputs.exit_code }}'
