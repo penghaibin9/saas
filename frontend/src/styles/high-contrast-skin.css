@@ -685,3 +685,52 @@
 #app .base-portal-layout .aasel-metrics small {
   font-size: 11.5px;
 }
+
+/* Screenshot C → D：只收敛截图中仍可见的宽度、对齐和标题权重。 */
+#app .base-portal-layout .wb-v2__layout {
+  grid-template-columns: minmax(0, 1fr) 272px;
+  gap: 16px;
+}
+
+#app .base-portal-layout .wb-v2__context {
+  min-width: 0;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .af__ops {
+  min-height: 40px;
+  align-self: flex-end;
+  gap: 10px;
+  padding-bottom: 1px;
+}
+
+#app .base-portal-layout .af:has(.sl-voided-toggle) .sl-voided-toggle {
+  min-height: 40px;
+  padding-inline: 3px;
+  align-items: center;
+}
+
+#app .base-portal-layout .aasel-batch-top {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+#app .base-portal-layout .aasel-batch-top strong {
+  font-size: 12.5px;
+  line-height: 1.38;
+}
+
+#app .base-portal-layout .aasel-hero h2 {
+  max-width: 26ch;
+  font-size: 23px;
+  line-height: 1.22;
+}
+
+#app .base-portal-layout .aasel-next-card {
+  min-width: 220px;
+}
+
+@media (max-width: 1480px) {
+  #app .base-portal-layout .wb-v2__layout {
+    grid-template-columns: minmax(0, 1fr) 264px;
+  }
+}
