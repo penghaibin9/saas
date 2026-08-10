@@ -39,12 +39,46 @@ def _seed(db_mode):
     return ids
 
 
+def _ensure_term():
+    """移动端旧测试不得继续用魔法 termId=1，统一复用正式学期主数据。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+
+    db = get_sessionmaker()()
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == TID,
+        AaTerm.year_code == "2023-2024",
+        AaTerm.term_no == 1,
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        term = AaTerm(
+            tenant_id=TID,
+            year_code="2023-2024",
+            term_no=1,
+            term_name="2023-2024第1学期",
+            status="PUBLISHED",
+            is_current=True,
+        )
+        db.add(term)
+        db.flush()
+    term_id = int(term.id)
+    db.commit()
+    db.close()
+    return term_id
+
+
 def _published_schedule(client, admin, class_id, teacher_key="counselor01"):
-    bid = client.post(f"{AA}/schedule-batches", headers=admin, json={"termId": "1"}).json()["data"]["batchId"]
-    client.post(f"{AA}/schedule-batches/{bid}/items", headers=admin, json={
+    term_id = _ensure_term()
+    created = client.post(f"{AA}/schedule-batches", headers=admin, json={"termId": str(term_id)})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    item = client.post(f"{AA}/schedule-batches/{bid}/items", headers=admin, json={
         "weekday": 1, "slotNo": 1, "teacherKey": teacher_key, "teacherName": "王老师",
         "classId": str(class_id), "className": "软件2301", "classroom": "A101", "courseName": "高数"})
-    client.post(f"{AA}/schedule-batches/{bid}/publish", headers=admin)
+    assert item.status_code == 200, item.text
+    published = client.post(f"{AA}/schedule-batches/{bid}/publish", headers=admin)
+    assert published.status_code == 200, published.text
     return bid
 
 
@@ -59,9 +93,13 @@ def test_mb1_schedule_my(client, db_mode):
 def test_mb2_transcript_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    tid = client.post(f"{AA}/grade-tasks", headers=admin, json={
-        "courseName": "高数", "termCode": "2023-1", "credit": 4, "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+    term_id = _ensure_term()
+    created = client.post(f"{AA}/grade-tasks", headers=admin, json={
+        "courseName": "高数", "termId": str(term_id), "termCode": "2023-2024-1", "credit": 4,
+        "usualRatio": 30, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert created.status_code == 200, created.text
+    tid = created.json()["data"]["gradeTaskId"]
     client.post(f"{AA}/grade-tasks/{tid}/scores", headers=admin,
                 json={"studentId": str(ids["student"]), "usualScore": 85, "finalScore": 90})
     # R1 起成绩发布必须走完整审核链：提交→学院审→教务终审发布（school_admin01 在审核角色白名单内可代行）
