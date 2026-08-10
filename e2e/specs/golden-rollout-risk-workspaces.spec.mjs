@@ -196,7 +196,7 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
     await closeGraduationRiskFixture(adminApi, graduationFixture)
   })
 
-  test('Student Affairs risk warning · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs risk warning · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/student-affairs/risk')
 
@@ -206,10 +206,10 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(affairsFixture.riskId).not.toBe('')
 
-    await capture(page, testInfo, 'rollout-risk-student-affairs-a')
+    await capture(page, testInfo, 'rollout-risk-student-affairs-b')
   })
 
-  test('Internship risk board · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship risk board · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/internship/risks')
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -221,10 +221,10 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(internshipFixture.riskId).not.toBe('')
 
-    await capture(page, testInfo, 'rollout-risk-internship-a')
+    await capture(page, testInfo, 'rollout-risk-internship-b')
   })
 
-  test('Graduation risk workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation risk workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/graduation/risk-archive?tab=risk')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -236,6 +236,6 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
     await expect(page.locator('.rk-split')).toBeVisible()
     await expect(page.locator('.rk-row').first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-risk-graduation-a')
+    await capture(page, testInfo, 'rollout-risk-graduation-b')
   })
 })
