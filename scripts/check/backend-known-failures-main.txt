@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 45 precisely validated academic nodeids, and 1 rbac09 nodeid.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 56 precisely validated academic nodeids, and 1 rbac09 nodeid.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -157,17 +157,6 @@ tests/test_aa_student_textbook_workspace.py::test_textbook_route_uses_dedicated_
 tests/test_aa_student_transcript_safety.py::test_portal_package_exports_transcript_safety_facade
 tests/test_aa_teaching_plan_r3.py::test_tp1_change_creates_new_version_with_audit
 tests/test_aa_teaching_plan_r3.py::test_tp4_review_publish_workbench_status_filters
-tests/test_aa_teaching_task.py::test_tt10_adjust_task_partial_update_and_teacher_reconfirm
-tests/test_aa_teaching_task.py::test_tt11_adjust_task_conflicts_and_permission
-tests/test_aa_teaching_task.py::test_tt1_full_chain
-tests/test_aa_teaching_task.py::test_tt2_generate_idempotent
-tests/test_aa_teaching_task.py::test_tt3_program_credit_shortfall_blocks_submit
-tests/test_aa_teaching_task.py::test_tt4_batch_submit_with_unassigned_409
-tests/test_aa_teaching_task.py::test_tt5_two_level_confirm_approve_ready
-tests/test_aa_teaching_task.py::test_tt6_review_return_then_reconfirm
-tests/test_aa_teaching_task.py::test_tt7_merge_then_split
-tests/test_aa_teaching_task.py::test_tt8_merge_validation
-tests/test_aa_teaching_task.py::test_tt9_cross_batch_list_and_teacher_scope
 tests/test_aa_textbook.py::test_t1_full_chain
 tests/test_aa_textbook.py::test_t4_review_return
 tests/test_aa_textbook.py::test_t6_partial_fee_and_stock
