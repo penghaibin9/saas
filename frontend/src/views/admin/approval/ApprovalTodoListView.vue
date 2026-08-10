@@ -118,10 +118,12 @@
 
     <AppDrawer v-model:visible="transferDrawer" title="批量转交待办">
       <p class="mp-note" style="margin: 0 0 var(--space-3)">
-        已选 {{ selected.length }} 条待办将转交给同一位办理人，任务状态不变、办理节点转移并留痕。
+        已选 {{ selected.length }} 条待办仅展示对全部任务都满足“当前节点角色 + 数据范围”的可转办人员。
       </p>
+      <p v-if="transferTargetsLoading" class="mp-note">正在核验所选任务的可转办人员…</p>
       <div
-        v-for="t in ctx.transferTargets"
+        v-for="t in transferTargets"
+        v-else
         :key="t.userId"
         class="mp-radio"
         :class="{ 'is-active': transferForm.targetUserId === t.userId }"
@@ -130,9 +132,12 @@
         <input type="radio" :checked="transferForm.targetUserId === t.userId" style="margin-top: 3px" />
         <div>
           <div class="mp-radio__title">{{ t.userName }} · {{ t.roleName }}</div>
-          <div class="mp-radio__desc">{{ t.orgName }} · 当前在办 {{ t.pendingCount }} 条</div>
+          <div class="mp-radio__desc">{{ t.orgName || '当前数据范围' }} · 当前在办 {{ t.pendingCount }} 条</div>
         </div>
       </div>
+      <p v-if="!transferTargetsLoading && !transferTargets.length && !transferError" class="mp-note">
+        所选任务没有共同满足节点角色与数据范围的可转办人员。
+      </p>
       <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">转交说明（选填）</label>
       <textarea
         v-model="transferForm.note"
@@ -142,7 +147,7 @@
       <p v-if="transferError" class="mp-form-err">{{ transferError }}</p>
       <template #footer>
         <AppButton variant="ghost" @click="transferDrawer = false">取消</AppButton>
-        <AppButton variant="primary" :loading="submitting" @click="doBatchTransfer">确认转交</AppButton>
+        <AppButton variant="primary" :loading="submitting" :disabled="transferTargetsLoading" @click="doBatchTransfer">确认转交</AppButton>
       </template>
     </AppDrawer>
   </ModulePageShell>
@@ -199,6 +204,8 @@ export default {
       returnDialog: false,
       exportDialog: false,
       transferDrawer: false,
+      transferTargets: [],
+      transferTargetsLoading: false,
       transferForm: { targetUserId: '', note: '' },
       transferError: '',
       submitting: false,
@@ -266,7 +273,7 @@ export default {
     },
     urgencyTone(urgency) {
       if (urgency === 'OVERDUE') return 'danger'
-      if (urgency === 'URGENT') return 'warning'
+      if (urgency === 'URGENT' || urgency === 'NEAR_DEADLINE') return 'warning'
       return 'default'
     },
     maskNo(v) {
@@ -288,14 +295,20 @@ export default {
     onToolbar(key) {
       if (key === 'exportRecords') this.exportDialog = true
     },
-    onBatch(key) {
+    async onBatch(key) {
       if (!this.can(key)) return
       if (key === 'batchApprove') this.approveDialog = true
       if (key === 'batchReturn') this.returnDialog = true
       if (key === 'batchTransfer') {
         this.transferForm = { targetUserId: '', note: '' }
         this.transferError = ''
+        this.transferTargets = []
         this.transferDrawer = true
+        this.transferTargetsLoading = true
+        const res = await approvalApi.getTransferTargets([...this.selected])
+        this.transferTargetsLoading = false
+        if (res.code === 0) this.transferTargets = res.data
+        else this.transferError = res.message
       }
     },
     async doBatchApprove() {
@@ -330,6 +343,10 @@ export default {
         this.transferError = '请选择转交对象'
         return
       }
+      if (!this.transferTargets.some((x) => String(x.userId) === String(this.transferForm.targetUserId))) {
+        this.transferError = '该人员已不在所选任务的共同可转办范围，请重新打开转交列表'
+        return
+      }
       this.submitting = true
       const res = await approvalApi.batchTransfer([...this.selected], {
         targetUserId: this.transferForm.targetUserId,
@@ -338,7 +355,7 @@ export default {
       this.submitting = false
       if (res.code === 0) {
         this.transferDrawer = false
-        toast.success('批量转交完成：' + res.data.succeeded + ' 条已转交给 ' + res.data.transferredTo + '，任务状态不变并已留痕')
+        toast.success('批量转交完成：' + res.data.succeeded + ' 条已转交给 ' + res.data.transferredTo + '，原任务留痕并生成新待办')
         this.afterMutate()
       } else {
         this.transferError = res.message
@@ -350,7 +367,7 @@ export default {
       this.submitting = false
       this.exportDialog = false
       if (res.code === 0) {
-        toast.success('导出任务已创建（' + res.data.auditId + '）：字段已脱敏、文件含水印，本次导出已写入审计日志')
+        toast.success('导出任务已创建（' + (res.data.auditId || res.data.taskId) + '）：后台异步生成，导出动作已写入审计日志')
         this.loadAudits()
       } else {
         toast.error(res.message)
@@ -358,6 +375,7 @@ export default {
     },
     afterMutate() {
       this.selected = []
+      this.transferTargets = []
       this.load()
       this.loadAudits()
     },
