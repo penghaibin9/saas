@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 
 from app.api.v1.file_contract import validated_local_file_response
+from app.core.exceptions import AppException
 from app.core.idempotency import idempotency_guard
 from app.core.response import paginate, success
 from app.core.security import get_current_user, require_staff
@@ -28,6 +29,17 @@ from app.services import approval_template_service as adminsvc
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
+def _require_idempotency_key(value: str | None) -> str:
+    key = str(value or "").strip()
+    if not key:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "Idempotency-Key 必填，关键批量/导出操作禁止无幂等保护执行",
+            http_status=400,
+        )
+    return key
+
+
 @router.get("/summary", summary="审批中心待办统计（真实服务端）")
 def approval_summary(user=Depends(require_staff)):
     return success(runtime.summary(user=user))
@@ -39,9 +51,19 @@ def list_tasks(
     pageSize: int = Query(20, ge=1, le=200),
     keyword: str | None = Query(None, max_length=100),
     bizType: str | None = Query(None, max_length=100),
+    urgency: str | None = Query(None, max_length=30),
+    submitDate: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
-    items, total = runtime.list_tasks(page, pageSize, user=user, keyword=keyword, biz_type=bizType)
+    items, total = runtime.list_tasks(
+        page,
+        pageSize,
+        user=user,
+        keyword=keyword,
+        biz_type=bizType,
+        urgency=urgency,
+        submit_date=submitDate,
+    )
     return success(paginate(items, total, page, pageSize))
 
 
@@ -79,9 +101,9 @@ def returned_tasks(
     return success(paginate(items, total, page, pageSize))
 
 
-@router.get("/transfer-targets", summary="可转办教职工（同租户真实账号）")
-def transfer_targets(user=Depends(require_staff)):
-    return success(runtime.transfer_targets(user=user))
+@router.get("/tasks/{task_id}/transfer-targets", summary="当前任务可转办教职工")
+def transfer_targets(task_id: str, user=Depends(require_staff)):
+    return success(runtime.transfer_targets(task_id, user=user))
 
 
 @router.get("/templates", summary="审批模板列表（真实流程定义）")
@@ -159,6 +181,7 @@ def batch_process(
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    idempotency_key = _require_idempotency_key(idempotency_key)
     payload = {
         "action": body.action,
         "items": [{"taskId": x.taskId, "version": x.version} for x in body.items],
@@ -193,6 +216,7 @@ def create_export(
     user=Depends(require_staff),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    idempotency_key = _require_idempotency_key(idempotency_key)
     with idempotency_guard(
         user,
         "approval-export",
