@@ -1,5 +1,6 @@
 <template>
-  <main class="platform-login">
+  <ForcePasswordChangeView v-if="$route.query.forcePasswordChange === '1'" login-route="/platform-login" />
+  <main v-else class="platform-login">
     <section class="brand-panel">
       <div class="brand-mark">S</div>
       <div>
@@ -53,10 +54,11 @@
 <script>
 import { clearAuthSession, isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
 import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
+import ForcePasswordChangeView from '@/views/ForcePasswordChangeView.vue'
 
 export default {
   name: 'PlatformLoginView',
-  components: { LoginCaptcha },
+  components: { LoginCaptcha, ForcePasswordChangeView },
   data() {
     return {
       loading: false,
@@ -100,10 +102,14 @@ export default {
           return
         }
         if (this.captcha.code.length !== 6) { this.error = '请输入图中 6 位验证码'; return }
-        await loginWithPassword(loginName, this.form.password, this.form.tenantCode || 'platform', { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
+        const data = await loginWithPassword(loginName, this.form.password, this.form.tenantCode || 'platform', { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
         if (!isPlatformSuperAdmin()) {
           clearAuthSession()
           this.error = '此账号不是平台超级管理员，请使用学校端登录。'
+          return
+        }
+        if (data?.user?.mustChangePassword) {
+          await this.$router.replace({ path: '/platform-login', query: { forcePasswordChange: '1' } })
           return
         }
         await this.$router.push('/admin/platform/overview')
