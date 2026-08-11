@@ -33,18 +33,18 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - lane: grade-core
-            nodeids: >-
-              tests/test_aa_grade.py
           - lane: grade-review
             nodeids: >-
               tests/test_aa_grade_review_flow.py
-          - lane: exam
+          - lane: stats
             nodeids: >-
-              tests/test_aa_exam.py
-          - lane: scheduling
+              tests/test_aa_stats.py tests/test_aa_stats_r3.py
+          - lane: recognition-textbook
             nodeids: >-
-              tests/test_aa_scheduling_tier1_r2.py
+              tests/test_aa_recognition.py tests/test_aa_textbook.py
+          - lane: grade-followup
+            nodeids: >-
+              tests/test_aa_bugfix_regression.py tests/test_aa_clearance.py tests/test_aa_effective_grade_identity.py tests/test_aa_grade_recheck.py tests/test_aa_grade_recheck_audit.py tests/test_aa_grade_task_uniqueness_and_archive.py
     services:
       mysql:
         image: mysql:8.0
