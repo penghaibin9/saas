@@ -123,7 +123,7 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     internshipGuidance = await prepareInternshipGuidance(mentorApi, internshipFixture)
   })
 
-  test('Student Affairs talk ledger · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs talk ledger · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/talk/ledger')
 
@@ -131,13 +131,14 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await expect(page.getByRole('heading', { name: '谈心谈话台账', exact: true })).toBeVisible()
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
     await expect(page.locator('.tl-filters')).toBeVisible()
+    await expect(page.locator('.tl-filters')).toHaveCSS('border-radius', '14px')
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: talkFixture.topic }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-process-affairs-talk-ledger-a')
+    await capture(page, testInfo, 'rollout-process-affairs-talk-ledger-b')
   })
 
-  test('Internship guidance workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship guidance workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/internship/guidance?panel=guidance&batchId=${encodeURIComponent(internshipFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path, {
@@ -154,14 +155,15 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await expect(target).toBeVisible()
     await target.click()
     await expect(target).toHaveClass(/is-active/)
+    await expect(page.locator('.gv-main')).toHaveCSS('border-radius', '16px')
     await expect(page.locator('.gv-main')).toContainText(internshipFixture.studentName)
     await expect(page.locator('.gv-main')).toContainText('指导详情')
     await expect(page.locator('.gv-main')).toContainText(internshipGuidance.content)
 
-    await capture(page, testInfo, 'rollout-process-internship-guidance-a')
+    await capture(page, testInfo, 'rollout-process-internship-guidance-b')
   })
 
-  test('Graduation mentor assignment ledger · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation mentor assignment ledger · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/graduation/mentors?panel=assign')
 
@@ -173,8 +175,9 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
 
     const assignmentTable = page.locator('.dt').filter({ hasText: '学生 ← 导师' }).first()
     await expect(assignmentTable).toBeVisible()
+    await expect(assignmentTable).toHaveCSS('border-radius', '14px')
     await expect(assignmentTable.locator('.dt__tr').filter({ hasText: graduationFixture.mentorName }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-process-graduation-mentor-assignment-a')
+    await capture(page, testInfo, 'rollout-process-graduation-mentor-assignment-b')
   })
 })
