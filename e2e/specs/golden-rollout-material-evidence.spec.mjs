@@ -2,7 +2,6 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
-import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const graduationMaterialStudent = { tenant: 'sandbox-school', username: 'E2E20260003', password: 'E2eTest@2026' }
@@ -52,6 +51,13 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
+async function openWithApiSession(page, api, path) {
+  await page.addInitScript(({ token }) => {
+    window.sessionStorage.setItem('gx_pc_token_v1', token)
+  }, { token: api.token })
+  await page.goto(`${config.staffBaseUrl}${path}`)
+}
+
 async function setBatchStorage(page, key, value) {
   await page.evaluate(({ storageKey, storageValue }) => {
     window.localStorage.setItem(storageKey, String(storageValue))
@@ -65,8 +71,7 @@ async function findStudent(api, studentNo) {
   return profile
 }
 
-async function prepareStudentAffairsArchiveFixture() {
-  const admin = await loginApi(config.sandboxAdmin)
+async function prepareStudentAffairsArchiveFixture(admin) {
   const marker = runId()
   const student = await findStudent(admin, graduationMaterialStudent.username)
   const created = await admin.post('/student-affairs/archive/batches', {
@@ -89,15 +94,13 @@ async function prepareStudentAffairsArchiveFixture() {
   }
 }
 
-async function prepareInternshipMaterialFixture() {
+async function prepareInternshipMaterialFixture(admin) {
   const fixture = await loadInternshipFixture()
-  const admin = await loginApi(config.sandboxAdmin)
   const synced = await admin.post(`/internship/material-center/${fixture.internshipId}/sync`, {})
   return { ...fixture, syncedCount: (synced.items || []).length, unsafeCount: (synced.unsafe || []).length }
 }
 
-async function prepareGraduationMaterialFixture() {
-  const admin = await loginApi(config.sandboxAdmin)
+async function prepareGraduationMaterialFixture(admin) {
   const marker = runId()
   const baseBatchNo = `PW-GOLD-MAT-${marker}`
   const year = new Date().getUTCFullYear()
@@ -173,9 +176,8 @@ async function prepareGraduationMaterialFixture() {
   return { batchId: String(batch.id), batchName: batch.batchName, gdStudentId: String(gdStudent.id) }
 }
 
-async function closeGraduationMaterialFixture(fixture) {
-  if (!fixture?.batchId) return
-  const admin = await loginApi(config.sandboxAdmin)
+async function closeGraduationMaterialFixture(admin, fixture) {
+  if (!admin || !fixture?.batchId) return
   try {
     await admin.post(`/graduation/batches/${fixture.batchId}/close`, {})
   } catch (error) {
@@ -184,24 +186,28 @@ async function closeGraduationMaterialFixture(fixture) {
 }
 
 test.describe.serial('Golden rollout · materials / archive / evidence · Batch 4', () => {
+  let adminApi
   let affairsFixture
   let internshipFixture
   let graduationFixture
 
   test.beforeAll(async () => {
-    affairsFixture = await prepareStudentAffairsArchiveFixture()
-    internshipFixture = await prepareInternshipMaterialFixture()
-    graduationFixture = await prepareGraduationMaterialFixture()
+    // Screenshot evidence is not a login test. Authenticate once through the real API and
+    // reuse that production-valid session for fixture setup, all three pages and cleanup.
+    // This deliberately respects the real login throttle instead of weakening or bypassing it.
+    adminApi = await loginApi(config.sandboxAdmin)
+    affairsFixture = await prepareStudentAffairsArchiveFixture(adminApi)
+    internshipFixture = await prepareInternshipMaterialFixture(adminApi)
+    graduationFixture = await prepareGraduationMaterialFixture(adminApi)
   })
 
   test.afterAll(async () => {
-    await closeGraduationMaterialFixture(graduationFixture)
+    await closeGraduationMaterialFixture(adminApi, graduationFixture)
   })
 
   test('Student Affairs archive · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-    await page.goto(`${config.staffBaseUrl}/admin/student-affairs/archive`)
+    await openWithApiSession(page, adminApi, '/admin/student-affairs/archive')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/archive/)
     await expect(page.locator('.av-workspace')).toBeVisible()
@@ -218,9 +224,9 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Internship student materials · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    await openWithApiSession(page, adminApi, `/admin/internship/students/${encodeURIComponent(internshipFixture.internshipId)}/materials`)
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
-    await page.goto(`${config.staffBaseUrl}/admin/internship/students/${encodeURIComponent(internshipFixture.internshipId)}/materials`)
+    await page.reload()
 
     await expect(page).toHaveURL(/\/admin\/internship\/students\/[^/]+\/materials/)
     await expect(page.locator('.ism-summary')).toBeVisible()
@@ -232,9 +238,9 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Graduation material center · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    await openWithApiSession(page, adminApi, '/admin/graduation/material-center?tab=students')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
-    await page.goto(`${config.staffBaseUrl}/admin/graduation/material-center?tab=students`)
+    await page.reload()
 
     await expect(page).toHaveURL(/\/admin\/graduation\/material-center/)
     await expect(page.locator('.mc-hero')).toBeVisible()
