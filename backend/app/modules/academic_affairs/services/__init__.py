@@ -4,8 +4,22 @@
 旧实现或依赖导入顺序抢占函数。
 """
 
-# 各域最终公开入口。
+# 第一个公开入口完成基础 db_service -> app.models 初始化。
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
+
+# 有效成绩安全层必须在其它可能按值导入 policy 函数的业务 Service 之前安装。
+# 过去这组模块由 app.models.academic_affairs_registry 反向 import，冷启动会形成
+# services -> db_service -> app.models -> registry -> services -> db_service 的循环依赖。
+# 现在模型注册表保持 model-only，在基础模型完成后由 Service 包统一、按固定顺序安装：
+# 兼容身份/学期顺序 -> 当前学期 -> ACTIVE-only -> 无策略 fail-closed。
+from . import academic_affairs_effective_grade_policy_compat
+from . import academic_affairs_effective_grade_policy_current_term
+from . import academic_affairs_effective_grade_active_only
+from . import academic_affairs_effective_grade_policy_failclosed
+
+academic_affairs_effective_grade_policy_failclosed.install()
+
+# 其余各域最终公开入口。
 from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
