@@ -5,8 +5,8 @@ RF4 ACADEMIC_TEACHER 无教务终审权限(即使有academicAffairs.*通配)403�
 RF5 归档后更正409；RF6 更正学院驳回原值不变；RF7 更正两级通过新值生效+source=CHANGE；
 RF8 学生令牌全端点403。
 
-历史测试曾用自由文本 termCode/courseName 创建管理员补录任务。当前正式合同要求管理员特殊补录
-绑定真实 termId、稳定 courseId 和显式行政班名单；本文件夹具按生产合同补齐，不放宽后端门禁。
+本文件测试的是成绩审核/发布/更正主链，统一使用真实 AaTerm + AaCourse + READY 教学任务创建成绩任务；
+管理员特殊补录的 courseId/termId 边界由专门合同测试覆盖，避免旁支入口拖住整组审核状态机回归。
 """
 from __future__ import annotations
 
@@ -111,15 +111,47 @@ def _class_id():
     return value
 
 
+def _ensure_teaching_task():
+    """按正式教学任务主链建立 READY 任务；审核流测试不借管理员特殊补录旁路。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    term_id = _ensure_term()
+    course_id = _ensure_course()
+    class_id = _class_id()
+    db = get_sessionmaker()()
+    course = db.get(AaCourse, course_id)
+    batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=term_id, batch_name="成绩审核教学任务批次", status="APPROVED",
+    )
+    db.add(batch); db.flush()
+    task = AaTeachingTask(
+        tenant_id=TID,
+        batch_id=batch.id,
+        course_id=course.id,
+        course_code=course.course_code,
+        course_name=course.course_name,
+        credit=course.credit,
+        class_id=class_id,
+        teaching_class_name="软件2602",
+        teacher_key="school_admin01",
+        teacher_name="学校管理员",
+        weekly_hours=4,
+        start_week=1,
+        end_week=18,
+        status="READY",
+    )
+    db.add(task); db.flush()
+    task_id = int(task.id)
+    db.commit(); db.close()
+    return task_id
+
+
 def _task(client, hdr, usual=30, final=70):
     response = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "termId": str(_ensure_term()),
-        "courseId": str(_ensure_course()),
-        "courseName": "大学物理",
-        "classId": str(_class_id()),
+        "teachingTaskId": str(_ensure_teaching_task()),
         "usualRatio": usual,
         "finalRatio": final,
-        "adminSupplementReason": "测试管理员补录成绩任务，绑定正式学期课程与行政班",
     })
     assert response.status_code == 200, response.text
     return response.json()["data"]["gradeTaskId"]
@@ -157,7 +189,7 @@ def test_rf2_return_reason_too_short_422(client, db_mode):
 
 
 def test_rf3_teacher_cross_course_scope_403(client, db_mode):
-    """管理员建立的特殊补录任务，普通任课教师不得跨对象录入。"""
+    """真实教学任务归属 school_admin01，普通任课教师不得跨对象录入。"""
     sids = _seed(db_mode, 1)
     admin_hdr = _hdr(client, "school_admin01")
     tid = _task(client, admin_hdr)
