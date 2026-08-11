@@ -136,21 +136,30 @@ def test_reject_requires_reason_and_student_forbidden(client, db_mode):
 
 
 def test_target_course_picker_and_attachment(client, db_mode):
-    """课程库选择器(targetCourseId→权威快照名) + 佐证附件(FileObject)；无效附件 fail-closed。"""
+    """课程库选择器 + 文件中心证据：不存在文件404；本人 TEMP_PRIVATE 安全文件可冻结到正式申请。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     from app.db.session import get_sessionmaker
-    from app.models import FileObject
+    from app.models import FileObject, User
     db = get_sessionmaker()()
-    f = FileObject(tenant_id=TID, file_key="k/1.pdf", file_name="成绩证明.pdf", biz_type="ATTACHMENT", status="STORED")
+    admin_user = db.query(User).filter(
+        User.tenant_id == TID, User.login_name == "school_admin01", User.is_deleted.is_(False)
+    ).first()
+    assert admin_user is not None
+    f = FileObject(
+        tenant_id=TID, file_key="k/1.pdf", file_name="成绩证明.pdf",
+        biz_type="TEMP_PRIVATE", biz_id=None, owner_user_id=admin_user.id,
+        visibility="PRIVATE", status="AVAILABLE", scan_required=False, scan_status="NOT_REQUIRED",
+        sha256="a" * 64,
+    )
     db.add(f); db.flush()
     fid = f.id
     db.commit(); db.close()
 
-    bad = client.post(f"{BASE}/grade-recognitions", headers=admin,
-                      json={"studentNo": "RN2401", "sourceCourseName": "高数A", "sourceScore": 82,
-                            "targetCourseId": str(ids["target"]), "attachmentFileIds": ["999999"]})
-    assert bad.status_code == 400, bad.text
+    missing = client.post(f"{BASE}/grade-recognitions", headers=admin,
+                          json={"studentNo": "RN2401", "sourceCourseName": "高数A", "sourceScore": 82,
+                                "targetCourseId": str(ids["target"]), "attachmentFileIds": ["999999"]})
+    assert missing.status_code == 404, missing.text
     ok = client.post(f"{BASE}/grade-recognitions", headers=admin,
                      json={"studentNo": "RN2401", "sourceCourseName": "高数A", "sourceScore": 82,
                            "sourceCredit": 4, "targetCourseId": str(ids["target"]),
