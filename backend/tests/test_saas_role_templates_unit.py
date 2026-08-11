@@ -322,7 +322,10 @@ def test_identity_import_api_has_no_raw_json_account_creation_bypass():
     }
 
 
-def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher():
+def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher(monkeypatch):
+    # 纯单元测试不连接数据库；显式模拟“租户内已证明姓名唯一”，只验证
+    # 尚未回填 advisor_user_id 的历史记录兼容。生产查询异常仍必须 fail-closed。
+    monkeypatch.setattr(mobile_teacher_service._impl, "_real_name_is_ambiguous", lambda _name: False)
     scope = _resolve_scope_with_tenant({
         "userId": "db-17", "userType": "TEACHER",
         "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
