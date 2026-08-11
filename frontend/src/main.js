@@ -42,6 +42,8 @@ import './styles/golden-exception-recovery-rollout.css'
 import './styles/golden-cyclical-work-rollout.css'
 // Golden 关键确认 / 回执与成果状态 rollout：学工家校回执 / 毕设成果检查；实习协议待 batch-context 修复后再收编。
 import './styles/golden-confirmation-documents-rollout.css'
+// Golden 消息中心 rollout：我的消息 / 通知发布 / 发送统计。
+import './styles/golden-message-center-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 

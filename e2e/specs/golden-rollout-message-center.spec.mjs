@@ -47,7 +47,7 @@ test.describe.serial('Golden rollout · message center / communication · Batch 
     adminApi = await loginApi(config.sandboxAdmin)
   })
 
-  test('Message inbox workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message inbox workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/inbox')
 
@@ -59,10 +59,25 @@ test.describe.serial('Golden rollout · message center / communication · Batch 
     await expect(page.locator('.mc-inbox__detail')).toBeVisible()
     await expect(page.getByText('加载消息…', { exact: true })).toHaveCount(0)
 
-    await capture(page, testInfo, 'rollout-message-center-inbox-a')
+    const visual = await page.locator('.mc-inbox').evaluate((el) => {
+      const nav = el.querySelector('.mc-inbox__nav')
+      const style = getComputedStyle(el)
+      return {
+        height: el.getBoundingClientRect().height,
+        radius: parseFloat(style.borderRadius) || 0,
+        navWidth: nav?.getBoundingClientRect().width || 0
+      }
+    })
+    expect(visual.height).toBeGreaterThanOrEqual(490)
+    expect(visual.height).toBeLessThanOrEqual(530)
+    expect(visual.radius).toBeGreaterThanOrEqual(14)
+    expect(visual.navWidth).toBeGreaterThanOrEqual(175)
+    expect(visual.navWidth).toBeLessThanOrEqual(185)
+
+    await capture(page, testInfo, 'rollout-message-center-inbox-b')
   })
 
-  test('Message compose workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message compose workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/compose')
 
@@ -74,10 +89,27 @@ test.describe.serial('Golden rollout · message center / communication · Batch 
     await expect(page.locator('.mc-steps li.is-on')).toContainText('1 内容')
     await expect(page.getByRole('button', { name: '下一步', exact: true }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-message-center-compose-a')
+    const visual = await page.locator('.mc-compose').evaluate((el) => {
+      const steps = el.querySelector('.mc-steps')
+      const card = el.querySelector('.mc-card')
+      return {
+        stepsWidth: steps?.getBoundingClientRect().width || 0,
+        stepsRadius: parseFloat(getComputedStyle(steps).borderRadius) || 0,
+        cardWidth: card?.getBoundingClientRect().width || 0,
+        cardRadius: parseFloat(getComputedStyle(card).borderRadius) || 0
+      }
+    })
+    expect(visual.stepsWidth).toBeGreaterThanOrEqual(850)
+    expect(visual.stepsWidth).toBeLessThanOrEqual(890)
+    expect(visual.cardWidth).toBeGreaterThanOrEqual(850)
+    expect(visual.cardWidth).toBeLessThanOrEqual(890)
+    expect(visual.stepsRadius).toBeGreaterThanOrEqual(10)
+    expect(visual.cardRadius).toBeGreaterThanOrEqual(14)
+
+    await capture(page, testInfo, 'rollout-message-center-compose-b')
   })
 
-  test('Message delivery statistics workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message delivery statistics workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/statistics')
 
@@ -90,6 +122,22 @@ test.describe.serial('Golden rollout · message center / communication · Batch 
     await expect(page.getByText('按类型', { exact: true })).toBeVisible()
     await expect(page.getByText('渠道状态', { exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-message-center-statistics-a')
+    const visual = await page.locator('.mc-stats').evaluate((el) => {
+      const toolbar = el.querySelector('.mc-stats__toolbar')
+      const metric = el.querySelector('.mc-grid .mc-card')
+      const panel = el.querySelector('.mc-panel')
+      return {
+        toolbarRadius: parseFloat(getComputedStyle(toolbar).borderRadius) || 0,
+        metricHeight: metric?.getBoundingClientRect().height || 0,
+        metricRadius: parseFloat(getComputedStyle(metric).borderRadius) || 0,
+        panelRadius: parseFloat(getComputedStyle(panel).borderRadius) || 0
+      }
+    })
+    expect(visual.toolbarRadius).toBeGreaterThanOrEqual(10)
+    expect(visual.metricHeight).toBeGreaterThanOrEqual(84)
+    expect(visual.metricRadius).toBeGreaterThanOrEqual(13)
+    expect(visual.panelRadius).toBeGreaterThanOrEqual(14)
+
+    await capture(page, testInfo, 'rollout-message-center-statistics-b')
   })
 })
