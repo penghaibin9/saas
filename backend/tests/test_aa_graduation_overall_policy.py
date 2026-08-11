@@ -1,5 +1,6 @@
 """Stage C3 不可变毕业 evaluator 的 fail-closed overall 合同。"""
 from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
+from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation_service
 
 
 def _item(code: str, result: str):
@@ -37,3 +38,10 @@ def test_any_fail_still_blocks_formal_precheck():
 def test_empty_or_missing_result_fails_closed():
     assert immutable._strict_overall([]) == "SYSTEM_ABNORMAL"
     assert immutable._strict_overall([{"item": "STATUS"}]) == "SYSTEM_ABNORMAL"
+
+
+def test_compat_projection_recompute_uses_same_stage_c3_policy():
+    """费用回填等旧 projection 写入口不得再把 immutable UNKNOWN 重新算成 PASS。"""
+    assert graduation_service._overall is immutable._strict_overall
+    rows = [_item("STATUS", "PASS"), _item("ARCHIVE", "UNKNOWN"), _item("FEE", "PASS")]
+    assert graduation_service._overall(rows) == "SYSTEM_ABNORMAL"
