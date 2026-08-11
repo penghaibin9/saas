@@ -3,7 +3,7 @@
 
 用法：
   python scripts/check/select_pytest_targets.py
-  # 输出空格分隔的 pytest 路径/glob，无命中时输出安全默认集合
+  # 输出空格分隔的真实 pytest 文件路径，无命中时输出安全默认集合
 
 选择原则：
 - 改动过的后端测试必须原样执行；
@@ -162,12 +162,22 @@ def select(files: list[str]) -> list[str]:
 
 
 def existing_targets(targets: list[str]) -> list[str]:
-    """剔除不存在的精确路径或无匹配通配符，避免 pytest 把它们当成错误参数。"""
+    """把 glob 展开成真实文件，并剔除不存在的精确路径。
+
+    Main canonical workflow 会把选择结果读入 shell array 后逐参数传给 pytest；
+    shell 不会再次展开数组元素里的通配符。因此选择器必须在这里完成 glob
+    展开，不能把 ``tests/test_portal_*.py`` 这类字面量交给 pytest。
+    """
     existing: list[str] = []
+    seen: set[str] = set()
     for target in targets:
         has_glob = any(ch in target for ch in "*?[")
-        if (has_glob and glob(target)) or (not has_glob and os.path.exists(target)):
-            existing.append(target)
+        matches = sorted(glob(target)) if has_glob else ([target] if os.path.exists(target) else [])
+        for match in matches:
+            normalized = match.replace("\\", "/")
+            if normalized not in seen:
+                seen.add(normalized)
+                existing.append(normalized)
     return existing
 
 

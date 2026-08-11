@@ -70,6 +70,27 @@ def test_academic_source_only_still_runs_permission_gate():
     ]
 
 
+def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
+    """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
+    mod = _load()
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_portal_alpha.py").write_text("", encoding="utf-8")
+    (tests_dir / "test_portal_beta.py").write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    targets = mod.existing_targets([
+        "tests/test_portal_*.py",
+        "tests/test_missing.py",
+    ])
+
+    assert targets == [
+        "tests/test_portal_alpha.py",
+        "tests/test_portal_beta.py",
+    ]
+    assert all("*" not in target for target in targets)
+
+
 def test_large_pr_uses_full_regression_with_main_failure_baseline():
     """大 PR 必须跑全量；只豁免 main 已知失败，禁止新增失败。"""
     root = Path(__file__).resolve().parents[2]
