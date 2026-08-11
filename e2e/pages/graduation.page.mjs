@@ -57,12 +57,19 @@ export class StudentGraduationPage {
     const action = step.getByRole('button').filter({ hasText: /填写|修改|重交|提交开题|完善/ }).first()
     if (await action.count()) await action.click()
 
-    await step.getByLabel('选题背景与研究依据').fill(`Playwright 背景 ${suffix}：验证真实浏览器交互和数据持久化。`)
-    await step.getByLabel('研究方案与进度计划').fill(`Playwright 计划 ${suffix}：学生提交、导师审核、管理员复核。`)
-    const outcome = step.getByLabel('预期成果')
+    // The proposal form mounts asynchronously after the step switches into edit mode.
+    // Wait on the real page-level form controls instead of assuming they are already
+    // attached under the pre-click step locator.
+    const background = this.page.getByLabel('选题背景与研究依据', { exact: true })
+    const plan = this.page.getByLabel('研究方案与进度计划', { exact: true })
+    await expect(background).toBeVisible()
+    await expect(plan).toBeVisible()
+    await background.fill(`Playwright 背景 ${suffix}：验证真实浏览器交互和数据持久化。`)
+    await plan.fill(`Playwright 计划 ${suffix}：学生提交、导师审核、管理员复核。`)
+    const outcome = this.page.getByLabel('预期成果', { exact: true })
     if (await outcome.count()) await outcome.fill(`Playwright 成果 ${suffix}：保留完整证据链。`)
 
-    await step.locator('input[type=file]').setInputFiles({
+    await this.page.locator('input[type=file]').setInputFiles({
       name: fileName,
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
@@ -72,10 +79,10 @@ export class StudentGraduationPage {
       this.page.waitForResponse((r) =>
         r.url().includes('/portal/graduation/proposal') && r.request().method() === 'POST'
       ),
-      step.getByRole('button', { name: /提交开题报告/ }).click()
+      this.page.getByRole('button', { name: /提交开题报告/ }).click()
     ])
     await expectSuccessfulResponse(response, '学生提交开题报告')
-    await expect(step).toContainText(/待审核|待审阅|已提交/)
+    await expect(this.step('开题')).toContainText(/待审核|待审阅|已提交/)
   }
 
   async expectRejected(reason) {
@@ -110,7 +117,13 @@ export class StaffGraduationPage {
   async openProposals(tab = 'PENDING_REVIEW') {
     const query = new URLSearchParams({ batchId: this.fixture.batchId, tab })
     await this.page.goto(`${this.baseUrl}/admin/graduation/proposals?${query}`)
-    await expect(this.page.getByText('开题审核').first()).toBeVisible()
+
+    // The page guide can render before or just after the workbench data. Close it
+    // before asserting the visible page heading, and anchor readiness to the real
+    // split workspace rather than a hidden <option> whose text also contains 开题审核.
+    await this.dismissGuideIfPresent()
+    await expect(this.page.getByRole('heading', { name: '开题审核', exact: true })).toBeVisible()
+    await expect(this.page.locator('.pr-split')).toBeVisible()
     await this.dismissGuideIfPresent()
   }
 
