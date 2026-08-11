@@ -98,9 +98,16 @@ def _messages_for(receiver_id, message_type=None):
 
 
 def _drain_warning_outbox():
-    """生产通知是事务内写 outbox、异步物化到 t_unified_message；测试显式消费后再断言投递结果。"""
+    """生产通知是事务内写 outbox、异步物化；测试显式补齐租户上下文后消费，再断言投递结果。"""
+    from app.core.context import get_tenant, set_tenant
     from app.services.message_event_outbox_service import process_pending_outbox
-    process_pending_outbox(limit=50, worker_id="aa-warning-test")
+
+    previous = get_tenant()
+    set_tenant({"tenantId": str(TID)})
+    try:
+        process_pending_outbox(limit=50, worker_id="aa-warning-test")
+    finally:
+        set_tenant(previous)
 
 
 def _todo_status(counselor_id, warning_id):
