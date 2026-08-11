@@ -47,7 +47,7 @@ jobs:
           - case: teaching-task
             nodeid: tests/test_aa_teaching_task.py::test_tt1_full_chain
           - case: graduation
-            nodeid: tests/test_aa_graduation.py::test_gr1_precheck_passed
+            nodeid: tests/test_aa_graduation.py
           - case: graduation-overall-policy
             nodeid: tests/test_aa_graduation_overall_policy.py
           - case: orgs

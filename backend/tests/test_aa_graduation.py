@@ -1,7 +1,7 @@
 """13B-P6 毕业资格预审 · 端到端（十一项供数三态 + 终审经单一入口 + 三名单）。
 
 Stage C3 正式不可变评估已收紧为 fail-closed：任何 FAIL/UNKNOWN 都进入 SYSTEM_ABNORMAL；
-人工仍可在学院初审留下明确核验说明后形成最终毕业结论。历史 GR1 nodeid 保留用于债务追踪。
+人工仍可在学院初审留下明确核验说明后形成最终毕业结论。毕业小簇由整文件 shard 持续追踪。
 """
 from __future__ import annotations
 
@@ -184,3 +184,32 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     assert lst[0]["studentNo"] == "GR001"
     detail = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
     assert detail["reviewNote"] == "材料不全，缺实习鉴定表"
+
+
+def test_gr9_fee_clearance_cannot_upgrade_other_unknowns(client, db_mode):
+    """财务回填只解决 FEE；其它 UNKNOWN 未解除时 mutable projection 仍必须 fail-closed。"""
+    ids = _seed(db_mode, "REGISTERED")
+    hdr = _hdr(client, "school_admin01")
+    bid = _batch(client, hdr)
+    precheck = _gen_precheck(client, hdr, bid, ids["s"])
+    assert precheck["passed"] == 0 and precheck["abnormal"] == 1
+
+    resp = client.post(
+        f"{BASE}/graduation-audit-batches/{bid}/fee-clearance",
+        headers=hdr,
+        json={"rows": [{
+            "studentNo": "GR001",
+            "status": "CLEARED",
+            "evidence": "财务已人工核验并确认费用结清",
+        }]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["updated"] == 1
+
+    rid = _result_id(client, hdr, bid)
+    detail = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
+    fee = next(i for i in detail["items"] if i["item"] == "FEE")
+    assert fee["result"] == "PASS"
+    assert detail["overall"] == "SYSTEM_ABNORMAL"
+    assert detail["status"] == "SYSTEM_ABNORMAL"
+    assert any(i["item"] != "FEE" and i["result"] == "UNKNOWN" for i in detail["items"])
