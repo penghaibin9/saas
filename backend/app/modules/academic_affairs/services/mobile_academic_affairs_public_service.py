@@ -12,6 +12,8 @@ Stage D：毕业解释严格消费同一 evaluator 已生成的结果，不重�
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
@@ -22,6 +24,41 @@ from . import mobile_academic_affairs_facade as _base
 
 def __getattr__(name):
     return getattr(_base, name)
+
+
+def submit_status_change_my(user, body) -> dict:
+    """学生本人发起学籍异动；正式公开入口不得依赖 class body 捕获函数局部变量。"""
+    from app.modules.academic_affairs.services import academic_affairs_change_service as change
+
+    with session() as db:
+        student = _base._me(db, user)
+        student_id = student.id
+
+    def _value(key):
+        if isinstance(body, dict):
+            return body.get(key)
+        return getattr(body, key, None)
+
+    change_type = str(_value("changeType") or "").strip()
+    reason = str(_value("reason") or "").strip()
+    if not change_type:
+        raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
+    if change_type == "TRANSFER_MAJOR" and not _value("toMajorId"):
+        raise AppException("VALIDATION_ERROR", "转专业需指定目标专业")
+    if change_type == "TRANSFER_CLASS" and not _value("toClassId"):
+        raise AppException("VALIDATION_ERROR", "转班需指定目标班级")
+
+    payload = SimpleNamespace(
+        studentId=str(student_id),
+        changeType=change_type,
+        reason=reason,
+        toMajorId=_value("toMajorId"),
+        toClassId=_value("toClassId"),
+        toCollegeId=_value("toCollegeId"),
+    )
+    return change.submit(payload, user)
 
 
 def _student_graduation_evidence(item: dict) -> str:

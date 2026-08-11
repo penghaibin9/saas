@@ -95,8 +95,11 @@ def test_consume_refresh_fails_closed_on_db_error(monkeypatch):
 def test_assert_task_assignee_denies_other_user():
     from app.services.db_service import _assert_task_assignee
 
+    db = MagicMock()
     t = MagicMock()
     t.assignee_id = 100
+    # 本用例只验证普通“任务仅本人可处理”分支；node_code=None 避免引入流程节点管理员语义。
+    t.node_code = None
     with pytest.raises(AppException) as ei:
-        _assert_task_assignee(t, {"userId": "200", "permissions": []})
+        _assert_task_assignee(db, t, {"userId": "200", "permissions": []})
     assert ei.value.code == "DATA_NOT_FOUND"

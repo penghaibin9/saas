@@ -45,7 +45,7 @@ export default {
   computed: {
     mentorAuditRecords() {
       return (this.detail?.auditTrail || []).map((a, i) => ({
-        id: i, action: a.action, actor: a.operator, at: a.occurredAt
+        id: i, action: a.action, actionLabel: a.actionLabel, actor: a.operator, at: a.occurredAt
       }))
     }
   },

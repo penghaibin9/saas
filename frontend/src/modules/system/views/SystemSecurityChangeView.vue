@@ -43,7 +43,6 @@
                 <tr v-for="c in changes" :key="c.changeSetId">
                   <td class="is-who">
                     {{ c.title }}
-                    <span class="mp-cell-sub">{{ c.changeCode }}</span>
                   </td>
                   <td><StatusTag :type="statusType(c.status)" :label="statusLabel(c.status)" /></td>
                   <td>{{ riskLabel(c.riskLevel) }}</td>
@@ -80,7 +79,6 @@
                   <th style="width: 100px">动作</th>
                   <th style="width: 100px">改动条数</th>
                   <th style="width: 160px">时间</th>
-                  <th>追踪号</th>
                 </tr>
               </thead>
               <tbody>
@@ -92,7 +90,6 @@
                   </td>
                   <td>{{ a.itemCount }}</td>
                   <td class="mp-cell-sub">{{ fmt(a.occurredAt) }}</td>
-                  <td class="mp-cell-sub">{{ a.traceId }}</td>
                 </tr>
               </tbody>
             </table>
@@ -129,7 +126,7 @@
           <tbody>
             <tr v-for="i in detail.data.items" :key="i.itemId">
               <td>{{ targetLabel(i.targetType) }}</td>
-              <td class="is-who">{{ i.targetId }}</td>
+              <td class="is-who">{{ targetName(i) }}</td>
               <td class="mp-cell-sub">{{ describeAfter(i) }}</td>
             </tr>
           </tbody>
@@ -139,10 +136,10 @@
         <template v-if="detail.data.impact && detail.data.impact.items">
           <h4 class="sc-section">影响面（提交审核时算出）</h4>
           <p v-for="(im, idx) in detail.data.impact.items" :key="idx" class="mp-note">
-            {{ im.targetId }}：
+            {{ targetName(im) }}：
             <template v-if="im.added && im.added.length">新增 {{ im.added.length }} 项权限；</template>
             <template v-if="im.removed && im.removed.length">收回 {{ im.removed.length }} 项权限；</template>
-            <template v-if="!im.added && !im.removed">{{ JSON.stringify(im.change || {}) }}</template>
+            <template v-if="!im.added && !im.removed">{{ impactDescription(im.change) }}</template>
           </p>
         </template>
 
@@ -203,6 +200,7 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { normalizeUiError, safeEnumLabel } from '@/utils/presentationSafety'
 
 const SELF_REVIEW_TEXT = '我已确认本次安全变更的影响并愿意承担责任'
 
@@ -260,10 +258,11 @@ export default {
   created() { this.load() },
   methods: {
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-    statusLabel(s) { return STATUS_LABEL[s] || s },
-    actionLabel(s) { return ACTION_LABEL[s] || s },
-    riskLabel(r) { return ({ NORMAL: '一般', HIGH: '高', CRITICAL: '极高' })[r] || r },
-    targetLabel(t) { return ({ CUSTOM_ROLE: '自定义角色', SCOPE_POLICY: '范围策略' })[t] || t },
+    statusLabel(s) { return safeEnumLabel({ value: s, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
+    actionLabel(s) { return safeEnumLabel({ value: s, dictionary: ACTION_LABEL, unknownLabel: '业务操作' }) },
+    riskLabel(r) { return safeEnumLabel({ value: r, dictionary: { NORMAL: '一般', HIGH: '高', CRITICAL: '极高' }, unknownLabel: '风险等级待确认' }) },
+    targetLabel(t) { return safeEnumLabel({ value: t, dictionary: { CUSTOM_ROLE: '自定义角色', SCOPE_POLICY: '范围策略' }, unknownLabel: '安全配置对象' }) },
+    targetName(item) { return item?.targetName || item?.roleName || item?.scopeName || this.targetLabel(item?.targetType) },
     statusType(s) {
       if (s === 'ACTIVATED') return 'success'
       if (s === 'ROLLED_BACK' || s === 'REJECTED') return 'danger'
@@ -273,7 +272,16 @@ export default {
     describeAfter(item) {
       const after = item.after || {}
       if (Array.isArray(after.permissionCodes)) return `权限调整为 ${after.permissionCodes.length} 项`
-      return JSON.stringify(after)
+      if (after.roleName) return `角色调整为「${after.roleName}」`
+      if (after.scopeName) return `数据范围调整为「${after.scopeName}」`
+      if (after.name) return `名称调整为「${after.name}」`
+      return '已记录安全配置变更'
+    },
+    impactDescription(change) {
+      if (!change || typeof change !== 'object') return '影响范围已重新计算'
+      if (change.beforeScopeName || change.afterScopeName) return `数据范围：${change.beforeScopeName || '未设置'} → ${change.afterScopeName || '未设置'}`
+      if (Number.isFinite(Number(change.affectedCount))) return `影响 ${Number(change.affectedCount)} 个业务对象`
+      return '安全配置已发生调整'
     },
 
     async load() {
@@ -330,7 +338,7 @@ export default {
         open: true,
         changeSetId: c.changeSetId,
         target,
-        title: `${ACTION_LABEL[target] || target} · ${c.title}`,
+        title: `${this.actionLabel(target)} · ${c.title}`,
         tip: ACTION_TIP[target] || '',
         reason: '',
         scheduledAt: '',
@@ -362,8 +370,7 @@ export default {
         this.action.open = false
         this.load()
       } else {
-        // 自复核确认文本不符、版本冲突等，后端会给明确原因，直接展示
-        this.action.error = res.message
+        this.action.error = normalizeUiError(res, { fallback: '安全变更未完成，请检查内容后重试' }).userMessage
       }
     }
   }

@@ -4,11 +4,17 @@ import test from 'node:test'
 import {
   localizeStatusSuffixText,
   localizeTrailingEnumInParentheses,
-  localizeVisibleEnumText
+  localizeVisibleEnumText,
+  safeVisibleEnumLabel
 } from '../src/services/visibleEnumLocalization.js'
 
 test('明确状态枚举 PENDING_REVIEW 显示为待审核', () => {
   assert.equal(localizeVisibleEnumText('PENDING_REVIEW'), '待审核')
+})
+
+test('明确枚举展示位不回显未知后端状态', () => {
+  assert.equal(safeVisibleEnumLabel('NEW_BACKEND_STATUS'), '状态待确认')
+  assert.notEqual(safeVisibleEnumLabel('NEW_BACKEND_STATUS'), 'NEW_BACKEND_STATUS')
 })
 
 test('明确请假类型 PERSONAL 显示为事假', () => {

@@ -998,6 +998,8 @@ def db_mode(tmp_path, request):
                                 WorkflowInstance, WorkflowTask)
         TID = 1000000000000000001
         db = get_sessionmaker()()
+        import zlib
+        actor_id = (zlib.crc32(b"u_school_admin01") & 0x7FFFFFFF) or 1
         s = StudentProfile(tenant_id=TID, student_no="2023115001", real_name="赵一凡",
                            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
         db.add(s); db.flush()
@@ -1006,16 +1008,16 @@ def db_mode(tmp_path, request):
                               verified_status="VERIFIED"))
         inst = WorkflowInstance(tenant_id=TID, workflow_code="wf_student", source_module="student",
                                 source_biz_type="PROFILE_CORRECTION", source_biz_id=s.id,
-                                applicant_id=1, title="赵一凡 · 学籍信息变更", status="RUNNING",
+                                applicant_id=actor_id, title="赵一凡 · 学籍信息变更", status="RUNNING",
                                 remark="赵一凡")
         db.add(inst); db.flush()
         task = WorkflowTask(tenant_id=TID, instance_id=inst.id, node_code="COUNSELOR_REVIEW",
-                            assignee_id=1, status="PENDING",
+                            assignee_id=actor_id, status="PENDING",
                             deadline_at=datetime.utcnow() + timedelta(days=2))
         db.add(task)
         db.add(UnifiedTodo(tenant_id=TID, source_module="student", source_biz_id=1, todo_type="APPROVAL",
-                           assignee_id=1, title="处理学籍变更审批", status="PENDING"))
-        db.add(UnifiedMessage(tenant_id=TID, receiver_id=1, title="测试消息", status="UNREAD"))
+                           assignee_id=actor_id, title="处理学籍变更审批", status="PENDING"))
+        db.add(UnifiedMessage(tenant_id=TID, receiver_id=actor_id, title="测试消息", status="UNREAD"))
         db.commit()
         ids = {"student": s.id, "task": task.id}
         db.close()
@@ -1024,4 +1026,5 @@ def db_mode(tmp_path, request):
         # setup 失败也必须还原，避免污染后续 mock 测试（503 / 误走真库）
         settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
         reset_state()
+
 

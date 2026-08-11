@@ -1,0 +1,138 @@
+name: Backend pytest error cluster
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/backend-pytest-error-cluster.yml
+      - scripts/check/summarize_pytest_junit_diagnostics.py
+      - scripts/check/sanitize_pytest_junit.py
+      - backend/conftest.py
+      - backend/tests/conftest.py
+      - backend/tests/test_demo_tenants_login.py
+      - backend/tests/test_sandbox_13a_seed.py
+      - backend/tests/test_wx_login.py
+      - backend/tests/test_graduation_package9_contract.py
+      - backend/tests/test_auth_captcha_redis_fail_closed.py
+      - backend/tests/test_auth_challenge_service.py
+      - backend/scripts/_seed_demo_school.py
+      - backend/scripts/_seed_two_tenants.py
+      - backend/scripts/_seed_sandbox_coverage.py
+      - backend/scripts/_seed_graduation.py
+      - backend/app/services/sandbox_service.py
+      - backend/app/services/auth_challenge_service.py
+      - backend/app/modules/graduation/services/graduation_package9_guard.py
+      - backend/app/modules/graduation/services/graduation_archive_consistency.py
+      - backend/app/db/**
+      - backend/app/models/**
+      - backend/app/core/security.py
+      - backend/app/core/config.py
+      - backend/app/api/v1/auth.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-error-cluster-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-error-cluster:
+    name: Backend errors / seed+auth+package9
+    if: github.head_ref == 'fix/backend-pytest-debt-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Precise original setup-error nodeid
+        run: |
+          timeout 8m pytest \
+            tests/test_demo_tenants_login.py::test_all_six_accounts_login \
+            -q -p no:warnings
+      - name: Precise auth production contract nodeid
+        run: |
+          timeout 8m pytest \
+            tests/test_demo_tenants_login.py::test_mock_login_403_in_production \
+            -q -p no:warnings
+      - name: Auth production captcha fail-closed regression
+        run: |
+          timeout 10m pytest \
+            tests/test_auth_captcha_redis_fail_closed.py \
+            tests/test_auth_challenge_service.py \
+            -q -p no:warnings --durations=20
+      - name: Affected fixture files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/error-cluster
+          XML="test-results/error-cluster/raw.xml"
+          RAW_LOG="test-results/error-cluster/raw.log"
+          set +e
+          timeout 18m pytest \
+            tests/test_demo_tenants_login.py \
+            tests/test_sandbox_13a_seed.py \
+            tests/test_wx_login.py \
+            -q -p no:warnings --junitxml="$XML" >"$RAW_LOG" 2>&1
+          PYTEST_EXIT=$?
+          set -e
+          printf '%s\n' "$PYTEST_EXIT" > test-results/error-cluster/pytest-exit.txt
+
+          if [ ! -f "$XML" ]; then
+            rm -f "$RAW_LOG"
+            echo "Targeted pytest did not produce JUnit XML"
+            exit 2
+          fi
+
+          python ../scripts/check/summarize_pytest_junit_diagnostics.py \
+            "$XML" --output test-results/error-cluster/diagnostics.md
+          cat test-results/error-cluster/diagnostics.md >> "$GITHUB_STEP_SUMMARY"
+          python ../scripts/check/sanitize_pytest_junit.py "$XML"
+          mv "$XML" test-results/error-cluster/sanitized.xml
+          rm -f "$RAW_LOG"
+          exit "$PYTEST_EXIT"
+      - name: Graduation Package 9 domain regression
+        run: |
+          timeout 12m pytest tests/test_graduation_package9_contract.py \
+            -q -p no:warnings --durations=20
+      - name: Upload secret-safe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-error-cluster
+          path: |
+            backend/test-results/error-cluster/diagnostics.md
+            backend/test-results/error-cluster/sanitized.xml
+            backend/test-results/error-cluster/pytest-exit.txt
+          if-no-files-found: warn
+          retention-days: 14

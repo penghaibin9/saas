@@ -2,13 +2,14 @@
    主题默认「清透学院蓝」；语义色/模块分类色固定，不随主题变（V2.1 冻结规范）。 */
 :root {
   --pri: #2f6bff; --pri-h: #1f58e7; --pri-50: #eff6ff; --pri-100: #dbeafe; --pri-500: #3b82f6;
-  --bg: #f4f8ff; --g1: #60a5fa; --g2: #2f6bff;
+  --bg: #f4f8ff; --bg2: #f8fafc; --g1: #60a5fa; --g2: #2f6bff;
   /* 兼容旧类名 */
   --sp-primary: var(--pri);
   /* 语义色 */
   --ok-bg: #E8F7EC; --ok-fg: #0C8A3E;
   --warn-bg: #FFF4E5; --warn-fg: #B25E00;
   --danger-bg: #FDECEC; --danger-fg: #D92D20;
+  --bad-bg: var(--danger-bg); --bad-fg: var(--danger-fg);
   --draft-bg: #F2F3F5; --draft-fg: #4E5969;
   /* 中性色 */
   --t1: #1D2129; --t2: #4E5969; --t3: #86909C; --t4: #98A0AE; --line: #EEF0F3; --line2: #F1F2F5;

@@ -1,12 +1,13 @@
 """教务统计统一公开 Service。
 
 所有带学院筛选的统计、下钻和导出在进入旧聚合实现前再次校验数据范围，避免受限角色
-在未配置任何学院/班级范围时通过主动传入 ``collegeId`` 扩大权限。统计域为只读聚合，
-因此前置范围校验与实际查询分离不会产生写事务一致性问题。
+在未配置任何学院/班级范围时通过主动传入 ``collegeId`` 扩大权限。08/09/14 三个新增统计域
+直接消费 canonical contract，避免历史同名函数覆盖或 import 顺序再次让页面与 xlsx 口径漂移。
 """
 from __future__ import annotations
 
 import importlib
+from datetime import datetime
 
 from app.core.affairs_security import _derive_keys, no_data_scope
 
@@ -59,8 +60,52 @@ def warning_detail(user, level=None, source=None, college_id=None, page=1, page_
     return _legacy.warning_detail(user, level, source, college_id, page, page_size)
 
 
+def _canonical_export(user, domain, term_id, college_id, purpose):
+    """08/09/14 三个新增统计域直接按 canonical 数据结构生成查询件并保留水印/审计。"""
+    from app.core.exceptions import AppException
+    from app.services.xlsx_util import build_ledger_xlsx
+    from . import academic_affairs_stats_contract_facade as canonical
+
+    purpose = str(purpose or "").strip()
+    if len(purpose) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    user_ctx = _legacy._cur_user()
+    watermark = (
+        f"导出人：{user_ctx.get('realName') or user_ctx.get('loginName') or '-'}  "
+        f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}"
+    )
+    if domain == "courseSelection":
+        title = "选课统计"
+        data = canonical.course_selection_stats(user, term_id, college_id)
+        headers = ["批次状态", "批次数"]
+        rows = [[item["key"], item["count"]] for item in data["byBatchStatus"]]
+    elif domain == "exam":
+        title = "考务统计"
+        data = canonical.exam_stats(user, term_id, college_id)
+        headers = ["课程总数", "已确认数", "确认率(%)", "缺考人次", "违纪人次"]
+        rows = [[
+            data["courseTotal"], data["confirmedCount"], data["confirmRate"],
+            data["absentCount"], data["violationCount"],
+        ]]
+    elif domain == "resource":
+        title = "教学资源统计"
+        data = canonical.resource_stats(user)
+        headers = ["教室状态", "数量"]
+        rows = [[item["key"], item["count"]] for item in data["byStatus"]]
+    else:
+        raise AppException("VALIDATION_ERROR", f"未知 canonical 导出维度：{domain}")
+
+    content = build_ledger_xlsx(title, headers, rows, watermark=watermark)
+    with _legacy.session() as db:
+        _legacy._audit(db, "STATS_EXPORT", f"{title} 导出 用途={purpose[:100]}")
+        db.commit()
+    return content
+
+
 def export_stats_xlsx(user, domain="overview", term_id=None, college_id=None, major_id=None, purpose=""):
     _precheck(user, college_id)
+    if domain in {"courseSelection", "exam", "resource"}:
+        return _canonical_export(user, domain, term_id, college_id, purpose)
     return _legacy.export_stats_xlsx(user, domain, term_id, college_id, major_id, purpose)
 
 
@@ -146,25 +191,36 @@ def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20):
 
 def course_selection_stats(user, term_id=None, college_id=None):
     _precheck(user, college_id)
-    return _legacy.course_selection_stats(user, term_id, college_id)
+    from .academic_affairs_stats_contract_facade import course_selection_stats as canonical
+    return canonical(user, term_id, college_id)
 
 
 def course_selection_detail(user, term_id=None, college_id=None, page=1, page_size=20):
     _precheck(user, college_id)
-    return _legacy.course_selection_detail(user, term_id, college_id, page, page_size)
+    from .academic_affairs_stats_contract_facade import course_selection_detail as canonical
+    return canonical(user, term_id, college_id, page, page_size)
 
 
 def exam_stats(user, term_id=None, college_id=None):
     _precheck(user, college_id)
-    return _legacy.exam_stats(user, term_id, college_id)
+    from .academic_affairs_stats_contract_facade import exam_stats as canonical
+    return canonical(user, term_id, college_id)
 
 
 def exam_detail(user, term_id=None, college_id=None, incident_type=None, page=1, page_size=20):
     _precheck(user, college_id)
-    return _legacy.exam_detail(user, term_id, college_id, incident_type, page, page_size)
+    from .academic_affairs_stats_contract_facade import exam_detail as canonical
+    return canonical(user, term_id, college_id, incident_type, page, page_size)
 
 
-# 不带学院筛选的只读入口直接公开。
+def resource_stats(user):
+    from .academic_affairs_stats_contract_facade import resource_stats as canonical
+    return canonical(user)
+
+
+def resource_detail(user, page=1, page_size=20):
+    from .academic_affairs_stats_contract_facade import resource_detail as canonical
+    return canonical(user, page, page_size)
+
+
 filters = _legacy.filters
-resource_stats = _legacy.resource_stats
-resource_detail = _legacy.resource_detail

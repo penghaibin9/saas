@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="学期状态"
-    subtitle="管理学期 DRAFT → PUBLISHED → FROZEN 状态流转 · 冻结后禁止结构性修改，归档动作请到「学期归档」"
+    subtitle="管理学期从编制、发布到冻结的状态流转 · 冻结后禁止结构性修改，归档动作请到「学期归档」"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -53,7 +53,7 @@
 
     <AppDrawer :visible="unfreezeDrawer.visible" title="解冻学期" mode="modal" size="small" @close="unfreezeDrawer.visible = false">
       <div class="aa-form">
-        <p class="mp-note">解冻「{{ unfreezeDrawer.row && unfreezeDrawer.row.yearCode }} 第 {{ unfreezeDrawer.row && unfreezeDrawer.row.termNo }} 学期」（FROZEN→PUBLISHED），需填写原因（至少 5 字），并留痕审计。</p>
+        <p class="mp-note">解冻「{{ unfreezeDrawer.row && unfreezeDrawer.row.yearCode }} 第 {{ unfreezeDrawer.row && unfreezeDrawer.row.termNo }} 学期」并恢复为进行中，需填写原因（至少 5 字），并留痕审计。</p>
         <AppFormItem label="解冻原因" required>
           <AppTextarea v-model="unfreezeReason" :rows="3" placeholder="至少 5 字，如：误操作冻结需恢复排课" maxlength="200" />
         </AppFormItem>
@@ -74,6 +74,7 @@ import { AppStatusTag, AppConfirmDialog, AppFormItem, AppTextarea, AppInlineAler
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { safeEnumLabel } from '@/utils/presentationSafety'
 
 const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中', FROZEN: '已冻结', ARCHIVED: '已归档' }
 const STATUS_TYPE = { DRAFT: 'default', PUBLISHED: 'success', FROZEN: 'warning', ARCHIVED: 'info' }
@@ -104,7 +105,7 @@ export default {
     this.load()
   },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return safeEnumLabel({ value: s, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
     statusType(s) { return STATUS_TYPE[s] || 'default' },
     async load() {
       this.loading = true

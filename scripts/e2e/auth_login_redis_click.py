@@ -190,7 +190,7 @@ def student_pc(browser, redis_client) -> dict:
     if result.get("code") != 0:
         raise AssertionError(f"学生 PC 登录失败：{result!r}")
     page.wait_for_url("**/portal/home**", timeout=20_000)
-    token = page.evaluate("localStorage.getItem('sp_token_v1') || ''")
+    token = page.evaluate("sessionStorage.getItem('sp_token_v1') || ''")
     if token.count(".") != 2:
         raise AssertionError("学生 PC 未写入 access token")
     assert_consumed(redis_client, captcha_id)

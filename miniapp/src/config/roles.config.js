@@ -21,6 +21,24 @@ export const ROLE = {
   GD_DEFENSE_EXPERT: 'gd_defense_expert' // 答辩评委（面板成员，仅评分权限，答辩秘书 GD_DEFENSE_SECRETARY 侧重分组管理不接此身份）
 }
 
+const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
+  STUDENT: ROLE.STUDENT,
+  COUNSELOR: ROLE.COUNSELOR,
+  GD_MENTOR: ROLE.MENTOR,
+  MENTOR: ROLE.MENTOR,
+  INTERN_MENTOR: ROLE.INTERN_MENTOR,
+  EMPLOYMENT: ROLE.EMPLOYMENT,
+  ACADEMIC: ROLE.ACADEMIC,
+  ACADEMIC_TEACHER: ROLE.ACADEMIC,
+  ACADEMIC_ADMIN: ROLE.ACADEMIC,
+  COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
+  GD_DEFENSE_EXPERT: ROLE.GD_DEFENSE_EXPERT
+})
+
+export function roleKeyFromBackendRole(roleCode) {
+  return BACKEND_ROLE_TO_ROLE_KEY[String(roleCode || '').trim().toUpperCase()] || ''
+}
+
 export const roleConfigs = {
   [ROLE.STUDENT]: {
     key: ROLE.STUDENT,

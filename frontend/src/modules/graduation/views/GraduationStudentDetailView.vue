@@ -285,6 +285,7 @@ export default {
       return (this.detail?.auditTrail || []).map((a, i) => ({
         id: i,
         action: a.action,
+        actionLabel: a.actionLabel,
         actor: a.who,
         at: a.time,
         target: a.affected

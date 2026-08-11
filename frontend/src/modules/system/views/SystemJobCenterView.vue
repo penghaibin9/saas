@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="批处理与后台任务"
-    subtitle="运行中 · 失败 · 积压 · 授权证据（USER_DELEGATED / SERVICE_POLICY / TENANT_SYSTEM_TASK）"
+    subtitle="查看各业务模块的后台任务进度、失败原因与授权依据"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -22,7 +22,7 @@
           </div>
           <div class="mp-card__body jc-per-kind">
             <span v-for="k in overview.perKind || []" :key="k.kind" class="jc-kind-chip">
-              {{ k.kind }}：共{{ k.total }} · 运行{{ k.running }} · 失败{{ k.failed }} · 积压{{ k.backlog }}
+              {{ kindLabel(k.kind) }}：共{{ k.total }} · 运行{{ k.running }} · 失败{{ k.failed }} · 积压{{ k.backlog }}
             </span>
           </div>
         </section>
@@ -30,25 +30,28 @@
         <section class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">任务列表</span>
-            <span class="mp-note">跨5张既有任务表只读聚合；重试/取消仅在注册表登记为安全的范围内开放</span>
+            <span class="mp-note">统一查看各业务模块任务；可执行的操作以当前任务状态为准</span>
           </header>
           <div class="mp-card__body jc-filters">
             <select v-model="filterKind" class="jc-input" @change="load">
               <option value="">全部类型</option>
-              <option v-for="k in jobTypes" :key="k.kind" :value="k.kind">{{ k.kind }}</option>
+              <option v-for="k in jobTypes" :key="k.kind" :value="k.kind">{{ kindLabel(k.kind) }}</option>
             </select>
-            <input v-model.trim="filterStatus" class="jc-input" placeholder="状态过滤，如 FAILED" @keyup.enter="load" />
+            <select v-model="filterStatus" class="jc-input" @change="load">
+              <option value="">全部状态</option>
+              <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
             <button class="mp-link" @click="load">查询</button>
           </div>
           <div class="mp-card__body">
             <EmptyState v-if="!jobs.length" title="暂无任务" description="" />
             <DataTable v-else :columns="jobColumns" :rows="jobs" row-key="jobId">
               <template #cell-scope="{ row }">
-                <div class="mp-cell-main">{{ row.jobId }}</div>
-                <div class="mp-cell-sub">{{ row.kind }} · {{ row.ownerModule }} · initiator {{ row.initiator || '—' }}</div>
+                <div class="mp-cell-main">{{ kindLabel(row.kind) }}</div>
+                <div class="mp-cell-sub">来源：{{ moduleLabel(row.ownerModule) }} · 发起：{{ row.initiator ? '业务经办人' : '系统任务' }} · {{ row.createdAt || '时间待同步' }}</div>
               </template>
               <template #cell-status="{ row }">
-                <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+                <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
               </template>
               <template #cell-ops="{ row }">
                 <button class="mp-link" @click="viewEvidence(row)">授权证据</button>
@@ -60,15 +63,14 @@
         </section>
 
         <section v-if="evidence" class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">授权证据：{{ evidence.jobId }}</span></header>
+          <header class="mp-card__head"><span class="mp-card__title">授权依据摘要</span></header>
           <div class="mp-card__body jc-evidence">
-            <p>scopeSnapshot：{{ evidence.scopeSnapshot ? JSON.stringify(evidence.scopeSnapshot) : '（该类型无范围快照字段）' }}</p>
-            <p>revision：{{ evidence.revision || '—' }}</p>
-            <p>idempotency：{{ evidence.idempotency || '—' }}</p>
-            <p>若由当前登录用户操作该任务，将走：
-              <strong>{{ evidence.currentActorAuthorization?.policyType || '无权限' }}</strong>
+            <p>执行身份：<strong>{{ authorizationActorLabel(evidence) }}</strong></p>
+            <p>授权方式：<strong>{{ authorizationPolicyLabel(evidence.currentActorAuthorization?.policyType) }}</strong></p>
+            <p>作用范围：<strong>{{ scopeSummary(evidence.scopeSnapshot) }}</strong></p>
+            <p>有效期：<strong>{{ evidence.currentActorAuthorization?.delegationExpiresAt || '仅限本次任务' }}</strong>
               <span v-if="evidence.currentActorAuthorization?.delegatedSubject">
-                （临时授权 {{ evidence.currentActorAuthorization.delegatedSubject }}，到期 {{ evidence.currentActorAuthorization.delegationExpiresAt }}）
+                （临时授权）
               </span>
             </p>
           </div>
@@ -82,6 +84,17 @@
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { safeEnumLabel } from '@/utils/presentationSafety'
+
+const KIND_LABEL = { IMPORT: '业务数据导入', EXPORT: '业务数据导出', FILE_JOB: '文件安全处理', EXCEL_IMPORT: '表格数据导入', AFFAIRS_BATCH: '学工批量处理' }
+const MODULE_LABEL = { dataExchange: '数据交换中心', fileStorage: '文件中心', studentAffairs: '学工中心' }
+const STATUS_LABEL = {
+  CREATED: '待开始', PENDING: '等待处理', UPLOADED: '文件已上传', VALIDATED: '校验完成',
+  RUNNING: '运行中', PROCESSING: '处理中', VALIDATING: '校验中', CONFIRMING: '确认中',
+  SUCCEEDED: '已完成', SUCCESS: '已完成', IMPORTED: '已导入', CONFIRMED: '已确认',
+  FAILED: '失败', DEAD: '处理终止', TIMEOUT: '处理超时', CANCELLED: '已取消'
+}
+const POLICY_LABEL = { USER_DELEGATED: '本人职责授权', SERVICE_POLICY: '系统服务授权', TENANT_SYSTEM_TASK: '学校系统任务授权' }
 
 export default {
   name: 'SystemJobCenterView',
@@ -100,6 +113,7 @@ export default {
       filterKind: '',
       filterStatus: '',
       evidence: null,
+      statusOptions: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
       jobColumns: [
         { key: 'scope', title: '任务' },
         { key: 'status', title: '状态' },
@@ -109,6 +123,16 @@ export default {
   },
   created() { this.load() },
   methods: {
+    kindLabel(value) { return safeEnumLabel({ value, dictionary: KIND_LABEL, unknownLabel: '其他业务任务' }) },
+    moduleLabel(value) { return safeEnumLabel({ value, dictionary: MODULE_LABEL, unknownLabel: '相关业务中心' }) },
+    statusLabel(value) { return safeEnumLabel({ value, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
+    authorizationPolicyLabel(value) { return safeEnumLabel({ value, dictionary: POLICY_LABEL, unknownLabel: value ? '授权方式待确认' : '当前无可用授权' }) },
+    authorizationActorLabel(evidence) { return evidence?.currentActorAuthorization?.policyType === 'TENANT_SYSTEM_TASK' ? '学校系统任务' : '当前用户' },
+    scopeSummary(scope) {
+      if (!scope || typeof scope !== 'object') return '当前学校可管理范围'
+      const label = scope.scopeName || scope.orgName || scope.collegeName || scope.className
+      return label || '当前账号可管理范围'
+    },
     statusTone(s) {
       if (['FAILED', 'DEAD', 'TIMEOUT'].includes(s)) return 'danger'
       if (['RUNNING', 'PROCESSING', 'VALIDATING', 'CONFIRMING'].includes(s)) return 'warning'

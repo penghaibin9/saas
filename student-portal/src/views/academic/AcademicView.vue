@@ -59,7 +59,7 @@
             </div>
           </div>
         </div>
-        <AutoTable :rows="selectionRecords" empty="暂无选课记录" title="我的选课记录" style="margin-top:16px" />
+        <AutoTable :rows="selectionRecords" :columns="SELECTION_COLS" empty="暂无选课记录" title="我的选课记录" style="margin-top:16px" />
         <section v-if="activeSelectionRecords.length" class="sp-card" style="margin-top:12px;padding:0;overflow:hidden">
           <div style="padding:14px 18px;border-bottom:1px solid var(--line2);font-weight:600">已选课程（可退课）</div>
           <table class="sp-table">
@@ -178,7 +178,7 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">我的复查申请</div>
-            <AutoTable :rows="recheck.items" empty="暂无复查申请" />
+            <AutoTable :rows="recheck.items" :columns="RECHECK_COLS" empty="暂无复查申请" />
           </section>
         </div>
       </section>
@@ -244,7 +244,7 @@
             <button class="sp-btn" :disabled="busy" @click="submitStatusChange">提交并下载申请表</button>
           </div>
         </template>
-        <AutoTable :rows="status.changes" empty="暂无异动记录" title="历史异动记录" style="margin-top:16px" />
+        <AutoTable :rows="status.changes" :columns="STATUS_CHANGE_COLS" empty="暂无异动记录" title="历史异动记录" style="margin-top:16px" />
       </section>
 
       <!-- 免修/缓考/补考重修 + 我的考试安排 -->
@@ -322,7 +322,7 @@
           <section class="sp-card">
             <div class="sp-panel__head">申请记录</div>
             <template v-if="examTab === '缓考申请'">
-              <AutoTable :rows="examDefer.items" empty="暂无申请记录" />
+              <AutoTable :rows="examDefer.items" :columns="DEFER_COLS" empty="暂无申请记录" />
               <div v-if="returnedDefers.length" style="margin-top:12px">
                 <div class="sp-fieldlabel">待补材料重提</div>
                 <div v-for="r in returnedDefers" :key="r.deferId" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line2)">
@@ -365,7 +365,7 @@
           <div class="sp-muted">出勤 {{ attendance.summary?.PRESENT || 0 }} · 迟到 {{ attendance.summary?.LATE || 0 }} · 旷课 {{ attendance.summary?.ABSENT || 0 }} · 请假 {{ attendance.summary?.LEAVE || 0 }}</div>
           <div class="sp-muted" style="margin-top:8px">{{ attendance.note || '点名入口在教师小程序；PC 仅统计，不做补点名。' }}</div>
         </section>
-        <AutoTable :rows="attendance.items" empty="暂无已提交考勤" title="明细" />
+        <AutoTable :rows="attendance.items" :columns="ATTENDANCE_COLS" empty="暂无已提交考勤" title="明细" />
       </section>
 
       <!-- 校历 -->
@@ -374,8 +374,8 @@
           <div class="sp-panel__head">当前学期校历（只读）</div>
           <div class="sp-muted">{{ calendar.hasTerm ? ('学期 ' + calendar.termLabel) : (calendar.note || '尚未设置当前学期') }}</div>
         </section>
-        <AutoTable :rows="calendar.events" empty="暂无校历事件" title="校历事件" />
-        <AutoTable :rows="(calendar.weeks || []).slice(0, 24)" empty="暂无教学周" title="教学周概览" />
+        <AutoTable :rows="calendar.events" :columns="CALENDAR_EVENT_COLS" empty="暂无校历事件" title="校历事件" />
+        <AutoTable :rows="(calendar.weeks || []).slice(0, 24)" :columns="CALENDAR_WEEK_COLS" empty="暂无教学周" title="教学周概览" />
       </section>
 
       <!-- 清考 -->
@@ -384,7 +384,7 @@
           <div class="sp-panel__head">清考结果</div>
           <div class="sp-muted">{{ clearance.note || '清考由教务处圈定，此处只读。' }}</div>
         </section>
-        <AutoTable :rows="clearance.items" empty="暂无清考安排" />
+        <AutoTable :rows="clearance.items" :columns="CLEARANCE_COLS" empty="暂无清考安排" />
       </section>
 
       <!-- 学分修读 -->
@@ -395,13 +395,13 @@
           <div class="sp-muted" style="margin-top:8px">说明：本页为本人学分汇总只读视图；分类占比/培养方案进度以教务处培养方案发布口径为准，移动端同口径。</div>
           <div class="bar" style="margin-top:12px"><span :style="{ width: creditPct + '%' }" /></div>
         </section>
-        <AutoTable :rows="credits.passedCourses" empty="暂无已通过课程" title="已通过课程" />
+        <AutoTable :rows="credits.passedCourses" :columns="CREDIT_COLS" empty="暂无已通过课程" title="已通过课程" />
       </section>
 
       <!-- 学业预警 -->
       <section v-else-if="tab === 'warning'" class="sp-card">
         <div class="sp-panel__head">我的学业预警</div>
-        <AutoTable :rows="warning.items" empty="暂无学业预警" />
+        <AutoTable :rows="warning.items" :columns="WARNING_COLS" empty="暂无学业预警" />
       </section>
 
       <!-- 教材领用 -->
@@ -488,7 +488,7 @@
           </div>
           <button class="sp-btn" :disabled="busy || !(splitPicks[b.batchId]||[]).length" @click="submitSplit(b)">提交志愿</button>
         </section>
-        <AutoTable :rows="majorSplit.myVolunteers" empty="暂无已提交志愿" title="我的志愿与结果" />
+        <AutoTable :rows="majorSplit.myVolunteers" :columns="SPLIT_COLS" empty="暂无已提交志愿" title="我的志愿与结果" />
       </section>
 
       <!-- 成绩认定 -->
@@ -512,7 +512,7 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">我的认定申请</div>
-            <AutoTable :rows="recognition.items" empty="暂无认定申请" />
+            <AutoTable :rows="recognition.items" :columns="RECOGNITION_COLS" empty="暂无认定申请" />
           </section>
         </div>
       </section>
@@ -668,6 +668,71 @@ const gradeTerms = computed(() => {
 })
 const retakeRows = computed(() => makeup.value.retakes || [])
 const exemptionRows = computed(() => makeup.value.exemptions || [])
+const SELECTION_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'credit', label: '学分' },
+  { key: 'enrolledAt', label: '选课时间' }, { key: 'status', label: '状态' },
+  { key: 'adjustReason', label: '调整说明' }
+]
+const RECHECK_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'term', label: '学期' },
+  { key: 'originalScore', label: '原成绩' }, { key: 'newScore', label: '复核成绩' },
+  { key: 'status', label: '状态' }, { key: 'reviewNote', label: '复核意见' }
+]
+const STATUS_CHANGE_COLS = [
+  { key: 'changeType', label: '异动类型' }, { key: 'toStatus', label: '变更后状态' },
+  { key: 'status', label: '办理状态' }, { key: 'effectiveDate', label: '生效日期' }
+]
+const DEFER_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'reasonType', label: '申请类型' },
+  { key: 'reason', label: '申请理由' }, { key: 'status', label: '状态' },
+  { key: 'returnReason', label: '退回原因' }
+]
+const ATTENDANCE_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'sessionDate', label: '日期' },
+  { key: 'slotNo', label: '节次' }, { key: 'sessionType', label: '考勤类型' },
+  { key: 'status', label: '状态' }
+]
+const CALENDAR_EVENT_COLS = [
+  { key: 'name', label: '事项' }, { key: 'eventType', label: '类型' },
+  { key: 'startDate', label: '开始日期' }, { key: 'endDate', label: '结束日期' }
+]
+const CALENDAR_WEEK_COLS = [
+  { key: 'weekNo', label: '教学周' }, { key: 'startDate', label: '开始日期' },
+  { key: 'endDate', label: '结束日期' }, { key: 'stage', label: '教学阶段' }
+]
+const CLEARANCE_COLS = [
+  { key: 'batchName', label: '清考批次' }, { key: 'courseName', label: '课程名称' },
+  { key: 'termCode', label: '学期' }, { key: 'originScore', label: '原成绩' },
+  { key: 'score', label: '清考成绩' }, { key: 'status', label: '状态' }
+]
+const CREDIT_COLS = [
+  { key: 'courseName', label: '课程名称' }, { key: 'term', label: '学期' },
+  { key: 'credit', label: '学分' }, { key: 'score', label: '成绩' },
+  { key: 'passStatus', label: '通过状态' }
+]
+const WARNING_COLS = [
+  { key: 'warningType', label: '预警类型' }, { key: 'level', label: '预警等级' },
+  { key: 'reason', label: '预警说明' }, { key: 'status', label: '状态' }
+]
+const SPLIT_STATUS = Object.freeze({
+  PENDING: '待分配', ALLOCATED: '已完成分配', ADJUSTED: '已完成调剂',
+  CONFIRMED: '已确认', UNALLOCATED: '待人工调剂'
+})
+const SPLIT_COLS = [
+  { key: 'choices', label: '已填志愿', formatter: (value) => Array.isArray(value) && value.length ? `${value.length} 个志愿` : '—' },
+  { key: 'gpa', label: '分流参考绩点' },
+  { key: 'status', label: '状态', formatter: (value) => SPLIT_STATUS[String(value || '').toUpperCase()] || '状态待确认' },
+  { key: 'resultChoiceRank', label: '分流结果', formatter: (value, row) => {
+    if (row?.resultMajorId) return value ? `第 ${value} 志愿录取` : '已完成分配'
+    return String(row?.status || '').toUpperCase() === 'UNALLOCATED' ? '待人工调剂' : '待公布'
+  } },
+  { key: 'adjustReason', label: '调剂说明' }
+]
+const RECOGNITION_COLS = [
+  { key: 'sourceCourseName', label: '原课程' }, { key: 'targetCourseName', label: '认定课程' },
+  { key: 'sourceScore', label: '原成绩' }, { key: 'sourceCredit', label: '原学分' },
+  { key: 'status', label: '状态' }, { key: 'reviewReason', label: '审核意见' }
+]
 const RETAKE_COLS = [
   { key: 'courseName', label: '课程名称' }, { key: 'termCode', label: '学期' },
   { key: 'reason', label: '申请理由' }, { key: 'retakeCount', label: '第几次' },

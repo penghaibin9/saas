@@ -142,7 +142,16 @@ def test_file_governance_permission_never_bypasses_business_content_relation(mon
     ) is True
 
     owner = _user(88)
-    assert file_access._default_resolver(None, ordinary, [], owner, "download") is True
+    # 正式业务文件即使由本人上传，也必须存在有效业务绑定；上传者身份不能绕过对象关系。
+    assert file_access._default_resolver(None, ordinary, [], owner, "download") is False
+    temporary_private = SimpleNamespace(
+        owner_user_id=88,
+        created_by=88,
+        biz_type="TEMP_PRIVATE",
+        biz_id=None,
+        visibility="PRIVATE",
+    )
+    assert file_access._default_resolver(None, temporary_private, [], owner, "download") is True
 
 
 def test_scan_operator_can_retry_but_cannot_download_infected_file(monkeypatch):

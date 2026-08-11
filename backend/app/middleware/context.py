@@ -22,7 +22,7 @@ from app.core.context import (
     set_trace_id,
 )
 from app.core.config import settings
-from app.core.tenant_context import resolve_tenant
+from app.core.tenant_context import resolve_tenant, tenant_code_was_explicit
 
 logger = logging.getLogger("app.access")
 
@@ -34,7 +34,17 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         set_trace_id(trace_id)
         set_current_user(None)
         set_current_internship_batch_id(_resolve_internship_batch_id(request))
-        resolve_tenant(request)
+        resolved_tenant = resolve_tenant(request)
+        if resolved_tenant is None and tenant_code_was_explicit(request):
+            # 显式指定了不存在的租户：必须拒绝。
+            # 旧实现会静默回落默认租户，等于让任意人用一个乱写的 X-Tenant
+            # 读到默认学校的数据。
+            from starlette.responses import JSONResponse
+            from app.core.response import fail
+            unknown = JSONResponse(status_code=400, content=fail(
+                "TENANT_NOT_FOUND", "指定的学校不存在"))
+            unknown.headers["X-Trace-Id"] = trace_id
+            return unknown
         _bind_token_tenant(request)
         set_request_meta({
             "ip": _resolve_client_ip(request),
@@ -155,10 +165,14 @@ def _bind_token_tenant(request: Request) -> None:
             "tokenJti": claims.get("jti"), "tokenExp": claims.get("exp"),
         })
         if claims.get("tenantId"):
+            # status 必须来自 t_tenant，不能因为"令牌里有 tenantId"就宣布该校 ACTIVE：
+            # 令牌签发之后学校可能已被停用/归档，只读闸门依赖的正是这个 status。
+            from app.core.tenant_context import lookup_tenant
+            real = lookup_tenant(str(claims.get("tid") or "").strip())
             set_tenant({"tenantId": str(claims["tenantId"]),
                         "tenantCode": claims.get("tid") or "",
                         "tenantName": claims.get("tenantName") or "",
-                        "status": "ACTIVE"})
+                        "status": (real or {}).get("status") or "UNKNOWN"})
         elif claims.get("tid"):
             from app.core.tenant_context import get_mock_tenant
             t = get_mock_tenant(str(claims["tid"]).strip())

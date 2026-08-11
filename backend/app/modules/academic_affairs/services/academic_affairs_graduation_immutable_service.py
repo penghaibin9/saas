@@ -36,13 +36,12 @@ def _hash(payload) -> str:
 
 
 def _strict_overall(items: list[dict]) -> str:
-    """Formal Stage C3 decision is PASS only when every required evidence item is PASS.
+    """Stage C3 decision is PASS only when every required evidence item is PASS.
 
     The legacy work-queue projection historically treated selected UNKNOWN domains as
-    non-blocking hints. That is acceptable for a preview UI, but it is not acceptable
-    for an immutable formal run that can later anchor a graduation decision. Missing,
-    unavailable, or ambiguous evidence must remain visible as SYSTEM_ABNORMAL until a
-    human/process supplies a formal resolution; UNKNOWN must never silently become PASS.
+    non-blocking hints. Stage C3 no longer permits that divergence: preview, formal runs,
+    and any later compatibility-projection recomputation must use this same fail-closed
+    result so mutable UI state can never drift away from the immutable evaluation run.
     """
     if not items:
         return "SYSTEM_ABNORMAL"
@@ -312,6 +311,10 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
 
 
 def install() -> None:
+    # Stage C3 must own every overall recomputation, including legacy fee-clearance
+    # projection updates. Otherwise a later mutable write can drift away from the
+    # latest immutable GraduationEvaluationRun and make the UI claim a false PASS.
+    graduation_service._overall = _strict_overall
     graduation_service.evaluate_student = evaluate_student
     graduation_service.evaluate_preview = evaluate_preview
     graduation_service.precheck = precheck

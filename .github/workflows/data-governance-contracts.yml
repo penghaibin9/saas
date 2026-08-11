@@ -1,0 +1,171 @@
+name: Data governance contracts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/backup/**'
+      - 'deploy/env/backup.env.example'
+      - 'deploy/systemd/school-lifecycle-backup*'
+      - 'deploy/README-data-governance.md'
+      - 'docs/07-部署运维交付与商业化/deploy/生产上线runbook.md'
+      - 'docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md'
+      - 'docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md'
+      - 'docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md'
+      - 'docs/07-部署运维交付与商业化/ops/10校SaaS上线性能与容灾基线.md'
+      - '.github/dependabot.yml'
+      - '.github/workflows/data-governance-contracts.yml'
+      - '.github/workflows/backup-restore-drill.yml'
+      - 'scripts/check/data-governance-contracts.py'
+      - '.gitignore'
+      - '**/*.env'
+      - '**/rclone.conf'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-governance-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts-and-runtime:
+    name: Backup set / offsite / restore fail-closed contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: governance_source
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: governance_source
+      BACKUP_DIR: /tmp/school-lifecycle-governance-backup
+      UPLOAD_DIR: /tmp/school-lifecycle-governance-uploads
+      REQUIRE_UPLOAD_BACKUP: '1'
+      KEEP_DAYS: '2'
+      MIN_LOCAL_BACKUP_SETS: '2'
+      BACKUP_REQUIRE_OFFSITE: 'true'
+      BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-governance-offsite
+      BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      MAX_BACKUP_AGE_SECONDS: '3600'
+      MAX_RESTORE_SECONDS: '300'
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant
+      MIN_RESTORE_TABLES: '2'
+      MIN_RESTORE_INDEXES: '2'
+      MIN_RESTORE_FOREIGN_KEYS: '0'
+      MIN_ACTIVE_TENANTS: '2'
+      RESTORE_EVIDENCE_FILE: /tmp/data-governance-restore-evidence.txt
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MySQL client and rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client rclone
+      - name: Validate static governance contracts
+        run: |
+          python scripts/check/data-governance-contracts.py
+          bash -n deploy/backup/backup-mysql.sh
+          bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/backup-watchdog.sh
+          bash -n deploy/backup/restore-drill.sh
+      - name: Build synthetic governed source data
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot governance_source <<'SQL'
+          CREATE TABLE alembic_version (version_num VARCHAR(64) PRIMARY KEY);
+          INSERT INTO alembic_version VALUES ('governance_contract');
+          CREATE TABLE t_tenant (
+            id BIGINT PRIMARY KEY,
+            tenant_code VARCHAR(64) NOT NULL UNIQUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+          );
+          INSERT INTO t_tenant VALUES (1001, 'school-a', FALSE), (1002, 'school-b', FALSE);
+          SQL
+          mkdir -p "$UPLOAD_DIR"
+          printf 'governance-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
+      - name: Prove uploads fail closed and clean up incomplete files
+        run: |
+          set -euo pipefail
+          rm -rf "$BACKUP_DIR"
+          mkdir -p "$BACKUP_DIR"
+          if UPLOAD_DIR=/tmp/definitely-missing REQUIRE_UPLOAD_BACKUP=1 bash deploy/backup/backup-mysql.sh; then
+            echo '::error::backup unexpectedly succeeded without required uploads'
+            exit 1
+          fi
+          if [ -n "$(find "$BACKUP_DIR" -maxdepth 1 -type f -print -quit)" ]; then
+            echo '::error::failed backup left orphan files in the governed backup directory'
+            find "$BACKUP_DIR" -maxdepth 1 -type f -printf '%f\n'
+            exit 1
+          fi
+      - name: Prove unsafe upload entries are rejected
+        run: |
+          set -euo pipefail
+          UNSAFE_BACKUP_DIR=/tmp/school-lifecycle-unsafe-upload-backup
+          rm -rf "$UNSAFE_BACKUP_DIR"
+          mkdir -p "$UNSAFE_BACKUP_DIR"
+          ln -s /etc/passwd "$UPLOAD_DIR/unsafe-link"
+          if BACKUP_DIR="$UNSAFE_BACKUP_DIR" bash deploy/backup/backup-mysql.sh; then
+            echo '::error::backup unexpectedly accepted a symbolic link inside uploads'
+            exit 1
+          fi
+          rm -f "$UPLOAD_DIR/unsafe-link"
+          if [ -n "$(find "$UNSAFE_BACKUP_DIR" -maxdepth 1 -type f -print -quit)" ]; then
+            echo '::error::failed unsafe-upload backup left orphan files'
+            exit 1
+          fi
+          rm -rf "$UNSAFE_BACKUP_DIR"
+      - name: Prove local-only backup is rejected
+        run: |
+          set -euo pipefail
+          if BACKUP_RCLONE_REMOTE= bash deploy/backup/backup-runner.sh; then
+            echo '::error::production runner unexpectedly succeeded without offsite storage'
+            exit 1
+          fi
+      - name: Produce manifest-committed offsite backup
+        run: |
+          rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" "$UPLOAD_DIR"
+          bash deploy/backup/backup-runner.sh
+          MANIFEST="$(find "$BACKUP_RCLONE_REMOTE" -maxdepth 1 -name 'manifest_*.json' | sort | tail -n1)"
+          test -s "$MANIFEST"
+          test -s "${MANIFEST}.sha256"
+          echo "MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+      - name: Verify backup watchdog sees healthy committed set
+        run: bash deploy/backup/backup-watchdog.sh
+      - name: Prove watchdog detects missing remote commit marker
+        run: |
+          set -euo pipefail
+          LOCAL_MANIFEST="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'manifest_*.json' | sort | tail -n1)"
+          REMOTE_MANIFEST="$BACKUP_RCLONE_REMOTE/$(basename "$LOCAL_MANIFEST")"
+          mv "$REMOTE_MANIFEST" "${REMOTE_MANIFEST}.hidden"
+          if bash deploy/backup/backup-watchdog.sh; then
+            echo '::error::watchdog unexpectedly accepted a backup with no remote commit marker'
+            exit 1
+          fi
+          mv "${REMOTE_MANIFEST}.hidden" "$REMOTE_MANIFEST"
+          bash deploy/backup/backup-watchdog.sh
+      - name: Restore from the offsite committed set
+        env:
+          EXPECTED_ALEMBIC_VERSION: governance_contract
+        run: bash deploy/backup/restore-drill.sh "$MANIFEST" governance_restore_test
+      - name: Verify recovery evidence integrity
+        run: |
+          grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^upload_entry_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
+          sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"

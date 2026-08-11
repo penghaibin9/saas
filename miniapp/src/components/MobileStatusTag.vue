@@ -5,7 +5,7 @@
 <script>
 /**
  * 学生/教师微信端共用状态词表。
- * ARCHIVED=已归档；VOIDED=已作废。未知状态原样显示，禁止静默翻译成“已完成”。
+ * ARCHIVED=已归档；VOIDED=已作废。未知状态显示安全占位，raw code 只进入开发日志。
  */
 const STATUS_MAP = {
   DRAFT: { label: '草稿', type: 'default' },
@@ -107,7 +107,10 @@ export default {
       return this.type || (this.mapped ? this.mapped.type : 'default')
     },
     displayLabel() {
-      return this.label || (this.mapped ? this.mapped.label : this.status) || '—'
+      if (this.label && (!this.status || this.label !== this.status)) return this.label
+      if (this.mapped) return this.mapped.label
+      if (this.status && typeof console !== 'undefined') console.warn('[unknown-mobile-status]', this.status)
+      return this.status ? '状态待确认' : '—'
     }
   }
 }

@@ -33,6 +33,8 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "backend/app/services/domain_export", "backend/app/core/import_export",
       "backend/app/api/v1/import_export", "backend/app/api/v1/transfer"),
      ["tests/test_import_export_p0_authz.py", "tests/test_import_export.py"]),
+    (("backend/app/api/v1/help_metrics.py", "backend/app/services/help_metrics_service.py"),
+     ["tests/test_help_metrics.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。

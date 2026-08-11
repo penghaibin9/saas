@@ -52,7 +52,8 @@ def test_student_pc_has_task_home_and_independent_academic_routes():
     assert "当前需要我处理" in home
     assert "academicTab" in wrapper
     assert "AcademicView" in wrapper
-    assert ":deep(.sp-tabs) { display: none; }" in wrapper
+    # 兼容工作区只隐藏综合页的第一层主标签，不能误伤子工作区标签。
+    assert ":deep(> .sp-page > .sp-tabs) { display: none; }" in wrapper
 
 
 def test_student_pc_home_prefers_exact_todo_route():

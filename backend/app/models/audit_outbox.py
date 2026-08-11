@@ -43,15 +43,30 @@ def _safe(value):
     return value
 
 
+# 一次业务审计 = 恰好一条 outbox 事件。
+# 服务层若需要拿到 event_id（用于 mark_processed / mark_retry），不要自己再 db.add 一条
+# AuditOutbox —— 那会和本监听器各写一条、event_id 还不一样，等于同一事实入队两次。
+# 正确做法：调用 stage_outbox_event_id() 把 event_id 预挂到 trail 上，由本监听器统一入队。
+_STAGED_EVENT_ID = "_audit_outbox_event_id"
+
+
+def stage_outbox_event_id(trail, event_id: str | None = None) -> str:
+    """给一条待写入的审计 trail 预分配 outbox event_id，并返回它。"""
+    eid = event_id or uuid.uuid4().hex
+    setattr(trail, _STAGED_EVENT_ID, eid)
+    return eid
+
+
 @event.listens_for(Session, "before_flush")
 def enqueue_internship_trails(db, _flush_context, _instances):
-    """Every new internship trail gets a durable outbox row in the same transaction."""
+    """Every new internship trail gets exactly one durable outbox row in the same transaction."""
     from app.models.internship import InternshipAuditTrail
     trails = [row for row in list(db.new) if isinstance(row, InternshipAuditTrail)]
     for trail in trails:
         detail = _safe(trail.detail_json or {})
         db.add(AuditOutbox(
-            tenant_id=trail.tenant_id, event_id=uuid.uuid4().hex,
+            tenant_id=trail.tenant_id,
+            event_id=getattr(trail, _STAGED_EVENT_ID, None) or uuid.uuid4().hex,
             event_type=f"INTERNSHIP_{trail.action}",
             payload_json={
                 "action": trail.action, "targetType": trail.target_type,

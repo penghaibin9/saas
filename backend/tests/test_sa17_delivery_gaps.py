@@ -4,7 +4,6 @@ from __future__ import annotations
 
 PORTAL = "/api/v1/portal/affairs"
 MB = "/api/v1/mobile"
-BASE = "/api/v1/student-affairs"
 TID = 1000000000000000001
 
 
@@ -23,16 +22,77 @@ def _stu_token(real_name, student_no, client_type="MP"):
 
 
 def _seed(db_mode):
+    from datetime import datetime
+
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import CsLeave, SchoolClass, StudentProfile, User
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    db.add(a); db.flush()
-    zhang = StudentProfile(tenant_id=TID, student_no="SA17MB01", real_name="收口张", class_id=a.id,
-                           gender="M", current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
-    db.add(zhang); db.flush()
-    ids = {"zhang": zhang.id}
-    db.commit(); db.close()
+    counselor = db.query(User).filter(
+        User.tenant_id == TID,
+        User.login_name == "counselor01",
+    ).first()
+    if counselor is None:
+        counselor = User(
+            tenant_id=TID,
+            login_name="counselor01",
+            real_name="王莉",
+            password_hash="test-hash",
+            user_type="TEACHER",
+            status="ACTIVE",
+        )
+        db.add(counselor)
+        db.flush()
+    else:
+        counselor.status = "ACTIVE"
+        counselor.is_deleted = False
+
+    a = SchoolClass(
+        tenant_id=TID,
+        major_id=1,
+        class_name="软件2101",
+        grade="2021",
+        counselor_id=counselor.id,
+        status="ACTIVE",
+    )
+    db.add(a)
+    db.flush()
+    zhang = StudentProfile(
+        tenant_id=TID,
+        student_no="SA17MB01",
+        real_name="收口张",
+        class_id=a.id,
+        gender="M",
+        current_stage="ON_CAMPUS",
+        student_status="REGISTERED",
+        status="ACTIVE",
+    )
+    db.add(zhang)
+    db.flush()
+
+    # SA17 验证的是“学生本人续假”渠道合同，不重复构造初次请假三级审批链。
+    # 直接种一条已通过请假事实；续假仍走真实服务，真实解析班级辅导员并创建待办。
+    start = datetime(2027, 6, 1)
+    end = datetime(2027, 6, 2)
+    leave = CsLeave(
+        tenant_id=TID,
+        code="SA17-LV-001",
+        student_id=zhang.id,
+        leave_type="PERSONAL",
+        start_time=start,
+        end_time=end,
+        days=1,
+        reason="家庭事务请假",
+        status="APPROVED",
+        affairs_status="APPROVED",
+        apply_time=datetime.utcnow(),
+        expected_return_at=end,
+    )
+    db.add(leave)
+    db.flush()
+    ids = {"zhang": int(zhang.id), "leave": int(leave.id)}
+    db.commit()
+    db.close()
     return ids
 
 
@@ -53,26 +113,22 @@ def test_mobile_aid_funding_apply_guards_and_portal_dorm(client, db_mode):
 
 def test_mobile_and_portal_leave_extend_self(client, db_mode):
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
-    lid = client.post(f"{BASE}/leave", headers=admin, json={
-        "studentId": str(ids["zhang"]), "leaveType": "PERSONAL",
-        "startTime": "2026-06-01", "endTime": "2026-06-02", "reason": "回家有事"
-    }).json()["data"]["id"]
-    client.post(f"{BASE}/leave/{lid}/approve", headers=admin)
+    lid = ids["leave"]
     h = _stu_token("收口张", "SA17MB01")
     mine = client.get(f"{MB}/affairs/leave/my", headers=h).json()["data"]["items"]
-    assert mine and mine[0]["canExtend"] is True
+    assert mine and mine[0]["leaveId"] == str(lid)
+    assert "SUBMIT_EXTENSION" in mine[0]["allowedActions"]
     r = client.post(f"{MB}/affairs/leave/{lid}/extension", headers=h, json={
-        "newEndTime": "2026-06-05", "reason": "因病需要续假"
+        "newEndTime": "2027-06-05", "reason": "因病需要续假", "version": mine[0]["version"]
     }).json()
     assert r["code"] == 0, r
     mine2 = client.get(f"{MB}/affairs/leave/my", headers=h).json()["data"]["items"]
     assert mine2[0]["status"] == "EXTENSION_REVIEW"
-    assert mine2[0]["canExtend"] is False
+    assert "SUBMIT_EXTENSION" not in mine2[0]["allowedActions"]
     # 门户续假入口存在（当前已在续假审，再次提交应业务冲突）
     hp = _stu_token("收口张", "SA17MB01", "PC")
     again = client.post(f"{PORTAL}/leave/{lid}/extension", headers=hp, json={
-        "newEndTime": "2026-06-06", "reason": "再次续假测试"
+        "newEndTime": "2027-06-06", "reason": "再次续假测试", "version": mine2[0]["version"]
     }).json()
     assert again["code"] != 0
 

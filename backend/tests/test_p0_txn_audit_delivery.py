@@ -1,4 +1,4 @@
-"""P0 修复：审批同事务副作用、enqueue 不二次 version++、学号复活。"""
+"""P0 修复：审批同事务副作用、enqueue 不二次 version++、学号受控恢复。"""
 from __future__ import annotations
 
 MAIN = 1000000000000000001
@@ -51,21 +51,64 @@ def test_enqueue_in_db_does_not_bump_version(db_mode):
 
 
 def test_student_void_then_create_restores_same_id(db_mode, client, auth_headers):
+    """作废学号不得靠二次补录隐式复活；必须走独立 restore 动作并复用原 PK。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+
+    db = get_sessionmaker()()
+    college = College(tenant_id=MAIN, college_name="受控恢复测试学院", status="ACTIVE")
+    db.add(college)
+    db.flush()
+    major = Major(tenant_id=MAIN, college_id=college.id, major_name="受控恢复测试专业", status="ACTIVE")
+    db.add(major)
+    db.flush()
+    school_class = SchoolClass(
+        tenant_id=MAIN,
+        major_id=major.id,
+        class_name="受控恢复测试班",
+        grade="2026",
+        status="ACTIVE",
+        class_status="NORMAL",
+    )
+    db.add(school_class)
+    db.commit()
+    college_id, major_id, class_id = college.id, major.id, school_class.id
+    db.close()
+
     no = "2099777001"
-    created = client.post("/api/v1/students", headers=auth_headers, json={
-        "studentNo": no, "realName": "复活甲", "phone": "13900001111",
-    }).json()
+    create_body = {
+        "studentNo": no,
+        "realName": "复活甲",
+        "phone": "13900001111",
+        "collegeId": str(college_id),
+        "majorId": str(major_id),
+        "classId": str(class_id),
+    }
+    created = client.post("/api/v1/students", headers=auth_headers, json=create_body).json()
     assert created["code"] == 0
     sid = created["data"]["id"]
+
     voided = client.post(f"/api/v1/students/{sid}/void", headers=auth_headers, json={
-        "reason": "测试作废后复活原档",
+        "reason": "测试作废后必须受控恢复",
     }).json()
     assert voided["code"] == 0 and voided["data"]["isDeleted"] is True
 
+    # 已作废学号不能再次走普通补录，也不能借二次补录偷偷改姓名/联系方式。
     again = client.post("/api/v1/students", headers=auth_headers, json={
-        "studentNo": no, "realName": "复活乙", "phone": "13900002222",
+        **create_body,
+        "realName": "复活乙",
+        "phone": "13900002222",
+    })
+    assert again.status_code == 409
+    assert again.json()["code"] == 409001
+    assert again.json()["bizCode"] == "VOIDED_PROFILE_EXISTS"
+    assert "受控恢复" in again.json()["message"]
+
+    restored = client.post("/api/v1/students/restore", headers=auth_headers, json={
+        "studentNo": no,
+        "reason": "确认同一学生，恢复原历史主档",
     }).json()
-    assert again["code"] == 0
-    assert again["data"]["id"] == sid
-    assert again["data"].get("restored") is True
-    assert again["data"]["realName"] == "复活乙"
+    assert restored["code"] == 0
+    assert restored["data"]["id"] == sid
+    assert restored["data"]["realName"] == "复活甲"
+    assert restored["data"]["isDeleted"] is False

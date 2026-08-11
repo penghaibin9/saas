@@ -419,7 +419,13 @@ export default {
         { key: 'userNo', label: '工号 / 账号', required: true, disabled: !!this.form.id, lockNote: this.form.id ? '（创建后不可修改）' : '', placeholder: '如 T2026001' },
         { key: 'name', label: '姓名', required: true },
         { key: 'phone', label: '手机号', hint: '仅用于找回密码，列表默认脱敏展示' },
-        { key: 'roles', label: '初始角色', type: 'checkbox-group', full: true, options: this.staffRoleOptions, hint: '数据范围随角色配置生效；新建账号请走统一导入' }
+        {
+          key: 'roles', label: '角色身份', type: 'checkbox-group', full: true,
+          options: this.staffRoleOptions, disabled: !this.can('assignRole'),
+          hint: this.can('assignRole')
+            ? '保存时同步写入账号角色关系；账号需重新登录后生效'
+            : '当前账号没有角色分配权限，仅可查看已有身份'
+        }
       ]
     }
   },
@@ -516,6 +522,7 @@ export default {
         open: true,
         id: row.id,
         value: { userNo: row.userNo, name: row.name, phone: row.phone, roles: [...(row.roles || [])] },
+        originalRoles: [...(row.roles || [])],
         errors: {},
         submitting: false
       }
@@ -528,16 +535,36 @@ export default {
       const errors = FormFields.validateRequired(this.formFields, this.form.value)
       this.form.errors = errors
       if (Object.keys(errors).length) return
+      if (!this.can('assignRole')) {
+        const before = [...(this.form.originalRoles || [])].sort().join(',')
+        const after = [...(this.form.value.roles || [])].sort().join(',')
+        if (before !== after) {
+          toast.error(this.reason('assignRole') || '当前账号没有角色分配权限')
+          return
+        }
+      }
       this.form.submitting = true
       const res = await systemApi.updateUser(this.form.id, this.form.value)
-      this.form.submitting = false
-      if (res.code === 0) {
-        toast.success('账号已更新，已写入审计日志')
-        this.form.open = false
-        this.load()
-      } else {
+      if (res.code !== 0) {
+        this.form.submitting = false
         toast.error(res.message)
+        return
       }
+      if (this.can('assignRole')) {
+        const roleRes = await systemApi.assignUserRoles(this.form.id, this.form.value.roles || [])
+        if (roleRes.code !== 0) {
+          this.form.submitting = false
+          toast.error(`基础信息已保存，但角色身份保存失败：${roleRes.message}`)
+          await this.load()
+          return
+        }
+      }
+      this.form.submitting = false
+      toast.success(this.can('assignRole')
+        ? '账号与角色身份已更新，重新登录后生效'
+        : '账号基础信息已更新，已写入审计日志')
+      this.form.open = false
+      this.load()
     },
     async openDetail(row) {
       this.detail = { open: true, loading: true, data: null }

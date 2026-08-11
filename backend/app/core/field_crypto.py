@@ -9,21 +9,66 @@ from cryptography.fernet import Fernet, InvalidToken
 
 _DEFAULT_DEV_KEY = "jxd5OL3YvyF335hh52bntwYmmA7ZJ_BXWxyZt4CcGd4="
 
+# 密文信封：`k<版本>:<Fernet密文>`。
+# 没有前缀的密文＝换钥机制上线前写入的历史数据，用全部已知密钥依次尝试。
+_KID_PREFIX = "k"
+_KID_SEP = ":"
 
-def _fernet() -> Fernet:
+
+def _fernet(key: str) -> Fernet:
+    return Fernet(key.encode())
+
+
+def _current_key() -> tuple[str, str]:
     from app.core.config import settings
-    return Fernet(settings.field_encryption_key.encode())
+    return settings.field_encryption_key_id, settings.field_encryption_key
+
+
+def _all_keys() -> dict[str, str]:
+    """{版本号: 密钥}，含当前密钥与全部历史密钥。"""
+    from app.core.config import settings
+    keys = dict(settings.field_encryption_previous_keys)
+    kid, key = _current_key()
+    keys[kid] = key
+    return keys
+
+
+def split_key_id(stored: str) -> tuple[str | None, str]:
+    """拆出密文的密钥版本。无前缀（历史密文）返回 (None, 原文)。"""
+    text = str(stored or "")
+    if not text.startswith(_KID_PREFIX) or _KID_SEP not in text:
+        return None, text
+    head, _, body = text.partition(_KID_SEP)
+    kid = head[len(_KID_PREFIX):]
+    if kid and body.startswith("gAAAA"):
+        return kid, body
+    return None, text
 
 
 def looks_like_fernet(value: str) -> bool:
-    s = str(value or "")
-    return s.startswith("gAAAA") and len(s) > 40
+    _, body = split_key_id(value)
+    return body.startswith("gAAAA") and len(body) > 40
 
 
 def encrypt_field(value) -> str | None:
     if value is None or value == "":
         return None
-    return _fernet().encrypt(str(value).encode()).decode()
+    kid, key = _current_key()
+    token = _fernet(key).encrypt(str(value).encode()).decode()
+    return f"{_KID_PREFIX}{kid}{_KID_SEP}{token}"
+
+
+def _try_decrypt(text: str) -> str | None:
+    """按密文自带的版本选密钥；历史无版本密文遍历全部已知密钥。"""
+    kid, body = split_key_id(text)
+    keys = _all_keys()
+    candidates = [keys[kid]] if kid and kid in keys else list(keys.values())
+    for key in candidates:
+        try:
+            return _fernet(key).decrypt(body.encode()).decode()
+        except (InvalidToken, ValueError):
+            continue
+    return None
 
 
 def decrypt_field(stored, *, allow_legacy_plaintext: bool = True) -> str | None:
@@ -31,28 +76,36 @@ def decrypt_field(stored, *, allow_legacy_plaintext: bool = True) -> str | None:
     if not stored:
         return stored
     text = str(stored)
-    try:
-        return _fernet().decrypt(text.encode()).decode()
-    except (InvalidToken, ValueError):
-        if allow_legacy_plaintext and not looks_like_fernet(text):
-            return text
-        from app.core.config import settings
-        from app.core.exceptions import AppException
-        import logging
-        logging.getLogger("app.crypto").error("sensitive_decrypt_failed")
-        if settings.is_prod:
-            raise AppException("SENSITIVE_DECRYPT_FAILED", "敏感字段解密失败，请联系管理员")
-        return None
+    plain = _try_decrypt(text)
+    if plain is not None:
+        return plain
+    if allow_legacy_plaintext and not looks_like_fernet(text):
+        return text
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    import logging
+    kid, _ = split_key_id(text)
+    # 记下版本号：换钥后出问题时，这一行能直接指认"缺哪把旧钥匙"。
+    logging.getLogger("app.crypto").error("sensitive_decrypt_failed key_id=%s", kid or "legacy")
+    if settings.is_prod:
+        raise AppException("SENSITIVE_DECRYPT_FAILED", "敏感字段解密失败，请联系管理员")
+    return None
 
 
 def hash_sensitive(value, field_type: str = "generic") -> str | None:
-    """带服务器密钥的 HMAC-SHA256，用于检索匹配，不可逆。"""
+    """带服务器密钥的 HMAC-SHA256，用于检索匹配，不可逆。
+
+    刻意**不**随 FIELD_ENCRYPTION_KEY 一起轮换：检索哈希一旦变化，历史行的
+    检索列就全部失配。它用独立的 SENSITIVE_SEARCH_HMAC_KEY（未配置时回落到
+    字段加密密钥，仅兼容尚未开始密钥轮换的旧部署）。一旦存在历史加密密钥，
+    启动安全检查会要求显式固定 SENSITIVE_SEARCH_HMAC_KEY，禁止搜索哈希随主钥漂移。
+    """
     if value is None or value == "":
         return None
     import hashlib
     import hmac
     from app.core.config import settings
-    key = (settings.field_encryption_key or "").encode()
+    key = (settings.sensitive_search_hmac_key or "").encode()
     msg = f"{field_type}:{value}".encode()
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
@@ -111,11 +164,63 @@ def mask_id_card_encrypted(stored) -> str:
     return _mask_stored(stored, "id_card", mask_id_card)
 
 
-def assert_field_encryption_safe() -> None:
-    """生产禁止默认字段加密密钥。"""
+def rewrap(stored) -> str | None:
+    """把一条密文重新用当前密钥加密（换钥后的重加密任务用）。
+
+    返回 None 表示无需处理（空值），返回原值表示已是当前密钥版本。
+    解不开时抛异常——重加密任务必须知道哪条解不开，不能静默跳过。
+    """
+    if not stored:
+        return stored
+    text = str(stored)
+    kid, _ = split_key_id(text)
+    current_kid, _ = _current_key()
+    if kid == current_kid:
+        return text
+    plain = _try_decrypt(text)
+    if plain is None:
+        if not looks_like_fernet(text):
+            # 历史明文行（加密上线前写入）：这里正是把它加密掉的时机，不是错误。
+            return encrypt_field(text)
+        raise ValueError(f"密文无法用任何已知密钥解开（key_id={kid or 'legacy'}）")
+    return encrypt_field(plain)
+
+
+def key_rotation_status() -> dict:
+    """当前密钥版本与可用历史密钥版本，供运维/健康检查确认换钥前提。"""
     from app.core.config import settings
+    kid, _ = _current_key()
+    return {
+        "currentKeyId": kid,
+        "previousKeyIds": sorted(settings.field_encryption_previous_keys.keys()),
+        "searchHmacKeyIsSeparate": bool((settings.SENSITIVE_SEARCH_HMAC_KEY or "").strip()),
+    }
+
+
+def assert_field_encryption_safe() -> None:
+    """校验字段加密与检索哈希的生产/轮换安全合同。"""
+    from app.core.config import settings
+    previous_keys = settings.field_encryption_previous_keys
+    for kid, key in previous_keys.items():
+        try:
+            Fernet(key.encode())
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"FIELD_ENCRYPTION_PREVIOUS_KEYS 中版本 {kid} 不是合法 Fernet 密钥：{exc}") from exc
+
+    # 一旦 previous keys 非空就说明已经进入加密密钥轮换。若此时仍让搜索 HMAC
+    # 回落到当前 FIELD_ENCRYPTION_KEY，新写哈希会立刻改钥，而历史 hash 列不会重算，
+    # 去重/手机号身份证检索会静默失配。轮换前必须先把原 HMAC key 显式钉住。
+    if previous_keys and not (settings.SENSITIVE_SEARCH_HMAC_KEY or "").strip():
+        raise RuntimeError(
+            "检测到 FIELD_ENCRYPTION_PREVIOUS_KEYS（已进入字段加密密钥轮换），"
+            "必须先显式设置稳定的 SENSITIVE_SEARCH_HMAC_KEY；若此前一直留空，"
+            "请在换 FIELD_ENCRYPTION_KEY 前把原 FIELD_ENCRYPTION_KEY 的值固定到该项")
+
     if not settings.is_prod:
         return
     key = (settings.field_encryption_key or "").strip()
     if not key or key == _DEFAULT_DEV_KEY or len(key) < 32:
         raise RuntimeError("生产环境必须设置独立 FIELD_ENCRYPTION_KEY（非开发默认值，长度合格）")
+    if _DEFAULT_DEV_KEY in previous_keys.values():
+        raise RuntimeError("生产环境 FIELD_ENCRYPTION_PREVIOUS_KEYS 不得包含开发默认密钥")

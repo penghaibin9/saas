@@ -26,11 +26,12 @@ server {
     ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    # 安全响应头
+    # 安全响应头 / 限流 / 静态目录封禁：统一走安全合同片段，不在此处各写一份。
+    # 前提：http{} 里已 include security-http.conf（提供 $csp_header 与 limit_req_zone）。
+    include /etc/nginx/conf.d/security-server.conf;
+
+    # HSTS 只在 HTTPS 配置里加（HTTP 站点加了会把用户永久锁死在无证书的站点上）。
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     client_max_body_size 60m;                                  # 与后端上传上限一致
     gzip on;
@@ -41,9 +42,14 @@ server {
     index index.html;
     location / {
         try_files $uri $uri/ /index.html;                      # history 路由兜底
+        include /etc/nginx/conf.d/security-headers.conf;
         add_header Cache-Control "no-cache";
     }
-    location /assets/ { expires 30d; add_header Cache-Control "public,max-age=2592000"; }
+    location /assets/ {
+        expires 30d;
+        include /etc/nginx/conf.d/security-headers.conf;
+        add_header Cache-Control "public,max-age=2592000";
+    }
 
     # miniapp H5
     location /miniapp/ {

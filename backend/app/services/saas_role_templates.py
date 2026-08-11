@@ -48,6 +48,7 @@ BUILTIN_ROLE_TEMPLATES = (
     _role("GD_REVIEWER", "毕设评阅教师", "GRADUATION", "ASSIGNED", aliases=("毕设评阅人",)),
     _role("GD_DEFENSE_SECRETARY", "答辩秘书", "GRADUATION", "ASSIGNED"),
     _role("GD_DEFENSE_EXPERT", "答辩专家", "GRADUATION", "ASSIGNED"),
+    _role("GD_GRADE_ADMIN", "毕设成绩管理员", "GRADUATION", "SCHOOL", aliases=("毕业设计成绩管理员",)),
     _role("INTERN_MENTOR", "实习指导教师", "INTERNSHIP", "INTERN_STUDENTS", aliases=("实习导师",)),
     _role("EMPLOYMENT_TEACHER", "就业老师", "EMPLOYMENT", "ASSIGNED", aliases=("就业管理员",)),
     _role("STAFF", "普通教职工", "SYSTEM", "CUSTOM", teacher=False),

@@ -168,9 +168,9 @@
         </div>
 
         <div v-if="preview.blockers?.length" class="atd-blockers">
-          <article v-for="row in preview.blockers" :key="row.code">
-            <code>{{ row.code }}</code>
-            <span>{{ row.message }}</span>
+          <article v-for="(row, index) in preview.blockers" :key="row.code || index">
+            <strong>暂不可保存</strong>
+            <span>{{ blockerText(row) }}</span>
           </article>
         </div>
 
@@ -199,9 +199,9 @@
           <li v-for="row in detail.timeline" :key="row.auditId">
             <span class="atd-timeline-dot" />
             <div>
-              <header><strong>{{ row.actionLabel || row.action }}</strong><time>{{ row.occurredAt || '—' }}</time></header>
+              <header><strong>{{ auditActionLabel(row) }}</strong><time>{{ row.occurredAt || '—' }}</time></header>
               <p>{{ row.operator || '系统' }}<template v-if="row.roleName"> · {{ row.roleName }}</template></p>
-              <small v-if="row.detail">{{ row.detail }}</small>
+              <small v-if="row.detail">{{ auditDetail(row.detail) }}</small>
             </div>
           </li>
         </ol>
@@ -226,6 +226,7 @@ import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/com
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsTermDetailApi as termApi } from '@/modules/academicAffairs/api/academic-affairs-term-detail.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord, safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 
 const STATUS_LABEL = {
   DRAFT: '草稿',
@@ -291,7 +292,10 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(status) { return STATUS_LABEL[status] || status || '未知状态' },
+    statusLabel(status) { return safeEnumLabel({ value: status, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
+    blockerText(row) { return safeBusinessMessage(row?.message || row?.summary, '当前修改不满足业务校验，请调整后重试') },
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
+    auditDetail(detail) { return safeBusinessMessage(detail, '已记录本次状态变更') },
     valueText(value) { return value === null || value === undefined || value === '' ? '未设置' : String(value) },
     normalizedForm() {
       return {
@@ -440,7 +444,7 @@ export default {
 .atd-preview-conclusion.is-blocked { background: var(--danger-50, #fff0f0); }
 .atd-blockers { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .atd-blockers article { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--danger-200, #ffccc7); border-radius: 8px; }
-.atd-blockers code { white-space: nowrap; }
+.atd-blockers strong { white-space: nowrap; color: var(--danger-700, #d03030); }
 .atd-change-list { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
 .atd-change-list article { display: grid; grid-template-columns: 140px 1fr 28px 1fr; align-items: center; gap: 8px; padding: 9px 10px; background: var(--fill-50, #f7f8fa); border-radius: 7px; }
 .atd-change-list i { text-align: center; font-style: normal; color: var(--text-400, #8a9099); }

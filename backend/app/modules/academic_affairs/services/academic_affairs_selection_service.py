@@ -330,7 +330,7 @@ def drop(user, course_id):
 
 def lock_batch(user, batch_id):
     with _core.session() as db:
-        _core._require_school(_core._ctx(user, db))
+        _core._require_manage_scope(_core._ctx(user, db))
         batch = _core._batch(db, batch_id, for_update=True)
         _guard_batch_writable(db, batch)
         if batch.status != _BATCH_CLOSED:
@@ -346,7 +346,7 @@ def lock_batch(user, batch_id):
 
 def admin_drop(user, record_id, reason):
     with _core.session() as db:
-        _core._require_school(_core._ctx(user, db))
+        _core._require_manage_scope(_core._ctx(user, db))
         record = _core._record(db, record_id, for_update=True)
         course = _lock_course_row(db, record.selection_course_id)
         batch = _core._batch(db, record.batch_id)
@@ -368,7 +368,7 @@ def admin_drop(user, record_id, reason):
 
 def reselect(user, course_id):
     with _core.session() as db:
-        _core._require_school(_core._ctx(user, db))
+        _core._require_manage_scope(_core._ctx(user, db))
         student = _load_student(db)
         course = _lock_course_row(db, course_id)
         batch = _core._batch(db, course.batch_id)

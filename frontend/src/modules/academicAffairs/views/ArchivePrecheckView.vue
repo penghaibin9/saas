@@ -49,7 +49,7 @@
         <article>
           <span>检查域</span>
           <strong>{{ domains.length }}</strong>
-          <small>后端返回的业务语义域</small>
+          <small>系统已完成业务语义检查</small>
         </article>
         <article class="is-pass">
           <span>已通过域</span>
@@ -64,7 +64,7 @@
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
           <strong>{{ blockingCount }}</strong>
-          <small>来自十三域实时语义检查</small>
+          <small>来自十三域当前语义检查</small>
         </article>
       </section>
 
@@ -82,7 +82,7 @@
             <header class="aapc-card-head">
               <div>
                 <span class="aapc-card-title">{{ d.domainLabel }}</span>
-                <code>{{ d.ruleCode || `${d.domain}_SEMANTIC_GATE` }}</code>
+                <small>归档校验规则</small>
               </div>
               <StatusTag :type="tagType(d)" :label="tagLabel(d)" dot />
             </header>
@@ -96,7 +96,13 @@
 
             <details v-if="Array.isArray(d.evidence) && d.evidence.length" class="aapc-evidence">
               <summary>查看证据（{{ d.evidence.length }}）</summary>
-              <pre>{{ evidencePreview(d.evidence) }}</pre>
+              <ul>
+                <li v-for="(item, index) in evidencePreview(d.evidence)" :key="index">{{ item }}</li>
+              </ul>
+            </details>
+            <details v-if="d.ruleCode" class="aapc-evidence">
+              <summary>技术依据</summary>
+              <code>{{ d.ruleCode }}</code>
             </details>
 
             <footer class="aapc-card-actions">
@@ -112,7 +118,7 @@
           <div>
             <span class="aapc-eyebrow">完成证据</span>
             <h3>已通过业务域</h3>
-            <p>这些域已满足当前归档语义门禁，保留规则编号与证据供复核，不与阻断项混排。</p>
+            <p>这些域已满足当前归档语义门禁，保留业务证据供复核，不与阻断项混排。</p>
           </div>
           <span class="aapc-count">{{ passedDomainRows.length }} 个通过域</span>
         </header>
@@ -121,7 +127,7 @@
             <header class="aapc-card-head">
               <div>
                 <span class="aapc-card-title">{{ d.domainLabel }}</span>
-                <code>{{ d.ruleCode || `${d.domain}_SEMANTIC_GATE` }}</code>
+                <small>归档校验规则</small>
               </div>
               <StatusTag :type="tagType(d)" :label="tagLabel(d)" dot />
             </header>
@@ -135,7 +141,13 @@
 
             <details v-if="Array.isArray(d.evidence) && d.evidence.length" class="aapc-evidence">
               <summary>查看证据（{{ d.evidence.length }}）</summary>
-              <pre>{{ evidencePreview(d.evidence) }}</pre>
+              <ul>
+                <li v-for="(item, index) in evidencePreview(d.evidence)" :key="index">{{ item }}</li>
+              </ul>
+            </details>
+            <details v-if="d.ruleCode" class="aapc-evidence">
+              <summary>技术依据</summary>
+              <code>{{ d.ruleCode }}</code>
             </details>
 
             <footer class="aapc-card-actions">
@@ -154,6 +166,7 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag } from
 import { AppButton } from '@/components/ui'
 import { AppTermEntityPicker, AppFormItem } from '@/components/common'
 import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 
 const FALLBACK_ROUTE = {
   STUDENT_STATUS: '/admin/academic-affairs/roster',
@@ -211,7 +224,7 @@ export default {
       if (this.overallResult === 'PASS') {
         return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
       }
-      return `仍有 ${this.blockedDomains} 个业务域、${this.blockingCount} 个阻断项需要处理；本页只解释后端实时预检结果，不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个业务域、${this.blockingCount} 个阻断项需要处理；本页展示系统当前检查结果，不写入归档事实。`
     },
     nextActionText() {
       if (!this.firstBlockingDomain) return '进入归档批次继续正式归档流程'
@@ -222,7 +235,7 @@ export default {
     try {
       const context = await academicAffairsApi.getContext()
       if (context.code === 0 && context.data) this.ctx = context.data
-    } catch (_) {
+    } catch {
       // 页面数据请求仍会走后端权限；上下文失败由父布局统一拦截。
     }
     this.load()
@@ -252,7 +265,16 @@ export default {
     tagType(domain) { return domain.result === 'PASS' ? 'success' : 'danger' },
     tagLabel(domain) { return domain.result === 'PASS' ? '通过' : '阻断' },
     evidencePreview(evidence) {
-      return JSON.stringify((evidence || []).slice(0, 5), null, 2)
+      return (evidence || []).slice(0, 5).map((item) => {
+        if (typeof item === 'string') return safeBusinessMessage(item, '已记录一条待复核证据')
+        if (!item || typeof item !== 'object') return '已记录一条待复核证据'
+        const subject = item.studentName || item.courseName || item.className || item.name || item.title
+        const message = item.summary || item.message || item.description || item.reason
+        const count = Number.isFinite(Number(item.count)) ? `${Number(item.count)} 项` : ''
+        const status = item.status ? safeEnumLabel({ value: item.status, unknownLabel: '状态待确认' }) : ''
+        const parts = [subject, message && safeBusinessMessage(message, ''), count, status].filter(Boolean)
+        return parts.join(' · ') || '已记录一条待复核证据'
+      })
     },
     jump(domain) {
       const path = domain.route || FALLBACK_ROUTE[domain.domain]
@@ -356,7 +378,7 @@ export default {
 .aapc-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .aapc-card-head > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .aapc-card-title { font-weight: 650; }
-.aapc-card-head code { overflow: hidden; color: #64748b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.aapc-card-head small { overflow: hidden; color: #64748b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .aapc-card-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0; }
 .aapc-card-metrics div { padding: 9px 10px; border-radius: 8px; background: #f8fafc; }
 .aapc-card-metrics b, .aapc-card-metrics span { display: block; }
@@ -366,7 +388,7 @@ export default {
 .aapc-card-note { min-height: 38px; margin: 0; color: #475569; font-size: 12px; line-height: 1.6; }
 .aapc-evidence { margin-top: 12px; color: #475569; font-size: 11px; }
 .aapc-evidence summary { cursor: pointer; }
-.aapc-evidence pre { max-height: 170px; overflow: auto; padding: 9px; border-radius: 8px; background: #0f172a; color: #e2e8f0; white-space: pre-wrap; word-break: break-word; }
+.aapc-evidence ul { max-height: 170px; overflow: auto; margin: 8px 0 0; padding: 9px 9px 9px 28px; border-radius: 8px; background: #f8fafc; color: #475569; line-height: 1.7; }
 .aapc-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 14px; color: #64748b; font-size: 11px; }
 
 @media (max-width: 900px) {
