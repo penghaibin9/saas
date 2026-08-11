@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -31,11 +31,6 @@ tests/test_aa_clearance.py::test_scan_scope_and_dedup_rule
 tests/test_aa_course.py::test_c9_disable_blocked_by_live_program_reference_then_allowed
 tests/test_aa_dashboard.py::test_dashboard_summary_reflects_real_data
 tests/test_aa_effective_grade_identity.py::test_aggregate_uses_same_policy_instead_of_old_high_score
-tests/test_aa_evaluation.py::test_ev1_full_flow
-tests/test_aa_evaluation.py::test_ev2_publish_without_task_400
-tests/test_aa_evaluation.py::test_ev3_submit_not_open_409
-tests/test_aa_evaluation.py::test_ev4_appeal_flow
-tests/test_aa_evaluation.py::test_ev_multisource_composite
 tests/test_aa_evaluation_mobile.py::test_cross_evaluator_submit_403_via_mobile
 tests/test_aa_evaluation_mobile.py::test_my_results_aggregation_and_appeal_ownership_via_mobile
 tests/test_aa_evaluation_mobile.py::test_my_tasks_and_submit_flow_via_mobile
@@ -61,14 +56,6 @@ tests/test_aa_grade_task_uniqueness_and_archive.py::test_4_archived_term_without
 tests/test_aa_grade_task_uniqueness_and_archive.py::test_5_forged_active_term_id_rejected
 tests/test_aa_grade_task_uniqueness_and_archive.py::test_6_active_term_resolved_from_batch
 tests/test_aa_grade_task_uniqueness_and_archive.py::test_7_admin_supplement_term_and_role_rules
-tests/test_aa_graduation.py::test_gr1_precheck_passed
-tests/test_aa_graduation.py::test_gr2_status_abnormal
-tests/test_aa_graduation.py::test_gr3_final_writes_status
-tests/test_aa_graduation.py::test_gr4_final_needs_confirm
-tests/test_aa_graduation.py::test_gr5_rosters
-tests/test_aa_graduation.py::test_gr6_precheck_idempotent
-tests/test_aa_graduation.py::test_gr7_roster_org_names
-tests/test_aa_graduation.py::test_gr8_college_reject_reason_roundtrip
 tests/test_aa_home_task_routes_v2.py::test_student_pc_has_task_home_and_independent_academic_routes
 tests/test_aa_main_migration_compat.py::test_academic_and_current_main_heads_are_joined_without_ddl
 tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report

@@ -43,7 +43,7 @@ jobs:
           - case: schedule-change
             nodeid: tests/test_aa_schedule_change.py::test_c1_adjust_full_chain_applied
           - case: selection
-            nodeid: tests/test_aa_selection.py::test_s1_full_lifecycle
+            nodeid: tests/test_aa_selection.py
           - case: teaching-task
             nodeid: tests/test_aa_teaching_task.py::test_tt1_full_chain
           - case: graduation
