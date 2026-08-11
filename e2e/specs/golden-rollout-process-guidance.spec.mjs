@@ -84,6 +84,7 @@ async function prepareTalkLedger(admin, studentNo) {
 
 async function prepareInternshipGuidance(mentor, internshipFixture) {
   const marker = runId()
+  const topic = '岗位任务与阶段进度复盘'
   const content = `Golden Batch 9 ${marker}：现场核对岗位任务、学习进度与安全事项，当前实践节奏正常。`
   const rows = items(await mentor.get('/internship/guidances', {
     batchId: internshipFixture.batchId, page: 1, pageSize: 200
@@ -93,14 +94,14 @@ async function prepareInternshipGuidance(mentor, internshipFixture) {
     const created = await mentor.post('/internship/guidances', {
       internshipId: String(internshipFixture.internshipId),
       method: 'ONSITE',
-      topic: '岗位任务与阶段进度复盘',
+      topic,
       content,
       suggestion: '继续按周完成实践任务，并保留关键过程材料。'
     })
     guidance = { id: created.id, content }
   }
   if (!guidance?.id) throw new Error('Golden Batch 9 internship guidance did not return id')
-  return { id: String(guidance.id), content }
+  return { id: String(guidance.id), topic, content }
 }
 
 async function prepareGraduationGuidance(mentor, graduationFixture) {
@@ -162,7 +163,7 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
 
   test('Internship guidance workspace · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    const path = `/admin/internship/guidance?panel=guidance&batchId=${encodeURIComponent(internshipFixture.batchId)}&id=${encodeURIComponent(internshipGuidance.id)}`
+    const path = `/admin/internship/guidance?panel=guidance&batchId=${encodeURIComponent(internshipFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path, {
       'internship.selectedBatchId': internshipFixture.batchId
     })
@@ -171,7 +172,12 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await expect(page.getByRole('heading', { name: '指导巡访管理', exact: true })).toBeVisible()
     await expect(page.locator('.tabs')).toBeVisible()
     await expect(page.locator('.gv-list')).toBeVisible()
-    await expect(page.locator('.gv-item.is-active')).toBeVisible()
+
+    const target = page.locator('.gv-item').filter({ hasText: internshipFixture.studentName })
+      .filter({ hasText: internshipGuidance.topic }).first()
+    await expect(target).toBeVisible()
+    await target.click()
+    await expect(target).toHaveClass(/is-active/)
     await expect(page.locator('.gv-main')).toContainText(internshipFixture.studentName)
     await expect(page.locator('.gv-main')).toContainText('指导详情')
     await expect(page.locator('.gv-main')).toContainText(internshipGuidance.content)
