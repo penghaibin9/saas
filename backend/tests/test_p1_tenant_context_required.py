@@ -4,13 +4,15 @@ from __future__ import annotations
 import pytest
 
 from app.core.exceptions import AppException
-from app.services import import_export_service
+from app.services import file_service_legacy, import_export_service
 from app.services.file_service import _require_tenant_id
 
 
 def test_file_require_tenant_without_context(monkeypatch):
-    monkeypatch.setattr("app.services.file_service.db_enabled", lambda: True)
-    monkeypatch.setattr("app.services.file_service.current_tenant_id", lambda: None)
+    # file_service is now a facade that re-exports the legacy function object.
+    # The function's globals still live in file_service_legacy, so patch the
+    # authoritative module rather than a facade attribute that it never reads.
+    monkeypatch.setattr(file_service_legacy, "current_tenant_id", lambda: None)
     with pytest.raises(AppException) as ei:
         _require_tenant_id()
     assert ei.value.code == "TENANT_CONTEXT_REQUIRED"
