@@ -72,7 +72,9 @@ def test_move_ok_and_auto_becomes_manual(client, db_mode):
     r = client.put(f"{BASE}/schedule-items/{ids['auto_item']}/move", headers=admin,
                    json={"weekday": 3, "slotNo": 5})
     assert r.status_code == 200, r.text
-    assert r.json()["data"]["moved"] is True
+    data = r.json()["data"]
+    assert data["weekday"] == 3 and data["slotNo"] == 5
+    assert data["prePublishReset"] is False
     from app.db.session import get_sessionmaker
     from app.models import AaScheduleItem
     db = get_sessionmaker()()

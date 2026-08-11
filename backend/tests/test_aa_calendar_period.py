@@ -54,8 +54,8 @@ def test_r2_makeup_day_pairing_validation(client, db_mode):
     ok = client.post(f"{BASE}/terms/{tid}/calendar", headers=hdr, json={
         "eventType": "SWAP", "startDate": "2027-10-08", "swapToDate": "2027-10-11", "remark": "国庆调休"})
     assert ok.status_code == 200
-    # swap_to_date 是日期事实，不伪造午夜时间；API 与模型保持 YYYY-MM-DD。
-    assert ok.json()["data"]["swapToDate"] == "2027-10-11"
+    # 时间列统一按 API 边界输出 UTC RFC3339；naive datetime 会显式补 Z，避免无时区歧义。
+    assert ok.json()["data"]["swapToDate"] == "2027-10-11T00:00:00Z"
 
 
 def test_r3_period_management_crud_and_dup(client, db_mode):
@@ -66,14 +66,13 @@ def test_r3_period_management_crud_and_dup(client, db_mode):
     slot_id = r1.json()["data"]["slotId"]
     dup = client.post(f"{BASE}/time-slots", headers=hdr, json={"slotNo": 21})
     assert dup.status_code == 409
-    # 时间重叠须拦截（与序号去重并列的异常门禁）
     overlap = client.post(f"{BASE}/time-slots", headers=hdr, json={
         "slotNo": 211, "slotName": "重叠节", "startTime": "08:10", "endTime": "08:50"})
     assert overlap.status_code == 409, overlap.text
     upd = client.put(f"{BASE}/time-slots/{slot_id}", headers=hdr, json={"slotName": "早读", "enabled": False})
     assert upd.status_code == 200 and upd.json()["data"]["enabled"] is False and upd.json()["data"]["status"] == "DISABLED"
     visible = client.get(f"{BASE}/time-slots", headers=hdr).json()["data"]["items"]
-    assert not any(s["slotId"] == slot_id for s in visible)  # 停用后默认列表不可见
+    assert not any(s["slotId"] == slot_id for s in visible)
     all_visible = client.get(f"{BASE}/time-slots", headers=hdr, params={"includeDisabled": True}).json()["data"]["items"]
     assert any(s["slotId"] == slot_id for s in all_visible)
     de = client.delete(f"{BASE}/time-slots/{slot_id}", headers=hdr)
@@ -106,7 +105,6 @@ def test_r5_week_calendar_aggregate(client, db_mode):
     """教学周日历：按学期起止+教学周数派生，叠加节假日/考试周着色。"""
     hdr = _hdr(client, "school_admin01")
     tid = _term(client, hdr, "2028-2029", 1).json()["data"]["termId"]
-    # 学期 4 教学周，起于 2027-09-01：第1周=09-01~09-07。假期落在第1周内以验证着色叠加。
     client.post(f"{BASE}/terms/{tid}/calendar", headers=hdr, json={
         "eventType": "HOLIDAY", "startDate": "2027-09-02", "endDate": "2027-09-03", "remark": "校庆假"})
     wc = client.get(f"{BASE}/terms/{tid}/week-calendar", headers=hdr)
@@ -114,7 +112,7 @@ def test_r5_week_calendar_aggregate(client, db_mode):
     weeks = wc.json()["data"]["weeks"]
     assert len(weeks) == 4
     assert weeks[0]["weekType"] == "HOLIDAY" and len(weeks[0]["holidays"]) == 1
-    assert weeks[-1]["weekType"] == "EXAM"  # examWeekStart=4，第4周（最后一周）应为 EXAM
+    assert weeks[-1]["weekType"] == "EXAM"
 
 
 def test_r6_publish_calendar_gate_and_lock(client, db_mode):
@@ -122,7 +120,7 @@ def test_r6_publish_calendar_gate_and_lock(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = _term(client, hdr, "2029-2030", 1).json()["data"]["termId"]
     no_slot = client.post(f"{BASE}/terms/{tid}/calendar/publish", headers=hdr)
-    assert no_slot.status_code == 400  # 无任何 ENABLED 节次时门禁失败
+    assert no_slot.status_code == 400
     client.post(f"{BASE}/terms/{tid}/calendar", headers=hdr, json={"eventType": "TEACHING", "startDate": "2027-09-01"})
     client.post(f"{BASE}/time-slots", headers=hdr, json={"slotNo": 23})
     pub = client.post(f"{BASE}/terms/{tid}/calendar/publish", headers=hdr)
@@ -132,17 +130,14 @@ def test_r6_publish_calendar_gate_and_lock(client, db_mode):
 
 
 def test_r7_term_detail_readonly(client, db_mode):
-    """学期详情只读端点：返回真实状态；不提供直写归档的 POST /archive（归档统一走教务归档模块批次流程，
-    见总控合并复核——原 archive_term 直写 AaTerm.status 绕开批次+9域完整性检查且无法撤销，已移除）。"""
     hdr = _hdr(client, "school_admin01")
     tid = _term(client, hdr, "2030-2031", 1).json()["data"]["termId"]
     detail = client.get(f"{BASE}/terms/{tid}", headers=hdr)
     assert detail.status_code == 200 and detail.json()["data"]["status"] == "DRAFT"
-    assert client.post(f"{BASE}/terms/{tid}/archive", headers=hdr).status_code == 404  # 端点已移除
+    assert client.post(f"{BASE}/terms/{tid}/archive", headers=hdr).status_code == 404
 
 
 def test_r7b_teacher_role_forbidden_publish(client, db_mode):
-    """任课教师（ACADEMIC_TEACHER）有 academicAffairs.* 通配权限，但不在超高危角色白名单 → 发布 403。"""
     admin_hdr = _hdr(client, "school_admin01")
     tid = _term(client, admin_hdr, "2031-2032", 2).json()["data"]["termId"]
     client.post(f"{BASE}/time-slots", headers=admin_hdr, json={"slotNo": 25})
@@ -152,7 +147,6 @@ def test_r7b_teacher_role_forbidden_publish(client, db_mode):
 
 
 def test_r8_student_forbidden_403(client, db_mode):
-    """越权红线：学生令牌打新端点一律 403。"""
     hdr = _hdr(client, "student01")
     tid = _term(client, _hdr(client, "school_admin01"), "2032-2033", 1).json()["data"]["termId"]
     assert client.get(f"{BASE}/terms/{tid}/calendar", headers=hdr).status_code == 403
