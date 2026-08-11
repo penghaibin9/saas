@@ -97,6 +97,19 @@ def _messages_for(receiver_id, message_type=None):
         db.close()
 
 
+def _drain_warning_outbox():
+    """生产通知是事务内写 outbox、异步物化；测试显式补齐租户上下文后消费，再断言投递结果。"""
+    from app.core.context import get_tenant, set_tenant
+    from app.services.message_event_outbox_service import process_pending_outbox
+
+    previous = get_tenant()
+    set_tenant({"tenantId": str(TID)})
+    try:
+        process_pending_outbox(limit=50, worker_id="aa-warning-test")
+    finally:
+        set_tenant(previous)
+
+
 def _todo_status(counselor_id, warning_id):
     from sqlalchemy import select
     from app.db.session import get_sessionmaker
@@ -137,6 +150,7 @@ def test_w4_scan_pushes_notice_to_student_and_counselor(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r = client.post(f"{BASE}/warnings/scan", headers=hdr).json()["data"]
     assert r["created"] == 1
+    _drain_warning_outbox()
     stu_msgs = _messages_for(ids["student"], "ACAD_WARNING_NEW")
     assert len(stu_msgs) == 1
     assert stu_msgs[0].status == "UNREAD"
@@ -151,6 +165,7 @@ def test_w5_notifications_endpoint_lists_scoped_and_student_403(client, db_mode)
     _seed_fail_with_counselor(db_mode, 9532)
     hdr = _hdr(client, "school_admin01")
     client.post(f"{BASE}/warnings/scan", headers=hdr)
+    _drain_warning_outbox()
     r = client.get(f"{BASE}/warnings/notifications", headers=hdr).json()
     assert r["code"] == 0
     items = r["data"]["items"]

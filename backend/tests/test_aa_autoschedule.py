@@ -3,7 +3,7 @@
 覆盖重点不是"能跑通"，而是"不会排错"：
 - 排出来的课表本身零冲突（教师/班级/教室三维 + 容量）
 - 硬约束不会被悄悄放宽（宁可漏排也不排出冲突）
-- **重排只清 AUTO 项，人工排的课绝不被覆盖**（本引擎最重要的安全边界）
+- **重排只清 AUTO 项，人工排的课绝不被覆盖**（本引擎最重要的一条安全边界）
 - 漏排必须归因到根因，且原因可执行
 - 已发布课表拒绝自动排课（409）
 - 学生越权 403
@@ -31,14 +31,34 @@ def _stu_token(real_name, student_no):
 
 
 def _seed(db_mode, *, tasks, rooms):
-    """建 学期+课表批次+教室+教学任务。tasks/rooms 为轻量 dict 列表。"""
+    """建正式学期/作息、课表批次、教学任务批次、教室与 READY 教学任务。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaClassroom, AaScheduleBatch, AaTeachingTask, AaTerm
+    from app.models import (AaClassroom, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch,
+                            AaTerm, AaTimeSlot)
     db = get_sessionmaker()()
-    term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
+    term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED",
+                  is_current=True, teaching_weeks=18)
     db.add(term); db.flush()
     b = AaScheduleBatch(tenant_id=TID, term_id=term.id, batch_name="自动排课测试批次", status="DRAFT")
     db.add(b); db.flush()
+    task_batch = AaTeachingTaskBatch(
+        tenant_id=TID,
+        term_id=term.id,
+        batch_name="自动排课测试教学任务批次",
+        status="APPROVED",
+    )
+    db.add(task_batch); db.flush()
+    for slot_no in range(1, 9):
+        db.add(AaTimeSlot(
+            tenant_id=TID,
+            slot_no=slot_no,
+            slot_name=f"第{slot_no}节",
+            start_time="00:00",
+            end_time="23:59",
+            enabled=True,
+            status="ENABLED",
+        ))
+    db.flush()
     room_ids = []
     for r in rooms:
         c = AaClassroom(tenant_id=TID, building_code=r.get("bld", "A"), building_name=r.get("bld", "A") + "栋",
@@ -51,7 +71,7 @@ def _seed(db_mode, *, tasks, rooms):
         room_ids.append(c.id)
     task_ids = []
     for t in tasks:
-        x = AaTeachingTask(tenant_id=TID, batch_id=b.id, course_id=t.get("courseId", 1),
+        x = AaTeachingTask(tenant_id=TID, batch_id=task_batch.id, course_id=t.get("courseId", 1),
                            course_name=t["course"], class_id=t.get("classId", 1),
                            teaching_class_name=t.get("className", "软件2401"),
                            teacher_key=t.get("teacher"), teacher_name=t.get("teacherName", "王老师"),
@@ -59,7 +79,7 @@ def _seed(db_mode, *, tasks, rooms):
                            weekly_hours=t.get("weekly", 2),
                            required_room_type=t.get("roomType"),
                            no_auto_schedule=t.get("noAuto", False),
-                           status="CONFIRMED")
+                           status="READY")
         db.add(x); db.flush()
         task_ids.append(x.id)
     db.commit()

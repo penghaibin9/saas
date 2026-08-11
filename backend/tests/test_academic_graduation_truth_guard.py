@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.models import EmpStudent
+from app.modules.academic_affairs.services import academic_affairs_graduation_evidence_facade as evidence
 from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
 from app.modules.academic_affairs.services import academic_affairs_graduation_truth_guard as guard
 
@@ -46,7 +47,13 @@ def _row(**kwargs):
 
 
 def test_guard_is_installed_on_public_graduation_service():
-    assert service._run_items is guard.strict_run_items
+    # Package wiring is intentionally layered:
+    # public service -> evidence facade -> Package 4 truth guard.
+    # The evidence facade enriches the strict result with source ids/routes/hashes;
+    # it must never replace the underlying authoritative PASS/FAIL/UNKNOWN evaluator.
+    assert service._run_items is evidence._run_items
+    assert evidence._original_run_items is guard.strict_run_items
+    assert getattr(evidence._original_run_items, "_graduation_truth_guard", False) is True
     assert service._check_domain_exists is guard.strict_domain_check
 
 

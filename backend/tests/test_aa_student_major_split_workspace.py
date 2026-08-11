@@ -10,10 +10,10 @@ def _read(path: str) -> str:
 
 
 def test_major_split_route_uses_dedicated_page():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
     assert "StudentMajorSplitView.vue" in router
-    assert "academicSection('academic/major-split'" not in router
+    assert "academicSection('major-split'" not in router
 
 
 def test_major_split_workspace_uses_real_batch_and_choice_contract():

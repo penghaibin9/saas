@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 BASE = "/api/v1/academic-affairs"
+TID = 1000000000000000001
 
 
 def _hdr(client, login_name):
@@ -70,7 +71,6 @@ def test_l3_update_status_delete(client, db_mode):
     assert r["capacity"] == 40 and r["responsibleName"] == "李管理员"
     r2 = client.post(f"{BASE}/labs/{lid}/status", headers=hdr, json={"status": "MAINTENANCE"}).json()["data"]
     assert r2["status"] == "MAINTENANCE"
-    # options 仅返回 AVAILABLE
     opts = client.get(f"{BASE}/labs/options", headers=hdr).json()["data"]["items"]
     assert all(o["labId"] != lid for o in opts)
     client.post(f"{BASE}/labs/{lid}/status", headers=hdr, json={"status": "AVAILABLE"})
@@ -110,7 +110,6 @@ def test_e2_duplicate_and_validation(client, db_mode):
     assert _mk_equipment(client, hdr, "EQ202", quantity=0).status_code == 400
     assert client.post(f"{BASE}/equipment", headers=hdr,
                        json={"equipmentCode": "EQ203", "equipmentName": "x", "ownerKind": "BOGUS"}).status_code == 400
-    # 状态切换非法值 400
     eid = _mk_equipment(client, hdr, "EQ204").json()["data"]["equipmentId"]
     assert client.post(f"{BASE}/equipment/{eid}/status", headers=hdr, json={"status": "BROKEN"}).status_code == 400
     r = client.post(f"{BASE}/equipment/{eid}/status", headers=hdr, json={"status": "IDLE"}).json()["data"]
@@ -129,17 +128,13 @@ def test_b1_lab_booking_review_conflict(client, db_mode):
     bid1 = b1["data"]["bookingId"]
     assert client.post(f"{BASE}/labs/bookings/{bid1}/review", headers=hdr,
                        json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
-    # 同实训室同日同节次再申请 → 409
     assert client.post(f"{BASE}/labs/bookings", headers=hdr,
                        json={"labId": str(lid), "bookingDate": "2027-06-20", "slotNo": 1}).status_code == 409
-    # 不同节次可申请
     b3 = client.post(f"{BASE}/labs/bookings", headers=hdr,
                      json={"labId": str(lid), "bookingDate": "2027-06-20", "slotNo": 2}).json()
     assert b3["code"] == 0
-    # 驳回原因过短 400
     assert client.post(f"{BASE}/labs/bookings/{b3['data']['bookingId']}/review", headers=hdr,
                        json={"action": "REJECT", "reason": "x"}).status_code == 400
-    # 停用中实训室不可预约
     lid2 = _mk_lab(client, hdr, "L802").json()["data"]["labId"]
     client.post(f"{BASE}/labs/{lid2}/status", headers=hdr, json={"status": "MAINTENANCE"})
     assert client.post(f"{BASE}/labs/bookings", headers=hdr,
@@ -156,13 +151,11 @@ def test_r1_repair_lifecycle_links_status(client, db_mode):
                      json={"resourceKind": "LAB", "resourceId": str(lid), "faultDesc": "空压机异响"}).json()
     assert rr["code"] == 0 and rr["data"]["status"] == "REPORTED"
     rid = rr["data"]["repairId"]
-    # 报修后联动实训室状态 → MAINTENANCE
     assert client.get(f"{BASE}/labs/{lid}", headers=hdr).json()["data"]["status"] == "MAINTENANCE"
     assert client.post(f"{BASE}/resources/repairs/{rid}/start", headers=hdr).json()["data"]["status"] == "IN_REPAIR"
     done = client.post(f"{BASE}/resources/repairs/{rid}/complete", headers=hdr,
                        json={"repairNote": "更换空压机皮带"}).json()
     assert done["data"]["status"] == "DONE" and done["data"]["resolvedAt"]
-    # 完成后无其它未结工单 → 联动实训室恢复 AVAILABLE
     assert client.get(f"{BASE}/labs/{lid}", headers=hdr).json()["data"]["status"] == "AVAILABLE"
     lst = client.get(f"{BASE}/resources/repairs", headers=hdr, params={"resourceKind": "LAB"}).json()["data"]
     assert any(x["repairId"] == rid for x in lst["items"])
@@ -176,9 +169,7 @@ def test_r2_repair_cancel_and_authz(client, db_mode):
                       ).json()["data"]["repairId"]
     assert client.post(f"{BASE}/resources/repairs/{rid}/cancel", headers=hdr,
                        json={"reason": "误报"}).json()["data"]["status"] == "CANCELLED"
-    # 已取消工单不可再开始维修
     assert client.post(f"{BASE}/resources/repairs/{rid}/start", headers=hdr).status_code == 409
-    # 越权：辅导员无 academicAffairs.* 不可处理维修工单
     cnt = _hdr(client, "counselor01")
     rid2 = client.post(f"{BASE}/resources/repairs", headers=hdr,
                        json={"resourceKind": "LAB", "resourceId": str(lid), "faultDesc": "再次报修"}
@@ -188,27 +179,65 @@ def test_r2_repair_cancel_and_authz(client, db_mode):
 
 # ═══════════ 资源占用 / 资源冲突（预约 vs 已发布课表跨源聚合） ═══════════
 
+def _seed_ready_schedule_task(term_id, slot_no):
+    """按当前正式排课合同种 READY 教学任务和启用节次，禁止 free-text 绕过任务身份。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot
+
+    db = get_sessionmaker()()
+    slot = db.query(AaTimeSlot).filter(
+        AaTimeSlot.tenant_id == TID,
+        AaTimeSlot.slot_no == int(slot_no),
+        AaTimeSlot.is_deleted.is_(False),
+    ).first()
+    if slot:
+        slot.enabled = True
+        slot.status = "ENABLED"
+    else:
+        db.add(AaTimeSlot(tenant_id=TID, slot_no=int(slot_no), slot_name=f"第{slot_no}节",
+                          enabled=True, status="ENABLED"))
+    course = AaCourse(tenant_id=TID, course_code=f"RES{term_id}{slot_no}",
+                      course_name="资源冲突测试课", credit=2, status="ENABLED")
+    db.add(course); db.flush()
+    task_batch = AaTeachingTaskBatch(tenant_id=TID, term_id=int(term_id),
+                                     batch_name=f"资源冲突任务批次{slot_no}", status="APPROVED")
+    db.add(task_batch); db.flush()
+    task = AaTeachingTask(tenant_id=TID, batch_id=task_batch.id,
+                          course_id=course.id, course_code=course.course_code,
+                          course_name=course.course_name, teacher_key="T-RES",
+                          teacher_name="冲突检测老师", weekly_hours=1,
+                          start_week=1, end_week=18, status="READY")
+    db.add(task); db.flush()
+    task_id = int(task.id)
+    db.commit(); db.close()
+    return task_id
+
+
 def _setup_term_and_schedule(client, hdr, classroom_text, weekday, slot_no, target_date_iso):
-    """建当前学期(publish即current) + 排课批次 + 课表项，供占用/冲突查询命中。"""
+    """建正式当前学期 + READY 教学任务 + 已发布课表项，供占用/冲突查询命中。"""
     start = date(2026, 9, 1)
     t = client.post(f"{BASE}/terms", headers=hdr, json={
         "yearCode": "2099-2100", "termNo": 1, "termName": "资源冲突测试学期",
         "startDate": start.isoformat(), "endDate": (start + timedelta(days=200)).isoformat(),
         "teachingWeeks": 18}).json()["data"]["termId"]
     client.post(f"{BASE}/terms/{t}/publish", headers=hdr)
+    task_id = _seed_ready_schedule_task(int(t), slot_no)
     bid = client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": str(t)}).json()["data"]["batchId"]
     item = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json={
-        "weekday": weekday, "slotNo": slot_no, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
-        "teacherKey": "T-RES", "teacherName": "冲突检测老师", "classId": "900", "className": "资源冲突测试班",
-        "classroom": classroom_text, "courseName": "资源冲突测试课"})
+        "taskId": str(task_id), "weekday": weekday, "slotNo": slot_no,
+        "startWeek": 1, "endWeek": 18, "weekParity": "ALL", "classroom": classroom_text})
     assert item.status_code == 200, item.text
+    pre = client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=hdr)
+    assert pre.status_code == 200, pre.text
+    pub = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    assert pub.status_code == 200, pub.text
     return t, bid
 
 
 def test_o1_resource_occupancy_aggregates_booking_and_schedule(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     start = date(2026, 9, 1)
-    target = start + timedelta(days=14)  # 与 start 同星期，第3教学周，必落在1~18周内
+    target = start + timedelta(days=14)
     weekday = target.isoweekday()
     cid = _mk_classroom(client, hdr, "O", "501").json()["data"]["classroomId"]
     _setup_term_and_schedule(client, hdr, "O501", weekday, 5, target.isoformat())
@@ -229,11 +258,10 @@ def test_o1_resource_occupancy_aggregates_booking_and_schedule(client, db_mode):
 def test_c1_resource_conflict_booking_overlaps_schedule(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     start = date(2026, 9, 1)
-    target = start + timedelta(days=21)  # 第4教学周，同星期
+    target = start + timedelta(days=21)
     weekday = target.isoweekday()
     cid = _mk_classroom(client, hdr, "C", "601").json()["data"]["classroomId"]
     _setup_term_and_schedule(client, hdr, "C601", weekday, 7, target.isoformat())
-    # 预约与课表同教室同节次 → 构成跨源冲突
     b = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
                     json={"classroomId": str(cid), "bookingDate": target.isoformat(), "slotNo": 7,
                          "purpose": "资源冲突测试预约"}).json()
@@ -243,10 +271,9 @@ def test_c1_resource_conflict_booking_overlaps_schedule(client, db_mode):
     assert conf["code"] == 0 and conf["data"]["total"] >= 1
     hit = [c for c in conf["data"]["items"] if c["resourceLabel"] == "C601" and c["slotNo"] == 7]
     assert hit and hit[0]["scheduleCourseName"] == "资源冲突测试课"
-    # 范围超过31天 → 400
     assert client.get(f"{BASE}/resources/conflicts", headers=hdr,
                       params={"dateFrom": target.isoformat(),
-                             "dateTo": (target + timedelta(days=40)).isoformat()}).status_code == 400
+                              "dateTo": (target + timedelta(days=40)).isoformat()}).status_code == 400
 
 
 # ═══════════ 资源统计 ═══════════

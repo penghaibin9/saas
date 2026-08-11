@@ -10,10 +10,10 @@ def _read(path: str) -> str:
 
 
 def test_makeup_route_uses_dedicated_page_not_legacy_subtab():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
     assert "StudentMakeupView.vue" in router
-    assert "academicSection('academic/makeup'" not in router
+    assert "academicSection('makeup'" not in router
 
 
 def test_makeup_workspace_reads_and_writes_only_real_portal_contracts():

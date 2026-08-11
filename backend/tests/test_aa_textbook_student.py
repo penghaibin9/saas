@@ -16,17 +16,49 @@ def _stu_token(real_name, student_no):
 
 
 def _seed_dist(student_no, real_name, book="高等数学教材", price=45, qty=1):
-    """建 学生档案 + 教材 + 待签收发放记录，返回 (profile_id, record_id)。"""
+    """建正式学期→征订价格快照→发放批次→学生待签收记录，返回 (profile_id, record_id)。
+
+    学生签收现行生产合同必须沿完整征订/发放事实链取不可变价格快照，测试不再用孤立
+    distribution_record + 当前教材目录价格冒充正式应收依据。
+    """
     from app.db.session import get_sessionmaker
-    from app.models import AaTextbook, AaTextbookDistributionRecord, StudentProfile
+    from app.models import (
+        AaTerm,
+        AaTextbook,
+        AaTextbookDistributionBatch,
+        AaTextbookDistributionRecord,
+        AaTextbookOrderBatch,
+        AaTextbookOrderItem,
+        StudentProfile,
+    )
     db = get_sessionmaker()()
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == MAIN,
+        AaTerm.year_code == "2098-2099",
+        AaTerm.term_no == 1,
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        term = AaTerm(tenant_id=MAIN, year_code="2098-2099", term_no=1,
+                      status="PUBLISHED", is_current=False)
+        db.add(term); db.flush()
     p = StudentProfile(tenant_id=MAIN, student_no=student_no, real_name=real_name,
                        current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE")
     db.add(p); db.flush()
     tb = AaTextbook(tenant_id=MAIN, name=book, unit_price=price, status="ENABLED")
     db.add(tb); db.flush()
-    r = AaTextbookDistributionRecord(tenant_id=MAIN, batch_id=1, student_id=p.id, textbook_id=tb.id,
-                                     textbook_name=book, qty=qty, status="PENDING")
+    order = AaTextbookOrderBatch(tenant_id=MAIN, batch_name=f"{student_no}-教材征订",
+                                 term_id=term.id, status="ARRIVED")
+    db.add(order); db.flush()
+    db.add(AaTextbookOrderItem(
+        tenant_id=MAIN, order_batch_id=order.id, textbook_id=tb.id, textbook_name=book,
+        order_qty=qty, arrived_qty=qty, unit_price_snapshot=price,
+    ))
+    dist = AaTextbookDistributionBatch(
+        tenant_id=MAIN, order_batch_id=order.id, status="DISTRIBUTING")
+    db.add(dist); db.flush()
+    r = AaTextbookDistributionRecord(tenant_id=MAIN, batch_id=dist.id, student_id=p.id,
+                                     textbook_id=tb.id, textbook_name=book, qty=qty, status="PENDING")
     db.add(r); db.flush()
     pid, rid = p.id, r.id
     db.commit(); db.close()

@@ -78,30 +78,41 @@ def test_legacy_selection_facades_only_reexport_canonical_services():
 def test_selection_source_uses_course_code_and_effective_grades_not_course_name():
     source = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
 
-    assert "grade_service.effective_grade_rows" in source
-    assert "target_code = str(course.course_code" in source
-    assert "source_course.prerequisite_json" in source
+    assert "grade_service.effective_grade_rows(rows)" in source
+    assert "source_course = catalog_by_id[int(course.course_id)]" in source
+    assert "target_code = str(source_course.course_code" in source
+    assert "_load_prerequisite_codes(source_course)" in source
+    assert "target_code in passed_codes" in source
     assert "该课程已修读通过，不可重复选课" in source
     assert "AcademicGrade.course_name ==" not in source
+    assert "course_name in passed" not in source
 
 
 def test_locked_adjustment_uses_exact_r9_consumers_and_new_roster_version():
-    source = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
+    core = (SERVICES / "academic_affairs_selection_core_service.py").read_text(encoding="utf-8")
 
-    assert "consumer_counts(db, course.teaching_task_id, student_id=record.student_id)" in source
-    assert "roster_projection.apply_admin_drop" in source
-    assert "已产生考勤、成绩或评教等下游事实" in source
-    assert "course_name ==" not in source
+    # 当前 Router 的正式人工调整入口是 core.adjust_record：只能处理 LOCKED 记录，
+    # 同事务转 DROPPED、回退容量并写审计；不得再验证已经废弃的 admin_drop 兼容实现。
+    assert "def adjust_record(user, record_id, reason)" in core
+    assert "rec.status != _REC_LOCKED" in core
+    assert "AaSelectionRecord.status == _REC_LOCKED" in core
+    assert "AaSelectionRecord.status: _REC_DROPPED" in core
+    assert "AaSelectionCourse.selected_count - 1" in core
+    assert '"SELECTION_RECORD_ADJUST"' in core
+    assert "course_name ==" not in core
 
 
 def test_lock_batch_validates_then_atomically_projects_roster():
-    source = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
+    source = (SERVICES / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
 
-    validate = "validate_selection_lock(db, batch)"
-    project = "apply_locked_roster_projection(db, batch, actor_user=user)"
+    validate = "validation = validate_selection_lock(db, batch)"
+    project = "apply_locked_roster_projection(db, validation)"
     assert validate in source
-    assert "result = " + project in source
-    assert "return result" in source
+    assert 'if not validation.get("valid")' in source
+    assert '"选课名单校验未通过"' in source
+    assert project in source
+    assert "batch.status = _base._BATCH_LOCKED" in source
+    assert "return _base._core._batch_dto(batch)" in source
     assert source.index(validate) < source.index(project)
 
 

@@ -1,6 +1,7 @@
 """R11 真实学校完整学期试点门禁回归。"""
 from pathlib import Path
 from types import SimpleNamespace
+import importlib
 
 
 def test_r11_models_keep_term_uniqueness_and_checkpoint_history():
@@ -103,11 +104,13 @@ def test_r11_checks_real_cross_domain_facts_not_test_results():
 
 
 def test_r11_routes_are_registered_and_require_explicit_complete_action():
-    from app.modules.academic_affairs.routers import academic_affairs
+    # 主应用注册的是 bundle 的最终聚合结果；基础 academic_affairs.router 只是历史大 Router，
+    # 扩展 Router（含 R11）在 bundle.build_router() 中按确定性顺序装配。
+    from app.modules.academic_affairs.routers import academic_affairs_bundle
 
     signatures = {
         (route.path, tuple(sorted(route.methods or set())))
-        for route in academic_affairs.router.routes
+        for route in academic_affairs_bundle.build_router().routes
     }
     for signature in (
         ("/academic-affairs/semester-pilots", ("POST",)),
@@ -123,12 +126,15 @@ def test_r11_routes_are_registered_and_require_explicit_complete_action():
 def test_public_services_load_r11_without_replacing_existing_domain_services():
     from app.modules.academic_affairs import services
 
-    assert services.academic_affairs_semester_pilot_service.__name__.endswith(
-        "academic_affairs_semester_pilot_service"
+    archive_before = services.academic_affairs_archive_service
+    mobile_before = services.mobile_academic_affairs_service
+    pilot = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_semester_pilot_service"
     )
-    assert services.academic_affairs_archive_service.__name__.endswith(
-        "academic_affairs_archive_textbook_facade"
-    )
-    assert services.academic_affairs_grade_service.__name__.endswith(
-        "academic_affairs_grade_identity_facade"
-    )
+
+    assert pilot.__name__.endswith("academic_affairs_semester_pilot_service")
+    # 加载 R11 只能增加自己的服务能力，不能通过 import side effect 抢占既有公开入口。
+    assert services.academic_affairs_archive_service is archive_before
+    assert services.mobile_academic_affairs_service is mobile_before
+    assert services.academic_affairs_archive_service.__name__.endswith("academic_affairs_archive_service")
+    assert services.mobile_academic_affairs_service.__name__.endswith("mobile_academic_affairs_public_service")

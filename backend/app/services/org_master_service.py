@@ -152,8 +152,15 @@ def apply_org_node_in_session(
         row.version = int(getattr(row, "version", 0) or 0) + 1
 
     for attr, val in extras.items():
-        if hasattr(row, attr):
-            setattr(row, attr, val)
+        if not hasattr(row, attr):
+            continue
+        column = model.__table__.columns.get(attr)
+        # Partial-update adapters historically pass omitted optional fields as None.
+        # Never turn that omission into a database NULL for a NOT NULL master-data column;
+        # nullable columns still accept None so callers can explicitly clear them.
+        if val is None and column is not None and not column.nullable:
+            continue
+        setattr(row, attr, val)
 
     if commit:
         db.commit()

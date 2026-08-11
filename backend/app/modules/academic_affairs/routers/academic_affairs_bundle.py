@@ -45,22 +45,23 @@ def _mount_routes(parent: APIRouter, child: APIRouter, *,
     layer can make formal extension routes disappear from the final public route table.
     Copy the concrete child route objects instead; the application-level academic
     dependencies are still attached once by ``route_registration``.
+
+    Exact method/path shapes are unique at the final public surface.  Adapter/final
+    routers are mounted before the historical large router, so the first registered
+    shape is authoritative and later duplicates are dropped deterministically.  The
+    legacy ``skip_existing_shapes`` argument remains accepted for old callers but the
+    safety rule now applies to every duplicate shape, not only scheduling rules.
     """
-    if not skip_existing_shapes:
-        parent.routes.extend(list(child.routes))
-        return
+    del skip_existing_shapes
 
     def route_key(route):
         path = re.sub(r"\{[^/{}]+\}", "{}", getattr(route, "path", ""))
         return path, tuple(sorted(getattr(route, "methods", set()) or set()))
 
-    existing = {
-        route_key(route)
-        for route in parent.routes
-    }
+    existing = {route_key(route) for route in parent.routes}
     for route in child.routes:
         key = route_key(route)
-        if key[0] in skip_existing_shapes and key in existing:
+        if key in existing:
             continue
         parent.routes.append(route)
         existing.add(key)
@@ -79,6 +80,10 @@ def build_router() -> APIRouter:
     # HTTP 路径先命中 final adapter；历史大 Router 继续保留以降低长期分支冲突。
     selection_final_module = importlib.import_module(f"{__package__}.academic_selection_final_router")
     _mount_routes(router, selection_final_module.router)
+    # 成绩任务特殊补录必须把稳定 courseId 真实传进生产 Service，再由 canonical term guard
+    # 对 ARCHIVED 学期 fail-closed；精确 V2 入口必须先于历史大 Router 的旧 Pydantic 模型。
+    grade_task_create_module = importlib.import_module(f"{__package__}.grade_task_create_v2_router")
+    _mount_routes(router, grade_task_create_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
     _mount_routes(

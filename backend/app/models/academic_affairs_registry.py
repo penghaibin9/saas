@@ -3,11 +3,11 @@
 共享 ``app.models`` 只需一行导入本注册表；新增教务模型继续在本文件维护，
 避免长期分支反复改动全系统模型聚合文件。
 """
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Text
 from sqlalchemy.dialects import mysql
 
 from app.models.academic_grade_extensions import install_academic_grade_extensions
-from app.models.academic_affairs import AaStatusChange
+from app.models.academic_affairs import AaGraduationAuditResult, AaStatusChange
 from app.models.academic_affairs_teaching_class import (
     AaTeachingClass,
     AaTeachingClassMember,
@@ -50,16 +50,19 @@ from app.models.academic_affairs_stage_c3 import (
 # "effective time before current fact" conflict.
 AaStatusChange.__table__.c.effective_date.type = DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql")
 
+# Graduation immutable evidence has grown beyond the legacy seven-item projection.
+# Existing databases are upgraded by 20260810_grad_audit_text; keep metadata/create_all
+# on the same TEXT contract so FAST_TEST_SCHEMA and fresh installs cannot recreate the
+# historical VARCHAR(4000) capacity bug.
+AaGraduationAuditResult.__table__.c.item_results_json.type = Text()
 
-# 显式调用保持意图清晰；安装函数具备幂等保护，模块首次导入时已完成一次安装。
+
+# 模型注册阶段只允许注册模型/ORM 元数据，不反向 import 业务 Service。
+# 有效成绩兼容、当前学期、ACTIVE-only、fail-closed 监听器统一由
+# ``app.modules.academic_affairs.services`` 在基础模型与 db_service 初始化完成后安装。
+# 这样保留原安全语义，同时避免：services -> db_service -> app.models -> registry -> services
+# 的冷启动循环导入。
 install_academic_grade_extensions()
-
-# 模型和成绩扩展完成后安装迁移兼容、稳定课程身份、学期顺序、当前学期与ACTIVE-only守卫。
-from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_compat as _grade_policy_compat  # noqa: E402,F401
-from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_current_term as _grade_policy_current_term  # noqa: E402,F401
-from app.modules.academic_affairs.services import academic_affairs_effective_grade_active_only as _grade_active_only  # noqa: E402,F401
-# 包 2：无 ACTIVE 策略的正式成绩写入必须 409；历史导入只能经显式豁免上下文并登记欠账。
-from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_failclosed as _grade_policy_failclosed  # noqa: E402,F401
 
 __all__ = [
     "AaTeachingClass",

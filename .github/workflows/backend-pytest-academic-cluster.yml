@@ -1,0 +1,140 @@
+name: Backend pytest academic mainline debt probes
+
+on:
+  push:
+    branches:
+      - fix/backend-pytest-debt-20260810
+    paths:
+      - 'backend/tests/test_aa_home_task_routes_v2.py'
+      - 'backend/tests/test_aa_main_migration_compat.py'
+      - 'backend/tests/test_aa_mobile_grade_entry_v2.py'
+      - 'backend/tests/test_aa_semester_pilot_r11.py'
+      - 'backend/tests/test_aa_service_entrypoint_integrity.py'
+      - 'backend/tests/test_aa_stage4_real_smoke.py'
+      - 'backend/tests/test_aa_student_exam_public_facade.py'
+      - 'backend/tests/test_aa_student_exam_workspace.py'
+      - 'backend/tests/test_aa_student_level_exam_workspace.py'
+      - 'backend/tests/test_aa_student_major_split_workspace.py'
+      - 'backend/tests/test_aa_student_makeup_workspace.py'
+      - 'backend/tests/test_aa_student_portal_design_tokens.py'
+      - 'backend/tests/test_aa_student_readonly_workspaces.py'
+      - 'backend/tests/test_aa_student_textbook_workspace.py'
+      - 'backend/tests/test_aa_student_transcript_safety.py'
+      - 'backend/tests/test_sa17_delivery_gaps.py'
+      - 'backend/tests/test_saas_role_templates_unit.py'
+      - 'scripts/check/backend-known-failures-main.txt'
+      - 'scripts/check/sanitize_pytest_junit.py'
+      - 'scripts/check/summarize_pytest_junit_diagnostics.py'
+      - '.github/workflows/backend-pytest-academic-cluster.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-academic-mainline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lane:
+    name: Academic debt mainline / ${{ matrix.lane }}
+    if: github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - lane: entrypoint-contracts
+            nodeids: >-
+              tests/test_aa_home_task_routes_v2.py tests/test_aa_main_migration_compat.py
+              tests/test_aa_mobile_grade_entry_v2.py tests/test_aa_semester_pilot_r11.py
+              tests/test_aa_service_entrypoint_integrity.py tests/test_aa_stage4_real_smoke.py
+              tests/test_saas_role_templates_unit.py
+          - lane: student-contracts
+            nodeids: >-
+              tests/test_aa_student_exam_public_facade.py tests/test_aa_student_exam_workspace.py
+              tests/test_aa_student_level_exam_workspace.py tests/test_aa_student_major_split_workspace.py
+              tests/test_aa_student_makeup_workspace.py tests/test_aa_student_portal_design_tokens.py
+              tests/test_aa_student_readonly_workspaces.py tests/test_aa_student_textbook_workspace.py
+              tests/test_aa_student_transcript_safety.py
+          - lane: portal-runtime
+            nodeids: >-
+              tests/test_sa17_delivery_gaps.py
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies once per lane
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Run active academic debt lane
+        id: pytest
+        working-directory: backend
+        shell: bash
+        env:
+          NODEIDS: ${{ matrix.nodeids }}
+        run: |
+          set -euo pipefail
+          DIR="test-results/academic-debt/${{ matrix.lane }}"
+          XML="$DIR/raw.xml"
+          RAW="$DIR/raw.log"
+          mkdir -p "$DIR"
+          read -r -a TESTS <<< "$NODEIDS"
+          set +e
+          timeout 8m pytest "${TESTS[@]}" -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$rc" > "$DIR/pytest-exit.txt"
+          if [ -f "$XML" ]; then
+            python ../scripts/check/summarize_pytest_junit_diagnostics.py "$XML" --output "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+            python ../scripts/check/sanitize_pytest_junit.py "$XML"
+            mv "$XML" "$DIR/sanitized.xml"
+          else
+            printf '# Secret-safe pytest diagnostics\n\nJUnit XML was not produced; pytest exit code: `%s`.\n' "$rc" > "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$RAW"
+          exit 0
+      - name: Upload secret-safe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-debt-mainline-${{ matrix.lane }}
+          path: backend/test-results/academic-debt/${{ matrix.lane }}/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve real pytest result
+        if: always()
+        shell: bash
+        run: exit '${{ steps.pytest.outputs.exit_code }}'

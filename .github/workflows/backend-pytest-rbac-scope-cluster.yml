@@ -1,0 +1,120 @@
+name: Backend pytest RBAC scope cluster
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/tests/test_p1_tenant_context_required.py'
+      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
+      - 'backend/tests/test_students_scope.py'
+      - 'backend/tests/test_teacher_scope.py'
+      - 'backend/app/**'
+      - 'backend/alembic/**'
+      - 'backend/requirements.txt'
+      - 'scripts/check/sanitize_pytest_junit.py'
+      - 'scripts/check/summarize_pytest_junit_diagnostics.py'
+      - '.github/workflows/backend-pytest-rbac-scope-cluster.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-rbac-scope-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  precise:
+    name: RBAC scope / ${{ matrix.case }}
+    if: github.head_ref == 'fix/backend-pytest-debt-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: tenant-context
+            nodeid: tests/test_p1_tenant_context_required.py::test_file_require_tenant_without_context
+          - case: file-object-authz
+            nodeid: tests/test_rbac09_file_data_exchange_permissions.py::test_file_governance_permission_never_bypasses_business_content_relation
+          - case: student-scope-detail
+            nodeid: tests/test_students_scope.py::test_counselor_cross_class_detail_and_write_403
+          - case: student-scope-export
+            nodeid: tests/test_students_scope.py::test_counselor_export_scoped
+          - case: tenant-header
+            nodeid: tests/test_teacher_scope.py::test_header_cannot_switch_tenant_with_token
+          - case: weekly-review-scope
+            nodeid: tests/test_teacher_scope.py::test_mobile_weekly_review_scope_and_conflict
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Run exact historical nodeid
+        id: pytest
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="test-results/rbac-scope/${{ matrix.case }}"
+          XML="$DIR/raw.xml"
+          RAW="$DIR/raw.log"
+          mkdir -p "$DIR"
+          set +e
+          timeout 12m pytest '${{ matrix.nodeid }}' -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$rc" > "$DIR/pytest-exit.txt"
+          if [ -f "$XML" ]; then
+            python ../scripts/check/summarize_pytest_junit_diagnostics.py "$XML" --output "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+            python ../scripts/check/sanitize_pytest_junit.py "$XML"
+            mv "$XML" "$DIR/sanitized.xml"
+          else
+            printf '# Secret-safe pytest diagnostics\n\nJUnit XML was not produced; pytest exit code: `%s`.\n' "$rc" > "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$RAW"
+          exit 0
+      - name: Upload secret-safe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rbac-scope-${{ matrix.case }}
+          path: backend/test-results/rbac-scope/${{ matrix.case }}/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve real pytest result
+        if: always()
+        shell: bash
+        run: exit '${{ steps.pytest.outputs.exit_code }}'
