@@ -77,7 +77,7 @@ export const ENV = {
   useMock: resolveUseMock(),
   privacyUrl: resolveDocUrl('VITE_PRIVACY_URL'),
   termsUrl: resolveDocUrl('VITE_TERMS_URL'),
-  // 小程序“帮助与反馈”唯一正文入口。正式环境配置 HTTPS /help 地址并登记微信业务域名。
+  // 小程序“帮助与反馈”唯一正文入口。正式环境配置 HTTPS /help 地址，并在微信公众平台登记对应业务域名。
   helpCenterUrl: resolveDocUrl('VITE_HELP_CENTER_URL'),
   // Mock 回退仅是本地开发便利能力，不是离线产品能力。生产构建硬禁用。
   allowMockFallback: (() => {
