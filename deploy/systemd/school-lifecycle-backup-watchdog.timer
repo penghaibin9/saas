@@ -1,0 +1,11 @@
+[Unit]
+Description=Check School Lifecycle backup freshness hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+AccuracySec=5min
+Unit=school-lifecycle-backup-watchdog.service
+
+[Install]
+WantedBy=timers.target

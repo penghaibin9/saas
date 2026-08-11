@@ -80,9 +80,9 @@
               <option value="OTHER">其他</option>
             </select>
             <div class="sp-fieldlabel">开始日期</div>
-            <input v-model="leaveForm.startDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <AppDatePicker v-model="leaveForm.startDate" class="sp-inp" style="margin-bottom:12px" role="start" :end-value="leaveForm.endDate" label="开始日期" />
             <div class="sp-fieldlabel">结束日期</div>
-            <input v-model="leaveForm.endDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <AppDatePicker v-model="leaveForm.endDate" class="sp-inp" style="margin-bottom:12px" role="end" :start-value="leaveForm.startDate" label="结束日期" />
             <div class="sp-fieldlabel">事由</div>
             <textarea v-model.trim="leaveForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="如：发热就医，已上传门诊证明" />
             <button class="sp-btn" :disabled="busy || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason" @click="submitLeave">提交请假</button>
@@ -115,7 +115,7 @@
           <section class="sp-card">
             <div class="sp-panel__head">申请补卡</div>
             <div class="sp-fieldlabel">缺卡日期</div>
-            <input v-model="makeupForm.checkinDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <AppDatePicker v-model="makeupForm.checkinDate" class="sp-inp" style="margin-bottom:12px" label="缺卡日期" />
             <div class="sp-fieldlabel">事由</div>
             <textarea v-model.trim="makeupForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="说明缺卡原因（不少于2字）" />
             <button class="sp-btn" :disabled="busy || !makeupForm.checkinDate || !makeupForm.reason" @click="submitMakeup">提交补卡</button>
@@ -262,9 +262,9 @@
             <div class="sp-fieldlabel">险种</div>
             <input v-model.trim="insForm.coverageType" class="sp-inp" style="margin-bottom:12px" />
             <div class="sp-fieldlabel">生效日</div>
-            <input v-model="insForm.effectiveDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <AppDatePicker v-model="insForm.effectiveDate" class="sp-inp" style="margin-bottom:12px" role="start" :end-value="insForm.expiryDate" label="生效日期" />
             <div class="sp-fieldlabel">失效日</div>
-            <input v-model="insForm.expiryDate" type="date" class="sp-inp" style="margin-bottom:12px" />
+            <AppDatePicker v-model="insForm.expiryDate" class="sp-inp" style="margin-bottom:12px" role="end" :start-value="insForm.effectiveDate" label="到期日期" />
             <div class="sp-fieldlabel">保单扫描件</div>
             <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadInsurancePolicy" />
             <p class="sp-muted" style="margin-bottom:12px">{{ insForm.fileId ? '保单文件已上传' : '请上传保单扫描件' }}</p>
@@ -406,6 +406,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
+import AppDatePicker from '../../components/AppDatePicker.vue'
 import FlowSteps from '../../components/FlowSteps.vue'
 import { portalApi } from '../../services/portalApi'
 import { internshipCoreApi } from '../../services/internshipCoreApi'

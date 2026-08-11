@@ -6,6 +6,10 @@ build/
 .env.*.local
 .env.*
 !.env.example
+# Runtime environment files may contain database passwords, JWT/field-encryption keys, or backup targets.
+*.env
+# rclone config contains offsite-storage credentials and must never enter Git.
+rclone.conf
 .DS_Store
 Thumbs.db
 .vscode/

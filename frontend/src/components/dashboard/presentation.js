@@ -42,7 +42,7 @@ export function riskStatusLabel(risk) {
 /** @param {'LOW'|'MEDIUM'|'HIGH'|'CRITICAL'|string} level */
 export function riskLevelLabel(level) {
   const map = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '严重' }
-  return map[level] || level
+  return safeEnumLabel({ value: level, dictionary: map, unknownLabel: '风险等级待确认' })
 }
 
 /** @param {'LOW'|'MEDIUM'|'HIGH'|'CRITICAL'|string} level */
@@ -76,3 +76,4 @@ export function completionRateStatus(rate) {
   if (rate >= 60) return 'warning'
   return 'danger'
 }
+import { safeEnumLabel } from '@/utils/presentationSafety'

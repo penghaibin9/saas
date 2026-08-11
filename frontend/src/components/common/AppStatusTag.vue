@@ -6,6 +6,7 @@
 </template>
 
 <script>
+import { safeEnumLabel } from '@/utils/presentationSafety'
 /**
  * AppStatusTag 统一状态标签。
  * ARCHIVED 永远表示“已归档”；业务作废必须使用 VOIDED，禁止再按页面自行改义。
@@ -133,7 +134,10 @@ export default {
       return this.type || (this.mapped ? this.mapped.type : 'default')
     },
     displayLabel() {
-      return this.label || (this.mapped ? this.mapped.label : this.status) || '—'
+      if (this.label && (!this.status || this.label !== this.status)) return this.label
+      return this.mapped
+        ? this.mapped.label
+        : safeEnumLabel({ value: this.status, unknownLabel: '状态待确认' })
     }
   }
 }

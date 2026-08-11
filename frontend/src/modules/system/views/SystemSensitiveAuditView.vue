@@ -19,7 +19,7 @@
         @page-change="onPageChange"
       >
         <template #cell-result="{ row }">
-          <StatusTag :type="row.result === 'SUCCESS' ? 'success' : 'warning'" :label="row.resultLabel || row.result" dot />
+          <StatusTag :type="row.result === 'SUCCESS' ? 'success' : 'warning'" :label="row.displayResult" dot />
         </template>
       </DataTable>
     </div>
@@ -32,6 +32,9 @@ import {
   LoadingState, ErrorState, EmptyState
 } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
+import { presentAuditRecord, safeEnumLabel } from '@/utils/presentationSafety'
+
+const MODULE_LABEL = { systemAdmin: '系统管理', dataExchange: '数据交换', studentAffairs: '学生工作', academicAffairs: '教务管理', platform: '平台管理' }
 
 const EMPTY_FILTERS = () => ({ keyword: '', result: '', dateFrom: '', dateTo: '' })
 
@@ -51,10 +54,10 @@ export default {
       columns: [
         { key: 'time', title: '时间', width: '150px' },
         { key: 'who', title: '操作人' },
-        { key: 'actionLabel', title: '动作' },
-        { key: 'target', title: '对象' },
+        { key: 'displayAction', title: '动作' },
+        { key: 'displayTarget', title: '对象' },
         { key: 'result', title: '结果' },
-        { key: 'moduleLabel', title: '模块' }
+        { key: 'displayModule', title: '模块' }
       ],
       filterFields: [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '操作人 / 对象' },
@@ -70,6 +73,13 @@ export default {
   },
   created() { this.load() },
   methods: {
+    presentRow(row) {
+      const record = presentAuditRecord(row)
+      return {
+        ...record,
+        displayModule: row.moduleLabel || safeEnumLabel({ value: row.module, dictionary: MODULE_LABEL, unknownLabel: '业务模块' })
+      }
+    },
     onPageChange(page) {
       this.pagination.page = page
       this.load()
@@ -91,7 +101,7 @@ export default {
         pageSize: this.pagination.pageSize
       })
       if (res.code === 0) {
-        this.rows = res.data.list || []
+        this.rows = (res.data.list || []).map(this.presentRow)
         this.pagination.total = res.data.total || 0
       } else {
         this.error = res.message

@@ -1,13 +1,8 @@
 <template>
   <div class="spcfg">
     <div class="spcfg__tid">
-      <label class="spcfg__field">
-        <span>真实租户ID（写入真实后端；平台租户列表若为 mock 数据，请在此填入该学校的真实 DB 租户 ID，切勿用 mock ID 写库）</span>
-        <span class="spcfg__tidrow">
-          <input v-model.trim="realTenantId" class="spcfg__input" placeholder="如 1000000000000000003" />
-          <button class="spcfg__btn" @click="load">加载该租户配置</button>
-        </span>
-      </label>
+      <strong>{{ effectiveTenantId ? '正在配置当前所选学校' : '请先从租户列表选择学校' }}</strong>
+      <p class="spcfg__muted">{{ effectiveTenantId ? '配置将应用于租户上下文中的学校。' : '未选择学校时不可保存，避免配置写入错误范围。' }}</p>
     </div>
 
     <div class="spcfg__main">
@@ -31,27 +26,34 @@
       <div class="spcfg__bt">模块开关</div>
       <div class="spcfg__switches">
         <label v-for="m in moduleKeys" :key="m" class="spcfg__chk">
-          <input v-model="form.modules[m]" type="checkbox" /> {{ moduleLabels[m] || m }}
+          <input v-model="form.modules[m]" type="checkbox" /> {{ moduleLabel(m) }}
         </label>
       </div>
     </div>
 
     <div class="spcfg__block">
-      <div class="spcfg__bt">功能开关（关闭后即使前端隐藏，后端也会返回 403）</div>
+      <div class="spcfg__bt">功能开关（关闭后该功能不可访问）</div>
       <div class="spcfg__switches">
         <label v-for="f in featureKeys" :key="f" class="spcfg__chk">
-          <input v-model="form.features[f]" type="checkbox" /> {{ featureLabels[f] || f }}
+          <input v-model="form.features[f]" type="checkbox" /> {{ featureLabel(f) }}
         </label>
       </div>
     </div>
 
     <details class="spcfg__preview">
-      <summary>预览最终配置（提交后由后端按「默认 &lt; 套餐 &lt; 租户 &lt; 总开关」合并）</summary>
-      <pre>{{ previewText }}</pre>
+      <summary>最终配置预览</summary>
+      <dl class="spcfg__summary">
+        <div><dt>门户状态</dt><dd>{{ form.enabled ? '已启用' : '已关闭' }}</dd></div>
+        <div><dt>门户名称</dt><dd>{{ form.portalName || '未设置' }}</dd></div>
+        <div><dt>访问地址</dt><dd>{{ form.portalUrl || '未设置' }}</dd></div>
+        <div><dt>当前套餐</dt><dd>{{ pkgName || '套餐待确认' }}</dd></div>
+        <div><dt>已启用模块</dt><dd>{{ enabledModuleLabels }}</dd></div>
+        <div><dt>已启用功能</dt><dd>{{ enabledFeatureLabels }}</dd></div>
+      </dl>
     </details>
 
     <div class="spcfg__ops">
-      <button class="spcfg__btn spcfg__btn--primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button>
+      <button class="spcfg__btn spcfg__btn--primary" :disabled="saving || !effectiveTenantId" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button>
       <button class="spcfg__btn" @click="restore">恢复默认</button>
       <button class="spcfg__btn" @click="previewPortal">预览学生门户</button>
       <button class="spcfg__btn" @click="copyUrl">复制门户地址</button>
@@ -62,6 +64,7 @@
 
 <script>
 import { studentPortalConfigApi } from '@/modules/platform/api/studentPortalConfig.api'
+import { normalizeUiError, safeEnumLabel } from '@/utils/presentationSafety'
 
 const MODULE_KEYS = ['dashboard', 'profile', 'orientation', 'campusService', 'academic', 'internship', 'graduation', 'employment', 'messages']
 const FEATURE_KEYS = ['upload', 'export', 'proofDownload', 'profileCorrection', 'messageReceipt', 'materialCenter', 'workItems', 'aiAssistant']
@@ -97,7 +100,6 @@ export default {
         { code: 'professional', name: '专业版' }, { code: 'private', name: '私有部署' }
       ],
       form: makeDefaults(),
-      realTenantId: String(this.tenantId || ''),
       saving: false,
       msg: '',
       msgClass: ''
@@ -105,20 +107,27 @@ export default {
   },
   computed: {
     effectiveTenantId() {
-      return this.realTenantId || this.tenantId
+      return this.tenantId
     },
     pkgName() {
       return (this.packages.find((p) => p.code === this.form.requiredPackage) || {}).name || ''
     },
-    previewText() {
-      return JSON.stringify(this.form, null, 2)
+    enabledModuleLabels() {
+      const labels = this.moduleKeys.filter((key) => this.form.modules[key]).map(this.moduleLabel)
+      return labels.join('、') || '未启用'
+    },
+    enabledFeatureLabels() {
+      const labels = this.featureKeys.filter((key) => this.form.features[key]).map(this.featureLabel)
+      return labels.join('、') || '未启用'
     }
   },
   watch: {
-    tenantId(v) { this.realTenantId = String(v || ''); this.load() }
+    tenantId() { this.load() }
   },
   created() { this.load() },
   methods: {
+    moduleLabel(key) { return safeEnumLabel({ value: key, dictionary: this.moduleLabels, unknownLabel: '未识别模块（请联系平台管理员）' }) },
+    featureLabel(key) { return safeEnumLabel({ value: key, dictionary: this.featureLabels, unknownLabel: '未识别功能（请联系平台管理员）' }) },
     async load() {
       if (!this.effectiveTenantId) { this.form = makeDefaults(); return }
       try {
@@ -134,18 +143,18 @@ export default {
         }
       } catch (e) {
         this.form = makeDefaults()
-        this.setMsg('读取配置失败，已载入默认值：' + (e.message || ''), 'warn')
+        this.setMsg(normalizeUiError(e, { fallback: '读取配置失败，已载入默认值' }).userMessage, 'warn')
       }
     },
     async save() {
-      if (!this.effectiveTenantId) { this.setMsg('请先填写真实租户ID', 'err'); return }
+      if (!this.effectiveTenantId) { this.setMsg('请先从租户列表选择学校', 'err'); return }
       this.saving = true
       this.msg = ''
       try {
         await studentPortalConfigApi.save(this.effectiveTenantId, this.form)
-        this.setMsg('保存成功（后端已写审计 TENANT_STUDENT_PORTAL_CONFIG）', 'ok')
+        this.setMsg('配置已保存并记录操作日志', 'ok')
       } catch (e) {
-        this.setMsg('保存失败：' + (e.message || '请检查权限或网络'), 'err')
+        this.setMsg(normalizeUiError(e, { fallback: '保存失败，请稍后重试' }).userMessage, 'err')
       } finally {
         this.saving = false
       }
@@ -188,7 +197,10 @@ export default {
 .spcfg__switches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .spcfg__chk { font-size: 13px; }
 .spcfg__preview { margin: 8px 0 16px; }
-.spcfg__preview pre { background: #0d1117; color: #c9d1d9; padding: 12px; border-radius: 8px; overflow: auto; max-height: 220px; font-size: 12px; }
+.spcfg__summary { display: grid; gap: 8px; margin: 10px 0 0; padding: 12px; border-radius: 8px; background: #f7f8fa; font-size: 12px; }
+.spcfg__summary div { display: grid; grid-template-columns: 90px 1fr; gap: 12px; }
+.spcfg__summary dt { color: #86909c; }
+.spcfg__summary dd { margin: 0; color: #1d2129; }
 .spcfg__ops { display: flex; gap: 10px; flex-wrap: wrap; }
 .spcfg__btn { height: 34px; padding: 0 14px; border: 1px solid #dcdfe6; background: #fff; border-radius: 6px; cursor: pointer; }
 .spcfg__btn--primary { background: #2563eb; color: #fff; border-color: #2563eb; }

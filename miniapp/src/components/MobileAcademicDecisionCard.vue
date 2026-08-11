@@ -22,11 +22,17 @@
         <text>结果来自学校业务规则实时校验</text>
       </view>
 
-      <view v-if="showAuditMeta" class="adc__meta">
-        <text v-if="trace && trace.ruleCode">规则 {{ trace.ruleCode }}</text>
-        <text v-if="trace && trace.traceId">Trace {{ trace.traceId }}</text>
-        <text v-if="trace && trace.ruleVersion">规则版本 {{ trace.ruleVersion }}</text>
+      <view v-if="showRuleMeta" class="adc__meta">
+        <text>规则依据：{{ ruleBasis }}</text>
         <text v-if="trace && trace.evaluatedAt">评估时间 {{ trace.evaluatedAt }}</text>
+        <button v-if="canViewTechnicalMeta" class="adc__tech-toggle" @click="technicalOpen = !technicalOpen">
+          {{ technicalOpen ? '收起技术详情' : '查看技术详情' }}
+        </button>
+        <view v-if="canViewTechnicalMeta && technicalOpen" class="adc__tech">
+          <text v-if="trace && trace.ruleCode">规则编号 {{ trace.ruleCode }}</text>
+          <text v-if="trace && trace.traceId">支持编号 {{ trace.traceId }}</text>
+          <text v-if="trace && trace.ruleVersion">规则版本 {{ trace.ruleVersion }}</text>
+        </view>
       </view>
     </view>
   </view>
@@ -41,8 +47,11 @@ export default {
     message: { type: String, default: '' },
     audience: { type: String, default: 'student' }
   },
+  data() { return { technicalOpen: false } },
   computed: {
-    showAuditMeta() { return this.audience === 'teacher' || this.audience === 'admin' },
+    showRuleMeta() { return this.audience !== 'student' },
+    canViewTechnicalMeta() { return this.audience === 'admin' || this.audience === 'platformAdmin' },
+    ruleBasis() { return (this.trace && (this.trace.ruleLabel || this.trace.ruleDescription)) || '学校业务办理规则' },
     warnTone() {
       const decision = String((this.trace && this.trace.decision) || '').toUpperCase()
       return ['DENIED', 'BLOCKED', 'FAILED', 'ABNORMAL'].includes(decision)
@@ -90,4 +99,6 @@ export default {
 .adc__trust-dot { width: 6px; height: 6px; border-radius: var(--radius-full); background: #16a34a; }
 .adc__trust text { font-size: 10px; color: var(--text-tertiary); }
 .adc__meta { display: flex; flex-direction: column; gap: 3px; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--border-light); font-size: 10px; color: var(--text-tertiary); word-break: break-all; }
+.adc__tech-toggle { align-self: flex-start; margin-top: 4px; padding: 0; border: 0; background: transparent; color: var(--brand-primary); font-size: 10px; line-height: 24px; }
+.adc__tech { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 8px; background: rgba(15,23,42,.04); }
 </style>
