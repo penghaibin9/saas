@@ -361,7 +361,6 @@ export default {
         this.dirty[student.studentId] = false
         this.rowErrors[student.studentId] = ''
         this.qualityReport = null
-        this.persistDraftNow()
         if (notify) toast(score.exceptionFlag === 'NORMAL' ? '成绩已保存' : `${this.exceptionLabel(score.exceptionFlag)}状态已保存`)
         return true
       } catch (error) {
@@ -412,7 +411,6 @@ export default {
       } catch (error) {
         const message = (error && error.message) || normalizeError(error).text || '批量保存失败'
         toast(message)
-        this.persistDraftNow()
         return false
       } finally {
         this.savingAll = false
