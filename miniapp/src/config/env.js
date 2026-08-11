@@ -54,14 +54,21 @@ function resolveUseMock() {
   return true
 }
 
-/** 用户协议 / 隐私政策页面地址。仓库当前不存在这两份文档的公开路由，默认留空 →
- * 登录页对应文字不可点（不放虚假链接冒充已核定的协议正文）。学校确定正式文档后，
- * 通过 VITE_PRIVACY_URL / VITE_TERMS_URL 注入真实地址，与 frontend/portalConfig.js 同一约定。 */
+/**
+ * 用户协议 / 隐私政策 / 统一帮助中心页面地址。
+ * 协议正文仓库当前不存在公开路由，默认留空；帮助中心不硬编码 SaaS 域名，
+ * 由 VITE_HELP_CENTER_URL 注入。生产环境的非本机 http 地址自动升级为 https。
+ */
 function resolveDocUrl(key) {
   try {
     const env = (import.meta && import.meta.env) || {}
     const v = env[key]
-    return v ? String(v).trim() : ''
+    if (!v) return ''
+    let url = String(v).trim()
+    if (env.PROD && /^http:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url)) {
+      url = url.replace(/^http:\/\//i, 'https://')
+    }
+    return url
   } catch (e) { return '' }
 }
 
@@ -70,6 +77,8 @@ export const ENV = {
   useMock: resolveUseMock(),
   privacyUrl: resolveDocUrl('VITE_PRIVACY_URL'),
   termsUrl: resolveDocUrl('VITE_TERMS_URL'),
+  // 小程序“帮助与反馈”唯一正文入口。正式环境配置 HTTPS /help 地址并登记微信业务域名。
+  helpCenterUrl: resolveDocUrl('VITE_HELP_CENTER_URL'),
   // Mock 回退仅是本地开发便利能力，不是离线产品能力。生产构建硬禁用。
   allowMockFallback: (() => {
     try {

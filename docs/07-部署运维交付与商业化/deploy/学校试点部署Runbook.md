@@ -2,6 +2,7 @@
 
 > 目标：一所学校、真实账号、真实业务数据的受控试点。**任何 FAIL 都禁止导入真实学生数据。**
 > 当前推荐部署：2C4G/2U4G Linux + systemd + MySQL 8 + Redis + Nginx + ClamAV。管理 PC、miniapp H5、学生 PC 必须来自同一个 release。
+> **备份/恢复只认 `deploy/README-data-governance.md`。** 正式 Linux 生产不要单独 cron 调底层 `backup-mysql.sh` 绕过 manifest、异地校验和 watchdog。
 
 ## 0. 服务器与外部依赖
 
@@ -116,6 +117,14 @@ sudo ENV_FILE=/etc/school-lifecycle/backend.env \
 
 ## 7. 备份与恢复
 
-部署每日 MySQL 备份：`deploy/backup/backup-mysql.sh`。使用本地文件存储时必须同时备份 `UPLOAD_DIR`。正式导入大批真实数据前做一次恢复演练：恢复到临时 MySQL → `alembic current`/动态检查 → 登录 → 抽查敏感字段可解密 → 抽查附件可下载。
+正式生产的备份、异地副本、保留策略、watchdog 与恢复演练统一按 `deploy/README-data-governance.md` 执行：
+
+1. 配置生产 `backup.env` 与异地 rclone 目标，并启用对象存储版本化/不可变保留/存储侧加密；
+2. 安装并启用 `school-lifecycle-backup.service/.timer` 与 `school-lifecycle-backup-watchdog.service/.timer`；正式基线为每 6 小时一个恢复点、watchdog 每小时检查；
+3. 备份集必须覆盖 MySQL；local 文件存储时同时覆盖 `UPLOAD_DIR`，并以 manifest/SHA-256/异地回读结果作为完整性证据；
+4. 首次上线人工触发一次正式备份并让 watchdog 通过，再在隔离库完成一次恢复演练；之后由 systemd/CI 持续执行；
+5. 生产 `FIELD_ENCRYPTION_KEY`、历史 key（如有）及敏感字段搜索用固定 HMAC key 的受保护恢复副本必须存放在应用服务器与 Git 之外。
+
+生产数据治理基线：**RPO ≤ 6 小时、RTO ≤ 2 小时**。不要另建 cron 直接调用底层备份脚本形成第二套口径。
 
 **试点准入最终口径：静态预检 0 FAIL + 服务器预检 0 FAIL + 发布验收 0 FAIL + 真实角色冒烟通过 + 备份恢复实证通过，之后才允许扩大真实数据范围。**

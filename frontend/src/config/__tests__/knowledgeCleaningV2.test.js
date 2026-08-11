@@ -1,0 +1,95 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const runtimeSource = readFileSync(resolve(here, '../helpCenterRuntime.js'), 'utf8')
+const modelSource = readFileSync(resolve(here, '../helpCenterModel.js'), 'utf8')
+
+test('V2 runtime publishes verified knowledge only instead of trusting every legacy entry', () => {
+  assert.match(runtimeSource, /VERIFIED_HELP_CARD_IDS/)
+  assert.match(runtimeSource, /VERIFIED_HELP_FLOW_IDS/)
+  assert.match(runtimeSource, /VERIFIED_HELP_DOC_IDS = new Set\(\)/)
+  assert.match(runtimeSource, /QUARANTINED_UNVERIFIED_HELP_IDS/)
+  assert.match(runtimeSource, /quarantineUnverifiedKnowledge\(\)/)
+  assert.match(runtimeSource, /removeUnverifiedInPlace\(BASE_HELP_CARDS/)
+  assert.match(runtimeSource, /removeUnverifiedInPlace\(HELP_DOCS/)
+  assert.match(runtimeSource, /removeUnverifiedInPlace\(HELP_FLOWS/)
+})
+
+test('V2 verified card allowlist is grounded in re-audited sources and clean domain sources', () => {
+  for (const token of [
+    'SYSTEM_HELP_CARDS.map',
+    'FOUNDATION_HELP_CARDS.map',
+    'STUDENT_DATA_HELP_CARDS.map',
+    'MOBILE_CLEAN_HELP_CARDS.map',
+    'ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS.map',
+    'ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.map',
+    'INTERNSHIP_CLEAN_HELP_CARDS.map',
+    'GRADUATION_CLEAN_HELP_CARDS.map',
+    'STUDENT_AFFAIRS_CLEAN_HELP_CARDS.map',
+    'Object.keys(VERIFIED_HELP_OVERRIDES)'
+  ]) {
+    assert.match(runtimeSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+  assert.doesNotMatch(runtimeSource, /Object\.keys\(ACADEMIC_AFFAIRS_VERIFIED_OVERRIDES\)/)
+  assert.doesNotMatch(runtimeSource, /Object\.keys\(STUDENT_AFFAIRS_VERIFIED_OVERRIDES\)/)
+  assert.doesNotMatch(runtimeSource, /ALL_MOBILE_HELP_CARDS\.map/)
+})
+
+test('V2 removes unverified knowledge from sidebar as well as search arrays', () => {
+  assert.match(runtimeSource, /const publishedIds = new Set/)
+  assert.match(runtimeSource, /section\.items = section\.items\.filter\(\(item\) => publishedIds\.has/)
+  assert.match(runtimeSource, /export function getHelpById/)
+  assert.match(runtimeSource, /getHelpById[\s\S]*return null/)
+})
+
+test('V2 task-card quality contract requires the seven operational dimensions', () => {
+  for (const field of [
+    'roles',
+    'entry-location',
+    'steps',
+    'prerequisites',
+    'success-criteria',
+    'troubleshooting',
+    'permission-guidance'
+  ]) {
+    assert.match(modelSource, new RegExp(field))
+  }
+  assert.match(modelSource, /knowledge-cleaning-v2-seven-dimensions/)
+  assert.match(modelSource, /hasPermissionGuidance/)
+})
+
+test('V2 priority help no longer promotes unverified encyclopedia docs and includes cleaned high-frequency tasks', () => {
+  assert.doesNotMatch(modelSource, /'doc-lifecycle'/)
+  assert.doesNotMatch(modelSource, /'doc-academic-full-flow'/)
+  assert.doesNotMatch(modelSource, /'doc-internship-full-flow'/)
+  assert.doesNotMatch(modelSource, /'doc-graduation-full-flow'/)
+  for (const id of [
+    'aa-card-status-change',
+    'aa-card-grade-entry',
+    'aa-card-grade-review-publish',
+    'aa-card-grade-change',
+    'aa-card-selection-round',
+    'aa-card-selection-publish',
+    'aa-card-exam-arrangement',
+    'aa-card-exam-publish',
+    'in-v2-student-application',
+    'in-v2-teacher-process',
+    'in-v2-enterprise-evaluation',
+    'in-v2-score',
+    'gd-v2-topic-selection',
+    'gd-v2-proposal',
+    'gd-v2-defense',
+    'gd-v2-grade',
+    'sa-card-risk-handle',
+    'sa-card-archive',
+    'mobile-unified-help-entry'
+  ]) {
+    assert.match(modelSource, new RegExp(`'${id}'`))
+  }
+  assert.doesNotMatch(modelSource, /'in-card-eval-score'/)
+  assert.doesNotMatch(modelSource, /'gd-card-defense-grade'/)
+})

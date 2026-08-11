@@ -34,6 +34,16 @@ def test_workbench_snapshot_change_selects_snapshot_contract():
     assert "tests/test_workbench_snapshot.py" in targets
 
 
+def test_help_metrics_change_selects_real_mysql_api_regression():
+    mod = _load()
+    for path in (
+        "backend/app/api/v1/help_metrics.py",
+        "backend/app/services/help_metrics_service.py",
+    ):
+        targets = mod.select([path])
+        assert "tests/test_help_metrics.py" in targets
+
+
 def test_changed_backend_test_is_selected_exactly():
     mod = _load()
     targets = mod.select(["backend/tests/test_aa_prerequisite_api_real.py"])

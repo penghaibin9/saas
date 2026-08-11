@@ -11,8 +11,20 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import './config/helpCenterRuntime'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
+
+// 小程序 WebView / 售后二维码共用的公开只读帮助页。
+// 与 /admin/help 分离：不暴露管理端导航，不要求管理端 token，也没有业务写入口。
+if (!router.hasRoute('public-help')) {
+  router.addRoute({
+    path: '/help',
+    name: 'public-help',
+    component: () => import('./views/help/PublicHelpView.vue'),
+    meta: { public: true, title: '帮助中心' }
+  })
+}
 
 // Stage B 高频工作流：给“某个实习学生的材料”一个稳定真实深链。
 // 页面直接读取 /internship/material-center/{internshipId} 的真实版本链，不造第二份材料数据。
