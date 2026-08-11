@@ -1,0 +1,87 @@
+name: Cleanup runs before 2026-08-11 08:30 GMT+8
+
+on:
+  push:
+    branches:
+      - cleanup/actions-before-20260811-0830-r1
+    paths:
+      - .github/workflows/cleanup-before-20260811-0830.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel and delete workflow runs before cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CUTOFF: '2026-08-11T00:30:00Z'
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+
+          repo = os.environ['GH_REPO']
+          token = os.environ['GH_TOKEN']
+          cutoff = os.environ['CUTOFF']
+          current_run_id = int(os.environ['CURRENT_RUN_ID'])
+          api = 'https://api.github.com'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'actions-cleanup'
+          }
+
+          def request(method, url):
+              req = urllib.request.Request(url, method=method, headers=headers)
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      data = resp.read()
+                      return resp.status, json.loads(data) if data else None
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode('utf-8', 'replace')
+                  print(f'{method} {url} -> {e.code}: {body[:500]}')
+                  return e.code, None
+
+          deleted = 0
+          cancelled = 0
+          while True:
+              url = f"{api}/repos/{repo}/actions/runs?per_page=100&created=1970-01-01T00:00:00Z..2026-08-11T00:29:59Z"
+              status, payload = request('GET', url)
+              if status != 200 or not payload:
+                  raise SystemExit('Failed to list workflow runs')
+
+              runs = [r for r in payload.get('workflow_runs', []) if int(r['id']) != current_run_id]
+              if not runs:
+                  break
+
+              progress = False
+              for run in runs:
+                  rid = int(run['id'])
+                  state = run.get('status')
+                  if state != 'completed':
+                      s, _ = request('POST', f'{api}/repos/{repo}/actions/runs/{rid}/cancel')
+                      if s in (202, 409):
+                          cancelled += 1
+                          progress = True
+                      continue
+
+                  s, _ = request('DELETE', f'{api}/repos/{repo}/actions/runs/{rid}')
+                  if s == 204:
+                      deleted += 1
+                      progress = True
+
+              print(f'pass: deleted={deleted}, cancel_requests={cancelled}, remaining_batch={len(runs)}')
+              if not progress:
+                  time.sleep(8)
+              else:
+                  time.sleep(2)
+
+          print(f'Cleanup complete. deleted={deleted}, cancel_requests={cancelled}')
+          PY
