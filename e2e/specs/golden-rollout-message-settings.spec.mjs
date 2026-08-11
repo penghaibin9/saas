@@ -47,7 +47,7 @@ test.describe.serial('Golden rollout · message preferences / channel governance
     adminApi = await loginApi(config.sandboxAdmin)
   })
 
-  test('Message settings workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message settings workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/settings')
 
@@ -60,6 +60,36 @@ test.describe.serial('Golden rollout · message preferences / channel governance
     await expect(page.getByText('静默时段', { exact: true })).toBeVisible()
     await expect(page.getByText('发布频控', { exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-message-settings-a')
+    const visual = await page.locator('.mc-settings').evaluate((el) => {
+      const style = getComputedStyle(el)
+      const panels = [...el.querySelectorAll('.mc-panel')]
+      const first = panels[0]?.getBoundingClientRect()
+      const second = panels[1]?.getBoundingClientRect()
+      const panelStyle = panels[0] ? getComputedStyle(panels[0]) : null
+      const note = el.querySelector('.mc-settings__note')
+      return {
+        display: style.display,
+        width: el.getBoundingClientRect().width,
+        height: el.getBoundingClientRect().height,
+        columns: style.gridTemplateColumns.trim().split(/\s+/).length,
+        firstTop: first?.top || 0,
+        secondTop: second?.top || 0,
+        secondLeft: second?.left || 0,
+        firstLeft: first?.left || 0,
+        panelRadius: panelStyle ? Number.parseFloat(panelStyle.borderTopLeftRadius) : 0,
+        noteRadius: note ? Number.parseFloat(getComputedStyle(note).borderTopLeftRadius) : 0
+      }
+    })
+    expect(visual.display).toBe('grid')
+    expect(visual.width).toBeGreaterThanOrEqual(1000)
+    expect(visual.width).toBeLessThanOrEqual(1060)
+    expect(visual.height).toBeLessThanOrEqual(610)
+    expect(visual.columns).toBe(2)
+    expect(Math.abs(visual.firstTop - visual.secondTop)).toBeLessThanOrEqual(2)
+    expect(visual.secondLeft - visual.firstLeft).toBeGreaterThan(450)
+    expect(visual.panelRadius).toBeGreaterThanOrEqual(14)
+    expect(visual.noteRadius).toBeGreaterThanOrEqual(9)
+
+    await capture(page, testInfo, 'rollout-message-settings-b')
   })
 })
