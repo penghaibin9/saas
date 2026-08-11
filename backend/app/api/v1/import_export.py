@@ -142,14 +142,26 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
     from app.services import domain_export_service
     auth = enforce_export_perm(user, domain)
     purpose = str(body.get("purpose") or "")
-    cached, handle = idempotency_begin(user, "domain-export", idempotency_key,
-                                       {"domain": auth.domain, "purpose": purpose})
+    batch_id = body.get("batchId")
+    cached, handle = idempotency_begin(
+        user,
+        "domain-export",
+        idempotency_key,
+        {"domain": auth.domain, "purpose": purpose, "batchId": str(batch_id or "")},
+    )
     if cached is not None:
         return success(cached, message="导出完成（幂等重放）")
     _limit_operation(user, "export", user_limit=5, tenant_limit=20)
-    task = domain_export_service.export_domain(auth.domain, purpose, user=user)
-    audit_log.record("EXPORT", f"{auth.domain}-xlsx",
-                     detail={"taskId": task["taskId"], "rows": task["rowCount"]})
+    task = domain_export_service.export_domain(
+        auth.domain,
+        purpose,
+        user=user,
+        batch_id=batch_id,
+    )
+    detail = {"taskId": task["taskId"], "rows": task["rowCount"]}
+    if auth.domain == "internship":
+        detail["batchId"] = str(batch_id or "")
+    audit_log.record("EXPORT", f"{auth.domain}-xlsx", detail=detail)
     idempotency_finish(handle, task)
     return success(task, message="导出完成")
 
