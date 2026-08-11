@@ -104,34 +104,12 @@ async function prepareInternshipGuidance(mentor, internshipFixture) {
   return { id: String(guidance.id), topic, content }
 }
 
-async function prepareGraduationGuidance(mentor, graduationFixture) {
-  const marker = runId()
-  const content = `Golden Batch 9 ${marker}：复核开题后的研究计划、实现路径与本周阶段成果。`
-  const rows = items(await mentor.get('/graduation/gd-guidances', {
-    batchId: graduationFixture.batchId,
-    gdStudentId: graduationFixture.gdStudentId,
-    page: 1,
-    pageSize: 200
-  }))
-  let guidance = rows.find((row) => String(row.content || '') === content)
-  if (!guidance) {
-    guidance = await mentor.post(`/graduation/gd-guidances/${graduationFixture.gdStudentId}`, {
-      method: 'ONLINE',
-      content,
-      issues: '后续继续补齐测试证据与阶段里程碑。'
-    }, { batchId: graduationFixture.batchId })
-  }
-  if (!guidance?.id) throw new Error('Golden Batch 9 graduation guidance did not return id')
-  return { id: String(guidance.id), content }
-}
-
 test.describe.serial('Golden rollout · process guidance / tracking ledgers · Batch 9', () => {
   let adminApi
   let internshipFixture
   let graduationFixture
   let talkFixture
   let internshipGuidance
-  let graduationGuidance
 
   test.beforeAll(async () => {
     internshipFixture = await loadInternshipFixture()
@@ -141,8 +119,6 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     talkFixture = await prepareTalkLedger(adminApi, internshipFixture.studentNo)
 
     let mentorApi = await loginApi(config.mentor)
-    mentorApi = await switchApiRole(mentorApi, 'GD_MENTOR')
-    graduationGuidance = await prepareGraduationGuidance(mentorApi, graduationFixture)
     mentorApi = await switchApiRole(mentorApi, 'INTERN_MENTOR')
     internshipGuidance = await prepareInternshipGuidance(mentorApi, internshipFixture)
   })
@@ -185,21 +161,18 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await capture(page, testInfo, 'rollout-process-internship-guidance-a')
   })
 
-  test('Graduation process audit trail · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation mentor assignment ledger · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
+    await openStaffWorkspace(page, adminApi, '/admin/graduation/mentors?panel=assign')
 
-    const audits = items(await adminApi.get('/graduation/audit-logs', { page: 1, pageSize: 200 }))
-    if (!audits.length) throw new Error('Golden Batch 9 graduation guidance did not produce any graduation audit trail')
-
-    await openStaffWorkspace(page, adminApi, '/admin/graduation/audit-logs')
-
-    await expect(page).toHaveURL(/\/admin\/graduation\/audit-logs/)
-    await expect(page.getByRole('heading', { name: '毕设操作日志', exact: true })).toBeVisible()
-    await expect(page.locator('.mp-toolbar-row')).toBeVisible()
+    await expect(page).toHaveURL(/\/admin\/graduation\/mentors/)
+    await expect(page.getByRole('heading', { name: '导师管理', exact: true })).toBeVisible()
+    await expect(page.locator('.gm-tabs__item.is-active')).toContainText('导师分配')
+    await expect(page.locator('.gm-assign-hint')).toBeVisible()
+    await expect(page.locator('.gm-section-title')).toContainText('分配记录')
     await expect(page.locator('.dt')).toBeVisible()
-    await expect(page.locator('.dt__tr').nth(1)).toBeVisible()
-    await expect(page.locator('.mp-pager')).toContainText(/共\s*\d+\s*条/)
+    await expect(page.locator('.dt__tr').filter({ hasText: graduationFixture.mentorName }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-process-graduation-audit-a')
+    await capture(page, testInfo, 'rollout-process-graduation-mentor-assignment-a')
   })
 })
