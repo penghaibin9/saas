@@ -57,10 +57,10 @@ from . import academic_affairs_graduation_truth_guard
 academic_affairs_graduation_truth_guard.install()
 
 # Stage C3：预览/正式预审共用同一 evaluator；正式预审和终审追加不可变 Run/Decision。
+# 正式 overall 只允许由 immutable service 内部的单一 fail-closed 实现决定，
+# 禁止再从包初始化阶段 monkey-patch 第二套规则覆盖它。
 from . import academic_affairs_graduation_immutable_service
-from . import academic_affairs_graduation_overall_policy
 
-academic_affairs_graduation_overall_policy.install(academic_affairs_graduation_immutable_service)
 academic_affairs_graduation_immutable_service.install()
 
 # 包 5：异动详情范围、所属学期与真实工作流受理人 fail-closed。

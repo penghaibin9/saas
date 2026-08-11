@@ -1,5 +1,5 @@
-"""Stage C3 毕业正式预审 overall 的 fail-closed 合同。"""
-from app.modules.academic_affairs.services.academic_affairs_graduation_overall_policy import strict_overall
+"""Stage C3 不可变毕业 evaluator 的 fail-closed overall 合同。"""
+from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
 
 def _item(code: str, result: str):
@@ -20,20 +20,20 @@ def test_all_pass_is_required_for_formal_precheck():
         _item("ARCHIVE", "PASS"),
         _item("FEE", "PASS"),
     ]
-    assert strict_overall(rows) == "SYSTEM_PASSED"
+    assert immutable._strict_overall(rows) == "SYSTEM_PASSED"
 
 
 def test_any_unknown_blocks_formal_precheck():
-    assert strict_overall([_item("STATUS", "PASS"), _item("CREDIT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert strict_overall([_item("STATUS", "PASS"), _item("EMPLOYMENT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert strict_overall([_item("STATUS", "PASS"), _item("ARCHIVE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert strict_overall([_item("STATUS", "PASS"), _item("FEE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("CREDIT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("EMPLOYMENT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("ARCHIVE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("FEE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
 
 
 def test_any_fail_still_blocks_formal_precheck():
-    assert strict_overall([_item("STATUS", "PASS"), _item("FEE", "FAIL")]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("FEE", "FAIL")]) == "SYSTEM_ABNORMAL"
 
 
 def test_empty_or_missing_result_fails_closed():
-    assert strict_overall([]) == "SYSTEM_ABNORMAL"
-    assert strict_overall([{"item": "STATUS"}]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall([{"item": "STATUS"}]) == "SYSTEM_ABNORMAL"
