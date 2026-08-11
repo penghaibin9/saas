@@ -1,5 +1,4 @@
-"""
-统一响应结构 —— 双码兼容（BACKEND-OVERNIGHT 阶段4 拍板）：
+"""统一响应结构 —— 双码兼容（BACKEND-OVERNIGHT 阶段4 拍板）：
 - `code`    数字业务码：0 成功；400001 参数错误；401001 未登录；403001 无权限；
             403002 数据范围越权；404001 不存在；409001 冲突；422001 校验失败；500001 系统异常。
             与 frontend（res.code === 0）及本任务规范对齐。
@@ -50,6 +49,7 @@ BIZ_TO_NUM = {
     "DATA_CONFLICT": 409001,
     "APPROVAL_VERSION_CONFLICT": 409001,
     "IDEMPOTENCY_CONFLICT": 409001,
+    "VOIDED_PROFILE_EXISTS": 409001,
     "FILE_TOO_LARGE": 400001,
     "RATE_LIMITED": 429001,
     "UPLOAD_FAILED": 500001,
@@ -87,7 +87,6 @@ def fail(code: str, message: str, details: Any = None) -> dict:
 def paginate(items: list, total: int, page: int = 1, page_size: int = 20,
              next_cursor: str | None = None, status_counts: dict | None = None,
              updated_at: str | None = None, query_fingerprint: str | None = None) -> dict:
-    """分页数据结构（放入 data），对齐冻结契约 §四。"""
     data = {
         "items": items,
         "page": page,
