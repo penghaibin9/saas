@@ -14,7 +14,10 @@
 | ROOT-20 | StatusTag/dashboard/message mapper | unknown raw fallback | unknown-safe 中文 fallback | 三端 presentation tests | DONE |
 | MSG-01—06 | MessageCompose/MessageOutbox | 沙箱、JSON、raw category/status | 业务化发布与安全枚举 | message contract | DONE |
 | MSG-07 | 多端消息深链 | actionKey 旁路需运行态补查 | 发布端已禁止 raw actionKey；消费端待运行态矩阵 | — | PARTIAL |
+| MSG-08 | `MessageComposeView.vue` | Snowflake/BIGINT 深链参数被 JS `Number` 舍入 | 业务 ID 全程按不透明字符串传递 | `message-deep-link-id-contract.test.mjs` | DONE |
 | AA-NEW-01—09 | ArchivePrecheck/AaDashboard/AaTerm*/AaScheduling | 后端话术、规则码、JSON、批次 ID、raw level | 业务文案、结构化证据、安全映射、ID 隐藏 | V3 contract + 原 Stage D tests | DONE |
+| PORTAL-DATA-01 | `EmploymentView.vue` | 就业回访列名与真实 `{way, content, time}` DTO 不一致 | 绑定真实字段并把跟进方式中文业务化 | `ui-presentation-v3-data-contract.test.mjs` | DONE |
+| PORTAL-DATA-02 | `AcademicView.vue` | 专业分流表读取不存在的 batch/name 字段 | 改用 `choices/gpa/status/resultChoiceRank/adjustReason`，结果不暴露 DB ID | `ui-presentation-v3-data-contract.test.mjs` | DONE |
 | SYS-NEW-01—02 | SystemJobCenterView | kind/jobId/status 与授权 JSON | 业务任务摘要、中文状态、结构化授权依据 | V3 contract | DONE |
 | SYS-NEW-03—06 | SystemAccessGovernanceView | permission/org/user/role code 手填与 raw 列表 | 权限/组织/人员/角色选择器与安全展示 | build + V3 contract | DONE |
 | SYS-NEW-07 | SystemMasterDataView | table/userId/ruleCode/raw status | 中文来源、人员选择器、质量规则/状态映射 | build + V3 contract | DONE |
