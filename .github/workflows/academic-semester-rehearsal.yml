@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 60
     env:
       APP_ENV: test
-      DEPLOYMENT_MODE: test
+      DEPLOYMENT_MODE: local
       DB_ENABLED: "true"
       MOCK_LOGIN_ENABLED: "true"
       JWT_SECRET: academic-semester-rehearsal-secret-at-least-32-bytes
