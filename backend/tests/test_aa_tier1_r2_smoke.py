@@ -343,11 +343,17 @@ def test_evaluation_self_role_tasks_generate_and_list(client, db_mode):
         teaching_class_name="数据结构(评教2601)",
     )
     hdr = _hdr(client, "school_admin01")
-    batch_id = client.post(
+    created = client.post(
         f"{BASE}/evaluation/batches",
         headers=hdr,
-        json={"batchName": "2026秋评教"},
-    ).json()["data"]["batchId"]
+        json={
+            "batchName": "2026秋评教",
+            "termId": str(term_id),
+            "anonymous": True,
+        },
+    )
+    assert created.status_code == 200, created.text
+    batch_id = created.json()["data"]["batchId"]
     generated = client.post(
         f"{BASE}/evaluation/batches/{batch_id}/role-tasks",
         headers=hdr,
