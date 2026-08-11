@@ -138,16 +138,19 @@ def test_old_mobile_wrappers_do_not_patch_other_modules():
         assert "_gaps.makeup_options_my" not in source
 
 
-def test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report():
+def test_teacher_wechat_page_keeps_grades_memory_only_and_uses_server_save():
     root = Path(__file__).resolve().parents[2]
     page = (root / "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue").read_text(encoding="utf-8")
     nav = (root / "miniapp/src/components/MobileNavBar.vue").read_text(encoding="utf-8")
     api = (root / "miniapp/src/services/academicGradeEntryApi.js").read_text(encoding="utf-8")
 
-    assert "uni.setStorageSync" in page
-    assert "restoreDraft" in page
+    assert "修改仅保留在当前页面内存中" in page
+    assert "uni.setStorageSync" not in page
+    assert "restoreDraft" not in page
+    assert "persistDraftNow" not in page
     assert ":before-back=\"beforePageBack\"" in page
     assert "qualityReport" in page
+    assert "teacherApi.enterGradeScore" in page
     assert "academicGradeEntryApi.batchSave" in page
     assert "academicGradeEntryApi.qualityReport" in page
     assert "beforeBack" in nav
