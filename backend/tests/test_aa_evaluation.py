@@ -10,6 +10,7 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 _STUDENT_PASSWORD = "Test@123456"
 _STUDENT_NOS = ("EV01", "EV02", "EV03", "EV04", "EV05", "EVM1", "EVM2")
+_TEACHER_LOGIN = "academic01"
 
 
 def _hdr(client, login_name):
@@ -68,7 +69,7 @@ def _seed(db_mode):
         tenant_id=TID, batch_id=tb.id,
         course_id=course.id, course_code=course.course_code, course_name=course.course_name,
         class_id=klass.id, teaching_class_name=klass.class_name,
-        teacher_key="counselor01", teacher_name="王老师",
+        teacher_key=_TEACHER_LOGIN, teacher_name="王老师",
         status="READY", weekly_hours=4, total_hours=72,
         start_week=1, end_week=18,
     )
@@ -232,10 +233,12 @@ def test_ev1_full_flow(client, db_mode):
     assert all("EV01" not in (r.answers_json or "") and "EV02" not in (r.answers_json or "") for r in recs)
     db.close()
 
-    my = client.get(
+    mine = client.get(
         f"{BASE}/evaluation/batches/{bid}/my-results",
-        headers=_hdr(client, "counselor01"),
-    ).json()["data"]["items"]
+        headers=_hdr(client, _TEACHER_LOGIN),
+    )
+    assert mine.status_code == 200, mine.text
+    my = mine.json()["data"]["items"]
     assert any(x["level"] == "GOOD" for x in my)
     archived = client.post(f"{BASE}/evaluation/batches/{bid}/archive", headers=admin)
     assert archived.status_code == 200 and archived.json()["data"]["status"] == "ARCHIVED"
@@ -328,7 +331,7 @@ def test_ev4_appeal_flow(client, db_mode):
     assert client.post(f"{BASE}/evaluation/batches/{bid}/publish-results", headers=admin).status_code == 200
     rid = client.get(f"{BASE}/evaluation/batches/{bid}/results", headers=admin).json()["data"]["items"][0]["resultId"]
 
-    teacher = _hdr(client, "counselor01")
+    teacher = _hdr(client, _TEACHER_LOGIN)
     assert client.post(
         f"{BASE}/evaluation/appeals",
         headers=teacher,
