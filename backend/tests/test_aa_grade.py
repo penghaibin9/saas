@@ -212,7 +212,7 @@ def test_g5_analysis(client, db_mode):
 
 
 def test_g8_analysis_enhanced_and_group(client, db_mode):
-    """正方对标：总体新增优秀率/平均分/最高最低；dimension=course/class 出分组统计表。"""
+    """总体统计 + course/class 分组；课程维度按稳定 courseCode 聚合，禁止退回易漂移课程名键。"""
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
     tid = _task(client, hdr)
@@ -225,7 +225,7 @@ def test_g8_analysis_enhanced_and_group(client, db_mode):
     assert a["maxScore"] == 90 and a["minScore"] == 90
     byc = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "course"}).json()["data"]
     assert byc["dimension"] == "course"
-    assert any(r["name"] == "高等数学" and r["total"] == 1 for r in byc["rows"])
+    assert any(r["name"] == "GD101" and r["total"] == 1 for r in byc["rows"])
     byk = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "class"}).json()["data"]
     assert byk["dimension"] == "class" and len(byk["rows"]) >= 1
 
@@ -357,8 +357,7 @@ def test_g9_exception_list_filter_flag_and_student_403(client, db_mode):
 
 
 def test_g10_cross_tenant_teaching_task_rejected(client, db_mode):
-    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝（此前 db.get 不校验
-    tenant_id，会把他租户 teacher_key 带进本租户新任务）。"""
+    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝。"""
     _seed(db_mode, 1)
     from app.db.session import get_sessionmaker
     from app.models import AaTeachingTask
