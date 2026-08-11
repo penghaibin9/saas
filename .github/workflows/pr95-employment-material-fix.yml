@@ -1,0 +1,49 @@
+name: PR95 employment material DTO fix
+
+on:
+  push:
+    branches:
+      - codex/ui-presentation-v3
+    paths:
+      - scripts/automation/fix_pr95_employment_material_columns.py
+      - .github/workflows/pr95-employment-material-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr95-employment-material-fix
+  cancel-in-progress: false
+
+jobs:
+  fix-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/ui-presentation-v3
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply material DTO presentation fix
+        run: python scripts/automation/fix_pr95_employment_material_columns.py
+      - name: Run student portal data contract
+        run: node --test student-portal/tests/ui-presentation-v3-data-contract.test.mjs
+      - name: Commit fix and remove one-shot automation
+        run: |
+          rm -f scripts/automation/fix_pr95_employment_material_columns.py .github/workflows/pr95-employment-material-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add student-portal/src/views/employment/EmploymentView.vue \
+                  student-portal/tests/ui-presentation-v3-data-contract.test.mjs \
+                  scripts/automation/fix_pr95_employment_material_columns.py \
+                  .github/workflows/pr95-employment-material-fix.yml
+          git diff --cached --check
+          git commit -m 'fix(ui): bind employment materials to real DTO'
+          git push origin HEAD:codex/ui-presentation-v3
