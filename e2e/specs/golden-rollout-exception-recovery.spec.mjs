@@ -66,19 +66,21 @@ test.describe.serial('Golden rollout · exception / recovery workspaces · Batch
     await capture(page, testInfo, 'rollout-exception-affairs-leave-followup-a')
   })
 
-  test('Internship attendance exceptions · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship leave review · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openStaffWorkspace(page, adminApi, '/admin/internship/exceptions', {
+    const path = `/admin/internship/leaves?panel=pending&batchId=${encodeURIComponent(internshipFixture.batchId)}`
+    await openStaffWorkspace(page, adminApi, path, {
       'internship.selectedBatchId': internshipFixture.batchId
     })
 
-    await expect(page).toHaveURL(/\/admin\/internship\/exceptions/)
-    await expect(page.getByRole('heading', { name: '打卡与请假', exact: true })).toBeVisible()
-    await expect(page.getByText(/学生端提交的打卡异常说明会同步到这里/)).toBeVisible()
-    await expect(page.getByRole('button', { name: /导出异常记录/ })).toBeVisible()
-    await expect(page.getByText(/处理规则：超范围不直接定性作弊/)).toBeVisible()
+    await expect(page).toHaveURL(/\/admin\/internship\/leaves/)
+    await expect(page.getByRole('heading', { name: '请假审批', exact: true })).toBeVisible()
+    await expect(page.locator('.bar')).toBeVisible()
+    await expect(page.locator('.lv-main')).toBeVisible()
+    await expect(page.getByRole('button', { name: /导出 Excel 台账/ })).toBeVisible()
+    await expect(page.getByText(/学生实习期请假 · 指导教师审批 · 证明附件留痕/)).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-exception-internship-attendance-a')
+    await capture(page, testInfo, 'rollout-exception-internship-leave-review-a')
   })
 
   test('Graduation delayed-defense administration · Screenshot A', async ({ page }, testInfo) => {
