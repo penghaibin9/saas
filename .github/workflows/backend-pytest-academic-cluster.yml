@@ -10,6 +10,7 @@ on:
       - 'backend/app/api/v1/academic*.py'
       - 'backend/app/services/academic*.py'
       - 'backend/requirements.txt'
+      - 'scripts/check/backend-known-failures-main.txt'
       - 'scripts/check/sanitize_pytest_junit.py'
       - 'scripts/check/summarize_pytest_junit_diagnostics.py'
       - '.github/workflows/backend-pytest-academic-cluster.yml'
@@ -30,12 +31,27 @@ jobs:
     timeout-minutes: 14
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         include:
-          - lane: grade-followup
+          - lane: archive-exam
             nodeids: >-
-              tests/test_aa_grade_task_uniqueness_and_archive.py::test_7_admin_supplement_term_and_role_rules
+              tests/test_aa_archive.py tests/test_aa_archive_grade_policy_guard.py
+              tests/test_aa_calendar_period.py tests/test_aa_exam.py
+          - lane: scheduling-resource
+            nodeids: >-
+              tests/test_aa_resource_ext.py tests/test_aa_schedule_move.py tests/test_aa_scheduling.py
+              tests/test_aa_scheduling_tier1_r2.py
+          - lane: selection-recognition
+            nodeids: >-
+              tests/test_aa_recognition.py tests/test_aa_selection.py
+              tests/test_aa_selection_canonical_service.py tests/test_aa_selection_rounds.py
+              tests/test_aa_selection_student_guard.py
+          - lane: core-program-textbook
+            nodeids: >-
+              tests/test_aa_course.py tests/test_aa_dashboard.py tests/test_aa_grade.py tests/test_aa_orgs.py
+              tests/test_aa_program_tier1_r3.py tests/test_aa_teaching_plan_r3.py
+              tests/test_aa_textbook.py tests/test_aa_textbook_student.py tests/test_aa_warning.py
     services:
       mysql:
         image: mysql:8.0

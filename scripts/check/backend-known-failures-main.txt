@@ -3,14 +3,10 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade).
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
-tests/test_aa_academic_task_mobile.py::test_confirm_flow_via_mobile
-tests/test_aa_academic_task_mobile.py::test_cross_teacher_act_403_via_mobile
-tests/test_aa_academic_task_mobile.py::test_my_tasks_scope_via_mobile
-tests/test_aa_academic_task_mobile.py::test_reject_reason_validation_and_flow_via_mobile
 tests/test_aa_archive.py::test_ar10_export_item_and_all_after_archive
 tests/test_aa_archive.py::test_ar2_confirm_archive_freezes_term
 tests/test_aa_archive.py::test_ar3_unfreeze_restores_term
@@ -18,44 +14,13 @@ tests/test_aa_archive.py::test_ar5_precheck_realtime_no_batch
 tests/test_aa_archive.py::test_ar7_guard_term_writable_blocks_registration_after_archive
 tests/test_aa_archive_grade_policy_guard.py::test_archive_grade_policy_guard_is_installed
 tests/test_aa_archive_grade_policy_guard.py::test_policy_debt_changes_grade_archive_result_to_blocked
-tests/test_aa_bugfix_regression.py::test_bf2_midterm_persists_on_list_records
-tests/test_aa_bugfix_regression.py::test_bf3_duplicate_grade_task_same_teaching_task_409
-tests/test_aa_bugfix_regression.py::test_bf5_publish_then_transcript_consistent
-tests/test_aa_bugfix_regression.py::test_bf6_import_midterm_and_class_guard
 tests/test_aa_calendar_period.py::test_r2_makeup_day_pairing_validation
-tests/test_aa_clearance.py::test_full_chain_writes_clearance_grade
-tests/test_aa_clearance.py::test_kind_filter_in_batch_list
-tests/test_aa_clearance.py::test_scan_idempotent
-tests/test_aa_clearance.py::test_scan_rejects_normal_makeup_batch
-tests/test_aa_clearance.py::test_scan_scope_and_dedup_rule
 tests/test_aa_course.py::test_c9_disable_blocked_by_live_program_reference_then_allowed
 tests/test_aa_dashboard.py::test_dashboard_summary_reflects_real_data
-tests/test_aa_effective_grade_identity.py::test_aggregate_uses_same_policy_instead_of_old_high_score
-tests/test_aa_evaluation_mobile.py::test_cross_evaluator_submit_403_via_mobile
-tests/test_aa_evaluation_mobile.py::test_my_results_aggregation_and_appeal_ownership_via_mobile
-tests/test_aa_evaluation_mobile.py::test_my_tasks_and_submit_flow_via_mobile
 tests/test_aa_exam.py::test_e11_archived_readonly_409
 tests/test_aa_exam.py::test_e13_archive_list_readonly
 tests/test_aa_exam.py::test_e1_full_lifecycle
 tests/test_aa_grade.py::test_g8_analysis_enhanced_and_group
-tests/test_aa_grade_recheck.py::test_grade_recheck_full_flow
-tests/test_aa_grade_recheck_audit.py::test_ra1_records_show_source_and_change_history
-tests/test_aa_grade_recheck_audit.py::test_ra2_audit_full_lifecycle_visible_to_academic_admin_with_biztype_filter
-tests/test_aa_grade_recheck_audit.py::test_ra3_teacher_sees_only_own_operator_audit_rows
-tests/test_aa_grade_review_flow.py::test_rf1_return_resubmit_approve_publish
-tests/test_aa_grade_review_flow.py::test_rf2_return_reason_too_short_422
-tests/test_aa_grade_review_flow.py::test_rf3_teacher_cross_course_scope_403
-tests/test_aa_grade_review_flow.py::test_rf4_teacher_cannot_publish_even_with_wildcard_403
-tests/test_aa_grade_review_flow.py::test_rf5_archived_change_request_409
-tests/test_aa_grade_review_flow.py::test_rf6_change_reject_keeps_original
-tests/test_aa_grade_review_flow.py::test_rf7_change_two_level_approve_new_value_applied
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_1_archived_grade_task_blocks_recreate
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_2_soft_deleted_grade_task_blocks_recreate
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_3_integrity_error_on_uk_becomes_409
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_4_archived_term_without_term_id_rejected
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_5_forged_active_term_id_rejected
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_6_active_term_resolved_from_batch
-tests/test_aa_grade_task_uniqueness_and_archive.py::test_7_admin_supplement_term_and_role_rules
 tests/test_aa_home_task_routes_v2.py::test_student_pc_has_task_home_and_independent_academic_routes
 tests/test_aa_main_migration_compat.py::test_academic_and_current_main_heads_are_joined_without_ddl
 tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report
@@ -75,11 +40,6 @@ tests/test_aa_recognition.py::test_target_already_passed_409
 tests/test_aa_recognition.py::test_target_course_picker_and_attachment
 tests/test_aa_resource_ext.py::test_c1_resource_conflict_booking_overlaps_schedule
 tests/test_aa_resource_ext.py::test_o1_resource_occupancy_aggregates_booking_and_schedule
-tests/test_aa_schedule_change_mobile.py::test_cancel_flow_via_mobile
-tests/test_aa_schedule_change_mobile.py::test_conflict_check_and_submit_flow_via_mobile
-tests/test_aa_schedule_change_mobile.py::test_cross_scope_submit_403_via_mobile
-tests/test_aa_schedule_change_mobile.py::test_detail_ownership_guard_via_mobile
-tests/test_aa_schedule_change_mobile.py::test_my_schedule_via_mobile
 tests/test_aa_schedule_move.py::test_move_ok_and_auto_becomes_manual
 tests/test_aa_scheduling.py::test_sc2_teacher_availability_flow
 tests/test_aa_scheduling.py::test_sc4_conflict_report_soft
@@ -112,14 +72,6 @@ tests/test_aa_semester_pilot_r11.py::test_public_services_load_r11_without_repla
 tests/test_aa_semester_pilot_r11.py::test_r11_routes_are_registered_and_require_explicit_complete_action
 tests/test_aa_service_entrypoint_integrity.py::test_public_service_entrypoints_do_not_depend_on_import_order
 tests/test_aa_stage4_real_smoke.py::test_stage4_route_model_and_cross_module_contracts
-tests/test_aa_stats.py::test_registration_drill_ok
-tests/test_aa_stats.py::test_tier1_grade_ok
-tests/test_aa_stats_r3.py::test_course_selection_college_scope
-tests/test_aa_stats_r3.py::test_course_selection_stats_and_detail_ok
-tests/test_aa_stats_r3.py::test_exam_college_scope
-tests/test_aa_stats_r3.py::test_exam_stats_and_detail_ok
-tests/test_aa_stats_r3.py::test_r3_export_domains_ok
-tests/test_aa_stats_r3.py::test_resource_stats_and_detail_ok
 tests/test_aa_student_exam_public_facade.py::test_public_mobile_exam_facade_uses_safe_read_service
 tests/test_aa_student_exam_workspace.py::test_exam_route_uses_dedicated_page
 tests/test_aa_student_level_exam_workspace.py::test_level_exam_route_uses_dedicated_page
