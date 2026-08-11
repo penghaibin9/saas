@@ -114,9 +114,11 @@ const MATERIAL_COLS = [
   { key: 'uploadedAt', label: '提交时间' }, { key: 'status', label: '审核状态' },
   { key: 'reviewNote', label: '审核意见' }
 ]
+const FOLLOW_UP_WAY = Object.freeze({ PHONE: '电话联系', FACE: '面谈', RECOMMEND: '岗位推荐', VISIT: '走访' })
 const FOLLOW_UP_COLS = [
-  { key: 'followUpAt', label: '回访时间' }, { key: 'contactType', label: '联系类型' },
-  { key: 'result', label: '回访结果' }, { key: 'note', label: '备注' }
+  { key: 'time', label: '回访时间' },
+  { key: 'way', label: '跟进方式', formatter: (value) => FOLLOW_UP_WAY[String(value || '').toUpperCase()] || '其他方式' },
+  { key: 'content', label: '回访内容' }
 ]
 const tabs = [
   { key: 'overview', label: '我的就业' }, { key: 'source', label: '生源核对' },

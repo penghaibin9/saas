@@ -248,7 +248,7 @@ export default {
       for (const key of this.requiredParamHints) {
         const value = String(this.form.actionParams?.[key] || '').trim()
         if (!value) throw new Error(`请填写${this.paramLabel(key)}`)
-        params[key] = /^\d+$/.test(value) ? Number(value) : value
+        params[key] = value
       }
       return params
     },

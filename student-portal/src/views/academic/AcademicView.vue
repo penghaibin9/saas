@@ -714,10 +714,19 @@ const WARNING_COLS = [
   { key: 'warningType', label: '预警类型' }, { key: 'level', label: '预警等级' },
   { key: 'reason', label: '预警说明' }, { key: 'status', label: '状态' }
 ]
+const SPLIT_STATUS = Object.freeze({
+  PENDING: '待分配', ALLOCATED: '已完成分配', ADJUSTED: '已完成调剂',
+  CONFIRMED: '已确认', UNALLOCATED: '待人工调剂'
+})
 const SPLIT_COLS = [
-  { key: 'batchName', label: '分流批次' }, { key: 'choiceOrder', label: '志愿顺序' },
-  { key: 'majorName', label: '志愿专业' }, { key: 'status', label: '状态' },
-  { key: 'resultMajorName', label: '分流结果' }
+  { key: 'choices', label: '已填志愿', formatter: (value) => Array.isArray(value) && value.length ? `${value.length} 个志愿` : '—' },
+  { key: 'gpa', label: '分流参考绩点' },
+  { key: 'status', label: '状态', formatter: (value) => SPLIT_STATUS[String(value || '').toUpperCase()] || '状态待确认' },
+  { key: 'resultChoiceRank', label: '分流结果', formatter: (value, row) => {
+    if (row?.resultMajorId) return value ? `第 ${value} 志愿录取` : '已完成分配'
+    return String(row?.status || '').toUpperCase() === 'UNALLOCATED' ? '待人工调剂' : '待公布'
+  } },
+  { key: 'adjustReason', label: '调剂说明' }
 ]
 const RECOGNITION_COLS = [
   { key: 'sourceCourseName', label: '原课程' }, { key: 'targetCourseName', label: '认定课程' },
