@@ -18,10 +18,13 @@ const STATUS_MAP = {
   PENDING: ['待处理', 'warn'],
   PENDING_CONFIRM: ['待确认', 'warn'],
   PENDING_REVIEW: ['待审核', 'warn'],
+  PENDING_HANDLE: ['待处理', 'warn'],
+  NOT_SUBMITTED: ['未提交', 'default'],
   PENDING_LOTTERY: ['待摇号', 'warn'],
   SUBMITTED: ['已提交', 'warn'],
   REVIEWING: ['审核中', 'warn'],
   INPUTTING: ['录入中', 'warn'],
+  CLASS_REVIEW: ['班级审核中', 'warn'],
   COLLEGE_REVIEW: ['学院审核中', 'warn'],
   ACADEMIC_REVIEW: ['教务终审中', 'warn'],
   CHANGE_REVIEW: ['更正审核中', 'warn'],
@@ -52,12 +55,18 @@ const STATUS_MAP = {
   EXEMPT: ['免修', 'default'],
   REMOVED: ['已移除', 'default']
 }
+const ENUM_TOKEN_RE = /^[A-Z][A-Z0-9_]*$/
 
 const mapped = computed(() => STATUS_MAP[String(props.status || '').toUpperCase()] || null)
+const explicitMapped = computed(() => STATUS_MAP[String(props.text || '').trim().toUpperCase()] || null)
 const displayText = computed(() => {
-  if (props.text && (!props.status || props.text !== props.status)) return props.text
+  const explicit = String(props.text || '').trim()
+  if (explicit && (!props.status || explicit !== props.status)) {
+    if (!ENUM_TOKEN_RE.test(explicit)) return explicit
+    return explicitMapped.value?.[0] || safeVisibleEnumLabel(explicit, '状态待确认')
+  }
   if (mapped.value) return mapped.value[0]
   return safeVisibleEnumLabel(props.status, '状态待确认')
 })
-const displayTone = computed(() => props.tone || (mapped.value ? mapped.value[1] : 'default'))
+const displayTone = computed(() => props.tone || (mapped.value ? mapped.value[1] : (explicitMapped.value ? explicitMapped.value[1] : 'default')))
 </script>
