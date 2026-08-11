@@ -92,3 +92,63 @@ def test_switch_role_is_not_in_password_change_allowlist():
     assert is_password_change_allowlisted("/api/v1/auth/switch-role") is False
     assert is_password_change_allowlisted("/api/v1/auth/refresh") is False
     assert is_password_change_allowlisted("/api/v1/files/export") is False
+
+
+def test_password_change_truth_cache_is_permission_version_scoped(monkeypatch):
+    """同一安全版本只查库一次；user.version/权限版本变化后必须重新读取数据库真值。"""
+    from app.services import password_change_gate as gate
+
+    store: dict[str, str] = {}
+    scalar_calls: list[object] = []
+
+    class FakeDb:
+        def scalar(self, statement):
+            scalar_calls.append(statement)
+            return True
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(gate, "db_enabled", lambda: True)
+    monkeypatch.setattr(gate, "get_sessionmaker", lambda: (lambda: FakeDb()))
+    monkeypatch.setattr(gate, "cache_get", lambda key: store.get(key))
+
+    def fake_cache_set(key, value, _ttl):
+        store[key] = value
+        return True
+
+    monkeypatch.setattr(gate, "cache_set", fake_cache_set)
+
+    subject = {"userId": "db-123", "tenantId": "9", "permissionVersion": "u1|TEACHER:1"}
+    assert gate.must_change_password_for_subject(subject) is True
+    assert gate.must_change_password_for_subject(subject) is True
+    assert len(scalar_calls) == 1
+
+    upgraded = {**subject, "permissionVersion": "u2|TEACHER:1"}
+    assert gate.must_change_password_for_subject(upgraded) is True
+    assert len(scalar_calls) == 2
+
+
+def test_password_change_truth_without_permission_version_never_uses_cache(monkeypatch):
+    """兼容旧令牌缺少版本号时宁可回库，不允许复用可能陈旧的授权缓存。"""
+    from app.services import password_change_gate as gate
+
+    scalar_calls: list[object] = []
+
+    class FakeDb:
+        def scalar(self, statement):
+            scalar_calls.append(statement)
+            return False
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(gate, "db_enabled", lambda: True)
+    monkeypatch.setattr(gate, "get_sessionmaker", lambda: (lambda: FakeDb()))
+    monkeypatch.setattr(gate, "cache_get", lambda _key: pytest.fail("versionless token must not read cache"))
+    monkeypatch.setattr(gate, "cache_set", lambda *_args, **_kwargs: pytest.fail("versionless token must not write cache"))
+
+    subject = {"userId": "db-123", "tenantId": "9"}
+    assert gate.must_change_password_for_subject(subject) is False
+    assert gate.must_change_password_for_subject(subject) is False
+    assert len(scalar_calls) == 2
