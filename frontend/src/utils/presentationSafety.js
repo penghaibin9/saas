@@ -78,7 +78,10 @@ export function safeEnumLabel({ value, dictionary = {}, unknownLabel = '待确�
 
 const AUDIT_ACTION_LABELS = Object.freeze({
   CREATE: '创建', UPDATE: '修改', DELETE: '删除', SUBMIT: '提交',
-  APPROVE: '审核通过', REJECT: '审核驳回', RETURN: '退回修改',
+  APPLY: '提交申请', RESUBMIT: '重新提交',
+  APPROVE: '审核通过', REVIEW_APPROVE: '审批通过',
+  REJECT: '审核驳回', REVIEW_REJECT: '审批驳回',
+  RETURN: '退回修改', REVIEW_RETURN: '退回修改', RETURN_VERSIONED: '办理销假',
   PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色'
 })
 const AUDIT_RESULT_LABELS = Object.freeze({
