@@ -28,6 +28,8 @@ import './styles/golden-implementation-config-rollout.css'
 import './styles/golden-evaluation-results-rollout.css'
 // Batch 6 B 修正：按毕设统计页真实 DOM 收敛九个统计域为桌面双列驾驶舱。
 import './styles/golden-evaluation-results-rollout-final.css'
+// Golden 主数据 / 核心对象 rollout：班级管理 / 企业岗位库 / 毕设题目库。
+import './styles/golden-master-data-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
