@@ -40,7 +40,15 @@ async function openStaffWorkspace(page, api, path) {
   await dismissGuide(page)
 }
 
-test.describe.serial('Golden rollout · Student Affairs domain hubs · Screenshot A', () => {
+async function expectNoHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth
+  }))
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1)
+}
+
+test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () => {
   let adminApi
   let dormBuildingName
   let activityName
@@ -74,7 +82,7 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · Screensho
     expect(String(activity?.status || '').toUpperCase()).toBe('DRAFT')
   })
 
-  test('Dormitory management real resource state · Screenshot A', async ({ page }, testInfo) => {
+  test('Dormitory management real resource state · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(DESKTOP)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/dormitory')
 
@@ -86,10 +94,49 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · Screensho
     await expect(page.getByText('房间管理', { exact: true })).toBeVisible()
     await expect(page.getByText('床位管理 / 入住退宿', { exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-student-affairs-dormitory-a')
+    const archive = page.locator('.app-desc-list').last()
+    const assignItem = archive.locator('.app-desc-list__item').first()
+    const assignValue = assignItem.locator('.app-desc-list__value')
+    await expect(assignValue).toContainText('COUNSELOR_ASSIGN')
+
+    const archiveStyle = await archive.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { borderRadius: s.borderRadius, borderTopStyle: s.borderTopStyle }
+    })
+    expect(parseFloat(archiveStyle.borderRadius)).toBeGreaterThanOrEqual(10)
+    expect(archiveStyle.borderTopStyle).not.toBe('none')
+
+    const [archiveBox, assignBox, valueBox] = await Promise.all([
+      archive.boundingBox(),
+      assignItem.boundingBox(),
+      assignValue.boundingBox()
+    ])
+    expect(assignBox?.width || 0).toBeGreaterThan((archiveBox?.width || 0) * 0.85)
+    expect(valueBox?.width || 0).toBeGreaterThanOrEqual(150)
+    const valueStyle = await assignValue.evaluate((el) => ({
+      wordBreak: getComputedStyle(el).wordBreak,
+      overflowWrap: getComputedStyle(el).overflowWrap
+    }))
+    expect(valueStyle.wordBreak).toBe('normal')
+    expect(['anywhere', 'break-word']).toContain(valueStyle.overflowWrap)
+    await expectNoHorizontalOverflow(page)
+
+    await capture(page, testInfo, 'rollout-student-affairs-dormitory-b')
   })
 
-  test('Student activity real draft state · Screenshot A', async ({ page }, testInfo) => {
+  test('Dormitory archive entry remains readable at 1024px', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await openStaffWorkspace(page, adminApi, '/admin/student-affairs/dormitory')
+
+    const archive = page.locator('.app-desc-list').last()
+    await expect(archive).toBeVisible()
+    const columns = await archive.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length)
+    expect(columns).toBe(1)
+    await expect(archive.locator('.app-desc-list__value').first()).toContainText('COUNSELOR_ASSIGN')
+    await expectNoHorizontalOverflow(page)
+  })
+
+  test('Student activity real draft state · Screenshot A frozen', async ({ page }, testInfo) => {
     await page.setViewportSize(DESKTOP)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/activity')
 
@@ -105,7 +152,7 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · Screensho
     await capture(page, testInfo, 'rollout-student-affairs-activity-a')
   })
 
-  test('Mental attention privacy-governed state · Screenshot A', async ({ page }, testInfo) => {
+  test('Mental attention privacy-governed state · Screenshot A frozen', async ({ page }, testInfo) => {
     await page.setViewportSize(DESKTOP)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/mental')
 
