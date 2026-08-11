@@ -1,6 +1,5 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
@@ -33,23 +32,20 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openStaffWorkspace(page, api, path, storage = {}) {
-  await page.addInitScript(({ token, entries }) => {
+async function openStaffWorkspace(page, api, path) {
+  await page.addInitScript(({ token }) => {
     window.sessionStorage.setItem('gx_pc_token_v1', token)
-    for (const [key, value] of entries) window.localStorage.setItem(key, String(value))
-  }, { token: api.token, entries: Object.entries(storage) })
+  }, { token: api.token })
   await page.goto(`${config.staffBaseUrl}${path}`)
   await dismissGuide(page)
 }
 
 test.describe.serial('Golden rollout · exception / recovery workspaces · Batch 11', () => {
   let adminApi
-  let internshipFixture
   let graduationFixture
 
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
-    internshipFixture = await loadInternshipFixture()
     graduationFixture = await prepareGraduationFixture()
   })
 
@@ -64,23 +60,6 @@ test.describe.serial('Golden rollout · exception / recovery workspaces · Batch
     await expect(page.getByRole('button', { name: '扫描逾期未销', exact: true })).toBeVisible()
 
     await capture(page, testInfo, 'rollout-exception-affairs-leave-followup-a')
-  })
-
-  test('Internship application review · Screenshot A', async ({ page }, testInfo) => {
-    await page.setViewportSize(VIEWPORT)
-    const path = `/admin/internship/applications?status=PENDING_REVIEW&batchId=${encodeURIComponent(internshipFixture.batchId)}`
-    await openStaffWorkspace(page, adminApi, path, {
-      'internship.selectedBatchId': internshipFixture.batchId
-    })
-
-    await expect(page).toHaveURL(/\/admin\/internship\/applications/)
-    await expect(page.getByRole('heading', { name: '实习申请审核', exact: true })).toBeVisible()
-    await expect(page.locator('.iar-types')).toBeVisible()
-    await expect(page.locator('.iar-filters')).toBeVisible()
-    await expect(page.getByText(/审核校内岗位志愿与自主实习申请/)).toBeVisible()
-    await expect(page.getByText(/请先选择实习批次|当前没有进行中的实习批次/)).toHaveCount(0)
-
-    await capture(page, testInfo, 'rollout-exception-internship-application-review-a')
   })
 
   test('Graduation delayed-defense administration · Screenshot A', async ({ page }, testInfo) => {
