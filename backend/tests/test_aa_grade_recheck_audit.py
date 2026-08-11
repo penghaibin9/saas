@@ -179,7 +179,8 @@ def test_ra2_audit_full_lifecycle_visible_to_academic_admin_with_biztype_filter(
     all_items = r_all.json()["data"]["items"]
     task_actions = {it["action"] for it in all_items if it["bizId"] == tid and it["bizType"] == "AA_GRADE_TASK"}
     assert {"CREATE", "ENTER", "SUBMIT"}.issubset(task_actions)
-    assert any(it["bizType"] == "AA_GRADE_TRANSCRIPT" and it["action"] == "EXPORT" for it in all_items)
+    # V2 个人成绩导出被明确标记为“查询件/非正式证明”，审计动作因此是 EXPORT_QUERY_COPY。
+    assert any(it["bizType"] == "AA_GRADE_TRANSCRIPT" and it["action"] == "EXPORT_QUERY_COPY" for it in all_items)
     assert all(it["detail"] == "审计用课程" for it in all_items if it["action"] == "CREATE" and it["bizId"] == tid)
 
     r_task_only = client.get(f"{BASE}/grade-views/audit", headers=hdr,
@@ -193,7 +194,7 @@ def test_ra2_audit_full_lifecycle_visible_to_academic_admin_with_biztype_filter(
                                    params={"bizType": "AA_GRADE_TRANSCRIPT", "pageSize": 100})
     assert r_transcript_only.status_code == 200
     transcript_items = r_transcript_only.json()["data"]["items"]
-    assert len(transcript_items) == 1 and transcript_items[0]["action"] == "EXPORT"
+    assert len(transcript_items) == 1 and transcript_items[0]["action"] == "EXPORT_QUERY_COPY"
 
 
 def test_ra3_teacher_sees_only_own_operator_audit_rows(client, db_mode):
