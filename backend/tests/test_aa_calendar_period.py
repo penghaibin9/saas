@@ -53,7 +53,9 @@ def test_r2_makeup_day_pairing_validation(client, db_mode):
     assert out_of_range.status_code == 400
     ok = client.post(f"{BASE}/terms/{tid}/calendar", headers=hdr, json={
         "eventType": "SWAP", "startDate": "2027-10-08", "swapToDate": "2027-10-11", "remark": "国庆调休"})
-    assert ok.status_code == 200 and ok.json()["data"]["swapToDate"] == "2027-10-11T00:00:00"
+    assert ok.status_code == 200
+    # swap_to_date 是日期事实，不伪造午夜时间；API 与模型保持 YYYY-MM-DD。
+    assert ok.json()["data"]["swapToDate"] == "2027-10-11"
 
 
 def test_r3_period_management_crud_and_dup(client, db_mode):
