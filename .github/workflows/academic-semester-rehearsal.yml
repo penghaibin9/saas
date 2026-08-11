@@ -2,6 +2,16 @@ name: Academic semester rehearsal / MySQL
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/academic-static-closure-20260811
+    paths:
+      - "backend/app/modules/academic_affairs/**"
+      - "backend/tests/test_aa_*.py"
+      - "backend/tests/test_mobile_attendance.py"
+      - "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue"
+      - "scripts/check/academic-semester-rehearsal.sh"
+      - ".github/workflows/academic-semester-rehearsal.yml"
   pull_request:
     branches: [main]
     paths:
