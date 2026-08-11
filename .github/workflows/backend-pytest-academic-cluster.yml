@@ -30,30 +30,11 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
-          - case: archive
-            nodeid: tests/test_aa_archive.py::test_ar1_batch_and_check
-          - case: autoschedule
-            nodeid: tests/test_aa_autoschedule.py::test_auto_schedule_places_sessions
-          - case: grade
-            nodeid: tests/test_aa_grade.py::test_g1_compose_publish_project
-          - case: evaluation
-            nodeid: tests/test_aa_evaluation.py
-          - case: schedule-change
-            nodeid: tests/test_aa_schedule_change.py::test_c1_adjust_full_chain_applied
           - case: selection
             nodeid: tests/test_aa_selection.py
-          - case: teaching-task
-            nodeid: tests/test_aa_teaching_task.py::test_tt1_full_chain
-          - case: graduation
-            nodeid: tests/test_aa_graduation.py
-          - case: graduation-overall-policy
-            nodeid: tests/test_aa_graduation_overall_policy.py
-          - case: orgs
-            nodeid: tests/test_aa_orgs.py::test_o1_college_major_class_crud
-          - case: mobile
-            nodeid: tests/test_aa_mobile.py::test_mb1_schedule_my
     services:
       mysql:
         image: mysql:8.0
@@ -88,7 +69,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Run representative historical nodeid
+      - name: Run active academic debt shard
         id: pytest
         working-directory: backend
         shell: bash

@@ -435,6 +435,7 @@ def test_s15_conflict_report(client, db_mode):
 
 
 def test_s16_selection_result_merged_into_schedule(client, db_mode):
+    """锁定前不并入；锁定后只并入同一课表批次，跨批次必须继续隔离。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     tt1_id, _tt2_id = _ready_tasks(ids, with_conflict_slots=True)
@@ -449,16 +450,23 @@ def test_s16_selection_result_merged_into_schedule(client, db_mode):
     stu = _stu_token("选甲", "SEL2401")
     assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
                        json={"selectionCourseId": str(sc1)}).status_code == 200
-    sv = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
-                    params={"studentId": str(ids["s1"])}).json()
-    assert not any(it["source"] == "ENROLLED" for it in sv["data"]["items"])
+
+    before_lock = client.get(f"{BASE}/schedule-batches/1/student-view", headers=admin,
+                             params={"studentId": str(ids["s1"])}).json()
+    assert not any(it["source"] == "ENROLLED" for it in before_lock["data"]["items"])
+
     assert client.post(f"{BASE}/selection/batches/{bid}/close", headers=admin).status_code == 200
     locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
     assert locked.status_code == 200, locked.text
-    sv2 = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
-                     params={"studentId": str(ids["s1"])}).json()
-    enrolled = [it for it in sv2["data"]["items"] if it["source"] == "ENROLLED"]
+
+    same_batch = client.get(f"{BASE}/schedule-batches/1/student-view", headers=admin,
+                            params={"studentId": str(ids["s1"])}).json()
+    enrolled = [it for it in same_batch["data"]["items"] if it["source"] == "ENROLLED"]
     assert len(enrolled) == 1 and enrolled[0]["courseName"] == "职业素养选修"
+
+    cross_batch = client.get(f"{BASE}/schedule-batches/999999/student-view", headers=admin,
+                             params={"studentId": str(ids["s1"])}).json()
+    assert not any(it["source"] == "ENROLLED" for it in cross_batch["data"]["items"])
 
 
 def test_s17_archive_list_detail_export(client, db_mode):
