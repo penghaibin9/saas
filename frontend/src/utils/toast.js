@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { normalizeUiError } from './presentationSafety'
 
 /**
  * 轻提示服务（配合 AppToast.vue 使用，App.vue 挂载一次 <AppToast />）
@@ -23,7 +24,10 @@ function normalizeCrossClientMessage(message) {
 
 function push(type, message, duration) {
   const id = ++seed
-  toastState.items.push({ id, type, message: normalizeCrossClientMessage(message) })
+  const displayMessage = type === 'error'
+    ? normalizeUiError(message).userMessage
+    : normalizeCrossClientMessage(message)
+  toastState.items.push({ id, type, message: displayMessage })
   const ms = duration ?? (type === 'error' ? 4500 : 3000)
   setTimeout(() => remove(id), ms)
   return id

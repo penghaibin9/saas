@@ -123,6 +123,14 @@ export function localizeVisibleEnumText(value) {
   return VISIBLE_ENUM_LABELS[key] || raw
 }
 
+/** 明确枚举展示位使用：未知值不得回显后端 raw code。 */
+export function safeVisibleEnumLabel(value, unknownLabel = '状态待确认') {
+  const raw = String(value ?? '').trim()
+  if (!raw) return '—'
+  const key = raw.toUpperCase()
+  return VISIBLE_ENUM_LABELS[key] || unknownLabel
+}
+
 /** 仅处理“当前状态：ENUM”这类明确状态句尾。 */
 export function localizeStatusSuffixText(value) {
   const raw = String(value ?? '')

@@ -6,6 +6,7 @@
  */
 import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
 import { toast } from '@/utils/toast'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 const TOKEN_KEY = 'gx_pc_token_v1'
 const REFRESH_KEY = 'gx_pc_refresh_v1'
@@ -81,7 +82,7 @@ function markOffline() {
   if (!state.notified) {
     state.notified = true
     try {
-      toast.info('后端服务不可达，已自动回退演示数据（mock）')
+      toast.info('服务暂时不可用，已切换为只读体验数据')
     } catch {
       /* toast 不可用时静默 */
     }
@@ -118,12 +119,19 @@ async function rawRequest(path, {
       throw new Error(`响应结构异常（HTTP ${res.status}）`)
     }
     if (payload.code !== 0) {
-      const err = new Error(payload.message || `业务错误 ${payload.code}`)
+      const normalized = normalizeUiError({
+        message: payload.message,
+        code: payload.code,
+        bizCode: payload.bizCode,
+        traceId: payload.traceId
+      })
+      const err = new Error(normalized.userMessage)
       err.biz = true
       err.code = payload.code
       err.bizCode = payload.bizCode
       err.details = payload.details
       err.traceId = payload.traceId
+      err.rawDeveloperDetail = normalized.rawDeveloperDetail
       throw err
     }
     clearOfflineState()

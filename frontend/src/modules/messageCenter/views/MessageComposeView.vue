@@ -7,7 +7,7 @@
   >
     <ErrorState v-if="error" :description="error" @retry="error = ''" />
     <p v-if="readonlyTenant" class="mc-warn mc-readonly">
-      {{ readonlyReason || '当前学校为正式演示只读环境，不能真正发布。请用沙箱账号 admin2（学校编码 sandbox-school，登录密码见沙箱账号说明文档）体验发布与发布记录。' }}
+      当前环境为只读体验环境，不能执行真实发布。
     </p>
 
     <div class="mc-compose">
@@ -48,17 +48,17 @@
           <input v-model="form.ackDeadlineAt" type="datetime-local" />
         </label>
         <label class="mc-field">
-          <span>业务深链（可选，仅白名单）</span>
+          <span>点击通知后打开</span>
           <select v-model="form.actionKey" @change="onActionKeyChange">
-            <option value="">无深链</option>
-            <option v-for="a in actionKeys" :key="a.actionKey" :value="a.actionKey">
-              {{ a.label || a.actionKey }}
+            <option value="">不打开其他页面</option>
+            <option v-for="a in businessActionKeys" :key="a.actionKey" :value="a.actionKey">
+              {{ a.label }}
             </option>
           </select>
         </label>
-        <label v-if="form.actionKey && requiredParamHints.length" class="mc-field">
-          <span>深链参数（JSON，必填：{{ requiredParamHints.join(', ') }}）</span>
-          <input v-model="form.actionParamsText" placeholder='例如 {"leaveId": 123}' @input="scheduleAutosave" />
+        <label v-for="param in requiredParamHints" :key="param" class="mc-field">
+          <span>{{ paramLabel(param) }}</span>
+          <input v-model="form.actionParams[param]" :placeholder="`请选择或填写${paramLabel(param)}`" @input="scheduleAutosave" />
         </label>
         <p v-if="autosaveHint" class="mc-muted">{{ autosaveHint }}</p>
         <div class="mc-actions">
@@ -67,7 +67,7 @@
       </section>
 
       <section v-show="step === 2" class="mc-card">
-        <p class="mc-hint">按权限选择本班、本院或全校范围；可见选项由后端数据范围收敛。</p>
+        <p class="mc-hint">仅可选择当前账号负责范围内的接收对象。</p>
         <AudienceSelector
           v-model="audiences"
           :permission-patterns="permissionPatterns"
@@ -101,7 +101,7 @@
       <section v-show="step === 3" class="mc-card">
         <h3>{{ form.title }}</h3>
         <p class="mc-muted">
-          类型 {{ form.category }} · 预计 {{ preview && preview.recipientCount }} 人
+          类型 {{ categoryLabel(form.category) }} · 预计 {{ preview && preview.recipientCount }} 人
           <template v-if="needsReviewHint"> · 将进入审核</template>
         </p>
         <pre class="mc-body">{{ form.contentPlain }}</pre>
@@ -142,6 +142,11 @@ import {
   publishCampaign,
   fetchActionKeys
 } from '@/modules/messageCenter/api/message-campaign.api'
+import { safeEnumLabel } from '@/utils/presentationSafety'
+
+const CATEGORY_LABELS = Object.freeze({ ANNOUNCEMENT: '公告', BUSINESS: '业务通知', REMINDER: '提醒', EMERGENCY: '紧急消息' })
+const EXCLUDE_LABELS = Object.freeze({ ACCOUNT_UNLINKED: '学籍未开通账号', STUDENT_STATUS_EXCLUDED: '学籍状态不可发', ACCOUNT_DISABLED: '账号已停用' })
+const PARAM_LABELS = Object.freeze({ leaveId: '请假申请', gradeId: '成绩记录', internshipId: '实习记录', applicationId: '业务申请' })
 
 export default {
   name: 'MessageComposeView',
@@ -160,7 +165,8 @@ export default {
         expireAt: '',
         ackDeadlineAt: '',
         actionKey: '',
-        actionParamsText: ''
+        actionParamsText: '',
+        actionParams: {}
       },
       actionKeys: [],
       audiences: [],
@@ -202,7 +208,7 @@ export default {
       return !!(this.ctx && this.ctx.readonlyTenant)
     },
     readonlyReason() {
-      return (this.ctx && this.ctx.readonlyReason) || ''
+      return this.readonlyTenant ? '当前环境为只读体验环境' : ''
     },
     needsReviewHint() {
       if (this.form.category === 'EMERGENCY') return true
@@ -217,6 +223,9 @@ export default {
     requiredParamHints() {
       const hit = (this.actionKeys || []).find((a) => a.actionKey === this.form.actionKey)
       return (hit && hit.requiredParams) || []
+    },
+    businessActionKeys() {
+      return (this.actionKeys || []).filter((item) => item && item.actionKey && item.label)
     }
   },
   methods: {
@@ -230,17 +239,18 @@ export default {
     },
     onActionKeyChange() {
       this.form.actionParamsText = ''
+      this.form.actionParams = {}
       this.scheduleAutosave()
     },
     parseActionParams() {
       if (!this.form.actionKey) return undefined
-      const raw = (this.form.actionParamsText || '').trim()
-      if (!raw) return {}
-      try {
-        return JSON.parse(raw)
-      } catch {
-        throw new Error('深链参数必须是合法 JSON')
+      const params = {}
+      for (const key of this.requiredParamHints) {
+        const value = String(this.form.actionParams?.[key] || '').trim()
+        if (!value) throw new Error(`请填写${this.paramLabel(key)}`)
+        params[key] = value
       }
+      return params
     },
     scheduleAutosave() {
       if (this.autosaveTimer) clearTimeout(this.autosaveTimer)
@@ -303,16 +313,17 @@ export default {
       }
     },
     excludeLabel(code) {
-      const map = {
-        ACCOUNT_UNLINKED: '学籍未开通账号',
-        STUDENT_STATUS_EXCLUDED: '学籍状态不可发',
-        ACCOUNT_DISABLED: '账号已停用'
-      }
-      return map[code] || code
+      return safeEnumLabel({ value: code, dictionary: EXCLUDE_LABELS, unknownLabel: '其他原因' })
+    },
+    categoryLabel(code) {
+      return safeEnumLabel({ value: code, dictionary: CATEGORY_LABELS, unknownLabel: '消息类型待确认' })
+    },
+    paramLabel(key) {
+      return PARAM_LABELS[key] || '关联业务记录'
     },
     async doPublish() {
       if (this.readonlyTenant) {
-        this.error = this.readonlyReason || '当前为只读演示环境，无法发布'
+        this.error = '当前环境为只读体验环境，不能执行真实发布'
         return
       }
       if (!this.preview) {

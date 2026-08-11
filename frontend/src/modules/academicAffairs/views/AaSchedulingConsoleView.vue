@@ -172,7 +172,7 @@
           </template>
           <template #cell-scope="{ row }">
             <div class="mp-cell-main">{{ scopeLabel(row) }}</div>
-            <div class="mp-cell-sub">{{ row.batchId ? `批次 ${row.batchId}` : '作为该学期默认参数' }}</div>
+            <div class="mp-cell-sub">{{ row.batchId ? '应用于所选课表批次' : '作为该学期默认参数' }}</div>
           </template>
           <template #cell-value="{ row }">
             <div :class="['mp-cell-main', { 'is-danger-text': row.invalidValue }]">{{ row.valueSummary || '未设置' }}</div>
@@ -394,7 +394,7 @@ export default {
           startTime: row.startTime || '', endTime: row.endTime || ''
         })).filter(row => Number.isInteger(row.slotNo) && row.slotNo > 0)
       } else {
-        this.slotLoadWarning = '暂时无法读取学校作息，将显示第1—8节作为只读兜底；保存时后端仍会按真实启用节次校验。'
+        this.slotLoadWarning = '暂时无法读取学校作息，将显示第1—8节作为只读参考；保存时系统仍会按学校启用节次校验。'
       }
     },
     async onTermChange(value) {
@@ -515,8 +515,8 @@ export default {
         : [...rows.filter(row => !(Number(row.weekday) === Number(weekday) && row.slotNo == null)), { weekday, slotNo }]
     },
     scopeLabel(row) { return row.batchId ? '指定课表批次' : '本学期默认' },
-    termStatusLabel(status) { return ({ DRAFT: '编制中', PUBLISHED: '已发布', FROZEN: '已冻结', ARCHIVED: '已归档' })[status] || status || '未知状态' },
-    availabilityStatusLabel(status) { return ({ PENDING: '待处理', ADOPTED: '已采纳', REJECTED: '已驳回' })[status] || status || '—' },
+    termStatusLabel(status) { return ({ DRAFT: '编制中', PUBLISHED: '已发布', FROZEN: '已冻结', ARCHIVED: '已归档' })[status] || '状态待确认' },
+    availabilityStatusLabel(status) { return ({ PENDING: '待处理', ADOPTED: '已采纳', REJECTED: '已驳回' })[status] || '状态待确认' },
     slotLabel(slot) { return `${slot.slotName || `第${slot.slotNo}节`}${slot.startTime ? ` · ${slot.startTime}-${slot.endTime || ''}` : ''}` },
     formatValue(meta, value) {
       if (meta.control === 'WEEK_RANGE') return `第${value.startWeek}—${value.endWeek}周`

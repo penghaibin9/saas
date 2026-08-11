@@ -13,8 +13,8 @@
           <div class="sp-panel__head">请假申请</div>
           <div class="form-grid">
             <label><span>请假类型</span><select v-model="leaveForm.leaveType" class="sp-inp"><option value="PERSONAL">事假</option><option value="SICK">病假</option><option value="HOME">探亲假</option><option value="HOSPITAL">住院假</option><option value="GOOUT">外出</option><option value="OTHER">其他</option></select></label>
-            <label><span>开始日期</span><input v-model="leaveForm.startTime" type="date" class="sp-inp" :min="today" /></label>
-            <label><span>结束日期</span><input v-model="leaveForm.endTime" type="date" class="sp-inp" :min="leaveForm.startTime || today" /></label>
+            <label><span>开始日期</span><AppDatePicker v-model="leaveForm.startTime" class="sp-inp" :min="today" label="开始日期" /></label>
+            <label><span>结束日期</span><AppDatePicker v-model="leaveForm.endTime" class="sp-inp" :min="leaveForm.startTime || today" label="结束日期" /></label>
             <label class="wide"><span>请假事由（5-300字）</span><textarea v-model.trim="leaveForm.reason" maxlength="300" class="sp-inp" placeholder="请客观填写请假事由" /></label>
           </div>
           <p v-if="leaveForm.startTime && leaveForm.endTime && leaveForm.endTime < leaveForm.startTime" class="field-error">结束日期不能早于开始日期</p>
@@ -29,7 +29,7 @@
             <div class="actions"><button v-if="allows(item, 'EDIT_RETURNED') || allows(item, 'RESUBMIT')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="editLeave(item)">修改后重提</button><button v-if="allows(item, 'SUBMIT_CANCEL')" class="sp-btn" :disabled="busy" @click="cancelLeave(item)">申请销假</button><button v-if="allows(item, 'SUBMIT_EXTENSION')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openExtend(item)">申请续假</button></div>
             <div v-if="extendId === item.leaveId" class="inline-form">
               <label><span>原结束日期</span><strong>{{ fmt(item.endTime) }}</strong></label>
-              <label><span>新结束日期</span><input v-model="extendForm.newEndTime" type="date" class="sp-inp" :min="dayAfter(fmt(item.endTime))" /></label>
+              <label><span>新结束日期</span><AppDatePicker v-model="extendForm.newEndTime" class="sp-inp" :min="dayAfter(fmt(item.endTime))" label="新结束日期" /></label>
               <label><span>续假事由（5-300字）</span><textarea v-model.trim="extendForm.reason" maxlength="300" class="sp-inp" /></label>
               <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="extendId = ''">取消</button><button class="sp-btn" :disabled="busy || !validExtend(item)" @click="submitExtend(item)">提交续假</button></div>
             </div>
@@ -90,7 +90,7 @@
           <textarea v-model.trim="dormForm.reason" maxlength="300" class="sp-inp" placeholder="调宿原因（5-300字）" />
           <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeDormForm">取消</button><button class="sp-btn" :disabled="busy || !validDormTransfer" @click="submitDormTransfer">核对并提交调宿</button></div>
         </div>
-        <div class="section-title">调宿申请记录</div><p v-if="dormTransferError" class="sp-notice">{{ dormTransferError }}</p><AutoTable v-else :rows="dormTransfers" empty="暂无调宿申请" />
+        <div class="section-title">调宿申请记录</div><p v-if="dormTransferError" class="sp-notice">{{ dormTransferError }}</p><AutoTable v-else :rows="dormTransfers" :columns="DORM_TRANSFER_COLS" empty="暂无调宿申请" />
       </section>
 
       <section v-else-if="tab === 'discipline'" class="sp-card">
@@ -99,12 +99,12 @@
         <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="appealLabel(item.appealStatus)" tone="default" /></div><div v-if="allows(item, 'SUBMIT_APPEAL')" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
       </section>
 
-      <div v-else-if="tab === 'psy'" class="two"><section class="sp-card"><div class="sp-panel__head">心理健康自评</div><p class="sp-muted">结果仅本人与心理中心按授权查看，系统不作自动诊断。</p><StateBlock v-if="!(psy.questions || []).length" type="empty" text="暂无自评问卷" /><div v-for="(q, index) in (psy.questions || [])" :key="q.key" class="question"><strong>{{ index + 1 }}. {{ q.text }}</strong><div class="options"><button v-for="(option, oi) in q.options" :key="oi" class="seg" :class="{ on: psyAnswers[q.key] === oi }" @click="psyAnswers[q.key] = oi">{{ option }}</button></div></div><button class="sp-btn" :disabled="busy || !psyComplete" @click="submitPsy">提交自评</button></section><section class="sp-card"><div class="sp-panel__head">历史测评</div><AutoTable :rows="psyHistory.items || []" empty="暂无测评记录" /></section></div>
+      <div v-else-if="tab === 'psy'" class="two"><section class="sp-card"><div class="sp-panel__head">心理健康自评</div><p class="sp-muted">结果仅本人与心理中心按授权查看，系统不作自动诊断。</p><StateBlock v-if="!(psy.questions || []).length" type="empty" text="暂无自评问卷" /><div v-for="(q, index) in (psy.questions || [])" :key="q.key" class="question"><strong>{{ index + 1 }}. {{ q.text }}</strong><div class="options"><button v-for="(option, oi) in q.options" :key="oi" class="seg" :class="{ on: psyAnswers[q.key] === oi }" @click="psyAnswers[q.key] = oi">{{ option }}</button></div></div><button class="sp-btn" :disabled="busy || !psyComplete" @click="submitPsy">提交自评</button></section><section class="sp-card"><div class="sp-panel__head">历史测评</div><AutoTable :rows="psyHistory.items || []" :columns="PSY_HISTORY_COLS" empty="暂无测评记录" /></section></div>
 
       <section v-else-if="tab === 'activity'">
         <div class="score-card sp-card"><div><strong>正式第二课堂成绩单</strong><p class="sp-muted">仅统计老师确认后已入账流水，不使用活动配置值自行估算。</p></div><div class="score"><span>原始 {{ secondClass.rawTotal || 0 }}</span><span>加权 {{ secondClass.weightedTotal || 0 }}</span></div></div>
         <div class="two"><section class="sp-card"><div class="sp-panel__head">可报名活动</div><StateBlock v-if="!(activities.available || []).length" type="empty" text="暂无可报名活动" /><article v-for="item in (activities.available || [])" :key="item.activityId" class="record"><div class="record-head"><div><strong>{{ item.activityName }}</strong><div class="sp-muted">{{ fmt(item.startAt) }} · {{ item.location || '未填写地点' }}</div></div><button v-if="!item.mySignupStatus || item.mySignupStatus === 'CANCELLED'" class="sp-btn" :disabled="busy" @click="enroll(item)">报名</button><StatusTag v-else :text="item.mySignupStatus" tone="default" /></div></article></section><section class="sp-card"><div class="sp-panel__head">入账明细</div><StateBlock v-if="!(secondClass.items || []).length" type="empty" text="暂无已确认入账记录" /><article v-for="item in (secondClass.items || [])" :key="`${item.activityId}-${item.grantedAt}`" class="record"><div class="record-head"><div><strong>{{ item.remark || '第二课堂记录' }}</strong><div class="sp-muted">{{ creditLabel(item.creditType) }} · {{ fmt(item.grantedAt) }}</div></div><div><strong>+{{ item.creditValue }}</strong><button class="link" @click="openCreditAppeal(item)">记错申诉</button></div></div></article><button class="sp-btn sp-btn--ghost" @click="openCreditAppeal(null)">有活动缺记？提交缺记申诉</button></section></div>
-        <section class="sp-card" style="margin-top:16px"><div class="sp-panel__head">我的积分申诉</div><AutoTable :rows="creditAppeals" empty="暂无积分申诉" /></section>
+        <section class="sp-card" style="margin-top:16px"><div class="sp-panel__head">我的积分申诉</div><AutoTable :rows="creditAppeals" :columns="CREDIT_APPEAL_COLS" empty="暂无积分申诉" /></section>
       </section>
 
       <section v-else-if="tab === 'talk'" class="sp-card"><div class="sp-panel__head">我的谈心谈话摘要</div><p class="sp-muted">学生端只展示时间、主题、状态和是否需回访，不显示老师内部记录或心理明细。</p><StateBlock v-if="!(talk.items || []).length" type="empty" text="暂无谈话记录" /><article v-for="item in (talk.items || [])" :key="item.talkId" class="record"><div class="record-head"><div><strong>{{ enumText(item.talkTypeLabel || item.talkType) }}</strong><div class="sp-muted">{{ item.topic }} · {{ fmt(item.talkAt) || '时间待定' }}</div><div v-if="item.needFollow" class="warn">需要后续回访</div></div><StatusTag :text="item.statusLabel || item.status" tone="default" /></div></article></section>
@@ -113,7 +113,7 @@
     <div v-if="modal.type" class="mask" @click.self="closeModal">
       <section class="sp-card modal">
         <div class="sp-panel__head">{{ modal.title }}</div><p v-if="modal.notice" class="warn">{{ modal.notice }}</p>
-        <template v-if="modal.type === 'leave'"><div class="form-grid"><label><span>类型</span><select v-model="modal.form.leaveType" class="sp-inp"><option value="PERSONAL">事假</option><option value="SICK">病假</option><option value="HOME">探亲假</option><option value="HOSPITAL">住院假</option><option value="GOOUT">外出</option><option value="OTHER">其他</option></select></label><label><span>开始日期</span><input v-model="modal.form.startTime" type="date" class="sp-inp" /></label><label><span>结束日期</span><input v-model="modal.form.endTime" type="date" class="sp-inp" :min="modal.form.startTime" /></label><label class="wide"><span>事由（5-300字）</span><textarea v-model.trim="modal.form.reason" maxlength="300" class="sp-inp" /></label></div></template>
+        <template v-if="modal.type === 'leave'"><div class="form-grid"><label><span>类型</span><select v-model="modal.form.leaveType" class="sp-inp"><option value="PERSONAL">事假</option><option value="SICK">病假</option><option value="HOME">探亲假</option><option value="HOSPITAL">住院假</option><option value="GOOUT">外出</option><option value="OTHER">其他</option></select></label><label><span>开始日期</span><AppDatePicker v-model="modal.form.startTime" class="sp-inp" label="开始日期" /></label><label><span>结束日期</span><AppDatePicker v-model="modal.form.endTime" class="sp-inp" role="end" :start-value="modal.form.startTime" label="结束日期" /></label><label class="wide"><span>事由（5-300字）</span><textarea v-model.trim="modal.form.reason" maxlength="300" class="sp-inp" /></label></div></template>
         <template v-else-if="modal.type === 'aid'"><div class="form-grid"><label><span>等级</span><select v-model="modal.form.applyLevel" class="sp-inp"><option value="GENERAL">一般困难</option><option value="DIFFICULT">困难</option><option value="SPECIAL">特别困难</option></select></label><label><span>成员数（1-30）</span><input v-model.number="modal.form.memberCount" type="number" min="1" max="30" step="1" class="sp-inp" /></label><label><span>年收入</span><input v-model.number="modal.form.annualIncome" type="number" min="0" step="0.01" class="sp-inp" /></label><label><span>债务</span><input v-model.number="modal.form.debt" type="number" min="0" step="0.01" class="sp-inp" /></label><label class="wide"><span>特殊情况标签</span><input v-model.trim="modal.form.specialTags" maxlength="200" class="sp-inp" /></label><label class="wide"><span>情况说明（10-500字）</span><textarea v-model.trim="modal.form.statement" maxlength="500" class="sp-inp" /></label></div></template>
         <template v-else-if="modal.type === 'funding'"><label><span>申请理由（5-1000字）</span><textarea v-model.trim="modal.form.statement" maxlength="1000" class="sp-inp" /></label></template>
         <template v-else-if="modal.type === 'credit'"><p class="sp-muted">{{ modal.form.activityName ? `涉及活动：${modal.form.activityName}` : '缺记申诉可不指定活动' }}</p><select v-model="modal.form.claimCreditType" class="sp-inp"><option value="SECOND_CLASS">第二课堂</option><option value="MORAL">德育积分</option><option value="VOLUNTEER_HOUR">志愿时长</option></select><input v-model="modal.form.claimValue" type="number" min="0.01" max="9999.99" step="0.01" class="sp-inp" placeholder="主张数值（必填，0.01-9999.99）" /><p v-if="creditClaimError" class="field-error">{{ creditClaimError }}</p><textarea v-model.trim="modal.form.reason" maxlength="1000" class="sp-inp" placeholder="申诉理由（5-1000字）" /></template>
@@ -129,6 +129,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
+import AppDatePicker from '../../components/AppDatePicker.vue'
 import { portalApi } from '../../services/portalApi'
 import { affairsFourEndApi } from '../../services/affairsFourEndApi'
 import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
@@ -136,6 +137,20 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const allows = (item, action) => Array.isArray(item?.allowedActions) && item.allowedActions.includes(action)
+const DORM_TRANSFER_COLS = [
+  { key: 'fromBedLabel', label: '原床位' }, { key: 'toBedLabel', label: '目标床位' },
+  { key: 'createdAt', label: '申请时间' }, { key: 'status', label: '状态' },
+  { key: 'reviewNote', label: '审核意见' }
+]
+const PSY_HISTORY_COLS = [
+  { key: 'submittedAt', label: '测评时间' }, { key: 'resultLevel', label: '结果等级' },
+  { key: 'resultText', label: '结果说明' }, { key: 'status', label: '状态' }
+]
+const CREDIT_APPEAL_COLS = [
+  { key: 'creditType', label: '积分类型' }, { key: 'claimValue', label: '申诉数值' },
+  { key: 'reason', label: '申诉理由' }, { key: 'status', label: '状态' },
+  { key: 'reviewNote', label: '审核意见' }
+]
 const tabs = [{ key: 'leave', label: '请假销假' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖学金与助学金' }, { key: 'dorm', label: '我的宿舍' }, { key: 'discipline', label: '处分申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动与第二课堂' }, { key: 'talk', label: '谈心谈话' }]
 const tab = ref('leave')
 const busy = ref(false)
