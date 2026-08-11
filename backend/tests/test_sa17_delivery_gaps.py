@@ -119,7 +119,7 @@ def test_mobile_and_portal_leave_extend_self(client, db_mode):
     assert mine and mine[0]["leaveId"] == str(lid)
     assert "SUBMIT_EXTENSION" in mine[0]["allowedActions"]
     r = client.post(f"{MB}/affairs/leave/{lid}/extension", headers=h, json={
-        "newEndTime": "2027-06-05", "reason": "因病需要续假"
+        "newEndTime": "2027-06-05", "reason": "因病需要续假", "version": mine[0]["version"]
     }).json()
     assert r["code"] == 0, r
     mine2 = client.get(f"{MB}/affairs/leave/my", headers=h).json()["data"]["items"]
@@ -128,7 +128,7 @@ def test_mobile_and_portal_leave_extend_self(client, db_mode):
     # 门户续假入口存在（当前已在续假审，再次提交应业务冲突）
     hp = _stu_token("收口张", "SA17MB01", "PC")
     again = client.post(f"{PORTAL}/leave/{lid}/extension", headers=hp, json={
-        "newEndTime": "2027-06-06", "reason": "再次续假测试"
+        "newEndTime": "2027-06-06", "reason": "再次续假测试", "version": mine2[0]["version"]
     }).json()
     assert again["code"] != 0
 
