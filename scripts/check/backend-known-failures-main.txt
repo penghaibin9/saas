@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -159,16 +159,8 @@ tests/test_aa_tier1_r2_smoke.py::test_student_schedule_view_and_out_of_scope_403
 tests/test_aa_tier1_r2_smoke.py::test_teaching_class_schedule_view_and_not_found_404
 tests/test_aa_warning.py::test_w4_scan_pushes_notice_to_student_and_counselor
 tests/test_aa_warning.py::test_w5_notifications_endpoint_lists_scoped_and_student_403
-tests/test_academic_graduation_truth_guard.py::test_guard_is_installed_on_public_graduation_service
-tests/test_domain_export.py::test_export_all_six_domains
 tests/test_domain_export.py::test_export_domain_success
-tests/test_load_smoke.py::test_concurrent_service_apply_20
-tests/test_load_smoke.py::test_concurrent_weekly_duplicate_20
-tests/test_load_smoke.py::test_export_rate_limit
-tests/test_p0_new_security.py::test_assert_task_assignee_denies_other_user
-tests/test_p0_txn_audit_delivery.py::test_student_void_then_create_restores_same_id
 tests/test_portal_academic.py::test_portal_recheck_and_extra_views
-tests/test_portal_guardian.py::test_guardian_login_and_view
 tests/test_portal_guardian.py::test_guardian_token_blocked_from_staff
 tests/test_portal_guardian.py::test_guardian_unauthorized_phone_silent
 tests/test_sa17_delivery_gaps.py::test_mobile_and_portal_leave_extend_self
@@ -178,4 +170,3 @@ tests/test_saas_role_templates_unit.py::test_every_school_permission_role_has_a_
 tests/test_saas_role_templates_unit.py::test_frontend_exposes_batch_account_creation_only_at_fixed_system_route
 tests/test_saas_role_templates_unit.py::test_identity_import_api_has_no_raw_json_account_creation_bypass
 tests/test_saas_role_templates_unit.py::test_non_advisor_role_cannot_inherit_advisor_relation_from_same_account
-tests/test_student_shadow_dual_read.py::test_unbound_legacy_row_still_editable
