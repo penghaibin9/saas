@@ -3,71 +3,17 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade).
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade); later 2026-08-11 retired 60 exact academic nodeids after current-HEAD MySQL validation of selection/recognition, archive/exam/calendar, scheduling/resource, and unchanged green core contracts.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
-tests/test_aa_archive.py::test_ar10_export_item_and_all_after_archive
-tests/test_aa_archive.py::test_ar2_confirm_archive_freezes_term
-tests/test_aa_archive.py::test_ar3_unfreeze_restores_term
-tests/test_aa_archive.py::test_ar5_precheck_realtime_no_batch
-tests/test_aa_archive.py::test_ar7_guard_term_writable_blocks_registration_after_archive
-tests/test_aa_archive_grade_policy_guard.py::test_archive_grade_policy_guard_is_installed
-tests/test_aa_archive_grade_policy_guard.py::test_policy_debt_changes_grade_archive_result_to_blocked
-tests/test_aa_calendar_period.py::test_r2_makeup_day_pairing_validation
 tests/test_aa_course.py::test_c9_disable_blocked_by_live_program_reference_then_allowed
-tests/test_aa_dashboard.py::test_dashboard_summary_reflects_real_data
-tests/test_aa_exam.py::test_e11_archived_readonly_409
-tests/test_aa_exam.py::test_e13_archive_list_readonly
-tests/test_aa_exam.py::test_e1_full_lifecycle
-tests/test_aa_grade.py::test_g8_analysis_enhanced_and_group
 tests/test_aa_home_task_routes_v2.py::test_student_pc_has_task_home_and_independent_academic_routes
 tests/test_aa_main_migration_compat.py::test_academic_and_current_main_heads_are_joined_without_ddl
 tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report
 tests/test_aa_orgs.py::test_o3_class_adjust_moves_student
 tests/test_aa_orgs.py::test_o6_validation_and_guard
-tests/test_aa_orgs.py::test_o8_counselor_binding_syncs_scope
 tests/test_aa_program_tier1_r3.py::test_submit_rejects_when_total_credits_unset_or_course_sum_short
-tests/test_aa_program_tier1_r3.py::test_tr1_practice_segment_rejects_bad_weeks_and_non_draft
-tests/test_aa_program_tier1_r3.py::test_tr2_change_status_freeze_resume_disable
-tests/test_aa_program_tier1_r3.py::test_tr2_resume_to_enabled_when_active_binding
-tests/test_aa_program_tier1_r3.py::test_tr3_archive_lists_disabled_and_superseded_not_plain_draft
-tests/test_aa_recognition.py::test_duplicate_pending_409
-tests/test_aa_recognition.py::test_freetext_target_backward_compatible
-tests/test_aa_recognition.py::test_full_chain_recognized_grade_and_aggregates
-tests/test_aa_recognition.py::test_reject_requires_reason_and_student_forbidden
-tests/test_aa_recognition.py::test_target_already_passed_409
-tests/test_aa_recognition.py::test_target_course_picker_and_attachment
-tests/test_aa_resource_ext.py::test_c1_resource_conflict_booking_overlaps_schedule
-tests/test_aa_resource_ext.py::test_o1_resource_occupancy_aggregates_booking_and_schedule
-tests/test_aa_schedule_move.py::test_move_ok_and_auto_becomes_manual
-tests/test_aa_scheduling.py::test_sc2_teacher_availability_flow
-tests/test_aa_scheduling.py::test_sc4_conflict_report_soft
-tests/test_aa_scheduling_tier1_r2.py::test_03_constraint_reuses_rule_center
-tests/test_aa_scheduling_tier1_r2.py::test_05_room_view_hit_and_empty
-tests/test_aa_scheduling_tier1_r2.py::test_07_import_xlsx_success_and_conflict
-tests/test_aa_scheduling_tier1_r2.py::test_10_summary
-tests/test_aa_scheduling_tier1_r2.py::test_11_adjust_into_real_conflict_409
-tests/test_aa_scheduling_tier1_r2.py::test_11_teacher_object_forbidden_for_others_item
-tests/test_aa_scheduling_tier1_r2.py::test_11_teacher_object_then_adjust
-tests/test_aa_scheduling_tier1_r2.py::test_13_archive_requires_published
-tests/test_aa_scheduling_tier1_r2.py::test_13_archive_success_and_listed
-tests/test_aa_scheduling_tier1_r2.py::test_student_forbidden_on_new_endpoints
-tests/test_aa_selection.py::test_s16_selection_result_merged_into_schedule
-tests/test_aa_selection.py::test_s17_archive_list_detail_export
-tests/test_aa_selection.py::test_s1_full_lifecycle
-tests/test_aa_selection.py::test_s9_adjust_after_lock
-tests/test_aa_selection_canonical_service.py::test_selection_source_uses_course_code_and_effective_grades_not_course_name
-tests/test_aa_selection_rounds.py::test_draw_gates
-tests/test_aa_selection_rounds.py::test_drop_blocked_when_round_disallows
-tests/test_aa_selection_rounds.py::test_lottery_all_win_when_under_capacity
-tests/test_aa_selection_rounds.py::test_lottery_draw_respects_capacity
-tests/test_aa_selection_rounds.py::test_lottery_register_does_not_consume_capacity
-tests/test_aa_selection_rounds.py::test_round_lifecycle_and_single_open
-tests/test_aa_selection_rounds.py::test_withdraw_pending_lottery
-tests/test_aa_selection_student_guard.py::test_guard_is_loaded_after_selection_facade
-tests/test_aa_selection_student_guard.py::test_selection_guard_preserves_original_capacity_and_conflict_controls
-tests/test_aa_selection_student_guard.py::test_selection_student_guard_uses_account_binding_and_course_code
 tests/test_aa_semester_pilot_r11.py::test_public_services_load_r11_without_replacing_existing_domain_services
 tests/test_aa_semester_pilot_r11.py::test_r11_routes_are_registered_and_require_explicit_complete_action
 tests/test_aa_service_entrypoint_integrity.py::test_public_service_entrypoints_do_not_depend_on_import_order
@@ -83,12 +29,6 @@ tests/test_aa_student_portal_design_tokens.py::test_academic_pages_do_not_use_un
 tests/test_aa_student_readonly_workspaces.py::test_readonly_routes_use_shared_fail_closed_view
 tests/test_aa_student_textbook_workspace.py::test_textbook_route_uses_dedicated_page
 tests/test_aa_student_transcript_safety.py::test_portal_package_exports_transcript_safety_facade
-tests/test_aa_teaching_plan_r3.py::test_tp1_change_creates_new_version_with_audit
-tests/test_aa_teaching_plan_r3.py::test_tp4_review_publish_workbench_status_filters
-tests/test_aa_textbook.py::test_t1_full_chain
-tests/test_aa_textbook.py::test_t4_review_return
-tests/test_aa_textbook.py::test_t6_partial_fee_and_stock
-tests/test_aa_textbook_student.py::test_textbook_my_sign_and_fee
 tests/test_aa_tier1_r2_smoke.py::test_evaluation_self_role_tasks_generate_and_list
 tests/test_aa_tier1_r2_smoke.py::test_grade_import_confirm_unmatched_student_409
 tests/test_aa_tier1_r2_smoke.py::test_grade_import_confirm_writes_records
