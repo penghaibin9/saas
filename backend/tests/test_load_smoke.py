@@ -192,7 +192,39 @@ def test_concurrent_teacher_workbench_50(client, smoke):
 
 # ═══════════ 5-6. 并发写：服务申请 / 周报重复提交 ═══════════
 
-def test_concurrent_service_apply_20(client, smoke):
+def test_concurrent_service_apply_20(client, db_mode):
+    """服务申请并发必须在真实 TEST_DATABASE_URL(MySQL) 上验，不允许 SQLite 锁冒充生产结论。"""
+    from app.db.session import get_engine, get_sessionmaker
+    from app.models import CsServiceStudent, StudentProfile
+
+    assert get_engine().dialect.name == "mysql", "service-apply 并发验收必须运行在 MySQL"
+
+    db = get_sessionmaker()()
+    try:
+        stu = StudentProfile(
+            tenant_id=MAIN,
+            student_no="LS00001",
+            real_name="冒烟学生1",
+            grade="2023",
+            current_stage="ON_CAMPUS",
+            student_status="NORMAL",
+            status="ACTIVE",
+        )
+        db.add(stu)
+        db.flush()
+        db.add(CsServiceStudent(
+            tenant_id=MAIN,
+            student_no="LS00001",
+            student_id=stu.id,
+            name="冒烟学生1",
+            class_name="软件2301班",
+            risk_level="HIGH",
+            record_status="ACTIVE",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     stu = _stu()
     jobs = [("POST", "/api/v1/mobile/campus-service/apply", stu,
              {"serviceKey": "证明开具", "reason": f"并发冒烟申请事由编号{i}，用于开具证明"})
