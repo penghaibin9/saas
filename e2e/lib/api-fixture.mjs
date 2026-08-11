@@ -227,13 +227,14 @@ export async function prepareGraduationFixture() {
     if (!/已分配|重复|已选|存在/.test(error.message)) throw error
   }
 
-  try {
+  const existingTaskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`, {
+    batchId: String(batch.id)
+  })
+  if (!existingTaskbook?.exists) {
     await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
       objective: '验证毕业设计学生、导师、管理员真实交互闭环',
       content: '学生签署任务书并提交开题，导师驳回后学生重交，导师通过，管理员复核。'
     }, { batchId: String(batch.id) })
-  } catch (error) {
-    if (!/已下发|已存在|状态/.test(error.message)) throw error
   }
 
   return {
