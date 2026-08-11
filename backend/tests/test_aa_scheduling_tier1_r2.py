@@ -313,8 +313,13 @@ def test_13_archive_requires_published(client, db_mode):
 def test_13_archive_success_and_listed(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = _batch(client, admin)
-    _item(client, admin, bid)
-    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=admin)
+    item = _item(client, admin, bid)
+    assert item.status_code == 200, item.text
+    pre = client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=admin)
+    assert pre.status_code == 200, pre.text
+    pub = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=admin)
+    assert pub.status_code == 200, pub.text
+    assert pub.json()["data"]["status"] == "PUBLISHED"
     r = client.post(f"{BASE}/schedule-batches/{bid}/archive", headers=admin).json()
     assert r["code"] == 0 and r["data"]["status"] == "ARCHIVED"
     lst = client.get(f"{BASE}/schedule-batches", headers=admin, params={"status": "ARCHIVED"}).json()
