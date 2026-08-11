@@ -355,6 +355,8 @@ jobs:
           path: backend/test-results/stage-c1-reconciliation.json
           if-no-files-found: warn
           retention-days: 14
+      # 59 条真实迁移库测试当前总耗时已超过旧的 35m 包级预算。
+      # 保留相同测试文件、相同断言和每测试 180s 超时，仅按领域拆成串行三段，避免总包误杀。
       - name: 迁移库 Stage C1/C2/C3 时态与不可变专项（不用 create_all）
         run: |
           timeout 25m pytest -vv -p no:warnings \
