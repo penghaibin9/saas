@@ -49,7 +49,7 @@ jobs:
           - case: graduation
             nodeid: tests/test_aa_graduation.py::test_gr1_precheck_passed
           - case: graduation-overall-policy
-            nodeid: tests/test_aa_graduation_overall_policy.py::test_any_unknown_blocks_formal_precheck
+            nodeid: tests/test_aa_graduation_overall_policy.py
           - case: orgs
             nodeid: tests/test_aa_orgs.py::test_o1_college_major_class_crud
           - case: mobile
