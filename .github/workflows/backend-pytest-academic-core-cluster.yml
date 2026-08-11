@@ -1,0 +1,116 @@
+name: Backend pytest academic core debt probes
+
+on:
+  push:
+    branches:
+      - fix/backend-pytest-debt-20260810
+    paths:
+      - 'backend/tests/test_aa_course.py'
+      - 'backend/tests/test_aa_dashboard.py'
+      - 'backend/tests/test_aa_grade.py'
+      - 'backend/tests/test_aa_orgs.py'
+      - 'backend/tests/test_aa_program_tier1_r3.py'
+      - 'backend/tests/test_aa_teaching_plan_r3.py'
+      - 'backend/tests/test_aa_textbook*.py'
+      - 'backend/tests/test_aa_warning.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_course*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_dashboard*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_org*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_program*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_plan*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_textbook*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_warning*.py'
+      - '.github/workflows/backend-pytest-academic-core-cluster.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-academic-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Academic debt core / core-program-textbook
+    if: github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies once per lane
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Run core academic debt lane
+        id: pytest
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="test-results/academic-debt/core-program-textbook"
+          XML="$DIR/raw.xml"
+          RAW="$DIR/raw.log"
+          mkdir -p "$DIR"
+          set +e
+          timeout 8m pytest \
+            tests/test_aa_course.py tests/test_aa_dashboard.py tests/test_aa_grade.py tests/test_aa_orgs.py \
+            tests/test_aa_program_tier1_r3.py tests/test_aa_teaching_plan_r3.py \
+            tests/test_aa_textbook.py tests/test_aa_textbook_student.py tests/test_aa_warning.py \
+            -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$rc" > "$DIR/pytest-exit.txt"
+          if [ -f "$XML" ]; then
+            python ../scripts/check/summarize_pytest_junit_diagnostics.py "$XML" --output "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+            python ../scripts/check/sanitize_pytest_junit.py "$XML"
+            mv "$XML" "$DIR/sanitized.xml"
+          else
+            printf '# Secret-safe pytest diagnostics\n\nJUnit XML was not produced; pytest exit code: `%s`.\n' "$rc" > "$DIR/diagnostics.md"
+            cat "$DIR/diagnostics.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f "$RAW"
+          exit 0
+      - name: Upload secret-safe diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-debt-core-program-textbook
+          path: backend/test-results/academic-debt/core-program-textbook/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve real pytest result
+        if: always()
+        shell: bash
+        run: exit '${{ steps.pytest.outputs.exit_code }}'
