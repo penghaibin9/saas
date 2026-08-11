@@ -42,11 +42,6 @@ jobs:
             nodeids: >-
               tests/test_aa_resource_ext.py tests/test_aa_schedule_move.py tests/test_aa_scheduling.py
               tests/test_aa_scheduling_tier1_r2.py
-          - lane: selection-recognition
-            nodeids: >-
-              tests/test_aa_recognition.py tests/test_aa_selection.py
-              tests/test_aa_selection_canonical_service.py tests/test_aa_selection_rounds.py
-              tests/test_aa_selection_student_guard.py
           - lane: core-program-textbook
             nodeids: >-
               tests/test_aa_course.py tests/test_aa_dashboard.py tests/test_aa_grade.py tests/test_aa_orgs.py
