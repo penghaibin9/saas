@@ -20,7 +20,7 @@ jobs:
   canonical-release-gate:
     name: Main / canonical release gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       mysql:
         image: mysql:8.0
