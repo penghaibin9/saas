@@ -118,7 +118,6 @@ def test_c7_course_code_format_400(client, db_mode):
     assert _course(client, hdr, code="CS1").status_code == 400    # 数字位数不足(<3位)
     assert _course(client, hdr, code="CS108").status_code == 200  # 合法格式
 
-
 def test_c8_applicable_majors_mutual_exclusive_with_all_major(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     mid = _seed_major(db_mode)
@@ -137,10 +136,13 @@ def test_c9_disable_blocked_by_live_program_reference_then_allowed(client, db_mo
     client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # ENABLED
     pid = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": "课程停用校验方案", "majorId": "1", "gradeYear": "2026",
-        "totalCredits": 4}).json()["data"]["programId"]
+        "totalCredits": 4,
+        "requirement": {"creditStructure": [{"module": "专业核心", "creditTarget": 4}]},
+    }).json()["data"]["programId"]
     client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={
         "courseId": str(cid), "courseName": "数据结构", "openTermNo": 1, "module": "专业核心", "credit": 4})
-    client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    submit = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert submit.status_code == 200, submit.text
     client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})  # PUBLISHED
     # 被在途/生效方案引用 → 停用 400 拦截
