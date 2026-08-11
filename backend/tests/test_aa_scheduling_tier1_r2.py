@@ -1,8 +1,8 @@
 """排课管理 Tier1 R2 续工端点测试（03排课约束/05教室可用时间/07自动排课预留/10排课结果/11排课调整/13排课归档）。
 
-复用既有课表批次/条目（academic_affairs_schedule_service）与冲突报告（academic_affairs_scheduling_service）。
-当前生产合同要求学期型排课业务绑定真实 AaTerm；本文件在 MySQL db_mode 下建立正式学期，
-不再使用历史 501/777 伪 ID 绕过学期归档与租户校验。
+复用既有课表批次/条目与冲突报告。当前生产合同要求排课坐标必须来自真实 AaTerm、已启用 AaTimeSlot，
+且手工/导入排课必须落到同学期 APPROVED 教学任务批次中的 READY 教学任务；本文件不再使用伪 termId、
+旧规则键或 free-text 教学任务绕过这些生产门禁。
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _hdr(client, login_name):
 
 def _ensure_term():
     from app.db.session import get_sessionmaker
-    from app.models import AaTerm
+    from app.models import AaTerm, AaTimeSlot
 
     db = get_sessionmaker()()
     term = db.query(AaTerm).filter(
@@ -46,6 +46,28 @@ def _ensure_term():
     else:
         term.status = "PUBLISHED"
         term.is_current = True
+        term.teaching_weeks = int(term.teaching_weeks or 18)
+
+    # 最终排课服务只接受学校已启用作息节次；测试按真实字典建立 1-8 节。
+    existing = {
+        int(row.slot_no): row for row in db.query(AaTimeSlot).filter(
+            AaTimeSlot.tenant_id == TID,
+            AaTimeSlot.is_deleted.is_(False),
+        ).all()
+    }
+    for slot_no in range(1, 9):
+        row = existing.get(slot_no)
+        if row:
+            row.enabled = True
+            row.status = "ENABLED"
+        else:
+            db.add(AaTimeSlot(
+                tenant_id=TID,
+                slot_no=slot_no,
+                slot_name=f"第{slot_no}节",
+                enabled=True,
+                status="ENABLED",
+            ))
     term_id = int(term.id)
     db.commit()
     db.close()
@@ -59,10 +81,87 @@ def _batch(client, hdr, term_id=None):
     return response.json()["data"]["batchId"]
 
 
+def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
+                     course_name="高数", weekly_hours=8, code_suffix=""):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    db = get_sessionmaker()()
+    suffix = str(code_suffix or f"{teacher_key}-{course_name}")
+    safe = "".join(ch for ch in suffix if ch.isalnum())[-24:] or "X"
+    course = AaCourse(
+        tenant_id=TID,
+        course_code=f"SC{int(term_id)}{safe}"[:50],
+        course_name=course_name,
+        credit=4,
+        status="ENABLED",
+    )
+    db.add(course); db.flush()
+    tb = AaTeachingTaskBatch(
+        tenant_id=TID,
+        term_id=int(term_id),
+        batch_name=f"{course_name}任务批次",
+        status="APPROVED",
+    )
+    db.add(tb); db.flush()
+    task = AaTeachingTask(
+        tenant_id=TID,
+        batch_id=tb.id,
+        course_id=course.id,
+        course_code=course.course_code,
+        course_name=course.course_name,
+        teacher_key=teacher_key,
+        teacher_name=teacher_name,
+        weekly_hours=weekly_hours,
+        start_week=1,
+        end_week=18,
+        status="READY",
+    )
+    db.add(task); db.flush()
+    ids = {"taskBatch": tb.id, "task": task.id, "course": course.id}
+    db.commit()
+    db.close()
+    return ids
+
+
+def _schedule_term_id(batch_id):
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleBatch
+
+    db = get_sessionmaker()()
+    batch = db.get(AaScheduleBatch, int(batch_id))
+    assert batch is not None
+    term_id = int(batch.term_id)
+    db.close()
+    return term_id
+
+
 def _item(client, hdr, bid, **kw):
-    body = {"weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
-            "teacherKey": "T1", "teacherName": "王老师", "classId": "100", "className": "软件2601",
-            "classroom": "A101", "courseName": "高数", **kw}
+    task_id = kw.pop("taskId", None)
+    teacher_key = str(kw.pop("teacherKey", "T1"))
+    teacher_name = str(kw.pop("teacherName", "王老师"))
+    course_name = str(kw.pop("courseName", "高数"))
+    # 最终服务优先使用 taskId；没有显式 taskId 时为本测试建立同学期 READY 教学任务，
+    # 不再依赖 free-text course/teacher/class 猜测匹配。
+    if not task_id:
+        seeded = _seed_ready_task(
+            _schedule_term_id(bid),
+            teacher_key=teacher_key,
+            teacher_name=teacher_name,
+            course_name=course_name,
+            code_suffix=f"{bid}-{teacher_key}-{course_name}-{kw.get('weekday', 1)}-{kw.get('slotNo', 1)}",
+        )
+        task_id = str(seeded["task"])
+    body = {
+        "taskId": str(task_id),
+        "weekday": 1,
+        "slotNo": 1,
+        "startWeek": 1,
+        "endWeek": 18,
+        "weekParity": "ALL",
+        "classroom": "A101",
+        **kw,
+    }
     return client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body)
 
 
@@ -70,10 +169,10 @@ def test_03_constraint_reuses_rule_center(client, db_mode):
     admin = _hdr(client, "school_admin01")
     term_id = _ensure_term()
     r = client.put(f"{BASE}/scheduling/rules", headers=admin,
-                   json={"ruleKey": "teacherDailyMax", "termId": str(term_id), "ruleValue": {"value": 8}}).json()
-    assert r["code"] == 0 and r["data"]["ruleKey"] == "teacherDailyMax"
+                   json={"ruleKey": "AUTO_TEACHER_MAX_PER_DAY", "termId": str(term_id), "ruleValue": 8}).json()
+    assert r["code"] == 0 and r["data"]["ruleKey"] == "AUTO_TEACHER_MAX_PER_DAY"
     lst = client.get(f"{BASE}/scheduling/rules", headers=admin, params={"termId": str(term_id)}).json()
-    assert any(x["ruleKey"] == "teacherDailyMax" for x in lst["data"]["items"])
+    assert any(x["ruleKey"] == "AUTO_TEACHER_MAX_PER_DAY" for x in lst["data"]["items"])
 
 
 def test_05_room_view_hit_and_empty(client, db_mode):
@@ -111,9 +210,14 @@ def test_07_import_template_download(client, db_mode):
 def test_07_import_xlsx_success_and_conflict(client, db_mode):
     admin = _hdr(client, "school_admin01")
     bid = _batch(client, admin)
+    term_id = _schedule_term_id(bid)
+    math = _seed_ready_task(term_id, teacher_key="T9", teacher_name="张老师",
+                            course_name="高等数学", code_suffix=f"{bid}-MATH")
+    english = _seed_ready_task(term_id, teacher_key="T9", teacher_name="张老师",
+                               course_name="英语", code_suffix=f"{bid}-ENG")
     buf = _xlsx_bytes([
-        [2, 1, "高等数学", "张老师", "T9", "", "", "A201", 1, 18, "ALL", ""],
-        [2, 1, "英语", "张老师", "T9", "", "", "B202", 1, 18, "ALL", ""],
+        [2, 1, "高等数学", "张老师", "T9", "", "", "A201", 1, 18, "ALL", str(math["task"])],
+        [2, 1, "英语", "张老师", "T9", "", "", "B202", 1, 18, "ALL", str(english["task"])],
     ])
     r = client.post(f"{BASE}/schedule-batches/{bid}/import/xlsx", headers=admin,
                     files={"file": ("import.xlsx", buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
@@ -133,43 +237,11 @@ def test_07_sanitize_import_rows_blocks_formula_injection():
     assert out[0]["weekParity"] == "ALL" and out[0]["startWeek"] == "1" and out[0]["endWeek"] == "18"
 
 
-def _seed_ready_task(term_id):
-    from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
-
-    db = get_sessionmaker()()
-    course = AaCourse(
-        tenant_id=TID,
-        course_code=f"SC{int(term_id)}",
-        course_name="高数",
-        credit=4,
-        status="ENABLED",
-    )
-    db.add(course); db.flush()
-    tb = AaTeachingTaskBatch(tenant_id=TID, term_id=int(term_id), batch_name="任务批次", status="APPROVED")
-    db.add(tb); db.flush()
-    t = AaTeachingTask(
-        tenant_id=TID,
-        batch_id=tb.id,
-        course_id=course.id,
-        course_code=course.course_code,
-        course_name=course.course_name,
-        teacher_key="T1",
-        teacher_name="王老师",
-        weekly_hours=4,
-        status="READY",
-    )
-    db.add(t); db.flush()
-    ids = {"taskBatch": tb.id, "task": t.id}
-    db.commit()
-    db.close()
-    return ids
-
-
 def test_10_summary(client, db_mode):
     admin = _hdr(client, "school_admin01")
     term_id = _ensure_term()
-    ids = _seed_ready_task(term_id)
+    ids = _seed_ready_task(term_id, teacher_key="T1", teacher_name="王老师",
+                           course_name="高数", weekly_hours=4, code_suffix="SUMMARY")
     bid = _batch(client, admin, term_id=term_id)
     _item(client, admin, bid, taskId=str(ids["task"]))
     r = client.get(f"{BASE}/schedule-batches/{bid}/summary", headers=admin).json()
