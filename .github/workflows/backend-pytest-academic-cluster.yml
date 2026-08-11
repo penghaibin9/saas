@@ -14,6 +14,20 @@ on:
       - 'scripts/check/sanitize_pytest_junit.py'
       - 'scripts/check/summarize_pytest_junit_diagnostics.py'
       - '.github/workflows/backend-pytest-academic-cluster.yml'
+  push:
+    branches:
+      - fix/backend-pytest-debt-20260810
+    paths:
+      - 'backend/tests/test_aa_*.py'
+      - 'backend/tests/test_academic_*.py'
+      - 'backend/app/modules/academic_affairs/**'
+      - 'backend/app/api/v1/academic*.py'
+      - 'backend/app/services/academic*.py'
+      - 'backend/requirements.txt'
+      - 'scripts/check/backend-known-failures-main.txt'
+      - 'scripts/check/sanitize_pytest_junit.py'
+      - 'scripts/check/summarize_pytest_junit_diagnostics.py'
+      - '.github/workflows/backend-pytest-academic-cluster.yml'
   workflow_dispatch:
 
 permissions:
@@ -26,7 +40,7 @@ concurrency:
 jobs:
   lane:
     name: Academic debt lane / ${{ matrix.lane }}
-    if: github.head_ref == 'fix/backend-pytest-debt-20260810'
+    if: github.head_ref == 'fix/backend-pytest-debt-20260810' || github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 14
     strategy:
