@@ -48,6 +48,8 @@ jobs:
             nodeid: tests/test_aa_teaching_task.py::test_tt1_full_chain
           - case: graduation
             nodeid: tests/test_aa_graduation.py::test_gr1_precheck_passed
+          - case: graduation-overall-policy
+            nodeid: tests/test_aa_graduation_overall_policy.py::test_any_unknown_blocks_formal_precheck
           - case: orgs
             nodeid: tests/test_aa_orgs.py::test_o1_college_major_class_crud
           - case: mobile
