@@ -1,0 +1,62 @@
+name: PR95 presentation review fixes
+
+on:
+  push:
+    branches:
+      - codex/ui-presentation-v3
+    paths:
+      - scripts/automation/fix_pr95_presentation_review.py
+      - .github/workflows/pr95-presentation-review-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr95-presentation-review-fix
+  cancel-in-progress: false
+
+jobs:
+  fix-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/ui-presentation-v3
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Apply audited presentation fixes
+        run: python scripts/automation/fix_pr95_presentation_review.py
+
+      - name: Targeted presentation contracts
+        run: |
+          node --test frontend/tests/message-deep-link-id-contract.test.mjs
+          node --test student-portal/tests/ui-presentation-v3-data-contract.test.mjs
+          node --test frontend/tests/ui-presentation-safety.test.mjs
+          node --test student-portal/tests/auto-table-presentation-contract.test.mjs
+          node --test student-portal/tests/visible-enum-localization.test.mjs
+
+      - name: Commit fixes and remove one-shot automation
+        run: |
+          rm -f scripts/automation/fix_pr95_presentation_review.py .github/workflows/pr95-presentation-review-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/modules/messageCenter/views/MessageComposeView.vue \
+                  frontend/tests/message-deep-link-id-contract.test.mjs \
+                  student-portal/src/views/employment/EmploymentView.vue \
+                  student-portal/src/views/academic/AcademicView.vue \
+                  student-portal/tests/ui-presentation-v3-data-contract.test.mjs \
+                  scripts/automation/fix_pr95_presentation_review.py \
+                  .github/workflows/pr95-presentation-review-fix.yml
+          git diff --cached --check
+          git commit -m 'fix(ui): address PR95 presentation review feedback'
+          git push origin HEAD:codex/ui-presentation-v3
