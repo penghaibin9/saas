@@ -110,9 +110,9 @@ import { useUiStore } from '../../stores/ui'
 const ui = useUiStore()
 const session = useSessionStore()
 const MATERIAL_COLS = [
-  { key: 'materialType', label: '材料类型' }, { key: 'fileName', label: '文件名称' },
-  { key: 'uploadedAt', label: '提交时间' }, { key: 'status', label: '审核状态' },
-  { key: 'reviewNote', label: '审核意见' }
+  { key: 'type', label: '材料类型' },
+  { key: 'fileName', label: '文件名称' },
+  { key: 'status', label: '审核状态' }
 ]
 const FOLLOW_UP_WAY = Object.freeze({ PHONE: '电话联系', FACE: '面谈', RECOMMEND: '岗位推荐', VISIT: '走访' })
 const FOLLOW_UP_COLS = [

@@ -23,3 +23,11 @@ test('专业分流表只使用真实志愿 DTO 且不展示数据库 ID', () => 
   assert.doesNotMatch(block, /batchName|choiceOrder|majorName|resultMajorName/)
   assert.doesNotMatch(block, /key: 'resultMajorId'/)
 })
+
+test('就业签约材料表绑定真实 DTO，不制造不存在字段', () => {
+  const block = employment.match(/const MATERIAL_COLS = \[[\s\S]*?\n\]/)?.[0] || ''
+  assert.match(block, /key: 'type'/)
+  assert.match(block, /key: 'fileName'/)
+  assert.match(block, /key: 'status'/)
+  assert.doesNotMatch(block, /materialType|uploadedAt|reviewNote/)
+})
