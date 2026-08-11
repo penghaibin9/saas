@@ -234,8 +234,10 @@ def test_e11_archived_readonly_409(client, db_mode):
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
                       json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
     client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z", "teacherName": "Z"})
-    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
-    client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
+                json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
+    pub = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    assert pub.status_code == 200 and pub.json()["data"]["status"] == "PUBLISHED"
     _mark_remaining_seats_present(cid)
     assert client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin).status_code == 200
     assert client.post(f"{BASE}/exam/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
@@ -271,8 +273,10 @@ def test_e13_archive_list_readonly(client, db_mode):
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
                       json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
     client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z"})
-    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
-    client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
+                json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
+    pub = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    assert pub.status_code == 200 and pub.json()["data"]["status"] == "PUBLISHED"
     _mark_remaining_seats_present(cid)
     assert client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin).status_code == 200
     bid2, _ = _batch_with_confirmed_course(client, admin, ids["tt2"], "未归档对照批次", term_id=ids["term"])
