@@ -24,6 +24,8 @@ import './styles/golden-risk-workspaces-rollout-final.css'
 import './styles/golden-material-evidence-rollout.css'
 // Golden 实施 / 规则配置 rollout：辅导员责任台账 / 实习批次 / 毕设批次。
 import './styles/golden-implementation-config-rollout.css'
+// Golden 评价 / 成绩 / 结果分析 rollout：辅导员考评 / 实习综合成绩 / 毕设统计报表。
+import './styles/golden-evaluation-results-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
