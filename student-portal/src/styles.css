@@ -9,6 +9,7 @@
   --ok-bg: #E8F7EC; --ok-fg: #0C8A3E;
   --warn-bg: #FFF4E5; --warn-fg: #B25E00;
   --danger-bg: #FDECEC; --danger-fg: #D92D20;
+  --bad-bg: var(--danger-bg); --bad-fg: var(--danger-fg);
   --draft-bg: #F2F3F5; --draft-fg: #4E5969;
   /* 中性色 */
   --t1: #1D2129; --t2: #4E5969; --t3: #86909C; --t4: #98A0AE; --line: #EEF0F3; --line2: #F1F2F5;

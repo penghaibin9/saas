@@ -29,7 +29,7 @@ for _name in dir(_LEGACY):
 
 
 def test_every_school_permission_role_has_a_versioned_template():
-    """学校租户角色模板覆盖所有学校角色，但不得混入平台控制面角色。"""
+    """学校租户权限角色必须进入版本化模板目录；平台控制面角色严禁混入。"""
     template_codes = {item["roleCode"] for item in _LEGACY.BUILTIN_ROLE_TEMPLATES}
     school_permission_codes = {
         code for code in _LEGACY.ROLE_PERMISSIONS
@@ -90,7 +90,6 @@ def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():
     assert "'/admin/system/identity-import/teachers'" in users
     assert "path: 'identity-import/students'" in routes
     assert "path: 'identity-import/teachers'" in routes
-    # 老入口只允许兼容跳转，不能重新变回师生混合建号页面。
     assert "path: 'identity-import'" in routes
     assert "redirect: '/admin/system/identity-import/students'" in routes
     assert "query: { action: 'create' }" not in users
@@ -102,13 +101,15 @@ def test_business_import_screens_show_the_non_account_creation_boundary():
     root = Path(__file__).resolve().parents[2]
     notice = (root / "frontend/src/components/common/AccountImportBoundaryNotice.vue").read_text(
         encoding="utf-8")
+    generic_excel = (root / "frontend/src/components/common/excel/AppExcelImportDrawer.vue").read_text(
+        encoding="utf-8")
     assert "此处不会创建登录账号" in notice
     assert 'to="/admin/system/identity-import/students"' in notice
+    assert "AccountImportBoundaryNotice" in generic_excel
 
     direct_notice_files = [
         "frontend/src/views/admin/student/StudentImportExportView.vue",
         "frontend/src/modules/academicAffairs/components/ImportDrawer.vue",
-        "frontend/src/modules/campusService/components/ImportDrawer.vue",
         "frontend/src/modules/orientation/components/ImportDialog.vue",
         "frontend/src/modules/employment/components/ImportDialog.vue",
     ]
