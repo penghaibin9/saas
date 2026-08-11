@@ -131,7 +131,6 @@ def _ensure_teaching_task():
         course_id=course.id,
         course_code=course.course_code,
         course_name=course.course_name,
-        credit=course.credit,
         class_id=class_id,
         teaching_class_name="软件2602",
         teacher_key="school_admin01",
