@@ -59,6 +59,10 @@ jobs:
             nodeid: tests/test_domain_export.py::test_export_all_six_domains
           - case: A8-load-service-apply
             nodeid: tests/test_load_smoke.py::test_concurrent_service_apply_20
+          - case: A8-load-weekly-duplicate
+            nodeid: tests/test_load_smoke.py::test_concurrent_weekly_duplicate_20
+          - case: A8-load-export-rate
+            nodeid: tests/test_load_smoke.py::test_export_rate_limit
           - case: A9-auth-lockout
             nodeid: tests/test_security_hardening.py::test_password_login_lockout
           - case: A9-guardian-login
