@@ -17,10 +17,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  canonical-release-gate:
-    name: Main / canonical release gate
+  canonical_pr_shard:
+    name: Main / canonical shard ${{ matrix.shard }}
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
     services:
       mysql:
         image: mysql:8.0
@@ -54,15 +60,49 @@ jobs:
           pip install -r requirements.txt
       - name: Validate workflow syntax
         run: python scripts/check/validate-github-workflows.py
-      - name: Run canonical PR regression gate
+      - name: Run canonical PR regression shard
         shell: bash
         working-directory: backend
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_COUNT: "4"
         run: |
           set -euo pipefail
           TARGETS="$(python ../scripts/check/select_pytest_targets.py)"
           test -n "$TARGETS"
-          echo "Canonical targets: $TARGETS"
-          pytest $TARGETS -q -p no:warnings --durations=20
+          SHARD_TARGETS="$(TARGETS="$TARGETS" python - <<'PY'
+          import os
+          targets = os.environ["TARGETS"].split()
+          index = int(os.environ["SHARD_INDEX"])
+          count = int(os.environ["SHARD_COUNT"])
+          print(" ".join(targets[index::count]))
+          PY
+          )"
+          echo "Canonical shard ${SHARD_INDEX}/${SHARD_COUNT}: ${SHARD_TARGETS:-<empty>}"
+          if [ -z "$SHARD_TARGETS" ]; then
+            exit 0
+          fi
+          read -r -a TESTS <<< "$SHARD_TARGETS"
+          timeout 9m pytest "${TESTS[@]}" -q -p no:warnings --durations=20
+
+  canonical-release-gate:
+    name: Main / canonical release gate
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'push')
+    needs: canonical_pr_shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate canonical shard results
+        shell: bash
+        env:
+          SHARD_RESULT: ${{ needs.canonical_pr_shard.result }}
+        run: |
+          set -euo pipefail
+          if [ "$SHARD_RESULT" != "success" ]; then
+            echo "Canonical shard aggregate = RED ($SHARD_RESULT)"
+            exit 1
+          fi
+          echo "Canonical shard aggregate = GREEN"
       - name: 声明本闸门的真实覆盖范围（禁止被误读为全量发布门禁）
         if: always()
         shell: bash
@@ -70,7 +110,7 @@ jobs:
           {
             echo "### 本闸门覆盖范围"
             echo ""
-            echo "绿灯含义：**本次 diff 命中的变更感知 pytest 子集**在真实 MySQL 上通过。"
+            echo "绿灯含义：**本次 diff 命中的变更感知 pytest 子集**已被完整分配到 4 个独立 MySQL shard，且全部通过。"
             echo ""
             echo "绿灯**不**含义：当前 HEAD 全量后端回归 0 failed / 0 errors、四端 E2E 通过、"
             echo "迁移升级路径收敛。上线放行必须另看 \`发布放行全量回归\` 与 \`迁移升级路径收敛门禁\`。"
