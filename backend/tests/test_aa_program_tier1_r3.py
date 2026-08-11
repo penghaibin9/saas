@@ -10,7 +10,7 @@ TR4 越权：学生令牌对三组新端点一律 403。
 本机与多个子智能体共用同一张 TEST_DATABASE_URL 物理库，db_mode 的全量 drop_all 会与并行会话
 持续撞车；即使不 drop 只 create_all(checkfirst=True)，只要还是遍历全量 ~250 张表，CREATE INDEX
 阶段仍可能撞见另一会话此刻正在 drop 某张不相关表（1146/1050/1051/1684 均实测出现过）。本文件
-用例均按自建方案 id 精确断言，天然不依赖"全库清空后精确计数"，故只需保证「培养方案相关表 +
+用例均按自建方案 id 精确断言，天然不依赖"全库清空后精确计数"，故只需保证「培养方案治理相关表 +
 审计流水表」这一小撮表存在，不需要也不 drop 全量 metadata，最大限度降低碰撞面。
 """
 from __future__ import annotations
@@ -20,22 +20,25 @@ import time
 
 import pytest
 
+TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
-# 本文件用例只触达这几张表（+ 审计流水表），无需全量 metadata create_all。
+# 正式 submit 门禁会校验稳定课程身份、结构化毕业要求与国家标准绑定告警，故最小表集必须覆盖
+# 这些真实读取源；不再用“课程名占位 + 缺表”绕过生产治理。
 _PROGRAM_TABLES = [
     "t_aa_program", "t_aa_program_course", "t_aa_program_binding",
     "t_aa_program_graduation_requirement", "t_aa_program_practice_segment",
+    "t_aa_course", "t_national_standard_document", "t_school_major_standard_binding",
     "t_affairs_audit_trail",
 ]
 
 
 @pytest.fixture()
 def db_mode_programs():
-    """最小化真库夹具：只 create_all(checkfirst=True) 培养方案相关表 + 审计流水表（真实 MySQL，
+    """最小化真库夹具：只 create_all(checkfirst=True) 培养方案治理相关表（真实 MySQL，
     TEST_DATABASE_URL），不做全量 drop_all/create_all，规避与并行 worktree/子智能体共享同一物理
-    测试库时的全量 DDL 竞态（1146/1050/1051/1684，root cause 见文件头注释）。MySQL 不可达/建表
-    失败直接抛错，不静默回落 sqlite。"""
+    测试库时的全量 DDL 竞态（1146/1050/1051/1684）。MySQL 不可达/建表失败直接抛错，
+    不静默回落 sqlite。"""
     from app.core.config import settings
     from app.db.session import reset_state
     test_url = os.environ.get("TEST_DATABASE_URL") or settings.TEST_DATABASE_URL
@@ -76,19 +79,60 @@ def _hdr(client, login_name):
 
 
 def _new_program(client, hdr, name):
-    r = client.post(f"{BASE}/programs", headers=hdr, json={"programName": name})
+    # 正式发布门禁要求方案必须有稳定专业/年级身份；普通草稿测试也使用真实基础身份。
+    r = client.post(f"{BASE}/programs", headers=hdr, json={
+        "programName": name, "majorId": "1", "gradeYear": "2026"})
     assert r.status_code == 200, r.text
     return r.json()["data"]["programId"]
 
 
+def _seed_enabled_course(pid, *, name="占位课程", credit=1):
+    """直接种一条正式 ENABLED 课程，给最小真库夹具提供稳定 courseId。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse
+    db = get_sessionmaker()()
+    course = AaCourse(
+        tenant_id=TID,
+        course_code=f"P{int(pid) % 1000000:06d}",
+        course_name=name,
+        category="MAJOR_CORE",
+        nature="REQUIRED",
+        credit=credit,
+        hours_total=16,
+        hours_theory=16,
+        hours_practice=0,
+        exam_mode="EXAM",
+        status="ENABLED",
+    )
+    db.add(course); db.flush()
+    cid = course.id
+    db.commit(); db.close()
+    return cid
+
+
+def _make_governance_ready(client, hdr, pid, *, total=1, course_credit=None,
+                           module="专业核心", course_name="占位课程"):
+    """补齐当前权威发布门禁需要的学分结构、稳定课程身份与结构化毕业要求。"""
+    course_credit = total if course_credit is None else course_credit
+    r = client.put(f"{BASE}/programs/{pid}", headers=hdr, json={"totalCredits": total})
+    assert r.status_code == 200, r.text
+    r = client.put(f"{BASE}/programs/{pid}/credit-requirements", headers=hdr, json={
+        "items": [{"module": module, "creditTarget": total}]})
+    assert r.status_code == 200, r.text
+    cid = _seed_enabled_course(pid, name=course_name, credit=course_credit)
+    r = client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={
+        "courseId": str(cid), "courseName": course_name, "openTermNo": 1,
+        "module": module, "credit": course_credit})
+    assert r.status_code == 200, r.text
+    r = client.post(f"{BASE}/programs/{pid}/graduation-requirements", headers=hdr, json={
+        "category": "ABILITY", "content": "完成培养方案规定课程并达到毕业要求", "sortOrder": 1})
+    assert r.status_code == 200, r.text
+    return cid
+
+
 def _publish(client, hdr, pid):
-    """DRAFT -> COLLEGE_REVIEW -> ACADEMIC_REVIEW -> PUBLISHED。
-    先设总学分 + 补一门等额学分课程使课程学分合计达标（submit_program 校验总学分已设置且课程学分达标，
-    历史版本靠"不设 totalCredits 短路跳过校验"的 bug 通过本用例，该 bug 已修复，见 CC-真实交互业务巡检）。"""
-    r = client.put(f"{BASE}/programs/{pid}", headers=hdr, json={"totalCredits": 1})
-    assert r.status_code == 200, r.text
-    r = client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={"courseName": "占位课程", "credit": 1})
-    assert r.status_code == 200, r.text
+    """按当前权威治理合同完成 DRAFT -> COLLEGE_REVIEW -> ACADEMIC_REVIEW -> PUBLISHED。"""
+    _make_governance_ready(client, hdr, pid)
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
@@ -125,11 +169,9 @@ def test_tr1_practice_segment_crud(client, db_mode_programs):
 def test_tr1_practice_segment_rejects_bad_weeks_and_non_draft(client, db_mode_programs):
     hdr = _hdr(client, "school_admin01")
     pid = _new_program(client, hdr, "实践环节校验方案")
-    # 周数必须 > 0（pydantic gt=0，本仓库全局处理器把 RequestValidationError 统一转 400）
     r = client.post(f"{BASE}/programs/{pid}/practice-segments", headers=hdr, json={"segmentName": "军训", "weeks": 0})
     assert r.status_code == 400, r.text
 
-    # 非编制态方案不可增删改实践环节
     _publish(client, hdr, pid)
     r = client.post(f"{BASE}/programs/{pid}/practice-segments", headers=hdr, json={"segmentName": "军训", "weeks": 2})
     assert r.status_code == 409, r.text
@@ -140,30 +182,24 @@ def test_tr2_change_status_freeze_resume_disable(client, db_mode_programs):
     pid = _new_program(client, hdr, "方案变更生命周期")
     _publish(client, hdr, pid)
 
-    # 原因<5字拒绝
     r = client.post(f"{BASE}/programs/{pid}/change-status", headers=hdr, json={"action": "FREEZE", "reason": "短"})
     assert r.status_code == 400, r.text
 
-    # 冻结 PUBLISHED -> FROZEN
     r = client.post(f"{BASE}/programs/{pid}/change-status", headers=hdr, json={"action": "FREEZE", "reason": "专业停招临时冻结"})
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "FROZEN"
 
-    # 恢复（无生效绑定 -> PUBLISHED）
     r = client.post(f"{BASE}/programs/{pid}/change-status", headers=hdr, json={"action": "RESUME", "reason": "专业恢复招生启用"})
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "PUBLISHED"
 
-    # 停用（终态）
     r = client.post(f"{BASE}/programs/{pid}/change-status", headers=hdr, json={"action": "DISABLE", "reason": "方案编制有误停用"})
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "DISABLED"
 
-    # 终态再变更应 409
     r = client.post(f"{BASE}/programs/{pid}/change-status", headers=hdr, json={"action": "FREEZE", "reason": "再次尝试冻结应失败"})
     assert r.status_code == 409, r.text
 
-    # 变更记录可查（含冻结/恢复/停用三条生命周期动作）
     log = client.get(f"{BASE}/programs/{pid}/change-log", headers=hdr).json()["data"]["items"]
     actions = [x["action"] for x in log]
     assert "LIFECYCLE_FREEZE" in actions
@@ -172,7 +208,6 @@ def test_tr2_change_status_freeze_resume_disable(client, db_mode_programs):
 
 
 def test_tr2_resume_to_enabled_when_active_binding(client, db_mode_programs):
-    """已绑定年级的方案冻结后恢复，应回到 ENABLED（而非 PUBLISHED）——按是否存在生效绑定判定。"""
     hdr = _hdr(client, "school_admin01")
     pid = _new_program(client, hdr, "方案变更绑定恢复")
     _publish(client, hdr, pid)
@@ -190,20 +225,17 @@ def test_tr2_resume_to_enabled_when_active_binding(client, db_mode_programs):
 
 def test_tr3_archive_lists_disabled_and_superseded_not_plain_draft(client, db_mode_programs):
     hdr = _hdr(client, "school_admin01")
-    # 分支一：DISABLED
     pid1 = _new_program(client, hdr, "归档-已停用方案")
     _publish(client, hdr, pid1)
     r = client.post(f"{BASE}/programs/{pid1}/change-status", headers=hdr, json={"action": "DISABLE", "reason": "停用测试用例数据"})
     assert r.status_code == 200, r.text
 
-    # 分支二：SUPERSEDED（已被新版本取代的历史版本）
     pid2 = _new_program(client, hdr, "归档-历史版本方案")
     _publish(client, hdr, pid2)
     r = client.post(f"{BASE}/programs/{pid2}/new-version", headers=hdr)
     assert r.status_code == 200, r.text
     new_pid = r.json()["data"]["programId"]
 
-    # 对照组：普通 DRAFT，两条归档原因都不成立，不应出现
     pid3 = _new_program(client, hdr, "归档-普通草稿不应出现")
 
     items = client.get(f"{BASE}/program-archive", headers=hdr, params={"pageSize": 200}).json()["data"]["items"]
@@ -215,20 +247,20 @@ def test_tr3_archive_lists_disabled_and_superseded_not_plain_draft(client, db_mo
 
 
 def test_submit_rejects_when_total_credits_unset_or_course_sum_short(client, db_mode_programs):
-    """回归：CC-真实交互业务巡检发现 submit_program 曾用 `if p.total_credits and ...` 短路校验，
-    毕业总学分未设置时空方案(0 门课程)也能一路提交到学院审→发布，成为约束学生毕业的生效方案。"""
+    """发布治理回归：缺正式总学分或课程学分不足必须由 PROGRAM_VALIDATION_BLOCKED fail-closed。"""
     hdr = _hdr(client, "school_admin01")
     pid = _new_program(client, hdr, "总学分未设置不可提交")
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
-    assert r.status_code == 400, r.text
-    assert "毕业总学分尚未设置" in r.text
+    assert r.status_code == 409, r.text
+    assert "PROGRAM_VALIDATION_BLOCKED" in r.text
+    assert "总学分" in r.text
 
-    # 设置总学分但课程学分合计未达标，仍应拒绝
-    r = client.put(f"{BASE}/programs/{pid}", headers=hdr, json={"totalCredits": 10})
-    assert r.status_code == 200, r.text
+    # 构造其它发布治理项均完整、仅课程学分不足的精确场景。
+    _make_governance_ready(client, hdr, pid, total=10, course_credit=4, course_name="学分不足课程")
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
-    assert r.status_code == 400, r.text
-    assert "未达毕业总学分" in r.text
+    assert r.status_code == 409, r.text
+    assert "PROGRAM_VALIDATION_BLOCKED" in r.text
+    assert "课程学分合计" in r.text or "目标学分" in r.text
 
 
 def test_tr4_student_403_on_new_endpoints(client, db_mode_programs):
