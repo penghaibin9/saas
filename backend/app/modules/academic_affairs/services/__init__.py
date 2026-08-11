@@ -22,6 +22,19 @@ from . import academic_affairs_major_split_public_service as academic_affairs_ma
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
 
+# 统计 08/09/14 历史曾存在同名重复定义，后定义的缩水实现会覆盖完整合同，连内部 xlsx 导出一起打坏。
+# 显式安装唯一 canonical contract；公开 wrapper 动态调用 legacy 时与 legacy 内部 export 使用同一函数对象。
+from . import academic_affairs_stats_contract_facade
+
+academic_affairs_stats_contract_facade.install()
+academic_affairs_stats_service.resource_stats = academic_affairs_stats_contract_facade.resource_stats
+academic_affairs_stats_service.resource_detail = academic_affairs_stats_contract_facade.resource_detail
+
+# 学生课表必须按当前 schedule batch 合并 LOCKED 选课，禁止把其它批次/学期排课串进来。
+from . import academic_affairs_schedule_facade as academic_affairs_schedule_student_view_facade
+
+academic_affairs_schedule_service.student_view = academic_affairs_schedule_student_view_facade.student_view
+
 # V2-03 最终规则安全层必须成为包级可见入口，并显式绑定到公开排课/自动排课服务。
 from . import academic_affairs_scheduling_rule_final_facade
 
