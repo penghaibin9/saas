@@ -1,0 +1,500 @@
+/*
+ * Golden evaluation / score / result-analysis rollout — Batch 6 Screenshot A -> B.
+ * Visual-only. Every rule is anchored to a repository-unique page signature so
+ * shared Student Affairs / Internship / Graduation primitives remain untouched.
+ */
+
+/* ========================================================================== */
+/* Student Affairs counselor evaluation                                      */
+/* Unique anchor: .ce-indbar exists only on CounselorEvalView.               */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.ce-indbar) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) > .mps__head {
+  align-items: center;
+  padding: 2px 2px 0;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 116px;
+  padding: 19px 21px;
+  margin-bottom: 0;
+  border: 1px solid color-mix(in srgb, var(--pri) 28%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(118deg, var(--deep1) 0%, var(--deep2) 64%, color-mix(in srgb, var(--pri) 78%, #4b8cff) 118%);
+  background-size: 30px 30px, 30px 30px, auto;
+  box-shadow: 0 18px 42px -32px color-mix(in srgb, var(--deep1) 78%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 210px;
+  height: 210px;
+  right: -72px;
+  top: -124px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 38px rgba(255,255,255,.026), 0 0 0 78px rgba(255,255,255,.015);
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip__eyebrow {
+  margin-bottom: 5px;
+  color: rgba(219,234,254,.9);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .055em;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip__title {
+  max-width: 44ch;
+  color: #fff;
+  font-size: 21px;
+  line-height: 1.34;
+  letter-spacing: -.013em;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip__text {
+  max-width: 900px;
+  margin-top: 6px;
+  color: rgba(219,234,254,.84);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-step {
+  min-height: 70px;
+  padding: 10px 11px 10px 40px;
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 13px;
+  background: rgba(255,255,255,.985);
+  color: var(--t2, #475569);
+  font-size: 12px;
+  line-height: 1.46;
+  box-shadow: 0 12px 26px -28px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-step::before {
+  left: 11px;
+  top: 11px;
+  width: 20px;
+  height: 20px;
+  background: color-mix(in srgb, var(--pri-bg) 82%, #fff);
+  color: var(--pri);
+  font-size: 11px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-step strong {
+  color: var(--t1, #0f172a);
+  font-size: 13px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .app-section-card {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  box-shadow: 0 15px 32px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .app-section-card__head {
+  padding: 13px 17px;
+  background: #fbfcfe;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .app-section-card__body {
+  padding: 14px 17px 16px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-section-hint {
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-indbar {
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-inds {
+  gap: 7px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-indtag {
+  padding: 5px 10px;
+  border-color: color-mix(in srgb, var(--pri) 16%, var(--card-b));
+  background: #fff;
+  font-size: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-indadd {
+  flex: 0 1 470px;
+  gap: 7px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-indadd > * {
+  flex-basis: 118px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-form-block {
+  padding: 10px 12px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-scoreform,
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-scores {
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-score-title {
+  margin: 10px 0 7px;
+  font-size: 12.5px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-score-item {
+  padding: 9px 10px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 11px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .ce-actions {
+  margin-top: 10px;
+  padding-top: 9px;
+}
+
+#app .base-portal-layout .mps:has(.ce-indbar) .dt {
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+/* ========================================================================== */
+/* Internship comprehensive scores                                           */
+/* Unique anchor: .cfg exists only on ScoreView.                             */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.cfg) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(.cfg) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 17px 19px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 74%, #fff), #fff 64%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.cfg) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.cfg) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .mps__subtitle {
+  max-width: 760px;
+  margin-top: 5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.cfg) > .stack {
+  gap: 11px;
+}
+
+/* Parent internship layout owns the authoritative selected batch. Do not show
+ * the generic module-summary batch sentence again on this page. */
+#app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__batch {
+  display: none;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .stack > .msr {
+  align-self: flex-start;
+  width: auto;
+  min-width: 270px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__metrics {
+  gap: 9px;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__metric {
+  min-width: 132px;
+  min-height: 62px;
+  justify-content: center;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 24px -28px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__metric-val {
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .cfg {
+  display: grid;
+  grid-template-columns: auto repeat(6, minmax(88px, 1fr)) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 14px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--pri-bg) 58%, #fff), #fff 72%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 52%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.cfg) .cfg__t {
+  color: var(--t1, #0f172a);
+  font-size: 12.5px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .cfg__item {
+  display: grid;
+  grid-template-columns: auto minmax(56px, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--t2, #475569);
+  font-size: 11.5px;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .cfg__sum {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok-bg, #ecfdf5) 76%, #fff);
+  color: var(--ok, #047857);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .bar {
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .bar > :first-child {
+  max-width: 320px;
+}
+
+#app .base-portal-layout .mps:has(.cfg) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 17px 36px -34px color-mix(in srgb, var(--deep1) 54%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.cfg) .dt__th {
+  background: #f7f9fc;
+}
+
+/* ========================================================================== */
+/* Graduation result statistics                                              */
+/* Unique anchor: .gs-grid exists only on GraduationStatsView.               */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.gs-grid) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 17px 19px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 70%, #fff), #fff 66%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .mps__subtitle {
+  max-width: 880px;
+  margin-top: 5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mp-stack {
+  gap: 11px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mp-stack > .mp-note {
+  margin: 0;
+  padding: 8px 11px;
+  border-left: 2px solid color-mix(in srgb, var(--pri) 40%, transparent);
+  border-radius: 0 9px 9px 0;
+  background: color-mix(in srgb, var(--pri-bg) 48%, #fff);
+  font-size: 12px;
+}
+
+/* Turn the nine independent statistic domains into a real result cockpit rather
+ * than a long report list. Each card still contains the same real API values. */
+#app .base-portal-layout .mps:has(.gs-grid) .mp-stack:has(> .mp-card > .mp-card__body > .gs-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .mp-card {
+  overflow: hidden;
+  min-width: 0;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  box-shadow: 0 15px 32px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .mp-card__head {
+  min-height: 42px;
+  padding: 11px 14px;
+  background: #fbfcfe;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .mp-card__body.gs-grid {
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 7px;
+  padding: 11px 13px 13px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .gs-cell {
+  min-height: 58px;
+  justify-content: center;
+  padding: 8px 10px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .gs-cell b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .gs-cell span {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) .gs-cell--extra {
+  background: color-mix(in srgb, var(--pri-bg) 56%, #fff);
+}
+
+/* ========================================================================== */
+/* Responsive safety                                                         */
+/* ========================================================================== */
+
+@media (max-width: 1120px) {
+  #app .base-portal-layout .mps:has(.cfg) .cfg {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  #app .base-portal-layout .mps:has(.cfg) .cfg__t,
+  #app .base-portal-layout .mps:has(.cfg) .cfg__sum {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 960px) {
+  #app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #app .base-portal-layout .mps:has(.gs-grid) .mp-stack:has(> .mp-card > .mp-card__body > .gs-grid) {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.ce-indbar) .sa-summary-strip {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  #app .base-portal-layout .mps:has(.ce-indbar) .sa-workflow-strip {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.ce-indbar) .ce-indadd {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  #app .base-portal-layout .mps:has(.cfg) > .mps__head,
+  #app .base-portal-layout .mps:has(.gs-grid) > .mps__head {
+    padding: 15px;
+  }
+
+  #app .base-portal-layout .mps:has(.cfg) .cfg {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.cfg) .stack > .msr {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__metrics,
+  #app .base-portal-layout .mps:has(.cfg) .stack > .msr .msr__metric {
+    width: 100%;
+  }
+}
