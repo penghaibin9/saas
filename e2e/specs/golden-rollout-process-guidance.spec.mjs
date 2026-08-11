@@ -185,21 +185,21 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await capture(page, testInfo, 'rollout-process-internship-guidance-a')
   })
 
-  test('Graduation process guidance · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation process audit trail · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    const path = `/admin/graduation/process?panel=guidance&batchId=${encodeURIComponent(graduationFixture.batchId)}&studentId=${encodeURIComponent(graduationFixture.gdStudentId)}`
-    await openStaffWorkspace(page, adminApi, path, {
-      'graduation.selectedBatchId': graduationFixture.batchId
-    })
 
-    await expect(page).toHaveURL(/\/admin\/graduation\/process/)
-    await expect(page.getByRole('heading', { name: '过程指导', exact: true })).toBeVisible()
-    await expect(page.locator('.gp-layout')).toBeVisible()
-    await expect(page.locator('.gp-stu-item.is-active')).toBeVisible()
-    await expect(page.locator('.gp-tabs__item.is-active')).toContainText('指导记录')
-    await expect(page.locator('.gp-timeline')).toBeVisible()
-    await expect(page.locator('.gp-timeline-item').filter({ hasText: graduationGuidance.content }).first()).toBeVisible()
+    const audits = items(await adminApi.get('/graduation/audit-logs', { page: 1, pageSize: 200 }))
+    if (!audits.length) throw new Error('Golden Batch 9 graduation guidance did not produce any graduation audit trail')
 
-    await capture(page, testInfo, 'rollout-process-graduation-guidance-a')
+    await openStaffWorkspace(page, adminApi, '/admin/graduation/audit-logs')
+
+    await expect(page).toHaveURL(/\/admin\/graduation\/audit-logs/)
+    await expect(page.getByRole('heading', { name: '毕设操作日志', exact: true })).toBeVisible()
+    await expect(page.locator('.mp-toolbar-row')).toBeVisible()
+    await expect(page.locator('.dt')).toBeVisible()
+    await expect(page.locator('.dt__tr').nth(1)).toBeVisible()
+    await expect(page.locator('.mp-pager')).toContainText(/共\s*\d+\s*条/)
+
+    await capture(page, testInfo, 'rollout-process-graduation-audit-a')
   })
 })
