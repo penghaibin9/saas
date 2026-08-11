@@ -255,12 +255,13 @@ def test_submit_rejects_when_total_credits_unset_or_course_sum_short(client, db_
     assert "PROGRAM_VALIDATION_BLOCKED" in r.text
     assert "总学分" in r.text
 
-    # 构造其它发布治理项均完整、仅课程学分不足的精确场景。
+    # 构造其它发布治理项均完整、仅课程/实践学分合计不足的精确场景。
     _make_governance_ready(client, hdr, pid, total=10, course_credit=4, course_name="学分不足课程")
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 409, r.text
     assert "PROGRAM_VALIDATION_BLOCKED" in r.text
-    assert "课程学分合计" in r.text or "目标学分" in r.text
+    assert "课程与实践学分合计" in r.text
+    assert "毕业总学分" in r.text
 
 
 def test_tr4_student_403_on_new_endpoints(client, db_mode_programs):
