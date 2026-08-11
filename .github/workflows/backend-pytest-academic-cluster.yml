@@ -39,7 +39,7 @@ jobs:
           - case: grade
             nodeid: tests/test_aa_grade.py::test_g1_compose_publish_project
           - case: evaluation
-            nodeid: tests/test_aa_evaluation.py::test_ev1_full_flow
+            nodeid: tests/test_aa_evaluation.py
           - case: schedule-change
             nodeid: tests/test_aa_schedule_change.py::test_c1_adjust_full_chain_applied
           - case: selection
