@@ -75,6 +75,23 @@ test.describe.serial('Golden rollout · message center / communication · Batch 
     expect(visual.navWidth).toBeLessThanOrEqual(185)
 
     await capture(page, testInfo, 'rollout-message-center-inbox-b')
+
+    // The page itself switches to narrow mode below 1100px. The Golden desktop
+    // selector must not override that established two-column + detail-overlay contract.
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await expect(page.locator('.mc-inbox')).toHaveClass(/is-narrow/)
+    await expect(page.locator('.mc-inbox__detail')).toHaveCount(0)
+    const narrowVisual = await page.locator('.mc-inbox').evaluate((el) => {
+      const nav = el.querySelector('.mc-inbox__nav')
+      const columns = getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/)
+      return {
+        columnCount: columns.length,
+        navWidth: nav?.getBoundingClientRect().width || 0
+      }
+    })
+    expect(narrowVisual.columnCount).toBe(2)
+    expect(narrowVisual.navWidth).toBeGreaterThanOrEqual(155)
+    expect(narrowVisual.navWidth).toBeLessThanOrEqual(165)
   })
 
   test('Message compose workspace · Screenshot B', async ({ page }, testInfo) => {

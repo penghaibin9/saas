@@ -198,6 +198,16 @@
   }
 }
 
+/* The inbox component intentionally switches to narrow mode below 1100px.
+ * Keep this override more specific than the desktop rollout so the existing
+ * two-column + detail-overlay behavior cannot be shadowed by the 1200px rule.
+ */
+@media (max-width: 1099px) {
+  #app .base-portal-layout .mps:has(.mc-inbox) .mc-inbox.is-narrow {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 760px) {
   #app .base-portal-layout .mps:has(.mc-compose) .mc-steps {
     grid-template-columns: 1fr;
