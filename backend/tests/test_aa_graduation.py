@@ -67,7 +67,9 @@ def test_gr1_precheck_passed(client, db_mode):
     d = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
     assert d["overall"] == "SYSTEM_ABNORMAL" and len(d["items"]) == 11
     fee = next(i for i in d["items"] if i["item"] == "FEE")
-    assert fee["result"] == "UNKNOWN" and "财务系统" in fee["evidence"]
+    assert fee["result"] == "UNKNOWN"
+    assert fee["owner"] == "FINANCE"
+    assert "财务" in fee["evidence"] and "不阻断" in fee["evidence"]
     # FEE 之外仍存在缺失正式证据的核心项时也必须保持异常，不得静默升级为 PASS。
     blocking_unknown = [
         i for i in d["items"]
