@@ -44,12 +44,14 @@ test.describe.serial('Golden rollout · Student Affairs discipline workbench · 
   let adminApi
   let caseRow
   let reason
+  let docNo
 
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
     const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
     const runId = String(rawRun).replace(/\D/g, '').slice(-10) || String(Date.now()).slice(-10)
     reason = `Playwright 隔离处分事实核验 ${runId}`
+    docNo = `PW-${runId}`
 
     const data = await adminApi.get('/students', { keyword: config.student.username, page: 1, pageSize: 50 })
     const student = items(data).find((row) => String(row.studentNo || row.loginName || '') === config.student.username)
@@ -62,7 +64,7 @@ test.describe.serial('Golden rollout · Student Affairs discipline workbench · 
       studentId: String(student.id || student.studentId),
       discType: 'WARNING',
       reason,
-      docNo: `PW-${runId}`
+      docNo
     })
     expect(caseRow?.caseId).toBeTruthy()
   })
@@ -80,7 +82,7 @@ test.describe.serial('Golden rollout · Student Affairs discipline workbench · 
     await expect(item).toBeVisible()
     await item.click()
     await expect(page.locator('.dp-detail')).toContainText(reason)
-    await expect(page.locator('.dp-detail')).toContainText(`PW-${runId}`)
+    await expect(page.locator('.dp-detail')).toContainText(docNo)
 
     await capture(page, testInfo, 'rollout-student-affairs-discipline-a')
   })

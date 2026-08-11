@@ -20,6 +20,7 @@
 @import './golden-message-center-rollout.css';
 @import './golden-message-governance-rollout.css';
 @import './golden-message-settings-rollout.css';
+@import './golden-message-campaign-records-rollout.css';
 
 /* Stage B / B3：管理端 <900px 仍必须可操作导航。
  * BasePortalLayout 旧规则会隐藏 rail + aside 并要求用户拉宽窗口；本覆盖层在全局样式最后加载，

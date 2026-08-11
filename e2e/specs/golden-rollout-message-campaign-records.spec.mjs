@@ -68,7 +68,7 @@ test.describe.serial('Golden rollout · message campaign record / detail · Batc
     expect(String(draft?.status || '').toUpperCase()).toBe('DRAFT')
   })
 
-  test('Message outbox real data state · Screenshot A', async ({ page }, testInfo) => {
+  test('Message outbox real data state · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/outbox')
 
@@ -85,24 +85,68 @@ test.describe.serial('Golden rollout · message campaign record / detail · Batc
     await expect(row).toContainText('草稿')
     await expect(row).toContainText('公告')
     await expect(row).toContainText('普通')
-    await expect(row.getByRole('button', { name: '详情', exact: true })).toBeVisible()
+    const detailButton = row.getByRole('button', { name: '详情', exact: true })
+    await expect(detailButton).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-message-campaign-outbox-a')
+    const tableStyle = await table.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { borderRadius: s.borderRadius, borderTopStyle: s.borderTopStyle, borderCollapse: s.borderCollapse }
+    })
+    expect(parseFloat(tableStyle.borderRadius)).toBeGreaterThanOrEqual(14)
+    expect(tableStyle.borderTopStyle).not.toBe('none')
+    expect(tableStyle.borderCollapse).toBe('separate')
+    const titleWeight = await row.locator('.mc-main').evaluate((el) => Number(getComputedStyle(el).fontWeight))
+    expect(titleWeight).toBeGreaterThanOrEqual(600)
+    const buttonRadius = await detailButton.evaluate((el) => parseFloat(getComputedStyle(el).borderRadius))
+    expect(buttonRadius).toBeGreaterThanOrEqual(8)
+
+    await capture(page, testInfo, 'rollout-message-campaign-outbox-b')
   })
 
-  test('Message campaign real draft detail · Screenshot A', async ({ page }, testInfo) => {
+  test('Message campaign real draft detail · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, `/admin/messages/outbox/${draft.campaignId}`)
 
     await expect(page).toHaveURL(new RegExp(`/admin/messages/outbox/${draft.campaignId}`))
     await expect(page.getByRole('heading', { name: '发布详情', exact: true })).toBeVisible()
-    await expect(page.locator('.mc-detail')).toBeVisible()
-    await expect(page.locator('.mc-detail h2')).toHaveText(title)
-    await expect(page.locator('.mc-meta')).toContainText('状态 草稿')
-    await expect(page.locator('.mc-meta')).toContainText('接收 0')
+    const detail = page.locator('.mc-detail')
+    const meta = page.locator('.mc-meta')
+    await expect(detail).toBeVisible()
+    await expect(detail.locator('h2')).toHaveText(title)
+    await expect(meta).toContainText('状态 草稿')
+    await expect(meta).toContainText('接收 0')
     await expect(page.locator('.mc-body')).toContainText('隔离浏览器验收')
     await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-message-campaign-detail-a')
+    const detailBox = await detail.boundingBox()
+    expect(detailBox?.width || 0).toBeGreaterThanOrEqual(1000)
+    const detailStyle = await detail.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { borderRadius: s.borderRadius, borderTopStyle: s.borderTopStyle }
+    })
+    expect(parseFloat(detailStyle.borderRadius)).toBeGreaterThanOrEqual(16)
+    expect(detailStyle.borderTopStyle).not.toBe('none')
+    const metaStyle = await meta.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { display: s.display, gridTemplateColumns: s.gridTemplateColumns }
+    })
+    expect(metaStyle.display).toBe('grid')
+    expect(metaStyle.gridTemplateColumns.split(' ').filter(Boolean).length).toBeGreaterThanOrEqual(5)
+
+    await capture(page, testInfo, 'rollout-message-campaign-detail-b')
+  })
+
+  test('Message campaign detail keeps a two-column metric contract at 1024px', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await openStaffWorkspace(page, adminApi, `/admin/messages/outbox/${draft.campaignId}`)
+
+    const detail = page.locator('.mc-detail')
+    const meta = page.locator('.mc-meta')
+    await expect(detail).toBeVisible()
+    const box = await detail.boundingBox()
+    expect(box?.width || 0).toBeGreaterThan(500)
+    expect(box?.width || 0).toBeLessThanOrEqual(760)
+    const cols = await meta.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length)
+    expect(cols).toBe(2)
   })
 })
