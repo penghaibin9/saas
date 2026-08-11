@@ -3,32 +3,20 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade); later 2026-08-11 retired 60 exact academic nodeids after current-HEAD MySQL validation of selection/recognition, archive/exam/calendar, scheduling/resource, and unchanged green core contracts; later 2026-08-11 retired 6 additional portal/static nodeids after narrowed current-HEAD validation; later 2026-08-11 retired 7 Tier1 smoke nodeids after 9/9 MySQL validation with formal term/course/READY-task identities.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade); later 2026-08-11 retired 60 exact academic nodeids after current-HEAD MySQL validation of selection/recognition, archive/exam/calendar, scheduling/resource, and unchanged green core contracts; later 2026-08-11 retired 6 additional portal/static nodeids after narrowed current-HEAD validation; later 2026-08-11 retired 7 Tier1 smoke nodeids after 9/9 MySQL validation with formal term/course/READY-task identities; later 2026-08-11 retired 12 student/static/entrypoint nodeids after current-HEAD MySQL probes reduced entrypoint 11->8 and student 11->2.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
 tests/test_aa_course.py::test_c9_disable_blocked_by_live_program_reference_then_allowed
-tests/test_aa_home_task_routes_v2.py::test_student_pc_has_task_home_and_independent_academic_routes
 tests/test_aa_main_migration_compat.py::test_academic_and_current_main_heads_are_joined_without_ddl
-tests/test_aa_mobile_grade_entry_v2.py::test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_report
 tests/test_aa_orgs.py::test_o3_class_adjust_moves_student
 tests/test_aa_orgs.py::test_o6_validation_and_guard
 tests/test_aa_program_tier1_r3.py::test_submit_rejects_when_total_credits_unset_or_course_sum_short
 tests/test_aa_semester_pilot_r11.py::test_public_services_load_r11_without_replacing_existing_domain_services
 tests/test_aa_semester_pilot_r11.py::test_r11_routes_are_registered_and_require_explicit_complete_action
-tests/test_aa_service_entrypoint_integrity.py::test_public_service_entrypoints_do_not_depend_on_import_order
 tests/test_aa_stage4_real_smoke.py::test_stage4_route_model_and_cross_module_contracts
 tests/test_aa_student_exam_public_facade.py::test_public_mobile_exam_facade_uses_safe_read_service
-tests/test_aa_student_exam_workspace.py::test_exam_route_uses_dedicated_page
-tests/test_aa_student_level_exam_workspace.py::test_level_exam_route_uses_dedicated_page
-tests/test_aa_student_major_split_workspace.py::test_major_split_route_uses_dedicated_page
-tests/test_aa_student_major_split_workspace.py::test_major_split_workspace_blocks_duplicate_choices_and_fake_result
-tests/test_aa_student_major_split_workspace.py::test_major_split_workspace_uses_real_batch_and_choice_contract
-tests/test_aa_student_makeup_workspace.py::test_makeup_route_uses_dedicated_page_not_legacy_subtab
 tests/test_aa_student_portal_design_tokens.py::test_academic_pages_do_not_use_unresolved_css_variables
-tests/test_aa_student_readonly_workspaces.py::test_readonly_routes_use_shared_fail_closed_view
-tests/test_aa_student_textbook_workspace.py::test_textbook_route_uses_dedicated_page
-tests/test_aa_student_transcript_safety.py::test_portal_package_exports_transcript_safety_facade
 tests/test_aa_warning.py::test_w4_scan_pushes_notice_to_student_and_counselor
 tests/test_aa_warning.py::test_w5_notifications_endpoint_lists_scoped_and_student_403
 tests/test_sa17_delivery_gaps.py::test_mobile_and_portal_leave_extend_self

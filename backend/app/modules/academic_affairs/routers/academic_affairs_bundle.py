@@ -45,22 +45,23 @@ def _mount_routes(parent: APIRouter, child: APIRouter, *,
     layer can make formal extension routes disappear from the final public route table.
     Copy the concrete child route objects instead; the application-level academic
     dependencies are still attached once by ``route_registration``.
+
+    Exact method/path shapes are unique at the final public surface.  Adapter/final
+    routers are mounted before the historical large router, so the first registered
+    shape is authoritative and later duplicates are dropped deterministically.  The
+    legacy ``skip_existing_shapes`` argument remains accepted for old callers but the
+    safety rule now applies to every duplicate shape, not only scheduling rules.
     """
-    if not skip_existing_shapes:
-        parent.routes.extend(list(child.routes))
-        return
+    del skip_existing_shapes
 
     def route_key(route):
         path = re.sub(r"\{[^/{}]+\}", "{}", getattr(route, "path", ""))
         return path, tuple(sorted(getattr(route, "methods", set()) or set()))
 
-    existing = {
-        route_key(route)
-        for route in parent.routes
-    }
+    existing = {route_key(route) for route in parent.routes}
     for route in child.routes:
         key = route_key(route)
-        if key[0] in skip_existing_shapes and key in existing:
+        if key in existing:
             continue
         parent.routes.append(route)
         existing.add(key)
