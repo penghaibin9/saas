@@ -106,3 +106,8 @@ academic_affairs_archive_immutable_guard.install(academic_affairs_archive_servic
 from . import academic_affairs_grade_correction_command
 
 academic_affairs_grade_correction_command.install()
+
+# 成绩审计普通教师必须按真实任务/记录对象归属裁决，禁止用展示姓名充当身份键。
+from . import academic_affairs_grade_audit_scope_guard
+
+academic_affairs_grade_audit_scope_guard.install()

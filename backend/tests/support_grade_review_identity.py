@@ -3,7 +3,7 @@
 成绩提交/发布已经 fail-closed：工作流节点必须解析到真实启用账号，正式成绩也必须冻结生效策略。
 本模块只为真库端到端测试种出与生产一致的最小事实图，不修改生产权限或策略判断：
 - 学院审核：学院 secretary_id 对应启用账号，并通过角色持有 academicAffairs.grade.collegeReview；
-- 学院数据范围：同一账号同时具有 ACTIVE 的 COLLEGE/SECRETARY 任职，供 build_affairs_context 解析；
+- 学院数据范围：college_admin01 具有显式 COLLEGE TeacherStudentScope，并保留组织任职事实；
 - 教务终审：唯一校级启用账号通过角色持有 academicAffairs.grade.publish，且不绑定学院范围；
 - 成绩更正：学院与校级受理人均持有 academicAffairs.gradeChange.review，再由生产 resolver 按学院绑定做职责分离；
 - 正式成绩：租户至少存在一条 ACTIVE BASE 策略，发布时仍由生产 resolver 正常解析并冻结快照。
@@ -134,7 +134,6 @@ def _ensure_base_grade_policy(db):
 
 
 def _ensure_college_assignment(db, user_id: int, college_id: int):
-    """学院秘书的显式任职事实；让生产 build_affairs_context 能解析到该学院的数据范围。"""
     from app.models import StaffAssignment
 
     effective_at = datetime(2020, 1, 1)
@@ -171,8 +170,36 @@ def _ensure_college_assignment(db, user_id: int, college_id: int):
     return row
 
 
+def _ensure_college_scope(db, college):
+    """build_affairs_context 的权威学院范围事实来自 TeacherStudentScope，而不是姓名或隐式任职猜测。"""
+    from app.models import TeacherStudentScope
+
+    row = db.query(TeacherStudentScope).filter(
+        TeacherStudentScope.tenant_id == TID,
+        TeacherStudentScope.teacher_key == "college_admin01",
+        TeacherStudentScope.role_code == "COLLEGE_ADMIN",
+        TeacherStudentScope.scope_type == "COLLEGE",
+        TeacherStudentScope.ref_value == college.college_name,
+        TeacherStudentScope.is_deleted.is_(False),
+    ).first()
+    if row is None:
+        row = TeacherStudentScope(
+            tenant_id=TID,
+            teacher_key="college_admin01",
+            role_code="COLLEGE_ADMIN",
+            scope_type="COLLEGE",
+            ref_value=college.college_name,
+            status="ACTIVE",
+        )
+        db.add(row)
+    else:
+        row.status = "ACTIVE"
+    db.flush()
+    return row
+
+
 def seed_grade_review_identity(db, *, college_ids=()):
-    """种出成绩审核/更正两级真实受理人、学院绑定/任职和 ACTIVE BASE 成绩策略。"""
+    """种出成绩审核/更正两级真实受理人、学院范围/任职和 ACTIVE BASE 成绩策略。"""
     from app.models import College
 
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
@@ -183,5 +210,6 @@ def seed_grade_review_identity(db, *, college_ids=()):
         if college is not None:
             college.secretary_id = int(college_user.id)
             _ensure_college_assignment(db, int(college_user.id), int(college.id))
+            _ensure_college_scope(db, college)
     db.flush()
     return {name: int(user.id) for name, user in users.items()}

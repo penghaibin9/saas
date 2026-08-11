@@ -1,10 +1,12 @@
-"""教务中心 · 移动端调停课（新聚合 affairs_academic_my_schedule + submit/cancel/conflict-check
-包装 + get_change 归属校验补丁）。全部经 HTTP client 走真库(db_mode)。PC 端既有
-test_aa_schedule_change.py 已覆盖 submit/cancel/conflict_check 本身的越权拦截；本文件专门覆盖
-移动端「我的课表」选课位聚合（此前无测试覆盖）、移动端提交/撤销全链路，以及移动端在
-get_change 上新补的归属校验（PC 端 get_change 本身完全没有归属校验，这是移动端主动收紧）。
+"""教务中心 · 移动端调停课。
+
+移动端继续只包装正式调停课能力；测试夹具必须与 PC 权威合同一致：真实组织树、正式已发布学期、
+READY 教学任务、课位回链 taskId，并先 pre-publish 再 publish。不能用 termId=1 / major_id=1
+等旧最小夹具让正式前置校验提前失败。
 """
 from __future__ import annotations
+
+from datetime import date, timedelta
 
 MOB = "/api/v1/mobile"
 BASE = "/api/v1/academic-affairs"
@@ -19,36 +21,128 @@ def _hdr(client, login_name):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass
+    from app.models import College, Major, SchoolClass
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2801", grade="2028", status="ACTIVE")
-    db.add(a); db.flush()
-    ids = {"class": a.id}
+    col = College(tenant_id=TID, college_name="移动调停课学院", status="ACTIVE")
+    db.add(col); db.flush()
+    major = Major(tenant_id=TID, college_id=col.id, major_name="移动调停课软件技术", status="ACTIVE")
+    db.add(major); db.flush()
+    klass = SchoolClass(
+        tenant_id=TID, major_id=major.id, class_name="软件2801", grade="2028", status="ACTIVE",
+    )
+    db.add(klass); db.flush()
+    ids = {"class": int(klass.id)}
     db.commit(); db.close()
     return ids
 
 
+def _term(client, hdr):
+    start = date(2028, 9, 1)
+    created = client.post(f"{BASE}/terms", headers=hdr, json={
+        "yearCode": "2028-2029", "termNo": 1, "termName": "移动调停课回归学期",
+        "startDate": start.isoformat(), "endDate": (start + timedelta(days=200)).isoformat(),
+        "teachingWeeks": 18,
+    })
+    assert created.status_code == 200, created.text
+    term_id = created.json()["data"]["termId"]
+    published = client.post(f"{BASE}/terms/{term_id}/publish", headers=hdr)
+    assert published.status_code == 200, published.text
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaTimeSlot
+
+    db = get_sessionmaker()()
+    for slot_no, start_time, end_time in [(1, "08:00", "08:45"), (2, "08:55", "09:40")]:
+        row = db.query(AaTimeSlot).filter(
+            AaTimeSlot.tenant_id == TID,
+            AaTimeSlot.slot_no == slot_no,
+            AaTimeSlot.is_deleted.is_(False),
+        ).first()
+        if row is None:
+            db.add(AaTimeSlot(
+                tenant_id=TID, slot_no=slot_no, slot_name=f"第{slot_no}节",
+                start_time=start_time, end_time=end_time, enabled=True, status="ENABLED",
+            ))
+        else:
+            row.start_time, row.end_time = start_time, end_time
+            row.enabled, row.status = True, "ENABLED"
+    db.commit(); db.close()
+    return str(term_id)
+
+
 def _batch(client, hdr):
-    return client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": "1"}).json()["data"]["batchId"]
+    term_id = _term(client, hdr)
+    response = client.post(f"{BASE}/schedule-batches", headers=hdr, json={"termId": term_id})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["batchId"]
+
+
+def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
+    from app.db.session import get_sessionmaker
+    from app.models import (AaCourse, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch,
+                            Major, SchoolClass)
+    from tests.support_schedule_change_identity import seed_schedule_change_identity
+
+    db = get_sessionmaker()()
+    schedule_batch = db.get(AaScheduleBatch, int(bid))
+    assert schedule_batch is not None
+    cls = db.get(SchoolClass, int(class_id))
+    assert cls is not None
+    major = db.get(Major, int(cls.major_id)) if cls.major_id else None
+    assert major is not None and major.college_id
+    college_id = int(major.college_id)
+    seed_schedule_change_identity(db, college_ids=[college_id])
+
+    seq = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID).count() + 201
+    course_code = f"MSC{seq:03d}"
+    course = AaCourse(
+        tenant_id=TID, course_code=course_code, course_name=course_name,
+        nature="REQUIRED", credit=4, status="ENABLED",
+    )
+    db.add(course); db.flush()
+    task_batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=int(schedule_batch.term_id),
+        batch_name=f"移动调停课教学任务批次-{seq}", college_id=college_id, status="APPROVED",
+    )
+    db.add(task_batch); db.flush()
+    task = AaTeachingTask(
+        tenant_id=TID, batch_id=task_batch.id, course_id=course.id,
+        course_code=course_code, course_name=course_name,
+        class_id=int(class_id), teaching_class_name=cls.class_name,
+        teacher_key=teacher_key, teacher_name=teacher_name,
+        status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
+    )
+    db.add(task); db.flush()
+    task_id = int(task.id)
+    db.commit(); db.close()
+    return task_id
 
 
 def _item(client, hdr, bid, class_id, **kw):
     body = {"weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
             "teacherKey": "academic01", "teacherName": "赵敏", "classId": str(class_id),
-            "className": "软件2801", "classroom": "A101", "courseName": "高等数学", **kw}
-    return client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body).json()["data"]["itemId"]
+            "className": "软件2801", "classroom": "A101", "courseName": "高等数学"}
+    body.update(kw)
+    body["taskId"] = str(_ready_task(
+        bid, int(body["classId"]), body["teacherKey"], body["teacherName"], body["courseName"]
+    ))
+    response = client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["itemId"]
 
 
 def _published_item(client, hdr, cid, teacher_key="academic01", teacher_name="赵敏"):
     bid = _batch(client, hdr)
     origin = _item(client, hdr, bid, cid, teacherKey=teacher_key, teacherName=teacher_name)
-    client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    prepublished = client.post(f"{BASE}/schedule-batches/{bid}/pre-publish", headers=hdr)
+    assert prepublished.status_code == 200, prepublished.text
+    published = client.post(f"{BASE}/schedule-batches/{bid}/publish", headers=hdr)
+    assert published.status_code == 200, published.text
     return bid, origin
 
 
 def test_my_schedule_via_mobile(client, db_mode):
-    """「我的课表」聚合（供选原课位，此前完全没有测试经由 mobile 路径覆盖）：academic01
-    可见自己的课位，self_key 推导（userId 优先/无则 loginName）与 PC 端「查看本人课表」同口径。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
@@ -59,7 +153,6 @@ def test_my_schedule_via_mobile(client, db_mode):
 
 
 def test_conflict_check_and_submit_flow_via_mobile(client, db_mode):
-    """预检无冲突 → 提交成功 → 台账列表可见；预检与提交共用同一归属校验口径。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
@@ -79,7 +172,6 @@ def test_conflict_check_and_submit_flow_via_mobile(client, db_mode):
 
 
 def test_cancel_flow_via_mobile(client, db_mode):
-    """SUBMITTED 状态下移动端可撤销 → CANCELLED。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
@@ -94,7 +186,6 @@ def test_cancel_flow_via_mobile(client, db_mode):
 
 
 def test_cross_scope_submit_403_via_mobile(client, db_mode):
-    """越权：非本人课位发起调停课 → 403 NO_DATA_SCOPE（复用 PC submit 内部范围校验）。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"], teacher_key="other_teacher", teacher_name="他人")
@@ -106,8 +197,6 @@ def test_cross_scope_submit_403_via_mobile(client, db_mode):
 
 
 def test_detail_ownership_guard_via_mobile(client, db_mode):
-    """移动端新补的 get_change 归属校验：本人可查自己的单据详情；无关教师查他人单据详情 → 403
-    （PC 端 get_change 本身对此完全没有校验，这是移动端主动收紧，不改 PC 行为）。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])

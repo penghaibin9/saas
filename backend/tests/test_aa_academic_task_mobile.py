@@ -43,8 +43,8 @@ def _seed(db_mode):
     klass = SchoolClass(
         tenant_id=TID,
         major_id=major.id,
-        class_name=f"软件270{seq}",
-        grade="2027",
+        class_name=f"软件260{seq}",
+        grade="2026",
         status="ACTIVE",
     )
     db.add(klass); db.flush()
@@ -71,9 +71,9 @@ def _enabled_course(client, hdr, code):
 
 def _published_bound_program(client, hdr, course_id, class_id, major_id):
     created = client.post(f"{BASE}/programs", headers=hdr, json={
-        "programName": f"软件技术2027方案-{course_id}",
+        "programName": f"软件技术2026方案-{course_id}",
         "majorId": str(major_id),
-        "gradeYear": "2027",
+        "gradeYear": "2026",
         "totalCredits": 4,
     })
     assert created.status_code == 200, created.text
@@ -93,12 +93,12 @@ def _published_bound_program(client, hdr, course_id, class_id, major_id):
     academic = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
     bound = client.post(f"{BASE}/programs/{pid}/bind", headers=hdr, json={
-        "gradeYear": "2027", "classId": str(class_id)})
+        "gradeYear": "2026", "classId": str(class_id)})
     assert bound.status_code == 200, bound.text
     return pid
 
 
-def _term(client, hdr, year="2031-2032"):
+def _term(client, hdr, year="2026-2027"):
     start_year = int(year[:4])
     start = date(start_year, 9, 1)
     created = client.post(f"{BASE}/terms", headers=hdr, json={
@@ -121,10 +121,7 @@ def _assigned_task(client, hdr, code, class_id, major_id,
     """正式建课→方案→学期→生成批次→分配给指定教师，返回 taskId。"""
     cid = _enabled_course(client, hdr, code)
     _published_bound_program(client, hdr, cid, class_id, major_id)
-    digits = "".join(ch for ch in code if ch.isdigit())
-    offset = int(digits[-1]) if digits else 1
-    start_year = 2030 + offset
-    tid = _term(client, hdr, year=f"{start_year}-{start_year + 1}")
+    tid = _term(client, hdr)
     generated = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
                             json={"termId": str(tid)})
     assert generated.status_code == 200, generated.text
