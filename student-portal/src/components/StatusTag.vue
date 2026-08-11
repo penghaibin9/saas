@@ -4,7 +4,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { localizeVisibleEnumText } from '../services/visibleEnumLocalization'
+import { safeVisibleEnumLabel } from '../services/visibleEnumLocalization'
 
 const props = defineProps({
   status: { type: String, default: '' },
@@ -54,8 +54,10 @@ const STATUS_MAP = {
 }
 
 const mapped = computed(() => STATUS_MAP[String(props.status || '').toUpperCase()] || null)
-const rawDisplayText = computed(() => props.text || (mapped.value ? mapped.value[0] : props.status) || '—')
-// StatusTag 是明确的状态展示组件，只对整个状态值做精确映射，不改写普通正文。
-const displayText = computed(() => localizeVisibleEnumText(rawDisplayText.value))
+const displayText = computed(() => {
+  if (props.text && (!props.status || props.text !== props.status)) return props.text
+  if (mapped.value) return mapped.value[0]
+  return safeVisibleEnumLabel(props.status, '状态待确认')
+})
 const displayTone = computed(() => props.tone || (mapped.value ? mapped.value[1] : 'default'))
 </script>

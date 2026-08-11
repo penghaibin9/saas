@@ -35,12 +35,14 @@ test('student graduation always shows shared evaluator self-check even before fo
   assert.doesNotMatch(source, /availableResolutions\s*=|availableResolutions\.push/)
 })
 
-test('student decision card hides audit metadata unless audience is teacher/admin', () => {
+test('student decision card hides audit metadata and technical details require advanced audience', () => {
   const source = read('src/components/MobileAcademicDecisionCard.vue')
   assert.match(source, /audience:\s*\{\s*type:\s*Object|audience:\s*\{\s*type:\s*String/)
-  assert.match(source, /this\.audience === 'teacher' \|\| this\.audience === 'admin'/)
+  assert.match(source, /showRuleMeta\(\) \{ return this\.audience !== 'student' \}/)
+  assert.match(source, /this\.audience === 'admin' \|\| this\.audience === 'platformAdmin'/)
   assert.match(source, /this\.trace\.availableResolutions/)
   assert.match(source, /结果来自学校业务规则实时校验/)
-  assert.match(source, /v-if="showAuditMeta"/)
+  assert.match(source, /v-if="showRuleMeta"/)
+  assert.match(source, /canViewTechnicalMeta && technicalOpen/)
   assert.doesNotMatch(source, /tenantId|rawScope|permissionCodes|sql/i)
 })

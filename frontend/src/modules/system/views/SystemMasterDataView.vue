@@ -53,14 +53,14 @@
             <DataTable :columns="domainColumns" :rows="domains" row-key="domainCode">
               <template #cell-domain="{ row }">
                 <div class="mp-cell-main">{{ row.domainName }}</div>
-                <div class="mp-cell-sub">{{ row.domainCode }} · 归属 {{ row.ownerModule }}</div>
+                <div class="mp-cell-sub">归属 {{ moduleLabel(row.ownerModule) }}</div>
               </template>
               <template #cell-source="{ row }">
-                <span class="mp-cell-sub">{{ row.authoritativeTable }}</span>
+                <span class="mp-cell-sub">{{ sourceLabel(row) }}</span>
               </template>
               <template #cell-owner="{ row }">
                 <StatusTag :type="row.hasOwner ? 'success' : 'danger'"
-                           :label="row.hasOwner ? ('userId ' + row.ownerUserId) : '未指定'" dot />
+                           :label="row.hasOwner ? ownerLabel(row) : '未指定'" dot />
               </template>
               <template #cell-score="{ row }">
                 <StatusTag :type="scoreTone(row.qualityScore)" :label="String(row.qualityScore)" dot />
@@ -83,15 +83,15 @@
                         description="先指定数据域责任人，再执行一次质量扫描" />
             <DataTable v-else :columns="issueColumns" :rows="issues" row-key="issueId">
               <template #cell-issue="{ row }">
-                <div class="mp-cell-main">{{ row.summary }}</div>
-                <div class="mp-cell-sub">{{ row.domainCode }} · {{ row.ruleCode }}</div>
+                <div class="mp-cell-main">{{ issueSummaryText(row) }}</div>
+                <div class="mp-cell-sub">{{ domainLabel(row.domainCode) }} · 数据质量检查</div>
               </template>
               <template #cell-severity="{ row }">
-                <StatusTag :type="severityTone(row.severity)" :label="row.severity" dot />
+                <StatusTag :type="severityTone(row.severity)" :label="severityLabel(row.severity)" dot />
               </template>
               <template #cell-status="{ row }">
-                <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
-                <div v-if="row.verifyResult" class="mp-cell-sub">复扫 {{ row.verifyResult }}</div>
+                <StatusTag :type="statusTone(row.status)" :label="issueStatusLabel(row.status)" dot />
+                <div v-if="row.verifyResult" class="mp-cell-sub">复扫 {{ verifyLabel(row.verifyResult) }}</div>
               </template>
               <template #cell-sla="{ row }">
                 <div class="mp-cell-sub">{{ row.dueAt || '无 SLA' }}</div>
@@ -121,8 +121,8 @@
       @confirm="submit"
     >
       <label v-if="pendingAction === 'assign' || pendingAction === 'owner'" class="md-field">
-        责任人 userId
-        <input v-model.trim="ownerInput" class="md-input" placeholder="填写账号 userId（纯数字）" />
+        责任人
+        <AppRemoteSelect v-model="ownerInput" :remote-search="searchUsers" placeholder="选择责任人" search-placeholder="按姓名 / 工号搜索" />
       </label>
       <template v-if="pendingAction === 'except'">
         <label class="md-field">
@@ -130,8 +130,8 @@
           <input v-model.trim="untilInput" class="md-input" placeholder="YYYY-MM-DD" />
         </label>
         <label class="md-field">
-          审批人 userId
-          <input v-model.trim="approverInput" class="md-input" placeholder="填写审批人 userId" />
+          审批人
+          <AppRemoteSelect v-model="approverInput" :remote-search="searchUsers" placeholder="选择审批人" search-placeholder="按姓名 / 工号搜索" />
         </label>
       </template>
     </AppConfirmDialog>
@@ -141,14 +141,31 @@
 <script>
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppRemoteSelect } from '@/components/common'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { safeEnumLabel } from '@/utils/presentationSafety'
+
+const MODULE_LABEL = { studentAffairs: '学生工作', systemAdmin: '系统管理', academicAffairs: '教务管理', dataExchange: '数据交换' }
+const SOURCE_LABEL = {
+  t_student_profile: '学生主档',
+  't_college / t_major / t_school_class': '学院、专业与班级主数据',
+  't_user / t_student_account_link': '账号与身份档案'
+}
+const RULE_LABEL = {
+  ORG_DUPLICATE_CODE: '组织编码重复', CLASS_MISSING_COUNSELOR: '班级缺少辅导员',
+  STUDENT_MISSING_CLASS: '学生尚未关联班级', STUDENT_DUPLICATE_NAME_IN_CLASS: '同班同名记录待核验',
+  ACCOUNT_BROKEN_BINDING: '账号与学籍关联异常'
+}
+const SEVERITY_LABEL = { P0: '阻断', P1: '高', P2: '一般', CRITICAL: '阻断', HIGH: '高', MEDIUM: '一般', LOW: '提示' }
+const ISSUE_STATUS_LABEL = { OPEN: '待处理', ASSIGNED: '已指派', RESOLVED: '待复扫', VERIFIED: '已闭环', EXCEPTED: '例外中' }
+const VERIFY_LABEL = { GONE: '问题已消除', STILL_EXISTS: '问题仍存在', PASSED: '已通过', FAILED: '未通过' }
 
 export default {
   name: 'SystemMasterDataView',
   components: {
     ModulePageShell, ModuleToolbar, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppConfirmDialog
+    LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppRemoteSelect
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -159,6 +176,7 @@ export default {
       domainsWithoutOwner: [],
       issues: [],
       issueSummary: {},
+      directoryUsers: [],
       dialogOpen: false,
       submitting: false,
       pendingAction: '',
@@ -177,7 +195,7 @@ export default {
         { key: 'issue', title: '问题' },
         { key: 'severity', title: '严重度' },
         { key: 'status', title: '状态' },
-        { key: 'sla', title: 'SLA' },
+        { key: 'sla', title: '处理时限' },
         { key: 'ops', title: '操作' }
       ]
     }
@@ -208,6 +226,32 @@ export default {
   },
   created() { this.load() },
   methods: {
+    moduleLabel(value) { return safeEnumLabel({ value, dictionary: MODULE_LABEL, unknownLabel: '相关业务模块' }) },
+    sourceLabel(row) { return row.authoritativeSourceName || safeEnumLabel({ value: row.authoritativeTable, dictionary: SOURCE_LABEL, unknownLabel: '业务主数据来源' }) },
+    severityLabel(value) { return safeEnumLabel({ value, dictionary: SEVERITY_LABEL, unknownLabel: '严重度待确认' }) },
+    issueStatusLabel(value) { return safeEnumLabel({ value, dictionary: ISSUE_STATUS_LABEL, unknownLabel: '状态待确认' }) },
+    verifyLabel(value) { return safeEnumLabel({ value, dictionary: VERIFY_LABEL, unknownLabel: '结果待确认' }) },
+    domainLabel(code) { return this.domains.find((row) => row.domainCode === code)?.domainName || '业务数据域' },
+    ownerLabel(row) {
+      if (row.ownerName) return row.ownerNo ? `${row.ownerName}（${row.ownerNo}）` : row.ownerName
+      const user = this.directoryUsers.find((item) => String(item.id) === String(row.ownerUserId))
+      return user ? `${user.name || user.realName || '责任人'}（${user.userNo || user.loginName || '工号待同步'}）` : '责任人信息待同步'
+    },
+    issueSummaryText(row) {
+      const label = safeEnumLabel({ value: row.ruleCode, dictionary: RULE_LABEL, unknownLabel: '待处理的数据质量问题' })
+      const count = Number(row.evidence?.count)
+      return Number.isFinite(count) && count > 0 ? `${label}（涉及 ${count} 项）` : label
+    },
+    userOptions(rows) {
+      return (rows || []).map((user) => ({ value: user.id, label: user.name || user.realName || '姓名待同步', desc: user.userNo || user.loginName || '工号待同步', disabled: !user.name && !user.realName }))
+    },
+    async searchUsers(keyword) {
+      const res = await systemApi.getUsers({ keyword, pageSize: 50 })
+      if (res.code !== 0) throw new Error('人员目录暂时无法读取')
+      const rows = res.data?.list || []
+      this.directoryUsers = [...this.directoryUsers.filter((known) => !rows.some((row) => String(row.id) === String(known.id))), ...rows]
+      return this.userOptions(rows)
+    },
     scoreTone(score) {
       const n = Number(score) || 0
       if (n >= 90) return 'success'
@@ -258,7 +302,7 @@ export default {
       if (this.pendingAction === 'owner') {
         if (!/^\d+$/.test(this.ownerInput)) {
           this.submitting = false
-          return toast.error('请填写责任人 userId（纯数字）')
+          return toast.error('请选择责任人')
         }
         res = await systemApi.setMasterDataOwner(row.domainCode, {
           ownerUserId: this.ownerInput, reason
@@ -266,7 +310,7 @@ export default {
       } else if (this.pendingAction === 'assign') {
         if (!/^\d+$/.test(this.ownerInput)) {
           this.submitting = false
-          return toast.error('请填写责任人 userId（纯数字）')
+          return toast.error('请选择责任人')
         }
         res = await systemApi.assignMasterDataIssue(row.issueId, {
           ownerUserId: this.ownerInput, reason, expectedVersion: row.version
@@ -278,7 +322,7 @@ export default {
       } else {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(this.untilInput) || !/^\d+$/.test(this.approverInput)) {
           this.submitting = false
-          return toast.error('例外必须填写到期日（YYYY-MM-DD）与审批人 userId')
+          return toast.error('例外必须填写到期日并选择审批人')
         }
         res = await systemApi.exceptMasterDataIssue(row.issueId, {
           reason, until: this.untilInput, approvedBy: this.approverInput,
@@ -302,9 +346,10 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const [domains, issues] = await Promise.all([
+      const [domains, issues, users] = await Promise.all([
         systemApi.listMasterDataDomains(),
-        systemApi.listMasterDataIssues()
+        systemApi.listMasterDataIssues(),
+        systemApi.getUsers({ pageSize: 100 })
       ])
       if (domains.code === 0) {
         this.domains = domains.data.list || []
@@ -314,6 +359,7 @@ export default {
         this.issues = issues.data.list || []
         this.issueSummary = issues.data.summary || {}
       } else if (!this.error) this.error = issues.message
+      if (users.code === 0) this.directoryUsers = users.data?.list || []
       this.loading = false
     }
   }

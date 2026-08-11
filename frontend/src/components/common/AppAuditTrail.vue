@@ -8,19 +8,19 @@
 
     <!-- error -->
     <div v-else-if="error" class="app-audit-trail__state is-error">
-      <span>⚠ {{ error }}</span>
+      <span>⚠ {{ safeError }}</span>
       <button type="button" class="app-audit-trail__retry" @click="$emit('retry')">重试</button>
     </div>
 
     <!-- empty -->
-    <div v-else-if="!records.length" class="app-audit-trail__state is-empty">
+    <div v-else-if="!safeRecords.length" class="app-audit-trail__state is-empty">
       {{ emptyText }}
     </div>
 
     <!-- list -->
     <ol v-else class="app-audit-trail__list">
       <li
-        v-for="(r, i) in records"
+        v-for="(r, i) in safeRecords"
         :key="r.id || i"
         class="app-audit-trail__item"
         :class="`is-${resultKind(r)}`"
@@ -28,19 +28,19 @@
         <span class="app-audit-trail__node" />
         <div class="app-audit-trail__body">
           <div class="app-audit-trail__line">
-            <span class="app-audit-trail__action">{{ r.action || '—' }}</span>
+            <span class="app-audit-trail__action">{{ r.displayAction }}</span>
             <span v-if="r.result" class="app-audit-trail__result" :class="`is-${resultKind(r)}`">
-              {{ r.result }}
+              {{ r.displayResult }}
             </span>
           </div>
           <div class="app-audit-trail__meta">
             <span v-if="r.actor" class="app-audit-trail__actor">
-              {{ r.actor }}<template v-if="r.actorRole"> · {{ r.actorRole }}</template>
+              {{ r.actor }}<template v-if="r.actorRole"> · {{ r.displayRole }}</template>
             </span>
-            <span v-if="r.target"> · {{ r.target }}</span>
+            <span v-if="r.target"> · {{ r.displayTarget }}</span>
             <span v-if="r.at" class="app-audit-trail__time"> · {{ fmtTime(r.at) }}</span>
           </div>
-          <div v-if="r.reason" class="app-audit-trail__reason">事由：{{ r.reason }}</div>
+          <div v-if="r.reason" class="app-audit-trail__reason">事由：{{ r.displayReason }}</div>
           <div v-if="showIp && r.ip" class="app-audit-trail__ip">IP {{ r.ip }}</div>
         </div>
       </li>
@@ -65,6 +65,7 @@
  * Emits: retry（error 态点击重试）
  */
 import { formatDateTime } from '@/utils/dateUtils'
+import { normalizeUiError, presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'AppAuditTrail',
@@ -74,7 +75,15 @@ export default {
     error: { type: String, default: '' },
     emptyText: { type: String, default: '暂无操作记录' },
     compact: { type: Boolean, default: false },
-    showIp: { type: Boolean, default: true }
+    showIp: { type: Boolean, default: false }
+  },
+  computed: {
+    safeRecords() {
+      return this.records.map((record) => presentAuditRecord(record))
+    },
+    safeError() {
+      return normalizeUiError(this.error, { fallback: '操作记录暂时无法加载' }).userMessage
+    }
   },
   emits: ['retry'],
   methods: {

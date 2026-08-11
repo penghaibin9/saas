@@ -91,7 +91,7 @@
               <div class="adb-issue-head">
                 <div>
                   <h3>{{ item.title }}</h3>
-                  <code>{{ item.ruleCode }}</code>
+                  <small>业务检查项</small>
                 </div>
                 <strong>{{ item.count || 0 }} 项</strong>
               </div>
@@ -120,7 +120,7 @@
           <article v-for="item in allItems" :key="item.key" class="adb-all-card" :class="severityClass(item)">
             <header>
               <span>{{ item.severity === 'BLOCKER' ? '阻断' : '风险' }}</span>
-              <code>{{ item.ruleCode }}</code>
+              <small>业务检查项</small>
             </header>
             <h3>{{ item.title }}</h3>
             <p>{{ item.summary }}</p>
@@ -202,7 +202,7 @@
           <AppSectionCard title="学业预警" :subtitle="`待处置 ${warningReminders.count || 0} 条`">
             <ul class="adb-compact-list">
               <li v-for="row in (warningReminders.items || []).slice(0, 5)" :key="row.warningId">
-                <span>{{ row.level }}</span>
+                <span>{{ warningLevelLabel(row.level) }}</span>
                 <strong>{{ row.studentName }} · {{ row.reason }}</strong>
               </li>
             </ul>
@@ -229,6 +229,9 @@ import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppTermEntityPicker, AppG2Chart } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsDashboardReadinessApi as readinessApi } from '@/modules/academicAffairs/api/academic-affairs-dashboard-readiness.api'
+import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
+
+const WARNING_LEVEL_LABEL = { LOW: '一般关注', MEDIUM: '重点关注', HIGH: '高风险', CRITICAL: '紧急关注' }
 
 export default {
   name: 'AaDashboardView',
@@ -257,9 +260,9 @@ export default {
     }
   },
   computed: {
-    readinessStatus() { return this.readiness.status || 'BLOCKED' },
-    topItems() { return Array.isArray(this.readiness.topItems) ? this.readiness.topItems : [] },
-    allItems() { return Array.isArray(this.readiness.items) ? this.readiness.items : [] },
+    readinessStatus() { return ['NORMAL', 'RISK', 'BLOCKED'].includes(this.readiness.status) ? this.readiness.status : 'BLOCKED' },
+    topItems() { return (Array.isArray(this.readiness.topItems) ? this.readiness.topItems : []).map(this.presentReadinessItem) },
+    allItems() { return (Array.isArray(this.readiness.items) ? this.readiness.items : []).map(this.presentReadinessItem) },
     activeTodos() { return (this.todos || []).filter((row) => Number(row.count || 0) > 0) },
     todayTeachingSubtitle() {
       const row = this.todayTeaching || {}
@@ -315,6 +318,18 @@ export default {
   },
   created() { this.reloadAll() },
   methods: {
+    presentReadinessItem(item, index) {
+      return {
+        ...item,
+        key: item?.key || `readiness-${index}`,
+        title: safeBusinessMessage(item?.title, '待处理业务事项'),
+        summary: safeBusinessMessage(item?.summary, '请进入责任页面查看并处理'),
+        ownerRole: safeBusinessMessage(item?.ownerRole, '待明确'),
+        deadlineLabel: safeBusinessMessage(item?.deadlineLabel, '未配置明确截止时间'),
+        severity: item?.severity === 'BLOCKER' ? 'BLOCKER' : 'RISK'
+      }
+    },
+    warningLevelLabel(level) { return safeEnumLabel({ value: level, dictionary: WARNING_LEVEL_LABEL, unknownLabel: '风险等级待确认' }) },
     severityClass(item) { return item.severity === 'BLOCKER' ? 'is-blocker' : 'is-risk' },
     notify(message, type = 'info') {
       const channel = this.$message && this.$message[type]

@@ -25,21 +25,15 @@
           <div class="mp-card__body">
             <div class="ag-form">
               <div>
-                <label class="ag-label">动作权限码<span class="ag-required">*</span></label>
-                <input v-model="explain.actionCode" class="mp-input" placeholder="如 systemAdmin.role.view" />
-              </div>
-              <div>
-                <label class="ag-label">组织类型（可选）</label>
-                <select v-model="explain.scopeTargetType" class="mp-input">
-                  <option value="">不判数据范围</option>
-                  <option value="COLLEGE">学院</option>
-                  <option value="MAJOR">专业</option>
-                  <option value="CLASS">班级</option>
+                <label class="ag-label">业务动作<span class="ag-required">*</span></label>
+                <select v-model="explain.actionCode" class="mp-input">
+                  <option value="">请选择要解释的功能动作</option>
+                  <option v-for="option in permissionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </div>
               <div>
-                <label class="ag-label">组织 id（可选）</label>
-                <input v-model="explain.scopeTargetId" class="mp-input" />
+                <label class="ag-label">业务范围（可选）</label>
+                <AppOrgCascader v-model="explain.orgPath" :remote-load="loadOrgTree" @change="onExplainOrgChange" />
               </div>
             </div>
             <AppButton
@@ -55,7 +49,7 @@
                 {{ explain.result.decision === 'ALLOW' ? '允许' : '拒绝' }}
                 <span class="ag-verdict__reason">{{ reasonLabel(explain.result.reasonCode) }}</span>
               </div>
-              <p class="mp-note">追踪号 {{ explain.result.traceId }}（真实 403 也会带上它，可据此复现）</p>
+              <details v-if="explain.result.traceId" class="mp-note"><summary>问题定位信息</summary>支持编号：{{ explain.result.traceId }}</details>
               <table class="mp-audit" style="margin-top: var(--space-2)">
                 <thead><tr><th style="width: 200px">判定层</th><th style="width: 90px">结果</th><th>说明</th></tr></thead>
                 <tbody>
@@ -79,9 +73,9 @@
               <thead><tr><th>动作</th><th style="width: 180px">原因</th><th style="width: 130px">角色</th><th style="width: 160px">时间</th></tr></thead>
               <tbody>
                 <tr v-for="d in denials" :key="d.traceId">
-                  <td class="is-who">{{ d.actionCode }}</td>
+                  <td class="is-who">{{ permissionLabel(d.actionCode) }}</td>
                   <td>{{ reasonLabel(d.reasonCode) }}</td>
-                  <td>{{ d.activeRole || '—' }}</td>
+                  <td>{{ roleLabel(d.activeRole) }}</td>
                   <td class="mp-cell-sub">{{ fmt(d.occurredAt) }}</td>
                 </tr>
               </tbody>
@@ -96,16 +90,16 @@
         <section class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">职责分离规则</span>
-            <AppButton variant="primary" size="small" @click="sodForm.open = true">新增规则</AppButton>
+            <AppButton variant="primary" size="small" @click="openSodForm">新增规则</AppButton>
           </header>
           <div class="mp-card__body" style="padding-top: 0">
             <table class="mp-audit">
               <thead><tr><th style="width: 140px">规则</th><th>不得兼任的两个角色</th><th style="width: 90px">严重度</th><th>理由</th></tr></thead>
               <tbody>
                 <tr v-for="r in sod.rules" :key="r.ruleCode">
-                  <td class="is-who">{{ r.ruleCode }}</td>
-                  <td>{{ r.roleA }} ✕ {{ r.roleB }}</td>
-                  <td>{{ r.severity }}</td>
+                  <td class="is-who">{{ r.ruleName || '职责冲突规则' }}</td>
+                  <td>{{ roleLabel(r.roleA) }} ✕ {{ roleLabel(r.roleB) }}</td>
+                  <td>{{ severityLabel(r.severity) }}</td>
                   <td class="mp-cell-sub">{{ r.reason }}</td>
                 </tr>
               </tbody>
@@ -121,14 +115,14 @@
               <thead><tr><th style="width: 140px">规则</th><th style="width: 120px">人员</th><th>持有角色</th><th style="width: 90px">状态</th></tr></thead>
               <tbody>
                 <tr v-for="v in sod.violations" :key="v.ruleCode + v.subjectUserId">
-                  <td class="is-who">{{ v.ruleCode }}</td>
-                  <td>{{ v.subjectUserId }}</td>
-                  <td class="mp-cell-sub">{{ (v.roles || []).join('、') }}</td>
-                  <td><StatusTag type="danger" :label="v.status" /></td>
+                  <td class="is-who">{{ v.ruleName || '职责冲突规则' }}</td>
+                  <td>{{ userLabel(v.subjectUserId, v) }}</td>
+                  <td class="mp-cell-sub">{{ (v.roles || []).map(roleLabel).join('、') || '角色信息待同步' }}</td>
+                  <td><StatusTag type="danger" :label="violationStatusLabel(v.status)" /></td>
                 </tr>
               </tbody>
             </table>
-            <p class="mp-note">检出的冲突在后端会被真实拦截（403），不是只在这里提示。</p>
+            <p class="mp-note">检出的冲突会阻止相关人员继续执行不相容职责。</p>
           </div>
         </section>
       </template>
@@ -151,12 +145,12 @@
               </thead>
               <tbody>
                 <tr v-for="e in emergency" :key="e.sessionCode">
-                  <td class="is-who">{{ e.subjectUserId }}</td>
-                  <td>{{ e.grantedRole }}</td>
+                  <td class="is-who">{{ userLabel(e.subjectUserId, e) }}</td>
+                  <td>{{ roleLabel(e.grantedRole) }}</td>
                   <td class="mp-cell-sub">{{ e.ticketRef }}</td>
                   <td class="mp-cell-sub">{{ fmt(e.startedAt) }} ~ {{ fmt(e.expiresAt) }}</td>
                   <td>
-                    <StatusTag :type="e.activeNow ? 'warning' : 'default'" :label="e.activeNow ? '生效中' : e.status" />
+                    <StatusTag :type="e.activeNow ? 'warning' : 'default'" :label="e.activeNow ? '生效中' : emergencyStatusLabel(e.status)" />
                   </td>
                   <td>
                     <button v-if="e.activeNow" class="mp-link" @click="revokeEmergency(e)">收回</button>
@@ -196,12 +190,10 @@
     </div>
 
     <AppDrawer v-model:visible="sodForm.open" title="新增职责分离规则">
-      <label class="ag-label">规则编码<span class="ag-required">*</span></label>
-      <input v-model="sodForm.ruleCode" class="mp-input" placeholder="如 SOD-FUND-AUDIT" />
       <label class="ag-label">角色 A<span class="ag-required">*</span></label>
-      <input v-model="sodForm.roleA" class="mp-input" placeholder="如 FUNDING_ADMIN" />
+      <AppRemoteSelect v-model="sodForm.roleA" :remote-search="searchRoles" placeholder="选择第一个角色" search-placeholder="按角色名称搜索" />
       <label class="ag-label">角色 B<span class="ag-required">*</span></label>
-      <input v-model="sodForm.roleB" class="mp-input" placeholder="如 SECURITY_AUDITOR" />
+      <AppRemoteSelect v-model="sodForm.roleB" :remote-search="searchRoles" placeholder="选择第二个角色" search-placeholder="按角色名称搜索" />
       <label class="ag-label">为什么不能兼任<span class="ag-required">*</span></label>
       <textarea v-model="sodForm.reason" class="mp-textarea" rows="2" placeholder="至少 5 个字" />
       <div v-if="sodForm.error" class="mp-form-err">{{ sodForm.error }}</div>
@@ -213,10 +205,10 @@
 
     <AppDrawer v-model:visible="emergencyForm.open" title="开通紧急访问">
       <p class="ag-tip">紧急访问必须关联工单或事件号，且最长 8 小时——不存在无限期的紧急权限。</p>
-      <label class="ag-label">人员 userId<span class="ag-required">*</span></label>
-      <input v-model="emergencyForm.subjectUserId" class="mp-input" />
+      <label class="ag-label">人员<span class="ag-required">*</span></label>
+      <AppRemoteSelect v-model="emergencyForm.subjectUserId" :remote-search="searchUsers" placeholder="选择人员" search-placeholder="按姓名 / 工号搜索" />
       <label class="ag-label">临时角色<span class="ag-required">*</span></label>
-      <input v-model="emergencyForm.grantedRole" class="mp-input" placeholder="如 SYS_ADMIN" />
+      <AppRemoteSelect v-model="emergencyForm.grantedRole" :remote-search="searchRoles" placeholder="选择临时角色" search-placeholder="按角色名称搜索" />
       <label class="ag-label">工单/事件号<span class="ag-required">*</span></label>
       <input v-model="emergencyForm.ticketRef" class="mp-input" placeholder="如 INC-2026-001" />
       <label class="ag-label">时长（分钟，最长 480）<span class="ag-required">*</span></label>
@@ -253,8 +245,8 @@
           <thead><tr><th style="width: 110px">人员</th><th style="width: 140px">角色</th><th style="width: 110px">结论</th><th>备注</th></tr></thead>
           <tbody>
             <tr v-for="i in reviewDetail.data.items" :key="i.itemId">
-              <td class="is-who">{{ i.subjectUserId }}</td>
-              <td>{{ i.roleCode }}</td>
+              <td class="is-who">{{ userLabel(i.subjectUserId, i) }}</td>
+              <td>{{ roleLabel(i.roleCode) }}</td>
               <td>{{ i.decision ? reviewDecisionLabel(i.decision) : '待处理' }}</td>
               <td class="mp-cell-sub">{{ i.note || '—' }}</td>
             </tr>
@@ -275,8 +267,10 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppOrgCascader, AppRemoteSelect } from '@/components/common'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { safeEnumLabel } from '@/utils/presentationSafety'
 
 const STEP_LABEL = {
   SUPER_ADMIN: '超级管理员直通',
@@ -300,7 +294,7 @@ const REASON_LABEL = {
 
 export default {
   name: 'SystemAccessGovernanceView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer, AppOrgCascader, AppRemoteSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -310,8 +304,11 @@ export default {
       sod: { rules: [], violations: [] },
       emergency: [],
       reviews: [],
+      permissionOptions: [],
+      directoryUsers: [],
+      directoryRoles: [],
       explain: {
-        actionCode: '', scopeTargetType: '', scopeTargetId: '',
+        actionCode: '', scopeTargetType: '', scopeTargetId: '', orgPath: [],
         result: null, error: '', submitting: false
       },
       sodForm: { open: false, ruleCode: '', roleA: '', roleB: '', reason: '', error: '', submitting: false },
@@ -323,19 +320,59 @@ export default {
       reviewDetail: { open: false, loading: false, title: '', data: null }
     }
   },
-  created() { this.loadDenials() },
+  created() { this.loadCatalogs(); this.loadDenials() },
   methods: {
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-    stepLabel(s) { return STEP_LABEL[s] || s },
-    reasonLabel(r) { return REASON_LABEL[r] || r },
-    reviewStatusLabel(s) { return ({ DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已关闭' })[s] || s },
+    stepLabel(s) { return safeEnumLabel({ value: s, dictionary: STEP_LABEL, unknownLabel: '访问判定步骤' }) },
+    reasonLabel(r) { return safeEnumLabel({ value: r, dictionary: REASON_LABEL, unknownLabel: '访问条件未满足' }) },
+    reviewStatusLabel(s) { return safeEnumLabel({ value: s, dictionary: { DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已关闭' }, unknownLabel: '状态待确认' }) },
     reviewDecisionLabel(d) {
-      return ({ KEEP: '保留', ADJUST: '调整', REVOKE: '回收', EXCEPTION: '例外' })[d] || d
+      return safeEnumLabel({ value: d, dictionary: { KEEP: '保留', ADJUST: '调整', REVOKE: '回收', EXCEPTION: '例外' }, unknownLabel: '结论待确认' })
+    },
+    severityLabel(s) { return safeEnumLabel({ value: s, dictionary: { P0: '阻断', P1: '高', P2: '一般', CRITICAL: '阻断', HIGH: '高', NORMAL: '一般' }, unknownLabel: '严重度待确认' }) },
+    violationStatusLabel(s) { return safeEnumLabel({ value: s, dictionary: { OPEN: '待处理', ACTIVE: '冲突中', RESOLVED: '已解除' }, unknownLabel: '状态待确认' }) },
+    emergencyStatusLabel(s) { return safeEnumLabel({ value: s, dictionary: { ACTIVE: '生效中', EXPIRED: '已到期', REVOKED: '已收回' }, unknownLabel: '状态待确认' }) },
+    permissionLabel(code) { return this.permissionOptions.find((item) => item.value === code)?.label || '业务功能动作' },
+    roleLabel(code) { return this.directoryRoles.find((item) => String(item.roleCode || item.code) === String(code))?.name || this.directoryRoles.find((item) => String(item.id) === String(code))?.name || (code ? '业务角色' : '—') },
+    userLabel(id, row = {}) {
+      if (row.subjectName || row.userName) return [row.subjectName || row.userName, row.userNo].filter(Boolean).join('（') + (row.userNo ? '）' : '')
+      const user = this.directoryUsers.find((item) => String(item.id) === String(id))
+      return user ? `${user.name || user.realName || '人员'}（${user.userNo || user.loginName || '工号待同步'}）` : '人员信息待同步'
+    },
+    roleOptions(rows) { return (rows || []).map((role) => ({ value: role.roleCode || role.code, label: role.name || role.roleName || '角色名称待同步', desc: role.typeLabel || '' })).filter((item) => item.value) },
+    userOptions(rows) { return (rows || []).map((user) => ({ value: user.id, label: user.name || user.realName || '姓名待同步', desc: user.userNo || user.loginName || '工号待同步' })) },
+    async searchRoles(keyword) { const res = await systemApi.getRoles({ keyword, pageSize: 100 }); if (res.code !== 0) throw new Error('角色目录暂时无法读取'); const rows = res.data?.list || []; this.directoryRoles = rows; return this.roleOptions(rows) },
+    async searchUsers(keyword) { const res = await systemApi.getUsers({ keyword, pageSize: 50 }); if (res.code !== 0) throw new Error('人员目录暂时无法读取'); const rows = res.data?.list || []; this.directoryUsers = [...this.directoryUsers.filter((known) => !rows.some((row) => String(row.id) === String(known.id))), ...rows]; return this.userOptions(rows) },
+    flattenPermissions(nodes, parents = []) {
+      return (nodes || []).flatMap((node) => {
+        const label = node.label || node.name || node.title || '业务功能'
+        const path = [...parents, label]
+        const code = node.permissionCode || node.code || node.key || node.value
+        const children = this.flattenPermissions(node.children || [], path)
+        return [...(code && String(code).includes('.') ? [{ value: code, label: path.join(' / ') }] : []), ...children]
+      })
+    },
+    async loadCatalogs() {
+      const [permissions, roles, users] = await Promise.all([systemApi.getPermissionTree(), systemApi.getRoles({ pageSize: 100 }), systemApi.getUsers({ pageSize: 100 })])
+      if (permissions.code === 0) this.permissionOptions = this.flattenPermissions(permissions.data || [])
+      if (roles.code === 0) this.directoryRoles = roles.data?.list || []
+      if (users.code === 0) this.directoryUsers = users.data?.list || []
+    },
+    async loadOrgTree() {
+      const res = await systemApi.getDepartmentTree()
+      if (res.code !== 0) throw new Error('组织目录暂时无法读取')
+      const map = (rows) => (rows || []).map((row) => ({ value: row.id, label: row.name || '名称待同步', children: map(row.children) }))
+      return map(res.data || [])
+    },
+    onExplainOrgChange(values) {
+      const types = ['COLLEGE', 'MAJOR', 'CLASS']
+      this.explain.scopeTargetType = values.length ? types[Math.min(values.length, 3) - 1] : ''
+      this.explain.scopeTargetId = values.at(-1) || ''
     },
     stepDetail(c) {
-      if (c.roleCode) return `角色 ${c.roleCode}`
+      if (c.roleCode) return `角色：${this.roleLabel(c.roleCode)}`
       if (c.patternCount !== undefined) return `共 ${c.patternCount} 条权限范围`
-      if (c.actionCode) return c.actionCode
+      if (c.actionCode) return this.permissionLabel(c.actionCode)
       if (c.reasonCode) return this.reasonLabel(c.reasonCode)
       if (c.expiresAt) return `有效至 ${this.fmt(c.expiresAt)}`
       if (c.note) return c.note
@@ -347,6 +384,9 @@ export default {
       if (tab === 'sod') await this.loadSod()
       if (tab === 'emergency') await this.loadEmergency()
       if (tab === 'review') await this.loadReviews()
+    },
+    openSodForm() {
+      this.sodForm = { open: true, ruleCode: `SOD-${Date.now().toString(36).toUpperCase()}`, roleA: '', roleB: '', reason: '', error: '', submitting: false }
     },
     reload() {
       this.error = ''
@@ -374,7 +414,7 @@ export default {
     },
 
     async doExplain() {
-      if (!this.explain.actionCode.trim()) { this.explain.error = '请填写动作权限码'; return }
+      if (!this.explain.actionCode.trim()) { this.explain.error = '请选择业务动作'; return }
       this.explain.submitting = true
       this.explain.error = ''
       const res = await systemApi.explainAccess({
@@ -392,8 +432,8 @@ export default {
     },
 
     async submitSod() {
-      if (!this.sodForm.ruleCode || !this.sodForm.roleA || !this.sodForm.roleB) {
-        this.sodForm.error = '规则编码与两个角色都必填'
+      if (!this.sodForm.roleA || !this.sodForm.roleB) {
+        this.sodForm.error = '请选择两个不能兼任的角色'
         return
       }
       if (this.sodForm.reason.trim().length < 5) { this.sodForm.error = '理由不少于 5 个字'; return }

@@ -84,12 +84,12 @@
         <section class="sp-card" style="max-width:820px">
           <div class="sp-panel__head">签约材料</div>
           <StateBlock v-if="!(my.materials||[]).length" type="empty" text="暂无签约材料，请在去向登记时上传" />
-          <AutoTable v-else :rows="my.materials" />
+          <AutoTable v-else :rows="my.materials" :columns="MATERIAL_COLS" />
           <button class="sp-btn sp-btn--ghost" :disabled="busy" style="margin-top:16px" @click="printDoc">打印就业协议书</button>
         </section>
         <section class="sp-card" style="max-width:820px">
           <div class="sp-panel__head">就业回访</div>
-          <AutoTable :rows="my.followUps" empty="暂无回访记录" />
+          <AutoTable :rows="my.followUps" :columns="FOLLOW_UP_COLS" empty="暂无回访记录" />
         </section>
       </template>
     </template>
@@ -109,6 +109,15 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const session = useSessionStore()
+const MATERIAL_COLS = [
+  { key: 'materialType', label: '材料类型' }, { key: 'fileName', label: '文件名称' },
+  { key: 'uploadedAt', label: '提交时间' }, { key: 'status', label: '审核状态' },
+  { key: 'reviewNote', label: '审核意见' }
+]
+const FOLLOW_UP_COLS = [
+  { key: 'followUpAt', label: '回访时间' }, { key: 'contactType', label: '联系类型' },
+  { key: 'result', label: '回访结果' }, { key: 'note', label: '备注' }
+]
 const tabs = [
   { key: 'overview', label: '我的就业' }, { key: 'source', label: '生源核对' },
   { key: 'destination', label: '去向登记' }, { key: 'contract', label: '签约材料' }
