@@ -24,10 +24,14 @@ test('专业分流表只使用真实志愿 DTO 且不展示数据库 ID', () => 
   assert.doesNotMatch(block, /key: 'resultMajorId'/)
 })
 
-test('就业签约材料表绑定真实 DTO，不制造不存在字段', () => {
+test('就业签约材料表绑定真实 DTO 且材料类型中文业务化', () => {
   const block = employment.match(/const MATERIAL_COLS = \[[\s\S]*?\n\]/)?.[0] || ''
   assert.match(block, /key: 'type'/)
   assert.match(block, /key: 'fileName'/)
   assert.match(block, /key: 'status'/)
   assert.doesNotMatch(block, /materialType|uploadedAt|reviewNote/)
+  assert.match(employment, /OFFER: '录用证明'/)
+  assert.match(employment, /STUDY_PROOF: '升学证明'/)
+  assert.match(employment, /STARTUP_PROOF: '创业证明'/)
+  assert.match(employment, /AGREEMENT: '就业协议'/)
 })
