@@ -205,7 +205,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await closeGraduationMaterialFixture(adminApi, graduationFixture)
   })
 
-  test('Student Affairs archive · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs archive · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/student-affairs/archive')
 
@@ -219,10 +219,10 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await expect(page.locator('.av-detail')).toBeVisible()
     await expect(page.locator('.av-pkgs')).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-material-affairs-archive-a')
+    await capture(page, testInfo, 'rollout-material-affairs-archive-b')
   })
 
-  test('Internship student materials · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship student materials · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, `/admin/internship/students/${encodeURIComponent(internshipFixture.internshipId)}/materials`)
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -233,10 +233,10 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await expect(page.locator('.ism-card').first()).toBeVisible()
     await expect(page.getByText(/真实版本与归档证据/)).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-material-internship-student-a')
+    await capture(page, testInfo, 'rollout-material-internship-student-b')
   })
 
-  test('Graduation material center · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation material center · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/graduation/material-center?tab=students')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -249,6 +249,6 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await expect(page.locator('.mc-panel table')).toBeVisible()
     await expect(page.locator('.mc-panel tbody tr').first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-material-graduation-center-a')
+    await capture(page, testInfo, 'rollout-material-graduation-center-b')
   })
 })
