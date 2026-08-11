@@ -48,7 +48,6 @@ def _seed(db_mode):
                        nature="REQUIRED", status="ENABLED")
     db.add_all([target, english]); db.flush()
 
-    # 已通过课程必须带稳定 course_code/version，供“目标已通过”正式身份判定。
     db.add(AcademicGrade(
         tenant_id=TID, acad_student_id=a.id,
         course_id=english.id, course_code=english.course_code, course_version=int(english.version or 1),
@@ -136,19 +135,23 @@ def test_reject_requires_reason_and_student_forbidden(client, db_mode):
 
 
 def test_target_course_picker_and_attachment(client, db_mode):
-    """课程库选择器 + 文件中心证据：不存在文件404；本人 TEMP_PRIVATE 安全文件可冻结到正式申请。"""
+    """课程库选择器 + 文件中心证据：不存在文件404；mock 管理员也按统一 actor ID 拥有临时私有文件。"""
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     from app.db.session import get_sessionmaker
-    from app.models import FileObject, User
+    from app.models import FileObject
+    from app.services.message_identity import resolve_message_user_id
+
+    owner_id = resolve_message_user_id({
+        "userId": "u_school_admin01",
+        "loginName": "school_admin01",
+        "tenantId": str(TID),
+    })
+    assert owner_id > 0
     db = get_sessionmaker()()
-    admin_user = db.query(User).filter(
-        User.tenant_id == TID, User.login_name == "school_admin01", User.is_deleted.is_(False)
-    ).first()
-    assert admin_user is not None
     f = FileObject(
         tenant_id=TID, file_key="k/1.pdf", file_name="成绩证明.pdf",
-        biz_type="TEMP_PRIVATE", biz_id=None, owner_user_id=admin_user.id,
+        biz_type="TEMP_PRIVATE", biz_id=None, owner_user_id=owner_id,
         visibility="PRIVATE", status="AVAILABLE", scan_required=False, scan_status="NOT_REQUIRED",
         sha256="a" * 64,
     )
