@@ -47,6 +47,17 @@ class _FakeDb:
         self.flush_count += 1
 
 
+def _resolve_scope_with_tenant(user: dict) -> dict:
+    """Pure unit calls must still satisfy production's explicit tenant contract."""
+    from app.core.context import set_tenant
+
+    set_tenant({"tenantId": "1000000000000000001"})
+    try:
+        return mobile_teacher_service.resolve_teacher_scope(user)
+    finally:
+        set_tenant(None)
+
+
 def test_every_school_permission_role_has_a_versioned_template():
     template_codes = {item["roleCode"] for item in BUILTIN_ROLE_TEMPLATES}
     assert set(ROLE_PERMISSIONS) - {"PLATFORM_SUPER_ADMIN"} == template_codes
@@ -312,16 +323,10 @@ def test_identity_import_api_has_no_raw_json_account_creation_bypass():
 
 
 def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher():
-    # resolve_teacher_scope 现会把 _tid() 写进返回的 scope，纯单元测试须自备租户上下文。
-    from app.core.context import set_tenant
-    set_tenant({"tenantId": "1000000000000000001"})
-    try:
-        scope = mobile_teacher_service.resolve_teacher_scope({
-            "userId": "db-17", "userType": "TEACHER",
-            "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
-        })
-    finally:
-        set_tenant(None)
+    scope = _resolve_scope_with_tenant({
+        "userId": "db-17", "userType": "TEACHER",
+        "currentRoleCode": "INTERN_MENTOR", "realName": "同名老师",
+    })
     assert scope["mode"] == "SCOPED"
     assert scope["advisorUserIds"] == {"17"}
     scope["classNames"].add("软件2401")
@@ -334,7 +339,7 @@ def test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher():
 
 
 def test_non_advisor_role_cannot_inherit_advisor_relation_from_same_account():
-    scope = mobile_teacher_service.resolve_teacher_scope({
+    scope = _resolve_scope_with_tenant({
         "userId": "db-17", "userType": "TEACHER",
         "currentRoleCode": "COUNSELOR", "realName": "兼任老师",
     })
@@ -346,7 +351,7 @@ def test_non_advisor_role_cannot_inherit_advisor_relation_from_same_account():
 
 
 def test_academic_teacher_is_not_a_tenant_wide_administrator():
-    scope = mobile_teacher_service.resolve_teacher_scope({
+    scope = _resolve_scope_with_tenant({
         "userId": "db-21", "userType": "TEACHER",
         "currentRoleCode": "ACADEMIC_TEACHER", "realName": "任课教师",
     })
@@ -356,7 +361,7 @@ def test_academic_teacher_is_not_a_tenant_wide_administrator():
 
 
 def test_academic_admin_is_the_explicit_tenant_wide_academic_role():
-    scope = mobile_teacher_service.resolve_teacher_scope({
+    scope = _resolve_scope_with_tenant({
         "userId": "db-22", "userType": "TEACHER",
         "currentRoleCode": "ACADEMIC_ADMIN", "realName": "教务处管理员",
     })
