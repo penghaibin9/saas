@@ -109,8 +109,11 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const session = useSessionStore()
+const MATERIAL_TYPE = Object.freeze({
+  OFFER: '录用证明', STUDY_PROOF: '升学证明', STARTUP_PROOF: '创业证明', AGREEMENT: '就业协议'
+})
 const MATERIAL_COLS = [
-  { key: 'type', label: '材料类型' },
+  { key: 'type', label: '材料类型', formatter: (value) => MATERIAL_TYPE[String(value || '').toUpperCase()] || '其他就业材料' },
   { key: 'fileName', label: '文件名称' },
   { key: 'status', label: '审核状态' }
 ]
