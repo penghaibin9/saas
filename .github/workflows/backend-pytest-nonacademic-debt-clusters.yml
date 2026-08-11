@@ -14,6 +14,8 @@ on:
       - 'backend/tests/test_security_hardening.py'
       - 'backend/tests/test_portal_guardian.py'
       - 'backend/tests/test_p0_new_security.py'
+      - 'backend/tests/test_p0_txn_audit_delivery.py'
+      - 'backend/tests/test_p1_tenant_context_required.py'
       - 'backend/tests/test_student_portal_config.py'
       - 'backend/app/**'
       - 'backend/requirements.txt'
@@ -45,6 +47,8 @@ jobs:
             nodeid: tests/test_student_shadow_dual_read.py::test_bound_row_identity_is_readonly_in_business_domain
           - case: A5-student-shadow-unchanged
             nodeid: tests/test_student_shadow_dual_read.py::test_resubmitting_unchanged_identity_is_not_rejected
+          - case: A5-student-shadow-unbound-edit
+            nodeid: tests/test_student_shadow_dual_read.py::test_unbound_legacy_row_still_editable
           - case: A6-internship-mentor-role
             nodeid: tests/test_saas_role_templates_unit.py::test_internship_mentor_scope_uses_user_id_and_blocks_same_name_teacher
           - case: A6-internship-mentor-identity
@@ -65,6 +69,10 @@ jobs:
             nodeid: tests/test_p0_new_security.py::test_assert_task_assignee_denies_other_user
           - case: A10-portal-config-audit
             nodeid: tests/test_student_portal_config.py::test_update_writes_audit
+          - case: A11-student-controlled-restore
+            nodeid: tests/test_p0_txn_audit_delivery.py::test_student_void_then_create_restores_same_id
+          - case: A11-file-tenant-context
+            nodeid: tests/test_p1_tenant_context_required.py::test_file_require_tenant_without_context
     services:
       mysql:
         image: mysql:8.0
