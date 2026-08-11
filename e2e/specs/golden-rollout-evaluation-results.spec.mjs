@@ -157,7 +157,7 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     graduationFixture = await prepareGraduationStatsBatch(adminApi)
   })
 
-  test('Student Affairs counselor evaluation · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs counselor evaluation · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-eval')
 
@@ -168,10 +168,30 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: affairsFixture.periodCode }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-results-affairs-counselor-eval-a')
+    const affairsContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.ce-indbar)')
+      const heroTitle = root?.querySelector('.sa-summary-strip__title')
+      const workflow = root?.querySelector('.sa-workflow-strip')
+      const indicatorBar = root?.querySelector('.ce-indbar')
+      const sectionCard = root?.querySelector('.app-section-card')
+      if (!root || !heroTitle || !workflow || !indicatorBar || !sectionCard) return null
+      return {
+        titleColor: getComputedStyle(heroTitle).color,
+        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
+        indicatorBackground: getComputedStyle(indicatorBar).backgroundColor,
+        sectionRadius: getComputedStyle(sectionCard).borderRadius
+      }
+    })
+    expect(affairsContract).not.toBeNull()
+    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
+    expect(affairsContract.workflowColumns).toBe(4)
+    expect(affairsContract.indicatorBackground).toBe('rgb(248, 250, 252)')
+    expect(affairsContract.sectionRadius).toBe('15px')
+
+    await capture(page, testInfo, 'rollout-results-affairs-counselor-eval-b')
   })
 
-  test('Internship comprehensive scores · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship comprehensive scores · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/internship/scores')
     await setStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -184,10 +204,29 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await expect(page.getByText('五项权重配置')).toBeVisible()
     expect(internshipScoreFixture.configId).not.toBe('')
 
-    await capture(page, testInfo, 'rollout-results-internship-scores-a')
+    const internshipContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.cfg)')
+      const duplicateBatch = root?.querySelector('.stack > .msr .msr__batch')
+      const cfg = root?.querySelector('.cfg')
+      const table = root?.querySelector('.dt')
+      if (!root || !duplicateBatch || !cfg || !table) return null
+      return {
+        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
+        configDisplay: getComputedStyle(cfg).display,
+        configRadius: getComputedStyle(cfg).borderRadius,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(internshipContract).not.toBeNull()
+    expect(internshipContract.duplicateBatchDisplay).toBe('none')
+    expect(internshipContract.configDisplay).toBe('grid')
+    expect(internshipContract.configRadius).toBe('14px')
+    expect(internshipContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-results-internship-scores-b')
   })
 
-  test('Graduation result statistics · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation result statistics · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/graduation/stats-report')
     await setStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -199,6 +238,23 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await expect(page.locator('.mp-card').filter({ hasText: '开题统计' }).first()).toBeVisible()
     await expect(page.locator('.mp-card').filter({ hasText: '成绩评定统计' }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-results-graduation-stats-a')
+    const graduationContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.gs-grid)')
+      const domainGrid = root?.querySelector('.mp-stack:has(> .mp-card > .mp-card__body > .gs-grid)')
+      const firstCard = domainGrid?.querySelector(':scope > .mp-card')
+      const firstCell = firstCard?.querySelector('.gs-cell')
+      if (!root || !domainGrid || !firstCard || !firstCell) return null
+      return {
+        domainColumns: getComputedStyle(domainGrid).gridTemplateColumns.split(' ').filter(Boolean).length,
+        cardRadius: getComputedStyle(firstCard).borderRadius,
+        cellRadius: getComputedStyle(firstCell).borderRadius
+      }
+    })
+    expect(graduationContract).not.toBeNull()
+    expect(graduationContract.domainColumns).toBe(2)
+    expect(graduationContract.cardRadius).toBe('15px')
+    expect(graduationContract.cellRadius).toBe('10px')
+
+    await capture(page, testInfo, 'rollout-results-graduation-stats-b')
   })
 })
