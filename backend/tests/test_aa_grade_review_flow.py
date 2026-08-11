@@ -7,6 +7,7 @@ RF8 学生令牌全端点403。
 
 本文件测试的是成绩审核/发布/更正主链，统一使用真实 AaTerm + AaCourse + READY 教学任务创建成绩任务；
 管理员特殊补录的 courseId/termId 边界由专门合同测试覆盖，避免旁支入口拖住整组审核状态机回归。
+成绩更正工作流按生产职责分离：college_admin01 执行学院初审，school_admin01 执行校级终审。
 """
 from __future__ import annotations
 
@@ -188,7 +189,6 @@ def test_rf2_return_reason_too_short_422(client, db_mode):
 
 
 def test_rf3_teacher_cross_course_scope_403(client, db_mode):
-    """真实教学任务归属 school_admin01，普通任课教师不得跨对象录入。"""
     sids = _seed(db_mode, 1)
     admin_hdr = _hdr(client, "school_admin01")
     tid = _task(client, admin_hdr)
@@ -199,7 +199,6 @@ def test_rf3_teacher_cross_course_scope_403(client, db_mode):
 
 
 def test_rf4_teacher_cannot_publish_even_with_wildcard_403(client, db_mode):
-    """管理员把任务推进到学院审核通过后，ACADEMIC_TEACHER 仍不得做教务终审发布/归档。"""
     sids = _seed(db_mode, 1)
     admin_hdr = _hdr(client, "school_admin01")
     teacher_hdr = _hdr(client, "academic01")
@@ -239,13 +238,14 @@ def test_rf5_archived_change_request_409(client, db_mode):
 
 def test_rf6_change_reject_keeps_original(client, db_mode):
     sids = _seed(db_mode, 1)
-    hdr = _hdr(client, "school_admin01")
-    tid = _task(client, hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+    school_hdr = _hdr(client, "school_admin01")
+    college_hdr = _hdr(client, "college_admin01")
+    tid = _task(client, school_hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
-    client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=school_hdr, json={"action": "APPROVE"})
+    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord
     db = get_sessionmaker()()
@@ -253,25 +253,26 @@ def test_rf6_change_reject_keeps_original(client, db_mode):
     assert rec is not None
     rid = int(rec.id)
     db.close()
-    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=hdr,
+    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=school_hdr,
                      json={"newFinalScore": 60, "reason": "疑似录入错误需核实"})
     assert cr.status_code == 200, cr.text
-    rj = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=hdr,
+    rj = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=college_hdr,
                      json={"action": "REJECT", "reason": "核实后原分数无误"})
     assert rj.status_code == 200, rj.text
-    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=hdr).json()["data"]
+    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=school_hdr).json()["data"]
     assert any(g["courseName"] == "大学物理" and g["score"] == 80 for g in tr["items"])
 
 
 def test_rf7_change_two_level_approve_new_value_applied(client, db_mode):
     sids = _seed(db_mode, 1)
-    hdr = _hdr(client, "school_admin01")
-    tid = _task(client, hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
+    school_hdr = _hdr(client, "school_admin01")
+    college_hdr = _hdr(client, "college_admin01")
+    tid = _task(client, school_hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 60, "finalScore": 60})
-    client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
+    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=school_hdr, json={"action": "APPROVE"})
+    client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord
     db = get_sessionmaker()()
@@ -279,18 +280,20 @@ def test_rf7_change_two_level_approve_new_value_applied(client, db_mode):
     assert rec is not None
     rid = int(rec.id)
     db.close()
-    client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=hdr,
-               json={"newFinalScore": 30, "reason": "复核发现期末分录入错误"})
-    client.post(f"{BASE}/grade-change/{rid}/college-review", headers=hdr, json={"action": "APPROVE"})
-    fin = client.post(f"{BASE}/grade-change/{rid}/academic-review", headers=hdr, json={"action": "APPROVE"})
+    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=school_hdr,
+                     json={"newFinalScore": 30, "reason": "复核发现期末分录入错误"})
+    assert cr.status_code == 200, cr.text
+    college = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=college_hdr,
+                          json={"action": "APPROVE"})
+    assert college.status_code == 200, college.text
+    fin = client.post(f"{BASE}/grade-change/{rid}/academic-review", headers=school_hdr, json={"action": "APPROVE"})
     assert fin.status_code == 200, fin.text
-    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=hdr).json()["data"]
+    tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=school_hdr).json()["data"]
     row = next(g for g in tr["items"] if g["courseName"] == "大学物理")
     assert row["score"] == 39 and row["passStatus"] == "FAILED" and row["source"] == "CHANGE"
 
 
 def test_rf8_student_forbidden_on_new_endpoints_403(client, db_mode):
-    """越权红线：新增的提交/学院审/退回/归档/更正端点，学生令牌一律403。"""
     hdr = _hdr(client, "student01")
     assert client.post(f"{BASE}/grade-tasks/1/submit", headers=hdr).status_code == 403
     assert client.post(f"{BASE}/grade-tasks/1/college-review", headers=hdr, json={"action": "APPROVE"}).status_code == 403
