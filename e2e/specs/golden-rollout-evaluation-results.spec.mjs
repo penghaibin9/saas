@@ -1,13 +1,18 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
-import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { items, loginApi } from '../lib/api-fixture.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 
 function runId() {
   const raw = process.env.GITHUB_RUN_ID || `${Date.now()}`
   return String(raw).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
+}
+
+function academicYear() {
+  const year = new Date().getUTCFullYear()
+  return `${year}-${year + 1}`
 }
 
 async function dismissGuide(page) {
@@ -59,25 +64,38 @@ async function prepareCounselorEvaluation(admin) {
     { name: `风险响应与协同 · Golden ${marker}`, weight: 30, maxScore: 100, score: 96 }
   ]
 
+  // Playwright retries create a fresh worker in the same isolated database. Make
+  // the fixture replay-safe instead of treating an expected retry as a duplicate
+  // business create.
+  const existingIndicators = items(await admin.get('/student-affairs/counselor-eval/indicators', { pageSize: 200 }))
   const scores = {}
   for (const definition of definitions) {
-    const indicator = await admin.post('/student-affairs/counselor-eval/indicators', {
-      name: definition.name,
-      weight: definition.weight,
-      maxScore: definition.maxScore
-    })
-    const indicatorId = String(indicator.indicatorId || '')
+    let indicator = existingIndicators.find((row) => String(row.name || '') === definition.name)
+    if (!indicator) {
+      indicator = await admin.post('/student-affairs/counselor-eval/indicators', {
+        name: definition.name,
+        weight: definition.weight,
+        maxScore: definition.maxScore
+      })
+    }
+    const indicatorId = String(indicator.indicatorId || indicator.id || '')
     if (!indicatorId) throw new Error(`Golden counselor evaluation indicator missing id: ${definition.name}`)
     scores[indicatorId] = definition.score
   }
 
   const periodCode = `GOLD-${new Date().getUTCFullYear()}-${marker}`
-  const evaluation = await admin.post('/student-affairs/counselor-eval/evals', {
-    periodCode,
-    counselorKey: 'e2e_counselor_a',
-    counselorName: 'E2E辅导员A',
-    scores
-  })
+  const existingEvaluations = items(await admin.get('/student-affairs/counselor-eval/evals', { pageSize: 200 }))
+  let evaluation = existingEvaluations.find((row) => (
+    String(row.periodCode || '') === periodCode && String(row.counselorKey || '') === 'e2e_counselor_a'
+  ))
+  if (!evaluation) {
+    evaluation = await admin.post('/student-affairs/counselor-eval/evals', {
+      periodCode,
+      counselorKey: 'e2e_counselor_a',
+      counselorName: 'E2E辅导员A',
+      scores
+    })
+  }
   if (!evaluation.evalId) throw new Error('Golden counselor evaluation did not return evalId')
   return { evalId: String(evaluation.evalId), periodCode }
 }
@@ -95,6 +113,32 @@ async function prepareInternshipScoreConfig(admin) {
   return { configId: String(saved.configId) }
 }
 
+async function prepareGraduationStatsBatch(admin) {
+  const marker = runId()
+  const batchNo = `PW-GOLD-STATS-${marker}`
+  let batch = items(await admin.get('/graduation/batches', { keyword: batchNo, page: 1, pageSize: 50 }))
+    .find((row) => String(row.batchNo || '') === batchNo)
+
+  if (!batch) {
+    const year = new Date().getUTCFullYear()
+    batch = await admin.post('/graduation/batches', {
+      batchName: `Golden 毕设结果统计 ${marker}`,
+      batchNo,
+      academicYear: academicYear(),
+      gradeYear: `${year + 1}届`,
+      plannedCount: 120,
+      remark: 'Golden result-analysis screenshot only; isolated E2E database'
+    })
+  }
+
+  // Keep this batch DRAFT and independent. The lifecycle suite owns its own
+  // student/topic/taskbook chain; visual evidence must never pre-create those facts.
+  if (String(batch.status || '').toUpperCase() !== 'DRAFT') {
+    throw new Error(`Golden stats batch must remain DRAFT, got ${batch.status || 'UNKNOWN'}`)
+  }
+  return { batchId: String(batch.id), batchName: batch.batchName, batchNo }
+}
+
 test.describe.serial('Golden rollout · evaluation / scores / result analysis · Batch 6', () => {
   let adminApi
   let affairsFixture
@@ -104,12 +148,13 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
 
   test.beforeAll(async () => {
     // Batch 6 creates only formal, isolated facts. It intentionally does not force
-    // the internship lifecycle from ONBOARD to ASSESSING merely to manufacture a score row.
+    // the internship lifecycle from ONBOARD to ASSESSING merely to manufacture a score row,
+    // and it does not reuse the graduation lifecycle fixture/student/taskbook chain.
     adminApi = await loginApi(config.sandboxAdmin)
     affairsFixture = await prepareCounselorEvaluation(adminApi)
     internshipFixture = await loadInternshipFixture()
     internshipScoreFixture = await prepareInternshipScoreConfig(adminApi)
-    graduationFixture = await prepareGraduationFixture()
+    graduationFixture = await prepareGraduationStatsBatch(adminApi)
   })
 
   test('Student Affairs counselor evaluation · Screenshot A', async ({ page }, testInfo) => {
@@ -149,7 +194,7 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await page.reload()
 
     await expect(page).toHaveURL(/\/admin\/graduation\/stats-report/)
-    await expect(page.getByText('毕设统计报表')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '毕设统计报表', exact: true })).toBeVisible()
     await expect(page.locator('.gs-grid').first()).toBeVisible()
     await expect(page.locator('.mp-card').filter({ hasText: '开题统计' }).first()).toBeVisible()
     await expect(page.locator('.mp-card').filter({ hasText: '成绩评定统计' }).first()).toBeVisible()
