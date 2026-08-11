@@ -107,7 +107,10 @@ async function prepareGraduationGuidance(mentor, graduationFixture) {
   const marker = runId()
   const content = `Golden Batch 9 ${marker}：复核开题后的研究计划、实现路径与本周阶段成果。`
   const rows = items(await mentor.get('/graduation/gd-guidances', {
-    gdStudentId: graduationFixture.gdStudentId, page: 1, pageSize: 200
+    batchId: graduationFixture.batchId,
+    gdStudentId: graduationFixture.gdStudentId,
+    page: 1,
+    pageSize: 200
   }))
   let guidance = rows.find((row) => String(row.content || '') === content)
   if (!guidance) {
@@ -115,7 +118,7 @@ async function prepareGraduationGuidance(mentor, graduationFixture) {
       method: 'ONLINE',
       content,
       issues: '后续继续补齐测试证据与阶段里程碑。'
-    })
+    }, { batchId: graduationFixture.batchId })
   }
   if (!guidance?.id) throw new Error('Golden Batch 9 graduation guidance did not return id')
   return { id: String(guidance.id), content }
