@@ -7,6 +7,7 @@ import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const STUDENT_TWO = { tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026' }
+const COLLEGE_REVIEWER_LOGIN = 'e2e_college_secretary'
 
 function runId() {
   const raw = process.env.GITHUB_RUN_ID || `${Date.now()}`
@@ -70,7 +71,37 @@ async function setStorage(page, key, value) {
   }, { storageKey: key, storageValue: value })
 }
 
+async function ensureCollegeAidReviewer(admin) {
+  const users = items(await admin.get('/system/users', {
+    keyword: COLLEGE_REVIEWER_LOGIN,
+    account_type: 'STAFF',
+    page: 1,
+    page_size: 50
+  }))
+  const reviewer = users.find((row) => String(row.loginName || row.userNo || '') === COLLEGE_REVIEWER_LOGIN)
+  if (!reviewer?.id) throw new Error(`Golden aid reviewer ${COLLEGE_REVIEWER_LOGIN} is missing`)
+
+  const assignments = items(await admin.get('/system/role-assignments', {
+    role_code: 'COLLEGE_ADMIN',
+    page: 1,
+    page_size: 200
+  }))
+  const active = assignments.find((row) =>
+    String(row.userId || '') === String(reviewer.id) && String(row.status || '').toUpperCase() === 'ACTIVE')
+  if (!active) {
+    await admin.post('/system/role-assignments', {
+      userId: String(reviewer.id),
+      roleCode: 'COLLEGE_ADMIN',
+      reason: 'Golden Batch 8 学院困难认定正式受理人'
+    })
+  }
+
+  return { userId: String(reviewer.id), loginName: COLLEGE_REVIEWER_LOGIN }
+}
+
 async function prepareAidPublicity(admin, studentId) {
+  await ensureCollegeAidReviewer(admin)
+
   const marker = runId()
   const batchName = `Golden 公示审核 ${marker}`
   const batches = items(await admin.get('/student-affairs/aid/batches', { page: 1, pageSize: 200 }))
@@ -203,7 +234,7 @@ async function prepareGraduationReviewFixture(admin) {
     status: 'QUALIFIED', reason: 'Golden Batch 8 proposal review fixture'
   })
 
-  let mentor = items(await admin.get('/graduation/gd-mentors', {
+  const mentor = items(await admin.get('/graduation/gd-mentors', {
     keyword: config.mentor.username, page: 1, pageSize: 200
   })).find((row) => String(row.teacherNo || '') === config.mentor.username)
   if (!mentor) throw new Error('Golden Batch 8 requires the dedicated E2E mentor bootstrap')
