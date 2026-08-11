@@ -23,15 +23,19 @@ def _mk_college(client, hdr, name="软件学院", short="软院"):
                        json={"collegeName": name, "shortName": short, "sortOrder": 1}).json()["data"]
 
 
-def _mk_major(client, hdr, college_id, name="软件技术"):
-    return client.post(f"{BASE}/majors", headers=hdr, json={
+def _mk_major(client, hdr, college_id, name="软件技术", code=None):
+    body = {
         "collegeId": college_id, "majorName": name, "educationYears": 3,
-        "trainingLevel": "HIGHER", "enrollStatus": "ENROLLING", "direction": "Web方向"}).json()["data"]
+        "trainingLevel": "HIGHER", "enrollStatus": "ENROLLING", "direction": "Web方向",
+    }
+    if code:
+        body["code"] = code
+    return client.post(f"{BASE}/majors", headers=hdr, json=body).json()["data"]
 
 
-def _mk_class(client, hdr, major_id, name="软件2601", grade="2026"):
+def _mk_class(client, hdr, major_id, name="软件2601", grade="2026", code="RJ2601"):
     return client.post(f"{BASE}/classes", headers=hdr, json={
-        "majorId": major_id, "className": name, "classCode": "RJ2601", "grade": grade,
+        "majorId": major_id, "className": name, "classCode": code, "grade": grade,
         "capacity": 40, "graduateYear": "2029", "classStatus": "NORMAL"}).json()["data"]
 
 
@@ -75,8 +79,8 @@ def test_o3_class_adjust_moves_student(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     col = _mk_college(client, hdr, "商贸学院", "商贸")
     maj = _mk_major(client, hdr, col["id"], "电子商务")
-    c1 = _mk_class(client, hdr, maj["id"], "电商2601")
-    c2 = _mk_class(client, hdr, maj["id"], "电商2602")
+    c1 = _mk_class(client, hdr, maj["id"], "电商2601", code="DS2601")
+    c2 = _mk_class(client, hdr, maj["id"], "电商2602", code="DS2602")
     db = get_sessionmaker()()
     s = StudentProfile(tenant_id=TID, student_no="ADJ001", real_name="调整生", class_id=int(c1["id"]),
                        major_id=int(maj["id"]), current_stage="ON_CAMPUS",
@@ -120,15 +124,15 @@ def test_o6_validation_and_guard(client, db_mode):
     # 学制越界 → 400（本项目 pydantic 校验错误统一转 400，见 test_aa_grade 既有契约）
     assert client.post(f"{BASE}/majors", headers=hdr, json={
         "collegeId": col["id"], "majorName": "护理", "educationYears": 99}).status_code == 400
-    maj = _mk_major(client, hdr, col["id"], "护理")
+    maj = _mk_major(client, hdr, col["id"], "护理", code="HL001")
     _mk_class(client, hdr, maj["id"], "护理2601")
     # 删非空学院 → 409（下有专业）
     assert client.delete(f"{BASE}/colleges/{col['id']}", headers=hdr).status_code == 409
     # 删非空专业 → 409（下有班级）
     assert client.delete(f"{BASE}/majors/{maj['id']}", headers=hdr).status_code == 409
-    # 同名专业重复 → 409
+    # 统一组织主数据以编码为稳定身份；重复专业编码必须被参数校验拦截
     assert client.post(f"{BASE}/majors", headers=hdr, json={
-        "collegeId": col["id"], "majorName": "护理"}).status_code == 409
+        "collegeId": col["id"], "majorName": "护理（二）", "code": "HL001"}).status_code == 400
 
 
 def test_o7_teaching_classes_readonly(client, db_mode):
