@@ -56,6 +56,43 @@ def _seed_major(db_mode, name="软件技术"):
     return mid
 
 
+def _seed_live_program_reference(db_mode, course_id):
+    """只铺 C9 所需的“已发布方案正在引用课程”事实，不把课程停用测试耦合到完整方案治理流程。"""
+    import json
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgram, AaProgramCourse
+
+    db = get_sessionmaker()()
+    p = AaProgram(
+        tenant_id=TID,
+        program_name="课程停用校验方案",
+        major_id=1,
+        grade_year="2026",
+        total_credits=4,
+        requirement_json=json.dumps(
+            {"creditStructure": [{"module": "专业核心", "creditTarget": 4}]},
+            ensure_ascii=False,
+        ),
+        version=1,
+        status="PUBLISHED",
+    )
+    db.add(p); db.flush()
+    db.add(AaProgramCourse(
+        tenant_id=TID,
+        program_id=p.id,
+        course_id=int(course_id),
+        course_name="数据结构",
+        open_term_no=1,
+        module="专业核心",
+        credit_snapshot=4,
+    ))
+    db.flush()
+    pid = p.id
+    db.commit(); db.close()
+    return pid
+
+
 def test_c1_two_level_review_to_enabled(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr).json()["data"]["courseId"]
@@ -118,6 +155,7 @@ def test_c7_course_code_format_400(client, db_mode):
     assert _course(client, hdr, code="CS1").status_code == 400    # 数字位数不足(<3位)
     assert _course(client, hdr, code="CS108").status_code == 200  # 合法格式
 
+
 def test_c8_applicable_majors_mutual_exclusive_with_all_major(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     mid = _seed_major(db_mode)
@@ -134,17 +172,7 @@ def test_c9_disable_blocked_by_live_program_reference_then_allowed(client, db_mo
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
     client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
     client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # ENABLED
-    pid = client.post(f"{BASE}/programs", headers=hdr, json={
-        "programName": "课程停用校验方案", "majorId": "1", "gradeYear": "2026",
-        "totalCredits": 4,
-        "requirement": {"creditStructure": [{"module": "专业核心", "creditTarget": 4}]},
-    }).json()["data"]["programId"]
-    client.post(f"{BASE}/programs/{pid}/courses", headers=hdr, json={
-        "courseId": str(cid), "courseName": "数据结构", "openTermNo": 1, "module": "专业核心", "credit": 4})
-    submit = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
-    assert submit.status_code == 200, submit.text
-    client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})  # PUBLISHED
+    pid = _seed_live_program_reference(db_mode, cid)
     # 被在途/生效方案引用 → 停用 400 拦截
     assert client.post(f"{BASE}/courses/{cid}/disable", headers=hdr).status_code == 400
     # 引用查询端点：能看到该方案
