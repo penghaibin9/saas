@@ -128,6 +128,7 @@ def test_inactive_row_cannot_override_active_row():
 
 
 def test_aggregate_uses_same_policy_instead_of_old_high_score(monkeypatch):
+    """这里只锁有效成绩选择；GPA 策略冻结由独立真库合同覆盖，避免 SimpleNamespace 冒充 ORM 行。"""
     from app.modules.academic_affairs.services import academic_affairs_grade_service as service
 
     class _Db:
@@ -138,6 +139,11 @@ def test_aggregate_uses_same_policy_instead_of_old_high_score(monkeypatch):
             ])
 
     monkeypatch.setattr(service._core, "_tid", lambda: 1)
+    monkeypatch.setattr(
+        service._core,
+        "_course_point_frozen",
+        lambda _db, row: round((float(row.score) - 50) / 10, 2),
+    )
     academic_student = SimpleNamespace(
         id=1,
         avg_score=None,
