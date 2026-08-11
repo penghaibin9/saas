@@ -83,8 +83,8 @@ test.describe.serial('Golden rollout · message campaign record / detail · Batc
     const row = table.locator('tbody tr').filter({ hasText: title }).first()
     await expect(row).toBeVisible()
     await expect(row).toContainText('草稿')
-    await expect(row).toContainText('ANNOUNCEMENT')
-    await expect(row).toContainText('NORMAL')
+    await expect(row).toContainText('公告')
+    await expect(row).toContainText('普通')
     await expect(row.getByRole('button', { name: '详情', exact: true })).toBeVisible()
 
     await capture(page, testInfo, 'rollout-message-campaign-outbox-a')
