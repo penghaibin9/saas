@@ -312,7 +312,9 @@ async function prepareGraduationReviewFixture(admin) {
     if (!/已分配|重复|已选|存在/.test(error.message)) throw error
   }
 
-  const existingTaskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`)
+  const existingTaskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`, {
+    batchId: String(batch.id)
+  })
   if (!existingTaskbook?.exists) {
     await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
       objective: '形成一条独立真实的开题待审记录',
