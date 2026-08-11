@@ -21,6 +21,7 @@ on:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_plan*.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_textbook*.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_warning*.py'
+      - 'scripts/check/backend-known-failures-main.txt'
       - '.github/workflows/backend-pytest-academic-core-cluster.yml'
   workflow_dispatch:
 
