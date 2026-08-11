@@ -155,7 +155,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     graduationFixture = await prepareGraduationDraftBatch(adminApi)
   })
 
-  test('Student Affairs counselor responsibility · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs counselor responsibility · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-assignments')
 
@@ -167,10 +167,29 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(counselorFixture.userId).not.toBe('')
 
-    await capture(page, testInfo, 'rollout-config-affairs-counselor-a')
+    const affairsContract = await page.evaluate(() => {
+      const heroTitle = document.querySelector('.sa-summary-strip__title')
+      const workflow = document.querySelector('.sa-workflow-strip')
+      const tabs = document.querySelector('.tabs')
+      const table = document.querySelector('.dt')
+      if (!heroTitle || !workflow || !tabs || !table) return null
+      return {
+        titleColor: getComputedStyle(heroTitle).color,
+        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
+        tabsWidth: tabs.getBoundingClientRect().width,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(affairsContract).not.toBeNull()
+    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
+    expect(affairsContract.workflowColumns).toBe(4)
+    expect(affairsContract.tabsWidth).toBeLessThan(520)
+    expect(affairsContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-config-affairs-counselor-b')
   })
 
-  test('Internship batch configuration · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship batch configuration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/internship/batches?panel=list')
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
@@ -181,10 +200,31 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     const target = page.locator('.dt__tr').filter({ hasText: internshipFixture.batchName }).first()
     await expect(target).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-config-internship-batches-a')
+    const internshipContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(> .msr + .mtb + .af)')
+      if (!root) return null
+      const duplicateBatch = root.querySelector(':scope > .msr .msr__batch')
+      const header = root.querySelector(':scope > .mps__head')
+      const filter = root.querySelector(':scope > .af')
+      const table = root.querySelector(':scope > .dt')
+      if (!duplicateBatch || !header || !filter || !table) return null
+      return {
+        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
+        headerRadius: getComputedStyle(header).borderRadius,
+        filterShadow: getComputedStyle(filter).boxShadow,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(internshipContract).not.toBeNull()
+    expect(internshipContract.duplicateBatchDisplay).toBe('none')
+    expect(internshipContract.headerRadius).toBe('18px')
+    expect(internshipContract.filterShadow).toBe('none')
+    expect(internshipContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-config-internship-batches-b')
   })
 
-  test('Graduation batch implementation · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation batch implementation · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/graduation/batches?panel=list')
 
@@ -193,6 +233,24 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     const target = page.locator('.dt__tr').filter({ hasText: graduationFixture.batchName }).first()
     await expect(target).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-config-graduation-batches-a')
+    const graduationContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.mp-actions):has(> .mp-stack > .af)')
+      if (!root) return null
+      const header = root.querySelector(':scope > .mps__head')
+      const filter = root.querySelector(':scope > .mp-stack > .af')
+      const table = root.querySelector(':scope > .mp-stack > .dt')
+      if (!header || !filter || !table) return null
+      return {
+        headerRadius: getComputedStyle(header).borderRadius,
+        filterShadow: getComputedStyle(filter).boxShadow,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(graduationContract).not.toBeNull()
+    expect(graduationContract.headerRadius).toBe('18px')
+    expect(graduationContract.filterShadow).toBe('none')
+    expect(graduationContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-config-graduation-batches-b')
   })
 })
