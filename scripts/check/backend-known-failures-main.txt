@@ -3,7 +3,7 @@
 # Source: GitHub Actions CI schedule run 31329391436, job 93285052819
 # Base commit: 366dc2ab345d5a066f95a9804256258beae627ee
 # Captured: 2026-08-09 (257 failed + 22 errors = 279 nodeids)
-# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade); later 2026-08-11 retired 60 exact academic nodeids after current-HEAD MySQL validation of selection/recognition, archive/exam/calendar, scheduling/resource, and unchanged green core contracts; later 2026-08-11 retired 6 additional portal/static nodeids after narrowed current-HEAD validation.
+# Cleanup: 2026-08-10 removed 22 setup/auth/seed nodeids, 4 DB-mode stale-contract nodeids, 67 precisely validated academic nodeids, 1 rbac09 nodeid, and 6 precisely validated non-academic nodeids; 2026-08-11 removed 4 additional current-HEAD MySQL-validated RBAC/A10 nodeids and 1 current-HEAD mentor-scope nodeid after fail-closed contract alignment; later 2026-08-11 retired 9 exact non-academic/load/student-master nodeids after MySQL validation, including the controlled-restore dual-code correction; later 2026-08-11 retired 8 graduation and 5 evaluation nodeids after current-HEAD whole-file MySQL shard validation; later 2026-08-11 retired 48 exact academic nodes after narrowed current-HEAD MySQL validation (mobile teaching/schedule/evaluation, stats, grade review/recheck/uniqueness, bugfix/clearance/effective-grade); later 2026-08-11 retired 60 exact academic nodeids after current-HEAD MySQL validation of selection/recognition, archive/exam/calendar, scheduling/resource, and unchanged green core contracts; later 2026-08-11 retired 6 additional portal/static nodeids after narrowed current-HEAD validation; later 2026-08-11 retired 7 Tier1 smoke nodeids after 9/9 MySQL validation with formal term/course/READY-task identities.
 #
 # This file is read from the pull request base ref. A PR cannot grant itself
 # new allowances, and every changed/new test file loses its existing allowance.
@@ -29,13 +29,6 @@ tests/test_aa_student_portal_design_tokens.py::test_academic_pages_do_not_use_un
 tests/test_aa_student_readonly_workspaces.py::test_readonly_routes_use_shared_fail_closed_view
 tests/test_aa_student_textbook_workspace.py::test_textbook_route_uses_dedicated_page
 tests/test_aa_student_transcript_safety.py::test_portal_package_exports_transcript_safety_facade
-tests/test_aa_tier1_r2_smoke.py::test_evaluation_self_role_tasks_generate_and_list
-tests/test_aa_tier1_r2_smoke.py::test_grade_import_confirm_unmatched_student_409
-tests/test_aa_tier1_r2_smoke.py::test_grade_import_confirm_writes_records
-tests/test_aa_tier1_r2_smoke.py::test_schedule_adjustments_log_and_invalid_biz_type_400
-tests/test_aa_tier1_r2_smoke.py::test_schedule_readonly_views_and_publish_records
-tests/test_aa_tier1_r2_smoke.py::test_student_schedule_view_and_out_of_scope_403
-tests/test_aa_tier1_r2_smoke.py::test_teaching_class_schedule_view_and_not_found_404
 tests/test_aa_warning.py::test_w4_scan_pushes_notice_to_student_and_counselor
 tests/test_aa_warning.py::test_w5_notifications_endpoint_lists_scoped_and_student_403
 tests/test_sa17_delivery_gaps.py::test_mobile_and_portal_leave_extend_self
