@@ -6,6 +6,8 @@ GUARDIAN 身份即使存在，也必须被 `require_staff` 拦在老师端之外
 """
 from __future__ import annotations
 
+import hashlib
+
 PORTAL = "/api/v1/portal"
 TID = 1000000000000000001
 
@@ -16,6 +18,24 @@ def _stu_token(real_name, student_no):
         "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
         "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+
+
+def _guardian_token(phone):
+    from app.core.security import create_access_token
+
+    phone_hash = hashlib.sha256(phone.strip().encode("utf-8")).hexdigest()
+    token = create_access_token({
+        "userId": "guardian-contract-test",
+        "realName": "家长安全合同",
+        "userType": "GUARDIAN",
+        "tid": str(TID),
+        "tenantId": str(TID),
+        "activeContextId": "guardian-contract",
+        "currentRoleCode": "GUARDIAN",
+        "clientType": "PC",
+        "guardianPhoneHash": phone_hash,
+    })
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _seed_student(no, name):
@@ -52,8 +72,14 @@ def _assert_login_disabled(response):
     return payload
 
 
-def test_guardian_binding_remains_available_while_sms_login_is_disabled(client, db_mode):
-    _bind(client, "GRD-001", "王同学", "13800138777")
+def test_guardian_binding_and_authorized_read_remain_available_while_sms_login_is_disabled(client, db_mode):
+    phone = "13800138777"
+    _bind(client, "GRD-001", "王同学", phone)
+    st = client.get(f"{PORTAL}/guardian/students", headers=_guardian_token(phone)).json()
+    assert st["code"] == 0 and st["data"]["hasData"] is True
+    item = st["data"]["items"][0]
+    assert item["studentName"] == "王同学" and item["studentNo"] == "GRD-001"
+    assert set(item["visibleScopes"]) == {"ACADEMIC_GRADE", "CAMPUS_ALERT"}
 
 
 def test_guardian_otp_is_fail_closed_for_bound_phone(client, db_mode):
@@ -79,22 +105,9 @@ def test_guardian_login_is_fail_closed_even_with_legacy_code(client, db_mode):
 
 def test_guardian_token_blocked_from_staff(client, db_mode):
     # 不依赖已经关闭的登录链路，直接构造合法签名的 GUARDIAN 身份验证老师端权限边界。
-    from app.core.security import create_access_token
-
-    token = create_access_token({
-        "userId": "guardian-contract-test",
-        "realName": "家长安全合同",
-        "userType": "GUARDIAN",
-        "tid": str(TID),
-        "tenantId": str(TID),
-        "activeContextId": "guardian-contract",
-        "currentRoleCode": "GUARDIAN",
-        "clientType": "PC",
-        "guardianPhoneHash": "contract-only",
-    })
     response = client.get(
         "/api/v1/students",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=_guardian_token("13800138780"),
     )
     assert response.status_code == 403
     assert response.json()["code"] == 403001
