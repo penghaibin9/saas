@@ -34,6 +34,8 @@ import './styles/golden-master-data-rollout.css'
 import './styles/golden-review-queues-rollout.css'
 // Golden 过程指导 / 跟踪台账 rollout：谈话台账 / 实习指导 / 毕设导师分配。
 import './styles/golden-process-guidance-rollout.css'
+// Golden 学生个体 360° 详情 rollout：学工画像 / 实习详情 / 毕设详情。
+import './styles/golden-student-360-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 

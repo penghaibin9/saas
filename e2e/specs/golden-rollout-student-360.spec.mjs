@@ -62,7 +62,7 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     studentProfile = await findStudentProfile(adminApi, internshipFixture.studentNo)
   })
 
-  test('Student Affairs profile detail · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs profile detail · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, `/admin/student-affairs/profile/${encodeURIComponent(studentProfile.id)}`)
 
@@ -72,11 +72,22 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     await expect(page.locator('.profile-priority-grid')).toBeVisible()
     await expect(page.locator('.sa-detail-grid')).toBeVisible()
     await expect(page.locator('.profile-summary')).toContainText(internshipFixture.studentNo)
+    await expect(page.locator('.profile-priority-card')).toHaveCount(4)
 
-    await capture(page, testInfo, 'rollout-student-360-affairs-profile-a')
+    const affairsVisual = await page.locator('.profile-summary').evaluate((node) => {
+      const style = getComputedStyle(node)
+      return {
+        radius: parseFloat(style.borderTopLeftRadius),
+        minHeight: parseFloat(style.minHeight)
+      }
+    })
+    expect(affairsVisual.radius).toBeGreaterThanOrEqual(14)
+    expect(affairsVisual.minHeight).toBeGreaterThanOrEqual(90)
+
+    await capture(page, testInfo, 'rollout-student-360-affairs-profile-b')
   })
 
-  test('Internship student detail · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship student detail · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/internship/students/${encodeURIComponent(internshipFixture.internshipId)}?batchId=${encodeURIComponent(internshipFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path, {
@@ -91,10 +102,29 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     await expect(page.locator('.sd-summary')).toContainText(internshipFixture.companyName)
     await expect(page.locator('.sd-summary')).toContainText(internshipFixture.positionName)
 
-    await capture(page, testInfo, 'rollout-student-360-internship-detail-a')
+    const enterprisePanel = page.locator('.sd-panels > .mp-card').nth(1)
+    const enterpriseLink = enterprisePanel.locator('.sd-kv').filter({ hasText: '实习企业' }).locator('.mp-link')
+    const positionLink = enterprisePanel.locator('.sd-kv').filter({ hasText: '实习岗位' }).locator('.mp-link')
+    await expect(enterpriseLink).toBeVisible()
+    await expect(positionLink).toBeVisible()
+
+    const internshipVisual = await enterprisePanel.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      const values = [...node.querySelectorAll('.sd-v')]
+      return {
+        width: rect.width,
+        overflows: values.filter((value) => value.scrollWidth > value.clientWidth + 1).length
+      }
+    })
+    const linkWrap = await enterpriseLink.evaluate((node) => getComputedStyle(node).whiteSpace)
+    expect(internshipVisual.width).toBeGreaterThanOrEqual(420)
+    expect(internshipVisual.overflows).toBe(0)
+    expect(linkWrap).toBe('normal')
+
+    await capture(page, testInfo, 'rollout-student-360-internship-detail-b')
   })
 
-  test('Graduation student detail · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation student detail · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/graduation/students/${encodeURIComponent(graduationFixture.gdStudentId)}?batchId=${encodeURIComponent(graduationFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path)
@@ -106,6 +136,20 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     await expect(page.locator('.gsd-tabs')).toBeVisible()
     await expect(page.locator('.gsd-summary')).toContainText(graduationFixture.mentorName)
 
-    await capture(page, testInfo, 'rollout-student-360-graduation-detail-a')
+    const graduationVisual = await page.locator('.gsd-page > .mp-grid-2').evaluate((node) => {
+      const columns = [...node.children].map((child) => child.getBoundingClientRect().width)
+      const summary = document.querySelector('.gsd-summary')
+      const style = summary ? getComputedStyle(summary) : null
+      return {
+        columns,
+        summaryRadius: style ? parseFloat(style.borderTopLeftRadius) : 0
+      }
+    })
+    expect(graduationVisual.columns).toHaveLength(2)
+    expect(graduationVisual.columns[0]).toBeGreaterThan(450)
+    expect(graduationVisual.columns[1]).toBeGreaterThan(450)
+    expect(graduationVisual.summaryRadius).toBeGreaterThanOrEqual(14)
+
+    await capture(page, testInfo, 'rollout-student-360-graduation-detail-b')
   })
 })
