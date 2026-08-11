@@ -240,7 +240,7 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
 
     const graduationContract = await page.evaluate(() => {
       const root = document.querySelector('.mps:has(.gs-grid)')
-      const domainGrid = root?.querySelector('.mp-stack:has(> .mp-card > .mp-card__body > .gs-grid)')
+      const domainGrid = root?.querySelector(':scope > .mp-stack > .mp-stack:has(> .mp-card > .mp-card__body.gs-grid)')
       const firstCard = domainGrid?.querySelector(':scope > .mp-card')
       const firstCell = firstCard?.querySelector('.gs-cell')
       if (!root || !domainGrid || !firstCard || !firstCell) return null
