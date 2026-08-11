@@ -42,15 +42,36 @@ export class Api {
   put(path, body, params) { return this.request('PUT', path, { body, params }) }
 }
 
+const loginTokenCache = new Map()
+
+function loginCacheKey(account) {
+  return `${String(account?.tenant || '')}\u0000${String(account?.username || '')}\u0000PC`
+}
+
 export async function loginApi(account) {
-  const api = new Api()
-  const data = await api.post('/auth/login', {
-    loginName: account.username,
-    password: account.password,
-    tenantCode: account.tenant,
-    clientType: 'PC'
-  })
-  return new Api(data.accessToken)
+  const cacheKey = loginCacheKey(account)
+  let tokenPromise = loginTokenCache.get(cacheKey)
+
+  if (!tokenPromise) {
+    tokenPromise = (async () => {
+      const api = new Api()
+      const data = await api.post('/auth/login', {
+        loginName: account.username,
+        password: account.password,
+        tenantCode: account.tenant,
+        clientType: 'PC'
+      })
+      return data.accessToken
+    })()
+    loginTokenCache.set(cacheKey, tokenPromise)
+  }
+
+  try {
+    return new Api(await tokenPromise)
+  } catch (error) {
+    if (loginTokenCache.get(cacheKey) === tokenPromise) loginTokenCache.delete(cacheKey)
+    throw error
+  }
 }
 
 export function items(data) {
