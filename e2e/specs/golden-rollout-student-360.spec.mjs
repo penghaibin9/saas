@@ -88,7 +88,8 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     await expect(page.locator('.sd-summary')).toBeVisible()
     await expect(page.locator('.sd-panels')).toBeVisible()
     await expect(page.locator('.sd-audit')).toBeVisible()
-    await expect(page.locator('.sd-summary')).toContainText(internshipFixture.studentName)
+    await expect(page.locator('.sd-summary')).toContainText(internshipFixture.companyName)
+    await expect(page.locator('.sd-summary')).toContainText(internshipFixture.positionName)
 
     await capture(page, testInfo, 'rollout-student-360-internship-detail-a')
   })
@@ -103,7 +104,7 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     await expect(page.locator('.gsd-page')).toBeVisible()
     await expect(page.locator('.gsd-summary')).toBeVisible()
     await expect(page.locator('.gsd-tabs')).toBeVisible()
-    await expect(page.locator('.gsd-summary')).toContainText(graduationFixture.studentNo)
+    await expect(page.locator('.gsd-summary')).toContainText(graduationFixture.mentorName)
 
     await capture(page, testInfo, 'rollout-student-360-graduation-detail-a')
   })
