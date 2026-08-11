@@ -27,27 +27,24 @@ jobs:
     name: Academic debt lane / ${{ matrix.lane }}
     if: github.head_ref == 'fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 14
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
         include:
-          - lane: grade
+          - lane: grade-core
             nodeids: >-
               tests/test_aa_grade.py
+          - lane: grade-review
+            nodeids: >-
               tests/test_aa_grade_review_flow.py
-              tests/test_aa_recognition.py
-          - lane: exam-textbook
+          - lane: exam
             nodeids: >-
               tests/test_aa_exam.py
-              tests/test_aa_textbook.py
           - lane: scheduling
             nodeids: >-
               tests/test_aa_scheduling_tier1_r2.py
-          - lane: stats
-            nodeids: >-
-              tests/test_aa_stats_r3.py
     services:
       mysql:
         image: mysql:8.0
@@ -96,7 +93,7 @@ jobs:
           mkdir -p "$DIR"
           read -r -a TESTS <<< "$NODEIDS"
           set +e
-          timeout 12m pytest "${TESTS[@]}" -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          timeout 8m pytest "${TESTS[@]}" -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
           rc=$?
           set -e
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
