@@ -123,7 +123,7 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     graduationFixture = await prepareGraduationTopicFixture(adminApi)
   })
 
-  test('Student Affairs class management · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs class management · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/campus-service/classes')
 
@@ -135,10 +135,30 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
       await expect(page.locator('.dt__tr').filter({ hasText: classFixture.className }).first()).toBeVisible()
     }
 
-    await capture(page, testInfo, 'rollout-master-affairs-classes-a')
+    const classContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.flt-input)')
+      const head = root?.querySelector(':scope > .mps__head')
+      const filter = root?.querySelector('.flt')
+      const table = root?.querySelector('.dt')
+      const note = root?.querySelector(':scope > .mp-stack > .mp-note:last-child')
+      if (!root || !head || !filter || !table || !note) return null
+      return {
+        headRadius: getComputedStyle(head).borderRadius,
+        filterRadius: getComputedStyle(filter).borderRadius,
+        tableRadius: getComputedStyle(table).borderRadius,
+        noteRadius: getComputedStyle(note).borderRadius
+      }
+    })
+    expect(classContract).not.toBeNull()
+    expect(classContract.headRadius).toBe('18px')
+    expect(classContract.filterRadius).toBe('14px')
+    expect(classContract.tableRadius).toBe('16px')
+    expect(classContract.noteRadius).toBe('12px')
+
+    await capture(page, testInfo, 'rollout-master-affairs-classes-b')
   })
 
-  test('Internship enterprise library · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship enterprise library · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/internship/enterprises?panel=list')
 
@@ -148,10 +168,30 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: internshipFixture.companyName }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-master-internship-enterprises-a')
+    const enterpriseContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(> .mp-stack > .msr + .af)')
+      const duplicateBatch = root?.querySelector(':scope > .mp-stack > .msr .msr__batch')
+      const summary = root?.querySelector(':scope > .mp-stack > .msr')
+      const filter = root?.querySelector('.af')
+      const table = root?.querySelector('.dt')
+      if (!root || !duplicateBatch || !summary || !filter || !table) return null
+      return {
+        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
+        summaryRadius: getComputedStyle(summary).borderRadius,
+        filterRadius: getComputedStyle(filter).borderRadius,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(enterpriseContract).not.toBeNull()
+    expect(enterpriseContract.duplicateBatchDisplay).toBe('none')
+    expect(enterpriseContract.summaryRadius).toBe('14px')
+    expect(enterpriseContract.filterRadius).toBe('14px')
+    expect(enterpriseContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-master-internship-enterprises-b')
   })
 
-  test('Graduation topic library · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation topic library · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/graduation/topic-lib?panel=list')
     await setStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
@@ -164,6 +204,26 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: graduationFixture.title }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-master-graduation-topic-lib-a')
+    const topicContract = await page.evaluate(() => {
+      const root = document.querySelector('.mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af)')
+      const head = root?.querySelector(':scope > .mps__head')
+      const tabs = root?.querySelector('.mp-tabs')
+      const activeTab = root?.querySelector('.mp-tab.is-active')
+      const table = root?.querySelector('.dt')
+      if (!root || !head || !tabs || !activeTab || !table) return null
+      return {
+        headRadius: getComputedStyle(head).borderRadius,
+        tabsRadius: getComputedStyle(tabs).borderRadius,
+        activeTabRadius: getComputedStyle(activeTab).borderRadius,
+        tableRadius: getComputedStyle(table).borderRadius
+      }
+    })
+    expect(topicContract).not.toBeNull()
+    expect(topicContract.headRadius).toBe('17px')
+    expect(topicContract.tabsRadius).toBe('13px')
+    expect(topicContract.activeTabRadius).toBe('9px')
+    expect(topicContract.tableRadius).toBe('16px')
+
+    await capture(page, testInfo, 'rollout-master-graduation-topic-lib-b')
   })
 })
