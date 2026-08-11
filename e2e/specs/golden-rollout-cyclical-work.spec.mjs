@@ -103,21 +103,19 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await capture(page, testInfo, 'rollout-cyclical-affairs-talk-planning-a')
   })
 
-  test('Internship weekly-report review workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship plan / task workspace · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    const path = `/admin/internship/reports?batchId=${encodeURIComponent(internshipFixture.batchId)}`
-    await openStaffWorkspace(page, adminApi, path, {
-      'internship.selectedBatchId': internshipFixture.batchId
-    })
+    await openStaffWorkspace(page, adminApi, '/admin/internship/plans')
 
-    await expect(page).toHaveURL(/\/admin\/internship\/reports/)
-    await expect(page.getByRole('heading', { name: '周报任务批阅', exact: true })).toBeVisible()
-    await expect(page.locator('.wr-tabs--type')).toBeVisible()
-    await expect(page.locator('.wr-tabs--status')).toBeVisible()
-    await expect(page.locator('.wr-tabs--type .mp-tab.is-active')).toContainText('周报')
-    await expect(page.locator('.wr-tabs--status .mp-tab.is-active')).toContainText('待批阅')
+    await expect(page).toHaveURL(/\/admin\/internship\/plans/)
+    await expect(page.getByRole('heading', { name: '实习计划书', exact: true })).toBeVisible()
+    await expect(page.locator('.layout')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '计划编制', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学生确认台账', exact: true })).toBeVisible()
+    await expect(page.locator('.card--tasks')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '实习任务清单', exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-cyclical-internship-weekly-review-a')
+    await capture(page, testInfo, 'rollout-cyclical-internship-plan-tasks-a')
   })
 
   test('Graduation defense scheduling workspace · Screenshot A', async ({ page }, testInfo) => {
