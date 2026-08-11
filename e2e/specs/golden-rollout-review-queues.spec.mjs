@@ -86,14 +86,23 @@ async function ensureCollegeAidReviewer(admin) {
     page: 1,
     page_size: 200
   }))
+  // SYS-07 currently appends legacy active role links after filtering validity rows.
+  // Therefore do not trust the query parameter alone: require the exact role code
+  // and an active authorization link before deciding the formal reviewer exists.
   const active = assignments.find((row) =>
-    String(row.userId || '') === String(reviewer.id) && String(row.status || '').toUpperCase() === 'ACTIVE')
+    String(row.userId || '') === String(reviewer.id)
+    && String(row.roleCode || '').toUpperCase() === 'COLLEGE_ADMIN'
+    && String(row.status || '').toUpperCase() === 'ACTIVE'
+    && String(row.linkStatus || 'ACTIVE').toUpperCase() === 'ACTIVE')
   if (!active) {
-    await admin.post('/system/role-assignments', {
+    const granted = await admin.post('/system/role-assignments', {
       userId: String(reviewer.id),
       roleCode: 'COLLEGE_ADMIN',
       reason: 'Golden Batch 8 学院困难认定正式受理人'
     })
+    if (String(granted.roleCode || '').toUpperCase() !== 'COLLEGE_ADMIN') {
+      throw new Error('Golden aid reviewer formal COLLEGE_ADMIN grant did not take effect')
+    }
   }
 
   return { userId: String(reviewer.id), loginName: COLLEGE_REVIEWER_LOGIN }
