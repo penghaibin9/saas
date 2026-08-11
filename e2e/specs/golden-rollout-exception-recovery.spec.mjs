@@ -49,20 +49,38 @@ test.describe.serial('Golden rollout · exception / recovery workspaces · Batch
     graduationFixture = await prepareGraduationFixture()
   })
 
-  test('Student Affairs leave follow-up · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs leave follow-up · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/leave/followup')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/leave\/followup/)
     await expect(page.getByRole('heading', { name: '延期销假', exact: true })).toBeVisible()
     await expect(page.locator('.bar')).toBeVisible()
+    await expect(page.locator('.dpw')).toBeVisible()
     await expect(page.locator('.lv-main')).toBeVisible()
     await expect(page.getByRole('button', { name: '扫描逾期未销', exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-exception-affairs-leave-followup-a')
+    const affairsVisual = await page.locator('.dpw').evaluate((node) => {
+      const aside = node.querySelector('.dpw__aside')
+      const main = node.querySelector('.lv-main')
+      const asideRect = aside.getBoundingClientRect()
+      const mainRect = main.getBoundingClientRect()
+      return {
+        asideMinHeight: parseFloat(getComputedStyle(aside).minHeight),
+        mainMinHeight: parseFloat(getComputedStyle(main).minHeight),
+        asideWidth: asideRect.width,
+        mainWidth: mainRect.width
+      }
+    })
+    expect(affairsVisual.asideMinHeight).toBeLessThanOrEqual(250)
+    expect(affairsVisual.mainMinHeight).toBeLessThanOrEqual(250)
+    expect(affairsVisual.asideWidth).toBeGreaterThanOrEqual(340)
+    expect(affairsVisual.mainWidth).toBeGreaterThan(600)
+
+    await capture(page, testInfo, 'rollout-exception-affairs-leave-followup-b')
   })
 
-  test('Graduation delayed-defense administration · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation delayed-defense administration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/graduation?extension=delay&batchId=${encodeURIComponent(graduationFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path)
@@ -73,7 +91,25 @@ test.describe.serial('Golden rollout · exception / recovery workspaces · Batch
     await expect(page.locator('.ext-main-tabs')).toBeVisible()
     await expect(page.locator('.ext-filter-bar')).toBeVisible()
     await expect(page.getByText(/学生申请 → 导师审核 → 专业复核 → 学院审批 → 重新排期/)).toBeVisible()
+    await expect(page.locator('.ext-main-tabs .mp-tab.is-active')).toContainText('延期答辩')
 
-    await capture(page, testInfo, 'rollout-exception-graduation-delay-a')
+    const graduationVisual = await page.locator('.ext-hero').evaluate((node) => {
+      const style = getComputedStyle(node)
+      const kpis = node.querySelectorAll('.ext-kpis > div')
+      return {
+        radius: parseFloat(style.borderTopLeftRadius),
+        paddingTop: parseFloat(style.paddingTop),
+        kpiCount: kpis.length
+      }
+    })
+    const filterHeight = await page.locator('.ext-filter').first().evaluate((node) => parseFloat(getComputedStyle(node).minHeight))
+    const cardRadius = await page.locator('.mp-stack > .mp-card').first().evaluate((node) => parseFloat(getComputedStyle(node).borderTopLeftRadius))
+    expect(graduationVisual.radius).toBeGreaterThanOrEqual(16)
+    expect(graduationVisual.paddingTop).toBeGreaterThanOrEqual(14)
+    expect(graduationVisual.kpiCount).toBe(3)
+    expect(filterHeight).toBeGreaterThanOrEqual(32)
+    expect(cardRadius).toBeGreaterThanOrEqual(14)
+
+    await capture(page, testInfo, 'rollout-exception-graduation-delay-b')
   })
 })

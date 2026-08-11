@@ -36,6 +36,8 @@ import './styles/golden-review-queues-rollout.css'
 import './styles/golden-process-guidance-rollout.css'
 // Golden 学生个体 360° 详情 rollout：学工画像 / 实习详情 / 毕设详情。
 import './styles/golden-student-360-rollout.css'
+// Golden 异常 / 延期 / 补偿流程 rollout：学工延期销假 / 毕设延期答辩；实习簇待业务合同修复后再收编。
+import './styles/golden-exception-recovery-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 

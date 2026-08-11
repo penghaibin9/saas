@@ -1,0 +1,150 @@
+/*
+ * Golden exception / recovery rollout — Batch 11 Screenshot A -> B.
+ * Visual-only. Internship recovery pages are intentionally excluded until
+ * their batch-context business contracts are made self-consistent.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · leave follow-up / recovery                               */
+/* Unique signature: dual-pane .lv-main without Internship .msr summary       */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 52%, #fff), #fff 76%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) > .mp-stack {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .bar {
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--pri-bg) 34%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw {
+  --dpw-aside: 360px !important;
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside {
+  min-height: 240px;
+  border-radius: 14px;
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 42%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside-head {
+  min-height: 42px;
+  padding: 9px 13px;
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside-foot {
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--fill-2) 54%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__main,
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .lv-main {
+  min-height: 240px;
+}
+
+#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .lv-main {
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 42%, transparent);
+}
+
+/* ========================================================================== */
+/* Graduation · delayed-defense administration                               */
+/* Unique signature: .ext-hero + .ext-main-tabs + .ext-filter-bar            */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) > .mp-stack {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-hero {
+  gap: 14px;
+  padding: 16px 18px;
+  border-color: color-mix(in srgb, var(--pri) 14%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 62%, #fff), #fff 76%);
+  box-shadow: 0 15px 32px -34px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-kpis {
+  gap: 8px;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-kpis > div {
+  padding: 10px 13px;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px -28px color-mix(in srgb, var(--deep1) 40%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-main-tabs {
+  padding: 3px;
+  border-radius: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-filter-bar {
+  gap: 6px;
+  padding: 0 2px 4px;
+  scrollbar-width: none;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-filter {
+  min-height: 32px;
+  padding: 0 11px;
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .mp-card {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 42%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-table-wrap {
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw {
+    --dpw-aside: 100% !important;
+  }
+
+  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .bar {
+    padding: 10px;
+  }
+
+  #app .base-portal-layout .mps:has(.ext-hero):has(.ext-main-tabs):has(.ext-filter-bar) .ext-hero {
+    padding: 14px;
+  }
+}
