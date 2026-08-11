@@ -312,13 +312,12 @@ async function prepareGraduationReviewFixture(admin) {
     if (!/已分配|重复|已选|存在/.test(error.message)) throw error
   }
 
-  try {
+  const existingTaskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`)
+  if (!existingTaskbook?.exists) {
     await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
       objective: '形成一条独立真实的开题待审记录',
-      content: '学生签署任务书后，通过学生 PC 上传并提交开题报告，管理端只做 Screenshot A。'
+      content: '学生签署任务书后，通过学生 PC 上传并提交开题报告，管理端只做 Screenshot B。'
     }, { batchId: String(batch.id) })
-  } catch (error) {
-    if (!/已下发|已存在|状态/.test(error.message)) throw error
   }
 
   return {
@@ -348,7 +347,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     graduationFixture = await prepareGraduationReviewFixture(adminApi)
   })
 
-  test('Student Affairs aid publicity review · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs aid publicity review · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, '/admin/student-affairs/aid/publicity')
 
@@ -358,11 +357,12 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: aidFixture.studentNo }).first()).toBeVisible()
+    expect(await page.locator('.ap-note').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('11px')
 
-    await capture(page, testInfo, 'rollout-review-affairs-aid-publicity-a')
+    await capture(page, testInfo, 'rollout-review-affairs-aid-publicity-b')
   })
 
-  test('Internship change review queue · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship change review queue · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openWithApiSession(page, adminApi, `/admin/internship/changes?panel=pending&id=${encodeURIComponent(internshipChangeFixture.id)}`)
     await setStorage(page, 'internship.selectedBatchId', internshipChangeFixture.batchId)
@@ -375,11 +375,12 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await expect(page.locator('.lv-main')).toBeVisible()
     await expect(page.locator('.lv-main')).toContainText(internshipFixture.studentName)
     await expect(page.locator('.lv-main')).toContainText(/退岗|当前岗位与后续实践方向不一致/)
+    expect(await page.locator('.lv-main').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('17px')
 
-    await capture(page, testInfo, 'rollout-review-internship-change-a')
+    await capture(page, testInfo, 'rollout-review-internship-change-b')
   })
 
-  test('Graduation proposal review queue · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation proposal review queue · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(STUDENT_TWO)
@@ -405,7 +406,8 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await expect(page.locator('.pr-list')).toBeVisible()
     await expect(page.locator('.pr-pane')).toBeVisible()
     await expect(page.locator('.prc')).toContainText(graduationFixture.topicTitle)
+    expect(await page.locator('.pr-list').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('16px')
 
-    await capture(page, testInfo, 'rollout-review-graduation-proposal-a')
+    await capture(page, testInfo, 'rollout-review-graduation-proposal-b')
   })
 })
