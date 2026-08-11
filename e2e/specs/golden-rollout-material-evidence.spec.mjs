@@ -99,12 +99,14 @@ async function prepareInternshipMaterialFixture() {
 async function prepareGraduationMaterialFixture() {
   const admin = await loginApi(config.sandboxAdmin)
   const marker = runId()
-  const batchNo = `PW-GOLD-MAT-${marker}`
+  const baseBatchNo = `PW-GOLD-MAT-${marker}`
   const year = new Date().getUTCFullYear()
-  let batch = items(await admin.get('/graduation/batches', { keyword: batchNo, page: 1, pageSize: 50 }))
-    .find((item) => item.batchNo === batchNo)
+  let batch = items(await admin.get('/graduation/batches', { keyword: baseBatchNo, page: 1, pageSize: 50 }))
+    .find((item) => item.batchNo === baseBatchNo && String(item.status || '').toUpperCase() !== 'CLOSED')
 
   if (!batch) {
+    const retrySuffix = String(Date.now()).slice(-6)
+    const batchNo = `PW-GOLD-MAT-${marker}-${retrySuffix}`
     batch = await admin.post('/graduation/batches', {
       batchName: `Golden 毕设材料中心 ${marker}`,
       batchNo,
@@ -115,7 +117,8 @@ async function prepareGraduationMaterialFixture() {
     })
   }
 
-  if (String(batch.status || '').toUpperCase() !== 'RUNNING') {
+  const batchStatus = String(batch.status || '').toUpperCase()
+  if (batchStatus === 'DRAFT') {
     await admin.post(`/graduation/batches/${batch.id}/rules`, {
       rules: {
         score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 },
@@ -135,6 +138,8 @@ async function prepareGraduationMaterialFixture() {
       ]
     })
     batch = { ...batch, ...(await admin.post(`/graduation/batches/${batch.id}/activate`, {})), status: 'RUNNING' }
+  } else if (batchStatus !== 'RUNNING') {
+    throw new Error(`Golden graduation material batch is not reusable: ${batchStatus || 'UNKNOWN'}`)
   }
 
   const profile = await findStudent(admin, graduationMaterialStudent.username)
@@ -199,13 +204,14 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/archive`)
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/archive/)
-    await expect(page.locator('.ar-list')).toBeVisible()
-    const batch = page.locator('.ar-item').filter({ hasText: affairsFixture.batchName }).first()
+    await expect(page.locator('.av-workspace')).toBeVisible()
+    await expect(page.locator('.av-blist')).toBeVisible()
+    const batch = page.locator('.av-bitem').filter({ hasText: affairsFixture.batchName }).first()
     await expect(batch).toBeVisible()
     await batch.click()
-    await expect(page.locator('.ar-flow')).toBeVisible()
-    await expect(page.locator('.ar-main')).toBeVisible()
-    await expect(page.locator('.ar-packages')).toBeVisible()
+    await expect(page.locator('.av-flow')).toBeVisible()
+    await expect(page.locator('.av-detail')).toBeVisible()
+    await expect(page.locator('.av-pkgs')).toBeVisible()
 
     await capture(page, testInfo, 'rollout-material-affairs-archive-a')
   })
