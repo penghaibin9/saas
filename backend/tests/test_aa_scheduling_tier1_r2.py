@@ -2,7 +2,7 @@
 
 复用既有课表批次/条目与冲突报告。当前生产合同要求排课坐标必须来自真实 AaTerm、已启用 AaTimeSlot，
 且手工/导入排课必须落到同学期 APPROVED 教学任务批次中的 READY 教学任务；本文件不再使用伪 termId、
-旧规则键或 free-text 教学任务绕过这些生产门禁。
+旧规则键或 free-text 教学任务绕过这些生产门禁。导入默认 atomic=True，任一冲突整批回滚。
 """
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ def _ensure_term():
         term.is_current = True
         term.teaching_weeks = int(term.teaching_weeks or 18)
 
-    # 最终排课服务只接受学校已启用作息节次；测试按真实字典建立 1-8 节。
     existing = {
         int(row.slot_no): row for row in db.query(AaTimeSlot).filter(
             AaTimeSlot.tenant_id == TID,
@@ -82,7 +81,7 @@ def _batch(client, hdr, term_id=None):
 
 
 def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
-                     course_name="高数", weekly_hours=8, code_suffix=""):
+                     course_name="高数", weekly_hours=1, code_suffix=""):
     from app.db.session import get_sessionmaker
     from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
 
@@ -141,8 +140,6 @@ def _item(client, hdr, bid, **kw):
     teacher_key = str(kw.pop("teacherKey", "T1"))
     teacher_name = str(kw.pop("teacherName", "王老师"))
     course_name = str(kw.pop("courseName", "高数"))
-    # 最终服务优先使用 taskId；没有显式 taskId 时为本测试建立同学期 READY 教学任务，
-    # 不再依赖 free-text course/teacher/class 猜测匹配。
     if not task_id:
         seeded = _seed_ready_task(
             _schedule_term_id(bid),
@@ -223,7 +220,8 @@ def test_07_import_xlsx_success_and_conflict(client, db_mode):
                     files={"file": ("import.xlsx", buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
     data = r.json()
     assert data["code"] == 0
-    assert data["data"]["imported"] == 1 and len(data["data"]["conflicts"]) == 1
+    assert data["data"]["atomic"] is True and data["data"]["committed"] is False
+    assert data["data"]["imported"] == 0 and len(data["data"]["conflicts"]) == 1
 
 
 def test_07_sanitize_import_rows_blocks_formula_injection():
@@ -241,7 +239,7 @@ def test_10_summary(client, db_mode):
     admin = _hdr(client, "school_admin01")
     term_id = _ensure_term()
     ids = _seed_ready_task(term_id, teacher_key="T1", teacher_name="王老师",
-                           course_name="高数", weekly_hours=4, code_suffix="SUMMARY")
+                           course_name="高数", weekly_hours=1, code_suffix="SUMMARY")
     bid = _batch(client, admin, term_id=term_id)
     _item(client, admin, bid, taskId=str(ids["task"]))
     r = client.get(f"{BASE}/schedule-batches/{bid}/summary", headers=admin).json()
@@ -249,7 +247,7 @@ def test_10_summary(client, db_mode):
     d = r["data"]
     assert d["totalTasks"] == 1 and d["scheduledTasks"] == 1
     assert d["completionRate"] == 100.0
-    assert d["scheduledHours"] == 1 and d["expectedHours"] == 4
+    assert d["scheduledSessions"] == 1 and d["expectedSessions"] == 1
     assert d["hardConflicts"] == 0 and d["canPrePublish"] is True
 
 
