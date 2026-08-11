@@ -84,7 +84,7 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     talkFixture = await prepareTalkPlan(adminApi, internshipFixture.studentNo)
   })
 
-  test('Student Affairs talk planning workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs talk planning workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/talk')
 
@@ -100,10 +100,27 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await expect(page.locator('.tk-detail')).toContainText(talkFixture.topic)
     await expect(page.locator('.tk-record')).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-cyclical-affairs-talk-planning-a')
+    const talkVisual = await page.locator('.tk-workspace').evaluate((node) => {
+      const list = node.querySelector('.tk-list')
+      const detail = node.querySelector('.tk-detail')
+      const kv = node.querySelector('.tk-kv')
+      const textarea = node.querySelector('.tk-textarea')
+      return {
+        listRadius: parseFloat(getComputedStyle(list).borderTopLeftRadius),
+        detailRadius: parseFloat(getComputedStyle(detail).borderTopLeftRadius),
+        kvColumns: getComputedStyle(kv).gridTemplateColumns.split(' ').filter(Boolean).length,
+        textareaMinHeight: parseFloat(getComputedStyle(textarea).minHeight)
+      }
+    })
+    expect(talkVisual.listRadius).toBeGreaterThanOrEqual(15)
+    expect(talkVisual.detailRadius).toBeGreaterThanOrEqual(15)
+    expect(talkVisual.kvColumns).toBe(4)
+    expect(talkVisual.textareaMinHeight).toBeGreaterThanOrEqual(92)
+
+    await capture(page, testInfo, 'rollout-cyclical-affairs-talk-planning-b')
   })
 
-  test('Internship plan / task workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Internship plan / task workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/internship/plans')
 
@@ -115,10 +132,28 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await expect(page.locator('.card--tasks')).toBeVisible()
     await expect(page.getByRole('heading', { name: '实习任务清单', exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-cyclical-internship-plan-tasks-a')
+    const internshipVisual = await page.locator('.grid').evaluate((node) => {
+      const firstCard = node.querySelector(':scope > .card:first-child')
+      const body = firstCard.querySelector('.app-textarea__el[rows="8"]')
+      const taskCard = document.querySelector('.card--tasks')
+      return {
+        alignItems: getComputedStyle(node).alignItems,
+        columns: getComputedStyle(node).gridTemplateColumns.split(' ').filter(Boolean).length,
+        planBodyHeight: body.getBoundingClientRect().height,
+        cardRadius: parseFloat(getComputedStyle(firstCard).borderTopLeftRadius),
+        taskRadius: parseFloat(getComputedStyle(taskCard).borderTopLeftRadius)
+      }
+    })
+    expect(internshipVisual.alignItems).toBe('start')
+    expect(internshipVisual.columns).toBe(2)
+    expect(internshipVisual.planBodyHeight).toBeLessThanOrEqual(140)
+    expect(internshipVisual.cardRadius).toBeGreaterThanOrEqual(15)
+    expect(internshipVisual.taskRadius).toBeGreaterThanOrEqual(15)
+
+    await capture(page, testInfo, 'rollout-cyclical-internship-plan-tasks-b')
   })
 
-  test('Graduation defense scheduling workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Graduation defense scheduling workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/graduation/defense?batchId=${encodeURIComponent(graduationFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path)
@@ -128,6 +163,6 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await expect(page.locator('.gd-actions')).toBeVisible()
     await expect(page.getByRole('button', { name: /新增答辩组/ }).first()).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-cyclical-graduation-defense-schedule-a')
+    await capture(page, testInfo, 'rollout-cyclical-graduation-defense-schedule-b')
   })
 })
