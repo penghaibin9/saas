@@ -1,0 +1,85 @@
+name: Academic semester rehearsal / MySQL
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/academic-static-closure-20260811
+    paths:
+      - "backend/app/modules/academic_affairs/**"
+      - "backend/tests/test_aa_*.py"
+      - "backend/tests/test_mobile_attendance.py"
+      - "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue"
+      - "scripts/check/academic-semester-rehearsal.sh"
+      - ".github/workflows/academic-semester-rehearsal.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/app/modules/academic_affairs/**"
+      - "backend/tests/test_aa_*.py"
+      - "backend/tests/test_mobile_attendance.py"
+      - "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue"
+      - "scripts/check/academic-semester-rehearsal.sh"
+      - ".github/workflows/academic-semester-rehearsal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-semester-rehearsal-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-semester-rehearsal:
+    name: 11-stage academic semester rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      MOCK_LOGIN_ENABLED: "true"
+      JWT_SECRET: academic-semester-rehearsal-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install cryptography
+
+      - name: Verify migration head on clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Run virtual-school semester rehearsal
+        run: |
+          set -euo pipefail
+          bash -n scripts/check/academic-semester-rehearsal.sh
+          bash scripts/check/academic-semester-rehearsal.sh
