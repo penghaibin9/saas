@@ -76,7 +76,7 @@ sudo ENV_FILE=/etc/school-lifecycle/backend.env \
 
 - 配置正式 `backup.env` 与 rclone 异地目标，异地对象存储启用版本化/不可变保留/存储侧加密；
 - 启用 `school-lifecycle-backup.service/.timer`，每天 4 次生成恢复点；local 文件存储必须把 `UPLOAD_DIR` 与 MySQL 纳入同一恢复集；
-- 启用 `school-lifecycle-backup-watchdog.service/.timer`，每小时检查 RPO、本地完整性、异地 commit/回读证据；
+- 启用 `school-lifecycle-backup-watchdog.service` 与 `school-lifecycle-backup-watchdog.timer`，后者每小时检查 RPO、本地完整性、异地 commit/回读证据；
 - GitHub 定时恢复演练继续作为独立灾备证据；首次生产部署必须人工跑一次真实备份 + watchdog + 隔离恢复，确认真实环境配置；
 - 生产 `FIELD_ENCRYPTION_KEY`、历史 key（如有）及固定搜索 HMAC key 的受保护恢复副本保存在应用服务器与 Git 之外；
 - 生产基线：**RPO ≤ 6 小时、RTO ≤ 2 小时**，本地保留策略和异地保留按数据治理合同执行。
