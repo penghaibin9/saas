@@ -9,6 +9,9 @@
 6. 活跃学期从教学任务批次解析可创建
 7. 特殊补录学期/角色收紧
 8/9. 迁移重复检测零写入；无重复时可建约束（辅助函数级）
+
+当前 public grade service 先校验稳定课程版本；本文件所有真实 API 场景均建立真实 AaCourse，
+使学期/唯一约束测试不会被无效 course_id 的旧 fixture 提前截断。
 """
 from __future__ import annotations
 
@@ -40,9 +43,9 @@ def _load_mig_0122():
 
 
 def _seed_terms_and_task(db_mode, *, archived=False, active=True):
-    """创建归档/活跃学期 + 教学任务批次 + 教学任务。返回 dict。"""
+    """创建归档/活跃学期 + 稳定课程 + 教学任务批次 + 教学任务。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
 
     db = get_sessionmaker()()
     archived_term = AaTerm(
@@ -59,16 +62,33 @@ def _seed_terms_and_task(db_mode, *, archived=False, active=True):
     )
     db.add_all([archived_term, active_term, other_tenant_term])
     db.flush()
+    course = AaCourse(
+        tenant_id=TID,
+        course_code="GUK-MATH",
+        course_name="高等数学",
+        credit=4,
+        status="ENABLED",
+    )
+    db.add(course); db.flush()
 
     term = archived_term if archived else active_term
     batch = AaTeachingTaskBatch(
         tenant_id=TID, term_id=term.id, batch_name="成绩唯一测试批次", status="APPROVED",
     )
-    db.add(batch)
-    db.flush()
+    db.add(batch); db.flush()
     tt = AaTeachingTask(
-        tenant_id=TID, batch_id=batch.id, course_id=1, course_name="高等数学",
-        teacher_key="academic01", class_id=None, status="READY",
+        tenant_id=TID,
+        batch_id=batch.id,
+        course_id=course.id,
+        course_code=course.course_code,
+        course_name=course.course_name,
+        teacher_key="academic01",
+        teacher_name="教务教师",
+        weekly_hours=4,
+        start_week=1,
+        end_week=18,
+        class_id=None,
+        status="READY",
     )
     db.add(tt)
     db.commit()
@@ -76,6 +96,7 @@ def _seed_terms_and_task(db_mode, *, archived=False, active=True):
         "archived_term_id": archived_term.id,
         "active_term_id": active_term.id,
         "other_tenant_term_id": other_tenant_term.id,
+        "course_id": course.id,
         "teaching_task_id": tt.id,
         "batch_id": batch.id,
         "term_id": term.id,
@@ -112,8 +133,7 @@ def test_1_archived_grade_task_blocks_recreate(client, db_mode):
     db = get_sessionmaker()()
     t = db.get(AaGradeTask, int(tid))
     t.status = "PUBLISHED"
-    db.commit()
-    db.close()
+    db.commit(); db.close()
 
     arc = client.post(f"{BASE}/grade-tasks/{tid}/archive", headers=admin)
     assert arc.status_code == 200, arc.text
@@ -140,8 +160,7 @@ def test_2_soft_deleted_grade_task_blocks_recreate(client, db_mode):
     db = get_sessionmaker()()
     t = db.get(AaGradeTask, tid)
     t.is_deleted = True
-    db.commit()
-    db.close()
+    db.commit(); db.close()
 
     r2 = client.post(f"{BASE}/grade-tasks", headers=teacher, json={
         "teachingTaskId": str(seed["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70,
@@ -152,9 +171,9 @@ def test_2_soft_deleted_grade_task_blocks_recreate(client, db_mode):
 
 
 def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
-    """模拟并发撞上 uk_aa_grade_task_tt → 409，不得 500。"""
+    """真实 API 验证预检；core 单元分支验证并发窗口 UK 冲突也转 409。"""
     from app.core.exceptions import AppException
-    from app.modules.academic_affairs.services import academic_affairs_grade_service as gs
+    from app.modules.academic_affairs.services import academic_affairs_grade_core_service as core
 
     seed = _seed_terms_and_task(db_mode, archived=False)
     body = SimpleNamespace(
@@ -166,7 +185,6 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
     user = {"userId": "u_academic01", "loginName": "academic01", "currentRoleCode": "ACADEMIC_TEACHER",
             "realName": "教师"}
 
-    # 真实 API：第二次创建应 409（预检命中终身唯一）
     assert client.post(f"{BASE}/grade-tasks", headers=_hdr(client, "academic01"), json={
         "teachingTaskId": str(seed["teaching_task_id"]), "usualRatio": 30, "finalRatio": 70,
     }).status_code == 200
@@ -177,12 +195,11 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
     assert _count_grade_tasks_for_tt(seed["teaching_task_id"]) == 1
 
     fake = IntegrityError("stmt", {}, Exception("Duplicate entry for key 'uk_aa_grade_task_tt'"))
-    assert gs._is_grade_task_tt_uk_violation(fake) is True
+    assert core._is_grade_task_tt_uk_violation(fake) is True
     other = IntegrityError("stmt", {}, Exception("Duplicate entry for key 'uk_other'"))
-    assert gs._is_grade_task_tt_uk_violation(other) is False
+    assert core._is_grade_task_tt_uk_violation(other) is False
 
-    # 强制走 IntegrityError 分支：预检放行后 flush 抛 UK 冲突 → 409
-    with patch.object(gs, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
+    with patch.object(core, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
             id=99, status="NOT_STARTED", is_deleted=False)]):
         mock_db = MagicMock()
         mock_tt = MagicMock()
@@ -200,12 +217,12 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
         mock_cm = MagicMock()
         mock_cm.__enter__.return_value = mock_db
         mock_cm.__exit__.return_value = None
-        with patch.object(gs, "session", return_value=mock_cm):
-            with patch.object(gs, "_resolve_grade_task_term", return_value=(seed["term_id"], "2026-2027-1")):
-                with patch.object(gs, "_tid", return_value=TID):
-                    with patch.object(gs, "_user_keys", return_value={"academic01"}):
+        with patch.object(core, "session", return_value=mock_cm):
+            with patch.object(core, "_resolve_grade_task_term", return_value=(seed["term_id"], "2026-2027-1")):
+                with patch.object(core, "_tid", return_value=TID):
+                    with patch.object(core, "_user_keys", return_value={"academic01"}):
                         with pytest.raises(AppException) as ei2:
-                            gs.create_grade_task(body, user)
+                            core.create_grade_task(body, user)
                         assert ei2.value.http_status == 409
                         assert ei2.value.code == "DATA_CONFLICT"
 
@@ -229,8 +246,7 @@ def test_5_forged_active_term_id_rejected(client, db_mode):
         "usualRatio": 30, "finalRatio": 70,
     })
     assert r.status_code == 409, r.text
-    body = r.text
-    assert "不一致" in body or "归档" in body or "TERM_ARCHIVED" in body or "伪造" in body
+    assert "不一致" in r.text or "归档" in r.text or "TERM_ARCHIVED" in r.text or "伪造" in r.text
     assert _count_grade_tasks_for_tt(seed["teaching_task_id"]) == 0
 
 
@@ -244,75 +260,57 @@ def test_6_active_term_resolved_from_batch(client, db_mode):
     data = r.json()["data"]
     assert data.get("termId") == str(seed["term_id"])
     assert data.get("termCode") == seed["term_code"]
+    assert data.get("courseId") == str(seed["course_id"])
 
 
 def test_7_admin_supplement_term_and_role_rules(client, db_mode):
     seed = _seed_terms_and_task(db_mode, archived=False)
     admin = _hdr(client, "school_admin01")
-
-    # 无 termId
-    r0 = client.post(f"{BASE}/grade-tasks", headers=admin, json={
-        "courseName": "补录课", "usualRatio": 30, "finalRatio": 70,
+    common = {
+        "courseId": str(seed["course_id"]),
+        "usualRatio": 30,
+        "finalRatio": 70,
         "adminSupplementReason": "管理员特殊补录原因充分",
-    })
+    }
+
+    r0 = client.post(f"{BASE}/grade-tasks", headers=admin, json=dict(common))
     assert r0.status_code in (400, 422), r0.text
 
-    # 仅 termCode
-    r1 = client.post(f"{BASE}/grade-tasks", headers=admin, json={
-        "courseName": "补录课", "termCode": "2026-2027-1", "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "管理员特殊补录原因充分",
-    })
+    r1 = client.post(f"{BASE}/grade-tasks", headers=admin, json={**common, "termCode": "2026-2027-1"})
     assert r1.status_code in (400, 422), r1.text
 
-    # 归档学期
-    r2 = client.post(f"{BASE}/grade-tasks", headers=admin, json={
-        "courseName": "补录课", "termId": str(seed["archived_term_id"]),
-        "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "管理员特殊补录原因充分",
-    })
+    r2 = client.post(f"{BASE}/grade-tasks", headers=admin,
+                     json={**common, "termId": str(seed["archived_term_id"])})
     assert r2.status_code == 409, r2.text
 
-    # 他租户学期
-    r3 = client.post(f"{BASE}/grade-tasks", headers=admin, json={
-        "courseName": "补录课", "termId": str(seed["other_tenant_term_id"]),
-        "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "管理员特殊补录原因充分",
-    })
+    r3 = client.post(f"{BASE}/grade-tasks", headers=admin,
+                     json={**common, "termId": str(seed["other_tenant_term_id"])})
     assert r3.status_code in (403, 404), r3.text
 
-    # 活跃本租户学期 + 原因 → 成功
-    r4 = client.post(f"{BASE}/grade-tasks", headers=admin, json={
-        "courseName": "补录课成功", "termId": str(seed["active_term_id"]),
-        "usualRatio": 30, "finalRatio": 70, "credit": 1.5,
-        "adminSupplementReason": "管理员特殊补录原因充分",
-    })
+    r4 = client.post(f"{BASE}/grade-tasks", headers=admin,
+                     json={**common, "termId": str(seed["active_term_id"])})
     assert r4.status_code == 200, r4.text
     assert r4.json()["data"]["termId"] == str(seed["active_term_id"])
     assert r4.json()["data"]["termCode"] == "2026-2027-1"
+    assert r4.json()["data"]["courseId"] == str(seed["course_id"])
 
-    # 学院管理员脱离教学任务 → 拒绝（用显式 COLLEGE_ADMIN 令牌，不依赖种子账号是否存在）
     from app.core.security import create_access_token
     college_hdr = {"Authorization": "Bearer " + create_access_token({
         "userId": "u-college-g1", "realName": "学院教务", "userType": "STAFF",
         "tid": "x", "tenantId": str(TID), "activeContextId": "ctx_college_g1",
         "currentRoleCode": "COLLEGE_ADMIN", "clientType": "PC"})}
-    r5 = client.post(f"{BASE}/grade-tasks", headers=college_hdr, json={
-        "courseName": "学院补录", "termId": str(seed["active_term_id"]),
-        "usualRatio": 30, "finalRatio": 70,
-        "adminSupplementReason": "学院管理员试图特殊补录",
-    })
+    r5 = client.post(f"{BASE}/grade-tasks", headers=college_hdr,
+                     json={**common, "termId": str(seed["active_term_id"])})
     assert r5.status_code in (400, 403, 422), r5.text
 
 
 def test_8_migration_duplicate_check_zero_write(db_mode):
-    """有重复时安全检测中止语义：业务行字段不变；辅助函数可测。"""
     from app.db.session import get_sessionmaker
     from app.models import AaGradeTask
     from sqlalchemy import text
 
     mig = _load_mig_0122()
     db = get_sessionmaker()()
-    # MySQL create_all 已带 UK，需临时去掉约束才能插入重复行
     try:
         db.execute(text("ALTER TABLE t_aa_grade_task DROP INDEX uk_aa_grade_task_tt"))
         db.commit()
@@ -327,8 +325,7 @@ def test_8_migration_duplicate_check_zero_write(db_mode):
         tenant_id=TID, teaching_task_id=88001, course_name="重复B",
         usual_ratio=30, final_ratio=70, status="NOT_STARTED",
     )
-    db.add_all([a, b])
-    db.commit()
+    db.add_all([a, b]); db.commit()
     snap = [
         (a.id, a.teaching_task_id, a.status, bool(a.is_deleted)),
         (b.id, b.teaching_task_id, b.status, bool(b.is_deleted)),
@@ -337,7 +334,7 @@ def test_8_migration_duplicate_check_zero_write(db_mode):
     groups = mig.find_grade_task_teaching_task_duplicates(bind)
     assert any(g[1] == 88001 and g[2] >= 2 for g in groups)
     report = mig.format_grade_task_duplicate_report(bind, groups)
-    assert "88001" in report and "需要人工确认" in report or "人工" in report
+    assert ("88001" in report and "需要人工确认" in report) or "人工" in report
 
     with pytest.raises(RuntimeError) as ei:
         mig._abort_on_duplicates(bind)
@@ -368,9 +365,8 @@ def test_9_migration_no_dup_allows_uk_helper(db_mode):
     db.commit()
     bind = db.connection()
     assert mig.find_grade_task_teaching_task_duplicates(bind) == []
-    mig._abort_on_duplicates(bind)  # 不应抛
+    mig._abort_on_duplicates(bind)
 
-    # 学分小数可保存
     from sqlalchemy import select
     rows = db.scalars(select(AaGradeTask).where(
         AaGradeTask.tenant_id == TID, AaGradeTask.teaching_task_id.in_([99001, 99002])
