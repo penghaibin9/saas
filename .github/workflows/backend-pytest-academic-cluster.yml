@@ -5,7 +5,23 @@ on:
     branches:
       - fix/backend-pytest-debt-20260810
     paths:
-      - 'backend/tests/test_aa_tier1_r2_smoke.py'
+      - 'backend/tests/test_aa_home_task_routes_v2.py'
+      - 'backend/tests/test_aa_main_migration_compat.py'
+      - 'backend/tests/test_aa_mobile_grade_entry_v2.py'
+      - 'backend/tests/test_aa_semester_pilot_r11.py'
+      - 'backend/tests/test_aa_service_entrypoint_integrity.py'
+      - 'backend/tests/test_aa_stage4_real_smoke.py'
+      - 'backend/tests/test_aa_student_exam_public_facade.py'
+      - 'backend/tests/test_aa_student_exam_workspace.py'
+      - 'backend/tests/test_aa_student_level_exam_workspace.py'
+      - 'backend/tests/test_aa_student_major_split_workspace.py'
+      - 'backend/tests/test_aa_student_makeup_workspace.py'
+      - 'backend/tests/test_aa_student_portal_design_tokens.py'
+      - 'backend/tests/test_aa_student_readonly_workspaces.py'
+      - 'backend/tests/test_aa_student_textbook_workspace.py'
+      - 'backend/tests/test_aa_student_transcript_safety.py'
+      - 'backend/tests/test_sa17_delivery_gaps.py'
+      - 'backend/tests/test_saas_role_templates_unit.py'
       - 'scripts/check/backend-known-failures-main.txt'
       - 'scripts/check/sanitize_pytest_junit.py'
       - 'scripts/check/summarize_pytest_junit_diagnostics.py'
@@ -20,11 +36,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tier1-smoke:
-    name: Academic debt mainline / tier1-smoke
+  lane:
+    name: Academic debt mainline / ${{ matrix.lane }}
     if: github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - lane: entrypoint-contracts
+            nodeids: >-
+              tests/test_aa_home_task_routes_v2.py tests/test_aa_main_migration_compat.py
+              tests/test_aa_mobile_grade_entry_v2.py tests/test_aa_semester_pilot_r11.py
+              tests/test_aa_service_entrypoint_integrity.py tests/test_aa_stage4_real_smoke.py
+              tests/test_saas_role_templates_unit.py
+          - lane: student-contracts
+            nodeids: >-
+              tests/test_aa_student_exam_public_facade.py tests/test_aa_student_exam_workspace.py
+              tests/test_aa_student_level_exam_workspace.py tests/test_aa_student_major_split_workspace.py
+              tests/test_aa_student_makeup_workspace.py tests/test_aa_student_portal_design_tokens.py
+              tests/test_aa_student_readonly_workspaces.py tests/test_aa_student_textbook_workspace.py
+              tests/test_aa_student_transcript_safety.py
+          - lane: portal-runtime
+            nodeids: >-
+              tests/test_sa17_delivery_gaps.py
     services:
       mysql:
         image: mysql:8.0
@@ -59,18 +96,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Run Tier1 debt lane
+      - name: Run active academic debt lane
         id: pytest
         working-directory: backend
         shell: bash
+        env:
+          NODEIDS: ${{ matrix.nodeids }}
         run: |
           set -euo pipefail
-          DIR="test-results/academic-debt/tier1-smoke"
+          DIR="test-results/academic-debt/${{ matrix.lane }}"
           XML="$DIR/raw.xml"
           RAW="$DIR/raw.log"
           mkdir -p "$DIR"
+          read -r -a TESTS <<< "$NODEIDS"
           set +e
-          timeout 8m pytest tests/test_aa_tier1_r2_smoke.py -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
+          timeout 8m pytest "${TESTS[@]}" -q -p no:warnings --junitxml="$XML" >"$RAW" 2>&1
           rc=$?
           set -e
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
@@ -90,8 +130,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-debt-mainline-tier1-smoke
-          path: backend/test-results/academic-debt/tier1-smoke/
+          name: academic-debt-mainline-${{ matrix.lane }}
+          path: backend/test-results/academic-debt/${{ matrix.lane }}/
           if-no-files-found: error
           retention-days: 14
       - name: Preserve real pytest result
