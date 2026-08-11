@@ -4,6 +4,7 @@
 本模块只为真库端到端测试种出与生产一致的最小事实图，不修改生产权限或策略判断：
 - 学院审核：学院 secretary_id 对应启用账号，并通过角色持有 academicAffairs.grade.collegeReview；
 - 教务终审：唯一校级启用账号通过角色持有 academicAffairs.grade.publish，且不绑定学院范围；
+- 成绩更正：学院与校级受理人均持有 academicAffairs.gradeChange.review，再由生产 resolver 按学院绑定做职责分离；
 - 正式成绩：租户至少存在一条 ACTIVE BASE 策略，发布时仍由生产 resolver 正常解析并冻结快照。
 """
 from __future__ import annotations
@@ -13,10 +14,11 @@ from datetime import datetime
 TID = 1000000000000000001
 COLLEGE_REVIEW_PERM = "academicAffairs.grade.collegeReview"
 ACADEMIC_PUBLISH_PERM = "academicAffairs.grade.publish"
+GRADE_CHANGE_REVIEW_PERM = "academicAffairs.gradeChange.review"
 
 _ACCOUNTS = {
-    "college_admin01": ("张晓明", "SCHOOL_ADMIN", (COLLEGE_REVIEW_PERM,)),
-    "school_admin01": ("陈校", "SCHOOL_ADMIN", (ACADEMIC_PUBLISH_PERM,)),
+    "college_admin01": ("张晓明", "SCHOOL_ADMIN", (COLLEGE_REVIEW_PERM, GRADE_CHANGE_REVIEW_PERM)),
+    "school_admin01": ("陈校", "SCHOOL_ADMIN", (ACADEMIC_PUBLISH_PERM, GRADE_CHANGE_REVIEW_PERM)),
 }
 
 
@@ -131,7 +133,7 @@ def _ensure_base_grade_policy(db):
 
 
 def seed_grade_review_identity(db, *, college_ids=()):
-    """种出成绩审核两级真实受理人、学院绑定和 ACTIVE BASE 成绩策略。"""
+    """种出成绩审核/更正两级真实受理人、学院绑定和 ACTIVE BASE 成绩策略。"""
     from app.models import College
 
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
