@@ -11,6 +11,16 @@ from sqlalchemy import func, select
 from . import academic_affairs_stats_service as _legacy
 
 
+def _mask_student_no(value) -> str:
+    """统计下钻只返回不可逆展示掩码，不依赖历史模块的私有 helper/import 顺序。"""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= 4:
+        return "*" * len(text)
+    return f"{text[:2]}{'*' * (len(text) - 4)}{text[-2:]}"
+
+
 def course_selection_stats(user, term_id=None, college_id=None) -> dict:
     from app.models import AaCourse, AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
 
@@ -191,7 +201,7 @@ def exam_detail(user, term_id=None, college_id=None, incident_type=None, page=1,
             items.append({
                 "incidentId": str(row.id),
                 "studentName": row.student_name or "",
-                "studentNo": _legacy._mask_student_no(row.student_no),
+                "studentNo": _mask_student_no(row.student_no),
                 "incidentType": row.incident_type,
                 "recordedAt": recorded_at.isoformat() if recorded_at else None,
             })
