@@ -185,13 +185,16 @@ def exam_detail(user, term_id=None, college_id=None, incident_type=None, page=1,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = list(db.scalars(q.order_by(AaExamIncident.id.desc())
                                .offset((page - 1) * page_size).limit(page_size)).all())
-        items = [{
-            "incidentId": str(row.id),
-            "studentName": row.student_name or "",
-            "studentNo": _legacy._mask_student_no(row.student_no),
-            "incidentType": row.incident_type,
-            "recordedAt": row.recorded_at.isoformat() if row.recorded_at else None,
-        } for row in rows]
+        items = []
+        for row in rows:
+            recorded_at = getattr(row, "recorded_at", None) or getattr(row, "created_at", None)
+            items.append({
+                "incidentId": str(row.id),
+                "studentName": row.student_name or "",
+                "studentNo": _legacy._mask_student_no(row.student_no),
+                "incidentType": row.incident_type,
+                "recordedAt": recorded_at.isoformat() if recorded_at else None,
+            })
         _legacy._audit(db, "STATS_DRILL_EXAM", f"考务异常明细 total={total} type={incident_type or '-'}")
         db.commit()
         return items, total

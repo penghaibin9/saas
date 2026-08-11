@@ -61,6 +61,10 @@ def warning_detail(user, level=None, source=None, college_id=None, page=1, page_
 
 def export_stats_xlsx(user, domain="overview", term_id=None, college_id=None, major_id=None, purpose=""):
     _precheck(user, college_id)
+    # 历史模块存在后定义覆盖；导出必须在调用点再次绑定 canonical 合同，
+    # 不能依赖包初始化顺序，否则页面查询与 xlsx 会出现两套字段口径。
+    from . import academic_affairs_stats_contract_facade as canonical
+    canonical.install()
     return _legacy.export_stats_xlsx(user, domain, term_id, college_id, major_id, purpose)
 
 
