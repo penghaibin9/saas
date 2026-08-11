@@ -19,6 +19,7 @@ def _hdr(client, login_name):
 
 def _seed(db_mode, teacher_key="academic01", teacher_name="赵敏", code="EVMOB1",
           year_code="2032-2033"):
+    from app.core.context import get_tenant, set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (
         AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
@@ -78,9 +79,17 @@ def _seed(db_mode, teacher_key="academic01", teacher_name="赵敏", code="EVMOB1
         status="ACTIVE",
     )
     db.add(student); db.flush()
-    teaching_class = tc_service.ensure_teaching_class_for_task(
-        db, int(task.id), initialize_admin_roster=True
-    )
+
+    # 该 service 是生产服务，内部通过 _tid() fail-closed 读取请求级租户上下文。
+    # 测试夹具直接调用 service 时必须显式提供并恢复上下文，不能依赖上一条 HTTP 请求残留。
+    previous_tenant = get_tenant()
+    set_tenant({"tenantId": str(TID)})
+    try:
+        teaching_class = tc_service.ensure_teaching_class_for_task(
+            db, int(task.id), initialize_admin_roster=True
+        )
+    finally:
+        set_tenant(previous_tenant)
     db.flush()
     assert teaching_class.roster_status == "LOCKED"
     assert teaching_class.current_roster_version_id is not None
