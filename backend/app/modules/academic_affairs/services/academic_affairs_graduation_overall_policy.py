@@ -1,12 +1,11 @@
-"""毕业正式预审 overall 策略收口。
+"""Stage C3 毕业正式预审 overall 的 fail-closed 策略。
 
-Stage C3 不可变 Run 必须沿用毕业域既有阻断政策：任何 FAIL 都阻断；关键业务项 UNKNOWN
-也阻断；就业、归档、费用等明确标记为人工复核/提醒项的 UNKNOWN 只保留证据，不把所有学生
-永久卡成 SYSTEM_ABNORMAL。
+不可变 GraduationEvaluationRun 是后续毕业终审的事实锚点，因此正式评估只有在所有证据项
+明确 PASS 时才允许 SYSTEM_PASSED。任何 FAIL、UNKNOWN、缺失/异常 result 都必须保持
+SYSTEM_ABNORMAL；就业、归档、费用等可人工复核项可以在旧工作队列/展示层继续保留提示语义，
+但不得覆盖 Stage C3 不可变 evaluator 的严格判定。
 """
 from __future__ import annotations
-
-from . import academic_affairs_graduation_service as graduation_service
 
 
 def strict_overall(items) -> str:
@@ -14,15 +13,11 @@ def strict_overall(items) -> str:
     if not rows:
         return "SYSTEM_ABNORMAL"
 
-    blocking_unknown = set(graduation_service._BLOCKING_UNKNOWN_ITEMS)
-    for item in rows:
-        result = str(item.get("result") or "UNKNOWN").upper()
-        code = str(item.get("item") or "").upper()
-        if result == "FAIL":
-            return "SYSTEM_ABNORMAL"
-        if result == "UNKNOWN" and code in blocking_unknown:
-            return "SYSTEM_ABNORMAL"
-    return "SYSTEM_PASSED"
+    return (
+        "SYSTEM_PASSED"
+        if all(str(item.get("result") or "").upper() == "PASS" for item in rows)
+        else "SYSTEM_ABNORMAL"
+    )
 
 
 def install(target_module) -> None:
