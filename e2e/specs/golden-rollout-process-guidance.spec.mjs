@@ -170,8 +170,10 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await expect(page.locator('.gm-tabs__item.is-active')).toContainText('导师分配')
     await expect(page.locator('.gm-assign-hint')).toBeVisible()
     await expect(page.locator('.gm-section-title')).toContainText('分配记录')
-    await expect(page.locator('.dt')).toBeVisible()
-    await expect(page.locator('.dt__tr').filter({ hasText: graduationFixture.mentorName }).first()).toBeVisible()
+
+    const assignmentTable = page.locator('.dt').filter({ hasText: '学生 ← 导师' }).first()
+    await expect(assignmentTable).toBeVisible()
+    await expect(assignmentTable.locator('.dt__tr').filter({ hasText: graduationFixture.mentorName }).first()).toBeVisible()
 
     await capture(page, testInfo, 'rollout-process-graduation-mentor-assignment-a')
   })
