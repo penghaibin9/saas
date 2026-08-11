@@ -1,0 +1,156 @@
+/*
+ * Golden confirmation / document-status rollout — Batch 13 Screenshot A -> B.
+ * Visual-only. Internship agreement candidate is intentionally excluded until its
+ * batch-context business contract is self-consistent.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · family receipt ledger                                    */
+/* Unique signature: .sa-grid--metrics + .fr-filters                          */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 50%, #fff), #fff 78%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics {
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics .app-metric-card {
+  min-height: 104px;
+  max-height: 112px;
+  padding: 13px 16px;
+  gap: 5px;
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  box-shadow: 0 14px 28px -32px color-mix(in srgb, var(--deep1) 42%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics .app-metric-card__value-row {
+  flex: none;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics .app-metric-card__value {
+  font-size: 32px;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics .app-metric-card__footer:empty {
+  display: none;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .app-section-card {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -38px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .app-section-card__head {
+  padding: 13px 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pri-bg) 24%, #fff), #fff);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .app-section-card__body {
+  padding: 14px 16px 16px;
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .fr-filters {
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pri-bg) 26%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .fr-chip {
+  min-height: 30px;
+  padding: 3px 10px 3px 12px;
+}
+
+/* ========================================================================== */
+/* Graduation · final-submission confirmation / review                         */
+/* Unique signature: .fr-split + .fr-list + .fr-pane                          */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 48%, #fff), #fff 80%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) > .mp-stack {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .mp-tabs {
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fill-2) 58%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .mp-tab {
+  min-height: 30px;
+  padding-inline: 12px;
+  border-radius: 9px;
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .fr-split {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .fr-list {
+  width: 328px;
+  padding: 10px;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pri-bg) 18%, #fff), #fff 112px);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .fr-pane {
+  padding: 12px 14px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .fr-pane__bar {
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--pri-bg) 24%, #fff);
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.fr-split):has(.fr-list):has(.fr-pane) .fr-list {
+    width: 300px;
+  }
+}
+
+@media (max-width: 960px) {
+  #app .base-portal-layout .mps:has(.sa-grid--metrics):has(.fr-filters) .sa-grid--metrics .app-metric-card {
+    max-height: none;
+  }
+}

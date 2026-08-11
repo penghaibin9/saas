@@ -89,7 +89,7 @@ test.describe.serial('Golden rollout · confirmation / document status · Batch 
     familyReceipt = await preparePendingFamilyReceipt(adminApi, internshipFixture.studentNo)
   })
 
-  test('Student Affairs family receipt workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Student Affairs family receipt workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/family/receipts')
 
@@ -104,32 +104,31 @@ test.describe.serial('Golden rollout · confirmation / document status · Batch 
     await expect(row).toContainText('待回执')
     await expect(row.getByRole('button', { name: '登记回执', exact: true })).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-confirmation-affairs-family-receipt-a')
-  })
-
-  test('Internship three-party agreement workspace · Screenshot A', async ({ page }, testInfo) => {
-    await page.setViewportSize(VIEWPORT)
-    const path = `/admin/internship/agreements?panel=issue&batchId=${encodeURIComponent(internshipFixture.batchId)}`
-    await openStaffWorkspace(page, adminApi, path, {
-      'internship.selectedBatchId': internshipFixture.batchId
+    const visual = await page.locator('.mps:has(.sa-grid--metrics):has(.fr-filters)').evaluate((el) => {
+      const metric = el.querySelector('.app-metric-card')
+      const section = el.querySelector('.app-section-card')
+      const filters = el.querySelector('.fr-filters')
+      return {
+        metricHeight: metric?.getBoundingClientRect().height || 0,
+        metricRadius: parseFloat(getComputedStyle(metric).borderRadius) || 0,
+        sectionRadius: parseFloat(getComputedStyle(section).borderRadius) || 0,
+        filtersRadius: parseFloat(getComputedStyle(filters).borderRadius) || 0
+      }
     })
+    expect(visual.metricHeight).toBeGreaterThanOrEqual(96)
+    expect(visual.metricHeight).toBeLessThanOrEqual(118)
+    expect(visual.metricRadius).toBeGreaterThanOrEqual(14)
+    expect(visual.sectionRadius).toBeGreaterThanOrEqual(14)
+    expect(visual.filtersRadius).toBeGreaterThanOrEqual(10)
 
-    await expect(page).toHaveURL(/\/admin\/internship\/agreements/)
-    await expect(page.getByRole('heading', { name: '申请与协议办理', exact: true })).toBeVisible()
-    await expect(page.locator('.ag-flow')).toBeVisible()
-    await expect(page.locator('.ag-flow')).toContainText('发起协议')
-    await expect(page.locator('.ag-flow')).toContainText('学生确认')
-    await expect(page.locator('.ag-flow')).toContainText('企业确认')
-    await expect(page.locator('.ag-flow')).toContainText('学校确认')
-    await expect(page.locator('.ag-flow')).toContainText('归档留存')
-    await expect(page.locator('.ag-flow__step.is-active')).toContainText('发起协议')
-    await expect(page.getByText('请先选择批次', { exact: true })).toHaveCount(0)
-    await expect(page.locator('.dt')).toBeVisible()
-
-    await capture(page, testInfo, 'rollout-confirmation-internship-agreement-a')
+    await capture(page, testInfo, 'rollout-confirmation-affairs-family-receipt-b')
   })
 
-  test('Graduation final-submission confirmation workspace · Screenshot A', async ({ page }, testInfo) => {
+  // The internship agreement candidate is intentionally not Golden-frozen in Batch 13.
+  // Its top-level selector shows an active running batch while the page summary says no active
+  // internship batch. That is a business batch-context contract defect, not a visual defect.
+
+  test('Graduation final-submission confirmation workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     const path = `/admin/graduation/finals?batchId=${encodeURIComponent(graduationFixture.batchId)}`
     await openStaffWorkspace(page, adminApi, path)
@@ -145,6 +144,26 @@ test.describe.serial('Golden rollout · confirmation / document status · Batch 
     await expect(page.locator('.fr-list')).toBeVisible()
     await expect(page.locator('.fr-pane')).toBeVisible()
 
-    await capture(page, testInfo, 'rollout-confirmation-graduation-finals-a')
+    const visual = await page.locator('.mps:has(.fr-split):has(.fr-list):has(.fr-pane)').evaluate((el) => {
+      const split = el.querySelector('.fr-split')
+      const list = el.querySelector('.fr-list')
+      const pane = el.querySelector('.fr-pane')
+      const tabs = el.querySelector('.mp-tabs')
+      return {
+        gap: parseFloat(getComputedStyle(split).gap) || 0,
+        listWidth: list?.getBoundingClientRect().width || 0,
+        listRadius: parseFloat(getComputedStyle(list).borderRadius) || 0,
+        paneRadius: parseFloat(getComputedStyle(pane).borderRadius) || 0,
+        tabsRadius: parseFloat(getComputedStyle(tabs).borderRadius) || 0
+      }
+    })
+    expect(visual.gap).toBeLessThanOrEqual(14)
+    expect(visual.listWidth).toBeGreaterThanOrEqual(320)
+    expect(visual.listWidth).toBeLessThanOrEqual(336)
+    expect(visual.listRadius).toBeGreaterThanOrEqual(14)
+    expect(visual.paneRadius).toBeGreaterThanOrEqual(14)
+    expect(visual.tabsRadius).toBeGreaterThanOrEqual(10)
+
+    await capture(page, testInfo, 'rollout-confirmation-graduation-finals-b')
   })
 })

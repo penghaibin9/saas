@@ -40,6 +40,8 @@ import './styles/golden-student-360-rollout.css'
 import './styles/golden-exception-recovery-rollout.css'
 // Golden 周期任务 / 计划执行 rollout：学工谈心工作台 / 实习计划与任务；毕设答辩 A 已达标保持原视觉。
 import './styles/golden-cyclical-work-rollout.css'
+// Golden 关键确认 / 回执与成果状态 rollout：学工家校回执 / 毕设成果检查；实习协议待 batch-context 修复后再收编。
+import './styles/golden-confirmation-documents-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
