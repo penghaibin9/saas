@@ -10,13 +10,15 @@ def _read(path: str) -> str:
 
 
 def test_readonly_routes_use_shared_fail_closed_view():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
-    for model in ("attendance", "calendar", "clearance", "credits", "warning", "graduation"):
-        assert f"academicReadModel: '{model}'" in router
-    assert router.count("StudentAcademicReadOnlyView.vue") >= 6
-    for path in ("attendance", "calendar", "clearance", "credits", "warning", "graduation"):
-        assert f"academicSection('academic/{path}'" not in router
+    for model in ("attendance", "calendar", "clearance", "credits", "warning"):
+        assert f"academicReadOnly('{model}', 'academic-{model}', '{model}')" in router
+    assert "StudentAcademicReadOnlyView.vue" in router
+    for path in ("attendance", "calendar", "clearance", "credits", "warning"):
+        assert f"academicSection('{path}'" not in router
+    # 毕业资格已有更强的独立审计工作区，不应为了共享只读组件而回退。
+    assert "StudentGraduationAuditView.vue" in router
 
 
 def test_readonly_view_has_explicit_api_allowlist():

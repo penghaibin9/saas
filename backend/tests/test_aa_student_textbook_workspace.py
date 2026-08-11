@@ -10,10 +10,10 @@ def _read(path: str) -> str:
 
 
 def test_textbook_route_uses_dedicated_page():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
     assert "StudentTextbookView.vue" in router
-    assert "academicSection('academic/textbook'" not in router
+    assert "academicSection('textbook'" not in router
 
 
 def test_textbook_workspace_requires_real_record_and_server_refresh():
