@@ -243,10 +243,30 @@ async function prepareGraduationReviewFixture(admin) {
     status: 'QUALIFIED', reason: 'Golden Batch 8 proposal review fixture'
   })
 
-  const mentor = items(await admin.get('/graduation/gd-mentors', {
+  let mentor = items(await admin.get('/graduation/gd-mentors', {
     keyword: config.mentor.username, page: 1, pageSize: 200
   })).find((row) => String(row.teacherNo || '') === config.mentor.username)
-  if (!mentor) throw new Error('Golden Batch 8 requires the dedicated E2E mentor bootstrap')
+  if (!mentor) {
+    mentor = await admin.post('/graduation/gd-mentors', {
+      teacherNo: config.mentor.username,
+      teacherName: 'E2E指导教师A',
+      mentorType: 'INTERNAL',
+      title: '讲师',
+      researchDirection: '软件工程测试',
+      maxCapacity: 20,
+      submitReview: true,
+      remark: 'Golden Batch 8 isolated proposal-review mentor'
+    })
+  }
+  if (!['QUALIFIED', 'APPROVED'].includes(mentor.qualificationStatus || mentor.reviewStatus)) {
+    try {
+      mentor = await admin.post(`/graduation/gd-mentors/${mentor.id}/review`, {
+        action: 'APPROVE', comment: 'Golden Batch 8 导师资格通过'
+      })
+    } catch (error) {
+      if (!/已审核|无需审核|状态/.test(error.message)) throw error
+    }
+  }
 
   try {
     await admin.post('/graduation/gd-mentor-assignments/assign', {
