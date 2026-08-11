@@ -53,7 +53,7 @@ test.describe.serial('Golden rollout · message governance / delivery operations
     adminApi = await loginApi(config.sandboxAdmin)
   })
 
-  test('Message outbox governance workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message outbox governance workspace · Screenshot A frozen', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/outbox')
 
@@ -72,7 +72,7 @@ test.describe.serial('Golden rollout · message governance / delivery operations
     await capture(page, testInfo, 'rollout-message-governance-outbox-a')
   })
 
-  test('Message template governance workspace · Screenshot A', async ({ page }, testInfo) => {
+  test('Message template governance workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await openStaffWorkspace(page, adminApi, '/admin/messages/templates')
 
@@ -83,21 +83,37 @@ test.describe.serial('Golden rollout · message governance / delivery operations
     await expect(page.getByRole('button', { name: '新建模板', exact: true })).toBeVisible()
     await expectEitherVisible(page.locator('.mc-item').first(), page.getByText('暂无模板', { exact: true }))
 
-    await capture(page, testInfo, 'rollout-message-governance-templates-a')
+    const visual = await page.locator('.mps:has(.mc-tpl)').evaluate((el) => {
+      const toolbar = el.querySelector('.mc-toolbar')
+      const input = toolbar?.querySelector('input')
+      const emptyPanel = el.querySelector('.mc-tpl .ags-panel')
+      const firstItem = el.querySelector('.mc-item')
+      return {
+        toolbarHeight: toolbar?.getBoundingClientRect().height || 0,
+        toolbarRadius: parseFloat(getComputedStyle(toolbar).borderRadius) || 0,
+        inputHeight: input?.getBoundingClientRect().height || 0,
+        inputRadius: parseFloat(getComputedStyle(input).borderRadius) || 0,
+        panelHeight: emptyPanel?.getBoundingClientRect().height || 0,
+        panelRadius: emptyPanel ? (parseFloat(getComputedStyle(emptyPanel).borderRadius) || 0) : 0,
+        itemRadius: firstItem ? (parseFloat(getComputedStyle(firstItem).borderRadius) || 0) : 0
+      }
+    })
+    expect(visual.toolbarHeight).toBeGreaterThanOrEqual(50)
+    expect(visual.toolbarHeight).toBeLessThanOrEqual(58)
+    expect(visual.toolbarRadius).toBeGreaterThanOrEqual(10)
+    expect(visual.inputHeight).toBeGreaterThanOrEqual(34)
+    expect(visual.inputRadius).toBeGreaterThanOrEqual(8)
+    if (visual.panelHeight) {
+      expect(visual.panelHeight).toBeGreaterThanOrEqual(210)
+      expect(visual.panelHeight).toBeLessThanOrEqual(235)
+      expect(visual.panelRadius).toBeGreaterThanOrEqual(14)
+    }
+    if (visual.itemRadius) expect(visual.itemRadius).toBeGreaterThanOrEqual(13)
+
+    await capture(page, testInfo, 'rollout-message-governance-templates-b')
   })
 
-  test('Message delivery operations workspace · Screenshot A', async ({ page }, testInfo) => {
-    await page.setViewportSize(VIEWPORT)
-    await openStaffWorkspace(page, adminApi, '/admin/messages/ops')
-
-    await expect(page).toHaveURL(/\/admin\/messages\/ops/)
-    await expect(page.getByRole('heading', { name: '投递运维', exact: true })).toBeVisible()
-    await expect(page.locator('.mc-ops')).toBeVisible()
-    await expect(page.locator('.mc-ops .mc-card')).toHaveCount(2)
-    await expect(page.getByText('对账与告警', { exact: true })).toBeVisible()
-    await expect(page.getByText('死信台账', { exact: true })).toBeVisible()
-    await expectEitherVisible(page.locator('.mc-ops .mc-table'), page.getByText('暂无死信', { exact: true }))
-
-    await capture(page, testInfo, 'rollout-message-governance-ops-a')
-  })
+  // Delivery operations is intentionally not Golden-frozen in Batch 15.
+  // The real page still exposes a `(partial)` maturity label and raw reconciliation JSON.
+  // Those are product/content maturity debts, not visual defects; CSS must not hide them.
 })

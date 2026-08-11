@@ -44,6 +44,8 @@ import './styles/golden-cyclical-work-rollout.css'
 import './styles/golden-confirmation-documents-rollout.css'
 // Golden 消息中心 rollout：我的消息 / 通知发布 / 发送统计。
 import './styles/golden-message-center-rollout.css'
+// Golden 消息治理 rollout：发布记录保持真实 A；消息模板 B；投递运维待业务成熟度收口后再收编。
+import './styles/golden-message-governance-rollout.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
 
