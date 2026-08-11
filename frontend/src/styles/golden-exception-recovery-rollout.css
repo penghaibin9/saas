@@ -6,14 +6,14 @@
 
 /* ========================================================================== */
 /* Student Affairs · leave follow-up / recovery                               */
-/* Unique signature: dual-pane .lv-main without Internship .msr summary       */
+/* Unique signature: follow-up quick chips + dual-pane detail workspace       */
 /* ========================================================================== */
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) {
   gap: 12px;
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) > .mps__head {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) > .mps__head {
   padding: 15px 18px;
   border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
   border-radius: 16px;
@@ -21,11 +21,11 @@
   box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) > .mp-stack {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) > .mp-stack {
   gap: 12px;
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .bar {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .bar {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
@@ -33,33 +33,33 @@
   background: color-mix(in srgb, var(--pri-bg) 34%, #fff);
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw {
   --dpw-aside: 360px !important;
   gap: 14px;
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw__aside {
   min-height: 240px;
   border-radius: 14px;
   box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 42%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside-head {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw__aside-head {
   min-height: 42px;
   padding: 9px 13px;
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside-foot {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw__aside-foot {
   padding: 7px 10px;
   background: color-mix(in srgb, var(--fill-2) 54%, #fff);
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__main,
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .lv-main {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw__main,
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .lv-main {
   min-height: 240px;
 }
 
-#app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .lv-main {
+#app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .lv-main {
   overflow: hidden;
   border-radius: 14px;
   box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 42%, transparent);
@@ -130,17 +130,17 @@
 }
 
 @media (max-width: 1100px) {
-  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw {
+  #app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw {
     --dpw-aside: 100% !important;
   }
 
-  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .dpw__aside {
+  #app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .dpw__aside {
     min-height: 220px;
   }
 }
 
 @media (max-width: 760px) {
-  #app .base-portal-layout .mps:has(.lv-main):not(:has(.msr)) .bar {
+  #app .base-portal-layout .mps:has(.bar .app-quick-chips):has(.lv-main):not(:has(.msr)) .bar {
     padding: 10px;
   }
 
