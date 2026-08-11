@@ -30,11 +30,29 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 10
       matrix:
         include:
           - case: selection
             nodeid: tests/test_aa_selection.py
+          - case: archive
+            nodeid: tests/test_aa_archive.py
+          - case: grade
+            nodeid: tests/test_aa_grade.py
+          - case: grade-review
+            nodeid: tests/test_aa_grade_review_flow.py
+          - case: exam
+            nodeid: tests/test_aa_exam.py
+          - case: recognition
+            nodeid: tests/test_aa_recognition.py
+          - case: scheduling
+            nodeid: tests/test_aa_scheduling_tier1_r2.py
+          - case: selection-rounds
+            nodeid: tests/test_aa_selection_rounds.py
+          - case: stats
+            nodeid: tests/test_aa_stats_r3.py
+          - case: textbook
+            nodeid: tests/test_aa_textbook.py
     services:
       mysql:
         image: mysql:8.0
