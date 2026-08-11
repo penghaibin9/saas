@@ -39,9 +39,9 @@ jobs:
           - lane: stats
             nodeids: >-
               tests/test_aa_stats.py tests/test_aa_stats_r3.py
-          - lane: recognition-textbook
+          - lane: mobile-followup
             nodeids: >-
-              tests/test_aa_recognition.py tests/test_aa_textbook.py
+              tests/test_aa_academic_task_mobile.py tests/test_aa_evaluation_mobile.py tests/test_aa_schedule_change_mobile.py
           - lane: grade-followup
             nodeids: >-
               tests/test_aa_bugfix_regression.py tests/test_aa_clearance.py tests/test_aa_effective_grade_identity.py tests/test_aa_grade_recheck.py tests/test_aa_grade_recheck_audit.py tests/test_aa_grade_task_uniqueness_and_archive.py
