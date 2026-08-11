@@ -100,7 +100,8 @@ def test_student_void_then_create_restores_same_id(db_mode, client, auth_headers
         "phone": "13900002222",
     })
     assert again.status_code == 409
-    assert again.json()["code"] == "VOIDED_PROFILE_EXISTS"
+    assert again.json()["code"] == 409001
+    assert again.json()["bizCode"] == "VOIDED_PROFILE_EXISTS"
     assert "受控恢复" in again.json()["message"]
 
     restored = client.post("/api/v1/students/restore", headers=auth_headers, json={
