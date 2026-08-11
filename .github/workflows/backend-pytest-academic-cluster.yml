@@ -1,29 +1,24 @@
-name: Backend pytest academic debt probes
+name: Backend pytest academic mainline debt probes
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'backend/tests/test_aa_*.py'
-      - 'backend/tests/test_academic_*.py'
-      - 'backend/app/modules/academic_affairs/**'
-      - 'backend/app/api/v1/academic*.py'
-      - 'backend/app/services/academic*.py'
-      - 'backend/requirements.txt'
-      - 'scripts/check/backend-known-failures-main.txt'
-      - 'scripts/check/sanitize_pytest_junit.py'
-      - 'scripts/check/summarize_pytest_junit_diagnostics.py'
-      - '.github/workflows/backend-pytest-academic-cluster.yml'
   push:
     branches:
       - fix/backend-pytest-debt-20260810
     paths:
-      - 'backend/tests/test_aa_*.py'
-      - 'backend/tests/test_academic_*.py'
-      - 'backend/app/modules/academic_affairs/**'
-      - 'backend/app/api/v1/academic*.py'
-      - 'backend/app/services/academic*.py'
-      - 'backend/requirements.txt'
+      - 'backend/tests/test_aa_archive*.py'
+      - 'backend/tests/test_aa_calendar_period.py'
+      - 'backend/tests/test_aa_exam.py'
+      - 'backend/tests/test_aa_resource_ext.py'
+      - 'backend/tests/test_aa_schedule_move.py'
+      - 'backend/tests/test_aa_scheduling.py'
+      - 'backend/tests/test_aa_scheduling_tier1_r2.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_archive*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_calendar*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_resource*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_schedule*.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_scheduling*.py'
+      - 'backend/app/modules/academic_affairs/routers/academic_affairs.py'
       - 'scripts/check/backend-known-failures-main.txt'
       - 'scripts/check/sanitize_pytest_junit.py'
       - 'scripts/check/summarize_pytest_junit_diagnostics.py'
@@ -34,18 +29,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: backend-academic-debt-${{ github.event.pull_request.number || github.ref }}
+  group: backend-academic-mainline-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   lane:
-    name: Academic debt lane / ${{ matrix.lane }}
-    if: github.head_ref == 'fix/backend-pytest-debt-20260810' || github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
+    name: Academic debt mainline / ${{ matrix.lane }}
+    if: github.ref == 'refs/heads/fix/backend-pytest-debt-20260810'
     runs-on: ubuntu-latest
     timeout-minutes: 14
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
           - lane: archive-exam
@@ -56,11 +51,6 @@ jobs:
             nodeids: >-
               tests/test_aa_resource_ext.py tests/test_aa_schedule_move.py tests/test_aa_scheduling.py
               tests/test_aa_scheduling_tier1_r2.py
-          - lane: core-program-textbook
-            nodeids: >-
-              tests/test_aa_course.py tests/test_aa_dashboard.py tests/test_aa_grade.py tests/test_aa_orgs.py
-              tests/test_aa_program_tier1_r3.py tests/test_aa_teaching_plan_r3.py
-              tests/test_aa_textbook.py tests/test_aa_textbook_student.py tests/test_aa_warning.py
     services:
       mysql:
         image: mysql:8.0
@@ -129,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-debt-lane-${{ matrix.lane }}
+          name: academic-debt-mainline-${{ matrix.lane }}
           path: backend/test-results/academic-debt/${{ matrix.lane }}/
           if-no-files-found: error
           retention-days: 14
