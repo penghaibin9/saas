@@ -12,7 +12,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.redis_client import cache_get, cache_set
+from app.core.redis_client import cache_delete, cache_get, cache_set
 from app.db.session import db_enabled, get_sessionmaker
 
 # 这些路径只用于让用户完成安全恢复动作，不包含身份切换、菜单、导出或任何业务写接口。
@@ -81,4 +81,9 @@ def must_change_password_for_subject(user_ctx: dict) -> bool:
     if key:
         # 缓存失败只影响性能，不改变刚从数据库读取的授权真值；下一请求会再次回库。
         cache_set(key, "1" if result else "0", settings.AUTH_SUBJECT_CACHE_TTL)
+        # 高危密码重置会先写 force-db 标记，迫使旧 access token 绕过 subject cache 查库。
+        # 走到这里说明同一请求已先通过 validate_token_subject 的实时版本校验，并且本安全版本
+        # 也读取了 must_change_password 真值；此时可清除 force 标记，恢复新合法 token 的缓存热路。
+        # 缺 permissionVersion 的兼容令牌没有 key，因此永远不会在这里清标记，继续 fail-closed 回库。
+        cache_delete(f"auth:force-db:{raw_tenant_id}:{raw_user_id}")
     return result

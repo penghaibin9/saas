@@ -95,11 +95,12 @@ def test_switch_role_is_not_in_password_change_allowlist():
 
 
 def test_password_change_truth_cache_is_permission_version_scoped(monkeypatch):
-    """同一安全版本只查库一次；user.version/权限版本变化后必须重新读取数据库真值。"""
+    """同一安全版本只查库一次；版本真值读取后释放 reset 强制查库标记，恢复新 token 热路。"""
     from app.services import password_change_gate as gate
 
     store: dict[str, str] = {}
     scalar_calls: list[object] = []
+    deleted_keys: list[str] = []
 
     class FakeDb:
         def scalar(self, statement):
@@ -118,19 +119,22 @@ def test_password_change_truth_cache_is_permission_version_scoped(monkeypatch):
         return True
 
     monkeypatch.setattr(gate, "cache_set", fake_cache_set)
+    monkeypatch.setattr(gate, "cache_delete", lambda key: deleted_keys.append(key) or 1)
 
     subject = {"userId": "db-123", "tenantId": "9", "permissionVersion": "u1|TEACHER:1"}
     assert gate.must_change_password_for_subject(subject) is True
     assert gate.must_change_password_for_subject(subject) is True
     assert len(scalar_calls) == 1
+    assert deleted_keys == ["auth:force-db:9:db-123"]
 
     upgraded = {**subject, "permissionVersion": "u2|TEACHER:1"}
     assert gate.must_change_password_for_subject(upgraded) is True
     assert len(scalar_calls) == 2
+    assert deleted_keys == ["auth:force-db:9:db-123", "auth:force-db:9:db-123"]
 
 
 def test_password_change_truth_without_permission_version_never_uses_cache(monkeypatch):
-    """兼容旧令牌缺少版本号时宁可回库，不允许复用可能陈旧的授权缓存。"""
+    """兼容旧令牌缺少版本号时宁可回库，也不缓存或释放强制重校验标记。"""
     from app.services import password_change_gate as gate
 
     scalar_calls: list[object] = []
@@ -147,6 +151,7 @@ def test_password_change_truth_without_permission_version_never_uses_cache(monke
     monkeypatch.setattr(gate, "get_sessionmaker", lambda: (lambda: FakeDb()))
     monkeypatch.setattr(gate, "cache_get", lambda _key: pytest.fail("versionless token must not read cache"))
     monkeypatch.setattr(gate, "cache_set", lambda *_args, **_kwargs: pytest.fail("versionless token must not write cache"))
+    monkeypatch.setattr(gate, "cache_delete", lambda *_args, **_kwargs: pytest.fail("versionless token must not clear force marker"))
 
     subject = {"userId": "db-123", "tenantId": "9"}
     assert gate.must_change_password_for_subject(subject) is False
