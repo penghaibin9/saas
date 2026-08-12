@@ -95,6 +95,10 @@ def build_router() -> APIRouter:
     # 校历复制/标准作息候选提前算给用户看，确认后仍走原正式写端点。
     convenience_module = importlib.import_module(f"{__package__}.term_calendar_convenience_router")
     _mount_routes(router, convenience_module.router)
+    # D2-S：学籍名册 + 注册管理 Move Only。三条正式导出由上方 compat 继续先占 owner；
+    # 其余 legacy 同路径由 normalized method/path 去重切换到 roster_registration_router。
+    roster_registration_module = importlib.import_module(f"{__package__}.roster_registration_router")
+    _mount_routes(router, roster_registration_module.router)
     _mount_routes(
         router,
         base_router.router,
