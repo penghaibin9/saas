@@ -310,10 +310,10 @@ export async function request(path, options = {}) {
 
 export async function logoutRemote() {
   try {
-    // Durable browser session lives in the HttpOnly cookie, so logout must probe the server even
-    // when the in-memory access token is already empty/expired. auth=false prevents ensure/refresh
-    // from resurrecting a session while trying to destroy it; rawRequest still sends the cookie.
-    await rawRequest('/auth/browser-logout', { method: 'POST', auth: false, forceProbe: true })
+    // rawRequest has no implicit ensure/refresh. Keeping auth enabled sends a still-live access
+    // token for jti blacklisting when available, while cookie-only logout still works when the
+    // in-memory token is already empty/expired. The call always runs so the durable cookie dies.
+    await rawRequest('/auth/browser-logout', { method: 'POST', auth: true, forceProbe: true })
   } catch {
     /* 离线登出静默；本地 access 仍必须清掉，服务端响应会尽力清除 Cookie */
   }
