@@ -67,11 +67,12 @@ export class StaffLoginPage {
 
     const oldRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(oldRefreshToken, 'staff role switch must start from an HttpOnly refresh session').toBeTruthy()
-    const requestPromise = this.page.waitForRequest((request) =>
-      request.url().includes('/api/v1/auth/browser-switch-role') && request.method() === 'POST'
+    const responsePromise = this.page.waitForResponse((response) =>
+      response.url().includes('/api/v1/auth/browser-switch-role') && response.request().method() === 'POST'
     )
     await target.click()
-    await requestPromise
+    const response = await responsePromise
+    expect(response.ok(), `staff role switch HTTP ${response.status()}`).toBeTruthy()
     await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
 
     await expect.poll(
@@ -80,9 +81,9 @@ export class StaffLoginPage {
     ).not.toBe(oldRefreshToken)
     const newRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(newRefreshToken, 'staff role switch must leave a resumable HttpOnly refresh session').toBeTruthy()
-    // The app navigates only after switchAuthContext succeeds. Combining the real switch request,
+    // The app navigates only after switchAuthContext succeeds. Combining the real switch response,
     // rotated HttpOnly cookie, workbench navigation and caller-side role UI assertion proves the
-    // switch without racing response-body reads against window.location.replace().
+    // switch without racing response delivery against window.location.replace().
     this.lastAccessToken = ''
   }
 
