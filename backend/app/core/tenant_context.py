@@ -2,13 +2,14 @@
 租户解析（多租户 SaaS 底座）
 ────────────────────────────────────────────────────────────
 对齐 DB 冻结册：单库 / 单 schema + tenant_id 行级隔离（一期不做每校独立库）。
-解析优先级：X-Tenant 头 → ?tenant= → 默认租户；令牌 tid 由 middleware 在其后重绑。
+解析优先级：X-Tenant 头 → ?tenant= → Bearer token tid → tenant-neutral auth/platform → 默认租户。
 
 生产事实源规则（P0）：
 - DB 模式下唯一事实源是 t_tenant（含真实 status）；
 - 显式传了租户但查不到 → fail closed；
-- production 下默认租户查不到、数据库解析异常、DB 模式判断异常 → 一律 fail closed，
-  绝不回落 mock tenant；
+- 已登录业务请求优先按 token tid 查真实租户，不依赖某个默认沙箱存在；
+- auth/platform 等租户中立入口允许在没有 tenant 事实时进入自身认证/控制面逻辑；
+- production 下其它请求的默认租户查不到、数据库解析异常、DB 模式判断异常 → fail closed；
 - _MOCK_TENANTS 仅供 mock 登录、pytest 与本地联调使用。
 """
 from __future__ import annotations
@@ -55,6 +56,23 @@ _MOCK_TENANTS = {
         "tenantName": "华南商贸职业学院",
         "status": "ACTIVE",
     },
+}
+
+# 这些入口会在自己的业务层解析 tenant（登录 body、refresh subject、平台控制面），
+# 因而 middleware 不应先拿一个 DEFAULT_TENANT_CODE 强行决定它们属于哪所学校。
+_TENANT_NEUTRAL_PREFIXES = (
+    "/api/v1/auth",
+    "/api/v1/platform",
+    "/health",
+    "/docs",
+    "/openapi",
+    "/redoc",
+)
+_TENANT_NEUTRAL = {
+    "tenantId": "",
+    "tenantCode": "",
+    "tenantName": "",
+    "status": "TENANT_NEUTRAL",
 }
 
 # t_tenant 查询缓存：每请求查库代价太高，但缓存必须短，
@@ -106,21 +124,47 @@ def _lookup_db_tenant(code: str) -> Optional[dict]:
     return result
 
 
-def resolve_tenant_code(request: Request) -> str:
-    code = (
+def _explicit_tenant_code(request: Request) -> str:
+    return (
         request.headers.get("x-tenant")
         or request.query_params.get("tenant")
         or ""
     ).strip()
-    if not code:
-        code = settings.DEFAULT_TENANT_CODE
-    return code
+
+
+def _token_tenant_code(request: Request) -> str:
+    auth = (request.headers.get("authorization") or "").strip()
+    if not auth.lower().startswith("bearer "):
+        return ""
+    try:
+        from app.core.security import decode_token
+
+        claims = decode_token(auth[7:].strip())
+        return str(claims.get("tid") or "").strip()
+    except Exception:
+        return ""
+
+
+def _is_tenant_neutral_path(request: Request) -> bool:
+    path = str(request.url.path or "")
+    return path.startswith(_TENANT_NEUTRAL_PREFIXES)
+
+
+def resolve_tenant_code(request: Request) -> str:
+    explicit = _explicit_tenant_code(request)
+    if explicit:
+        return explicit
+    token_code = _token_tenant_code(request)
+    if token_code:
+        return token_code
+    if _is_tenant_neutral_path(request):
+        return ""
+    return settings.DEFAULT_TENANT_CODE
 
 
 def tenant_code_was_explicit(request: Request) -> bool:
     """请求是否显式指定了租户（用于区分"没传"和"传了个不存在的"）。"""
-    return bool((request.headers.get("x-tenant")
-                 or request.query_params.get("tenant") or "").strip())
+    return bool(_explicit_tenant_code(request))
 
 
 def lookup_tenant(code: str) -> Optional[dict]:
@@ -149,10 +193,16 @@ def lookup_tenant(code: str) -> Optional[dict]:
 def resolve_tenant(request: Request) -> Optional[dict]:
     """解析当前请求所属租户并写入上下文。
 
-    production 下无论租户来自显式参数还是 DEFAULT_TENANT_CODE，只要数据库不能给出真实租户，
-    都返回 None 交给 middleware fail closed。非生产环境仍保留默认 mock 夹具便于 pytest/本地联调。
+    显式 tenant / token tid 必须解析到真实 DB 租户；production 业务请求否则 fail closed。
+    只有 auth/platform 等租户中立路径在既无显式 tenant、也无 token tid 时使用空的中立上下文。
+    非生产环境仍保留默认 mock 夹具便于 pytest/本地联调。
     """
     code = resolve_tenant_code(request)
+    if not code and _is_tenant_neutral_path(request) and not tenant_code_was_explicit(request):
+        tenant = dict(_TENANT_NEUTRAL)
+        set_tenant(tenant)
+        return tenant
+
     tenant = lookup_tenant(code)
     if tenant is None and not settings.is_prod and not tenant_code_was_explicit(request):
         tenant = _MOCK_TENANTS.get(settings.DEFAULT_TENANT_CODE)
