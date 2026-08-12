@@ -26,6 +26,26 @@ test('student portal refresh is generation-bound and cannot overwrite a newer se
   )
 })
 
+test('student portal business requests cannot replay under a newer login session', async () => {
+  const text = await source()
+
+  const requestBlock = text.match(/export async function request\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function uploadFile/)
+  assert.ok(requestBlock, 'request() block must exist')
+  assert.match(requestBlock[1], /const generationAtStart = sessionGeneration/)
+  assert.match(requestBlock[1], /if \(auth && sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+  assert.match(requestBlock[1], /await refreshOnce\(\)[\s\S]*?if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+
+  const uploadBlock = text.match(/export async function uploadFile\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function downloadFile/)
+  assert.ok(uploadBlock, 'uploadFile() block must exist')
+  assert.match(uploadBlock[1], /const generationAtStart = sessionGeneration/)
+  assert.match(uploadBlock[1], /if \(auth && sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+
+  const downloadBlock = text.match(/export async function downloadFile\(path,[\s\S]*?\{([\s\S]*?)\n\}\s*$/)
+  assert.ok(downloadBlock, 'downloadFile() block must exist')
+  assert.match(downloadBlock[1], /const generationAtStart = sessionGeneration/)
+  assert.match(downloadBlock[1], /if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+})
+
 test('student portal late 401 only invalidates the token that actually made that request', async () => {
   const text = await source()
 
