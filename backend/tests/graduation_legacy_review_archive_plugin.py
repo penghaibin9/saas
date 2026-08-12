@@ -118,14 +118,21 @@ def _prepare_single_archive_evidence(gd_student_id: int, kwargs: dict) -> None:
     user = _claims(kwargs)
     if not user:
         return
-    from app.core.context import get_tenant, set_tenant
+    from app.core.context import (
+        get_current_user_ctx,
+        get_tenant,
+        set_current_user,
+        set_tenant,
+    )
     from app.db.session import get_sessionmaker
     from app.models import GraduationFinal, GraduationStudent
     from app.modules.graduation.materials.command_service import adopt_legacy_file_in_session
     from app.modules.graduation.materials.snapshot_service import prepare_all
 
     previous_tenant = get_tenant()
+    previous_user = get_current_user_ctx()
     set_tenant({"tenantId": str(user.get("tenantId") or MAIN_TENANT_ID)})
+    set_current_user(user)
     try:
         prepare_all(int(gd_student_id), user)
         db = get_sessionmaker()()
@@ -159,6 +166,7 @@ def _prepare_single_archive_evidence(gd_student_id: int, kwargs: dict) -> None:
         finally:
             db.close()
     finally:
+        set_current_user(previous_user)
         set_tenant(previous_tenant)
 
 
