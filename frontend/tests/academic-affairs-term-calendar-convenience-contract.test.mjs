@@ -6,11 +6,19 @@ const apiUrl = new URL(
   '../src/modules/academicAffairs/api/term-calendar-convenience.api.js',
   import.meta.url
 )
-const calendarUrl = new URL(
+const calendarPanelUrl = new URL(
+  '../src/modules/academicAffairs/components/AaCalendarCopyPanel.vue',
+  import.meta.url
+)
+const timeSlotPanelUrl = new URL(
+  '../src/modules/academicAffairs/components/AaTimeSlotTemplatePanel.vue',
+  import.meta.url
+)
+const calendarViewUrl = new URL(
   '../src/modules/academicAffairs/views/AaCalendarView.vue',
   import.meta.url
 )
-const timeSlotUrl = new URL(
+const timeSlotViewUrl = new URL(
   '../src/modules/academicAffairs/views/AaTimeSlotView.vue',
   import.meta.url
 )
@@ -29,17 +37,32 @@ test('D1-U convenience API remains preview-only and uses canonical URLs', async 
   assert.doesNotMatch(source, /\/time-slots\/template-apply/)
 })
 
-test('D1-U pages keep final writes on existing academicAffairsApi canonical methods', async () => {
-  const [calendar, timeSlot] = await Promise.all([
-    readFile(calendarUrl, 'utf8'),
-    readFile(timeSlotUrl, 'utf8')
+test('D1-U panels keep final writes on existing canonical methods', async () => {
+  const [calendarPanel, timeSlotPanel] = await Promise.all([
+    readFile(calendarPanelUrl, 'utf8'),
+    readFile(timeSlotPanelUrl, 'utf8')
   ])
 
-  // These are the only permitted final-write owners for the convenience workflow.
-  assert.match(calendar, /academicAffairsApi\.addCalendarEvent\(/)
-  assert.match(timeSlot, /academicAffairsApi\.createTimeSlot\(/)
+  assert.match(calendarPanel, /termCalendarConvenienceApi\.previewCalendarCopy\(/)
+  assert.match(calendarPanel, /academicAffairsApi\.addCalendarEvent\(/)
+  assert.match(timeSlotPanel, /termCalendarConvenienceApi\.previewTimeSlotTemplate\(/)
+  assert.match(timeSlotPanel, /academicAffairsApi\.createTimeSlot\(/)
 
-  // Once the UI is wired, it must call preview through the dedicated read-side adapter.
-  assert.match(calendar, /termCalendarConvenienceApi\.previewCalendarCopy\(/)
-  assert.match(timeSlot, /termCalendarConvenienceApi\.previewTimeSlotTemplate\(/)
+  assert.doesNotMatch(calendarPanel, /localStorage|sessionStorage/)
+  assert.doesNotMatch(timeSlotPanel, /localStorage|sessionStorage/)
+})
+
+test('D1-U panels are embedded in existing workspaces instead of replacing them', async () => {
+  const [calendarView, timeSlotView] = await Promise.all([
+    readFile(calendarViewUrl, 'utf8'),
+    readFile(timeSlotViewUrl, 'utf8')
+  ])
+
+  assert.match(calendarView, /<AaCalendarCopyPanel/)
+  assert.match(calendarView, /academicAffairsApi\.addCalendarEvent\(/)
+  assert.match(calendarView, /academicAffairsApi\.publishCalendar\(/)
+
+  assert.match(timeSlotView, /<AaTimeSlotTemplatePanel/)
+  assert.match(timeSlotView, /academicAffairsApi\.createTimeSlot\(/)
+  assert.match(timeSlotView, /academicAffairsApi\.createTimeBand\(/)
 })
