@@ -193,19 +193,21 @@ def submit_with_materials(body, user, material_file_ids=None) -> dict:
     if not file_ids:
         return {**result, "materialCount": 0}
 
-    # strict_submit 的 idempotencyKey 允许网络重放直接返回既有异动单。重放时不会产生新 ORM insert，
-    # 因而 flush hook 也不会再次执行；这里必须核对既有正式 binding，防止同 key 换材料后虚报成功。
+    # strict_submit 的 idempotencyKey 允许网络重放直接返回既有异动单。重放不会产生新 ORM insert，
+    # 所以必须要求正式 binding 集合与本次请求完全一致；增、删、换任一材料都视为幂等事实冲突。
     bound = list_materials(result["changeId"], user)
-    bound_ids = {str(item.get("fileId") or "") for item in bound}
+    bound_ids = {str(item.get("fileId") or "") for item in bound if str(item.get("fileId") or "")}
     requested = set(file_ids)
-    if not requested.issubset(bound_ids):
+    if requested != bound_ids:
         raise AppException(
             "IDEMPOTENCY_MATERIAL_MISMATCH",
             "该幂等异动已存在，但正式材料与本次提交不一致，请刷新异动详情后处理",
             details={
                 "changeId": str(result.get("changeId") or ""),
                 "requestedCount": len(requested),
-                "boundCount": len(requested.intersection(bound_ids)),
+                "boundCount": len(bound_ids),
+                "missingCount": len(requested - bound_ids),
+                "extraCount": len(bound_ids - requested),
             },
             http_status=409,
         )

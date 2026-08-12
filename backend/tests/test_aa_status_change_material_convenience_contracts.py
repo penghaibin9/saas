@@ -37,6 +37,30 @@ def test_d3u_convenience_submit_delegates_to_canonical_service(monkeypatch):
     assert result["materialCount"] == 0
 
 
+def test_d3u_idempotent_replay_requires_exact_material_set(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import status_change_material_service as material_svc
+
+    marker = object()
+    monkeypatch.setattr(
+        material_svc.change_service,
+        "submit",
+        lambda body, user: {"changeId": "123", "status": "SUBMITTED"},
+    )
+    monkeypatch.setattr(
+        material_svc,
+        "list_materials",
+        lambda change_id, user: [{"fileId": "1"}, {"fileId": "2"}],
+    )
+
+    with pytest.raises(AppException) as caught:
+        material_svc.submit_with_materials(marker, {"userId": "7"}, ["1"])
+    assert caught.value.code == "IDEMPOTENCY_MATERIAL_MISMATCH"
+
+    result = material_svc.submit_with_materials(marker, {"userId": "7"}, ["2", "1"])
+    assert result["materialCount"] == 2
+
+
 def test_d3u_material_file_ids_are_bounded_and_deduplicated():
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import status_change_material_service as material_svc
@@ -113,7 +137,6 @@ def test_d3u_flush_hook_binds_ready_temp_file_inside_same_session(db_mode):
         )
         db.add(change)
         db.flush()
-        # after_flush_postexec 只排入正式 binding；再 flush 一次验证同一事务内已落 ORM 关系。
         db.flush()
         binding = db.scalars(select(FileBinding).where(
             FileBinding.tenant_id == tenant_id,
