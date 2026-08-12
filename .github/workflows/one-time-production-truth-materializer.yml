@@ -1,0 +1,66 @@
+name: One-time production truth materializer
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-truth-materializer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: production_truth_materializer
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      DB_ENABLED: "true"
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/production_truth_materializer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+      - name: Materialize safe seed and immutable 0001 baseline
+        run: python scripts/maintenance/materialize-production-truth.py
+      - name: Commit generated production truth when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- backend/scripts/seed_academic_affairs_demo.py backend/alembic/frozen; then
+            echo "Production truth already materialized; no commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- backend/scripts/seed_academic_affairs_demo.py backend/alembic/frozen
+          git commit -m "build(migration): freeze 0001 baseline and sandbox seed truth"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
