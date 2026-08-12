@@ -41,13 +41,13 @@ async function expectApiOk(result, label) {
   return result.json.data
 }
 
-async function chooseTerm(page, termName) {
+async function chooseTerm(page, visibleLabel) {
   const picker = page.locator('.aa-filter .app-remote-select').first()
   await picker.locator('.app-remote-select__control').click()
-  const option = picker.locator('.app-remote-select__option').filter({ hasText: termName }).first()
-  await expect(option, `missing term option ${termName}`).toBeVisible()
+  const option = picker.locator('.app-remote-select__option').filter({ hasText: visibleLabel }).first()
+  await expect(option, `missing term option ${visibleLabel}`).toBeVisible()
   await option.click()
-  await expect(picker.locator('.app-remote-select__single')).toContainText(termName)
+  await expect(picker.locator('.app-remote-select__single')).toContainText(visibleLabel)
 }
 
 async function captureViewport(page, testInfo, name, width, height) {
@@ -113,11 +113,11 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/calendar`)
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/calendar/)
     await dismissPageGuide(page)
-    await chooseTerm(page, targetName)
+    await chooseTerm(page, '2089-2090 第 1 学期')
 
     const copyPanel = page.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
     await expect(page.getByText('快速复制上一学期校历', { exact: true })).toBeVisible()
-    await page.locator('.aa-copy-field select').selectOption({ label: sourceName })
+    await page.locator('.aa-copy-field select').selectOption(String(source.termId))
     await page.getByRole('button', { name: '预览复制结果' }).click()
 
     await expect(page.getByText(holidayRemark)).toBeVisible()
@@ -160,7 +160,7 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await page.getByRole('button', { name: '标准 10 节' }).click()
     await page.getByRole('button', { name: '检查当前作息' }).click()
 
-    await expect(page.getByText('第 10 节', { exact: true })).toBeVisible()
+    await expect(page.getByText('第 10 节', { exact: true }).first()).toBeVisible()
     await expect(page.getByText(/可新增|已存在|冲突/).first()).toBeVisible()
     await expect(page.getByText(/模板只负责给出候选/)).toBeVisible()
 
