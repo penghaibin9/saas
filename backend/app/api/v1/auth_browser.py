@@ -48,15 +48,23 @@ def _channel_from_client_type(client_type: str | None) -> str:
 
 
 def _channel_from_access_token(token: str) -> str:
+    """Derive the durable browser surface from authenticated identity, not caller-supplied clientType.
+
+    ``clientType`` is a request hint and is therefore not allowed to turn a teacher into a student
+    surface (or vice versa). Platform/student account identity wins; only identity-neutral legacy
+    tokens fall back to their clientType.
+    """
     claims = decode_token(token)
     client_type = str(claims.get("clientType") or "").strip().upper()
     user_type = str(claims.get("userType") or "").strip().upper()
     role = str(claims.get("currentRoleCode") or "").strip().upper()
-    if client_type == "PLATFORM_PC" or user_type.startswith("PLATFORM_"):
+    if user_type.startswith("PLATFORM_") or role == "PLATFORM_SUPER_ADMIN":
         return "platform"
-    if client_type == "STUDENT_PC" or user_type == "STUDENT" or role == "STUDENT":
+    if user_type == "STUDENT" or role == "STUDENT":
         return "student"
-    return "staff"
+    if user_type or role:
+        return "staff"
+    return _channel_from_client_type(client_type)
 
 
 def _set_refresh_cookie(response: Response, token: str, channel: str) -> None:
