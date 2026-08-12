@@ -113,6 +113,11 @@ def build_router() -> APIRouter:
     # 不覆盖 D3-S 五入口，也不覆盖 temporal /scheduled；材料在同一事务通过 FileBinding 落地。
     status_change_convenience_module = importlib.import_module(f"{__package__}.status_change_convenience_router")
     _mount_routes(router, status_change_convenience_module.router)
+    # D4-S：课程库 / 培养方案 / 教学任务从 legacy 大 Router Move Only 迁出。
+    # 已独立的 program_quality_router / teaching_class_router 继续保持 extension owner，
+    # 本批不复制其路径、不改 canonical service / permission / DTO / schema。
+    course_program_task_module = importlib.import_module(f"{__package__}.course_program_task_router")
+    _mount_routes(router, course_program_task_module.router)
     _mount_routes(
         router,
         base_router.router,
