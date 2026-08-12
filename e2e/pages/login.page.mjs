@@ -4,6 +4,12 @@ function accessTokenFromEnvelope(payload) {
   return String(payload?.data?.accessToken || '')
 }
 
+async function browserRefreshCookie(page, channel = 'staff') {
+  const name = `gx_${channel}_refresh_v1`
+  const cookies = await page.context().cookies()
+  return String(cookies.find((cookie) => cookie.name === name)?.value || '')
+}
+
 export class StaffLoginPage {
   constructor(page, baseUrl) {
     this.page = page
@@ -44,18 +50,23 @@ export class StaffLoginPage {
     const target = menu.locator('button.uchip__ctx').filter({ hasText: rolePattern }).first()
     await expect(target, `missing role context ${rolePattern}`).toBeVisible()
     if (await target.isDisabled()) return
-    const oldToken = this.lastAccessToken
+
+    const oldRefreshToken = await browserRefreshCookie(this.page, 'staff')
+    expect(oldRefreshToken, 'staff role switch must start from an HttpOnly refresh session').toBeTruthy()
     const responsePromise = this.page.waitForResponse((response) =>
       response.url().includes('/api/v1/auth/browser-switch-role') && response.request().method() === 'POST'
     )
     await target.click()
     const response = await responsePromise
     expect(response.ok(), `staff role switch HTTP ${response.status()}`).toBeTruthy()
-    const newToken = accessTokenFromEnvelope(await response.json())
-    expect(newToken, 'browser role switch must return an in-memory access token').toBeTruthy()
-    if (oldToken) expect(newToken).not.toBe(oldToken)
-    this.lastAccessToken = newToken
     await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
+
+    const newRefreshToken = await browserRefreshCookie(this.page, 'staff')
+    expect(newRefreshToken, 'staff role switch must leave a resumable HttpOnly refresh session').toBeTruthy()
+    expect(newRefreshToken, 'staff role switch must rotate the durable browser session').not.toBe(oldRefreshToken)
+    // The app keeps the new access token in closure memory by design; the E2E contract proves
+    // the switch with the real 200 response, rotated HttpOnly session, URL transition and role UI.
+    this.lastAccessToken = ''
   }
 
   async token() {
