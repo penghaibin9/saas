@@ -133,7 +133,10 @@ def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_
             "岗位实习导出必须指定 batchId，禁止无批次导出全历史",
         )
     title, list_path, cols = DOMAINS[domain]
-    items, total = _call_list(list_path, domain=domain, user=user, batch_id=batch_id)
+    if domain == "internship":
+        items, total = _call_list(list_path, domain=domain, user=user, batch_id=batch_id)
+    else:
+        items, total = _call_list(list_path, domain=domain, user=user)
     from openpyxl import Workbook
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title=title[:28])
