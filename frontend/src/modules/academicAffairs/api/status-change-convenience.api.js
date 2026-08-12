@@ -1,5 +1,5 @@
 /** D3-U 学籍异动便利性 API。
- *  新便利性路径只做统一编排：内部仍调用 canonical status change + temporal guard。
+ * 新便利性路径只做统一编排：内部仍调用 canonical status change + temporal guard。
  */
 import { request } from '@/services/http/client'
 
@@ -25,6 +25,16 @@ export const statusChangeConvenienceApi = {
   async listMaterials(changeId) {
     try {
       return ok(await request(`${BASE}/${encodeURIComponent(changeId)}/materials`))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  async addMaterials(changeId, materialFileIds) {
+    try {
+      return ok(await request(`${BASE}/${encodeURIComponent(changeId)}/materials`, {
+        method: 'POST',
+        body: { materialFileIds }
+      }))
     } catch (e) {
       return toErr(e)
     }

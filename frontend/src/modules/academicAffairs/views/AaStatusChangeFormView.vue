@@ -110,10 +110,12 @@
           <div class="aa-form__field">
             <FileUploader
               biz-type="AA_STATUS_CHANGE"
-              :disabled="submitting || materialFiles.length >= 10"
+              :disabled="!form.studentId || submitting || materialUploadBusy || materialFiles.length >= 10"
               button-text="上传材料"
+              @progress="onMaterialProgress"
               @uploaded="onMaterialUploaded"
               @error="onMaterialUploadError"
+              @cancelled="onMaterialUploadCancelled"
             />
             <div class="aa-form__hint">最多 10 份。上传先进入私有隔离区；只有安全扫描通过并成功提交异动后，才会在同一事务绑定为正式申请材料。</div>
             <div v-if="materialFiles.length" class="aa-materials">
@@ -130,7 +132,8 @@
                 </div>
               </div>
             </div>
-            <div v-if="hasPendingMaterial" class="aa-form__hint aa-form__hint--warn">存在尚未安全可用的材料，请刷新状态或移除后再提交。</div>
+            <div v-if="materialUploadBusy" class="aa-form__hint aa-form__hint--warn">材料仍在上传，完成前不能提交异动。</div>
+            <div v-else-if="hasPendingMaterial" class="aa-form__hint aa-form__hint--warn">存在尚未安全可用的材料，请刷新状态或移除后再提交。</div>
           </div>
         </div>
       </div>
@@ -202,6 +205,7 @@ export default {
       submitting: false,
       loadingStudent: false,
       loadingClasses: false,
+      materialUploadBusy: false,
       targetClassOptions: [],
       targetOrg: [],
       targetOrgItems: [],
@@ -276,7 +280,7 @@ export default {
       return this.materialFiles.some((item) => !item.readyForBusiness)
     },
     canSubmit() {
-      if (!this.form.studentId || this.loadingStudent || this.hasPendingMaterial) return false
+      if (!this.form.studentId || this.loadingStudent || this.materialUploadBusy || this.hasPendingMaterial) return false
       if (this.form.changeType === 'TRANSFER_CLASS' && !this.form.toClassId) return false
       if (this.form.changeType === 'TRANSFER_MAJOR' && !this.form.toMajorId) return false
       if (this.form.effectiveMode === 'SCHEDULED' && !this.form.effectiveDate) return false
@@ -301,6 +305,7 @@ export default {
     onStudentChange(_value, items) {
       const selected = items?.[0]
       this.form.name = selected?.raw?.realName || selected?.label || ''
+      this.materialFiles = []
       this.resetCurrentStudentFacts()
       if (this.form.studentId) this.loadStudentOrgInfo()
     },
@@ -328,7 +333,11 @@ export default {
       this.form.reason = value
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
+    onMaterialProgress() {
+      this.materialUploadBusy = true
+    },
     onMaterialUploaded(file) {
+      this.materialUploadBusy = false
       const normalized = fileSdk.normalize(file || {})
       if (!normalized.fileId) {
         toast.error('上传完成但未返回有效 fileId')
@@ -339,7 +348,11 @@ export default {
       else if (this.materialFiles.length < 10) this.materialFiles.push(normalized)
     },
     onMaterialUploadError(error) {
+      this.materialUploadBusy = false
       toast.error(error?.message || '材料上传失败')
+    },
+    onMaterialUploadCancelled() {
+      this.materialUploadBusy = false
     },
     async refreshMaterial(fileId) {
       try {

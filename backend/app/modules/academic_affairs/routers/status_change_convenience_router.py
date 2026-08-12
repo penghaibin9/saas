@@ -1,6 +1,6 @@
 """D3-U 学籍异动便利性 Router。
 
-新增统一提交 + 材料读取；legacy 五入口与 `/scheduled` 均继续保留兼容，
+新增统一提交 + 材料读取/补充；legacy 五入口与 `/scheduled` 均继续保留兼容，
 内部仍调用同一个 change_service.submit canonical。
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import success
@@ -30,6 +30,15 @@ class StatusChangeConvenienceSubmit(status_change_router.StatusChangeSubmit):
     )
 
 
+class StatusChangeMaterialBind(BaseModel):
+    materialFileIds: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="补充到既有异动单的 TEMP_PRIVATE fileId，最多 10 个且总正式材料不超过 10 个",
+    )
+
+
 @router.post("/status-changes/convenience-submit", summary="D3-U：统一发起异动（立即/计划生效 + 正式材料）")
 def status_change_convenience_submit(
     body: StatusChangeConvenienceSubmit,
@@ -47,3 +56,15 @@ def status_change_materials(
     user=Depends(status_change_router._SC_LIST_VIEW),
 ):
     return success({"items": material_svc.list_materials(changeId, user)})
+
+
+@router.post("/status-changes/{changeId}/materials", summary="D3-U：补充学籍异动正式材料（提交/在审/退回窗口）")
+def status_change_materials_add(
+    body: StatusChangeMaterialBind,
+    changeId: int = Path(...),
+    user=Depends(require_permission(status_change_router._SC_APPLY)),
+):
+    return success(
+        {"items": material_svc.add_materials(changeId, user, body.materialFileIds)},
+        message="材料已绑定",
+    )

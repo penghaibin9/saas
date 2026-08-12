@@ -1,6 +1,7 @@
 """D3-U 学籍异动材料：原子绑定与便利性合同。"""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -74,6 +75,20 @@ def test_d3u_material_file_ids_are_bounded_and_deduplicated():
         material_svc._validate_file_ids(["not-a-file"])
 
 
+def test_d3u_material_edit_window_is_exact_and_terminal_statuses_freeze():
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import status_change_material_service as material_svc
+
+    assert material_svc.EDITABLE_MATERIAL_STATUSES == frozenset({"SUBMITTED", "IN_REVIEW", "RETURNED"})
+    for status in material_svc.EDITABLE_MATERIAL_STATUSES:
+        material_svc._assert_materials_editable(SimpleNamespace(id=9, status=status))
+
+    for status in ("APPROVED", "PENDING_EFFECTIVE", "EFFECTIVE", "REJECTED", "CANCELLED"):
+        with pytest.raises(AppException) as caught:
+            material_svc._assert_materials_editable(SimpleNamespace(id=9, status=status))
+        assert caught.value.code == "STATUS_CHANGE_MATERIALS_FROZEN"
+
+
 def test_d3u_router_shapes_are_public_and_do_not_replace_legacy_routes():
     from app.modules.academic_affairs.routers import academic_affairs_bundle
 
@@ -81,6 +96,7 @@ def test_d3u_router_shapes_are_public_and_do_not_replace_legacy_routes():
     shapes = {(r.path, method) for r in routes for method in (r.methods or set())}
     assert ("/academic-affairs/status-changes/convenience-submit", "POST") in shapes
     assert ("/academic-affairs/status-changes/{changeId}/materials", "GET") in shapes
+    assert ("/academic-affairs/status-changes/{changeId}/materials", "POST") in shapes
     assert ("/academic-affairs/status-changes", "POST") in shapes
     assert ("/academic-affairs/status-changes/scheduled", "POST") in shapes
 

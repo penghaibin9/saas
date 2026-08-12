@@ -5,7 +5,8 @@
 - materialFileIds 通过 ContextVar 只在本次 submit 事务内生效；
 - AaStatusChange flush 获得 changeId 后，在同一 SQLAlchemy 事务中把 TEMP_PRIVATE
   文件绑定为 ``AA_STATUS_CHANGE`` 正式证据；任何文件失败都会让整笔异动回滚；
-- 不修改 AaStatusChange 表，不给 legacy StatusChangeSubmit 增字段，不复制状态机。
+- 不修改 AaStatusChange 表，不给 legacy StatusChangeSubmit 增字段，不复制状态机；
+- 后续补材料只允许 SUBMITTED / IN_REVIEW / RETURNED，终审及计划生效后冻结。
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from typing import Any
 from sqlalchemy import event, select
 from sqlalchemy.orm import Session as OrmSession
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
 from app.services.db_service import _tid, session
 from app.services.file_access_service import list_business_files, register_file_resolver
@@ -26,6 +27,7 @@ from . import academic_affairs_change_service as change_service
 
 _BIZ_TYPE = "AA_STATUS_CHANGE"
 _MAX_MATERIALS = 10
+EDITABLE_MATERIAL_STATUSES = frozenset({"SUBMITTED", "IN_REVIEW", "RETURNED"})
 _PENDING: ContextVar[tuple[tuple[str, ...], dict] | None] = ContextVar(
     "aa_status_change_materials_pending", default=None
 )
@@ -39,6 +41,7 @@ _STAFF_FILE_PERMISSIONS = (
     "academicAffairs.statusChange.collegeReview",
     "academicAffairs.statusChange.officeReview",
 )
+_APPLY_PERMISSION = "academicAffairs.statusChange.apply"
 
 
 def _validate_file_ids(values) -> tuple[str, ...]:
@@ -98,6 +101,72 @@ def status_change_file_resolver(db, file_obj, bindings: list[Any], user: dict, a
         return False
 
 
+def _active_material_file_ids(db, change_id) -> set[str]:
+    from app.models.file import FileBinding
+
+    rows = db.scalars(select(FileBinding.file_id).where(
+        FileBinding.tenant_id == _tid(),
+        FileBinding.biz_type == _BIZ_TYPE,
+        FileBinding.biz_id == str(change_id),
+        FileBinding.status == "ACTIVE",
+        FileBinding.is_current.is_(True),
+        FileBinding.is_deleted.is_(False),
+    )).all()
+    return {str(value) for value in rows if value is not None}
+
+
+def _assert_materials_editable(change) -> None:
+    status = str(change.status or "").upper()
+    if status not in EDITABLE_MATERIAL_STATUSES:
+        raise AppException(
+            "STATUS_CHANGE_MATERIALS_FROZEN",
+            "异动已完成审批或进入生效阶段，申请材料已冻结",
+            details={"changeId": str(change.id), "status": status},
+            http_status=409,
+        )
+
+
+def _bind_materials_in_session(db, change, file_ids: tuple[str, ...], actor: dict) -> None:
+    """只建立正式 binding，不 commit；调用方事务失败时与业务对象一起回滚。"""
+    if not file_ids:
+        return
+    _assert_materials_editable(change)
+    existing = _active_material_file_ids(db, change.id)
+    requested_new = {file_id for file_id in file_ids if file_id not in existing}
+    if len(existing) + len(requested_new) > _MAX_MATERIALS:
+        raise AppException("VALIDATION_ERROR", f"学籍异动正式材料最多 {_MAX_MATERIALS} 份")
+
+    for file_id in file_ids:
+        bind_file_to_business(
+            db,
+            file_id=file_id,
+            biz_type=_BIZ_TYPE,
+            biz_id=change.id,
+            actor=actor,
+            subject_type="STUDENT",
+            subject_id=change.student_id,
+            relation_type="APPLICATION_MATERIAL",
+            module_code="ACADEMIC_AFFAIRS",
+            student_id=int(change.student_id),
+            college_id=change.from_college_id,
+            class_id=change.from_class_id,
+            scope={
+                "changeId": str(change.id),
+                "studentId": str(change.student_id),
+                "changeType": change.change_type,
+                "fromStatus": change.from_status,
+                "toStatus": change.to_status,
+                "fromCollegeId": str(change.from_college_id or ""),
+                "toCollegeId": str(change.to_college_id or ""),
+                "fromClassId": str(change.from_class_id or ""),
+                "toClassId": str(change.to_class_id or ""),
+            },
+            # 新便利性只接受通用上传产生的 TEMP_PRIVATE，或幂等复用已绑定到同一异动的文件；
+            # 不允许借补材料入口接管历史 BIZ_SCOPED 文件。
+            legacy_target_values=set(),
+        )
+
+
 def _before_flush(db, flush_context, instances) -> None:
     del flush_context, instances
     selected = _PENDING.get()
@@ -126,32 +195,7 @@ def _after_flush_postexec(db, flush_context) -> None:
     db.info[_PROCESSING_KEY] = True
     try:
         for change, file_ids, actor in pending:
-            for file_id in file_ids:
-                bind_file_to_business(
-                    db,
-                    file_id=file_id,
-                    biz_type=_BIZ_TYPE,
-                    biz_id=change.id,
-                    actor=actor,
-                    subject_type="STUDENT",
-                    subject_id=change.student_id,
-                    relation_type="APPLICATION_MATERIAL",
-                    module_code="ACADEMIC_AFFAIRS",
-                    student_id=int(change.student_id),
-                    college_id=change.from_college_id,
-                    class_id=change.from_class_id,
-                    scope={
-                        "changeId": str(change.id),
-                        "studentId": str(change.student_id),
-                        "changeType": change.change_type,
-                        "fromStatus": change.from_status,
-                        "toStatus": change.to_status,
-                        "fromCollegeId": str(change.from_college_id or ""),
-                        "toCollegeId": str(change.to_college_id or ""),
-                        "fromClassId": str(change.from_class_id or ""),
-                        "toClassId": str(change.to_class_id or ""),
-                    },
-                )
+            _bind_materials_in_session(db, change, file_ids, actor)
     finally:
         db.info[_PROCESSING_KEY] = False
 
@@ -163,21 +207,54 @@ def install() -> None:
         event.listen(OrmSession, "after_flush_postexec", _after_flush_postexec)
 
 
+def _load_change(db, change_id, *, lock: bool = False):
+    from app.models import AaStatusChange
+
+    try:
+        parsed = int(change_id)
+    except (TypeError, ValueError):
+        raise not_found("学籍异动不存在") from None
+    stmt = select(AaStatusChange).where(
+        AaStatusChange.id == parsed,
+        AaStatusChange.tenant_id == _tid(),
+        AaStatusChange.is_deleted.is_(False),
+    )
+    if lock:
+        stmt = stmt.with_for_update()
+    change = db.scalars(stmt).first()
+    if not change:
+        raise not_found("学籍异动不存在")
+    return change
+
+
 def list_materials(change_id, user) -> list[dict]:
     """先按权威异动对象裁决范围，再交公共文件中心做逐文件 resolver 授权。"""
     with session() as db:
-        from app.models import AaStatusChange
-
-        change = db.scalars(select(AaStatusChange).where(
-            AaStatusChange.id == int(change_id),
-            AaStatusChange.tenant_id == _tid(),
-            AaStatusChange.is_deleted.is_(False),
-        )).first()
-        if not change:
-            from app.core.exceptions import not_found
-            raise not_found("学籍异动不存在")
+        change = _load_change(db, change_id)
         safety_guard.require_change_scope(db, user or {}, change)
     return list_business_files(_BIZ_TYPE, str(change_id), user=user)
+
+
+def add_materials(change_id, user, material_file_ids=None) -> list[dict]:
+    """在提交/在审/退回窗口补材料；终审或待生效以后冻结，任一失败整笔补充回滚。"""
+    file_ids = _validate_file_ids(material_file_ids)
+    if not file_ids:
+        return list_materials(change_id, user)
+    if not has_permission(user or {}, _APPLY_PERMISSION):
+        raise no_permission("无权补充学籍异动材料")
+
+    db = session()
+    try:
+        change = _load_change(db, change_id, lock=True)
+        safety_guard.require_change_scope(db, user or {}, change)
+        _bind_materials_in_session(db, change, file_ids, dict(user or {}))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return list_materials(change_id, user)
 
 
 def submit_with_materials(body, user, material_file_ids=None) -> dict:
