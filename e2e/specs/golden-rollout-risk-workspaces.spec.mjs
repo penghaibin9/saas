@@ -5,6 +5,7 @@ import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const graduationRiskStudent = { tenant: 'sandbox-school', username: 'E2E20260003', password: 'E2eTest@2026' }
+const workerNonce = `${process.pid}-${String(Date.now()).slice(-5)}`
 
 function isoDay(offset) {
   const date = new Date()
@@ -20,7 +21,8 @@ function academicYear() {
 
 function runId() {
   const raw = process.env.GITHUB_RUN_ID || `${Date.now()}`
-  return String(raw).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
+  const base = String(raw).replace(/\D/g, '').slice(-10) || String(Date.now()).slice(-10)
+  return `${base}-${workerNonce}`
 }
 
 async function dismissGuide(page) {
