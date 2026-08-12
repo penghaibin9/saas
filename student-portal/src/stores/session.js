@@ -1,10 +1,10 @@
 /**
- * 会话 store（学生 PC 门户）。token 独立 sp_token_v1；仅 STUDENT 可进入。
- * 登出只清理学生门户自身会话，不影响 miniapp / frontend 管理端登录态。
+ * 会话 store（学生 PC 门户）。accessToken 仅内存；仅 STUDENT 可进入。
+ * 登出会先请求 browser-logout 清除/吊销 HttpOnly refresh cookie，再清理本地门户状态。
  */
 import { defineStore } from 'pinia'
 import { portalApi } from '../services/portalApi'
-import { clearSession, getToken, setRefreshToken, setToken } from '../services/request'
+import { clearSession, getToken, request, setRefreshToken, setToken } from '../services/request'
 
 const FORCE_PASSWORD_CHANGE_KEY = 'sp_force_password_change_v1'
 
@@ -24,8 +24,7 @@ export const useSessionStore = defineStore('sp-session', {
     user: null,          // { userId, realName, userType, roleCode, studentNo, mustChangePassword }
     ready: false,
     mustChangePassword: readForcePasswordChange(),
-    token: getToken()    // 响应式镜像 localStorage 令牌：isLoggedIn 若直接读 getToken() 是无响应式依赖的 getter，
-                         // 会缓存应用初始化时的首值（未登录=false），登录后置入令牌也不重算 → 守卫永远判未登录。
+    token: getToken()    // accessToken 的响应式内存镜像；浏览器刷新由 HttpOnly cookie 静默恢复。
   }),
   getters: {
     isLoggedIn: (s) => !!s.token,
@@ -61,13 +60,21 @@ export const useSessionStore = defineStore('sp-session', {
       this.ready = true
       return this.user
     },
-    logout() {
-      clearSession()
-      writeForcePasswordChange(false)
-      this.user = null
-      this.mustChangePassword = false
-      this.token = ''
-      this.ready = false
+    async logout() {
+      try {
+        // auth=false prevents a logout attempt from first refreshing/reviving the session.
+        await request('/auth/browser-logout', { method: 'POST', auth: false })
+      } catch {
+        // Local logout still wins. The backend endpoint also expires the cookie before reporting
+        // fail-closed store errors, so shared-PC sessions cannot silently resurrect on refresh.
+      } finally {
+        clearSession()
+        writeForcePasswordChange(false)
+        this.user = null
+        this.mustChangePassword = false
+        this.token = ''
+        this.ready = false
+      }
     }
   }
 })
