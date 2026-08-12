@@ -21,6 +21,7 @@ from app.api.v1.affairs_leave_self_api import router as affairs_leave_self_route
 from app.api.v1.affairs_operations_api import router as affairs_operations_router
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
+from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
@@ -72,6 +73,7 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
 
 
 for supplemental_router in (
+    auth_browser_router,
     affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
