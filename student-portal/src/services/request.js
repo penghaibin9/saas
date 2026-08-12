@@ -4,7 +4,7 @@
  * - 学生 PC 固定使用独立 student browser session，不与教师/平台 PC 共用 refresh Cookie。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
  * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
- * - 迟到的旧 refresh/401 不得覆盖、清空或借用已经切换的新会话。
+ * - 迟到的旧 refresh/401/业务响应不得覆盖、清空或借用已经切换的新会话。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
 const TOKEN_KEY = 'sp_token_v1'
@@ -57,6 +57,7 @@ function _invalidateIfCurrent(tokenAtStart) {
 function staleSessionError() {
   const e = new Error('登录会话已发生变化，旧请求已停止')
   e.code = 'SESSION_CHANGED'
+  e.bizCode = 'SESSION_CHANGED'
   e.biz = true
   e.staleSession = true
   return e
@@ -232,6 +233,7 @@ export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
   cleanupStaleGraduationTemps()
+  const generationAtStart = sessionGeneration
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -251,9 +253,15 @@ export async function request(path, {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
   const payload = await responseJson(res)
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
     if (auth && !_retried && !path.startsWith('/auth/')) {
+      // 同一逻辑学生会话内的并发请求可能已经完成 refresh；允许同身份 token 重试。
+      if (accessToken && accessToken !== token) {
+        return request(path, { method, body, auth, params, query, _retried: true })
+      }
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return request(path, { method, body, auth, params, query, _retried: true })
     }
     if (auth) _invalidateIfCurrent(token)
@@ -281,6 +289,7 @@ export async function request(path, {
 
 export async function uploadFile(path, file, { auth = true, _retried = false } = {}) {
   cleanupStaleGraduationTemps()
+  const generationAtStart = sessionGeneration
   const headers = {}
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -296,9 +305,14 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
   const payload = await responseJson(res)
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
     if (auth && !_retried) {
+      if (accessToken && accessToken !== token) {
+        return uploadFile(path, file, { auth, _retried: true })
+      }
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return uploadFile(path, file, { auth, _retried: true })
     }
     if (auth) _invalidateIfCurrent(token)
@@ -317,6 +331,7 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
 }
 
 export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
+  const generationAtStart = sessionGeneration
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -327,9 +342,12 @@ export async function downloadFile(path, fallbackName = '毕业设计材料', _r
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
+  if (sessionGeneration !== generationAtStart) throw staleSessionError()
   if (res.status === 401) {
     if (!_retried) {
+      if (accessToken && accessToken !== token) return downloadFile(path, fallbackName, true)
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return downloadFile(path, fallbackName, true)
     }
     _invalidateIfCurrent(token)
@@ -339,6 +357,7 @@ export async function downloadFile(path, fallbackName = '毕业设计材料', _r
     const e = new Error('材料下载失败或你已无权访问'); e.status = res.status; throw e
   }
   const blob = await res.blob()
+  if (sessionGeneration !== generationAtStart) throw staleSessionError()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
