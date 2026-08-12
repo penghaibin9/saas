@@ -46,7 +46,8 @@ async function installSecureE2EBootstrap(page) {
   // Production code now deletes those legacy keys by design. Intercept only that E2E pattern and
   // translate the API fixture's refresh token into a real HttpOnly browser cookie. The app then
   // obtains its access token through its own /browser-refresh path; product source never reads
-  // Web Storage and the cookie is immediately rotated by the real backend.
+  // Web Storage. Because browser refresh tokens are one-time/rotating, capture the replacement
+  // cookie from the real response so the same API fixture can securely bootstrap the next test.
   const nativeAddInitScript = page.addInitScript.bind(page)
   page.addInitScript = async (script, arg) => {
     const source = typeof script === 'function' ? String(script) : String(script?.content || script || '')
@@ -60,8 +61,19 @@ async function installSecureE2EBootstrap(page) {
     }
     const channel = browserChannel(session, source)
     const base = new URL(channel === 'student' ? config.studentBaseUrl : config.staffBaseUrl)
+    const cookieName = `gx_${channel}_refresh_v1`
+    const onResponse = async (response) => {
+      if (!response.ok() || !response.url().includes('/api/v1/auth/browser-refresh')) return
+      const setCookie = await response.headerValue('set-cookie').catch(() => '')
+      const match = String(setCookie || '').match(new RegExp(`(?:^|,\\s*)${cookieName}=([^;,\\s]+)`))
+      if (!match?.[1]) return
+      session.refreshToken = match[1]
+      page.off('response', onResponse)
+    }
+    page.on('response', onResponse)
+
     await page.context().addCookies([{
-      name: `gx_${channel}_refresh_v1`,
+      name: cookieName,
       value: session.refreshToken,
       domain: base.hostname,
       path: '/api/v1/auth',
