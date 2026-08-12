@@ -130,6 +130,31 @@ def test_browser_logout_terminates_cookie_session_without_live_access_token(monk
     assert "samesite=strict" in cookie
 
 
+def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(monkeypatch):
+    blocked = []
+    revoked = []
+    monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
+    monkeypatch.setattr(
+        auth_browser,
+        "decode_token",
+        lambda token: {"userId": "db-student-1", "jti": "access-jti-1", "exp": 4102444800},
+    )
+    monkeypatch.setattr(auth_browser, "block_jti", lambda jti, exp: blocked.append((jti, exp)) or True)
+    monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
+
+    response = Response()
+    payload = auth_browser.browser_logout(
+        response=response,
+        refresh_token="durable-cookie-token",
+        authorization="Bearer live-access-token",
+    )
+
+    assert payload["code"] == 0
+    assert blocked == [("access-jti-1", 4102444800.0)]
+    assert revoked == ["db-student-1"]
+
+
 def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch):
     def fail_consume(_token):
         raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
@@ -160,7 +185,7 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
     assert "state = { token: ''" in admin
     assert "/auth/browser-refresh" in admin
     assert "/auth/browser-login" in admin
-    assert "await rawRequest('/auth/browser-logout', { method: 'POST', auth: false, forceProbe: true })" in admin
+    assert "await rawRequest('/auth/browser-logout', { method: 'POST', auth: true, forceProbe: true })" in admin
     assert "if (state.token) await rawRequest('/auth/browser-logout'" not in admin
 
     assert "localStorage.setItem" not in portal
@@ -169,7 +194,7 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
     assert "let accessToken = ''" in portal
     assert "/auth/browser-refresh" in portal
     assert "/auth/browser-login" in portal
-    assert "await request('/auth/browser-logout', { method: 'POST', auth: false })" in portal_session
+    assert "await request('/auth/browser-logout', { method: 'POST', auth: true })" in portal_session
 
 
 def test_python_freeze_contract_is_self_consistent():
