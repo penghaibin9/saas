@@ -60,7 +60,7 @@ async function installSecureE2EBootstrap(page) {
   const nativeAddInitScript = page.addInitScript.bind(page)
   page.addInitScript = async (script, arg) => {
     const source = typeof script === 'function' ? String(script) : String(script?.content || script || '')
-    const accessToken = String(arg?.token || '')
+    const accessToken = String(typeof arg === 'string' ? arg : (arg?.token || ''))
     const legacyBootstrap = accessToken && /(gx_pc_token_v1|sp_token_v1)/.test(source)
     if (!legacyBootstrap) return nativeAddInitScript(script, arg)
 
