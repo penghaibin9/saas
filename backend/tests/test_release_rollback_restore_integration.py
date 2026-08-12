@@ -2,7 +2,8 @@
 
 The test uses its own temporary database so full-regression shards cannot corrupt each other.
 It snapshots DB + uploads, simulates a destructive candidate migration/write, restores the
-manifest, and proves the previous schema/data/files are usable again.
+manifest, and proves the previous schema/data/files are usable again with no candidate-only schema
+objects left behind.
 """
 from __future__ import annotations
 
@@ -86,6 +87,8 @@ def test_destructive_candidate_failure_restores_previous_db_and_uploads(tmp_path
             conn.execute(text("ALTER TABLE rollback_fact ADD COLUMN candidate_only INT NOT NULL DEFAULT 7"))
             conn.execute(text("UPDATE rollback_fact SET value='candidate' WHERE id=1"))
             conn.execute(text("INSERT INTO rollback_fact (id, value) VALUES (2, 'candidate-only')"))
+            conn.execute(text("CREATE TABLE candidate_only_table (id BIGINT PRIMARY KEY)"))
+            conn.execute(text("INSERT INTO candidate_only_table (id) VALUES (99)"))
         original_file.write_text("candidate-overwrite", encoding="utf-8")
         (upload_dir / "candidate-only.txt").write_text("should disappear", encoding="utf-8")
 
@@ -94,8 +97,13 @@ def test_destructive_candidate_failure_restores_previous_db_and_uploads(tmp_path
         with engine.connect() as conn:
             columns = [row[0] for row in conn.execute(text("SHOW COLUMNS FROM rollback_fact"))]
             rows = list(conn.execute(text("SELECT id, value FROM rollback_fact ORDER BY id")))
+            candidate_table = conn.execute(text(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema=:schema AND table_name='candidate_only_table'"
+            ), {"schema": database}).scalar_one()
         assert columns == ["id", "value"]
         assert rows == [(1, "previous")]
+        assert candidate_table == 0
         assert original_file.read_text(encoding="utf-8") == "previous-release-evidence"
         assert not (upload_dir / "candidate-only.txt").exists()
     finally:
