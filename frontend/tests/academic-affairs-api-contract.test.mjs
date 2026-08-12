@@ -39,7 +39,7 @@ const d1Methods = [
 
 function methodNames(source) {
   const names = []
-  const pattern = /^  (?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^\n]*\)\s*\{/gm
+  const pattern = /^ {2}(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^\n]*\)\s*\{/gm
   for (const match of source.matchAll(pattern)) names.push(match[1])
   return names
 }
