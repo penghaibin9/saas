@@ -165,8 +165,9 @@ release_failure_guard() {
         exit 90
       fi
       echo "[$(date -Is)] candidate failed after migration start; restoring governed pre-release backup" >&2
-      if ! BACKUP_DIR="$(dirname "$ROLLBACK_MANIFEST")" \
-        python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+      if ! python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+        python3 "$ENV_RUNNER" "$ENV_FILE" -- \
+        env BACKUP_DIR="$(dirname "$ROLLBACK_MANIFEST")" \
         bash "$RELEASE_DIR/deploy/backup/restore-backup-set.sh" "$ROLLBACK_MANIFEST"; then
         echo "CRITICAL: governed rollback restore failed; old services remain stopped for manual recovery." >&2
         exit 91
@@ -205,8 +206,9 @@ QUIESCED=1
 # 发布前备份不再维护第二套 DB-only 真值：直接使用 #66 治理链（DB + uploads + manifest + offsite readback）。
 GOVERNED_BACKUP_DIR="$(python3 "$ENV_RUNNER" --get "$BACKUP_ENV_FILE" BACKUP_DIR)"
 GOVERNED_BACKUP_DIR="${GOVERNED_BACKUP_DIR:-/var/lib/school-lifecycle-backup}"
-BACKUP_DIR="$GOVERNED_BACKUP_DIR" REQUIRE_UPLOAD_BACKUP=true \
-  python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+  python3 "$ENV_RUNNER" "$ENV_FILE" -- \
+  env BACKUP_DIR="$GOVERNED_BACKUP_DIR" REQUIRE_UPLOAD_BACKUP=true \
   bash "$RELEASE_DIR/deploy/backup/backup-runner.sh"
 ROLLBACK_MANIFEST="$(find "$GOVERNED_BACKUP_DIR" -maxdepth 1 -type f -name 'manifest_*.json' \
   -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
