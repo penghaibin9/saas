@@ -49,16 +49,17 @@ def test_password_login_lockout(client, db_mode, monkeypatch):
     from app.api.v1 import auth as auth_api
     monkeypatch.setattr(auth_api.captcha_svc, "enforce_login_captcha",
                         lambda *_args, **_kwargs: None)
-    # 演示账号密码不出现在断言/仓库：仅用错误口令触发锁定路径
+    # auth/login 是 tenant-neutral；夹具没有 admin_demo 的真实 User 行，因此必须显式给出
+    # 已存在的测试租户 demo，才能验证失败登录审计的真实学校归属。禁止依赖默认租户猜测。
     failure_codes = set()
     for i in range(5):
         r = client.post("/api/v1/auth/login",
-                        json={"loginName": "admin_demo", "password": f"wrong-{i}"}).json()
+                        json={"tenantCode": "demo", "loginName": "admin_demo", "password": f"wrong-{i}"}).json()
         assert r["code"] == 401001
         failure_codes.add(r["bizCode"])
     assert "CAPTCHA_REQUIRED" in failure_codes
     locked = client.post("/api/v1/auth/login",
-                         json={"loginName": "admin_demo", "password": "wrong-final"}).json()
+                         json={"tenantCode": "demo", "loginName": "admin_demo", "password": "wrong-final"}).json()
     assert locked["code"] == 401001 and "锁定" in locked["message"]
     # 审计里能查到 LOGIN_FAIL 与 LOGIN_LOCKED
     tk = _login(client)["accessToken"]
