@@ -99,6 +99,12 @@ def build_router() -> APIRouter:
     # 其余 legacy 同路径由 normalized method/path 去重切换到 roster_registration_router。
     roster_registration_module = importlib.import_module(f"{__package__}.roster_registration_router")
     _mount_routes(router, roster_registration_module.router)
+    # D2-U：候选 enrich / 批量注册 preview+confirm 只做便利性编排；最终写入仍逐项
+    # 调用原 register_student canonical，且新路径不覆盖任何 legacy/compat shape。
+    roster_registration_convenience_module = importlib.import_module(
+        f"{__package__}.roster_registration_convenience_router"
+    )
+    _mount_routes(router, roster_registration_convenience_module.router)
     _mount_routes(
         router,
         base_router.router,
