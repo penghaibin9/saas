@@ -42,11 +42,37 @@ function browserChannel(session, source) {
   return 'staff'
 }
 
-async function syncSecureE2EBootstrap(page) {
+function refreshTokenFromSetCookie(headers, cookieName) {
+  const prefix = `${cookieName}=`
+  for (const header of headers || []) {
+    if (String(header?.name || '').toLowerCase() !== 'set-cookie') continue
+    const value = String(header?.value || '')
+    if (!value.startsWith(prefix)) continue
+    const token = value.slice(prefix.length).split(';', 1)[0]
+    if (token) return token
+  }
+  return ''
+}
+
+async function syncSecureE2EBootstrap(page, response = null) {
   const bootstrap = bootstrapSessionByPage.get(page)
   if (!bootstrap) return
+
+  // Refresh tokens are one-time and rotate on every successful browser refresh. Capture the
+  // authoritative replacement directly from Set-Cookie before another isolated test context can
+  // reuse the now-consumed predecessor. Cookie enumeration remains a fallback for final cleanup.
+  if (response) {
+    const headers = await response.headersArray().catch(() => [])
+    const rotated = refreshTokenFromSetCookie(headers, bootstrap.cookieName)
+    if (rotated) {
+      bootstrap.session.refreshToken = rotated
+      return
+    }
+  }
+
   const cookies = await page.context().cookies().catch(() => [])
-  const current = cookies.find((cookie) => cookie.name === bootstrap.cookieName)
+  const matches = cookies.filter((cookie) => cookie.name === bootstrap.cookieName && cookie.value)
+  const current = matches.at(-1)
   if (current?.value) bootstrap.session.refreshToken = current.value
 }
 
@@ -75,7 +101,7 @@ async function installSecureE2EBootstrap(page) {
 
     const onResponse = async (response) => {
       if (!response.ok() || !response.url().includes('/api/v1/auth/browser-refresh')) return
-      await syncSecureE2EBootstrap(page)
+      await syncSecureE2EBootstrap(page, response)
     }
     page.on('response', onResponse)
 
