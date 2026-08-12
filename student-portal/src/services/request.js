@@ -1,6 +1,7 @@
 /**
  * 学生 PC 门户 · 统一请求层。
  * - SECURITY-P0：accessToken 只驻留内存；refreshToken 仅 HttpOnly+SameSite Cookie。
+ * - 学生 PC 固定使用独立 student browser session，不与教师/平台 PC 共用 refresh Cookie。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
  * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
  * - 迟到的旧 refresh/401 不得覆盖、清空或借用已经切换的新会话。
@@ -11,6 +12,7 @@ const REFRESH_KEY = 'sp_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
+const BROWSER_SESSION_HEADERS = { 'X-Browser-Session': 'student' }
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
@@ -136,6 +138,12 @@ function addInternshipBatchHeader(headers, path) {
   if (batchId) headers['X-Internship-Batch-Id'] = batchId
 }
 
+function addBrowserSessionHeader(headers, path) {
+  if (String(path || '').startsWith('/auth/browser-')) {
+    headers['X-Browser-Session'] = BROWSER_SESSION_HEADERS['X-Browser-Session']
+  }
+}
+
 function withQuery(path, params) {
   const entries = Object.entries(params || {}).filter(([, value]) => value !== undefined && value !== null && value !== '')
   if (!entries.length) return path
@@ -175,7 +183,7 @@ async function refreshOnce() {
     try {
       res = await fetch(`${API_BASE}${API_PREFIX}/auth/browser-refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...BROWSER_SESSION_HEADERS },
         credentials: 'same-origin'
       })
     } catch {
@@ -223,6 +231,7 @@ export async function request(path, {
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
   addInternshipBatchHeader(headers, path)
+  addBrowserSessionHeader(headers, path)
   const requestPath = withQuery(browserAuthPath(path), params || query)
   let res
   try {
