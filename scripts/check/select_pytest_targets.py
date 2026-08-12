@@ -35,6 +35,15 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
      ["tests/test_import_export_p0_authz.py", "tests/test_import_export.py"]),
     (("backend/app/api/v1/help_metrics.py", "backend/app/services/help_metrics_service.py"),
      ["tests/test_help_metrics.py"]),
+    # D2 学籍名册/注册的公开 owner 已从历史大 Router 迁出；仅靠通用教务闸门
+    # 无法及时发现注册 canonical、名册更正、敏感查看或导出 compat 回归。
+    # 精确命中 roster_registration（包括后续 convenience service/router）时只增加
+    # 这四组稳定专项，不删通用教务权限/并发闸门。
+    (("roster_registration",),
+     ["tests/test_aa_registration.py",
+      "tests/test_aa_roster_correction.py",
+      "tests/test_student_sensitive_contract.py",
+      "tests/test_academic_export_compat.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
