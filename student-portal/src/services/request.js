@@ -24,7 +24,6 @@ const API_BASE = (() => {
 let accessToken = ''
 let sessionGeneration = 0
 
-// 一次性清除历史版本留下的 JS 可读 token。非敏感业务会话态仍使用 sessionStorage。
 for (const key of [TOKEN_KEY, REFRESH_KEY]) {
   try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
 }
@@ -69,7 +68,6 @@ export function getToken() {
 export function setToken(t) {
   _advanceSession(t || '')
 }
-// 旧调用兼容：refreshToken 已迁入 HttpOnly Cookie，JS 不再持有。
 export function getRefreshToken() {
   return ''
 }
@@ -101,7 +99,6 @@ function markTempFilesBound(fileIds) {
   writeTempFiles(value)
 }
 
-/** 学生放弃一个未绑定的毕业设计临时材料（已绑定的会 409，忽略即可）。 */
 export async function abandonTemporaryGraduationMaterial(fileId) {
   if (!fileId) return null
   const data = await request(`/portal/graduation/materials/${fileId}/abandon`, { method: 'POST' })
@@ -112,7 +109,6 @@ export async function abandonTemporaryGraduationMaterial(fileId) {
 }
 
 let cleanupStarted = false
-/** 每个页面会话只清一次：超过 24 小时仍未绑定业务的毕设临时材料自动放弃。 */
 function cleanupStaleGraduationTemps() {
   if (cleanupStarted) return
   cleanupStarted = true
@@ -200,12 +196,10 @@ async function refreshOnce() {
     if (sessionGeneration !== generationAtStart || accessToken !== accessTokenAtStart) {
       throw staleSessionError()
     }
-    // Refresh rotates credentials inside the same logical session, so generation does not advance.
     _replaceAccessToken(data.accessToken)
     return data.accessToken
   })()
     .catch((e) => {
-      // A late failure from an old session must never clear a newer login/logout result.
       if (!e.staleSession && sessionGeneration === generationAtStart && accessToken === accessTokenAtStart) {
         _invalidateIfCurrent(accessTokenAtStart)
       }
@@ -223,6 +217,11 @@ function browserAuthPath(path) {
   return path === '/auth/login' ? '/auth/browser-login' : path
 }
 
+function browserAuthBody(path, body) {
+  if (path !== '/auth/login') return body
+  return { ...(body || {}), clientType: 'STUDENT_PC' }
+}
+
 export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
@@ -233,12 +232,13 @@ export async function request(path, {
   addInternshipBatchHeader(headers, path)
   addBrowserSessionHeader(headers, path)
   const requestPath = withQuery(browserAuthPath(path), params || query)
+  const requestBody = browserAuthBody(path, body)
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${requestPath}`, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: requestBody ? JSON.stringify(requestBody) : undefined,
       credentials: 'same-origin'
     })
   } catch {
@@ -273,10 +273,6 @@ export async function request(path, {
   return payload.data
 }
 
-/**
- * 学生门户的文件上传：仅用于先上传、再把 fileId 交给具体业务接口的两步流程。
- * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
- */
 export async function uploadFile(path, file, { auth = true, _retried = false } = {}) {
   cleanupStaleGraduationTemps()
   const headers = {}
@@ -314,7 +310,6 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   return payload.data
 }
 
-/** 下载受业务关系保护的文件；以 Bearer token 取回 blob，避免把令牌拼进 URL。 */
 export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
   const headers = {}
   const token = getToken()
