@@ -138,9 +138,18 @@ ACTIVATED=0
 release_failure_guard() {
   status=$?
   if [ "$status" -ne 0 ] && [ "$QUIESCED" = "1" ]; then
-    if [ "$ACTIVATED" = "1" ] && [ -n "$previous" ] && [ -d "$previous" ]; then
-      ln -sfnT "$previous" "$APP_ROOT/current.rollback" || true
-      mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current" || true
+    if [ "$ACTIVATED" = "1" ]; then
+      # 候选 release 已启动后仍要保持 rollback armed 直到最终 acceptance 成功。
+      # 先停掉全部候选写入者，避免首次安装（没有 previous）失败后拒绝版本继续在线。
+      systemctl stop school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan \
+        >/dev/null 2>&1 || true
+      if [ -n "$previous" ] && [ -d "$previous" ]; then
+        ln -sfnT "$previous" "$APP_ROOT/current.rollback" || true
+        mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current" || true
+      else
+        # 首次安装没有可回滚 release：移除失败候选的 current 指针并保持服务停止。
+        rm -f "$APP_ROOT/current" || true
+      fi
     fi
     if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
       systemctl start "${ACTIVE_OLD_SERVICES[@]}" >/dev/null 2>&1 || true
@@ -196,17 +205,9 @@ install -m 644 "$RELEASE_DIR/deploy/systemd/school-lifecycle-file-scan.service" 
 systemctl daemon-reload
 systemctl enable school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
 systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
-QUIESCED=0
 
-if ! APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$RELEASE_DIR/scripts/deploy/verify-systemd-release.sh"; then
-  if [ -n "$previous" ] && [ -d "$previous" ]; then
-    ln -sfnT "$previous" "$APP_ROOT/current.rollback"
-    mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current"
-    systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan
-    echo "Application symlink rolled back to $previous; database migration was intentionally not downgraded." >&2
-  fi
-  exit 1
-fi
+# rollback guard 必须保持 armed，直到 verify + final production acceptance 全部成功。
+APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$RELEASE_DIR/scripts/deploy/verify-systemd-release.sh"
 
 # 生产主机证据不是 CI 截图：重新从已激活 release 自身执行预检+运行时验收，
 # 并把 commit/主机指纹/备份校验写成 0600 JSON。任何一步失败都不产生 PASS 证据。
@@ -214,5 +215,6 @@ EXPECTED_RELEASE_COMMIT="$SOURCE_COMMIT" BACKUP_FILE="$backup_file" \
   APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" \
   bash "$RELEASE_DIR/scripts/deploy/accept-production-release.sh"
 
+QUIESCED=0
 trap - EXIT
 echo "Release $RELEASE_ID installed. Commit: $SOURCE_COMMIT. Backup: $backup_file"
