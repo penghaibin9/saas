@@ -12,6 +12,7 @@ from starlette.requests import Request
 
 from app.api.v1 import auth_browser
 from app.core import tenant_context
+from app.core.exceptions import AppException
 from app.core.tenant_identity import (
     DEMO_SCHOOL,
     DISABLED_SCHOOL,
@@ -106,15 +107,61 @@ def test_browser_login_moves_refresh_token_to_httponly_cookie(monkeypatch):
     assert "path=/api/v1/auth" in cookie
 
 
+def test_browser_logout_terminates_cookie_session_without_live_access_token(monkeypatch):
+    revoked = []
+    monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
+    monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
+
+    response = Response()
+    payload = auth_browser.browser_logout(
+        response=response,
+        refresh_token="durable-cookie-token",
+        authorization=None,
+    )
+
+    assert payload["code"] == 0
+    assert payload["data"]["invalidated"] is True
+    assert revoked == ["db-student-1"]
+    cookie = response.headers.get("set-cookie", "").lower()
+    assert "gx_refresh_v1=" in cookie
+    assert "max-age=0" in cookie
+    assert "httponly" in cookie
+    assert "samesite=strict" in cookie
+
+
+def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch):
+    def fail_consume(_token):
+        raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
+
+    monkeypatch.setattr(auth_browser, "consume_refresh", fail_consume)
+    response = Response()
+    payload = auth_browser.browser_logout(
+        response=response,
+        refresh_token="durable-cookie-token",
+        authorization=None,
+    )
+
+    assert response.status_code == 503
+    assert payload["bizCode"] == "AUTH_STORE_UNAVAILABLE"
+    assert payload["code"] != 0
+    cookie = response.headers.get("set-cookie", "").lower()
+    assert "gx_refresh_v1=" in cookie
+    assert "max-age=0" in cookie
+
+
 def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
     admin = (ROOT / "frontend/src/services/http/client.js").read_text(encoding="utf-8")
     portal = (ROOT / "student-portal/src/services/request.js").read_text(encoding="utf-8")
+    portal_session = (ROOT / "student-portal/src/stores/session.js").read_text(encoding="utf-8")
 
     assert "sessionStorage.setItem" not in admin
     assert "localStorage.setItem" not in admin
     assert "state = { token: ''" in admin
     assert "/auth/browser-refresh" in admin
     assert "/auth/browser-login" in admin
+    assert "await rawRequest('/auth/browser-logout', { method: 'POST', auth: false, forceProbe: true })" in admin
+    assert "if (state.token) await rawRequest('/auth/browser-logout'" not in admin
 
     assert "localStorage.setItem" not in portal
     assert "_sessionSet(TOKEN_KEY" not in portal
@@ -122,6 +169,7 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
     assert "let accessToken = ''" in portal
     assert "/auth/browser-refresh" in portal
     assert "/auth/browser-login" in portal
+    assert "await request('/auth/browser-logout', { method: 'POST', auth: false })" in portal_session
 
 
 def test_python_freeze_contract_is_self_consistent():
