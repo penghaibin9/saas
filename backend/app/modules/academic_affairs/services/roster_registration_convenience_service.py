@@ -3,6 +3,7 @@
 只提供候选 enrich、批量预览和批量编排；不新增事实表，不直接写学生主档。
 最终注册逐项复用 academic_affairs_service.register_student() canonical 写入口。
 批量确认必须携带服务端签发的短时 previewToken，禁止跳过预览直接写入。
+候选列表与 preview 在 SQL 侧完成 dataScope/状态/分页或定点收窄，禁止先 materialize 全校候选。
 """
 from __future__ import annotations
 
@@ -12,12 +13,12 @@ import hmac
 import json
 import time
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context
 from app.core.config import settings
 from app.core.exceptions import AppException, not_found
-from app.models import AaRegistrationBatch, Major, SchoolClass, StudentProfile
+from app.models import AaRegistration, AaRegistrationBatch, Major, SchoolClass, StudentProfile
 from app.modules.academic_affairs.services import academic_affairs_service as svc
 from app.services.db_service import _tid, session
 
@@ -114,27 +115,81 @@ def enrich_eligibility_class_names(items: list[dict]) -> list[dict]:
     ]
 
 
+def _candidate_join(batch):
+    return and_(
+        AaRegistration.tenant_id == _tid(),
+        AaRegistration.batch_id == batch.id,
+        AaRegistration.student_id == StudentProfile.id,
+        AaRegistration.is_deleted.is_(False),
+    )
+
+
+def _candidate_conditions(batch, allowed, *, student_ids=None, status=None, keyword=None):
+    """D2-U SQL 候选合同：与 canonical 状态池一致，但把范围/过滤真正下推数据库。"""
+    if allowed is not None and not allowed:
+        return None
+    conds = [
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+        StudentProfile.student_status.in_(svc._batch_target_statuses(batch)),
+        or_(AaRegistration.id.is_(None), AaRegistration.status != "REGISTERED"),
+    ]
+    if allowed is not None:
+        conds.append(StudentProfile.class_id.in_(allowed))
+    if student_ids is not None:
+        conds.append(StudentProfile.id.in_(student_ids))
+    if status:
+        if status == "PENDING":
+            conds.append(or_(AaRegistration.id.is_(None), AaRegistration.eligibility_status == "PENDING"))
+        else:
+            conds.append(AaRegistration.eligibility_status == status)
+    if keyword:
+        term = str(keyword).strip()
+        if term:
+            conds.append(or_(StudentProfile.real_name.contains(term), StudentProfile.student_no.contains(term)))
+    return conds
+
+
+def _query_candidate_pairs(db, batch, allowed, *, student_ids=None, status=None, keyword=None,
+                           page=None, page_size=None):
+    """SQL 侧候选查询。列表真分页；preview 仅查最多 100 个选中 ID，不扫全校。"""
+    conds = _candidate_conditions(
+        batch, allowed, student_ids=student_ids, status=status, keyword=keyword
+    )
+    if conds is None:
+        return [], 0
+    join = _candidate_join(batch)
+    total = db.scalar(
+        select(func.count(StudentProfile.id))
+        .select_from(StudentProfile)
+        .outerjoin(AaRegistration, join)
+        .where(*conds)
+    ) or 0
+    stmt = (
+        select(StudentProfile, AaRegistration)
+        .outerjoin(AaRegistration, join)
+        .where(*conds)
+        .order_by(StudentProfile.id.desc())
+    )
+    if page is not None and page_size is not None:
+        safe_page = max(1, int(page))
+        safe_size = max(1, int(page_size))
+        stmt = stmt.offset((safe_page - 1) * safe_size).limit(safe_size)
+    return db.execute(stmt).all(), int(total)
+
+
 def list_registration_candidates(batch_id, user, *, status=None, keyword=None, page=1, page_size=20):
-    """权威候选 + 人类可读组织/状态。候选/数据范围完全复用现有注册服务真值。"""
+    """权威候选 + 人类可读组织/状态；SQL 真分页，避免学校大名单全量 materialize。"""
     with session() as db:
         batch = db.get(AaRegistrationBatch, int(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("注册批次不存在")
         ctx = build_affairs_context(user, db)
         allowed = ctx.allowed_class_ids(db)
-        pairs = svc._batch_pending_candidates(db, batch, allowed)
-        filtered = []
-        for student, registration in pairs:
-            elig = registration.eligibility_status if registration else "PENDING"
-            if status and elig != status:
-                continue
-            if keyword and keyword not in (student.real_name or "") and keyword not in (student.student_no or ""):
-                continue
-            filtered.append((student, registration))
-        total = len(filtered)
-        start = (max(1, int(page)) - 1) * max(1, int(page_size))
-        page_pairs = filtered[start:start + max(1, int(page_size))]
-        return _enrich_pairs(db, batch, page_pairs), total
+        pairs, total = _query_candidate_pairs(
+            db, batch, allowed, status=status, keyword=keyword, page=page, page_size=page_size
+        )
+        return _enrich_pairs(db, batch, pairs), total
 
 
 def _validate_ids(student_ids) -> list[int]:
@@ -238,9 +293,7 @@ def bulk_register_preview(batch_id, user, student_ids):
             raise not_found("注册批次不存在")
         ctx = build_affairs_context(user, db)
         allowed = ctx.allowed_class_ids(db)
-        pairs = svc._batch_pending_candidates(db, batch, allowed)
-        id_set = set(ids)
-        selected_pairs = [(s, r) for s, r in pairs if s.id in id_set]
+        selected_pairs, _ = _query_candidate_pairs(db, batch, allowed, student_ids=ids)
         by_id = {s.id: (s, r) for s, r in selected_pairs}
         enriched = {int(row["studentId"]): row for row in _enrich_pairs(db, batch, selected_pairs)}
 
@@ -281,8 +334,6 @@ def bulk_register_preview(batch_id, user, student_ids):
 
 def _final_ready_check(batch_id, user, student_id) -> tuple[bool, str, str]:
     """确认前逐项重检 dataScope + 候选身份 + 显式不合格；只读且按主键定点查询。"""
-    from app.models import AaRegistration
-
     with session() as db:
         batch = db.get(AaRegistrationBatch, int(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
