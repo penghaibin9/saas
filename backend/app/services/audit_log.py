@@ -8,6 +8,9 @@ DB 模式下 record() 写 t_security_audit_log；内存环形队列仅作为最�
 两档语义：
 - 普通动作：fire-and-forget，落库失败记 error + 计入 /health/ready，不阻塞业务；
 - CRITICAL_ACTIONS 高危动作：落库失败抛 AuditPersistenceError，业务必须一起失败。
+
+认证入口是 tenant-neutral：middleware 不再用 DEFAULT_TENANT_CODE 给登录请求伪造学校上下文。
+LOGIN_* 事件在能够唯一识别真实账号/tenantCode 时由审计层解析真实 tenant_id；歧义账号不猜测。
 """
 from __future__ import annotations
 
@@ -22,25 +25,14 @@ _MAX = 500
 _LOGS: deque[dict] = deque(maxlen=_MAX)
 _SEQ = 0
 _logger = logging.getLogger("app.audit")
-# 落库健康状态（历史欠账收口：落库失败此前 except: pass 静默吞掉，现记错误日志 + 暴露 /health/ready）。
 _DB_HEALTH = {"lastFailure": None, "consecutiveFailures": 0}
 
-# ── 高危动作：审计落库失败必须 fail-closed ──────────────────────────
-# 普通动作（看了个页面）丢一条审计可以接受；下列动作不行——
-# "业务 COMMIT 成功 + 审计 INSERT 失败 + 接口仍返回成功" 等于销毁了唯一的责任证据。
-# 命中时 record() 会把落库异常抛给调用方，由上层回滚/返回失败。
-#
-# 注意：这里同时保留历史动作名和当前生产路由真正发出的动作名。此前只列了抽象名，
-# 实际 PLATFORM_TENANT_DISABLE / ROLE_PERMISSION_SAVE / EXPORT 等完全命不中，导致
-# “看起来启用了 fail-closed，真实高危操作仍 fail-open”。
 CRITICAL_ACTIONS = frozenset({
-    # 历史/兼容动作名
     "TENANT_SUSPEND", "TENANT_RESUME", "TENANT_DELETE",
     "TENANT_PLAN_CHANGE", "TENANT_QUOTA_CHANGE",
     "ROLE_PERMISSION_CHANGE", "ROLE_DELETE", "ROLE_ASSIGN",
     "SENSITIVE_REVEAL", "BULK_EXPORT",
     "ADMIN_PASSWORD_RESET", "ACCOUNT_UNLOCK", "BREAK_GLASS",
-    # 平台控制面真实动作名
     "PLATFORM_TENANT_ENABLE", "PLATFORM_TENANT_DISABLE",
     "PLATFORM_TENANT_EXTEND_TRIAL", "PLATFORM_TENANT_CONVERT_PAID",
     "PLATFORM_TENANT_EXPIRE", "PLATFORM_TENANT_CHANGE_PACKAGE",
@@ -48,7 +40,6 @@ CRITICAL_ACTIONS = frozenset({
     "PLATFORM_FEATURES_UPDATE", "PLATFORM_RULES_UPDATE",
     "PLATFORM_WORKFLOW_UPDATE", "PLATFORM_USER_ENABLE",
     "PLATFORM_USER_DISABLE", "PLATFORM_USER_RESET_PWD",
-    # 学校端真实动作名
     "ROLE_PERMISSION_SAVE", "USER_ROLE_ASSIGN", "RESET_PASSWORD",
     "SENSITIVE_VIEW", "EXPORT",
 })
@@ -68,6 +59,55 @@ def _now_iso() -> str:
     return datetime.now(tz).isoformat(timespec="seconds")
 
 
+def _resolve_login_event_tenant_id(action: str, resource: str, detail: dict) -> int | None:
+    """Resolve a tenant for tenant-neutral LOGIN_* audit events without guessing.
+
+    - tenantCode present: require a real tenant row, then match login_name inside that tenant.
+    - no tenantCode: only accept exactly one active account across all tenants.
+    - ambiguous/missing account: return None; callers must not silently attach a random default school.
+    """
+    if not action.startswith("LOGIN_") or not str(resource or "").strip():
+        return None
+    try:
+        from sqlalchemy import select
+        from app.db.session import db_enabled, get_sessionmaker
+        if not db_enabled():
+            return None
+        from app.models import Tenant, User
+
+        db = get_sessionmaker()()
+        try:
+            login_name = str(resource).strip()
+            tenant_code = str((detail or {}).get("tenantCode") or "").strip()
+            stmt = select(User).where(
+                User.login_name == login_name,
+                User.is_deleted.is_(False),
+            )
+            if tenant_code:
+                tenant = db.scalars(select(Tenant).where(Tenant.tenant_code == tenant_code)).first()
+                if tenant is None:
+                    return None
+                user = db.scalars(stmt.where(User.tenant_id == tenant.id).limit(1)).first()
+                return int(user.tenant_id) if user is not None else int(tenant.id)
+            users = db.scalars(stmt.order_by(User.id).limit(2)).all()
+            return int(users[0].tenant_id) if len(users) == 1 else None
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — audit caller applies critical/non-critical policy
+        return None
+
+
+def _effective_tenant_id(action: str, resource: str, detail: dict,
+                         explicit_tenant_id: int | str | None) -> int | str | None:
+    if explicit_tenant_id is not None:
+        return explicit_tenant_id
+    tenant = get_tenant() or {}
+    context_tid = tenant.get("tenantId")
+    if str(context_tid or "").isdigit():
+        return context_tid
+    return _resolve_login_event_tenant_id(action, resource, detail)
+
+
 def record(action: str, resource: str, detail: dict | None = None, result: str = "SUCCESS",
            *, tenant_id: int | str | None = None) -> dict:
     """写一条审计。
@@ -76,39 +116,45 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
     CRITICAL_ACTIONS 中的高危动作：落库失败抛 AuditPersistenceError（fail-closed），
     调用方必须让业务一起失败——没有审计就不许留下这条业务事实。
     tenant_id：显式指定审计归属租户（平台超管跨租户操作时传"被操作学校"），
-               不传则沿用请求上下文租户。"""
+               不传则沿用请求上下文；tenant-neutral LOGIN_* 会按真实账号唯一解析。
+    """
     global _SEQ
     critical = action in CRITICAL_ACTIONS
+    safe_detail = detail or {}
     try:
         _SEQ += 1
         user = get_current_user_ctx() or {}
-        tenant = get_tenant() or {}
+        effective_tid = _effective_tenant_id(action, resource, safe_detail, tenant_id)
         entry = {
             "auditId": f"audit-{_SEQ:06d}",
-            "action": action,              # LOGIN / LOGOUT / CONTEXT_SWITCH / IMPORT / EXPORT / FILE_UPLOAD ...
+            "action": action,
             "resource": resource,
-            "result": result,              # SUCCESS / FAIL / DENIED
+            "result": result,
             "actorId": user.get("userId"),
             "actorName": user.get("realName"),
-            "tenantId": str(tenant_id) if tenant_id is not None else tenant.get("tenantId"),
-            "requestId": get_trace_id(),   # traceId = 审计表 request_id（契约 §二）
-            "detail": detail or {},
+            "tenantId": str(effective_tid) if effective_tid is not None else None,
+            "requestId": get_trace_id(),
+            "detail": safe_detail,
             "occurredAt": _now_iso(),
         }
         _LOGS.appendleft(entry)
         try:
             from app.db.session import db_enabled
             if db_enabled():
+                if effective_tid is None:
+                    raise RuntimeError("缺少可验证租户上下文，拒绝数据库审计写入")
                 from app.services import db_service
-                db_service.audit_insert(action, resource, detail, result,
-                                        tenant_id=int(tenant_id) if tenant_id is not None else None)
+                db_service.audit_insert(
+                    action, resource, safe_detail, result, tenant_id=int(effective_tid)
+                )
                 _DB_HEALTH["consecutiveFailures"] = 0
             elif critical and settings.is_prod:
-                # 生产环境高危动作没有持久化审计目的地 = 不许发生。
                 raise AuditPersistenceError(f"高危动作 {action} 无可用审计落库通道")
-        except Exception as e:  # noqa: BLE001 — 普通动作不阻塞主业务，但必须留痕，不能无声无息
+        except Exception as e:  # noqa: BLE001
             _DB_HEALTH["consecutiveFailures"] += 1
-            _DB_HEALTH["lastFailure"] = {"occurredAt": _now_iso(), "action": action, "error": str(e)[:200]}
+            _DB_HEALTH["lastFailure"] = {
+                "occurredAt": _now_iso(), "action": action, "error": str(e)[:200]
+            }
             _logger.error("审计落库失败 action=%s resource=%s err=%s critical=%s",
                           action, resource, e, critical)
             if critical:
@@ -116,8 +162,8 @@ def record(action: str, resource: str, detail: dict | None = None, result: str =
                     f"高危动作 {action} 审计落库失败，操作已拒绝：{e}") from e
         return entry
     except AuditPersistenceError:
-        raise  # fail-closed 语义必须穿透最外层兜底
-    except Exception:  # noqa: BLE001 — 普通审计绝不阻塞主业务
+        raise
+    except Exception:  # noqa: BLE001
         if critical:
             raise
         return {}
