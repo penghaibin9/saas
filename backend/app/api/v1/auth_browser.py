@@ -316,10 +316,13 @@ def _browser_logout(
 
         raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "").strip()
         if raw:
-            # Logout may use an expired access token only as signed revocation metadata. It never
-            # authorizes business access here, so expiry is intentionally ignored while signature
-            # and algorithm verification remain mandatory.
-            access_claims = _decode_signed_token_for_revocation(raw)
+            # Live access tokens keep the ordinary decode path so their JTI is blacklisted under the
+            # same strict authentication contract. Only an expired/otherwise rejected token falls
+            # back to signature-verified, expiry-ignored metadata lookup for revocation purposes.
+            try:
+                access_claims = decode_token(raw)
+            except AppException:
+                access_claims = _decode_signed_token_for_revocation(raw)
             if access_claims:
                 access_user = str(access_claims.get("userId") or "")
                 access_session = str(access_claims.get("authSessionId") or "")
