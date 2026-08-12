@@ -46,6 +46,18 @@ test('student portal business requests cannot replay under a newer login session
   assert.match(downloadBlock[1], /if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
 })
 
+test('student portal F5 restores only auth me through HttpOnly refresh cookie', async () => {
+  const text = await source()
+
+  assert.match(
+    text,
+    /if \(auth && !_retried && path === '\/auth\/me' && !getToken\(\)\) \{\s*await refreshOnce\(\)\s*return request\(path, \{ method, body, auth, params, query, _retried: true \}\)/
+  )
+  assert.match(text, /if \(auth && !_retried && !path\.startsWith\('\/auth\/'\)\) \{/)
+  assert.doesNotMatch(text, /path === '\/auth\/login' && !getToken\(\)[\s\S]*?await refreshOnce\(\)/)
+  assert.doesNotMatch(text, /path === '\/auth\/captcha' && !getToken\(\)[\s\S]*?await refreshOnce\(\)/)
+})
+
 test('student portal late 401 only invalidates the token that actually made that request', async () => {
   const text = await source()
 
