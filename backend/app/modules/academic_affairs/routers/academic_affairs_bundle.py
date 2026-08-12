@@ -86,6 +86,11 @@ def build_router() -> APIRouter:
     _mount_routes(router, grade_task_create_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
+    # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
+    # 必须在 legacy 之前挂载，确保公开 owner 真正切换到 term_calendar_router；
+    # legacy 中同 method/path 继续保留为兼容来源并由确定性去重跳过。
+    term_calendar_module = importlib.import_module(f"{__package__}.term_calendar_router")
+    _mount_routes(router, term_calendar_module.router)
     _mount_routes(
         router,
         base_router.router,
