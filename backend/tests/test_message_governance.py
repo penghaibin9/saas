@@ -1,10 +1,24 @@
 """消息治理：深链白名单、静默时段、发布频控、业务 outbox。"""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 MAIN = 1000000000000000001
 CA_UID = 71001
+
+
+@contextmanager
+def _tenant_context():
+    """HTTP 外直调治理 service 时也必须显式建立租户上下文，保持生产 fail-closed。"""
+    from app.core.context import get_tenant, set_tenant
+
+    previous = get_tenant()
+    set_tenant({"tenantId": str(MAIN)})
+    try:
+        yield
+    finally:
+        set_tenant(previous)
 
 
 def _token(user_id, login_name, role="COUNSELOR", user_type="TEACHER"):
@@ -104,43 +118,44 @@ def test_emit_receiver_notice_writes_outbox_not_unified(db_mode):
     )
     from sqlalchemy import func, select
 
-    db = get_sessionmaker()()
-    try:
-        before_um = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == _tid())) or 0
-        emit_receiver_notice(
-            db,
-            event_code="FUNDING.NOTICE",
-            source_module="student-affairs",
-            source_biz_type="funding",
-            source_biz_id=900001,
-            receiver_id=1,
-            title="资助测试通知",
-            content="测试正文",
-            receiver_as="student",
-            dedup_extra="unit",
-        )
-        db.commit()
-        mid = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == _tid())) or 0
-        assert mid == before_um, "emit 不得直接写 UnifiedMessage"
+    with _tenant_context():
+        db = get_sessionmaker()()
+        try:
+            before_um = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
+                UnifiedMessage.tenant_id == _tid())) or 0
+            emit_receiver_notice(
+                db,
+                event_code="FUNDING.NOTICE",
+                source_module="student-affairs",
+                source_biz_type="funding",
+                source_biz_id=900001,
+                receiver_id=1,
+                title="资助测试通知",
+                content="测试正文",
+                receiver_as="student",
+                dedup_extra="unit",
+            )
+            db.commit()
+            mid = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
+                UnifiedMessage.tenant_id == _tid())) or 0
+            assert mid == before_um, "emit 不得直接写 UnifiedMessage"
 
-        row = db.scalar(select(MessageEventOutbox).where(
-            MessageEventOutbox.tenant_id == _tid(),
-            MessageEventOutbox.event_code == "FUNDING.NOTICE",
-            MessageEventOutbox.source_biz_id == 900001,
-        ))
-        assert row is not None
-        assert row.status == "PENDING"
+            row = db.scalar(select(MessageEventOutbox).where(
+                MessageEventOutbox.tenant_id == _tid(),
+                MessageEventOutbox.event_code == "FUNDING.NOTICE",
+                MessageEventOutbox.source_biz_id == 900001,
+            ))
+            assert row is not None
+            assert row.status == "PENDING"
 
-        process_pending_outbox(limit=10, worker_id="test-gov")
-        db.expire_all()
-        row2 = db.get(MessageEventOutbox, row.id)
-        assert row2.status in ("DONE", "PENDING", "RETRY", "DEAD"), row2.status
-        # 消费后可能仍因 receiver 无法映射而失败，但不得回退为直接写业务表外路径
-        try_process_pending_outbox(limit=5, worker_id="test-gov-2")
-    finally:
-        db.close()
+            process_pending_outbox(limit=10, worker_id="test-gov")
+            db.expire_all()
+            row2 = db.get(MessageEventOutbox, row.id)
+            assert row2.status in ("DONE", "PENDING", "RETRY", "DEAD"), row2.status
+            # 消费后可能仍因 receiver 无法映射而失败，但不得回退为直接写业务表外路径
+            try_process_pending_outbox(limit=5, worker_id="test-gov-2")
+        finally:
+            db.close()
 
 
 def test_rate_limit_unit():
@@ -159,7 +174,9 @@ def test_rate_limit_unit():
         def __enter__(self): return self
         def __exit__(self, *a): return False
 
-    with mock.patch("app.services.message_governance_service.session", return_value=FakeScalar(20)):
+    with _tenant_context(), mock.patch(
+        "app.services.message_governance_service.session", return_value=FakeScalar(20)
+    ):
         try:
             gov.assert_publish_rate(CA_UID, limit=20)
             assert False, "should rate limit"
