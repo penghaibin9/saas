@@ -3,7 +3,8 @@
  * 后端不可达时进入 15s 离线冷却（期间直接走 mock fallback，页面不白屏）。
  * P11：不再自动 mock-login——未登录必须经登录页（账号密码=真实库 / 演示账号=演示租户）。
  * SECURITY-P0：浏览器 refreshToken 只存在 HttpOnly+SameSite Cookie；accessToken 只驻留内存，
- * 禁止 localStorage/sessionStorage/IndexedDB 持久化。页面刷新后通过 browser-refresh 静默恢复。
+ * 禁止 localStorage/sessionStorage/IndexedDB 持久化。学校 PC / 平台 PC 使用独立 refresh Cookie，
+ * 页面刷新后按当前 JWT（有 token 时）或当前路由（F5 时）选择对应 browser session 静默恢复。
  */
 import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
 import { toast } from '@/utils/toast'
@@ -144,6 +145,23 @@ async function rawRequest(path, {
   }
 }
 
+function browserSessionChannel() {
+  const u = currentUserFromToken()
+  const userType = String(u?.userType || '').toUpperCase()
+  const role = String(u?.currentRoleCode || '').toUpperCase()
+  if (userType.startsWith('PLATFORM_') || role === 'PLATFORM_SUPER_ADMIN') return 'platform'
+  if (userType === 'STUDENT' || role === 'STUDENT') return 'student'
+  try {
+    const route = `${window.location.pathname || ''}${window.location.hash || ''}`.toLowerCase()
+    if (route.includes('/platform-login') || route.includes('/admin/platform')) return 'platform'
+  } catch { /* SSR/test 环境默认学校 PC */ }
+  return 'staff'
+}
+
+function browserSessionHeaders() {
+  return { 'X-Browser-Session': browserSessionChannel() }
+}
+
 let refreshPromise = null
 async function tryRefresh() {
   if (refreshPromise) return refreshPromise
@@ -151,7 +169,7 @@ async function tryRefresh() {
   refreshPromise = (async () => {
     try {
       const d = await rawRequest('/auth/browser-refresh', {
-        method: 'POST', auth: false, forceProbe: true
+        method: 'POST', auth: false, forceProbe: true, headers: browserSessionHeaders()
       })
       // 登录/切换身份可能在 refresh 飞行期间已经替换会话，迟到响应不得覆盖新身份。
       if (state.token && state.token !== accessTokenAtStart) return true
@@ -277,7 +295,7 @@ export async function confirmPasswordReset(payload) {
   return rawRequest('/auth/password-reset/confirm', { method: 'POST', auth: false, forceProbe: true, body: payload })
 }
 
-/** 浏览器账号密码登录：refreshToken 由后端写 HttpOnly Cookie，JS 只得到内存 accessToken。 */
+/** 浏览器账号密码登录：refreshToken 由后端写对应 PC 入口的 HttpOnly Cookie，JS 只得到内存 accessToken。 */
 export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()
   const data = await rawRequest('/auth/browser-login', {
@@ -312,10 +330,13 @@ export async function logoutRemote() {
   try {
     // rawRequest has no implicit ensure/refresh. Keeping auth enabled sends a still-live access
     // token for jti blacklisting when available, while cookie-only logout still works when the
-    // in-memory token is already empty/expired. The call always runs so the durable cookie dies.
-    await rawRequest('/auth/browser-logout', { method: 'POST', auth: true, forceProbe: true })
+    // in-memory token is already empty/expired. Explicit channel prevents another PC surface's
+    // HttpOnly cookie from being consumed or cleared by this logout.
+    await rawRequest('/auth/browser-logout', {
+      method: 'POST', auth: true, forceProbe: true, headers: browserSessionHeaders()
+    })
   } catch {
-    /* 离线登出静默；本地 access 仍必须清掉，服务端响应会尽力清除 Cookie */
+    /* 离线登出静默；本地 access 仍必须清掉，服务端响应会尽力清除当前通道 Cookie */
   }
   clearAuthSession()
 }
