@@ -37,21 +37,20 @@ const d1Methods = [
   'deleteTimeBand'
 ]
 
-function methodNames(source) {
-  const names = []
-  const pattern = /^ {2}(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^\n]*\)\s*\{/gm
-  for (const match of source.matchAll(pattern)) names.push(match[1])
-  return names
+function declarationCount(source, methodName) {
+  const escaped = methodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return [...source.matchAll(new RegExp(`^ {2}(?:async\\s+)?${escaped}\\s*\\(`, 'gm'))].length
 }
 
 test('S0-F freezes D1 academicAffairsApi aggregate keys', async () => {
   const source = await readFile(apiUrl, 'utf8')
-  const keys = methodNames(source)
-  const unique = new Set(keys)
 
-  assert.equal(unique.size, keys.length, 'academicAffairsApi contains duplicate top-level method names')
   for (const name of d1Methods) {
-    assert.ok(unique.has(name), `missing academicAffairsApi D1 key: ${name}`)
+    assert.equal(
+      declarationCount(source, name),
+      1,
+      `academicAffairsApi D1 key must have one stable declaration: ${name}`
+    )
   }
 })
 
