@@ -57,7 +57,12 @@ async function openWithApiSession(page, api, path) {
   await page.addInitScript(({ token }) => {
     window.sessionStorage.setItem('gx_pc_token_v1', token)
   }, { token: api.token })
+  const refreshResponse = page.waitForResponse((response) =>
+    response.url().includes('/api/v1/auth/browser-refresh') && response.request().method() === 'POST'
+  )
   await page.goto(`${config.staffBaseUrl}${path}`)
+  const response = await refreshResponse
+  expect(response.ok(), `Golden API bootstrap refresh HTTP ${response.status()}`).toBeTruthy()
 }
 
 async function setBatchStorage(page, key, value) {
