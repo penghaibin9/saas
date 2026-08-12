@@ -14,6 +14,7 @@ from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.modules.academic_affairs.routers import academic_affairs as legacy
 from app.modules.academic_affairs.services import academic_affairs_service as svc
+from app.modules.academic_affairs.services import roster_registration_convenience_service as convenience
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
@@ -184,6 +185,7 @@ def reg_eligibility_list(batchId: int = Path(...), status: Optional[str] = None,
                          keyword: Optional[str] = None, page: int = 1, pageSize: int = 20,
                          user=Depends(require_permission(_REG_ELIGIBILITY_VIEW))):
     items, total = svc.list_registration_eligibility(batchId, user, status, keyword, page, pageSize)
+    items = convenience.enrich_eligibility_class_names(items)
     return success(paginate(items, total, page, pageSize))
 
 

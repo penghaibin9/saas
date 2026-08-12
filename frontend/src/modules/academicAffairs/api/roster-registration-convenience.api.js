@@ -1,6 +1,7 @@
 import { request } from '@/services/http/client'
 
 const BASE = '/academic-affairs'
+const previewTokens = new Map()
 
 function toError(error) {
   return {
@@ -31,17 +32,31 @@ export const rosterRegistrationConvenienceApi = {
     })
   },
 
-  previewBulkRegistration(batchId, studentIds) {
-    return call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register-preview`, {
+  async previewBulkRegistration(batchId, studentIds) {
+    const key = String(batchId)
+    previewTokens.delete(key)
+    const result = await call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register-preview`, {
       method: 'POST',
       body: { studentIds: (studentIds || []).map(Number) }
     }))
+    if (result.code === 0 && result.data?.previewToken) {
+      previewTokens.set(key, result.data.previewToken)
+    }
+    return result
   },
 
-  confirmBulkRegistration(batchId, studentIds) {
-    return call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register`, {
+  async confirmBulkRegistration(batchId) {
+    const key = String(batchId)
+    const previewToken = previewTokens.get(key)
+    if (!previewToken) {
+      return { code: 400001, message: '请先重新预览本次批量注册名单', data: null }
+    }
+    const result = await call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register`, {
       method: 'POST',
-      body: { studentIds: (studentIds || []).map(Number) }
+      body: { previewToken }
     }))
+    // 一次确认尝试后即丢弃浏览器内存 token；失败也必须重新 preview，避免误用旧快照。
+    previewTokens.delete(key)
+    return result
   }
 }

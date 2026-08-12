@@ -2,12 +2,20 @@
 
 只提供候选 enrich、批量预览和批量编排；不新增事实表，不直接写学生主档。
 最终注册逐项复用 academic_affairs_service.register_student() canonical 写入口。
+批量确认必须携带服务端签发的短时 previewToken，禁止跳过预览直接写入。
 """
 from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import time
 
 from sqlalchemy import select
 
 from app.core.affairs_security import build_affairs_context
+from app.core.config import settings
 from app.core.exceptions import AppException, not_found
 from app.models import AaRegistrationBatch, Major, SchoolClass, StudentProfile
 from app.modules.academic_affairs.services import academic_affairs_service as svc
@@ -15,6 +23,8 @@ from app.services.db_service import _tid, session
 
 
 _MAX_BULK = 100
+_PREVIEW_TTL_SECONDS = 10 * 60
+_TOKEN_CONTEXT = b"aa-registration-preview-v1"
 
 
 def _status_label(status: str | None) -> str:
@@ -78,6 +88,32 @@ def _enrich_pairs(db, batch, pairs):
     return out
 
 
+def enrich_eligibility_class_names(items: list[dict]) -> list[dict]:
+    """给既有资格核验响应增补 className；classId 继续保留兼容，但页面不再展示内部 ID。"""
+    class_ids = {
+        int(row["classId"])
+        for row in items or []
+        if str(row.get("classId") or "").isdigit()
+    }
+    if not class_ids:
+        return [{**row, "className": ""} for row in items or []]
+    with session() as db:
+        classes = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.id.in_(list(class_ids)),
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+        names = {int(row.id): row.class_name or "" for row in classes}
+    return [
+        {
+            **row,
+            "className": names.get(int(row["classId"]), "")
+            if str(row.get("classId") or "").isdigit() else "",
+        }
+        for row in items or []
+    ]
+
+
 def list_registration_candidates(batch_id, user, *, status=None, keyword=None, page=1, page_size=20):
     """权威候选 + 人类可读组织/状态。候选/数据范围完全复用现有注册服务真值。"""
     with session() as db:
@@ -105,7 +141,12 @@ def _validate_ids(student_ids) -> list[int]:
     ids = []
     seen = set()
     for raw in student_ids or []:
-        sid = int(raw)
+        try:
+            sid = int(raw)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "学生 ID 非法")
+        if sid <= 0:
+            raise AppException("VALIDATION_ERROR", "学生 ID 非法")
         if sid in seen:
             continue
         seen.add(sid)
@@ -115,6 +156,77 @@ def _validate_ids(student_ids) -> list[int]:
     if len(ids) > _MAX_BULK:
         raise AppException("VALIDATION_ERROR", f"单次最多处理 {_MAX_BULK} 名学生")
     return ids
+
+
+def _b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("ascii"))
+
+
+def _signing_key() -> bytes:
+    return hmac.new(settings.jwt_secret.encode("utf-8"), _TOKEN_CONTEXT, hashlib.sha256).digest()
+
+
+def _preview_snapshot(preview: dict) -> str:
+    """只签稳定业务事实，避免展示文案变化导致 token 无意义失效。"""
+    stable = {
+        "batchId": preview.get("batchId"),
+        "batchStatus": preview.get("batchStatus"),
+        "items": [
+            {
+                "studentId": item.get("studentId"),
+                "status": item.get("status"),
+                "code": item.get("code"),
+                "currentStatus": item.get("currentStatus"),
+                "registrationStatus": item.get("registrationStatus"),
+                "eligibilityStatus": item.get("eligibilityStatus"),
+            }
+            for item in preview.get("items") or []
+        ],
+    }
+    raw = json.dumps(stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _issue_preview_token(batch_id: int, student_ids: list[int], snapshot: str) -> str:
+    now = int(time.time())
+    payload = {
+        "v": 1,
+        "tenantId": str(_tid()),
+        "batchId": str(int(batch_id)),
+        "studentIds": [str(x) for x in student_ids],
+        "snapshot": snapshot,
+        "iat": now,
+        "exp": now + _PREVIEW_TTL_SECONDS,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sig = hmac.new(_signing_key(), raw, hashlib.sha256).digest()
+    return f"{_b64encode(raw)}.{_b64encode(sig)}"
+
+
+def _decode_preview_token(preview_token: str, batch_id: int) -> dict:
+    try:
+        raw_part, sig_part = (preview_token or "").split(".", 1)
+        raw = _b64decode(raw_part)
+        supplied = _b64decode(sig_part)
+        expected = hmac.new(_signing_key(), raw, hashlib.sha256).digest()
+        if not hmac.compare_digest(supplied, expected):
+            raise ValueError("bad signature")
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
+        raise AppException("VALIDATION_ERROR", "批量注册预览凭证无效，请重新预览")
+    if payload.get("v") != 1 or payload.get("tenantId") != str(_tid()):
+        raise AppException("VALIDATION_ERROR", "批量注册预览凭证无效，请重新预览")
+    if payload.get("batchId") != str(int(batch_id)):
+        raise AppException("VALIDATION_ERROR", "预览凭证与当前注册批次不匹配，请重新预览")
+    if int(payload.get("exp") or 0) < int(time.time()):
+        raise AppException("DATA_CONFLICT", "批量注册预览已过期，请重新预览", http_status=409)
+    payload["studentIds"] = _validate_ids(payload.get("studentIds") or [])
+    return payload
 
 
 def bulk_register_preview(batch_id, user, student_ids):
@@ -152,7 +264,7 @@ def bulk_register_preview(batch_id, user, student_ids):
                 status, code, message = "READY", "", "可提交注册；确认时系统会再次执行正式校验"
                 ready += 1
             items.append({**row, "status": status, "code": code, "message": message})
-        return {
+        preview = {
             "batchId": str(batch.id),
             "batchName": batch.batch_name,
             "batchStatus": batch.status,
@@ -161,6 +273,10 @@ def bulk_register_preview(batch_id, user, student_ids):
             "blocked": len(ids) - ready,
             "items": items,
         }
+    snapshot = _preview_snapshot(preview)
+    preview["previewToken"] = _issue_preview_token(batch_id, ids, snapshot) if ready else None
+    preview["previewExpiresIn"] = _PREVIEW_TTL_SECONDS if ready else 0
+    return preview
 
 
 def _final_ready_check(batch_id, user, student_id) -> tuple[bool, str, str]:
@@ -177,7 +293,6 @@ def _final_ready_check(batch_id, user, student_id) -> tuple[bool, str, str]:
         try:
             student = ctx.require_student(db, int(student_id))
         except AppException:
-            # 不向猜 ID 的调用者泄露越权学生是否存在。
             return False, "NOT_AVAILABLE", "该学生不在当前可注册候选范围内"
         if student.student_status not in svc._batch_target_statuses(batch):
             return False, "NOT_AVAILABLE", "该学生不在当前可注册候选范围内"
@@ -195,9 +310,7 @@ def _final_ready_check(batch_id, user, student_id) -> tuple[bool, str, str]:
         return True, "", ""
 
 
-def bulk_register(batch_id, user, student_ids):
-    """逐项 canonical apply。业务冲突显式返回逐项结果；未知异常继续抛出。"""
-    preview = bulk_register_preview(batch_id, user, student_ids)
+def _apply_preview(batch_id, user, preview):
     items = []
     for item in preview["items"]:
         sid = int(item["studentId"])
@@ -239,3 +352,12 @@ def bulk_register(batch_id, user, student_ids):
         "failed": len(items) - success_count,
         "items": items,
     }
+
+
+def bulk_register_confirm(batch_id, user, preview_token):
+    """必须先 preview。token 绑定租户/批次/名单/快照，确认前还会重新计算并比对。"""
+    token = _decode_preview_token(preview_token, batch_id)
+    current = bulk_register_preview(batch_id, user, token["studentIds"])
+    if _preview_snapshot(current) != token.get("snapshot"):
+        raise AppException("DATA_CONFLICT", "注册名单或资格状态已变化，请重新预览后再确认", http_status=409)
+    return _apply_preview(batch_id, user, current)

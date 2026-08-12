@@ -297,7 +297,7 @@ export default {
       ],
       eligColumns: [
         { key: 'student', title: '学生' },
-        { key: 'classId', title: '班级ID' },
+        { key: 'className', title: '班级' },
         { key: 'eligibilityStatus', title: '核验结果' },
         { key: 'eligibilityNote', title: '核验意见' },
         { key: 'actions', title: '操作', width: '160px' }

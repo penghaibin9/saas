@@ -12,8 +12,12 @@ from app.modules.academic_affairs.services import roster_registration_convenienc
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
 
-class BulkRegistrationBody(BaseModel):
+class BulkRegistrationPreviewBody(BaseModel):
     studentIds: list[int] = Field(min_length=1, max_length=100)
+
+
+class BulkRegistrationConfirmBody(BaseModel):
+    previewToken: str = Field(min_length=20, max_length=8192)
 
 
 @router.get("/registration-batches/{batchId}/registration-candidates", summary="注册候选名单·人类可读组织与资格解释")
@@ -33,17 +37,17 @@ def registration_candidates(
 
 @router.post("/registration-batches/{batchId}/bulk-register-preview", summary="批量注册·预览（零写入）")
 def bulk_register_preview(
-    body: BulkRegistrationBody,
+    body: BulkRegistrationPreviewBody,
     batchId: int = Path(...),
     user=Depends(require_permission("academicAffairs.registration.manage")),
 ):
     return success(convenience.bulk_register_preview(batchId, user, body.studentIds))
 
 
-@router.post("/registration-batches/{batchId}/bulk-register", summary="批量注册·确认（逐项 canonical 写入）")
+@router.post("/registration-batches/{batchId}/bulk-register", summary="批量注册·确认（必须携带有效预览凭证）")
 def bulk_register(
-    body: BulkRegistrationBody,
+    body: BulkRegistrationConfirmBody,
     batchId: int = Path(...),
     user=Depends(require_permission("academicAffairs.registration.manage")),
 ):
-    return success(convenience.bulk_register(batchId, user, body.studentIds))
+    return success(convenience.bulk_register_confirm(batchId, user, body.previewToken))
