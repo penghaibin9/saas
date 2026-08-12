@@ -127,6 +127,7 @@ def test_all_high_frequency_legacy_exports_have_task_backed_adapters():
 
 
 def test_compatibility_routes_precede_historical_streaming_routes():
+    """Task-backed compat adapter 必须成为唯一 HTTP shape，禁止不可达的历史重复路由回流。"""
     router = build_router()
     watched = {
         "/academic-affairs/roster/export",
@@ -137,7 +138,19 @@ def test_compatibility_routes_precede_historical_streaming_routes():
         "/academic-affairs/archive/batches/{bid}/export",
     }
     effective = list(_effective_routes(router.routes))
+    compat_effective = list(_effective_routes(compat_router.router.routes))
+
     for path in watched:
-        matches = [route for route in effective if getattr(route, "path", None) == path]
-        assert len(matches) >= 2, path
-        assert matches[0].endpoint.__module__.endswith("academic_export_compat_router"), path
+        compat_matches = [route for route in compat_effective if getattr(route, "path", None) == path]
+        assert compat_matches, path
+        for compat_route in compat_matches:
+            for method in (getattr(compat_route, "methods", None) or set()):
+                if method in {"HEAD", "OPTIONS"}:
+                    continue
+                matches = [
+                    route for route in effective
+                    if getattr(route, "path", None) == path
+                    and method in (getattr(route, "methods", None) or set())
+                ]
+                assert len(matches) == 1, (path, method)
+                assert matches[0].endpoint.__module__.endswith("academic_export_compat_router"), (path, method)
