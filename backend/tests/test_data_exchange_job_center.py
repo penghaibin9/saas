@@ -328,15 +328,17 @@ def exchange_seed(db_mode, monkeypatch):
 
 
 def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed):
-    # OWN 不再把 operator_id 为空或他人任务隐式放给管理员。
+    # ImportJob / ExportJob 主键只在各自表内唯一；归并列表身份必须使用 (jobType, id)。
     own = jobs.list_jobs(user=SYS_ADMIN, visibility="OWN", page=1, page_size=100)
+    own_keys = {(item["jobType"], item["id"]) for item in own["list"]}
     assert own["total"] == 3
-    assert {item["id"] for item in own["list"]} >= {
-        str(exchange_seed["own_import"]), str(exchange_seed["retryable"]),
+    assert own_keys >= {
+        ("IMPORT", str(exchange_seed["own_import"])),
+        ("IMPORT", str(exchange_seed["retryable"])),
     }
-    assert str(exchange_seed["other_system_import"]) not in {item["id"] for item in own["list"]}
+    assert ("IMPORT", str(exchange_seed["other_system_import"])) not in own_keys
 
-    # ImportJob / ExportJob 使用各自自增主键；跨表裸 id 可以合法重号，租户隔离断言必须带 jobType。
+    # TENANT 仅含当前租户；MODULE 仅含有职责的业务模块。
     tenant = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=1, page_size=100)
     assert tenant["total"] == 6
     assert ("IMPORT", str(exchange_seed["other_tenant"])) not in {
@@ -399,9 +401,9 @@ def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed
     assert page_one["total"] == 31
     assert len(page_one["list"]) == 5
     assert len(page_two["list"]) == 5
-    assert {item["id"] for item in page_one["list"]}.isdisjoint(
-        {item["id"] for item in page_two["list"]}
-    )
+    page_one_keys = {(item["jobType"], item["id"]) for item in page_one["list"]}
+    page_two_keys = {(item["jobType"], item["id"]) for item in page_two["list"]}
+    assert page_one_keys.isdisjoint(page_two_keys)
     source = Path(jobs.__file__).read_text(encoding="utf-8")
     assert "union_all(*parts)" in source
     assert ".offset((page - 1) * page_size)" in source
