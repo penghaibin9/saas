@@ -1,5 +1,5 @@
 /** D3-U 学籍异动便利性 API。
- *  只暴露既有 future-effective 入口；立即生效继续走 academicAffairsApi.submitStatusChange。
+ *  新便利性路径只做统一编排：内部仍调用 canonical status change + temporal guard。
  */
 import { request } from '@/services/http/client'
 
@@ -15,9 +15,16 @@ function toErr(e) {
 }
 
 export const statusChangeConvenienceApi = {
-  async submitScheduled(body) {
+  async submit(body) {
     try {
-      return ok(await request(`${BASE}/scheduled`, { method: 'POST', body }))
+      return ok(await request(`${BASE}/convenience-submit`, { method: 'POST', body }))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  async listMaterials(changeId) {
+    try {
+      return ok(await request(`${BASE}/${encodeURIComponent(changeId)}/materials`))
     } catch (e) {
       return toErr(e)
     }

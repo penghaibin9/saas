@@ -104,6 +104,35 @@
             <AppQuickPhrases v-if="reasonPhraseScene" :scene-key="reasonPhraseScene" :group="form.changeType" @pick="onPickReason" />
           </div>
         </div>
+
+        <div class="aa-form__row">
+          <label class="aa-form__label">申请材料</label>
+          <div class="aa-form__field">
+            <FileUploader
+              biz-type="AA_STATUS_CHANGE"
+              :disabled="submitting || materialFiles.length >= 10"
+              button-text="上传材料"
+              @uploaded="onMaterialUploaded"
+              @error="onMaterialUploadError"
+            />
+            <div class="aa-form__hint">最多 10 份。上传先进入私有隔离区；只有安全扫描通过并成功提交异动后，才会在同一事务绑定为正式申请材料。</div>
+            <div v-if="materialFiles.length" class="aa-materials">
+              <div v-for="file in materialFiles" :key="file.fileId" class="aa-material">
+                <div class="aa-material__meta">
+                  <strong>{{ file.fileName || `文件 ${file.fileId}` }}</strong>
+                  <span :class="['aa-material__status', { 'is-ready': file.readyForBusiness }]">
+                    {{ file.readyForBusiness ? '安全可用' : (file.statusText || '等待安全扫描') }}
+                  </span>
+                </div>
+                <div class="aa-material__actions">
+                  <button v-if="!file.readyForBusiness" type="button" @click="refreshMaterial(file.fileId)">刷新状态</button>
+                  <button type="button" @click="removeMaterial(file.fileId)">移除</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="hasPendingMaterial" class="aa-form__hint aa-form__hint--warn">存在尚未安全可用的材料，请刷新状态或移除后再提交。</div>
+          </div>
+        </div>
       </div>
 
       <div class="aa-form__actions">
@@ -118,16 +147,18 @@
 
 <script>
 /** D3-U 学籍异动便利性工作台。
- *  当前学籍事实只读 GET /roster/{id}；立即写入仍 POST /status-changes；
- *  指定日期只切换到既有 POST /status-changes/scheduled，不复制状态机与事实链。 */
+ * 当前事实只读 roster detail；提交统一进入 convenience wrapper，wrapper 内部仍调用 canonical submit；
+ * effectiveDate 由既有 temporal guard 处理，materialFileIds 只通过同事务 FileBinding 落正式证据。 */
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppQuickPhrases, AppSelect, AppStudentPicker, AppClassPicker, AppOrgCascader } from '@/components/common'
+import FileUploader from '@/components/file/FileUploader.vue'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { hasGroupPhrases } from '@/utils/quickPhrases'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { statusChangeConvenienceApi } from '@/modules/academicAffairs/api/status-change-convenience.api'
 import { TYPE_LABEL, TYPE_PATH_SEGMENT } from '@/modules/academicAffairs/constants/status-change'
+import { fileSdk } from '@/services/file/fileSdk'
 import { toast } from '@/utils/toast'
 
 const TYPE_HINT = {
@@ -156,9 +187,14 @@ function toLocalInputMin() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function newIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return `aa-sc-${globalThis.crypto.randomUUID()}`
+  return `aa-sc-${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
+}
+
 export default {
   name: 'AaStatusChangeFormView',
-  components: { ModulePageShell, AppButton, AppSectionCard, AppQuickPhrases, AppSelect, AppStudentPicker, AppClassPicker, AppOrgCascader },
+  components: { ModulePageShell, AppButton, AppSectionCard, AppQuickPhrases, AppSelect, AppStudentPicker, AppClassPicker, AppOrgCascader, FileUploader },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -169,6 +205,8 @@ export default {
       targetClassOptions: [],
       targetOrg: [],
       targetOrgItems: [],
+      materialFiles: [],
+      idempotencyKey: newIdempotencyKey(),
       form: {
         studentId: this.$route.query.studentId || '',
         name: this.$route.query.name || '',
@@ -234,8 +272,11 @@ export default {
     minEffectiveDate() {
       return toLocalInputMin()
     },
+    hasPendingMaterial() {
+      return this.materialFiles.some((item) => !item.readyForBusiness)
+    },
     canSubmit() {
-      if (!this.form.studentId || this.loadingStudent) return false
+      if (!this.form.studentId || this.loadingStudent || this.hasPendingMaterial) return false
       if (this.form.changeType === 'TRANSFER_CLASS' && !this.form.toClassId) return false
       if (this.form.changeType === 'TRANSFER_MAJOR' && !this.form.toMajorId) return false
       if (this.form.effectiveMode === 'SCHEDULED' && !this.form.effectiveDate) return false
@@ -287,6 +328,31 @@ export default {
       this.form.reason = value
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
+    onMaterialUploaded(file) {
+      const normalized = fileSdk.normalize(file || {})
+      if (!normalized.fileId) {
+        toast.error('上传完成但未返回有效 fileId')
+        return
+      }
+      const existing = this.materialFiles.findIndex((item) => String(item.fileId) === String(normalized.fileId))
+      if (existing >= 0) this.materialFiles.splice(existing, 1, normalized)
+      else if (this.materialFiles.length < 10) this.materialFiles.push(normalized)
+    },
+    onMaterialUploadError(error) {
+      toast.error(error?.message || '材料上传失败')
+    },
+    async refreshMaterial(fileId) {
+      try {
+        const latest = await fileSdk.metadata(fileId)
+        const index = this.materialFiles.findIndex((item) => String(item.fileId) === String(fileId))
+        if (index >= 0) this.materialFiles.splice(index, 1, latest)
+      } catch (error) {
+        toast.error(error?.message || '读取材料安全状态失败')
+      }
+    },
+    removeMaterial(fileId) {
+      this.materialFiles = this.materialFiles.filter((item) => String(item.fileId) !== String(fileId))
+    },
     goBack() {
       const seg = this.lockedType && TYPE_PATH_SEGMENT[this.form.changeType]
       this.$router.push(seg ? `/admin/academic-affairs/status-changes/${seg}` : '/admin/academic-affairs/status-changes')
@@ -323,10 +389,14 @@ export default {
       this.loadingClasses = false
     },
     buildBody() {
+      const scheduled = this.form.effectiveMode === 'SCHEDULED'
       return {
         studentId: this.form.studentId,
         changeType: this.form.changeType,
         reason: this.form.reason || '',
+        idempotencyKey: this.idempotencyKey,
+        effectiveDate: scheduled ? new Date(this.form.effectiveDate).toISOString() : undefined,
+        materialFileIds: this.materialFiles.map((item) => String(item.fileId)),
         toCollegeId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toCollegeId || undefined) : undefined,
         toMajorId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toMajorId || undefined) : undefined,
         toClassId: (this.form.changeType === 'TRANSFER_MAJOR' || this.form.changeType === 'TRANSFER_CLASS') ? (this.form.toClassId || undefined) : undefined
@@ -342,13 +412,7 @@ export default {
         }
       }
       this.submitting = true
-      const body = this.buildBody()
-      let res
-      if (this.form.effectiveMode === 'SCHEDULED') {
-        res = await statusChangeConvenienceApi.submitScheduled({ ...body, effectiveDate: new Date(this.form.effectiveDate).toISOString() })
-      } else {
-        res = await academicAffairsApi.submitStatusChange(body)
-      }
+      const res = await statusChangeConvenienceApi.submit(this.buildBody())
       this.submitting = false
       if (res.code === 0) {
         toast.success(this.form.effectiveMode === 'SCHEDULED' ? '异动已提交，终审后按指定日期生效' : '异动已提交，进入审批流程')
@@ -372,6 +436,7 @@ export default {
 .aa-input { height: 36px; }
 .aa-picked { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--text-900, #1f2329); }
 .aa-form__hint { margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--text-400, #8a9099); }
+.aa-form__hint--warn { color: var(--warning-700, #b76700); }
 .aa-transition { margin-left: 112px; display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); gap: 12px; align-items: stretch; }
 .aa-transition__card { padding: 16px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); }
 .aa-transition__card--target { background: var(--fill-50, #f7f8fa); }
@@ -389,6 +454,14 @@ export default {
 .aa-radio strong { font-size: 13px; font-weight: 600; color: var(--text-900, #1f2329); }
 .aa-radio small { font-size: 11px; line-height: 1.4; color: var(--text-400, #8a9099); }
 .aa-effective-date { margin-top: 10px; max-width: 360px; }
+.aa-materials { display: grid; gap: 8px; margin-top: 10px; }
+.aa-material { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; background: var(--fill-50, #f7f8fa); }
+.aa-material__meta { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.aa-material__meta strong { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.aa-material__status { flex-shrink: 0; font-size: 11px; color: var(--warning-700, #b76700); }
+.aa-material__status.is-ready { color: var(--success-700, #16803c); }
+.aa-material__actions { display: flex; gap: 8px; }
+.aa-material__actions button { border: 0; background: transparent; color: var(--primary-600, #1769e0); cursor: pointer; font-size: 12px; }
 .aa-form__actions { margin-top: 24px; display: flex; gap: 12px; padding-left: 112px; }
 @media (max-width: 820px) {
   .aa-form__row { display: block; }
@@ -397,5 +470,6 @@ export default {
   .aa-transition__arrow { transform: rotate(90deg); }
   .aa-radio-group { grid-template-columns: 1fr; }
   .aa-form__actions { padding-left: 0; }
+  .aa-material { align-items: flex-start; flex-direction: column; }
 }
 </style>

@@ -109,6 +109,10 @@ def build_router() -> APIRouter:
     # 继续由下方 status_change_temporal_router extension 持有，禁止复制 temporal 逻辑。
     status_change_module = importlib.import_module(f"{__package__}.status_change_router")
     _mount_routes(router, status_change_module.router)
+    # D3-U：统一立即/计划生效 + 正式材料便利性。新路径只编排上面的 canonical submit，
+    # 不覆盖 D3-S 五入口，也不覆盖 temporal /scheduled；材料在同一事务通过 FileBinding 落地。
+    status_change_convenience_module = importlib.import_module(f"{__package__}.status_change_convenience_router")
+    _mount_routes(router, status_change_convenience_module.router)
     _mount_routes(
         router,
         base_router.router,
