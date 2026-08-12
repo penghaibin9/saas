@@ -182,7 +182,7 @@ async function refreshOnce() {
       res = await fetch(`${API_BASE}${API_PREFIX}/auth/browser-refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...BROWSER_SESSION_HEADERS },
-        credentials: 'same-origin'
+        credentials: 'include'
       })
     } catch {
       const e = new Error('网络不可达，请检查后端服务')
@@ -255,7 +255,7 @@ export async function request(path, {
       method,
       headers,
       body: requestBody ? JSON.stringify(requestBody) : undefined,
-      credentials: 'same-origin'
+      credentials: 'include'
     })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
@@ -307,7 +307,7 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
-      method: 'POST', headers, body: form, credentials: 'same-origin'
+      method: 'POST', headers, body: form, credentials: 'include'
     })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
@@ -346,7 +346,7 @@ export async function downloadFile(path, fallbackName = '毕业设计材料', _r
   addInternshipBatchHeader(headers, path)
   let res
   try {
-    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'same-origin' })
+    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'include' })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
