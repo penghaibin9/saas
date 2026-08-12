@@ -17,6 +17,9 @@ SHELL_SCRIPTS = (
     "scripts/deploy/install-systemd-release.sh",
     "scripts/deploy/verify-systemd-release.sh",
     "scripts/deploy/accept-production-release.sh",
+    "deploy/backup/backup-mysql.sh",
+    "deploy/backup/backup-runner.sh",
+    "deploy/backup/restore-backup-set.sh",
 )
 
 
@@ -96,16 +99,47 @@ def test_release_serializes_apply_and_injects_public_origin_into_h5():
     assert "miniapp H5 contains a localhost API origin" in text
 
 
-def test_release_builds_before_quiesce_then_backs_up_before_migration():
+def test_release_builds_before_quiesce_then_governed_backup_before_migration():
     text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
     build_pos = text.index("npm run build:h5")
     stop_pos = text.index('systemctl stop "${ACTIVE_OLD_SERVICES[@]}"')
-    backup_pos = text.index("mysqldump")
+    backup_pos = text.index('bash "$RELEASE_DIR/deploy/backup/backup-runner.sh"')
+    arm_pos = text.index("MIGRATION_STARTED=1")
     migrate_pos = text.index("-m alembic upgrade head")
     switch_pos = text.index('mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"')
-    assert build_pos < stop_pos < backup_pos < migrate_pos < switch_pos
+    assert build_pos < stop_pos < backup_pos < arm_pos < migrate_pos < switch_pos
+    assert "BACKUP_ENV_FILE" in text
+    assert "REQUIRE_UPLOAD_BACKUP=true" in text
+    assert "ROLLBACK_MANIFEST" in text
     assert "release_failure_guard" in text
     assert "ACTIVE_OLD_SERVICES" in text
+    # PR #66 的治理备份成为发布唯一 pre-release backup truth；禁止退回 DB-only 临时 mysqldump。
+    assert "pre_release_${RELEASE_ID}.sql.gz" not in text
+
+
+def test_post_migration_failure_restores_data_before_previous_services_restart():
+    text = (ROOT / "scripts/deploy/install-systemd-release.sh").read_text(encoding="utf-8")
+    guard_start = text.index("release_failure_guard()")
+    guard_end = text.index("trap release_failure_guard EXIT", guard_start)
+    guard = text[guard_start:guard_end]
+    restore_pos = guard.index("restore-backup-set.sh")
+    rollback_pointer_pos = guard.index("current.rollback")
+    restart_pos = guard.index('systemctl start "${ACTIVE_OLD_SERVICES[@]}"')
+    assert restore_pos < rollback_pointer_pos < restart_pos
+    assert 'if [ "$MIGRATION_STARTED" = "1" ]' in guard
+    assert "old services remain stopped" in guard
+    assert "restore_previous_systemd_units" in guard
+
+
+def test_governed_restore_is_manifest_and_hash_bound():
+    text = (ROOT / "deploy/backup/restore-backup-set.sh").read_text(encoding="utf-8")
+    assert "unsupported manifest schema" in text
+    assert "manifest database mismatch" in text
+    assert "sha256sum -c" in text
+    assert "gzip -cd" in text
+    assert "--binary-mode=1" in text
+    assert 'rsync -a --delete "$source_dir/" "$UPLOAD_DIR/"' in text
+    assert "manifest requires uploads but archive is missing" in text
 
 
 def test_release_verification_probes_scan_storage_and_public_tls():
