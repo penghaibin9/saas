@@ -11,7 +11,7 @@ from fastapi import Response
 from starlette.requests import Request
 
 from app.api.v1 import auth_browser
-from app.core import tenant_context
+from app.core import security, tenant_context
 from app.core.exceptions import AppException
 from app.core.tenant_identity import (
     DEMO_SCHOOL,
@@ -82,6 +82,55 @@ def test_production_middleware_returns_503_when_default_tenant_truth_is_unavaila
     response = asyncio.run(middleware.dispatch(_request(), forbidden_call_next))
     assert response.status_code == 503
     assert b"TENANT_RESOLVER_UNAVAILABLE" in response.body
+
+
+def test_signed_old_sandbox_token_cannot_bind_trial_tenant_after_identity_correction(monkeypatch):
+    monkeypatch.setattr(
+        security,
+        "decode_token",
+        lambda token: {
+            "userId": "db-42",
+            "userType": "STUDENT",
+            "tid": SANDBOX_SCHOOL.tenant_code,
+            # Historical bug: sandbox-school used trial-school's numeric tenant id.
+            "tenantId": str(TRIAL_SCHOOL.tenant_id),
+        },
+    )
+    request = _request(headers=[(b"authorization", b"Bearer old-but-signed-token")])
+    resolved = {
+        "tenantId": str(SANDBOX_SCHOOL.tenant_id),
+        "tenantCode": SANDBOX_SCHOOL.tenant_code,
+        "tenantName": "体验沙箱学校",
+        "status": "ACTIVE",
+    }
+
+    denied = context_middleware._token_tenant_identity_deny(request, resolved)
+
+    assert denied is not None
+    assert denied.status_code == 401
+    assert b"TOKEN_TENANT_MISMATCH" in denied.body
+
+
+def test_matching_signed_school_identity_passes_middleware_tenant_guard(monkeypatch):
+    monkeypatch.setattr(
+        security,
+        "decode_token",
+        lambda token: {
+            "userId": "db-42",
+            "userType": "STUDENT",
+            "tid": SANDBOX_SCHOOL.tenant_code,
+            "tenantId": str(SANDBOX_SCHOOL.tenant_id),
+        },
+    )
+    request = _request(headers=[(b"authorization", b"Bearer current-signed-token")])
+    resolved = {
+        "tenantId": str(SANDBOX_SCHOOL.tenant_id),
+        "tenantCode": SANDBOX_SCHOOL.tenant_code,
+        "tenantName": "体验沙箱学校",
+        "status": "ACTIVE",
+    }
+
+    assert context_middleware._token_tenant_identity_deny(request, resolved) is None
 
 
 def test_browser_login_moves_refresh_token_to_httponly_cookie(monkeypatch):
