@@ -120,7 +120,7 @@ async function rawRequest(path, {
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
-      credentials: 'same-origin'
+      credentials: 'include'
     })
     const payload = await res.json().catch(() => null)
     if (!payload || typeof payload.code !== 'number') {
@@ -393,7 +393,7 @@ export async function requestUpload(path, file, fieldName = 'file') {
       headers: accessTokenAtStart ? { Authorization: `Bearer ${accessTokenAtStart}` } : {},
       body: fd,
       signal: controller.signal,
-      credentials: 'same-origin'
+      credentials: 'include'
     })
     const payload = await res.json().catch(() => null)
     if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
@@ -444,7 +444,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
         headers,
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
-        credentials: 'same-origin'
+        credentials: 'include'
       })
       if (res.status === 401) {
         const err = new Error('未登录，请先登录')
