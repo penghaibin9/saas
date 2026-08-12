@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
+import { config } from './config.mjs'
+import { browserSessionForAccessToken } from './api-fixture.mjs'
 
 const SECRET_KEY = /(authorization|cookie|set-cookie|password|token|secret)/i
 
@@ -29,6 +31,45 @@ function testClientIp(testInfo) {
 
 function safeLabel(label) {
   return String(label || 'page').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'page'
+}
+
+function browserChannel(session, source) {
+  const userType = String(session?.userType || '').toUpperCase()
+  const roleCode = String(session?.roleCode || '').toUpperCase()
+  if (userType.startsWith('PLATFORM_') || roleCode === 'PLATFORM_SUPER_ADMIN') return 'platform'
+  if (userType === 'STUDENT' || roleCode === 'STUDENT' || source.includes('sp_token_v1')) return 'student'
+  return 'staff'
+}
+
+async function installSecureE2EBootstrap(page) {
+  // Older visual specs used addInitScript(sessionStorage.setItem(...)) to bootstrap a page.
+  // Production code now deletes those legacy keys by design. Intercept only that E2E pattern and
+  // translate the API fixture's refresh token into a real HttpOnly browser cookie. The app then
+  // obtains its access token through its own /browser-refresh path; product source never reads
+  // Web Storage and the cookie is immediately rotated by the real backend.
+  const nativeAddInitScript = page.addInitScript.bind(page)
+  page.addInitScript = async (script, arg) => {
+    const source = typeof script === 'function' ? String(script) : String(script?.content || script || '')
+    const accessToken = String(arg?.token || '')
+    const legacyBootstrap = accessToken && /(gx_pc_token_v1|sp_token_v1)/.test(source)
+    if (!legacyBootstrap) return nativeAddInitScript(script, arg)
+
+    const session = browserSessionForAccessToken(accessToken)
+    if (!session?.refreshToken) {
+      throw new Error('Legacy E2E bootstrap has no matching refresh session; use real browser login')
+    }
+    const channel = browserChannel(session, source)
+    const base = new URL(channel === 'student' ? config.studentBaseUrl : config.staffBaseUrl)
+    await page.context().addCookies([{
+      name: `gx_${channel}_refresh_v1`,
+      value: session.refreshToken,
+      domain: base.hostname,
+      path: '/api/v1/auth',
+      httpOnly: true,
+      secure: base.protocol === 'https:',
+      sameSite: 'Strict'
+    }])
+  }
 }
 
 export async function attachObservability(page, testInfo, { label = 'page', clientIp = '' } = {}) {
@@ -115,6 +156,7 @@ export const test = base.extend({
     // The backend still enforces its real 10 logins/minute/IP guard. Each legitimate
     // Playwright test receives a distinct trusted-proxy client IP so serial role flows
     // do not incorrectly throttle one another on the shared GitHub runner loopback.
+    await installSecureE2EBootstrap(page)
     const finalize = await attachObservability(page, testInfo, {
       label: 'default-page',
       clientIp: testClientIp(testInfo)
