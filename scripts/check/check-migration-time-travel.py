@@ -28,22 +28,43 @@ EXPECTED_BASELINE_TABLES = 133
 CREATE_TABLE = re.compile(r"(?im)^CREATE TABLE\s+`?[A-Za-z0-9_]+`?\s*\(")
 
 
+def _parse_migration(path: Path) -> ast.AST:
+    try:
+        return ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+    except SyntaxError as exc:
+        raise RuntimeError(f"migration syntax error: {path.name}: {exc}") from exc
+
+
+def _has_dynamic_metadata_ddl(tree: ast.AST) -> bool:
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in ("create_all", "drop_all")
+        for node in ast.walk(tree)
+    )
+
+
+def _imports_runtime_orm(tree: ast.AST) -> bool:
+    """Detect executable imports of current ORM metadata; comments/docstrings do not count."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = str(node.module or "")
+            if module == "app.db.base" or module.startswith("app.db.base."):
+                return True
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                name = str(alias.name or "")
+                if name == "app.db.base" or name.startswith("app.db.base."):
+                    return True
+    return False
+
+
 def _dynamic_ddl_migrations() -> list[str]:
     found: list[str] = []
     for path in sorted(VERSIONS.glob("*.py")):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        try:
-            tree = ast.parse(text)
-        except SyntaxError as exc:
-            raise RuntimeError(f"migration syntax error: {path.name}: {exc}") from exc
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in ("create_all", "drop_all")
-            ):
-                found.append(path.name)
-                break
+        tree = _parse_migration(path)
+        if _has_dynamic_metadata_ddl(tree):
+            found.append(path.name)
     return found
 
 
@@ -55,9 +76,11 @@ def _check_frozen_0001() -> list[str]:
     if errors:
         return errors
 
+    tree = _parse_migration(BASELINE)
+    if _imports_runtime_orm(tree) or _has_dynamic_metadata_ddl(tree):
+        errors.append("0001 still imports/regenerates current ORM metadata instead of frozen DDL")
+
     migration = BASELINE.read_text(encoding="utf-8")
-    if "app.db.base" in migration or "metadata.create_all" in migration or "metadata.drop_all" in migration:
-        errors.append("0001 still imports/regenerates ORM metadata instead of frozen DDL")
     if "0001_baseline_mysql.sql" not in migration or "0001_baseline_tables.txt" not in migration:
         errors.append("0001 does not consume both frozen DDL and table manifest")
 
@@ -88,11 +111,11 @@ def main() -> int:
 
     try:
         dynamic = _dynamic_ddl_migrations()
+        errors = _check_frozen_0001()
     except RuntimeError as exc:
         print(f"migration_time_travel_error: {exc}", file=sys.stderr)
         return 2
 
-    errors = _check_frozen_0001()
     if dynamic:
         errors.append("runtime metadata.create_all/drop_all remains in: " + ", ".join(dynamic))
 
