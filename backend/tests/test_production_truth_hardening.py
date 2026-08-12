@@ -103,9 +103,7 @@ def test_signed_old_sandbox_token_cannot_bind_trial_tenant_after_identity_correc
         "tenantName": "体验沙箱学校",
         "status": "ACTIVE",
     }
-
     denied = context_middleware._token_tenant_identity_deny(request, resolved)
-
     assert denied is not None
     assert denied.status_code == 401
     assert b"TOKEN_TENANT_MISMATCH" in denied.body
@@ -129,7 +127,6 @@ def test_matching_signed_school_identity_passes_middleware_tenant_guard(monkeypa
         "tenantName": "体验沙箱学校",
         "status": "ACTIVE",
     }
-
     assert context_middleware._token_tenant_identity_deny(request, resolved) is None
 
 
@@ -153,7 +150,6 @@ def test_staging_enforces_tenant_identity_even_for_non_db_subject(monkeypatch):
         "tenantName": "体验沙箱学校",
         "status": "ACTIVE",
     }
-
     denied = context_middleware._token_tenant_identity_deny(request, resolved)
     assert denied is not None
     assert denied.status_code == 401
@@ -180,7 +176,6 @@ def test_test_only_synthetic_token_keeps_fixture_local_numeric_tenant(monkeypatc
     }
     monkeypatch.setattr(tenant_context, "lookup_tenant", lambda code: resolved)
     request = _request(headers=[(b"authorization", b"Bearer synthetic-test-token")])
-
     assert context_middleware._token_tenant_identity_deny(request, resolved) is None
     context_middleware._bind_token_tenant(request)
     assert get_tenant()["tenantId"] == str(TRIAL_SCHOOL.tenant_id)
@@ -208,7 +203,9 @@ def test_browser_login_moves_refresh_token_to_surface_httponly_cookie(monkeypatc
     monkeypatch.setattr(auth_browser, "_channel_from_access_token", lambda token: "student")
     response = Response()
     payload = auth_browser.browser_login(
-        auth_browser.auth_api.PasswordLoginRequest(loginName="student", password="secret"),
+        auth_browser.auth_api.PasswordLoginRequest(
+            loginName="student", password="secret", clientType="STUDENT_PC"
+        ),
         response,
     )
     assert payload["data"] == {"accessToken": "access-visible"}
@@ -226,7 +223,6 @@ def test_browser_logout_terminates_only_selected_cookie_session_without_live_acc
     monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
     monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
-
     response = Response()
     payload = auth_browser._browser_logout(
         response=response,
@@ -234,7 +230,6 @@ def test_browser_logout_terminates_only_selected_cookie_session_without_live_acc
         refresh_token="durable-cookie-token",
         authorization=None,
     )
-
     assert payload["code"] == 0
     assert payload["data"]["invalidated"] is True
     assert revoked == ["db-student-1"]
@@ -259,7 +254,6 @@ def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(m
     monkeypatch.setattr(auth_browser, "block_jti", lambda jti, exp: blocked.append((jti, exp)) or True)
     monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
-
     response = Response()
     payload = auth_browser._browser_logout(
         response=response,
@@ -267,7 +261,6 @@ def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(m
         refresh_token="durable-cookie-token",
         authorization="Bearer live-access-token",
     )
-
     assert payload["code"] == 0
     assert blocked == [("access-jti-1", 4102444800.0)]
     assert revoked == ["db-student-1"]
@@ -276,7 +269,6 @@ def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(m
 def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch):
     def fail_consume(_token):
         raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
-
     monkeypatch.setattr(auth_browser, "consume_refresh", fail_consume)
     response = Response()
     payload = auth_browser._browser_logout(
@@ -285,7 +277,6 @@ def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch)
         refresh_token="durable-cookie-token",
         authorization=None,
     )
-
     assert response.status_code == 503
     assert payload["bizCode"] == "AUTH_STORE_UNAVAILABLE"
     assert payload["code"] != 0
@@ -298,7 +289,6 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_and_select_session_channe
     admin = (ROOT / "frontend/src/services/http/client.js").read_text(encoding="utf-8")
     portal = (ROOT / "student-portal/src/services/request.js").read_text(encoding="utf-8")
     portal_session = (ROOT / "student-portal/src/stores/session.js").read_text(encoding="utf-8")
-
     assert "sessionStorage.setItem" not in admin
     assert "localStorage.setItem" not in admin
     assert "state = { token: ''" in admin
@@ -307,12 +297,12 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_and_select_session_channe
     assert "function browserSessionChannel()" in admin
     assert "headers: browserSessionHeaders()" in admin
     assert "await rawRequest('/auth/browser-logout'" in admin
-
     assert "localStorage.setItem" not in portal
     assert "_sessionSet(TOKEN_KEY" not in portal
     assert "_sessionSet(REFRESH_KEY" not in portal
     assert "let accessToken = ''" in portal
     assert "'X-Browser-Session': 'student'" in portal
+    assert "clientType: 'STUDENT_PC'" in portal
     assert "/auth/browser-refresh" in portal
     assert "/auth/browser-login" in portal
     assert "await request('/auth/browser-logout', { method: 'POST', auth: true })" in portal_session
