@@ -91,6 +91,10 @@ def build_router() -> APIRouter:
     # legacy 中同 method/path 继续保留为兼容来源并由确定性去重跳过。
     term_calendar_module = importlib.import_module(f"{__package__}.term_calendar_router")
     _mount_routes(router, term_calendar_module.router)
+    # D1-U：便利性只读 preview。它不替代 canonical 写链，只把系统能计算的
+    # 校历复制/标准作息候选提前算给用户看，确认后仍走原正式写端点。
+    convenience_module = importlib.import_module(f"{__package__}.term_calendar_convenience_router")
+    _mount_routes(router, convenience_module.router)
     _mount_routes(
         router,
         base_router.router,
