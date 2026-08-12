@@ -218,7 +218,13 @@ function browserAuthPath(path) {
 }
 
 function browserAuthBody(path, body) {
-  if (path !== '/auth/login') return body
+  const studentPcAuthPaths = new Set([
+    '/auth/login',
+    '/auth/captcha',
+    '/auth/password-reset/request',
+    '/auth/password-reset/verify'
+  ])
+  if (!studentPcAuthPaths.has(path)) return body
   return { ...(body || {}), clientType: 'STUDENT_PC' }
 }
 
