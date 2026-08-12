@@ -190,11 +190,8 @@ def submit_with_materials(body, user, material_file_ids=None) -> dict:
         if token is not None:
             _PENDING.reset(token)
 
-    if not file_ids:
-        return {**result, "materialCount": 0}
-
-    # strict_submit 的 idempotencyKey 允许网络重放直接返回既有异动单。重放不会产生新 ORM insert，
-    # 所以必须要求正式 binding 集合与本次请求完全一致；增、删、换任一材料都视为幂等事实冲突。
+    # strict_submit 的 idempotencyKey 允许网络重放直接返回既有异动单。无论本次是否带材料，
+    # 都必须读取正式 binding 并要求集合完全一致；A+B → A、A+B → 空、空 → A 都是幂等事实冲突。
     bound = list_materials(result["changeId"], user)
     bound_ids = {str(item.get("fileId") or "") for item in bound if str(item.get("fileId") or "")}
     requested = set(file_ids)

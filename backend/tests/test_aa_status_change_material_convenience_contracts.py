@@ -31,6 +31,7 @@ def test_d3u_convenience_submit_delegates_to_canonical_service(monkeypatch):
         return {"changeId": "123", "status": "SUBMITTED"}
 
     monkeypatch.setattr(material_svc.change_service, "submit", fake_submit)
+    monkeypatch.setattr(material_svc, "list_materials", lambda change_id, user: [])
     result = material_svc.submit_with_materials(marker, {"userId": "7"}, [])
     assert calls == [(marker, {"userId": "7"})]
     assert result["changeId"] == "123"
@@ -53,9 +54,10 @@ def test_d3u_idempotent_replay_requires_exact_material_set(monkeypatch):
         lambda change_id, user: [{"fileId": "1"}, {"fileId": "2"}],
     )
 
-    with pytest.raises(AppException) as caught:
-        material_svc.submit_with_materials(marker, {"userId": "7"}, ["1"])
-    assert caught.value.code == "IDEMPOTENCY_MATERIAL_MISMATCH"
+    for requested in (["1"], [], ["1", "3"]):
+        with pytest.raises(AppException) as caught:
+            material_svc.submit_with_materials(marker, {"userId": "7"}, requested)
+        assert caught.value.code == "IDEMPOTENCY_MATERIAL_MISMATCH"
 
     result = material_svc.submit_with_materials(marker, {"userId": "7"}, ["2", "1"])
     assert result["materialCount"] == 2
