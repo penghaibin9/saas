@@ -101,6 +101,18 @@ def test_browser_refresh_rejects_tombstoned_session_even_if_refresh_row_survived
         auth_browser._rotate_browser_refresh("raced-refresh")
 
 
+def test_logout_revocation_can_locate_expired_but_signed_browser_session():
+    expired = auth_browser.jwt.encode(
+        {"userId": "db-7", "authSessionId": "sess-expired", "jti": "old-jti", "exp": 1},
+        auth_browser.settings.jwt_secret,
+        algorithm=auth_browser.settings.jwt_algorithm,
+    )
+    claims = auth_browser._decode_signed_token_for_revocation(expired)
+    assert claims["userId"] == "db-7"
+    assert claims["authSessionId"] == "sess-expired"
+    assert auth_browser._decode_signed_token_for_revocation(expired + "tampered") == {}
+
+
 class _FakeDb:
     def close(self):
         pass

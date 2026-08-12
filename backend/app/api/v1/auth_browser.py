@@ -12,6 +12,7 @@ from __future__ import annotations
 import secrets
 from contextvars import ContextVar
 
+import jwt
 from fastapi import APIRouter, Cookie, Depends, Header, Response
 
 from app.api.v1 import auth as auth_api
@@ -78,6 +79,24 @@ def _channel_from_access_token(token: str) -> str:
     if user_type or role:
         return "staff"
     return _channel_from_client_type(client_type)
+
+
+def _decode_signed_token_for_revocation(token: str) -> dict:
+    """Verify JWT signature while ignoring only expiry, solely to locate a session for revocation.
+
+    This helper is never used to authorize a request. It exists so an expired access token can still
+    identify the browser ``authSessionId`` during logout when another tab has already consumed the
+    refresh cookie. Signature/algorithm validation remains mandatory.
+    """
+    try:
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_exp": False},
+        )
+    except jwt.PyJWTError:
+        return {}
 
 
 def _set_refresh_cookie(response: Response, token: str, channel: str) -> None:
@@ -297,10 +316,10 @@ def _browser_logout(
 
         raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "").strip()
         if raw:
-            try:
-                access_claims = decode_token(raw)
-            except AppException:
-                access_claims = {}
+            # Logout may use an expired access token only as signed revocation metadata. It never
+            # authorizes business access here, so expiry is intentionally ignored while signature
+            # and algorithm verification remain mandatory.
+            access_claims = _decode_signed_token_for_revocation(raw)
             if access_claims:
                 access_user = str(access_claims.get("userId") or "")
                 access_session = str(access_claims.get("authSessionId") or "")
