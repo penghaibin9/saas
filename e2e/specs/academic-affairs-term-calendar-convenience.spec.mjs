@@ -71,41 +71,48 @@ async function loginAcademicAdmin(page) {
 test.describe.serial('Academic affairs D1 term/calendar usability', () => {
   test('calendar copy preview → human review → canonical write, with 3 viewport screenshots', async ({ page }, testInfo) => {
     const { token } = await loginAcademicAdmin(page)
-    const suffix = String(Date.now()).slice(-6)
+    const sourceYear = 2088 + testInfo.retry * 2
+    const targetYear = sourceYear + 1
+    const suffix = `${String(Date.now()).slice(-6)}-r${testInfo.retry}`
     const sourceName = `E2E 源校历 ${suffix}`
     const targetName = `E2E 目标校历 ${suffix}`
     const holidayRemark = `E2E 假期 ${suffix}`
     const examRemark = `E2E 考试 ${suffix}`
+    const sourceYearCode = `${sourceYear}-${sourceYear + 1}`
+    const targetYearCode = `${targetYear}-${targetYear + 1}`
+    const sourceStart = `${sourceYear}-09-01`
+    const targetStart = `${targetYear}-09-03`
+    const mappedHoliday = `${targetYear}-09-17`
 
     const source = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: '2088-2089',
+      yearCode: sourceYearCode,
       termNo: 1,
       termName: sourceName,
-      startDate: '2088-09-01',
-      endDate: '2089-01-31',
+      startDate: sourceStart,
+      endDate: `${sourceYear + 1}-01-31`,
       teachingWeeks: 20,
       examWeekStart: 18
     }), 'create source term')
     const target = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: '2089-2090',
+      yearCode: targetYearCode,
       termNo: 1,
       termName: targetName,
-      startDate: '2089-09-03',
-      endDate: '2090-01-31',
+      startDate: targetStart,
+      endDate: `${targetYear + 1}-01-31`,
       teachingWeeks: 20,
       examWeekStart: 19
     }), 'create target term')
 
     await expectApiOk(await browserApi(page, token, 'POST', `/academic-affairs/terms/${source.termId}/calendar`, {
       eventType: 'HOLIDAY',
-      startDate: '2088-09-15',
-      endDate: '2088-09-15',
+      startDate: `${sourceYear}-09-15`,
+      endDate: `${sourceYear}-09-15`,
       remark: holidayRemark
     }), 'seed source holiday')
     await expectApiOk(await browserApi(page, token, 'POST', `/academic-affairs/terms/${source.termId}/calendar`, {
       eventType: 'EXAM',
-      startDate: '2088-12-29',
-      endDate: '2088-12-30',
+      startDate: `${sourceYear}-12-29`,
+      endDate: `${sourceYear}-12-30`,
       remark: examRemark
     }), 'seed source exam')
 
@@ -113,7 +120,7 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/calendar`)
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/calendar/)
     await dismissPageGuide(page)
-    await chooseTerm(page, '2089-2090 第 1 学期')
+    await chooseTerm(page, targetName)
 
     const copyPanel = page.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
     await expect(page.getByText('快速复制上一学期校历', { exact: true })).toBeVisible()
@@ -124,7 +131,7 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await expect(page.getByText(examRemark)).toBeVisible()
     await expect(page.getByText('需人工复核', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('TEACHING_WEEK_RELATIVE_WITH_EXAM_WEEK_ALIGNMENT')).toHaveCount(0)
-    await expect(page.getByText('2089-09-17', { exact: false })).toBeVisible()
+    await expect(page.getByText(mappedHoliday, { exact: false })).toBeVisible()
     await copyPanel.scrollIntoViewIfNeeded().catch(() => {})
 
     await captureViewport(page, testInfo, 'd1-calendar-copy-preview', 1280, 720)
