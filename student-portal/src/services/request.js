@@ -5,6 +5,7 @@
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
  * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
  * - 迟到的旧 refresh/401/业务响应不得覆盖、清空或借用已经切换的新会话。
+ * - /auth/me 是唯一允许“无内存 token → HttpOnly refresh → 恢复会话”的 auth 读入口。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
 const TOKEN_KEY = 'sp_token_v1'
@@ -232,6 +233,13 @@ function browserAuthBody(path, body) {
 export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
+  // F5 后 accessToken 为空；只允许 /auth/me 先走一次 HttpOnly cookie refresh。
+  // 登录、验证码、找回密码等其它 auth 端点永远不触发隐式 refresh。
+  if (auth && !_retried && path === '/auth/me' && !getToken()) {
+    await refreshOnce()
+    return request(path, { method, body, auth, params, query, _retried: true })
+  }
+
   cleanupStaleGraduationTemps()
   const generationAtStart = sessionGeneration
   const headers = { 'Content-Type': 'application/json' }
