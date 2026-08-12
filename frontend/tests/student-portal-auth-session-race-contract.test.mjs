@@ -75,7 +75,9 @@ test('student portal browser session stays memory plus HttpOnly-cookie only', as
 
   assert.match(text, /\/auth\/browser-refresh/)
   assert.match(text, /return path === '\/auth\/login' \? '\/auth\/browser-login' : path/)
-  assert.match(text, /credentials: 'same-origin'/)
+  // Student Portal supports a configured API origin, so browser auth requests must include the
+  // HttpOnly refresh cookie for that explicitly CORS-whitelisted origin.
+  assert.match(text, /credentials: 'include'/)
   assert.match(text, /let accessToken = ''/)
   assert.doesNotMatch(text, /sessionStorage\.setItem\(TOKEN_KEY/)
   assert.doesNotMatch(text, /localStorage\.setItem\(TOKEN_KEY/)
