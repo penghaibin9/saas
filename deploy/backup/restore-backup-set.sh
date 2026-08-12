@@ -64,7 +64,7 @@ verify_object() {
   test "$(sha256sum "$file" | awk '{print $1}')" = "$expected_hash"
 }
 
-mysql_cmd=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1 "$DB_NAME")
+mysql_base=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1)
 
 verify_object "$db_file" "$db_hash"
 gzip -t "$db_file"
@@ -76,26 +76,30 @@ gzip -t "$db_file"
 # import the governed full dump. This restores the exact pre-release schema/data boundary without
 # requiring CREATE/DROP DATABASE privileges.
 echo "[$(date -Is)] clearing candidate database objects before governed restore"
+quote_expr="CONCAT(CHAR(96), REPLACE(%s, CHAR(96), CONCAT(CHAR(96), CHAR(96))), CHAR(96))"
+event_name_expr="${quote_expr//%s/EVENT_NAME}"
+table_name_expr="${quote_expr//%s/TABLE_NAME}"
+routine_name_expr="${quote_expr//%s/ROUTINE_NAME}"
 cleanup_sql="$({
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
-    "SELECT CONCAT('DROP EVENT IF EXISTS \\`', REPLACE(EVENT_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE() ORDER BY EVENT_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
-    "SELECT CONCAT('DROP VIEW IF EXISTS \\`', REPLACE(TABLE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
-    "SELECT CONCAT('DROP TABLE IF EXISTS \\`', REPLACE(TABLE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
-    "SELECT CONCAT('DROP ', ROUTINE_TYPE, ' IF EXISTS \\`', REPLACE(ROUTINE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() ORDER BY ROUTINE_TYPE, ROUTINE_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+    "SELECT CONCAT('DROP EVENT IF EXISTS ', $event_name_expr, ';') FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE() ORDER BY EVENT_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+    "SELECT CONCAT('DROP VIEW IF EXISTS ', $table_name_expr, ';') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+    "SELECT CONCAT('DROP TABLE IF EXISTS ', $table_name_expr, ';') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+    "SELECT CONCAT('DROP ', ROUTINE_TYPE, ' IF EXISTS ', $routine_name_expr, ';') FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() ORDER BY ROUTINE_TYPE, ROUTINE_NAME;"
 } || exit 1)"
 {
   echo "SET FOREIGN_KEY_CHECKS=0;"
   printf '%s\n' "$cleanup_sql"
   echo "SET FOREIGN_KEY_CHECKS=1;"
-} | MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}"
+} | MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" "$DB_NAME"
 
 # The dump is hash-verified immediately above and includes the pre-release table schema/data plus
 # configured routines/events/triggers. After the reset, no candidate-only object can survive.
 echo "[$(date -Is)] restoring database from governed backup: $(basename "$db_file")"
-gzip -cd "$db_file" | MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}"
+gzip -cd "$db_file" | MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" "$DB_NAME"
 
 if [ -n "$upload_name" ]; then
   upload_file="$BACKUP_DIR/$upload_name"
