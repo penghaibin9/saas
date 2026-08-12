@@ -1,0 +1,259 @@
+/*
+ * Golden rollout · Student Affairs · 困难认定工作台
+ * Route: /admin/student-affairs/aid
+ * Visual-only. Every selector is fenced by this page's unique DOM signature.
+ */
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchbar {
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--pri, #2563eb) 11%, var(--card-b, #e2e8f0));
+  border-radius: 14px;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--pri-bg, #eff6ff) 72%, #fff), #fff 82%);
+  box-shadow: 0 16px 32px -34px color-mix(in srgb, var(--deep1, #0f172a) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchsel {
+  flex: 1 1 420px;
+  min-width: 0;
+  gap: 12px;
+  color: var(--text-secondary, #475569);
+  font-weight: 650;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchsel > span {
+  flex: 0 0 auto;
+  color: var(--text-primary, #0f172a);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchpick {
+  width: min(430px, 48vw);
+  max-width: 100%;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchtools {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-toolbar {
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--pri, #2563eb) 7%, var(--card-b, #e2e8f0));
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 28px -34px color-mix(in srgb, var(--deep1, #0f172a) 42%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-filters {
+  gap: 7px;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-chip {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 7%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 10%, #fff);
+  font-weight: 560;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-chip:hover {
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 28%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 32%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-chip.is-on {
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 54%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 64%, #fff);
+  color: var(--pri, #2563eb);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pri, #2563eb) 8%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-chip em {
+  color: inherit;
+  opacity: 0.68;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-workspace {
+  grid-template-columns: minmax(330px, 380px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail {
+  min-width: 0;
+  min-height: 360px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--pri, #2563eb) 8%, var(--card-b, #e2e8f0));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -38px color-mix(in srgb, var(--deep1, #0f172a) 54%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list {
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 18%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail {
+  background: #fff;
+}
+
+/* The global empty state remains semantically intact; only remove the nested-card visual. */
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-panel,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-panel {
+  min-height: 330px;
+  padding: 36px 22px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-icon,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--pri, #2563eb) 7%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 34%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-title,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-title {
+  margin-bottom: 7px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-desc,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-desc {
+  max-width: 520px;
+  color: var(--text-secondary, #475569);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-actions,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-actions {
+  margin-top: 14px;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-btn,
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-btn {
+  min-height: 31px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-qitem {
+  padding: 12px 13px;
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 7%, var(--card-b, #e2e8f0));
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 10px 24px -28px color-mix(in srgb, var(--deep1, #0f172a) 45%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-qitem:hover {
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 30%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 20%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-qitem.is-active {
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 56%, var(--card-b, #e2e8f0));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 58%, #fff);
+  box-shadow: 0 12px 26px -26px color-mix(in srgb, var(--pri, #2563eb) 42%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-qitem__name {
+  font-weight: 700;
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ad-dhead {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--pri, #2563eb) 6%, var(--card-b, #e2e8f0));
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-kv {
+  gap: 9px 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--pri, #2563eb) 6%, var(--card-b, #e2e8f0));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 12%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-family {
+  border-style: solid;
+  border-radius: 12px;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--warning-500, #f59e0b) 58%, transparent);
+}
+
+@media (max-width: 1180px) {
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-workspace {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1040px) {
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list,
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail {
+    min-height: 292px;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list .ags-panel,
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail .ags-panel {
+    min-height: 262px;
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchbar {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchsel {
+    flex-basis: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchpick,
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchtools {
+    width: 100%;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchtools {
+    justify-content: stretch;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-batchtools > * {
+    flex: 1 1 128px;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-toolbar {
+    padding: 8px;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-chip {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-list,
+  #app .base-portal-layout .mps:has(.ad-batchbar):has(.ad-workspace) .ad-detail {
+    padding: 10px;
+    border-radius: 14px;
+  }
+}

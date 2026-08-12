@@ -1,0 +1,88 @@
+/*
+ * Golden message-governance rollout — Batch 15 Screenshot A -> B.
+ * Visual-only. The delivery-ops candidate is intentionally excluded from B because
+ * the real page still exposes product maturity copy `(partial)` and raw reconcile JSON.
+ */
+
+/* ========================================================================== */
+/* Message templates · governed publishing assets                              */
+/* Unique signature: .mc-tpl                                                   */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.mc-tpl) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 48%, #fff), #fff 80%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .mc-toolbar {
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pri-bg) 24%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .mc-toolbar input {
+  max-width: none;
+  min-width: 260px;
+  height: 36px;
+  border-radius: 9px;
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .mc-toolbar .mc-btn {
+  height: 36px;
+  border-radius: 9px;
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .app-global-state .ags-panel {
+  min-height: 220px;
+  padding: 30px 32px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -38px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .app-global-state .ags-icon {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 10px;
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .app-global-state .ags-actions {
+  margin-top: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .mc-create {
+  padding: 14px 16px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--pri-bg) 14%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .mc-item {
+  padding: 14px 16px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 14px;
+  box-shadow: 0 14px 28px -34px color-mix(in srgb, var(--deep1) 40%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-tpl) .preview {
+  border: 1px solid color-mix(in srgb, var(--pri) 6%, var(--card-b));
+  border-radius: 10px;
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.mc-tpl) .mc-toolbar input {
+    min-width: 100%;
+  }
+}

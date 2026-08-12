@@ -1,0 +1,23 @@
+/*
+ * Batch 6 Screenshot B correction.
+ * GraduationStatsView renders `.mp-card__body.gs-grid` on the same element;
+ * keep the page-local result cockpit at two desktop columns without touching
+ * shared `.mp-stack` / `.mp-card` primitives.
+ */
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mp-stack > .mp-stack:has(> .mp-card > .mp-card__body.gs-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+#app .base-portal-layout .mps:has(.gs-grid) > .mp-stack > .mp-stack:has(> .mp-card > .mp-card__body.gs-grid) > .mp-card {
+  min-width: 0;
+  grid-column: auto;
+}
+
+@media (max-width: 960px) {
+  #app .base-portal-layout .mps:has(.gs-grid) > .mp-stack > .mp-stack:has(> .mp-card > .mp-card__body.gs-grid) {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,346 @@
+/*
+ * Golden review / workflow queues rollout — Batch 8 Screenshot A -> B.
+ * Visual-only. Every rule is page-anchored so shared shells, tables and
+ * dual-pane primitives keep their production behavior and contracts.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · Aid publicity review                                    */
+/* Unique signature: .ap-note only exists on the aid publicity workbench.    */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.ap-note) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ap-note) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 17px 19px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(124deg, color-mix(in srgb, var(--pri-bg) 72%, #fff), #fff 68%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 52%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ap-note) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .mps__title {
+  font-size: 26px;
+  letter-spacing: -.02em;
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .sa-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 720px) auto;
+  align-items: stretch;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+  grid-template-columns: 1.25fr .9fr .9fr;
+  gap: 10px;
+  min-width: 0;
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics > * {
+  min-height: 92px;
+  border-radius: 14px;
+  box-shadow: 0 13px 28px -30px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics > :first-child {
+  border-color: color-mix(in srgb, var(--pri) 18%, var(--card-b));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pri-bg) 70%, #fff), #fff 72%);
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .sa-toolbar > :last-child {
+  align-self: center;
+  min-height: 40px;
+  box-shadow: 0 10px 22px -16px color-mix(in srgb, var(--pri) 70%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .ap-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--pri-bg) 42%, #fff);
+  color: var(--t2);
+  line-height: 1.6;
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 14px;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 54%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.ap-note) .dt__th {
+  background: #f7f9fc;
+}
+
+/* ========================================================================== */
+/* Internship · Change review queue                                          */
+/* Unique signature: review workbench owns both .lv-list and .lv-main.       */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 17px;
+  background: linear-gradient(124deg, color-mix(in srgb, var(--pri-bg) 68%, #fff), #fff 70%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) > .mp-stack {
+  gap: 10px;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .mp-tabs {
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .mp-tab {
+  min-height: 32px;
+  padding: 6px 13px;
+  border-radius: 8px;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-list {
+  gap: 7px;
+  padding: 10px;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-item {
+  position: relative;
+  padding: 11px 12px 11px 14px;
+  border-color: color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-item.is-active {
+  border-color: color-mix(in srgb, var(--pri) 44%, var(--card-b));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--pri-bg) 72%, #fff), #fff 84%);
+  box-shadow: 0 12px 26px -24px color-mix(in srgb, var(--pri) 72%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-item.is-active::before {
+  content: '';
+  position: absolute;
+  inset: 9px auto 9px 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--pri);
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-main {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 17px;
+  box-shadow: 0 18px 38px -34px color-mix(in srgb, var(--deep1) 56%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-head {
+  padding-bottom: 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .sec-t {
+  position: relative;
+  margin-top: 18px;
+  padding-left: 10px;
+  color: var(--t1);
+  font-weight: 650;
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .sec-t::before {
+  content: '';
+  position: absolute;
+  inset: 2px auto 2px 0;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pri) 72%, #60a5fa);
+}
+
+#app .base-portal-layout .mps:has(.lv-list):has(.lv-main) .lv-foot {
+  border-top-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  background: linear-gradient(180deg, #fff, #f8fafc);
+}
+
+/* ========================================================================== */
+/* Graduation · Proposal review queue                                        */
+/* Unique signature: .pr-split is the continuous proposal review cockpit.    */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.pr-split) {
+  gap: 11px;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 15px 17px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(124deg, color-mix(in srgb, var(--pri-bg) 62%, #fff), #fff 72%);
+  box-shadow: 0 15px 32px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) > .mp-stack {
+  gap: 9px;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .mp-tabs {
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .mp-tab {
+  min-height: 31px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .af {
+  min-height: 46px;
+  padding: 7px 10px;
+  border-color: color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-split {
+  gap: 12px;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-list,
+#app .base-portal-layout .mps:has(.pr-split) .pr-pane {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -34px color-mix(in srgb, var(--deep1) 56%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-list {
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-rows {
+  padding: 8px 9px 0;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-row {
+  position: relative;
+  border-radius: 11px;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-row.is-active {
+  border-color: color-mix(in srgb, var(--pri) 42%, var(--card-b));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--pri-bg) 72%, #fff), #fff 86%);
+  box-shadow: 0 11px 25px -24px color-mix(in srgb, var(--pri) 72%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-row.is-active::before {
+  content: '';
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--pri);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .pr-pane__bar {
+  min-height: 44px;
+  padding: 9px 13px;
+  border-bottom-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pri-bg) 38%, #fff), #fff);
+}
+
+#app .base-portal-layout .mps:has(.pr-split) .prc {
+  border-radius: 0 0 16px 16px;
+}
+
+#app .base-portal-layout .mps:has(.pr-split) > .mp-stack > .mp-note:last-child {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--pri-bg) 34%, #fff);
+  color: var(--t2);
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.ap-note) > .mps__head,
+  #app .base-portal-layout .mps:has(.lv-list):has(.lv-main) > .mps__head,
+  #app .base-portal-layout .mps:has(.pr-split) > .mps__head {
+    padding: 14px;
+  }
+
+  #app .base-portal-layout .mps:has(.ap-note) .sa-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+    grid-template-columns: 1fr;
+  }
+}

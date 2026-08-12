@@ -1,3 +1,28 @@
+@import './golden-refinement.css';
+@import './golden-refinement-final.css';
+@import './golden-business-rollout.css';
+@import './golden-business-rollout-final.css';
+@import './golden-business-ops-rollout.css';
+@import './golden-business-ops-rollout-final.css';
+@import './golden-risk-workspaces-rollout.css';
+@import './golden-risk-workspaces-rollout-final.css';
+@import './golden-material-evidence-rollout.css';
+@import './golden-implementation-config-rollout.css';
+@import './golden-evaluation-results-rollout.css';
+@import './golden-evaluation-results-rollout-final.css';
+@import './golden-master-data-rollout.css';
+@import './golden-review-queues-rollout.css';
+@import './golden-process-guidance-rollout.css';
+@import './golden-student-360-rollout.css';
+@import './golden-exception-recovery-rollout.css';
+@import './golden-cyclical-work-rollout.css';
+@import './golden-confirmation-documents-rollout.css';
+@import './golden-message-center-rollout.css';
+@import './golden-message-governance-rollout.css';
+@import './golden-message-settings-rollout.css';
+@import './golden-message-campaign-records-rollout.css';
+@import './golden-student-affairs-dormitory-rollout.css';
+
 /* Stage B / B3：管理端 <900px 仍必须可操作导航。
  * BasePortalLayout 旧规则会隐藏 rail + aside 并要求用户拉宽窗口；本覆盖层在全局样式最后加载，
  * 把一级导航改成横向可滚动轨、二/三级导航改成受控高度菜单区，避免窄屏失去导航能力。

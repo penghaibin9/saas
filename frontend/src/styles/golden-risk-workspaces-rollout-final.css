@@ -1,0 +1,61 @@
+/* Screenshot B -> C · Student Affairs risk metrics only.
+ * Restore the intended five-card desktop rhythm using the real AppMetricCard classes.
+ * The risk page has a stable DOM contract: TaskContextBar is immediately followed by
+ * the metric grid. Dashboard-specific 5+4 span rules are isolated upstream, and this
+ * page defensively keeps each risk metric to one grid cell.
+ */
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
+  display: grid !important;
+  width: 100% !important;
+  max-width: none;
+  flex: 0 0 100% !important;
+  align-self: stretch;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card {
+  grid-column: auto !important;
+  min-width: 0;
+  min-height: 108px;
+  max-height: 112px;
+  padding: 13px 15px;
+  gap: 6px;
+  border-color: #dce5f2;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 14px 30px -30px rgba(15, 40, 90, .6);
+}
+
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__title {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__value {
+  font-size: 30px;
+  line-height: 1;
+}
+
+#app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics .app-metric-card__footer {
+  min-height: 12px;
+}
+
+@media (max-width: 1280px) {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  #app .base-portal-layout .student-affairs-ui-scope .task-context-bar + .sa-grid--metrics {
+    grid-template-columns: 1fr !important;
+  }
+}

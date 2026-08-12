@@ -1,0 +1,681 @@
+/*
+ * Golden refinement — Student master + Academic selection console.
+ *
+ * Scope is deliberately page-anchored with :has() so these rules do not leak
+ * into unrelated ModulePageShell / AdvancedFilter / DataTable consumers.
+ * Business structure, permissions, routes and API semantics remain untouched.
+ */
+
+/* ========================================================================== */
+/* Student master — move from generic CRUD surface to a clear operational UI. */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) {
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) > .mps__head {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 126px;
+  padding: 22px 24px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--pri) 28%, transparent);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 82% 28%, rgba(255, 255, 255, 0.34) 0 2px, transparent 3px),
+    radial-gradient(circle at 91% 70%, rgba(255, 255, 255, 0.2) 0 2px, transparent 3px),
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--deep1) 88%, var(--pri)) 0%,
+      color-mix(in srgb, var(--pri) 86%, #2878ff) 58%,
+      color-mix(in srgb, var(--pri) 72%, #5b9cff) 100%
+    );
+  box-shadow: 0 18px 44px -26px color-mix(in srgb, var(--deep1) 74%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) > .mps__head::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 300px;
+  height: 300px;
+  right: -84px;
+  top: -150px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 42px rgba(255, 255, 255, 0.035),
+    0 0 0 92px rgba(255, 255, 255, 0.025);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title-wrap {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  column-gap: 13px;
+  align-items: center;
+  min-width: 310px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title-wrap::before {
+  content: '档';
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__title {
+  color: #fff;
+  font-size: 27px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__subtitle {
+  grid-column: 2;
+  margin-top: 4px;
+  color: rgba(236, 244, 255, 0.82);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__meta {
+  position: relative;
+  z-index: 1;
+  justify-content: flex-end;
+  max-width: 66%;
+  gap: 8px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__chip {
+  height: 30px;
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__chip-dot {
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__actions .app-button {
+  min-height: 36px;
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__actions .app-button:hover {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__actions .app-button--primary {
+  border-color: #fff;
+  background: #fff;
+  color: var(--pri-h);
+  box-shadow: 0 9px 20px -14px rgba(3, 30, 90, 0.8);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  padding: 18px 20px 15px;
+  border-color: color-mix(in srgb, var(--pri) 14%, var(--card-b));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--pri-bg) 28%, #fff) 100%);
+  box-shadow: 0 12px 34px -28px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__fields {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(135px, 1fr));
+  gap: 14px 16px;
+  align-items: end;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__field {
+  min-width: 0;
+  gap: 7px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__label {
+  color: var(--t3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control {
+  width: 100%;
+  height: 42px;
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.025);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__control:hover {
+  border-color: color-mix(in srgb, var(--pri) 34%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops {
+  width: 100%;
+  min-height: 0;
+  margin-top: 2px;
+  padding-top: 12px;
+  padding-bottom: 0;
+  justify-content: flex-end;
+  border-top: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af__ops .app-button {
+  min-width: 72px;
+  min-height: 38px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .sl-voided-toggle {
+  display: inline-flex;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 5px;
+  color: var(--t2);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .sl-voided-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--pri);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) ~ .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 16px 38px -32px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__th {
+  padding-block: 14px;
+  border-bottom-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pri-bg) 64%, #fff),
+    color-mix(in srgb, var(--pri-bg) 38%, #fff)
+  );
+  color: var(--t2);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.018em;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td {
+  padding-block: 15px;
+  border-bottom-color: color-mix(in srgb, var(--card-b) 82%, transparent);
+  color: var(--t2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  transition: background 0.14s ease;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) tbody tr:hover .dt__td {
+  background: color-mix(in srgb, var(--pri-bg) 36%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:nth-child(2) .mp-cell-main,
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:nth-child(3) .mp-cell-main {
+  color: var(--t1);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .mp-cell-sub {
+  margin-top: 3px;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:nth-child(4) {
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child {
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link {
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:first-child {
+  background: var(--pri-bg);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .mp-link:hover {
+  background: color-mix(in srgb, var(--pri-bg) 82%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__td:last-child .sl-gap {
+  margin-left: 4px;
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .dt__pager {
+  min-height: 54px;
+  padding-inline: 16px;
+  border-top-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  background: color-mix(in srgb, var(--pri-bg) 16%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.sl-voided-toggle) .af:has(.sl-voided-toggle) ~ .mp-note {
+  margin-top: -2px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pri-bg) 22%, #fff);
+  color: var(--t3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+/* ========================================================================== */
+/* Selection console — decision-first hero + premium master/detail hierarchy.  */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.aasel-layout) {
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) > .mps__head {
+  align-items: center;
+  padding: 0 2px 4px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .mps__title {
+  font-size: 26px;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .mps__subtitle {
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-layout {
+  grid-template-columns: minmax(276px, 292px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-list-card {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 17px;
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--pri-bg) 20%, #fff) 100%);
+  box-shadow: 0 16px 36px -32px color-mix(in srgb, var(--deep1) 52%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-list-head {
+  padding: 19px 18px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pri-bg) 62%, #fff), #fff 70%);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-list-head h2 {
+  margin-top: 4px;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-list-count {
+  min-width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--pri-bg);
+  color: var(--pri-h);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batches {
+  padding: 10px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch {
+  position: relative;
+  gap: 9px;
+  padding: 14px 14px 13px;
+  border-color: transparent;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.78);
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch:hover {
+  border-color: color-mix(in srgb, var(--pri) 18%, var(--card-b));
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch.is-active {
+  border-color: color-mix(in srgb, var(--pri) 58%, var(--card-b));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pri-bg) 82%, #fff), #fff 82%);
+  box-shadow: 0 10px 24px -20px color-mix(in srgb, var(--pri) 72%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch.is-active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--pri);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch-top strong {
+  color: var(--t1);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch p {
+  color: var(--t3);
+  font-size: 11.5px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch-next {
+  padding-top: 9px;
+  border-top-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-batch-next b {
+  color: var(--t2);
+  font-size: 11.5px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-detail {
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 286px;
+  padding: 27px 28px;
+  border: 0;
+  border-radius: 19px;
+  background:
+    radial-gradient(circle at 76% 19%, rgba(255, 255, 255, 0.38) 0 2px, transparent 3px),
+    radial-gradient(circle at 86% 45%, rgba(255, 255, 255, 0.22) 0 2px, transparent 3px),
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--deep1) 82%, var(--pri)) 0%,
+      color-mix(in srgb, var(--pri) 90%, #2677ff) 52%,
+      color-mix(in srgb, var(--pri) 76%, #5a9cff) 100%
+    );
+  color: #fff;
+  box-shadow: 0 22px 48px -28px color-mix(in srgb, var(--deep1) 78%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 330px;
+  height: 220px;
+  right: 150px;
+  top: -102px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  transform: rotate(-18deg);
+  box-shadow:
+    0 0 0 42px rgba(255, 255, 255, 0.035),
+    0 0 0 90px rgba(255, 255, 255, 0.025);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero .aasel-eyebrow {
+  color: rgba(226, 239, 255, 0.84);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero h2 {
+  max-width: 24ch;
+  margin-top: 11px;
+  color: #fff;
+  font-size: 26px;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero-main > p {
+  max-width: 62ch;
+  margin-top: 9px;
+  color: rgba(232, 242, 255, 0.82);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero-meta {
+  gap: 8px;
+  margin-top: 17px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero-meta span {
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(238, 246, 255, 0.86);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero-meta b {
+  color: #fff;
+  font-weight: 700;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card {
+  min-width: 232px;
+  padding: 19px;
+  border-color: rgba(255, 255, 255, 0.72);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 38px -26px rgba(3, 30, 90, 0.72);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card > span,
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card > p,
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-action small {
+  color: var(--t3);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card > strong {
+  margin-top: 7px;
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-action {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top-color: var(--card-b);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-actions {
+  margin-top: 17px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-actions .app-button--primary {
+  border-color: #fff;
+  background: #fff;
+  color: var(--pri-h);
+  box-shadow: 0 10px 22px -15px rgba(3, 30, 90, 0.85);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-actions .app-button--ghost {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics {
+  gap: 11px;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article {
+  position: relative;
+  overflow: hidden;
+  min-height: 116px;
+  padding: 17px 17px 15px;
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--pri-bg) 20%, #fff) 100%);
+  box-shadow: 0 13px 30px -28px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--pri) 68%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article.is-risk {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(180deg, #fff 0%, #fff8eb 100%);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics article.is-risk::before {
+  background: #f59e0b;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics span {
+  color: var(--t3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics strong {
+  margin-top: 7px;
+  color: var(--t1);
+  font-size: 27px;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-metrics small {
+  margin-top: 7px;
+  color: var(--t3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 16px 38px -34px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section-head {
+  padding: 19px 20px 17px;
+  border-bottom-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--pri-bg) 12%, #fff));
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section-head h3 {
+  margin-top: 4px;
+  color: var(--t1);
+  font-size: 17px;
+  line-height: 1.28;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-section-head p {
+  margin-top: 5px;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-inline-empty {
+  margin: 14px 16px 16px;
+  padding: 17px;
+  border-color: color-mix(in srgb, var(--pri) 18%, var(--card-b));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--pri-bg) 26%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.aasel-layout) .aasel-inline-empty > span {
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 18px -16px color-mix(in srgb, var(--pri) 75%, transparent);
+}
+
+@media (max-width: 1280px) {
+  #app .base-portal-layout .mps:has(.sl-voided-toggle) > .mps__head {
+    align-items: flex-start;
+  }
+
+  #app .base-portal-layout .mps:has(.sl-voided-toggle) .mps__meta {
+    max-width: 100%;
+  }
+
+  #app .base-portal-layout .mps:has(.sl-voided-toggle) .af__fields {
+    grid-template-columns: minmax(210px, 1.4fr) repeat(2, minmax(135px, 1fr));
+  }
+
+  #app .base-portal-layout .mps:has(.aasel-layout) .aasel-layout {
+    grid-template-columns: minmax(258px, 276px) minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  #app .base-portal-layout .mps:has(.aasel-layout) .aasel-hero {
+    padding: 24px;
+  }
+
+  #app .base-portal-layout .mps:has(.aasel-layout) .aasel-next-card {
+    min-width: 205px;
+  }
+}

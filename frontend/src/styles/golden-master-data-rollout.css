@@ -1,0 +1,278 @@
+/*
+ * Golden master-data / core-object rollout — Batch 7 Screenshot A -> B.
+ * Visual-only. Each selector is anchored to a page-specific DOM signature so
+ * shared ModulePageShell / AdvancedFilter / DataTable primitives stay untouched.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · Class management                                        */
+/* Unique signature: .flt-input exists only on ClassListView.                */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.flt-input) {
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--pri) 11%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(124deg, color-mix(in srgb, var(--pri-bg) 76%, #fff), #fff 68%);
+  box-shadow: 0 18px 38px -36px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.flt-input) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 40%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .mps__title {
+  font-size: 26px;
+  letter-spacing: -.02em;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .mps__subtitle {
+  max-width: 760px;
+  margin-top: 5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) > .mp-stack {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .flt {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 52%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .flt > :first-child {
+  flex: 1 1 320px;
+  max-width: 430px;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .flt-input {
+  width: 190px;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -35px color-mix(in srgb, var(--deep1) 55%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .dt__th {
+  background: #f7f9fc;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) .dt__tr {
+  min-height: 66px;
+}
+
+#app .base-portal-layout .mps:has(.flt-input) > .mp-stack > .mp-note:last-child {
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pri-bg) 48%, #fff);
+  color: var(--t2);
+  line-height: 1.6;
+}
+
+/* ========================================================================== */
+/* Internship · Enterprise library                                           */
+/* Signature: enterprise list is the internship page whose .mp-stack starts */
+/* with ModuleSummaryStrip immediately followed by AdvancedFilter.           */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 17px 19px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 72%, #fff), #fff 67%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mp-stack {
+  gap: 11px;
+}
+
+/* Parent internship layout already owns the authoritative active batch. */
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mp-stack > .msr .msr__batch {
+  display: none;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mp-stack > .msr {
+  min-height: 76px;
+  padding: 11px 14px;
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 14px;
+  background: linear-gradient(112deg, color-mix(in srgb, var(--pri-bg) 56%, #fff), #fff 64%);
+  box-shadow: 0 13px 28px -32px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .msr__metrics {
+  gap: 10px;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .msr__metric {
+  min-width: 112px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 11px;
+  background: rgba(255,255,255,.94);
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .msr__metric-val {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .af {
+  padding: 11px 13px;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 14px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .af__fields {
+  gap: 10px;
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -35px color-mix(in srgb, var(--deep1) 55%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) .dt__th {
+  background: #f7f9fc;
+}
+
+/* ========================================================================== */
+/* Graduation · Topic library                                                */
+/* Signature: action group + 11-tab topic cockpit + AdvancedFilter.          */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 17px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 66%, #fff), #fff 68%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) > .mp-stack {
+  gap: 10px;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .mp-tabs {
+  gap: 4px;
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 13px;
+  background: #f8fafc;
+  box-shadow: none;
+  scrollbar-width: thin;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .mp-tab {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .mp-tab.is-active {
+  background: #fff;
+  box-shadow: 0 6px 15px -12px color-mix(in srgb, var(--deep1) 65%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .af {
+  padding: 10px 12px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 13px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .af__fields {
+  gap: 9px;
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 18px 38px -35px color-mix(in srgb, var(--deep1) 55%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) .dt__th {
+  background: #f7f9fc;
+}
+
+@media (max-width: 960px) {
+  #app .base-portal-layout .mps:has(.flt-input) > .mps__head,
+  #app .base-portal-layout .mps:has(> .mp-stack > .msr + .af) > .mps__head,
+  #app .base-portal-layout .mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af) > .mps__head {
+    padding: 14px;
+  }
+
+  #app .base-portal-layout .mps:has(.flt-input) .flt > :first-child {
+    max-width: none;
+  }
+}

@@ -1,0 +1,82 @@
+/*
+ * Golden message-settings rollout — Batch 16 Screenshot A -> B.
+ * Visual-only. The four existing governance domains keep their original data,
+ * controls and status semantics; this layer only turns the narrow single column
+ * into a desktop settings cockpit.
+ */
+
+#app .base-portal-layout .mps:has(.mc-settings) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 48%, #fff), #fff 80%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .mc-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(100%, 1040px);
+  align-items: stretch;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .mc-settings__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-left: 3px solid color-mix(in srgb, var(--pri) 74%, #fff);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pri-bg) 28%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .mc-panel {
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 16px 18px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 16px 34px -36px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .mc-panel h3 {
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .pref-row,
+#app .base-portal-layout .mps:has(.mc-settings) .ch-row {
+  min-height: 44px;
+  padding: 10px 0;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .ch-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .ch-hint {
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.mc-settings) .switch {
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--deep1) 8%, transparent);
+}
+
+@media (max-width: 980px) {
+  #app .base-portal-layout .mps:has(.mc-settings) .mc-settings {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.mc-settings) .mc-settings__note {
+    grid-column: auto;
+  }
+}

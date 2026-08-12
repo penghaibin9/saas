@@ -1,0 +1,42 @@
+/*
+ * Golden rollout · Student Affairs dormitory · Batch 21 Screenshot A -> B.
+ * Visual-only. The real dorm resource, occupancy and allocation configuration
+ * remain untouched; this only prevents long configuration values from being
+ * crushed inside the archive entry card.
+ */
+
+#app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--pri, #2563eb) 8%, var(--border-base, #dbe3ef));
+  background: color-mix(in srgb, var(--pri-bg, #eff6ff) 8%, #fff);
+}
+
+/* The assignment mode is an operational configuration identifier. Give it a
+ * full row so values such as COUNSELOR_ASSIGN stay readable rather than
+ * breaking into a vertical stack in a half-width description cell.
+ */
+#app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list__item:first-child {
+  grid-column: 1 / -1 !important;
+}
+
+#app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list__value {
+  word-break: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list__item:first-child .app-desc-list__value {
+  min-width: 160px;
+  font-weight: 650;
+  color: var(--text-primary, #0f172a);
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.sa-bed-grid):has(.sa-bridge) .app-desc-list__item {
+    grid-column: 1 / -1 !important;
+  }
+}

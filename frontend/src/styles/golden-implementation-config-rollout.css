@@ -1,0 +1,450 @@
+/*
+ * Golden implementation / configuration rollout — Batch 5 Screenshot A -> B.
+ * Visual-only. Every rule is anchored to a page-specific DOM signature so the
+ * shared Student Affairs / Internship / Graduation primitives stay untouched.
+ */
+
+/* ========================================================================== */
+/* Student Affairs counselor responsibility — responsibility control cockpit. */
+/* Unique anchor: .responsibility-note exists only on CounselorAssignmentView. */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.responsibility-note) {
+  gap: 14px;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) > .mps__head {
+  align-items: center;
+  padding: 2px 2px 0;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 124px;
+  padding: 20px 22px;
+  margin-bottom: 0;
+  border: 1px solid color-mix(in srgb, var(--pri) 28%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(118deg, var(--deep1) 0%, var(--deep2) 62%, color-mix(in srgb, var(--pri) 78%, #4b8cff) 118%);
+  background-size: 30px 30px, 30px 30px, auto;
+  box-shadow: 0 18px 42px -32px color-mix(in srgb, var(--deep1) 78%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 220px;
+  height: 220px;
+  right: -74px;
+  top: -126px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 40px rgba(255,255,255,.026), 0 0 0 82px rgba(255,255,255,.015);
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__eyebrow {
+  margin-bottom: 5px;
+  color: rgba(219,234,254,.9);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .055em;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__title {
+  max-width: 38ch;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1.32;
+  letter-spacing: -.014em;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__text {
+  max-width: 820px;
+  margin-top: 6px;
+  color: rgba(219,234,254,.84);
+  font-size: 13.25px;
+  line-height: 1.62;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__actions button {
+  min-height: 38px;
+  border-color: rgba(255,255,255,.34);
+  border-radius: 10px;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__actions button:hover {
+  border-color: rgba(255,255,255,.52);
+  background: rgba(255,255,255,.22);
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-step {
+  min-height: 74px;
+  padding: 11px 12px 11px 42px;
+  border-color: color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 14px;
+  background: rgba(255,255,255,.985);
+  color: var(--t2, #475569);
+  font-size: 12.25px;
+  line-height: 1.48;
+  box-shadow: 0 12px 26px -28px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-step::before {
+  left: 12px;
+  top: 12px;
+  width: 20px;
+  height: 20px;
+  background: color-mix(in srgb, var(--pri-bg) 82%, #fff);
+  color: var(--pri);
+  font-size: 11px;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-step strong {
+  color: var(--t1, #0f172a);
+  font-size: 13px;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .tabs {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  gap: 2px;
+  padding: 3px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 11px;
+  background: #f3f6fa;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .tab {
+  min-height: 32px;
+  padding: 6px 13px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .tab.active {
+  background: #fff;
+  box-shadow: 0 5px 14px -12px rgba(15,23,42,.55);
+}
+
+/* Ledger view has no filters: keep the duplicate action available but stop the
+ * empty toolbar from becoming another full-width visual band. */
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-filter-bar:not(:has(.toolbar__filters > *)) {
+  justify-content: flex-end;
+  min-height: 0;
+  padding: 0 2px;
+  margin: -2px 0 0;
+  border: 0;
+  background: transparent;
+}
+
+/* Assignment view does have filters; retain a clear filter workspace there. */
+#app .base-portal-layout .mps:has(.responsibility-note) .sa-filter-bar:has(.toolbar__filters > *) {
+  padding: 10px 12px;
+  margin: 0;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 52%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .dt__th {
+  background: #f7f9fc;
+}
+
+#app .base-portal-layout .mps:has(.responsibility-note) .responsibility-note {
+  padding: 10px 12px;
+  border-left-width: 2px;
+  border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--pri-bg) 58%, #fff);
+  font-size: 12.25px;
+}
+
+/* ========================================================================== */
+/* Internship batch configuration — compact implementation control surface.    */
+/* Unique DOM signature: summary -> toolbar -> filter are direct mps children. */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mps__head {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background:
+    linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 76%, #fff), #fff 62%),
+    #fff;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) .mps__subtitle {
+  max-width: 780px;
+  margin-top: 5px;
+  line-height: 1.58;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) .mps__meta {
+  justify-content: flex-end;
+}
+
+/* The parent internship layout already renders the authoritative selected/current
+ * batch above this page. Suppress this duplicate module-summary batch sentence on
+ * the batch-management page only; metrics below remain real and visible. */
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__batch {
+  display: none;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr {
+  align-self: flex-start;
+  width: auto;
+  min-width: 290px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metrics {
+  gap: 10px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metric {
+  min-width: 138px;
+  min-height: 68px;
+  justify-content: center;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 12px 24px -28px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metric-val {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metric-lbl {
+  font-size: 11.5px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mtb {
+  min-height: 40px;
+  padding: 0 2px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mtb .mtb__hint {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: var(--t3, #64748b);
+  font-size: 12px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .af {
+  padding: 11px 13px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 14px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .af .af__field {
+  min-width: 148px;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .af .af__control {
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 17px 36px -34px color-mix(in srgb, var(--deep1) 54%, transparent);
+}
+
+#app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .dt .dt__th {
+  background: #f7f9fc;
+}
+
+/* ========================================================================== */
+/* Graduation batch implementation — restrained batch control plane.          */
+/* Unique anchor: .mp-actions exists only on GraduationBatchListView.          */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) {
+  gap: 13px;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mps__head {
+  position: relative;
+  align-items: center;
+  padding: 17px 19px;
+  border: 1px solid color-mix(in srgb, var(--pri) 10%, var(--card-b));
+  border-radius: 18px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 68%, #fff), #fff 66%);
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mps__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 18px 0 0 18px;
+  background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.018em;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) .mps__subtitle {
+  margin-top: 5px;
+  line-height: 1.55;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) .mp-actions {
+  gap: 8px;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .af {
+  padding: 11px 13px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 14px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .af .af__field {
+  min-width: 150px;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .af .af__control {
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .dt {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  box-shadow: 0 17px 36px -34px color-mix(in srgb, var(--deep1) 54%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .dt .dt__th {
+  background: #f7f9fc;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .dt .dt__td {
+  padding-block: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) .dt__td:last-child {
+  white-space: nowrap;
+}
+
+/* ========================================================================== */
+/* Responsive safety for the three Batch 5 representative pages.              */
+/* ========================================================================== */
+
+@media (max-width: 1080px) {
+  #app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mps__head,
+  #app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mps__head {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 17px;
+  }
+
+  #app .base-portal-layout .mps:has(.responsibility-note) .sa-summary-strip__actions {
+    justify-content: flex-start;
+  }
+
+  #app .base-portal-layout .mps:has(.responsibility-note) .sa-workflow-strip {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.responsibility-note) .tabs {
+    width: 100%;
+  }
+
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .mps__head,
+  #app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mps__head {
+    padding: 15px;
+  }
+
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metrics,
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .msr .msr__metric {
+    width: 100%;
+  }
+
+  #app .base-portal-layout .mps:has(> .msr + .mtb + .af) > .af,
+  #app .base-portal-layout .mps:has(.mp-actions):has(> .mp-stack > .af) > .mp-stack > .af {
+    align-items: stretch;
+  }
+}
