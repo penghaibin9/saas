@@ -148,7 +148,10 @@ def reg_batches(status: Optional[str] = None, registerType: Optional[str] = None
 @router.post("/registration-batches/{batchId}/register", summary="学生注册（经 change_student_status 单一入口）")
 def register(body: RegisterBody, batchId: int = Path(...),
              user=Depends(require_permission("academicAffairs.registration.manage"))):
-    return success(svc.register_student(batchId, user, body.studentId), message="注册成功")
+    # D2-U 并发收口：旧单笔 URL/DTO/权限/正式 canonical 写入口完全不变，仅在真正写入临界区
+    # 与批量 confirm 共用 tenant+batch+student 的 MySQL 短锁，避免双击/多 worker 重复事实。
+    with convenience.registration_mutex(batchId, body.studentId):
+        return success(svc.register_student(batchId, user, body.studentId), message="注册成功")
 
 
 @router.get("/registration-batches/{batchId}/registrations", summary="注册记录列表")

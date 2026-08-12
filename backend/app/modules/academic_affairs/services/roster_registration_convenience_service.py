@@ -12,8 +12,9 @@ import hashlib
 import hmac
 import json
 import time
+from contextlib import contextmanager
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 
 from app.core.affairs_security import build_affairs_context
 from app.core.config import settings
@@ -26,6 +27,7 @@ from app.services.db_service import _tid, session
 _MAX_BULK = 100
 _PREVIEW_TTL_SECONDS = 10 * 60
 _TOKEN_CONTEXT = b"aa-registration-preview-v1"
+_LOCK_TIMEOUT_SECONDS = 5
 
 
 def _status_label(status: str | None) -> str:
@@ -41,6 +43,42 @@ def _explanation(batch, registration, student) -> str:
         return note or "资格核验已通过"
     kind = {"ENROLL": "入学", "ANNUAL": "学年", "SEMESTER": "学期"}.get(batch.register_type, "当前")
     return f"系统已按{kind}注册候选规则圈定；当前学籍状态为{_status_label(student.student_status)}，资格尚待核验"
+
+
+@contextmanager
+def registration_mutex(batch_id, student_id):
+    """跨 worker 的注册临界区。
+
+    MySQL 为项目权威数据库：使用 GET_LOCK 对 tenant+batch+student 做短时互斥，锁名只存哈希，
+    不泄露业务主键。锁仅覆盖最终 recheck + canonical register，不包 preview/列表查询。
+    非 MySQL 开发数据库保持兼容直通；生产并发合同由 MySQL 集成测试负责。
+    """
+    lock_db = session()
+    acquired = False
+    try:
+        dialect = lock_db.get_bind().dialect.name
+        if dialect == "mysql":
+            raw = f"{_tid()}:{int(batch_id)}:{int(student_id)}".encode("utf-8")
+            lock_name = "aa-reg:" + hashlib.sha256(raw).hexdigest()[:48]
+            acquired = lock_db.execute(
+                text("SELECT GET_LOCK(:lock_name, :timeout_seconds)"),
+                {"lock_name": lock_name, "timeout_seconds": _LOCK_TIMEOUT_SECONDS},
+            ).scalar() == 1
+            if not acquired:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "同一学生的注册正在处理中，请稍后重新预览后再确认",
+                    http_status=409,
+                )
+        yield
+    finally:
+        if acquired:
+            try:
+                lock_db.execute(text("SELECT RELEASE_LOCK(:lock_name)"), {"lock_name": lock_name})
+            except Exception:
+                # 连接断开时 MySQL 会自动释放命名锁；不得用释放失败覆盖原业务异常。
+                pass
+        lock_db.close()
 
 
 def _enrich_pairs(db, batch, pairs):
@@ -373,28 +411,31 @@ def _apply_preview(batch_id, user, preview):
                 "message": item["message"],
             })
             continue
-        ready, code, message = _final_ready_check(batch_id, user, sid)
-        if not ready:
-            items.append({
-                "studentId": str(sid), "ok": False,
-                "code": code, "message": message,
-            })
-            continue
-        try:
-            result = svc.register_student(batch_id, user, sid)
-        except AppException as exc:
-            items.append({
-                "studentId": str(sid), "ok": False,
-                "code": exc.code, "message": exc.message,
-            })
-        else:
-            items.append({
-                "studentId": str(sid), "ok": True, "code": "",
-                "message": "注册成功",
-                "registrationId": result["registrationId"],
-                "studentStatus": result["studentStatus"],
-                "changeType": result["changeType"],
-            })
+        with registration_mutex(batch_id, sid):
+            # 必须在拿到跨 worker 锁后重检；两个并发 confirm 即便同时通过 token snapshot，
+            # 第二个也会在这里看到第一个已经落下的 REGISTERED 事实并 fail closed。
+            ready, code, message = _final_ready_check(batch_id, user, sid)
+            if not ready:
+                items.append({
+                    "studentId": str(sid), "ok": False,
+                    "code": code, "message": message,
+                })
+                continue
+            try:
+                result = svc.register_student(batch_id, user, sid)
+            except AppException as exc:
+                items.append({
+                    "studentId": str(sid), "ok": False,
+                    "code": exc.code, "message": exc.message,
+                })
+            else:
+                items.append({
+                    "studentId": str(sid), "ok": True, "code": "",
+                    "message": "注册成功",
+                    "registrationId": result["registrationId"],
+                    "studentStatus": result["studentStatus"],
+                    "changeType": result["changeType"],
+                })
     success_count = sum(1 for x in items if x["ok"])
     return {
         "batchId": str(batch_id),
