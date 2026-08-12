@@ -80,10 +80,10 @@ test.describe.serial('登录、租户隔离与多角色身份切换', () => {
       expect(demoTenant).not.toBe('')
       expect(sandboxTenant).not.toBe(demoTenant)
 
-      await expect(sandbox.page.locator('body')).toContainText(/体验沙箱学校|sandbox-school/)
+      await expect(sandbox.page.locator('body')).toContainText(/体验沙箱|sandbox-school/)
       await expect(demo.page.locator('body')).toContainText(/演示职业技术学校|demo-school/)
       await expect(sandbox.page.locator('body')).not.toContainText('演示职业技术学校（只读演示）')
-      await expect(demo.page.locator('body')).not.toContainText('体验沙箱学校（运营平台可恢复）')
+      await expect(demo.page.locator('body')).not.toContainText('体验沙箱（运营平台可恢复）')
 
       const now = new Date()
       const academicYear = `${now.getUTCFullYear()}-${now.getUTCFullYear() + 1}`
