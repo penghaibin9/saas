@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const printUrl = new URL('../src/modules/academicAffairs/views/AaStatusChangePrintView.vue', import.meta.url)
+const adminListUrl = new URL('../src/modules/academicAffairs/views/AaStatusChangeListView.vue', import.meta.url)
 const portalRoutesUrl = new URL('../../student-portal/src/router/academicRoutes.js', import.meta.url)
 const portalSectionUrl = new URL('../../student-portal/src/views/academic/AcademicSectionRouteView.vue', import.meta.url)
 const portalAcademicUrl = new URL('../../student-portal/src/views/academic/AcademicView.vue', import.meta.url)
@@ -18,6 +19,16 @@ test('D3-U print shows scheduled effective time independently from suspend expir
   assert.match(source, /change\.effectiveDate \? '指定日期' : '终审通过立即生效'/)
   assert.match(source, /<tr v-if="change\.expireDate"><th>休学到期<\/th><td colspan="3">/)
   assert.doesNotMatch(source, /v-if="change\.expireDate"[^\n]*change\.effectiveDate/)
+})
+
+test('D3-U admin list surfaces scheduled effective time without opening detail', async () => {
+  const source = await readFile(adminListUrl, 'utf8')
+
+  assert.match(source, /\{ key: 'effective', title: '计划生效' \}/)
+  assert.match(source, /#cell-effective="\{ row \}"/)
+  assert.match(source, /effectiveDateText\(row\.effectiveDate\)/)
+  assert.match(source, /row\.status === 'APPROVED_PENDING_EFFECTIVE'/)
+  assert.match(source, /if \(!value\) return '终审通过即生效'/)
 })
 
 test('D3-U student portal locks the real status route to canonical pending-effective display', async () => {

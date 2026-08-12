@@ -37,6 +37,10 @@
           <template #cell-node="{ row }">
             <span>{{ nodeLabel(row.currentNode) }}</span>
           </template>
+          <template #cell-effective="{ row }">
+            <div class="mp-cell-main">{{ effectiveDateText(row.effectiveDate) }}</div>
+            <div v-if="row.status === 'APPROVED_PENDING_EFFECTIVE'" class="mp-cell-sub">终审已通过，等待到期生效</div>
+          </template>
           <template #cell-status="{ row }">
             <AppStatusTag :type="statusColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
           </template>
@@ -74,6 +78,7 @@ export default {
         { key: 'student', title: '学生 / 状态变化' },
         { key: 'type', title: '异动类型' },
         { key: 'node', title: '当前节点' },
+        { key: 'effective', title: '计划生效' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作', width: '110px' }
       ]
@@ -111,6 +116,10 @@ export default {
     statusLabel(s) { return STATUS_LABEL[s] || s || '' },
     statusColor,
     nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
+    effectiveDateText(value) {
+      if (!value) return '终审通过即生效'
+      return String(value).replace('T', ' ').slice(0, 16)
+    },
     goDetail(row) {
       this.$router.push(`/admin/academic-affairs/status-changes/${row.changeId}`)
     },
