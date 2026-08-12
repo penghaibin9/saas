@@ -28,9 +28,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import select  # noqa: E402
 
 from app.core.context import set_tenant  # noqa: E402
+from app.core.tenant_identity import SANDBOX_SCHOOL  # noqa: E402
 from app.db.session import get_sessionmaker  # noqa: E402
 
-TID = 1000000000000000004
+TID = SANDBOX_SCHOOL.tenant_id
 REAL_COLLEGE_IDS = [20, 21, 22, 23]  # 排除 24=CC-E2E 测试学院
 MAJOR_BY_COLLEGE = {20: [22], 21: [23, 24], 22: [25, 26], 23: [27, 28]}
 CLASS_BY_MAJOR = {
@@ -1439,6 +1440,13 @@ if __name__ == "__main__":
     set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
     try:
+        from app.models import Tenant
+        target = db.get(Tenant, TID)
+        if target is None or (target.tenant_code or "") != SANDBOX_SCHOOL.tenant_code:
+            raise RuntimeError(
+                f"拒绝教务演示种子：tenant_id={TID} 必须对应 "
+                f"{SANDBOX_SCHOOL.tenant_code!r}，实际={getattr(target, 'tenant_code', None)!r}"
+            )
         teachers = seed_teachers(db)
         term_ids = seed_terms(db)
         seed_calendar(db, term_ids)
