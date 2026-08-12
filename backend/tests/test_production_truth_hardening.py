@@ -93,7 +93,6 @@ def test_signed_old_sandbox_token_cannot_bind_trial_tenant_after_identity_correc
             "userId": "db-42",
             "userType": "STUDENT",
             "tid": SANDBOX_SCHOOL.tenant_code,
-            # Historical bug: sandbox-school used trial-school's numeric tenant id.
             "tenantId": str(TRIAL_SCHOOL.tenant_id),
         },
     )
@@ -187,7 +186,16 @@ def test_test_only_synthetic_token_keeps_fixture_local_numeric_tenant(monkeypatc
     assert get_tenant()["tenantId"] == str(TRIAL_SCHOOL.tenant_id)
 
 
-def test_browser_login_moves_refresh_token_to_httponly_cookie(monkeypatch):
+def test_browser_session_cookie_names_are_isolated_per_pc_surface():
+    assert auth_browser._COOKIE_NAMES == {
+        "staff": "gx_staff_refresh_v1",
+        "platform": "gx_platform_refresh_v1",
+        "student": "gx_student_refresh_v1",
+    }
+    assert len(set(auth_browser._COOKIE_NAMES.values())) == 3
+
+
+def test_browser_login_moves_refresh_token_to_surface_httponly_cookie(monkeypatch):
     monkeypatch.setattr(
         auth_browser.auth_api,
         "login",
@@ -197,28 +205,32 @@ def test_browser_login_moves_refresh_token_to_httponly_cookie(monkeypatch):
             "data": {"accessToken": "access-visible", "refreshToken": "refresh-secret"},
         },
     )
+    monkeypatch.setattr(auth_browser, "_channel_from_access_token", lambda token: "student")
     response = Response()
     payload = auth_browser.browser_login(
         auth_browser.auth_api.PasswordLoginRequest(loginName="student", password="secret"),
         response,
     )
     assert payload["data"] == {"accessToken": "access-visible"}
-    cookie = response.headers.get("set-cookie", "").lower()
-    assert "gx_refresh_v1=refresh-secret" in cookie
-    assert "httponly" in cookie
-    assert "samesite=strict" in cookie
-    assert "path=/api/v1/auth" in cookie
+    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    assert "gx_student_refresh_v1=refresh-secret" in cookies
+    assert "gx_staff_refresh_v1=refresh-secret" not in cookies
+    assert "gx_platform_refresh_v1=refresh-secret" not in cookies
+    assert "httponly" in cookies
+    assert "samesite=strict" in cookies
+    assert "path=/api/v1/auth" in cookies
 
 
-def test_browser_logout_terminates_cookie_session_without_live_access_token(monkeypatch):
+def test_browser_logout_terminates_only_selected_cookie_session_without_live_access_token(monkeypatch):
     revoked = []
     monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
     monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
 
     response = Response()
-    payload = auth_browser.browser_logout(
+    payload = auth_browser._browser_logout(
         response=response,
+        channel="student",
         refresh_token="durable-cookie-token",
         authorization=None,
     )
@@ -226,11 +238,13 @@ def test_browser_logout_terminates_cookie_session_without_live_access_token(monk
     assert payload["code"] == 0
     assert payload["data"]["invalidated"] is True
     assert revoked == ["db-student-1"]
-    cookie = response.headers.get("set-cookie", "").lower()
-    assert "gx_refresh_v1=" in cookie
-    assert "max-age=0" in cookie
-    assert "httponly" in cookie
-    assert "samesite=strict" in cookie
+    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    assert "gx_student_refresh_v1=" in cookies
+    assert "gx_staff_refresh_v1=" not in cookies
+    assert "gx_platform_refresh_v1=" not in cookies
+    assert "max-age=0" in cookies
+    assert "httponly" in cookies
+    assert "samesite=strict" in cookies
 
 
 def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(monkeypatch):
@@ -247,8 +261,9 @@ def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(m
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
 
     response = Response()
-    payload = auth_browser.browser_logout(
+    payload = auth_browser._browser_logout(
         response=response,
+        channel="student",
         refresh_token="durable-cookie-token",
         authorization="Bearer live-access-token",
     )
@@ -264,8 +279,9 @@ def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch)
 
     monkeypatch.setattr(auth_browser, "consume_refresh", fail_consume)
     response = Response()
-    payload = auth_browser.browser_logout(
+    payload = auth_browser._browser_logout(
         response=response,
+        channel="staff",
         refresh_token="durable-cookie-token",
         authorization=None,
     )
@@ -273,12 +289,12 @@ def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch)
     assert response.status_code == 503
     assert payload["bizCode"] == "AUTH_STORE_UNAVAILABLE"
     assert payload["code"] != 0
-    cookie = response.headers.get("set-cookie", "").lower()
-    assert "gx_refresh_v1=" in cookie
-    assert "max-age=0" in cookie
+    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    assert "gx_staff_refresh_v1=" in cookies
+    assert "max-age=0" in cookies
 
 
-def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
+def test_pc_browser_clients_do_not_persist_auth_tokens_and_select_session_channel():
     admin = (ROOT / "frontend/src/services/http/client.js").read_text(encoding="utf-8")
     portal = (ROOT / "student-portal/src/services/request.js").read_text(encoding="utf-8")
     portal_session = (ROOT / "student-portal/src/stores/session.js").read_text(encoding="utf-8")
@@ -288,13 +304,15 @@ def test_pc_browser_clients_do_not_persist_auth_tokens_in_web_storage():
     assert "state = { token: ''" in admin
     assert "/auth/browser-refresh" in admin
     assert "/auth/browser-login" in admin
-    assert "await rawRequest('/auth/browser-logout', { method: 'POST', auth: true, forceProbe: true })" in admin
-    assert "if (state.token) await rawRequest('/auth/browser-logout'" not in admin
+    assert "function browserSessionChannel()" in admin
+    assert "headers: browserSessionHeaders()" in admin
+    assert "await rawRequest('/auth/browser-logout'" in admin
 
     assert "localStorage.setItem" not in portal
     assert "_sessionSet(TOKEN_KEY" not in portal
     assert "_sessionSet(REFRESH_KEY" not in portal
     assert "let accessToken = ''" in portal
+    assert "'X-Browser-Session': 'student'" in portal
     assert "/auth/browser-refresh" in portal
     assert "/auth/browser-login" in portal
     assert "await request('/auth/browser-logout', { method: 'POST', auth: true })" in portal_session
