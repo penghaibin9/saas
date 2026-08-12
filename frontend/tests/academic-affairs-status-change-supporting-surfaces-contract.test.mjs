@@ -7,6 +7,7 @@ const portalRoutesUrl = new URL('../../student-portal/src/router/academicRoutes.
 const portalSectionUrl = new URL('../../student-portal/src/views/academic/AcademicSectionRouteView.vue', import.meta.url)
 const portalAcademicUrl = new URL('../../student-portal/src/views/academic/AcademicView.vue', import.meta.url)
 const portalEnumsUrl = new URL('../../student-portal/src/services/visibleEnumLocalization.js', import.meta.url)
+const portalTableUrl = new URL('../../student-portal/src/components/AutoTable.vue', import.meta.url)
 const miniappUrl = new URL('../../miniapp/src/pages/student/academic-affairs/status.vue', import.meta.url)
 
 test('D3-U print shows scheduled effective time independently from suspend expiry', async () => {
@@ -37,6 +38,20 @@ test('D3-U student portal locks the real status route to canonical pending-effec
   assert.match(enums, /SUSPENDED: '休学'/)
   assert.match(enums, /PRESERVED: '保留学籍'/)
   assert.match(enums, /WITHDRAWN: '退学'/)
+})
+
+test('D3-U student portal keeps WITHDRAW business meaning scoped to academic status-change columns', async () => {
+  const [enums, table] = await Promise.all([
+    readFile(portalEnumsUrl, 'utf8'),
+    readFile(portalTableUrl, 'utf8')
+  ])
+
+  // Global internship meaning must remain untouched.
+  assert.match(enums, /WITHDRAW: '退岗'/)
+  // Only the explicit academic status-change column overrides the same canonical code.
+  assert.match(enums, /'changeType:异动类型': Object\.freeze\(\{[\s\S]*WITHDRAW: '退学'/)
+  assert.match(table, /const contextKey = `\$\{column\.key \|\| ''\}:\$\{column\.label \|\| ''\}`/)
+  assert.match(table, /safeVisibleEnumLabel\(text, '状态待确认', contextKey\)/)
 })
 
 test('D3-U miniapp localizes pending-effective and shows planned time', async () => {

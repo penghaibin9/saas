@@ -114,6 +114,23 @@ export const VISIBLE_ENUM_LABELS = Object.freeze({
   PENDING_ADVISOR_REVIEW: '待导师审核'
 })
 
+/**
+ * 同一个后端枚举码在不同业务域可能有不同中文含义。
+ * 例如 WITHDRAW 在岗位实习里是“退岗”，在学籍异动里是“退学”。
+ * 这里仅对明确的表格字段+中文表头组合做覆盖，避免污染全局枚举语义。
+ */
+export const VISIBLE_ENUM_CONTEXT_LABELS = Object.freeze({
+  'changeType:异动类型': Object.freeze({
+    SUSPEND: '休学',
+    PRESERVE: '保留学籍',
+    RESUME: '复学',
+    WITHDRAW: '退学',
+    RETAIN: '留级',
+    TRANSFER_MAJOR: '转专业',
+    TRANSFER_CLASS: '转班'
+  })
+})
+
 export const VISIBLE_ENUM_WHITELIST = new Set([
   'GPA', 'API', 'PC', 'H5', 'UI', 'ID', 'URL', 'HTTP', 'HTTPS',
   'JSON', 'CSV', 'XLS', 'XLSX', 'PDF', 'QR', 'SQL', 'AI', 'V5'
@@ -133,12 +150,13 @@ export function localizeVisibleEnumText(value) {
   return VISIBLE_ENUM_LABELS[key] || raw
 }
 
-/** 明确枚举展示位使用：未知值不得回显后端 raw code。 */
-export function safeVisibleEnumLabel(value, unknownLabel = '状态待确认') {
+/** 明确枚举展示位使用：未知值不得回显后端 raw code；可选 contextKey 只覆盖该业务展示位。 */
+export function safeVisibleEnumLabel(value, unknownLabel = '状态待确认', contextKey = '') {
   const raw = String(value ?? '').trim()
   if (!raw) return '—'
   const key = raw.toUpperCase()
-  return VISIBLE_ENUM_LABELS[key] || unknownLabel
+  const contextual = VISIBLE_ENUM_CONTEXT_LABELS[String(contextKey || '')]
+  return (contextual && contextual[key]) || VISIBLE_ENUM_LABELS[key] || unknownLabel
 }
 
 /** 仅处理“当前状态：ENUM”这类明确状态句尾。 */
