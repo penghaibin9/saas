@@ -188,6 +188,9 @@ def test_public_services_share_one_roster_aware_entry_per_domain():
     from app.modules.academic_affairs import services
 
     assert services.academic_affairs_selection_service.lock_batch.__module__.endswith(
+        "academic_affairs_selection_final_service"
+    )
+    assert services.academic_affairs_selection_service._base.__name__.endswith(
         "academic_affairs_selection_service"
     )
     assert services.academic_affairs_attendance_service.create_session.__module__.endswith(
