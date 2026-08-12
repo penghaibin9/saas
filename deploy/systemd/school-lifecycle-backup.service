@@ -1,6 +1,6 @@
 [Unit]
 Description=School Lifecycle verified offsite backup
-After=network-online.target mysql.service school-lifecycle-backend.service
+After=network-online.target mysql.service
 Wants=network-online.target
 
 [Service]
@@ -16,11 +16,6 @@ Environment=REQUIRE_UPLOAD_BACKUP=1
 Environment=BACKUP_REQUIRE_OFFSITE=true
 Environment=BACKUP_REQUIRE_IMMUTABLE_REMOTE=true
 Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf
-# The release pipeline stops the backend before its governed pre-migration backup. A timer firing
-# inside that quiesced window must be skipped, otherwise a second mysqldump can race Alembic DDL or
-# create a newer manifest than the release-owned rollback point. Direct release backups call the
-# runner itself and therefore are not blocked by this scheduled-service condition.
-ExecCondition=/usr/bin/systemctl is-active --quiet school-lifecycle-backend.service
 ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-runner.sh
 # A hung network/rclone call must never block the next 6-hour recovery-point window forever.
 # Five hours leaves one hour for failure visibility and operator intervention before the next slot.
