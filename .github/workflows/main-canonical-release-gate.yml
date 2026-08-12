@@ -202,7 +202,6 @@ jobs:
       APP_ENV: test
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_security
       FAST_TEST_SCHEMA: "1"
-      REDIS_URL: redis://127.0.0.1:6379/15
     services:
       mysql:
         image: mysql:8.0
@@ -216,15 +215,6 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=15
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -237,13 +227,67 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip check
-      - name: Run authoritative focused security contracts
+      - name: Run tenant, browser-session and general security contracts
         run: |
           pytest -q -p no:warnings \
             tests/test_production_truth_hardening.py \
             tests/test_security_hardening.py \
-            tests/test_p1_unknown_tenant_fail_closed.py \
+            tests/test_p1_unknown_tenant_fail_closed.py
+
+  auth-redis-contract:
+    name: Main / auth Redis security truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REDIS_KEY_PREFIX: canonical-auth-redis
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+      - name: Require Redis challenge and production fail-closed contracts
+        run: |
+          pytest -q -p no:warnings \
+            tests/test_auth_challenge_service.py \
             tests/test_auth_captcha_redis_fail_closed.py
+      - name: Require production Redis preflight to reject missing store
+        run: |
+          if env -u REDIS_URL APP_ENV=production DEPLOYMENT_MODE=production \
+            python scripts/check_production_redis.py; then
+            echo "production Redis preflight incorrectly allowed missing REDIS_URL"
+            exit 1
+          fi
+      - name: Require production Redis preflight to accept verified store
+        env:
+          APP_ENV: production
+          DEPLOYMENT_MODE: production
+          ALLOW_LOCAL_REDIS_IN_PRODUCTION: "true"
+        run: python scripts/check_production_redis.py
 
   frontend-production:
     name: Main / PC production build
@@ -367,6 +411,7 @@ jobs:
       - migrated-schema
       - backend-full-regression
       - security-contract
+      - auth-redis-contract
       - frontend-production
       - student-portal-production
       - miniapp-production
@@ -380,8 +425,9 @@ jobs:
           test "${{ needs.migrated-schema.result }}" = "success"
           test "${{ needs.backend-full-regression.result }}" = "success"
           test "${{ needs.security-contract.result }}" = "success"
+          test "${{ needs.auth-redis-contract.result }}" = "success"
           test "${{ needs.frontend-production.result }}" = "success"
           test "${{ needs.student-portal-production.result }}" = "success"
           test "${{ needs.miniapp-production.result }}" = "success"
           test "${{ needs.deployment-contract.result }}" = "success"
-          echo "Canonical release truth is green: migration truth + full MySQL backend + security + all clients + rollback-tested deployment"
+          echo "Canonical release truth is green: migration truth + full MySQL backend + security + Redis + all clients + rollback-tested deployment"
