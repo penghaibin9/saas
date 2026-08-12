@@ -43,9 +43,14 @@ export class Api {
 }
 
 const loginTokenCache = new Map()
+const browserSessionByAccessToken = new Map()
 
 function loginCacheKey(account) {
   return `${String(account?.tenant || '')}\u0000${String(account?.username || '')}\u0000PC`
+}
+
+export function browserSessionForAccessToken(accessToken) {
+  return browserSessionByAccessToken.get(String(accessToken || '')) || null
 }
 
 export async function loginApi(account) {
@@ -61,7 +66,15 @@ export async function loginApi(account) {
         tenantCode: account.tenant,
         clientType: 'PC'
       })
-      return data.accessToken
+      const accessToken = String(data?.accessToken || '')
+      const refreshToken = String(data?.refreshToken || '')
+      if (!accessToken || !refreshToken) throw new Error('E2E API login must issue access and refresh tokens')
+      browserSessionByAccessToken.set(accessToken, {
+        refreshToken,
+        userType: String(data?.user?.userType || ''),
+        roleCode: String(data?.user?.currentRoleCode || data?.currentRole?.roleCode || '')
+      })
+      return accessToken
     })()
     loginTokenCache.set(cacheKey, tokenPromise)
   }
