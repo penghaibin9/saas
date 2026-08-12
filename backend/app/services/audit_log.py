@@ -62,7 +62,11 @@ def _now_iso() -> str:
 def _resolve_login_event_tenant_id(action: str, resource: str, detail: dict) -> int | None:
     """Resolve a tenant for tenant-neutral LOGIN_* audit events without guessing.
 
-    - tenantCode present: require a real tenant row, then match login_name inside that tenant.
+    This deliberately mirrors the real password-login subject lookup: only active, non-deleted
+    accounts in an active/trial tenant may establish audit ownership. Historical disabled copies
+    must not make an otherwise unique live login appear ambiguous.
+
+    - tenantCode present: require a login-eligible tenant, then match the active login_name there.
     - no tenantCode: only accept exactly one active account across all tenants.
     - ambiguous/missing account: return None; callers must not silently attach a random default school.
     """
@@ -82,9 +86,13 @@ def _resolve_login_event_tenant_id(action: str, resource: str, detail: dict) -> 
             stmt = select(User).where(
                 User.login_name == login_name,
                 User.is_deleted.is_(False),
+                User.status == "ACTIVE",
             )
             if tenant_code:
-                tenant = db.scalars(select(Tenant).where(Tenant.tenant_code == tenant_code)).first()
+                tenant = db.scalars(select(Tenant).where(
+                    Tenant.tenant_code == tenant_code,
+                    Tenant.status.in_(("ACTIVE", "TRIAL", "active", "trial")),
+                )).first()
                 if tenant is None:
                     return None
                 user = db.scalars(stmt.where(User.tenant_id == tenant.id).limit(1)).first()
