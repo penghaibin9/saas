@@ -80,10 +80,16 @@ def _ddl_statements() -> list[str]:
 
 
 def upgrade() -> None:
-    # MySQL-only canonical deployment: execute exactly the frozen historical DDL bytes.
+    # PyMySQL treats percent signs as interpolation tokens whenever SQLAlchemy passes an empty
+    # parameter tuple. SHOW CREATE TABLE output can legitimately contain '%' (for example date
+    # formats), so execute the immutable DDL through the same DBAPI connection with *no* args.
     bind = op.get_bind()
-    for statement in _ddl_statements():
-        bind.exec_driver_sql(statement)
+    cursor = bind.connection.cursor()
+    try:
+        for statement in _ddl_statements():
+            cursor.execute(statement)
+    finally:
+        cursor.close()
 
 
 def downgrade() -> None:
