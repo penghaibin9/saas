@@ -23,6 +23,7 @@ from app.core.context import (
 )
 from app.core.config import settings
 from app.core.tenant_context import resolve_tenant, tenant_code_was_explicit
+from app.core.tenant_identity import DEMO_SCHOOL
 
 logger = logging.getLogger("app.access")
 
@@ -35,16 +36,21 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         set_current_user(None)
         set_current_internship_batch_id(_resolve_internship_batch_id(request))
         resolved_tenant = resolve_tenant(request)
-        if resolved_tenant is None and tenant_code_was_explicit(request):
-            # 显式指定了不存在的租户：必须拒绝。
-            # 旧实现会静默回落默认租户，等于让任意人用一个乱写的 X-Tenant
-            # 读到默认学校的数据。
+        if resolved_tenant is None and (tenant_code_was_explicit(request) or settings.is_prod):
+            # production 必须始终 fail closed：显式 tenant 不存在、默认 tenant 不存在、
+            # DB 租户事实源不可用都不能回落 mock identity。
             from starlette.responses import JSONResponse
             from app.core.response import fail
-            unknown = JSONResponse(status_code=400, content=fail(
-                "TENANT_NOT_FOUND", "指定的学校不存在"))
-            unknown.headers["X-Trace-Id"] = trace_id
-            return unknown
+            explicit = tenant_code_was_explicit(request)
+            denied = JSONResponse(
+                status_code=400 if explicit else 503,
+                content=fail(
+                    "TENANT_NOT_FOUND" if explicit else "TENANT_RESOLVER_UNAVAILABLE",
+                    "指定的学校不存在" if explicit else "学校租户事实源暂时不可用，请稍后重试",
+                ),
+            )
+            denied.headers["X-Trace-Id"] = trace_id
+            return denied
         _bind_token_tenant(request)
         set_request_meta({
             "ip": _resolve_client_ip(request),
@@ -174,6 +180,9 @@ def _bind_token_tenant(request: Request) -> None:
                         "tenantName": claims.get("tenantName") or "",
                         "status": (real or {}).get("status") or "UNKNOWN"})
         elif claims.get("tid"):
+            # 无 tenantId 的 token 仅保留给非生产 mock/test 兼容；production 不接受 mock tenant 绑回。
+            if settings.is_prod:
+                return
             from app.core.tenant_context import get_mock_tenant
             t = get_mock_tenant(str(claims["tid"]).strip())
             if t:
@@ -219,7 +228,7 @@ def _mobile_teacher_identity_deny(request: Request):
 _READONLY_EXEMPT_PREFIXES = (
     "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
 )
-_DEMO_READONLY_TENANT_ID = "1000000000000000003"
+_DEMO_READONLY_TENANT_ID = str(DEMO_SCHOOL.tenant_id)
 
 
 def is_readonly_tenant(tenant: dict | None = None) -> bool:
