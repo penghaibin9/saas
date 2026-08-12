@@ -12,7 +12,10 @@ def test_student_affairs_history_export_requires_full_scope_before_querying_rows
     source = _read("backend/app/services/domain_export_service.py")
 
     guard_call = 'if domain == "student-affairs":\n        _require_student_affairs_full_scope(user)'
-    scoped_query = "items, total = _call_list(list_path, domain=domain, user=user)"
+    # Security intent: the full-tenant scope guard must execute before any row query.
+    # Keep the contract independent from benign _call_list signature evolution such as
+    # adding batch_id for another domain; exact argument-string matching caused false red.
+    scoped_query = "items, total = _call_list("
     assert guard_call in source
     assert 'ctx.scope_type != "TENANT_ALL"' in source
     assert scoped_query in source

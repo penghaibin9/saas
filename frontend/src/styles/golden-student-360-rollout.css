@@ -1,0 +1,205 @@
+/*
+ * Golden student 360 detail rollout — Batch 10 Screenshot A -> B.
+ * Visual-only. Rules stay anchored to page-unique DOM signatures so shared
+ * shells and business primitives keep their production contracts.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · Student profile detail                                   */
+/* Unique signature: .profile-summary + .profile-priority-grid                */
+/* ========================================================================== */
+
+#app .base-portal-layout :is(.mps, .app-page-shell):has(.profile-summary):has(.profile-priority-grid) {
+  gap: 12px;
+}
+
+#app .base-portal-layout :is(.mps, .app-page-shell):has(.profile-summary):has(.profile-priority-grid) > :is(.mps__head, .app-page-shell__header) {
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 54%, #fff), #fff 74%);
+  box-shadow: 0 16px 32px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .profile-summary {
+  min-height: 96px;
+  padding: 16px 18px;
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--pri-bg) 76%, #fff), #fff 82%);
+  box-shadow: 0 14px 30px -32px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .profile-priority-grid {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+#app .base-portal-layout .profile-priority-card {
+  min-height: 112px;
+  padding: 14px;
+  border-radius: 14px;
+  box-shadow: 0 13px 26px -30px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .profile-priority-card > :is(button, .app-permission-button) {
+  margin-top: auto;
+}
+
+#app .base-portal-layout .sa-detail-grid {
+  gap: 12px;
+}
+
+/* ========================================================================== */
+/* Internship · Student detail                                                */
+/* Unique signature: .sd-summary + .sd-panels + .sd-audit                     */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.sd-summary):has(.sd-panels):has(.sd-audit) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.sd-summary):has(.sd-panels):has(.sd-audit) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 54%, #fff), #fff 74%);
+}
+
+#app .base-portal-layout .mps:has(.sd-summary):has(.sd-panels):has(.sd-audit) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.02em;
+}
+
+#app .base-portal-layout .sd-summary {
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  box-shadow: 0 15px 32px -32px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .sd-summary__facts {
+  gap: 8px;
+  margin-top: 14px;
+}
+
+#app .base-portal-layout .sd-summary__facts > div {
+  min-height: 64px;
+  padding: 10px 11px;
+  border-radius: 10px;
+}
+
+#app .base-portal-layout .sd-panels {
+  grid-template-columns: minmax(0, 1.18fr) minmax(420px, 1fr);
+  gap: 14px;
+}
+
+#app .base-portal-layout .sd-panels > .mp-card,
+#app .base-portal-layout .sd-audit {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 15px;
+}
+
+#app .base-portal-layout .sd-panels .sd-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+
+#app .base-portal-layout .sd-panels .sd-v {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#app .base-portal-layout .sd-panels .sd-v--wrap .mp-link {
+  display: inline;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#app .base-portal-layout .sd-audit {
+  margin-top: 14px;
+}
+
+/* ========================================================================== */
+/* Graduation · Student detail                                                */
+/* Unique signature: .gsd-page + .gsd-summary + .gsd-tabs                     */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.gsd-page):has(.gsd-summary):has(.gsd-tabs) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.gsd-page):has(.gsd-summary):has(.gsd-tabs) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 54%, #fff), #fff 74%);
+}
+
+#app .base-portal-layout .mps:has(.gsd-page):has(.gsd-summary):has(.gsd-tabs) .mps__title {
+  font-size: 25px;
+  letter-spacing: -.02em;
+}
+
+#app .base-portal-layout .gsd-page {
+  gap: 12px;
+}
+
+#app .base-portal-layout .gsd-summary {
+  gap: 10px 14px;
+  padding: 14px 16px;
+  border-color: color-mix(in srgb, var(--pri) 12%, var(--card-b));
+  border-radius: 14px;
+  background: linear-gradient(105deg, color-mix(in srgb, var(--pri-bg) 76%, #fff), #fff 76%);
+  box-shadow: 0 14px 30px -32px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .gsd-page > .mp-grid-2 {
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+  gap: 14px;
+}
+
+#app .base-portal-layout .gsd-page > .mp-grid-2 > .mp-stack {
+  min-width: 0;
+  gap: 12px;
+}
+
+#app .base-portal-layout .gsd-page .mp-card,
+#app .base-portal-layout .gsd-page :is(.app-section-card, [class*='section-card']) {
+  min-width: 0;
+  border-radius: 14px;
+}
+
+#app .base-portal-layout .gsd-tabs {
+  gap: 2px;
+  scrollbar-width: none;
+}
+
+#app .base-portal-layout .gsd-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  #app .base-portal-layout .sd-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #app .base-portal-layout .gsd-page > .mp-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .profile-summary,
+  #app .base-portal-layout .sd-summary,
+  #app .base-portal-layout .gsd-summary {
+    padding: 14px;
+  }
+
+  #app .base-portal-layout .sd-panels .sd-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

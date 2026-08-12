@@ -1,0 +1,179 @@
+/*
+ * Golden message campaign records rollout — Batch 17 Screenshot A -> B.
+ * Visual-only: real campaign facts, status labels and workflow actions stay unchanged.
+ */
+
+/* ========================================================================== */
+/* Outbox · real populated publishing ledger                                  */
+/* Unique signature: .mc-table + .mc-main + .mc-link                          */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) > .mps__head {
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 50%, #fff), #fff 80%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-table {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 38px -38px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-table th {
+  padding: 11px 14px;
+  border-bottom-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  background: color-mix(in srgb, var(--pri-bg) 24%, #fff);
+  color: var(--text-secondary, #475569);
+  font-weight: 650;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-table td {
+  padding: 15px 14px;
+  border-bottom-color: color-mix(in srgb, var(--pri) 6%, var(--card-b));
+  vertical-align: middle;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-table tbody tr:hover {
+  background: color-mix(in srgb, var(--pri-bg) 14%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-main {
+  color: var(--text-primary, #0f172a);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-sub {
+  margin-top: 4px;
+  color: var(--text-tertiary, #64748b);
+  line-height: 1.35;
+}
+
+#app .base-portal-layout .mps:has(.mc-table .mc-main):has(.mc-link) .mc-link {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 14%, var(--card-b));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--pri-bg) 30%, #fff);
+  font-weight: 650;
+}
+
+/* ========================================================================== */
+/* Campaign detail · publishing evidence card                                 */
+/* Unique signature: .mc-detail                                               */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.mc-detail) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) > .mps__head {
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 50%, #fff), #fff 80%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-detail {
+  width: min(100%, 1080px);
+  max-width: 1080px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 38px -38px color-mix(in srgb, var(--deep1) 50%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-detail > h2 {
+  margin: 0;
+  color: var(--text-primary, #0f172a);
+  font-size: clamp(20px, 1.7vw, 25px);
+  line-height: 1.35;
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-meta {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  color: var(--text-secondary, #475569);
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-meta > span {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pri-bg) 20%, #fff);
+  text-align: center;
+  font-weight: 600;
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-meta > span:first-child {
+  border-color: color-mix(in srgb, var(--pri) 16%, var(--card-b));
+  background: color-mix(in srgb, var(--pri-bg) 38%, #fff);
+  color: var(--pri, #2563eb);
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-body {
+  min-height: 116px;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pri-bg) 10%, #fff);
+  color: var(--text-primary, #0f172a);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--pri) 6%, var(--card-b));
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-btn {
+  min-height: 34px;
+  border-radius: 9px;
+}
+
+#app .base-portal-layout .mps:has(.mc-detail) .mc-recipients {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--pri) 6%, var(--card-b));
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.mc-detail) .mc-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  #app .base-portal-layout .mps:has(.mc-detail) .mc-detail {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  #app .base-portal-layout .mps:has(.mc-detail) .mc-meta {
+    grid-template-columns: 1fr;
+  }
+}

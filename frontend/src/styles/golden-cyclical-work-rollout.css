@@ -1,0 +1,217 @@
+/*
+ * Golden cyclical task / planning rollout — Batch 12 Screenshot A -> B.
+ * Visual-only. Rules are anchored to page-specific DOM signatures.
+ * Graduation defense A already meets the target and is intentionally left unchanged.
+ */
+
+/* ========================================================================== */
+/* Student Affairs · talk planning / recording / follow-up                    */
+/* Unique signature: .tk-toolbar + .tk-workspace                              */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 52%, #fff), #fff 76%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .task-context-bar {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .68fr);
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  box-shadow: 0 12px 28px -32px color-mix(in srgb, var(--pri) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .task-context-bar__item,
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .task-context-bar__filter {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-toolbar {
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--pri-bg) 28%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-filters {
+  gap: 6px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-chip {
+  height: 28px;
+  padding: 0 10px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-tools {
+  margin-left: auto;
+  gap: 8px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-workspace {
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-list,
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-detail {
+  min-height: 300px;
+  border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 15px;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 48%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-list {
+  padding: 7px;
+  background: color-mix(in srgb, var(--fill-2) 28%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-queue {
+  gap: 6px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-qitem {
+  padding: 10px 11px;
+  border-radius: 11px;
+  background: #fff;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-qitem.is-active {
+  border-color: color-mix(in srgb, var(--pri) 72%, #fff);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--pri-bg) 78%, #fff), #fff 82%);
+  box-shadow: 0 10px 22px -22px color-mix(in srgb, var(--pri) 64%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-detail {
+  padding: 14px 16px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-dhead {
+  margin-bottom: 10px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-kv {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--pri) 7%, var(--card-b));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--fill-2) 36%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-record,
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-content {
+  padding-top: 10px;
+}
+
+#app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-textarea {
+  min-height: 92px;
+}
+
+/* ========================================================================== */
+/* Internship · plan / task / acknowledgement                                */
+/* Unique signature: .layout + .card--tasks                                  */
+/* ========================================================================== */
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) > .mps__head {
+  padding: 15px 18px;
+  border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
+  border-radius: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--pri-bg) 50%, #fff), #fff 78%);
+  box-shadow: 0 14px 30px -34px color-mix(in srgb, var(--deep1) 44%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) > .bar {
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--pri-bg) 28%, #fff);
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .layout {
+  gap: 12px;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(360px, .82fr);
+  gap: 12px;
+  align-items: start;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .card {
+  padding: 14px;
+  border-color: color-mix(in srgb, var(--pri) 8%, var(--card-b));
+  border-radius: 15px;
+  box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 46%, transparent);
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .grid > .card:last-child {
+  align-self: start;
+  min-height: 0;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .grid > .card:first-child .app-textarea__el[rows='8'] {
+  height: 132px;
+  min-height: 132px;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .card__title {
+  font-size: 15px;
+  letter-spacing: -.01em;
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .card--tasks {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pri-bg) 20%, #fff), #fff 105px);
+}
+
+#app .base-portal-layout .mps:has(.layout):has(.card--tasks) .card--tasks .state--inline {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--pri) 14%, var(--card-b));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pri-bg) 28%, #fff);
+}
+
+@media (max-width: 1100px) {
+  #app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .task-context-bar {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-kv {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #app .base-portal-layout .mps:has(.layout):has(.card--tasks) .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  #app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  #app .base-portal-layout .mps:has(.tk-toolbar):has(.tk-workspace) .tk-tools {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+}

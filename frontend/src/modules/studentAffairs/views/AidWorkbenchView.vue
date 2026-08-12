@@ -1003,3 +1003,5 @@ export default {
   margin-top: var(--space-2);
 }
 </style>
+
+<style src="../../../styles/golden-student-affairs-aid-rollout.css"></style>
