@@ -94,8 +94,16 @@ def test_captcha_scene_rejects_wrong_client_type():
     assert bind_exc.value.code == "VALIDATION_ERROR"
 
 
-@pytest.mark.parametrize("client_type", ["TEACHER_PC", "TEACHER_MINI"])
-def test_password_reset_captcha_accepts_teacher_clients(client_type):
+def test_student_pc_login_captcha_is_explicitly_supported_and_bound():
+    data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "student", "nonce", "STUDENT_PC")
+    svc.verify_captcha(
+        data["captchaId"], data["devCode"], svc.PASSWORD_LOGIN,
+        "school", "student", "nonce", "STUDENT_PC",
+    )
+
+
+@pytest.mark.parametrize("client_type", ["STUDENT_PC", "TEACHER_PC", "TEACHER_MINI"])
+def test_password_reset_captcha_accepts_pc_and_teacher_clients(client_type):
     data = svc.issue_captcha(svc.PASSWORD_RESET, "school", "teacher", "nonce", client_type)
     svc.verify_captcha(
         data["captchaId"], data["devCode"], svc.PASSWORD_RESET,

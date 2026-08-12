@@ -196,12 +196,12 @@ def test_formal_file_uploader_cannot_bypass_object_binding(client, db_mode):
 
 def test_no_tenant_context_upload_fails(client, db_mode, monkeypatch):
     from app.core.exceptions import AppException
-    from app.services import file_service
+    from app.services import file_service, file_service_legacy
     import asyncio
 
-    # file_service imports the context accessor into its own module namespace; patch that exact
-    # security boundary so the assertion continues to prove tenant-less writes are rejected.
-    monkeypatch.setattr(file_service, "current_tenant_id", lambda: None)
+    # store_upload() delegates to file_service_legacy; patch the context accessor at the real
+    # execution boundary so prior ContextVar state can never make this fail-closed contract flaky.
+    monkeypatch.setattr(file_service_legacy, "current_tenant_id", lambda: None)
 
     class _F:
         filename = "x.txt"

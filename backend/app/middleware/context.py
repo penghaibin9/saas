@@ -23,6 +23,7 @@ from app.core.context import (
 )
 from app.core.config import settings
 from app.core.tenant_context import resolve_tenant, tenant_code_was_explicit
+from app.core.tenant_identity import DEMO_SCHOOL
 
 logger = logging.getLogger("app.access")
 
@@ -35,16 +36,31 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         set_current_user(None)
         set_current_internship_batch_id(_resolve_internship_batch_id(request))
         resolved_tenant = resolve_tenant(request)
-        if resolved_tenant is None and tenant_code_was_explicit(request):
-            # 显式指定了不存在的租户：必须拒绝。
-            # 旧实现会静默回落默认租户，等于让任意人用一个乱写的 X-Tenant
-            # 读到默认学校的数据。
+        if resolved_tenant is None and (tenant_code_was_explicit(request) or settings.is_prod):
+            # production 必须始终 fail closed：显式 tenant 不存在、默认 tenant 不存在、
+            # DB 租户事实源不可用都不能回落 mock identity。
             from starlette.responses import JSONResponse
             from app.core.response import fail
-            unknown = JSONResponse(status_code=400, content=fail(
-                "TENANT_NOT_FOUND", "指定的学校不存在"))
-            unknown.headers["X-Trace-Id"] = trace_id
-            return unknown
+            explicit = tenant_code_was_explicit(request)
+            denied = JSONResponse(
+                status_code=400 if explicit else 503,
+                content=fail(
+                    "TENANT_NOT_FOUND" if explicit else "TENANT_RESOLVER_UNAVAILABLE",
+                    "指定的学校不存在" if explicit else "学校租户事实源暂时不可用，请稍后重试",
+                ),
+            )
+            denied.headers["X-Trace-Id"] = trace_id
+            return denied
+
+        # Signed tenant identity and the current DB tenant registry must agree before any middleware
+        # guard or route can consume tenant context. This is especially important when a historical
+        # tenant-code/tenant-id mapping is corrected: an old but still cryptographically valid JWT
+        # must not carry the previous numeric tenantId into another school's row-level scope.
+        token_tenant_denied = _token_tenant_identity_deny(request, resolved_tenant)
+        if token_tenant_denied is not None:
+            token_tenant_denied.headers["X-Trace-Id"] = trace_id
+            return token_tenant_denied
+
         _bind_token_tenant(request)
         set_request_meta({
             "ip": _resolve_client_ip(request),
@@ -140,6 +156,75 @@ def _resolve_client_ip(request: Request) -> str:
     return direct
 
 
+def _strict_token_tenant_binding(claims: dict) -> bool:
+    """Whether this JWT must match the authoritative DB tenant identity exactly.
+
+    Production and staging always enforce this migration guard. Real DB subjects (``db-*``) also
+    enforce it in test/dev so integration tests exercise the production rule. Only synthetic
+    test/dev fixture JWTs keep their deliberately isolated numeric tenant IDs; they are not tokens
+    that can be issued by the real password-login path.
+    """
+    env = str(getattr(settings, "APP_ENV", "") or "").strip().lower()
+    return bool(
+        getattr(settings, "is_prod", False)
+        or env == "staging"
+        or str((claims or {}).get("userId") or "").startswith("db-")
+    )
+
+
+def _token_tenant_identity_deny(request: Request, resolved_tenant: dict | None):
+    """Reject an authoritative school JWT when its signed tenant identity drifts from DB truth.
+
+    Invalid/expired bearer tokens are intentionally left to the normal auth dependency so public
+    routes do not become globally bearer-mandatory. Platform super-admin identity is control-plane
+    scoped and is not forced through a school-tenant comparison here. Synthetic test/dev tokens are
+    excluded because their numeric tenant IDs are fixture-local and cannot be issued in production.
+    """
+    auth = (request.headers.get("authorization") or "").strip()
+    if not auth.lower().startswith("bearer "):
+        return None
+    try:
+        from app.core.security import decode_token
+        claims = decode_token(auth[7:].strip())
+    except Exception:
+        return None
+
+    if str(claims.get("userType") or "").strip().upper() == "PLATFORM_SUPER_ADMIN":
+        return None
+    if not _strict_token_tenant_binding(claims):
+        return None
+
+    claim_code = str(claims.get("tid") or "").strip()
+    claim_id = str(claims.get("tenantId") or "").strip()
+    real = resolved_tenant or {}
+    real_code = str(real.get("tenantCode") or "").strip()
+    real_id = str(real.get("tenantId") or "").strip()
+    real_status = str(real.get("status") or "").strip().upper()
+
+    mismatch = bool(
+        claim_code
+        and claim_id
+        and real_code
+        and real_id
+        and (claim_code != real_code or claim_id != real_id)
+    )
+    missing_strict_identity = bool(
+        not claim_code or not claim_id or not real_code or not real_id or real_status == "TENANT_NEUTRAL"
+    )
+    if not mismatch and not missing_strict_identity:
+        return None
+
+    from starlette.responses import JSONResponse
+    from app.core.response import fail
+    return JSONResponse(
+        status_code=401,
+        content=fail(
+            "TOKEN_TENANT_MISMATCH",
+            "学校身份已更新或登录会话无效，请重新登录",
+        ),
+    )
+
+
 def _bind_token_tenant(request: Request) -> None:
     try:
         auth = request.headers.get("authorization") or ""
@@ -148,6 +233,7 @@ def _bind_token_tenant(request: Request) -> None:
         from app.core.context import set_tenant
         from app.core.security import decode_token
         claims = decode_token(auth[7:].strip())
+        strict_binding = _strict_token_tenant_binding(claims)
         set_current_user({
             "userId": claims.get("userId"), "realName": claims.get("realName"),
             "userType": claims.get("userType"), "tenantCode": claims.get("tid"),
@@ -169,11 +255,22 @@ def _bind_token_tenant(request: Request) -> None:
             # 令牌签发之后学校可能已被停用/归档，只读闸门依赖的正是这个 status。
             from app.core.tenant_context import lookup_tenant
             real = lookup_tenant(str(claims.get("tid") or "").strip())
-            set_tenant({"tenantId": str(claims["tenantId"]),
-                        "tenantCode": claims.get("tid") or "",
-                        "tenantName": claims.get("tenantName") or "",
-                        "status": (real or {}).get("status") or "UNKNOWN"})
+            if real is not None and strict_binding:
+                # Authoritative sessions use the same DB row whose code/id were validated above.
+                set_tenant({"tenantId": str(real.get("tenantId") or ""),
+                            "tenantCode": real.get("tenantCode") or "",
+                            "tenantName": real.get("tenantName") or claims.get("tenantName") or "",
+                            "status": real.get("status") or "UNKNOWN"})
+            elif not strict_binding:
+                # Synthetic test/dev fixture tokens intentionally carry fixture-local tenant IDs.
+                set_tenant({"tenantId": str(claims["tenantId"]),
+                            "tenantCode": claims.get("tid") or "",
+                            "tenantName": claims.get("tenantName") or "",
+                            "status": (real or {}).get("status") or "UNKNOWN"})
         elif claims.get("tid"):
+            # 无 tenantId 的 token 仅保留给非生产 synthetic/mock 兼容；严格会话不接受 mock 绑回。
+            if strict_binding:
+                return
             from app.core.tenant_context import get_mock_tenant
             t = get_mock_tenant(str(claims["tid"]).strip())
             if t:
@@ -219,7 +316,7 @@ def _mobile_teacher_identity_deny(request: Request):
 _READONLY_EXEMPT_PREFIXES = (
     "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
 )
-_DEMO_READONLY_TENANT_ID = "1000000000000000003"
+_DEMO_READONLY_TENANT_ID = str(DEMO_SCHOOL.tenant_id)
 
 
 def is_readonly_tenant(tenant: dict | None = None) -> bool:

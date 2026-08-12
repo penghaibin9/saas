@@ -4,6 +4,9 @@
 普通运行留痕：record() fire-and-forget，失败不阻断主业务。
 高危审计：record_critical() / audit_insert_in_session() 必须成功，
 与业务同事务或独立提交失败即抛错。
+
+认证入口现在是 tenant-neutral。登录成功时请求上下文不能再借 DEFAULT_TENANT_CODE 伪装学校；
+当 target_id 是真实 ``db-<user_id>`` 时，本服务按真实 User 行解析 tenant_id 后写审计。
 """
 from __future__ import annotations
 
@@ -15,7 +18,6 @@ from app.core.response import paginate
 _MAX = 500
 _BUFFER: list[dict] = []
 
-# 高危动作：必须落库成功
 CRITICAL_ACTIONS = {
     "角色授权", "权限变更", "修改角色权限", "分配角色",
     "敏感导出", "SENSITIVE_EXPORT", "明文查看",
@@ -35,6 +37,34 @@ def _is_critical(action: str) -> bool:
     if a in CRITICAL_ACTIONS:
         return True
     return any(k in a for k in ("授权", "敏感导出", "密码重置", "作废学生", "成绩发布", "资助发放"))
+
+
+def _resolved_tenant_id(target_id: str | None = None) -> int | None:
+    """Use request tenant when real; otherwise resolve a db-user target without guessing."""
+    try:
+        context_tid = str(current_tenant_id() or "")
+    except Exception:
+        context_tid = ""
+    if context_tid.isdigit():
+        return int(context_tid)
+
+    raw = str(target_id or "")
+    if not raw.startswith("db-") or not raw[3:].isdigit():
+        return None
+    try:
+        from sqlalchemy import select
+        from app.db.session import db_enabled, get_sessionmaker
+        if not db_enabled():
+            return None
+        from app.models import User
+        db = get_sessionmaker()()
+        try:
+            user = db.scalars(select(User).where(User.id == int(raw[3:])).limit(1)).first()
+            return int(user.tenant_id) if user is not None else None
+        finally:
+            db.close()
+    except Exception:
+        return None
 
 
 def record(action: str, *, method: str | None = None, path: str | None = None,
@@ -62,29 +92,34 @@ def record_critical(action: str, *, method: str | None = None, path: str | None 
                     target_id: str | None = None, detail: dict | None = None,
                     db=None) -> None:
     """高危审计：必须写入成功。可传入业务 db 会话实现同事务。"""
+    tenant_id = _resolved_tenant_id(target_id)
     _record_memory(action, method=method, path=path, status_code=status_code,
-                   target_type=target_type, target_id=target_id, detail=detail)
+                   target_type=target_type, target_id=target_id, detail=detail,
+                   tenant_id=tenant_id)
     from app.db.session import db_enabled
     if not db_enabled():
         return
+    if tenant_id is None:
+        raise RuntimeError(f"critical audit {action} has no verifiable tenant")
     from app.services import db_service
     payload = {"method": method, "path": path, "targetId": target_id, **(detail or {})}
     if db is not None:
         db_service.audit_insert_in_session(
             db, action, target_type or (path or ""), payload, "SUCCESS",
-            resource_id=target_id)
+            tenant_id=tenant_id, resource_id=target_id)
         return
     db_service.audit_insert(action, target_type or (path or ""), payload, "SUCCESS",
-                            resource_id=target_id)
+                            tenant_id=tenant_id, resource_id=target_id)
 
 
 def _record_memory(action, *, method=None, path=None, status_code=None,
-                   target_type=None, target_id=None, detail=None) -> None:
+                   target_type=None, target_id=None, detail=None, tenant_id=None) -> None:
     user = get_current_user_ctx() or {}
+    resolved = tenant_id if tenant_id is not None else _resolved_tenant_id(target_id)
     entry = {
         "id": f"aud_{uuid.uuid4().hex[:12]}",
         "traceId": get_trace_id(),
-        "tenantId": current_tenant_id(),
+        "tenantId": str(resolved) if resolved is not None else None,
         "userId": user.get("userId"),
         "realName": user.get("realName"),
         "roleCode": user.get("currentRoleCode"),
@@ -103,15 +138,19 @@ def _record_memory(action, *, method=None, path=None, status_code=None,
 
 def _record_soft(action: str, *, method=None, path=None, status_code=None,
                  target_type=None, target_id=None, detail=None) -> None:
+    tenant_id = _resolved_tenant_id(target_id)
     _record_memory(action, method=method, path=path, status_code=status_code,
-                    target_type=target_type, target_id=target_id, detail=detail)
+                   target_type=target_type, target_id=target_id, detail=detail,
+                   tenant_id=tenant_id)
     try:
         from app.db.session import db_enabled
-        if db_enabled():
+        if db_enabled() and tenant_id is not None:
             from app.services import db_service
-            db_service.audit_insert(action, target_type or (path or ""),
-                                    {"method": method, "path": path, "targetId": target_id,
-                                     **(detail or {})}, "SUCCESS")
+            db_service.audit_insert(
+                action, target_type or (path or ""),
+                {"method": method, "path": path, "targetId": target_id, **(detail or {})},
+                "SUCCESS", tenant_id=tenant_id, resource_id=target_id,
+            )
     except Exception:  # noqa: BLE001
         pass
 

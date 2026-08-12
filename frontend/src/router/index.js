@@ -120,7 +120,7 @@ const router = createRouter({
       meta: { title: '帮助中心' }
     },
     {
-      /* 登录页（账号密码走 /api/v1/auth/login；「进入演示环境」回工作台，不影响既有演示流程） */
+      /* 登录页（账号密码走浏览器 HttpOnly refresh transport；业务认证真值仍在后端） */
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue'),
@@ -214,14 +214,20 @@ const router = createRouter({
 
 /**
  * P6-SECURITY：平台总控台（老板运营端）路由守卫。
- * 仅拦截 /admin/platform/* —— 未以平台超级管理员身份登录者一律跳登录页。
- * 业务模块（学生/审批/迎新等对外演示页）与「进入演示环境」流程完全不受影响。
- * 说明：令牌为内存态，刷新后需重新登录；后端 /api/v1/platform/* 另有 403 强校验兜底。
+ * 浏览器 accessToken 仅内存保存；刷新后先通过 HttpOnly refresh cookie 静默恢复，再判定路由权限。
+ * 后端 /api/v1/platform/* 仍有 403 强校验兜底。
  */
 router.beforeEach(async (to, from, next) => {
-  // P11：全站强制登录——未登录一律回登录页（账号密码=真实库 / 演示账号=演示租户）。
-  // 登录页与安全错误页（meta.public）除外。
+  // 登录页与安全错误页（meta.public）除外。私有页在判“未登录”前必须先尝试恢复 HttpOnly 会话，
+  // 否则安全升级成内存 token 后，F5 会被错误地踢回登录页。
   const isPublic = to.path === '/login' || to.meta?.public
+  if (!isPublic && !getToken()) {
+    try {
+      await request('/auth/me')
+    } catch {
+      // 没有/失效 cookie 时才由下一段统一跳登录；不在此吞掉真正的业务授权判定。
+    }
+  }
   if (!isPublic && !getToken()) {
     const needsPlatformLogin = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
     next({

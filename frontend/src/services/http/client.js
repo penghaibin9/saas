@@ -2,24 +2,20 @@
  * P2 · 统一请求客户端：解析后端统一响应 {code,bizCode,message,data,traceId,timestamp}。
  * 后端不可达时进入 15s 离线冷却（期间直接走 mock fallback，页面不白屏）。
  * P11：不再自动 mock-login——未登录必须经登录页（账号密码=真实库 / 演示账号=演示租户）。
- * 令牌存 sessionStorage：F5 刷新不掉登录，关浏览器即清（比 localStorage 更安全）。
+ * SECURITY-P0：浏览器 refreshToken 只存在 HttpOnly+SameSite Cookie；accessToken 只驻留内存，
+ * 禁止 localStorage/sessionStorage/IndexedDB 持久化。学校 PC / 平台 PC 使用独立 refresh Cookie，
+ * 页面刷新后按当前 JWT（有 token 时）或当前路由（F5 时）选择对应 browser session 静默恢复。
+ * 登录/登出/切换身份会推进逻辑会话代次；旧代请求绝不能借新身份 token 自动重放。
  */
 import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './config'
 import { toast } from '@/utils/toast'
 import { normalizeUiError } from '@/utils/presentationSafety'
 
-const TOKEN_KEY = 'gx_pc_token_v1'
-const REFRESH_KEY = 'gx_pc_refresh_v1'
+const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1']
+try { LEGACY_TOKEN_KEYS.forEach((key) => sessionStorage.removeItem(key)) } catch { /* ignore */ }
+try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch { /* ignore */ }
 
-function _load(key) {
-  try { return sessionStorage.getItem(key) || '' } catch { return '' }
-}
-
-function _save(key, val) {
-  try { val ? sessionStorage.setItem(key, val) : sessionStorage.removeItem(key) } catch { /* 忽略 */ }
-}
-
-const state = { token: _load(TOKEN_KEY), refreshToken: _load(REFRESH_KEY), offlineUntil: 0, notified: false }
+const state = { token: '', sessionGeneration: 0, offlineUntil: 0, notified: false }
 
 /** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
 const REQUEST_TIMEOUT_MS =
@@ -51,11 +47,22 @@ function throwOfflineSkip(method) {
   throw err
 }
 
-function _holdTokens(access, refresh) {
+function _replaceToken(access) {
   state.token = access || ''
-  state.refreshToken = refresh || ''
-  _save(TOKEN_KEY, state.token)
-  _save(REFRESH_KEY, state.refreshToken)
+}
+
+function _advanceSession(access) {
+  state.sessionGeneration += 1
+  _replaceToken(access)
+}
+
+function staleSessionError() {
+  const err = new Error('登录会话已发生变化，旧请求已停止')
+  err.biz = true
+  err.code = 'SESSION_CHANGED'
+  err.bizCode = 'SESSION_CHANGED'
+  err.staleSession = true
+  return err
 }
 
 export function shouldTryReal() {
@@ -112,7 +119,8 @@ async function rawRequest(path, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal
+      signal: controller.signal,
+      credentials: 'include'
     })
     const payload = await res.json().catch(() => null)
     if (!payload || typeof payload.code !== 'number') {
@@ -152,51 +160,41 @@ async function rawRequest(path, {
   }
 }
 
-async function ensureToken() {
-  if (state.token) return
-  const err = new Error('未登录，请先登录')
-  err.biz = true
-  err.code = 401001
-  throw err
+function browserSessionChannel() {
+  const u = currentUserFromToken()
+  const userType = String(u?.userType || '').toUpperCase()
+  const role = String(u?.currentRoleCode || '').toUpperCase()
+  if (userType.startsWith('PLATFORM_') || role === 'PLATFORM_SUPER_ADMIN') return 'platform'
+  if (userType === 'STUDENT' || role === 'STUDENT') return 'student'
+  try {
+    const route = `${window.location.pathname || ''}${window.location.hash || ''}`.toLowerCase()
+    if (route.includes('/platform-login') || route.includes('/admin/platform')) return 'platform'
+  } catch { /* SSR/test 环境默认学校 PC */ }
+  return 'staff'
 }
 
-function _redirectToLogin() {
-  _holdTokens('', '')
-  try {
-    if (!window.location.hash.startsWith('#/login') && window.location.pathname !== '/login') {
-      const back = encodeURIComponent(window.location.pathname + window.location.search)
-      window.location.assign(`/login?redirect=${back}`)
-    }
-  } catch { /* 非浏览器环境忽略 */ }
+function browserSessionHeaders() {
+  return { 'X-Browser-Session': browserSessionChannel() }
 }
 
 let refreshPromise = null
 async function tryRefresh() {
-  const refreshTokenAtStart = state.refreshToken
-  const accessTokenAtStart = state.token
-  if (!refreshTokenAtStart) return false
   if (refreshPromise) return refreshPromise
+  const generationAtStart = state.sessionGeneration
+  const accessTokenAtStart = state.token
   refreshPromise = (async () => {
     try {
-      const d = await rawRequest('/auth/refresh', {
-        method: 'POST',
-        auth: false,
-        forceProbe: true,
-        body: { refreshToken: refreshTokenAtStart }
+      const d = await rawRequest('/auth/browser-refresh', {
+        method: 'POST', auth: false, forceProbe: true, headers: browserSessionHeaders()
       })
-      // 身份切换/重新登录可能在 refresh 飞行期间已经替换整套会话。
-      // 旧 refresh 的迟到成功不得把新角色 token 覆盖回旧角色。
-      if (state.token !== accessTokenAtStart || state.refreshToken !== refreshTokenAtStart) {
-        return !!state.token
-      }
-      _holdTokens(d.accessToken, d.refreshToken || '')
-      return true
-    } catch {
-      // 同理，旧 refresh 的迟到失败不能清空刚由 switch-role/login 写入的新会话。
-      if (state.token !== accessTokenAtStart || state.refreshToken !== refreshTokenAtStart) {
-        return !!state.token
-      }
-      _holdTokens('', '')
+      // refresh 只能在同一逻辑登录会话里轮换 token；登录/登出/切角色后的迟到响应直接作废。
+      if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
+      if (state.token && state.token !== accessTokenAtStart) return true
+      _replaceToken(d.accessToken || '')
+      return !!state.token
+    } catch (e) {
+      if (e?.staleSession || state.sessionGeneration !== generationAtStart) throw staleSessionError()
+      if (state.token === accessTokenAtStart) _replaceToken('')
       return false
     } finally {
       refreshPromise = null
@@ -205,22 +203,36 @@ async function tryRefresh() {
   return refreshPromise
 }
 
-export function setToken(token) {
-  state.token = token || ''
-  _save(TOKEN_KEY, state.token)
+async function ensureToken() {
+  if (state.token) return
+  if (await tryRefresh()) return
+  const err = new Error('未登录，请先登录')
+  err.biz = true
+  err.code = 401001
+  throw err
 }
 
-export function applyAuthSession(accessToken, refreshToken) {
-  if (refreshToken === undefined) {
-    state.token = accessToken || ''
-    _save(TOKEN_KEY, state.token)
-    return
-  }
-  _holdTokens(accessToken, refreshToken)
+function _redirectToLogin() {
+  _advanceSession('')
+  try {
+    if (!window.location.hash.startsWith('#/login') && window.location.pathname !== '/login') {
+      const back = encodeURIComponent(window.location.pathname + window.location.search)
+      window.location.assign(`/login?redirect=${back}`)
+    }
+  } catch { /* 非浏览器环境忽略 */ }
+}
+
+export function setToken(token) {
+  _advanceSession(token)
+}
+
+export function applyAuthSession(accessToken, _refreshToken) {
+  // refreshToken 参数仅保留旧调用兼容；浏览器绝不再保存或读取它。
+  _advanceSession(accessToken)
 }
 
 export function clearAuthSession() {
-  _holdTokens('', '')
+  _advanceSession('')
   clearOfflineState()
   try {
     import('@/security/permissionGate').then((m) => m.clearPermissionPatterns?.()).catch(() => {})
@@ -270,16 +282,27 @@ export async function fetchMyAuthContexts() {
 }
 
 export async function switchAuthContext(contextId, clientType = 'PC') {
-  const data = await request('/auth/switch-role', {
+  await ensureToken()
+
+  // browser-switch-role revokes every old refresh token before issuing the target role's durable
+  // session. Never let an already-running browser-refresh race that revocation/issuance window:
+  // first finish the one legitimate refresh already in flight, then advance the logical session
+  // generation before yielding again so all old-page 401 handlers fail closed instead of sending
+  // another refresh with a cookie that is being replaced by the role switch.
+  if (refreshPromise) await refreshPromise
+  if (!state.token) await ensureToken()
+  const accessTokenAtStart = state.token
+  state.sessionGeneration += 1
+  const generationAtStart = state.sessionGeneration
+
+  const data = await rawRequest('/auth/browser-switch-role', {
     method: 'POST',
     body: { contextId, clientType }
   })
-  if (data && data.accessToken) {
-    applyAuthSession(
-      data.accessToken,
-      Object.prototype.hasOwnProperty.call(data, 'refreshToken') ? (data.refreshToken || '') : undefined
-    )
+  if (state.sessionGeneration !== generationAtStart || state.token !== accessTokenAtStart) {
+    throw staleSessionError()
   }
+  if (data && data.accessToken) applyAuthSession(data.accessToken)
   return data
 }
 
@@ -304,10 +327,10 @@ export async function confirmPasswordReset(payload) {
   return rawRequest('/auth/password-reset/confirm', { method: 'POST', auth: false, forceProbe: true, body: payload })
 }
 
-/** 账号密码登录（POST /api/v1/auth/login，真实校验）；成功后自动持有 token */
+/** 浏览器账号密码登录：refreshToken 由后端写对应 PC 入口的 HttpOnly Cookie，JS 只得到内存 accessToken。 */
 export async function loginWithPassword(loginName, password, tenantCode = '', challenge = {}) {
   clearOfflineState()
-  const data = await rawRequest('/auth/login', {
+  const data = await rawRequest('/auth/browser-login', {
     method: 'POST',
     auth: false,
     forceProbe: true,
@@ -315,22 +338,26 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
       captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
   })
-  _holdTokens(data.accessToken, data.refreshToken || '')
+  _advanceSession(data.accessToken || '')
   return data
 }
 
 export async function request(path, options = {}) {
   await ensureToken()
+  const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   try {
     return await rawRequest(path, options)
   } catch (e) {
     if (e.biz && e.code === 401001) {
-      // 该 401 如果属于身份切换前的旧 token，新会话已经可用时直接重试，禁止再拿旧 refresh 竞争。
+      if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
+      // 同一逻辑会话内，别的请求可能已经完成 refresh；允许使用同身份的新 accessToken 重试。
       if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)
-      if (await tryRefresh()) return rawRequest(path, options)
-      // refresh 等待期间也可能完成 switch-role/login；再次保护，避免误跳登录页。
-      if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)
+      if (await tryRefresh()) {
+        if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
+        return rawRequest(path, options)
+      }
+      if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       _redirectToLogin()
     }
     throw e
@@ -339,15 +366,23 @@ export async function request(path, options = {}) {
 
 export async function logoutRemote() {
   try {
-    await rawRequest('/auth/logout', { method: 'POST' })
+    // rawRequest has no implicit ensure/refresh. Keeping auth enabled sends a still-live access
+    // token for jti blacklisting when available, while cookie-only logout still works when the
+    // in-memory token is already empty/expired. Explicit channel prevents another PC surface's
+    // HttpOnly cookie from being consumed or cleared by this logout.
+    await rawRequest('/auth/browser-logout', {
+      method: 'POST', auth: true, forceProbe: true, headers: browserSessionHeaders()
+    })
   } catch {
-    /* 离线登出静默 */
+    /* 离线登出静默；本地 access 仍必须清掉，服务端响应会尽力清除当前通道 Cookie */
   }
   clearAuthSession()
 }
 
 export async function requestUpload(path, file, fieldName = 'file') {
   await ensureToken()
+  const generationAtStart = state.sessionGeneration
+  const accessTokenAtStart = state.token
   const fd = new FormData()
   fd.append(fieldName, file)
   const controller = new AbortController()
@@ -355,11 +390,13 @@ export async function requestUpload(path, file, fieldName = 'file') {
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       method: 'POST',
-      headers: state.token ? { Authorization: `Bearer ${state.token}` } : {},
+      headers: accessTokenAtStart ? { Authorization: `Bearer ${accessTokenAtStart}` } : {},
       body: fd,
-      signal: controller.signal
+      signal: controller.signal,
+      credentials: 'include'
     })
     const payload = await res.json().catch(() => null)
+    if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
     if (!payload || typeof payload.code !== 'number') throw new Error(`响应结构异常（HTTP ${res.status}）`)
     if (payload.code !== 0) {
       const err = new Error(payload.message || `业务错误 ${payload.code}`)
@@ -385,6 +422,7 @@ export async function requestUpload(path, file, fieldName = 'file') {
 
 export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
   await ensureToken()
+  const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   const qs = params
     ? '?' +
@@ -405,7 +443,8 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal
+        signal: controller.signal,
+        credentials: 'include'
       })
       if (res.status === 401) {
         const err = new Error('未登录，请先登录')
@@ -440,9 +479,13 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
     return await doFetch()
   } catch (e) {
     if (e.biz && e.code === 401001) {
+      if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       if (state.token && state.token !== accessTokenAtStart) return doFetch()
-      if (await tryRefresh()) return doFetch()
-      if (state.token && state.token !== accessTokenAtStart) return doFetch()
+      if (await tryRefresh()) {
+        if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
+        return doFetch()
+      }
+      if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       _redirectToLogin()
     }
     throw e

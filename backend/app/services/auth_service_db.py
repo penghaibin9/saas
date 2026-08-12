@@ -420,6 +420,19 @@ def _find_login_user(db, login_name: str, tenant_code: str | None):
     return users[0] if users else None
 
 
+def _locked_login_audit_tenant_id(login_name: str, tenant_code: str | None) -> int | None:
+    """Resolve audit ownership for an already locked subject without guessing a default tenant."""
+    db = get_sessionmaker()()
+    try:
+        try:
+            user = _find_login_user(db, login_name, tenant_code)
+        except AppException:
+            return None
+        return int(user.tenant_id) if user is not None else None
+    finally:
+        db.close()
+
+
 def login_with_password(login_name: str, password: str, tenant_code: str | None = None,
                         client_type: str = "PC") -> dict:
     if not db_enabled():
@@ -430,13 +443,19 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
     remain = login_locked(lock_key)
     if remain > 0:
         from app.services import audit_log
-        audit_log.record("LOGIN_LOCKED", login_name,
-                         detail={"remainSeconds": remain, "tenantCode": tenant_code}, result="DENIED")
+        audit_log.record(
+            "LOGIN_LOCKED",
+            login_name,
+            detail={"remainSeconds": remain, "tenantCode": tenant_code},
+            result="DENIED",
+            tenant_id=_locked_login_audit_tenant_id(login_name, tenant_code),
+        )
         raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定，请 {remain // 60 + 1} 分钟后再试")
 
     db = get_sessionmaker()()
     try:
         user = _find_login_user(db, login_name, tenant_code)
+        audit_tenant_id = int(user.tenant_id) if user is not None else None
         platform_account = bool(user and (user.user_type or '').upper() in {'PLATFORM_OP', 'PLATFORM_SUPER_ADMIN'})
         platform_client = (client_type or '').upper() == 'PLATFORM_PC'
         if user and platform_account != platform_client:
@@ -447,9 +466,13 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
             lock_minutes = get_int("SEC_LOCK_MINUTES", 15)
             count, locked = record_login_failure(lock_key, threshold=get_int("SEC_LOCK_MAX_FAIL", 5),
                                                  lock_seconds=lock_minutes * 60)
-            audit_log.record("LOGIN_FAIL", login_name,
-                             detail={"failCount": count, "locked": bool(locked),
-                                     "tenantCode": tenant_code}, result="FAIL")
+            audit_log.record(
+                "LOGIN_FAIL",
+                login_name,
+                detail={"failCount": count, "locked": bool(locked), "tenantCode": tenant_code},
+                result="FAIL",
+                tenant_id=audit_tenant_id,
+            )
             if locked:
                 raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {lock_minutes} 分钟")
             if count >= max(1, int(getattr(settings, 'CAPTCHA_AFTER_FAILURES', 2) or 2)):
@@ -461,8 +484,13 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
         contexts = _role_contexts(db, user)
         if not contexts:
             from app.services import audit_log
-            audit_log.record("LOGIN_NO_ACTIVE_ROLE", login_name,
-                             detail={"tenantId": str(user.tenant_id)}, result="DENIED")
+            audit_log.record(
+                "LOGIN_NO_ACTIVE_ROLE",
+                login_name,
+                detail={"tenantId": str(user.tenant_id)},
+                result="DENIED",
+                tenant_id=int(user.tenant_id),
+            )
             raise AppException("NO_PERMISSION", "账号尚未分配有效岗位，请联系学校管理员")
 
         _ensure_tenant_login_allowed(db, user)

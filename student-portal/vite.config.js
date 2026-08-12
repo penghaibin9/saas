@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL('.', import.meta.url))
 // base 与 API 地址均可配置，便于部署到 /portal/ 或正式域名子路径。
 // - VITE_BASE：静态资源与 history base（默认 /portal/）
 // - VITE_API_BASE_URL：后端源地址（默认同源，经 Nginx /api/ 反代）
+// - VITE_PROXY_TARGET：仅开发/CI 的同源 /api 代理目标；不写入 production bundle。
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
@@ -18,6 +19,14 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(root, 'src'),
       },
     },
-    server: { port: 5199 }
+    server: {
+      port: 5199,
+      proxy: {
+        '/api': {
+          target: env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+          changeOrigin: true,
+        },
+      },
+    },
   }
 })
