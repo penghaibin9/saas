@@ -2,6 +2,8 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
+const D2_E2E_CLASS_NAME = 'E2E机器人2401班'
+
 async function dismissPageGuide(page) {
   const mask = page.locator('.app-step-guide__mask')
   await mask.waitFor({ state: 'visible', timeout: 1500 }).catch(() => {})
@@ -59,24 +61,71 @@ async function loginAcademicAdmin(page) {
   return { login, token: await login.token() }
 }
 
+async function seedAuthoritativeRegistrationCandidates(page, token, testInfo) {
+  // D2 E2E must own its registration precondition instead of relying on the incidental
+  // student_status of graduation/internship accounts. Create the two students through the
+  // production roster import API, which itself defaults them to PENDING_REGISTER and writes
+  // the canonical student master. The administrative class is created by the isolated CI
+  // identity bootstrap before Playwright starts; no direct DB fixture or production bypass.
+  const suffix = `${String(Date.now()).slice(-6)}${testInfo.retry}`
+  const rows = [
+    {
+      studentNo: `D2E2E${suffix}01`,
+      realName: `D2注册甲${suffix}`,
+      gender: '男',
+      className: D2_E2E_CLASS_NAME,
+      initialStatus: 'PENDING_REGISTER'
+    },
+    {
+      studentNo: `D2E2E${suffix}02`,
+      realName: `D2注册乙${suffix}`,
+      gender: '女',
+      className: D2_E2E_CLASS_NAME,
+      initialStatus: 'PENDING_REGISTER'
+    }
+  ]
+
+  await expectApiOk(await browserApi(
+    page,
+    token,
+    'POST',
+    '/academic-affairs/roster/import/dry-run',
+    { rows }
+  ), 'pre-validate D2 registration candidates')
+
+  const imported = await expectApiOk(await browserApi(
+    page,
+    token,
+    'POST',
+    '/academic-affairs/roster/import/confirm',
+    { rows }
+  ), 'import D2 registration candidates')
+  expect(Number(imported?.created || 0), `D2 roster import: ${JSON.stringify(imported)}`).toBeGreaterThanOrEqual(2)
+  return new Set(rows.map((row) => row.studentNo))
+}
+
 async function createBatchWithCandidates(page, token, testInfo) {
+  const seededStudentNos = await seedAuthoritativeRegistrationCandidates(page, token, testInfo)
   const suffix = `${String(Date.now()).slice(-6)}-r${testInfo.retry}`
-  for (const registerType of ['ENROLL', 'ANNUAL', 'SEMESTER']) {
-    const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/registration-batches', {
-      batchName: `E2E批量注册-${registerType}-${suffix}`,
-      registerType,
-      open: true
-    }), `create ${registerType} registration batch`)
-    const candidates = await expectApiOk(await browserApi(
-      page,
-      token,
-      'GET',
-      `/academic-affairs/registration-batches/${batch.batchId}/registration-candidates?page=1&pageSize=200`
-    ), `read ${registerType} candidates`)
-    const ready = (candidates.items || []).filter((item) => item.eligibilityStatus !== 'INELIGIBLE')
-    if (ready.length >= 2) return { batch, candidates: ready.slice(0, 2) }
-  }
-  throw new Error('isolated E2E database has fewer than two authoritative registration candidates')
+  const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/registration-batches', {
+    batchName: `E2E批量注册-ENROLL-${suffix}`,
+    registerType: 'ENROLL',
+    open: true
+  }), 'create ENROLL registration batch')
+  const candidates = await expectApiOk(await browserApi(
+    page,
+    token,
+    'GET',
+    `/academic-affairs/registration-batches/${batch.batchId}/registration-candidates?page=1&pageSize=200`
+  ), 'read ENROLL candidates')
+  const ready = (candidates.items || []).filter(
+    (item) => seededStudentNos.has(item.studentNo) && item.eligibilityStatus !== 'INELIGIBLE'
+  )
+  expect(
+    ready.length,
+    `D2 authoritative candidate seed must yield exactly two readable candidates: ${JSON.stringify(candidates)}`
+  ).toBe(2)
+  return { batch, candidates: ready }
 }
 
 test.describe.serial('Academic affairs D2 roster/registration usability', () => {
