@@ -2,7 +2,8 @@
  * 学生 PC 门户 · 统一请求层。
  * - SECURITY-P0：accessToken 只驻留内存；refreshToken 仅 HttpOnly+SameSite Cookie。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
- * - 401 单飞 browser-refresh 并重试一次；刷新失败才清会话。
+ * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
+ * - 迟到的旧 refresh/401 不得覆盖、清空或借用已经切换的新会话。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
 const TOKEN_KEY = 'sp_token_v1'
@@ -19,6 +20,7 @@ const API_BASE = (() => {
 })()
 
 let accessToken = ''
+let sessionGeneration = 0
 
 // 一次性清除历史版本留下的 JS 可读 token。非敏感业务会话态仍使用 sessionStorage。
 for (const key of [TOKEN_KEY, REFRESH_KEY]) {
@@ -35,11 +37,35 @@ function _sessionSet(key, value) {
   } catch { /* ignore */ }
 }
 
+function _replaceAccessToken(token) {
+  accessToken = token || ''
+}
+
+function _advanceSession(token) {
+  sessionGeneration += 1
+  _replaceAccessToken(token)
+}
+
+function _invalidateIfCurrent(tokenAtStart) {
+  if (accessToken !== tokenAtStart) return false
+  sessionGeneration += 1
+  _replaceAccessToken('')
+  return true
+}
+
+function staleSessionError() {
+  const e = new Error('登录会话已发生变化，旧请求已停止')
+  e.code = 'SESSION_CHANGED'
+  e.biz = true
+  e.staleSession = true
+  return e
+}
+
 export function getToken() {
   return accessToken
 }
 export function setToken(t) {
-  accessToken = t || ''
+  _advanceSession(t || '')
 }
 // 旧调用兼容：refreshToken 已迁入 HttpOnly Cookie，JS 不再持有。
 export function getRefreshToken() {
@@ -47,7 +73,7 @@ export function getRefreshToken() {
 }
 export function setRefreshToken(_t) {}
 export function clearSession() {
-  accessToken = ''
+  _advanceSession('')
   for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY]) {
     try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
   }
@@ -142,6 +168,8 @@ async function responseJson(res) {
 let refreshing = null
 async function refreshOnce() {
   if (refreshing) return refreshing
+  const generationAtStart = sessionGeneration
+  const accessTokenAtStart = accessToken
   refreshing = (async () => {
     let res
     try {
@@ -161,11 +189,18 @@ async function refreshOnce() {
     }
     const data = payload.data || {}
     if (!data.accessToken) throw authError()
-    setToken(data.accessToken)
+    if (sessionGeneration !== generationAtStart || accessToken !== accessTokenAtStart) {
+      throw staleSessionError()
+    }
+    // Refresh rotates credentials inside the same logical session, so generation does not advance.
+    _replaceAccessToken(data.accessToken)
     return data.accessToken
   })()
     .catch((e) => {
-      accessToken = ''
+      // A late failure from an old session must never clear a newer login/logout result.
+      if (!e.staleSession && sessionGeneration === generationAtStart && accessToken === accessTokenAtStart) {
+        _invalidateIfCurrent(accessTokenAtStart)
+      }
       throw e
     })
     .finally(() => { refreshing = null })
@@ -206,7 +241,7 @@ export async function request(path, {
       await refreshOnce()
       return request(path, { method, body, auth, params, query, _retried: true })
     }
-    if (auth) accessToken = ''
+    if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined, payload, res.status)
   }
   if (!payload || typeof payload.code !== 'number') {
@@ -255,7 +290,7 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
       await refreshOnce()
       return uploadFile(path, file, { auth, _retried: true })
     }
-    accessToken = ''
+    if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined)
   }
   if (!payload || typeof payload.code !== 'number') {
@@ -287,7 +322,7 @@ export async function downloadFile(path, fallbackName = '毕业设计材料', _r
       await refreshOnce()
       return downloadFile(path, fallbackName, true)
     }
-    accessToken = ''
+    _invalidateIfCurrent(token)
     throw authError()
   }
   if (!res.ok) {
