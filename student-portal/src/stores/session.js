@@ -62,8 +62,10 @@ export const useSessionStore = defineStore('sp-session', {
     },
     async logout() {
       try {
-        // auth=false prevents a logout attempt from first refreshing/reviving the session.
-        await request('/auth/browser-logout', { method: 'POST', auth: false })
+        // request() does not pre-refresh. Keeping auth=true sends a still-live access token when
+        // available so the backend can blacklist its jti, while cookie-only logout still works
+        // when the in-memory access token has already expired or disappeared.
+        await request('/auth/browser-logout', { method: 'POST', auth: true })
       } catch {
         // Local logout still wins. The backend endpoint also expires the cookie before reporting
         // fail-closed store errors, so shared-PC sessions cannot silently resurrect on refresh.
