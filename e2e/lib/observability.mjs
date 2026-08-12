@@ -76,6 +76,24 @@ async function syncSecureE2EBootstrap(page, response = null) {
   if (current?.value) bootstrap.session.refreshToken = current.value
 }
 
+async function navigateWithSecureBootstrap(page, navigate) {
+  const bootstrap = bootstrapSessionByPage.get(page)
+  if (!bootstrap) return navigate()
+
+  // Every full navigation destroys the app's in-memory access token, so the next document must
+  // finish one real browser-refresh before a visual spec is allowed to trigger another reload or
+  // goto. Without this barrier, a second navigation can abort the first response after the server
+  // has already consumed its one-time refresh token, leaving the browser with the spent cookie.
+  const refreshSettled = page.waitForResponse(
+    (response) => response.url().includes('/api/v1/auth/browser-refresh') && response.request().method() === 'POST',
+    { timeout: 15_000 }
+  ).catch(() => null)
+  const result = await navigate()
+  const response = await refreshSettled
+  if (response?.ok()) await syncSecureE2EBootstrap(page, response)
+  return result
+}
+
 async function installSecureE2EBootstrap(page) {
   // Older visual specs used addInitScript(sessionStorage.setItem(...)) to bootstrap a page.
   // Production code now deletes those legacy keys by design. Intercept only that E2E pattern and
@@ -84,6 +102,12 @@ async function installSecureE2EBootstrap(page) {
   // Web Storage. Browser refresh tokens rotate on every use, so persist the browser's actual
   // HttpOnly replacement cookie back into the E2E session before the next isolated test context.
   const nativeAddInitScript = page.addInitScript.bind(page)
+  const nativeGoto = page.goto.bind(page)
+  const nativeReload = page.reload.bind(page)
+
+  page.goto = (...args) => navigateWithSecureBootstrap(page, () => nativeGoto(...args))
+  page.reload = (...args) => navigateWithSecureBootstrap(page, () => nativeReload(...args))
+
   page.addInitScript = async (script, arg) => {
     const source = typeof script === 'function' ? String(script) : String(script?.content || script || '')
     const accessToken = String(typeof arg === 'string' ? arg : (arg?.token || ''))
