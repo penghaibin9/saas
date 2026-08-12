@@ -80,6 +80,23 @@ def test_academic_source_only_still_runs_permission_gate():
     ]
 
 
+def test_roster_registration_owner_change_selects_d2_domain_regressions():
+    """D2 owner/convenience 变更必须自动带上名册、注册、敏感查看与 export compat 专项。"""
+    mod = _load()
+    targets = mod.select([
+        "backend/app/modules/academic_affairs/routers/roster_registration_router.py",
+    ])
+    for expected in (
+        "tests/test_aa_registration.py",
+        "tests/test_aa_roster_correction.py",
+        "tests/test_student_sensitive_contract.py",
+        "tests/test_academic_export_compat.py",
+        "tests/test_aa_p0_authz.py",
+        "tests/test_aa_route_registration_main_compat.py",
+    ):
+        assert expected in targets
+
+
 def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
     """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
     mod = _load()
