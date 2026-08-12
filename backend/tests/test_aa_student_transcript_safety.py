@@ -54,4 +54,6 @@ def test_query_copy_is_explicitly_non_official_and_non_verifiable(monkeypatch):
 def test_portal_package_exports_transcript_safety_facade():
     from app.student_portal.services import academic_service as service
 
-    assert service.__name__.endswith("academic_transcript_safety_facade")
+    # 最终公开入口可以继续叠加评教安全层，但成绩查询件安全门面必须仍是其显式基础链路。
+    assert service.__name__.endswith("academic_evaluation_safety_facade")
+    assert service._base.__name__.endswith("academic_transcript_safety_facade")

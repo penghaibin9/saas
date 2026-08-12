@@ -84,12 +84,12 @@
         <section class="sp-card" style="max-width:820px">
           <div class="sp-panel__head">签约材料</div>
           <StateBlock v-if="!(my.materials||[]).length" type="empty" text="暂无签约材料，请在去向登记时上传" />
-          <AutoTable v-else :rows="my.materials" />
+          <AutoTable v-else :rows="my.materials" :columns="MATERIAL_COLS" />
           <button class="sp-btn sp-btn--ghost" :disabled="busy" style="margin-top:16px" @click="printDoc">打印就业协议书</button>
         </section>
         <section class="sp-card" style="max-width:820px">
           <div class="sp-panel__head">就业回访</div>
-          <AutoTable :rows="my.followUps" empty="暂无回访记录" />
+          <AutoTable :rows="my.followUps" :columns="FOLLOW_UP_COLS" empty="暂无回访记录" />
         </section>
       </template>
     </template>
@@ -109,6 +109,20 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const session = useSessionStore()
+const MATERIAL_TYPE = Object.freeze({
+  OFFER: '录用证明', STUDY_PROOF: '升学证明', STARTUP_PROOF: '创业证明', AGREEMENT: '就业协议'
+})
+const MATERIAL_COLS = [
+  { key: 'type', label: '材料类型', formatter: (value) => MATERIAL_TYPE[String(value || '').toUpperCase()] || '其他就业材料' },
+  { key: 'fileName', label: '文件名称' },
+  { key: 'status', label: '审核状态' }
+]
+const FOLLOW_UP_WAY = Object.freeze({ PHONE: '电话联系', FACE: '面谈', RECOMMEND: '岗位推荐', VISIT: '走访' })
+const FOLLOW_UP_COLS = [
+  { key: 'time', label: '回访时间' },
+  { key: 'way', label: '跟进方式', formatter: (value) => FOLLOW_UP_WAY[String(value || '').toUpperCase()] || '其他方式' },
+  { key: 'content', label: '回访内容' }
+]
 const tabs = [
   { key: 'overview', label: '我的就业' }, { key: 'source', label: '生源核对' },
   { key: 'destination', label: '去向登记' }, { key: 'contract', label: '签约材料' }

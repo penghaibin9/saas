@@ -59,13 +59,17 @@ def test_academic_and_current_main_heads_are_joined_without_ddl():
     }
     assert "0134_aa_makeup_source_identity" in reachable
     assert "0142_gd_excellent_delay" in reachable
+    assert "aa_final_20260729" in reachable
 
-    head = script.get_revision(heads[0])
-    parents = head.down_revision
+    # 当前最终 head 之后仍可继续追加普通迁移，不能要求“最后一个文件本身”永远是 merge。
+    # 真正要守的是：教务长期线与当时 main 已经在这个无 DDL merge 点正式汇合，且该
+    # merge 仍位于唯一 head 的祖先链中。
+    merge = script.get_revision("aa_final_20260729")
+    parents = merge.down_revision
     assert isinstance(parents, tuple)
-    assert len(parents) >= 2
+    assert set(parents) == {"0134_aa_makeup_source_identity", "0144_affairs_leave_identity_cutover"}
 
-    source = Path(head.path).read_text(encoding="utf-8")
+    source = Path(merge.path).read_text(encoding="utf-8")
     assert "def upgrade" in source
     assert "def downgrade" in source
     assert "op." not in source

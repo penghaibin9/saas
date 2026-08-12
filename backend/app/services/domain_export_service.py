@@ -75,7 +75,7 @@ def _import_service(mod_name):
     raise ModuleNotFoundError(f"服务模块未找到：app.services.{mod_name} 或 app.modules.*.services.{mod_name}")
 
 
-def _call_list(path, *, domain: str, user: dict):
+def _call_list(path, *, domain: str, user: dict, batch_id=None):
     # A3：就业正式导出必须与正式 PC 列表共用同一 dataScope；禁止绕过 runtime 直接导出全租户。
     if domain == "employment":
         from app.modules.employment.services import employment_runtime_service
@@ -84,7 +84,17 @@ def _call_list(path, *, domain: str, user: dict):
     else:
         mod_name, fn_name = path.split(".")
         fn = getattr(_import_service(mod_name), fn_name)
-        items, total = fn(1, MAX_EXPORT_ROWS)
+        if domain == "internship":
+            # 岗位实习已经把 batchId 提升为正式事实边界；导出必须与 PC 列表共用
+            # 同一批次 + dataScope 过滤，禁止回退到无批次全历史扫描。
+            items, total = fn(
+                1,
+                MAX_EXPORT_ROWS,
+                batch_id=batch_id,
+                user=user,
+            )
+        else:
+            items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:
         raise AppException(
             "VALIDATION_ERROR",
@@ -107,7 +117,7 @@ def _require_student_affairs_full_scope(user: dict) -> None:
             )
 
 
-def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
+def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_id=None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导出域：{domain}")
     if not purpose or len(purpose.strip()) < 5:
@@ -117,8 +127,13 @@ def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
     user = user or get_current_user_ctx() or {}
     if domain == "student-affairs":
         _require_student_affairs_full_scope(user)
+    if domain == "internship" and (batch_id is None or not str(batch_id).strip()):
+        raise AppException(
+            "VALIDATION_ERROR",
+            "岗位实习导出必须指定 batchId，禁止无批次导出全历史",
+        )
     title, list_path, cols = DOMAINS[domain]
-    items, total = _call_list(list_path, domain=domain, user=user)
+    items, total = _call_list(list_path, domain=domain, user=user, batch_id=batch_id)
     from openpyxl import Workbook
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title=title[:28])
@@ -160,7 +175,10 @@ def export_domain(domain: str, purpose: str, user: dict | None = None) -> dict:
         db.close()
     try:
         from app.services import audit_log
-        audit_log.record("EXPORT", f"{domain}-export", detail={"rows": total, "purpose": purpose.strip()})
+        detail = {"rows": total, "purpose": purpose.strip()}
+        if domain == "internship":
+            detail["batchId"] = str(batch_id)
+        audit_log.record("EXPORT", f"{domain}-export", detail=detail)
     except Exception:  # noqa: BLE001
         pass
     return task

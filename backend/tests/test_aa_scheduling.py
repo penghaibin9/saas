@@ -25,7 +25,7 @@ def _stu_token(real_name, student_no):
 
 
 def _seed_batch_with_conflict(db_mode):
-    """建正式学期/作息 + 课表批次 + 2 个同教师同时段条目。"""
+    """建正式学期/作息 + 课表批次 + 2 个同任课教师同时段条目。"""
     from app.db.session import get_sessionmaker
     from app.models import AaScheduleBatch, AaScheduleItem, AaTerm, AaTimeSlot
     db = get_sessionmaker()()
@@ -37,14 +37,15 @@ def _seed_batch_with_conflict(db_mode):
     b = AaScheduleBatch(tenant_id=TID, term_id=term.id,
                         batch_name="排课冲突测试批次", status="DRAFT")
     db.add(b); db.flush()
-    # 两条：同教师 counselor01、同周一第1节、周次重叠 → HARD TEACHER 冲突
+    # 两条：同任课教师 academic01、同周一第1节、周次重叠 → HARD TEACHER 冲突。
+    # 教师不可排时间端点要求 ACADEMIC_TEACHER 权限，辅导员不再冒充任课教师。
     db.add_all([
         AaScheduleItem(tenant_id=TID, batch_id=b.id, course_name="高数", class_id=1,
-                       class_name="软件2401", teacher_key="counselor01", teacher_name="王老师",
+                       class_name="软件2401", teacher_key="academic01", teacher_name="赵敏",
                        weekday=1, slot_no=1, start_week=1, end_week=18,
                        week_parity="ALL", classroom_text="A101", status="EFFECTIVE"),
         AaScheduleItem(tenant_id=TID, batch_id=b.id, course_name="英语", class_id=2,
-                       class_name="软件2402", teacher_key="counselor01", teacher_name="王老师",
+                       class_name="软件2402", teacher_key="academic01", teacher_name="赵敏",
                        weekday=1, slot_no=1, start_week=1, end_week=18,
                        week_parity="ALL", classroom_text="A102", status="EFFECTIVE"),
     ])
@@ -72,7 +73,7 @@ def test_sc1_rule_crud(client, db_mode):
 
 def test_sc2_teacher_availability_flow(client, db_mode):
     ids = _seed_batch_with_conflict(db_mode)
-    teacher = _hdr(client, "counselor01")
+    teacher = _hdr(client, "academic01")
     admin = _hdr(client, "school_admin01")
     a = client.post(f"{BASE}/scheduling/teacher-availability", headers=teacher, json={
         "termId": str(ids["term"]), "weekday": 1, "slotNo": 1, "reason": "固定教研会",
@@ -98,7 +99,7 @@ def test_sc3_conflict_report_hard(client, db_mode):
 
 def test_sc4_conflict_report_soft(client, db_mode):
     ids = _seed_batch_with_conflict(db_mode)
-    teacher = _hdr(client, "counselor01")
+    teacher = _hdr(client, "academic01")
     admin = _hdr(client, "school_admin01")
     a = client.post(f"{BASE}/scheduling/teacher-availability", headers=teacher, json={
         "termId": str(ids["term"]), "weekday": 1, "slotNo": 1, "reason": "教研会安排",

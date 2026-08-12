@@ -49,7 +49,6 @@ def _seed(db_mode):
         AcademicWarning(tenant_id=TID, acad_student_id=a1.id, warn_type="MULTI_FAIL", level="HIGH",
                         status="PENDING_HANDLE", record_status="ACTIVE"),
     ])
-    # college_admin01 → 软件学院 数据范围
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", role_code="COLLEGE_ADMIN",
                               scope_type="COLLEGE", ref_value="软件学院", status="ACTIVE"))
     db.commit()
@@ -59,8 +58,6 @@ def _seed(db_mode):
 
 
 def _seed_tier1(db_mode):
-    """在 `_seed` 基础上补种 Tier1 10 项三级模块（02/03/04/05/06/10/11/12/13/15 号卡）所需数据：
-    学籍异动 / 课程 / 教学任务 / 课表冲突 / 毕业资格预审结果。不改动 `_seed` 本身，避免影响既有用例。"""
     import json
 
     from app.db.session import get_sessionmaker
@@ -73,15 +70,13 @@ def _seed_tier1(db_mode):
                           status="EFFECTIVE"))
     c1 = AaCourse(tenant_id=TID, course_code="TC001", course_name="测试课程A", category="MAJOR_CORE",
                  credit=4, hours_total=64, owner_college_id=ids["soft"], status="ENABLED")
-    db.add(c1)
-    db.flush()
+    db.add(c1); db.flush()
     db.add(AaTeachingTask(tenant_id=TID, batch_id=1, course_id=c1.id, course_name=c1.course_name,
                           teaching_class_name="测试班", teacher_key="TT001", teacher_name="测试教师",
                           weekly_hours=4, total_hours=64, confirm_at=None, status="ASSIGNED"))
     sb = AaScheduleBatch(tenant_id=TID, term_id=1, batch_name="测试课表批次",
                          college_id=ids["soft"], status="PUBLISHED")
-    db.add(sb)
-    db.flush()
+    db.add(sb); db.flush()
     db.add(AaScheduleItem(tenant_id=TID, batch_id=sb.id, course_name="测试课程A", class_id=1,
                           class_name="测试班", teacher_key="TT001", teacher_name="测试教师",
                           weekday=1, slot_no=1, week_parity="ALL", status="EFFECTIVE"))
@@ -90,8 +85,7 @@ def _seed_tier1(db_mode):
                           weekday=1, slot_no=1, week_parity="ALL", status="EFFECTIVE"))
     gb = AaGraduationAuditBatch(tenant_id=TID, batch_name="测试预审批次", grade_year="2026",
                                 status="PRECHECKED")
-    db.add(gb)
-    db.flush()
+    db.add(gb); db.flush()
     db.add(AaGraduationAuditResult(tenant_id=TID, batch_id=gb.id, student_id=ids["s1"],
                                    overall="SYSTEM_ABNORMAL", status="SYSTEM_ABNORMAL",
                                    item_results_json=json.dumps([{"item": "CREDIT", "result": "FAIL"}])))
@@ -102,11 +96,6 @@ def _seed_tier1(db_mode):
     ids.update({"course": c1.id, "scheduleBatch": sb.id, "gradBatch": gb.id})
     db.close()
     return ids
-
-
-# ═══════════ Tier1 10 项三级模块（02/03/04/05/06/10/11/12/13/15 号卡）══════════
-# 既有 `/stats/status-change`、`/stats/registration`、`/stats/warning` 三个路径已是总览下钻明细，
-# 聚合端点改 `/summary` 后缀，不破坏以上既有用例；其余为全新路径。
 
 
 def test_tier1_status_change_summary_ok(client, db_mode):
@@ -163,7 +152,8 @@ def test_tier1_grade_ok(client, db_mode):
     assert r["code"] == 0 and r["data"]["failRate"] == 50.0
     d = client.get(f"{BASE}/stats/grade/detail", headers=hdr).json()
     assert d["code"] == 0 and d["data"]["total"] == 1
-    assert d["data"]["items"][0]["studentNo"] != "2024001"   # 学号脱敏
+    # 2026-07-25 冻结口径：学号是校内业务编码，教务授权下钻直接展示；敏感联系方式仍走独立脱敏规则。
+    assert d["data"]["items"][0]["studentNo"] == "2024001"
 
 
 def test_tier1_warning_summary_ok(client, db_mode):
@@ -198,7 +188,6 @@ def test_tier1_workload_ok(client, db_mode):
 
 
 def test_tier1_course_college_scope(client, db_mode):
-    """04 号卡跨范围测试：学院教务员只能查本院，越院 403（依赖既有 `build_affairs_context` 数据范围解析器）。"""
     ids = _seed_tier1(db_mode)
     hdr = _hdr(client, "college_admin01")
     ok = client.get(f"{BASE}/stats/course", headers=hdr, params={"collegeId": ids["soft"]}).json()
@@ -208,7 +197,6 @@ def test_tier1_course_college_scope(client, db_mode):
 
 
 def test_tier1_export_domains_ok(client, db_mode):
-    """15 号卡导出报表：domain 选择器覆盖全部 10 项新增维度，均产出真实 xlsx（PK 魔数）。"""
     _seed_tier1(db_mode)
     hdr = _hdr(client, "school_admin01")
     for domain in ("statusChange", "registration", "course", "teachingTask", "schedule",
@@ -236,16 +224,12 @@ def test_overview_ok(client, db_mode):
     d = r["data"]
     assert len(d["indicators"]) == 15
     by_key = {i["key"]: i for i in d["indicators"]}
-    # 原 4 项占位已核销（2026-07-16）：模块均已建成，指标必须是真实聚合而非"未启用"
     for k in ("scheduleChange", "courseSelection", "exam", "resource"):
         assert by_key[k]["status"] == "OK", f"{k} 不应再返回占位"
         assert by_key[k]["value"] is not None
-    # 注册完成率：1 已注册 / 2 应注册 = 50%
     reg = by_key["registration"]
     assert reg["numerator"] == 1 and reg["denominator"] == 2 and reg["rate"] == 50.0
-    # 挂科率：1 FAILED / 2 有成绩 = 50%
     assert by_key["failRate"]["numerator"] == 1 and by_key["failRate"]["denominator"] == 2
-    # 预警数 = 1
     assert by_key["warning"]["value"] == 1
     assert d["scope"]["all"] is True
 
@@ -265,11 +249,10 @@ def test_registration_drill_ok(client, db_mode):
     r = client.get(f"{BASE}/stats/registration", headers=hdr).json()
     assert r["code"] == 0
     names = [row["studentName"] for row in r["data"]["items"]]
-    assert "孙三" in names            # 未注册（PENDING_REGISTER）
-    assert "钱二" not in names        # 已注册不在未注册名单
-    # 学号脱敏（非明文全串）
-    for row in r["data"]["items"]:
-        assert row["studentNo"] != "2024002"
+    assert "孙三" in names
+    assert "钱二" not in names
+    rows = r["data"]["items"]
+    assert rows and all(row["studentNo"] == "2024002" for row in rows)
 
 
 def test_warning_drill_ok(client, db_mode):
@@ -291,10 +274,8 @@ def test_student_forbidden(client, db_mode):
 def test_college_admin_cross_scope_denied(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "college_admin01")
-    # 本院（软件学院）→ 允许
     ok = client.get(f"{BASE}/stats/overview", headers=hdr, params={"collegeId": ids["soft"]}).json()
     assert ok["code"] == 0
-    # 越院（机械学院）→ 越权拒绝
     denied = client.get(f"{BASE}/stats/overview", headers=hdr, params={"collegeId": ids["other"]})
     body = denied.json()
     assert denied.status_code == 403 or body.get("code") == "NO_DATA_SCOPE"
@@ -303,9 +284,7 @@ def test_college_admin_cross_scope_denied(client, db_mode):
 def test_export_purpose_required(client, db_mode):
     _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 用途缺失 / 过短 → 400（本项目 pydantic 校验错误统一转 400）
     assert client.post(f"{BASE}/stats/export", headers=hdr, json={"purpose": "x"}).status_code == 400
-    # 合法导出 → xlsx 字节（zip 魔数 PK）
     r = client.post(f"{BASE}/stats/export", headers=hdr, json={"purpose": "期末教务运行汇报"})
     assert r.status_code == 200
     assert r.content[:2] == b"PK"

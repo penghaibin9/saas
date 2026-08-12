@@ -18,30 +18,131 @@ def _hdr(client, login_name):
 
 def _seed(db_mode, n=2):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import College, Major, SchoolClass, StudentProfile
+    from tests.support_grade_review_identity import seed_grade_review_identity
+
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2601", grade="2026", status="ACTIVE")
+    college = College(tenant_id=TID, college_name="成绩回归学院", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=TID, college_id=college.id, major_name="成绩回归专业", status="ACTIVE")
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2601", grade="2026", status="ACTIVE")
     db.add(a); db.flush()
+    seed_grade_review_identity(db, college_ids=[college.id])
     sids = []
     for i in range(n):
-        s = StudentProfile(tenant_id=TID, student_no=f"G{i:03d}", real_name=f"成绩{i}", class_id=a.id,
-                           current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+        s = StudentProfile(
+            tenant_id=TID, student_no=f"G{i:03d}", real_name=f"成绩{i}",
+            college_id=college.id, major_id=major.id, class_id=a.id,
+            current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
         db.add(s); db.flush(); sids.append(s.id)
     db.commit()
     db.close()
     return sids
 
 
-def _task(client, hdr, usual=30, final=70):
-    return client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "高等数学", "termCode": "2026-2027-1", "credit": 4,
-        "usualRatio": usual, "finalRatio": final,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+def _ensure_term():
+    """成绩主链必须绑定正式 termId；老测试不得继续拿自由文本 termCode 代替权威学期。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+
+    db = get_sessionmaker()()
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == TID,
+        AaTerm.year_code == "2026-2027",
+        AaTerm.term_no == 1,
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        term = AaTerm(
+            tenant_id=TID,
+            year_code="2026-2027",
+            term_no=1,
+            term_name="2026-2027第1学期",
+            status="PUBLISHED",
+            is_current=True,
+        )
+        db.add(term)
+        db.flush()
+    term_id = int(term.id)
+    db.commit()
+    db.close()
+    return term_id
+
+
+def _class_id():
+    """复用本测试刚建立的正式行政班。"""
+    from app.db.session import get_sessionmaker
+    from app.models import SchoolClass
+
+    db = get_sessionmaker()()
+    row = db.query(SchoolClass).filter(
+        SchoolClass.tenant_id == TID,
+        SchoolClass.class_name == "软件2601",
+        SchoolClass.is_deleted.is_(False),
+    ).order_by(SchoolClass.id.desc()).first()
+    assert row is not None
+    class_id = int(row.id)
+    db.close()
+    return class_id
+
+
+def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4):
+    """通过课程库正式状态机建立稳定 courseId，而不是在成绩任务中继续使用自由文本课程。"""
+    created = client.post(f"{BASE}/courses", headers=hdr, json={
+        "courseCode": code,
+        "courseName": name,
+        "category": "MAJOR_CORE",
+        "nature": "REQUIRED",
+        "credit": credit,
+        "hoursTotal": 64,
+        "hoursTheory": 48,
+        "hoursPractice": 16,
+        "examMode": "EXAM",
+    })
+    assert created.status_code == 200, created.text
+    course_id = created.json()["data"]["courseId"]
+    submitted = client.post(f"{BASE}/courses/{course_id}/submit", headers=hdr)
+    assert submitted.status_code == 200, submitted.text
+    college = client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json={"action": "APPROVE"})
+    assert college.status_code == 200, college.text
+    academic = client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json={"action": "APPROVE"})
+    assert academic.status_code == 200, academic.text
+    return course_id
+
+
+def _task(client, hdr, usual=30, midterm=0, final=70, *,
+          course_name="高等数学", course_code="GD101", credit=4):
+    """建立普通正式教学任务，让成绩测试继续验证提交→审核→发布主链。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+
+    term_id = _ensure_term()
+    course_id = _enabled_course(client, hdr, code=course_code, name=course_name, credit=credit)
+    class_id = _class_id()
+    db = get_sessionmaker()()
+    batch = AaTeachingTaskBatch(
+        tenant_id=TID, term_id=term_id, batch_name=f"{course_name}成绩回归任务批次", status="APPROVED")
+    db.add(batch); db.flush()
+    teaching_task = AaTeachingTask(
+        tenant_id=TID, batch_id=batch.id, course_id=int(course_id), course_code=course_code,
+        course_name=course_name, class_id=class_id, teaching_class_name="软件2601",
+        teacher_key="academic01", teacher_name="赵敏", expected_students=None,
+        weekly_hours=4, total_hours=72, start_week=1, end_week=18, status="READY")
+    db.add(teaching_task); db.flush()
+    teaching_task_id = int(teaching_task.id)
+    db.commit()
+    db.close()
+
+    r = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
+        "teachingTaskId": str(teaching_task_id),
+        "usualRatio": usual, "midtermRatio": midterm, "finalRatio": final})
+    assert r.status_code == 200, r.text
+    return r.json()["data"]["gradeTaskId"]
 
 
 def _submit_and_approve(client, hdr, tid):
-    """走完提交→学院审通过→（回到 ACADEMIC_REVIEW，供调用方自行发布）。
-    school_admin01(SCHOOL_ADMIN) 同时在 _REVIEW_ROLES 白名单内，可代行教务处/学院两级动作。"""
+    """走完提交→学院审通过→（回到 ACADEMIC_REVIEW，供调用方自行发布）。"""
     s = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
     assert s.status_code == 200, s.text
     r = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
@@ -55,20 +156,25 @@ def test_g1_compose_publish_project(client, db_mode):
     tid = _task(client, hdr)
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                     json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 90}).json()
-    assert r["data"]["totalScore"] == 87 and r["data"]["passStatus"] == "PASSED"  # 80*.3+90*.7
+    assert r["data"]["totalScore"] == 87 and r["data"]["passStatus"] == "PASSED"
     _submit_and_approve(client, hdr, tid)
     p = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr).json()
     assert p["data"]["projected"] == 1
-    # 投影到 t_acad_grade → 成绩单可读
     tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=hdr).json()["data"]
     assert any(g["courseName"] == "高等数学" and g["score"] == 87 and g["source"] == "PUBLISH" for g in tr["items"])
 
 
 def test_g2_ratio_not_100_422(client, db_mode):
+    _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
-    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 40, "finalRatio": 70,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
+    term_id = _ensure_term()
+    course_id = _enabled_course(client, hdr, code="GD102", name="比例异常课")
+    r = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
+        "courseId": str(course_id), "courseName": "比例异常课", "classId": str(_class_id()),
+        "termId": str(term_id), "usualRatio": 40, "finalRatio": 70,
+        "adminSupplementReason": "测试管理员补录成绩任务"})
+    assert r.status_code == 400, r.text
+    assert r.json()["code"] == 422001
 
 
 def test_g3_incomplete_submit_409(client, db_mode):
@@ -77,7 +183,6 @@ def test_g3_incomplete_submit_409(client, db_mode):
     tid = _task(client, hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                 json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
-    # 第2人只录平时分未录期末分 → total_score 仍为 None → 未录全
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={"studentId": str(sids[1]), "usualScore": 70})
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 409
 
@@ -87,7 +192,7 @@ def test_g4_fail_list(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = _task(client, hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
-                json={"studentId": str(sids[0]), "usualScore": 40, "finalScore": 50})  # 47 FAIL
+                json={"studentId": str(sids[0]), "usualScore": 40, "finalScore": 50})
     _submit_and_approve(client, hdr, tid)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     fl = client.get(f"{BASE}/grade-views/fail-list", headers=hdr).json()["data"]["items"]
@@ -107,12 +212,12 @@ def test_g5_analysis(client, db_mode):
 
 
 def test_g8_analysis_enhanced_and_group(client, db_mode):
-    """正方对标：总体新增优秀率/平均分/最高最低；dimension=course/class 出分组统计表。"""
+    """总体统计 + course/class 分组；课程维度按稳定 courseCode 聚合，禁止退回易漂移课程名键。"""
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
     tid = _task(client, hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
-                json={"studentId": str(sids[0]), "usualScore": 90, "finalScore": 90})  # 合成 90，优秀
+                json={"studentId": str(sids[0]), "usualScore": 90, "finalScore": 90})
     _submit_and_approve(client, hdr, tid)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     a = client.get(f"{BASE}/grade-views/analysis", headers=hdr).json()["data"]
@@ -120,7 +225,7 @@ def test_g8_analysis_enhanced_and_group(client, db_mode):
     assert a["maxScore"] == 90 and a["minScore"] == 90
     byc = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "course"}).json()["data"]
     assert byc["dimension"] == "course"
-    assert any(r["name"] == "高等数学" and r["total"] == 1 for r in byc["rows"])
+    assert any(r["name"] == "GD101" and r["total"] == 1 for r in byc["rows"])
     byk = client.get(f"{BASE}/grade-views/analysis", headers=hdr, params={"dimension": "class"}).json()["data"]
     assert byk["dimension"] == "class" and len(byk["rows"]) >= 1
 
@@ -148,28 +253,36 @@ def test_g10_midterm_three_component(client, db_mode):
     """成绩分项扩展(正方对标)：平时30+期中30+期末40 三分项按比例合成总评；期中未录则未录全。"""
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
-    tid = client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "钳工实训", "termCode": "2026-1", "credit": 3,
-        "usualRatio": 30, "midtermRatio": 30, "finalRatio": 40,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).json()["data"]["gradeTaskId"]
+    tid = _task(client, hdr, usual=30, midterm=30, final=40,
+                course_name="钳工实训", course_code="GD110", credit=3)
     r = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
         "studentId": str(sids[0]), "usualScore": 80, "midtermScore": 90, "finalScore": 100}).json()
-    assert r["data"]["totalScore"] == 91  # 80*.3 + 90*.3 + 100*.4 = 24+27+40
+    assert r["data"]["totalScore"] == 91
     assert r["data"]["passStatus"] == "PASSED"
     r2 = client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr, json={
-        "studentId": str(sids[0]), "usualScore": 80, "midtermScore": None, "finalScore": 100}).json()  # 显式清空期中→未录全
+        "studentId": str(sids[0]), "usualScore": 80, "midtermScore": None, "finalScore": 100}).json()
     assert r2["data"]["totalScore"] is None
     assert r2["data"]["midtermScore"] is None
 
 
 def test_g11_midterm_ratio_sum_must_100(client, db_mode):
+    _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
-    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "X", "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 400
-    assert client.post(f"{BASE}/grade-tasks", headers=hdr, json={
-        "courseName": "Y", "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
-        "adminSupplementReason": "测试管理员补录成绩任务"}).status_code == 200
+    term_id = _ensure_term()
+    course_id = _enabled_course(client, hdr, code="GD111", name="比例三分项课")
+    common = {
+        "courseId": str(course_id), "courseName": "比例三分项课", "classId": str(_class_id()),
+        "termId": str(term_id), "adminSupplementReason": "测试管理员补录成绩任务",
+    }
+    bad = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
+        **common, "usualRatio": 30, "midtermRatio": 30, "finalRatio": 30,
+    })
+    assert bad.status_code == 400, bad.text
+    assert bad.json()["code"] == 422001
+    ok = client.post(f"{BASE}/grade-tasks/identity", headers=hdr, json={
+        **common, "usualRatio": 40, "midtermRatio": 20, "finalRatio": 40,
+    })
+    assert ok.status_code == 200, ok.text
 
 
 def test_g6_fail_list_no_n_plus_one(client, db_mode):
@@ -181,7 +294,7 @@ def test_g6_fail_list_no_n_plus_one(client, db_mode):
     tid = _task(client, hdr)
     for sid in sids:
         client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
-                    json={"studentId": str(sid), "usualScore": 30, "finalScore": 30})  # 30 FAIL
+                    json={"studentId": str(sid), "usualScore": 30, "finalScore": 30})
     _submit_and_approve(client, hdr, tid)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     hits = []
@@ -244,8 +357,7 @@ def test_g9_exception_list_filter_flag_and_student_403(client, db_mode):
 
 
 def test_g10_cross_tenant_teaching_task_rejected(client, db_mode):
-    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝（此前 db.get 不校验
-    tenant_id，会把他租户 teacher_key 带进本租户新任务）。"""
+    """租户隔离收口：新建成绩任务引用他租户 teachingTaskId 须拒绝。"""
     _seed(db_mode, 1)
     from app.db.session import get_sessionmaker
     from app.models import AaTeachingTask

@@ -192,7 +192,39 @@ def test_concurrent_teacher_workbench_50(client, smoke):
 
 # ═══════════ 5-6. 并发写：服务申请 / 周报重复提交 ═══════════
 
-def test_concurrent_service_apply_20(client, smoke):
+def test_concurrent_service_apply_20(client, db_mode):
+    """服务申请并发必须在真实 TEST_DATABASE_URL(MySQL) 上验，不允许 SQLite 锁冒充生产结论。"""
+    from app.db.session import get_engine, get_sessionmaker
+    from app.models import CsServiceStudent, StudentProfile
+
+    assert get_engine().dialect.name == "mysql", "service-apply 并发验收必须运行在 MySQL"
+
+    db = get_sessionmaker()()
+    try:
+        stu = StudentProfile(
+            tenant_id=MAIN,
+            student_no="LS00001",
+            real_name="冒烟学生1",
+            grade="2023",
+            current_stage="ON_CAMPUS",
+            student_status="NORMAL",
+            status="ACTIVE",
+        )
+        db.add(stu)
+        db.flush()
+        db.add(CsServiceStudent(
+            tenant_id=MAIN,
+            student_no="LS00001",
+            student_id=stu.id,
+            name="冒烟学生1",
+            class_name="软件2301班",
+            risk_level="HIGH",
+            record_status="ACTIVE",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     stu = _stu()
     jobs = [("POST", "/api/v1/mobile/campus-service/apply", stu,
              {"serviceKey": "证明开具", "reason": f"并发冒烟申请事由编号{i}，用于开具证明"})
@@ -203,7 +235,55 @@ def test_concurrent_service_apply_20(client, smoke):
     assert set(codes) <= {200, 409}, f"服务申请异常状态：{codes}"
 
 
-def test_concurrent_weekly_duplicate_20(client, smoke):
+def test_concurrent_weekly_duplicate_20(client, db_mode):
+    """同周重复提交在真实 MySQL 上必须稳定为最多一次成功，其余冲突，不允许任何 5xx。"""
+    from datetime import datetime
+    from app.db.session import get_engine, get_sessionmaker
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
+
+    assert get_engine().dialect.name == "mysql", "weekly duplicate 并发验收必须运行在 MySQL"
+
+    db = get_sessionmaker()()
+    try:
+        stu_row = StudentProfile(
+            tenant_id=MAIN,
+            student_no="LS00001",
+            real_name="冒烟学生1",
+            grade="2023",
+            current_stage="INTERNSHIP",
+            student_status="NORMAL",
+            status="ACTIVE",
+        )
+        db.add(stu_row)
+        db.flush()
+        batch = InternshipBatch(
+            tenant_id=MAIN,
+            batch_name="并发周报冒烟批次",
+            batch_no=f"LOAD-WEEKLY-{time.time_ns()}",
+            status="RUNNING",
+            start_date=datetime(2026, 3, 1),
+            end_date=datetime(2026, 8, 31),
+            planned_count=10,
+        )
+        db.add(batch)
+        db.flush()
+        rec = InternshipRecord(
+            tenant_id=MAIN,
+            student_id=stu_row.id,
+            batch_id=batch.id,
+            enterprise_name="冒烟企业",
+            position_name="实习生",
+            advisor_name="冒烟导师",
+            status="ONBOARD",
+            risk_level="MEDIUM",
+        )
+        db.add(rec)
+        db.flush()
+        internship_id = rec.id
+        db.commit()
+    finally:
+        db.close()
+
     stu = _stu()
     body = {"weekNo": 9, "workContent": "并发重复提交冒烟测试周报工作内容，超过十个汉字以通过校验。",
            "harvestContent": "并发重复提交冒烟测试周报收获内容，超过十个汉字以通过校验。"}
@@ -214,12 +294,11 @@ def test_concurrent_weekly_duplicate_20(client, smoke):
     assert set(codes) <= {200, 409}, f"周报重复提交异常状态：{codes}"
     assert codes.get(200, 0) <= 1, f"同周周报被写入多条：{codes}"
     # 落库校验：第 9 周只允许 1 条
-    from app.db.session import get_sessionmaker
     from sqlalchemy import func, select
     from app.models import WeeklyReport
     db = get_sessionmaker()()
     n = db.scalar(select(func.count()).select_from(WeeklyReport).where(
-        WeeklyReport.tenant_id == MAIN, WeeklyReport.internship_id == smoke["internshipId"],
+        WeeklyReport.tenant_id == MAIN, WeeklyReport.internship_id == internship_id,
         WeeklyReport.week_number == 9, WeeklyReport.is_deleted.is_(False))) or 0
     db.close()
     assert n <= 1, f"第 9 周周报入库 {n} 条（应 ≤1）"
@@ -256,12 +335,47 @@ def test_cross_tenant_50(client, smoke):
 
 # ═══════════ 10. 导出限制（限流 + 行数上限存在） ═══════════
 
-def test_export_rate_limit(client, smoke):
+def test_export_rate_limit(client, db_mode):
+    """岗位实习导出在真实 MySQL + 正式 batchId 合同下验证每用户每分钟 5 次限流。"""
+    from datetime import datetime
+    from app.db.session import get_engine, get_sessionmaker
+    from app.models import InternshipBatch, InternshipRecord
+
+    assert get_engine().dialect.name == "mysql", "export rate-limit 验收必须运行在 MySQL"
+
+    db = get_sessionmaker()()
+    try:
+        batch = InternshipBatch(
+            tenant_id=MAIN,
+            batch_name="并发导出冒烟批次",
+            batch_no=f"LOAD-EXPORT-{time.time_ns()}",
+            status="RUNNING",
+            start_date=datetime(2026, 3, 1),
+            end_date=datetime(2026, 8, 31),
+            planned_count=10,
+        )
+        db.add(batch)
+        db.flush()
+        db.add(InternshipRecord(
+            tenant_id=MAIN,
+            student_id=db_mode["student"],
+            batch_id=batch.id,
+            enterprise_name="冒烟导出企业",
+            position_name="实习生",
+            advisor_name="冒烟导师",
+            status="ONBOARD",
+            risk_level="LOW",
+        ))
+        batch_id = batch.id
+        db.commit()
+    finally:
+        db.close()
+
     adm = _admin()
     codes = {}
     for i in range(8):
         r = client.post("/api/v1/export/domain/internship", headers=adm,
-                        json={"purpose": "并发冒烟导出限制检查"})
+                        json={"purpose": "并发冒烟导出限制检查", "batchId": str(batch_id)})
         codes[r.status_code] = codes.get(r.status_code, 0) + 1
     print(f"\n[smoke] export-8: codes={codes}")
     assert all(c < 500 for c in codes), f"导出出现 5xx：{codes}"

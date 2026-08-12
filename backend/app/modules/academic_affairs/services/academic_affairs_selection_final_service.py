@@ -205,6 +205,9 @@ def student_enroll(user, body):
                 allow_reselect_closed=allow_reselect_closed,
             )
         except AppException as exc:
+            message = str(getattr(exc, "message", "") or str(exc))
+            if "上课时间冲突" in message:
+                _base._core._record_conflict_reject(db, batch, course, student, message)
             raise selection_trace.attach_selection_trace(
                 exc,
                 db=db,
@@ -357,3 +360,45 @@ def student_drop(user, body):
         )
         db.commit()
         return _base._core._record_dto(record)
+
+
+def lock_batch(user, batch_id):
+    """CLOSED→LOCKED 使用当前正式名单投影合同，并对批次行加锁。"""
+    from app.models import AaSelectionBatch
+    from .academic_affairs_teaching_roster_service import (
+        apply_locked_roster_projection,
+        validate_selection_lock,
+    )
+
+    with _base._core.session() as db:
+        _base._core._require_manage_scope(_base._core._ctx(user, db))
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("选课批次不存在")
+        _base._guard_batch_writable(db, batch)
+        if batch.status != _base._BATCH_CLOSED:
+            raise _base._core._invalid("仅已关闭选课批次可锁定名单")
+        validation = validate_selection_lock(db, batch)
+        if not validation.get("valid"):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课名单校验未通过",
+                details={"issues": list(validation.get("issues") or [])},
+                http_status=409,
+            )
+        apply_locked_roster_projection(db, validation)
+        batch.status = _base._BATCH_LOCKED
+        batch.locked_at = datetime.utcnow()
+        _base._core._audit(
+            db,
+            batch.id,
+            "SELECTION_LOCK",
+            "锁定选课名单并生成教学班名单版本",
+        )
+        db.commit()
+        db.refresh(batch)
+        return _base._core._batch_dto(batch)

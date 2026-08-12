@@ -144,10 +144,14 @@ def test_teacher_wechat_page_contains_local_draft_guard_batch_save_and_quality_r
     nav = (root / "miniapp/src/components/MobileNavBar.vue").read_text(encoding="utf-8")
     api = (root / "miniapp/src/services/academicGradeEntryApi.js").read_text(encoding="utf-8")
 
-    assert "uni.setStorageSync" in page
-    assert "restoreDraft" in page
+    # 成绩属于敏感教务数据：只允许页面内存暂存，禁止本地持久化草稿重新出现。
+    assert "修改仅保留在当前页面内存中" in page
+    assert "uni.setStorageSync" not in page
+    assert "restoreDraft" not in page
+    assert "persistDraftNow" not in page
     assert ":before-back=\"beforePageBack\"" in page
     assert "qualityReport" in page
+    assert "teacherApi.enterGradeScore" in page
     assert "academicGradeEntryApi.batchSave" in page
     assert "academicGradeEntryApi.qualityReport" in page
     assert "beforeBack" in nav

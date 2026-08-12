@@ -10,7 +10,7 @@
     <EmptyState
       v-else-if="!rows.length"
       title="暂无发布记录"
-      description="还没有入库的发布单（含草稿）。请到「通知发布」完成预览（接收人须大于 0）后点确认发布。浏览器本地自动保存不会出现在这里。若在正式演示学校（demo-school）登录，环境只读无法发布，请改用沙箱 admin2 / sandbox-school。"
+      description="暂无发布记录。完成通知发布后，可在这里查看发布状态与送达情况。"
     />
     <table v-else class="mc-table">
       <thead>
@@ -27,7 +27,7 @@
         <tr v-for="r in rows" :key="r.campaignId">
           <td>
             <div class="mc-main">{{ r.title }}</div>
-            <div class="mc-sub">{{ r.category }} · {{ r.priority }}</div>
+            <div class="mc-sub">{{ categoryLabel(r.category) }} · {{ priorityLabel(r.priority) }}</div>
           </td>
           <td>{{ statusLabel(r.status) }}</td>
           <td>{{ r.recipientCount }}</td>
@@ -45,6 +45,7 @@
 <script>
 import { ModulePageShell, LoadingState, EmptyState, ErrorState } from '@/components/business'
 import { fetchCampaigns } from '@/modules/messageCenter/api/message-campaign.api'
+import { safeEnumLabel } from '@/utils/presentationSafety'
 
 const STATUS_LABEL = {
   DRAFT: '草稿',
@@ -57,6 +58,8 @@ const STATUS_LABEL = {
   WITHDRAWN: '已撤回',
   FAILED: '失败'
 }
+const CATEGORY_LABEL = { ANNOUNCEMENT: '公告', BUSINESS: '业务通知', REMINDER: '提醒', EMERGENCY: '紧急消息' }
+const PRIORITY_LABEL = { LOW: '普通', NORMAL: '普通', MEDIUM: '重要', HIGH: '紧急', URGENT: '紧急' }
 
 export default {
   name: 'MessageOutboxView',
@@ -98,7 +101,13 @@ export default {
     },
     statusLabel(status) {
       const key = String(status || '').toUpperCase()
-      return STATUS_LABEL[key] || status || '—'
+      return safeEnumLabel({ value: key, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' })
+    },
+    categoryLabel(value) {
+      return safeEnumLabel({ value, dictionary: CATEGORY_LABEL, unknownLabel: '消息类型待确认' })
+    },
+    priorityLabel(value) {
+      return safeEnumLabel({ value, dictionary: PRIORITY_LABEL, unknownLabel: '优先级待确认' })
     },
     goDetail(id) {
       this.$router.push(`/admin/messages/outbox/${id}`)

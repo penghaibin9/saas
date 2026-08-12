@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
 from . import academic_affairs_selection_roster_projection_service as selection_projection
@@ -159,14 +160,40 @@ def validate_selection_lock(db, batch) -> dict:
                 "code": "BELOW_MIN_CAPACITY", "courseId": str(course.id),
                 "message": f"中选人数 {selected_count} 低于最低开班人数 {minimum}，请先取消或补选",
             })
+    result["batchId"] = str(batch.id)
     result["issues"] = issues
     result["valid"] = not issues
     return result
 
 
 def apply_locked_roster_projection(db, validation: dict) -> None:
-    """锁定时同步预计人数并生成独立教学班名单版本。"""
-    _core.apply_locked_roster_projection(db, validation)
+    """同一事务完成 SELECTED→LOCKED、预计人数和独立教学班名单版本投影。"""
+    from app.models import AaSelectionRecord
+
     batch_id = validation.get("batchId")
-    if batch_id:
-        selection_projection.project_selection_batch_locked(db, int(batch_id))
+    if not batch_id:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课锁定校验结果缺少 batchId，禁止生成不确定正式名单",
+            http_status=409,
+        )
+    expected = int(validation.get("selectedRecordCount") or 0)
+    transitioned = db.query(AaSelectionRecord).filter(
+        AaSelectionRecord.tenant_id == _tid(),
+        AaSelectionRecord.batch_id == int(batch_id),
+        AaSelectionRecord.status == "SELECTED",
+        AaSelectionRecord.is_deleted.is_(False),
+    ).update(
+        {AaSelectionRecord.status: "LOCKED"},
+        synchronize_session=False,
+    )
+    if int(transitioned or 0) != expected:
+        raise AppException(
+            "DATA_CONFLICT",
+            "选课名单在锁定事务中发生并发变化，请重新校验后再锁定",
+            details={"expected": expected, "transitioned": int(transitioned or 0)},
+            http_status=409,
+        )
+
+    _core.apply_locked_roster_projection(db, validation)
+    selection_projection.project_selection_batch_locked(db, int(batch_id))

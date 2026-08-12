@@ -10,10 +10,10 @@ def _read(path: str) -> str:
 
 
 def test_level_exam_route_uses_dedicated_page():
-    router = _read("student-portal/src/router/index.js")
+    router = _read("student-portal/src/router/academicRoutes.js")
 
     assert "StudentLevelExamView.vue" in router
-    assert "academicSection('academic/level-exam'" not in router
+    assert "academicSection('level-exam'" not in router
 
 
 def test_level_exam_workspace_uses_real_registration_contracts():

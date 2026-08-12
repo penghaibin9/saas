@@ -47,7 +47,8 @@ def test_dashboard_summary_reflects_real_data(client, db_mode):
     cards = {c["key"]: c["value"] for c in data["summaryCards"]}
     assert cards["studentTotal"] >= 1
     assert cards["registered"] >= 1
-    assert isinstance(data["moduleCards"], list) and len(data["moduleCards"]) > 0
+    # 正式学校首页已移除施工态 LIVE/PENDING 模块卡，能力入口由导航/readiness 承担。
+    assert "moduleCards" not in data
 
 
 def test_dashboard_reminders_aggregates_six_panels(client, db_mode):

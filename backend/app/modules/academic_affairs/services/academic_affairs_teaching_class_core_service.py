@@ -78,17 +78,18 @@ def _class_name(task) -> str:
 
 
 def _task_snapshot(task, batch) -> str:
+    """兼容跨版本教学任务字段；快照读取不得因旧属性缺失阻断名单锁定。"""
     return json.dumps({
         "teachingTaskId": str(task.id),
         "batchId": str(batch.id),
         "termId": str(batch.term_id),
-        "courseId": str(task.course_id),
-        "courseCode": task.course_code or "",
-        "courseName": task.course_name or "",
-        "administrativeClassId": str(task.class_id or ""),
-        "administrativeClassName": task.class_name or "",
-        "merged": bool(task.is_merged),
-        "mergedIntoId": str(task.merged_into_id or ""),
+        "courseId": str(getattr(task, "course_id", None) or ""),
+        "courseCode": str(getattr(task, "course_code", None) or ""),
+        "courseName": str(getattr(task, "course_name", None) or ""),
+        "administrativeClassId": str(getattr(task, "class_id", None) or ""),
+        "administrativeClassName": str(getattr(task, "class_name", None) or ""),
+        "merged": bool(getattr(task, "is_merged", False)),
+        "mergedIntoId": str(getattr(task, "merged_into_id", None) or ""),
     }, ensure_ascii=False, sort_keys=True)
 
 
@@ -463,7 +464,7 @@ def backfill_term(user, term_id: int, *, dry_run=True) -> dict:
             legacy = _legacy_resolve_roster(db, int(task.id))
             report.append({
                 "teachingTaskId": str(task.id), "courseName": task.course_name,
-                "className": task.teaching_class_name or task.class_name,
+                "className": _class_name(task),
                 "legacyReady": bool(legacy.get("ready")), "legacySource": legacy.get("source"),
                 "legacyMemberCount": len(legacy.get("studentIds") or []),
             })

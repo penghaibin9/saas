@@ -78,7 +78,7 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
     proposal_specs = [
         (1, "PENDING_REVIEW", "v1", False), (6, "PENDING_REVIEW", "v2", True),
         (8, "PENDING_REVIEW", "v1", False), (2, "APPROVED", "v1", False),
-        (3, "REJECTED", "v1", False),
+        (3, "REJECTED", "v1", False), (5, "APPROVED", "v1", False),
     ]
     for idx, (sid_idx, status, version, resubmit) in enumerate(proposal_specs):
         db.add(GraduationProposal(
@@ -149,6 +149,11 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
                            progress_plan="第1-4周调研，第5-10周开发，第11-14周测试答辩",
                            outcome_requirement="系统、源码、论文、测试报告齐全", status="CONFIRMED",
                            issued_by="王芳", issued_at=now - timedelta(days=65), confirmed_at=now - timedelta(days=64)),
+        GraduationTaskBook(tenant_id=tenant_id, gd_student_id=stus[5].id, mentor_id=mentors[1].id,
+                           objective="完成可归档的毕业设计成果", content="需求、设计、实现、测试与论文定稿",
+                           progress_plan="按任务书完成开题、中期、定稿、评阅与答辩",
+                           outcome_requirement="系统、论文、评阅、答辩与成绩事实完整", status="CONFIRMED",
+                           issued_by="钱立美", issued_at=now - timedelta(days=65), confirmed_at=now - timedelta(days=64)),
         GraduationGuidance(tenant_id=tenant_id, gd_student_id=stus[0].id, mentor_id=mentors[0].id,
                            guidance_date=now - timedelta(days=18), method="OFFLINE",
                            content="检查核心业务流程与数据库设计", issues="实习与就业模块关联需补充"),
@@ -162,6 +167,9 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
                           conclusion="RECTIFY", check_comment="测试用例覆盖不足",
                           check_by="毕业设计检查组", checked_at=now - timedelta(days=30),
                           rectify_deadline=now + timedelta(days=5), rectify_attempts=1),
+        GraduationMidterm(tenant_id=tenant_id, gd_student_id=stus[5].id, status="CHECKED_PASS",
+                          conclusion="PASS", check_comment="中期检查通过，允许进入定稿与答辩阶段",
+                          check_by="毕业设计检查组", checked_at=now - timedelta(days=30)),
         GraduationPlagiarismCheck(tenant_id=tenant_id, gd_student_id=stus[5].id,
                                   gd_final_id=finals[2].id, submit_at=now - timedelta(days=5),
                                   status="DONE", rate="9.2%", threshold=30, over_threshold=False,
@@ -209,4 +217,4 @@ def seed_graduation(db, tenant_id: int = TID) -> dict:
                              occurred_at=now - timedelta(days=60)),
     ])
     db.commit()
-    return {"students": len(stus), "topics": 5, "proposals": 5, "finals": 3, "defenseGroups": 3}
+    return {"students": len(stus), "topics": 5, "proposals": len(proposal_specs), "finals": 3, "defenseGroups": 3}

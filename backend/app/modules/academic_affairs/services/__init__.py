@@ -4,8 +4,22 @@
 旧实现或依赖导入顺序抢占函数。
 """
 
-# 各域最终公开入口。
+# 第一个公开入口完成基础 db_service -> app.models 初始化。
 from . import academic_affairs_dashboard_scope_facade as academic_affairs_service
+
+# 有效成绩安全层必须在其它可能按值导入 policy 函数的业务 Service 之前安装。
+# 过去这组模块由 app.models.academic_affairs_registry 反向 import，冷启动会形成
+# services -> db_service -> app.models -> registry -> services -> db_service 的循环依赖。
+# 现在模型注册表保持 model-only，在基础模型完成后由 Service 包统一、按固定顺序安装：
+# 兼容身份/学期顺序 -> 当前学期 -> ACTIVE-only -> 无策略 fail-closed。
+from . import academic_affairs_effective_grade_policy_compat
+from . import academic_affairs_effective_grade_policy_current_term
+from . import academic_affairs_effective_grade_active_only
+from . import academic_affairs_effective_grade_policy_failclosed
+
+academic_affairs_effective_grade_policy_failclosed.install()
+
+# 其余各域最终公开入口。
 from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
@@ -21,6 +35,19 @@ from . import academic_affairs_recognition_public_service as academic_affairs_re
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# 统计 08/09/14 历史曾存在同名重复定义，后定义的缩水实现会覆盖完整合同，连内部 xlsx 导出一起打坏。
+# 显式安装唯一 canonical contract；公开 wrapper 动态调用 legacy 时与 legacy 内部 export 使用同一函数对象。
+from . import academic_affairs_stats_contract_facade
+
+academic_affairs_stats_contract_facade.install()
+academic_affairs_stats_service.resource_stats = academic_affairs_stats_contract_facade.resource_stats
+academic_affairs_stats_service.resource_detail = academic_affairs_stats_contract_facade.resource_detail
+
+# 学生课表必须按当前 schedule batch 合并 LOCKED 选课，禁止把其它批次/学期排课串进来。
+from . import academic_affairs_schedule_facade as academic_affairs_schedule_student_view_facade
+
+academic_affairs_schedule_service.student_view = academic_affairs_schedule_student_view_facade.student_view
 
 # V2-03 最终规则安全层必须成为包级可见入口，并显式绑定到公开排课/自动排课服务。
 from . import academic_affairs_scheduling_rule_final_facade
@@ -57,6 +84,8 @@ from . import academic_affairs_graduation_truth_guard
 academic_affairs_graduation_truth_guard.install()
 
 # Stage C3：预览/正式预审共用同一 evaluator；正式预审和终审追加不可变 Run/Decision。
+# 正式 overall 只允许由 immutable service 内部的单一 fail-closed 实现决定，
+# 禁止再从包初始化阶段 monkey-patch 第二套规则覆盖它。
 from . import academic_affairs_graduation_immutable_service
 
 academic_affairs_graduation_immutable_service.install()
@@ -91,3 +120,8 @@ academic_affairs_archive_immutable_guard.install(academic_affairs_archive_servic
 from . import academic_affairs_grade_correction_command
 
 academic_affairs_grade_correction_command.install()
+
+# 成绩审计普通教师必须按真实任务/记录对象归属裁决，禁止用展示姓名充当身份键。
+from . import academic_affairs_grade_audit_scope_guard
+
+academic_affairs_grade_audit_scope_guard.install()
