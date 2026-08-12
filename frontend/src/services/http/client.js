@@ -283,8 +283,18 @@ export async function fetchMyAuthContexts() {
 
 export async function switchAuthContext(contextId, clientType = 'PC') {
   await ensureToken()
-  const generationAtStart = state.sessionGeneration
+
+  // browser-switch-role revokes every old refresh token before issuing the target role's durable
+  // session. Never let an already-running browser-refresh race that revocation/issuance window:
+  // first finish the one legitimate refresh already in flight, then advance the logical session
+  // generation before yielding again so all old-page 401 handlers fail closed instead of sending
+  // another refresh with a cookie that is being replaced by the role switch.
+  if (refreshPromise) await refreshPromise
+  if (!state.token) await ensureToken()
   const accessTokenAtStart = state.token
+  state.sessionGeneration += 1
+  const generationAtStart = state.sessionGeneration
+
   const data = await rawRequest('/auth/browser-switch-role', {
     method: 'POST',
     body: { contextId, clientType }
