@@ -51,6 +51,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             )
             denied.headers["X-Trace-Id"] = trace_id
             return denied
+
+        # Signed tenant identity and the current DB tenant registry must agree before any middleware
+        # guard or route can consume tenant context. This is especially important when a historical
+        # tenant-code/tenant-id mapping is corrected: an old but still cryptographically valid JWT
+        # must not carry the previous numeric tenantId into another school's row-level scope.
+        token_tenant_denied = _token_tenant_identity_deny(request, resolved_tenant)
+        if token_tenant_denied is not None:
+            token_tenant_denied.headers["X-Trace-Id"] = trace_id
+            return token_tenant_denied
+
         _bind_token_tenant(request)
         set_request_meta({
             "ip": _resolve_client_ip(request),
@@ -146,6 +156,57 @@ def _resolve_client_ip(request: Request) -> str:
     return direct
 
 
+def _token_tenant_identity_deny(request: Request, resolved_tenant: dict | None):
+    """Reject a valid school JWT when its signed tenant identity drifts from current DB truth.
+
+    Invalid/expired bearer tokens are intentionally left to the normal auth dependency so public
+    routes do not become globally bearer-mandatory. Platform super-admin identity is control-plane
+    scoped and is not forced through a school-tenant comparison here.
+    """
+    auth = (request.headers.get("authorization") or "").strip()
+    if not auth.lower().startswith("bearer "):
+        return None
+    try:
+        from app.core.security import decode_token
+        claims = decode_token(auth[7:].strip())
+    except Exception:
+        return None
+
+    if str(claims.get("userType") or "").strip().upper() == "PLATFORM_SUPER_ADMIN":
+        return None
+
+    claim_code = str(claims.get("tid") or "").strip()
+    claim_id = str(claims.get("tenantId") or "").strip()
+    real = resolved_tenant or {}
+    real_code = str(real.get("tenantCode") or "").strip()
+    real_id = str(real.get("tenantId") or "").strip()
+    real_status = str(real.get("status") or "").strip().upper()
+
+    mismatch = bool(
+        claim_code
+        and claim_id
+        and real_code
+        and real_id
+        and (claim_code != real_code or claim_id != real_id)
+    )
+    missing_prod_identity = bool(
+        settings.is_prod
+        and (not claim_code or not claim_id or not real_code or not real_id or real_status == "TENANT_NEUTRAL")
+    )
+    if not mismatch and not missing_prod_identity:
+        return None
+
+    from starlette.responses import JSONResponse
+    from app.core.response import fail
+    return JSONResponse(
+        status_code=401,
+        content=fail(
+            "TOKEN_TENANT_MISMATCH",
+            "学校身份已更新或登录会话无效，请重新登录",
+        ),
+    )
+
+
 def _bind_token_tenant(request: Request) -> None:
     try:
         auth = request.headers.get("authorization") or ""
@@ -175,10 +236,18 @@ def _bind_token_tenant(request: Request) -> None:
             # 令牌签发之后学校可能已被停用/归档，只读闸门依赖的正是这个 status。
             from app.core.tenant_context import lookup_tenant
             real = lookup_tenant(str(claims.get("tid") or "").strip())
-            set_tenant({"tenantId": str(claims["tenantId"]),
-                        "tenantCode": claims.get("tid") or "",
-                        "tenantName": claims.get("tenantName") or "",
-                        "status": (real or {}).get("status") or "UNKNOWN"})
+            if real is not None:
+                # Numeric identity comes from the same authoritative DB row whose code/status were
+                # just validated above, not from historical JWT bytes.
+                set_tenant({"tenantId": str(real.get("tenantId") or ""),
+                            "tenantCode": real.get("tenantCode") or "",
+                            "tenantName": real.get("tenantName") or claims.get("tenantName") or "",
+                            "status": real.get("status") or "UNKNOWN"})
+            elif not settings.is_prod:
+                set_tenant({"tenantId": str(claims["tenantId"]),
+                            "tenantCode": claims.get("tid") or "",
+                            "tenantName": claims.get("tenantName") or "",
+                            "status": "UNKNOWN"})
         elif claims.get("tid"):
             # 无 tenantId 的 token 仅保留给非生产 mock/test 兼容；production 不接受 mock tenant 绑回。
             if settings.is_prod:
