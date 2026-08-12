@@ -105,6 +105,10 @@ def build_router() -> APIRouter:
         f"{__package__}.roster_registration_convenience_router"
     )
     _mount_routes(router, roster_registration_convenience_module.router)
+    # D3-S：只迁 legacy base 仍持有的 status-change 主入口。future-effective /scheduled
+    # 继续由下方 status_change_temporal_router extension 持有，禁止复制 temporal 逻辑。
+    status_change_module = importlib.import_module(f"{__package__}.status_change_router")
+    _mount_routes(router, status_change_module.router)
     _mount_routes(
         router,
         base_router.router,
