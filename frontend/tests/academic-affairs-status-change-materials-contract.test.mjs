@@ -14,6 +14,7 @@ const detailUrl = new URL(
   '../src/modules/academicAffairs/views/AaStatusChangeDetailView.vue',
   import.meta.url
 )
+const uploaderUrl = new URL('../src/components/file/FileUploader.vue', import.meta.url)
 
 test('D3-U material API keeps one convenience submit and formal list/add routes', async () => {
   const source = await readFile(apiUrl, 'utf8')
@@ -41,6 +42,17 @@ test('D3-U form blocks active upload and unsafe scan before its single submit', 
   assert.match(source, /materialFileIds: this\.materialFiles\.map/)
   assert.match(source, /statusChangeConvenienceApi\.submit\(this\.buildBody\(\)\)/)
   assert.doesNotMatch(source, /academicAffairsApi\.submitStatusChange\(/)
+})
+
+test('FileUploader emits progress=0 immediately when a real upload starts', async () => {
+  const source = await readFile(uploaderUrl, 'utf8')
+  const uploadingIndex = source.indexOf('uploading.value = true')
+  const zeroIndex = source.indexOf("emit('progress', 0)")
+  const sdkIndex = source.indexOf('activeTask = fileSdk.upload')
+
+  assert.ok(uploadingIndex >= 0)
+  assert.ok(zeroIndex > uploadingIndex)
+  assert.ok(sdkIndex > zeroIndex)
 })
 
 test('D3-U detail renders only formal material enumeration through FilePreviewer', async () => {
