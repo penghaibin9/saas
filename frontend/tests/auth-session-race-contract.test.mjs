@@ -7,22 +7,26 @@ const clientUrl = new URL('../src/services/http/client.js', import.meta.url)
 test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', async () => {
   const source = await readFile(clientUrl, 'utf8')
 
-  assert.match(source, /const refreshTokenAtStart = state\.refreshToken/)
+  // SECURITY-P0: browser JS must never retain or transmit refreshToken. The browser-refresh
+  // endpoint consumes the HttpOnly cookie while accessToken remains the only in-memory token.
+  assert.match(source, /const state = \{ token: '', offlineUntil: 0, notified: false \}/)
+  assert.doesNotMatch(source, /state\.refreshToken/)
+  assert.doesNotMatch(source, /body: \{ refreshToken:/)
   assert.match(source, /const accessTokenAtStart = state\.token/)
-  assert.match(source, /body: \{ refreshToken: refreshTokenAtStart \}/)
   assert.match(
     source,
-    /state\.token !== accessTokenAtStart \|\| state\.refreshToken !== refreshTokenAtStart/
+    /rawRequest\('\/auth\/browser-refresh', \{[\s\S]*?method: 'POST', auth: false, forceProbe: true[\s\S]*?\}\)/
   )
+  assert.match(source, /credentials: 'same-origin'/)
 
   const staleSessionGuards = source.match(
-    /state\.token !== accessTokenAtStart \|\| state\.refreshToken !== refreshTokenAtStart/g
+    /if \(state\.token && state\.token !== accessTokenAtStart\) return true/g
   ) || []
   assert.ok(staleSessionGuards.length >= 2, 'refresh success/failure both need stale-session guards')
 
   assert.doesNotMatch(
     source,
-    /catch \{\s*_holdTokens\('', ''\)\s*return false\s*\}/,
+    /catch \{\s*_holdToken\(''\)\s*return false\s*\}/,
     'refresh failure must not unconditionally clear a newer session'
   )
 })
