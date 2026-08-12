@@ -142,6 +142,7 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     const confirm = page.getByRole('button', { name: /确认复制 2 项/ })
     await expect(confirm).toBeEnabled()
     await confirm.click()
+    await expect(confirm).toBeHidden({ timeout: 10000 })
 
     await expect(page.getByText(holidayRemark)).toBeVisible()
     await expect(page.getByText(examRemark)).toBeVisible()
