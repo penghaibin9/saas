@@ -5,6 +5,7 @@ import { config } from './config.mjs'
 import { browserSessionForAccessToken } from './api-fixture.mjs'
 
 const SECRET_KEY = /(authorization|cookie|set-cookie|password|token|secret)/i
+const bootstrapSessionByPage = new WeakMap()
 
 function redact(value, depth = 0) {
   if (depth > 5) return '[truncated]'
@@ -41,13 +42,21 @@ function browserChannel(session, source) {
   return 'staff'
 }
 
+async function syncSecureE2EBootstrap(page) {
+  const bootstrap = bootstrapSessionByPage.get(page)
+  if (!bootstrap) return
+  const cookies = await page.context().cookies().catch(() => [])
+  const current = cookies.find((cookie) => cookie.name === bootstrap.cookieName)
+  if (current?.value) bootstrap.session.refreshToken = current.value
+}
+
 async function installSecureE2EBootstrap(page) {
   // Older visual specs used addInitScript(sessionStorage.setItem(...)) to bootstrap a page.
   // Production code now deletes those legacy keys by design. Intercept only that E2E pattern and
   // translate the API fixture's refresh token into a real HttpOnly browser cookie. The app then
   // obtains its access token through its own /browser-refresh path; product source never reads
-  // Web Storage. Because browser refresh tokens are one-time/rotating, capture the replacement
-  // cookie from the real response so the same API fixture can securely bootstrap the next test.
+  // Web Storage. Browser refresh tokens rotate on every use, so persist the browser's actual
+  // HttpOnly replacement cookie back into the E2E session before the next isolated test context.
   const nativeAddInitScript = page.addInitScript.bind(page)
   page.addInitScript = async (script, arg) => {
     const source = typeof script === 'function' ? String(script) : String(script?.content || script || '')
@@ -62,13 +71,11 @@ async function installSecureE2EBootstrap(page) {
     const channel = browserChannel(session, source)
     const base = new URL(channel === 'student' ? config.studentBaseUrl : config.staffBaseUrl)
     const cookieName = `gx_${channel}_refresh_v1`
+    bootstrapSessionByPage.set(page, { session, cookieName })
+
     const onResponse = async (response) => {
       if (!response.ok() || !response.url().includes('/api/v1/auth/browser-refresh')) return
-      const setCookie = await response.headerValue('set-cookie').catch(() => '')
-      const match = String(setCookie || '').match(new RegExp(`(?:^|,\\s*)${cookieName}=([^;,\\s]+)`))
-      if (!match?.[1]) return
-      session.refreshToken = match[1]
-      page.off('response', onResponse)
+      await syncSecureE2EBootstrap(page)
     }
     page.on('response', onResponse)
 
@@ -176,6 +183,7 @@ export const test = base.extend({
     try {
       await use(page)
     } finally {
+      await syncSecureE2EBootstrap(page)
       await finalize()
     }
   }
