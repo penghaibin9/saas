@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Fail closed when the Python production lock drifts from requirements.txt.
+"""Fail closed when the Python production freeze drifts.
 
-This checker intentionally uses only the stdlib so it can run before dependency install.
-It verifies that every lock entry is an exact ``name==version`` pin, names are unique,
-and every direct dependency declared in backend/requirements.txt is represented in the lock.
-The installer then runs ``pip check`` to validate the resolved graph itself.
+``backend/requirements.in`` is the human-maintained direct dependency policy.
+``backend/requirements.lock`` is the exact verified graph.
+``backend/requirements.txt`` intentionally mirrors the lock so every existing production/CI
+installer remains reproducible without a second installation path.
+
+The checker uses only the stdlib so it can run before dependency installation.
 """
 from __future__ import annotations
 
@@ -13,8 +15,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "backend" / "requirements.txt"
+SOURCE = ROOT / "backend" / "requirements.in"
 LOCK = ROOT / "backend" / "requirements.lock"
+DEFAULT_INSTALL = ROOT / "backend" / "requirements.txt"
 NAME = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^]]+\])?")
 PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s;]+)$")
 
@@ -33,9 +36,10 @@ def active_lines(path: Path) -> list[str]:
 
 
 def main() -> int:
-    if not SOURCE.is_file() or not LOCK.is_file():
-        print("python_lock_error: requirements.txt/requirements.lock missing", file=sys.stderr)
-        return 2
+    for path in (SOURCE, LOCK, DEFAULT_INSTALL):
+        if not path.is_file():
+            print(f"python_lock_error: missing {path.relative_to(ROOT)}", file=sys.stderr)
+            return 2
 
     direct: set[str] = set()
     for value in active_lines(SOURCE):
@@ -46,7 +50,8 @@ def main() -> int:
         direct.add(norm(match.group(1)))
 
     locked: dict[str, str] = {}
-    for value in active_lines(LOCK):
+    lock_lines = active_lines(LOCK)
+    for value in lock_lines:
         match = PIN.fullmatch(value)
         if not match:
             print(f"python_lock_error: lock entry is not exact name==version: {value}", file=sys.stderr)
@@ -64,13 +69,23 @@ def main() -> int:
             print(f"  - {name}", file=sys.stderr)
         return 1
 
-    # Canonical tests require pytest-timeout; it belongs in the same reproducible graph rather
-    # than being installed as an unbounded second pip command.
     if "pytest-timeout" not in locked:
         print("python_lock_error: pytest-timeout must be frozen in requirements.lock", file=sys.stderr)
         return 1
 
-    print(f"python_lock_ok: {len(direct)} direct deps covered by {len(locked)} exact pins")
+    install_lines = active_lines(DEFAULT_INSTALL)
+    if install_lines != lock_lines:
+        print(
+            "python_lock_error: requirements.txt must exactly mirror requirements.lock; "
+            "production and CI may otherwise install different graphs",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"python_lock_ok: {len(direct)} direct deps covered by "
+        f"{len(locked)} exact pins; default installer matches lock"
+    )
     return 0
 
 
