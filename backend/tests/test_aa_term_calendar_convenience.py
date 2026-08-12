@@ -5,7 +5,7 @@ MySQL 8 由 CI TEST_DATABASE_URL 提供权威证据。
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 
 BASE = "/api/v1/academic-affairs"
@@ -274,3 +274,46 @@ def test_d1_convenience_previews_fail_closed_for_student(client, db_mode):
         json={"templateKey": "STANDARD_8"},
     )
     assert template_preview.status_code == 403
+
+
+def test_calendar_copy_preview_cannot_read_source_term_from_another_tenant(client, db_mode):
+    """即使猜中别校 sourceTermId，也只能得到 404，不能借 preview 跨租户读校历。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+
+    admin = _hdr(client)
+    target_id = _term(
+        client,
+        admin,
+        year="2048-2049",
+        no=1,
+        start="2048-09-01",
+        end="2049-01-31",
+    )
+
+    db = get_sessionmaker()()
+    foreign = AaTerm(
+        tenant_id=1000000000000000002,
+        year_code="2098-2099",
+        term_no=1,
+        term_name="别校学期",
+        start_date=datetime(2098, 9, 1),
+        end_date=datetime(2099, 1, 31),
+        teaching_weeks=20,
+        exam_week_start=18,
+        status="DRAFT",
+        is_current=False,
+    )
+    db.add(foreign)
+    db.commit()
+    db.refresh(foreign)
+    foreign_id = foreign.id
+    db.close()
+
+    response = client.post(
+        f"{BASE}/terms/{target_id}/calendar/copy-preview",
+        headers=admin,
+        json={"sourceTermId": foreign_id},
+    )
+    assert response.status_code == 404
+    assert "别校学期" not in response.text
