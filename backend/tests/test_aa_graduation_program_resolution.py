@@ -1,4 +1,4 @@
-"""毕业审核必须精确解析学生培养方案，关键 UNKNOWN 不得被当成系统通过。"""
+"""毕业审核必须精确解析学生培养方案，任何 UNKNOWN 都不得被当成正式系统通过。"""
 from types import SimpleNamespace
 
 
@@ -106,7 +106,8 @@ def test_critical_unknown_blocks_system_pass():
     assert service._overall(items) == "SYSTEM_ABNORMAL"
 
 
-def test_non_blocking_reminders_can_remain_unknown():
+def test_reminder_unknown_also_blocks_formal_stage_c3_precheck():
+    """Stage C3 正式预审统一 fail-closed；就业/费用未知只能人工复核，不能系统自动通过。"""
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
 
     items = [
@@ -116,4 +117,4 @@ def test_non_blocking_reminders_can_remain_unknown():
         {"item": "FEE", "result": "UNKNOWN"},
     ]
 
-    assert service._overall(items) == "SYSTEM_PASSED"
+    assert service._overall(items) == "SYSTEM_ABNORMAL"

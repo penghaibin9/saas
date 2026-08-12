@@ -623,6 +623,10 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
+        # 安全版本提交前先设置强制回库标记；版本化旧 token 会在下一请求被 version mismatch 拒绝，
+        # 历史无 permissionVersion token 则由 password_change_gate 保持 fail-closed，直到新 token
+        # 完成实时校验后写入 JWT-lifetime legacy block。认证存储故障时生产环境直接拒绝本次改密。
+        force_subject_revalidation(f"db-{user.id}", user.tenant_id)
         db.commit()
         invalidate_subject_cache(f"db-{user.id}", user.tenant_id,
                                  user_ctx.get("activeContextId"))

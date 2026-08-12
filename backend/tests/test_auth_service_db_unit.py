@@ -161,3 +161,50 @@ def test_switch_role_revokes_old_context_and_returns_new_refresh(monkeypatch):
     assert result["contextType"] == "GD_MENTOR"
     assert result["refreshToken"] == "new-refresh"
     assert calls == [("block", "old-jti", 9999), ("revoke", "db-7")]
+
+
+def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
+    """本人改密必须先写 force-db，再提交安全版本；避免旧无版本 access token 在窗口期复活。"""
+    calls = []
+    user = _user()
+
+    class _PasswordChangeSession(_FakeSession):
+        def commit(self):
+            calls.append("commit")
+
+    fake_db = _PasswordChangeSession()
+    monkeypatch.setattr(svc, "db_enabled", lambda: True)
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: fake_db)
+    monkeypatch.setattr(svc, "_load_token_user", lambda db, ctx: user)
+    monkeypatch.setattr(svc, "verify_password", lambda plain, stored: True)
+    monkeypatch.setattr(svc, "hash_password", lambda plain: "new-hash")
+    monkeypatch.setattr(svc, "login_locked", lambda key: 0)
+    monkeypatch.setattr(svc, "reset_login_failures", lambda key: None)
+    monkeypatch.setattr(
+        svc, "force_subject_revalidation",
+        lambda uid, tenant_id: calls.append(("force", uid, tenant_id)),
+    )
+    monkeypatch.setattr(
+        svc, "invalidate_subject_cache",
+        lambda uid, tenant_id, context_id=None: calls.append(("invalidate", uid, tenant_id)),
+    )
+    monkeypatch.setattr(
+        svc, "revoke_refresh_by_user", lambda uid: calls.append(("revoke", uid))
+    )
+    monkeypatch.setattr("app.services.system_config_service.get_int", lambda *a, **k: 8)
+    monkeypatch.setattr("app.services.audit_log.record", lambda *a, **k: None)
+
+    result = svc.change_own_password(
+        {"userId": "db-7", "tenantId": "1001", "activeContextId": "role:10"},
+        "old-password",
+        "new-password",
+    )
+
+    assert result == {"success": True, "reloginRequired": True}
+    assert user.version == 3
+    assert user.password_hash == "new-hash"
+    assert calls[:2] == [("force", "db-7", 1001), "commit"]
+    assert calls[2:] == [
+        ("invalidate", "db-7", 1001),
+        ("revoke", "db-7"),
+    ]

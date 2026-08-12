@@ -40,10 +40,11 @@ def test_save_cos_encrypts_and_masks_secret(client, db_mode):
     assert cfg["cosSecretKey"].endswith("3210") and "realsecret" not in cfg["cosSecretKey"]
     assert cfg["hasSecretKey"] is True and cfg["cosSecretId"].endswith("7890")
 
-    # 数据库里密钥是密文，不是明文
+    # 数据库里密钥是带 key-id 的字段加密密文，不是明文，也不再依赖 JWT 签名密钥。
     from app.services import platform_service
     raw = platform_service.get_config_json(0, "FILE_STORAGE", "-")
     assert raw["cosSecretKeyEnc"] and "realsecretkey" not in raw["cosSecretKeyEnc"]
+    assert raw["cosSecretKeyEnc"].startswith("k")
 
     # 后端生效配置能解回明文（内部用）
     from app.services.storage import config as sc
@@ -65,6 +66,69 @@ def test_resave_with_masked_placeholder_keeps_secret(client, db_mode):
     eff = sc.effective_config()
     assert eff["cosBucket"] == "b-new-1250000000"
     assert eff["cosSecretKey"] == "keepmesecret0001"  # 未被抹掉
+
+
+def test_persisted_cos_secret_survives_jwt_rotation(client, db_mode):
+    """JWT 签名密钥轮换不得再让平台已保存的 COS SecretKey 失效。"""
+    from app.core.config import settings
+    from app.services.storage import config as sc
+
+    h = _owner_headers()
+    client.put(FS, headers=h, json={"config": {
+        "backend": "cos", "cosRegion": "ap-guangzhou", "cosBucket": "jwt-independent-1250000000",
+        "cosSecretId": "AKID-independent", "cosSecretKey": "secret-survives-jwt-rotation"}})
+
+    old_alias = settings.JWT_SECRET_KEY
+    old_primary = settings.JWT_SECRET
+    try:
+        # 两个兼容配置名都轮换，确保测试不是碰巧仍能从另一个 JWT 值派生旧 Fernet。
+        settings.JWT_SECRET_KEY = "rotated-jwt-secret-key-for-storage-test-0000000001"
+        settings.JWT_SECRET = "rotated-jwt-secret-key-for-storage-test-0000000002"
+        assert sc.effective_config()["cosSecretKey"] == "secret-survives-jwt-rotation"
+    finally:
+        settings.JWT_SECRET_KEY = old_alias
+        settings.JWT_SECRET = old_primary
+
+
+def test_legacy_jwt_encrypted_secret_is_read_and_rewrapped_on_save(db_mode):
+    """升级不能要求学校重新输入 COS 密钥：旧 JWT 密文先兼容读取，再在保存时迁移。"""
+    from app.core.config import settings
+    from app.services import platform_service
+    from app.services.storage import config as sc
+
+    plain = "legacy-cos-secret-needs-safe-migration"
+    legacy = sc._legacy_jwt_fernet().encrypt(plain.encode()).decode()
+    assert legacy.startswith("gAAAA") and not legacy.startswith("k")
+    platform_service.put_config_json(0, "FILE_STORAGE", "-", {
+        "backend": "cos",
+        "cosRegion": "ap-guangzhou",
+        "cosBucket": "legacy-1250000000",
+        "cosSecretId": "AKID-legacy",
+        "cosSecretKeyEnc": legacy,
+    })
+    assert sc.effective_config()["cosSecretKey"] == plain
+
+    # 不让操作者重填 secret，普通保存即完成重包。
+    sc.save_config({
+        "backend": "cos",
+        "cosRegion": "ap-shanghai",
+        "cosBucket": "legacy-1250000000",
+        "cosSecretId": "",
+        "cosSecretKey": "",
+    })
+    migrated = platform_service.get_config_json(0, "FILE_STORAGE", "-")["cosSecretKeyEnc"]
+    assert migrated.startswith("k")
+    assert migrated != legacy
+
+    old_alias = settings.JWT_SECRET_KEY
+    old_primary = settings.JWT_SECRET
+    try:
+        settings.JWT_SECRET_KEY = "post-migration-jwt-secret-key-000000000000001"
+        settings.JWT_SECRET = "post-migration-jwt-secret-key-000000000000002"
+        assert sc.effective_config()["cosSecretKey"] == plain
+    finally:
+        settings.JWT_SECRET_KEY = old_alias
+        settings.JWT_SECRET = old_primary
 
 
 def test_save_cos_missing_fields_rejected(client, db_mode):

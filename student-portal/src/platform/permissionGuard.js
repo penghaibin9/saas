@@ -1,9 +1,10 @@
 /**
  * 路由守卫：
  * 1) 未登录 → /login
- * 2) 已登录先加载 portal-config（一次）
- * 3) 门户总开关关闭 → 未开通页 not-enabled
- * 4) 访问某模块但模块未开通 → module-disabled
+ * 2) mustChangePassword → 只能进入 /force-password-change
+ * 3) 已登录再加载 portal-config（一次）
+ * 4) 门户总开关关闭 → 未开通页 not-enabled
+ * 5) 访问某模块但模块未开通 → module-disabled
  * 非 STUDENT 无法登录（session.login 已拦截），此处只做业务门禁。
  */
 import { usePortalConfigStore } from '../stores/portalConfig'
@@ -17,6 +18,15 @@ export async function guard(to, from, next) {
   if (!session.isLoggedIn) {
     return next({ path: '/login', query: { redirect: to.fullPath } })
   }
+
+  const forceRoute = to.name === 'force-password-change'
+  // 登录响应中的强制改密状态会单独持久化，因此刷新浏览器后即使 user 内存快照尚未恢复，
+  // 也不能先进入 portal-config 或任何业务页面。真正不可绕过的授权仍由后端统一门禁负责。
+  if (session.mustChangePassword || session.user?.mustChangePassword) {
+    return forceRoute ? next() : next({ name: 'force-password-change' })
+  }
+  // 已完成强制改密后禁止继续停留在恢复页。
+  if (forceRoute) return next({ name: 'home' })
 
   const cfg = usePortalConfigStore()
   if (!cfg.loaded) {

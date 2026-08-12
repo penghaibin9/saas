@@ -118,42 +118,56 @@ def _prepare_single_archive_evidence(gd_student_id: int, kwargs: dict) -> None:
     user = _claims(kwargs)
     if not user:
         return
+    from app.core.context import (
+        get_current_user_ctx,
+        get_tenant,
+        set_current_user,
+        set_tenant,
+    )
     from app.db.session import get_sessionmaker
     from app.models import GraduationFinal, GraduationStudent
     from app.modules.graduation.materials.command_service import adopt_legacy_file_in_session
     from app.modules.graduation.materials.snapshot_service import prepare_all
 
-    prepare_all(int(gd_student_id), user)
-    db = get_sessionmaker()()
+    previous_tenant = get_tenant()
+    previous_user = get_current_user_ctx()
+    set_tenant({"tenantId": str(user.get("tenantId") or MAIN_TENANT_ID)})
+    set_current_user(user)
     try:
-        student = db.get(GraduationStudent, int(gd_student_id))
-        if not student or student.tenant_id != MAIN_TENANT_ID or student.is_deleted:
-            return
-        final = db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == MAIN_TENANT_ID,
-            GraduationFinal.gd_student_id == int(student.id),
-            GraduationFinal.final_type == "定稿",
-            GraduationFinal.status == "APPROVED",
-            GraduationFinal.is_deleted.is_(False),
-        ).order_by(GraduationFinal.id.desc()).limit(1)).first()
-        ids = []
-        for raw in (final.attachments_json if final else []) or []:
-            value = raw.get("fileId") if isinstance(raw, dict) else raw
-            if str(value or "").isdigit():
-                ids.append(int(value))
-        if final and len(ids) == 1:
-            adopt_legacy_file_in_session(
-                db, student, "THESIS_FINAL", ids[0],
-                source_record_type="FINAL", source_record_id=str(final.id),
-                user=user, approved=True,
-                binding_metadata={
-                    "mappingReason": "legacy explicit test fixture final attachment",
-                    "mappingConfidence": "HIGH", "manualReview": False,
-                },
-            )
-            db.commit()
+        prepare_all(int(gd_student_id), user)
+        db = get_sessionmaker()()
+        try:
+            student = db.get(GraduationStudent, int(gd_student_id))
+            if not student or student.tenant_id != MAIN_TENANT_ID or student.is_deleted:
+                return
+            final = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.tenant_id == MAIN_TENANT_ID,
+                GraduationFinal.gd_student_id == int(student.id),
+                GraduationFinal.final_type == "定稿",
+                GraduationFinal.status == "APPROVED",
+                GraduationFinal.is_deleted.is_(False),
+            ).order_by(GraduationFinal.id.desc()).limit(1)).first()
+            ids = []
+            for raw in (final.attachments_json if final else []) or []:
+                value = raw.get("fileId") if isinstance(raw, dict) else raw
+                if str(value or "").isdigit():
+                    ids.append(int(value))
+            if final and len(ids) == 1:
+                adopt_legacy_file_in_session(
+                    db, student, "THESIS_FINAL", ids[0],
+                    source_record_type="FINAL", source_record_id=str(final.id),
+                    user=user, approved=True,
+                    binding_metadata={
+                        "mappingReason": "legacy explicit test fixture final attachment",
+                        "mappingConfidence": "HIGH", "manualReview": False,
+                    },
+                )
+                db.commit()
+        finally:
+            db.close()
     finally:
-        db.close()
+        set_current_user(previous_user)
+        set_tenant(previous_tenant)
 
 
 def _legacy_archive_response(response, gd_student_id: int):

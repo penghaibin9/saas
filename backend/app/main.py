@@ -589,6 +589,32 @@ def _build_ready_payload(*, expose_detail: bool) -> Any:
         except Exception:  # noqa: BLE001
             checks["auditLog"] = {"ok": False}
 
+    # 正式环境 Office/Excel/ZIP 等高风险文件必须经过 ClamAV。此前 READY 不看扫描依赖，
+    # 会出现“系统 READY 但所有附件永久卡在 QUARANTINED”的假绿。扫描为 required 时，
+    # disabled / engine down / dead job 任一出现均降级；非生产未启用扫描不误伤本地开发。
+    try:
+        from app.services.file_scan_service import health_snapshot as file_scan_health
+        fs = file_scan_health()
+        required = bool(fs.get("required"))
+        scan_ok = (not required) or bool(
+            fs.get("enabled")
+            and fs.get("engineHealthy")
+            and int(fs.get("deadJobs") or 0) == 0
+        )
+        if expose_detail:
+            checks["fileScan"] = {
+                "ok": scan_ok,
+                "required": required,
+                "enabled": bool(fs.get("enabled")),
+                "engineHealthy": bool(fs.get("engineHealthy")),
+                "queueDepth": int(fs.get("queueDepth") or 0),
+                "deadJobs": int(fs.get("deadJobs") or 0),
+            }
+        else:
+            checks["fileScan"] = {"ok": scan_ok}
+    except Exception:  # noqa: BLE001
+        checks["fileScan"] = {"ok": False}
+
     for key, path in (("uploadDir", settings.UPLOAD_DIR), ("exportDir", settings.EXPORT_DIR)):
         probe = None
         try:

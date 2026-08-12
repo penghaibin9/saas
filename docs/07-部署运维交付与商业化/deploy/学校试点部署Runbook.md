@@ -1,47 +1,130 @@
 # 学校试点部署 Runbook
 
-> 面向：把系统部署到一台服务器供一所学校试点。按步骤执行；🟦=运维执行，🟩=脚本/模板已备。
-> 配套：`scripts/check/preflight-school-trial.*`（上线前预检）、`scripts/check/smoke-school-trial.*`（部署后冒烟）、`docs/07-部署运维交付与商业化/deploy/生产环境变量清单.md`、`nginx部署检查清单.md`、`HTTPS证书配置说明.md`。
->
-> **备份/恢复只认 `deploy/README-data-governance.md`。** 正式 Linux 生产不要再用“单独 cron 调 `backup-mysql.sh`”作为上线方案。
+> 目标：一所学校、真实账号、真实业务数据的受控试点。**任何 FAIL 都禁止导入真实学生数据。**
+> 当前推荐部署：2C4G/2U4G Linux + systemd + MySQL 8 + Redis + Nginx + ClamAV。管理 PC、miniapp H5、学生 PC 必须来自同一个 release。
+> **备份/恢复只认 `deploy/README-data-governance.md`。** 正式 Linux 生产不要单独 cron 调底层 `backup-mysql.sh` 绕过 manifest、异地校验和 watchdog。
 
-## 阶段 0 · 准备
-1. 🟦 服务器：2C4G 起、Ubuntu 22 / 同类；开放 80/443（8000/3306 不对公网）。
-2. 🟦 域名：解析到服务器。
-3. 🟦 数据库：安装 MySQL 8，建库 `saas_lifecycle`、建账号（强密码，仅 .env 注入）。
-4. 🟩 证书：见《HTTPS证书配置说明》。
+## 0. 服务器与外部依赖
 
-## 阶段 1 · 配置 .env.production
-5. 🟦 复制 `backend/.env.example` → `backend/.env`，按《生产环境变量清单》填：
-   - `APP_ENV=production`、`DEBUG=false`
-   - 强 `JWT_SECRET`（`openssl rand -hex 32`）
-   - `DB_ENABLED=true` + `DB_*`（密码仅此注入）
-   - `CORS_ORIGINS=https://你的域名`（勿留空/勿 `*`）
-   - `MOCK_LOGIN_ENABLED=false`（正式客户前）
-   - `SMS_ENABLED=false`（未配密钥时保持关闭）
-6. 🟩 **预检**：`bash scripts/check/preflight-school-trial.sh backend/.env` → 必须无 FAIL。
+1. 安装 MySQL 8、Redis、Nginx、Python 3、Node/npm（或准备好三端预构建产物）。
+2. 安装并启动 `clamd`，确认 TCP `3310` 或 Unix Socket 可连接。正式环境 Office/Excel/ZIP/CSV 等高风险附件是 fail-closed；没有 ClamAV 会导致材料不能进入业务。
+3. 域名解析到服务器，只对公网开放 80/443；8000、3306、6379、3310 不直接暴露公网。
+4. 配置 HTTPS 证书，把 `deploy/nginx/school-lifecycle.systemd.conf.example` 替换真实域名/证书路径后放进 Nginx。该模板同时提供 `/`、`/miniapp/`、`/portal/`、`/api/`，并拒绝 `/uploads/`、`/exports/` 静态直读。
+5. `nginx -t && systemctl reload nginx`。
 
-## 阶段 2 · 初始化数据库
-7. 🟦 首次建表 + 演示/初始数据：
-   - `cd backend && python scripts/init_mysql_db.py`
-   - 用《新学校开局向导》导入该校院系/学生/教师（validate → confirm）。
+## 1. 生产环境文件
 
-## 阶段 3 · 构建与启动
-8. 🟦 后端：`pip install -r backend/requirements.txt` → `systemctl restart school-backend`（或 `uvicorn app.main:app --host 127.0.0.1 --port 8000`）。
-9. 🟦 PC 管理端：`cd frontend && npm ci && npm run build` → `dist/` 传到 nginx 站点根。
-10. 🟦 学生/教师小程序 H5：`cd miniapp && npm ci && npm run build:h5` → 传到 nginx（或小程序发行微信版另走审核）。
-11. 🟦 nginx：套用 `deploy/nginx/nginx.https.conf.example`，见《nginx部署检查清单》→ `nginx -t && systemctl reload nginx`。
+复制 `deploy/env/backend.systemd.env.example` 到：
 
-## 阶段 4 · 部署后验证
-12. 🟩 冒烟：`BASE_URL=https://你的域名 bash scripts/check/smoke-school-trial.sh` → 无 FAIL。
-13. 🟩 人工确认：`/docs` 404、mock-login 关闭、demo 隔离、六域可打开、学生只看本人。
-14. 🟩 就绪：`curl https://你的域名/health/ready` → `READY`。
+```text
+/etc/school-lifecycle/backend.env
+```
 
-## 阶段 5 · 运维
-15. 🟦 **一次性安装生产数据治理**：按 `deploy/README-data-governance.md` 配置 `backup.env` 与 rclone 异地目标，开启对象存储版本化/不可变保留/存储侧加密；安装 `school-lifecycle-backup.service/.timer` 和 `school-lifecycle-backup-watchdog.service/.timer`。正式基线为每 6 小时一个恢复点、watchdog 每小时检查。
-16. 🟦 首次上线只需人工验证一次：手动触发 1 次正式备份 → watchdog 通过 → 在隔离库执行 1 次恢复演练。之后由 systemd/CI 自动运行。生产字段加密密钥的受保护恢复副本必须放在应用服务器与 Git 之外。
-17. 🟦 配监控告警（见《商用就绪度评估》建议），并把 backup/watchdog systemd 失败纳入告警。
+权限：
 
-## 回滚
-18. 🟦 版本回滚：切回上一个稳定 tag → 重新 build → 重启；**改表前必须确认存在最新的 manifest-committed 完整恢复点**，数据库恢复只在隔离验证后按恢复流程执行。
-19. 🟦 部署失败：保留旧 `dist/` 与旧后端进程，nginx 指回旧站点，先恢复可用再排查。
+```bash
+sudo chmod 600 /etc/school-lifecycle/backend.env
+```
+
+必须逐项替换：MySQL 密码、Redis、`JWT_SECRET`、独立 `FIELD_ENCRYPTION_KEY`、`INTERNAL_OPS_TOKEN`、`PUBLIC_BASE_URL=https://正式域名`、`CORS_ORIGINS`、试点学校编码。`PUBLIC_BASE_URL` **只填 HTTPS origin，不带 `/api` 或业务路径**，统一发布会把它注入 miniapp H5；否则小程序/H5 源码的开发默认值可能回退到 `localhost`。`FIELD_ENCRYPTION_KEY` 必须由 `Fernet.generate_key()` 生成，不能用任意长度字符串代替。
+
+`APP_ENV=production`、`DEPLOYMENT_MODE=production`、`DEBUG=false`、`MOCK_LOGIN_ENABLED=false`、`SCHEDULER_MODE=external`、`CLAMAV_ENABLED=true` 不得改变。
+
+如果启用 COS，再填写 `FILE_STORAGE_BACKEND=cos` + COS 参数；单机试点暂用 local 时，`/opt/school-lifecycle/shared/uploads` 必须进入备份与恢复演练。
+
+## 2. 两道只读预检
+
+代码侧静态准入：
+
+```bash
+bash scripts/check/preflight-school-trial.sh /etc/school-lifecycle/backend.env
+```
+
+服务器侧真实依赖预检：
+
+```bash
+sudo ENV_FILE=/etc/school-lifecycle/backend.env \
+  bash scripts/deploy/install-systemd-release.sh --check
+```
+
+两者必须 `FAIL=0`。服务器预检会额外核验：实际 Nginx `/portal/`、ClamAV PING、动态 Alembic 单头、systemd 文件、有效 Fernet key、正式 HTTPS origin 等。
+
+## 3. 受控原子发布
+
+不要再手工分别复制管理端、小程序、学生门户，也不要运行 `metadata.create_all`/`init_mysql_db.py` 作为正式建库流程。正式数据库只走 Alembic：
+
+```bash
+sudo ENV_FILE=/etc/school-lifecycle/backend.env \
+  bash scripts/deploy/install-systemd-release.sh --apply
+```
+
+脚本使用 `flock` 排他锁，第二个并发 release 会直接拒绝。正式顺序是：
+
+1. 在旧系统继续服务时创建独立 release、安装依赖并完成 `frontend`、`miniapp H5`、`student-portal` 构建；H5 强制注入 `PUBLIC_BASE_URL`，并扫描产物禁止 localhost/127.0.0.1 API；
+2. 记录当前活动的 backend / scheduler / file-scan，并进入短暂维护窗口，停止这些 Web/后台写入者；
+3. 在业务静默点执行 MySQL 全备份 + gzip/sha256 校验，确保备份不会落后于迁移前最后一笔应用写入；
+4. `alembic upgrade head`，随后动态核验“仓库唯一 head == 数据库 current”，不写死 revision；
+5. 原子切换 `/opt/school-lifecycle/current` 与 `/var/www/school-lifecycle/pc|miniapp|portal`；
+6. 安装/启动 `school-lifecycle-backend`、`school-lifecycle-scheduler`、`school-lifecycle-file-scan`；
+7. 自动执行发布后验收；失败时回退应用 `current` 并恢复服务。数据库 migration **不自动 downgrade**，所以 migration 仍必须遵守 expand/contract、向后兼容原则。
+
+耗时的 npm/pip 构建不放在维护窗口内；维护窗口只覆盖“静默 → 备份 → 迁移 → 切换 → 启动”。
+
+## 4. 发布后强制验收
+
+可单独重跑：
+
+```bash
+sudo ENV_FILE=/etc/school-lifecycle/backend.env \
+  bash scripts/deploy/verify-systemd-release.sh
+```
+
+必须看到 `FAIL=0`。它会验证：
+
+- backend / scheduler / file-scan 三服务 active；
+- 后端本机 `/health` 为 UP，携带 `INTERNAL_OPS_TOKEN` 的 `/health/ready` 为 READY；
+- 数据库 current 等于动态 Alembic head；
+- ClamAV PING/命令链正常；
+- COS 模式真实小对象 write/delete，或 local 存储合同可用；
+- 管理 PC、miniapp H5、学生 PC 三端构建产物及原子链接存在；
+- 使用 `PUBLIC_BASE_URL` + `curl --resolve` 真正穿过本机 443/TLS/server_name，三端页面必须 200；
+- `/` 与 `/portal/index.html` 必须真实返回 HSTS、CSP、X-Frame-Options、X-Content-Type-Options；
+- 公网 `/uploads/*`、`/exports/*` 必须真实 404，不能只看 Nginx 配置文本；
+- 公网与后端本机未登录业务访问都必须被拒绝；
+- `/docs` 在 production 关闭。
+
+`/health/ready` 已把文件扫描依赖纳入就绪判断：扫描 required 时，ClamAV disabled/down 或扫描任务进入 DEAD 都会返回 DEGRADED/503，禁止“附件全卡住但系统假绿”。
+
+## 5. 新学校开局
+
+只有前四阶段全绿后才创建/导入真实学校数据：
+
+1. 平台创建试点租户；
+2. 配品牌、院系、专业、班级；
+3. 通过系统管理标准身份导入入口导入老师/学生；
+4. 先 dry-run/预检，处理全部错误行，再 confirm；
+5. 用最小真实样本做教师、学生、辅导员、教务管理员账号登录与权限验证。
+
+禁止把演示 seed 作为真实学校初始化方式。
+
+## 6. 试点业务冒烟
+
+至少用真实试点角色验证：登录/刷新、学生本人数据、教师数据范围、跨租户负向 403、Excel 导入/导出、附件上传→隔离→ClamAV CLEAN→业务绑定/下载、消息/审批后台任务、学生 PC `/portal/` 刷新子路由、小程序 H5。
+
+微信小程序正式包不由 systemd 发布脚本上传微信平台；必须从**同一 Git HEAD**运行生产 `mp-weixin` 构建/发布闸门后再进入微信开发者工具与审核流程，不能拿历史包与当前后端混用。
+
+任何跨租户越权、文件扫描卡死、后台任务不消费、迁移不一致、READY 503 都是上线阻断，不以“页面能打开”替代。
+
+## 7. 备份与恢复
+
+正式生产的备份、异地副本、保留策略、watchdog 与恢复演练统一按 `deploy/README-data-governance.md` 执行：
+
+1. 配置生产 `backup.env` 与异地 rclone 目标，并启用对象存储版本化/不可变保留/存储侧加密；
+2. 安装并启用 `school-lifecycle-backup.service/.timer` 与 `school-lifecycle-backup-watchdog.service/.timer`；正式基线为每 6 小时一个恢复点、watchdog 每小时检查；
+3. 备份集必须覆盖 MySQL；local 文件存储时同时覆盖 `UPLOAD_DIR`，并以 manifest/SHA-256/异地回读结果作为完整性证据；
+4. 首次上线人工触发一次正式备份并让 watchdog 通过，再在隔离库完成一次恢复演练；之后由 systemd/CI 持续执行；
+5. 生产 `FIELD_ENCRYPTION_KEY`、历史 key（如有）及敏感字段搜索用固定 HMAC key 的受保护恢复副本必须存放在应用服务器与 Git 之外。
+
+生产数据治理基线：**RPO ≤ 6 小时、RTO ≤ 2 小时**。不要另建 cron 直接调用底层备份脚本形成第二套口径。
+
+**试点准入最终口径：静态预检 0 FAIL + 服务器预检 0 FAIL + 发布验收 0 FAIL + 真实角色冒烟通过 + 备份恢复实证通过，之后才允许扩大真实数据范围。**

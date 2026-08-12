@@ -3,6 +3,7 @@ import { guard } from '../platform/permissionGuard'
 
 const routes = [
   { path: '/login', name: 'login', meta: { public: true }, component: () => import('../views/login/LoginView.vue') },
+  { path: '/force-password-change', name: 'force-password-change', component: () => import('../views/login/ForcePasswordChangeView.vue') },
   { path: '/guardian', name: 'guardian', meta: { public: true }, component: () => import('../views/guardian/GuardianView.vue') },
   {
     path: '/',

@@ -49,12 +49,20 @@ def test_student_section_route_fails_closed_and_hides_legacy_entry():
     assert "router.push('/academic/all')" not in source
 
 
-def test_makeup_route_opens_actionable_nested_workbench():
+def test_makeup_route_uses_dedicated_server_authoritative_workspace():
     router = _read("student-portal/src/router/academicRoutes.js")
+    view = _read("student-portal/src/views/academic/StudentMakeupView.vue")
 
-    assert "academicSubTab: subTab" in router
-    assert "academicSection('makeup'" in router
-    assert "'补考重修申请'" in router
+    assert "path: 'makeup'" in router
+    assert "StudentMakeupView.vue" in router
+    assert "academicSection('makeup'" not in router
+    assert "portalApi.academicMakeup()" in view
+    assert "portalApi.academicMakeupOptions()" in view
+    assert "portalApi.academicRetakeApply" in view
+    assert "portalApi.academicExemptionApply" in view
+    assert "报名资格、时间冲突和收费规则以服务器最终校验为准" in view
+    assert "提交申请不等于免修生效，须经学校审核通过" in view
+    assert "window.prompt" not in view
 
 
 def test_student_registration_uses_dedicated_actionable_workspace():
