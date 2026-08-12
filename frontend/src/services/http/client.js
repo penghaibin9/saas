@@ -310,9 +310,12 @@ export async function request(path, options = {}) {
 
 export async function logoutRemote() {
   try {
-    if (state.token) await rawRequest('/auth/browser-logout', { method: 'POST' })
+    // Durable browser session lives in the HttpOnly cookie, so logout must probe the server even
+    // when the in-memory access token is already empty/expired. auth=false prevents ensure/refresh
+    // from resurrecting a session while trying to destroy it; rawRequest still sends the cookie.
+    await rawRequest('/auth/browser-logout', { method: 'POST', auth: false, forceProbe: true })
   } catch {
-    /* 离线登出静默；本地 access 仍必须清掉 */
+    /* 离线登出静默；本地 access 仍必须清掉，服务端响应会尽力清除 Cookie */
   }
   clearAuthSession()
 }
