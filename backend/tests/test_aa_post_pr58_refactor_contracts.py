@@ -1,8 +1,9 @@
-"""PR #58 合并后教务 P0 拆分的 S0 结构合同。
+"""PR #58 合并后教务 P0 拆分的 S0 / D1-S 结构合同。
 
 这组测试只冻结生产结构真值，不改变业务语义：
 - Router 精确 adapter/final 入口必须优先于 legacy 大 Router；
 - normalized path + method 不允许重复；
+- D1 学期/校历/作息节次/time-bands 的公开 owner 必须真正切到新 Router；
 - Service 包级公开入口和关键 binding 必须继续指向 canonical/final 实现；
 - Model registry 必须保持 model-only；
 - #58 已落地的 MySQL DATETIME(6) / TEXT schema 事实不得在 Model 拆分时回退。
@@ -18,7 +19,7 @@ from sqlalchemy import Text
 from sqlalchemy.dialects import mysql
 
 from app.models.academic_affairs import AaGraduationAuditResult, AaStatusChange
-from app.modules.academic_affairs.routers import academic_affairs_bundle
+from app.modules.academic_affairs.routers import academic_affairs_bundle, term_calendar_router
 from app.modules.academic_affairs.services import (
     academic_affairs_schedule_facade,
     academic_affairs_scheduling_rule_final_facade,
@@ -95,6 +96,39 @@ def test_exact_adapters_and_final_routes_win_before_legacy_router():
         route = _first_route(path, method)
         assert route.endpoint.__module__ == module_name, (
             f"{method} {path} owner drifted to {route.endpoint.__module__}"
+        )
+
+
+def test_d1_term_calendar_public_shapes_are_owned_by_extracted_router():
+    expected_module = "app.modules.academic_affairs.routers.term_calendar_router"
+    child_routes = [
+        route for route in term_calendar_router.router.routes if isinstance(route, APIRoute)
+    ]
+    assert child_routes, "term calendar router unexpectedly has no APIRoutes"
+
+    for child in child_routes:
+        for method in _route_methods(child):
+            public = _first_route(child.path, method)
+            assert public.endpoint.__module__ == expected_module, (
+                f"D1-S owner drift for {method} {child.path}: "
+                f"expected={expected_module} actual={public.endpoint.__module__}"
+            )
+
+
+def test_d1_literal_term_routes_remain_reachable_before_parameter_route():
+    routes = [
+        route for route in academic_affairs_bundle.build_router().routes if isinstance(route, APIRoute)
+    ]
+    ordered_paths = [route.path for route in routes]
+    parameter_index = ordered_paths.index("/academic-affairs/terms/{termId}")
+    for literal_path in (
+        "/academic-affairs/terms/current",
+        "/academic-affairs/terms/archive-overview",
+        "/academic-affairs/terms/years",
+        "/academic-affairs/terms/switch-log",
+    ):
+        assert ordered_paths.index(literal_path) < parameter_index, (
+            f"literal route {literal_path} must stay before /terms/{{termId}}"
         )
 
 
