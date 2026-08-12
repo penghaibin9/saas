@@ -64,15 +64,38 @@ verify_object() {
   test "$(sha256sum "$file" | awk '{print $1}')" = "$expected_hash"
 }
 
+mysql_cmd=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1 "$DB_NAME")
+
 verify_object "$db_file" "$db_hash"
 gzip -t "$db_file"
 
-# mysqldump contains DROP/CREATE for every pre-release table. Extra tables created only by a failed
-# candidate may remain, but every pre-existing table is restored to its previous schema+data, which
-# is the compatibility requirement for restarting the previous application release.
+# A failed candidate may have created objects that do not exist in the pre-release dump. Importing
+# mysqldump over the live schema only restores objects that existed before; candidate-only tables,
+# views, routines or events would survive and can break the next Alembic upgrade. Writers are
+# already stopped by the release guard, so reset the current database object set first and then
+# import the governed full dump. This restores the exact pre-release schema/data boundary without
+# requiring CREATE/DROP DATABASE privileges.
+echo "[$(date -Is)] clearing candidate database objects before governed restore"
+cleanup_sql="$({
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
+    "SELECT CONCAT('DROP EVENT IF EXISTS \\`', REPLACE(EVENT_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE() ORDER BY EVENT_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
+    "SELECT CONCAT('DROP VIEW IF EXISTS \\`', REPLACE(TABLE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
+    "SELECT CONCAT('DROP TABLE IF EXISTS \\`', REPLACE(TABLE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME;"
+  MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}" -N -B -e \
+    "SELECT CONCAT('DROP ', ROUTINE_TYPE, ' IF EXISTS \\`', REPLACE(ROUTINE_NAME,'\\`','\\`\\`'), '\\`;') FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() ORDER BY ROUTINE_TYPE, ROUTINE_NAME;"
+} || exit 1)"
+{
+  echo "SET FOREIGN_KEY_CHECKS=0;"
+  printf '%s\n' "$cleanup_sql"
+  echo "SET FOREIGN_KEY_CHECKS=1;"
+} | MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}"
+
+# The dump is hash-verified immediately above and includes the pre-release table schema/data plus
+# configured routines/events/triggers. After the reset, no candidate-only object can survive.
 echo "[$(date -Is)] restoring database from governed backup: $(basename "$db_file")"
-gzip -cd "$db_file" | MYSQL_PWD="$DB_PASSWORD" mysql \
-  -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1 "$DB_NAME"
+gzip -cd "$db_file" | MYSQL_PWD="$DB_PASSWORD" "${mysql_cmd[@]}"
 
 if [ -n "$upload_name" ]; then
   upload_file="$BACKUP_DIR/$upload_name"
