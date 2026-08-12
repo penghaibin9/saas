@@ -212,7 +212,7 @@ def test_browser_login_moves_refresh_token_to_surface_httponly_cookie(monkeypatc
         response,
     )
     assert payload["data"] == {"accessToken": "access-visible"}
-    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
     assert "gx_student_refresh_v1=refresh-secret" in cookies
     assert "gx_staff_refresh_v1=refresh-secret" not in cookies
     assert "gx_platform_refresh_v1=refresh-secret" not in cookies
@@ -238,7 +238,7 @@ def test_browser_logout_terminates_only_selected_cookie_session_without_live_acc
     assert payload["code"] == 0
     assert payload["data"]["invalidated"] is True
     assert revoked == ["db-student-1"]
-    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
     assert "gx_student_refresh_v1=" in cookies
     assert "gx_staff_refresh_v1=" not in cookies
     assert "gx_platform_refresh_v1=" not in cookies
@@ -289,7 +289,7 @@ def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch)
     assert response.status_code == 503
     assert payload["bizCode"] == "AUTH_STORE_UNAVAILABLE"
     assert payload["code"] != 0
-    cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+    cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
     assert "gx_staff_refresh_v1=" in cookies
     assert "max-age=0" in cookies
 
