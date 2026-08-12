@@ -60,14 +60,18 @@ _MOCK_TENANTS = {
 
 # 这些入口会在自己的业务层解析 tenant（登录 body、refresh subject、平台控制面），
 # 因而 middleware 不应先拿一个 DEFAULT_TENANT_CODE 强行决定它们属于哪所学校。
-_TENANT_NEUTRAL_PREFIXES = (
+# 注意必须做“命名空间边界”匹配，不能用 startswith('/api/v1/auth')，否则 /authz 会被误放行。
+_TENANT_NEUTRAL_NAMESPACES = (
     "/api/v1/auth",
     "/api/v1/platform",
-    "/health",
-    "/docs",
-    "/openapi",
-    "/redoc",
 )
+_TENANT_NEUTRAL_EXACT_PATHS = frozenset({
+    "/health",
+    "/health/ready",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+})
 _TENANT_NEUTRAL = {
     "tenantId": "",
     "tenantCode": "",
@@ -145,9 +149,15 @@ def _token_tenant_code(request: Request) -> str:
         return ""
 
 
+def _path_in_namespace(path: str, namespace: str) -> bool:
+    return path == namespace or path.startswith(namespace + "/")
+
+
 def _is_tenant_neutral_path(request: Request) -> bool:
-    path = str(request.url.path or "")
-    return path.startswith(_TENANT_NEUTRAL_PREFIXES)
+    path = str(request.url.path or "").rstrip("/") or "/"
+    if path in _TENANT_NEUTRAL_EXACT_PATHS:
+        return True
+    return any(_path_in_namespace(path, namespace) for namespace in _TENANT_NEUTRAL_NAMESPACES)
 
 
 def resolve_tenant_code(request: Request) -> str:
