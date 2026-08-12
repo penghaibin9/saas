@@ -93,7 +93,6 @@
             <dl>
               <div><dt>申请理由</dt><dd>{{ record.reason || '—' }}</dd></div>
               <div v-if="record.targetMajorName || record.targetMajorId"><dt>目标专业</dt><dd>{{ record.targetMajorName || record.targetMajorId }}</dd></div>
-              <div v-if="record.effectiveDate"><dt>计划生效</dt><dd>{{ dateTime(record.effectiveDate) }}</dd></div>
               <div v-if="record.reviewNote || record.rejectReason"><dt>处理意见</dt><dd>{{ record.reviewNote || record.rejectReason }}</dd></div>
             </dl>
           </article>
@@ -134,7 +133,7 @@ const canSubmit = computed(() => {
 
 function rowsOf(data) {
   if (Array.isArray(data)) return data
-  return (data && (data.changes || data.items || data.list || data.records || data.applications)) || []
+  return (data && (data.items || data.list || data.records || data.applications)) || []
 }
 function studentStatusText(value) {
   const map = { NORMAL: '在籍', REGISTERED: '在籍注册', SUSPENDED: '休学', WITHDRAWN: '退学', GRADUATED: '毕业', COMPLETED: '结业', PENDING_REGISTER: '待注册' }
@@ -148,16 +147,12 @@ function changeTypeText(value) {
   return found?.label || value || '学籍异动'
 }
 function changeStatusText(value) {
-  const map = {
-    SUBMITTED: '已提交', IN_REVIEW: '审批中', RETURNED: '已退回', REJECTED: '已驳回',
-    APPROVED_PENDING_EFFECTIVE: '已通过·待生效', EFFECTIVE: '已生效',
-    PENDING: '审批中', APPROVED: '已通过', CANCELLED: '已撤销', COMPLETED: '已办结'
-  }
+  const map = { SUBMITTED: '已提交', PENDING: '审核中', APPROVED: '已通过', REJECTED: '未通过', RETURNED: '已退回', CANCELLED: '已撤销', COMPLETED: '已办结' }
   return map[String(value || '').toUpperCase()] || value || '待确认'
 }
 function changeStatusTone(value) {
   const statusValue = String(value || '').toUpperCase()
-  if (['EFFECTIVE', 'APPROVED', 'COMPLETED'].includes(statusValue)) return 'success'
+  if (['APPROVED', 'COMPLETED'].includes(statusValue)) return 'success'
   if (['REJECTED', 'CANCELLED'].includes(statusValue)) return 'danger'
   return 'warn'
 }
