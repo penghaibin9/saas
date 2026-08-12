@@ -336,10 +336,12 @@ def test_v6_mysql_visibility_summary_pagination_errors_and_actions(exchange_seed
     }
     assert str(exchange_seed["other_system_import"]) not in {item["id"] for item in own["list"]}
 
-    # TENANT 仅含当前租户；MODULE 仅含有职责的业务模块。
+    # ImportJob / ExportJob 使用各自自增主键；跨表裸 id 可以合法重号，租户隔离断言必须带 jobType。
     tenant = jobs.list_jobs(user=SYS_ADMIN, visibility="TENANT", page=1, page_size=100)
     assert tenant["total"] == 6
-    assert str(exchange_seed["other_tenant"]) not in {item["id"] for item in tenant["list"]}
+    assert ("IMPORT", str(exchange_seed["other_tenant"])) not in {
+        (item["jobType"], item["id"]) for item in tenant["list"]
+    }
     academic = jobs.list_jobs(
         user=ACADEMIC_ADMIN,
         visibility="MODULE",
