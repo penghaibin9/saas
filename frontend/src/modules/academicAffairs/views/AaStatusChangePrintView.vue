@@ -15,7 +15,8 @@
           <tr><th>学生姓名</th><td>{{ change.realName }}</td><th>学生ID</th><td>{{ change.studentId }}</td></tr>
           <tr><th>异动类型</th><td>{{ change.changeTypeLabel }}</td><th>状态变化</th><td>{{ change.fromStatus }} → {{ change.toStatus }}</td></tr>
           <tr><th>当前状态</th><td>{{ statusLabel(change.status) }}</td><th>当前节点</th><td>{{ nodeLabel(change.currentNode) }}</td></tr>
-          <tr v-if="change.expireDate"><th>休学到期</th><td>{{ change.expireDate }}</td><th>生效日期</th><td>{{ change.effectiveDate || '—' }}</td></tr>
+          <tr><th>生效方式</th><td>{{ change.effectiveDate ? '指定日期' : '终审通过立即生效' }}</td><th>计划生效时间</th><td>{{ change.effectiveDate || '—' }}</td></tr>
+          <tr v-if="change.expireDate"><th>休学到期</th><td colspan="3">{{ change.expireDate }}</td></tr>
           <tr><th>申请原因</th><td colspan="3">{{ change.reason || '（无）' }}</td></tr>
         </tbody>
       </table>
