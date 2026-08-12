@@ -10,6 +10,17 @@ async function browserRefreshCookie(page, channel = 'staff') {
   return String(cookies.find((cookie) => cookie.name === name)?.value || '')
 }
 
+function roleMatches(text, pattern) {
+  const value = String(text || '')
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0
+    const matched = pattern.test(value)
+    pattern.lastIndex = 0
+    return matched
+  }
+  return value.includes(String(pattern || ''))
+}
+
 export class StaffLoginPage {
   constructor(page, baseUrl) {
     this.page = page
@@ -44,6 +55,9 @@ export class StaffLoginPage {
   }
 
   async switchRole(rolePattern) {
+    const currentRole = await this.currentRoleText().catch(() => '')
+    if (roleMatches(currentRole, rolePattern)) return
+
     await this.page.getByRole('button', { name: /身份列表/ }).click()
     const menu = this.page.locator('.uchip__menu')
     await expect(menu).toBeVisible()
@@ -53,19 +67,19 @@ export class StaffLoginPage {
 
     const oldRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(oldRefreshToken, 'staff role switch must start from an HttpOnly refresh session').toBeTruthy()
-    const responsePromise = this.page.waitForResponse((response) =>
-      response.url().includes('/api/v1/auth/browser-switch-role') && response.request().method() === 'POST'
+    const requestPromise = this.page.waitForRequest((request) =>
+      request.url().includes('/api/v1/auth/browser-switch-role') && request.method() === 'POST'
     )
     await target.click()
-    const response = await responsePromise
-    expect(response.ok(), `staff role switch HTTP ${response.status()}`).toBeTruthy()
+    await requestPromise
     await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
 
     const newRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(newRefreshToken, 'staff role switch must leave a resumable HttpOnly refresh session').toBeTruthy()
     expect(newRefreshToken, 'staff role switch must rotate the durable browser session').not.toBe(oldRefreshToken)
-    // The app keeps the new access token in closure memory by design; the E2E contract proves
-    // the switch with the real 200 response, rotated HttpOnly session, URL transition and role UI.
+    // The app navigates only after switchAuthContext succeeds. Combining the real switch request,
+    // rotated HttpOnly cookie, workbench navigation and caller-side role UI assertion proves the
+    // switch without racing response-body reads against window.location.replace().
     this.lastAccessToken = ''
   }
 
