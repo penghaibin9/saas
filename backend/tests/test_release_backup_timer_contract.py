@@ -20,7 +20,7 @@ def test_scheduled_backup_is_suppressed_during_release_quiesce():
 
     # If a scheduled backup was already running before quiesce, the release-owned backup cannot
     # overlap it: the existing runner lock makes the release fail before any migration starts.
-    assert 'LOCK_FILE="$BACKUP_DIR/.backup.lock"' in runner
+    assert 'BACKUP_LOCK_FILE="${BACKUP_LOCK_FILE:-$BACKUP_DIR/.backup.lock}"' in runner
     assert "flock -n 9" in runner
 
 
