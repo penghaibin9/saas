@@ -162,9 +162,26 @@ def _candidate_join(batch):
     )
 
 
-def _candidate_conditions(batch, allowed, *, student_ids=None, status=None, keyword=None):
-    """D2-U SQL 候选合同：与 canonical 状态池一致，但把范围/过滤真正下推数据库。"""
-    if allowed is not None and not allowed:
+def _candidate_scope(ctx, db):
+    """把统一 dataScope 转成 D2-U SQL 过滤器；STUDENT 点名范围绝不提升成整个班级。"""
+    if ctx.scope_type == "TENANT_ALL":
+        return None, None
+    if ctx.scope_type == "STUDENT":
+        exact_student_ids = {
+            int(student_id)
+            for student_id in (ctx.student_ids | ctx.psychology_student_ids)
+            if student_id is not None
+        }
+        return None, exact_student_ids
+    return ctx.allowed_class_ids(db), None
+
+
+def _candidate_conditions(batch, allowed_classes, *, allowed_students=None,
+                          student_ids=None, status=None, keyword=None):
+    """D2-U SQL 候选合同：与 canonical 状态池一致，并按原始 dataScope 粒度下推数据库。"""
+    if allowed_students is not None and not allowed_students:
+        return None
+    if allowed_students is None and allowed_classes is not None and not allowed_classes:
         return None
     conds = [
         StudentProfile.tenant_id == _tid(),
@@ -172,8 +189,10 @@ def _candidate_conditions(batch, allowed, *, student_ids=None, status=None, keyw
         StudentProfile.student_status.in_(svc._batch_target_statuses(batch)),
         or_(AaRegistration.id.is_(None), AaRegistration.status != "REGISTERED"),
     ]
-    if allowed is not None:
-        conds.append(StudentProfile.class_id.in_(allowed))
+    if allowed_students is not None:
+        conds.append(StudentProfile.id.in_(allowed_students))
+    elif allowed_classes is not None:
+        conds.append(StudentProfile.class_id.in_(allowed_classes))
     if student_ids is not None:
         conds.append(StudentProfile.id.in_(student_ids))
     if status:
@@ -188,11 +207,16 @@ def _candidate_conditions(batch, allowed, *, student_ids=None, status=None, keyw
     return conds
 
 
-def _query_candidate_pairs(db, batch, allowed, *, student_ids=None, status=None, keyword=None,
-                           page=None, page_size=None):
+def _query_candidate_pairs(db, batch, allowed_classes, *, allowed_students=None,
+                           student_ids=None, status=None, keyword=None, page=None, page_size=None):
     """SQL 侧候选查询。列表真分页；preview 仅查最多 100 个选中 ID，不扫全校。"""
     conds = _candidate_conditions(
-        batch, allowed, student_ids=student_ids, status=status, keyword=keyword
+        batch,
+        allowed_classes,
+        allowed_students=allowed_students,
+        student_ids=student_ids,
+        status=status,
+        keyword=keyword,
     )
     if conds is None:
         return [], 0
@@ -217,15 +241,22 @@ def _query_candidate_pairs(db, batch, allowed, *, student_ids=None, status=None,
 
 
 def list_registration_candidates(batch_id, user, *, status=None, keyword=None, page=1, page_size=20):
-    """权威候选 + 人类可读组织/状态；SQL 真分页，避免学校大名单全量 materialize。"""
+    """权威候选 + 人类可读组织/状态；SQL 真分页，并保持 STUDENT 点名范围精确到人。"""
     with session() as db:
         batch = db.get(AaRegistrationBatch, int(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("注册批次不存在")
         ctx = build_affairs_context(user, db)
-        allowed = ctx.allowed_class_ids(db)
+        allowed_classes, allowed_students = _candidate_scope(ctx, db)
         pairs, total = _query_candidate_pairs(
-            db, batch, allowed, status=status, keyword=keyword, page=page, page_size=page_size
+            db,
+            batch,
+            allowed_classes,
+            allowed_students=allowed_students,
+            status=status,
+            keyword=keyword,
+            page=page,
+            page_size=page_size,
         )
         return _enrich_pairs(db, batch, pairs), total
 
@@ -330,8 +361,14 @@ def bulk_register_preview(batch_id, user, student_ids):
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("注册批次不存在")
         ctx = build_affairs_context(user, db)
-        allowed = ctx.allowed_class_ids(db)
-        selected_pairs, _ = _query_candidate_pairs(db, batch, allowed, student_ids=ids)
+        allowed_classes, allowed_students = _candidate_scope(ctx, db)
+        selected_pairs, _ = _query_candidate_pairs(
+            db,
+            batch,
+            allowed_classes,
+            allowed_students=allowed_students,
+            student_ids=ids,
+        )
         by_id = {s.id: (s, r) for s, r in selected_pairs}
         enriched = {int(row["studentId"]): row for row in _enrich_pairs(db, batch, selected_pairs)}
 
