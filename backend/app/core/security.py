@@ -127,6 +127,12 @@ def get_current_user(request: Request, authorization: Optional[str] = Header(def
     if jti_blocked(claims.get("jti")):
         from app.core.exceptions import unauthorized as _unauth
         raise _unauth("令牌已登出失效，请重新登录")
+    auth_session_id = str(claims.get("authSessionId") or "")
+    if auth_session_id:
+        from app.services.browser_auth_session_blocklist import auth_session_blocked
+        if auth_session_blocked(auth_session_id):
+            from app.core.exceptions import unauthorized as _unauth
+            raise _unauth("浏览器会话已失效，请重新登录")
     user = {
         "userId": claims.get("userId"),
         "loginName": claims.get("loginName") or claims.get("username"),
@@ -146,6 +152,7 @@ def get_current_user(request: Request, authorization: Optional[str] = Header(def
         "guardianPhoneHash": claims.get("guardianPhoneHash"),
         "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),
+        "authSessionId": auth_session_id or None,
     }
     if str(user.get("userId") or "").startswith("db-"):
         from app.services.auth_service_db import validate_token_subject

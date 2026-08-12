@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.api.v1 import auth_browser
 from app.core import token_store
+from app.core.exceptions import AppException
 from app.services import browser_auth_session_service
+from app.services import browser_auth_session_blocklist
 
 
 def test_browser_sessionize_real_db_pair_keeps_one_session_id(monkeypatch):
@@ -86,6 +90,17 @@ def test_browser_refresh_upgrades_legacy_cookie_to_session_scoped_pair(monkeypat
     assert access_claims[0]["authSessionId"] == refresh_claims[0]["authSessionId"]
 
 
+def test_browser_refresh_rejects_tombstoned_session_even_if_refresh_row_survived_race(monkeypatch):
+    monkeypatch.setattr(
+        auth_browser,
+        "consume_refresh",
+        lambda token: {"userId": "db-7", "authSessionId": "dead-session"},
+    )
+    monkeypatch.setattr(auth_browser, "auth_session_blocked", lambda session_id: session_id == "dead-session")
+    with pytest.raises(AppException):
+        auth_browser._rotate_browser_refresh("raced-refresh")
+
+
 class _FakeDb:
     def close(self):
         pass
@@ -99,6 +114,7 @@ def _stub_browser_switch(monkeypatch, *, session_id: str):
         "dataScope": "INTERN_STUDENTS",
     }
     user = SimpleNamespace(id=7)
+    session_blocks = []
     session_revokes = []
     global_revokes = []
     blocked = []
@@ -123,6 +139,11 @@ def _stub_browser_switch(monkeypatch, *, session_id: str):
     )
     monkeypatch.setattr(
         browser_auth_session_service,
+        "block_auth_session",
+        lambda sid: session_blocks.append(sid) or True,
+    )
+    monkeypatch.setattr(
+        browser_auth_session_service,
         "revoke_refresh_by_session",
         lambda user_id, sid: session_revokes.append((user_id, sid)) or 1,
     )
@@ -138,19 +159,25 @@ def _stub_browser_switch(monkeypatch, *, session_id: str):
         "PC",
         auth_session_id=session_id,
     )
-    return result, blocked, session_revokes, global_revokes
+    return result, blocked, session_blocks, session_revokes, global_revokes
 
 
-def test_browser_role_switch_revokes_only_current_session(monkeypatch):
-    result, blocked, session_revokes, global_revokes = _stub_browser_switch(monkeypatch, session_id="sess-1")
+def test_browser_role_switch_tombstones_and_revokes_only_current_session(monkeypatch):
+    result, blocked, session_blocks, session_revokes, global_revokes = _stub_browser_switch(
+        monkeypatch, session_id="sess-1"
+    )
     assert blocked == [("old-jti", 4102444800)]
+    assert session_blocks == ["sess-1"]
     assert session_revokes == [("db-7", "sess-1")]
     assert global_revokes == []
     assert result["contextType"] == "INTERN_MENTOR"
 
 
 def test_browser_role_switch_legacy_access_fails_safe_once(monkeypatch):
-    _result, _blocked, session_revokes, global_revokes = _stub_browser_switch(monkeypatch, session_id="")
+    _result, _blocked, session_blocks, session_revokes, global_revokes = _stub_browser_switch(
+        monkeypatch, session_id=""
+    )
+    assert session_blocks == []
     assert session_revokes == []
     assert global_revokes == ["db-7"]
 
@@ -169,3 +196,23 @@ def test_refresh_store_can_revoke_one_session_without_touching_sibling(monkeypat
         assert set(token_store._refresh) == {"b1", "other"}
     finally:
         token_store.reset_all_for_tests()
+
+
+def test_session_tombstone_reuses_persistent_jti_store(monkeypatch):
+    blocked = []
+    queried = []
+    monkeypatch.setattr(
+        browser_auth_session_blocklist,
+        "block_jti",
+        lambda key, exp: blocked.append((key, exp)) or True,
+    )
+    monkeypatch.setattr(
+        browser_auth_session_blocklist,
+        "jti_blocked",
+        lambda key: queried.append(key) or key.endswith("sess-x"),
+    )
+
+    assert browser_auth_session_blocklist.block_auth_session("sess-x") is True
+    assert blocked[0][0] == "auth-session:sess-x"
+    assert browser_auth_session_blocklist.auth_session_blocked("sess-x") is True
+    assert queried == ["auth-session:sess-x"]

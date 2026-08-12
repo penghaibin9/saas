@@ -10,6 +10,7 @@ from app.core.exceptions import AppException
 from app.core.token_store import block_jti, revoke_refresh_by_session, revoke_refresh_by_user
 from app.db.session import get_sessionmaker
 from app.services import auth_service_db
+from app.services.browser_auth_session_blocklist import block_auth_session
 
 
 def switch_role(
@@ -27,12 +28,13 @@ def switch_role(
         if target is None or target["contextId"] != context_id:
             raise AppException("ROLE_NOT_FOUND", "身份不存在、已停用或不属于当前用户")
 
-        # The current access token must stop authorizing the old role immediately.
+        # The access JTI and the whole old browser session must stop authorizing the previous role.
         block_jti(str(user_ctx.get("tokenJti") or ""), user_ctx.get("tokenExp"))
 
         user_id = f"db-{user.id}"
         session_id = str(auth_session_id or "")
         if session_id:
+            block_auth_session(session_id)
             revoke_refresh_by_session(user_id, session_id)
         else:
             # One-time compatibility for pre-hotfix browser access tokens that do not yet carry a

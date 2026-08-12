@@ -30,6 +30,7 @@ from app.schemas.auth import SwitchRoleRequest
 from app.services import auth_service_db
 from app.services import browser_auth_session_service
 from app.services import mock_audit_service as audit
+from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
 
 router = APIRouter()
 
@@ -180,8 +181,11 @@ def _rotate_browser_refresh(refresh_token: str) -> dict:
     claims = consume_refresh(refresh_token)
     if not claims:
         raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    session_id = str(claims.get("authSessionId") or "")
+    if session_id and auth_session_blocked(session_id):
+        raise unauthorized("浏览器会话已失效，请重新登录")
     auth_service_db.validate_token_subject(claims)
-    claims["authSessionId"] = str(claims.get("authSessionId") or secrets.token_urlsafe(24))
+    claims["authSessionId"] = session_id or secrets.token_urlsafe(24)
     token = create_access_token(dict(claims))
     new_refresh = issue_refresh(dict(claims))
     audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
@@ -248,20 +252,24 @@ def browser_switch_role(
         payload = success(result, message="身份切换成功")
     else:
         payload = auth_api.switch_role(body, user)
-    payload = _sessionize_payload(payload, session_id=session_id or None)
+    # A role switch closes the previous session tombstone and starts a fresh browser session id.
+    payload = _sessionize_payload(payload)
     return _extract_refresh(payload, response)
 
 
 def revoke_refresh_by_user(user_id: str) -> int:
     """Compatibility hook kept for existing browser-logout contracts.
 
-    Despite the historical name, browser logout must never perform a user-wide revoke. It only
-    removes refresh siblings belonging to the current browser authSessionId. Global revocation
+    Despite the historical name, browser logout must never perform a user-wide revoke. It tombstones
+    the current authSessionId and removes only refresh siblings in that session. Global revocation
     remains in token_store.revoke_refresh_by_user for password-reset/change and explicit all-device
     security events.
     """
     session_id = str(_BROWSER_REVOKE_SESSION.get() or "")
-    return revoke_refresh_by_session(user_id, session_id) if session_id else 0
+    if not session_id:
+        return 0
+    block_auth_session(session_id)
+    return revoke_refresh_by_session(user_id, session_id)
 
 
 def _browser_logout(
