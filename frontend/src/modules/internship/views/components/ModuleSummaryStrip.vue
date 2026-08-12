@@ -1,6 +1,6 @@
 <template>
   <section class="msr" aria-label="模块概况">
-    <!-- 当前批次（全模块统一口径：来自实习总览接口，不在页面伪造） -->
+    <!-- 当前批次（与顶部批次条共用同一 internshipBatch 真值源，不再额外猜批次） -->
     <div class="msr__batch">
       <span v-if="batchLoading" class="msr__muted">批次信息加载中…</span>
       <template v-else-if="batch">
@@ -13,8 +13,9 @@
         <button class="msr__link" @click="loadBatch(true)">重试</button>
       </template>
       <template v-else>
-        <span class="msr__muted">当前没有进行中的实习批次，请先创建或启用实习批次</span>
-        <button class="msr__link" @click="$router.push('/admin/internship/batches')">去批次设置</button>
+        <span v-if="batchStore.needsExplicitSelect" class="msr__muted">请先在上方选择当前工作批次</span>
+        <span v-else class="msr__muted">暂无可用实习批次，请先创建或启用实习批次</span>
+        <button v-if="!batchStore.needsExplicitSelect" class="msr__link" @click="$router.push('/admin/internship/batches')">去批次设置</button>
       </template>
     </div>
 
@@ -44,25 +45,21 @@
 </template>
 
 <script>
-import { internshipApi } from '@/modules/internship/api/internship.api'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
-/** 模块级缓存：同一次会话内 12 个模块主页共用一次批次概况请求 */
-let _batchCache = null
-function fetchBatchSummary(force) {
-  if (force || !_batchCache) {
-    _batchCache = internshipApi.getDashboardSummary().catch((e) => {
-      _batchCache = null
-      throw e
-    })
-  }
-  return _batchCache
+const BATCH_STATUS_LABEL = {
+  DRAFT: '草稿',
+  RUNNING: '进行中',
+  CLOSED: '已结束',
+  ARCHIVED: '已归档',
+  VOIDED: '已作废'
 }
 
 /**
  * ModuleSummaryStrip — 岗位实习中心二级模块主页统一「任务化摘要条」。
- * 职责：当前批次（统一来自实习总览接口）+ 模块真实指标 + 待处理直达。
+ * 职责：当前批次（与顶部批次条共用 internshipBatch store）+ 模块真实指标 + 待处理直达。
  * 铁律：指标与待办一律由调用方传入真实接口数据；本组件不造数、不写常量、
- * 没有统计口径时由调用方传 note（如「暂无统计口径」）明示。
+ * 不无参调用要求 batchId 的 dashboard 接口，也不维护第二套“当前批次”缓存。
  */
 export default {
   name: 'ModuleSummaryStrip',
@@ -74,29 +71,37 @@ export default {
     /** 指标缺失时的说明文案（业务语言，如「暂无统计口径」） */
     note: { type: String, default: '' }
   },
-  data() {
-    return { batch: null, batchLoading: true, batchError: false }
+  setup() {
+    return { batchStore: useInternshipBatchStore() }
   },
-  created() {
-    this.loadBatch()
+  computed: {
+    batchLoading() {
+      return !this.batchStore.selectedBatchId
+        && !this.batchStore.batchLoadFailed
+        && (this.batchStore.batchLoading || !this.batchStore.initialized)
+    },
+    batchError() {
+      if (!this.batchStore.batchLoadFailed || this.batchStore.selectedBatchId) return ''
+      return this.batchStore.batchError || '批次信息暂不可用'
+    },
+    batch() {
+      if (!this.batchStore.selectedBatchId) return null
+      const startDate = this.batchStore.startDate || ''
+      const endDate = this.batchStore.endDate || ''
+      return {
+        batchId: String(this.batchStore.selectedBatchId),
+        batchName: this.batchStore.selectedBatchName || '',
+        batchStatus: BATCH_STATUS_LABEL[this.batchStore.batchStatus] || this.batchStore.batchStatus || '—',
+        batchRange: startDate && endDate ? `${startDate} ~ ${endDate}` : ''
+      }
+    }
   },
   methods: {
-    async loadBatch(force = false) {
-      this.batchLoading = true
-      this.batchError = false
-      try {
-        const res = await fetchBatchSummary(force)
-        if (res && res.code === 0 && res.data && res.data.batchName) {
-          this.batch = res.data
-        } else {
-          this.batch = null
-        }
-      } catch {
-        this.batch = null
-        this.batchError = true
-      } finally {
-        this.batchLoading = false
-      }
+    loadBatch(force = false) {
+      return this.batchStore.ensureLoaded({
+        batchIdFromUrl: this.$route.query.batchId || this.batchStore.selectedBatchId || '',
+        force
+      })
     },
     goPending(p) {
       if (!p.to) return
