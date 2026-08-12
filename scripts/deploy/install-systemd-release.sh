@@ -18,10 +18,10 @@ fi
 SOURCE_ROOT="${SOURCE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 APP_ROOT="${APP_ROOT:-/opt/school-lifecycle}"
 ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
+BACKUP_ENV_FILE="${BACKUP_ENV_FILE:-/etc/school-lifecycle/backup.env}"
 SERVICE_USER="${SERVICE_USER:-schoolapp}"
 RELEASE_ID="${RELEASE_ID:-$(date +%Y%m%d_%H%M%S)}"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
-BACKUP_DIR="$APP_ROOT/backups"
 ENV_RUNNER="$SOURCE_ROOT/scripts/deploy/run-with-envfile.py"
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
 
@@ -62,9 +62,10 @@ run_with_env() {
 }
 
 ENV_FILE="$ENV_FILE" SOURCE_ROOT="$SOURCE_ROOT" bash "$SOURCE_ROOT/scripts/deploy/preflight-linux.sh"
+[ -r "$BACKUP_ENV_FILE" ] || { echo "Governed backup env is required: $BACKUP_ENV_FILE" >&2; exit 1; }
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --home "$APP_ROOT" --shell /usr/sbin/nologin "$SERVICE_USER"
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$APP_ROOT/releases" "$APP_ROOT/shared/uploads" \
-  "$APP_ROOT/shared/exports" "$BACKUP_DIR" /var/www/school-lifecycle
+  "$APP_ROOT/shared/exports" /var/www/school-lifecycle
 install -d -m 700 /etc/school-lifecycle
 
 PUBLIC_BASE_URL_VALUE="$(env_value PUBLIC_BASE_URL)"
@@ -77,9 +78,9 @@ DB_PORT_VALUE="$(env_value DB_PORT)"; DB_PORT_VALUE="${DB_PORT_VALUE:-3306}"
 DB_USER_VALUE="$(env_value DB_USER)"
 DB_NAME_VALUE="$(env_value DB_NAME)"
 [ -n "$DB_PASSWORD_VALUE" ] && [ -n "$DB_USER_VALUE" ] && [ -n "$DB_NAME_VALUE" ] \
-  || { echo "Database backup settings are incomplete." >&2; exit 1; }
+  || { echo "Database settings are incomplete." >&2; exit 1; }
 
-# 先在旧版本仍服务时完成所有耗时构建；真正停业务的窗口只包含备份、迁移、切换和启动。
+# 先在旧版本仍服务时完成所有耗时构建；真正停业务的窗口只包含受治理备份、迁移、切换和启动。
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$RELEASE_DIR"
 if [ "$SOURCE_IS_GIT" = "1" ]; then
   # 只从已确认的 commit tree 物化，绝不把工作区未提交/未跟踪内容混进生产 release。
@@ -134,15 +135,46 @@ for svc in school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-
 done
 QUIESCED=0
 ACTIVATED=0
+MIGRATION_STARTED=0
+ROLLBACK_MANIFEST=""
+backup_file=""
+
+restore_previous_systemd_units() {
+  if [ -z "$previous" ] || [ ! -d "$previous" ]; then
+    return 0
+  fi
+  for unit in school-lifecycle-backend.service school-lifecycle-scheduler.service school-lifecycle-file-scan.service; do
+    if [ -f "$previous/deploy/systemd/$unit" ]; then
+      install -m 644 "$previous/deploy/systemd/$unit" "/etc/systemd/system/$unit"
+    fi
+  done
+  systemctl daemon-reload >/dev/null 2>&1 || true
+}
 
 release_failure_guard() {
   status=$?
+  trap - EXIT
   if [ "$status" -ne 0 ] && [ "$QUIESCED" = "1" ]; then
+    # 任何候选写入者都必须先停；数据库/文件恢复期间绝不能有并发业务写。
+    systemctl stop school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan \
+      >/dev/null 2>&1 || true
+
+    if [ "$MIGRATION_STARTED" = "1" ]; then
+      if [ -z "$ROLLBACK_MANIFEST" ] || [ ! -f "$ROLLBACK_MANIFEST" ]; then
+        echo "CRITICAL: migration started but governed rollback manifest is unavailable; old services remain stopped." >&2
+        exit 90
+      fi
+      echo "[$(date -Is)] candidate failed after migration start; restoring governed pre-release backup" >&2
+      if ! python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+        python3 "$ENV_RUNNER" "$ENV_FILE" -- \
+        env BACKUP_DIR="$(dirname "$ROLLBACK_MANIFEST")" \
+        bash "$RELEASE_DIR/deploy/backup/restore-backup-set.sh" "$ROLLBACK_MANIFEST"; then
+        echo "CRITICAL: governed rollback restore failed; old services remain stopped for manual recovery." >&2
+        exit 91
+      fi
+    fi
+
     if [ "$ACTIVATED" = "1" ]; then
-      # 候选 release 已启动后仍要保持 rollback armed 直到最终 acceptance 成功。
-      # 先停掉全部候选写入者，避免首次安装（没有 previous）失败后拒绝版本继续在线。
-      systemctl stop school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan \
-        >/dev/null 2>&1 || true
       if [ -n "$previous" ] && [ -d "$previous" ]; then
         ln -sfnT "$previous" "$APP_ROOT/current.rollback" || true
         mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current" || true
@@ -151,29 +183,56 @@ release_failure_guard() {
         rm -f "$APP_ROOT/current" || true
       fi
     fi
-    if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
-      systemctl start "${ACTIVE_OLD_SERVICES[@]}" >/dev/null 2>&1 || true
+
+    restore_previous_systemd_units
+    if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ] && [ -n "$previous" ] && [ -d "$previous" ]; then
+      if ! systemctl start "${ACTIVE_OLD_SERVICES[@]}"; then
+        echo "CRITICAL: data restored but previous services failed to restart." >&2
+        exit 92
+      fi
     fi
   fi
+  unset DB_PASSWORD_VALUE || true
   exit "$status"
 }
 trap release_failure_guard EXIT
 
-# 单机生产部署进入短暂静默窗口：先停 Web 和所有后台写入者，再在同一静默点取备份。
+# 单机生产部署进入短暂静默窗口：先停 Web 和所有后台写入者，再在同一静默点取治理备份。
 if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
   systemctl stop "${ACTIVE_OLD_SERVICES[@]}"
 fi
 QUIESCED=1
 
-backup_file="$BACKUP_DIR/pre_release_${RELEASE_ID}.sql.gz"
-MYSQL_PWD="$DB_PASSWORD_VALUE" mysqldump -h"$DB_HOST_VALUE" -P"$DB_PORT_VALUE" \
-  -u"$DB_USER_VALUE" --single-transaction --quick --routines --events --triggers --hex-blob \
-  --default-character-set=utf8mb4 "$DB_NAME_VALUE" | gzip -9 > "$backup_file.partial"
-gzip -t "$backup_file.partial"
-mv "$backup_file.partial" "$backup_file"
-sha256sum "$backup_file" > "$backup_file.sha256"
-unset DB_PASSWORD_VALUE
+# 发布前备份不再维护第二套 DB-only 真值：直接使用 #66 治理链（DB + uploads + manifest + offsite readback）。
+GOVERNED_BACKUP_DIR="$(python3 "$ENV_RUNNER" --get "$BACKUP_ENV_FILE" BACKUP_DIR)"
+GOVERNED_BACKUP_DIR="${GOVERNED_BACKUP_DIR:-/var/lib/school-lifecycle-backup}"
+python3 "$ENV_RUNNER" "$BACKUP_ENV_FILE" -- \
+  python3 "$ENV_RUNNER" "$ENV_FILE" -- \
+  env BACKUP_DIR="$GOVERNED_BACKUP_DIR" REQUIRE_UPLOAD_BACKUP=true \
+  bash "$RELEASE_DIR/deploy/backup/backup-runner.sh"
+ROLLBACK_MANIFEST="$(find "$GOVERNED_BACKUP_DIR" -maxdepth 1 -type f -name 'manifest_*.json' \
+  -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+[ -n "$ROLLBACK_MANIFEST" ] && [ -s "$ROLLBACK_MANIFEST" ] \
+  || { echo "governed pre-release backup manifest not found" >&2; exit 1; }
+backup_file="$(python3 - "$ROLLBACK_MANIFEST" "$GOVERNED_BACKUP_DIR" <<'PY'
+import json, sys
+from pathlib import Path
+manifest = Path(sys.argv[1])
+root = Path(sys.argv[2]).resolve()
+payload = json.loads(manifest.read_text(encoding='utf-8'))
+name = payload['database']['file']
+if Path(name).name != name:
+    raise SystemExit('unsafe database backup filename')
+path = (root / name).resolve()
+if path.parent != root:
+    raise SystemExit('database backup escaped governed directory')
+print(path)
+PY
+)"
+[ -s "$backup_file" ] || { echo "governed database backup missing" >&2; exit 1; }
 
+# 迁移一旦开始，任何后续失败都必须从 ROLLBACK_MANIFEST 恢复后才能重新启动 previous。
+MIGRATION_STARTED=1
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" -m alembic upgrade head)
 (cd "$RELEASE_DIR/backend" && run_with_env "$RELEASE_DIR/backend/.venv/bin/python" scripts/check_alembic_current.py)
 
@@ -210,11 +269,13 @@ systemctl restart school-lifecycle-backend school-lifecycle-scheduler school-lif
 APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$RELEASE_DIR/scripts/deploy/verify-systemd-release.sh"
 
 # 生产主机证据不是 CI 截图：重新从已激活 release 自身执行预检+运行时验收，
-# 并把 commit/主机指纹/备份校验写成 0600 JSON。任何一步失败都不产生 PASS 证据。
+# 并把 commit/主机指纹/受治理备份校验写成 0600 JSON。任何一步失败都不产生 PASS 证据。
 EXPECTED_RELEASE_COMMIT="$SOURCE_COMMIT" BACKUP_FILE="$backup_file" \
   APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" \
   bash "$RELEASE_DIR/scripts/deploy/accept-production-release.sh"
 
+MIGRATION_STARTED=0
 QUIESCED=0
+unset DB_PASSWORD_VALUE
 trap - EXIT
-echo "Release $RELEASE_ID installed. Commit: $SOURCE_COMMIT. Backup: $backup_file"
+echo "Release $RELEASE_ID installed. Commit: $SOURCE_COMMIT. Governed backup: $ROLLBACK_MANIFEST"

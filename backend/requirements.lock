@@ -1,6 +1,11 @@
-# Exact verified Python dependency freeze. Human-maintained ranges live in requirements.in.
-# This file intentionally mirrors requirements.lock so every existing `pip install -r requirements.txt`
-# path (CI, developer bootstrap, systemd release) installs the same graph.
+# Python production/test dependency lock.
+# Captured from the exact-main canonical MySQL shard that passed on 2026-08-12
+# with CPython 3.12.13. Keep backend/requirements.txt as the human-maintained
+# direct dependency policy; CI and production install this exact resolved graph.
+#
+# Regeneration rule: resolve from requirements.txt on Python 3.12, run the full
+# canonical suite, then replace this file atomically with the verified freeze.
+
 APScheduler==3.11.3
 Mako==1.4.1
 MarkupSafe==3.0.3

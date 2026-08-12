@@ -1,4 +1,12 @@
-"""真实浏览器登录验收：管理 PC、平台 PC、学生 PC → FastAPI/MySQL/Redis。"""
+"""真实浏览器登录验收：管理 PC、平台 PC、学生 PC → FastAPI/MySQL/Redis。
+
+Browser security contract:
+- login must use the dedicated browser endpoint;
+- refreshToken is never exposed to JavaScript and lives only in HttpOnly cookie;
+- accessToken is memory-only and must not survive in local/session storage;
+- successful authenticated navigation plus Redis one-time challenge consumption proves the live
+  browser session without weakening the storage boundary.
+"""
 from __future__ import annotations
 
 import json
@@ -18,7 +26,7 @@ ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def is_login(response) -> bool:
-    return response.request.method == "POST" and response.url.endswith("/api/v1/auth/login")
+    return response.request.method == "POST" and response.url.endswith("/api/v1/auth/browser-login")
 
 
 def is_captcha(response) -> bool:
@@ -50,7 +58,7 @@ def click_login(page: Page, label: str, artifact_prefix: str) -> dict:
     except Exception as exc:
         page.screenshot(path=str(ARTIFACT_DIR / f"{artifact_prefix}-submit-failure.png"), full_page=True)
         raise AssertionError(
-            f"点击“{label}”后未收到登录响应；页面错误={page_error(page)!r}；"
+            f"点击“{label}”后未收到浏览器登录响应；页面错误={page_error(page)!r}；"
             f"按钮禁用={button.is_disabled()}；当前地址={page.url}"
         ) from exc
 
@@ -98,6 +106,18 @@ def assert_consumed(redis_client, captcha_id: str) -> None:
         raise AssertionError("验证码提交后仍存在于 Redis")
 
 
+def assert_no_browser_token_persistence(page: Page, keys: list[str]) -> None:
+    leaked = page.evaluate(
+        """(keys) => Object.fromEntries(keys.flatMap((key) => [
+          [`session:${key}`, sessionStorage.getItem(key)],
+          [`local:${key}`, localStorage.getItem(key)],
+        ]).filter(([, value]) => value !== null && value !== ''))""",
+        keys,
+    )
+    if leaked:
+        raise AssertionError(f"浏览器认证令牌被持久化：{sorted(leaked)}")
+
+
 def teacher_pc(browser, redis_client) -> dict:
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=30_000)
@@ -126,9 +146,7 @@ def teacher_pc(browser, redis_client) -> dict:
     if result.get("code") != 0:
         raise AssertionError(f"管理 PC 登录失败：{result!r}")
     page.wait_for_url("**/workbench**", timeout=15_000)
-    token = page.evaluate("sessionStorage.getItem('gx_pc_token_v1') || ''")
-    if token.count(".") != 2:
-        raise AssertionError("管理 PC 未写入 access token")
+    assert_no_browser_token_persistence(page, ["gx_pc_token_v1", "gx_pc_refresh_v1"])
     assert_consumed(redis_client, captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "teacher-pc-success.png"), full_page=True)
     page.close()
@@ -153,9 +171,7 @@ def platform_pc(browser, redis_client) -> dict:
     if result.get("code") != 0:
         raise AssertionError(f"平台 PC 登录失败：{result!r}")
     page.wait_for_url("**/admin/platform/overview**", timeout=15_000)
-    token = page.evaluate("sessionStorage.getItem('gx_pc_token_v1') || ''")
-    if token.count(".") != 2:
-        raise AssertionError("平台 PC 未写入 access token")
+    assert_no_browser_token_persistence(page, ["gx_pc_token_v1", "gx_pc_refresh_v1"])
     assert_consumed(redis_client, captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "platform-pc-success.png"), full_page=True)
     page.close()
@@ -190,9 +206,7 @@ def student_pc(browser, redis_client) -> dict:
     if result.get("code") != 0:
         raise AssertionError(f"学生 PC 登录失败：{result!r}")
     page.wait_for_url("**/portal/home**", timeout=20_000)
-    token = page.evaluate("sessionStorage.getItem('sp_token_v1') || ''")
-    if token.count(".") != 2:
-        raise AssertionError("学生 PC 未写入 access token")
+    assert_no_browser_token_persistence(page, ["sp_token_v1", "sp_refresh_v1"])
     assert_consumed(redis_client, captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "student-pc-success.png"), full_page=True)
     page.close()

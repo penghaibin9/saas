@@ -1,8 +1,11 @@
 /**
  * 学生 PC 门户 · 统一请求层。
- * - token 独立 key：sp_token_v1（不碰 miniapp / frontend 管理端的 token），存 sessionStorage。
+ * - SECURITY-P0：accessToken 只驻留内存；refreshToken 仅 HttpOnly+SameSite Cookie。
+ * - 学生 PC 固定使用独立 student browser session，不与教师/平台 PC 共用 refresh Cookie。
  * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
- * - 401 单飞刷新并重试一次；刷新失败才清会话，避免长表单因 access token 到期直接丢失。
+ * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
+ * - 迟到的旧 refresh/401/业务响应不得覆盖、清空或借用已经切换的新会话。
+ * - /auth/me 是唯一允许“无内存 token → HttpOnly refresh → 恢复会话”的 auth 读入口。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
 const TOKEN_KEY = 'sp_token_v1'
@@ -10,6 +13,7 @@ const REFRESH_KEY = 'sp_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
+const BROWSER_SESSION_HEADERS = { 'X-Browser-Session': 'student' }
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
@@ -18,56 +22,70 @@ const API_BASE = (() => {
   return '' // 生产同源：/api/v1 由 Nginx 反代
 })()
 
-// 会话令牌一律用 sessionStorage，不用 localStorage。
-// 学生门户大量跑在机房/图书馆的公用电脑上：localStorage 关掉浏览器还在，
-// 下一个学生打开就直接是上一个人的登录态。sessionStorage 随标签页结束即清。
-// 迁移期：读取时兼容一次旧 localStorage 值，读到就搬进 sessionStorage 并把旧的删掉，
-// 已登录的学生不会被这次改动踢下线。
-function _readLegacy(key) {
-  try {
-    const legacy = localStorage.getItem(key)
-    if (legacy) {
-      sessionStorage.setItem(key, legacy)
-      localStorage.removeItem(key)
-      return legacy
-    }
-  } catch { /* ignore */ }
-  return ''
+let accessToken = ''
+let sessionGeneration = 0
+
+for (const key of [TOKEN_KEY, REFRESH_KEY]) {
+  try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
 }
-function _get(key) {
-  try { return sessionStorage.getItem(key) || _readLegacy(key) } catch { return '' }
+
+function _sessionGet(key) {
+  try { return sessionStorage.getItem(key) || '' } catch { return '' }
 }
-function _set(key, value) {
+function _sessionSet(key, value) {
   try {
     if (value) sessionStorage.setItem(key, value)
     else sessionStorage.removeItem(key)
-    localStorage.removeItem(key)   // 确保旧值不会残留在磁盘上
   } catch { /* ignore */ }
 }
 
+function _replaceAccessToken(token) {
+  accessToken = token || ''
+}
+
+function _advanceSession(token) {
+  sessionGeneration += 1
+  _replaceAccessToken(token)
+}
+
+function _invalidateIfCurrent(tokenAtStart) {
+  if (accessToken !== tokenAtStart) return false
+  sessionGeneration += 1
+  _replaceAccessToken('')
+  return true
+}
+
+function staleSessionError() {
+  const e = new Error('登录会话已发生变化，旧请求已停止')
+  e.code = 'SESSION_CHANGED'
+  e.bizCode = 'SESSION_CHANGED'
+  e.biz = true
+  e.staleSession = true
+  return e
+}
+
 export function getToken() {
-  return _get(TOKEN_KEY)
+  return accessToken
 }
 export function setToken(t) {
-  _set(TOKEN_KEY, t || '')
+  _advanceSession(t || '')
 }
 export function getRefreshToken() {
-  return _get(REFRESH_KEY)
+  return ''
 }
-export function setRefreshToken(t) {
-  _set(REFRESH_KEY, t || '')
-}
+export function setRefreshToken(_t) {}
 export function clearSession() {
+  _advanceSession('')
   for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY]) {
     try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
   }
 }
 
 function readTempFiles() {
-  try { return JSON.parse(_get(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
+  try { return JSON.parse(_sessionGet(GD_TEMP_FILES_KEY) || '{}') || {} } catch { return {} }
 }
 function writeTempFiles(value) {
-  _set(GD_TEMP_FILES_KEY, JSON.stringify(value || {}))
+  _sessionSet(GD_TEMP_FILES_KEY, JSON.stringify(value || {}))
 }
 function rememberTempFile(fileId) {
   if (!fileId) return
@@ -83,7 +101,6 @@ function markTempFilesBound(fileIds) {
   writeTempFiles(value)
 }
 
-/** 学生放弃一个未绑定的毕业设计临时材料（已绑定的会 409，忽略即可）。 */
 export async function abandonTemporaryGraduationMaterial(fileId) {
   if (!fileId) return null
   const data = await request(`/portal/graduation/materials/${fileId}/abandon`, { method: 'POST' })
@@ -94,7 +111,6 @@ export async function abandonTemporaryGraduationMaterial(fileId) {
 }
 
 let cleanupStarted = false
-/** 每个页面会话只清一次：超过 24 小时仍未绑定业务的毕设临时材料自动放弃。 */
 function cleanupStaleGraduationTemps() {
   if (cleanupStarted) return
   cleanupStarted = true
@@ -107,11 +123,10 @@ function cleanupStaleGraduationTemps() {
   })
 }
 
-
 function selectedInternshipBatch(path) {
   if (!String(path || '').startsWith('/portal/internship')) return ''
   try {
-    const value = String(_get(INTERNSHIP_BATCH_KEY) || '').trim()
+    const value = String(_sessionGet(INTERNSHIP_BATCH_KEY) || '').trim()
     return /^\d+$/.test(value) ? value : ''
   } catch { return '' }
 }
@@ -119,6 +134,12 @@ function selectedInternshipBatch(path) {
 function addInternshipBatchHeader(headers, path) {
   const batchId = selectedInternshipBatch(path)
   if (batchId) headers['X-Internship-Batch-Id'] = batchId
+}
+
+function addBrowserSessionHeader(headers, path) {
+  if (String(path || '').startsWith('/auth/browser-')) {
+    headers['X-Browser-Session'] = BROWSER_SESSION_HEADERS['X-Browser-Session']
+  }
 }
 
 function withQuery(path, params) {
@@ -153,18 +174,15 @@ async function responseJson(res) {
 let refreshing = null
 async function refreshOnce() {
   if (refreshing) return refreshing
-  const refreshToken = getRefreshToken()
-  if (!refreshToken) {
-    clearSession()
-    throw authError()
-  }
+  const generationAtStart = sessionGeneration
+  const accessTokenAtStart = accessToken
   refreshing = (async () => {
     let res
     try {
-      res = await fetch(`${API_BASE}${API_PREFIX}/auth/refresh`, {
+      res = await fetch(`${API_BASE}${API_PREFIX}/auth/browser-refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken })
+        headers: { 'Content-Type': 'application/json', ...BROWSER_SESSION_HEADERS },
+        credentials: 'include'
       })
     } catch {
       const e = new Error('网络不可达，请检查后端服务')
@@ -177,12 +195,16 @@ async function refreshOnce() {
     }
     const data = payload.data || {}
     if (!data.accessToken) throw authError()
-    setToken(data.accessToken)
-    setRefreshToken(data.refreshToken || refreshToken)
+    if (sessionGeneration !== generationAtStart || accessToken !== accessTokenAtStart) {
+      throw staleSessionError()
+    }
+    _replaceAccessToken(data.accessToken)
     return data.accessToken
   })()
     .catch((e) => {
-      clearSession()
+      if (!e.staleSession && sessionGeneration === generationAtStart && accessToken === accessTokenAtStart) {
+        _invalidateIfCurrent(accessTokenAtStart)
+      }
       throw e
     })
     .finally(() => { refreshing = null })
@@ -193,30 +215,64 @@ function isUnauthorized(res, payload) {
   return res.status === 401 || (payload && payload.code === 401001)
 }
 
+function browserAuthPath(path) {
+  return path === '/auth/login' ? '/auth/browser-login' : path
+}
+
+function browserAuthBody(path, body) {
+  const studentPcAuthPaths = new Set([
+    '/auth/login',
+    '/auth/captcha',
+    '/auth/password-reset/request',
+    '/auth/password-reset/verify'
+  ])
+  if (!studentPcAuthPaths.has(path)) return body
+  return { ...(body || {}), clientType: 'STUDENT_PC' }
+}
+
 export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
+  // F5 后 accessToken 为空；只允许 /auth/me 先走一次 HttpOnly cookie refresh。
+  // 登录、验证码、找回密码等其它 auth 端点永远不触发隐式 refresh。
+  if (auth && !_retried && path === '/auth/me' && !getToken()) {
+    await refreshOnce()
+    return request(path, { method, body, auth, params, query, _retried: true })
+  }
+
   cleanupStaleGraduationTemps()
+  const generationAtStart = sessionGeneration
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
   addInternshipBatchHeader(headers, path)
-  const requestPath = withQuery(path, params || query)
+  addBrowserSessionHeader(headers, path)
+  const requestPath = withQuery(browserAuthPath(path), params || query)
+  const requestBody = browserAuthBody(path, body)
   let res
   try {
     res = await fetch(`${API_BASE}${API_PREFIX}${requestPath}`, {
-      method, headers, body: body ? JSON.stringify(body) : undefined
+      method,
+      headers,
+      body: requestBody ? JSON.stringify(requestBody) : undefined,
+      credentials: 'include'
     })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
   const payload = await responseJson(res)
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
     if (auth && !_retried && !path.startsWith('/auth/')) {
+      // 同一逻辑学生会话内的并发请求可能已经完成 refresh；允许同身份 token 重试。
+      if (accessToken && accessToken !== token) {
+        return request(path, { method, body, auth, params, query, _retried: true })
+      }
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return request(path, { method, body, auth, params, query, _retried: true })
     }
-    if (auth) clearSession()
+    if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined, payload, res.status)
   }
   if (!payload || typeof payload.code !== 'number') {
@@ -239,12 +295,9 @@ export async function request(path, {
   return payload.data
 }
 
-/**
- * 学生门户的文件上传：仅用于先上传、再把 fileId 交给具体业务接口的两步流程。
- * 不给调用方暴露后台接口，也不把文件内容混入普通 JSON 请求。
- */
 export async function uploadFile(path, file, { auth = true, _retried = false } = {}) {
   cleanupStaleGraduationTemps()
+  const generationAtStart = sessionGeneration
   const headers = {}
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
@@ -253,17 +306,24 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   form.append('file', file)
   let res
   try {
-    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { method: 'POST', headers, body: form })
+    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
+      method: 'POST', headers, body: form, credentials: 'include'
+    })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
   const payload = await responseJson(res)
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
     if (auth && !_retried) {
+      if (accessToken && accessToken !== token) {
+        return uploadFile(path, file, { auth, _retried: true })
+      }
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return uploadFile(path, file, { auth, _retried: true })
     }
-    clearSession()
+    if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined)
   }
   if (!payload || typeof payload.code !== 'number') {
@@ -278,30 +338,34 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   return payload.data
 }
 
-/** 下载受业务关系保护的文件；以 Bearer token 取回 blob，避免把令牌拼进 URL。 */
 export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
+  const generationAtStart = sessionGeneration
   const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
   addInternshipBatchHeader(headers, path)
   let res
   try {
-    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers })
+    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'include' })
   } catch {
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
+  if (sessionGeneration !== generationAtStart) throw staleSessionError()
   if (res.status === 401) {
     if (!_retried) {
+      if (accessToken && accessToken !== token) return downloadFile(path, fallbackName, true)
       await refreshOnce()
+      if (sessionGeneration !== generationAtStart) throw staleSessionError()
       return downloadFile(path, fallbackName, true)
     }
-    clearSession()
+    _invalidateIfCurrent(token)
     throw authError()
   }
   if (!res.ok) {
     const e = new Error('材料下载失败或你已无权访问'); e.status = res.status; throw e
   }
   const blob = await res.blob()
+  if (sessionGeneration !== generationAtStart) throw staleSessionError()
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
