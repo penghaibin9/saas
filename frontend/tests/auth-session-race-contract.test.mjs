@@ -40,17 +40,28 @@ test('旧 access token 的 401 不得借重新登录或切换角色后的新身�
   const requestBlock = source.match(/export async function request\(path, options = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function logoutRemote/)
   assert.ok(requestBlock, 'request() block must exist')
   assert.match(requestBlock[1], /const generationAtStart = state\.sessionGeneration/)
-  assert.match(requestBlock[1], /if \(state\.sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
-  assert.doesNotMatch(
-    requestBlock[1],
-    /if \(state\.token && state\.token !== accessTokenAtStart\) return rawRequest\(path, options\)[\s\S]*?state\.sessionGeneration !== generationAtStart[^\n]*$/m,
-    'new-session retry must never precede the generation guard'
+  const requestGuard = 'if (state.sessionGeneration !== generationAtStart) throw staleSessionError()'
+  const requestRetry = 'if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)'
+  const requestGuardIndex = requestBlock[1].indexOf(requestGuard)
+  const requestRetryIndex = requestBlock[1].indexOf(requestRetry)
+  assert.ok(requestGuardIndex >= 0, 'request() must guard the original logical session')
+  assert.ok(requestRetryIndex >= 0, 'request() may retry only after same-session token rotation')
+  assert.ok(
+    requestGuardIndex < requestRetryIndex,
+    'generation guard must execute before any retry with a changed access token'
   )
 
   const blobBlock = source.match(/export async function requestBlob\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport function withFallback/)
   assert.ok(blobBlock, 'requestBlob() block must exist')
   assert.match(blobBlock[1], /const generationAtStart = state\.sessionGeneration/)
-  assert.match(blobBlock[1], /if \(state\.sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+  const blobGuardIndex = blobBlock[1].indexOf(requestGuard)
+  const blobRetryIndex = blobBlock[1].indexOf('if (state.token && state.token !== accessTokenAtStart) return doFetch()')
+  assert.ok(blobGuardIndex >= 0, 'requestBlob() must guard the original logical session')
+  assert.ok(blobRetryIndex >= 0, 'requestBlob() may retry only after same-session token rotation')
+  assert.ok(
+    blobGuardIndex < blobRetryIndex,
+    'blob generation guard must execute before any retry with a changed access token'
+  )
 })
 
 test('上传使用启动时 token，身份切换后的迟到结果必须作废', async () => {
