@@ -18,7 +18,9 @@ test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', as
     source,
     /rawRequest\('\/auth\/browser-refresh', \{[\s\S]*?method: 'POST', auth: false, forceProbe: true[\s\S]*?\}\)/
   )
-  assert.match(source, /credentials: 'same-origin'/)
+  // The API origin is configurable, so the HttpOnly refresh cookie must be included for the
+  // explicitly CORS-whitelisted API origin instead of being limited to the page's same origin.
+  assert.match(source, /credentials: 'include'/)
   assert.match(source, /if \(state\.sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
   assert.match(source, /if \(e\?\.staleSession \|\| state\.sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
 
