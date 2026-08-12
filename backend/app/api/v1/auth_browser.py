@@ -3,6 +3,7 @@
 PC surfaces keep access tokens in memory only and rotate refresh tokens through HttpOnly cookies.
 Staff PC, platform control-plane PC and student PC use independent cookie names so opening one
 surface in the same browser cannot overwrite or silently refresh into another surface's identity.
+Browser login also verifies that the requested surface matches the authenticated account identity.
 Miniapp/native clients continue using the existing JSON refresh-token transport because those
 runtimes do not share the browser cookie threat model.
 """
@@ -37,6 +38,15 @@ def _normalize_channel(value: str | None) -> str:
     return channel
 
 
+def _channel_from_client_type(client_type: str | None) -> str:
+    value = str(client_type or "PC").strip().upper()
+    if value == "PLATFORM_PC":
+        return "platform"
+    if value == "STUDENT_PC":
+        return "student"
+    return "staff"
+
+
 def _channel_from_access_token(token: str) -> str:
     claims = decode_token(token)
     client_type = str(claims.get("clientType") or "").strip().upper()
@@ -59,7 +69,6 @@ def _set_refresh_cookie(response: Response, token: str, channel: str) -> None:
         samesite="strict",
         path=_COOKIE_PATH,
     )
-    # The historical shared cookie is unsafe once multiple PC surfaces share one origin.
     response.delete_cookie(
         key=_LEGACY_COOKIE_NAME,
         path=_COOKIE_PATH,
@@ -95,14 +104,15 @@ def _extract_refresh(payload: dict, response: Response, *, expected_channel: str
         raise unauthorized("刷新令牌签发失败，请重新登录")
     actual_channel = _channel_from_access_token(access_token)
     if expected_channel is not None and actual_channel != _normalize_channel(expected_channel):
-        # The old refresh was already consumed. Burn the newly rotated token as well; never move a
-        # student/platform identity into a staff cookie (or vice versa) just to keep a session alive.
+        # Login/refresh already created a durable refresh record. Burn it before rejecting a
+        # cross-surface identity so an accidental student-on-staff (or staff-on-student) login
+        # cannot overwrite or leave behind another PC surface's resumable browser session.
         try:
             consume_refresh(refresh_token)
         except Exception:
             pass
         _clear_refresh_cookie(response, expected_channel)
-        raise unauthorized("浏览器会话身份已变化，请重新登录")
+        raise unauthorized("该账号不属于当前登录入口，请使用正确入口重新登录")
     _set_refresh_cookie(response, refresh_token, actual_channel)
     out = dict(payload)
     out["data"] = data
@@ -117,9 +127,10 @@ def _cookie_for_channel(channel: str, *, staff: str | None, platform: str | None
     }[_normalize_channel(channel)]
 
 
-@router.post("/auth/browser-login", summary="浏览器账号密码登录（refreshToken 按 PC 入口隔离到 HttpOnly Cookie）")
+@router.post("/auth/browser-login", summary="浏览器账号密码登录（入口身份匹配 + 独立 HttpOnly refresh Cookie）")
 def browser_login(body: auth_api.PasswordLoginRequest, response: Response):
-    return _extract_refresh(auth_api.login(body), response)
+    expected_channel = _channel_from_client_type(body.clientType)
+    return _extract_refresh(auth_api.login(body), response, expected_channel=expected_channel)
 
 
 @router.post("/auth/browser-refresh", summary="浏览器刷新会话（staff/platform/student 独立 HttpOnly Cookie）")
@@ -174,7 +185,6 @@ def _browser_logout(
             try:
                 access_claims = decode_token(raw)
             except AppException:
-                # Expired/invalid access must never prevent clearing the durable browser session.
                 access_claims = {}
             if access_claims:
                 access_user = str(access_claims.get("userId") or "")
@@ -184,12 +194,9 @@ def _browser_logout(
                 if jti:
                     block_jti(jti, float(access_claims.get("exp") or 0) or None)
 
-        # If a caller somehow presents mismatched cookie/access identities, terminate both rather
-        # than allowing either durable session to survive an explicit logout action.
         for user_id in user_ids:
             revoke_refresh_by_user(user_id)
     except AppException as exc:
-        # Preserve the Set-Cookie deletion while exposing the real fail-closed store error.
         response.status_code = int(exc.http_status)
         return fail(exc.code, exc.message, exc.details)
 
