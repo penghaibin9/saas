@@ -12,6 +12,7 @@ from starlette.requests import Request
 
 from app.api.v1 import auth_browser
 from app.core import security, tenant_context
+from app.core.context import get_tenant
 from app.core.exceptions import AppException
 from app.core.tenant_identity import (
     DEMO_SCHOOL,
@@ -131,6 +132,59 @@ def test_matching_signed_school_identity_passes_middleware_tenant_guard(monkeypa
     }
 
     assert context_middleware._token_tenant_identity_deny(request, resolved) is None
+
+
+def test_staging_enforces_tenant_identity_even_for_non_db_subject(monkeypatch):
+    staging = SimpleNamespace(is_prod=False, APP_ENV="staging")
+    monkeypatch.setattr(context_middleware, "settings", staging)
+    monkeypatch.setattr(
+        security,
+        "decode_token",
+        lambda token: {
+            "userId": "fixture-user",
+            "userType": "STUDENT",
+            "tid": SANDBOX_SCHOOL.tenant_code,
+            "tenantId": str(TRIAL_SCHOOL.tenant_id),
+        },
+    )
+    request = _request(headers=[(b"authorization", b"Bearer staging-token")])
+    resolved = {
+        "tenantId": str(SANDBOX_SCHOOL.tenant_id),
+        "tenantCode": SANDBOX_SCHOOL.tenant_code,
+        "tenantName": "体验沙箱学校",
+        "status": "ACTIVE",
+    }
+
+    denied = context_middleware._token_tenant_identity_deny(request, resolved)
+    assert denied is not None
+    assert denied.status_code == 401
+
+
+def test_test_only_synthetic_token_keeps_fixture_local_numeric_tenant(monkeypatch):
+    test_settings = SimpleNamespace(is_prod=False, APP_ENV="test")
+    monkeypatch.setattr(context_middleware, "settings", test_settings)
+    monkeypatch.setattr(
+        security,
+        "decode_token",
+        lambda token: {
+            "userId": "fixture-user",
+            "userType": "STUDENT",
+            "tid": SANDBOX_SCHOOL.tenant_code,
+            "tenantId": str(TRIAL_SCHOOL.tenant_id),
+        },
+    )
+    resolved = {
+        "tenantId": str(SANDBOX_SCHOOL.tenant_id),
+        "tenantCode": SANDBOX_SCHOOL.tenant_code,
+        "tenantName": "体验沙箱学校",
+        "status": "ACTIVE",
+    }
+    monkeypatch.setattr(tenant_context, "lookup_tenant", lambda code: resolved)
+    request = _request(headers=[(b"authorization", b"Bearer synthetic-test-token")])
+
+    assert context_middleware._token_tenant_identity_deny(request, resolved) is None
+    context_middleware._bind_token_tenant(request)
+    assert get_tenant()["tenantId"] == str(TRIAL_SCHOOL.tenant_id)
 
 
 def test_browser_login_moves_refresh_token_to_httponly_cookie(monkeypatch):
