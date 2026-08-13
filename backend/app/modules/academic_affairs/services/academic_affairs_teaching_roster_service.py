@@ -9,8 +9,6 @@
 """
 from __future__ import annotations
 
-from collections import defaultdict
-
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
@@ -125,7 +123,7 @@ def resolve_teaching_task_roster(db, teaching_task_id: int) -> dict:
 
 def validate_selection_lock(db, batch) -> dict:
     """锁定前叠加开班人数规则；正式锁定后空名单版本由调整流程表达。"""
-    from app.models import AaSelectionCourse, AaSelectionRecord
+    from app.models import AaSelectionCourse
 
     result = _core.validate_selection_lock(db, batch)
     issues = list(result.get("issues") or [])
@@ -134,21 +132,14 @@ def validate_selection_lock(db, batch) -> dict:
         AaSelectionCourse.batch_id == int(batch.id),
         AaSelectionCourse.is_deleted.is_(False),
     ).all()
-    records = db.query(AaSelectionRecord).filter(
-        AaSelectionRecord.tenant_id == _tid(),
-        AaSelectionRecord.batch_id == int(batch.id),
-        AaSelectionRecord.is_deleted.is_(False),
-    ).all()
-    by_course = defaultdict(list)
-    for record in records:
-        by_course[int(record.selection_course_id)].append(record)
+
+    # canonical core 已逐课程校验 selected_count 与 SELECTED 记录数量一致（COUNT_MISMATCH）。
+    # 这里的最低开班人数规则只消费该已校验计数，禁止再次 materialize 整批选课记录。
+    # 大批次因此保持一次 canonical 名单扫描，而不是 core + wrapper 各扫一遍。
     for course in courses:
         if _status(course.status) != "OPEN":
             continue
-        selected_count = sum(
-            1 for record in by_course.get(int(course.id), [])
-            if _status(record.status) == "SELECTED"
-        )
+        selected_count = int(getattr(course, "selected_count", 0) or 0)
         if selected_count <= 0:
             issues.append({
                 "code": "EMPTY_OPEN_COURSE", "courseId": str(course.id),
