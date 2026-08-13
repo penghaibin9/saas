@@ -151,21 +151,27 @@ def _seed(client, headers):
                 for i, s in enumerate(students, 1)
             ]
         )
-        db.add_all(
-            [
-                FundingApplication(
-                    tenant_id=TID,
-                    batch_id=funding_batch_id,
-                    student_id=s.id,
-                    project_type="GRANT",
-                    apply_source="SELF",
-                    amount=3000,
-                    statement="二阶段大数据奖助申请",
-                    status="COUNSELOR_REVIEW" if i <= half else "GRANTED",
-                )
-                for i, s in enumerate(students, 1)
-            ]
-        )
+        funding_apps = [
+            FundingApplication(
+                tenant_id=TID,
+                batch_id=funding_batch_id,
+                student_id=s.id,
+                project_type="GRANT",
+                apply_source="SELF",
+                amount=3000,
+                statement="二阶段大数据奖助申请",
+                status="COUNSELOR_REVIEW" if i <= half else "PUBLICITY",
+            )
+            for i, s in enumerate(students, 1)
+        ]
+        db.add_all(funding_apps)
+        # 迁移后的 package-10 trigger 禁止 INSERT 直接伪造 GRANTED。分页测试仍需要
+        # 一半终态数据，因此先落 PUBLICITY，再通过受约束 UPDATE 进入 GRANTED；
+        # MySQL 在这里真实执行批准金额、额度占用与预算边界，而不是绕过生产真值。
+        db.flush()
+        for application in funding_apps[half:]:
+            application.status = "GRANTED"
+        db.flush()
         db.add_all(
             [
                 DisciplineCase(

@@ -71,10 +71,17 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
     """REVOKED 复核结论必须真正下线原处分：case→REMOVED，投影 record_status→REVOKED（回归修复前的 no-op bug）。"""
     hdr = _hdr(client, "school_admin01")
     cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    from sqlalchemy import select
     from app.db.session import get_sessionmaker
-    from app.models import CsDiscipline, DisciplineCase
+    from app.models import CsDiscipline, CsServiceStudent, DisciplineCase
     db = get_sessionmaker()()
-    proj = CsDiscipline(tenant_id=TID, cs_student_id=db_mode["student"], disc_type="DEMERIT",
+    cs_student = db.scalars(select(CsServiceStudent).where(
+        CsServiceStudent.tenant_id == TID,
+        CsServiceStudent.student_id == int(db_mode["student"]),
+        CsServiceStudent.is_deleted.is_(False),
+    )).first()
+    assert cs_student is not None, "处分投影必须绑定 StudentProfile 对应的 CsServiceStudent"
+    proj = CsDiscipline(tenant_id=TID, cs_student_id=cs_student.id, disc_type="DEMERIT",
                         reason="考试违纪记过一次", status="EFFECTIVE", record_status="ACTIVE",
                         source_case_id=cid)
     db.add(proj); db.commit()
