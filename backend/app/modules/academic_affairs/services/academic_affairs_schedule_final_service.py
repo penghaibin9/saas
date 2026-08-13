@@ -10,6 +10,7 @@ from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_schedule_gate_service as gate_service
 from . import academic_affairs_schedule_policy as policy
+from . import academic_affairs_schedule_import_preload as import_preload
 
 _base = importlib.import_module(
     ".academic_affairs_schedule_service",
@@ -77,19 +78,27 @@ def _task_batch_ids(db, batch) -> list[int]:
     return [int(row.id) for row in query.all()]
 
 
-def _resolve_task(db, batch, source):
+def _resolve_task(db, batch, source, *, preload=None):
     from app.models import AaTeachingTask
 
-    allowed_batches = _task_batch_ids(db, batch)
-    task_id = _value(source, "taskId")
-    query = db.query(AaTeachingTask).filter(
-        AaTeachingTask.tenant_id == _base._tid(),
-        AaTeachingTask.batch_id.in_(allowed_batches or [-1]),
-        AaTeachingTask.status == "READY",
-        AaTeachingTask.is_deleted.is_(False),
+    allowed_batches = (
+        list(preload.allowed_batch_ids)
+        if preload is not None
+        else _task_batch_ids(db, batch)
     )
+    task_id = _value(source, "taskId")
     if task_id not in (None, ""):
-        task = query.filter(AaTeachingTask.id == int(task_id)).first()
+        task = (
+            preload.task_by_id(int(task_id))
+            if preload is not None
+            else db.query(AaTeachingTask).filter(
+                AaTeachingTask.tenant_id == _base._tid(),
+                AaTeachingTask.batch_id.in_(allowed_batches or [-1]),
+                AaTeachingTask.status == "READY",
+                AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTask.id == int(task_id),
+            ).first()
+        )
         if not task:
             raise AppException(
                 "DATA_CONFLICT",
@@ -107,12 +116,23 @@ def _resolve_task(db, batch, source):
             "VALIDATION_ERROR",
             "未填写教学任务ID时，至少需要课程名称和教师工号或班级ID用于唯一匹配",
         )
-    query = query.filter(AaTeachingTask.course_name == course_name)
-    if teacher_key:
-        query = query.filter(AaTeachingTask.teacher_key == teacher_key)
-    if class_id not in (None, ""):
-        query = query.filter(AaTeachingTask.class_id == int(class_id))
-    matches = query.limit(2).all()
+
+    if preload is not None:
+        matches = preload.task_matches(course_name, teacher_key, class_id)
+    else:
+        query = db.query(AaTeachingTask).filter(
+            AaTeachingTask.tenant_id == _base._tid(),
+            AaTeachingTask.batch_id.in_(allowed_batches or [-1]),
+            AaTeachingTask.status == "READY",
+            AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.course_name == course_name,
+        )
+        if teacher_key:
+            query = query.filter(AaTeachingTask.teacher_key == teacher_key)
+        if class_id not in (None, ""):
+            query = query.filter(AaTeachingTask.class_id == int(class_id))
+        matches = query.limit(2).all()
+
     if not matches:
         raise AppException(
             "DATA_CONFLICT",
@@ -123,15 +143,20 @@ def _resolve_task(db, batch, source):
         raise AppException(
             "DATA_CONFLICT",
             "匹配到多个教学任务，必须填写教学任务ID",
-            details={"taskIds": [str(row.id) for row in matches]},
+            details={"taskIds": [str(row.id) for row in matches[:2]]},
             http_status=409,
         )
     return matches[0]
 
 
-def _coordinate(db, batch, task, source):
-    _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
-    enabled_slots = policy.enabled_slots(db)
+def _coordinate(db, batch, task, source, *, preload=None):
+    if preload is None:
+        _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
+        enabled_slots = policy.enabled_slots(db)
+    else:
+        teaching_weeks = preload.teaching_weeks
+        enabled_slots = preload.enabled_slots
+
     weekday = int(_value(source, "weekday"))
     slot_no = int(_value(source, "slotNo"))
     parity = str(_value(source, "weekParity", "ALL") or "ALL").strip().upper()
@@ -173,18 +198,26 @@ def _coordinate(db, batch, task, source):
     return weekday, slot_no, start_week, end_week, parity
 
 
-def _classroom(db, task, text):
+def _classroom(db, task, text, *, preload=None):
     from app.models import AaClassroom
 
     classroom_text = str(text or "").strip() or None
-    classroom_id = _base._resolve_classroom_id(db, classroom_text)
+    classroom_id = (
+        preload.resolve_classroom_id(classroom_text)
+        if preload is not None
+        else _base._resolve_classroom_id(db, classroom_text)
+    )
     room = None
     if classroom_id:
-        room = db.query(AaClassroom).filter(
-            AaClassroom.id == int(classroom_id),
-            AaClassroom.tenant_id == _base._tid(),
-            AaClassroom.is_deleted.is_(False),
-        ).first()
+        room = (
+            preload.classroom_by_id(classroom_id)
+            if preload is not None
+            else db.query(AaClassroom).filter(
+                AaClassroom.id == int(classroom_id),
+                AaClassroom.tenant_id == _base._tid(),
+                AaClassroom.is_deleted.is_(False),
+            ).first()
+        )
         if not room or room.status != "AVAILABLE":
             raise AppException("DATA_CONFLICT", "所选教室当前不可用", http_status=409)
         if task.required_room_type and room.room_type != task.required_room_type:
@@ -209,22 +242,35 @@ def _classroom(db, task, text):
     return classroom_id, classroom_text
 
 
-def _ensure_task_capacity(db, batch, task, increment=1, exclude_item_id=None):
+def _ensure_task_capacity(
+    db,
+    batch,
+    task,
+    increment=1,
+    exclude_item_id=None,
+    *,
+    preload=None,
+):
     from app.models import AaScheduleItem
 
     expected = int(task.weekly_hours or 0)
     if expected <= 0:
         raise AppException("DATA_CONFLICT", "教学任务未配置有效周学时", http_status=409)
-    query = db.query(AaScheduleItem).filter(
-        AaScheduleItem.tenant_id == _base._tid(),
-        AaScheduleItem.batch_id == int(batch.id),
-        AaScheduleItem.task_id == int(task.id),
-        AaScheduleItem.status == "EFFECTIVE",
-        AaScheduleItem.is_deleted.is_(False),
-    )
-    if exclude_item_id:
-        query = query.filter(AaScheduleItem.id != int(exclude_item_id))
-    actual = query.count()
+
+    if preload is not None and not exclude_item_id:
+        actual = preload.scheduled_count(task.id)
+    else:
+        query = db.query(AaScheduleItem).filter(
+            AaScheduleItem.tenant_id == _base._tid(),
+            AaScheduleItem.batch_id == int(batch.id),
+            AaScheduleItem.task_id == int(task.id),
+            AaScheduleItem.status == "EFFECTIVE",
+            AaScheduleItem.is_deleted.is_(False),
+        )
+        if exclude_item_id:
+            query = query.filter(AaScheduleItem.id != int(exclude_item_id))
+        actual = query.count()
+
     if actual + int(increment) > expected:
         raise AppException(
             "DATA_CONFLICT",
@@ -234,24 +280,41 @@ def _ensure_task_capacity(db, batch, task, increment=1, exclude_item_id=None):
         )
 
 
-def _build_item(db, batch, task, source, *, item_source):
+def _build_item(db, batch, task, source, *, item_source, preload=None):
     from app.models import AaScheduleItem
 
-    weekday, slot_no, start_week, end_week, parity = _coordinate(db, batch, task, source)
-    _ensure_task_capacity(db, batch, task)
-    classroom_id, classroom_text = _classroom(db, task, _value(source, "classroom"))
-    conflict = _base._detect_conflict(
-        db,
-        batch.id,
-        weekday,
-        slot_no,
-        start_week,
-        end_week,
-        parity,
-        task.teacher_key,
-        task.class_id,
-        classroom_text,
+    weekday, slot_no, start_week, end_week, parity = _coordinate(
+        db, batch, task, source, preload=preload
     )
+    _ensure_task_capacity(db, batch, task, preload=preload)
+    classroom_id, classroom_text = _classroom(
+        db, task, _value(source, "classroom"), preload=preload
+    )
+    if preload is None:
+        conflict = _base._detect_conflict(
+            db,
+            batch.id,
+            weekday,
+            slot_no,
+            start_week,
+            end_week,
+            parity,
+            task.teacher_key,
+            task.class_id,
+            classroom_text,
+        )
+    else:
+        conflict = preload.detect_conflict(
+            batch_id=batch.id,
+            weekday=weekday,
+            slot_no=slot_no,
+            start_week=start_week,
+            end_week=end_week,
+            parity=parity,
+            teacher_key=task.teacher_key,
+            class_id=task.class_id,
+            classroom=classroom_text,
+        )
     if conflict:
         raise AppException(
             "DATA_CONFLICT",
@@ -336,18 +399,48 @@ def add_item(batch_id, user, body) -> dict:
         return {**_base._item_row(item), "prePublishReset": reset}
 
 
+def _build_import_preload(db, batch, items):
+    """预载失败时仅对可恢复的业务配置错误回退旧路径，保持逐行错误语义。"""
+    try:
+        allowed_batch_ids = _task_batch_ids(db, batch)
+        _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
+        enabled_slots = policy.enabled_slots(db)
+    except AppException:
+        return None
+    return import_preload.build_preload(
+        db,
+        batch,
+        items,
+        allowed_batch_ids=allowed_batch_ids,
+        teaching_weeks=teaching_weeks,
+        enabled_slots=enabled_slots,
+    )
+
+
 def _apply_import_rows(db, batch, items) -> tuple[int, list[dict]]:
-    """排课导入单行处理：与手工排课(add_item)完全同一套 _resolve_task/_build_item 校验与
-    _detect_conflict 冲突检测。dry_run 与 confirm 都只调用这一个函数，避免出现两套会互相
-    漂移的校验逻辑（预检说没问题，确认时才报错）。"""
+    """排课导入仍只走这一条 canonical 校验链；批量上下文仅消除重复读查询。
+
+    `_resolve_task/_build_item/_detect_conflict` 的规则与错误合同不变。成功一行后同步更新
+    内存容量计数和冲突桶，确保同文件后续行仍能看到前序新行。
+    """
     imported = 0
     errors = []
+    preload = _build_import_preload(db, batch, items) if items else None
     for index, source in enumerate(items or [], start=1):
         try:
-            task = _resolve_task(db, batch, source)
-            item = _build_item(db, batch, task, source, item_source="IMPORT")
+            task = _resolve_task(db, batch, source, preload=preload)
+            item = _build_item(
+                db,
+                batch,
+                task,
+                source,
+                item_source="IMPORT",
+                preload=preload,
+            )
             db.add(item)
             db.flush()
+            if preload is not None:
+                preload.record_item(item)
             imported += 1
         except AppException as exc:
             errors.append({
