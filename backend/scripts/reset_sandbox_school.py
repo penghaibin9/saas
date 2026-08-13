@@ -26,7 +26,8 @@
   14. 教材按 2026 秋季开学准备态生成：选用/审核/征订可有数据，正式学生发放与收费必须保持 0；
   15. 评教与教学质量只回填已结束的 2025-2026-2；2026 秋季尚未开学，严禁提前生成评教结果；
   16. 学生评教保持匿名，教学质量不自动生成教学事故认定，只生成督导/巡课/检查与整改事实；
-  17. 重建后从事实表反算岗位/企业人数，并校验旧假身份、专业课快照、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  17. 2025-2026-2 教务归档必须复用正式十三域策略全部 PASS 后才允许落 ARCHIVED；2026 秋季归档必须为 0；
+  18. 重建后从事实表反算岗位/企业人数，并校验旧假身份、专业课快照、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -129,6 +130,10 @@ def main() -> int:
                 seed_school_academic_affairs_20k,
                 validate_academic_affairs_facts,
             )
+            from app.services.sandbox_school_academic_archive_seed import (
+                seed_school_academic_archive_20k,
+                validate_school_academic_archive_20k,
+            )
             from app.services.sandbox_school_academic_quality_seed import (
                 seed_school_academic_quality_20k,
                 validate_school_academic_quality_20k,
@@ -188,6 +193,9 @@ def main() -> int:
             academic_textbooks = seed_school_academic_textbooks_20k(db, SANDBOX_TID)
             academic_quality = seed_school_academic_quality_20k(db, SANDBOX_TID)
 
+            # 历史学期结账必须由正式十三域归档策略给出 PASS；任何一域未闭环都中止 20K 重建。
+            academic_archive = seed_school_academic_archive_20k(db, SANDBOX_TID)
+
             mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = seed_school_graduation_process_20k(db, SANDBOX_TID)
             employment = seed_school_employment_20k(db, SANDBOX_TID)
@@ -207,6 +215,7 @@ def main() -> int:
                 "professionalAcademicSnapshots": professional_academic_snapshots,
                 "academicTextbooks": validate_school_academic_textbooks_20k(db, SANDBOX_TID),
                 "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
+                "academicArchive": validate_school_academic_archive_20k(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
                 "employment": validate_employment_facts_20k(db, SANDBOX_TID),
                 "studentAffairs": validate_affairs_facts(db, SANDBOX_TID),
@@ -226,6 +235,7 @@ def main() -> int:
                     "professionalAcademicSnapshots": professional_academic_snapshots,
                     "academicTextbooks": academic_textbooks,
                     "academicQuality": academic_quality,
+                    "academicArchive": academic_archive,
                     "employment": employment,
                     "studentAffairs": affairs,
                     "acceptance": acceptance,
@@ -261,7 +271,7 @@ def main() -> int:
         if args.profile == PROFILE_STANDARD_20K:
             print(
                 "[reset] 完成：20K 标准学校已通过旧假身份清零/主数据/角色拓扑/导师工作量/"
-                "毕设早期过程/就业/专业课程快照/教材准备/历史评教与教学质量/"
+                "毕设早期过程/就业/专业课程快照/教材准备/历史评教与教学质量/历史十三域归档/"
                 "六域/13A/13B/跨表关系对账。"
             )
             print("[reset] 可见体验账号：admin2 / teacher2 / student2（密码 123456）")
