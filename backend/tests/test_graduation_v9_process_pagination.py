@@ -43,7 +43,8 @@ def _seed():
         plans = []
         midterms = []
         for idx, student in enumerate(students, 1):
-            for seq in range(3 if idx <= 470 else 1):
+            guidance_count = 3 if idx <= 470 else (1 if idx <= 590 else 0)
+            for seq in range(guidance_count):
                 guidance.append(GraduationGuidance(
                     tenant_id=TID,
                     gd_student_id=student.id,
@@ -77,10 +78,14 @@ def test_u4_read_models_lock_sql_join_pagination_and_full_stats():
         assert ".join(GraduationStudent" in source
         assert ".offset(" in source and ".limit(" in source
         assert "db.get(GraduationStudent" not in source
+
+    grouped_source = inspect.getsource(stats_read._grouped_counts)
+    assert ".outerjoin(" in grouped_source
+    assert ".group_by(" in grouped_source
     stats_source = inspect.getsource(stats_read.guidance_stats)
-    assert ".outerjoin(" in stats_source
-    assert ".group_by(" in stats_source
+    assert ".having(" in stats_source
     assert "[:50]" not in stats_source
+    assert "if count < threshold" not in stats_source
 
 
 def test_u4_mysql_600_students_and_130_insufficient(db_mode, graduation_client, auth_headers):
@@ -91,7 +96,7 @@ def test_u4_mysql_600_students_and_130_insufficient(db_mode, graduation_client, 
         headers=auth_headers,
         params={"batchId": batch_id, "page": 1, "pageSize": 20},
     ).json()["data"]
-    assert guidance["total"] == 1540
+    assert guidance["total"] == 1530
     assert len(guidance["items"]) == 20
 
     late = graduation_client.get(
@@ -124,8 +129,12 @@ def test_u4_mysql_600_students_and_130_insufficient(db_mode, graduation_client, 
         params={"batchId": batch_id, "threshold": 3},
     ).json()["data"]
     assert stats["studentCount"] == 600
-    assert stats["avgCount"] == 2.6
+    assert stats["avgCount"] == 2.5
     assert stats["insufficientCount"] == 130
     assert len(stats["insufficientStudents"]) == 130
     assert stats["insufficientStudents"][0]["studentName"] == "M11学生0471"
     assert stats["insufficientStudents"][-1]["studentName"] == "M11学生0600"
+    zero_rows = [row for row in stats["insufficientStudents"] if row["count"] == 0]
+    assert len(zero_rows) == 10
+    assert zero_rows[0]["studentName"] == "M11学生0591"
+    assert zero_rows[-1]["studentName"] == "M11学生0600"
