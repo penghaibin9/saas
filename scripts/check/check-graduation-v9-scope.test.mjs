@@ -52,7 +52,7 @@ test('U1 Dashboard allows only its page, evidence, module-local route repair, an
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U1')[0], /shared foundation denied/)
 })
 
-test('U2 proposal review stays inside the proposal page/read-model/test boundary', () => {
+test('U2 proposal review stays inside the proposal page/read-model/test/gate-evidence boundary', () => {
   assert.deepEqual(validateFiles([
     'backend/app/modules/graduation/services/__init__.py',
     'backend/app/modules/graduation/services/graduation_service.py',
@@ -60,6 +60,8 @@ test('U2 proposal review stays inside the proposal page/read-model/test boundary
     'backend/tests/test_graduation_v9_proposal_pagination.py',
     'frontend/src/modules/graduation/views/ProposalListView.vue',
     'frontend/tests/graduation.v9-proposal-review.contract.test.mjs',
+    'e2e/pages/graduation.page.mjs',
+    'docs/architecture/file-capability-inventory.d/10-graduation-v9-export.yaml',
   ], 'U2'), [])
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U2')[0], /shared foundation denied/)
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U2')[0], /canonical write\/read mixed service denied/)
@@ -80,6 +82,8 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'backend/app/modules/graduation/services/graduation_proposal_read_service.py',
     'backend/tests/test_graduation_v9_proposal_pagination.py',
     'frontend/tests/graduation.v9-proposal-review.contract.test.mjs',
+    'e2e/pages/graduation.page.mjs',
+    'docs/architecture/file-capability-inventory.d/10-graduation-v9-export.yaml',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })
