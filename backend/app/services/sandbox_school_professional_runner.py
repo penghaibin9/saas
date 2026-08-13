@@ -327,6 +327,16 @@ def validate_professional_academic_snapshots(db, tenant_id: int) -> dict:
     return {"snapshotRelationMismatches": mismatch, "passed": True}
 
 
+def reconcile_professional_academic_snapshots(db, tenant_id: int) -> dict:
+    """后续阶段新增 13B 快照后，按 canonical 外键关系收口并立即只读复验。"""
+    updated = _sync_aa_course_snapshots(db, tenant_id)
+    db.commit()
+    return {
+        "updated": updated,
+        "validation": validate_professional_academic_snapshots(db, tenant_id),
+    }
+
+
 def professionalize_school_20k(db, tenant_id: int) -> dict:
     result = {
         "academic": professionalize_academic_fast(db, tenant_id),
