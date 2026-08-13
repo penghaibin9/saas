@@ -107,6 +107,7 @@ jobs:
             app/services/sandbox_school_academic_affairs_seed.py
             app/services/sandbox_school_academic_affairs_reconcile.py
             app/services/sandbox_school_academic_textbook_seed.py
+            app/services/sandbox_school_academic_quality_seed.py
             app/services/sandbox_school_professional_catalog.py
             app/services/sandbox_school_professional_reconcile.py
             app/services/sandbox_school_professional_runner.py
@@ -243,6 +244,14 @@ jobs:
             SELECT "dorm_beds", COUNT(*) FROM t_affairs_dorm_bed WHERE tenant_id=1000000000000000007;
             SELECT "textbooks", COUNT(*) FROM t_aa_textbook WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "textbook_selections", COUNT(*) FROM t_aa_textbook_selection WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "evaluation_batches", COUNT(*) FROM t_aa_evaluation_batch WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "evaluation_tasks", COUNT(*) FROM t_aa_evaluation_task WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "student_evaluation_records", COUNT(*) FROM t_aa_evaluation_record WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND evaluator_type="STUDENT";
+            SELECT "nonstudent_evaluation_records", COUNT(*) FROM t_aa_evaluation_record WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND evaluator_type<>"STUDENT";
+            SELECT "evaluation_results", COUNT(*) FROM t_aa_evaluation_result WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "quality_records", COUNT(*) FROM t_aa_quality_record WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "quality_incidents", COUNT(*) FROM t_aa_quality_record WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND record_type="INCIDENT";
+            SELECT "quality_rectifications", COUNT(*) FROM t_aa_quality_rectification WHERE tenant_id=1000000000000000007 AND is_deleted=0;
           ' > test-results/sandbox-20k/mysql-row-counts.txt 2>&1
           {
             echo "commitSha=${GITHUB_SHA}"
