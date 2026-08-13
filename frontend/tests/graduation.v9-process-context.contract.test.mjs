@@ -11,12 +11,15 @@ test('U4 process student picker restores 130-student deep links', () => {
   assert.match(api, /page: 1, pageSize: 200/)
 })
 
-test('U4 action return keeps process context', () => {
+test('U4 action entry and return keep the complete process work context', () => {
+  assert.match(guard, /beforeRouteEnter/)
   assert.match(guard, /beforeRouteLeave/)
+  assert.match(guard, /fillProcessContext/)
   assert.match(guard, /studentId/)
   assert.ok(guard.includes("'batchId'"))
   assert.ok(guard.includes("'queue'"))
   assert.ok(guard.includes("'source'"))
+  assert.match(guard, /from\.name !== 'graduation-process'/)
   assert.match(guard, /name: 'graduation-process'/)
   assert.match(base, /this\.\$router\.push\(this\.backTo\)/)
 })
