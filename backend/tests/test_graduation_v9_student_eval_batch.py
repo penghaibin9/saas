@@ -43,7 +43,7 @@ def _eval_body(status="SUBMITTED"):
 
 def _is_validation_or_conflict(response):
     body = response.json() if "application/json" in (response.headers.get("content-type") or "") else {}
-    return response.status_code in (409, 422) or body.get("bizCode") in {"DATA_CONFLICT", "VALIDATION_ERROR"} or body.get("code") in {409001, 422001, 409, 422}
+    return response.status_code in (400, 409, 422) or body.get("bizCode") in {"DATA_CONFLICT", "VALIDATION_ERROR"} or body.get("code") in {409001, 422001, 400, 409, 422}
 
 
 def test_student_eval_requires_batch_and_list_is_batch_isolated(graduation_client, auth_headers, db_mode):
@@ -65,7 +65,14 @@ def test_student_eval_requires_batch_and_list_is_batch_isolated(graduation_clien
     assert e2["data"]["id"] in ids2 and e1["data"]["id"] not in ids2
 
     missing = graduation_client.get(GD_EVAL, headers=h)
-    assert missing.status_code == 422, missing.text
+    missing_body = missing.json()
+    assert missing.status_code == 400, missing.text
+    assert missing_body["code"] == 422001, missing_body
+    assert missing_body["bizCode"] == "VALIDATION_ERROR", missing_body
+    assert any(
+        item.get("field") == "batchId" and item.get("msg") == "Field required"
+        for item in missing_body.get("details") or []
+    ), missing_body
 
 
 def test_student_eval_create_and_submit_fail_closed_on_wrong_batch(graduation_client, auth_headers, db_mode):
