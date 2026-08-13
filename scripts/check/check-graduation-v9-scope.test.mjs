@@ -30,12 +30,23 @@ test('M2 is isolated from archive and grade canonical services', () => {
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'M2')[0], /canonical write\/read mixed service denied/)
 })
 
+test('M4 allows only declared product-truth views and contracts', () => {
+  assert.deepEqual(validateFiles([
+    'frontend/src/modules/graduation/views/AdminGraduationLayout.vue',
+    'frontend/src/modules/graduation/views/ProposalListView.vue',
+    'frontend/src/modules/graduation/views/FinalSubmissionListView.vue',
+    'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
+  ], 'M4'), [])
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M4')[0], /shared foundation denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
     '.github/workflows/graduation-v9-scope.yml',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
+    'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })
