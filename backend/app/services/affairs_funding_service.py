@@ -1082,7 +1082,7 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
         db.commit()
         _drain_message_outbox()
         db.refresh(o)
-        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
         result_row = _appeal_row(o, s)
         return appeal_todo.sync_after_submit("FUNDING_APPEAL_REVIEW", result_row, "appealId", "id")
 
@@ -1154,7 +1154,7 @@ def review_appeal(appeal_id, body, user) -> dict:
                 x.return_reason = (opinion[:200] if opinion else "公示申诉成立")
                 x.version += 1
                 if x.workflow_instance_id:
-                    inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+                    inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id))
                     if inst:
                         inst.status = "REJECTED"
                 if was_granted and x.student_id:
