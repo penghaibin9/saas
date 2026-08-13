@@ -101,8 +101,10 @@ jobs:
             echo "[compile] ${file}" | tee -a test-results/sandbox-20k/compile.log
             if ! python -m py_compile "${file}" 2>test-results/sandbox-20k/compile-error.txt; then
               cat test-results/sandbox-20k/compile-error.txt | tee -a test-results/sandbox-20k/compile.log
-              message=$(tail -n 1 test-results/sandbox-20k/compile-error.txt | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
-              echo "::error file=${file}::Python compile failed: ${message}"
+              line=$(grep -oE 'line [0-9]+' test-results/sandbox-20k/compile-error.txt | head -n 1 | awk '{print $2}')
+              line=${line:-1}
+              message=$(tr '\n' ' ' < test-results/sandbox-20k/compile-error.txt | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error file=${file},line=${line}::Python compile failed: ${message}"
               exit 1
             fi
           done
