@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationMidterm, GraduationStudent
 from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
@@ -254,7 +255,7 @@ def checkin_plan(plan_id, body=None):
         ).with_for_update()).first()
         if not plan:
             raise not_found("指导计划不存在")
-        student = db.get(GraduationStudent, plan.gd_student_id)
+        student = tenant_get(db, GraduationStudent, plan.gd_student_id)
         assert_student_access(db, student, "guidance.checkin")
         if plan.status != "PLANNED":
             raise AppException("DATA_CONFLICT", "该计划已签到或已取消，请刷新")
@@ -288,7 +289,7 @@ def cancel_plan(plan_id, reason):
         ).with_for_update()).first()
         if not plan:
             raise not_found("指导计划不存在")
-        student = db.get(GraduationStudent, plan.gd_student_id)
+        student = tenant_get(db, GraduationStudent, plan.gd_student_id)
         assert_student_access(db, student, "guidance.update")
         if plan.status == "CHECKED_IN":
             raise AppException("DATA_CONFLICT", "已签到计划不可取消，请保留留痕")
