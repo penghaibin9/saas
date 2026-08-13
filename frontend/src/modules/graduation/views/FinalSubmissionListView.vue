@@ -205,6 +205,8 @@ import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
 import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { getPermissionPatterns } from '@/security/permissionGate'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
@@ -261,8 +263,11 @@ export default {
     emptyTitle() { return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次' },
     emptyDesc() { return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。' },
     exportPerm() {
-      const pa = this.ctx.permissionActions.exportStats || {}
-      return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
+      const patterns = getPermissionPatterns()
+      return {
+        visible: this.hasBatch,
+        allowed: Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.final.export')
+      }
     },
     secureVersionFiles() {
       return graduationMaterialCenterApi.normalizeVersions(this.finalDetail?.currentSafeVersions || [])
