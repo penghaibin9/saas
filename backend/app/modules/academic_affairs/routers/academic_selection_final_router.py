@@ -1,10 +1,9 @@
-"""Stage D：选课最终服务精确路径适配 Router。
+"""Stage D / D6：Selection Final 精确入口 + 选课域结构聚合锚点。
 
-历史大 Router 仍保留原路由定义以降低长期分支冲突；本 Router 由
-``academic_affairs_bundle`` 在历史 Router 之前注册，只遮蔽最终服务已明确
-收口的四条路径。这里不执行任何选课规则、不构造 DecisionTrace，只把 HTTP
-入口接到 ``academic_affairs_selection_final_service``，确保 canonical 校验、
-行锁、Stage C2 学籍事实和 Stage D 解释层真正进入正式 API。
+四条最终入口继续直接接 ``academic_affairs_selection_final_service``，确保 canonical
+校验、行锁、Stage C2 学籍事实和 DecisionTrace 真正进入正式 API。D6-S 仅把其余
+选课管理 HTTP owner 从历史大 Router Move Only 迁到 ``course_selection_router``；
+canonical service、权限、DTO、状态机和 TeachingRoster 投影均不改变。
 """
 from __future__ import annotations
 
@@ -49,3 +48,11 @@ def sel_student_drop(
     user=Depends(base._require_student),
 ):
     return base.success(selection_final.student_drop(user, body), message="退课成功")
+
+
+# D6-S Move Only：academic_affairs_bundle 已保证本模块整体先于 legacy 大 Router 挂载。
+# 将非 Final 的选课管理路由作为同一域 surface 追加到此预 legacy 锚点；二者路径无重叠，
+# 因而 Selection Final 四入口仍保持唯一 owner，其他 selection shape 则切到独立 Router。
+from app.modules.academic_affairs.routers import course_selection_router as course_selection_router  # noqa: E402
+
+router.routes.extend(course_selection_router.router.routes)
