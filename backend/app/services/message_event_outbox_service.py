@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
@@ -561,10 +561,21 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
             select(MessageEventOutbox).where(
                 MessageEventOutbox.tenant_id == _tid(),
                 MessageEventOutbox.is_deleted.is_(False),
-                MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),
                 or_(
-                    MessageEventOutbox.next_retry_at.is_(None),
-                    MessageEventOutbox.next_retry_at <= now,
+                    and_(
+                        MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),
+                        or_(
+                            MessageEventOutbox.next_retry_at.is_(None),
+                            MessageEventOutbox.next_retry_at <= now,
+                        ),
+                    ),
+                    and_(
+                        MessageEventOutbox.status == "PROCESSING",
+                        or_(
+                            MessageEventOutbox.lease_expires_at.is_(None),
+                            MessageEventOutbox.lease_expires_at <= now,
+                        ),
+                    ),
                 ),
             ).order_by(MessageEventOutbox.id.asc())
             .with_for_update(skip_locked=True)
