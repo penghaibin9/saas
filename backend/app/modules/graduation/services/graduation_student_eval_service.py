@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationStudentEval
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, require_batch_id
 from app.modules.graduation.services.graduation_scope_service import (
@@ -32,8 +33,8 @@ def _audit(db, bid, action, detail="", before="", after=""):
 
 
 def _stu(db, sid, batch_id) -> GraduationStudent:
-    s = db.get(GraduationStudent, int(sid))
-    if not s or s.is_deleted or s.tenant_id != _tid():
+    s = tenant_get(db, GraduationStudent, int(sid))
+    if not s or s.is_deleted:
         raise not_found("毕设学生不存在或不在当前数据范围内")
     s = assert_student_access(db, s, "student_eval")
     assert_student_batch(s, require_batch_id(batch_id))
@@ -63,9 +64,7 @@ def list_evals(page: int, page_size: int, gd_student_id=None, *, batch_id) -> tu
     expected_batch = require_batch_id(batch_id)
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationStudentEval).join(
-            GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id,
-        ).where(
+        filters = (
             GraduationStudentEval.tenant_id == _tid(),
             GraduationStudentEval.is_deleted.is_(False),
             GraduationStudentEval.gd_student_id.in_(scope_ids or [-1]),
@@ -75,17 +74,26 @@ def list_evals(page: int, page_size: int, gd_student_id=None, *, batch_id) -> tu
             GraduationStudent.batch_id == expected_batch,
         )
         if gd_student_id:
-            q = q.where(GraduationStudentEval.gd_student_id == int(gd_student_id))
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(
-            q.order_by(GraduationStudentEval.id.desc())
-            .offset((max(1, page) - 1) * page_size).limit(page_size)
-        ).all()
-        items = []
-        for e in rows:
-            stu = db.get(GraduationStudent, e.gd_student_id)
-            items.append(_row(e, stu))
-        return items, total
+            filters = (*filters, GraduationStudentEval.gd_student_id == int(gd_student_id))
+
+        total_stmt = (
+            select(func.count())
+            .select_from(GraduationStudentEval)
+            .join(GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id)
+            .where(*filters)
+        )
+        total = int(db.scalar(total_stmt) or 0)
+
+        page_stmt = (
+            select(GraduationStudentEval, GraduationStudent)
+            .join(GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id)
+            .where(*filters)
+            .order_by(GraduationStudentEval.id.desc())
+            .offset((max(1, page) - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = db.execute(page_stmt).all()
+        return [_row(e, stu) for e, stu in rows], total
 
 
 def create_eval(gd_student_id, body: dict, *, batch_id) -> dict:
@@ -125,8 +133,8 @@ def create_eval(gd_student_id, body: dict, *, batch_id) -> dict:
 
 def submit_eval(eval_id, *, batch_id) -> dict:
     with session() as db:
-        e = db.get(GraduationStudentEval, int(eval_id))
-        if not e or e.is_deleted or e.tenant_id != _tid():
+        e = tenant_get(db, GraduationStudentEval, int(eval_id))
+        if not e or e.is_deleted:
             raise not_found("评价记录不存在")
         stu = _stu(db, e.gd_student_id, batch_id)
         if e.status == "SUBMITTED":
