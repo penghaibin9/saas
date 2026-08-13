@@ -13,14 +13,14 @@
       >导出成果清单</AppExportButton>
     </template>
 
-    <div class="mp-stack">
+    <div class="mp-stack fr-workbench-stack">
       <div class="mp-tabs">
         <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}<span v-if="tabCount(t.value) !== null" class="fr-tab-count">{{ tabCount(t.value) }}</span>
         </button>
       </div>
 
-      <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
+      <AdvancedFilter class="fr-empty-filter" v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
 
       <div class="fr-split" :class="{ 'is-narrow': isNarrow }">
         <aside v-if="!isNarrow || !selectedRow" class="fr-list">
@@ -70,15 +70,15 @@
           </div>
 
           <EmptyState v-if="!selectedRow" title="从左侧选择一条成果记录" description="↑↓ 方向键可快速切换，处理后自动进入下一条待审" />
-          <div v-else class="mp-stack">
-            <section class="mp-card">
+          <div v-else class="mp-stack fr-detail-grid">
+            <section class="mp-card fr-summary-card">
               <div class="mp-card__head">
                 <span class="mp-card__title">{{ selectedRow.type || '成果' }} {{ selectedRow.version || '' }}</span>
                 <button class="mp-link" @click="openDossier(selectedRow)">查看学生完整档案 →</button>
               </div>
-              <div class="mp-card__body">
+              <div class="mp-card__body fr-summary-grid">
                 <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRow.studentName }} · {{ selectedRow.className }}</span></div>
-                <div class="mp-kv"><span class="mp-kv__k">课题</span><span class="mp-kv__v">{{ selectedRow.topicTitle }}</span></div>
+                <div class="mp-kv fr-summary-topic"><span class="mp-kv__k">课题</span><span class="mp-kv__v">{{ selectedRow.topicTitle }}</span></div>
                 <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRow.advisorName || '—' }}</span></div>
                 <div class="mp-kv"><span class="mp-kv__k">提交时间</span>
                   <span class="mp-kv__v"><AppDateDisplay :value="selectedRow.submitAt" mode="datetime" empty-text="未提交" /></span>
@@ -92,13 +92,13 @@
                     <span v-else>{{ selectedRow.plagiarismStatus || '未检测' }}</span>
                   </span>
                 </div>
-                <p v-if="selectedRow.plagiarismTone === 'danger'" class="mp-note" style="color: var(--danger, #dc2626); margin-top: var(--space-2)">
+                <p v-if="selectedRow.plagiarismTone === 'danger'" class="mp-note fr-summary-alert">
                   查重率超标（&gt;30%），系统将拦截「通过」，须退回修改后由学生重交。
                 </p>
               </div>
             </section>
 
-            <section v-if="selectedRow.status !== 'NOT_SUBMITTED'" class="mp-card">
+            <section v-if="selectedRow.status !== 'NOT_SUBMITTED'" class="mp-card fr-security-card">
               <div class="mp-card__head">
                 <span class="mp-card__title">当前安全版本（本次审核锁定）</span>
                 <StatusTag
@@ -148,7 +148,7 @@
               </div>
             </section>
 
-            <section v-if="selectedRow.status === 'NOT_SUBMITTED'" class="mp-card">
+            <section v-if="selectedRow.status === 'NOT_SUBMITTED'" class="mp-card fr-result-card">
               <div class="mp-card__head"><span class="mp-card__title">尚未提交成果</span></div>
               <div class="mp-card__body">
                 <AppButton variant="primary" :loading="reminding" @click="remind(selectedRow)">发送成果催交提醒</AppButton>
@@ -156,7 +156,7 @@
               </div>
             </section>
 
-            <section v-else-if="selectedRow.status === 'PENDING_REVIEW'" class="mp-card">
+            <section v-else-if="selectedRow.status === 'PENDING_REVIEW'" class="mp-card fr-review-card">
               <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
               <div class="mp-card__body">
                 <div v-if="!canReview" class="mp-note" style="margin-bottom: var(--space-2); color: var(--warning-600)">
@@ -164,17 +164,17 @@
                 </div>
                 <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（退回时必填，≥5 字）</label>
                 <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批阅意见将同步学生端…"></textarea>
-                <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
+                <AppTemplateChips v-if="canReview" size="compact" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
                 <p v-if="formError" class="mp-form-err">{{ formError }}</p>
-                <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
+                <div class="fr-review-actions">
                   <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
                   <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
                 </div>
-                <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅结果同时写入业务留痕与公共文件版本状态；学生重交会生成新的 FileVersion。</p>
+                <p class="mp-note fr-review-note">批阅结果同时写入业务留痕与公共文件版本状态；学生重交会生成新的 FileVersion。</p>
               </div>
             </section>
 
-            <section v-else class="mp-card">
+            <section v-else class="mp-card fr-result-card">
               <div class="mp-card__head"><span class="mp-card__title">批阅结果</span></div>
               <div class="mp-card__body">
                 <div class="mp-kv"><span class="mp-kv__k">结果</span><span class="mp-kv__v">{{ selectedRow.statusLabel }}</span></div>
@@ -559,13 +559,15 @@ export default {
 .fr-tab-count { margin-left: 4px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .mp-tab.is-active .fr-tab-count { color: inherit; }
 .mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
-.fr-split { display: flex; gap: var(--space-4); align-items: flex-start; }
-.fr-list { width: 340px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
+.fr-workbench-stack { gap: var(--space-2); }
+.fr-empty-filter { display: none; }
+.fr-split { display: flex; gap: var(--space-2); align-items: flex-start; }
+.fr-list { width: 280px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .fr-split.is-narrow .fr-list { width: 100%; }
-.fr-pane { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
+.fr-pane { flex: 1; min-width: 0; padding: var(--space-2); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .fr-split.is-narrow .fr-pane { width: 100%; }
 .fr-rows { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
-.fr-row { padding: 10px 12px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
+.fr-row { padding: 8px 10px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
 .fr-row:last-child { border-bottom: none; }
 .fr-row:hover { background: var(--gray-50, #f8fafc); }
 .fr-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
@@ -578,17 +580,43 @@ export default {
 .fr-row__idx { margin-left: auto; }
 .fr-over { color: var(--danger, #dc2626); }
 .fr-list__foot { display: flex; justify-content: center; }
-.fr-pane__bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); font-size: var(--font-size-sm); }
+.fr-pane__bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: 6px var(--space-2); margin-bottom: var(--space-2); background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); font-size: var(--font-size-sm); }
 .fr-pane__pos { color: var(--text-secondary); }
 .fr-pane__auto { color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.fr-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-3); }
+.fr-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-2); }
 .fr-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
-.version-warning { margin-bottom: var(--space-3); padding: 10px 12px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); font-size: 13px; }
-.version-table-wrap { margin-top: var(--space-3); overflow-x: auto; }
-.version-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.version-table th, .version-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
+.fr-detail-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(250px, .8fr); gap: var(--space-2); }
+.fr-summary-card { grid-column: 1 / -1; }
+.fr-security-card { grid-column: 1; min-width: 0; }
+.fr-review-card, .fr-result-card { grid-column: 2; min-width: 0; align-self: start; }
+.fr-summary-card .mp-card__head,
+.fr-security-card .mp-card__head,
+.fr-review-card .mp-card__head,
+.fr-result-card .mp-card__head { padding: 6px 10px; }
+.fr-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--space-3); padding: 6px 10px; }
+.fr-summary-grid .mp-kv { min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 0; }
+.fr-summary-grid .mp-kv__v { max-width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-summary-topic { grid-column: span 2; }
+.fr-summary-alert { grid-column: 1 / -1; margin: 4px 0 0; color: var(--danger, #dc2626); }
+.fr-security-card .mp-card__body,
+.fr-review-card .mp-card__body,
+.fr-result-card .mp-card__body { padding: var(--space-2) 10px; }
+.fr-security-card .mp-card__body { max-height: 220px; overflow: auto; }
+.fr-review-card .mp-textarea { min-height: 54px; }
+.fr-review-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.fr-review-note { text-align: center; margin: 6px 0 0; line-height: 1.35; }
+.version-warning { margin-bottom: var(--space-2); padding: 8px 10px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); font-size: 13px; }
+.version-table-wrap { margin-top: 6px; overflow-x: auto; }
+.version-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.version-table th, .version-table td { padding: 6px 7px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
 .version-table th { color: var(--text-tertiary); font-weight: 600; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.hash { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 1100px) { .fr-pane { padding: var(--space-3); } }
+.hash { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.mp-tab { padding: 6px 10px; }
+@media (max-width: 1100px) {
+  .fr-pane { padding: var(--space-3); }
+  .fr-detail-grid { grid-template-columns: 1fr; }
+  .fr-summary-card, .fr-security-card, .fr-review-card, .fr-result-card { grid-column: 1; }
+  .fr-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
