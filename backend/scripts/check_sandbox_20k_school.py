@@ -152,7 +152,7 @@ def main() -> int:
     from app.services.sandbox_school_legacy_cleanup import validate_no_legacy_identity_residue
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
-    from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
+    from app.services.sandbox_school_professional_final_validation import validate_professional_school_final_20k
     from app.services.sandbox_school_professional_runner import validate_professional_academic_snapshots
     from app.services.sandbox_school_profile import PROFILE_STANDARD, classify_sandbox_profile
 
@@ -174,10 +174,10 @@ def main() -> int:
             domains = validate_core_domain_facts_20k(db, SANDBOX_TID)
             academic_affairs_final = validate_school_academic_final_20k(db, SANDBOX_TID)
             academic_archive = validate_school_academic_archive_20k(db, SANDBOX_TID)
+            professional_final = validate_professional_school_final_20k(db, SANDBOX_TID)
             professional_snapshots = validate_professional_academic_snapshots(db, SANDBOX_TID)
             academic_textbooks = validate_school_academic_textbooks_20k(db, SANDBOX_TID)
             academic_quality = validate_school_academic_quality_20k(db, SANDBOX_TID)
-            professional = validate_professional_school_20k(db, SANDBOX_TID)
             employment = validate_employment_facts_20k(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
         except RuntimeError as exc:
@@ -199,10 +199,10 @@ def main() -> int:
             "domains": domains,
             "academicAffairsFinal": academic_affairs_final,
             "academicArchive": academic_archive,
+            "professionalFinal": professional_final,
             "professionalAcademicSnapshots": professional_snapshots,
             "academicTextbooks": academic_textbooks,
             "academicQuality": academic_quality,
-            "professional": professional,
             "employment": employment,
             "studentAffairs": affairs,
             "internshipReconciliation": internship,
@@ -215,7 +215,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据、750课程/33K注册完整13B、历史十三域归档、旧假身份清零、专业课程快照、教材准备、历史评教/教学质量、毕设时间线、导师工作量与就业域验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据、750课程/33K注册完整13B、736门专业/实践课程逐门语义、历史十三域归档、旧假身份清零、教材准备、历史评教/教学质量、毕设时间线、导师工作量与就业域验收通过")
         return 0
     finally:
         db.close()
