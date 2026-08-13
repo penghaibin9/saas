@@ -402,3 +402,82 @@ def lock_batch(user, batch_id):
         db.commit()
         db.refresh(batch)
         return _base._core._batch_dto(batch)
+
+
+def adjust_record(user, record_id, reason):
+    """LOCKED 后人工退课：只改 Selection Final 事实，并在同事务重建 TeachingRoster 版本。"""
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+    from .academic_affairs_roster_consumer_service import consumer_counts
+    from . import academic_affairs_selection_roster_projection_service as roster_projection
+
+    with _base._core.session() as db:
+        _base._core._require_manage_scope(_base._core._ctx(user, db))
+        reason = (reason or "").strip()
+        if len(reason) < 5:
+            raise AppException("VALIDATION_ERROR", "调整原因必填且不少于5字")
+
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == int(record_id),
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not record:
+            raise not_found("选课记录不存在")
+        if record.status != _base._REC_LOCKED:
+            raise _base._core._invalid("仅 LOCKED 记录可人工调整")
+
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == int(record.selection_course_id),
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not course:
+            raise not_found("选课课程不存在")
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(record.batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("选课批次不存在")
+        _base._guard_batch_writable(db, batch)
+        if batch.status != _base._BATCH_LOCKED:
+            raise _base._core._invalid("仅已锁定选课批次可人工调整正式名单")
+        if not course.teaching_task_id:
+            raise AppException("DATA_CONFLICT", "选课课程未绑定教学任务，无法调整正式名单", http_status=409)
+
+        counts = consumer_counts(db, int(course.teaching_task_id), student_id=int(record.student_id))
+        if any(int(value or 0) > 0 for value in counts.values()):
+            raise _base._core._invalid("该学生已产生考勤、成绩或评教等下游事实，不可直接退课")
+
+        record.status = _base._REC_DROPPED
+        record.dropped_at = datetime.utcnow()
+        record.adjust_reason = reason
+        updated = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == course.id,
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.selected_count > 0,
+        ).update({
+            AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1,
+        }, synchronize_session=False)
+        if not updated:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程人数计数异常，人工退课已取消，请联系教务处",
+                http_status=409,
+            )
+
+        db.flush()
+        projection = roster_projection.project_selection_course_locked(
+            db,
+            int(course.id),
+            reason=f"LOCKED 名单人工调整：{reason}",
+        )
+        _base._core._audit(
+            db,
+            record.id,
+            "SELECTION_RECORD_ADJUST",
+            f"人工调整退课：{reason};rosterVersionId={projection['rosterVersionId']}",
+        )
+        db.commit()
+        return {"recordId": str(record.id), "status": _base._REC_DROPPED}
