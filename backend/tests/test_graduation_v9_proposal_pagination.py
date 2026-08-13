@@ -87,7 +87,9 @@ def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_clien
         params={"batchId": batch_id, "status": "PENDING_REVIEW", "page": 1, "pageSize": 20},
     ).json()["data"]
     assert pending["total"] == 70
-    assert len(pending["list"]) == 20
+    assert pending["page"] == 1
+    assert pending["pageSize"] == 20
+    assert len(pending["items"]) == 20
 
     seen: list[str] = []
     for page in range(1, 20):
@@ -97,7 +99,9 @@ def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_clien
             params={"batchId": batch_id, "status": "NOT_SUBMITTED", "page": page, "pageSize": 20},
         ).json()["data"]
         assert payload["total"] == 380
-        seen.extend(row["gdStudentId"] for row in payload["list"])
+        assert payload["page"] == page
+        assert payload["pageSize"] == 20
+        seen.extend(row["gdStudentId"] for row in payload["items"])
     assert len(seen) == 380
     assert len(set(seen)) == 380
     assert set(seen) == {str(sid) for sid in student_ids[220:]}
@@ -109,7 +113,7 @@ def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_clien
                 "page": 1, "pageSize": 20},
     ).json()["data"]
     assert late["total"] == 1
-    assert late["list"][0]["studentName"] == "M9学生0521"
+    assert late["items"][0]["studentName"] == "M9学生0521"
 
     all_page_12 = graduation_client.get(
         "/api/v1/graduation/proposals",
@@ -117,8 +121,8 @@ def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_clien
         params={"batchId": batch_id, "page": 12, "pageSize": 20},
     ).json()["data"]
     assert all_page_12["total"] == 600
-    assert all_page_12["list"][0]["studentName"] == "M9学生0221"
-    assert all(row["status"] == "NOT_SUBMITTED" for row in all_page_12["list"])
+    assert all_page_12["items"][0]["studentName"] == "M9学生0221"
+    assert all(row["status"] == "NOT_SUBMITTED" for row in all_page_12["items"])
 
 
 def test_proposal_sql_scope_keeps_stable_mentor_relation(db_mode):
