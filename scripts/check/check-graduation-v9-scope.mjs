@@ -44,8 +44,10 @@ const CARD_ALLOW = {
     /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_final_read_service\.py$/,
     /^backend\/tests\/test_graduation_v9_final_pagination\.py$/,
+    /^backend\/scripts\/e2e_seed_graduation_final_prerequisite\.py$/,
     /^frontend\/src\/modules\/graduation\/views\/FinalSubmissionListView\.vue$/,
-    /^frontend\/tests\/graduation\.v9-final-review\.contract\.test\.mjs$/,
+    /^frontend\/tests\/graduation\.v9-final-review(?:-permission)?\.contract\.test\.mjs$/,
+    /^e2e\/specs\/graduation-v9-final-review-visual\.spec\.mjs$/,
     /^docs\/architecture\/file-capability-inventory\.d\/10-graduation-v9-final-export\.yaml$/,
   ],
 }
