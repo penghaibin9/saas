@@ -697,14 +697,35 @@ def process_all_tenants(limit_per_tenant: int = 20) -> int:
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import Tenant
+    from app.services import tenant_effective_state_service as tenant_state
 
     total = 0
     db = get_sessionmaker()()
     try:
-        tids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+        tids = list(db.scalars(
+            select(Tenant.id)
+            .where(Tenant.is_deleted.is_(False))
+            .order_by(Tenant.id.asc())
+        ))
     finally:
         db.close()
     for tid in tids:
+        try:
+            policy = tenant_state.background_execution_policy(tid)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "scheduler_tenant_skipped tenantId=%s jobClass=%s effectiveStatus=unresolved reason=%s",
+                tid, tenant_state.BACKGROUND_BUSINESS_WRITE,
+                getattr(exc, "code", None) or type(exc).__name__,
+            )
+            continue
+        if not policy.get("businessWriteAllowed"):
+            log.info(
+                "scheduler_tenant_skipped tenantId=%s jobClass=%s effectiveStatus=%s reason=%s",
+                tid, tenant_state.BACKGROUND_BUSINESS_WRITE,
+                policy.get("effectiveStatus"), policy.get("reason"),
+            )
+            continue
         set_tenant({"tenantId": str(tid)})
         try:
             total += process_pending_outbox(limit=limit_per_tenant)

@@ -149,6 +149,44 @@ def get_effective_state(tenant_id: int, *, strict: bool = True, db=None) -> dict
             working.close()
 
 
+BACKGROUND_BUSINESS_WRITE = "BUSINESS_WRITE"
+BACKGROUND_MAINTENANCE = "MAINTENANCE"
+BACKGROUND_AUTH_SECURITY = "AUTH_SECURITY"
+
+
+def _background_policy_from_state(state: dict) -> dict:
+    """Classify background execution from one authoritative effective-state result."""
+    effective = str((state or {}).get("effectiveStatus") or "unresolved").lower()
+    writable = bool((state or {}).get("writable"))
+    reason = {
+        "trial": "TENANT_TRIAL_WRITABLE",
+        "active": "TENANT_ACTIVE_WRITABLE",
+        "expired": "TENANT_EXPIRED_READONLY",
+        "readonly": "TENANT_READONLY",
+        "disabled": "TENANT_DISABLED",
+        "archived": "TENANT_ARCHIVED",
+        "provisioning": "TENANT_PROVISIONING",
+        "unresolved": "TENANT_STATE_UNRESOLVED",
+    }.get(effective, "TENANT_STATE_UNRESOLVED")
+    resolved = effective in {
+        "trial", "active", "expired", "readonly", "disabled", "archived", "provisioning"
+    }
+    return {
+        **dict(state or {}),
+        "effectiveStatus": effective,
+        "writable": writable,
+        "businessWriteAllowed": bool(resolved and writable),
+        "maintenanceAllowed": bool(resolved),
+        "authSecurityAllowed": effective in {"trial", "active", "expired", "readonly"},
+        "reason": reason,
+    }
+
+
+def background_execution_policy(tenant_id: int, *, db=None) -> dict:
+    """Resolve a fresh canonical tenant state for one background execution decision."""
+    state = get_effective_state(int(tenant_id), strict=True, db=db)
+    return _background_policy_from_state(state)
+
 def _storage_projection(db, tenant_id: int) -> dict:
     from app.models.file import FileObject, TenantStorageQuota
     from app.models.file_quota import FileStorageQuotaReservation
