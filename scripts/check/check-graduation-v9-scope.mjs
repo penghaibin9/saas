@@ -60,6 +60,11 @@ const CARD_ALLOW = {
     /^frontend\/tests\/graduation\.v9-process-context\.contract\.test\.mjs$/,
     /^e2e\/specs\/graduation-v9-process-visual\.spec\.mjs$/,
   ],
+  U5: [
+    /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_student_read_service\.py$/,
+    /^backend\/tests\/test_graduation_v9_u5_student_list_scale\.py$/,
+  ],
 }
 
 const ALWAYS_DENY = [

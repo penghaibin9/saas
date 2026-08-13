@@ -101,6 +101,16 @@ test('U4 process workbench allows only process read models, WorkContext UI and r
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U4')[0], /canonical write\/read mixed service denied/)
 })
 
+test('U5 student list allows only SQL read binding and scale contract', () => {
+  assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/services/__init__.py',
+    'backend/app/modules/graduation/services/graduation_student_read_service.py',
+    'backend/tests/test_graduation_v9_u5_student_list_scale.py',
+  ], 'U5'), [])
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U5')[0], /shared foundation denied/)
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U5')[0], /canonical write\/read mixed service denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
@@ -127,6 +137,8 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'backend/app/modules/graduation/services/graduation_process_consistency.py',
     'frontend/src/modules/graduation/views/GraduationProcessView.vue',
     'e2e/specs/graduation-v9-process-visual.spec.mjs',
+    'backend/app/modules/graduation/services/graduation_student_read_service.py',
+    'backend/tests/test_graduation_v9_u5_student_list_scale.py',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })
