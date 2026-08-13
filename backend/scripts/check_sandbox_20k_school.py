@@ -142,6 +142,7 @@ def main() -> int:
     from app.models import Tenant
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID
     from app.services.sandbox_school_academic_affairs_seed import validate_academic_affairs_facts
+    from app.services.sandbox_school_academic_quality_seed import validate_school_academic_quality_20k
     from app.services.sandbox_school_academic_textbook_seed import validate_school_academic_textbooks_20k
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
@@ -171,6 +172,7 @@ def main() -> int:
             domains = validate_core_domain_facts_20k(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             academic_textbooks = validate_school_academic_textbooks_20k(db, SANDBOX_TID)
+            academic_quality = validate_school_academic_quality_20k(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
             employment = validate_employment_facts_20k(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
@@ -193,6 +195,7 @@ def main() -> int:
             "domains": domains,
             "academicAffairs": academic_affairs,
             "academicTextbooks": academic_textbooks,
+            "academicQuality": academic_quality,
             "professional": professional,
             "employment": employment,
             "studentAffairs": affairs,
@@ -206,7 +209,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据、旧假身份清零、教材准备、毕设时间线、导师工作量与就业域验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据、旧假身份清零、教材准备、历史评教/教学质量、毕设时间线、导师工作量与就业域验收通过")
         return 0
     finally:
         db.close()
