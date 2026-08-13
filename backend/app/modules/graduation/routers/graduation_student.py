@@ -24,6 +24,7 @@ from app.modules.graduation.schemas.graduation_student import (AssignAdvisorRequ
 from app.services import audit_log
 from app.services import xlsx_util
 from app.modules.graduation.services import graduation_student_service as svc
+from app.modules.graduation.services import graduation_student_read_service as student_read
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-毕设学生"])
 
@@ -37,12 +38,12 @@ def gd_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
                 studentGroup: Optional[str] = None, hasDefenseGroup: Optional[bool] = None,
                 gradQualStatus: Optional[str] = None, materialComplete: Optional[bool] = None,
                 archiveView: Optional[str] = None, user=Depends(get_current_user)):
-    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
-                                     batch_id=batchId, stage=stage, risk_level=riskLevel,
-                                     advisor_name=advisorName, has_topic=hasTopic,
-                                     eligibility=eligibility, student_group=studentGroup,
-                                     has_defense_group=hasDefenseGroup, grad_qual_status=gradQualStatus,
-                                     material_complete=materialComplete, archive_view=archiveView)
+    items, total = student_read.list_students(page, pageSize, keyword=keyword, class_id=classId,
+                                              batch_id=batchId, stage=stage, risk_level=riskLevel,
+                                              advisor_name=advisorName, has_topic=hasTopic,
+                                              eligibility=eligibility, student_group=studentGroup,
+                                              has_defense_group=hasDefenseGroup, grad_qual_status=gradQualStatus,
+                                              material_complete=materialComplete, archive_view=archiveView)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -168,47 +169,48 @@ def student_stage(record_id: str, body: GdStudentStageRequest, user=Depends(get_
 @router.post("/gd-students/{record_id}/risk", summary="风险等级标记")
 def student_risk(record_id: str, body: GdStudentRiskRequest, user=Depends(get_current_user)):
     result = svc.set_risk(record_id, body.riskLevel, body.reason or "")
-    audit_log.record("毕设风险标记", f"graduation-student:{record_id}", detail={"risk": body.riskLevel})
-    return success(result, message="已更新")
+    audit_log.record("毕设风险标记", f"graduation-student:{record_id}", detail={"riskLevel": body.riskLevel})
+    return success(result, message="已更新风险")
 
 
-@router.post("/gd-students/{record_id}/eligibility", summary="毕设资格认定")
+@router.post("/gd-students/{record_id}/eligibility", summary="资格认定（待认定/合格/不合格）")
 def student_eligibility(record_id: str, body: GdStudentEligibilityRequest, user=Depends(get_current_user)):
     result = svc.set_eligibility(record_id, body.status, body.reason or "")
     audit_log.record("毕设资格认定", f"graduation-student:{record_id}", detail={"status": body.status})
-    return success(result, message="已更新")
+    return success(result, message="资格状态已更新")
 
 
-@router.post("/gd-students/{record_id}/group", summary="设置过程分组")
+@router.post("/gd-students/{record_id}/group", summary="过程分组（开题/中期/论文分组等）")
 def student_group(record_id: str, body: GdStudentGroupRequest, user=Depends(get_current_user)):
     result = svc.set_student_group(record_id, body.groupName, body.reason or "")
-    audit_log.record("毕设学生分组", f"graduation-student:{record_id}", detail={"group": body.groupName})
-    return success(result, message="已更新")
+    audit_log.record("毕设过程分组", f"graduation-student:{record_id}", detail={"groupName": body.groupName})
+    return success(result, message="分组已更新")
 
 
 @router.post("/gd-students/batch-group", summary="批量设置过程分组")
-def batch_student_group(body: GdStudentBatchGroupRequest, user=Depends(get_current_user)):
+def student_batch_group(body: GdStudentBatchGroupRequest, user=Depends(get_current_user)):
     result = svc.batch_set_student_group(body.recordIds, body.groupName, body.reason or "")
-    audit_log.record("毕设学生批量分组", "graduation-student:batch-group", detail=result)
-    return success(result, message="已更新")
+    audit_log.record("批量毕设过程分组", "graduation-student:batch-group",
+                     detail={"count": result["count"], "groupName": body.groupName})
+    return success(result, message=f"已更新 {result['count']} 名学生")
 
 
 @router.post("/gd-students/{record_id}/defense-group", summary="分配答辩组")
 def student_defense_group(record_id: str, body: GdStudentDefenseGroupRequest, user=Depends(get_current_user)):
     result = svc.assign_defense_group(record_id, body.defenseGroupId, body.reason or "")
-    audit_log.record("分配答辩组", f"graduation-student:{record_id}", detail={"groupId": body.defenseGroupId})
-    return success(result, message="已分配")
+    audit_log.record("毕设分配答辩组", f"graduation-student:{record_id}", detail={"defenseGroupId": body.defenseGroupId})
+    return success(result, message="答辩组已更新")
 
 
-@router.post("/gd-students/{record_id}/grad-qual", summary="毕业资格联动状态")
+@router.post("/gd-students/{record_id}/grad-qual", summary="同步毕业资格结果（内部/管理员）")
 def student_grad_qual(record_id: str, body: GdStudentGradQualRequest, user=Depends(get_current_user)):
-    result = svc.set_grad_qual(record_id, body.status, body.note or "", body.reason or "")
-    audit_log.record("毕业资格联动", f"graduation-student:{record_id}", detail={"status": body.status})
-    return success(result, message="已更新")
+    result = svc.set_grad_qual(record_id, body.status, body.note or "")
+    audit_log.record("毕设毕业资格同步", f"graduation-student:{record_id}", detail={"status": body.status})
+    return success(result, message="毕业资格已更新")
 
 
-@router.post("/gd-students/batch-archive", summary="批量归档毕设学生")
-def batch_archive(body: GdStudentBatchArchiveRequest, user=Depends(get_current_user)):
-    result = svc.batch_archive(body.recordIds, body.reason or "")
-    audit_log.record("毕设学生批量归档", "graduation-student:batch-archive", detail=result)
-    return success(result, message="已归档")
+@router.post("/gd-students/batch-archive", summary="批量归档（仅通过归档前核验的记录）")
+def student_batch_archive(body: GdStudentBatchArchiveRequest, user=Depends(get_current_user)):
+    result = svc.batch_archive_students(body.recordIds, body.reason or "")
+    audit_log.record("批量毕设归档", "graduation-student:batch-archive", detail={"count": result["count"]})
+    return success(result, message=f"已归档 {result['count']} 名学生")
