@@ -145,8 +145,8 @@ def main() -> int:
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_seed import validate_domain_facts
     from app.services.sandbox_school_master_seed import validate_school_master
+    from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
     from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
-    from app.services.sandbox_school_role_reconcile import validate_school_roles_20k
 
     db = get_sessionmaker()()
     try:
@@ -157,7 +157,7 @@ def main() -> int:
 
         try:
             master = validate_school_master(db, SANDBOX_TID)
-            role_topology = validate_school_roles_20k(db, SANDBOX_TID)
+            mentor_workload = validate_school_mentor_workload_20k(db, SANDBOX_TID)
             domains = validate_domain_facts(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
@@ -174,7 +174,7 @@ def main() -> int:
             "schoolName": tenant.school_name,
             "rebuildBudget": rebuild_budget,
             "master": master,
-            "roleTopology": role_topology,
+            "mentorWorkload": mentor_workload,
             "domains": domains,
             "academicAffairs": academic_affairs,
             "professional": professional,
@@ -189,7 +189,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据与导师工作量验收通过")
         return 0
     finally:
         db.close()

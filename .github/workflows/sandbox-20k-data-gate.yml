@@ -11,10 +11,13 @@ on:
       - backend/app/api/v1/router.py
       - backend/scripts/reset_sandbox_school.py
       - backend/scripts/check_sandbox_20k_school.py
+      - backend/scripts/check_sandbox_20k_rebuild_budget.py
       - backend/scripts/_seed_sandbox_coverage.py
       - backend/tests/test_sandbox_school_blueprint.py
       - backend/tests/test_sandbox_school_professional_catalog.py
       - backend/tests/test_sandbox_school_role_topology.py
+      - backend/tests/test_sandbox_school_mentor_workload.py
+      - backend/tests/test_sandbox_school_rebuild_budget.py
       - backend/tests/test_sandbox_story_reset_route.py
       - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
       - .github/workflows/sandbox-20k-data-gate.yml
@@ -84,6 +87,10 @@ jobs:
             app/services/sandbox_school_blueprint.py
             app/services/sandbox_school_master_seed.py
             app/services/sandbox_school_role_reconcile.py
+            app/services/sandbox_school_mentor_pool.py
+            app/services/sandbox_school_internship_mentor_reconcile.py
+            app/services/sandbox_school_graduation_mentor_reconcile.py
+            app/services/sandbox_school_mentor_workload.py
             app/services/sandbox_school_domain_seed.py
             app/services/sandbox_school_reconcile.py
             app/services/sandbox_school_affairs_seed.py
@@ -93,15 +100,19 @@ jobs:
             app/services/sandbox_school_academic_affairs_reconcile.py
             app/services/sandbox_school_professional_catalog.py
             app/services/sandbox_school_professional_reconcile.py
+            app/services/sandbox_school_professional_runner.py
             app/services/sandbox_school_story_reset.py
             app/api/v1/sandbox_story_api.py
             app/api/v1/router.py
             scripts/reset_sandbox_school.py
             scripts/check_sandbox_20k_school.py
+            scripts/check_sandbox_20k_rebuild_budget.py
             scripts/_seed_sandbox_coverage.py
             tests/test_sandbox_school_blueprint.py
             tests/test_sandbox_school_professional_catalog.py
             tests/test_sandbox_school_role_topology.py
+            tests/test_sandbox_school_mentor_workload.py
+            tests/test_sandbox_school_rebuild_budget.py
             tests/test_sandbox_story_reset_route.py
           )
           : > test-results/sandbox-20k/compile.log
@@ -140,12 +151,14 @@ jobs:
             tests/test_sandbox_school_blueprint.py \
             tests/test_sandbox_school_professional_catalog.py \
             tests/test_sandbox_school_role_topology.py \
+            tests/test_sandbox_school_mentor_workload.py \
+            tests/test_sandbox_school_rebuild_budget.py \
             -p no:warnings \
             2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_role_topology.py::20K blueprint/professional/role contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_mentor_workload.py::20K blueprint/professional/role/mentor/budget contract failed: ${summary}"
             exit "$status"
           fi
 
@@ -194,6 +207,9 @@ jobs:
             SELECT "roles", COUNT(*) FROM t_role WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "user_role_bindings", COUNT(*) FROM t_user_role WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "teacher_scopes", COUNT(*) FROM t_teacher_student_scope WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "internship_distinct_advisors", COUNT(DISTINCT advisor_user_id) FROM t_internship_record WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "graduation_mentors", COUNT(*) FROM t_gd_mentor WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "graduation_distinct_advisors", COUNT(DISTINCT mentor_id) FROM t_gd_student WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "academic_grades", COUNT(*) FROM t_acad_grade WHERE tenant_id=1000000000000000007;
             SELECT "internship_companies", COUNT(*) FROM t_emp_company WHERE tenant_id=1000000000000000007;
             SELECT "internship_positions", COUNT(*) FROM t_internship_position WHERE tenant_id=1000000000000000007;

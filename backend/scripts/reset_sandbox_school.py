@@ -19,7 +19,8 @@
   7. 学校角色只复用正式内置角色模板，兼岗不重复造教职工账号；
   8. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
   9. 大成绩表专业课改名走 SQL 集合更新，禁止 17 万级事实 ORM 全量物化；
-  10. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  10. 导师工作量按真实学校负载对账：224 名实习导师、384 名毕设导师，全部由现有教职工兼岗；
+  11. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -119,6 +120,10 @@ def main() -> int:
                 rebuild_school_master_20k,
                 validate_school_master,
             )
+            from app.services.sandbox_school_mentor_workload import (
+                reconcile_school_mentor_workload_20k,
+                validate_school_mentor_workload_20k,
+            )
             from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
             from app.services.sandbox_school_professional_runner import professionalize_school_20k
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
@@ -128,22 +133,26 @@ def main() -> int:
             )
 
             master = rebuild_school_master_20k(db)
-            # 主账号/学院/专业/班级生成后，先补正式角色兼岗与 COLLEGE/MAJOR/ADVISOR 范围。
-            # 后续六域与工作台选择器因此直接消费完整学校组织，而不是再造临时负责人。
+            # 先建立基础角色拓扑并立即验收；后续导师工作量模块会合法扩展 ADVISOR 角色/范围。
             role_topology = reconcile_school_roles_20k(db, SANDBOX_TID)
+            role_topology_acceptance = validate_school_roles_20k(db, SANDBOX_TID)
+
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
 
             # 大成绩事实的专业课名称由 professional_runner 用 SQL CASE 一次集合更新；
-            # 实习/毕设继续使用真实专业主键对账，不牺牲语义一致性换性能。
+            # 实习/毕设先完成专业语义，再按专业规模重排真实导师负载。
             professional = professionalize_school_20k(db, SANDBOX_TID)
+            mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
+
             exam_reconciliation = reconcile_exam_rooms(db, SANDBOX_TID)
             internship_reconciliation = reconcile_internship_capacity(db, SANDBOX_TID)
             affairs = seed_school_affairs_20k(db, SANDBOX_TID)
 
             acceptance = {
                 "master": validate_school_master(db, SANDBOX_TID),
-                "roleTopology": validate_school_roles_20k(db, SANDBOX_TID),
+                "roleTopology": role_topology_acceptance,
+                "mentorWorkload": validate_school_mentor_workload_20k(db, SANDBOX_TID),
                 "domains": validate_domain_facts(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
@@ -155,6 +164,7 @@ def main() -> int:
                 "reseeded": {
                     "master": master,
                     "roleTopology": role_topology,
+                    "mentorWorkload": mentor_workload,
                     "domains": domains,
                     "academicAffairs": academic_affairs,
                     "professional": professional,
@@ -190,7 +200,10 @@ def main() -> int:
             if demo_before != demo_after:
                 return 4
         if args.profile == PROFILE_STANDARD_20K:
-            print("[reset] 完成：20K 标准学校已通过主数据/角色拓扑/六域/13A/13B/专业语义/跨表关系对账。")
+            print(
+                "[reset] 完成：20K 标准学校已通过主数据/角色拓扑/导师工作量/"
+                "六域/13A/13B/专业语义/跨表关系对账。"
+            )
             print("[reset] 可见演示账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
         else:
