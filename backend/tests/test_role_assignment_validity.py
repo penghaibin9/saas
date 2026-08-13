@@ -25,7 +25,7 @@ def _ensure_tenant(tenant_id: int = MAIN_TENANT_ID) -> None:
 
     with _session() as db:
         if db.get(Tenant, int(tenant_id)) is None:
-            db.add(Tenant(id=int(tenant_id), tenant_code="demo",
+            db.add(Tenant(id=int(tenant_id), tenant_code=f"demo-{int(tenant_id)}",
                           school_name="角色测试学校", status="ACTIVE"))
             db.commit()
 
@@ -85,13 +85,37 @@ def _login_roles(user_id: int) -> list[str]:
         return [c["roleCode"] for c in auth._role_contexts(db, account)]
 
 
+
+
+def _system_actor() -> dict:
+    return {
+        "userId": "db-900001",
+        "tenantId": str(MAIN_TENANT_ID),
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "userType": "TEACHER",
+        "realName": "系统管理员",
+    }
+
+
+def _grant(*args, **kwargs):
+    kwargs.setdefault("user", _system_actor())
+    return ras.grant_assignment(*args, **kwargs)
+
+
+def _transfer(assignment_id: int, *args, **kwargs):
+    kwargs.setdefault("user", _system_actor())
+    if kwargs.get("expected_version") is None:
+        current = ras.get_assignment(int(assignment_id), tenant_id=kwargs.get("tenant_id") or MAIN_TENANT_ID)
+        kwargs["expected_version"] = int(current["version"])
+    return ras.transfer_assignment(assignment_id, *args, **kwargs)
+
 # ── SYS07-T01：到期立即失效，且不需要重新登录 ────────────────────────────────
 def test_t01_expired_assignment_dies_without_relogin(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_expire_01")
     soon = (datetime.now().replace(microsecond=0) + timedelta(seconds=1))
 
-    granted = ras.grant_assignment(user_id, "COUNSELOR", reason="学期内临时代管班级",
+    granted = _grant(user_id, "COUNSELOR", reason="学期内临时代管班级",
                                    expires_at=soon.strftime("%Y-%m-%d %H:%M:%S"),
                                    tenant_id=MAIN_TENANT_ID)
     assert granted["status"] == "ACTIVE"
@@ -115,7 +139,7 @@ def test_t01_expired_assignment_dies_without_relogin(db_mode):
 def test_t01b_sweep_is_the_other_half_of_the_safety_net(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_expire_02")
-    granted = ras.grant_assignment(user_id, "COUNSELOR", reason="定时任务回收验证",
+    granted = _grant(user_id, "COUNSELOR", reason="定时任务回收验证",
                                    expires_at=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
                                    tenant_id=MAIN_TENANT_ID)
     from app.models.role_assignment import RoleAssignmentValidity
@@ -136,7 +160,7 @@ def test_t01b_sweep_is_the_other_half_of_the_safety_net(db_mode):
 def test_t01c_long_term_assignment_is_not_touched(db_mode):
     _make_role("ACADEMIC_ADMIN")
     user_id = _make_user("ras_longterm_01")
-    ras.grant_assignment(user_id, "ACADEMIC_ADMIN", reason="长期岗位授权",
+    _grant(user_id, "ACADEMIC_ADMIN", reason="长期岗位授权",
                          tenant_id=MAIN_TENANT_ID)
     ras.sweep_expired(tenant_id=MAIN_TENANT_ID)
     assert _user_role_status(user_id, "ACADEMIC_ADMIN") == "ACTIVE"
@@ -148,10 +172,10 @@ def test_t02_transfer_kills_the_old_holder(db_mode):
     _make_role("COUNSELOR")
     old_id = _make_user("ras_transfer_old")
     new_id = _make_user("ras_transfer_new")
-    granted = ras.grant_assignment(old_id, "COUNSELOR", reason="原辅导员岗位授权",
+    granted = _grant(old_id, "COUNSELOR", reason="原辅导员岗位授权",
                                    tenant_id=MAIN_TENANT_ID)
 
-    moved = ras.transfer_assignment(int(granted["assignmentId"]), to_user_id=new_id,
+    moved = _transfer(int(granted["assignmentId"]), to_user_id=new_id,
                                     reason="辅导员离岗，工作转交", tenant_id=MAIN_TENANT_ID)
 
     assert _user_role_status(old_id, "COUNSELOR") == "REVOKED"
@@ -218,9 +242,9 @@ def test_t03_active_role_is_isolated_not_unioned(db_mode):
     _make_role("COUNSELOR")
     _make_role("ACADEMIC_ADMIN")
     user_id = _make_user("ras_multi_role")
-    ras.grant_assignment(user_id, "COUNSELOR", reason="同时带班的教务人员",
+    _grant(user_id, "COUNSELOR", reason="同时带班的教务人员",
                          tenant_id=MAIN_TENANT_ID)
-    ras.grant_assignment(user_id, "ACADEMIC_ADMIN", reason="同时担任教务管理员",
+    _grant(user_id, "ACADEMIC_ADMIN", reason="同时担任教务管理员",
                          tenant_id=MAIN_TENANT_ID)
     assert set(_login_roles(user_id)) >= {"COUNSELOR", "ACADEMIC_ADMIN"}
 
@@ -251,14 +275,14 @@ def test_summary_buckets(db_mode):
     admin_a = _make_user("ras_bucket_admin_a")
     admin_b = _make_user("ras_bucket_admin_b")
 
-    ras.grant_assignment(soon_user, "COUNSELOR", reason="即将到期的授权",
+    _grant(soon_user, "COUNSELOR", reason="即将到期的授权",
                          expires_at=(datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S"),
                          tenant_id=MAIN_TENANT_ID)
-    ras.grant_assignment(long_user, "COUNSELOR", reason="长期未复核授权",
+    _grant(long_user, "COUNSELOR", reason="长期未复核授权",
                          tenant_id=MAIN_TENANT_ID)
-    ras.grant_assignment(admin_a, "SCHOOL_ADMIN", reason="学校管理员甲",
+    _grant(admin_a, "SCHOOL_ADMIN", reason="学校管理员甲",
                          tenant_id=MAIN_TENANT_ID)
-    ras.grant_assignment(admin_b, "SCHOOL_ADMIN", reason="学校管理员乙",
+    _grant(admin_b, "SCHOOL_ADMIN", reason="学校管理员乙",
                          tenant_id=MAIN_TENANT_ID)
 
     listed = ras.list_assignments(tenant_id=MAIN_TENANT_ID)
@@ -293,7 +317,7 @@ def test_legacy_assignment_without_validity_is_flagged_unknown_source(db_mode):
 def test_review_clears_unreviewed_bucket(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_review_01")
-    granted = ras.grant_assignment(user_id, "COUNSELOR", reason="长期授权待复核",
+    granted = _grant(user_id, "COUNSELOR", reason="长期授权待复核",
                                    tenant_id=MAIN_TENANT_ID)
     before = ras.list_assignments(tenant_id=MAIN_TENANT_ID)["summary"][ras.BUCKET_UNREVIEWED]
     ras.review_assignment(int(granted["assignmentId"]), term="2026-2027-1",
@@ -305,7 +329,7 @@ def test_review_clears_unreviewed_bucket(db_mode):
 def test_revoke_version_conflict(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_version_01")
-    granted = ras.grant_assignment(user_id, "COUNSELOR", reason="版本冲突验证",
+    granted = _grant(user_id, "COUNSELOR", reason="版本冲突验证",
                                    tenant_id=MAIN_TENANT_ID)
     stale = int(granted["version"])
     ras.review_assignment(int(granted["assignmentId"]), term="2026-2027-1",
@@ -321,12 +345,12 @@ def test_grant_validates_input(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_validate_01")
     with pytest.raises(AppException):
-        ras.grant_assignment(user_id, "COUNSELOR", reason="短", tenant_id=MAIN_TENANT_ID)
+        _grant(user_id, "COUNSELOR", reason="短", tenant_id=MAIN_TENANT_ID)
     with pytest.raises(AppException):
-        ras.grant_assignment(user_id, "NOT_A_ROLE", reason="角色不存在的授权",
+        _grant(user_id, "NOT_A_ROLE", reason="角色不存在的授权",
                              tenant_id=MAIN_TENANT_ID)
     with pytest.raises(AppException) as caught:
-        ras.grant_assignment(user_id, "COUNSELOR", reason="到期早于生效",
+        _grant(user_id, "COUNSELOR", reason="到期早于生效",
                              effective_at="2026-09-01", expires_at="2026-08-01",
                              tenant_id=MAIN_TENANT_ID)
     assert "晚于" in caught.value.message
@@ -343,6 +367,7 @@ def test_http_endpoints(client, auth_headers, db_mode):
                                 "expiresAt": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")}).json()
     assert granted["code"] == 0
     assignment_id = granted["data"]["assignmentId"]
+    assignment_version = granted["data"]["version"]
 
     listed = client.get("/api/v1/system/role-assignments", headers=auth_headers).json()
     assert listed["code"] == 0 and listed["data"]["total"] >= 1
@@ -358,6 +383,169 @@ def test_http_endpoints(client, auth_headers, db_mode):
 
     revoked = client.post(f"/api/v1/system/role-assignments/{assignment_id}/revoke",
                           headers=auth_headers,
-                          json={"reason": "接口层回收验证"}).json()
+                          json={"reason": "接口层回收验证", "expectedVersion": assignment_version}).json()
     assert revoked["code"] == 0 and revoked["data"]["status"] == "REVOKED"
     assert _user_role_status(user_id, "COUNSELOR") == "REVOKED"
+
+
+def test_transfer_requires_expected_version(db_mode):
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_missing_version_old")
+    new_id = _make_user("ras_transfer_missing_version_new")
+    granted = _grant(old_id, "COUNSELOR", reason="缺少版本号的转交必须拒绝",
+                     tenant_id=MAIN_TENANT_ID)
+    with pytest.raises(AppException) as caught:
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="缺少版本号的转交必须拒绝",
+            tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+        )
+    assert caught.value.http_status == 422
+    assert _user_role_status(old_id, "COUNSELOR") == "ACTIVE"
+    assert _user_role_status(new_id, "COUNSELOR") != "ACTIVE"
+
+
+def test_transfer_rolls_back_old_holder_when_new_grant_fails(db_mode, monkeypatch):
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_rollback_old")
+    new_id = _make_user("ras_transfer_rollback_new")
+    granted = _grant(old_id, "COUNSELOR", reason="转交失败必须整体回滚",
+                     tenant_id=MAIN_TENANT_ID)
+    version = int(granted["version"])
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("forced target grant failure")
+
+    monkeypatch.setattr(ras, "_grant_assignment_in_db", _boom)
+    with pytest.raises(RuntimeError):
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="转交失败必须整体回滚", expected_version=version,
+            tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+        )
+    assert _user_role_status(old_id, "COUNSELOR") == "ACTIVE"
+    assert _user_role_status(new_id, "COUNSELOR") != "ACTIVE"
+
+
+def test_transfer_rolls_back_when_audit_insert_fails(db_mode, monkeypatch):
+    from app.services import audit_log
+
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_audit_old")
+    new_id = _make_user("ras_transfer_audit_new")
+    granted = _grant(old_id, "COUNSELOR", reason="审计失败必须整体回滚",
+                     tenant_id=MAIN_TENANT_ID)
+    version = int(granted["version"])
+
+    original = audit_log.record_critical_in_session
+
+    def _fail_transfer(db, action, resource, **kwargs):
+        if action == "ROLE_ASSIGNMENT_TRANSFER":
+            raise audit_log.AuditPersistenceError("forced transfer audit failure")
+        return original(db, action, resource, **kwargs)
+
+    monkeypatch.setattr(audit_log, "record_critical_in_session", _fail_transfer)
+    with pytest.raises(audit_log.AuditPersistenceError):
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="审计失败必须整体回滚", expected_version=version,
+            tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+        )
+    assert _user_role_status(old_id, "COUNSELOR") == "ACTIVE"
+    assert _user_role_status(new_id, "COUNSELOR") != "ACTIVE"
+
+
+def test_transfer_stale_version_returns_409(db_mode):
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_stale_old")
+    new_id = _make_user("ras_transfer_stale_new")
+    granted = _grant(old_id, "COUNSELOR", reason="旧版本转交必须冲突",
+                     tenant_id=MAIN_TENANT_ID)
+    stale = int(granted["version"])
+    ras.review_assignment(
+        int(granted["assignmentId"]), term="2026-2027-1",
+        reason="先复核一次制造版本变化", tenant_id=MAIN_TENANT_ID,
+        user=_system_actor(),
+    )
+    with pytest.raises(AppException) as caught:
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="旧版本转交必须冲突", expected_version=stale,
+            tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+        )
+    assert caught.value.code == "DATA_CONFLICT"
+    assert caught.value.http_status == 409
+    assert _user_role_status(old_id, "COUNSELOR") == "ACTIVE"
+
+
+def test_transfer_rejects_cross_tenant_target(db_mode):
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_cross_old")
+    other_tenant = MAIN_TENANT_ID + 701
+    new_id = _make_user("ras_transfer_cross_new", tenant_id=other_tenant)
+    granted = _grant(old_id, "COUNSELOR", reason="跨租户转交必须拒绝",
+                     tenant_id=MAIN_TENANT_ID)
+    with pytest.raises(AppException) as caught:
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="跨租户转交必须拒绝", expected_version=int(granted["version"]),
+            tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+        )
+    assert caught.value.code == "DATA_NOT_FOUND"
+    assert _user_role_status(old_id, "COUNSELOR") == "ACTIVE"
+
+
+def test_transfer_rejects_role_above_actor_base_permission(db_mode):
+    _make_role("SECURITY_AUDITOR")
+    old_id = _make_user("ras_transfer_ceiling_old")
+    new_id = _make_user("ras_transfer_ceiling_new")
+    granted = _grant(old_id, "SECURITY_AUDITOR", reason="高权角色初始授权",
+                     tenant_id=MAIN_TENANT_ID)
+    weak_actor = {
+        "userId": "db-900002", "tenantId": str(MAIN_TENANT_ID),
+        "currentRoleCode": "ACADEMIC_TEACHER", "userType": "TEACHER",
+    }
+    with pytest.raises(AppException) as caught:
+        ras.transfer_assignment(
+            int(granted["assignmentId"]), to_user_id=new_id,
+            reason="低权角色不得转交高权角色", expected_version=int(granted["version"]),
+            tenant_id=MAIN_TENANT_ID, user=weak_actor,
+        )
+    assert caught.value.code == "NO_PERMISSION"
+    assert _user_role_status(old_id, "SECURITY_AUDITOR") == "ACTIVE"
+    assert _user_role_status(new_id, "SECURITY_AUDITOR") != "ACTIVE"
+
+
+def test_transfer_concurrent_same_version_only_one_succeeds(db_mode):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _make_role("COUNSELOR")
+    old_id = _make_user("ras_transfer_race_old")
+    new_a = _make_user("ras_transfer_race_a")
+    new_b = _make_user("ras_transfer_race_b")
+    granted = _grant(old_id, "COUNSELOR", reason="并发转交版本锁验证",
+                     tenant_id=MAIN_TENANT_ID)
+    assignment_id = int(granted["assignmentId"])
+    version = int(granted["version"])
+
+    def _run(target):
+        try:
+            ras.transfer_assignment(
+                assignment_id, to_user_id=target,
+                reason="并发转交版本锁验证", expected_version=version,
+                tenant_id=MAIN_TENANT_ID, user=_system_actor(),
+            )
+            return "SUCCESS"
+        except AppException as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(_run, [new_a, new_b]))
+
+    assert sorted(results) == ["DATA_CONFLICT", "SUCCESS"]
+    assert _user_role_status(old_id, "COUNSELOR") == "REVOKED"
+    active_new = sum(
+        _user_role_status(uid, "COUNSELOR") == "ACTIVE"
+        for uid in (new_a, new_b)
+    )
+    assert active_new == 1

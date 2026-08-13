@@ -42,6 +42,9 @@ CRITICAL_ACTIONS = frozenset({
     "PLATFORM_USER_DISABLE", "PLATFORM_USER_RESET_PWD",
     "ROLE_PERMISSION_SAVE", "USER_ROLE_ASSIGN", "RESET_PASSWORD",
     "SENSITIVE_VIEW", "EXPORT",
+    "ROLE_ASSIGNMENT_GRANH", "ROLE_ASSIGNMENT_REVOKE", "ROLE_ASSIGNMENT_TRANSFER",
+    "ROLE_ASSIGNMENT_REVIEW", "ROLE_ASSIGNMENT_EXPIRE",
+    "ROLE_ASSIGNMENT_GRANT",
 })
 
 
@@ -119,6 +122,7 @@ def _effective_tenant_id(action: str, resource: str, detail: dict,
 def record_critical_in_session(
     db, action: str, resource: str, *, detail: dict | None = None, result: str = "SUCCESS",
     tenant_id: int | str | None = None, resource_id: str | None = None,
+    operator_name_override: str | None = None,
 ) -> dict:
     """把 critical audit 加入调用方 DB session；本函数绝不 commit、绝不吞错。"""
     if action not in CRITICAL_ACTIONS:
@@ -132,6 +136,7 @@ def record_critical_in_session(
         db_service.audit_insert_in_session(
             db, action, resource, safe_detail, result,
             tenant_id=int(effective_tid), resource_id=resource_id,
+            operator_name_override=operator_name_override,
         )
         _DB_HEALTH["consecutiveFailures"] = 0
     except Exception as exc:  # noqa: BLE001 — critical audit 必须 fail-closed
