@@ -265,6 +265,7 @@ def apply_transition(
     reason: str,
     expected_version: int,
     payload: dict | None = None,
+    audit_action: str | None = None,
 ) -> dict:
     from app.models import PlatformConfig, Tenant
     from app.services import platform_service
@@ -355,6 +356,17 @@ def apply_transition(
         meta_row.config_json = meta
         meta_row.version = int(meta_row.version or 1) + 1
         tenant.version = int(tenant.version or 1) + 1
+        if audit_action:
+            from app.services import audit_log
+            audit_after = effective_state_from_records(row_status=tenant.status, meta=meta, strict=True)
+            audit_log.record_critical_in_session(
+                db, audit_action, f"tenant:{tenant_id}",
+                detail={"action": normalized, "reason": reason_text,
+                        "expectedVersion": int(expected_version), "before": before,
+                        "after": audit_after, "requestedKeys": sorted(data.keys()),
+                        "moduleCode": "platform"},
+                tenant_id=int(tenant_id), resource_id=str(tenant_id),
+            )
         db.commit()
         invalidate_tenant_subject_caches(int(tenant_id))
         after = get_effective_state(int(tenant_id), strict=True)

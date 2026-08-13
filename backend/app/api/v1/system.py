@@ -1479,12 +1479,15 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
         for role_id in wanted - set(existing):
             db.add(UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role_id, status="ACTIVE"))
         account.version = int(account.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "USER_ROLE_ASSIGN", f"user:{account.id}",
+            detail={"loginName": account.login_name, "roleCodes": codes, "moduleCode": "systemAdmin"},
+            tenant_id=tenant_id, resource_id=str(account.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_subject_cache
         invalidate_subject_cache(f"db-{account.id}", tenant_id)
-        from app.services import audit_log
-        audit_log.record("USER_ROLE_ASSIGN", f"user:{account.id}", detail={"loginName": account.login_name,
-                         "roleCodes": codes})
         return success({"id": str(account.id), "roleCodes": codes}, message="角色已分配；该账号需重新登录")
     except Exception:
         db.rollback(); raise
@@ -1682,6 +1685,14 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         _set_role_scope(role, body.get("scopeCode") or _role_scope(role),
                         target_json=body.get("scopeTarget") or body.get("targetJson"), user=user)
         role.version = int(role.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "ROLE_PERMISSION_SAVE", f"role:{role.id}",
+            detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
+                    "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
+                    "moduleCode": "systemAdmin", "version": role.version},
+            tenant_id=tenant_id, resource_id=str(role.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_tenant_subject_caches
         try:
@@ -1691,12 +1702,6 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         except Exception as cache_exc:
             cache_ok = False
             cache_warn = str(cache_exc)[:200]
-        from app.services import audit_log
-        audit_log.record("ROLE_PERMISSION_SAVE", f"role:{role.id}",
-                         detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
-                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
-                                 "moduleCode": "systemAdmin", "cacheInvalidated": cache_ok,
-                                 "cacheWarning": cache_warn, "version": role.version})
         payload = {"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
                    "permissionCodes": final_codes, "version": int(role.version or 0),
                    "cacheInvalidated": cache_ok}
@@ -2044,13 +2049,16 @@ def reset_system_user_password(user_id: int, body: dict | None = Body(default=No
         account.password_hash = hash_password(temp_password)
         account.must_change_password = True
         account.version = int(account.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",
+            detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密",
+                    "reason": "管理员重置", "userId": int(account.id), "moduleCode": "systemAdmin"},
+            result="SUCCESS", tenant_id=tenant_id, resource_id=str(account.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_subject_cache
         invalidate_subject_cache(f"db-{account.id}", tenant_id)
-        from app.services import audit_log
-        audit_log.record("RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",
-                         detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密", "reason": "管理员重置"},
-                         result="SUCCESS")
         # 临时密码仅本次随响应返回给操作管理员转交，不入库明文、不重复展示。
         return success({"id": str(account.id), "tempPassword": temp_password, "mustChangePassword": True,
                         "notice": "临时密码仅本次显示，请立即转交本人；该账号首次登录须强制改密"},
