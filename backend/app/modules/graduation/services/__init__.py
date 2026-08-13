@@ -1,8 +1,8 @@
 """毕业设计中心服务层。
 
-V9.2 在这里保留模块内兼容绑定：历史调用方仍引用 ``graduation_service``，
-但开题/成果列表、统计、导出统一切到 SQL 读模型。绑定只替换只读入口，
-不触碰开题/成果提交、批阅等 canonical 写链。
+V9.2 在这里保留模块内兼容绑定：历史调用方仍引用原 service 模块，
+但开题/成果/学生列表统一切到 SQL 读模型。绑定只替换只读入口，
+不触碰提交、批阅、状态机等 canonical 写链。
 """
 from __future__ import annotations
 
@@ -219,7 +219,16 @@ def _install_final_read_model() -> None:
     service.export_finals_xlsx = service.sanitize_xlsx_export(_export_finals_sql)
 
 
+def _install_student_read_model() -> None:
+    from app.modules.graduation.services import graduation_student_read_service as student_read
+    from app.modules.graduation.services import graduation_student_service as service
+
+    service.list_students = student_read.list_students
+
+
 _install_proposal_read_model()
 _install_final_read_model()
+_install_student_read_model()
 del _install_proposal_read_model
 del _install_final_read_model
+del _install_student_read_model
