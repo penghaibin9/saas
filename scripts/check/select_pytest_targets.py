@@ -58,6 +58,18 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "academic_affairs_schedule_conflict_index.py"),
      ["tests/test_aa_scheduling.py",
       "tests/test_aa_schedule_conflict_index.py"]),
+    # D6：Selection Final 真链、学院范围读侧、轮次 guard 或 TeachingRoster 锁定投影
+    # 任一变化，都必须立即跑选课完整状态机 + 真值 owner + MySQL 学院隔离 + 大批次锁定合同。
+    (("academic_affairs_selection_final_service.py",
+      "academic_affairs_selection_read_service.py",
+      "academic_affairs_selection_round_read_guard.py",
+      "academic_affairs_teaching_roster_service.py"),
+     ["tests/test_aa_selection.py",
+      "tests/test_aa_d6_selection_truth_contract.py",
+      "tests/test_aa_selection_read_production_contract.py",
+      "tests/test_aa_selection_scope_mysql.py",
+      "tests/test_aa_selection_lock_scaling.py",
+      "tests/test_aa_teaching_roster_unification.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
