@@ -47,20 +47,25 @@ jobs:
           from pathlib import Path
           p = Path('backend/tests/test_internship_file_stable_advisor_acl.py')
           t = p.read_text(encoding='utf-8')
-          anchors = [
-              (
-                  '            biz_type="INTERNSHIP",\n            biz_id=str(record.id),\n',
-                  '            biz_type="TEMP_PRIVATE",\n            biz_id=None,\n',
-              ),
-              (
-                  '            subject_type="BUSINESS_OBJECT",\n            module_code="INTERNSHIP",\n',
-                  '            subject_type="BUSINESS_OBJECT",\n            subject_id=str(record.id),\n            module_code="INTERNSHIP",\n',
-              ),
-          ]
-          for old, new in anchors:
-              if t.count(old) != 1:
-                  raise SystemExit(f'D fixture anchor mismatch: {old!r}')
-              t = t.replace(old, new, 1)
+          a = t.index('        file_obj = FileObject(')
+          b = t.index('        db.add(file_obj)', a)
+          block = t[a:b]
+          if 'biz_type="INTERNSHIP"' not in block or 'biz_id=str(record.id)' not in block:
+              raise SystemExit('D FileObject fixture shape changed')
+          block = block.replace('biz_type="INTERNSHIP"', 'biz_type="TEMP_PRIVATE"', 1)
+          block = block.replace('biz_id=str(record.id)', 'biz_id=None', 1)
+          t = t[:a] + block + t[b:]
+          a = t.index('        bind_file_to_business(')
+          b = t.index('        db.commit()', a)
+          block = t[a:b]
+          if 'subject_type="BUSINESS_OBJECT"' not in block:
+              raise SystemExit('D binding fixture shape changed')
+          block = block.replace(
+              'subject_type="BUSINESS_OBJECT",',
+              'subject_type="BUSINESS_OBJECT",\n            subject_id=str(record.id),',
+              1,
+          )
+          t = t[:a] + block + t[b:]
           p.write_text(t, encoding='utf-8')
           PY
           python -m py_compile \
