@@ -253,6 +253,9 @@ class InternshipIncident(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_internship_incident"
     __table_args__ = (
         UniqueConstraint("tenant_id", "incident_no", name="uk_ix_incident_no"),
+        # 幂等键必须由数据库保证唯一：应用层「先查后插」挡不住并发穿透，
+        # 而事故 HIGH/CRITICAL 会派生 RiskRecord，重复穿透会同时造出重复事故、重复风险和重复审计。
+        UniqueConstraint("tenant_id", "idempotency_key", name="uk_ix_incident_idem"),
         Index("ix_ix_incident_batch", "tenant_id", "batch_id", "is_deleted"),
     )
 
