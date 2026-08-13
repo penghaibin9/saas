@@ -39,6 +39,8 @@ async function expectDecisionAboveFold(page) {
     await expect(locator, `${label} must be visible`).toBeVisible()
     const box = await locator.boundingBox()
     expect(box, `${label} must have a rendered box`).toBeTruthy()
+    expect(box.x >= 0, `${label} must start inside the viewport width`).toBeTruthy()
+    expect(box.x + box.width <= viewport.width, `${label} must stay inside the ${viewport.width}px viewport width`).toBeTruthy()
     expect(box.y >= 0, `${label} must start inside the viewport`).toBeTruthy()
     expect(box.y + box.height <= viewport.height, `${label} must stay above the ${viewport.height}px fold`).toBeTruthy()
   }
