@@ -72,30 +72,41 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: 本PR Python文件编译
+      - name: 本PR Python文件逐项编译
         working-directory: backend
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           mkdir -p test-results/sandbox-20k
-          python -m py_compile \
-            app/services/sandbox_school_blueprint.py \
-            app/services/sandbox_school_master_seed.py \
-            app/services/sandbox_school_domain_seed.py \
-            app/services/sandbox_school_reconcile.py \
-            app/services/sandbox_school_affairs_seed.py \
-            app/services/sandbox_school_affairs_runner.py \
-            app/services/sandbox_school_academic_affairs_seed.py \
-            app/services/sandbox_school_academic_affairs_reconcile.py \
-            app/services/sandbox_school_story_reset.py \
-            app/api/v1/sandbox_story_api.py \
-            app/api/v1/router.py \
-            scripts/reset_sandbox_school.py \
-            scripts/check_sandbox_20k_school.py \
-            scripts/_seed_sandbox_coverage.py \
-            tests/test_sandbox_school_blueprint.py \
-            tests/test_sandbox_story_reset_route.py \
-            2>&1 | tee test-results/sandbox-20k/compile.log
+          files=(
+            app/services/sandbox_school_blueprint.py
+            app/services/sandbox_school_master_seed.py
+            app/services/sandbox_school_domain_seed.py
+            app/services/sandbox_school_reconcile.py
+            app/services/sandbox_school_affairs_seed.py
+            app/services/sandbox_school_affairs_runner.py
+            app/services/sandbox_school_academic_affairs_seed.py
+            app/services/sandbox_school_academic_affairs_reconcile.py
+            app/services/sandbox_school_story_reset.py
+            app/api/v1/sandbox_story_api.py
+            app/api/v1/router.py
+            scripts/reset_sandbox_school.py
+            scripts/check_sandbox_20k_school.py
+            scripts/_seed_sandbox_coverage.py
+            tests/test_sandbox_school_blueprint.py
+            tests/test_sandbox_story_reset_route.py
+          )
+          : > test-results/sandbox-20k/compile.log
+          for file in "${files[@]}"; do
+            echo "[compile] ${file}" | tee -a test-results/sandbox-20k/compile.log
+            if ! python -m py_compile "${file}" 2>test-results/sandbox-20k/compile-error.txt; then
+              cat test-results/sandbox-20k/compile-error.txt | tee -a test-results/sandbox-20k/compile.log
+              message=$(tail -n 1 test-results/sandbox-20k/compile-error.txt | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+              echo "::error file=${file}::Python compile failed: ${message}"
+              exit 1
+            fi
+          done
+          rm -f test-results/sandbox-20k/compile-error.txt
 
       - name: Alembic单头与MySQL空库升级
         working-directory: backend
