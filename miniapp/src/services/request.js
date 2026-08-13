@@ -13,6 +13,10 @@
  */
 import { ENV } from '@/config/env'
 import { markMobileViewsDirty } from '@/utils/viewFreshness'
+import {
+  advanceSessionGeneration, assertSessionSnapshot, captureSessionSnapshot,
+  currentSessionGeneration, guardSessionPromise, isSessionSnapshotCurrent, sessionChangedError
+} from './sessionGeneration.mjs'
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
@@ -36,6 +40,13 @@ export function getRefreshToken() {
   try { return uni.getStorageSync(REFRESH_KEY) || '' } catch (e) { return '' }
 }
 
+export function commitNewSessionTokens(accessToken, refreshToken) {
+  advanceSessionGeneration()
+  setToken(accessToken || '')
+  setRefreshToken(refreshToken || '')
+  return currentSessionGeneration()
+}
+
 /** 教师小程序当前毕业设计批次。对象形状：{ id, name, status }。 */
 export function setTeacherGraduationBatch(batch) {
   try {
@@ -56,6 +67,7 @@ export function getTeacherGraduationBatch() {
 
 
 export function clearTokens() {
+  advanceSessionGeneration()
   setToken('')
   setRefreshToken('')
   setTeacherGraduationBatch(null)
@@ -173,24 +185,38 @@ export function mockRequest(payload, { latency = ENV.mockLatency, fail = false }
 
 /* ── 401 刷新单飞队列 ── */
 let _refreshing = null
-function _refreshOnce() {
-  if (_refreshing) return _refreshing
-  const rt = getRefreshToken()
-  if (!rt) {
+function _refreshOnce(expectedGeneration = currentSessionGeneration()) {
+  if (_refreshing && _refreshing.generation === expectedGeneration) return _refreshing.promise
+  if (currentSessionGeneration() !== expectedGeneration) return Promise.reject(sessionChangedError())
+  const snapshot = captureSessionSnapshot(getToken(), getRefreshToken())
+  if (!snapshot.refreshToken) {
     return Promise.reject({ code: 401001, biz: true, message: '未登录' })
   }
-  _refreshing = realRequest('/auth/refresh', { method: 'POST', auth: false, data: { refreshToken: rt } })
-    .then((d) => {
-      setToken(d.accessToken)
-      setRefreshToken(d.refreshToken || '')
-      return d.accessToken
-    })
-    .catch((e) => {
-      requireAuthOrRedirect()
-      throw e
-    })
-    .finally(() => { _refreshing = null })
-  return _refreshing
+  const pending = guardSessionPromise(
+    realRequest('/auth/refresh', {
+      method: 'POST', auth: false, data: { refreshToken: snapshot.refreshToken }
+    }),
+    {
+      snapshot,
+      getAccessToken: getToken,
+      getRefreshToken,
+      onSuccess: (d) => {
+        setToken(d.accessToken)
+        setRefreshToken(d.refreshToken || '')
+        return d.accessToken
+      },
+      onCurrentError: (e) => {
+        requireAuthOrRedirect()
+        throw e
+      }
+    }
+  )
+  const slot = { generation: expectedGeneration, promise: null }
+  slot.promise = pending.finally(() => {
+    if (_refreshing === slot) _refreshing = null
+  })
+  _refreshing = slot
+  return slot.promise
 }
 
 function selectedInternshipBatchId(path) {
@@ -282,16 +308,20 @@ function stablePayload(value) {
 }
 
 function inflightKey(method, effectivePath, data, auth) {
-  const identity = auth ? getToken() : 'public'
+  const identity = auth ? `${currentSessionGeneration()}|${getToken()}` : 'public'
   return `${method}|${effectivePath}|${stablePayload(data)}|${identity}`
 }
 
 function executeRealRequest(path, effectivePath, {
-  method, data, auth, _retried, _rawPage
+  method, data, auth, _retried, _rawPage, _expectedGeneration
 }) {
+  if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
+    return Promise.reject(sessionChangedError())
+  }
+  const requestSnapshot = auth ? captureSessionSnapshot(getToken(), getRefreshToken()) : null
   return new Promise((resolve, reject) => {
     const header = { 'Content-Type': 'application/json' }
-    const token = auth ? getToken() : ''
+    const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
     const internshipBatchId = selectedInternshipBatchId(path)
     if (internshipBatchId) header['X-Internship-Batch-Id'] = internshipBatchId
@@ -302,6 +332,10 @@ function executeRealRequest(path, effectivePath, {
       header,
       timeout: ENV.requestTimeout,
       success: (res) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         const body = res.data
         if (!body || typeof body.code !== 'number') {
           markOffline()
@@ -310,8 +344,11 @@ function executeRealRequest(path, effectivePath, {
         }
         if (body.code !== 0) {
           if (body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
-            _refreshOnce()
-              .then(() => realRequest(path, { method, data, auth, _retried: true, _rawPage }))
+            _refreshOnce(requestSnapshot.generation)
+              .then(() => realRequest(path, {
+                method, data, auth, _retried: true, _rawPage,
+                _expectedGeneration: requestSnapshot.generation
+              }))
               .then(resolve)
               .catch(reject)
             return
@@ -335,6 +372,10 @@ function executeRealRequest(path, effectivePath, {
           .then(resolve).catch(reject)
       },
       fail: (err) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         markOffline()
         reject({ code: 'NETWORK', message: (err && err.errMsg) || '网络异常' })
       }
@@ -344,7 +385,7 @@ function executeRealRequest(path, effectivePath, {
 
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, {
-  method = 'GET', data, auth = true, _retried = false, _rawPage = false
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
   let effectivePath
@@ -353,7 +394,7 @@ export function realRequest(path, {
   // 401 刷新后的重试和内部显式分页必须绕过原单飞槽位，避免等待自身 Promise。
   if (_retried || _rawPage) {
     return executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage
+      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
     })
   }
 
@@ -361,7 +402,7 @@ export function realRequest(path, {
   if (normalizedMethod === 'GET') {
     if (_getInflight.has(key)) return _getInflight.get(key)
     const pending = executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage
+      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
     }).finally(() => _getInflight.delete(key))
     _getInflight.set(key, pending)
     return pending
@@ -372,22 +413,26 @@ export function realRequest(path, {
   }
   _mutationInflight.add(key)
   return executeRealRequest(path, effectivePath, {
-    method: normalizedMethod, data, auth, _retried, _rawPage
+    method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
   }).finally(() => _mutationInflight.delete(key))
 }
 
 
 /** 文件上传：使用真实 /files 两步式合同，401 后单飞刷新并仅重试一次。 */
 export function realUpload(path, filePath, {
-  name = 'file', formData = {}, auth = true, _retried = false
+  name = 'file', formData = {}, auth = true, _retried = false, _expectedGeneration = null
 } = {}) {
+  if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
+    return Promise.reject(sessionChangedError())
+  }
+  const requestSnapshot = auth ? captureSessionSnapshot(getToken(), getRefreshToken()) : null
   return new Promise((resolve, reject) => {
     if (!filePath) {
       reject({ code: 422001, biz: true, message: '请选择要上传的文件' })
       return
     }
     const header = {}
-    const token = auth ? getToken() : ''
+    const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
     uni.uploadFile({
       url: ENV.apiBaseUrl + ENV.apiPrefix + path,
@@ -397,6 +442,10 @@ export function realUpload(path, filePath, {
       header,
       timeout: Math.max(ENV.requestTimeout || 10000, 30000),
       success: (res) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         const body = parseUnifiedBody(res.data)
         if (!body || typeof body.code !== 'number') {
           reject({ code: 'BAD_RESPONSE', message: '上传响应结构异常' })
@@ -404,8 +453,10 @@ export function realUpload(path, filePath, {
         }
         if (body.code !== 0) {
           if (body.code === 401001 && auth && !_retried) {
-            _refreshOnce()
-              .then(() => realUpload(path, filePath, { name, formData, auth, _retried: true }))
+            _refreshOnce(requestSnapshot.generation)
+              .then(() => realUpload(path, filePath, {
+                name, formData, auth, _retried: true, _expectedGeneration: requestSnapshot.generation
+              }))
               .then(resolve)
               .catch(reject)
             return
@@ -416,6 +467,10 @@ export function realUpload(path, filePath, {
         resolve(body.data)
       },
       fail: (err) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         markOffline()
         reject({ code: 'NETWORK', message: (err && err.errMsg) || '上传失败' })
       }
@@ -424,23 +479,33 @@ export function realUpload(path, filePath, {
 }
 
 /** 文件下载：返回临时文件路径；401 后单飞刷新并仅重试一次。 */
-export function realDownload(path, { auth = true, _retried = false } = {}) {
+export function realDownload(path, { auth = true, _retried = false, _expectedGeneration = null } = {}) {
+  if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
+    return Promise.reject(sessionChangedError())
+  }
+  const requestSnapshot = auth ? captureSessionSnapshot(getToken(), getRefreshToken()) : null
   return new Promise((resolve, reject) => {
     const header = {}
-    const token = auth ? getToken() : ''
+    const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
     uni.downloadFile({
       url: ENV.apiBaseUrl + ENV.apiPrefix + path,
       header,
       timeout: Math.max(ENV.requestTimeout || 10000, 30000),
       success: (res) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         if (res.statusCode === 200 && res.tempFilePath) {
           resolve({ tempFilePath: res.tempFilePath })
           return
         }
         if (res.statusCode === 401 && auth && !_retried) {
-          _refreshOnce()
-            .then(() => realDownload(path, { auth, _retried: true }))
+          _refreshOnce(requestSnapshot.generation)
+            .then(() => realDownload(path, {
+              auth, _retried: true, _expectedGeneration: requestSnapshot.generation
+            }))
             .then(resolve)
             .catch(reject)
           return
@@ -448,6 +513,10 @@ export function realDownload(path, { auth = true, _retried = false } = {}) {
         reject({ code: res.statusCode === 403 ? 403001 : 404001, biz: true, message: '文件不存在或无权下载' })
       },
       fail: (err) => {
+        if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+          reject(sessionChangedError())
+          return
+        }
         markOffline()
         reject({ code: 'NETWORK', message: (err && err.errMsg) || '下载失败' })
       }
@@ -477,6 +546,6 @@ export function request(options) {
 
 export default {
   mockRequest, realRequest, realUpload, realDownload, realFirst, realFirstStrict, request,
-  setToken, getToken, clearTokens, safeToast, toastError, normalizeError,
+  setToken, getToken, clearTokens, commitNewSessionTokens, safeToast, toastError, normalizeError,
   createSubmitLock, requireAuthOrRedirect, registerForceLogoutHandler, isBusinessError, isNetworkError
 }

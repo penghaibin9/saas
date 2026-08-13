@@ -75,7 +75,7 @@
 import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
-import { clearTokens, realRequest, setRefreshToken, setToken } from '@/services/request'
+import { clearTokens, commitNewSessionTokens, realRequest } from '@/services/request'
 import { go, relaunch, toast } from '@/utils/nav'
 
 export default {
@@ -151,8 +151,7 @@ export default {
         toast('账号角色未配置或暂不支持，请联系学校管理员')
         return
       }
-      setToken(data.accessToken)
-      setRefreshToken(data.refreshToken || '')
+      commitNewSessionTokens(data.accessToken, data.refreshToken || '')
       const session = useSessionStore()
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
