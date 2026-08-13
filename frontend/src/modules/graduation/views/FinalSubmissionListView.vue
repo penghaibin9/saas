@@ -613,6 +613,9 @@ export default {
 .version-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .version-table th, .version-table td { padding: 5px 7px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
 .version-table th { color: var(--text-tertiary); font-weight: 600; }
+.version-table th:last-child,
+.version-table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--card, #fff); box-shadow: -8px 0 12px -12px rgba(15, 23, 42, .45); }
+.version-table th:last-child { z-index: 2; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .hash { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .mp-tab { padding: 6px 10px; }
