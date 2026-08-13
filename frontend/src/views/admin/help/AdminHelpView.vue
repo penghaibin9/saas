@@ -1,15 +1,15 @@
 <template>
-  <BasePortalLayout :title="brandTitle" subtitle="甯姪涓績" :ctx="ctx" @menu-select="onMenu">
+  <BasePortalLayout :title="brandTitle" subtitle="帮助中心" :ctx="ctx" @menu-select="onMenu">
     <template #menu>
-      <nav class="help-nav" aria-label="甯姪鐩綍">
+      <nav class="help-nav" aria-label="帮助目录">
         <button
           type="button"
           class="help-nav__home"
           :class="{ 'is-active': !currentEntry }"
           @click="showOverview"
         >
-          <span>鑷姪鏈嶅姟棣栭〉</span>
-          <small>{{ overview.total }} 椤?/small>
+          <span>自助服务首页</span>
+          <small>{{ overview.total }} 项</small>
         </button>
 
         <details
@@ -35,7 +35,7 @@
         </details>
 
         <div v-if="!visibleSections.length" class="help-nav__empty">
-          褰撳墠绛涢€変笅娌℃湁鐩綍椤广€?
+          当前筛选下没有目录项。
         </div>
       </nav>
     </template>
@@ -43,57 +43,57 @@
     <div class="help-shell">
       <header class="help-hero">
         <div>
-          <p class="help-eyebrow">璺冪 SaaS 路 鍏嶅煿璁嚜鍔╂湇鍔?/p>
-          <h1>鑷姪鍔炵悊涓庨棶棰樿В鍐充腑蹇?/h1>
-          <p>涓嶇敤鍏堣璇存槑涔︺€傜洿鎺ュ憡璇夌郴缁熲€滄垜瑕佸姙浠€涔堚€濇垨鈥滃摢閲屽仛涓嶄簡鈥濓紝涔熷彲浠ユ部鏍稿績涓氬姟娴佺▼鐪嬬幇鍦ㄥ湪鍝竴姝ャ€佷笅涓€姝ヨ皝澶勭悊銆?/p>
+          <p class="help-eyebrow">跃科 SaaS · 免培训自助服务</p>
+          <h1>自助办理与问题解决中心</h1>
+          <p>不用先读说明书。直接告诉系统“我要办什么”或“哪里做不了”，也可以沿核心业务流程看现在在哪一步、下一步谁处理。</p>
         </div>
-        <dl class="help-metrics" aria-label="甯姪鍐呭缁熻">
-          <div><dt>宸叉牳楠屼换鍔?/dt><dd>{{ overview.taskCards }}</dd></div>
-          <div><dt>涓氬姟娴佺▼</dt><dd>{{ overview.flowGuides }}</dd></div>
-          <div><dt>鍙鎸囧崡</dt><dd>{{ overview.visualGuides }}</dd></div>
+        <dl class="help-metrics" aria-label="帮助内容统计">
+          <div><dt>已核验任务</dt><dd>{{ overview.taskCards }}</dd></div>
+          <div><dt>业务流程</dt><dd>{{ overview.flowGuides }}</dd></div>
+          <div><dt>可视指南</dt><dd>{{ overview.visualGuides }}</dd></div>
         </dl>
       </header>
 
-      <section v-if="qualityMetrics" class="help-quality" aria-label="甯姪涓績杩?0澶╄川閲忔寚鏍?>
+      <section v-if="qualityMetrics" class="help-quality" aria-label="帮助中心近30天质量指标">
         <div class="help-quality__heading">
           <div>
-            <p class="help-eyebrow">V3-08 路 杩?{{ qualityMetrics.windowDays }} 澶?/p>
-            <h2>甯姪涓績璐ㄩ噺</h2>
+            <p class="help-eyebrow">V3-08 · 近 {{ qualityMetrics.windowDays }} 天</p>
+            <h2>帮助中心质量</h2>
           </div>
-          <small>鍙粺璁＄湡瀹炴悳绱㈠拰鐢ㄦ埛鏄庣‘鍙嶉锛涙湭鎵撻€氫汉宸ュ伐鍗曞墠锛屼笉浼€犫€滅湡瀹炶嚜鍔╄В鍐崇巼鈥濄€?/small>
+          <small>只统计真实搜索和用户明确反馈；未打通人工工单前，不伪造“真实自助解决率”。</small>
         </div>
         <dl class="help-quality__metrics">
           <div>
-            <dt>鎼滅储鍛戒腑鐜?/dt>
+            <dt>搜索命中率</dt>
             <dd>{{ formatRate(qualityMetrics.searchHitRate) }}</dd>
-            <small>{{ qualityMetrics.searches }} 娆℃悳绱?路 {{ metricStatusLabel(qualityMetrics.quality?.search) }}</small>
+            <small>{{ qualityMetrics.searches }} 次搜索 · {{ metricStatusLabel(qualityMetrics.quality?.search) }}</small>
           </div>
           <div>
-            <dt>鏄庣‘鍙嶉瑙ｅ喅鐜?/dt>
+            <dt>明确反馈解决率</dt>
             <dd>{{ formatRate(qualityMetrics.explicitResolutionRate) }}</dd>
-            <small>{{ qualityMetrics.feedbackVotes }} 娆″弽棣?路 {{ metricStatusLabel(qualityMetrics.quality?.resolution) }}</small>
+            <small>{{ qualityMetrics.feedbackVotes }} 次反馈 · {{ metricStatusLabel(qualityMetrics.quality?.resolution) }}</small>
           </div>
           <div>
-            <dt>鐪熸鑷姪瑙ｅ喅鐜?/dt>
-            <dd>鈥?/dd>
-            <small>绛夊緟浜哄伐鍗囩骇/宸ュ崟闂幆鍚庤绠?/small>
+            <dt>真正自助解决率</dt>
+            <dd>—</dd>
+            <small>等待人工升级/工单闭环后计算</small>
           </div>
         </dl>
       </section>
 
-      <section class="help-controls" aria-label="甯姪绛涢€?>
+      <section class="help-controls" aria-label="帮助筛选">
         <label class="help-control help-control--search">
-          <span>鐩存帴鎻忚堪浣犺鍔炵殑浜嬫垨閬囧埌鐨勯棶棰?/span>
+          <span>直接描述你要办的事或遇到的问题</span>
           <input
             v-model.trim="queryText"
             type="search"
-            placeholder="渚嬪锛氭垚缁╀负浠€涔堟彁浜や笉浜嗭紵鎬庝箞鍙戝竷閫夎锛熶负浠€涔堢湅涓嶅埌瀛︾敓锛?
+            placeholder="例如：成绩为什么提交不了？怎么发布选课？为什么看不到学生？"
             autocomplete="off"
             @keyup.enter="syncFiltersToUrl"
           />
         </label>
         <label class="help-control">
-          <span>鎴戠殑瑙掕壊</span>
+          <span>我的角色</span>
           <select v-model="selectedRole" @change="onFilterChange">
             <option v-for="role in roleOptions" :key="role.value" :value="role.value">
               {{ role.label }}
@@ -101,52 +101,52 @@
           </select>
         </label>
         <label class="help-control">
-          <span>涓氬姟鍒嗙被</span>
+          <span>业务分类</span>
           <select v-model="selectedCategory" @change="onFilterChange">
-            <option value="all">鍏ㄩ儴鍒嗙被</option>
+            <option value="all">全部分类</option>
             <option v-for="category in categoryOptions" :key="category.value" :value="category.value">
-              {{ category.label }}锛坽{ category.count }}锛?
+              {{ category.label }}（{{ category.count }}）
             </option>
           </select>
         </label>
         <button v-if="hasFilters" type="button" class="help-clear" @click="clearFilters">
-          娓呴櫎绛涢€?
+          清除筛选
         </button>
       </section>
 
       <div v-if="invalidTopic" class="help-notice" role="alert">
-        鍘熼摼鎺ユ寚鍚戠殑甯姪鏉＄洰涓嶅瓨鍦ㄦ垨宸茶皟鏁淬€傚凡杩斿洖鑷姪鏈嶅姟棣栭〉锛岃閲嶆柊鎼滅储銆?
+        原链接指向的帮助条目不存在或已调整。已返回自助服务首页，请重新搜索。
       </div>
 
       <article v-if="currentEntry" class="help-article">
-        <button type="button" class="help-back" @click="showOverview">鈫?杩斿洖鑷姪鏈嶅姟棣栭〉</button>
+        <button type="button" class="help-back" @click="showOverview">← 返回自助服务首页</button>
 
         <header class="help-article__header">
           <div class="help-badges">
             <span>{{ currentEntry.typeLabel }}</span>
             <span>{{ currentEntry.category }}</span>
-            <span v-if="displayRoles.length">{{ displayRoles.join('銆?) }}</span>
+            <span v-if="displayRoles.length">{{ displayRoles.join('、') }}</span>
           </div>
           <h2>{{ currentEntry.title }}</h2>
           <p>{{ currentEntry.summary }}</p>
           <div v-if="currentItem.entry || currentItem.route" class="help-entry">
             <div>
-              <strong>浠庡摢閲岃繘鍏?/strong>
-              <span>{{ currentItem.entry || '浠庡搴斾笟鍔℃ā鍧楄繘鍏? }}</span>
+              <strong>从哪里进入</strong>
+              <span>{{ currentItem.entry || '从对应业务模块进入' }}</span>
             </div>
             <button v-if="currentItem.route" type="button" @click="goRoute(currentItem.route)">
-              鍓嶅線鍔炵悊椤甸潰
+              前往办理页面
             </button>
           </div>
         </header>
 
         <section v-if="currentItem.prerequisites?.length" class="help-section">
-          <h3>鎿嶄綔鍓嶅噯澶?/h3>
+          <h3>操作前准备</h3>
           <ul><li v-for="(item, index) in currentItem.prerequisites" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentEntry.type === 'card' && currentItem.steps?.length" class="help-section">
-          <h3>鐓х潃鍋?/h3>
+          <h3>照着做</h3>
           <ol class="help-task-steps">
             <li v-for="(step, index) in currentItem.steps" :key="index">
               <span>{{ index + 1 }}</span>
@@ -156,7 +156,7 @@
         </section>
 
         <section v-else-if="currentEntry.type === 'flow' && currentItem.steps?.length" class="help-section">
-          <h3>涓氬姟娴佽浆</h3>
+          <h3>业务流转</h3>
           <ol class="help-flow">
             <li v-for="(step, index) in currentItem.steps" :key="index">
               <span class="help-flow__number">{{ index + 1 }}</span>
@@ -170,17 +170,17 @@
         </section>
 
         <section v-if="currentEntry.type === 'doc' && currentItem.points?.length" class="help-section">
-          <h3>鍏抽敭瑕佺偣</h3>
+          <h3>关键要点</h3>
           <ul><li v-for="(point, index) in currentItem.points" :key="index">{{ stringify(point) }}</li></ul>
         </section>
 
         <section v-if="currentItem.fields?.length" class="help-section">
-          <h3>闇€瑕佸～鍐欐垨纭</h3>
+          <h3>需要填写或确认</h3>
           <ul><li v-for="(field, index) in currentItem.fields" :key="index">{{ stringify(field) }}</li></ul>
         </section>
 
         <section v-for="(section, index) in currentItem.sections || []" :key="index" class="help-section">
-          <h3>{{ section.title || section.heading || `琛ュ厖璇存槑 ${index + 1}` }}</h3>
+          <h3>{{ section.title || section.heading || `补充说明 ${index + 1}` }}</h3>
           <p v-if="section.body">{{ section.body }}</p>
           <ul v-if="section.items || section.list">
             <li v-for="(line, lineIndex) in section.items || section.list" :key="lineIndex">{{ stringify(line) }}</li>
@@ -188,27 +188,27 @@
         </section>
 
         <section v-if="currentItem.successCriteria?.length" class="help-section help-section--success">
-          <h3>鎬庢牱鎵嶇畻鍔炴垚鍔?/h3>
+          <h3>怎样才算办成功</h3>
           <ul><li v-for="(item, index) in currentItem.successCriteria" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentItem.nextSteps?.length" class="help-section help-section--next">
-          <h3>鍔炲畬浠ュ悗涓嬩竴姝?/h3>
+          <h3>办完以后下一步</h3>
           <ul><li v-for="(item, index) in currentItem.nextSteps" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentItem.tips?.length" class="help-section help-section--tip">
-          <h3>鎿嶄綔鎻愮ず</h3>
+          <h3>操作提示</h3>
           <ul><li v-for="(tip, index) in currentItem.tips" :key="index">{{ stringify(tip) }}</li></ul>
         </section>
 
         <section v-if="currentItem.warnings?.length" class="help-section help-section--warning">
-          <h3>閲嶈鎻愰啋</h3>
+          <h3>重要提醒</h3>
           <ul><li v-for="(warning, index) in currentItem.warnings" :key="index">{{ stringify(warning) }}</li></ul>
         </section>
 
         <section v-if="currentItem.faq?.length" class="help-section">
-          <h3>甯歌闂</h3>
+          <h3>常见问题</h3>
           <details v-for="(qa, index) in currentItem.faq" :key="index" class="help-faq">
             <summary>{{ qa.q || qa.question || stringify(qa) }}</summary>
             <p v-if="qa.a || qa.answer">{{ qa.a || qa.answer }}</p>
@@ -216,17 +216,17 @@
         </section>
 
         <section v-if="currentItem.troubleshooting?.length" class="help-section">
-          <h3>鍋氫笉浜嗘椂鎬庝箞鑷繁鎺掓煡</h3>
+          <h3>做不了时怎么自己排查</h3>
           <ol><li v-for="(item, index) in currentItem.troubleshooting" :key="index">{{ stringify(item) }}</li></ol>
         </section>
 
         <section v-if="currentItem.contactAdminWhen?.length" class="help-section help-section--admin">
-          <h3>浠€涔堟儏鍐垫墠闇€瑕佹壘绠＄悊鍛?/h3>
+          <h3>什么情况才需要找管理员</h3>
           <ul><li v-for="(item, index) in currentItem.contactAdminWhen" :key="index">{{ stringify(item) }}</li></ul>
         </section>
 
         <section v-if="currentItem.related?.length" class="help-section">
-          <h3>鐩稿叧鍏ュ彛</h3>
+          <h3>相关入口</h3>
           <div class="help-related">
             <button
               v-for="(related, index) in currentItem.related"
@@ -234,15 +234,15 @@
               type="button"
               @click="goRoute(related.route)"
             >
-              {{ related.label || stringify(related) }} 鈫?
+              {{ related.label || stringify(related) }} ↗
             </button>
           </div>
         </section>
 
         <section v-if="currentItem.embed || visualGallery.length" class="help-section help-section--embed">
-          <h3>鍙鍖栬鏄?/h3>
-          <p v-if="visualGallery.length" class="help-visual-intro">鍏堢敤鍥捐В蹇€熷畾浣嶇幆鑺傦紱闇€瑕佹煡鐪嬫楠ゃ€佽鑹插拰鎿嶄綔鍏ュ彛鏃讹紝鍐嶉槄璇讳笅鏂逛氦浜掑紡璇存槑銆?/p>
-          <div v-if="visualGallery.length" class="help-visual-gallery" aria-label="娴佺▼鍥捐В">
+          <h3>可视化说明</h3>
+          <p v-if="visualGallery.length" class="help-visual-intro">先用图解快速定位环节；需要查看步骤、角色和操作入口时，再阅读下方交互式说明。</p>
+          <div v-if="visualGallery.length" class="help-visual-gallery" aria-label="流程图解">
             <a
               v-for="image in primaryVisuals"
               :key="image.src"
@@ -254,11 +254,11 @@
             >
               <img :src="image.src" :alt="image.title" loading="lazy" />
               <span>{{ image.title }}</span>
-              <small>鐐瑰嚮鏌ョ湅澶у浘</small>
+              <small>点击查看大图</small>
             </a>
           </div>
           <details v-if="archiveVisuals.length" class="help-visual-history">
-            <summary>鏌ョ湅鍥捐В杩唬鐣欏瓨锛堜粎渚涜璁″洖婧級</summary>
+            <summary>查看图解迭代留存（仅供设计回溯）</summary>
             <div class="help-visual-gallery">
               <a
                 v-for="image in archiveVisuals"
@@ -270,7 +270,7 @@
               >
                 <img :src="image.src" :alt="image.title" loading="lazy" />
                 <span>{{ image.title }}</span>
-                <small>鐐瑰嚮鏌ョ湅澶у浘</small>
+                <small>点击查看大图</small>
               </a>
             </div>
           </details>
@@ -283,21 +283,21 @@
           ></iframe>
         </section>
 
-        <section class="help-feedback" aria-label="甯姪鏄惁瑙ｅ喅闂">
+        <section class="help-feedback" aria-label="帮助是否解决问题">
           <div>
-            <strong>杩欑瘒甯姪瑙ｅ喅浣犵殑闂浜嗗悧锛?/strong>
-            <small>浣犵殑閫夋嫨鍙敤浜庢敼杩涘府鍔╄川閲忋€?/small>
+            <strong>这篇帮助解决你的问题了吗？</strong>
+            <small>你的选择只用于改进帮助质量。</small>
           </div>
           <div v-if="!currentFeedback" class="help-feedback__actions">
-            <button type="button" @click="submitArticleFeedback('HELPFUL')">宸茶В鍐?/button>
-            <button type="button" class="is-secondary" @click="submitArticleFeedback('NOT_HELPFUL')">娌¤В鍐?/button>
+            <button type="button" @click="submitArticleFeedback('HELPFUL')">已解决</button>
+            <button type="button" class="is-secondary" @click="submitArticleFeedback('NOT_HELPFUL')">没解决</button>
           </div>
-          <span v-else class="help-feedback__done">宸茶褰曪紝璋㈣阿鍙嶉銆?/span>
+          <span v-else class="help-feedback__done">已记录，谢谢反馈。</span>
         </section>
 
         <footer class="help-article__footer">
-          <span>鏂囩珷缂栧彿锛歿{ currentEntry.id }}</span>
-          <span v-if="!currentEntry.quality.isComplete">璇ユ潯鐩粛鏈夊厓鏁版嵁寰呮不鐞嗭紝涓嶅奖鍝嶅綋鍓嶉槄璇汇€?/span>
+          <span>文章编号：{{ currentEntry.id }}</span>
+          <span v-if="!currentEntry.quality.isComplete">该条目仍有元数据待治理，不影响当前阅读。</span>
         </footer>
       </article>
 
@@ -305,8 +305,8 @@
         <section v-if="queryText || selectedCategory !== 'all'" class="help-results">
           <div class="help-section-heading">
             <div>
-              <p class="help-eyebrow">鑷姪鎼滅储缁撴灉</p>
-              <h2>鎵惧埌 {{ filteredEntries.length }} 椤瑰彲鎵ц甯姪</h2>
+              <p class="help-eyebrow">自助搜索结果</p>
+              <h2>找到 {{ filteredEntries.length }} 项可执行帮助</h2>
             </div>
           </div>
           <div v-if="filteredEntries.length" class="help-card-grid">
@@ -317,20 +317,20 @@
               class="help-card"
               @click="selectTopic(entry.id)"
             >
-              <span>{{ entry.typeLabel }} 路 {{ entry.category }}</span>
+              <span>{{ entry.typeLabel }} · {{ entry.category }}</span>
               <strong>{{ entry.title }}</strong>
               <p>{{ entry.summary }}</p>
             </button>
           </div>
           <div v-else class="help-empty-state">
-            <h3>娌℃湁鎵惧埌宸茬粡鏍搁獙鐨勭瓟妗?/h3>
-            <p>鍙互鎹㈡垚鏇村叿浣撶殑涓氬姟鍔ㄤ綔鎴栭敊璇幇璞★紝渚嬪鈥滄垚缁╂彁浜も€濃€滈€€鍥炩€濃€滄暟鎹寖鍥粹€濃€?09鈥濄€傛病鏈夐€氳繃 verified-only 鍙戝竷闂ㄧ殑鏃х煡璇嗕笉浼氫负浜嗗噾绛旀閲嶆柊灞曠ず銆?/p>
-            <button type="button" @click="clearFilters">杩斿洖鑷姪鏈嶅姟棣栭〉</button>
+            <h3>没有找到已经核验的答案</h3>
+            <p>可以换成更具体的业务动作或错误现象，例如“成绩提交”“退回”“数据范围”“409”。没有通过 verified-only 发布门的旧知识不会为了凑答案重新展示。</p>
+            <button type="button" @click="clearFilters">返回自助服务首页</button>
           </div>
         </section>
 
         <template v-else>
-          <section class="help-intents" aria-label="鑷姪鏈嶅姟鍏ュ彛">
+          <section class="help-intents" aria-label="自助服务入口">
             <button
               v-for="intent in v3Home.intents"
               :key="intent.key"
@@ -348,10 +348,10 @@
           <section v-if="homeMode === 'tasks'" class="help-section-block">
             <div class="help-section-heading">
               <div>
-                <p class="help-eyebrow">鎴戣鍔炰竴浠朵簨</p>
-                <h2>鎸夊綋鍓嶈鑹叉帹鑽愰珮棰戝姙鐞?/h2>
+                <p class="help-eyebrow">我要办一件事</p>
+                <h2>按当前角色推荐高频办理</h2>
               </div>
-              <p>褰撳墠鎸夆€渰{ activeRoleLabel }}鈥濇帹鑽愶紱姣忎竴椤归兘鏉ヨ嚜宸叉牳楠屾寮忕煡璇嗐€?/p>
+              <p>当前按“{{ activeRoleLabel }}”推荐；每一项都来自已核验正式知识。</p>
             </div>
             <div class="help-card-grid">
               <button
@@ -361,7 +361,7 @@
                 class="help-card"
                 @click="selectTopic(entry.id)"
               >
-                <span>{{ entry.typeLabel }} 路 {{ entry.category }}</span>
+                <span>{{ entry.typeLabel }} · {{ entry.category }}</span>
                 <strong>{{ entry.title }}</strong>
                 <p>{{ entry.summary }}</p>
               </button>
@@ -372,10 +372,10 @@
             <section class="help-section-block">
               <div class="help-section-heading">
                 <div>
-                  <p class="help-eyebrow">鎴戦亣鍒伴棶棰?/p>
-                  <h2>鍏堥€夋渶鍍忎綘褰撳墠鎯呭喌鐨勯棶棰?/h2>
+                  <p class="help-eyebrow">我遇到问题</p>
+                  <h2>先选最像你当前情况的问题</h2>
                 </div>
-                <p>鐐瑰嚮鍚庣洿鎺ユ悳绱㈢浉鍏冲凡鏍搁獙绛旀锛屼笉瑕佹眰浣犲厛鐭ラ亾闂灞炰簬鍝釜妯″潡銆?/p>
+                <p>点击后直接搜索相关已核验答案，不要求你先知道问题属于哪个模块。</p>
               </div>
               <div class="help-question-grid">
                 <button
@@ -392,16 +392,16 @@
 
             <section class="help-section-block help-diagnosis">
               <div>
-                <p class="help-eyebrow">閫氱敤鑷煡椤哄簭</p>
-                <h2>鍏堣嚜宸辨帓鏌ワ紝鍐嶅喅瀹氭槸鍚﹂渶瑕佹壘绠＄悊鍛?/h2>
+                <p class="help-eyebrow">通用自查顺序</p>
+                <h2>先自己排查，再决定是否需要找管理员</h2>
               </div>
               <ol>
-                <li>纭褰撳墠瀛︽湡銆佹壒娆°€佸鐢熸垨涓氬姟鑼冨洿鏄惁姝ｇ‘銆?/li>
-                <li>纭璐﹀彿褰撳墠瑙掕壊銆佹暟鎹寖鍥村拰璁板綍褰掑睘銆?/li>
-                <li>纭涓氬姟鐘舵€佹槸鍚﹀厑璁稿綋鍓嶆搷浣滐紝鏄惁宸茬粡鎻愪氦銆佸彂甯冩垨褰掓。銆?/li>
-                <li>纭鍓嶇疆鏁版嵁銆佸繀濉瓧娈靛拰鏉愭枡鏄惁榻愬叏銆?/li>
-                <li>閬囧埌 403 / 409 / 鏄庣‘涓氬姟鎻愮ず鏃讹紝鍏堟寜甯姪涓殑瀵瑰簲鍘熷洜澶勭悊锛屼笉鍙嶅杩炵画鐐瑰嚮銆?/li>
-                <li>鍙湁缁勭粐銆佽处鍙枫€佹潈闄愩€佹暟鎹寖鍥撮厤缃槑鏄鹃敊璇紝鎴栨寜甯姪鎺掓煡浠嶆棤娉曟仮澶嶆椂锛屽啀鑱旂郴瀛︽牎绠＄悊鍛樸€?/li>
+                <li>确认当前学期、批次、学生或业务范围是否正确。</li>
+                <li>确认账号当前角色、数据范围和记录归属。</li>
+                <li>确认业务状态是否允许当前操作，是否已经提交、发布或归档。</li>
+                <li>确认前置数据、必填字段和材料是否齐全。</li>
+                <li>遇到 403 / 409 / 明确业务提示时，先按帮助中的对应原因处理，不反复连续点击。</li>
+                <li>只有组织、账号、权限、数据范围配置明显错误，或按帮助排查仍无法恢复时，再联系学校管理员。</li>
               </ol>
             </section>
           </template>
@@ -409,17 +409,17 @@
           <section v-else-if="homeMode === 'journeys'" class="help-section-block">
             <div class="help-section-heading">
               <div>
-                <p class="help-eyebrow">鏍稿績涓氬姟娴佺▼</p>
-                <h2>鐪嬬幇鍦ㄥ湪鍝竴姝ワ紝涓嬩竴姝ヨ鍋氫粈涔?/h2>
+                <p class="help-eyebrow">核心业务流程</p>
+                <h2>看现在在哪一步，下一步该做什么</h2>
               </div>
-              <p>褰撳墠鍙睍绀哄凡缁忛€氳繃 verified-only 鍙戝竷闂ㄧ殑娴佺▼鑺傜偣锛涘皻鏈噸鏂伴獙鐪熺殑鍘嗗彶鑺傜偣涓嶄細娣疯繘鏉ャ€?/p>
+              <p>当前只展示已经通过 verified-only 发布门的流程节点；尚未重新验真的历史节点不会混进来。</p>
             </div>
             <div class="help-journey-grid">
               <article v-for="journey in v3Home.journeys" :key="journey.key" class="help-journey">
                 <header>
                   <div>
                     <strong>{{ journey.title }}</strong>
-                    <span>宸叉牳楠?{{ journey.verifiedCount }} 涓妭鐐?/span>
+                    <span>已核验 {{ journey.verifiedCount }} 个节点</span>
                   </div>
                   <p>{{ journey.description }}</p>
                 </header>
@@ -488,7 +488,7 @@ export default {
   },
   computed: {
     brandTitle() {
-      return `${this.auth.schoolName || '绠＄悊绔?} 路 绠＄悊绔痐
+      return `${this.auth.schoolName || '管理端'} · 管理端`
     },
     ctx() {
       return {
@@ -547,7 +547,7 @@ export default {
       return Boolean(this.queryText || this.selectedCategory !== 'all' || this.selectedRole !== 'all')
     },
     activeRoleLabel() {
-      return this.roleOptions.find((role) => role.value === this.selectedRole)?.label || '鍏ㄩ儴瑙掕壊'
+      return this.roleOptions.find((role) => role.value === this.selectedRole)?.label || '全部角色'
     }
   },
   watch: {
@@ -851,4 +851,3 @@ export default {
   .help-section--embed iframe { min-height: 520px; }
 }
 </style>
-
