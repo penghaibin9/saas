@@ -120,25 +120,25 @@ class _ValidationSnapshotDb:
             SchoolMajorStandardBinding,
         )
 
-        if models == (AaProgram,):
+        if len(models) == 1 and models[0] is AaProgram:
             return _SnapshotQuery([self._program])
-        if models == (AaProgramCourse,):
+        if len(models) == 1 and models[0] is AaProgramCourse:
             return _SnapshotQuery(self._courses)
-        if models == (AaProgramGraduationRequirement,):
+        if len(models) == 1 and models[0] is AaProgramGraduationRequirement:
             return _SnapshotQuery(self._requirements)
-        if models == (AaProgramPracticeSegment,):
+        if len(models) == 1 and models[0] is AaProgramPracticeSegment:
             return _SnapshotQuery(self._practices)
-        if models == (AaProgramBinding,):
+        if len(models) == 1 and models[0] is AaProgramBinding:
             return _SnapshotQuery(self._bindings)
-        if models == (AaCourse,):
+        if len(models) == 1 and models[0] is AaCourse:
             return _SnapshotQuery(self._catalog_rows)
         if len(models) == 1 and getattr(models[0], "key", None) == "course_code":
             owner = getattr(models[0], "class_", None)
-            if getattr(owner, "__name__", "") == "AaCourse":
+            if owner is AaCourse:
                 return _SnapshotQuery([(code,) for code in self._enabled_codes])
-        if models == (SchoolMajorStandardBinding,):
+        if len(models) == 1 and models[0] is SchoolMajorStandardBinding:
             return _SnapshotQuery([object()] if self._standard_bound else [])
-        if models == (SchoolClass,):
+        if len(models) == 1 and models[0] is SchoolClass:
             return _SnapshotQuery(self._classes, mode="class")
         if len(models) == 2 and models[0] is AaProgramBinding and models[1] is AaProgram:
             return _SnapshotQuery(

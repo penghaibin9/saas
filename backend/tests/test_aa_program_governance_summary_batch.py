@@ -20,7 +20,7 @@ class _SourceQuery:
     def all(self):
         from app.models import AaProgram
 
-        if self.models == (AaProgram,):
+        if len(self.models) == 1 and self.models[0] is AaProgram:
             return list(self.db.programs)
         return []
 
