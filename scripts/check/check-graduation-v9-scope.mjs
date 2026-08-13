@@ -55,8 +55,9 @@ const CARD_ALLOW = {
     /^backend\/app\/modules\/graduation\/services\/graduation_(?:process_consistency|guidance_stats_read_service)\.py$/,
     /^backend\/tests\/test_graduation_v9_process_pagination\.py$/,
     /^frontend\/src\/modules\/graduation\/api\/graduation-student\.api\.js$/,
-    /^frontend\/src\/modules\/graduation\/views\/GraduationProcessAction(?:Base)?View\.vue$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationProcess(?:Action(?:Base)?)?View\.vue$/,
     /^frontend\/tests\/graduation\.v9-process-context\.contract\.test\.mjs$/,
+    /^e2e\/specs\/graduation-v9-process-visual\.spec\.mjs$/,
   ],
 }
 
