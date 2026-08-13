@@ -7,6 +7,7 @@ from app.core.context import set_current_user
 from app.db.session import get_sessionmaker
 from app.models import GraduationBatch, GraduationMentor, GraduationProposal, GraduationStudent
 from app.modules.graduation.services import graduation_proposal_read_service as proposal_read
+from app.modules.graduation.services import graduation_service as service
 
 MAIN_TENANT_ID = 1000000000000000001
 
@@ -68,6 +69,13 @@ def _seed_600():
         return int(batch.id), [int(s.id) for s in students]
     finally:
         db.close()
+
+
+def test_m9_public_service_entrypoints_are_bound_to_sql_read_model():
+    assert service.list_proposals.__module__ == "app.modules.graduation.services"
+    assert service.list_proposals.__name__ == "list_proposals"
+    assert service.proposal_stats.__module__ == "app.modules.graduation.services"
+    assert service.export_proposals_xlsx.__module__ == "app.modules.graduation.services"
 
 
 def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_client, auth_headers):
