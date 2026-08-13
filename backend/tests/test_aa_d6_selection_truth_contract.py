@@ -1,23 +1,25 @@
 """D6：Selection Final → TeachingRoster 唯一真链合同。
 
 本合同不创造新的选课事实，只锁住现有生产真链：
-course_selection_router → package-level Selection Final → TeachingRoster →
+course_selection_router → package-level Selection Final → TeachingRoster production owner →
 LOCKED AaSelectionRecord 到教学班名单版本的 projection。
 """
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 from app.modules.academic_affairs.routers import course_selection_router as selection_router
 from app.modules.academic_affairs.services import (
     academic_affairs_selection_service as selection,
 )
-from app.modules.academic_affairs.services import (
-    academic_affairs_selection_roster_projection_service as selection_projection,
-)
-from app.modules.academic_affairs.services import (
-    academic_affairs_teaching_roster_service as teaching_roster,
-)
+
+
+_SERVICES = Path(__file__).resolve().parents[1] / "app/modules/academic_affairs/services"
+
+
+def _source(name: str) -> str:
+    return (_SERVICES / name).read_text(encoding="utf-8")
 
 
 def test_d6_router_uses_package_level_selection_final_service():
@@ -39,12 +41,16 @@ def test_d6_lock_chain_validates_then_calls_teaching_roster_projection():
 
 
 def test_d6_teaching_roster_projects_existing_locked_selection_records_only():
-    roster_source = inspect.getsource(teaching_roster.apply_locked_roster_projection)
-    projection_source = inspect.getsource(selection_projection.project_selection_course_locked)
+    # package 兼容层会在运行时重绑定同名函数；真值合同必须检查 production owner 文件，
+    # 不能把兼容 wrapper 的函数对象误当成 TeachingRoster 本体。
+    roster_source = _source("academic_affairs_teaching_roster_service.py")
+    projection_source = _source("academic_affairs_selection_roster_projection_service.py")
 
+    assert "def apply_locked_roster_projection(db, validation: dict)" in roster_source
     assert "_core.apply_locked_roster_projection(db, validation)" in roster_source
     assert "selection_projection.project_selection_batch_locked(db, int(batch_id))" in roster_source
 
+    assert "def project_selection_course_locked" in projection_source
     assert "AaSelectionRecord" in projection_source
     assert 'AaSelectionRecord.status == "LOCKED"' in projection_source
     assert "create_roster_version(" in projection_source

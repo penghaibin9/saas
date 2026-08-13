@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import importlib
-import inspect
+from pathlib import Path
 from types import SimpleNamespace
 
 
-# 必须拿到 production owner 模块本体；package 级同名属性会被 teaching-class 兼容层重绑定。
+# 运行时行为仍直接打 production owner；源码合同则读文件本体，避免 package 兼容层重绑定函数属性。
 roster = importlib.import_module(
     "app.modules.academic_affairs.services.academic_affairs_teaching_roster_service"
 )
+_SERVICES = Path(__file__).resolve().parents[1] / "app/modules/academic_affairs/services"
 
 
 class _CourseQuery:
@@ -68,8 +69,11 @@ def test_validate_selection_lock_reuses_canonical_selected_count(monkeypatch):
 
 
 def test_validate_selection_lock_source_has_no_second_record_scan():
-    source = inspect.getsource(roster.validate_selection_lock)
+    source = (_SERVICES / "academic_affairs_teaching_roster_service.py").read_text(encoding="utf-8")
+    start = source.index("def validate_selection_lock(db, batch) -> dict:")
+    end = source.index("\ndef apply_locked_roster_projection", start)
+    block = source[start:end]
 
-    assert "AaSelectionRecord" not in source
-    assert "selected_count" in source
-    assert "_core.validate_selection_lock(db, batch)" in source
+    assert "AaSelectionRecord" not in block
+    assert "selected_count" in block
+    assert "_core.validate_selection_lock(db, batch)" in block
