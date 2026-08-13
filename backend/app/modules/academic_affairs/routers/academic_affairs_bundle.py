@@ -126,6 +126,10 @@ def build_router() -> APIRouter:
     # 不复制 scheduling rules，不接管 D5-S1 主链，也不改 canonical service / permission / DTO。
     scheduling_operations_module = importlib.import_module(f"{__package__}.scheduling_operations_router")
     _mount_routes(router, scheduling_operations_module.router)
+    # D5-S3：教室、实训室、设备、预约、占用、冲突、维修与资源统计 Move Only。
+    # 保持 bookings/options 字面量路径在动态详情之前，不改 resource_svc 规则或权限。
+    teaching_resource_module = importlib.import_module(f"{__package__}.teaching_resource_router")
+    _mount_routes(router, teaching_resource_module.router)
     _mount_routes(
         router,
         base_router.router,
