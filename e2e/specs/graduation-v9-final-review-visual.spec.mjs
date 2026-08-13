@@ -113,7 +113,7 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await expect(submitFinal).toBeEnabled()
     const [submitResponse] = await Promise.all([
       page.waitForResponse((response) =>
-        response.request().method() === 'POST' && response.url().includes('/mobile/graduation/final')
+        response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')
       ),
       submitFinal.click()
     ])
