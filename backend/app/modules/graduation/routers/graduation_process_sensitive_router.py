@@ -15,6 +15,7 @@ from app.modules.graduation.schemas.graduation_guidance import (
 )
 from app.modules.graduation.schemas.graduation_midterm import MidtermCheckRequest, MidtermRectifyReview, MidtermRectifySubmit
 from app.modules.graduation.services import graduation_guidance_service as guidance
+from app.modules.graduation.services import graduation_guidance_stats_read_service as guidance_stats_read
 from app.modules.graduation.services import graduation_midterm_service as midterm
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
 from app.modules.graduation.services.graduation_p0_service import void_guidance_scoped
@@ -45,7 +46,7 @@ def guidance_stats(
     threshold: int = Query(3, ge=1, le=50), batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    return success(guidance.guidance_stats(threshold, batch_id=require_batch_id(batchId)))
+    return success(guidance_stats_read.guidance_stats(threshold, batch_id=require_batch_id(batchId)))
 
 
 @router.get("/gd-guidances")

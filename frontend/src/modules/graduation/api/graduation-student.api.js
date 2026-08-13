@@ -27,9 +27,9 @@ const BASE = '/graduation/gd-students'
 
 export const gdStudentApi = {
   getStudents(params = {}) {
-    // 按学生连续处理页历史上固定只取前 20 人且无翻页。无 page 的搜索型调用扩到后端上限；
-    // 数据超过 200 时仍可通过关键词服务端搜索定位，不再出现“第 21 人永远搜不到”。
-    const pickerSearch = params.page == null && Number(params.pageSize || 0) === 20
+    // 按学生连续处理工作台没有独立翻页器；所有“未显式传 page”的定位型调用统一扩到后端上限 200。
+    // 这样过程指导的 50 条首屏不会让第 51-200 人失去 URL 深链恢复；超过 200 仍走关键词服务端搜索。
+    const pickerSearch = params.page == null
     return callList(BASE, pickerSearch ? { ...params, page: 1, pageSize: 200 } : params)
   },
   getStudentDetail(id) { return call(() => request(`${BASE}/${id}`)) },
