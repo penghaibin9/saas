@@ -77,10 +77,14 @@ def _sync_aa_course_snapshots(db, tenant_id: int) -> dict:
         (AaExamCourse, "examCourses"),
     )
     for model, counter_key in model_fields:
-        rows = list(db.scalars(select(model).where(
-            model.tenant_id == tenant_id,
-            model.is_deleted.is_(False),
-        )).all())
+        rows = list(
+            db.scalars(
+                select(model).where(
+                    model.tenant_id == tenant_id,
+                    model.is_deleted.is_(False),
+                )
+            ).all()
+        )
         for row in rows:
             course_id = int(row.course_id) if row.course_id is not None else None
             canonical = course_name_by_id.get(course_id) if course_id is not None else None
@@ -88,10 +92,14 @@ def _sync_aa_course_snapshots(db, tenant_id: int) -> dict:
                 row.course_name = canonical
                 updated[counter_key] += 1
 
-    teaching_tasks = list(db.scalars(select(AaTeachingTask).where(
-        AaTeachingTask.tenant_id == tenant_id,
-        AaTeachingTask.is_deleted.is_(False),
-    ).all())
+    teaching_tasks = list(
+        db.scalars(
+            select(AaTeachingTask).where(
+                AaTeachingTask.tenant_id == tenant_id,
+                AaTeachingTask.is_deleted.is_(False),
+            )
+        ).all()
+    )
     teaching_class_by_task_id: dict[int, str | None] = {}
     for task in teaching_tasks:
         course_id = int(task.course_id) if task.course_id is not None else None
@@ -111,10 +119,14 @@ def _sync_aa_course_snapshots(db, tenant_id: int) -> dict:
             updated["teachingClassNames"] += 1
         teaching_class_by_task_id[int(task.id)] = task.teaching_class_name
 
-    schedule_items = list(db.scalars(select(AaScheduleItem).where(
-        AaScheduleItem.tenant_id == tenant_id,
-        AaScheduleItem.is_deleted.is_(False),
-    )).all())
+    schedule_items = list(
+        db.scalars(
+            select(AaScheduleItem).where(
+                AaScheduleItem.tenant_id == tenant_id,
+                AaScheduleItem.is_deleted.is_(False),
+            )
+        ).all()
+    )
     for item in schedule_items:
         course_id = int(item.course_id) if item.course_id is not None else None
         canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
@@ -143,11 +155,15 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
 
     # 13B 课程库只有 192 条专业课程，ORM 更新规模固定且很小。
     aa_updated = 0
-    aa_courses = list(db.scalars(select(AaCourse).where(
-        AaCourse.tenant_id == tenant_id,
-        AaCourse.is_all_major.is_(False),
-        AaCourse.is_deleted.is_(False),
-    )).all())
+    aa_courses = list(
+        db.scalars(
+            select(AaCourse).where(
+                AaCourse.tenant_id == tenant_id,
+                AaCourse.is_all_major.is_(False),
+                AaCourse.is_deleted.is_(False),
+            )
+        ).all()
+    )
     for course in aa_courses:
         code = str(course.course_code or "")
         if "-" not in code:
@@ -241,20 +257,24 @@ def validate_professional_academic_snapshots(db, tenant_id: int) -> dict:
         (AaGradeTask, "gradeTasks"),
         (AaExamCourse, "examCourses"),
     ):
-        for row in db.scalars(select(model).where(
-            model.tenant_id == tenant_id,
-            model.is_deleted.is_(False),
-        )).all():
+        for row in db.scalars(
+            select(model).where(
+                model.tenant_id == tenant_id,
+                model.is_deleted.is_(False),
+            )
+        ).all():
             course_id = int(row.course_id) if row.course_id is not None else None
             canonical = course_name_by_id.get(course_id) if course_id is not None else None
             if canonical is not None and str(row.course_name or "") != canonical:
                 mismatch[key] += 1
 
     teaching_class_by_task_id: dict[int, str | None] = {}
-    for task in db.scalars(select(AaTeachingTask).where(
-        AaTeachingTask.tenant_id == tenant_id,
-        AaTeachingTask.is_deleted.is_(False),
-    )).all():
+    for task in db.scalars(
+        select(AaTeachingTask).where(
+            AaTeachingTask.tenant_id == tenant_id,
+            AaTeachingTask.is_deleted.is_(False),
+        )
+    ).all():
         course_id = int(task.course_id) if task.course_id is not None else None
         class_id = int(task.class_id) if task.class_id is not None else None
         canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
@@ -270,10 +290,12 @@ def validate_professional_academic_snapshots(db, tenant_id: int) -> dict:
             mismatch["teachingClassNames"] += 1
         teaching_class_by_task_id[int(task.id)] = expected
 
-    for item in db.scalars(select(AaScheduleItem).where(
-        AaScheduleItem.tenant_id == tenant_id,
-        AaScheduleItem.is_deleted.is_(False),
-    )).all():
+    for item in db.scalars(
+        select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == tenant_id,
+            AaScheduleItem.is_deleted.is_(False),
+        )
+    ).all():
         course_id = int(item.course_id) if item.course_id is not None else None
         canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
         if canonical_course is not None and str(item.course_name or "") != canonical_course:
