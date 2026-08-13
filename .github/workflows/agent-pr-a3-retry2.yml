@@ -59,7 +59,6 @@ jobs:
           import ast, base64, zlib
           from pathlib import Path
 
-          # Reuse the already-reviewed A3 patch body from the staging workflow.
           src = Path('.github/workflows/agent-pr-a3-one-shot.yml').read_text(encoding='utf-8')
           payload_line = next(line.strip() for line in src.splitlines() if line.strip().startswith('payload = '))
           payload = ast.literal_eval(payload_line.split('=', 1)[1].strip())
@@ -80,23 +79,25 @@ jobs:
               'ROLE_ASSIGNMENT_REVIEW',
               'ROLE_ASSIGNMENT_EXPIRE',
           ]
-          missing = [a for a in actions if f'"{a}"' not in text]
+          set_start = text.index('CRITICAL_ACTIONS = frozenset({')
+          set_end = text.index('})', set_start)
+          block = text[set_start:set_end]
+          missing = [a for a in actions if f'"{a}"' not in block]
           if missing:
-              anchor = '    "SENSITIVE_VIEW", "EXPORT",\n})'
-              if text.count(anchor) != 1:
-                  raise SystemExit('CRITICAL_ACTIONS insertion anchor changed')
-              lines = ''.join(f'    "{a}",\n' for a in missing)
-              text = text.replace(anchor, '    "SENSITIVE_VIEW", "EXPORT",\n' + lines + '})', 1)
+              insertion = ''.join(f'    "{a}",\n' for a in missing)
+              text = text[:set_end] + insertion + text[set_end:]
               audit.write_text(text, encoding='utf-8')
 
           tests = Path('backend/tests/test_role_assignment_validity.py')
           text = tests.read_text(encoding='utf-8')
-          old = 'db.add(Tenant(id=int(tenant_id), tenant_code="demo",\n'
-          new = 'db.add(Tenant(id=int(tenant_id), tenant_code=f"demo-{int(tenant_id)}",\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif new not in text:
-              raise SystemExit('tenant fixture anchor changed')
+          helper_start = text.index('def _ensure_tenant(')
+          helper_end = text.index('\n\ndef ', helper_start)
+          helper = text[helper_start:helper_end]
+          if 'tenant_code="demo"' in helper:
+              helper = helper.replace('tenant_code="demo"', 'tenant_code=f"demo-{int(tenant_id)}"', 1)
+          elif 'tenant_code=f"demo-{int(tenant_id)}"' not in helper:
+              raise SystemExit('tenant fixture no longer has the expected tenant_code field')
+          text = text[:helper_start] + helper + text[helper_end:]
           tests.write_text(text, encoding='utf-8')
           PY
       - name: Compile A3 Python
