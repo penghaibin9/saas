@@ -43,6 +43,16 @@ jobs:
         run: |
           python -m py_compile .github/agent/patch_pr107_d.py
           python .github/agent/patch_pr107_d.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/tests/test_internship_file_stable_advisor_acl.py')
+          t = p.read_text(encoding='utf-8')
+          old = '            subject_type="BUSINESS_OBJECT",\n            module_code="INTERNSHIP",\n'
+          new = '            subject_type="BUSINESS_OBJECT",\n            subject_id=None,\n            module_code="INTERNSHIP",\n'
+          if t.count(old) != 1:
+              raise SystemExit('D fixture anchor mismatch')
+          p.write_text(t.replace(old, new, 1), encoding='utf-8')
+          PY
           python -m py_compile \
             backend/app/modules/internship/services/internship_identity.py \
             backend/app/modules/internship/services/internship_advisor_identity_guard.py \
