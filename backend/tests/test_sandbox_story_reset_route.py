@@ -1,7 +1,9 @@
 """平台沙箱恢复路径兼容合同。
 
-不在普通 CI 真灌 20K；用 monkeypatch 验证 standard-20k 分支会走轻量故事恢复，
-同时既有 test_demo_tenants_login.py 继续负责 legacy-100 的真实数据库恢复合同。
+不在普通 CI 真灌 20K；用 profile monkeypatch 验证：
+- standard-20k 只恢复轻量故事线；
+- standard-20k-damaged 必须 409，绝不降级成 legacy-100；
+- 既有 legacy-100 真实数据库恢复仍由 test_demo_tenants_login.py 负责。
 """
 from __future__ import annotations
 
@@ -38,6 +40,7 @@ def test_reset_sandbox_route_is_registered_once():
 def test_standard_20k_platform_restore_uses_story_mode(client, db_mode, monkeypatch):
     from app.db.session import get_sessionmaker
     from app.services.sandbox_service import SANDBOX_TID, seed_sandbox
+    from app.services import sandbox_school_profile as profile_svc
     from app.services import sandbox_school_story_reset as story_svc
 
     db = get_sessionmaker()()
@@ -46,7 +49,14 @@ def test_standard_20k_platform_restore_uses_story_mode(client, db_mode, monkeypa
     finally:
         db.close()
 
-    monkeypatch.setattr(story_svc, "is_standard_20k_sandbox", lambda _db, _tid: True)
+    monkeypatch.setattr(profile_svc, "classify_sandbox_profile", lambda _db, _tid: {
+        "profile": profile_svc.PROFILE_STANDARD,
+        "students": 20_000,
+        "colleges": 8,
+        "majors": 32,
+        "classes": 384,
+        "backgroundStaffAccounts": 1_280,
+    })
     monkeypatch.setattr(story_svc, "restore_sales_storylines", lambda _db, _tid: {
         "mode": "storyline",
         "preservedStudents": 20_000,
@@ -62,6 +72,37 @@ def test_standard_20k_platform_restore_uses_story_mode(client, db_mode, monkeypa
     body = response.json()
     assert response.status_code == 200
     assert body["code"] == 0
+    assert body["data"]["profile"]["profile"] == "standard-20k"
     assert body["data"]["reseeded"]["mode"] == "storyline"
     assert body["data"]["reseeded"]["preservedStudents"] == 20_000
     assert body["data"]["reseeded"]["fullRebuild"] is False
+
+
+def test_damaged_standard_20k_never_downgrades_to_legacy(client, db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.services.sandbox_service import SANDBOX_TID, seed_sandbox
+    from app.services import sandbox_school_profile as profile_svc
+
+    db = get_sessionmaker()()
+    try:
+        seed_sandbox(db)
+    finally:
+        db.close()
+
+    monkeypatch.setattr(profile_svc, "classify_sandbox_profile", lambda _db, _tid: {
+        "profile": profile_svc.PROFILE_STANDARD_DAMAGED,
+        "students": 19_999,
+        "colleges": 8,
+        "majors": 32,
+        "classes": 384,
+        "backgroundStaffAccounts": 1_280,
+    })
+
+    response = client.post(
+        f"/api/v1/platform/tenants/{SANDBOX_TID}/reset-sandbox-data",
+        headers=_platform_headers(),
+    )
+    body = response.json()
+    assert response.status_code == 409
+    assert body["code"] != 0
+    assert "阻断 legacy-100 降级恢复" in body["message"]
