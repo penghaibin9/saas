@@ -26,10 +26,29 @@ async function expectBrowserApiSuccess(response, action) {
   return body.data
 }
 
+async function expectDecisionAboveFold(page) {
+  const viewport = page.viewportSize()
+  expect(viewport).toBeTruthy()
+  const targets = [
+    ['安全版本', page.locator('.fr-security-card .mp-card__head')],
+    ['SHA-256', page.locator('.fr-security-card .hash').first()],
+    ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
+    ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
+  ]
+  for (const [label, locator] of targets) {
+    await expect(locator, `${label} must be visible`).toBeVisible()
+    const box = await locator.boundingBox()
+    expect(box, `${label} must have a rendered box`).toBeTruthy()
+    expect(box.y >= 0, `${label} must start inside the viewport`).toBeTruthy()
+    expect(box.y + box.height <= viewport.height, `${label} must stay above the ${viewport.height}px fold`).toBeTruthy()
+  }
+}
+
 async function attachScreenshot(page, testInfo, name, width, height) {
   await page.setViewportSize({ width, height })
   await dismissGuide(page)
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
+  await expectDecisionAboveFold(page)
   const output = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path: output, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path: output, contentType: 'image/png' })
