@@ -1,10 +1,15 @@
 """D6-U1：选课锁定不得在 TeachingRoster wrapper 重复全量扫描选课记录。"""
 from __future__ import annotations
 
+import importlib
 import inspect
 from types import SimpleNamespace
 
-from app.modules.academic_affairs.services import academic_affairs_teaching_roster_service as roster
+
+# 必须拿到 production owner 模块本体；package 级同名属性会被 teaching-class 兼容层重绑定。
+roster = importlib.import_module(
+    "app.modules.academic_affairs.services.academic_affairs_teaching_roster_service"
+)
 
 
 class _CourseQuery:
@@ -32,6 +37,8 @@ class _Db:
 
 
 def test_validate_selection_lock_reuses_canonical_selected_count(monkeypatch):
+    assert roster.__name__.endswith("academic_affairs_teaching_roster_service")
+    monkeypatch.setattr(roster, "_tid", lambda: 1)
     monkeypatch.setattr(
         roster._core,
         "validate_selection_lock",
