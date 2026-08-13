@@ -75,7 +75,7 @@ jobs:
           '''        account.password_hash = hash_password(temp_password)\n        account.must_change_password = True\n        account.version = int(account.version or 0) + 1\n        from app.services import audit_log\n        audit_log.record_critical_in_session(\n            db, "RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",\n            detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密",\n                    "reason": "管理员重置", "userId": int(account.id), "moduleCode": "systemAdmin"},\n            result="SUCCESS", tenant_id=tenant_id, resource_id=str(account.id),\n        )\n        db.commit()\n        from app.services.auth_service_db import invalidate_subject_cache\n        invalidate_subject_cache(f"db-{account.id}", tenant_id)\n''', 'RESET_PASSWORD')
 
           fn_start = text.index('def save_system_role_permissions(')
-          fn_end = text.index('\n\ndef ', fn_start)
+          fn_end = text.index('\n\n@router', fn_start)
           fn = text[fn_start:fn_end]
           fn = exact(fn,
           '''        role.version = int(role.version or 0) + 1\n        db.commit()\n        from app.services.auth_service_db import invalidate_tenant_subject_caches\n''',
