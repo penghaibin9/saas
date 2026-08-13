@@ -43,6 +43,19 @@
 
       <p v-if="detail.voided" class="mp-form-err">该主档已作废：{{ detail.voidReason }}（逻辑删除，仅可查阅）</p>
 
+      <section v-if="quickActions.length" class="mp-card sd-quick">
+        <div class="sd-quick__copy">
+          <span>围绕当前学生办理</span>
+          <strong>从画像直接进入正式工作台</strong>
+          <small>学生信息会自动带入；资格、范围和状态仍由目标工作台与服务端校验。</small>
+        </div>
+        <div class="sd-quick__actions">
+          <button v-for="action in quickActions" :key="action.key" type="button" class="sd-quick__btn" @click="startStudentAction(action)">
+            <span>{{ action.icon }}</span><b>{{ action.label }}</b><em>去办理 →</em>
+          </button>
+        </div>
+      </section>
+
       <!-- 页签 -->
       <nav class="sd-tabs">
         <button
@@ -315,6 +328,7 @@ import {
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -366,6 +380,17 @@ export default {
       ]
         .filter((a) => pa[a.perm] && pa[a.perm].visible)
         .map((a) => ({ ...a, disabled: !pa[a.perm].allowed, disabledReason: pa[a.perm].reason }))
+    },
+    quickActions() {
+      const actions = [
+        { key: 'talk', label: '发起谈话', icon: '谈', permission: 'studentAffairs.talk.create', path: '/admin/student-affairs/talk' },
+        { key: 'family', label: '登记家校联系', icon: '家', permission: 'studentAffairs.homeSchool.record.create', path: '/admin/student-affairs/family' },
+        { key: 'risk', label: '新建风险', icon: '险', permission: 'studentAffairs.risk.create', path: '/admin/student-affairs/risk' },
+        { key: 'dorm', label: '发起调宿', icon: '宿', permission: 'studentAffairs.dorm.transfer.create', path: '/admin/student-affairs/dorm/transfer' },
+        { key: 'aid', label: '受理困难', icon: '困', permission: 'studentAffairs.aid.create', path: '/admin/student-affairs/aid' },
+        { key: 'funding', label: '受理奖助', icon: '助', permission: 'studentAffairs.funding.create', path: '/admin/student-affairs/funding' }
+      ]
+      return actions.filter((action) => canCode(this.ctx, action.permission))
     },
     basicKvs() {
       const d = this.detail
@@ -443,6 +468,19 @@ export default {
       }
       if (key === 'export') this.exportDialog = { visible: true, submitting: false }
     },
+    startStudentAction(action) {
+      if (!this.detail || !action) return
+      this.$router.push({
+        path: action.path,
+        query: {
+          studentId: String(this.detail.studentId),
+          studentNo: this.detail.studentNo || undefined,
+          studentName: this.detail.name || undefined,
+          intent: 'create',
+          from: 'student360'
+        }
+      })
+    },
     async submitEdit() {
       const d = this.editDrawer
       d.submitting = true
@@ -497,6 +535,19 @@ export default {
   gap: var(--space-4);
   padding: var(--space-4);
 }
+.sd-quick { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 2fr); gap: var(--space-4); padding: var(--space-4); background: linear-gradient(135deg, var(--primary-50), var(--bg-card) 62%); border-color: var(--primary-100); }
+.sd-quick__copy { display: grid; align-content: center; gap: 5px; }
+.sd-quick__copy > span { color: var(--primary-700); font-size: var(--font-size-xs); font-weight: 700; letter-spacing: .08em; }
+.sd-quick__copy > strong { color: var(--text-primary); font-size: var(--font-size-lg); }
+.sd-quick__copy > small { color: var(--text-tertiary); line-height: 1.6; }
+.sd-quick__actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.sd-quick__btn { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 2px 9px; min-height: 62px; padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-lg); background: rgba(255,255,255,.9); color: var(--text-primary); cursor: pointer; text-align: left; transition: transform .14s, border-color .14s, box-shadow .14s; }
+.sd-quick__btn:hover { transform: translateY(-1px); border-color: var(--primary-300); box-shadow: var(--shadow-sm); }
+.sd-quick__btn > span { grid-row: 1 / span 2; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--primary-50); color: var(--primary-700); font-weight: 800; }
+.sd-quick__btn b { font-size: var(--font-size-sm); }
+.sd-quick__btn em { color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
+@media (max-width: 900px) { .sd-quick { grid-template-columns: 1fr; } .sd-quick__actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .sd-quick__actions { grid-template-columns: 1fr; } }
 .sd-head__avatar {
   width: 56px;
   height: 56px;

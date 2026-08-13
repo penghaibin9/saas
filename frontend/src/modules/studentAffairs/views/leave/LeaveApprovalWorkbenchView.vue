@@ -19,7 +19,7 @@
         <template #aside>
           <AppGlobalState :state="asideState" :description="asideDescription" loading-text="加载中…" @retry="load">
             <ul class="lv-list">
-              <li v-for="r in filteredRows" :key="r.id">
+              <li v-for="r in rows" :key="r.id">
                 <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
                   <div class="lv-item__row">
                     <span class="lv-item__name">{{ r.studentName }}</span>
@@ -30,6 +30,15 @@
                 </button>
               </li>
             </ul>
+            <div v-if="total > pagination.pageSize" class="lv-pager">
+              <AppPagination
+                :total="total"
+                :page="pagination.page"
+                :page-size="pagination.pageSize"
+                :show-size-changer="false"
+                @change="onPageChange"
+              />
+            </div>
           </AppGlobalState>
         </template>
 
@@ -84,7 +93,7 @@ import { ModulePageShell, EmptyState } from '@/components/business'
 import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList, AppAuditTrail,
-  AppSearchBox, AppGlobalState
+  AppSearchBox, AppGlobalState, AppPagination
 } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
@@ -97,13 +106,14 @@ export default {
   name: 'LeaveApprovalWorkbenchView',
   components: {
     ModulePageShell, EmptyState, TaskContextBar, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
-    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState
+    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState, AppPagination
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       rows: [], total: 0, loading: false, error: '',
       keyword: '',
+      pagination: { page: 1, pageSize: 20 },
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, reasonPlaceholder: '', submitting: false, submit: null }
@@ -112,11 +122,6 @@ export default {
   computed: {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
     scopeHint() { return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '按数据范围：仅轮到本人身份审批的节点' },
-    filteredRows() {
-      const k = (this.keyword || '').trim()
-      if (!k) return this.rows
-      return this.rows.filter((r) => (r.studentName || '').includes(k) || (r.studentNo || '').includes(k))
-    },
     asideState() {
       if (this.loading) return 'loading'
       if (this.error) return 'error'
@@ -162,10 +167,18 @@ export default {
     },
     canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
-    reload() { this.load() },
+    /** 搜索/清空筛选后回到第一页：分页游标必须跟着查询条件重置，否则会停在空页。 */
+    reload() { this.pagination.page = 1; this.load() },
+    onPageChange({ page }) { this.pagination.page = page; this.load() },
     async load() {
       this.loading = true; this.error = ''
-      const res = await leaveApi.pending({ page: 1, pageSize: 100 })
+      // 关键词交给后端在数据范围内过滤后再计数分页；前端本地过滤只能看到当前页，
+      // 待审 >100 条时会漏掉真实存在的学生。
+      const res = await leaveApi.pending({
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        keyword: (this.keyword || '').trim() || undefined
+      })
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
@@ -209,6 +222,11 @@ export default {
     async advance() {
       const oldId = this.selectedId
       await this.load()
+      // 处理掉本页最后一条后当前页会变空：回退一页，避免停在空白页误以为已办完。
+      while (!this.rows.length && !this.error && this.total > 0 && this.pagination.page > 1) {
+        this.pagination.page -= 1
+        await this.load()
+      }
       const still = this.rows.find((r) => String(r.id) === String(oldId))
       if (still) { this.loadDetail(oldId); return }
       const next = this.rows[0]
@@ -234,6 +252,7 @@ export default {
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .lv-item__name { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
 .lv-item__sub { margin-top: 2px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.lv-pager { display: flex; justify-content: center; padding: var(--space-2) var(--space-3) var(--space-3); border-top: 1px solid var(--border-light); }
 
 .lv-main { display: flex; flex-direction: column; min-height: 320px; }
 .lv-main__body { flex: 1; padding: var(--space-4); min-width: 0; }

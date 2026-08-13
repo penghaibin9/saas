@@ -1094,9 +1094,13 @@ def export_leaves(user, status=None, leave_type=None, class_id=None, keyword=Non
     )
 
 
-def list_pending(user, page=1, page_size=20):
+def list_pending(user, page=1, page_size=20, keyword=None):
     """待审批队列：仅返回调用者数据范围内、且当前节点确实轮到其身份审批的请假
-    （修复越权配套：避免辅导员在列表里看到无权处理的学院/学工处环节数据）。"""
+    （修复越权配套：避免辅导员在列表里看到无权处理的学院/学工处环节数据）。
+
+    keyword 按姓名/学号在服务端过滤。必须落在 tenant/数据范围/审批节点条件之后、
+    COUNT/OFFSET/LIMIT 之前：待审量 >100 时前端本地过滤会漏掉真实存在的记录（结果不真实），
+    而放在范围条件之前则会让关键词变成绕过数据范围的口子。"""
     from app.models import CsLeave, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     from app.core.affairs_security import build_affairs_context
@@ -1109,6 +1113,10 @@ def list_pending(user, page=1, page_size=20):
                  StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
         if allowed is not None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        k = str(keyword or "").strip()
+        if k:
+            conds.append(or_(StudentProfile.real_name.contains(k),
+                             StudentProfile.student_no.contains(k)))
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(CsLeave)
                               .join(StudentProfile, StudentProfile.id == CsLeave.student_id)

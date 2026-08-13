@@ -82,10 +82,16 @@ def review_material_requirement(
 def my_material_requirements(
     bizType: Optional[str] = Query(None),
     bizId: Optional[int] = Query(None, ge=1),
+    requirementId: Optional[int] = Query(None, ge=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
     user=Depends(get_current_user),
 ):
-    items = operations.list_my_requirements(user, biz_type=bizType, biz_id=bizId)
-    return success({"items": items, "total": len(items)})
+    items, total = operations.list_my_requirements(
+        user, biz_type=bizType, biz_id=bizId, requirement_id=requirementId,
+        page=page, page_size=pageSize,
+    )
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/mobile/affairs/material-requirements/{requirement_id}/submissions", summary="学生补交一个新材料版本")

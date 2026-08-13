@@ -300,6 +300,30 @@ def list_users(token: str) -> dict[str, dict]:
     return out
 
 
+def ensure_counselor_assignment(token: str, class_id: int) -> dict:
+    """Create the formal primary-counselor relation required by fail-closed workflows."""
+    users = list_users(token)
+    counselor = users.get("e2e_counselor_a")
+    if not counselor:
+        return {"configured": False, "reason": "e2e_counselor_a_missing"}
+    listed = _req(
+        "GET", "/student-affairs/counselor-assignments", token=token,
+        params={"classId": class_id, "pageSize": 100},
+    )
+    items = ((listed.get("data") or {}).get("items") or [])
+    active = next((x for x in items if x.get("status") == "ACTIVE"
+                   and x.get("dutyType") == "PRIMARY"), None)
+    if active:
+        return {"configured": True, "created": False,
+                "assignmentId": active.get("assignmentId") or active.get("id")}
+    created = _req("POST", "/student-affairs/counselor-assignments", token=token, body={
+        "classId": int(class_id), "userId": int(counselor["id"]),
+        "dutyType": "PRIMARY", "reason": "E2E四端验收隔离数据初始化",
+    })
+    return {"configured": created.get("code") == 0, "created": created.get("code") == 0,
+            "response": created.get("data") if created.get("code") == 0 else created}
+
+
 def activate_passwords(token: str) -> dict[str, str]:
     by = list_users(token)
     pwd_map = {"admin2": ADMIN[1]}
@@ -390,12 +414,15 @@ def main() -> int:
     imported = import_accounts(token)
     time.sleep(2)
     token = login_admin()
+    counselor = ensure_counselor_assignment(token, int(org["classIds"][CLASS_A]))
+    print("counselor:", counselor)
     pwds = activate_passwords(token)
     state = {
         "tenantCode": TENANT,
         "org": org,
         "dorm": {k: dorm[k] for k in dorm if k != "rooms"},
         "studentOrg": org_stu,
+        "counselor": counselor,
         "import": {"batchNo": imported.get("batchNo"), "confirmed": imported.get("confirmed")},
         "accounts": ALL_LOGINS,
         "passwordFile": str(CRED_PATH),

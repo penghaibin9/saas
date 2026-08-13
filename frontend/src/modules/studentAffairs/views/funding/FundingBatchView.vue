@@ -56,7 +56,7 @@
             <AppNumberInput v-model="drawer.form.quota" :min="0" placeholder="如：50" :disabled="saving" />
           </AppFormItem>
           <AppFormItem label="公示天数">
-            <AppNumberInput v-model="drawer.form.publicityDays" :min="0" placeholder="默认 5，快测可填 0" :disabled="saving" />
+            <AppNumberInput v-model="drawer.form.publicityDays" :min="1" :max="30" placeholder="1-30 天，默认 5" :disabled="saving" />
           </AppFormItem>
         </div>
         <AppFormItem label="申请窗口" hint="选填，不填表示不限申请起止日期">
@@ -154,7 +154,7 @@ export default {
       if (!f.projectId || !f.schoolYear) { this.drawer.errorMessage = '所属项目与学年必填'; return }
       this.drawer.errorMessage = ''
       this.saving = true
-      const body = { projectId: f.projectId, schoolYear: f.schoolYear, publicityDays: Number(f.publicityDays) || 0, publish: !!f.publish }
+      const body = { projectId: f.projectId, schoolYear: f.schoolYear, publicityDays: Number(f.publicityDays) || 5, publish: !!f.publish }
       if (f.quota != null && f.quota !== '') body.quota = Number(f.quota)
       if (f.applyWindow.start) body.applyStart = f.applyWindow.start
       if (f.applyWindow.end) body.applyEnd = f.applyWindow.end

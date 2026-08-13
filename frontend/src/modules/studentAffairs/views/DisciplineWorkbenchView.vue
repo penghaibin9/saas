@@ -86,9 +86,18 @@
             <div><dt>文号</dt><dd>{{ selected.docNo || '—' }}</dd></div>
             <div><dt>生效时间</dt><dd><AppDateDisplay :value="selected.effectiveAt" mode="datetime" empty-text="—" /></dd></div>
             <div><dt>解除时间</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
-            <div><dt>投影ID</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
             <div class="dp-kv--full"><dt>违纪事实</dt><dd>{{ selected.reason || '—' }}</dd></div>
           </dl>
+
+          <details class="dp-tech">
+            <summary>技术与审计信息</summary>
+            <dl>
+              <div><dt>案件 ID</dt><dd>{{ selected.caseId || '—' }}</dd></div>
+              <div><dt>学生 ID</dt><dd>{{ selected.studentId || '—' }}</dd></div>
+              <div><dt>处分投影 ID</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
+              <div><dt>当前版本</dt><dd>{{ selected.version ?? '—' }}</dd></div>
+            </dl>
+          </details>
 
           <div v-if="detailActions.length" class="dp-actions">
             <AppPermissionButton
@@ -659,6 +668,13 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
 }
+.dp-tech { margin: calc(var(--space-2) * -1) 0 var(--space-4); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
+.dp-tech summary { padding: 9px 11px; color: var(--text-tertiary); font-size: var(--font-size-xs); cursor: pointer; user-select: none; }
+.dp-tech[open] summary { border-bottom: 1px solid var(--border-light); color: var(--text-secondary); }
+.dp-tech dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: var(--space-3); }
+.dp-tech dl > div { min-width: 0; }
+.dp-tech dt { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.dp-tech dd { margin: 2px 0 0; color: var(--text-secondary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--font-size-xs); overflow-wrap: anywhere; }
 .dp-actions {
   display: flex;
   gap: var(--space-2);

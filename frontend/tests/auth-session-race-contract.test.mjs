@@ -4,8 +4,15 @@ import { readFile } from 'node:fs/promises'
 
 const clientUrl = new URL('../src/services/http/client.js', import.meta.url)
 
+// 本仓 core.autocrlf=true 且无 .gitattributes：Windows 检出把源码换成 CRLF，
+// 而下面的结构性正则按 LF 书写。不归一化则这些会话竞态守卫在 Windows 本地
+// 全部静默不匹配（只有 Linux CI 才真的跑到）。只统一换行，不放宽任何断言。
+async function readSource(url) {
+  return (await readFile(url, 'utf8')).split('\r\n').join('\n')
+}
+
 test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', async () => {
-  const source = await readFile(clientUrl, 'utf8')
+  const source = await readSource(clientUrl)
 
   // SECURITY-P0: browser JS must never retain or transmit refreshToken. The browser-refresh
   // endpoint consumes the HttpOnly cookie while accessToken remains the only in-memory token.
@@ -32,7 +39,7 @@ test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', as
 })
 
 test('旧 access token 的 401 不得借重新登录或切换角色后的新身份重放', async () => {
-  const source = await readFile(clientUrl, 'utf8')
+  const source = await readSource(clientUrl)
 
   assert.match(source, /function _advanceSession\(access\) \{[\s\S]*?state\.sessionGeneration \+= 1[\s\S]*?_replaceToken\(access\)/)
   assert.match(source, /export function applyAuthSession\([\s\S]*?_advanceSession\(accessToken\)/)
@@ -67,7 +74,7 @@ test('旧 access token 的 401 不得借重新登录或切换角色后的新身�
 })
 
 test('上传使用启动时 token，身份切换后的迟到结果必须作废', async () => {
-  const source = await readFile(clientUrl, 'utf8')
+  const source = await readSource(clientUrl)
   const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file'\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
   assert.ok(uploadBlock, 'requestUpload() block must exist')
   assert.match(uploadBlock[1], /const generationAtStart = state\.sessionGeneration/)
@@ -77,7 +84,7 @@ test('上传使用启动时 token，身份切换后的迟到结果必须作废',
 })
 
 test('身份切换在途时禁止旧页面新发业务请求或 refresh', async () => {
-  const source = await readFile(clientUrl, 'utf8')
+  const source = await readSource(clientUrl)
 
   assert.match(source, /function assertNoRoleSwitchTransition\(\) \{\s*if \(state\.roleSwitchInFlight\) throw staleSessionError\(\)\s*\}/)
 

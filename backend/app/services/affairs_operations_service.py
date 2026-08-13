@@ -192,7 +192,7 @@ def _emit_student_notice(db, requirement, event_code: str, title: str, content: 
         title=title,
         content=content,
         receiver_as="student",
-        action_key=_ACTION_KEYS.get(bt, "AFFAIRS_APPLICATIONS"),
+        action_key="student.affairs.material",
         action_params={
             "bizType": bt,
             "recordId": str(requirement.biz_id),
