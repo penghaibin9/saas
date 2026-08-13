@@ -47,11 +47,21 @@ jobs:
           from pathlib import Path
           p = Path('backend/tests/test_internship_file_stable_advisor_acl.py')
           t = p.read_text(encoding='utf-8')
-          old = '            subject_type="BUSINESS_OBJECT",\n            module_code="INTERNSHIP",\n'
-          new = '            subject_type="BUSINESS_OBJECT",\n            subject_id=str(record.id),\n            module_code="INTERNSHIP",\n'
-          if t.count(old) != 1:
-              raise SystemExit('D fixture anchor mismatch')
-          p.write_text(t.replace(old, new, 1), encoding='utf-8')
+          anchors = [
+              (
+                  '            biz_type="INTERNSHIP",\n            biz_id=str(record.id),\n',
+                  '            biz_type="TEMP_PRIVATE",\n            biz_id=None,\n',
+              ),
+              (
+                  '            subject_type="BUSINESS_OBJECT",\n            module_code="INTERNSHIP",\n',
+                  '            subject_type="BUSINESS_OBJECT",\n            subject_id=str(record.id),\n            module_code="INTERNSHIP",\n',
+              ),
+          ]
+          for old, new in anchors:
+              if t.count(old) != 1:
+                  raise SystemExit(f'D fixture anchor mismatch: {old!r}')
+              t = t.replace(old, new, 1)
+          p.write_text(t, encoding='utf-8')
           PY
           python -m py_compile \
             backend/app/modules/internship/services/internship_identity.py \
