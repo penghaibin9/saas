@@ -53,6 +53,7 @@ const CARD_ALLOW = {
   U4: [
     /^backend\/app\/modules\/graduation\/routers\/graduation_process_sensitive_router\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_(?:process_consistency|guidance_stats_read_service)\.py$/,
+    /^backend\/scripts\/e2e_seed_graduation_process_context\.py$/,
     /^backend\/tests\/test_graduation_v9_process_pagination\.py$/,
     /^frontend\/src\/modules\/graduation\/api\/graduation-student\.api\.js$/,
     /^frontend\/src\/modules\/graduation\/views\/GraduationProcess(?:Action(?:Base)?)?View\.vue$/,
