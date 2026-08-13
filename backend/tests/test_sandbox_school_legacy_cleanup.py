@@ -1,6 +1,8 @@
 """旧假身份清洗数据库合同：先识别历史残留、再造脏，证明只删高置信旧 seed 身份。"""
 from __future__ import annotations
 
+import pytest
+
 
 def test_legacy_identity_cleanup_removes_only_old_seed_account(db_mode):
     from sqlalchemy import select
@@ -83,5 +85,70 @@ def test_legacy_identity_cleanup_removes_only_old_seed_account(db_mode):
             )).all()
         }
         assert fixed_after == fixed_before
+    finally:
+        db.close()
+
+
+def test_legacy_identity_cleanup_never_touches_pilot_tenant(db_mode):
+    """即使真实试点租户碰巧存在同名/同 marker 账号，也只能清 sandbox-school。"""
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant, User
+    from app.services.sandbox_service import SANDBOX_TID, seed_sandbox
+    from app.services.sandbox_school_legacy_cleanup import (
+        LEGACY_PASSWORD_MARKER,
+        clean_legacy_identity_residue,
+    )
+
+    db = get_sessionmaker()()
+    try:
+        seed_sandbox(db)
+        pilot = Tenant(
+            tenant_code="pilot-protection-school",
+            school_name="真实试点保护学校",
+            short_name="试点保护校",
+            deploy_mode="SAAS",
+            db_mode="SHARED",
+            status="ACTIVE",
+        )
+        db.add(pilot)
+        db.flush()
+        pilot_tid = int(pilot.id)
+        assert pilot_tid != SANDBOX_TID
+
+        insert_result = db.execute(User.__table__.insert().values(
+            tenant_id=pilot_tid,
+            login_name="t_dong_kejian",
+            real_name="试点真实教师",
+            password_hash=f"pbkdf2_sha256$200000$pilot${LEGACY_PASSWORD_MARKER}",
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+            is_deleted=False,
+            version=0,
+        ))
+        pilot_user_id = int(insert_result.inserted_primary_key[0])
+        db.commit()
+
+        clean_legacy_identity_residue(db, SANDBOX_TID)
+        pilot_user = db.scalars(select(User).where(
+            User.id == pilot_user_id,
+            User.tenant_id == pilot_tid,
+            User.login_name == "t_dong_kejian",
+            User.is_deleted.is_(False),
+        )).one_or_none()
+        assert pilot_user is not None
+        assert pilot_user.real_name == "试点真实教师"
+
+        with pytest.raises(RuntimeError, match="只允许固定 sandbox-school"):
+            clean_legacy_identity_residue(db, pilot_tid)
+
+        pilot_user_after_reject = db.scalars(select(User).where(
+            User.id == pilot_user_id,
+            User.tenant_id == pilot_tid,
+            User.is_deleted.is_(False),
+        )).one_or_none()
+        assert pilot_user_after_reject is not None
     finally:
         db.close()
