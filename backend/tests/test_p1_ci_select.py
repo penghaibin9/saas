@@ -111,6 +111,20 @@ def test_schedule_import_service_change_selects_semantics_and_query_contracts():
         assert "tests/test_aa_route_registration_main_compat.py" in targets
 
 
+def test_schedule_conflict_service_change_selects_semantics_and_scale_contracts():
+    """D5-U：冲突 production owner/index 变化必须立即跑业务语义与 1000 行性能合同。"""
+    mod = _load()
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_conflict_index.py",
+    ):
+        targets = mod.select([path])
+        assert "tests/test_aa_scheduling.py" in targets
+        assert "tests/test_aa_schedule_conflict_index.py" in targets
+        assert "tests/test_aa_p0_authz.py" in targets
+        assert "tests/test_aa_route_registration_main_compat.py" in targets
+
+
 def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
     """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
     mod = _load()

@@ -51,6 +51,13 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "academic_affairs_schedule_import_preload.py"),
      ["tests/test_aa_schedule_import_dry_run.py",
       "tests/test_aa_schedule_import_batch_queries.py"]),
+    # D5-U：冲突报告 production owner 或候选分桶索引变化时，必须同时验证
+    # 原 MySQL 业务语义与 1000 ScheduleItem 大数据量合同，防止性能优化把 hard/soft
+    # 冲突判定或输出顺序悄悄改坏，也防止后续回退成全局 O(n²) pair scan。
+    (("academic_affairs_scheduling_final_service.py",
+      "academic_affairs_schedule_conflict_index.py"),
+     ["tests/test_aa_scheduling.py",
+      "tests/test_aa_schedule_conflict_index.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
