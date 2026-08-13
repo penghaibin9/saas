@@ -21,7 +21,7 @@ const CARD_ALLOW = {
   ],
   M4: [
     /^frontend\/src\/modules\/graduation\/views\/(AdminGraduationLayout|ProposalListView|FinalSubmissionListView|GraduationStudentListView)\.vue$/,
-    /^frontend\/tests\/graduation\.v9-product-truth\.contract\.test\.mjs$/,
+    /^frontend\/tests\/graduation\.v9-(?:product|reminder)-truth\.contract\.test\.mjs$/,
   ],
 }
 
