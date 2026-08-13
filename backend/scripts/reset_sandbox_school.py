@@ -27,7 +27,8 @@
   15. 评教与教学质量只回填已结束的 2025-2026-2；2026 秋季尚未开学，严禁提前生成评教结果；
   16. 学生评教保持匿名，教学质量不自动生成教学事故认定，只生成督导/巡课/检查与整改事实；
   17. 2025-2026-2 教务归档必须复用正式十三域策略全部 PASS 后才允许落 ARCHIVED；2026 秋季归档必须为 0；
-  18. 重建后从事实表反算岗位/企业人数，并校验旧假身份、专业课快照、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  18. 13B 验收分两层：基础 seed 先锁 196课程/20K当前注册基线，历史结账后再锁750课程/33K注册/完整教学闭环终态；
+  19. 重建后从事实表反算岗位/企业人数，并校验旧假身份、专业课快照、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -126,10 +127,7 @@ def main() -> int:
 
         if args.profile == PROFILE_STANDARD_20K:
             from app.services.sandbox_school_academic_affairs_reconcile import reconcile_exam_rooms
-            from app.services.sandbox_school_academic_affairs_seed import (
-                seed_school_academic_affairs_20k,
-                validate_academic_affairs_facts,
-            )
+            from app.services.sandbox_school_academic_affairs_seed import seed_school_academic_affairs_20k
             from app.services.sandbox_school_academic_archive_seed import (
                 seed_school_academic_archive_20k,
                 validate_school_academic_archive_20k,
@@ -144,6 +142,7 @@ def main() -> int:
             )
             from app.services.sandbox_school_affairs_runner import seed_school_affairs_20k
             from app.services.sandbox_school_affairs_seed import validate_affairs_facts
+            from app.services.sandbox_school_curriculum_closure import validate_school_academic_final_20k
             from app.services.sandbox_school_domain_seed import seed_school_domains_20k
             from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
             from app.services.sandbox_school_employment_seed import (
@@ -186,6 +185,9 @@ def main() -> int:
 
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
+            academic_affairs_baseline = academic_affairs.get("validation") or {}
+            if not academic_affairs_baseline.get("passed"):
+                raise RuntimeError(f"20K 13B 基础阶段验收未通过: {academic_affairs_baseline}")
 
             # 所有教务课程快照先统一成 32 专业真实课程，再生成会保存课程名快照的教材和评教事实。
             professional = professionalize_school_20k(db, SANDBOX_TID)
@@ -211,7 +213,8 @@ def main() -> int:
                 "mentorWorkload": validate_school_mentor_workload_20k(db, SANDBOX_TID),
                 "graduationProcess": validate_school_graduation_process_20k(db, SANDBOX_TID),
                 "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
-                "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
+                "academicAffairsBaseline": academic_affairs_baseline,
+                "academicAffairsFinal": validate_school_academic_final_20k(db, SANDBOX_TID),
                 "professionalAcademicSnapshots": professional_academic_snapshots,
                 "academicTextbooks": validate_school_academic_textbooks_20k(db, SANDBOX_TID),
                 "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
@@ -272,7 +275,7 @@ def main() -> int:
             print(
                 "[reset] 完成：20K 标准学校已通过旧假身份清零/主数据/角色拓扑/导师工作量/"
                 "毕设早期过程/就业/专业课程快照/教材准备/历史评教与教学质量/历史十三域归档/"
-                "六域/13A/13B/跨表关系对账。"
+                "基础13B与完整13B双阶段/六域/13A/跨表关系对账。"
             )
             print("[reset] 可见体验账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
