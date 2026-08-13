@@ -17,6 +17,7 @@ on:
       - backend/tests/test_sandbox_school_professional_catalog.py
       - backend/tests/test_sandbox_school_role_topology.py
       - backend/tests/test_sandbox_school_mentor_workload.py
+      - backend/tests/test_sandbox_school_employment.py
       - backend/tests/test_sandbox_school_rebuild_budget.py
       - backend/tests/test_sandbox_story_reset_route.py
       - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
@@ -92,6 +93,7 @@ jobs:
             app/services/sandbox_school_graduation_mentor_reconcile.py
             app/services/sandbox_school_mentor_workload.py
             app/services/sandbox_school_domain_seed.py
+            app/services/sandbox_school_employment_seed.py
             app/services/sandbox_school_reconcile.py
             app/services/sandbox_school_affairs_seed.py
             app/services/sandbox_school_affairs_runner.py
@@ -112,6 +114,7 @@ jobs:
             tests/test_sandbox_school_professional_catalog.py
             tests/test_sandbox_school_role_topology.py
             tests/test_sandbox_school_mentor_workload.py
+            tests/test_sandbox_school_employment.py
             tests/test_sandbox_school_rebuild_budget.py
             tests/test_sandbox_story_reset_route.py
           )
@@ -152,13 +155,14 @@ jobs:
             tests/test_sandbox_school_professional_catalog.py \
             tests/test_sandbox_school_role_topology.py \
             tests/test_sandbox_school_mentor_workload.py \
+            tests/test_sandbox_school_employment.py \
             tests/test_sandbox_school_rebuild_budget.py \
             -p no:warnings \
             2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_mentor_workload.py::20K blueprint/professional/role/mentor/budget contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_employment.py::20K blueprint/professional/role/mentor/employment/budget contract failed: ${summary}"
             exit "$status"
           fi
 
@@ -210,6 +214,11 @@ jobs:
             SELECT "internship_distinct_advisors", COUNT(DISTINCT advisor_user_id) FROM t_internship_record WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "graduation_mentors", COUNT(*) FROM t_gd_mentor WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "graduation_distinct_advisors", COUNT(DISTINCT mentor_id) FROM t_gd_student WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "employment_students", COUNT(*) FROM t_emp_student WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "employment_signed", COUNT(*) FROM t_emp_student WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND destination_type="SIGNED";
+            SELECT "employment_jobs", COUNT(*) FROM t_emp_job WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "employment_materials", COUNT(*) FROM t_emp_material WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "employment_followups", COUNT(*) FROM t_emp_followup WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "academic_grades", COUNT(*) FROM t_acad_grade WHERE tenant_id=1000000000000000007;
             SELECT "internship_companies", COUNT(*) FROM t_emp_company WHERE tenant_id=1000000000000000007;
             SELECT "internship_positions", COUNT(*) FROM t_internship_position WHERE tenant_id=1000000000000000007;

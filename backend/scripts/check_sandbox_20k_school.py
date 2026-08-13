@@ -144,6 +144,7 @@ def main() -> int:
     from app.services.sandbox_school_academic_affairs_seed import validate_academic_affairs_facts
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_seed import validate_domain_facts
+    from app.services.sandbox_school_employment_seed import validate_employment_facts_20k
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
     from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
@@ -161,6 +162,7 @@ def main() -> int:
             domains = validate_domain_facts(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
+            employment = validate_employment_facts_20k(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
         except RuntimeError as exc:
             print("[20k-check] FAIL", str(exc))
@@ -178,6 +180,7 @@ def main() -> int:
             "domains": domains,
             "academicAffairs": academic_affairs,
             "professional": professional,
+            "employment": employment,
             "studentAffairs": affairs,
             "internshipReconciliation": internship,
             "examReconciliation": exam,
@@ -189,7 +192,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据与导师工作量验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据、导师工作量与就业域验收通过")
         return 0
     finally:
         db.close()
