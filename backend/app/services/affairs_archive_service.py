@@ -437,7 +437,7 @@ def create_batch(body, user) -> dict:
         return _batch_row(batch)
 
 
-def _collect_candidates(db, batch_id, user, student_ids):
+def _collect_candidates(db, batch_id, user, student_ids, *, load_existing=True):
     """圈定预检与正式收集共用同一份租户、存在性和数据范围判定。"""
     from app.core.affairs_security import build_affairs_context
     from app.models import ArchivePackage, StudentProfile
@@ -473,12 +473,14 @@ def _collect_candidates(db, batch_id, user, student_ids):
             raise no_data_scope("该学生不在您的授权范围内")
         if student.class_id not in allowed_classes:
             raise no_data_scope("该学生不在您的数据范围内")
-    existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
-        ArchivePackage.tenant_id == _tid(),
-        ArchivePackage.batch_id == int(batch_id),
-        ArchivePackage.student_id.in_(normalized_ids),
-        ArchivePackage.is_deleted.is_(False),
-    )).all())
+    existing_ids = set()
+    if load_existing:
+        existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
+            ArchivePackage.tenant_id == _tid(),
+            ArchivePackage.batch_id == int(batch_id),
+            ArchivePackage.student_id.in_(normalized_ids),
+            ArchivePackage.is_deleted.is_(False),
+        )).all())
     return normalized_ids, student_map, existing_ids
 
 
@@ -527,7 +529,15 @@ def collect(batch_id, user, student_ids, expected_version=None) -> dict:
         if batch.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
         atomic_claim_version(db, batch, expected_version)
-        student_ids, _student_map, existing_ids = _collect_candidates(db, batch.id, user, student_ids)
+        student_ids, _student_map, _existing_ids = _collect_candidates(
+            db, batch.id, user, student_ids, load_existing=False,
+        )
+        existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
+            ArchivePackage.tenant_id == _tid(),
+            ArchivePackage.batch_id == int(batch.id),
+            ArchivePackage.student_id.in_(student_ids),
+            ArchivePackage.is_deleted.is_(False),
+        )).all())
         made = 0
         for student_id in student_ids:
             if student_id in existing_ids:
