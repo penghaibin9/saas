@@ -26,6 +26,15 @@ def _target_course_name(major_name: str, label_index: int) -> str:
     return f"{major_name}{ADVANCED_MAJOR_COURSE_LABELS[label_index - len(profile.core_courses)]}"
 
 
+def _canonical_major_course_category(label_index: int) -> str:
+    """完整三年制课程目录的 canonical 类别：01-17 专业核心，18-23 集中实践。"""
+    if 0 <= label_index < 17:
+        return "MAJOR_CORE"
+    if 17 <= label_index < 23:
+        return "PRACTICE"
+    raise ValueError(f"专业课程序号越界: {label_index + 1}")
+
+
 def _rename_map() -> dict[str, str]:
     out: dict[str, str] = {}
     for _major_code, _college_name, major_name in _major_specs():
@@ -154,7 +163,10 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
     }
 
     # 13B 课程库只有 192 条专业课程，ORM 更新规模固定且很小。
+    # 基础 seed 的 category 仍保留 generic 分类；专业化时必须与最终三年制 140 学分
+    # 模块口径一起收口，否则 01/04/05 会在完整目录里留下 DISCIPLINE_BASIC/PRACTICE 漂移。
     aa_updated = 0
+    aa_category_updated = 0
     aa_courses = list(
         db.scalars(
             select(AaCourse).where(
@@ -179,6 +191,10 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
             if course.course_name != canonical:
                 course.course_name = canonical
                 aa_updated += 1
+            canonical_category = _canonical_major_course_category(index)
+            if str(course.category or "") != canonical_category:
+                course.category = canonical_category
+                aa_category_updated += 1
 
     # flush 后关系快照读取到的就是课程库最终专业课名。
     db.flush()
@@ -209,6 +225,7 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
     db.commit()
     return {
         "aaMajorCourses": aa_updated,
+        "aaMajorCourseCategories": aa_category_updated,
         "academicGradeNames": grade_updated,
         "courseSnapshots": snapshots,
         "gradeRewriteMode": "SQL_CASE_UPDATE",
