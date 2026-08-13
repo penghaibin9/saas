@@ -1,0 +1,63 @@
+name: Agent PR107 C miniapp session generation
+
+on:
+  push:
+    branches:
+      - fix/system-audit-rbac-atomicity-20260813
+    paths:
+      - .github/workflows/agent-pr107-c-session-generation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - name: Apply C patch and syntax check
+        run: |
+          python -m py_compile .github/agent/patch_pr107_c.py
+          python .github/agent/patch_pr107_c.py
+          node --check miniapp/src/services/sessionGeneration.mjs
+          node --check miniapp/src/services/request.js
+          node --check miniapp/src/services/realApi.js
+          node --check miniapp/tests/auth-session-generation.test.mjs
+      - name: Install miniapp dependencies
+        working-directory: miniapp
+        run: npm ci
+      - name: Run controlled-promise auth race contracts
+        working-directory: miniapp
+        run: npm test
+      - name: Build H5 production target
+        working-directory: miniapp
+        run: npm run build:h5
+      - name: Build WeChat production target
+        working-directory: miniapp
+        run: npm run build:mp-weixin
+      - name: Commit C source and remove temporary runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/agent/patch_pr107_c.py .github/workflows/agent-pr107-c-session-generation.yml
+          git config user.name "penghaibin9"
+          git config user.email "penghaibin9@gmail.com"
+          git add \
+            miniapp/src/services/sessionGeneration.mjs \
+            miniapp/src/services/request.js \
+            miniapp/src/services/realApi.js \
+            miniapp/src/components/login/MiniLoginAuthPanel.vue \
+            miniapp/tests/auth-session-generation.test.mjs \
+            .github/agent/patch_pr107_c.py \
+            .github/workflows/agent-pr107-c-session-generation.yml
+          git diff --cached --check
+          git commit -m "fix(miniapp): reject stale logical-session responses"
+          git push origin HEAD:fix/system-audit-rbac-atomicity-20260813
