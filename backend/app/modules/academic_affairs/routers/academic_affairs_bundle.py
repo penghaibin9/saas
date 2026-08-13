@@ -118,10 +118,14 @@ def build_router() -> APIRouter:
     # 本批不复制其路径、不改 canonical service / permission / DTO / schema。
     course_program_task_module = importlib.import_module(f"{__package__}.course_program_task_router")
     _mount_routes(router, course_program_task_module.router)
-    # D5-S1：课表批次主链与课表只读/导出入口 Move Only。
-    # scheduling rules 已由 live_rule_router 独立持有；自动排课、资源、调停课在后续 D5-S 子刀处理。
+    # D5-S1：课表批次主链与课表只读主入口 Move Only。
+    # /schedule/export 继续由上方 compat owner 持有；scheduling rules 继续由 live_rule_router 持有。
     schedule_core_module = importlib.import_module(f"{__package__}.schedule_core_router")
     _mount_routes(router, schedule_core_module.router)
+    # D5-S2：教师可用时间、冲突报告、排课增强、Excel 结果导入、异议、归档与自动排课 Move Only。
+    # 不复制 scheduling rules，不接管 D5-S1 主链，也不改 canonical service / permission / DTO。
+    scheduling_operations_module = importlib.import_module(f"{__package__}.scheduling_operations_router")
+    _mount_routes(router, scheduling_operations_module.router)
     _mount_routes(
         router,
         base_router.router,
