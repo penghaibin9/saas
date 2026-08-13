@@ -130,6 +130,10 @@ def build_router() -> APIRouter:
     # 保持 bookings/options 字面量路径在动态详情之前，不改 resource_svc 规则或权限。
     teaching_resource_module = importlib.import_module(f"{__package__}.teaching_resource_router")
     _mount_routes(router, teaching_resource_module.router)
+    # D5-S4：调课/停课/补课申请、预检、统计、终态归档、审批与撤销 Move Only。
+    # 静态 stats/archive 必须先于动态详情，状态机与课表改写继续唯一由 sched_change_svc 持有。
+    schedule_change_module = importlib.import_module(f"{__package__}.schedule_change_router")
+    _mount_routes(router, schedule_change_module.router)
     _mount_routes(
         router,
         base_router.router,
