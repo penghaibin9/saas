@@ -133,6 +133,7 @@ def job_delivery_and_outbox() -> None:
     from app.services import message_delivery_service as delivery_svc
     from app.services import message_event_outbox_service as msg_outbox
     from app.services import message_campaign_service as camp_svc
+    from app.services import message_channel_delivery_service as channel_svc
     from app.services import password_reset_service as password_reset_svc
     from app.modules.internship.services import internship_audit_service as internship_audit
 
@@ -147,6 +148,10 @@ def job_delivery_and_outbox() -> None:
                 f"outbox:{tenant_id}",
                 lambda: msg_outbox.process_pending_outbox(
                     limit=80, worker_id="scheduler-outbox"))
+            _run_isolated(
+                f"channel_delivery:{tenant_id}",
+                lambda: channel_svc.claim_and_process_channel_deliveries(
+                    limit=100, worker_id="scheduler-channel"))
             _run_isolated(
                 f"repair_publishing:{tenant_id}",
                 lambda: camp_svc.repair_publishing_without_jobs(limit=20))

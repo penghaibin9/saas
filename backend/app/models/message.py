@@ -191,6 +191,39 @@ class MessageDeliveryJob(PKMixin, TenantMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500), comment="worker notes")
 
 
+class MessageChannelDelivery(PKMixin, TenantMixin, CommonMixin, Base):
+    """Durable per-recipient external-channel delivery fact.
+
+    DB enqueue is exactly-once by unique key. Worker execution is at-least-once; provider
+    duplicates are minimized but not mathematically eliminated without provider idempotency.
+    """
+    __tablename__ = "t_message_channel_delivery"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "campaign_id", "channel", "receiver_user_id",
+            name="uk_msg_channel_delivery_receiver",
+        ),
+        Index("ix_msg_channel_delivery_claim", "tenant_id", "status", "next_retry_at", "id"),
+        Index("ix_msg_channel_delivery_campaign", "tenant_id", "campaign_id", "channel", "status"),
+    )
+
+    campaign_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    receiver_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING",
+        comment="PENDING/PROCESSING/RETRY_WAIT/SENT/SKIPPED/DEAD")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime)
+    locked_by: Mapped[str | None] = mapped_column(String(80))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    last_error_message_safe: Mapped[str | None] = mapped_column(String(200))
+    provider_request_id: Mapped[str | None] = mapped_column(String(120))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class MessageAudience(PKMixin, TenantMixin, CommonMixin, Base):
     """t_message_audience 受众规则（提交审核时快照；发布前再校验）。"""
     __tablename__ = "t_message_audience"

@@ -92,9 +92,10 @@ def update_message_template(user: dict, template_id: str, body: dict) -> dict:
 
 
 def enqueue_channel_delivery(user: dict, campaign_id: str, *, channel: str) -> dict:
-    """外部渠道真发：写入 NotificationTask；未配置则 SKIPPED，不假成功。"""
-    from app.models import MessageCampaign, NotificationTask, User
-    from app.services.notification import sms_service
+    """Authorize and durably enqueue every stable campaign receiver; HTTP never loops provider calls."""
+    from app.models import MessageCampaign
+    from app.services import message_campaign_service as campaign_svc
+    from app.services import message_channel_delivery_service as channel_svc
 
     ch = str(channel or "").upper()
     if ch not in ("SMS", "WECHAT"):
@@ -107,50 +108,12 @@ def enqueue_channel_delivery(user: dict, campaign_id: str, *, channel: str) -> d
         ))
         if not camp:
             raise not_found("发布单不存在")
-        if camp.status not in ("PUBLISHED", "PUBLISHING", "PARTIAL_FAILED"):
-            raise AppException("DATA_CONFLICT", "仅已发布消息可外发渠道")
-
-        # WECHAT：当前无配置，只落 SKIPPED 任务
-        if ch == "WECHAT":
-            t = NotificationTask(
-                tenant_id=_tid(),
-                biz_type="MESSAGE_CAMPAIGN",
-                channel="WECHAT",
-                template_code="MESSAGE_CAMPAIGN",
-                receiver_name=None,
-                receiver_phone_masked=None,
-                payload_json={"campaignId": int(campaign_id), "title": camp.title},
-                status="SKIPPED",
-                last_error="WECHAT_NOT_CONFIGURED",
-                created_by=_uid(user),
-            )
-            db.add(t)
-            db.commit()
-            return {"channel": "WECHAT", "status": "NOT_CONFIGURED", "taskId": str(t.id)}
-
-        # SMS：逐人尝试；无手机号或未开启则 SKIPPED
-        from app.models import UnifiedMessage
-        msgs = db.scalars(select(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == _tid(),
-            UnifiedMessage.campaign_id == camp.id,
-            UnifiedMessage.is_deleted.is_(False),
-        ).limit(200)).all()
-        results = {"SENT": 0, "SKIPPED": 0, "FAILED": 0}
-        for m in msgs:
-            uid = m.receiver_user_id or m.receiver_id
-            phone = None
-            name = None
-            if uid:
-                u = db.get(User, int(uid))
-                if u:
-                    phone = getattr(u, "phone", None) or getattr(u, "mobile", None)
-                    name = u.real_name
-            res = sms_service.send_sms(
-                _tid(), phone, "MESSAGE_CAMPAIGN",
-                {"title": camp.title, "summary": (camp.summary or "")[:40]},
-                biz_type="MESSAGE_CAMPAIGN", receiver_name=name)
-            results[res.get("status", "FAILED")] = results.get(res.get("status", "FAILED"), 0) + 1
-        return {"channel": "SMS", "results": results}
+        campaign_svc.assert_campaign_channel_send_allowed(db, user, camp, ch)
+        result = channel_svc.enqueue_campaign_channel_deliveries_in_db(
+            db, camp, channel=ch, created_by=_uid(user),
+        )
+        db.commit()
+        return result
 
 
 def reconcile_message_stats(user: dict | None = None) -> dict:
