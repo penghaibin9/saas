@@ -1,7 +1,8 @@
 """V9.2 U4/M12 · 指导频次统计只读模型。
 
-一次 SQL 分组聚合当前批次、当前数据范围内学生的指导次数；不做逐学生 COUNT，
-也不截断不足学生明细。正式写链仍由 graduation_guidance_service 负责。
+当前批次、当前数据范围内学生的指导次数统一由 SQL 聚合；不足学生必须通过
+LEFT JOIN + GROUP BY + HAVING 得出，0 次指导学生仍保留。正式写链仍由
+``graduation_guidance_service`` 负责。
 """
 from __future__ import annotations
 
@@ -10,6 +11,38 @@ from sqlalchemy import and_, func, select
 from app.models import GraduationGuidance, GraduationStudent
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _tid, session
+
+
+def _grouped_counts(scope_ids):
+    count_col = func.count(GraduationGuidance.id).label("guidance_count")
+    return (
+        select(
+            GraduationStudent.id.label("student_id"),
+            GraduationStudent.name.label("student_name"),
+            GraduationStudent.advisor_name.label("advisor_name"),
+            count_col,
+        )
+        .outerjoin(
+            GraduationGuidance,
+            and_(
+                GraduationGuidance.gd_student_id == GraduationStudent.id,
+                GraduationGuidance.tenant_id == _tid(),
+                GraduationGuidance.is_deleted.is_(False),
+            ),
+        )
+        .where(
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.id.in_(scope_ids),
+            GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")),
+        )
+        .group_by(
+            GraduationStudent.id,
+            GraduationStudent.name,
+            GraduationStudent.advisor_name,
+        )
+    )
 
 
 def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
@@ -25,54 +58,37 @@ def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
                 "batchId": str(batch_id) if batch_id else None,
             }
 
-        count_col = func.count(GraduationGuidance.id).label("guidance_count")
-        rows = db.execute(
+        grouped = _grouped_counts(scope_ids)
+        counts = grouped.subquery()
+        student_count, avg_count = db.execute(
             select(
-                GraduationStudent.id,
-                GraduationStudent.name,
-                GraduationStudent.advisor_name,
-                count_col,
+                func.count(counts.c.student_id),
+                func.coalesce(func.avg(counts.c.guidance_count), 0),
             )
-            .outerjoin(
-                GraduationGuidance,
-                and_(
-                    GraduationGuidance.gd_student_id == GraduationStudent.id,
-                    GraduationGuidance.tenant_id == _tid(),
-                    GraduationGuidance.is_deleted.is_(False),
-                ),
-            )
-            .where(
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.record_status == "ACTIVE",
-                GraduationStudent.id.in_(scope_ids),
-                GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")),
-            )
-            .group_by(
-                GraduationStudent.id,
-                GraduationStudent.name,
-                GraduationStudent.advisor_name,
-            )
+        ).one()
+
+        # M12 hard contract: the insufficient ledger is selected by SQL HAVING,
+        # not by materializing every student's count and filtering in Python.
+        count_expr = func.count(GraduationGuidance.id)
+        insufficient_rows = db.execute(
+            _grouped_counts(scope_ids)
+            .having(count_expr < threshold)
             .order_by(GraduationStudent.id)
         ).all()
-
-        total_count = 0
-        insufficient = []
-        for student_id, student_name, advisor_name, count in rows:
-            count = int(count or 0)
-            total_count += count
-            if count < threshold:
-                insufficient.append({
-                    "gdStudentId": str(student_id),
-                    "studentName": student_name,
-                    "advisorName": advisor_name or "",
-                    "count": count,
-                })
+        insufficient = [
+            {
+                "gdStudentId": str(student_id),
+                "studentName": student_name,
+                "advisorName": advisor_name or "",
+                "count": int(count or 0),
+            }
+            for student_id, student_name, advisor_name, count in insufficient_rows
+        ]
 
         return {
             "threshold": threshold,
-            "studentCount": len(rows),
-            "avgCount": round(total_count / len(rows), 1) if rows else 0,
+            "studentCount": int(student_count or 0),
+            "avgCount": round(float(avg_count or 0), 1),
             "insufficientCount": len(insufficient),
             "insufficientStudents": insufficient,
             "batchId": str(batch_id) if batch_id else None,
