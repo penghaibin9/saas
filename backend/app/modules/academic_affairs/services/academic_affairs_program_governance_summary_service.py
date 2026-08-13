@@ -264,19 +264,23 @@ def program_governance_summary(user) -> dict:
             SchoolClass.is_deleted.is_(False),
         ).all() if class_ids else []
 
-        binding_major_ids = sorted({int(row.major_id) for row in bindings if row.major_id})
-        conflict_pairs = db.query(AaProgramBinding, AaProgram).join(
-            AaProgram,
-            AaProgram.id == AaProgramBinding.program_id,
-        ).filter(
-            AaProgramBinding.tenant_id == _tid(),
-            AaProgramBinding.major_id.in_(binding_major_ids),
-            AaProgramBinding.status == "ACTIVE",
-            AaProgramBinding.is_deleted.is_(False),
-            AaProgram.tenant_id == _tid(),
-            AaProgram.status.in_(sorted(governance._ACTIVE_PROGRAM_STATUSES)),
-            AaProgram.is_deleted.is_(False),
-        ).all() if binding_major_ids else []
+        conflict_pairs = []
+        if bindings:
+            conflict_query = db.query(AaProgramBinding, AaProgram).join(
+                AaProgram,
+                AaProgram.id == AaProgramBinding.program_id,
+            ).filter(
+                AaProgramBinding.tenant_id == _tid(),
+                AaProgramBinding.status == "ACTIVE",
+                AaProgramBinding.is_deleted.is_(False),
+                AaProgram.tenant_id == _tid(),
+                AaProgram.status.in_(sorted(governance._ACTIVE_PROGRAM_STATUSES)),
+                AaProgram.is_deleted.is_(False),
+            )
+            if all(row.major_id is not None for row in bindings):
+                binding_major_ids = sorted({int(row.major_id) for row in bindings})
+                conflict_query = conflict_query.filter(AaProgramBinding.major_id.in_(binding_major_ids))
+            conflict_pairs = conflict_query.all()
 
         courses_by_program = _group(courses, "program_id")
         requirements_by_program = _group(requirements, "program_id")
