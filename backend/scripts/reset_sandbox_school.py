@@ -18,7 +18,8 @@
   6. standard-20k 不再调用 generic DEMO marker 覆盖数据；
   7. 学校角色只复用正式内置角色模板，兼岗不重复造教职工账号；
   8. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
-  9. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  9. 大成绩表专业课改名走 SQL 集合更新，禁止 17 万级事实 ORM 全量物化；
+  10. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -118,10 +119,8 @@ def main() -> int:
                 rebuild_school_master_20k,
                 validate_school_master,
             )
-            from app.services.sandbox_school_professional_reconcile import (
-                professionalize_school_20k,
-                validate_professional_school_20k,
-            )
+            from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
+            from app.services.sandbox_school_professional_runner import professionalize_school_20k
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
             from app.services.sandbox_school_role_reconcile import (
                 reconcile_school_roles_20k,
@@ -135,8 +134,8 @@ def main() -> int:
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
 
-            # 先让主数据/六域/13B 生成真实主键，再统一按专业画像修正课程→实习→毕设语义。
-            # 随后再做容量对账，确保岗位 allocated_count / 企业 intern_count 来自最终专业化分配。
+            # 大成绩事实的专业课名称由 professional_runner 用 SQL CASE 一次集合更新；
+            # 实习/毕设继续使用真实专业主键对账，不牺牲语义一致性换性能。
             professional = professionalize_school_20k(db, SANDBOX_TID)
             exam_reconciliation = reconcile_exam_rooms(db, SANDBOX_TID)
             internship_reconciliation = reconcile_internship_capacity(db, SANDBOX_TID)

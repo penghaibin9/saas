@@ -6,6 +6,8 @@
   python scripts/check_sandbox_20k_school.py --sqlite-dev   # 仅开发调试
 
 脚本不插入、不更新、不删除任何数据。失败返回非 0，适合部署后 smoke / runbook。
+当 test-results/sandbox-20k/rebuild.log 存在时，同时强制校验全量重建耗时/内存预算，
+避免大事实表被 ORM 全量物化却仍然“数据验收绿”。
 """
 from __future__ import annotations
 
@@ -101,12 +103,36 @@ def _exam_capacity_audit(db, tenant_id: int) -> dict:
     }
 
 
+def _rebuild_budget_audit() -> dict | None:
+    log_path = Path("test-results/sandbox-20k/rebuild.log")
+    if not log_path.exists():
+        return None
+    from scripts.check_sandbox_20k_rebuild_budget import (
+        MAX_RSS_MIB,
+        MAX_SECONDS,
+        check_budget,
+    )
+    metrics = check_budget(log_path)
+    return {
+        **metrics,
+        "maxSeconds": MAX_SECONDS,
+        "maxRssMiB": MAX_RSS_MIB,
+        "passed": True,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="只读验收 20K 售前演示学校数据")
     ap.add_argument("--sqlite-dev", action="store_true", help="仅本地开发调试；正式验收使用 MySQL")
     args = ap.parse_args()
     if args.sqlite_dev:
         import _dev_env  # noqa: F401
+
+    try:
+        rebuild_budget = _rebuild_budget_audit()
+    except (ValueError, RuntimeError) as exc:
+        print("[20k-check] FAIL 20K重建资源预算", str(exc))
+        return 7
 
     from app.db.session import db_enabled, get_sessionmaker
     if not db_enabled():
@@ -146,6 +172,7 @@ def main() -> int:
             "tenantId": str(SANDBOX_TID),
             "tenantCode": SANDBOX_CODE,
             "schoolName": tenant.school_name,
+            "rebuildBudget": rebuild_budget,
             "master": master,
             "roleTopology": role_topology,
             "domains": domains,
