@@ -14,6 +14,8 @@ from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
+pytest_plugins = ("pytest_migrated_schema",)
+
 TEST_TENANT_ID = 1000000000000000001
 _REQUEST_WRAPPER_PATCHED = False
 
