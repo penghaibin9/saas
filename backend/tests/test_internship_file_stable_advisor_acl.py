@@ -1,93 +1,4 @@
-from pathlib import Path
-
-
-def read(path):
-    return Path(path).read_text(encoding="utf-8")
-
-
-def write(path, text):
-    Path(path).write_text(text, encoding="utf-8")
-
-
-def replace_once(text, old, new, label):
-    n = text.count(old)
-    if n != 1:
-        raise SystemExit(f"{label}: expected 1 anchor, found {n}")
-    return text.replace(old, new, 1)
-
-
-# One neutral stable-identity parser shared by advisor scope and file ACL.
-write("backend/app/modules/internship/services/internship_identity.py", '''"""Stable internship actor identity primitives.
-
-Authorization must only use durable numeric user IDs. Display names and login names are
-never authorization inputs. Browser/API DB subjects such as ``db-123`` are normalized to
-``123`` without any database/name fallback.
-"""
-from __future__ import annotations
-
-
-def stable_user_id(user) -> int | None:
-    raw = str((user or {}).get("userId") or "").strip()
-    for prefix in ("db-", "u_"):
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
-            break
-    if not raw.isdigit():
-        return None
-    value = int(raw)
-    return value if value > 0 else None
-''')
-
-p = "backend/app/modules/internship/services/internship_advisor_identity_guard.py"
-t = read(p)
-t = replace_once(
-    t,
-    "from app.models import InternshipRecord\n",
-    "from app.models import InternshipRecord\nfrom app.modules.internship.services.internship_identity import stable_user_id\n",
-    "guard identity import",
-)
-old = '''def _user_id(user) -> int | None:
-    value = (user or {}).get("userId")
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
-'''
-t = replace_once(t, old, '''def _user_id(user) -> int | None:
-    return stable_user_id(user)
-''', "guard user parser")
-write(p, t)
-
-p = "backend/app/services/file_access_resolvers.py"
-t = read(p)
-t = replace_once(
-    t,
-    "from app.core.permissions import has_permission\n",
-    "from app.core.permissions import has_permission\nfrom app.modules.internship.services.internship_identity import stable_user_id\n",
-    "resolver identity import",
-)
-old = '''        actor_name = str(user.get("realName") or user.get("name") or "").strip()
-        actor_user_id = resolve_message_user_id(user)
-        return any(
-            (actor_user_id and int(row.advisor_user_id or 0) == actor_user_id)
-            or (actor_name and str(row.advisor_name or "").strip() == actor_name)
-            for row in rows
-        )
-'''
-new = '''        actor_user_id = stable_user_id(user)
-        if actor_user_id is None:
-            return False
-        return any(
-            row.advisor_user_id is not None
-            and int(row.advisor_user_id) == actor_user_id
-            for row in rows
-        )
-'''
-t = replace_once(t, old, new, "remove advisor name auth fallback")
-write(p, t)
-
-write("backend/tests/test_internship_file_stable_advisor_acl.py", '''"""Issue 7: internship file authorization uses stable advisor_user_id only."""
+"""Issue 7: internship file authorization uses stable advisor_user_id only."""
 from __future__ import annotations
 
 import inspect
@@ -194,8 +105,8 @@ def test_teacher_file_access_is_stable_id_only_and_cross_tenant_fail_closed(db_m
             mime_type="application/pdf",
             size_bytes=10,
             sha256="d" * 64,
-            biz_type="INTERNSHIP",
-            biz_id=str(record.id),
+            biz_type="TEMP_PRIVATE",
+            biz_id=None,
             owner_user_id=9001,
             visibility="PRIVATE",
             status="AVAILABLE",
@@ -214,6 +125,7 @@ def test_teacher_file_access_is_stable_id_only_and_cross_tenant_fail_closed(db_m
             biz_id=str(record.id),
             actor=seed_actor,
             subject_type="BUSINESS_OBJECT",
+            subject_id=str(record.id),
             module_code="INTERNSHIP",
             student_id=student.id,
             scope={"internshipId": str(record.id), "studentId": str(student.id)},
@@ -252,4 +164,3 @@ def test_teacher_file_access_is_stable_id_only_and_cross_tenant_fail_closed(db_m
             pass
         set_current_user(None)
         set_tenant(None)
-''')
