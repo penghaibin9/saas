@@ -119,6 +119,7 @@ def main() -> int:
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_seed import validate_domain_facts
     from app.services.sandbox_school_master_seed import validate_school_master
+    from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
 
     db = get_sessionmaker()()
     try:
@@ -131,6 +132,7 @@ def main() -> int:
             master = validate_school_master(db, SANDBOX_TID)
             domains = validate_domain_facts(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
+            professional = validate_professional_school_20k(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
         except RuntimeError as exc:
             print("[20k-check] FAIL", str(exc))
@@ -145,6 +147,7 @@ def main() -> int:
             "master": master,
             "domains": domains,
             "academicAffairs": academic_affairs,
+            "professional": professional,
             "studentAffairs": affairs,
             "internshipReconciliation": internship,
             "examReconciliation": exam,

@@ -16,7 +16,8 @@
   4. 无 --confirm 一律不落库；删除前打印每张表将影响的行数；
   5. standard-20k 使用确定性虚构数据，不复制任何真实学校或真实个人数据；
   6. standard-20k 不再调用 generic DEMO marker 覆盖数据；
-  7. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  7. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
+  8. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -38,9 +39,12 @@ def main() -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--dry-run", action="store_true", help="只统计不落库")
     g.add_argument("--confirm", action="store_true", help="真正删除并重建")
-    ap.add_argument("--profile", choices=(PROFILE_STANDARD_20K, PROFILE_LEGACY_100),
-                    default=PROFILE_STANDARD_20K,
-                    help="standard-20k=售前真实学校标准；legacy-100=旧开发兼容数据")
+    ap.add_argument(
+        "--profile",
+        choices=(PROFILE_STANDARD_20K, PROFILE_LEGACY_100),
+        default=PROFILE_STANDARD_20K,
+        help="standard-20k=售前真实学校标准；legacy-100=旧开发兼容数据",
+    )
     ap.add_argument("--sqlite-dev", action="store_true", help="使用本地 dev.db（默认读 .env）")
     args = ap.parse_args()
 
@@ -53,23 +57,33 @@ def main() -> int:
 
     from sqlalchemy import select
     from app.models import Tenant
-    from app.services.sandbox_service import (SANDBOX_CODE, SANDBOX_TID, reset_sandbox,
-                                              sandbox_row_counts, seed_sandbox)
+    from app.services.sandbox_service import (
+        SANDBOX_CODE,
+        SANDBOX_TID,
+        reset_sandbox,
+        sandbox_row_counts,
+        seed_sandbox,
+    )
 
     db = get_sessionmaker()()
     try:
         t = db.get(Tenant, SANDBOX_TID)
         if t is not None and (t.tenant_code or "") != SANDBOX_CODE:
-            print(f"[reset] 拒绝执行：租户 {SANDBOX_TID} 的 code 是 {t.tenant_code!r}，"
-                  f"不是 {SANDBOX_CODE!r}")
+            print(
+                f"[reset] 拒绝执行：租户 {SANDBOX_TID} 的 code 是 {t.tenant_code!r}，"
+                f"不是 {SANDBOX_CODE!r}"
+            )
             return 3
         demo = db.scalars(select(Tenant).where(Tenant.tenant_code == "demo-school")).first()
         demo_before = None
         if demo is not None:
             from sqlalchemy import func
             from app.models import StudentProfile
-            demo_before = db.scalar(select(func.count()).select_from(StudentProfile).where(
-                StudentProfile.tenant_id == demo.id)) or 0
+            demo_before = db.scalar(
+                select(func.count()).select_from(StudentProfile).where(
+                    StudentProfile.tenant_id == demo.id
+                )
+            ) or 0
 
         counts = sandbox_row_counts(db)
         print("[reset] 目标租户：", SANDBOX_CODE, SANDBOX_TID)
@@ -95,50 +109,79 @@ def main() -> int:
             )
             from app.services.sandbox_school_affairs_runner import seed_school_affairs_20k
             from app.services.sandbox_school_affairs_seed import validate_affairs_facts
-            from app.services.sandbox_school_domain_seed import (seed_school_domains_20k,
-                                                                 validate_domain_facts)
-            from app.services.sandbox_school_master_seed import (rebuild_school_master_20k,
-                                                                 validate_school_master)
+            from app.services.sandbox_school_domain_seed import (
+                seed_school_domains_20k,
+                validate_domain_facts,
+            )
+            from app.services.sandbox_school_master_seed import (
+                rebuild_school_master_20k,
+                validate_school_master,
+            )
+            from app.services.sandbox_school_professional_reconcile import (
+                professionalize_school_20k,
+                validate_professional_school_20k,
+            )
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
 
             master = rebuild_school_master_20k(db)
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
+
+            # 先让主数据/六域/13B 生成真实主键，再统一按专业画像修正课程→实习→毕设语义。
+            # 随后再做容量对账，确保岗位 allocated_count / 企业 intern_count 来自最终专业化分配。
+            professional = professionalize_school_20k(db, SANDBOX_TID)
             exam_reconciliation = reconcile_exam_rooms(db, SANDBOX_TID)
             internship_reconciliation = reconcile_internship_capacity(db, SANDBOX_TID)
             affairs = seed_school_affairs_20k(db, SANDBOX_TID)
+
             acceptance = {
                 "master": validate_school_master(db, SANDBOX_TID),
                 "domains": validate_domain_facts(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
+                "professional": validate_professional_school_20k(db, SANDBOX_TID),
                 "studentAffairs": validate_affairs_facts(db, SANDBOX_TID),
                 "internshipReconciliation": internship_reconciliation,
                 "examReconciliation": exam_reconciliation,
             }
-            report = {"reseeded": {
-                "master": master,
-                "domains": domains,
-                "academicAffairs": academic_affairs,
-                "studentAffairs": affairs,
-                "acceptance": acceptance,
-            }}
+            report = {
+                "reseeded": {
+                    "master": master,
+                    "domains": domains,
+                    "academicAffairs": academic_affairs,
+                    "professional": professional,
+                    "studentAffairs": affairs,
+                    "acceptance": acceptance,
+                }
+            }
         else:
-            report = reset_sandbox(db, dry_run=False) if t is not None else {"reseeded": seed_sandbox(db)}
+            report = (
+                reset_sandbox(db, dry_run=False)
+                if t is not None
+                else {"reseeded": seed_sandbox(db)}
+            )
 
         print("[reset] 已删除：", json.dumps(report.get("removed", {}), ensure_ascii=False))
-        print("[reset] 已重建：", json.dumps(report.get("reseeded", {}), ensure_ascii=False, default=str))
+        print(
+            "[reset] 已重建：",
+            json.dumps(report.get("reseeded", {}), ensure_ascii=False, default=str),
+        )
 
         if demo is not None and demo_before is not None:
             from sqlalchemy import func
             from app.models import StudentProfile
-            demo_after = db.scalar(select(func.count()).select_from(StudentProfile).where(
-                StudentProfile.tenant_id == demo.id)) or 0
-            print(f"[reset] 复核 demo-school 学生数：{demo_before} → {demo_after}"
-                  f"（{'OK 未受影响' if demo_before == demo_after else '异常！请立即检查'}）")
+            demo_after = db.scalar(
+                select(func.count()).select_from(StudentProfile).where(
+                    StudentProfile.tenant_id == demo.id
+                )
+            ) or 0
+            print(
+                f"[reset] 复核 demo-school 学生数：{demo_before} → {demo_after}"
+                f"（{'OK 未受影响' if demo_before == demo_after else '异常！请立即检查'}）"
+            )
             if demo_before != demo_after:
                 return 4
         if args.profile == PROFILE_STANDARD_20K:
-            print("[reset] 完成：20K 标准学校已建立并通过主数据/六域/13A/13B/跨表关系对账。")
+            print("[reset] 完成：20K 标准学校已建立并通过主数据/六域/13A/13B/专业语义/跨表关系对账。")
             print("[reset] 可见演示账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
         else:

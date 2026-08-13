@@ -13,6 +13,7 @@ on:
       - backend/scripts/check_sandbox_20k_school.py
       - backend/scripts/_seed_sandbox_coverage.py
       - backend/tests/test_sandbox_school_blueprint.py
+      - backend/tests/test_sandbox_school_professional_catalog.py
       - backend/tests/test_sandbox_story_reset_route.py
       - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
       - .github/workflows/sandbox-20k-data-gate.yml
@@ -85,8 +86,11 @@ jobs:
             app/services/sandbox_school_reconcile.py
             app/services/sandbox_school_affairs_seed.py
             app/services/sandbox_school_affairs_runner.py
+            app/services/sandbox_school_affairs_counselor_reconcile.py
             app/services/sandbox_school_academic_affairs_seed.py
             app/services/sandbox_school_academic_affairs_reconcile.py
+            app/services/sandbox_school_professional_catalog.py
+            app/services/sandbox_school_professional_reconcile.py
             app/services/sandbox_school_story_reset.py
             app/api/v1/sandbox_story_api.py
             app/api/v1/router.py
@@ -94,6 +98,7 @@ jobs:
             scripts/check_sandbox_20k_school.py
             scripts/_seed_sandbox_coverage.py
             tests/test_sandbox_school_blueprint.py
+            tests/test_sandbox_school_professional_catalog.py
             tests/test_sandbox_story_reset_route.py
           )
           : > test-results/sandbox-20k/compile.log
@@ -128,12 +133,15 @@ jobs:
         run: |
           set +e
           mkdir -p test-results/sandbox-20k
-          pytest -q tests/test_sandbox_school_blueprint.py -p no:warnings \
+          pytest -q \
+            tests/test_sandbox_school_blueprint.py \
+            tests/test_sandbox_school_professional_catalog.py \
+            -p no:warnings \
             2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_blueprint.py::20K blueprint contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_professional_catalog.py::20K blueprint/professional contract failed: ${summary}"
             exit "$status"
           fi
 
@@ -180,7 +188,11 @@ jobs:
             SELECT "students", COUNT(*) FROM t_student_profile WHERE tenant_id=1000000000000000007;
             SELECT "student_account_links", COUNT(*) FROM t_student_account_link WHERE tenant_id=1000000000000000007 AND link_status="ACTIVE";
             SELECT "academic_grades", COUNT(*) FROM t_acad_grade WHERE tenant_id=1000000000000000007;
+            SELECT "internship_companies", COUNT(*) FROM t_emp_company WHERE tenant_id=1000000000000000007;
+            SELECT "internship_positions", COUNT(*) FROM t_internship_position WHERE tenant_id=1000000000000000007;
             SELECT "internship_checkins", COUNT(*) FROM t_internship_checkin WHERE tenant_id=1000000000000000007;
+            SELECT "graduation_topics", COUNT(*) FROM t_gd_topic WHERE tenant_id=1000000000000000007;
+            SELECT "counselor_assessments", COUNT(*) FROM t_affairs_counselor_assessment WHERE tenant_id=1000000000000000007;
             SELECT "exam_seats", COUNT(*) FROM t_aa_exam_room_student WHERE tenant_id=1000000000000000007;
             SELECT "dorm_beds", COUNT(*) FROM t_affairs_dorm_bed WHERE tenant_id=1000000000000000007;
           ' > test-results/sandbox-20k/mysql-row-counts.txt 2>&1
