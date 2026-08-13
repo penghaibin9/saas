@@ -205,7 +205,6 @@ import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
 import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
-import { getPermissionPatterns } from '@/security/permissionGate'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
@@ -263,7 +262,7 @@ export default {
     emptyTitle() { return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次' },
     emptyDesc() { return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。' },
     exportPerm() {
-      const patterns = getPermissionPatterns()
+      const patterns = this.ctx.permissionPatterns
       return {
         visible: this.hasBatch,
         allowed: Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.final.export')
