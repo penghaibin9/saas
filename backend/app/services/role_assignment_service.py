@@ -586,6 +586,7 @@ def get_assignment(assignment_id: int, *, tenant_id: int | None = None) -> dict:
 
 def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list[dict]:
     """某人当前真正生效的角色授权。读取时顺手回收到期项（双保险的第二道）。"""
+    from app.core.tenant_scoped import tenant_get
     from app.models import User, UserRole
     from app.models.role_assignment import RoleAssignmentValidity
 
@@ -604,10 +605,10 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
             RoleAssignmentValidity.is_deleted.is_(False),
             RoleAssignmentValidity.effective_at <= now,
         )).all()
-        account = db.get(User, int(user_id))
+        account = tenant_get(db, User, int(user_id), tenant_id=tid)
         out = []
         for row in rows:
-            link = db.get(UserRole, int(row.user_role_id))
+            link = tenant_get(db, UserRole, int(row.user_role_id), tenant_id=tid)
             out.append(_row_dto(row, str(getattr(link, "status", "") or ""),
                                 getattr(account, "login_name", ""),
                                 getattr(account, "real_name", ""), now=now))
