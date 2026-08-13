@@ -144,34 +144,60 @@ export class StaffGraduationPage {
     await expect(detail).toContainText(this.fixture.topicTitle)
   }
 
+  async waitForPendingQueueReload() {
+    return this.page.waitForResponse((r) => {
+      if (r.request().method() !== 'GET') return false
+      const url = new URL(r.url())
+      return url.pathname.endsWith('/graduation/proposals')
+        && url.searchParams.get('status') === 'PENDING_REVIEW'
+    })
+  }
+
+  async expectReviewedStudentLeftPendingQueue(response, reloadResponse, expectedStatus, action) {
+    const reviewBody = await expectSuccessfulResponse(response, action)
+    expect(reviewBody?.data?.status, `${action} must return the canonical reviewed status`).toBe(expectedStatus)
+
+    const queueBody = await expectSuccessfulResponse(reloadResponse, `${action}后重载待审队列`)
+    const pendingItems = queueBody?.data?.items || []
+    expect(
+      pendingItems.some((item) => item.topicTitle === this.fixture.topicTitle),
+      `${action}后原学生不得继续留在 PENDING_REVIEW 服务端队列`
+    ).toBeFalsy()
+    await expect(
+      this.page.locator('.pr-row').filter({ hasText: this.fixture.topicTitle })
+    ).toHaveCount(0)
+  }
+
   async reject(reason) {
     const textarea = this.page.getByPlaceholder('批注将随批阅结果同步学生端…')
     await expect(textarea).toBeEnabled()
     await textarea.fill(reason)
-    const [response] = await Promise.all([
+    const pendingReload = this.waitForPendingQueueReload()
+    const [response, reloadResponse] = await Promise.all([
       this.page.waitForResponse((r) =>
         r.url().includes('/graduation/proposals/')
         && new URL(r.url()).pathname.endsWith('/review')
         && r.request().method() === 'POST'
       ),
+      pendingReload,
       this.page.getByRole('button', { name: /驳回当前版本/ }).click()
     ])
-    await expectSuccessfulResponse(response, '导师驳回开题报告')
-    await expect(this.page.locator('.prc')).toContainText(/已驳回|驳回修改/)
+    await this.expectReviewedStudentLeftPendingQueue(response, reloadResponse, 'REJECTED', '导师驳回开题报告')
   }
 
   async approve() {
     await expect(this.page.getByRole('button', { name: /通过当前版本/ })).toBeEnabled()
-    const [response] = await Promise.all([
+    const pendingReload = this.waitForPendingQueueReload()
+    const [response, reloadResponse] = await Promise.all([
       this.page.waitForResponse((r) =>
         r.url().includes('/graduation/proposals/')
         && new URL(r.url()).pathname.endsWith('/review')
         && r.request().method() === 'POST'
       ),
+      pendingReload,
       this.page.getByRole('button', { name: /通过当前版本/ }).click()
     ])
-    await expectSuccessfulResponse(response, '导师通过开题报告')
-    await expect(this.page.locator('.prc')).toContainText(/已通过/)
+    await this.expectReviewedStudentLeftPendingQueue(response, reloadResponse, 'APPROVED', '导师通过开题报告')
   }
 
   async verifyAdminAudit() {
