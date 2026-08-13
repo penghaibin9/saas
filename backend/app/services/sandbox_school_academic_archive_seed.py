@@ -1,11 +1,18 @@
 """sandbox-school · 20K 历史教务归档事实。
 
-不复制第二套归档判断：直接复用正式 13 域归档策略评估 2025-2026-2。
-只有全部域 PASS 才生成 ARCHIVED 批次；参考日 2026-08-13 的 2026-2027-1 尚未开学，严禁提前归档。
+不复制第二套归档判断：先补齐真实历史结账前置事实，再直接复用正式 13 域归档策略评估
+2025-2026-2。只有全部域 PASS 才生成 ARCHIVED 批次；参考日 2026-08-13 的
+2026-2027-1 尚未开学，严禁提前归档。
+
+每次正式预检都会把完整 PASS/BLOCKED 结果和耗时写入
+``test-results/sandbox-20k/archive-precheck.json``，供 20K gate artifact 留证。
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
+from time import perf_counter
 
 from sqlalchemy import func, select
 
@@ -20,7 +27,7 @@ def _with_tenant_context(tenant_id: int):
     class _TenantContext:
         def __enter__(self):
             self.previous = get_tenant()
-            set_tenant({"tenantId": str(tenant_id)})
+            set_tenant({"tenantId": str(tenant_id), "tenantCode": "sandbox-school"})
             return self
 
         def __exit__(self, exc_type, exc, tb):
@@ -30,9 +37,24 @@ def _with_tenant_context(tenant_id: int):
     return _TenantContext()
 
 
+def _write_precheck_artifact(payload: dict) -> None:
+    target = Path("test-results/sandbox-20k/archive-precheck.json")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+
+
 def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     from app.models import AaArchiveBatch, AaArchiveItem, AaTerm
     from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_service
+    from app.services.sandbox_school_academic_archive_prereq import (
+        seed_school_academic_archive_prerequisites_20k,
+    )
+
+    # 先补真实结账前置事实；不修改正式 policy，也不 monkeypatch resolver/evaluator。
+    prerequisites = seed_school_academic_archive_prerequisites_20k(db, tenant_id)
 
     historical_term = db.scalars(select(AaTerm).where(
         AaTerm.tenant_id == tenant_id,
@@ -55,24 +77,60 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     if current_count:
         raise RuntimeError("2026-2027-1 尚未开学，禁止提前生成教务归档批次")
 
+    started = perf_counter()
     with _with_tenant_context(tenant_id):
         evaluated = archive_service._evaluate_domains(
             db,
             int(historical_term.id),
             HISTORICAL_TERM_CODE,
         )
+    elapsed_ms = round((perf_counter() - started) * 1000, 2)
 
-    blocked = {
-        code: {
-            "result": row.get("result"),
-            "blockingCount": int(row.get("blockingCount") or 0),
-            "summary": row.get("summary") or row.get("remark") or "",
+    domains = {}
+    blocked = {}
+    for code, row in evaluated.items():
+        public = archive_service._public_result(code, row)
+        summary = {
+            "result": public.get("result"),
+            "recordCount": int(public.get("recordCount") or 0),
+            "blockingCount": int(public.get("blockingCount") or 0),
+            "ruleCode": public.get("ruleCode"),
+            "summary": public.get("summary") or public.get("remark") or "",
+            "route": public.get("route"),
+            "evidence": list(public.get("evidence") or []),
         }
-        for code, row in evaluated.items()
-        if row.get("result") != "PASS"
+        domains[code] = summary
+        if summary["result"] != "PASS":
+            blocked[code] = summary
+
+    precheck = {
+        "tenantId": str(tenant_id),
+        "termCode": HISTORICAL_TERM_CODE,
+        "termId": str(historical_term.id),
+        "evaluatedAt": "2026-08-13T09:00:00",
+        "elapsedMs": elapsed_ms,
+        "domainCount": len(domains),
+        "allPass": not blocked and len(domains) == EXPECTED_ARCHIVE_DOMAINS,
+        "blockedDomains": list(blocked),
+        "prerequisites": prerequisites.get("validation") or prerequisites,
+        "domains": domains,
     }
+    _write_precheck_artifact(precheck)
+
+    if len(domains) != EXPECTED_ARCHIVE_DOMAINS:
+        raise RuntimeError(
+            f"正式归档规则域数量异常 expected={EXPECTED_ARCHIVE_DOMAINS} actual={len(domains)}"
+        )
     if blocked:
-        raise RuntimeError(f"2025-2026-2 正式十三域归档仍有阻断: {blocked}")
+        compact = {
+            code: {
+                "result": row["result"],
+                "blockingCount": row["blockingCount"],
+                "summary": row["summary"],
+            }
+            for code, row in blocked.items()
+        }
+        raise RuntimeError(f"2025-2026-2 正式十三域归档仍有阻断: {compact}")
 
     batch = AaArchiveBatch(
         tenant_id=tenant_id,
@@ -101,7 +159,13 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
             remark=archive_service._persisted_remark(code, row),
         ))
     db.commit()
-    return validate_school_academic_archive_20k(db, tenant_id)
+    validation = validate_school_academic_archive_20k(db, tenant_id)
+    return {
+        "prerequisites": prerequisites,
+        "precheckElapsedMs": elapsed_ms,
+        "precheckArtifact": "test-results/sandbox-20k/archive-precheck.json",
+        "validation": validation,
+    }
 
 
 def validate_school_academic_archive_20k(db, tenant_id: int) -> dict:
