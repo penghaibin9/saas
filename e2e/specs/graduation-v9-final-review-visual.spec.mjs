@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
@@ -19,27 +19,11 @@ async function dismissGuide(page) {
   }
 }
 
-async function uploadGraduationPdf(api, fileName) {
-  const form = new FormData()
-  form.append('file', new File([
-    '%PDF-1.4\n1 0 obj<< /Type /Catalog >>endobj\ntrailer<<>>\n%%EOF\n'
-  ], fileName, { type: 'application/pdf' }))
-  const target = new URL(`${config.apiBaseUrl}/files`)
-  target.searchParams.set('bizType', 'GRADUATION_MATERIAL')
-  const response = await fetch(target, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${api.token}`,
-      'X-Forwarded-For': '10.255.0.31'
-    },
-    body: form
-  })
+async function expectBrowserApiSuccess(response, action) {
   const body = await response.json()
-  expect(response.ok(), JSON.stringify(body)).toBeTruthy()
-  expect(body.code, JSON.stringify(body)).toBe(0)
-  expect(body.data?.fileId).toBeTruthy()
-  return String(body.data.fileId)
+  expect(response.ok(), `${action} HTTP ${response.status()}: ${JSON.stringify(body).slice(0, 800)}`).toBeTruthy()
+  expect(body.code, `${action} business error: ${JSON.stringify(body).slice(0, 800)}`).toBe(0)
+  return body.data
 }
 
 async function attachScreenshot(page, testInfo, name, width, height) {
@@ -94,13 +78,47 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       }
     )
 
-    const studentApi = await loginApi(config.student)
-    const fileId = await uploadGraduationPdf(studentApi, `u3-final-${fixture.runId}.pdf`)
-    const submitted = await studentApi.post('/mobile/graduation/final', {
-      finalType: '初稿',
-      attachments: [fileId]
+    // Re-enter through the real student UI after the isolated prerequisite update.
+    // The file upload and final submit below both travel through the production
+    // student-portal request layer; no final/file/review record is seeded here.
+    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await student.open()
+    const finalStep = page.locator('.gd-step').filter({
+      has: page.getByRole('heading', { name: /成果/ })
+    }).first()
+    await expect(finalStep).toBeVisible()
+
+    let fileInput = finalStep.locator('input[type=file]')
+    if (!(await fileInput.count())) {
+      const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
+      await expect(openFinal).toBeVisible()
+      await openFinal.click()
+      fileInput = finalStep.locator('input[type=file]')
+    }
+    await expect(fileInput).toHaveCount(1)
+
+    const uploadResponsePromise = page.waitForResponse((response) => {
+      const target = new URL(response.url())
+      return response.request().method() === 'POST' && target.pathname.endsWith('/files')
     })
-    expect(submitted.status).toBe('PENDING_REVIEW')
+    await fileInput.setInputFiles({
+      name: `u3-final-${fixture.runId}.pdf`,
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n1 0 obj<< /Type /Catalog >>endobj\ntrailer<<>>\n%%EOF\n')
+    })
+    const uploaded = await expectBrowserApiSuccess(await uploadResponsePromise, '学生上传成果文件')
+    expect(uploaded?.fileId).toBeTruthy()
+
+    const submitFinal = finalStep.getByRole('button', { name: /提交论文成果/ })
+    await expect(submitFinal).toBeEnabled()
+    const [submitResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === 'POST' && response.url().includes('/mobile/graduation/final')
+      ),
+      submitFinal.click()
+    ])
+    const submitted = await expectBrowserApiSuccess(submitResponse, '学生提交论文成果')
+    expect(submitted?.status).toBe('PENDING_REVIEW')
 
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
