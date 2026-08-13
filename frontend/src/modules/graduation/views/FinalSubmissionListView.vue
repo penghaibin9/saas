@@ -605,7 +605,8 @@ export default {
 .fr-security-card .mp-card__body,
 .fr-review-card .mp-card__body,
 .fr-result-card .mp-card__body { padding: var(--space-2) 10px; }
-.fr-security-card .mp-card__body { max-height: 220px; overflow: auto; display: flex; flex-direction: column; }
+.fr-security-card .mp-card__body { max-height: 220px; overflow: auto; }
+.fr-security-card .mp-card__body { display: flex; flex-direction: column; }
 .fr-security-card .version-warning { order: -2; }
 .fr-security-keyline { order: -1; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 0 6px; font-size: 12px; }
 .fr-security-keyline__label { flex: none; color: var(--text-tertiary); font-weight: 600; }
