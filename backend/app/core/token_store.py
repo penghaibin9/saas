@@ -144,7 +144,7 @@ def _consume_refresh_memory(token: str) -> dict | None:
 
 
 def revoke_refresh_by_user(user_id: str) -> int:
-    """吊销用户全部 refresh。DB 开启时写入失败抛错，禁止假成功。"""
+    """吊销用户全部 refresh。仅用于改密/重置/显式全设备退出等全局安全事件。"""
     from app.core.config import settings
     from app.core.exceptions import AppException
     from app.db.session import db_enabled
@@ -176,6 +176,66 @@ def revoke_refresh_by_user(user_id: str) -> int:
     dead = [t for t, v in _refresh.items() if v["claims"].get("userId") == user_id]
     for t in dead:
         _refresh.pop(t, None)
+    return n + len(dead)
+
+
+def revoke_refresh_by_session(user_id: str, session_id: str) -> int:
+    """只吊销一个认证会话的 refresh，禁止 PC 切身份/退出误伤其它设备或小程序。
+
+    会话 ID 存在 claims_json，无需结构迁移。DB 模式先锁定到同一 user，再在 Python 中
+    精确筛 session，避免依赖 MySQL/SQLite 的 JSON path 方言差异；单用户活跃 refresh 数量
+    很小，因此这里优先保证跨数据库语义一致与 fail-closed。
+    """
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
+
+    user_id = str(user_id or "")
+    session_id = str(session_id or "")
+    if not user_id or not session_id:
+        return 0
+
+    n = 0
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
+    if db is not None:
+        try:
+            from sqlalchemy import delete, select
+            from app.models import AuthRefreshToken
+            rows = db.scalars(select(AuthRefreshToken).where(
+                AuthRefreshToken.user_id == user_id)).all()
+            hashes = [
+                row.token_hash for row in rows
+                if str((row.claims_json or {}).get("authSessionId") or "") == session_id
+            ]
+            if hashes:
+                res = db.execute(delete(AuthRefreshToken).where(
+                    AuthRefreshToken.token_hash.in_(hashes)))
+                db.commit()
+                n += int(res.rowcount or 0)
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法吊销当前会话刷新令牌：认证存储写入失败",
+                                   http_status=503) from e
+        finally:
+            db.close()
+    elif must_persist:
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法吊销当前会话刷新令牌：认证存储不可用",
+                           http_status=503)
+
+    dead = [
+        token for token, item in _refresh.items()
+        if item["claims"].get("userId") == user_id
+        and str(item["claims"].get("authSessionId") or "") == session_id
+    ]
+    for token in dead:
+        _refresh.pop(token, None)
     return n + len(dead)
 
 

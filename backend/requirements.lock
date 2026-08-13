@@ -1,10 +1,11 @@
 # Python production/test dependency lock.
 # Captured from the exact-main canonical MySQL shard that passed on 2026-08-12
-# with CPython 3.12.13. Keep backend/requirements.txt as the human-maintained
-# direct dependency policy; CI and production install this exact resolved graph.
+# with CPython 3.12.13. Human-maintained ranges live in requirements.in; this
+# lock is the verified exact graph. Platform-only packages retain a PEP 508
+# marker so the same default installer remains valid on supported dev hosts.
 #
-# Regeneration rule: resolve from requirements.txt on Python 3.12, run the full
-# canonical suite, then replace this file atomically with the verified freeze.
+# Regeneration rule: resolve from requirements.in on Python 3.12, run the full
+# canonical suite, then replace this file and requirements.txt atomically.
 
 APScheduler==3.11.3
 Mako==1.4.1
@@ -82,7 +83,7 @@ typing-inspection==0.4.3
 tzlocal==5.4.4
 urllib3==2.7.0
 uvicorn==0.52.1
-uvloop==0.22.1
+uvloop==0.22.1; sys_platform != "win32"
 watchfiles==1.2.0
 websocket-client==1.9.0
 websockets==17.0.1
