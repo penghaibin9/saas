@@ -107,37 +107,47 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     }).first()
     await expect(finalStep).toBeVisible()
 
-    let fileInput = finalStep.locator('input[type=file]')
-    if (!(await fileInput.count())) {
-      const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
-      await expect(openFinal).toBeVisible()
-      await openFinal.click()
-      fileInput = finalStep.locator('input[type=file]')
+    // A Playwright retry reuses this run's isolated MySQL database. If the first
+    // attempt already completed the real upload + submit and only the later visual
+    // assertion failed, the canonical final is now pending review. Reuse that state
+    // rather than creating a duplicate final/FileVersion on retry.
+    const finalStateText = await finalStep.innerText()
+    const alreadySubmitted = /待.*审|已提交/.test(finalStateText)
+    if (!alreadySubmitted) {
+      let fileInput = finalStep.locator('input[type=file]')
+      if (!(await fileInput.count())) {
+        const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
+        await expect(openFinal).toBeVisible()
+        await openFinal.click()
+        fileInput = finalStep.locator('input[type=file]')
+      }
+      await expect(fileInput).toHaveCount(1)
+
+      const uploadResponsePromise = page.waitForResponse((response) => {
+        const target = new URL(response.url())
+        return response.request().method() === 'POST' && target.pathname.endsWith('/files')
+      })
+      await fileInput.setInputFiles({
+        name: `u3-final-${fixture.runId}.pdf`,
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4\n1 0 obj<< /Type /Catalog >>endobj\ntrailer<<>>\n%%EOF\n')
+      })
+      const uploaded = await expectBrowserApiSuccess(await uploadResponsePromise, '学生上传成果文件')
+      expect(uploaded?.fileId).toBeTruthy()
+
+      const submitFinal = finalStep.getByRole('button', { name: /提交论文成果/ })
+      await expect(submitFinal).toBeEnabled()
+      const [submitResponse] = await Promise.all([
+        page.waitForResponse((response) =>
+          response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')
+        ),
+        submitFinal.click()
+      ])
+      const submitted = await expectBrowserApiSuccess(submitResponse, '学生提交论文成果')
+      expect(submitted?.status).toBe('PENDING_REVIEW')
+    } else {
+      expect(finalStateText).toMatch(/待.*审|已提交/)
     }
-    await expect(fileInput).toHaveCount(1)
-
-    const uploadResponsePromise = page.waitForResponse((response) => {
-      const target = new URL(response.url())
-      return response.request().method() === 'POST' && target.pathname.endsWith('/files')
-    })
-    await fileInput.setInputFiles({
-      name: `u3-final-${fixture.runId}.pdf`,
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\n1 0 obj<< /Type /Catalog >>endobj\ntrailer<<>>\n%%EOF\n')
-    })
-    const uploaded = await expectBrowserApiSuccess(await uploadResponsePromise, '学生上传成果文件')
-    expect(uploaded?.fileId).toBeTruthy()
-
-    const submitFinal = finalStep.getByRole('button', { name: /提交论文成果/ })
-    await expect(submitFinal).toBeEnabled()
-    const [submitResponse] = await Promise.all([
-      page.waitForResponse((response) =>
-        response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')
-      ),
-      submitFinal.click()
-    ])
-    const submitted = await expectBrowserApiSuccess(submitResponse, '学生提交论文成果')
-    expect(submitted?.status).toBe('PENDING_REVIEW')
 
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
