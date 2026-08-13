@@ -67,6 +67,19 @@ test('U2 proposal review stays inside the proposal page/read-model/test/gate-evi
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U2')[0], /canonical write\/read mixed service denied/)
 })
 
+test('U3 final review stays inside the final page/read-model/test boundary', () => {
+  assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/services/__init__.py',
+    'backend/app/modules/graduation/services/graduation_final_read_service.py',
+    'backend/tests/test_graduation_v9_final_pagination.py',
+    'frontend/src/modules/graduation/views/FinalSubmissionListView.vue',
+    'frontend/tests/graduation.v9-final-review.contract.test.mjs',
+    'docs/architecture/file-capability-inventory.d/10-graduation-v9-final-export.yaml',
+  ], 'U3'), [])
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U3')[0], /shared foundation denied/)
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'U3')[0], /canonical write\/read mixed service denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
@@ -84,6 +97,10 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'frontend/tests/graduation.v9-proposal-review.contract.test.mjs',
     'e2e/pages/graduation.page.mjs',
     'docs/architecture/file-capability-inventory.d/10-graduation-v9-export.yaml',
+    'backend/app/modules/graduation/services/graduation_final_read_service.py',
+    'backend/tests/test_graduation_v9_final_pagination.py',
+    'frontend/tests/graduation.v9-final-review.contract.test.mjs',
+    'docs/architecture/file-capability-inventory.d/10-graduation-v9-final-export.yaml',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })
