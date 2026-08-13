@@ -1,0 +1,159 @@
+name: Agent PR-A4 one-shot
+
+on:
+  push:
+    branches:
+      - fix/system-audit-rbac-atomicity-20260813
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-pr-a4-one-shot
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/system-audit-rbac-atomicity-20260813
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply A4 critical caller transaction repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          def exact(text, old, new, label):
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f'{label}: expected 1 occurrence, found {n}')
+              return text.replace(old, new, 1)
+
+          p = Path('backend/app/api/v1/system.py')
+          text = p.read_text(encoding='utf-8')
+          text = exact(text,
+          '''        account.version = int(account.version or 0) + 1\n        db.commit()\n        from app.services.auth_service_db import invalidate_subject_cache\n        invalidate_subject_cache(f"db-{account.id}", tenant_id)\n        from app.services import audit_log\n        audit_log.record("USER_ROLE_ASSIGN", f"user:{account.id}", detail={"loginName": account.login_name,\n                         "roleCodes": codes})\n''',
+          '''        account.version = int(account.version or 0) + 1\n        from app.services import audit_log\n        audit_log.record_critical_in_session(\n            db, "USER_ROLE_ASSIGN", f"user:{account.id}",\n            detail={"loginName": account.login_name, "roleCodes": codes, "moduleCode": "systemAdmin"},\n            tenant_id=tenant_id, resource_id=str(account.id),\n        )\n        db.commit()\n        from app.services.auth_service_db import invalidate_subject_cache\n        invalidate_subject_cache(f"db-{account.id}", tenant_id)\n''', 'USER_ROLE_ASSIGN')
+          text = exact(text,
+          '''        account.password_hash = hash_password(temp_password)\n        account.must_change_password = True\n        account.version = int(account.version or 0) + 1\n        db.commit()\n        from app.services.auth_service_db import invalidate_subject_cache\n        invalidate_subject_cache(f"db-{account.id}", tenant_id)\n        from app.services import audit_log\n        audit_log.record("RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",\n                         detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密", "reason": "管理员重置"},\n                         result="SUCCESS")\n''',
+          '''        account.password_hash = hash_password(temp_password)\n        account.must_change_password = True\n        account.version = int(account.version or 0) + 1\n        from app.services import audit_log\n        audit_log.record_critical_in_session(\n            db, "RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",\n            detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密",\n                    "reason": "管理员重置", "userId": int(account.id), "moduleCode": "systemAdmin"},\n            result="SUCCESS", tenant_id=tenant_id, resource_id=str(account.id),\n        )\n        db.commit()\n        from app.services.auth_service_db import invalidate_subject_cache\n        invalidate_subject_cache(f"db-{account.id}", tenant_id)\n''', 'RESET_PASSWORD')
+
+          fn_start = text.index('def save_system_role_permissions(')
+          fn_end = text.index('\n\ndef ', fn_start)
+          fn = text[fn_start:fn_end]
+          fn = exact(fn,
+          '''        role.version = int(role.version or 0) + 1\n        db.commit()\n        from app.services.auth_service_db import invalidate_tenant_subject_caches\n''',
+          '''        role.version = int(role.version or 0) + 1\n        from app.services import audit_log\n        audit_log.record_critical_in_session(\n            db, "ROLE_PERMISSION_SAVE", f"role:{role.id}",\n            detail={"roleCode": role.role_code, "permissionCount": len(final_codes),\n                    "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),\n                    "moduleCode": "systemAdmin", "version": role.version},\n            tenant_id=tenant_id, resource_id=str(role.id),\n        )\n        db.commit()\n        from app.services.auth_service_db import invalidate_tenant_subject_caches\n''', 'ROLE_PERMISSION_SAVE commit')
+          fn = exact(fn,
+          '''        from app.services import audit_log\n        audit_log.record("ROLE_PERMISSION_SAVE", f"role:{role.id}",\n                         detail={"roleCode": role.role_code, "permissionCount": len(final_codes),\n                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),\n                                 "moduleCode": "systemAdmin", "cacheInvalidated": cache_ok,\n                                 "cacheWarning": cache_warn, "version": role.version})\n''', '', 'ROLE_PERMISSION_SAVE post audit')
+          text = text[:fn_start] + fn + text[fn_end:]
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('backend/app/services/tenant_effective_state_service.py')
+          text = p.read_text(encoding='utf-8')
+          text = exact(text,
+          '''    expected_version: int,\n    payload: dict | None = None,\n) -> dict:\n''',
+          '''    expected_version: int,\n    payload: dict | None = None,\n    audit_action: str | None = None,\n) -> dict:\n''', 'apply_transition signature')
+          text = exact(text,
+          '''        meta_row.version = int(meta_row.version or 1) + 1\n        tenant.version = int(tenant.version or 1) + 1\n        db.commit()\n        invalidate_tenant_subject_caches(int(tenant_id))\n''',
+          '''        meta_row.version = int(meta_row.version or 1) + 1\n        tenant.version = int(tenant.version or 1) + 1\n        if audit_action:\n            from app.services import audit_log\n            audit_after = effective_state_from_records(row_status=tenant.status, meta=meta, strict=True)\n            audit_log.record_critical_in_session(\n                db, audit_action, f"tenant:{tenant_id}",\n                detail={"action": normalized, "reason": reason_text,\n                        "expectedVersion": int(expected_version), "before": before,\n                        "after": audit_after, "requestedKeys": sorted(data.keys()),\n                        "moduleCode": "platform"},\n                tenant_id=int(tenant_id), resource_id=str(tenant_id),\n            )\n        db.commit()\n        invalidate_tenant_subject_caches(int(tenant_id))\n''', 'tenant transition audit')
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('backend/app/api/v1/platform.py')
+          text = p.read_text(encoding='utf-8')
+          actions = {
+              'enable': 'PLATFORM_TENANT_ENABLE',
+              'disable': 'PLATFORM_TENANT_DISABLE',
+              'extend-trial': 'PLATFORM_TENANT_EXTEND_TRIAL',
+              'convert-to-paid': 'PLATFORM_TENANT_CONVERT_PAID',
+              'expire': 'PLATFORM_TENANT_EXPIRE',
+              'change-package': 'PLATFORM_TENANT_CHANGE_PACKAGE',
+              'quota': 'PLATFORM_TENANT_QUOTA',
+          }
+          for transition, audit_action in actions.items():
+              needle = f'        tenant_id, "{transition}", reason=body.get("reason"),\n'
+              pos = text.find(needle)
+              if pos < 0:
+                  raise SystemExit(f'platform call missing: {transition}')
+              end = text.find('    )\n', pos)
+              if end < 0:
+                  raise SystemExit(f'platform close missing: {transition}')
+              call = text[pos:end + 6]
+              if 'audit_action=' not in call:
+                  call = call[:-6] + f'        audit_action="{audit_action}",\n    )\n'
+                  text = text[:pos] + call + text[end + 6:]
+              pattern = re.compile(r'    _audit\("' + re.escape(audit_action) + r'", str\(tenant_id\), out, tenant_id=tenant_id\)\n')
+              text, n = pattern.subn('', text, count=1)
+              if n != 1:
+                  raise SystemExit(f'legacy post audit missing: {audit_action}')
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Compile A4 Python
+        run: |
+          python -m py_compile \
+            backend/app/api/v1/system.py \
+            backend/app/services/tenant_effective_state_service.py \
+            backend/app/api/v1/platform.py \
+            backend/tests/test_critical_audit_atomicity.py
+      - name: Run A4 MySQL critical caller contracts
+        working-directory: backend
+        run: |
+          pytest \
+            tests/test_critical_audit_atomicity.py \
+            tests/test_system_admin_p0.py \
+            tests/test_role_assignment_privilege_boundary.py \
+            tests/test_role_assignment_validity.py \
+            tests/test_audit_fail_closed_actions.py \
+            tests/test_audit_evidence_integrity.py \
+            -q -p no:warnings
+      - name: Commit exact A4 source scope and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/agent-pr-a4-one-shot.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/app/api/v1/system.py \
+            backend/app/services/tenant_effective_state_service.py \
+            backend/app/api/v1/platform.py \
+            .github/workflows/agent-pr-a4-one-shot.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m "fix(audit): make critical system and tenant mutations atomic"
+          git push origin HEAD:fix/system-audit-rbac-atomicity-20260813
