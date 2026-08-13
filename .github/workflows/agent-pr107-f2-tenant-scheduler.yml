@@ -107,6 +107,11 @@ jobs:
           PY
       - name: Commit F source and clean temporary runners
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/app/services/message_event_outbox_service.py')
+          p.write_text(p.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
           rm \
             .github/workflows/agent-pr107-f-tenant-scheduler.yml \
             .github/workflows/agent-pr107-f2-tenant-scheduler.yml
