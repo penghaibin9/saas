@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.core.exceptions import not_found
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationStudent
 from app.modules.graduation.schemas.graduation_guidance import (
     GuidanceCreate, GuidancePlanCancel, GuidancePlanCheckin, GuidancePlanCreate, GuidanceVoidRequest,
@@ -36,7 +37,7 @@ def _related_guard(model, record_id, batch_id) -> int:
         )).first()
         if not record:
             raise not_found("指导记录或计划不存在")
-        student = db.get(GraduationStudent, int(record.gd_student_id))
+        student = tenant_get(db, GraduationStudent, int(record.gd_student_id))
         assert_student_batch(student, batch_id)
         return int(student.id)
 
