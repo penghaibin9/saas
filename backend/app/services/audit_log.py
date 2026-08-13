@@ -116,6 +116,41 @@ def _effective_tenant_id(action: str, resource: str, detail: dict,
     return _resolve_login_event_tenant_id(action, resource, detail)
 
 
+def record_critical_in_session(
+    db, action: str, resource: str, *, detail: dict | None = None, result: str = "SUCCESS",
+    tenant_id: int | str | None = None, resource_id: str | None = None,
+) -> dict:
+    """把 critical audit 加入调用方 DB session；本函数绝不 commit、绝不吞错。"""
+    if action not in CRITICAL_ACTIONS:
+        raise ValueError(f"{action} 不是 CRITICAL_ACTIONS，禁止误用 critical in-session API")
+    safe_detail = detail or {}
+    effective_tid = _effective_tenant_id(action, resource, safe_detail, tenant_id)
+    if effective_tid is None:
+        raise AuditPersistenceError(f"高危动作 {action} 缺少可验证租户上下文")
+    try:
+        from app.services import db_service
+        db_service.audit_insert_in_session(
+            db, action, resource, safe_detail, result,
+            tenant_id=int(effective_tid), resource_id=resource_id,
+        )
+        _DB_HEALTH["consecutiveFailures"] = 0
+    except Exception as exc:  # noqa: BLE001 — critical audit 必须 fail-closed
+        _DB_HEALTH["consecutiveFailures"] += 1
+        _DB_HEALTH["lastFailure"] = {
+            "occurredAt": _now_iso(), "action": action, "error": str(exc)[:200],
+        }
+        _logger.error(
+            "同事务高危审计写入失败 action=%s resource=%s err=%s", action, resource, exc
+        )
+        raise AuditPersistenceError(
+            f"高危动作 {action} 审计写入失败，业务事务必须回滚：{exc}"
+        ) from exc
+    return {
+        "action": action, "resource": resource, "result": result,
+        "tenantId": str(effective_tid), "detail": safe_detail,
+    }
+
+
 def record(action: str, resource: str, detail: dict | None = None, result: str = "SUCCESS",
            *, tenant_id: int | str | None = None) -> dict:
     """写一条审计。
