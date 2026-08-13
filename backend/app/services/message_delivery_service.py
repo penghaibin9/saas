@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select, text
 
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 log = logging.getLogger("app.message_delivery")
@@ -277,7 +278,7 @@ def claim_and_process_delivery_jobs(*, limit: int = 10, worker_id: str = "schedu
             ids = [int(r.id) for r in rows]
 
         for jid in ids:
-            job = db.get(MessageDeliveryJob, jid)
+            job = tenant_get(db, MessageDeliveryJob, jid, tenant_id=_tid())
             if not job:
                 continue
             if job.lease_expires_at and job.lease_expires_at > now and job.locked_by != worker_id:
@@ -293,7 +294,7 @@ def claim_and_process_delivery_jobs(*, limit: int = 10, worker_id: str = "schedu
 
     for jid in claimed_ids:
         with session() as db:
-            job = db.get(MessageDeliveryJob, jid)
+            job = tenant_get(db, MessageDeliveryJob, jid, tenant_id=_tid())
             if (
                 not job
                 or job.status != "PROCESSING"

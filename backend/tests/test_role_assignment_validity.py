@@ -549,3 +549,27 @@ def test_transfer_concurrent_same_version_only_one_succeeds(db_mode):
         for uid in (new_a, new_b)
     )
     assert active_new == 1
+
+
+
+def test_list_assignments_expiry_writes_atomic_audit(db_mode):
+    from app.models import SecurityAuditLog
+    from app.models.role_assignment import RoleAssignmentValidity
+    from sqlalchemy import select
+
+    _make_role("COUNSELOR")
+    user_id = _make_user("ras_list_expire_review")
+    granted = _grant(user_id, "COUNSELOR", reason="列表读取到期回收复审", expires_at=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"), tenant_id=MAIN_TENANT_ID)
+    assignment_id = int(granted["assignmentId"])
+    with _session() as db:
+        row = db.get(RoleAssignmentValidity, assignment_id)
+        row.expires_at = datetime.now().replace(microsecond=0) - timedelta(minutes=1)
+        db.commit()
+    listed = ras.list_assignments(tenant_id=MAIN_TENANT_ID)
+    expired = [item for item in listed["list"] if item.get("assignmentId") == str(assignment_id)]
+    assert expired and expired[0]["status"] == "EXPIRED"
+    assert _user_role_status(user_id, "COUNSELOR") == "EXPIRED"
+    with _session() as db:
+        audit = db.scalars(select(SecurityAuditLog).where(SecurityAuditLog.tenant_id == MAIN_TENANT_ID, SecurityAuditLog.action == "ROLE_ASSIGNMENT_EXPIRE").order_by(SecurityAuditLog.id.desc())).first()
+        assert audit is not None
+        assert (audit.detail_json or {}).get("source") == "READ_LIST_ASSIGNMENTS"

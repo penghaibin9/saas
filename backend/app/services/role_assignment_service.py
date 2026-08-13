@@ -326,6 +326,7 @@ def _revoke_assignment_in_db(
     transferred_to_user_id: int | None = None,
 ):
     """内部回收 mutation：调用者负责锁、版本、审计与 commit。"""
+    from app.core.tenant_scoped import tenant_get
     from app.models import UserRole
 
     if row.status != VALIDITY_ACTIVE:
@@ -336,7 +337,7 @@ def _revoke_assignment_in_db(
     row.revoke_reason = reason
     row.transferred_to_user_id = transferred_to_user_id
     row.version = int(row.version or 0) + 1
-    link = db.get(UserRole, int(row.user_role_id))
+    link = tenant_get(db, UserRole, int(row.user_role_id), tenant_id=int(row.tenant_id))
     if link is not None:
         link.status = VALIDITY_REVOKED
         link.version = int(link.version or 0) + 1
@@ -631,7 +632,7 @@ def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
     try:
         touched = _expire_due(db, tid, now=now)
         if touched:
-            _record_expiry_audit(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
+            _audit_expiry_in_session(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
             db.commit()
 
         stmt = select(RoleAssignmentValidity).where(

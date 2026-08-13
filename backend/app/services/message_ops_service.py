@@ -105,7 +105,7 @@ def enqueue_channel_delivery(user: dict, campaign_id: str, *, channel: str) -> d
             MessageCampaign.id == int(campaign_id),
             MessageCampaign.tenant_id == _tid(),
             MessageCampaign.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if not camp:
             raise not_found("发布单不存在")
         campaign_svc.assert_campaign_channel_send_allowed(db, user, camp, ch)

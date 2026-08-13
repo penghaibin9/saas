@@ -38,6 +38,7 @@ def upgrade():
         sa.UniqueConstraint("tenant_id","campaign_id","channel","receiver_user_id",name="uk_msg_channel_delivery_receiver"),
     )
     op.create_index("ix_msg_channel_delivery_claim","t_message_channel_delivery",["tenant_id","status","next_retry_at","id"])
+    op.create_index("ix_msg_channel_delivery_lease","t_message_channel_delivery",["tenant_id","status","lease_expires_at","id"])
     op.create_index("ix_msg_channel_delivery_campaign","t_message_channel_delivery",["tenant_id","campaign_id","channel","status"])
     op.create_index(op.f("ix_t_message_channel_delivery_campaign_id"),"t_message_channel_delivery",["campaign_id"])
     op.create_index(op.f("ix_t_message_channel_delivery_receiver_user_id"),"t_message_channel_delivery",["receiver_user_id"])

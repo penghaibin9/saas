@@ -133,3 +133,53 @@ def test_expired_processing_channel_delivery_is_reclaimed(db_mode):
         assert svc.claim_and_process_channel_deliveries(limit=1,worker_id='reclaimer')==1
         db.expire_all(); row=db.get(MessageChannelDelivery,rid); assert row.status=='SKIPPED' and row.last_error_code=='NOT_CONFIGURED' and row.attempt_count==2
     finally: db.close(); set_tenant(None)
+
+
+
+def test_concurrent_campaign_channel_enqueue_is_idempotent(db_mode):
+    from concurrent.futures import ThreadPoolExecutor
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import MessageCampaign, MessageChannelDelivery, Tenant, UnifiedMessage
+    from app.services import message_ops_service
+    tid=1000000000000011015; set_tenant({'tenantId':str(tid)}); db=get_sessionmaker()()
+    try:
+        if not db.get(Tenant,tid): db.add(Tenant(id=tid,tenant_code='channel-race',school_name='channel-race',short_name='race',deploy_mode='SAAS',db_mode='SHARED',status='ACTIVE'))
+        camp=MessageCampaign(tenant_id=tid,title='race',content_plain='x',category='ANNOUNCEMENT',priority='NORMAL',status='PUBLISHED',source_kind='HUMAN',content_mode='SHARED',sender_user_id=7,publish_mode='IMMEDIATE',created_by=7); db.add(camp); db.flush(); campaign_id=int(camp.id)
+        db.add_all([UnifiedMessage(tenant_id=tid,receiver_id=i,receiver_user_id=i,receiver_context_key='GLOBAL',campaign_id=campaign_id,title='x',status='UNREAD',created_by=7) for i in range(1,101)]); db.commit()
+    finally: db.close(); set_tenant(None)
+    actor=_actor(tid,8,'SCHOOL_ADMIN')
+    def run_once():
+        set_tenant({'tenantId':str(tid)})
+        try: return message_ops_service.enqueue_channel_delivery(actor,str(campaign_id),channel='SMS')
+        finally: set_tenant(None)
+    with ThreadPoolExecutor(max_workers=2) as pool: results=list(pool.map(lambda _:run_once(),range(2)))
+    assert sorted(item['newQueuedCount'] for item in results)==[0,100]
+    assert sorted(item['existingCount'] for item in results)==[0,100]
+    set_tenant({'tenantId':str(tid)}); db=get_sessionmaker()()
+    try: assert db.query(MessageChannelDelivery).filter_by(tenant_id=tid,campaign_id=campaign_id,channel='SMS').count()==100
+    finally: db.close(); set_tenant(None)
+
+
+def test_channel_delivery_has_retry_and_lease_claim_indexes():
+    from app.models import MessageChannelDelivery
+    names={idx.name for idx in MessageChannelDelivery.__table__.indexes}
+    assert 'ix_msg_channel_delivery_claim' in names and 'ix_msg_channel_delivery_lease' in names
+
+
+def test_safe_provider_error_redacts_phone_and_long_numbers():
+    from app.services import message_channel_delivery_service as svc
+    value=svc._safe_message('provider rejected +86 13800138000 request 123456789012345')
+    assert '13800138000' not in value and '123456789012345' not in value
+    assert '[REDACTED_PHONE]' in value and '[REDACTED_NUMBER]' in value
+
+
+def test_channel_worker_claims_fresh_small_batches(monkeypatch):
+    from app.services import message_channel_delivery_service as svc
+    calls=[]; batches=[[1,2,3,4,5],[6]]
+    def fake_claim(limit,worker_id,lease_seconds):
+        calls.append(limit); return batches.pop(0) if batches else []
+    monkeypatch.setattr(svc,'_claim',fake_claim)
+    monkeypatch.setattr(svc,'_process_one',lambda row_id,worker_id: True)
+    assert svc.claim_and_process_channel_deliveries(limit=6,worker_id='batch-review')==6
+    assert calls==[5,1]

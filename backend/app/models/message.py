@@ -204,6 +204,7 @@ class MessageChannelDelivery(PKMixin, TenantMixin, CommonMixin, Base):
             name="uk_msg_channel_delivery_receiver",
         ),
         Index("ix_msg_channel_delivery_claim", "tenant_id", "status", "next_retry_at", "id"),
+        Index("ix_msg_channel_delivery_lease", "tenant_id", "status", "lease_expires_at", "id"),
         Index("ix_msg_channel_delivery_campaign", "tenant_id", "campaign_id", "channel", "status"),
     )
 

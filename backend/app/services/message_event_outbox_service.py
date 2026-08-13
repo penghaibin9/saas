@@ -14,6 +14,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 log = logging.getLogger("app.message_outbox")
@@ -597,7 +598,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
 
     for row_id in [r.id for r in claimed]:
         with session() as db:
-            row = db.get(MessageEventOutbox, row_id)
+            row = tenant_get(db, MessageEventOutbox, row_id, tenant_id=_tid())
             now = _utc_now()
             if (
                 not row
@@ -614,7 +615,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
                 with session() as db2:
-                    row2 = db2.get(MessageEventOutbox, row_id)
+                    row2 = tenant_get(db2, MessageEventOutbox, row_id, tenant_id=_tid())
                     if not row2 or row2.locked_by != worker_id:
                         continue
                     attempt = int(row2.attempt_count or 1)

@@ -6,6 +6,7 @@ one worker attempt, then immediately discarded from local scope.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import timedelta
 
 from sqlalchemy import and_, func, or_, select
@@ -16,6 +17,9 @@ from app.services.db_service import _tid, session
 log = logging.getLogger("app.message_channel_delivery")
 _MAX_ATTEMPTS = 8
 _LEASE_SECONDS = 120
+_CLAIM_BATCH_SIZE = 5
+_PHONE_LIKE_RE = re.compile(r"(?<!\d)(?:(?:\+?86)[ -]?)?1\d{10}(?!\d)")
+_LONG_NUMBER_RE = re.compile(r"(?<!\d)\d{7,20}(?!\d)")
 
 
 def _now():
@@ -104,6 +108,8 @@ def _claim(limit: int, worker_id: str, lease_seconds: int):
 
 def _safe_message(value) -> str | None:
     text=str(value or '').strip()
+    text=_PHONE_LIKE_RE.sub('[REDACTED_PHONE]', text)
+    text=_LONG_NUMBER_RE.sub('[REDACTED_NUMBER]', text)
     return text[:200] or None
 
 
@@ -111,7 +117,10 @@ def _process_one(row_id: int, worker_id: str) -> bool:
     from app.models import MessageCampaign, MessageChannelDelivery, User
     from app.services.notification import sms_service
     with session() as db:
-        row=db.get(MessageChannelDelivery,row_id); now=_now()
+        row=db.scalar(select(MessageChannelDelivery).where(
+            MessageChannelDelivery.id==row_id, MessageChannelDelivery.tenant_id==_tid(),
+            MessageChannelDelivery.is_deleted.is_(False),
+        )); now=_now()
         if not row or row.status!='PROCESSING' or row.locked_by!=worker_id or not row.lease_expires_at or row.lease_expires_at<=now:
             return False
         if row.channel=='WECHAT':
@@ -172,18 +181,29 @@ def _process_one(row_id: int, worker_id: str) -> bool:
 
 def claim_and_process_channel_deliveries(*, limit: int=100, worker_id: str='scheduler-channel', lease_seconds: int=_LEASE_SECONDS) -> int:
     done=0
-    for row_id in _claim(limit,worker_id,lease_seconds):
-        try:
-            if _process_one(row_id,worker_id): done+=1
-        except Exception as exc:  # noqa: BLE001
-            log.exception('channel delivery failed id=%s',row_id)
-            from app.models import MessageChannelDelivery
-            with session() as db:
-                row=db.get(MessageChannelDelivery,row_id)
-                if not row or row.locked_by!=worker_id: continue
-                attempt=int(row.attempt_count or 1); row.last_error_code=type(exc).__name__[:80]
-                row.last_error_message_safe='worker internal error'; row.locked_by=None; row.locked_at=None; row.lease_expires_at=None
-                if attempt>=_MAX_ATTEMPTS: row.status='DEAD'
-                else: row.status='RETRY_WAIT'; row.next_retry_at=_now()+timedelta(seconds=_backoff(attempt))
-                db.commit()
+    attempted=0
+    while attempted < max(int(limit), 0):
+        batch_limit=min(_CLAIM_BATCH_SIZE, int(limit)-attempted)
+        claimed=_claim(batch_limit,worker_id,lease_seconds)
+        if not claimed:
+            break
+        attempted += len(claimed)
+        for row_id in claimed:
+            try:
+                if _process_one(row_id,worker_id): done+=1
+            except Exception as exc:  # noqa: BLE001
+                log.exception('channel delivery failed id=%s',row_id)
+                from app.models import MessageChannelDelivery
+                with session() as db:
+                    row=db.scalar(select(MessageChannelDelivery).where(
+                        MessageChannelDelivery.id==row_id, MessageChannelDelivery.tenant_id==_tid(),
+                        MessageChannelDelivery.is_deleted.is_(False),
+                    ))
+                    if not row or row.locked_by!=worker_id:
+                        continue
+                    attempt=int(row.attempt_count or 1); row.last_error_code=type(exc).__name__[:80]
+                    row.last_error_message_safe='worker internal error'; row.locked_by=None; row.locked_at=None; row.lease_expires_at=None
+                    if attempt>=_MAX_ATTEMPTS: row.status='DEAD'
+                    else: row.status='RETRY_WAIT'; row.next_retry_at=_now()+timedelta(seconds=_backoff(attempt))
+                    db.commit()
     return done
