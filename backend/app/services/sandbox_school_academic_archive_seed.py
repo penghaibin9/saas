@@ -1,8 +1,8 @@
 """sandbox-school · 20K 历史教务归档事实。
 
-不复制第二套归档判断：先补齐真实历史结账前置事实，再直接复用正式 13 域归档策略评估
-2025-2026-2。只有全部域 PASS 才生成 ARCHIVED 批次；参考日 2026-08-13 的
-2026-2027-1 尚未开学，严禁提前归档。
+不复制第二套归档判断：先补齐完整三年制培养方案、历史教学闭环和历史结账前置事实，
+再直接复用正式 13 域归档策略评估 2025-2026-2。只有全部域 PASS 才生成 ARCHIVED 批次；
+参考日 2026-08-13 的 2026-2027-1 尚未开学，严禁提前归档。
 
 每次正式预检都会把完整 PASS/BLOCKED 结果和耗时写入
 ``test-results/sandbox-20k/archive-precheck.json``，供 20K gate artifact 留证。
@@ -49,12 +49,26 @@ def _write_precheck_artifact(payload: dict) -> None:
 def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     from app.models import AaArchiveBatch, AaArchiveItem, AaTerm
     from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_service
+    from app.services.sandbox_school_academic_affairs_reconcile import reconcile_exam_rooms
     from app.services.sandbox_school_academic_archive_prereq import (
         seed_school_academic_archive_prerequisites_20k,
     )
+    from app.services.sandbox_school_curriculum_closure import (
+        prepare_school_curriculum_20k,
+        seed_historical_teaching_closure_20k,
+    )
 
-    # 先补真实结账前置事实；不修改正式 policy，也不 monkeypatch resolver/evaluator。
+    # 先把“名义140学分但只有28学分课程”的方案补成真实三年制140学分方案，
+    # 再补齐 2024/2025 两届已经发生的 1024 教学任务和 52K 成绩闭环。
+    curriculum = prepare_school_curriculum_20k(db, tenant_id)
+    historical_teaching = seed_historical_teaching_closure_20k(db, tenant_id)
+
+    # 结账前置：96正式方案绑定、13K春季注册、历史正式课表状态、52K成绩身份/策略快照。
     prerequisites = seed_school_academic_archive_prerequisites_20k(db, tenant_id)
+
+    # 历史考试课程已经扩到1024门；统一考场容量重排器负责拆考场/座位/监考，
+    # 正式 EXAM policy 因此看到的就是最终可归档考务事实。
+    exam_reconciliation = reconcile_exam_rooms(db, tenant_id)
 
     historical_term = db.scalars(select(AaTerm).where(
         AaTerm.tenant_id == tenant_id,
@@ -112,7 +126,10 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "domainCount": len(domains),
         "allPass": not blocked and len(domains) == EXPECTED_ARCHIVE_DOMAINS,
         "blockedDomains": list(blocked),
+        "curriculum": curriculum.get("validation") or curriculum,
+        "historicalTeaching": historical_teaching,
         "prerequisites": prerequisites.get("validation") or prerequisites,
+        "examReconciliation": exam_reconciliation,
         "domains": domains,
     }
     _write_precheck_artifact(precheck)
@@ -161,7 +178,10 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     db.commit()
     validation = validate_school_academic_archive_20k(db, tenant_id)
     return {
+        "curriculum": curriculum,
+        "historicalTeaching": historical_teaching,
         "prerequisites": prerequisites,
+        "examReconciliation": exam_reconciliation,
         "precheckElapsedMs": elapsed_ms,
         "precheckArtifact": "test-results/sandbox-20k/archive-precheck.json",
         "validation": validation,
