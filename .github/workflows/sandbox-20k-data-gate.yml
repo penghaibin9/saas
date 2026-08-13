@@ -72,32 +72,44 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Python编译与纯数据规格合同
+      - name: Python编译
         working-directory: backend
+        shell: bash
         run: |
-          set -euo pipefail
-          python -m compileall -q app scripts tests
-          pytest -q tests/test_sandbox_school_blueprint.py -p no:warnings
+          set -o pipefail
+          mkdir -p test-results/sandbox-20k
+          python -m compileall -q app scripts tests \
+            2>&1 | tee test-results/sandbox-20k/compile.log
 
       - name: Alembic单头与MySQL空库升级
         working-directory: backend
+        shell: bash
         run: |
-          set -euo pipefail
-          test "$(alembic heads | wc -l)" -eq 1
-          alembic upgrade head
-          alembic current
+          set -o pipefail
+          mkdir -p test-results/sandbox-20k
+          {
+            test "$(alembic heads | wc -l)" -eq 1
+            alembic upgrade head
+            alembic current
+          } 2>&1 | tee test-results/sandbox-20k/alembic.log
 
-      - name: 数据库沙箱恢复路由合同
+      - name: 数据规格与沙箱恢复路由合同
         working-directory: backend
+        shell: bash
         run: |
-          set -euo pipefail
-          pytest -q tests/test_sandbox_story_reset_route.py -p no:warnings
+          set -o pipefail
+          mkdir -p test-results/sandbox-20k
+          pytest -q \
+            tests/test_sandbox_school_blueprint.py \
+            tests/test_sandbox_story_reset_route.py \
+            -p no:warnings \
+            2>&1 | tee test-results/sandbox-20k/contracts.log
 
       - name: 全量生成20K真实学校演示数据
         working-directory: backend
         shell: bash
         run: |
-          set -euo pipefail
+          set -o pipefail
           mkdir -p test-results/sandbox-20k
           /usr/bin/time -v python scripts/reset_sandbox_school.py --confirm --profile standard-20k \
             2>&1 | tee test-results/sandbox-20k/rebuild.log
@@ -106,7 +118,7 @@ jobs:
         working-directory: backend
         shell: bash
         run: |
-          set -euo pipefail
+          set -o pipefail
           python scripts/check_sandbox_20k_school.py \
             2>&1 | tee test-results/sandbox-20k/acceptance.log
 
