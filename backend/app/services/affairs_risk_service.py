@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 from app.services.affairs_sla import get_risk_sla, risk_due_at, risk_is_overdue
 
@@ -276,7 +277,7 @@ def _scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该风险不在您的数据范围内")
 
@@ -341,14 +342,14 @@ def _sensitive_view_audit(x, reason: str) -> None:
     )
 
 
-def _row(x, user, s=None, reveal=False, owner=None) -> dict:
+def _row(x, user, s=None, reveal=False, owner=None, allowed_actions=None) -> dict:
     # 列表恒遮蔽心理明细（仅摘要）；明细页须经授权角色 + 填写原因，get_risk 内 reveal=True 且写 SENSITIVE_VIEW。
     mental_masked = (x.source == "MENTAL" and not (reveal and _can_view_mental(user)))
     owner_name = (owner.real_name if owner else "") or ""
     owner_login = (owner.login_name if owner else "") or ""
     sla = get_risk_sla(getattr(x, "risk_level", None))
     due_at = risk_due_at(x)
-    return {
+    row = {
         "riskId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
         "source": x.source, "sourceRefId": str(x.source_ref_id or ""),
@@ -365,6 +366,13 @@ def _row(x, user, s=None, reveal=False, owner=None) -> dict:
             "dueAt": _iso(due_at) if due_at else None,
         },
     }
+    # 行级动作真值来自服务端状态机：前端 permission 只做页面级粗粒度控制，
+    # 不能替代"这条记录当前状态、当前责任关系下能不能做"。
+    # 仅在调用方显式给出时才带该字段：写服务返回体保持原样不下发（避免空数组被
+    # 误读成"什么都不能做"），列表与详情则必须显式传入，前端按它 fail-closed。
+    if allowed_actions is not None:
+        row["allowedActions"] = list(allowed_actions)
+    return row
 
 
 def _load(db, risk_id):
@@ -429,7 +437,27 @@ def create_risk(body, user) -> dict:
         return _row(x, user, s)
 
 
+def resolve_self_owner(user, owner_id):
+    """把「我来处理」的 ownerId=me 解析成调用者真实账号 id。
+
+    这是 U3 self-assign 的唯一入口：解析完仍走既有 ASSIGN 写链
+    （_transition_or_conflict → atomic_claim_version → _validate_owner
+    → 待办/通知/审计），不新增状态迁移，也不放宽任何校验。
+    尤其不得改用 TAKEOVER —— 那是 ESCALATED 之后的上级接管，语义完全不同。
+    """
+    raw = str(owner_id or "").strip()
+    if raw.lower() != "me":
+        return owner_id
+    from app.services.message_identity import resolve_message_user_id
+
+    resolved = resolve_message_user_id(user or {})
+    if resolved <= 0:
+        raise AppException("VALIDATION_ERROR", "无法识别当前账号，不能认领该风险")
+    return str(resolved)
+
+
 def assign(risk_id, user, owner_id, expected_version=None) -> dict:
+    owner_id = resolve_self_owner(user, owner_id)
     with session() as db:
         x, s = _load(db, risk_id)
         _scope_or_403(db, x.student_id, user)
@@ -447,7 +475,7 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
         _drain_message_outbox()
         db.refresh(x)
         from app.models import User
-        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        owner = tenant_get(db, User, int(x.owner_id)) if x.owner_id else None
         return _row(x, user, s, owner=owner)
 
 
@@ -723,28 +751,45 @@ def scan_timeout() -> dict:
 
 # ═══════════ 查询 ═══════════
 
-def _allowed_risk_actions(x, user) -> list[str]:
-    """严格按状态机、权限和责任关系计算；不得比写服务更宽。"""
+def _risk_action_evaluator(user):
+    """把与具体记录无关的身份事实解析一次，返回逐行纯函数。
+
+    build_affairs_context 和 has_permission 对自定义角色都会去 t_role_permission 开库读，
+    列表逐行直接调用 _allowed_risk_actions 会形成 N+1。这里解析一次再逐行判定，
+    规则仍是同一份 RISK_TRANSITIONS —— 列表与详情不得各算一套。
+    """
     from app.core.affairs_security import build_affairs_context
 
-    is_owner = bool(x.owner_id) and _uid_norm(x.owner_id) == _uid_norm(user)
     ctx = build_affairs_context(user, None)
     is_admin = ctx.scope_type == "TENANT_ALL"
     role = (user or {}).get("currentRoleCode") or ""
     is_superior = is_admin or role in (
         "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
     )
-    actions: list[str] = []
-    for action, rule in RISK_TRANSITIONS.items():
-        if x.status not in rule["from"] or not has_permission(user, rule["permission"]):
-            continue
-        relationship = rule.get("relationship")
-        if relationship == "OWNER_OR_ADMIN" and not (is_owner or is_admin):
-            continue
-        if relationship == "SUPERIOR" and not is_superior:
-            continue
-        actions.append(action)
-    return actions
+    permitted = {action: has_permission(user, rule["permission"])
+                 for action, rule in RISK_TRANSITIONS.items()}
+    actor = _uid_norm(user)
+
+    def evaluate(x) -> list[str]:
+        is_owner = bool(x.owner_id) and _uid_norm(x.owner_id) == actor
+        actions: list[str] = []
+        for action, rule in RISK_TRANSITIONS.items():
+            if x.status not in rule["from"] or not permitted[action]:
+                continue
+            relationship = rule.get("relationship")
+            if relationship == "OWNER_OR_ADMIN" and not (is_owner or is_admin):
+                continue
+            if relationship == "SUPERIOR" and not is_superior:
+                continue
+            actions.append(action)
+        return actions
+
+    return evaluate
+
+
+def _allowed_risk_actions(x, user) -> list[str]:
+    """严格按状态机、权限和责任关系计算；不得比写服务更宽。"""
+    return _risk_action_evaluator(user)(x)
 
 
 def list_handles(risk_id, user) -> list[dict]:
@@ -788,7 +833,7 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
             if reason and len(str(reason).strip()) >= 5:
                 _sensitive_view_audit(x, reason.strip())
                 reveal = True
-        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        owner = tenant_get(db, User, int(x.owner_id)) if x.owner_id else None
         row = _row(x, user, s, reveal=reveal, owner=owner)
         row["allowedActions"] = _allowed_risk_actions(x, user)
     # 独立会话拉 handles，避免与详情会话交叉
@@ -796,8 +841,56 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
     return row
 
 
-def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=None):
-    """列表 / count / 聚合共用过滤条件（不含数据范围）。"""
+HIGH_CRITICAL_LEVELS = ("HIGH", "CRITICAL")
+
+
+def _overdue_predicate():
+    """超时判定谓词（单一来源）。
+
+    指标卡的"超时"数字和「超时」快捷队列必须用同一份表达式，否则会出现
+    卡片写 8 条、点进去列表只有 5 条这种口径分裂。阈值仍来自 get_risk_sla，
+    与 scan_timeout 共用配置。
+    """
+    from app.models import AffairsRiskRecord
+
+    now = datetime.utcnow()
+    pred = AffairsRiskRecord.status == "ESCALATED"
+    for level in LEVELS:
+        sla = get_risk_sla(level)
+        pred |= (
+            (AffairsRiskRecord.risk_level == level)
+            & (
+                ((AffairsRiskRecord.status == "NEW")
+                 & AffairsRiskRecord.created_at.is_not(None)
+                 & (AffairsRiskRecord.created_at <= now - timedelta(hours=sla["assignHours"])))
+                | ((AffairsRiskRecord.status == "ASSIGNED")
+                   & AffairsRiskRecord.assigned_at.is_not(None)
+                   & (AffairsRiskRecord.assigned_at
+                      <= now - timedelta(hours=sla["processHours"])))
+                | ((AffairsRiskRecord.status.in_(("PROCESSING", "FOLLOWING")))
+                   & (
+                       (AffairsRiskRecord.updated_at.is_not(None)
+                        & (AffairsRiskRecord.updated_at
+                           <= now - timedelta(hours=sla["followHours"])))
+                       | (AffairsRiskRecord.updated_at.is_(None)
+                          & AffairsRiskRecord.assigned_at.is_not(None)
+                          & (AffairsRiskRecord.assigned_at
+                             <= now - timedelta(hours=sla["followHours"])))
+                   ))
+            )
+        )
+    return pred
+
+
+def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=None,
+                       priority=None, overdue_only=False, unassigned_only=False,
+                       owner_id=None):
+    """列表 / count / 聚合共用过滤条件（不含数据范围）。
+
+    priority / overdue_only / unassigned_only / owner_id 是 U2 快捷队列的只读过滤：
+    全部作为 SQL 条件参与 COUNT 和分页，绝不允许前端拿当前页再筛——
+    那样「超时」按钮在超过一页时会漏掉真实存在的记录。
+    """
     from app.models import AffairsRiskRecord
     conds = [AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.is_deleted.is_(False)]
     if source:
@@ -813,6 +906,36 @@ def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=Non
         conds.append(AffairsRiskRecord.risk_level == risk_level)
     if student_id:
         conds.append(AffairsRiskRecord.student_id == int(student_id))
+    if str(priority or "").upper() == "HIGH_CRITICAL":
+        conds.append(AffairsRiskRecord.risk_level.in_(HIGH_CRITICAL_LEVELS))
+    if overdue_only:
+        conds.append(_overdue_predicate())
+    if unassigned_only:
+        conds.append(AffairsRiskRecord.owner_id.is_(None))
+    if owner_id is not None and str(owner_id).strip() != "":
+        wanted = _uid_norm(owner_id)
+        # 解析不出数字责任人时按"查不到"处理，不能静默退化成不过滤。
+        conds.append(AffairsRiskRecord.owner_id == int(wanted) if wanted
+                     else AffairsRiskRecord.id.is_(None))
+    return conds
+
+
+def resolve_owner_filter(user, owner_id):
+    """把「我负责的」解析成真实责任人 id。
+
+    前端拿不到自己的数字用户 id（/rbac/current-context 不返回 userId），
+    所以约定传 ownerId=me，由服务端认自己是谁——这也避免把身份解析规则
+    复制一份到浏览器里。resolve_message_user_id 会先看 userId、再按 loginName 查库，
+    与材料/待办等模块判定"当前用户"的口径一致。
+    """
+    raw = str(owner_id or "").strip()
+    if raw.lower() != "me":
+        return owner_id
+    from app.services.message_identity import resolve_message_user_id
+
+    resolved = resolve_message_user_id(user or {})
+    # 解析不出就返回一个不可能命中的值，宁可空列表也不能退化成"看全部"。
+    return str(resolved) if resolved > 0 else "__NO_SUCH_OWNER__"
     return conds
 
 
@@ -830,31 +953,8 @@ def _risk_stats_sql(db, base_conds, allowed) -> dict:
     from sqlalchemy import case
     from app.models import AffairsRiskRecord
 
-    now = datetime.utcnow()
-    overdue_pred = AffairsRiskRecord.status == "ESCALATED"
-    for level in LEVELS:
-        sla = get_risk_sla(level)
-        overdue_pred |= (
-            (AffairsRiskRecord.risk_level == level)
-            & (
-                ((AffairsRiskRecord.status == "NEW")
-                 & AffairsRiskRecord.created_at.is_not(None)
-                 & (AffairsRiskRecord.created_at <= now - timedelta(hours=sla["assignHours"])))
-                | ((AffairsRiskRecord.status == "ASSIGNED")
-                   & AffairsRiskRecord.assigned_at.is_not(None)
-                   & (AffairsRiskRecord.assigned_at <= now - timedelta(hours=sla["processHours"])))
-                | ((AffairsRiskRecord.status.in_(("PROCESSING", "FOLLOWING")))
-                   & (
-                       (AffairsRiskRecord.updated_at.is_not(None)
-                        & (AffairsRiskRecord.updated_at
-                           <= now - timedelta(hours=sla["followHours"])))
-                       | (AffairsRiskRecord.updated_at.is_(None)
-                          & AffairsRiskRecord.assigned_at.is_not(None)
-                          & (AffairsRiskRecord.assigned_at
-                             <= now - timedelta(hours=sla["followHours"])))
-                   ))
-            )
-        )
+    # 与「超时」快捷队列共用同一份谓词，卡片数字和点进去的列表条数不会分裂。
+    overdue_pred = _overdue_predicate()
     stmt = _risk_scope_join(
         select(
             func.count().label("total"),
@@ -879,14 +979,20 @@ def _risk_stats_sql(db, base_conds, allowed) -> dict:
 
 
 def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
-               page=1, page_size=20):
+               page=1, page_size=20, *, priority=None, overdue_only=False,
+               unassigned_only=False, owner_id=None):
     from app.core.pagination import normalize_page
     from app.models import AffairsRiskRecord, StudentProfile, User
     from app.services.affairs_dashboard_service import _allowed_class_ids
     page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        base_conds = _risk_filter_conds(source, status, risk_level, student_id)
+        base_conds = _risk_filter_conds(
+            source, status, risk_level, student_id,
+            priority=priority, overdue_only=overdue_only,
+            unassigned_only=unassigned_only,
+            owner_id=resolve_owner_filter(user, owner_id),
+        )
         stats = _risk_stats_sql(db, base_conds, allowed)
         total = stats["total"]
         id_stmt = _risk_scope_join(
@@ -904,11 +1010,27 @@ def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
         oids = {int(x.owner_id) for x in rows if x.owner_id}
         owners = {u.id: u for u in db.scalars(select(User).where(
             User.id.in_(oids))).all()} if oids else {}
-        out = [
-            _row(x, user, students.get(int(x.student_id)) if x.student_id else None,
-                 owner=owners.get(int(x.owner_id)) if x.owner_id else None)
-            for x in rows
-        ]
+        # 身份事实解析一次，逐行只按状态/责任关系判定，避免 N+1 权限查询。
+        evaluate = _risk_action_evaluator(user)
+        # 「我来处理」是否可用：当前激活身份必须持处置权限，且调用者本人必须是
+        # 合法责任人候选（在职 + 持处置权限）。不能只看账号的任意历史/兼任角色，
+        # 否则“宽范围查看角色 + 窄范围处置角色”的多身份账号会看到一个必然失败的按钮。
+        # 列表已按当前激活身份的数据范围裁剪，因此能看到的行即在该身份范围内。
+        from app.services.message_identity import resolve_message_user_id
+        caller_id = resolve_message_user_id(user or {})
+        caller_can_own = (
+            caller_id > 0
+            and has_permission(user or {}, "studentAffairs.risk.handle")
+            and caller_id in _owner_role_user_ids(db)
+        )
+        out = []
+        for x in rows:
+            actions = evaluate(x)
+            row = _row(x, user, students.get(int(x.student_id)) if x.student_id else None,
+                       owner=owners.get(int(x.owner_id)) if x.owner_id else None,
+                       allowed_actions=actions)
+            row["canClaim"] = bool(caller_can_own and "ASSIGN" in actions)
+            out.append(row)
         return out, total, stats
 
 

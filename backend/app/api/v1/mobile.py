@@ -764,17 +764,21 @@ def teacher_affairs_leave_detail(leave_id: str, user=Depends(get_current_user)):
 @router.post("/teacher/affairs/leaves/{leave_id}/approve", summary="辅导员·请假审批通过（owner+节点校验）")
 def teacher_affairs_leave_approve(leave_id: str, body: dict = Body(default={}),
                                   user=Depends(get_current_user)):
-    return success(tea.affairs_leave_approve(user, leave_id, (body or {}).get("comment")), message="已通过")
+    payload = body or {}
+    return success(tea.affairs_leave_approve(
+        user, leave_id, payload.get("comment"), payload.get("version")), message="已通过")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/reject", summary="辅导员·请假驳回（原因≥5字，owner+节点校验）")
 def teacher_affairs_leave_reject(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tea.affairs_leave_reject(user, leave_id, body.get("reason") or ""), message="已驳回")
+    return success(tea.affairs_leave_reject(
+        user, leave_id, body.get("reason") or "", body.get("version")), message="已驳回")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/return", summary="辅导员·请假退回重提（原因≥5字，owner+节点校验）")
 def teacher_affairs_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    return success(tea.affairs_leave_return(user, leave_id, body.get("reason") or ""), message="已退回")
+    return success(tea.affairs_leave_return(
+        user, leave_id, body.get("reason") or "", body.get("version")), message="已退回")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/cancel-confirm",

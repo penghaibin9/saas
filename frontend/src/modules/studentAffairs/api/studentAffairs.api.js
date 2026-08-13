@@ -225,12 +225,20 @@ export const studentAffairsApi = {
   // ─────────────── 风险预警（P5 · /student-affairs/risk/*） ───────────────
 
   /** 风险列表（服务端支持 source/status/riskLevel/studentId 过滤；心理来源明细按角色脱敏）。 */
-  getRisks({ source = '', status = '', riskLevel = '', studentId = '', page = 1, pageSize = 100 } = {}) {
+  getRisks({ source = '', status = '', riskLevel = '', studentId = '', page = 1, pageSize = 100,
+             priority = '', overdueOnly = false, unassignedOnly = false, ownerId = '' } = {}) {
     const params = { page, pageSize }
     if (source) params.source = source
     if (status) params.status = status
     if (riskLevel) params.riskLevel = riskLevel
     if (studentId) params.studentId = studentId
+    // 快捷队列的只读过滤：必须真的发给后端做 SQL 条件。
+    // 这里是白名单式解构，新增参数如果忘了列出来会被静默丢弃，
+    // 表现为「按钮点了有选中态、列表却纹丝不动」。
+    if (priority) params.priority = priority
+    if (overdueOnly) params.overdueOnly = true
+    if (unassignedOnly) params.unassignedOnly = true
+    if (ownerId) params.ownerId = ownerId
     return callStrict(() => request('/student-affairs/risk/records', { params }))
   },
 
@@ -677,6 +685,11 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/funding/applications', { method: 'POST', body }))
   },
 
+  /** 只读预检：后端复用 apply 的正式资格规则与金额策略。 */
+  preflightFunding(batchId, studentId) {
+    return callStrict(() => request('/student-affairs/funding/preflight', { params: { batchId, studentId } }))
+  },
+
   /** 资助申请详情（含资格校验快照）。 */
   getFundingDetail(id) {
     return callStrict(() => request(`/student-affairs/funding/applications/${id}`))
@@ -873,6 +886,10 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/collect`, { method: 'POST', body: { studentIds: studentIds.map(String), version } }))
   },
 
+  previewArchiveCollect(batchId, studentIds, version) {
+    return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/collect-preview`, { method: 'POST', body: { studentIds: studentIds.map(String), version } }))
+  },
+
   /** 批次流转（COLLECTING→COLLEGE_REVIEW→SA_CONFIRM→ARCHIVED；归档登记水印包）。 */
   advanceArchive(batchId, action = 'APPROVE', version) {
     return callStrict(() => request(`/student-affairs/archive/batches/${batchId}/advance`, { method: 'POST', body: { action, version } }))
@@ -881,10 +898,11 @@ export const studentAffairsApi = {
   // ─────────────── 学生活动与第二课堂（D 包波次1 · /activities /second-class） ───────────────
 
   /** 活动列表（type/status 过滤）。 */
-  getActivities({ activityType = '', status = '', page = 1, pageSize = 50 } = {}) {
+  getActivities({ activityType = '', status = '', priority = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }
     if (activityType) params.activityType = activityType
     if (status) params.status = status
+    if (priority) params.priority = priority
     return callStrict(() => request('/student-affairs/activities', { params }))
   },
   /** 建活动（草稿）。body: { activityName, activityType, startAt?, endAt?, enrollDeadline?, quota?, creditType?, creditValue?, categoryCode?, location?, description? } */

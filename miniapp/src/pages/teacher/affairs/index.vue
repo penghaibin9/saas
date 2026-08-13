@@ -4,18 +4,23 @@
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
         <view class="ta__total">
-          <text class="ta__total-n">{{ data.total }}</text>
-          <text class="ta__total-l">项学工待办</text>
+          <view><text class="ta__eyebrow">今日先做</text><view><text class="ta__total-n">{{ data.total }}</text><text class="ta__total-l">项学工待办</text></view></view>
+          <view class="ta__priority-stats">
+            <view class="ta__priority-stat is-overdue"><text>{{ prioritySummary.overdue }}</text><text>已逾期</text></view>
+            <view class="ta__priority-stat is-near"><text>{{ prioritySummary.dueWithin24h }}</text><text>24h内</text></view>
+            <view class="ta__priority-stat"><text>{{ prioritySummary.ordinary }}</text><text>普通</text></view>
+          </view>
         </view>
 
         <view class="section-head"><text class="section-head__title">待我处理</text></view>
         <view class="ta__empty" v-if="!todoItems.length"><text>暂无待办</text></view>
         <view class="stack" v-else>
-          <view v-for="item in todoItems" :key="item.todoId" class="ta__todo" @click="openTodo(item)">
+          <view v-for="item in todoItems" :key="item.todoId" class="ta__todo" :class="priorityClass(item)" @click="openTodo(item)">
             <view class="flex-1">
               <view class="ta__todo-head">
                 <text class="ta__label">{{ item.label || item.todoType }}</text>
                 <text v-if="item.overdue" class="ta__overdue">已逾期</text>
+                <text v-else-if="item.dueWithin24h" class="ta__near">24h 内</text>
               </view>
               <text class="ta__title">{{ item.title || '学工待办' }}</text>
               <text v-if="item.studentName || item.studentNo" class="ta__sub">
@@ -45,7 +50,8 @@
             <view class="row-between ta__todo-head">
               <view class="flex-1">
                 <text class="ta__label">{{ item.itemName }}</text>
-                <text class="ta__sub">{{ bizLabel(item.bizType) }} #{{ item.bizId }} · 学生 #{{ item.studentId }}</text>
+                <text class="ta__sub">{{ materialStudentLine(item) }}</text>
+                <text class="ta__sub">{{ materialBizLine(item) }}</text>
               </view>
               <MobileStatusTag :status="item.status" :label="item.statusLabel || item.status" />
             </view>
@@ -191,7 +197,12 @@ export default {
       batchLoading: false
     }
   },
-  computed: { todoItems() { return (this.data && Array.isArray(this.data.items)) ? this.data.items : [] } },
+  computed: {
+    todoItems() { return (this.data && Array.isArray(this.data.items)) ? this.data.items : [] },
+    prioritySummary() {
+      return (this.data && this.data.prioritySummary) || { overdue: 0, dueWithin24h: 0, ordinary: 0 }
+    }
+  },
   onLoad(query) {
     this.focusMaterialId = String((query && (query.materialRequirementId || query.recordId)) || '')
     this.load()
@@ -199,7 +210,22 @@ export default {
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
+    priorityClass(item) {
+      return { 'is-overdue': !!item.overdue, 'is-near': !item.overdue && !!item.dueWithin24h }
+    },
     bizLabel(value) { return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉' }[value] || value) },
+    // 老师在手机上尤其不该靠主键认学生。后端下发 businessContext 时显示
+    // 姓名/学号/班级与业务标题，未下发时退回原有 ID 文案，不留空白。
+    materialStudentLine(item) {
+      const c = (item && item.businessContext) || {}
+      const parts = [c.studentName, c.studentNo, c.className].filter(Boolean)
+      return parts.length ? parts.join(' · ') : `学生 #${item.studentId}`
+    },
+    materialBizLine(item) {
+      const c = (item && item.businessContext) || {}
+      const parts = [c.bizPeriod, c.bizDisplayTitle || this.bizLabel(item.bizType), c.bizDisplaySubtitle].filter(Boolean)
+      return parts.length ? parts.join(' · ') : `${this.bizLabel(item.bizType)} #${item.bizId}`
+    },
     allows(item, action) { return (item.allowedActions || []).includes(action) },
     canRemind(item) { return ['MISSING', 'RETURNED'].includes(item.status) && item.version !== undefined && item.version !== null },
     load() {
@@ -395,13 +421,24 @@ export default {
 </script>
 
 <style scoped>
-.ta__total { background: var(--brand-primary); color: #fff; border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); display: flex; align-items: baseline; gap: var(--space-2); }
+.ta__total { background: linear-gradient(135deg, #174a78, var(--brand-primary) 58%, #2f8ea3); color: #fff; border-radius: 20px; padding: 18px; margin-bottom: var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 18px 38px -25px rgba(15,59,95,.72); }
+.ta__eyebrow { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 700; letter-spacing: 2px; opacity: .82; }
 .ta__total-n { font-size: 28px; font-weight: 700; }
+.ta__total-l { margin-left: 6px; font-size: 12px; opacity: .84; }
+.ta__priority-stats { display: flex; gap: 6px; }
+.ta__priority-stat { min-width: 44px; padding: 7px 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 11px; background: rgba(255,255,255,.1); text-align: center; }
+.ta__priority-stat text { display: block; font-size: 10px; opacity: .82; }
+.ta__priority-stat text:first-child { margin-bottom: 2px; font-size: 17px; font-weight: 750; opacity: 1; }
+.ta__priority-stat.is-overdue { background: rgba(190,24,24,.28); }
+.ta__priority-stat.is-near { background: rgba(217,119,6,.3); }
 .ta__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .ta__card,.ta__todo { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
 .ta__todo { align-items: flex-start; gap: 12px; }
+.ta__todo.is-overdue { border-left: 4px solid var(--danger-500, #dc2626); background: linear-gradient(90deg, var(--danger-50, #fef2f2), #fff 34%); }
+.ta__todo.is-near { border-left: 4px solid var(--warning-500, #f59e0b); background: linear-gradient(90deg, #fff8eb, #fff 34%); }
 .ta__todo-head { display: flex; align-items: flex-start; gap: 8px; }
 .ta__overdue { font-size: 11px; color: var(--danger-600); background: var(--danger-50, #fef2f2); padding: 2px 6px; border-radius: 6px; }
+.ta__near { font-size: 11px; color: #a15c00; background: #fff2d6; padding: 2px 6px; border-radius: 6px; }
 .ta__title { display: block; margin-top: 5px; color: var(--text-primary); font-size: 14px; line-height: 1.5; }
 .ta__label { display: block; font-weight: 600; color: var(--text-primary); }
 .ta__sub,.ta__due { display: block; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }

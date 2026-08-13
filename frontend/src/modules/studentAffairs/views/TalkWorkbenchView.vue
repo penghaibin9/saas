@@ -216,6 +216,7 @@ export default {
       recordForm: { content: '', result: '', needFollowUp: false, error: '' },
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       createModal: { visible: false, talkType: 'DAILY', topic: '', studentIds: [], scheduledAt: '', error: '' },
+      routeIntentConsumed: false,
       talkTypes: Object.entries(TALK_TYPE).map(([value, label]) => ({ value, label }))
     }
   },
@@ -291,6 +292,7 @@ export default {
     this.applyRouteFilters()
     this.loadList()
     this.loadStats()
+    this.consumeRouteIntent()
   },
   watch: {
     '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadList() },
@@ -303,6 +305,13 @@ export default {
       this.clearStudentFilter()
     },
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create') return
+      const sid = this.studentFilter?.studentId
+      if (!sid || !this.canBtn('studentAffairs.talk.create')) return
+      this.routeIntentConsumed = true
+      this.openCreate()
+    },
     applyRouteFilters() {
       const q = this.$route.query || {}
       this.studentFilter = readStudentFilter(q)
@@ -434,7 +443,8 @@ export default {
       this.dialog.visible = false
     },
     openCreate() {
-      this.createModal = { visible: true, talkType: 'DAILY', topic: '', studentIds: [], scheduledAt: '', error: '' }
+      const sid = this.studentFilter?.studentId
+      this.createModal = { visible: true, talkType: 'DAILY', topic: '', studentIds: sid ? [String(sid)] : [], scheduledAt: '', error: '' }
     },
     async submitCreate() {
       const m = this.createModal

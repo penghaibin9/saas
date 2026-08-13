@@ -135,6 +135,16 @@
             >{{ a.label }}</AppPermissionButton>
           </div>
           <p v-else class="ad-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
+
+          <div class="ad-actions">
+            <AppPermissionButton
+              code="studentAffairs.aid.view"
+              :allowed="canRequireMaterial"
+              variant="secondary"
+              size="sm"
+              @click="requireMaterial"
+            >要求补材料</AppPermissionButton>
+          </div>
         </template>
       </div>
     </div>
@@ -199,9 +209,10 @@
         </label>
         <label class="ad-field"><span>学年 <i>*</i></span>
           <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
+          <span class="ad-field__quick"><button v-for="year in schoolYearOptions" :key="year" type="button" :class="{ active: batchModal.schoolYear === year }" @click="useSchoolYear(year)">{{ year }}<small v-if="year === currentSchoolYear">本学年</small></button></span>
         </label>
         <label class="ad-field"><span>公示天数</span>
-          <AppNumberInput v-model="batchModal.publicityDays" :min="0" placeholder="默认 5，快测可填 0" />
+          <AppNumberInput v-model="batchModal.publicityDays" :min="1" :max="30" placeholder="1-30 天，默认 5" />
         </label>
         <label class="ad-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
         <p v-if="batchModal.error" class="ad-err">{{ batchModal.error }}</p>
@@ -288,11 +299,12 @@ export default {
       revealed: false, revealedFam: {}, revealing: false,
       activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      routeIntentConsumed: false,
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       revealModal: { visible: false, reason: '', error: '' },
       adjustModal: { visible: false, targetLevel: 'DIFFICULT', reason: '', error: '' },
-      batchModal: { visible: false, batchName: '', schoolYear: '', publicityDays: 0, publish: true, error: '' },
+      batchModal: { visible: false, batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' },
       applyModal: { visible: false, studentId: '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' },
       levelOptions: Object.entries(LEVEL).map(([value, label]) => ({ value, label }))
     }
@@ -306,6 +318,15 @@ export default {
     },
     dataScopeName() {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
+    },
+    currentSchoolYear() {
+      const now = new Date()
+      const start = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1
+      return `${start}-${start + 1}`
+    },
+    schoolYearOptions() {
+      const start = Number(this.currentSchoolYear.slice(0, 4))
+      return [`${start}-${start + 1}`, `${start - 1}-${start}`]
     },
     pendingCount() {
       if (!this.statusCounts) return null
@@ -365,6 +386,12 @@ export default {
       }
       return arr
     },
+    /** 材料缺项的业务权限口径与后端 BIZ_PERMISSIONS['AID'] 一致。 */
+    canRequireMaterial() {
+      return this.canBtn('studentAffairs.aid.approve')
+        || this.canBtn('studentAffairs.aid.counselorReview')
+        || this.canBtn('studentAffairs.aid.view')
+    },
     detailActions() {
       const s = this.selected && this.selected.status
       if (!s) return []
@@ -415,7 +442,24 @@ export default {
       this.activeStatus = 'ALL'
       this.clearStudentFilter()
     },
+    /**
+     * 「业务详情 → 要求补材料」：直接把本笔困难认定和学生带到材料中心，
+     * 老师不用再从详情里复制数据库记录 ID 粘到登记表单里。
+     * 目标页会用 bizType+bizId 向服务端重新解析业务与学生，并做同样的授权校验。
+     */
+    requireMaterial() {
+      this.$router.push({
+        path: '/admin/student-affairs/material-operations',
+        query: { bizType: 'AID', bizId: String(this.selected.applyId) }
+      })
+    },
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create') return
+      if (!this.studentFilter?.studentId || !this.currentBatchOpen || !this.canBtn('studentAffairs.aid.create')) return
+      this.routeIntentConsumed = true
+      this.openApply()
+    },
     applyRouteFilters() {
       const q = this.$route.query || {}
       this.studentFilter = readStudentFilter(q)
@@ -469,9 +513,11 @@ export default {
       if (res.code === 0 && res.data) {
         this.batches = res.data.items || []
         if (!this.batchId && this.batches.length) {
-          this.batchId = this.batches[0].batchId
+          const candidate = this.batches.find((batch) => batch.status === 'OPEN') || this.batches[0]
+          this.batchId = candidate.batchId
           this.loadApplications()
         }
+        this.consumeRouteIntent()
       } else {
         this.listError = res.message || '批次加载失败'
       }
@@ -591,14 +637,20 @@ export default {
     },
     // ── 批次 ──
     openBatch() {
-      this.batchModal = { visible: true, batchName: '', schoolYear: '', publicityDays: 0, publish: true, error: '' }
+      this.batchModal = { visible: true, batchName: `${this.currentSchoolYear}学年家庭经济困难认定`, schoolYear: this.currentSchoolYear, publicityDays: 5, publish: true, error: '' }
+    },
+    useSchoolYear(year) {
+      this.batchModal.schoolYear = year
+      if (!this.batchModal.batchName || /^\d{4}-\d{4}学年家庭经济困难认定$/.test(this.batchModal.batchName)) {
+        this.batchModal.batchName = `${year}学年家庭经济困难认定`
+      }
     },
     async submitBatch() {
       const m = this.batchModal
       const batchName = (m.batchName || '').trim()
       const schoolYear = (m.schoolYear || '').trim()
       if (!batchName || !schoolYear) { m.error = '批次名称与学年必填'; return }
-      const body = { batchName, schoolYear, publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish }
+      const body = { batchName, schoolYear, publicityDays: Number(m.publicityDays) || 5, publish: !!m.publish }
       const res = await studentAffairsApi.createAidBatch(body)
       if (res.code === 0) {
         toast.success('批次已保存')
@@ -611,7 +663,8 @@ export default {
     },
     // ── 受理 ──
     openApply() {
-      this.applyModal = { visible: true, studentId: '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' }
+      const sid = this.studentFilter?.studentId
+      this.applyModal = { visible: true, studentId: sid ? String(sid) : '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' }
     },
     async submitApply() {
       const m = this.applyModal
@@ -694,6 +747,10 @@ export default {
   display: flex;
   gap: var(--space-2);
 }
+.ad-field__quick { display: flex; gap: var(--space-2); margin-top: 7px; }
+.ad-field__quick button { border: 1px solid var(--border-base); border-radius: 999px; padding: 5px 9px; color: var(--text-secondary); background: var(--bg-card); cursor: pointer; }
+.ad-field__quick button.active { border-color: var(--primary-500); color: var(--primary-700); background: var(--primary-50); }
+.ad-field__quick small { margin-left: 5px; color: inherit; opacity: .72; }
 .ad-student-filter {
   display: flex;
   align-items: center;

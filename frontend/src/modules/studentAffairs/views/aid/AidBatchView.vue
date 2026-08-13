@@ -24,7 +24,7 @@
           <label class="bf-field"><span>学年 *</span>
             <input v-model.trim="form.schoolYear" class="bf-input" placeholder="如：2025-2026" /></label>
           <label class="bf-field"><span>公示天数</span>
-            <input v-model.number="form.publicityDays" type="number" min="0" class="bf-input" placeholder="默认 5，快测可填 0" /></label>
+            <input v-model.number="form.publicityDays" type="number" min="1" max="30" class="bf-input" placeholder="1-30 天，默认 5" /></label>
           <label class="bf-field bf-field--check">
             <input v-model="form.publish" type="checkbox" /> <span>立即发布（开放受理）</span></label>
         </div>
@@ -125,7 +125,7 @@ export default {
       this.saving = true
       const res = await studentAffairsApi.createAidBatch({
         batchName: m.batchName, schoolYear: m.schoolYear,
-        publicityDays: Number(m.publicityDays) || 0, publish: !!m.publish
+        publicityDays: Number(m.publicityDays) || 5, publish: !!m.publish
       })
       if (res.code === 0) {
         toast.success('批次已保存')

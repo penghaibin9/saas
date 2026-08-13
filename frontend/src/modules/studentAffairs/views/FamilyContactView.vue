@@ -131,6 +131,7 @@ export default {
   data() {
     return {
       studentId: '', loading: false, error: '', contacts: [], acting: false,
+      routeIntentConsumed: false,
       page: 1, pageSize: 20, total: 0,
       contactTypeOptions: CONTACT_TYPE_OPTIONS,
       createModal: { visible: false, contactType: 'PHONE', reason: '', result: '', fullPhoneView: false, viewReason: '', error: '' }
@@ -150,6 +151,7 @@ export default {
       this.studentId = String(q.studentId)
       this.load()
     }
+    this.consumeRouteIntent()
   },
   watch: {
     '$route.query.studentId'(v) {
@@ -162,6 +164,12 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create' || !this.studentId) return
+      if (!this.canBtn('studentAffairs.homeSchool.record.create')) return
+      this.routeIntentConsumed = true
+      this.openCreate()
+    },
     contactTypeLabel(t) {
       return CONTACT_TYPE[t] || t || '—'
     },

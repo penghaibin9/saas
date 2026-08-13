@@ -116,7 +116,7 @@ def install() -> None:
     from app.services import affairs_activity_service as activity
     from app.services.affairs_list_stats import status_counts_by_column
 
-    def list_activities(user, activity_type=None, status=None, page=1, page_size=20):
+    def list_activities(user, activity_type=None, status=None, page=1, page_size=20, priority=None):
         page = max(1, int(page or 1))
         page_size = min(200, max(1, int(page_size or 20)))
         with session() as db:
@@ -131,11 +131,18 @@ def install() -> None:
             if status:
                 statuses = [x.strip() for x in str(status).split(",") if x.strip()]
                 conds.append(AffairsActivity.status.in_(statuses))
+            now = datetime.utcnow()
+            exception_predicate = activity._exception_predicate(AffairsActivity, now)
+            if str(priority or "").upper() == "EXCEPTION":
+                conds.append(exception_predicate)
 
             total = int(db.scalar(select(func.count()).select_from(AffairsActivity).where(*conds)) or 0)
             status_counts = status_counts_by_column(
                 db, AffairsActivity, AffairsActivity.status, base_conds,
             )
+            status_counts["EXCEPTION"] = int(db.scalar(
+                select(func.count()).select_from(AffairsActivity).where(*base_conds, exception_predicate)
+            ) or 0)
             signup_counts = (
                 select(
                     AffairsActivitySignup.activity_id.label("activity_id"),
@@ -149,6 +156,7 @@ def install() -> None:
                 .group_by(AffairsActivitySignup.activity_id)
                 .subquery()
             )
+            order_by = (AffairsActivity.end_at.asc(), AffairsActivity.id.desc()) if str(priority or "").upper() == "EXCEPTION" else (AffairsActivity.id.desc(),)
             rows = db.execute(
                 select(
                     AffairsActivity,
@@ -156,7 +164,7 @@ def install() -> None:
                 )
                 .outerjoin(signup_counts, signup_counts.c.activity_id == AffairsActivity.id)
                 .where(*conds)
-                .order_by(AffairsActivity.id.desc())
+                .order_by(*order_by)
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             ).all()
