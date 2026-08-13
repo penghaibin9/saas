@@ -1,18 +1,19 @@
-"""D7-S 考务主链 Move Only Router。
+"""D7-S/D7-U 考务主链 Router。
 
-只迁出 legacy 大 Router 已有的考试批次、课程圈定、排考、考场座位、监考/巡考、
-发布/结束/归档、考场异常登记与缓考审批入口。DTO、权限常量、exam_svc/autoexam_svc
-以及学生本人守卫全部复用原合同；不接管 mobile exam-v2 或考场异常 resolve 扩展入口。
+D7-S 迁出 legacy 大 Router 已有考务主链；D7-U 只叠加候选/preview/readiness 便利性，
+最终考试写入仍复用原 canonical exam facade，不接管 mobile exam-v2 或异常 resolve 扩展入口。
 """
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path
+from pydantic import BaseModel
 
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import exam_convenience_service as exam_convenience
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务"])
 
@@ -41,6 +42,14 @@ _EXAM_VIEW = legacy._EXAM_VIEW
 _EXAM_ABNORMAL = legacy._EXAM_ABNORMAL
 _DEFER_COUNSELOR = legacy._DEFER_COUNSELOR
 _DEFER_REVIEW = legacy._DEFER_REVIEW
+
+
+class BulkCourseBody(BaseModel):
+    teachingTaskIds: list[int | str]
+
+
+class PreviewConfirmBody(BaseModel):
+    previewToken: str
 
 
 @router.post("/exam/batches", summary="建考试批次")
@@ -80,8 +89,45 @@ def exam_courses(
     pageSize: int = 100,
     user=Depends(require_permission(_EXAM_VIEW)),
 ):
-    items, total = exam_svc.list_courses(user, bid, page, pageSize)
+    items, total = exam_convenience.list_courses(user, bid, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/exam/batches/{bid}/course-candidates", summary="批量圈定应考课程候选")
+def exam_course_candidates(
+    bid: int = Path(...),
+    keyword: Optional[str] = None,
+    page: int = 1,
+    pageSize: int = 20,
+    user=Depends(require_permission(_EXAM_MANAGE)),
+):
+    items, total = exam_convenience.list_course_candidates(
+        bid, user, keyword=keyword, page=page, page_size=pageSize
+    )
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/exam/batches/{bid}/course-candidates/preview", summary="批量圈课预览")
+def exam_course_preview(
+    body: BulkCourseBody,
+    bid: int = Path(...),
+    user=Depends(require_permission(_EXAM_MANAGE)),
+):
+    return success(exam_convenience.bulk_course_preview(bid, user, body.teachingTaskIds))
+
+
+@router.post("/exam/batches/{bid}/course-candidates/confirm", summary="批量圈课确认")
+def exam_course_confirm_bulk(
+    body: PreviewConfirmBody,
+    bid: int = Path(...),
+    user=Depends(require_permission(_EXAM_MANAGE)),
+):
+    return success(exam_convenience.bulk_course_confirm(bid, user, body.previewToken))
+
+
+@router.get("/exam/batches/{bid}/readiness", summary="考务批次发布就绪摘要")
+def exam_batch_readiness(bid: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
+    return success(exam_convenience.batch_readiness(bid, user))
 
 
 @router.post("/exam/courses/{cid}/confirm", summary="学院确认/退回考试课程")
