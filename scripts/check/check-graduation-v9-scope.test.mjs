@@ -41,11 +41,12 @@ test('M4 allows only declared product-truth views and contracts', () => {
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M4')[0], /shared foundation denied/)
 })
 
-test('U1 Dashboard allows only its page, evidence, and module-local route contract repair', () => {
+test('U1 Dashboard allows only its page, evidence, module-local route repair, and legacy Golden selector contract', () => {
   assert.deepEqual(validateFiles([
     'frontend/src/modules/graduation/views/GraduationDashboardView.vue',
     'frontend/src/modules/graduation/routes.js',
     'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
+    'e2e/specs/golden-rollout-business-pages.spec.mjs',
   ], 'U1'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'U1')[0], /shared foundation denied/)
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U1')[0], /shared foundation denied/)
@@ -61,6 +62,7 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'backend/tests/test_graduation_round5_contracts.py',
     'frontend/src/modules/graduation/routes.js',
     'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
+    'e2e/specs/golden-rollout-business-pages.spec.mjs',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })

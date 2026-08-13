@@ -28,6 +28,7 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/GraduationDashboardView\.vue$/,
     /^frontend\/src\/modules\/graduation\/routes\.js$/,
     /^e2e\/specs\/graduation-v9-dashboard-visual\.spec\.mjs$/,
+    /^e2e\/specs\/golden-rollout-business-pages\.spec\.mjs$/,
   ],
 }
 
