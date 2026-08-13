@@ -1,8 +1,8 @@
 """20K 专业语义编排器：保持专业真实性，同时避免大成绩表 ORM 全量物化。
 
 历史 AcademicGrade 约 17 万行。专业课名称校正必须在 MySQL 侧集合更新，禁止把全表
-load 成 ORM 对象逐行修改；13B 自身只有数千条课程快照，可精确同步课程库、培养方案、
-教学任务/教学班、课表、成绩任务和考试课程，避免老师钻详情时看见旧泛化课名。
+load 成 ORM 对象逐行修改；13B 自身只有数千条课程快照，可按 course_id/class_id/task_id
+从 canonical 关系重建课程名、教学班名和课表班名，避免字符串替换遗漏或误判。
 """
 from __future__ import annotations
 
@@ -34,8 +34,32 @@ def _rename_map() -> dict[str, str]:
     return out
 
 
-def _sync_aa_course_snapshots(db, tenant_id: int, rename_map: dict[str, str]) -> dict:
-    from app.models import AaExamCourse, AaGradeTask, AaProgramCourse, AaScheduleItem, AaTeachingTask
+def _sync_aa_course_snapshots(db, tenant_id: int) -> dict:
+    """按正式外键关系重建 13B 小表快照，不靠旧课名字符串猜替换。"""
+    from app.models import (
+        AaCourse,
+        AaExamCourse,
+        AaGradeTask,
+        AaProgramCourse,
+        AaScheduleItem,
+        AaTeachingTask,
+        SchoolClass,
+    )
+
+    course_name_by_id = {
+        int(course_id): str(course_name)
+        for course_id, course_name in db.execute(select(AaCourse.id, AaCourse.course_name).where(
+            AaCourse.tenant_id == tenant_id,
+            AaCourse.is_deleted.is_(False),
+        )).all()
+    }
+    class_name_by_id = {
+        int(class_id): str(class_name)
+        for class_id, class_name in db.execute(select(SchoolClass.id, SchoolClass.class_name).where(
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+    }
 
     updated = {
         "programCourses": 0,
@@ -44,41 +68,64 @@ def _sync_aa_course_snapshots(db, tenant_id: int, rename_map: dict[str, str]) ->
         "gradeTasks": 0,
         "examCourses": 0,
         "teachingClassNames": 0,
+        "scheduleClassNames": 0,
     }
+
     model_fields = (
-        (AaProgramCourse, "course_name", "programCourses"),
-        (AaScheduleItem, "course_name", "scheduleItems"),
-        (AaGradeTask, "course_name", "gradeTasks"),
-        (AaExamCourse, "course_name", "examCourses"),
+        (AaProgramCourse, "programCourses"),
+        (AaGradeTask, "gradeTasks"),
+        (AaExamCourse, "examCourses"),
     )
-    for model, field_name, counter_key in model_fields:
-        field = getattr(model, field_name)
+    for model, counter_key in model_fields:
         rows = list(db.scalars(select(model).where(
             model.tenant_id == tenant_id,
-            field.in_(tuple(rename_map)),
             model.is_deleted.is_(False),
         )).all())
         for row in rows:
-            old = str(getattr(row, field_name) or "")
-            new = rename_map.get(old)
-            if new and new != old:
-                setattr(row, field_name, new)
+            course_id = int(row.course_id) if row.course_id is not None else None
+            canonical = course_name_by_id.get(course_id) if course_id is not None else None
+            if canonical is not None and str(row.course_name or "") != canonical:
+                row.course_name = canonical
                 updated[counter_key] += 1
 
     teaching_tasks = list(db.scalars(select(AaTeachingTask).where(
         AaTeachingTask.tenant_id == tenant_id,
         AaTeachingTask.is_deleted.is_(False),
-    )).all())
+    ).all())
+    teaching_class_by_task_id: dict[int, str | None] = {}
     for task in teaching_tasks:
-        old = str(task.course_name or "")
-        new = rename_map.get(old)
-        if not new or new == old:
-            continue
-        task.course_name = new
-        updated["teachingTasks"] += 1
-        if task.teaching_class_name and old in task.teaching_class_name:
-            task.teaching_class_name = task.teaching_class_name.replace(old, new)
+        course_id = int(task.course_id) if task.course_id is not None else None
+        class_id = int(task.class_id) if task.class_id is not None else None
+        canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
+        canonical_class = class_name_by_id.get(class_id) if class_id is not None else None
+        if canonical_course is not None and str(task.course_name or "") != canonical_course:
+            task.course_name = canonical_course
+            updated["teachingTasks"] += 1
+        expected_teaching_class = (
+            f"{canonical_class}-{canonical_course}"
+            if canonical_class is not None and canonical_course is not None
+            else task.teaching_class_name
+        )
+        if expected_teaching_class is not None and task.teaching_class_name != expected_teaching_class:
+            task.teaching_class_name = expected_teaching_class
             updated["teachingClassNames"] += 1
+        teaching_class_by_task_id[int(task.id)] = task.teaching_class_name
+
+    schedule_items = list(db.scalars(select(AaScheduleItem).where(
+        AaScheduleItem.tenant_id == tenant_id,
+        AaScheduleItem.is_deleted.is_(False),
+    )).all())
+    for item in schedule_items:
+        course_id = int(item.course_id) if item.course_id is not None else None
+        canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
+        if canonical_course is not None and str(item.course_name or "") != canonical_course:
+            item.course_name = canonical_course
+            updated["scheduleItems"] += 1
+        task_id = int(item.task_id) if item.task_id is not None else None
+        canonical_class_name = teaching_class_by_task_id.get(task_id) if task_id is not None else None
+        if canonical_class_name is not None and item.class_name != canonical_class_name:
+            item.class_name = canonical_class_name
+            updated["scheduleClassNames"] += 1
 
     return updated
 
@@ -112,12 +159,16 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
         index = int(suffix) - 1
         profile = professional_profile(major_name)
         if 0 <= index < len(profile.core_courses):
-            course.course_name = profile.core_courses[index]
-            aa_updated += 1
+            canonical = profile.core_courses[index]
+            if course.course_name != canonical:
+                course.course_name = canonical
+                aa_updated += 1
+
+    # flush 后关系快照读取到的就是课程库最终专业课名。
+    db.flush()
+    snapshots = _sync_aa_course_snapshots(db, tenant_id)
 
     rename_map = _rename_map()
-    snapshots = _sync_aa_course_snapshots(db, tenant_id, rename_map)
-
     # 旧 academic 域历史成绩约 174,600 行。一次 UPDATE 在数据库侧完成，不查询 AcademicStudent，
     # 不把大成绩表拉进 Python。
     grade_updated = 0
@@ -149,40 +200,92 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
 
 
 def validate_professional_academic_snapshots(db, tenant_id: int) -> dict:
-    """只读验证所有 13B 课程快照都已脱离旧泛化命名。"""
-    from app.models import AaExamCourse, AaGradeTask, AaProgramCourse, AaScheduleItem, AaTeachingTask
-
-    rename_map = _rename_map()
-    old_names = tuple(rename_map)
-    models = (
-        ("programCourses", AaProgramCourse, AaProgramCourse.course_name),
-        ("teachingTasks", AaTeachingTask, AaTeachingTask.course_name),
-        ("scheduleItems", AaScheduleItem, AaScheduleItem.course_name),
-        ("gradeTasks", AaGradeTask, AaGradeTask.course_name),
-        ("examCourses", AaExamCourse, AaExamCourse.course_name),
+    """只读验证 13B 快照与 course/class/task canonical 关系完全一致。"""
+    from app.models import (
+        AaCourse,
+        AaExamCourse,
+        AaGradeTask,
+        AaProgramCourse,
+        AaScheduleItem,
+        AaTeachingTask,
+        SchoolClass,
     )
-    residual = {}
-    for name, model, field in models:
-        residual[name] = int(db.scalar(select(func.count()).select_from(model).where(
-            model.tenant_id == tenant_id,
-            field.in_(old_names),
-            model.is_deleted.is_(False),
-        )) or 0)
 
-    bad_teaching_class_names = 0
-    for value in db.scalars(select(AaTeachingTask.teaching_class_name).where(
+    course_name_by_id = {
+        int(course_id): str(course_name)
+        for course_id, course_name in db.execute(select(AaCourse.id, AaCourse.course_name).where(
+            AaCourse.tenant_id == tenant_id,
+            AaCourse.is_deleted.is_(False),
+        )).all()
+    }
+    class_name_by_id = {
+        int(class_id): str(class_name)
+        for class_id, class_name in db.execute(select(SchoolClass.id, SchoolClass.class_name).where(
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+    }
+
+    mismatch = {
+        "programCourses": 0,
+        "teachingTasks": 0,
+        "scheduleItems": 0,
+        "gradeTasks": 0,
+        "examCourses": 0,
+        "teachingClassNames": 0,
+        "scheduleClassNames": 0,
+    }
+
+    for model, key in (
+        (AaProgramCourse, "programCourses"),
+        (AaGradeTask, "gradeTasks"),
+        (AaExamCourse, "examCourses"),
+    ):
+        for row in db.scalars(select(model).where(
+            model.tenant_id == tenant_id,
+            model.is_deleted.is_(False),
+        )).all():
+            course_id = int(row.course_id) if row.course_id is not None else None
+            canonical = course_name_by_id.get(course_id) if course_id is not None else None
+            if canonical is not None and str(row.course_name or "") != canonical:
+                mismatch[key] += 1
+
+    teaching_class_by_task_id: dict[int, str | None] = {}
+    for task in db.scalars(select(AaTeachingTask).where(
         AaTeachingTask.tenant_id == tenant_id,
         AaTeachingTask.is_deleted.is_(False),
-        AaTeachingTask.teaching_class_name.is_not(None),
     )).all():
-        text = str(value or "")
-        if any(old in text for old in old_names):
-            bad_teaching_class_names += 1
-    residual["teachingClassNames"] = bad_teaching_class_names
+        course_id = int(task.course_id) if task.course_id is not None else None
+        class_id = int(task.class_id) if task.class_id is not None else None
+        canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
+        canonical_class = class_name_by_id.get(class_id) if class_id is not None else None
+        if canonical_course is not None and str(task.course_name or "") != canonical_course:
+            mismatch["teachingTasks"] += 1
+        expected = (
+            f"{canonical_class}-{canonical_course}"
+            if canonical_class is not None and canonical_course is not None
+            else task.teaching_class_name
+        )
+        if expected is not None and task.teaching_class_name != expected:
+            mismatch["teachingClassNames"] += 1
+        teaching_class_by_task_id[int(task.id)] = expected
 
-    if any(residual.values()):
-        raise RuntimeError(f"13B 专业课程快照仍含旧泛化名称: {residual}")
-    return {"legacyCourseSnapshotResidue": residual, "passed": True}
+    for item in db.scalars(select(AaScheduleItem).where(
+        AaScheduleItem.tenant_id == tenant_id,
+        AaScheduleItem.is_deleted.is_(False),
+    )).all():
+        course_id = int(item.course_id) if item.course_id is not None else None
+        canonical_course = course_name_by_id.get(course_id) if course_id is not None else None
+        if canonical_course is not None and str(item.course_name or "") != canonical_course:
+            mismatch["scheduleItems"] += 1
+        task_id = int(item.task_id) if item.task_id is not None else None
+        expected_class_name = teaching_class_by_task_id.get(task_id) if task_id is not None else None
+        if expected_class_name is not None and item.class_name != expected_class_name:
+            mismatch["scheduleClassNames"] += 1
+
+    if any(mismatch.values()):
+        raise RuntimeError(f"13B 专业课程/教学班快照与 canonical 关系不一致: {mismatch}")
+    return {"snapshotRelationMismatches": mismatch, "passed": True}
 
 
 def professionalize_school_20k(db, tenant_id: int) -> dict:
