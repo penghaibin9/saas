@@ -5,6 +5,10 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
 from app.api.v1.route_registration import register_all_routes
+# 必须早于 register_all_routes：sandbox_story_api 会先把 platform.router 的历史
+# reset-sandbox-data 原位替换。这样即使循环导入导致应用提前复制主 Router，
+# 拿到的也已经是 standard-20k/legacy-100 兼容语义。
+from app.api.v1.sandbox_story_api import router as sandbox_story_router
 
 api_router = APIRouter()
 register_all_routes(api_router)
@@ -25,7 +29,6 @@ from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
-from app.api.v1.sandbox_story_api import router as sandbox_story_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
@@ -73,9 +76,9 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
         existing.add(signature)
 
 
-# 历史 platform.py 的 reset-sandbox-data 是“全量删除后重建 100 人”语义。
-# standard-20k 上线后同一路径必须切换成轻量故事线恢复；legacy fixture 仍由
-# sandbox_story_api 内部识别并调用旧 reset_sandbox()，因此路径和旧测试合同均保持兼容。
+# standard-20k 的兼容路由已经在 register_all_routes 前注入 platform.router。
+# 此处仍执行一次签名去重再挂载同一 replacement，保证历史导入时序和普通导入时序
+# 最终都只有一个公开 POST 路由。
 _RESET_SANDBOX_PATH = "/platform/tenants/{tenant_id}/reset-sandbox-data"
 api_router.routes[:] = [
     route for route in api_router.routes
