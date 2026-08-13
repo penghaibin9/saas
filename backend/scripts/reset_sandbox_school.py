@@ -24,7 +24,9 @@
   12. 就业域复用同一届 6,400 学生、80 家企业与 160 个专业岗位，禁止另造就业企业/学生真值；
   13. 毕设过程按 2026-08-13 时间真值生成：只允许选题、任务书、开题与早期指导，禁止提前出现中期/答辩/成绩/归档；
   14. 教材按 2026 秋季开学准备态生成：选用/审核/征订可有数据，正式学生发放与收费必须保持 0；
-  15. 重建后从事实表反算岗位/企业人数，并校验旧假身份、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  15. 评教与教学质量只回填已结束的 2025-2026-2；2026 秋季尚未开学，严禁提前生成评教结果；
+  16. 学生评教保持匿名，教学质量不自动生成教学事故认定，只生成督导/巡课/检查与整改事实；
+  17. 重建后从事实表反算岗位/企业人数，并校验旧假身份、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -127,6 +129,10 @@ def main() -> int:
                 seed_school_academic_affairs_20k,
                 validate_academic_affairs_facts,
             )
+            from app.services.sandbox_school_academic_quality_seed import (
+                seed_school_academic_quality_20k,
+                validate_school_academic_quality_20k,
+            )
             from app.services.sandbox_school_academic_textbook_seed import (
                 seed_school_academic_textbooks_20k,
                 validate_school_academic_textbooks_20k,
@@ -174,7 +180,10 @@ def main() -> int:
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
             academic_textbooks = seed_school_academic_textbooks_20k(db, SANDBOX_TID)
 
+            # 先统一 32 专业的课程语义，再生成历史评教/教学质量快照，避免留下“核心技能”泛化课名。
             professional = professionalize_school_20k(db, SANDBOX_TID)
+            academic_quality = seed_school_academic_quality_20k(db, SANDBOX_TID)
+
             mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = seed_school_graduation_process_20k(db, SANDBOX_TID)
             employment = seed_school_employment_20k(db, SANDBOX_TID)
@@ -192,6 +201,7 @@ def main() -> int:
                 "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
                 "academicTextbooks": validate_school_academic_textbooks_20k(db, SANDBOX_TID),
+                "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
                 "employment": validate_employment_facts_20k(db, SANDBOX_TID),
                 "studentAffairs": validate_affairs_facts(db, SANDBOX_TID),
@@ -208,6 +218,7 @@ def main() -> int:
                     "domains": domains,
                     "academicAffairs": academic_affairs,
                     "academicTextbooks": academic_textbooks,
+                    "academicQuality": academic_quality,
                     "professional": professional,
                     "employment": employment,
                     "studentAffairs": affairs,
@@ -244,7 +255,7 @@ def main() -> int:
         if args.profile == PROFILE_STANDARD_20K:
             print(
                 "[reset] 完成：20K 标准学校已通过旧假身份清零/主数据/角色拓扑/导师工作量/"
-                "毕设早期过程/就业/教材准备/六域/13A/13B/专业语义/跨表关系对账。"
+                "毕设早期过程/就业/教材准备/历史评教与教学质量/六域/13A/13B/专业语义/跨表关系对账。"
             )
             print("[reset] 可见体验账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
