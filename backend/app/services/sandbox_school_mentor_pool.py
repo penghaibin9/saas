@@ -14,8 +14,18 @@ MAX_GRADUATION_STUDENTS_PER_MENTOR = 20
 
 
 def internship_mentor_count_for_major(major_code: str) -> int:
-    """每专业=该届行政班数+3；全校 128 班 → 224 名指导教师。"""
-    return MAJOR_CLASS_COUNTS_PER_GRADE[major_code] + 3
+    """按专业规模微调导师数，全校仍为 224 人且任何专业都不超过 36 生/导师。
+
+    常规专业按“该届行政班数 + 3”配置；8 班超大专业再补 1 人，2 班长尾专业回收 1 人。
+    当前 20K 蓝图中恰好一处 8 班、一处 2 班，因此总量保持 128 + 96 = 224。
+    """
+    class_count = MAJOR_CLASS_COUNTS_PER_GRADE[major_code]
+    count = class_count + 3
+    if class_count >= 8:
+        count += 1
+    elif class_count <= 2:
+        count -= 1
+    return count
 
 
 def graduation_mentor_count_for_major(major_code: str) -> int:
