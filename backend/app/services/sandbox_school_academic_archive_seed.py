@@ -57,11 +57,18 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         prepare_school_curriculum_20k,
         seed_historical_teaching_closure_20k,
     )
+    from app.services.sandbox_school_professional_runner import (
+        reconcile_professional_academic_snapshots,
+    )
 
     # 先把“名义140学分但只有28学分课程”的方案补成真实三年制140学分方案，
     # 再补齐 2024/2025 两届已经发生的 1024 教学任务和 52K 成绩闭环。
     curriculum = prepare_school_curriculum_20k(db, tenant_id)
     historical_teaching = seed_historical_teaching_closure_20k(db, tenant_id)
+
+    # 历史闭环会新增 1024 条课表/成绩/考务快照；必须在归档预检前重新按
+    # course/class/task canonical 关系收口，避免重建主流程缓存旧的“已通过”结果。
+    snapshot_reconciliation = reconcile_professional_academic_snapshots(db, tenant_id)
 
     # 结账前置：96正式方案绑定、13K春季注册、历史正式课表状态、52K成绩身份/策略快照。
     prerequisites = seed_school_academic_archive_prerequisites_20k(db, tenant_id)
@@ -128,6 +135,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "blockedDomains": list(blocked),
         "curriculum": curriculum.get("validation") or curriculum,
         "historicalTeaching": historical_teaching,
+        "snapshotReconciliation": snapshot_reconciliation,
         "prerequisites": prerequisites.get("validation") or prerequisites,
         "examReconciliation": exam_reconciliation,
         "domains": domains,
@@ -180,6 +188,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     return {
         "curriculum": curriculum,
         "historicalTeaching": historical_teaching,
+        "snapshotReconciliation": snapshot_reconciliation,
         "prerequisites": prerequisites,
         "examReconciliation": exam_reconciliation,
         "precheckElapsedMs": elapsed_ms,
