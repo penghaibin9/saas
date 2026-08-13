@@ -50,6 +50,14 @@ const CARD_ALLOW = {
     /^e2e\/specs\/graduation-v9-final-review-visual\.spec\.mjs$/,
     /^docs\/architecture\/file-capability-inventory\.d\/10-graduation-v9-final-export\.yaml$/,
   ],
+  U4: [
+    /^backend\/app\/modules\/graduation\/routers\/graduation_process_sensitive_router\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_(?:process_consistency|guidance_stats_read_service)\.py$/,
+    /^backend\/tests\/test_graduation_v9_process_pagination\.py$/,
+    /^frontend\/src\/modules\/graduation\/api\/graduation-student\.api\.js$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationProcessAction(?:Base)?View\.vue$/,
+    /^frontend\/tests\/graduation\.v9-process-context\.contract\.test\.mjs$/,
+  ],
 }
 
 const ALWAYS_DENY = [
