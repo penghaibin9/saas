@@ -32,3 +32,16 @@ test('U3 preserves the secure FileVersion review gate', () => {
   assert.match(source, /fileVersionId: this\.finalDetail\.fileVersionId/)
   assert.match(source, /SHA-256/)
 })
+
+test('U3 keeps the five-second decision surface above the fold without changing shared shells', () => {
+  assert.match(source, /class="mp-stack fr-workbench-stack"/)
+  assert.match(source, /class="mp-card__body fr-summary-grid"/)
+  assert.match(source, /class="mp-card fr-security-card"/)
+  assert.match(source, /class="mp-card fr-review-card"/)
+  assert.match(source, /class="fr-empty-filter"/)
+  assert.match(source, /size="compact"/)
+  assert.match(source, /\.fr-empty-filter \{ display: none; \}/)
+  assert.match(source, /\.fr-detail-grid \{ display: grid; grid-template-columns:/)
+  assert.match(source, /\.fr-security-card \.mp-card__body \{ max-height: 220px; overflow: auto; \}/)
+  assert.match(source, /@media \(max-width: 1100px\)[\s\S]*\.fr-detail-grid \{ grid-template-columns: 1fr; \}/)
+})
