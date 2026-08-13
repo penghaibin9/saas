@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -1446,8 +1446,14 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
         scope = _current_scope(user)
         scoped = scope.get("mode") == "SCOPED"
         if scoped:
+            # 原来逐行 db.get(StudentProfile) 再逐行推导班级/学院名，随批次人数线性放大成 N+1。
+            # 改用既有的批量预加载版本，判定口径与 _rec_in_scope 完全一致（见其 docstring）。
+            _rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = (
+                _bulk_context(db, recs, id_attr="id"))
             recs = [r for r in recs
-                    if _rec_in_scope(scope, db, r, db.get(StudentProfile, r.student_id))]
+                    if _rec_in_scope_pre(scope, r, stu_map.get(r.student_id),
+                                         class_name_map, college_name_map,
+                                         stu_college_name_map)]
         scoped_ids = [r.id for r in recs] or [0]
         flow_map = {"PREPARING": 0, "READY": 0, "ONBOARD": 0, "ASSESSING": 0, "ARCHIVED": 0}
         dest_none = 0
@@ -1478,21 +1484,37 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
         risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
 
         # 真实开放风险提醒（同批次 + 数据范围），按等级与更新时间排序，最多 5 条
-        risk_rows = db.scalars(select(RiskRecord).where(
-            RiskRecord.tenant_id == _tid(), RiskRecord.is_deleted.is_(False),
-            RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
-            RiskRecord.internship_id.in_(scoped_ids),
-        )).all()
-        level_rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-        risk_rows = sorted(
-            risk_rows,
-            key=lambda k: (level_rank.get(k.risk_level, 9),
-                           -(k.updated_at.timestamp() if k.updated_at else 0)),
-        )[:5]
+        # 排序与截断下推 SQL：原来把全部开放风险装进内存再 Python 排序取前 5，
+        # 风险表随多年历史增长时这条会越来越贵，而看板永远只用得上 5 条。
+        # CASE 权重与原 level_rank 逐值对齐，未知等级同样排在最后。
+        level_order = case(
+            (RiskRecord.risk_level == "HIGH", 0),
+            (RiskRecord.risk_level == "MEDIUM", 1),
+            (RiskRecord.risk_level == "LOW", 2),
+            else_=9,
+        )
+        risk_rows = db.scalars(
+            select(RiskRecord).where(
+                RiskRecord.tenant_id == _tid(), RiskRecord.is_deleted.is_(False),
+                RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
+                RiskRecord.internship_id.in_(scoped_ids),
+            ).order_by(level_order, RiskRecord.updated_at.desc(), RiskRecord.id.desc()).limit(5)
+        ).all()
+        # 这 5 条的记录与学生一次性取出，避免每条各查两次。
+        alert_recs = {}
+        alert_stus = {}
+        if risk_rows:
+            alert_recs = {r.id: r for r in db.scalars(select(InternshipRecord).where(
+                InternshipRecord.id.in_({k.internship_id for k in risk_rows
+                                         if k.internship_id}))).all()}
+            alert_stu_ids = {r.student_id for r in alert_recs.values() if r.student_id}
+            if alert_stu_ids:
+                alert_stus = {s.id: s for s in db.scalars(select(StudentProfile).where(
+                    StudentProfile.id.in_(alert_stu_ids))).all()}
         risk_alerts = []
         for k in risk_rows:
-            rec = db.get(InternshipRecord, k.internship_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = alert_recs.get(k.internship_id)
+            stu = alert_stus.get(rec.student_id) if rec else None
             risk_alerts.append({
                 "id": str(k.id),
                 "internId": str(k.internship_id),
