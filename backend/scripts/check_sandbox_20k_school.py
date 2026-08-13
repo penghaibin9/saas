@@ -74,6 +74,7 @@ def main() -> int:
 
     from app.models import Tenant
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID
+    from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_seed import validate_domain_facts
     from app.services.sandbox_school_master_seed import validate_school_master
 
@@ -87,6 +88,7 @@ def main() -> int:
         try:
             master = validate_school_master(db, SANDBOX_TID)
             domains = validate_domain_facts(db, SANDBOX_TID)
+            affairs = validate_affairs_facts(db, SANDBOX_TID)
         except RuntimeError as exc:
             print("[20k-check] FAIL", str(exc))
             return 4
@@ -98,6 +100,7 @@ def main() -> int:
             "schoolName": tenant.school_name,
             "master": master,
             "domains": domains,
+            "studentAffairs": affairs,
             "internshipReconciliation": internship,
         }
         print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
