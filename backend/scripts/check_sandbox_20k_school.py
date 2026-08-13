@@ -152,6 +152,7 @@ def main() -> int:
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
     from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
+    from app.services.sandbox_school_professional_runner import validate_professional_academic_snapshots
     from app.services.sandbox_school_profile import PROFILE_STANDARD, classify_sandbox_profile
 
     db = get_sessionmaker()()
@@ -171,6 +172,7 @@ def main() -> int:
             graduation_process = validate_school_graduation_process_20k(db, SANDBOX_TID)
             domains = validate_core_domain_facts_20k(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
+            professional_snapshots = validate_professional_academic_snapshots(db, SANDBOX_TID)
             academic_textbooks = validate_school_academic_textbooks_20k(db, SANDBOX_TID)
             academic_quality = validate_school_academic_quality_20k(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
@@ -194,6 +196,7 @@ def main() -> int:
             "graduationProcess": graduation_process,
             "domains": domains,
             "academicAffairs": academic_affairs,
+            "professionalAcademicSnapshots": professional_snapshots,
             "academicTextbooks": academic_textbooks,
             "academicQuality": academic_quality,
             "professional": professional,
@@ -209,7 +212,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据、旧假身份清零、教材准备、历史评教/教学质量、毕设时间线、导师工作量与就业域验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据、旧假身份清零、专业课程快照、教材准备、历史评教/教学质量、毕设时间线、导师工作量与就业域验收通过")
         return 0
     finally:
         db.close()
