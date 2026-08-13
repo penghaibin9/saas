@@ -48,6 +48,7 @@ def seed_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
         AaTextbookReviewBatchItem,
         AaTextbookSelection,
         College,
+        Major,
         SchoolClass,
     )
 
@@ -108,12 +109,20 @@ def seed_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
     if len(tasks) != EXPECTED_SELECTIONS:
         raise RuntimeError(f"秋季教材教学任务异常 expected={EXPECTED_SELECTIONS} actual={len(tasks)}")
 
+    # 行政班只保存 major_id；学院归属必须沿 canonical 组织链
+    # SchoolClass.major_id -> Major.college_id 解析，禁止给班级臆造 college_id 字段。
     class_college = {
-        int(cid): int(college_id)
-        for cid, college_id in db.execute(select(SchoolClass.id, SchoolClass.college_id).where(
-            SchoolClass.tenant_id == tenant_id,
-            SchoolClass.is_deleted.is_(False),
-        )).all()
+        int(class_id): int(college_id)
+        for class_id, college_id in db.execute(
+            select(SchoolClass.id, Major.college_id)
+            .join(Major, Major.id == SchoolClass.major_id)
+            .where(
+                SchoolClass.tenant_id == tenant_id,
+                SchoolClass.is_deleted.is_(False),
+                Major.tenant_id == tenant_id,
+                Major.is_deleted.is_(False),
+            )
+        ).all()
     }
     colleges = list(db.scalars(select(College).where(
         College.tenant_id == tenant_id,
