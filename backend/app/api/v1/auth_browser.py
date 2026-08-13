@@ -9,16 +9,29 @@ runtimes do not share the browser cookie threat model.
 """
 from __future__ import annotations
 
+import secrets
+from contextvars import ContextVar
+
+import jwt
 from fastapi import APIRouter, Cookie, Depends, Header, Response
 
 from app.api.v1 import auth as auth_api
 from app.core.config import settings
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import fail, success
-from app.core.security import decode_token, get_current_user
-from app.core.token_store import REFRESH_TTL, block_jti, consume_refresh, revoke_refresh_by_user
+from app.core.security import create_access_token, decode_token, get_current_user
+from app.core.token_store import (
+    REFRESH_TTL,
+    block_jti,
+    consume_refresh,
+    issue_refresh,
+    revoke_refresh_by_session,
+)
 from app.schemas.auth import SwitchRoleRequest
+from app.services import auth_service_db
+from app.services import browser_auth_session_service
 from app.services import mock_audit_service as audit
+from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
 
 router = APIRouter()
 
@@ -29,6 +42,7 @@ _COOKIE_NAMES = {
     "platform": "gx_platform_refresh_v1",
     "student": "gx_student_refresh_v1",
 }
+_BROWSER_REVOKE_SESSION = ContextVar("browser_revoke_session", default="")
 
 
 def _normalize_channel(value: str | None) -> str:
@@ -67,6 +81,24 @@ def _channel_from_access_token(token: str) -> str:
     return _channel_from_client_type(client_type)
 
 
+def _decode_signed_token_for_revocation(token: str) -> dict:
+    """Verify JWT signature while ignoring only expiry, solely to locate a session for revocation.
+
+    This helper is never used to authorize a request. It exists so an expired access token can still
+    identify the browser ``authSessionId`` during logout when another tab has already consumed the
+    refresh cookie. Signature/algorithm validation remains mandatory.
+    """
+    try:
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_exp": False},
+        )
+    except jwt.PyJWTError:
+        return {}
+
+
 def _set_refresh_cookie(response: Response, token: str, channel: str) -> None:
     response.set_cookie(
         key=_COOKIE_NAMES[_normalize_channel(channel)],
@@ -103,6 +135,37 @@ def _clear_refresh_cookie(response: Response, channel: str) -> None:
     )
 
 
+def _sessionize_payload(payload: dict, *, session_id: str | None = None) -> dict:
+    """Replace a just-issued real DB auth pair with one browser-session-scoped pair.
+
+    Test stubs, mock identities and other non-DB tokens keep the historical path. For a real DB
+    login/switch, the original refresh is consumed before replacement so no unsessionized durable
+    credential is left behind. The discarded access token was never exposed to the browser.
+    """
+    data = dict((payload or {}).get("data") or {})
+    refresh_token = str(data.get("refreshToken") or "")
+    access_token = str(data.get("accessToken") or "")
+    if not refresh_token or not access_token:
+        raise unauthorized("刷新令牌签发失败，请重新登录")
+    try:
+        access_claims = decode_token(access_token)
+    except AppException:
+        return payload
+    if not str(access_claims.get("userId") or "").startswith("db-"):
+        return payload
+
+    claims = consume_refresh(refresh_token)
+    if not claims:
+        raise unauthorized("刷新令牌签发失败，请重新登录")
+    sid = str(session_id or claims.get("authSessionId") or secrets.token_urlsafe(24))
+    claims["authSessionId"] = sid
+    data["accessToken"] = create_access_token(dict(claims))
+    data["refreshToken"] = issue_refresh(dict(claims))
+    out = dict(payload)
+    out["data"] = data
+    return out
+
+
 def _extract_refresh(payload: dict, response: Response, *, expected_channel: str | None = None) -> dict:
     """Move refreshToken from JSON into the correct HttpOnly cookie; accessToken remains visible."""
     data = dict((payload or {}).get("data") or {})
@@ -112,9 +175,6 @@ def _extract_refresh(payload: dict, response: Response, *, expected_channel: str
         raise unauthorized("刷新令牌签发失败，请重新登录")
     actual_channel = _channel_from_access_token(access_token)
     if expected_channel is not None and actual_channel != _normalize_channel(expected_channel):
-        # Login/refresh already created a durable refresh record. Burn it before rejecting a
-        # cross-surface identity so an accidental student-on-staff (or staff-on-student) login
-        # cannot overwrite or leave behind another PC surface's resumable browser session.
         try:
             consume_refresh(refresh_token)
         except Exception:
@@ -135,10 +195,35 @@ def _cookie_for_channel(channel: str, *, staff: str | None, platform: str | None
     }[_normalize_channel(channel)]
 
 
+def _rotate_browser_refresh(refresh_token: str) -> dict:
+    """Rotate one browser cookie and opportunistically upgrade legacy pre-session cookies."""
+    claims = consume_refresh(refresh_token)
+    if not claims:
+        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    session_id = str(claims.get("authSessionId") or "")
+    if session_id and auth_session_blocked(session_id):
+        raise unauthorized("浏览器会话已失效，请重新登录")
+    auth_service_db.validate_token_subject(claims)
+    claims["authSessionId"] = session_id or secrets.token_urlsafe(24)
+    token = create_access_token(dict(claims))
+    new_refresh = issue_refresh(dict(claims))
+    audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
+    return success(
+        {
+            "accessToken": token,
+            "refreshToken": new_refresh,
+            "tokenType": "Bearer",
+            "expiresIn": settings.JWT_EXPIRES_IN,
+        },
+        message="已刷新",
+    )
+
+
 @router.post("/auth/browser-login", summary="浏览器账号密码登录（入口身份匹配 + 独立 HttpOnly refresh Cookie）")
 def browser_login(body: auth_api.PasswordLoginRequest, response: Response):
     expected_channel = _channel_from_client_type(body.clientType)
-    return _extract_refresh(auth_api.login(body), response, expected_channel=expected_channel)
+    payload = _sessionize_payload(auth_api.login(body))
+    return _extract_refresh(payload, response, expected_channel=expected_channel)
 
 
 @router.post("/auth/browser-refresh", summary="浏览器刷新会话（staff/platform/student 独立 HttpOnly Cookie）")
@@ -155,8 +240,7 @@ def browser_refresh(
     )
     if not refresh_token:
         raise unauthorized("浏览器刷新会话不存在，请重新登录")
-    payload = auth_api.refresh(auth_api.RefreshRequest(refreshToken=refresh_token))
-    return _extract_refresh(payload, response, expected_channel=channel)
+    return _extract_refresh(_rotate_browser_refresh(refresh_token), response, expected_channel=channel)
 
 
 @router.post("/auth/browser-switch-role", summary="浏览器切换身份并轮换对应入口的 HttpOnly refreshToken")
@@ -164,9 +248,47 @@ def browser_switch_role(
     body: SwitchRoleRequest,
     response: Response,
     user=Depends(get_current_user),
+    authorization: str | None = Header(default=None),
 ):
-    payload = auth_api.switch_role(body, user)
+    raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "").strip()
+    access_claims = decode_token(raw) if raw else {}
+    session_id = str(access_claims.get("authSessionId") or "")
+    if str(user.get("userId") or "").startswith("db-"):
+        result = browser_auth_session_service.switch_role(
+            user,
+            body.contextId,
+            body.clientType,
+            auth_session_id=session_id,
+        )
+        audit.record(
+            "切换身份",
+            method="POST",
+            path="/api/v1/auth/browser-switch-role",
+            status_code=200,
+            target_type="authz",
+            target_id=body.contextId,
+        )
+        payload = success(result, message="身份切换成功")
+    else:
+        payload = auth_api.switch_role(body, user)
+    # A role switch closes the previous session tombstone and starts a fresh browser session id.
+    payload = _sessionize_payload(payload)
     return _extract_refresh(payload, response)
+
+
+def revoke_refresh_by_user(user_id: str) -> int:
+    """Compatibility hook kept for existing browser-logout contracts.
+
+    Despite the historical name, browser logout must never perform a user-wide revoke. It tombstones
+    the current authSessionId and removes only refresh siblings in that session. Global revocation
+    remains in token_store.revoke_refresh_by_user for password-reset/change and explicit all-device
+    security events.
+    """
+    session_id = str(_BROWSER_REVOKE_SESSION.get() or "")
+    if not session_id:
+        return 0
+    block_auth_session(session_id)
+    return revoke_refresh_by_session(user_id, session_id)
 
 
 def _browser_logout(
@@ -180,30 +302,44 @@ def _browser_logout(
     channel = _normalize_channel(channel)
     _clear_refresh_cookie(response, channel)
     user_ids: set[str] = set()
+    session_by_user: dict[str, str] = {}
     try:
         if refresh_token:
             refresh_claims = consume_refresh(refresh_token)
             if refresh_claims:
                 refresh_user = str(refresh_claims.get("userId") or "")
+                refresh_session = str(refresh_claims.get("authSessionId") or "")
                 if refresh_user:
                     user_ids.add(refresh_user)
+                    if refresh_session:
+                        session_by_user[refresh_user] = refresh_session
 
         raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "").strip()
         if raw:
+            # Live access tokens keep the ordinary decode path so their JTI is blacklisted under the
+            # same strict authentication contract. Only an expired/otherwise rejected token falls
+            # back to signature-verified, expiry-ignored metadata lookup for revocation purposes.
             try:
                 access_claims = decode_token(raw)
             except AppException:
-                access_claims = {}
+                access_claims = _decode_signed_token_for_revocation(raw)
             if access_claims:
                 access_user = str(access_claims.get("userId") or "")
+                access_session = str(access_claims.get("authSessionId") or "")
                 if access_user:
                     user_ids.add(access_user)
+                    if access_session:
+                        session_by_user[access_user] = access_session
                 jti = str(access_claims.get("jti") or "")
                 if jti:
                     block_jti(jti, float(access_claims.get("exp") or 0) or None)
 
         for user_id in user_ids:
-            revoke_refresh_by_user(user_id)
+            marker = _BROWSER_REVOKE_SESSION.set(session_by_user.get(user_id, ""))
+            try:
+                revoke_refresh_by_user(user_id)
+            finally:
+                _BROWSER_REVOKE_SESSION.reset(marker)
     except AppException as exc:
         response.status_code = int(exc.http_status)
         return fail(exc.code, exc.message, exc.details)
