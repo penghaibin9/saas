@@ -83,6 +83,24 @@ test('U3 final review allows SQL read model, real visual fixture/spec and final 
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'U3')[0], /canonical write\/read mixed service denied/)
 })
 
+test('U4 process workbench allows only process read models, WorkContext UI and real visual evidence', () => {
+  assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/routers/graduation_process_sensitive_router.py',
+    'backend/app/modules/graduation/services/graduation_process_consistency.py',
+    'backend/app/modules/graduation/services/graduation_guidance_stats_read_service.py',
+    'backend/tests/test_graduation_v9_process_pagination.py',
+    'frontend/src/modules/graduation/api/graduation-student.api.js',
+    'frontend/src/modules/graduation/views/GraduationProcessView.vue',
+    'frontend/src/modules/graduation/views/GraduationProcessActionView.vue',
+    'frontend/src/modules/graduation/views/GraduationProcessActionBaseView.vue',
+    'frontend/tests/graduation.v9-process-context.contract.test.mjs',
+    'e2e/specs/graduation-v9-process-visual.spec.mjs',
+  ], 'U4'), [])
+  assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'U4')[0], /shared foundation denied/)
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U4')[0], /shared foundation denied/)
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U4')[0], /canonical write\/read mixed service denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
@@ -106,6 +124,9 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'frontend/tests/graduation.v9-final-review.contract.test.mjs',
     'e2e/specs/graduation-v9-final-review-visual.spec.mjs',
     'docs/architecture/file-capability-inventory.d/10-graduation-v9-final-export.yaml',
+    'backend/app/modules/graduation/services/graduation_process_consistency.py',
+    'frontend/src/modules/graduation/views/GraduationProcessView.vue',
+    'e2e/specs/graduation-v9-process-visual.spec.mjs',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })
