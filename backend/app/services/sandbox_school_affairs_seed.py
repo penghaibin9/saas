@@ -164,7 +164,7 @@ def _seed_dorm_inventory(db, tenant_id: int) -> dict:
             CsServiceStudent.is_deleted.is_(False),
         )
         .order_by(CsServiceStudent.gender, CsDormRecord.id)
-    ).all()
+    ).all())
     if len(boarders) != EXPECTED_OCCUPIED_BEDS:
         raise RuntimeError(f"住宿生基数不符: {len(boarders)} != {EXPECTED_OCCUPIED_BEDS}")
 
