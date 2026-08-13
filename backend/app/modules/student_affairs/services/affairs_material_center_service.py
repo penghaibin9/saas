@@ -16,7 +16,7 @@ import re
 from datetime import datetime
 from typing import Any, Iterable
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.permissions import has_permission
@@ -376,7 +376,8 @@ def _submission_rows(db, requirement_ids: Iterable[int]) -> dict[int, list[Any]]
     return result
 
 
-def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_name: str = "") -> dict:
+def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_name: str = "",
+                      business_context: dict | None = None) -> dict:
     current = next((item for item in submissions if int(item.id) == int(row.current_submission_id or 0)), None)
     overdue = bool(row.due_at and row.due_at < datetime.utcnow() and row.status in {"MISSING", "RETURNED"})
     actions: list[str] = []
@@ -387,7 +388,7 @@ def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_
     if not student_view and row.status in {"MISSING", "RETURNED", "PENDING_REVIEW"}:
         actions.append("WAIVE_MATERIAL")
     versions = [_submission_dict(item, row.current_submission_id) for item in submissions]
-    return {
+    out = {
         "requirementId": str(row.id),
         "studentId": str(row.student_id),
         "bizType": row.biz_type,
@@ -421,6 +422,102 @@ def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_
             "canEscalate": overdue and row.status in {"MISSING", "RETURNED"},
         },
     }
+    # additive：bizId / studentId 一律保留供 API、审计和技术追踪；
+    # businessContext 只是给四端 UI 的业务语言，列表路径按当前页批量组装后传入。
+    if business_context:
+        out["businessContext"] = dict(business_context)
+    return out
+
+
+def resolve_biz_context(user: dict, biz_type: str, biz_id: int) -> dict:
+    """按 bizType + bizId 解析可读业务上下文，供"业务详情 → 要求补材料"预填。
+
+    老师此前要手抄数据库主键（bizId）才能登记材料缺项，既易错又难培训。
+    有了本接口，业务详情页可以直接带着记录跳过来，系统自己解析是哪一笔业务、哪个学生。
+
+    授权与范围校验和 create_material_requirement 完全一致：无业务权限、
+    越数据范围或越心理专项范围一律按"不存在"处理，绝不能成为探测其它
+    业务记录是否存在的旁路。
+    """
+    bt = _require_supported_biz(biz_type)
+    _require_biz_permission(user, bt)
+    biz_id = int(biz_id or 0)
+    if biz_id <= 0:
+        raise AppException("VALIDATION_ERROR", "业务记录ID无效")
+    with session() as db:
+        student_id = _resolve_biz_student(db, bt, biz_id)
+        if bt == "MENTAL":
+            if not _psy_scope_allows(db, student_id, user):
+                raise not_found("业务申请不存在")
+        else:
+            _require_student_scope(db, student_id, user, hide=True)
+
+        from app.models import SchoolClass, StudentProfile
+
+        student = db.get(StudentProfile, int(student_id))
+        class_name = ""
+        if student and student.class_id:
+            klass = db.get(SchoolClass, int(student.class_id))
+            class_name = (klass.class_name if klass else "") or ""
+        record = None
+        if bt not in _NO_DETAIL_BIZ:
+            model = _biz_record_models().get(bt)
+            if model is not None:
+                candidate = db.get(model, biz_id)
+                if candidate is not None and int(candidate.tenant_id) == _tid():
+                    record = candidate
+        subtitle, period = _biz_subtitle_and_period(bt, record)
+        return {
+            "bizType": bt,
+            "bizId": str(biz_id),
+            "studentId": str(student_id),
+            "businessContext": {
+                "studentName": (student.real_name if student else "") or "",
+                "studentNo": (student.student_no if student else "") or "",
+                "className": class_name,
+                "bizDisplayTitle": BIZ_DISPLAY_TITLES.get(bt, bt),
+                "bizDisplaySubtitle": subtitle,
+                "bizPeriod": period,
+            },
+        }
+
+
+def list_item_suggestions(user: dict, biz_type: str, *, limit: int = 50) -> list[dict]:
+    """列出本校该业务域**已经真实用过**的材料项，供登记时选择而不是猜编码。
+
+    刻意不引入"标准材料项目录"：学工域没有这张表，标准材料项属于学校自己的
+    业务政策，不能由系统编造。这里只把该租户已有数据里出现过的 item_code /
+    item_name 汇总出来，按使用次数排序；老师仍可填写新的材料项。
+    """
+    from app.models.affairs_operations import AffairsMaterialRequirement
+
+    from app.models import StudentProfile
+
+    bt = _require_supported_biz(biz_type)
+    _require_biz_permission(user, bt)
+    limit = min(200, max(1, int(limit or 50)))
+    with session() as db:
+        # 建议也是"候选"，必须过数据范围：只按业务权限聚合会把全校用过的材料项
+        # 和使用次数暴露给只管一个班的辅导员（跨范围的聚合信息泄露）。
+        # 复用列表同一份 scope，口径与材料队列一致。
+        scope = _teacher_requirement_scope(db, user)
+        if scope is None:
+            return []
+        rows = db.execute(select(
+            AffairsMaterialRequirement.item_code,
+            AffairsMaterialRequirement.item_name,
+            func.count().label("used"),
+        ).select_from(AffairsMaterialRequirement).join(
+            StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+        ).where(
+            *scope, AffairsMaterialRequirement.biz_type == bt,
+        ).group_by(
+            AffairsMaterialRequirement.item_code, AffairsMaterialRequirement.item_name,
+        ).order_by(func.count().desc(), AffairsMaterialRequirement.item_code).limit(limit)).all()
+        return [
+            {"itemCode": row[0], "itemName": row[1], "usedCount": int(row[2] or 0)}
+            for row in rows
+        ]
 
 
 def create_material_requirement(user: dict, payload: dict) -> dict:
@@ -507,75 +604,289 @@ def create_material_requirement(user: dict, payload: dict) -> dict:
     return result
 
 
-def list_teacher_requirements(
-    user: dict,
-    *,
-    status: str | None = None,
-    page: int = 1,
-    page_size: int = 50,
-) -> tuple[list[dict], int]:
-    """先权限/强敏感/数据范围过滤，再计数和分页。"""
-    from app.models import StudentProfile, User
+BIZ_DISPLAY_TITLES = {
+    "LEAVE": "请假申请",
+    "AID": "家庭经济困难认定申请",
+    "FUNDING": "奖助学金申请",
+    "DISCIPLINE": "违纪处分",
+    "DISCIPLINE_APPEAL": "处分申诉",
+    "DORM_TRANSFER": "调宿申请",
+    "CREDIT_APPEAL": "第二课堂学分申诉",
+    "SECOND_CLASS_APPEAL": "第二课堂学分申诉",
+    "MENTAL": "心理关注转介",
+}
+
+# 强敏感业务只给"这是哪一类业务"，不带任何事由/等级/明细：
+# businessContext 只做可读化，绝不能成为绕开专项授权看内容的旁路。
+_NO_DETAIL_BIZ = {"MENTAL"}
+
+
+def _biz_record_models():
+    from app.models import (
+        AffairsCreditAppeal, AidApply, CsLeave, DisciplineAppeal, DisciplineCase,
+        DormTransfer, FundingApplication, PsyReferral,
+    )
+
+    return {
+        "LEAVE": CsLeave, "AID": AidApply, "FUNDING": FundingApplication,
+        "DISCIPLINE": DisciplineCase, "DISCIPLINE_APPEAL": DisciplineAppeal,
+        "DORM_TRANSFER": DormTransfer, "CREDIT_APPEAL": AffairsCreditAppeal,
+        "SECOND_CLASS_APPEAL": AffairsCreditAppeal, "MENTAL": PsyReferral,
+    }
+
+
+def _biz_subtitle_and_period(biz_type: str, record) -> tuple[str, str]:
+    """从业务真表取可读副标题与周期。取不到就留空，不编造。"""
+    if record is None or biz_type in _NO_DETAIL_BIZ:
+        return "", ""
+
+    def _year(value):
+        return str(getattr(value, "year", "") or "") if value else ""
+
+    if biz_type == "LEAVE":
+        start, end = getattr(record, "start_time", None), getattr(record, "end_time", None)
+        period = ""
+        if start:
+            period = start.strftime("%Y-%m-%d")
+            if end:
+                period = f"{period} ~ {end.strftime('%Y-%m-%d')}"
+        return str(getattr(record, "leave_type", "") or ""), period
+    if biz_type == "AID":
+        level = getattr(record, "final_level", None) or getattr(record, "apply_level", None)
+        return str(level or ""), ""
+    if biz_type == "FUNDING":
+        return str(getattr(record, "project_type", "") or ""), ""
+    if biz_type == "DISCIPLINE":
+        return str(getattr(record, "doc_no", "") or ""), _year(getattr(record, "decide_date", None))
+    if biz_type in {"CREDIT_APPEAL", "SECOND_CLASS_APPEAL"}:
+        return str(getattr(record, "claim_credit_type", "") or ""), ""
+    return "", ""
+
+
+def _business_context_map(db, rows: list, *, student_view: bool) -> dict[int, dict]:
+    """按当前页批量组装业务可读上下文（studentName/学号/班级/业务标题等）。
+
+    材料四端此前把 bizId/studentId 当主业务文案（"困难认定 #123 · 学生 #456"），
+    老师和学生无法判断这是哪一笔业务。这里做 additive 投影，原 ID 保留不动。
+
+    严格按当前页批量取数：按 bizType 分组一次性 IN 查业务表，学生与班级各一次，
+    不允许逐行 db.get。
+    """
+    from app.models import SchoolClass, StudentProfile
+
+    if not rows:
+        return {}
+
+    student_ids = {int(r.student_id) for r in rows if r.student_id}
+    students = {
+        int(s.id): s
+        for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.id.in_(student_ids or {-1}),
+        )).all()
+    } if student_ids else {}
+    class_ids = {int(s.class_id) for s in students.values() if s.class_id}
+    classes = {
+        int(c.id): c.class_name
+        for c in db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(class_ids or {-1}),
+        )).all()
+    } if class_ids else {}
+
+    # 按业务类型分组批量取业务记录（每种类型一次 IN 查询）。
+    models = _biz_record_models()
+    grouped: dict[str, set[int]] = {}
+    for row in rows:
+        bt = _biz(row.biz_type)
+        if bt in models and bt not in _NO_DETAIL_BIZ and row.biz_id:
+            grouped.setdefault(bt, set()).add(int(row.biz_id))
+    records: dict[tuple[str, int], object] = {}
+    for bt, ids in grouped.items():
+        model = models[bt]
+        for record in db.scalars(select(model).where(
+            model.tenant_id == _tid(), model.id.in_(ids or {-1}),
+        )).all():
+            records[(bt, int(record.id))] = record
+
+    out: dict[int, dict] = {}
+    for row in rows:
+        bt = _biz(row.biz_type)
+        student = students.get(int(row.student_id)) if row.student_id else None
+        subtitle, period = _biz_subtitle_and_period(
+            bt, records.get((bt, int(row.biz_id))) if row.biz_id else None)
+        context = {
+            "bizDisplayTitle": BIZ_DISPLAY_TITLES.get(bt, bt or "学工申请"),
+            "bizDisplaySubtitle": subtitle,
+            "bizPeriod": period,
+        }
+        # 学生看自己的材料，不需要也不应回显自己的档案字段做"识别"用途。
+        if not student_view:
+            context.update({
+                "studentName": (student.real_name if student else "") or "",
+                "studentNo": (student.student_no if student else "") or "",
+                "className": classes.get(int(student.class_id), "") if student and student.class_id else "",
+            })
+        out[int(row.id)] = context
+    return out
+
+
+def _teacher_requirement_scope(db, user: dict) -> list | None:
+    """列表、COUNT 和概览聚合共用的授权 + 数据范围条件（单一来源，禁止各算一套）。
+
+    返回 None 表示当前身份没有任何可见业务域。
+    """
+    from app.models import StudentProfile
     from app.models.affairs_operations import AffairsMaterialRequirement
     from app.services.affairs_dashboard_service import _allowed_class_ids
 
     visible_biz = {bt for bt in BIZ_PERMISSIONS if _has_biz_permission(user, bt)}
     if not visible_biz:
-        return [], 0
+        return None
+    allowed, _ = _allowed_class_ids(db, user)
+    conds = [
+        AffairsMaterialRequirement.tenant_id == _tid(),
+        AffairsMaterialRequirement.biz_type.in_(visible_biz),
+        AffairsMaterialRequirement.is_deleted.is_(False),
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.id == AffairsMaterialRequirement.student_id,
+        StudentProfile.is_deleted.is_(False),
+    ]
+    if allowed is not None:
+        conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+    if "MENTAL" in visible_biz:
+        from app.services.affairs_mental_service import psy_scope_ids
+
+        psy_scope = psy_scope_ids(db, user or {})
+        if psy_scope is not None:
+            conds.append(or_(
+                AffairsMaterialRequirement.biz_type != "MENTAL",
+                AffairsMaterialRequirement.student_id.in_(psy_scope or {-1}),
+            ))
+    return conds
+
+
+def _requirement_business_filters(status: str | None, sensitivity_level: str | None) -> list:
+    """业务筛选条件。必须在 COUNT/OFFSET/LIMIT 之前生效：
+    敏感级别若等分页之后再用 Python 过滤，落在第 2 页的强敏感材料会被报成 0 条。"""
+    from app.models.affairs_operations import AffairsMaterialRequirement
+
+    out = []
+    if status:
+        out.append(AffairsMaterialRequirement.status == str(status).upper())
+    if sensitivity_level:
+        out.append(
+            AffairsMaterialRequirement.sensitivity_level == str(sensitivity_level).upper())
+    return out
+
+
+def _requirement_page(db, user: dict, *, status, sensitivity_level, requirement_id, page, page_size):
+    """返回 (items, total, conds)。conds 交给概览聚合复用，保证两者口径一致。"""
+    from app.models import StudentProfile, User
+    from app.models.affairs_operations import AffairsMaterialRequirement
+
+    scope = _teacher_requirement_scope(db, user)
+    if scope is None:
+        return [], 0, None
+    conds = [*scope, *_requirement_business_filters(status, sensitivity_level)]
+    if requirement_id not in (None, ""):
+        try:
+            rid = int(requirement_id)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "材料缺项ID格式不正确") from exc
+        if rid <= 0:
+            raise AppException("VALIDATION_ERROR", "材料缺项ID格式不正确")
+        conds.append(AffairsMaterialRequirement.id == rid)
+    total = int(db.scalar(select(func.count()).select_from(AffairsMaterialRequirement).join(
+        StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+    ).where(*conds)) or 0)
+    rows = db.scalars(select(AffairsMaterialRequirement).join(
+        StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+    ).where(*conds).order_by(AffairsMaterialRequirement.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)).all()
+    submissions = _submission_rows(db, [row.id for row in rows])
+    owner_ids = {int(row.review_owner_id) for row in rows if row.review_owner_id}
+    owners = {
+        int(owner.id): owner.real_name
+        for owner in db.scalars(select(User).where(
+            User.tenant_id == _tid(), User.id.in_(owner_ids or {-1}), User.is_deleted.is_(False),
+        )).all()
+    }
+    contexts = _business_context_map(db, list(rows), student_view=False)
+    items = [
+        _requirement_dict(
+            row, submissions.get(int(row.id), []), student_view=False,
+            owner_name=owners.get(int(row.review_owner_id or 0), ""),
+            business_context=contexts.get(int(row.id)),
+        )
+        for row in rows
+    ]
+    return items, total, conds
+
+
+def _requirement_summary(db, conds: list) -> dict:
+    """与列表同 scope、同 filter 的 SQL 条件聚合。
+
+    此前按当前页 items 统计：total 是全量真值，其余四个数字却是本页计数，
+    同一排概览卡片混用两种口径。这里一次聚合出全部，不把全量对象取进 Python。
+    """
+    from app.models import StudentProfile
+    from app.models.affairs_operations import AffairsMaterialRequirement
+
+    def _sum_if(condition):
+        return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
+
+    row = db.execute(select(
+        func.count(),
+        _sum_if(AffairsMaterialRequirement.status.in_(("MISSING", "RETURNED"))),
+        _sum_if(AffairsMaterialRequirement.status == "PENDING_REVIEW"),
+        _sum_if(AffairsMaterialRequirement.status == "ACCEPTED"),
+        _sum_if(AffairsMaterialRequirement.sensitivity_level == "HIGHLY_SENSITIVE"),
+    ).select_from(AffairsMaterialRequirement).join(
+        StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
+    ).where(*conds)).one()
+    return {
+        "total": int(row[0] or 0),
+        "missing": int(row[1] or 0),
+        "pendingReview": int(row[2] or 0),
+        "accepted": int(row[3] or 0),
+        "highlySensitive": int(row[4] or 0),
+    }
+
+
+def list_teacher_requirements(
+    user: dict,
+    *,
+    status: str | None = None,
+    sensitivity_level: str | None = None,
+    requirement_id: int | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[dict], int]:
+    """先权限/强敏感/数据范围过滤，再计数和分页。"""
     page, page_size = max(1, int(page)), min(100, max(1, int(page_size)))
     with session() as db:
-        allowed, _ = _allowed_class_ids(db, user)
-        conds = [
-            AffairsMaterialRequirement.tenant_id == _tid(),
-            AffairsMaterialRequirement.biz_type.in_(visible_biz),
-            AffairsMaterialRequirement.is_deleted.is_(False),
-            StudentProfile.tenant_id == _tid(),
-            StudentProfile.id == AffairsMaterialRequirement.student_id,
-            StudentProfile.is_deleted.is_(False),
-        ]
-        if status:
-            conds.append(AffairsMaterialRequirement.status == str(status).upper())
-        if allowed is not None:
-            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
-        if "MENTAL" in visible_biz:
-            from app.services.affairs_mental_service import psy_scope_ids
-
-            psy_scope = psy_scope_ids(db, user or {})
-            if psy_scope is not None:
-                conds.append(or_(
-                    AffairsMaterialRequirement.biz_type != "MENTAL",
-                    AffairsMaterialRequirement.student_id.in_(psy_scope or {-1}),
-                ))
-        total = int(db.scalar(select(func.count()).select_from(AffairsMaterialRequirement).join(
-            StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
-        ).where(*conds)) or 0)
-        rows = db.scalars(select(AffairsMaterialRequirement).join(
-            StudentProfile, StudentProfile.id == AffairsMaterialRequirement.student_id,
-        ).where(*conds).order_by(AffairsMaterialRequirement.id.desc())
-            .offset((page - 1) * page_size).limit(page_size)).all()
-        submissions = _submission_rows(db, [row.id for row in rows])
-        owner_ids = {int(row.review_owner_id) for row in rows if row.review_owner_id}
-        owners = {
-            int(owner.id): owner.real_name
-            for owner in db.scalars(select(User).where(
-                User.tenant_id == _tid(), User.id.in_(owner_ids or {-1}), User.is_deleted.is_(False),
-            )).all()
-        }
-        return [
-            _requirement_dict(
-                row, submissions.get(int(row.id), []), student_view=False,
-                owner_name=owners.get(int(row.review_owner_id or 0), ""),
-            )
-            for row in rows
-        ], total
+        items, total, _ = _requirement_page(
+            db, user, status=status, sensitivity_level=sensitivity_level, requirement_id=requirement_id,
+            page=page, page_size=page_size,
+        )
+        return items, total
 
 
-def list_my_requirements(user: dict, *, biz_type: str | None = None, biz_id: int | None = None) -> list[dict]:
+def list_my_requirements(
+    user: dict,
+    *,
+    biz_type: str | None = None,
+    biz_id: int | None = None,
+    requirement_id: int | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
     from app.models import User
     from app.models.affairs_operations import AffairsMaterialRequirement
     from app.services.mobile_student_service import _require_student, resolve_student
 
     _require_student(user)
+    page, page_size = max(1, int(page)), min(100, max(1, int(page_size)))
     with session() as db:
         student = resolve_student(db, user)
         if not student:
@@ -589,8 +900,14 @@ def list_my_requirements(user: dict, *, biz_type: str | None = None, biz_id: int
             conds.append(AffairsMaterialRequirement.biz_type == _biz(biz_type))
         if biz_id:
             conds.append(AffairsMaterialRequirement.biz_id == int(biz_id))
-        rows = db.scalars(select(AffairsMaterialRequirement).where(*conds)
-                          .order_by(AffairsMaterialRequirement.id.desc())).all()
+        if requirement_id:
+            conds.append(AffairsMaterialRequirement.id == int(requirement_id))
+        total = int(db.scalar(select(func.count()).select_from(AffairsMaterialRequirement).where(*conds)) or 0)
+        rows = db.scalars(
+            select(AffairsMaterialRequirement).where(*conds)
+            .order_by(AffairsMaterialRequirement.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
         submissions = _submission_rows(db, [row.id for row in rows])
         owner_ids = {int(row.review_owner_id) for row in rows if row.review_owner_id}
         owners = {
@@ -599,13 +916,15 @@ def list_my_requirements(user: dict, *, biz_type: str | None = None, biz_id: int
                 User.tenant_id == _tid(), User.id.in_(owner_ids or {-1}), User.is_deleted.is_(False),
             )).all()
         }
+        contexts = _business_context_map(db, list(rows), student_view=True)
         return [
             _requirement_dict(
                 row, submissions.get(int(row.id), []), student_view=True,
                 owner_name=owners.get(int(row.review_owner_id or 0), ""),
+                business_context=contexts.get(int(row.id)),
             )
             for row in rows
-        ]
+        ], total
 
 
 def submit_material(
@@ -1041,23 +1360,22 @@ def material_overview(
     *,
     status: str | None = None,
     sensitivity_level: str | None = None,
+    requirement_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict:
-    items, total = list_teacher_requirements(user, status=status, page=page, page_size=page_size)
-    if sensitivity_level:
-        level = str(sensitivity_level).upper()
-        items = [item for item in items if item.get("sensitivityLevel") == level]
-        # 过滤发生在已授权集合内，不能返回未授权全局总数。
-        total = len(items)
-    summary = {
-        "total": total,
-        "missing": sum(item["status"] in {"MISSING", "RETURNED"} for item in items),
-        "pendingReview": sum(item["status"] == "PENDING_REVIEW" for item in items),
-        "accepted": sum(item["status"] == "ACCEPTED" for item in items),
-        "highlySensitive": sum(item.get("sensitivityLevel") == "HIGHLY_SENSITIVE" for item in items),
-    }
-    return {"items": items, "total": total, "summary": summary, "page": page, "pageSize": page_size}
+    page, page_size = max(1, int(page)), min(100, max(1, int(page_size)))
+    empty = {"total": 0, "missing": 0, "pendingReview": 0, "accepted": 0, "highlySensitive": 0}
+    with session() as db:
+        items, total, conds = _requirement_page(
+            db, user, status=status, sensitivity_level=sensitivity_level, requirement_id=requirement_id,
+            page=page, page_size=page_size,
+        )
+        # 概览与列表共用同一份 conds：筛选后概览也必须是"筛选后的全量"，
+        # 而不是当前页统计，也不是未授权的全局总数。
+        summary = empty if conds is None else _requirement_summary(db, conds)
+    return {"items": items, "total": total, "summary": summary,
+            "page": page, "pageSize": page_size}
 
 
 def _manifest_item_dict(item: ArchiveManifestItem) -> dict:

@@ -10,6 +10,15 @@ from app.core.exceptions import AppException
 
 # actionKey → 允许角色提示、必需参数、各端路由提示
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    "student.affairs.material": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["materialRequirementId"],
+        "pc": "/admin/student-affairs/material-operations",
+        "studentPc": "/materials",
+        "studentMini": "/pages/student/affairs/index",
+        "teacherMini": "/pages/teacher/affairs/index",
+        "label": "补交材料",
+    },
     "student.leave.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["leaveId"],

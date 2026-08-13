@@ -156,7 +156,7 @@
           <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
         </AppFormItem>
         <div class="fd-grid2">
-          <AppFormItem label="公示天数"><AppNumberInput v-model="batchModal.publicityDays" :min="0" placeholder="快测填 0" /></AppFormItem>
+          <AppFormItem label="公示天数"><AppNumberInput v-model="batchModal.publicityDays" :min="1" :max="30" placeholder="1-30 天，默认 5" /></AppFormItem>
           <AppFormItem label="名额"><AppNumberInput v-model="batchModal.quota" :min="0" /></AppFormItem>
         </div>
         <label class="fd-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
@@ -172,23 +172,27 @@
     <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请" mode="modal" size="medium">
       <div class="sa-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="applyModal.studentId" placeholder="按姓名 / 学号搜索学生" />
+          <AppStudentPicker v-model="applyModal.studentId" placeholder="按姓名 / 学号搜索学生" @change="onApplyStudentChange" />
         </AppFormItem>
         <AppFormItem label="申请来源">
           <AppSelect v-model="applyModal.applySource" :options="applySourceOptions" />
         </AppFormItem>
         <AppFormItem label="申请金额（元）">
-          <AppNumberInput v-model="applyModal.amount" :min="0" />
+          <AppNumberInput v-model="applyModal.amount" :min="amountMin" :max="amountMax" :precision="2" :readonly="amountPolicy.mode === 'FIXED'" />
+          <p v-if="amountHint" class="fd-amount-hint">{{ amountHint }}</p>
         </AppFormItem>
         <AppFormItem label="申请说明">
           <AppTextarea v-model="applyModal.statement" :rows="3" placeholder="选填" />
         </AppFormItem>
-        <p class="fd-modal__hint">受理时将硬校验资格；不满足条件将被拒绝并提示原因。</p>
+        <div class="fd-preflight" :class="preflightTone">
+          <span class="fd-preflight__icon">{{ applyModal.preflightLoading ? '···' : (applyModal.preflight?.eligible ? '✓' : '!') }}</span>
+          <div><strong>{{ preflightTitle }}</strong><p>{{ preflightText }}</p><small v-if="applyModal.preflight?.ruleVersion">规则版本 {{ applyModal.preflight.ruleVersion }} · 提交时将再次正式校验</small></div>
+        </div>
         <AppInlineAlert v-if="applyModal.error" type="danger" :description="applyModal.error" />
       </div>
       <template #footer>
         <button type="button" class="fd-btn" @click="applyModal.visible = false">取消</button>
-        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitApply">受理</button>
+        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting || applyModal.preflightLoading || !applyModal.preflight?.eligible" @click="submitApply">受理</button>
       </template>
     </AppDrawer>
   </ModulePageShell>
@@ -232,11 +236,12 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       acting: false, scanning: false, activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      routeIntentConsumed: false,
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       projectModal: { visible: false, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' },
-      batchModal: { visible: false, schoolYear: '', publicityDays: 0, quota: null, publish: true, error: '' },
-      applyModal: { visible: false, studentId: '', applySource: 'SELF', amount: null, statement: '', error: '' }
+      batchModal: { visible: false, schoolYear: '', publicityDays: 5, quota: null, publish: true, error: '' },
+      applyModal: { visible: false, studentId: '', applySource: 'SELF', amount: null, statement: '', error: '', preflight: null, preflightLoading: false }
     }
   },
   computed: {
@@ -271,6 +276,32 @@ export default {
     currentBatchOpen() {
       const b = this.batches.find((x) => x.batchId === this.batchId)
       return !!b && b.status === 'OPEN'
+    },
+    amountPolicy() {
+      return (this.applyModal.preflight && this.applyModal.preflight.amountPolicy)
+        || (this.projects.find((p) => p.projectId === this.projectId)?.amountPolicy)
+        || { mode: 'OPTIONAL' }
+    },
+    amountMin() { return this.amountPolicy.mode === 'RANGE' ? Number(this.amountPolicy.minAmount) : 0 },
+    amountMax() { return this.amountPolicy.mode === 'RANGE' ? Number(this.amountPolicy.maxAmount) : Infinity },
+    amountHint() {
+      const p = this.amountPolicy
+      if (p.mode === 'FIXED') return `项目标准固定金额 ${p.fixedAmount} 元，已自动带入且不可修改`
+      if (p.mode === 'RANGE') return `允许区间 ${p.minAmount}-${p.maxAmount} 元，建议 ${p.suggestedAmount} 元`
+      return '本项目未设固定标准，金额可选填'
+    },
+    preflightTone() {
+      if (this.applyModal.preflightLoading) return 'is-loading'
+      return this.applyModal.preflight?.eligible ? 'is-ok' : 'is-wait'
+    },
+    preflightTitle() {
+      if (!this.applyModal.studentId) return '选择学生后自动资格预检'
+      if (this.applyModal.preflightLoading) return '正在调用正式规则预检…'
+      return this.applyModal.preflight?.eligible ? '当前资格预检通过' : '当前暂不满足资格'
+    },
+    preflightText() {
+      if (!this.applyModal.studentId) return '预检不代替提交时的服务端硬校验。'
+      return this.applyModal.preflight?.message || '请稍候'
     },
     studentFilterLabel() {
       const f = this.studentFilter || {}
@@ -340,6 +371,13 @@ export default {
       this.clearStudentFilter()
     },
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create') return
+      if (!this.studentFilter?.studentId || !this.currentBatchOpen || !this.canBtn('studentAffairs.funding.create')) return
+      this.routeIntentConsumed = true
+      this.openApply()
+      this.onApplyStudentChange(this.applyModal.studentId)
+    },
     applyRouteFilters() {
       const q = this.$route.query || {}
       this.studentFilter = readStudentFilter(q)
@@ -410,11 +448,16 @@ export default {
     },
     async loadBatches() {
       const res = await studentAffairsApi.getFundingBatches({ page: 1, pageSize: 100 })
-      if (res.code === 0 && res.data) this.batches = res.data.items || []
+      if (res.code === 0 && res.data) { this.batches = res.data.items || []; this.consumeRouteIntent() }
     },
     autoPickBatch() {
       const bs = this.filteredBatches
-      if (bs.length) { this.batchId = bs[0].batchId; this.loadApplications() }
+      if (bs.length) {
+        const candidate = bs.find((batch) => batch.status === 'OPEN') || bs[0]
+        this.batchId = candidate.batchId
+        this.loadApplications()
+        this.consumeRouteIntent()
+      }
       else { this.batchId = ''; this.list = [] }
     },
     onProjectChange() {
@@ -504,13 +547,13 @@ export default {
       } else { m.error = res.message || '创建失败' }
     },
     openBatch() {
-      this.batchModal = { visible: true, schoolYear: '', publicityDays: 0, quota: null, publish: true, error: '' }
+      this.batchModal = { visible: true, schoolYear: '', publicityDays: 5, quota: null, publish: true, error: '' }
     },
     async submitBatch() {
       const m = this.batchModal
       const schoolYear = (m.schoolYear || '').trim()
       if (!schoolYear) { m.error = '请填写学年'; return }
-      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear, publicityDays: Number(m.publicityDays) || 0, quota: m.quota || null, publish: !!m.publish })
+      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear, publicityDays: Number(m.publicityDays) || 5, quota: m.quota || null, publish: !!m.publish })
       if (res.code === 0) {
         toast.success('批次已保存')
         this.batchModal.visible = false
@@ -519,12 +562,34 @@ export default {
       } else { m.error = res.message || '保存失败' }
     },
     openApply() {
-      this.applyModal = { visible: true, studentId: '', applySource: 'SELF', amount: null, statement: '', error: '' }
+      const sid = this.studentFilter?.studentId
+      this.applyModal = { visible: true, studentId: sid ? String(sid) : '', applySource: 'SELF', amount: null, statement: '', error: '', preflight: null, preflightLoading: false }
+    },
+    async onApplyStudentChange(studentId) {
+      this.applyModal.preflight = null
+      this.applyModal.error = ''
+      this.applyModal.preflightLoading = false
+      if (!studentId || !this.batchId) return
+      this.applyModal.preflightLoading = true
+      const selectedId = String(studentId)
+      try {
+        const res = await studentAffairsApi.preflightFunding(String(this.batchId), selectedId)
+        if (String(this.applyModal.studentId) !== selectedId) return
+        if (res.code !== 0) { this.applyModal.error = res.message || '资格预检失败'; return }
+        this.applyModal.preflight = res.data
+        const suggested = res.data?.amountPolicy?.suggestedAmount
+        this.applyModal.amount = suggested == null ? null : Number(suggested)
+      } catch (e) {
+        if (String(this.applyModal.studentId) === selectedId) this.applyModal.error = e?.message || '资格预检失败'
+      } finally {
+        if (String(this.applyModal.studentId) === selectedId) this.applyModal.preflightLoading = false
+      }
     },
     async submitApply() {
       const m = this.applyModal
       if (!m.studentId) { m.error = '请选择学生'; return }
-      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount || null, statement: (m.statement || '').trim() }
+      if (!m.preflight || !m.preflight.eligible) { m.error = '请先通过资格预检'; return }
+      const body = { batchId: String(this.batchId), studentId: String(m.studentId), applySource: m.applySource, amount: m.amount == null ? null : m.amount, statement: (m.statement || '').trim() }
       const ok = await this.runAction(() => studentAffairsApi.applyFunding(body), '申请已受理')
       if (ok) this.applyModal.visible = false
       else this.applyModal.error = this._lastErr || '受理失败（可能资格校验未通过）'
@@ -800,4 +865,13 @@ export default {
   flex-direction: column;
   gap: var(--space-1);
 }
+.fd-amount-hint { margin: 6px 0 0; color: var(--primary-700); font-size: var(--font-size-xs); }
+.fd-preflight { display: flex; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-subtle); }
+.fd-preflight.is-ok { border-color: var(--success-200, #bbf7d0); background: var(--success-50, #f0fdf4); }
+.fd-preflight.is-wait { border-color: var(--warning-200, #fde68a); background: var(--warning-50, #fffbeb); }
+.fd-preflight__icon { display: grid; place-items: center; flex: 0 0 28px; height: 28px; border-radius: 50%; color: #fff; background: var(--warning-500, #f59e0b); font-weight: 700; }
+.fd-preflight.is-ok .fd-preflight__icon { background: var(--success-600, #16a34a); }
+.fd-preflight strong,.fd-preflight p,.fd-preflight small { display: block; }
+.fd-preflight p { margin: 3px 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.fd-preflight small { color: var(--text-tertiary); }
 </style>

@@ -34,6 +34,7 @@
 import { popDetail } from '@/utils/msgStash'
 import { go, toast } from '@/utils/nav'
 import { studentApi } from '@/services/studentApi'
+import { useSessionStore } from '@/stores/session'
 
 const ACTION_ROUTES = {
   STUDENT_AFFAIRS: '/pages/student/affairs/index',
@@ -100,7 +101,8 @@ export default {
       const params = this.m.actionParams && typeof this.m.actionParams === 'object' ? this.m.actionParams : {}
       const materialRequirementId = params.materialRequirementId || params.requirementId || ''
       if (materialRequirementId) {
-        return `/pages/student/affairs/index?materialRequirementId=${encodeURIComponent(String(materialRequirementId))}`
+        const page = useSessionStore().isTeacher ? '/pages/teacher/affairs/index' : '/pages/student/affairs/index'
+        return `${page}?materialRequirementId=${encodeURIComponent(String(materialRequirementId))}`
       }
       const key = String(this.m.actionKey || '').trim().toUpperCase()
       let route = ACTION_ROUTES[key] || ''

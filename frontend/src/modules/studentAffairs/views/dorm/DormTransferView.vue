@@ -72,6 +72,7 @@
     <AppDrawer :visible="dlg.visible" title="发起调宿" mode="modal" size="large" @close="closeTransfer">
       <div class="dr-form">
         <p class="dr-workspace-intro">按“学生 → 楼栋 → 房间 → 空床”顺序选择，提交后进入辅导员和宿管两级审批。</p>
+        <AppInlineAlert v-if="prefilledStudentHint" type="info" :description="prefilledStudentHint" />
         <AppFormItem label="调宿学生" required><AppStudentPicker v-model="dlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" /></AppFormItem>
         <AppFormItem label="目标楼栋" required><AppDormBuildingPicker v-model="dlg.buildingId" :options="buildingOptions" placeholder="选择楼栋" :disabled="actioning" @change="onBuildingChange" /></AppFormItem>
         <AppFormItem label="目标房间" required><AppDormRoomPicker v-model="dlg.roomId" :options="roomOptions" :query="{ buildingId: dlg.buildingId }" :disabled="actioning || !dlg.buildingId" :placeholder="dlg.buildingId ? '选择房间' : '请先选楼栋'" @change="onRoomChange" /></AppFormItem>
@@ -145,6 +146,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       buildings: [], rooms: [], beds: [],
       studentFilter: { studentId: '', studentNo: '', studentName: '' }, statusMatch: null,
+      routeIntentConsumed: false,
       dlg: { visible: false, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' },
       approveDlg: { visible: false, transferId: '', version: null, message: '' },
       rejDlg: { visible: false, transferId: '', version: null }
@@ -159,6 +161,15 @@ export default {
       const name = f.studentName || hit.realName || '学生'
       const no = f.studentNo || hit.studentNo || ''
       return `当前学生筛选：${name}${no ? ` / ${no}` : ''}`
+    },
+    /** 表单里的学生确实来自上一页带入时才提示，老师改过人就不再显示。 */
+    prefilledStudentHint() {
+      const f = this.studentFilter || {}
+      if (!f.studentId || String(this.dlg.studentId) !== String(f.studentId)) return ''
+      const hit = this.items.find((x) => String(x.studentId) === String(f.studentId)) || {}
+      const name = f.studentName || hit.realName || '学生'
+      const no = f.studentNo || hit.studentNo || ''
+      return `已带入学生画像中的当前学生：${name}${no ? ` / ${no}` : ''}；如需换人可直接在下方重新选择。`
     },
     metricCards() {
       const s = this.statusCounts
@@ -190,10 +201,16 @@ export default {
       return this.statusMatch.length === 1 ? this.statusMatch[0] : undefined
     }
   },
-  mounted() { this.applyRouteFilters(); this.load(); this.loadBuildings() },
+  mounted() { this.applyRouteFilters(); this.load(); this.loadBuildings(); this.consumeRouteIntent() },
   watch: { '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() } },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create') return
+      if (!this.studentFilter?.studentId || !this.canBtn('studentAffairs.dorm.transfer.create')) return
+      this.routeIntentConsumed = true
+      this.openTransfer()
+    },
     hasVersion(row) { return row && row.version !== undefined && row.version !== null && row.version !== '' },
     canAction(row, action) { return Array.isArray(row.allowedActions) && row.allowedActions.includes(action) },
     fallbackBed(row, side) {
@@ -223,13 +240,23 @@ export default {
       } catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
     },
     onPageChange(page) { this.pagination.page = page; this.load() },
-    async loadBuildings() { try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] } catch { this.buildings = [] } },
-    openTransfer() { this.dlg = { visible: true, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' }; this.rooms = []; this.beds = [] },
+    async loadBuildings() { try { this.buildings = (await studentAffairsApi.listAllDormBuildings()).data.items || [] } catch { this.buildings = [] } },
+    /**
+     * 从学生画像跳进来时 URL 已带 studentId，列表也按它筛过；
+     * 但此前打开"发起调宿"会把 studentId 清空，老师得把同一个学生再搜一遍——
+     * 上下文断在动作层。这里沿用当前学生，仍可在选择器里主动改人，
+     * 提交时后端 submit_transfer 照常重新校验学生与目标床位。
+     */
+    openTransfer() {
+      const sid = (this.studentFilter && this.studentFilter.studentId) || ''
+      this.dlg = { visible: true, studentId: sid ? String(sid) : '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' }
+      this.rooms = []; this.beds = []
+    },
     closeTransfer() { if (!this.actioning) this.dlg.visible = false },
     async onBuildingChange() {
       this.dlg.roomId = ''; this.dlg.toBedId = ''; this.dlg.error = ''; this.beds = []
       if (!this.dlg.buildingId) { this.rooms = []; return }
-      try { this.rooms = (await studentAffairsApi.listDormRooms(this.dlg.buildingId, { pageSize: 200 })).data.items || [] }
+      try { this.rooms = (await studentAffairsApi.listAllDormRooms(this.dlg.buildingId)).data.items || [] }
       catch (e) { this.rooms = []; this.dlg.error = e.message || '房间加载失败' }
     },
     async onRoomChange() {

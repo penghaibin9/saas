@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from openpyxl import Workbook
 from sqlalchemy import and_, func, or_, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, check_version, no_data_scope, not_found
 from app.core.optimistic_lock import atomic_claim_version
 from app.models.file import FileAsset, FileBinding, FileObject, FileVersion
 from app.services import file_service
@@ -437,17 +437,86 @@ def create_batch(body, user) -> dict:
         return _batch_row(batch)
 
 
-def collect(batch_id, user, student_ids, expected_version=None) -> dict:
-    from app.core.affairs_security import build_affairs_context, no_data_scope
-    from app.models import ArchiveBatch, ArchivePackage, StudentProfile
-
+def _collect_candidates(db, batch_id, user, student_ids):
+    """圈定预检与正式收集共用同一份租户、存在性和数据范围判定。"""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import ArchivePackage, StudentProfile
     raw = list(student_ids or [])
     if not raw:
         raise AppException("VALIDATION_ERROR", "至少圈定一名学生")
     try:
-        student_ids = list(dict.fromkeys(int(value) for value in raw))
+        normalized_ids = list(dict.fromkeys(int(value) for value in raw))
     except (TypeError, ValueError) as exc:
         raise AppException("VALIDATION_ERROR", "学生ID必须为有效数字") from exc
+    context = build_affairs_context(user, db)
+    students = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.id.in_(normalized_ids),
+        StudentProfile.is_deleted.is_(False),
+    )).all()
+    student_map = {int(student.id): student for student in students}
+    if any(student_id not in student_map for student_id in normalized_ids):
+        raise not_found("学生不存在")
+    allowed_classes = context.allowed_class_ids(db)
+    allowed_students = context.psychology_student_ids | context.student_ids
+    for student_id in normalized_ids:
+        student = student_map[student_id]
+        if allowed_classes is None:
+            continue
+        if context.scope_type == "SELF":
+            if context.self_student_id and int(context.self_student_id) == student_id:
+                continue
+            raise no_data_scope("学生只能访问本人数据")
+        if context.scope_type == "STUDENT":
+            if student_id in allowed_students:
+                continue
+            raise no_data_scope("该学生不在您的授权范围内")
+        if student.class_id not in allowed_classes:
+            raise no_data_scope("该学生不在您的数据范围内")
+    existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
+        ArchivePackage.tenant_id == _tid(),
+        ArchivePackage.batch_id == int(batch_id),
+        ArchivePackage.student_id.in_(normalized_ids),
+        ArchivePackage.is_deleted.is_(False),
+    )).all())
+    return normalized_ids, student_map, existing_ids
+
+
+def preview_collect(batch_id, user, student_ids, expected_version=None) -> dict:
+    """只读预检；不抢占版本、不改变批次状态、不创建档案包。"""
+    from app.models import ArchiveBatch
+
+    with session() as db:
+        batch = db.scalars(select(ArchiveBatch).where(
+            ArchiveBatch.tenant_id == _tid(), ArchiveBatch.id == int(batch_id),
+            ArchiveBatch.is_deleted.is_(False),
+        )).first()
+        if not batch:
+            raise not_found("归档批次不存在")
+        if batch.status not in ("DRAFT", "COLLECTING"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
+        check_version(batch.version, expected_version)
+        normalized_ids, student_map, existing_ids = _collect_candidates(db, batch.id, user, student_ids)
+        return {
+            "batchId": str(batch.id), "batchVersion": int(batch.version or 0),
+            "selectedCount": len(normalized_ids),
+            "newCount": len(normalized_ids) - len(existing_ids),
+            "duplicateCount": len(existing_ids),
+            "students": [
+                {
+                    "studentId": str(student_id),
+                    "studentNo": student_map[student_id].student_no or "",
+                    "studentName": student_map[student_id].real_name or "",
+                    "result": "ALREADY_INCLUDED" if student_id in existing_ids else "READY",
+                }
+                for student_id in normalized_ids
+            ],
+        }
+
+
+def collect(batch_id, user, student_ids, expected_version=None) -> dict:
+    from app.models import ArchiveBatch, ArchivePackage
+
     with session() as db:
         batch = db.scalars(select(ArchiveBatch).where(
             ArchiveBatch.tenant_id == _tid(), ArchiveBatch.id == int(batch_id),
@@ -458,38 +527,7 @@ def collect(batch_id, user, student_ids, expected_version=None) -> dict:
         if batch.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
         atomic_claim_version(db, batch, expected_version)
-        context = build_affairs_context(user, db)
-        students = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == _tid(),
-            StudentProfile.id.in_(student_ids),
-            StudentProfile.is_deleted.is_(False),
-        )).all()
-        student_map = {int(student.id): student for student in students}
-        missing = [student_id for student_id in student_ids if student_id not in student_map]
-        if missing:
-            raise not_found("学生不存在")
-        allowed_classes = context.allowed_class_ids(db)
-        allowed_students = context.psychology_student_ids | context.student_ids
-        for student_id in student_ids:
-            student = student_map[student_id]
-            if allowed_classes is None:
-                continue
-            if context.scope_type == "SELF":
-                if context.self_student_id and int(context.self_student_id) == student_id:
-                    continue
-                raise no_data_scope("学生只能访问本人数据")
-            if context.scope_type == "STUDENT":
-                if student_id in allowed_students:
-                    continue
-                raise no_data_scope("该学生不在您的授权范围内")
-            if student.class_id not in allowed_classes:
-                raise no_data_scope("该学生不在您的数据范围内")
-        existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
-            ArchivePackage.tenant_id == _tid(),
-            ArchivePackage.batch_id == batch.id,
-            ArchivePackage.student_id.in_(student_ids),
-            ArchivePackage.is_deleted.is_(False),
-        )).all())
+        student_ids, _student_map, existing_ids = _collect_candidates(db, batch.id, user, student_ids)
         made = 0
         for student_id in student_ids:
             if student_id in existing_ids:

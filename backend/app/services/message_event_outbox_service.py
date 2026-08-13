@@ -60,6 +60,52 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "请假已关闭",
         "require_ack": False,
     },
+    # 学工材料补交事件。原本只在 affairs_operations_service._register_message_templates()
+    # 里用 setdefault 注册，而该函数只被 affairs_operations_service.install() 调用，
+    # install() 全仓无人调用 —— 结果是登记材料缺项必然抛
+    # VALIDATION_ERROR「未登记的消息事件码：MATERIAL.REQUIRED」(422)，功能完全不可用。
+    # 事件模板的真实来源就是本表（见 communication_registry.validate_registry 注释），
+    # 因此在此登记；_register_message_templates 的 setdefault 保持原样，自然成为 no-op。
+    "MATERIAL.REQUIRED": {
+        "source_module": "student-affairs",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "RETURNED_NOTICE",
+        "title": "材料待补交",
+        "require_ack": False,
+    },
+    "MATERIAL.REMINDED": {
+        "source_module": "student-affairs",
+        "category": "REMINDER",
+        "priority": "IMPORTANT",
+        "message_type": "DEADLINE_REMINDER",
+        "title": "材料补交提醒",
+        "require_ack": False,
+    },
+    "MATERIAL.ACCEPTED": {
+        "source_module": "student-affairs",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "材料已验收",
+        "require_ack": False,
+    },
+    "MATERIAL.RETURNED": {
+        "source_module": "student-affairs",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "RETURNED_NOTICE",
+        "title": "补交材料被退回",
+        "require_ack": False,
+    },
+    "MATERIAL.WAIVED": {
+        "source_module": "student-affairs",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "STATUS_CHANGED",
+        "title": "材料已免交",
+        "require_ack": False,
+    },
     "LEAVE.RETURN_DONE": {
         "source_module": "student-affairs",
         "category": "BUSINESS",

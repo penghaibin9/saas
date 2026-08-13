@@ -1,0 +1,137 @@
+[
+  {
+    "module": "affairs_activity_authority_guard",
+    "installer": "install_activity_authority_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_activity_code_service",
+    "installer": "install_activity_checkin_code",
+    "invoked": true
+  },
+  {
+    "module": "affairs_activity_reliability_service",
+    "installer": "install_activity_reliability",
+    "invoked": true
+  },
+  {
+    "module": "affairs_batch_job_guard",
+    "installer": "install_batch_job_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_data_integrity_guard",
+    "installer": "install_data_integrity_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_discipline_integrity_guard",
+    "installer": "install_discipline_integrity_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_checkout_guard",
+    "installer": "install_dorm_checkout_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_message_event_guard",
+    "installer": "install_dorm_message_event_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_node_guard",
+    "installer": "install_dorm_node_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_projection_service",
+    "installer": "install_dorm_projection",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_reliability_service",
+    "installer": "install_dorm_reliability",
+    "invoked": true
+  },
+  {
+    "module": "affairs_dorm_transfer_scope_guard",
+    "installer": "install_dorm_transfer_scope_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_four_end_contract",
+    "installer": "install_affairs_four_end_contract",
+    "invoked": true
+  },
+  {
+    "module": "affairs_four_end_review_guard",
+    "installer": "install_affairs_four_end_review_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_four_end_terminal_guard",
+    "installer": "install_affairs_four_end_terminal_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_funding_authority_service",
+    "installer": "install_funding_authority",
+    "invoked": true
+  },
+  {
+    "module": "affairs_history_dry_run_guard",
+    "installer": "install_history_dry_run_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_history_import_guard",
+    "installer": "install_history_import_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_risk_evidence_guard",
+    "installer": "install_risk_evidence_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_risk_transfer_guard",
+    "installer": "install_risk_transfer_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_stats_integrity_guard",
+    "installer": "install_stats_integrity_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_student_application_lock",
+    "installer": "install_student_application_lock",
+    "invoked": true
+  },
+  {
+    "module": "affairs_student_atomic_service",
+    "installer": "install_atomic_student_applications",
+    "invoked": true
+  },
+  {
+    "module": "affairs_student_contract_security_guard",
+    "installer": "install_student_contract_security_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_student_contract_service",
+    "installer": "install_student_contract",
+    "invoked": true
+  },
+  {
+    "module": "affairs_student_ledger_guard",
+    "installer": "install_student_ledger_guard",
+    "invoked": true
+  },
+  {
+    "module": "affairs_talk_guard",
+    "installer": "install_talk_guard",
+    "invoked": true
+  }
+]

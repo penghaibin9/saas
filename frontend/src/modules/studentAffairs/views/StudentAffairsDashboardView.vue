@@ -39,12 +39,12 @@
       <div class="sa-grid sa-grid--priority">
         <AppSectionCard title="今日优先处理">
           <ul class="sa-list">
-            <li v-for="item in todoItems" :key="item.key">
+            <li v-for="item in todoItems" :key="item.key" :class="{ 'is-actionable': item.path }" @click="go(item.path)">
               <span>
                 <strong>{{ item.label }}</strong>
                 <small>{{ item.hint }}</small>
               </span>
-              <AppStatusTag :type="item.count > 0 ? 'warning' : 'success'" :label="`${item.count} 件`" />
+              <span class="sa-list__action"><AppStatusTag :type="item.count > 0 ? 'warning' : 'success'" :label="`${item.count} 件`" /><button v-if="item.path" type="button" :aria-label="`打开${item.label}`">去处理 <b>→</b></button></span>
             </li>
           </ul>
         </AppSectionCard>
@@ -208,12 +208,12 @@ export default {
       return map[this.dashboard.scopeMode] || '按当前身份'
     },
     todoItems() {
-      const value = (key) => this.metricCards.find((c) => c.key === key)?.value || 0
+      const card = (key) => this.metricCards.find((c) => c.key === key) || {}
       // 宿舍异常无与学工首页同口径可信统计：不展示假宿舍卡，也不用逾期销假顶替
       return [
-        { key: 'todo', label: '今日待办', count: value('pendingTodo'), hint: '按当前身份可见的统一待办' },
-        { key: 'leave', label: '请假审批概览', count: value('pendingLeave'), hint: '待辅导员/学院/学工处处理' },
-        { key: 'focus', label: '重点学生提醒', count: value('riskStudents'), hint: '来自风险预警未关闭学生' }
+        { key: 'todo', label: '今日待办', count: card('pendingTodo').value || 0, hint: '按当前身份可见的统一待办', path: card('pendingTodo').drillPath },
+        { key: 'leave', label: '请假审批概览', count: card('pendingLeave').value || 0, hint: '待辅导员/学院/学工处处理', path: card('pendingLeave').drillPath },
+        { key: 'focus', label: '重点学生提醒', count: card('riskStudents').value || 0, hint: '来自风险预警未关闭学生', path: card('riskStudents').drillPath }
       ]
     },
     riskLevel() {
@@ -305,6 +305,11 @@ export default {
   padding-bottom: 0;
   border-bottom: 0;
 }
+.sa-list li.is-actionable { cursor: pointer; border-radius: var(--radius-md); padding: var(--space-2); margin: calc(var(--space-2) * -1); transition: background .15s ease, transform .15s ease; }
+.sa-list li.is-actionable:hover { background: var(--primary-50); transform: translateX(2px); }
+.sa-list__action { display: inline-flex; align-items: center; gap: var(--space-2); }
+.sa-list__action button { border: 0; color: var(--primary-700); background: transparent; font-weight: var(--font-weight-medium); cursor: pointer; white-space: nowrap; }
+.sa-list__action b { margin-left: 3px; }
 .sa-list small {
   display: block;
   color: var(--text-tertiary);

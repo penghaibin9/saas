@@ -47,6 +47,7 @@
         <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
         <template #cell-actions="{ row }">
           <div class="responsibility-actions">
+            <AppPermissionButton v-if="tab === 'vacancies'" :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" size="sm" variant="primary" @click="openAssign(row)">立即分配</AppPermissionButton>
             <button v-if="tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link" @click="openHandover(row)">交接</button>
             <button v-if="tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link danger" @click="openEnd(row)">结束</button>
           </div>
@@ -98,7 +99,7 @@ import { canCode } from '@/modules/studentAffairs/composables/permission'
 const TABS = [{ key: 'ledger', label: '辅导员台账' }, { key: 'vacancies', label: '空缺班级' }, { key: 'assignments', label: '按班分配' }]
 const COLS = {
   ledger: [{ key: 'counselor', title: '辅导员' }, { key: 'classCount', title: '带班数' }, { key: 'studentCount', title: '学生数' }, { key: 'primaryCount', title: '主责班级' }, { key: 'tempCount', title: '临时代班' }],
-  vacancies: [{ key: 'className', title: '班级' }, { key: 'studentCount', title: '学生数' }, { key: 'status', title: '责任状态' }],
+  vacancies: [{ key: 'className', title: '班级' }, { key: 'studentCount', title: '学生数' }, { key: 'status', title: '责任状态' }, { key: 'actions', title: '操作', align: 'right', width: '130px' }],
   assignments: [{ key: 'className', title: '班级' }, { key: 'counselor', title: '辅导员' }, { key: 'studentCount', title: '学生数' }, { key: 'dutyType', title: '责任类型' }, { key: 'status', title: '状态' }, { key: 'effectiveFrom', title: '生效时间' }, { key: 'effectiveTo', title: '截止时间' }, { key: 'actions', title: '操作' }]
 }
 const emptyForm = () => ({ classId: null, userId: null, dutyType: 'PRIMARY', effectiveFrom: '', effectiveTo: '', toUserId: null, reason: '' })
@@ -129,7 +130,11 @@ export default {
     },
     switchTab(tab) { this.tab = tab; this.pagination.page = 1; this.load() },
     onPageChange(page) { this.pagination.page = page; this.load() },
-    openAssign() { this.form = emptyForm(); this.dialogError = ''; this.dialog = { visible: true, mode: 'assign', title: '分配辅导员责任', row: null } },
+    openAssign(row = null) {
+      this.form = { ...emptyForm(), classId: row?.classId ? String(row.classId) : null }
+      this.dialogError = ''
+      this.dialog = { visible: true, mode: 'assign', title: row ? `为 ${row.className || '空缺班级'} 分配主辅导员` : '分配辅导员责任', row }
+    },
     openHandover(row) { this.form = emptyForm(); this.dialogError = ''; this.dialog = { visible: true, mode: 'handover', title: '辅导员交接', row } },
     openEnd(row) { this.form = emptyForm(); this.dialogError = ''; this.dialog = { visible: true, mode: 'end', title: '结束责任关系', row } },
     async submitDialog() {

@@ -736,36 +736,37 @@ def affairs_leave_detail(user: dict, leave_id: str) -> dict:
     return leave_svc.get_detail(leave_id, u)
 
 
-def affairs_leave_approve(user: dict, leave_id: str, comment: str | None = None) -> dict:
+def affairs_leave_approve(user: dict, leave_id: str, comment: str | None = None,
+                          expected_version=None) -> dict:
     """请假审批通过（owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.approve(leave_id, u, comment or "")
+    result = leave_svc.approve(leave_id, u, comment or "", expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_APPROVE", f"affairs-leave:{leave_id}", {"operator": u.get("realName")})
     return result
 
 
-def affairs_leave_reject(user: dict, leave_id: str, reason: str) -> dict:
+def affairs_leave_reject(user: dict, leave_id: str, reason: str, expected_version=None) -> dict:
     """请假驳回（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.reject(leave_id, u, reason)
+    result = leave_svc.reject(leave_id, u, reason, expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_REJECT", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "reason": (reason or "")[:200]})
     return result
 
 
-def affairs_leave_return(user: dict, leave_id: str, reason: str) -> dict:
+def affairs_leave_return(user: dict, leave_id: str, reason: str, expected_version=None) -> dict:
     """请假退回重提（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.return_leave(leave_id, u, reason)
+    result = leave_svc.return_leave(leave_id, u, reason, expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_RETURN", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "reason": (reason or "")[:200]})
     return result

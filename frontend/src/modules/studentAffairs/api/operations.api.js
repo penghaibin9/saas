@@ -22,6 +22,14 @@ export const affairsOperationsApi = {
   createRequirement(body) {
     return request('/student-affairs/material-requirements', { method: 'POST', body })
   },
+  /** 按 bizType+bizId 解析业务上下文，供「业务详情 → 要求补材料」预填，老师不再手抄主键。 */
+  resolveBizContext(params = {}) {
+    return request('/student-affairs/material-center/biz-context', { params })
+  },
+  /** 本校该业务域已真实用过的材料项，供登记时选择而不是猜编码。 */
+  listItemSuggestions(params = {}) {
+    return request('/student-affairs/material-center/item-suggestions', { params })
+  },
   reviewRequirement(requirementId, action, reason, version) {
     return request(`/student-affairs/material-requirements/${enc(requirementId)}/review`, {
       method: 'POST', body: { action, reason, version }

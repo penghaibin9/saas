@@ -142,13 +142,28 @@
       <div class="av-form">
         <div class="av-form__note">只选择本批次确需归档的学生。提交后系统为每名学生生成一份独立档案包。</div>
         <AppFormItem label="学生（可多选）" required>
-          <AppStudentPicker v-model="collectModal.studentIds" multiple placeholder="按姓名 / 学号搜索添加学生" />
+          <AppStudentPicker v-model="collectModal.studentIds" multiple placeholder="按姓名 / 学号搜索添加学生" @change="invalidateCollectPreview" />
         </AppFormItem>
+        <div v-if="collectModal.preview" class="av-preview">
+          <div class="av-preview__head"><span>范围预检已完成</span><strong>{{ collectModal.preview.selectedCount }} 人</strong></div>
+          <div class="av-preview__metrics">
+            <div><span>将新建</span><strong>{{ collectModal.preview.newCount }}</strong></div>
+            <div><span>已在批次中</span><strong>{{ collectModal.preview.duplicateCount }}</strong></div>
+          </div>
+          <ul class="av-preview__students">
+            <li v-for="student in collectModal.preview.students" :key="student.studentId">
+              <span>{{ student.studentName || ('学生 #' + student.studentId) }}<small>{{ student.studentNo || '无学号' }}</small></span>
+              <em :class="{ duplicate: student.result === 'ALREADY_INCLUDED' }">{{ student.result === 'ALREADY_INCLUDED' ? '已存在，跳过' : '可生成' }}</em>
+            </li>
+          </ul>
+          <p>预检不写入数据；点击确认后服务端会再次执行正式范围和版本校验。</p>
+        </div>
         <AppInlineAlert v-if="collectModal.error" type="danger" :description="collectModal.error" />
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="acting" @click="collectModal.visible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="acting" @click="submitCollect">生成档案包</AppButton>
+        <AppButton v-if="collectModal.preview" variant="secondary" :disabled="acting" @click="previewCollect">重新预检</AppButton>
+        <AppButton variant="primary" :loading="acting" @click="collectModal.preview ? submitCollect() : previewCollect()">{{ collectModal.preview ? '确认生成档案包' : '先预检范围' }}</AppButton>
       </template>
     </AppDrawer>
   </ModulePageShell>
@@ -195,7 +210,7 @@ export default {
       FLOW, batches: [], current: null, packages: [], acting: false,
       batchPagination: { page: 1, pageSize: 20, total: 0 },
       batchModal: { visible: false, batchName: '', yearCode: '', error: '' },
-      collectModal: { visible: false, studentIds: [], error: '' }
+      collectModal: { visible: false, studentIds: [], error: '', preview: null }
     }
   },
   computed: {
@@ -282,11 +297,26 @@ export default {
       } else { m.error = res.message || '创建失败' }
     },
     openCollect() {
-      this.collectModal = { visible: true, studentIds: [], error: '' }
+      this.collectModal = { visible: true, studentIds: [], error: '', preview: null }
+    },
+    invalidateCollectPreview() {
+      this.collectModal.preview = null
+      this.collectModal.error = ''
+    },
+    async previewCollect() {
+      const ids = Array.isArray(this.collectModal.studentIds) ? this.collectModal.studentIds : []
+      if (!ids.length) { this.collectModal.error = '请至少圈定一名学生'; return }
+      this.acting = true
+      this.collectModal.error = ''
+      const res = await studentAffairsApi.previewArchiveCollect(this.current.batchId, ids, this.current.version)
+      this.acting = false
+      if (res.code === 0) this.collectModal.preview = res.data
+      else this.collectModal.error = res.message || '范围预检失败'
     },
     async submitCollect() {
       const ids = Array.isArray(this.collectModal.studentIds) ? this.collectModal.studentIds : []
       if (!ids.length) { this.collectModal.error = '请至少圈定一名学生'; return }
+      if (!this.collectModal.preview) { this.collectModal.error = '请先完成范围预检'; return }
       this.acting = true
       const res = await studentAffairsApi.collectArchive(this.current.batchId, ids, this.current.version)
       this.acting = false
@@ -358,6 +388,20 @@ export default {
 .av-pkg__student { font-weight: 600; }
 .av-pkg__status { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .av-pkg__status.is-submitted, .av-pkg__status.is-archived { color: var(--success-700, #15803d); }
+.av-preview { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--success-200, #bbf7d0); border-radius: var(--radius-lg); background: var(--success-50, #f0fdf4); }
+.av-preview__head { display: flex; justify-content: space-between; color: var(--success-800, #166534); }
+.av-preview__metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-2); }
+.av-preview__metrics > div { padding: 9px 11px; border-radius: var(--radius-md); background: rgba(255,255,255,.75); }
+.av-preview__metrics span,.av-preview__metrics strong { display: block; }
+.av-preview__metrics span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.av-preview__metrics strong { margin-top: 2px; color: var(--text-primary); font-size: var(--font-size-lg); }
+.av-preview__students { max-height: 180px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.av-preview__students li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 7px 0; border-top: 1px solid rgba(22,101,52,.1); }
+.av-preview__students span,.av-preview__students small { display: block; }
+.av-preview__students small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.av-preview__students em { color: var(--success-700, #15803d); font-size: var(--font-size-xs); font-style: normal; }
+.av-preview__students em.duplicate { color: var(--warning-700, #b45309); }
+.av-preview > p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-xs); }
 .av-pkg__status.is-pending_gen, .av-pkg__status.is-generating { color: var(--warning-700, #b45309); }
 .av-pkg__status.is-pending_supplement, .av-pkg__status.is-returned { color: var(--danger-700, #b91c1c); }
 .av-pkg__task { margin-left: auto; font-size: var(--font-size-xs); color: var(--primary-600); }

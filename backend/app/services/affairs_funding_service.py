@@ -11,6 +11,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 import json
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import and_, func, select
 
@@ -332,6 +333,86 @@ def _reject_reason(snap: dict) -> str:
     return "、".join(parts) or "资格校验未通过"
 
 
+def _amount_policy(project) -> dict:
+    """金额建议的唯一读投影。
+
+    项目 amount 有值时是固定金额；区间策略保存在项目 condition_json.amountPolicy，
+    与资格规则共用项目版本快照，不增加第二个金额真值字段。
+    """
+    if getattr(project, "amount", None) is not None:
+        fixed = Decimal(str(project.amount)).quantize(Decimal("0.01"))
+        return {"mode": "FIXED", "fixedAmount": format(fixed, ".2f"),
+                "suggestedAmount": format(fixed, ".2f"), "source": "PROJECT_STANDARD"}
+    parsed = {}
+    try:
+        parsed = json.loads(project.condition_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed = {}
+    raw = parsed.get("amountPolicy") if isinstance(parsed, dict) else None
+    if not isinstance(raw, dict) or str(raw.get("mode") or "").upper() != "RANGE":
+        return {"mode": "OPTIONAL", "suggestedAmount": None, "source": "MANUAL"}
+    try:
+        minimum = Decimal(str(raw.get("minAmount"))).quantize(Decimal("0.01"))
+        maximum = Decimal(str(raw.get("maxAmount"))).quantize(Decimal("0.01"))
+        suggested = Decimal(str(raw.get("suggestedAmount", minimum))).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise AppException("DATA_CONFLICT", "资助项目金额区间配置无效，请先修正项目") from exc
+    if minimum < 0 or maximum < minimum or not minimum <= suggested <= maximum:
+        raise AppException("DATA_CONFLICT", "资助项目金额区间配置无效，请先修正项目")
+    return {"mode": "RANGE", "minAmount": format(minimum, ".2f"),
+            "maxAmount": format(maximum, ".2f"), "suggestedAmount": format(suggested, ".2f"),
+            "source": "PROJECT_RANGE"}
+
+
+def _validated_amount(project, value):
+    policy = _amount_policy(project)
+    if value in (None, ""):
+        value = policy.get("suggestedAmount")
+    if value in (None, ""):
+        return None
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "申请金额格式不正确") from exc
+    if amount < 0:
+        raise AppException("VALIDATION_ERROR", "申请金额不能为负数")
+    if policy["mode"] == "FIXED" and amount != Decimal(policy["fixedAmount"]):
+        raise AppException("DATA_CONFLICT", f"本项目固定金额为 {policy['fixedAmount']} 元")
+    if policy["mode"] == "RANGE":
+        minimum, maximum = Decimal(policy["minAmount"]), Decimal(policy["maxAmount"])
+        if not minimum <= amount <= maximum:
+            raise AppException("VALIDATION_ERROR", f"申请金额应在 {policy['minAmount']}-{policy['maxAmount']} 元之间")
+    return amount
+
+
+def preflight(batch_id, student_id, user) -> dict:
+    """调用正式资格函数的只读预检；apply() 仍会在同一事务内重新校验。"""
+    sid = _req_int(student_id, "学生")
+    with session() as db:
+        from app.models import FundingBatch, FundingProject, StudentProfile
+        student = db.get(StudentProfile, sid)
+        if not student or student.is_deleted or student.tenant_id != _tid():
+            raise not_found("学生不存在或不在数据范围内")
+        _scope_or_403(db, sid, user)
+        batch = db.get(FundingBatch, _req_int(batch_id, "批次"))
+        if not batch or batch.is_deleted or batch.tenant_id != _tid():
+            raise not_found("资助批次不存在")
+        project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
+        if not project or project.is_deleted or project.tenant_id != _tid():
+            raise not_found("资助项目不存在")
+        project_type = str(batch.project_type or project.project_type or "").upper()
+        snap = (_check_grant(db, sid, project) if project_type == "GRANT"
+                else _check_scholarship(db, sid, project))
+        return {
+            "eligible": bool(snap.get("ok")),
+            "message": "当前资格预检通过" if snap.get("ok") else _reject_reason(snap),
+            "ruleVersion": snap.get("ruleVersion"), "ruleSource": snap.get("ruleSource"),
+            "evaluatedAt": snap.get("evaluatedAt"), "checkSnapshot": snap,
+            "amountPolicy": _amount_policy(project),
+            "submitWillRevalidate": True,
+        }
+
+
 # ── 序列化 ──
 
 def _amount_view(amount, user):
@@ -352,7 +433,7 @@ def _amount_view(amount, user):
 def _project_row(p) -> dict:
     return {"projectId": str(p.id), "projectType": p.project_type, "projectName": p.project_name,
             "amount": format(p.amount, ".2f") if p.amount is not None else None,
-            "quota": p.quota, "status": p.status}
+            "amountPolicy": _amount_policy(p), "quota": p.quota, "status": p.status}
 
 
 def _batch_row(b) -> dict:
@@ -513,10 +594,11 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
                 else _check_scholarship(db, student_id, project))
         if not snap["ok"]:
             raise AppException("DATA_CONFLICT", _reject_reason(snap))
+        amount = _validated_amount(project, getattr(body, "amount", None))
         first = FUND_NODES[0]
         x = FundingApplication(tenant_id=_tid(), batch_id=b.id, student_id=student_id,
                                apply_source=(body.applySource or "SELF"), project_type=project_type,
-                               amount=body.amount, statement=(body.statement or ""),
+                               amount=amount, requested_amount=amount, statement=(body.statement or ""),
                                check_snapshot_json=json.dumps(snap, ensure_ascii=False), status=first)
         db.add(x)
         db.flush()

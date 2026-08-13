@@ -11,7 +11,7 @@ from app.core.optimistic_lock import atomic_claim_version
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -109,6 +109,31 @@ def _audit(db, biz_id, action, detail=""):
                              operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
 
 
+def _exception_label(a, now=None) -> str:
+    now = now or datetime.utcnow()
+    if a.status == "FINISHED":
+        return "活动已结束，待确认名单"
+    if a.status == "DRAFT" and a.start_at and a.start_at <= now:
+        return "开始时间已到，仍未发布"
+    if a.status == "PUBLISHED" and a.enroll_deadline and a.enroll_deadline <= now:
+        return "报名截止时间已到"
+    if a.status == "ENROLL_CLOSED" and a.start_at and a.start_at <= now:
+        return "开始时间已到，待开始"
+    if a.status == "ONGOING" and a.end_at and a.end_at <= now:
+        return "结束时间已到，待结束"
+    return ""
+
+
+def _exception_predicate(model, now):
+    return or_(
+        and_(model.status == "DRAFT", model.start_at.is_not(None), model.start_at <= now),
+        and_(model.status == "PUBLISHED", model.enroll_deadline.is_not(None), model.enroll_deadline <= now),
+        and_(model.status == "ENROLL_CLOSED", model.start_at.is_not(None), model.start_at <= now),
+        and_(model.status == "ONGOING", model.end_at.is_not(None), model.end_at <= now),
+        model.status == "FINISHED",
+    )
+
+
 def _row(a, signup_count=None, checkin_count=None) -> dict:
     allowed_actions = {
         "DRAFT": ["PUBLISH", "CANCEL", "EDIT"],
@@ -128,7 +153,8 @@ def _row(a, signup_count=None, checkin_count=None) -> dict:
             "status": a.status, "statusLabel": L_STATUS.get(a.status, a.status),
             "publisherName": a.publisher_name or "", "confirmAt": _iso(a.confirm_at),
             "version": int(a.version or 0), "signupCount": signup_count, "checkinCount": checkin_count,
-            "allowedActions": allowed_actions}
+            "allowedActions": allowed_actions,
+            "exception": bool(_exception_label(a)), "exceptionLabel": _exception_label(a)}
 
 
 def _load(db, activity_id):
@@ -148,7 +174,7 @@ def _uid_int(user):
 
 # ═══════════ 活动 CRUD / 流转 ═══════════
 
-def list_activities(user, activity_type=None, status=None, page=1, page_size=20):
+def list_activities(user, activity_type=None, status=None, page=1, page_size=20, priority=None):
     from app.models import AffairsActivity, AffairsActivitySignup
     from app.services.affairs_list_stats import status_counts_by_column
 
@@ -158,11 +184,18 @@ def list_activities(user, activity_type=None, status=None, page=1, page_size=20)
         base_conds = [AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False)]
         if activity_type:
             base_conds.append(AffairsActivity.activity_type == activity_type)
+        now = datetime.utcnow()
+        exception_predicate = _exception_predicate(AffairsActivity, now)
         conds = list(base_conds)
         if status:
             statuses = [item.strip() for item in status.split(",") if item.strip()]
             conds.append(AffairsActivity.status.in_(statuses))
+        if str(priority or "").upper() == "EXCEPTION":
+            conds.append(exception_predicate)
         status_counts = status_counts_by_column(db, AffairsActivity, AffairsActivity.status, base_conds)
+        status_counts["EXCEPTION"] = int(db.scalar(
+            select(func.count()).select_from(AffairsActivity).where(*base_conds, exception_predicate)
+        ) or 0)
         total = int(db.scalar(select(func.count()).select_from(AffairsActivity).where(*conds)) or 0)
         signup_counts = (
             select(
@@ -177,11 +210,12 @@ def list_activities(user, activity_type=None, status=None, page=1, page_size=20)
             .group_by(AffairsActivitySignup.activity_id)
             .subquery()
         )
+        order_by = (AffairsActivity.end_at.asc(), AffairsActivity.id.desc()) if str(priority or "").upper() == "EXCEPTION" else (AffairsActivity.id.desc(),)
         rows = db.execute(
             select(AffairsActivity, func.coalesce(signup_counts.c.signup_count, 0))
             .outerjoin(signup_counts, signup_counts.c.activity_id == AffairsActivity.id)
             .where(*conds)
-            .order_by(AffairsActivity.id.desc())
+            .order_by(*order_by)
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
