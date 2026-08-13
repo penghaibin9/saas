@@ -53,8 +53,10 @@ test('U10 material notice deep-links to one authorized requirement on all consum
   assert.match(registry, /"student\.affairs\.material"/)
   assert.match(registry, /"materialRequirementId"/)
   assert.match(view, /requirementId: this\.focusRequirementId/)
-  assert.match(miniDetail, /useSessionStore\(\)\.isTeacher/)
-  assert.match(miniDetail, /pages\/teacher\/affairs\/index/)
+  // 消息详情是学生端公共页；材料通知只能进入学生自己的材料页，
+  // 不能因缓存会话或伪造参数跳转到教师处理入口。
+  assert.match(miniDetail, /pages\/student\/affairs\/index\?materialRequirementId=/)
+  assert.doesNotMatch(miniDetail, /pages\/teacher\//)
 })
 
 test('U11 dashboard priority rows reuse permission-filtered drill paths', () => {
