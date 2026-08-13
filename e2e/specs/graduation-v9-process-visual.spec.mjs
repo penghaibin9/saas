@@ -10,12 +10,18 @@ import { StaffLoginPage } from '../pages/login.page.mjs'
 const BACKEND_DIR = fileURLToPath(new URL('../../backend/', import.meta.url))
 const CONTEXT = { queue: 'U4-DEEP', source: 'v9-e2e', panel: 'guidance' }
 
-async function dismissGuide(page) {
+async function dismissGuide(page, { waitForArrival = false } = {}) {
+  if (waitForArrival) {
+    await page.locator('.app-step-guide__mask, .tour-mask').first()
+      .waitFor({ state: 'visible', timeout: 2000 })
+      .catch(() => {})
+  }
+
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
       const skip = page.getByRole('button', { name: /跳过引导|跳过/ }).first()
       if (await skip.isVisible().catch(() => false)) await skip.click()
-      await mask.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})
+      await expect(mask).toBeHidden({ timeout: 3000 })
     }
   }
 }
@@ -115,14 +121,14 @@ test.describe.serial('V9.2 U4 · process WorkContext production evidence', () =>
     url.searchParams.set('queue', CONTEXT.queue)
     url.searchParams.set('source', CONTEXT.source)
     await page.goto(url.toString())
-    await dismissGuide(page)
     await expectProcessContext(page, target, fixture.batchId)
+    await dismissGuide(page, { waitForArrival: true })
     await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败/)
 
     // M3 E4: deep-link target #127 must survive a real browser refresh exactly.
     await page.reload()
-    await dismissGuide(page)
     await expectProcessContext(page, target, fixture.batchId)
+    await dismissGuide(page, { waitForArrival: true })
 
     // M3 E5 cancel path: entering the action must carry the complete WorkContext,
     // and cancel must return to the same student/tab/queue/source.
@@ -133,6 +139,7 @@ test.describe.serial('V9.2 U4 · process WorkContext production evidence', () =>
 
     // M3 E5 save path: write through the real UI/API, then return to the same context.
     const guidanceText = `U4 E5 真保存指导 ${fixture.runId}-${testInfo.retry}`
+    await dismissGuide(page)
     await page.getByRole('button', { name: '＋ 新增指导记录' }).click()
     await expectActionContext(page, target, fixture.batchId)
     const content = page.locator('label').filter({ hasText: '指导内容' }).locator('textarea').first()
