@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationStudentEval
+from app.modules.graduation.services.graduation_batch_context import assert_student_batch, require_batch_id
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access,
 )
@@ -30,11 +31,13 @@ def _audit(db, bid, action, detail="", before="", after=""):
         occurred_at=datetime.now(timezone.utc)))
 
 
-def _stu(db, sid) -> GraduationStudent:
+def _stu(db, sid, batch_id) -> GraduationStudent:
     s = db.get(GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return assert_student_access(db, s, "student_eval")
+    s = assert_student_access(db, s, "student_eval")
+    assert_student_batch(s, require_batch_id(batch_id))
+    return s
 
 
 def _row(e: GraduationStudentEval, stu=None) -> dict:
@@ -56,13 +59,21 @@ def _row(e: GraduationStudentEval, stu=None) -> dict:
     }
 
 
-def list_evals(page: int, page_size: int, gd_student_id=None) -> tuple[list[dict], int]:
+def list_evals(page: int, page_size: int, gd_student_id=None, *, batch_id) -> tuple[list[dict], int]:
+    expected_batch = require_batch_id(batch_id)
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationStudentEval).where(
+        q = select(GraduationStudentEval).join(
+            GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id,
+        ).where(
             GraduationStudentEval.tenant_id == _tid(),
             GraduationStudentEval.is_deleted.is_(False),
-            GraduationStudentEval.gd_student_id.in_(scope_ids or [-1]))
+            GraduationStudentEval.gd_student_id.in_(scope_ids or [-1]),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.batch_id == expected_batch,
+        )
         if gd_student_id:
             q = q.where(GraduationStudentEval.gd_student_id == int(gd_student_id))
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
@@ -77,7 +88,7 @@ def list_evals(page: int, page_size: int, gd_student_id=None) -> tuple[list[dict
         return items, total
 
 
-def create_eval(gd_student_id, body: dict) -> dict:
+def create_eval(gd_student_id, body: dict, *, batch_id) -> dict:
     """导师创建并提交（或保留草稿）对学生的过程评价。"""
     try:
         score = int(body.get("score"))
@@ -92,7 +103,7 @@ def create_eval(gd_student_id, body: dict) -> dict:
     if status not in ("DRAFT", "SUBMITTED"):
         raise AppException("VALIDATION_ERROR", "状态仅支持 DRAFT/SUBMITTED")
     with session() as db:
-        stu = _stu(db, gd_student_id)
+        stu = _stu(db, gd_student_id, batch_id)
         n, _ = _op()
         now = datetime.now(timezone.utc)
         e = GraduationStudentEval(
@@ -112,12 +123,12 @@ def create_eval(gd_student_id, body: dict) -> dict:
         return _row(e, stu)
 
 
-def submit_eval(eval_id) -> dict:
+def submit_eval(eval_id, *, batch_id) -> dict:
     with session() as db:
         e = db.get(GraduationStudentEval, int(eval_id))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("评价记录不存在")
-        stu = _stu(db, e.gd_student_id)
+        stu = _stu(db, e.gd_student_id, batch_id)
         if e.status == "SUBMITTED":
             raise AppException("DATA_CONFLICT", "评价已提交，无需重复提交")
         n, _ = _op()
