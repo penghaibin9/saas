@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -66,6 +66,7 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
                 "hasMore": False,
                 "cards": [],
                 "items": [],
+                "prioritySummary": {"overdue": 0, "dueWithin24h": 0, "ordinary": 0},
                 "contractVersion": CONTRACT_VERSION,
             }
 
@@ -76,8 +77,21 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
             UnifiedTodo.is_deleted.is_(False),
             visibility,
         )
+        now = datetime.utcnow()
+        near_due_at = now + timedelta(hours=24)
         total = int(db.scalar(
             select(func.count()).select_from(UnifiedTodo).where(*conds)
+        ) or 0)
+        overdue_count = int(db.scalar(
+            select(func.count()).select_from(UnifiedTodo).where(
+                *conds, UnifiedTodo.due_at.is_not(None), UnifiedTodo.due_at < now,
+            )
+        ) or 0)
+        near_due_count = int(db.scalar(
+            select(func.count()).select_from(UnifiedTodo).where(
+                *conds, UnifiedTodo.due_at.is_not(None),
+                UnifiedTodo.due_at >= now, UnifiedTodo.due_at <= near_due_at,
+            )
         ) or 0)
         grouped = db.execute(
             select(UnifiedTodo.todo_type, func.count(UnifiedTodo.id))
@@ -116,11 +130,12 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
             )).all()
         }
 
-        now = datetime.utcnow()
         items = []
         for row in rows:
             todo_type = str(row.todo_type or "")
             student = students.get(int(row.student_id)) if row.student_id else None
+            overdue = bool(row.due_at and row.due_at < now)
+            due_within_24h = bool(row.due_at and now <= row.due_at <= near_due_at)
             items.append({
                 "todoId": str(row.id),
                 "todoType": todo_type,
@@ -133,7 +148,10 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
                 "bizType": row.source_biz_type or "",
                 "recordId": str(row.source_biz_id or ""),
                 "dueAt": _iso(row.due_at),
-                "overdue": bool(row.due_at and row.due_at < now),
+                "overdue": overdue,
+                "dueWithin24h": due_within_24h,
+                # 只读展示投影：由 dueAt/overdue 计算，不是第二套业务优先级真值。
+                "priorityBand": "OVERDUE" if overdue else ("DUE_WITHIN_24H" if due_within_24h else "ORDINARY"),
                 "status": row.status,
                 "allowedActions": ["OPEN"],
                 "actionKey": todo_type,
@@ -155,5 +173,10 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
             "hasMore": page * page_size < total,
             "cards": cards,
             "items": items,
+            "prioritySummary": {
+                "overdue": overdue_count,
+                "dueWithin24h": near_due_count,
+                "ordinary": max(0, total - overdue_count - near_due_count),
+            },
             "contractVersion": CONTRACT_VERSION,
         }

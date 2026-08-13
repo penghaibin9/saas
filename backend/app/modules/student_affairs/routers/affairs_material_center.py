@@ -23,14 +23,35 @@ class BackfillBody(BaseModel):
 def material_center(
     status: str | None = Query(None),
     sensitivityLevel: str | None = Query(None),
+    requirementId: int | None = Query(None, ge=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     user=Depends(get_current_user),
 ):
     return success(center.material_overview(
-        user, status=status, sensitivity_level=sensitivityLevel,
+        user, status=status, sensitivity_level=sensitivityLevel, requirement_id=requirementId,
         page=page, page_size=pageSize,
     ))
+
+
+@router.get("/student-affairs/material-center/biz-context",
+            summary="解析业务记录的可读上下文（供业务详情发起补材料预填）")
+def material_biz_context(
+    bizType: str = Query(..., min_length=1),
+    bizId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(center.resolve_biz_context(user, bizType, bizId))
+
+
+@router.get("/student-affairs/material-center/item-suggestions",
+            summary="本校该业务域已用过的材料项（登记时选择，不用猜编码）")
+def material_item_suggestions(
+    bizType: str = Query(..., min_length=1),
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    return success({"items": center.list_item_suggestions(user, bizType, limit=limit)})
 
 
 @router.post("/student-affairs/material-center/backfill", summary="幂等回填旧学工材料与附件")

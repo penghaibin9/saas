@@ -9,6 +9,7 @@
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
         <AppQuickFilterChips v-model="statusFilter" :options="statusOptions" allow-clear @change="reload" />
+        <span class="lv-progress">当前队列 <strong>{{ total }}</strong> 条<span v-if="selectedPosition"> · 正在处理 {{ selectedPosition }}/{{ rows.length }}</span></span>
       </div>
 
       <DualPaneWorkspace aside-title="后续处理队列" :aside-count="total">
@@ -17,6 +18,7 @@
             <ul class="lv-list">
               <li v-for="r in rows" :key="r.id">
                 <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
+                  <span class="lv-item__index">{{ itemIndex(r.id) }}</span>
                   <div class="lv-item__row">
                     <span class="lv-item__name">{{ r.studentName }}</span>
                     <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
@@ -86,6 +88,7 @@
             </div>
 
             <div v-if="actions.length" class="lv-foot">
+              <span class="lv-foot__hint">处理完自动打开下一条，不丢失当前筛选</span>
               <AppPermissionButton :allowed="canBtn(a.code)" v-for="a in actions" :key="a.key" :code="a.code" :variant="a.variant"
                 :danger="a.danger" @click="openAction(a)">{{ a.label }}</AppPermissionButton>
             </div>
@@ -172,6 +175,10 @@ export default {
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
     scopeHint() { return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '按数据范围：辅导员本班 / 学院本院 / 学工处全校' },
     pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
+    selectedPosition() {
+      const index = this.rows.findIndex((row) => String(row.id) === this.selectedId)
+      return index >= 0 ? index + 1 : 0
+    },
     asideState() {
       if (this.loading) return 'loading'
       if (this.error) return 'error'
@@ -248,6 +255,10 @@ export default {
     fmt(v) { return v ? formatDateTime(v) : '' },
     extLabel(v) { return EXT_LABEL[v] || v },
     cancelLabel(v) { return CANCEL_LABEL[v] || v },
+    itemIndex(id) {
+      const index = this.rows.findIndex((row) => String(row.id) === String(id))
+      return (this.page - 1) * this.pageSize + index + 1
+    },
     reload() { this.page = 1; this.load() },
     onPageChange(next) {
       const p = next && next.page
@@ -266,6 +277,11 @@ export default {
       this.rows = res.data.list; this.total = res.data.total
       const pc = Math.max(1, Math.ceil(this.total / this.pageSize))
       if (!this.rows.length && this.total > 0 && this.page > pc) { this.page = pc; return this.load() }
+      if (this.selectedId && !this.rows.some((row) => String(row.id) === this.selectedId)) {
+        this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+      }
+      if (!this.selectedId && this.rows.length) this.select(this.rows[0].id)
     },
     select(id) {
       const sid = String(id)
@@ -365,10 +381,11 @@ export default {
     },
     async advance() {
       const oldId = this.selectedId
+      const oldIndex = this.rows.findIndex((r) => String(r.id) === String(oldId))
       await this.load()
       const still = this.rows.find((r) => String(r.id) === String(oldId))
       if (still) { this.loadDetail(oldId); return }  // 状态变了但仍在队列（如 APPROVED→WAIT_CANCEL_LEAVE）
-      const next = this.rows[0]
+      const next = this.rows[Math.min(Math.max(oldIndex, 0), Math.max(this.rows.length - 1, 0))]
       if (next) { this.select(next.id); return }
       this.selectedId = ''
       this.detail = { loading: false, error: '', data: null }
@@ -390,12 +407,16 @@ export default {
 @import '@/styles/module-page.css';
 
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.lv-progress { margin-left: auto; padding: 7px 11px; border: 1px solid var(--primary-100); border-radius: 999px; color: var(--text-secondary); background: var(--primary-50); font-size: var(--font-size-xs); }
+.lv-progress strong { color: var(--primary-700); }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
 .rec-list { list-style: none; margin: 0; padding: 0; font-size: var(--font-size-sm); }
 .rec-list li { padding: var(--space-1) 0; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 .lv-list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
-.lv-item { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; background: transparent; border: 1px solid transparent; border-radius: var(--radius-md, 8px); padding: var(--space-2) var(--space-3); transition: background 0.12s ease, border-color 0.12s ease; }
+.lv-item { position: relative; display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; background: transparent; border: 1px solid transparent; border-radius: var(--radius-md, 8px); padding: var(--space-2) var(--space-3) var(--space-2) 36px; transition: background 0.12s ease, border-color 0.12s ease; }
+.lv-item__index { position: absolute; left: 10px; top: 11px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: var(--text-tertiary); background: var(--bg-subtle); font-size: 10px; }
+.lv-item.is-active .lv-item__index { color: #fff; background: var(--primary-600); }
 .lv-item:hover { background: var(--primary-50, #eff6ff); }
 .lv-item.is-active { background: var(--primary-50, #eff6ff); border-color: var(--primary-600, #2563eb); }
 .lv-item__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
@@ -407,6 +428,7 @@ export default {
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); }
+.lv-foot__hint { margin-right: auto; align-self: center; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 
 .fm-body { display: flex; flex-direction: column; }
 </style>

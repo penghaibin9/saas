@@ -309,9 +309,11 @@ def leave_apply(body: LeaveApply, user=Depends(require_permission("studentAffair
     return success(leave_svc.apply_leave(body, user), message="已提交")
 
 
-@router.get("/leave/pending", summary="待审批请假（按数据范围）")
-def leave_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission("studentAffairs.leave.view"))):
-    items, total = leave_svc.list_pending(user, page, pageSize)
+@router.get("/leave/pending", summary="待审批请假（按数据范围，可按姓名/学号搜索）")
+def leave_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  keyword: Optional[str] = Query(None, description="按学生姓名/学号搜索，服务端过滤"),
+                  user=Depends(require_permission("studentAffairs.leave.view"))):
+    items, total = leave_svc.list_pending(user, page, pageSize, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -453,7 +455,7 @@ class AidBatchCreate(BaseModel):
     schoolYear: str = Field(..., min_length=1)
     applyStart: Optional[str] = None
     applyEnd: Optional[str] = None
-    publicityDays: Optional[int] = Field(None, description="公示天数（快测可传 0）")
+    publicityDays: Optional[int] = Field(None, description="公示天数（正式规则 1-30 天；不填按默认 5 天）")
     levelConfig: Optional[dict] = Field(default_factory=dict)
     publish: bool = Field(False)
 
@@ -695,6 +697,12 @@ def funding_batches(projectId: Optional[str] = None, status: Optional[str] = Non
 @router.post("/funding/applications", summary="发起资助申请（含资格硬校验）")
 def funding_apply(body: FundingApplyBody, user=Depends(require_permission("studentAffairs.funding.create"))):
     return success(funding_svc.apply(body, user), message="已提交")
+
+
+@router.get("/funding/preflight", summary="资助资格与金额预检（复用正式规则）")
+def funding_preflight(batchId: str = Query(..., min_length=1), studentId: str = Query(..., min_length=1),
+                      user=Depends(require_permission("studentAffairs.funding.create"))):
+    return success(funding_svc.preflight(batchId, studentId, user))
 
 
 @router.get("/funding/applications", summary="资助申请列表（金额按角色脱敏）")
@@ -1110,10 +1118,16 @@ def risk_create(body: RiskCreate, user=Depends(require_permission("studentAffair
 @router.get("/risk/records", summary="风险列表（心理来源仅摘要，明细遮蔽；含全局 stats）")
 def risk_records(source: Optional[str] = None, status: Optional[str] = None,
                  riskLevel: Optional[str] = None, studentId: Optional[int] = None,
+                 priority: Optional[str] = Query(None, description="HIGH_CRITICAL=只看高危/危急"),
+                 overdueOnly: bool = Query(False, description="只看超时（与指标卡同一判定）"),
+                 unassignedOnly: bool = Query(False, description="只看待分派"),
+                 ownerId: Optional[str] = Query(None, description="按责任人过滤，传当前用户即「我负责的」"),
                  page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                  user=Depends(require_permission("studentAffairs.risk.view"))):
     items, total, stats = risk_svc.list_risks(
-        user, source, status, riskLevel, studentId, page, pageSize)
+        user, source, status, riskLevel, studentId, page, pageSize,
+        priority=priority, overdue_only=overdueOnly,
+        unassigned_only=unassignedOnly, owner_id=ownerId)
     data = paginate(items, total, page, pageSize)
     data["stats"] = stats
     return success(data)
@@ -1603,6 +1617,11 @@ def archive_collect(body: CollectBody, batchId: int = Path(...), user=Depends(re
     return success(archive_svc.collect(batchId, user, body.studentIds, body.version), message="已收集")
 
 
+@router.post("/archive/batches/{batchId}/collect-preview", summary="圈定学生范围只读预检")
+def archive_collect_preview(body: CollectBody, batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
+    return success(archive_svc.preview_collect(batchId, user, body.studentIds, body.version), message="预检完成")
+
+
 @router.post("/archive/batches/{batchId}/advance", summary="批次流转（→归档时登记水印包）")
 def archive_advance(body: AdvanceBody, batchId: int = Path(...), user=Depends(require_permission("studentAffairs.archive.batch.manage"))):
     return success(archive_svc.advance(batchId, user, body.action or "APPROVE", body.version), message="已流转")
@@ -1716,10 +1735,12 @@ class LeagueStageBody(BaseModel):
 
 
 @router.get("/activities", summary="活动列表（type/status 过滤）")
-def activities(activityType: Optional[str] = None, status: Optional[str] = None,
+def activities(activityType: Optional[str] = None, status: Optional[str] = None, priority: Optional[str] = None,
                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.activity.view"))):
-    items, total, status_counts = activity_svc.list_activities(user, activityType, status, page, pageSize)
+    items, total, status_counts = activity_svc.list_activities(
+        user, activityType, status, page, pageSize, priority=priority,
+    )
     return success(paginate(items, total, page, pageSize, status_counts=status_counts))
 
 

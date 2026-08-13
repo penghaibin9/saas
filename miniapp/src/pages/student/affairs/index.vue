@@ -37,7 +37,7 @@
             <view class="row-between af__mat-head">
               <view class="flex-1">
                 <text class="card-title">{{ item.itemName }}</text>
-                <text class="t-xs t-tertiary">{{ bizLabel(item.bizType) }} #{{ item.bizId }} · 第{{ item.returnRound || 1 }}轮</text>
+                <text class="t-xs t-tertiary">{{ bizLine(item) }} · 第{{ item.returnRound || 1 }}轮</text>
               </view>
               <MobileStatusTag :status="item.status" :label="item.statusLabel || item.status" />
             </view>
@@ -71,6 +71,9 @@
               </view>
             </view>
           </view>
+          <button v-if="!focusMaterialId && materials.length < materialTotal" class="btn btn-secondary af__more" :disabled="materialLoadingMore" @click="loadMoreMaterials">
+            {{ materialLoadingMore ? '加载中…' : '加载更多（' + materials.length + '/' + materialTotal + '）' }}
+          </button>
         </view>
 
         <view class="section-head"><text class="section-head__title">我的处分</text></view>
@@ -115,7 +118,11 @@ export default {
       materialBusy: '',
       selectedFiles: {},
       materialNotes: {},
-      focusMaterialId: ''
+      focusMaterialId: '',
+      materialPage: 1,
+      materialPageSize: 20,
+      materialTotal: 0,
+      materialLoadingMore: false
     }
   },
   onLoad(query) {
@@ -135,6 +142,12 @@ export default {
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/student/home/index') }) },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
+    // 学生不该靠主键认业务：后端下发 businessContext 时用业务语言，否则退回原文案。
+    bizLine(item) {
+      const c = (item && item.businessContext) || {}
+      const parts = [c.bizPeriod, c.bizDisplayTitle || this.bizLabel(item.bizType), c.bizDisplaySubtitle].filter(Boolean)
+      return parts.length ? parts.join(' · ') : `${this.bizLabel(item.bizType)} #${item.bizId}`
+    },
     bizLabel(value) {
       return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || value || '学工申请')
     },
@@ -152,10 +165,16 @@ export default {
         this.scrollToMaterial()
       }).catch(() => { this.state = 'error' })
     },
-    loadMaterials(showToast = true) {
+    loadMaterials(showToast = true, reset = true) {
       this.materialError = ''
-      return affairsContractApi.getMyMaterialRequirements().then((d) => {
+      if (reset) this.materialPage = 1
+      return affairsContractApi.getMyMaterialRequirements({
+        page: this.materialPage,
+        pageSize: this.materialPageSize,
+        requirementId: this.focusMaterialId || undefined
+      }).then((d) => {
         this.materials = (d && d.items) || []
+        this.materialTotal = Number((d && d.total) || 0)
         this.scrollToMaterial()
         return this.materials
       }).catch((e) => {
@@ -163,6 +182,19 @@ export default {
         if (showToast) toast(this.materialError)
         return []
       })
+    },
+    loadMoreMaterials() {
+      if (this.materialLoadingMore || this.materials.length >= this.materialTotal) return
+      this.materialLoadingMore = true
+      const nextPage = this.materialPage + 1
+      affairsContractApi.getMyMaterialRequirements({ page: nextPage, pageSize: this.materialPageSize })
+        .then((d) => {
+          this.materials = this.materials.concat((d && d.items) || [])
+          this.materialTotal = Number((d && d.total) || this.materialTotal)
+          this.materialPage = nextPage
+        })
+        .catch((e) => toast(normalizeError(e).text || '更多材料加载失败'))
+        .finally(() => { this.materialLoadingMore = false })
     },
     scrollToMaterial() {
       if (!this.focusMaterialId) return
@@ -241,6 +273,7 @@ export default {
 .af__pending { margin-top: 12px; padding: 10px; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-size: 12px; }
 .af__versions { margin-top: 14px; }
 .af__versions-title { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.af__more { width: 100%; margin-top: 10px; }
 .af__version { padding: 10px 0; border-top: 1px solid var(--border-light); align-items: flex-start; gap: 8px; }
 .af__version-actions { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .af__current { color: var(--brand-primary); background: #eff6ff; padding: 2px 6px; border-radius: 5px; }

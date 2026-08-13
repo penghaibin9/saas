@@ -22,7 +22,7 @@
       <div class="req-head">
         <div>
           <div class="title-line"><strong>{{ item.itemName }}</strong><StatusTag :text="item.statusLabel || item.status" :tone="tone(item)" /></div>
-          <div class="sp-muted">{{ bizLabel(item.bizType) }} · 业务记录 #{{ item.bizId }} · 第 {{ item.returnRound || 1 }} 轮</div>
+          <div class="sp-muted">{{ bizLine(item) }} · 第 {{ item.returnRound || 1 }} 轮</div>
           <div v-if="item.requirementReason" class="reason">缺项说明：{{ item.requirementReason }}</div>
           <div v-if="item.dueAt" class="sp-muted" :class="{ overdue: item.overdue }">截止 {{ fmt(item.dueAt) }}{{ item.overdue ? '（已逾期）' : '' }}</div>
         </div>
@@ -55,6 +55,9 @@
         </div>
       </div>
     </section>
+    <div v-if="!focusId && items.length < total" class="load-more">
+      <button class="sp-btn sp-btn--ghost" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '正在加载…' : `加载更多（已显示 ${items.length}/${total}）` }}</button>
+    </div>
   </div>
 </template>
 
@@ -71,6 +74,10 @@ const ui = useUiStore()
 const loading = ref(true)
 const error = ref('')
 const items = ref([])
+const page = ref(1)
+const pageSize = 20
+const total = ref(0)
+const loadingMore = ref(false)
 const filter = ref('open')
 const submitting = ref('')
 const selectedFiles = reactive({})
@@ -93,18 +100,30 @@ const shown = computed(() => {
 function bizLabel(value) {
   return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || value || '学工申请')
 }
+// 学生看不懂"业务记录 #123"。后端下发 businessContext 时用业务语言
+// （如"2026-03-01 ~ 2026-03-05 · 请假申请"），没下发时退回原有可读文案。
+function bizLine(item) {
+  const c = item.businessContext || {}
+  const parts = [c.bizPeriod, c.bizDisplayTitle || bizLabel(item.bizType), c.bizDisplaySubtitle].filter(Boolean)
+  return parts.length ? parts.join(' · ') : `${bizLabel(item.bizType)} · 业务记录 #${item.bizId}`
+}
 function fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 10) : '' }
 function fmtTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function tone(item) { if (item.overdue || item.status === 'RETURNED') return 'warn'; if (['ACCEPTED', 'WAIVED'].includes(item.status)) return 'success'; return 'default' }
 function canSubmit(item) { return (item.allowedActions || []).includes('SUBMIT_MATERIAL') }
 function selectFile(item, event) { selectedFiles[item.requirementId] = event.target.files?.[0] || null }
 
-async function load() {
+async function load(reset = true) {
   loading.value = true
   error.value = ''
   try {
-    const data = await affairsFourEndApi.myMaterialRequirements()
+    if (reset) page.value = 1
+    const data = await affairsFourEndApi.myMaterialRequirements({
+      page: page.value, pageSize,
+      requirementId: focusId.value || undefined
+    })
     items.value = data?.items || []
+    total.value = Number(data?.total || 0)
     if (focusId.value) {
       const target = items.value.find((x) => String(x.requirementId) === focusId.value)
       if (target && ['ACCEPTED', 'WAIVED'].includes(target.status)) filter.value = 'all'
@@ -115,6 +134,22 @@ async function load() {
     error.value = e?.message || '材料列表加载失败'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || items.value.length >= total.value) return
+  loadingMore.value = true
+  try {
+    const nextPage = page.value + 1
+    const data = await affairsFourEndApi.myMaterialRequirements({ page: nextPage, pageSize })
+    items.value = items.value.concat(data?.items || [])
+    total.value = Number(data?.total || total.value)
+    page.value = nextPage
+  } catch (e) {
+    ui.notify(e?.message || '更多材料加载失败')
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -146,6 +181,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.material-head,.req-head,.title-line,.version-row,.version-actions{display:flex;align-items:flex-start}.material-head,.req-head,.version-row{justify-content:space-between;gap:18px}.material-head{align-items:center;margin-bottom:16px}.count{margin-left:6px;font-size:11px}.requirement{margin-bottom:14px;scroll-margin-top:24px}.requirement.focus{outline:2px solid var(--pri);outline-offset:2px}.title-line{align-items:center;gap:9px}.reason{margin-top:8px;color:var(--t2);font-size:13px}.overdue{color:#b45309}.owner{min-width:120px;text-align:right}.owner span,.owner strong{display:block}.owner span{font-size:12px;color:var(--t3);margin-bottom:4px}.submit-box{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,2fr) auto;gap:10px;margin:16px 0;padding:14px;background:#f8fafc;border-radius:10px}.file-pick{display:flex;align-items:center;padding:0 12px;border:1px dashed #b8c4d6;border-radius:9px;cursor:pointer;font-size:13px;color:var(--pri);overflow:hidden}.file-pick input{display:none}.file-pick span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pending-note{margin:14px 0;padding:11px 13px;background:#eff6ff;border-radius:9px;color:#1d4ed8;font-size:13px}.version-title{font-size:14px;font-weight:650;margin:18px 0 6px}.version-row{padding:11px 0;border-bottom:1px solid var(--line2)}.version-actions{align-items:center;gap:10px}.current-tag{padding:3px 7px;border-radius:6px;background:var(--pri-50);color:var(--pri);font-size:11px}.link{all:unset;cursor:pointer;color:var(--pri);font-size:13px}.review-note{margin-top:4px;color:#b45309;font-size:12px}.error-box{display:flex;align-items:center;gap:12px;padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412}
+.material-head,.req-head,.title-line,.version-row,.version-actions{display:flex;align-items:flex-start}.material-head,.req-head,.version-row{justify-content:space-between;gap:18px}.material-head{align-items:center;margin-bottom:16px}.count{margin-left:6px;font-size:11px}.requirement{margin-bottom:14px;scroll-margin-top:24px}.requirement.focus{outline:2px solid var(--pri);outline-offset:2px}.title-line{align-items:center;gap:9px}.reason{margin-top:8px;color:var(--t2);font-size:13px}.overdue{color:#b45309}.owner{min-width:120px;text-align:right}.owner span,.owner strong{display:block}.owner span{font-size:12px;color:var(--t3);margin-bottom:4px}.submit-box{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,2fr) auto;gap:10px;margin:16px 0;padding:14px;background:#f8fafc;border-radius:10px}.file-pick{display:flex;align-items:center;padding:0 12px;border:1px dashed #b8c4d6;border-radius:9px;cursor:pointer;font-size:13px;color:var(--pri);overflow:hidden}.file-pick input{display:none}.file-pick span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pending-note{margin:14px 0;padding:11px 13px;background:#eff6ff;border-radius:9px;color:#1d4ed8;font-size:13px}.version-title{font-size:14px;font-weight:650;margin:18px 0 6px}.version-row{padding:11px 0;border-bottom:1px solid var(--line2)}.version-actions{align-items:center;gap:10px}.current-tag{padding:3px 7px;border-radius:6px;background:var(--pri-50);color:var(--pri);font-size:11px}.link{all:unset;cursor:pointer;color:var(--pri);font-size:13px}.review-note{margin-top:4px;color:#b45309;font-size:12px}.error-box{display:flex;align-items:center;gap:12px;padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412}.load-more{display:flex;justify-content:center;padding:6px 0 22px}
 @media(max-width:900px){.req-head,.material-head{flex-direction:column}.owner{text-align:left}.submit-box{grid-template-columns:1fr}.version-row{gap:10px}.error-box{align-items:flex-start;flex-direction:column}}
 </style>
