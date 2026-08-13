@@ -18,7 +18,7 @@
   6. standard-20k 不再调用 generic DEMO marker 覆盖数据，并自动清理历史 reset 保留账号表里的已知旧假身份；
   7. 已识别为 standard-20k / standard-20k-damaged 的试点校禁止回灌 legacy-100；
   8. 学校角色只复用正式内置角色模板，兼岗不重复造教职工账号；
-  9. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
+  9. 教务课程、教学任务/课表/考务快照、教材、实习岗位、毕设题目统一按 32 专业画像对账；
   10. 大成绩表专业课改名走 SQL 集合更新，禁止 17 万级事实 ORM 全量物化；
   11. 导师工作量按真实学校负载对账：224 名实习导师、384 名毕设导师，全部由现有教职工兼岗；
   12. 就业域复用同一届 6,400 学生、80 家企业与 160 个专业岗位，禁止另造就业企业/学生真值；
@@ -26,7 +26,7 @@
   14. 教材按 2026 秋季开学准备态生成：选用/审核/征订可有数据，正式学生发放与收费必须保持 0；
   15. 评教与教学质量只回填已结束的 2025-2026-2；2026 秋季尚未开学，严禁提前生成评教结果；
   16. 学生评教保持匿名，教学质量不自动生成教学事故认定，只生成督导/巡课/检查与整改事实；
-  17. 重建后从事实表反算岗位/企业人数，并校验旧假身份、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  17. 重建后从事实表反算岗位/企业人数，并校验旧假身份、专业课快照、宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -162,7 +162,10 @@ def main() -> int:
                 validate_school_mentor_workload_20k,
             )
             from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
-            from app.services.sandbox_school_professional_runner import professionalize_school_20k
+            from app.services.sandbox_school_professional_runner import (
+                professionalize_school_20k,
+                validate_professional_academic_snapshots,
+            )
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
             from app.services.sandbox_school_role_reconcile import (
                 reconcile_school_roles_20k,
@@ -178,10 +181,11 @@ def main() -> int:
 
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
-            academic_textbooks = seed_school_academic_textbooks_20k(db, SANDBOX_TID)
 
-            # 先统一 32 专业的课程语义，再生成历史评教/教学质量快照，避免留下“核心技能”泛化课名。
+            # 所有教务课程快照先统一成 32 专业真实课程，再生成会保存课程名快照的教材和评教事实。
             professional = professionalize_school_20k(db, SANDBOX_TID)
+            professional_academic_snapshots = validate_professional_academic_snapshots(db, SANDBOX_TID)
+            academic_textbooks = seed_school_academic_textbooks_20k(db, SANDBOX_TID)
             academic_quality = seed_school_academic_quality_20k(db, SANDBOX_TID)
 
             mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
@@ -200,6 +204,7 @@ def main() -> int:
                 "graduationProcess": validate_school_graduation_process_20k(db, SANDBOX_TID),
                 "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
+                "professionalAcademicSnapshots": professional_academic_snapshots,
                 "academicTextbooks": validate_school_academic_textbooks_20k(db, SANDBOX_TID),
                 "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
@@ -217,9 +222,10 @@ def main() -> int:
                     "graduationProcess": graduation_process,
                     "domains": domains,
                     "academicAffairs": academic_affairs,
+                    "professional": professional,
+                    "professionalAcademicSnapshots": professional_academic_snapshots,
                     "academicTextbooks": academic_textbooks,
                     "academicQuality": academic_quality,
-                    "professional": professional,
                     "employment": employment,
                     "studentAffairs": affairs,
                     "acceptance": acceptance,
@@ -255,7 +261,8 @@ def main() -> int:
         if args.profile == PROFILE_STANDARD_20K:
             print(
                 "[reset] 完成：20K 标准学校已通过旧假身份清零/主数据/角色拓扑/导师工作量/"
-                "毕设早期过程/就业/教材准备/历史评教与教学质量/六域/13A/13B/专业语义/跨表关系对账。"
+                "毕设早期过程/就业/专业课程快照/教材准备/历史评教与教学质量/"
+                "六域/13A/13B/跨表关系对账。"
             )
             print("[reset] 可见体验账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
