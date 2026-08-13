@@ -113,10 +113,8 @@ def main() -> int:
             )
             from app.services.sandbox_school_affairs_runner import seed_school_affairs_20k
             from app.services.sandbox_school_affairs_seed import validate_affairs_facts
-            from app.services.sandbox_school_domain_seed import (
-                seed_school_domains_20k,
-                validate_domain_facts,
-            )
+            from app.services.sandbox_school_domain_seed import seed_school_domains_20k
+            from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
             from app.services.sandbox_school_employment_seed import (
                 seed_school_employment_20k,
                 validate_employment_facts_20k,
@@ -161,7 +159,7 @@ def main() -> int:
                 "master": validate_school_master(db, SANDBOX_TID),
                 "roleTopology": role_topology_acceptance,
                 "mentorWorkload": validate_school_mentor_workload_20k(db, SANDBOX_TID),
-                "domains": validate_domain_facts(db, SANDBOX_TID),
+                "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
                 "employment": validate_employment_facts_20k(db, SANDBOX_TID),

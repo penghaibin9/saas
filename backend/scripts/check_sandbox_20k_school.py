@@ -143,7 +143,7 @@ def main() -> int:
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID
     from app.services.sandbox_school_academic_affairs_seed import validate_academic_affairs_facts
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
-    from app.services.sandbox_school_domain_seed import validate_domain_facts
+    from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
     from app.services.sandbox_school_employment_seed import validate_employment_facts_20k
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
@@ -159,7 +159,7 @@ def main() -> int:
         try:
             master = validate_school_master(db, SANDBOX_TID)
             mentor_workload = validate_school_mentor_workload_20k(db, SANDBOX_TID)
-            domains = validate_domain_facts(db, SANDBOX_TID)
+            domains = validate_core_domain_facts_20k(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
             employment = validate_employment_facts_20k(db, SANDBOX_TID)
