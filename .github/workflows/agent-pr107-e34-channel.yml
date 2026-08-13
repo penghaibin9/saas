@@ -17,6 +17,7 @@ jobs:
     env:
       APP_ENV: test
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_e34
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_e34
     services:
       mysql:
         image: mysql:8.0
