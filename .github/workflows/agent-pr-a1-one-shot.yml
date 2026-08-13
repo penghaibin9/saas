@@ -1,0 +1,304 @@
+name: Agent PR-A1 one-shot
+
+on:
+  push:
+    branches:
+      - fix/system-audit-rbac-atomicity-20260813
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-pr-a1-one-shot
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/system-audit-rbac-atomicity-20260813
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: Apply A1 canonical repair and red-contract tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, *, count: int = 1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} occurrence(s), found {actual}')
+              p.write_text(text.replace(old, new, count), encoding='utf-8')
+
+          permissions = Path('backend/app/core/permissions.py')
+          text = permissions.read_text(encoding='utf-8')
+          needle = '''def get_effective_permission_patterns(user: dict) -> list[str]:\n    """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""\n'''
+          insert = '''def has_base_permission(user: dict, code: str) -> bool:\n    """永久授权上限判定：只看基础权限，绝不包含 temporary delegation。"""\n    if is_super_admin(user):\n        return True\n    role = _role_of(user)\n    patterns = get_base_permission_patterns(user)\n    if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:\n        from_db = _db_granted(user)\n        if from_db is None:\n            return False\n    return _match(code, patterns)\n\n\ndef assert_delegable_permission_codes(user: dict | None, permission_codes: Iterable[str]) -> None:\n    """拒绝把操作者基础权限之外的能力固化给其他主体或角色。"""\n    if not user:\n        from app.core.exceptions import AppException\n        raise AppException("NO_PERMISSION", "永久角色授权必须提供明确操作者")\n    codes = sorted({str(code or "").strip() for code in permission_codes if str(code or "").strip()})\n    forbidden = [code for code in codes if not has_base_permission(user, code)]\n    if forbidden:\n        from app.core.exceptions import AppException\n        raise AppException(\n            "NO_PERMISSION",\n            "不能授予当前操作者基础权限之外的权限",\n            {"codes": forbidden[:10]},\n        )\n\n\ndef get_effective_permission_patterns(user: dict) -> list[str]:\n    """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""\n'''
+          if text.count(needle) != 1:
+              raise SystemExit('permissions.py insertion anchor changed')
+          permissions.write_text(text.replace(needle, insert, 1), encoding='utf-8')
+
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '    from app.core.permissions import ROLE_PERMISSIONS, has_permission\n    from app.models import Permission, Role, RolePermission, User, UserRole\n',
+              '    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes\n    from app.models import Permission, Role, RolePermission, User, UserRole\n',
+              count=1,
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '''        for role_obj in roles:\n            if str(role_obj.role_type or "").upper() == "SYSTEM":\n                patterns = ROLE_PERMISSIONS.get(role_obj.role_code, set())\n            else:\n                patterns = set(db.scalars(select(Permission.permission_code).join(RolePermission,\n                    RolePermission.permission_id == Permission.id).where(RolePermission.tenant_id == tenant_id,\n                    RolePermission.role_id == role_obj.id, RolePermission.status == "ACTIVE",\n                    RolePermission.is_deleted.is_(False))).all())\n            if any(not has_permission(user, pattern) for pattern in patterns):\n                raise AppException("NO_PERMISSION", f"不能分配超出自身权限边界的角色：{role_obj.role_name}")\n''',
+              '''        for role_obj in roles:\n            if str(role_obj.role_code or "").upper().startswith("PLATFORM_"):\n                raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")\n            if str(role_obj.role_type or "").upper() == "SYSTEM":\n                patterns = ROLE_PERMISSIONS.get(role_obj.role_code, set())\n            else:\n                patterns = set(db.scalars(select(Permission.permission_code).join(RolePermission,\n                    RolePermission.permission_id == Permission.id).where(RolePermission.tenant_id == tenant_id,\n                    RolePermission.role_id == role_obj.id, RolePermission.status == "ACTIVE",\n                    RolePermission.is_deleted.is_(False))).all())\n            try:\n                assert_delegable_permission_codes(user, patterns)\n            except AppException as exc:\n                if exc.code == "NO_PERMISSION":\n                    raise AppException("NO_PERMISSION", f"不能分配超出自身基础权限边界的角色：{role_obj.role_name}") from None\n                raise\n''',
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '    from app.core.permissions import ROLE_PERMISSIONS, has_permission\n    from app.models import Permission, Role, RolePermission\n',
+              '    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes\n    from app.models import Permission, Role, RolePermission\n',
+              count=1,
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '''        if source is None:\n            raise AppException("DATA_NOT_FOUND", "源角色不存在")\n        if str(source.role_type or "").upper() == "SYSTEM":\n''',
+              '''        if source is None:\n            raise AppException("DATA_NOT_FOUND", "源角色不存在")\n        if str(source.role_code or "").upper().startswith("PLATFORM_"):\n            raise AppException("NO_PERMISSION", "学校角色治理不能复制平台角色")\n        if str(source.role_type or "").upper() == "SYSTEM":\n''',
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '''        excess = sorted(code for code in source_codes if not has_permission(user, code))\n        if excess:\n            raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})\n''',
+              '''        assert_delegable_permission_codes(user, source_codes)\n''',
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '    from app.core.permissions import has_permission\n    from app.models import Permission, Role, RolePermission\n',
+              '    from app.core.permissions import assert_delegable_permission_codes\n    from app.models import Permission, Role, RolePermission\n',
+              count=1,
+          )
+          replace_exact(
+              'backend/app/api/v1/system.py',
+              '''    forbidden = [code for code in codes if not has_permission(user, code)]\n    if forbidden:\n        raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})\n''',
+              '''    assert_delegable_permission_codes(user, codes)\n''',
+          )
+
+          role_service = Path('backend/app/services/role_assignment_service.py')
+          text = role_service.read_text(encoding='utf-8')
+          needle = '''def grant_assignment(user_id: int, role_code: str, *, reason: str,\n'''
+          helper = '''def _assert_role_delegation_allowed(db, *, actor: dict | None, role, tenant_id: int) -> None:\n    """角色治理写链的最终授权边界：只允许固化 actor 的基础权限。"""\n    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes\n    from app.models import Permission, RolePermission\n\n    role_code = str(role.role_code or "").strip().upper()\n    if role_code.startswith("PLATFORM_"):\n        raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")\n    if str(role.role_type or "").upper() == "SYSTEM":\n        permission_codes = set(ROLE_PERMISSIONS.get(role_code, set()))\n    else:\n        permission_codes = set(db.scalars(select(Permission.permission_code).join(\n            RolePermission, RolePermission.permission_id == Permission.id\n        ).where(\n            RolePermission.tenant_id == tenant_id,\n            RolePermission.role_id == role.id,\n            RolePermission.status == "ACTIVE",\n            RolePermission.is_deleted.is_(False),\n        )).all())\n    assert_delegable_permission_codes(actor, permission_codes)\n\n\ndef grant_assignment(user_id: int, role_code: str, *, reason: str,\n'''
+          if text.count(needle) != 1:
+              raise SystemExit('role_assignment_service.py insertion anchor changed')
+          text = text.replace(needle, helper, 1)
+          old = '''        role = _role_row(db, tid, str(role_code or "").strip().upper())\n\n        link = db.scalars(select(UserRole).where(\n'''
+          new = '''        role = _role_row(db, tid, str(role_code or "").strip().upper())\n        _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)\n\n        link = db.scalars(select(UserRole).where(\n'''
+          if text.count(old) != 1:
+              raise SystemExit('role grant anchor changed')
+          role_service.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test_file = Path('backend/tests/test_role_assignment_privilege_boundary.py')
+          test_file.write_text(r'''"""生产审计 Issue 1：永久角色授予只能使用 actor 的基础权限。"""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from sqlalchemy import select
+
+from app.core.context import set_tenant
+from app.core.exceptions import AppException
+from app.core.security import hash_password
+from app.services import role_assignment_service as ras
+
+TENANT_ID = 1000000000000000001
+
+
+def _session():
+    from app.db.session import get_sessionmaker
+    return get_sessionmaker()()
+
+
+def _ensure_tenant(tenant_id: int = TENANT_ID) -> None:
+    from app.models import Tenant
+    with _session() as db:
+        if db.get(Tenant, tenant_id) is None:
+            db.add(Tenant(id=tenant_id, tenant_code=f"rbac-{tenant_id}", school_name="授权边界测试学校", status="ACTIVE"))
+            db.commit()
+
+
+def _role(code: str, *, role_type: str = "SYSTEM", tenant_id: int = TENANT_ID):
+    from app.models import Role
+    _ensure_tenant(tenant_id)
+    with _session() as db:
+        row = db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.role_code == code)).first()
+        if row is None:
+            row = Role(tenant_id=tenant_id, role_code=code, role_name=code, role_type=role_type, status="ACTIVE")
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        return int(row.id)
+
+
+def _user(*, tenant_id: int = TENANT_ID) -> int:
+    from app.models import User
+    _ensure_tenant(tenant_id)
+    login = f"rbac_{uuid.uuid4().hex[:12]}"
+    with _session() as db:
+        row = User(tenant_id=tenant_id, login_name=login, real_name="授权边界用户",
+                   password_hash=hash_password("Init123456"), user_type="TEACHER", status="ACTIVE")
+        db.add(row)
+        db.commit()
+        return int(row.id)
+
+
+def _actor(role_code: str = "ACADEMIC_TEACHER") -> dict:
+    return {"userId": "db-900001", "tenantId": str(TENANT_ID), "currentRoleCode": role_code, "userType": "TEACHER"}
+
+
+def _temporary(monkeypatch, patterns):
+    from app.services import system_governance_service as gov
+    monkeypatch.setattr(gov, "active_delegation_permission_patterns", lambda user: list(patterns))
+
+
+def _assert_no_active_role(user_id: int, role_code: str) -> None:
+    from app.models import Role, UserRole
+    with _session() as db:
+        row = db.scalars(select(UserRole).join(Role, Role.id == UserRole.role_id).where(
+            UserRole.tenant_id == TENANT_ID, UserRole.user_id == user_id,
+            Role.role_code == role_code, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False))).first()
+        assert row is None
+
+
+def test_new_role_assignment_rejects_role_above_actor_base_permissions(db_mode, monkeypatch):
+    _role("SCHOOL_ADMIN")
+    target = _user()
+    _temporary(monkeypatch, ["*"])
+    with pytest.raises(AppException) as caught:
+        ras.grant_assignment(target, "SCHOOL_ADMIN", reason="安全边界测试授权", tenant_id=TENANT_ID, user=_actor())
+    assert caught.value.code == "NO_PERMISSION"
+    _assert_no_active_role(target, "SCHOOL_ADMIN")
+
+
+def test_legacy_assign_roles_rejects_temporary_delegation_redelegation(db_mode, monkeypatch):
+    from app.api.v1.system import assign_system_user_roles
+    _role("SCHOOL_ADMIN")
+    target = _user()
+    set_tenant({"tenantId": TENANT_ID})
+    _temporary(monkeypatch, ["*"])
+    with pytest.raises(AppException) as caught:
+        assign_system_user_roles(target, {"roleCodes": ["SCHOOL_ADMIN"]}, user=_actor())
+    assert caught.value.code == "NO_PERMISSION"
+    _assert_no_active_role(target, "SCHOOL_ADMIN")
+
+
+def test_role_copy_cannot_persist_temporary_delegated_permission(db_mode, monkeypatch):
+    from app.api.v1.system import copy_system_role
+    role_id = _role("SECURITY_AUDITOR")
+    set_tenant({"tenantId": TENANT_ID})
+    _temporary(monkeypatch, ["*"])
+    with pytest.raises(AppException) as caught:
+        copy_system_role(role_id, user=_actor())
+    assert caught.value.code == "NO_PERMISSION"
+
+
+def test_role_permission_save_cannot_persist_temporary_delegated_permission(db_mode, monkeypatch):
+    from app.api.v1.system import save_system_role_permissions
+    role_id = _role(f"CUSTOM_{uuid.uuid4().hex[:8].upper()}", role_type="CUSTOM")
+    code = "systemAdmin.audit.sensitive.view"
+    set_tenant({"tenantId": TENANT_ID})
+    _temporary(monkeypatch, [code])
+    with pytest.raises(AppException) as caught:
+        save_system_role_permissions(role_id, {"permissionCodes": [code], "visiblePermissionCodes": [code]}, user=_actor())
+    assert caught.value.code == "NO_PERMISSION"
+
+
+def test_school_role_governance_rejects_platform_role(db_mode, monkeypatch):
+    _role("PLATFORM_OWNER")
+    target = _user()
+    _temporary(monkeypatch, ["*"])
+    with pytest.raises(AppException) as caught:
+        ras.grant_assignment(target, "PLATFORM_OWNER", reason="安全边界测试授权", tenant_id=TENANT_ID,
+                             user=_actor("SCHOOL_ADMIN"))
+    assert caught.value.code == "NO_PERMISSION"
+    _assert_no_active_role(target, "PLATFORM_OWNER")
+
+
+def test_base_wildcard_can_delegate_school_role(db_mode):
+    _role("SECURITY_AUDITOR")
+    target = _user()
+    out = ras.grant_assignment(target, "SECURITY_AUDITOR", reason="学校管理员正常授权", tenant_id=TENANT_ID,
+                               user=_actor("SCHOOL_ADMIN"))
+    assert out["userId"] == str(target)
+    assert out["roleCode"] == "SECURITY_AUDITOR"
+
+
+def test_cross_tenant_role_assignment_fails_closed(db_mode):
+    other_tenant = TENANT_ID + 91
+    _role("SECURITY_AUDITOR")
+    target = _user(tenant_id=other_tenant)
+    with pytest.raises(AppException) as caught:
+        ras.grant_assignment(target, "SECURITY_AUDITOR", reason="跨租户必须拒绝授权", tenant_id=TENANT_ID,
+                             user=_actor("SCHOOL_ADMIN"))
+    assert caught.value.code == "DATA_NOT_FOUND"
+''', encoding='utf-8')
+          PY
+      - name: Compile changed Python
+        run: |
+          python -m py_compile \
+            backend/app/core/permissions.py \
+            backend/app/api/v1/system.py \
+            backend/app/services/role_assignment_service.py \
+            backend/tests/test_role_assignment_privilege_boundary.py
+      - name: Run A1 privilege boundary MySQL tests
+        working-directory: backend
+        run: pytest tests/test_role_assignment_privilege_boundary.py -q -p no:warnings
+      - name: Run adjacent permission contracts
+        working-directory: backend
+        run: pytest tests/test_permissions_deny_unit.py tests/test_system_admin_p0.py -q -p no:warnings
+      - name: Commit exact A1 scope and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/agent-pr-a1-one-shot.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/app/core/permissions.py \
+            backend/app/api/v1/system.py \
+            backend/app/services/role_assignment_service.py \
+            backend/tests/test_role_assignment_privilege_boundary.py \
+            .github/workflows/agent-pr-a1-one-shot.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m "fix(rbac): enforce base-permission delegation ceiling"
+          git push origin HEAD:fix/system-audit-rbac-atomicity-20260813
