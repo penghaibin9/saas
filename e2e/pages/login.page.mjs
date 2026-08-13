@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { expect } from '../lib/observability.mjs'
 
 function accessTokenFromEnvelope(payload) {
@@ -5,7 +6,10 @@ function accessTokenFromEnvelope(payload) {
 }
 
 async function browserRefreshCookie(page, channel = 'staff') {
-  const name = `gx_${channel}_refresh_v1`
+  const sessionId = await page.evaluate(() => String(sessionStorage.getItem('gx_browser_session_id_v2') || ''))
+  if (!sessionId) return ''
+  const suffix = createHash('sha256').update(sessionId).digest('hex').slice(0, 24)
+  const name = `gx_${channel}_refresh_v2_${suffix}`
   const cookies = await page.context().cookies()
   return String(cookies.find((cookie) => cookie.name === name)?.value || '')
 }

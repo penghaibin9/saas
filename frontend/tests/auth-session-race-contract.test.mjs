@@ -110,3 +110,16 @@ test('身份切换在途时禁止旧页面新发业务请求或 refresh', async 
     assert.ok(firstFence < ensure && ensure < secondFence, `${name} must not send old-role traffic during a switch transition`)
   }
 })
+
+
+test('browser refresh is bound to a nonsecret per-tab session id', async () => {
+  const source = await readFile(clientUrl, 'utf8')
+  assert.match(source, /const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'/)
+  assert.match(source, /sessionStorage\.getItem\(BROWSER_SESSION_ID_KEY\)/)
+  assert.match(source, /sessionStorage\.setItem\(BROWSER_SESSION_ID_KEY, generated\)/)
+  assert.doesNotMatch(source, /localStorage\.setItem\(BROWSER_SESSION_ID_KEY/)
+  assert.match(source, /'X-Browser-Session-Id': getOrCreateBrowserSessionId\(\)/)
+  assert.match(source, /loginWithPassword[\s\S]*?headers: browserSessionHeaders\(\)/)
+  assert.match(source, /switchAuthContext[\s\S]*?headers: browserSessionHeaders\(\)/)
+  assert.match(source, /logoutRemote[\s\S]*?headers: browserSessionHeaders\(\)/)
+})
