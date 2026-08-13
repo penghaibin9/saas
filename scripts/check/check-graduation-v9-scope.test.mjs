@@ -54,6 +54,7 @@ test('U1 Dashboard allows only its page, evidence, module-local route repair, an
 
 test('U2 proposal review stays inside the proposal page/read-model/test boundary', () => {
   assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/services/__init__.py',
     'backend/app/modules/graduation/services/graduation_service.py',
     'backend/app/modules/graduation/services/graduation_proposal_read_service.py',
     'backend/tests/test_graduation_v9_proposal_pagination.py',
@@ -75,6 +76,7 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'frontend/src/modules/graduation/routes.js',
     'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
     'e2e/specs/golden-rollout-business-pages.spec.mjs',
+    'backend/app/modules/graduation/services/__init__.py',
     'backend/app/modules/graduation/services/graduation_proposal_read_service.py',
     'backend/tests/test_graduation_v9_proposal_pagination.py',
     'frontend/tests/graduation.v9-proposal-review.contract.test.mjs',
