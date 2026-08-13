@@ -31,6 +31,7 @@ const CARD_ALLOW = {
     /^e2e\/specs\/golden-rollout-business-pages\.spec\.mjs$/,
   ],
   U2: [
+    /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_service\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_proposal_read_service\.py$/,
     /^backend\/tests\/test_graduation_v9_proposal_pagination\.py$/,
