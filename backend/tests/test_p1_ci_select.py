@@ -97,6 +97,20 @@ def test_roster_registration_owner_change_selects_d2_domain_regressions():
         assert expected in targets
 
 
+def test_schedule_import_service_change_selects_semantics_and_query_contracts():
+    """D5-U：canonical 导入 service/preload 变化必须立即跑语义与查询数合同。"""
+    mod = _load()
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_import_preload.py",
+    ):
+        targets = mod.select([path])
+        assert "tests/test_aa_schedule_import_dry_run.py" in targets
+        assert "tests/test_aa_schedule_import_batch_queries.py" in targets
+        assert "tests/test_aa_p0_authz.py" in targets
+        assert "tests/test_aa_route_registration_main_compat.py" in targets
+
+
 def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
     """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
     mod = _load()

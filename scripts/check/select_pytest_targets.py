@@ -44,6 +44,13 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "tests/test_aa_roster_correction.py",
       "tests/test_student_sensitive_contract.py",
       "tests/test_academic_export_compat.py"]),
+    # D5-U：排课批量导入修改 canonical final service 或 preload 取数层时，
+    # 除通用教务权限/并发闸门外，必须立即跑导入语义回归 + 查询数合同。
+    # 不能只依赖 Main 全量兜底，否则 dry-run/confirm/atomic 漂移会到长回归才暴露。
+    (("academic_affairs_schedule_final_service.py",
+      "academic_affairs_schedule_import_preload.py"),
+     ["tests/test_aa_schedule_import_dry_run.py",
+      "tests/test_aa_schedule_import_batch_queries.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
