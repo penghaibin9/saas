@@ -1,7 +1,8 @@
 """V9.2 U4/M12 · 指导频次统计只读模型。
 
 当前批次、当前数据范围内学生的指导次数统一由 SQL 聚合；不足学生必须通过
-LEFT JOIN + GROUP BY + HAVING 得出，0 次指导学生仍保留。正式写链仍由
+LEFT JOIN + GROUP BY + HAVING 得出，0 次指导学生仍保留。dataScope 复用 U2/M9
+已封板的 SQL selector，不先 materialize 全批学生。正式写链仍由
 ``graduation_guidance_service`` 负责。
 """
 from __future__ import annotations
@@ -9,11 +10,11 @@ from __future__ import annotations
 from sqlalchemy import and_, func, select
 
 from app.models import GraduationGuidance, GraduationStudent
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 from app.services.db_service import _tid, session
 
 
-def _grouped_counts(scope_ids):
+def _grouped_counts(scope_select):
     count_col = func.count(GraduationGuidance.id).label("guidance_count")
     return (
         select(
@@ -34,7 +35,7 @@ def _grouped_counts(scope_ids):
             GraduationStudent.tenant_id == _tid(),
             GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids),
+            GraduationStudent.id.in_(scope_select),
             GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")),
         )
         .group_by(
@@ -47,18 +48,8 @@ def _grouped_counts(scope_ids):
 
 def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        if not scope_ids:
-            return {
-                "threshold": threshold,
-                "studentCount": 0,
-                "avgCount": 0,
-                "insufficientCount": 0,
-                "insufficientStudents": [],
-                "batchId": str(batch_id) if batch_id else None,
-            }
-
-        grouped = _grouped_counts(scope_ids)
+        scope_select = student_scope_select(db, _tid(), batch_id=batch_id)
+        grouped = _grouped_counts(scope_select)
         counts = grouped.subquery()
         student_count, avg_count = db.execute(
             select(
@@ -71,7 +62,7 @@ def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
         # not by materializing every student's count and filtering in Python.
         count_expr = func.count(GraduationGuidance.id)
         insufficient_rows = db.execute(
-            _grouped_counts(scope_ids)
+            _grouped_counts(scope_select)
             .having(count_expr < threshold)
             .order_by(GraduationStudent.id)
         ).all()
