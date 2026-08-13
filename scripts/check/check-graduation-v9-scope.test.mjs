@@ -7,6 +7,7 @@ test('S0.5 only allows its own scope gate files', () => {
   assert.deepEqual(validateFiles([
     'scripts/check/check-graduation-v9-scope.mjs',
     'scripts/check/check-graduation-v9-scope.test.mjs',
+    '.github/workflows/graduation-v9-scope.yml',
   ], 'S0_5'), [])
   assert.match(validateFiles(['frontend/src/modules/graduation/views/ProposalListView.vue'], 'S0_5')[0], /out of S0_5 allowlist/)
 })
@@ -32,6 +33,7 @@ test('M2 is isolated from archive and grade canonical services', () => {
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
+    '.github/workflows/graduation-v9-scope.yml',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
   ], 'V9_PR'), [])

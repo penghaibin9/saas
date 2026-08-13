@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 const CARD_ALLOW = {
   S0_5: [
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^\.github\/workflows\/graduation-v9-scope\.yml$/,
   ],
   M1: [
     /^frontend\/src\/modules\/graduation\/api\/graduation-batch-context\.js$/,
@@ -37,6 +38,8 @@ const CANONICAL_WRITE_FILES = [
   /graduation_final_service\.py$/,
 ]
 
+const CANONICAL_ALLOWED_CARDS = new Set(['M5', 'M7', 'M9', 'M10'])
+
 export function patternsFor(card) {
   if (card === 'V9_PR') return Object.values(CARD_ALLOW).flat()
   return CARD_ALLOW[card] || []
@@ -51,7 +54,7 @@ export function validateFiles(files, card) {
       errors.push(`shared foundation denied: ${file}`)
       continue
     }
-    if (CANONICAL_WRITE_FILES.some((re) => re.test(file)) && !['M5', 'M7', 'M9', 'M10'].includes(card)) {
+    if (card !== 'V9_PR' && CANONICAL_WRITE_FILES.some((re) => re.test(file)) && !CANONICAL_ALLOWED_CARDS.has(card)) {
       errors.push(`canonical write/read mixed service denied for ${card}: ${file}`)
       continue
     }
