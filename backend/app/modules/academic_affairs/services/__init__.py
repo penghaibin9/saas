@@ -39,6 +39,7 @@ from . import mobile_academic_affairs_public_service as mobile_academic_affairs_
 # D6：Selection Final 模块对象仍是唯一公开 owner；这里只安装等价只读优化/范围门禁。
 # AaSelectionRecord 写链、Selection Final 状态机和 TeachingRoster 投影均不在此模块实现。
 from . import academic_affairs_selection_read_service
+from . import academic_affairs_selection_round_read_guard
 
 for _selection_read_name in (
     "list_batches", "get_batch", "list_courses", "course_roster", "student_courses",
@@ -50,7 +51,7 @@ for _selection_read_name in (
         _selection_read_name,
         getattr(academic_affairs_selection_read_service, _selection_read_name),
     )
-academic_affairs_selection_round_service.list_rounds = academic_affairs_selection_read_service.list_rounds
+academic_affairs_selection_round_service.list_rounds = academic_affairs_selection_round_read_guard.list_rounds
 
 # 统计 08/09/14 历史曾存在同名重复定义，后定义的缩水实现会覆盖完整合同，连内部 xlsx 导出一起打坏。
 # 显式安装唯一 canonical contract；公开 wrapper 动态调用 legacy 时与 legacy 内部 export 使用同一函数对象。

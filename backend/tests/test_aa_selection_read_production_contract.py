@@ -12,6 +12,9 @@ from app.modules.academic_affairs.services import academic_affairs_selection_rou
 read = importlib.import_module(
     "app.modules.academic_affairs.services.academic_affairs_selection_read_service"
 )
+round_guard = importlib.import_module(
+    "app.modules.academic_affairs.services.academic_affairs_selection_round_read_guard"
+)
 
 
 def test_public_selection_owner_stays_selection_final():
@@ -24,7 +27,14 @@ def test_public_selection_owner_stays_selection_final():
     ):
         assert getattr(selection, name) is getattr(read, name)
     assert rounds.__name__.endswith("academic_affairs_selection_round_facade")
-    assert rounds.list_rounds is read.list_rounds
+    assert rounds.list_rounds is round_guard.list_rounds
+
+
+def test_round_guard_imports_legacy_module_directly_not_package_alias():
+    source = inspect.getsource(round_guard.list_rounds)
+    assert "importlib.import_module" in source
+    assert "academic_affairs_selection_round_service" in source
+    assert "from . import academic_affairs_selection_round_service" not in source
 
 
 def test_large_selection_lists_page_in_sql():
