@@ -125,7 +125,7 @@ const graduationRoutes = {
       meta: { moduleCode: 'GRADUATION', title: '毕设材料中心', requiresAuth: true, permissionKey: 'graduationDesign.student.view' }
     },
     { path: 'materials', redirect: { name: 'graduation-material-center' }, meta: { moduleCode: 'GRADUATION', requiresAuth: true, permissionKey: 'graduationDesign.student.view', hiddenFromMenu: true } },
-    { path: 'risk-archive', name: 'graduation-risk-archive', component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'), meta: { moduleCode: 'GRADUATION', title: '问题预警/毕设归档/毕设统计', requiresAuth: true, permissionKey: 'graduationDesign.riskArchive.manage' } }
+    { path: 'risk-archive', name: 'graduation-risk-archive', component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'), meta: { moduleCode: 'GRADUATION', title: '问题预警/毕设归档/毕设统计', requiresAuth: true, permissionAny: ['graduationDesign.risk.view', 'graduationDesign.archive.view', 'graduationDesign.stats.view'] } }
   ]
 }
 
