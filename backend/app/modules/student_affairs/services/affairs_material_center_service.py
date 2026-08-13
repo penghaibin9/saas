@@ -19,6 +19,7 @@ from typing import Any, Iterable
 from sqlalchemy import case, func, or_, select
 
 from app.core.exceptions import AppException, check_version, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.core.permissions import has_permission
 from app.models.file import (
     ArchiveManifest,
@@ -597,7 +598,7 @@ def create_material_requirement(user: dict, payload: dict) -> dict:
         )
         db.commit()
         db.refresh(row)
-        owner_row = db.get(User, owner)
+        owner_row = tenant_get(db, User, owner)
         result = _requirement_dict(row, [], student_view=False, owner_name=(owner_row.real_name if owner_row else ""))
         result["created"] = created
     legacy._drain_messages()
@@ -1025,7 +1026,7 @@ def submit_material(
 
 def _load_current_version(db, requirement, submission):
     version = db.get(FileVersion, int(submission.file_version_id)) if submission and submission.file_version_id else None
-    file_obj = db.get(FileObject, int(submission.file_id)) if submission else None
+    file_obj = tenant_get(db, FileObject, int(submission.file_id)) if submission else None
     binding = db.get(FileBinding, int(submission.binding_id)) if submission and submission.binding_id else None
     if not version or version.is_deleted or version.tenant_id != _tid():
         raise AppException("DATA_CONFLICT", "补交材料尚未完成公共版本回填，不能审核")
@@ -1072,7 +1073,7 @@ def review_material(
             if build_affairs_context(user or {}, db).scope_type != "TENANT_ALL":
                 raise no_permission("仅材料审核责任人或学校级学工管理员可处理")
         check_version(requirement.version, expected_version)
-        current = db.get(AffairsMaterialSubmission, int(requirement.current_submission_id)) if requirement.current_submission_id else None
+        current = tenant_get(db, AffairsMaterialSubmission, int(requirement.current_submission_id)) if requirement.current_submission_id else None
         if act in {"ACCEPT", "RETURN"}:
             if requirement.status != "PENDING_REVIEW" or not current or current.status != "SUBMITTED":
                 raise AppException("APPROVAL_VERSION_CONFLICT", "当前没有可审核的最新补交版本")
@@ -1113,7 +1114,7 @@ def review_material(
                 current.review_note = text or "学校免交"
                 current.version = int(current.version or 0) + 1
                 if current.file_version_id:
-                    version = db.get(FileVersion, int(current.file_version_id))
+                    version = tenant_get(db, FileVersion, int(current.file_version_id))
                     if version:
                         version.status = "INVALIDATED"
                         version.is_current = False
@@ -1131,7 +1132,7 @@ def review_material(
         db.commit()
         db.refresh(requirement)
         versions = _submission_rows(db, [requirement.id]).get(int(requirement.id), [])
-        owner = db.get(User, int(requirement.review_owner_id)) if requirement.review_owner_id else None
+        owner = tenant_get(db, User, int(requirement.review_owner_id)) if requirement.review_owner_id else None
         result = _requirement_dict(
             requirement, versions, student_view=False,
             owner_name=(owner.real_name if owner else ""),
@@ -1245,8 +1246,8 @@ def backfill_legacy(user: dict, *, limit: int = 500) -> dict:
         ).order_by(AffairsMaterialSubmission.requirement_id, AffairsMaterialSubmission.version_no)
             .limit(max(1, min(5000, int(limit))))).all()
         for submission in submissions:
-            requirement = db.get(AffairsMaterialRequirement, int(submission.requirement_id))
-            attachment = db.get(AffairsAttachment, int(submission.affairs_attachment_id))
+            requirement = tenant_get(db, AffairsMaterialRequirement, int(submission.requirement_id))
+            attachment = tenant_get(db, AffairsAttachment, int(submission.affairs_attachment_id))
             file_obj = db.get(FileObject, int(submission.file_id))
             if not requirement or not attachment or not file_obj or file_obj.is_deleted:
                 raise AppException("DATA_CONFLICT", f"旧补交记录{submission.id}缺少关联文件，停止回填")
@@ -1331,7 +1332,7 @@ def backfill_legacy(user: dict, *, limit: int = 500) -> dict:
             AffairsAttachment.is_deleted.is_(False),
         ).order_by(AffairsAttachment.id).limit(max(1, min(5000, int(limit))))).all()
         for attachment in attachments:
-            file_obj = db.get(FileObject, int(attachment.file_id))
+            file_obj = tenant_get(db, FileObject, int(attachment.file_id))
             if not file_obj or file_obj.is_deleted:
                 raise AppException("DATA_CONFLICT", f"旧附件{attachment.id}缺少文件对象，停止回填")
             try:
@@ -1448,8 +1449,8 @@ def freeze_archive_manifest(db, package, user: dict) -> dict:
 
     frozen = []
     for order, (material_code, version_id, review_status) in enumerate(version_ids, start=1):
-        version = db.get(FileVersion, int(version_id))
-        file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+        version = tenant_get(db, FileVersion, int(version_id))
+        file_obj = tenant_get(db, FileObject, int(version.file_object_id)) if version else None
         if not version or version.is_deleted or version.status not in READY_VERSION_STATUS:
             raise AppException("DATA_CONFLICT", "档案材料版本状态不可归档")
         if not file_obj or file_obj.is_deleted:

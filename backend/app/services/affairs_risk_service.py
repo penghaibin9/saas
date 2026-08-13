@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 from app.services.affairs_sla import get_risk_sla, risk_due_at, risk_is_overdue
 
@@ -276,7 +277,7 @@ def _scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该风险不在您的数据范围内")
 
@@ -474,7 +475,7 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
         _drain_message_outbox()
         db.refresh(x)
         from app.models import User
-        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        owner = tenant_get(db, User, int(x.owner_id)) if x.owner_id else None
         return _row(x, user, s, owner=owner)
 
 
@@ -832,7 +833,7 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
             if reason and len(str(reason).strip()) >= 5:
                 _sensitive_view_audit(x, reason.strip())
                 reveal = True
-        owner = db.get(User, int(x.owner_id)) if x.owner_id else None
+        owner = tenant_get(db, User, int(x.owner_id)) if x.owner_id else None
         row = _row(x, user, s, reveal=reveal, owner=owner)
         row["allowedActions"] = _allowed_risk_actions(x, user)
     # 独立会话拉 handles，避免与详情会话交叉

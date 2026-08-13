@@ -14,6 +14,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 log = logging.getLogger("app.message_outbox")
@@ -632,7 +633,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
 
     for row_id in [r.id for r in claimed]:
         with session() as db:
-            row = db.get(MessageEventOutbox, row_id)
+            row = tenant_get(db, MessageEventOutbox, row_id)
             now = _utc_now()
             if (
                 not row

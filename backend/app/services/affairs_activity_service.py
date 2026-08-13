@@ -15,6 +15,7 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 ACTIVITY_STATUS = ("DRAFT", "PUBLISHED", "ENROLL_CLOSED", "ONGOING",
@@ -826,7 +827,7 @@ def _vol_scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
 
@@ -882,7 +883,7 @@ def confirm_volunteer(record_id, user, expected_version=None) -> dict:
                                  source_module="student-affairs"))
         _audit(db, r.id, "VOLUNTEER_CONFIRM", f"{float(r.hours)}h")
         db.commit(); db.refresh(r)
-        s = db.get(StudentProfile, int(r.student_id))
+        s = tenant_get(db, StudentProfile, int(r.student_id))
         return _vol_row(r, s)
 
 
@@ -902,7 +903,7 @@ def reject_volunteer(record_id, user, reason="", expected_version=None) -> dict:
         r.status, r.reject_reason, r.version = "REJECTED", reason.strip(), r.version + 1
         _audit(db, r.id, "VOLUNTEER_REJECT", reason.strip())
         db.commit(); db.refresh(r)
-        s = db.get(StudentProfile, int(r.student_id))
+        s = tenant_get(db, StudentProfile, int(r.student_id))
         return _vol_row(r, s)
 
 

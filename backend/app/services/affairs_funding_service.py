@@ -17,6 +17,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
+from app.core.tenant_scoped import tenant_get
 from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
@@ -170,7 +171,7 @@ def _scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
 
@@ -620,13 +621,13 @@ def _load(db, app_id):
     x = db.get(FundingApplication, int(app_id))
     if not x or x.is_deleted or x.tenant_id != _tid():
         raise not_found("资助申请不存在")
-    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
     return x, s
 
 
 def _act_task(db, x, action, reason=""):
     from app.models import WorkflowInstance
-    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.status) if inst else None
     if task:
         task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
@@ -694,7 +695,7 @@ def _grant_one(db, x):
     from app.models import StudentStageEvent, WorkflowInstance
     x.status, x.result_at, x.version = "GRANTED", datetime.utcnow(), x.version + 1
     if x.workflow_instance_id:
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id))
         if inst:
             inst.status = "APPROVED"
     db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(x.student_id), from_stage=None,
@@ -753,7 +754,7 @@ def confirm_publicity(app_id, user, expected_version=None) -> dict:
         atomic_claim_version(db, x, expected_version)
         _assert_no_open_appeal(db, x.id)
         from app.models import FundingBatch
-        batch = db.get(FundingBatch, int(x.batch_id))
+        batch = tenant_get(db, FundingBatch, int(x.batch_id))
         days = batch.publicity_days if batch and batch.publicity_days is not None else 5
         if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
             raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
@@ -973,7 +974,7 @@ def issue_disbursement(disbursement_id, body, user) -> dict:
         _audit(db, d.id, "FUNDING_DISBURSE_ISSUE", d.disburse_no or "")
         db.commit(); db.refresh(d)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(d.student_id))
+        s = tenant_get(db, StudentProfile, int(d.student_id))
         return _disb_row(d, user, s)
 
 
@@ -1145,7 +1146,7 @@ def review_appeal(appeal_id, body, user) -> dict:
         o.review_opinion, o.reviewer = opinion, _op()[0]
         o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
         if result == "SUSTAINED":
-            x = db.get(FundingApplication, int(o.application_id))
+            x = tenant_get(db, FundingApplication, int(o.application_id))
             # 正常应仍为 PUBLICITY（授予前已拦截进行中申诉）；若竞态已 GRANTED 亦撤回为驳回
             if x and x.status in ("PUBLICITY", "GRANTED"):
                 was_granted = x.status == "GRANTED"
@@ -1169,7 +1170,7 @@ def review_appeal(appeal_id, body, user) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(o)
-        s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+        s = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
         result_row = _appeal_row(o, s)
         from app.services import affairs_appeal_todo_service as appeal_todo
         return appeal_todo.sync_after_review("FUNDING_APPEAL_REVIEW", int(appeal_id), result_row)
