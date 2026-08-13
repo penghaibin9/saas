@@ -120,6 +120,7 @@ def main() -> int:
     from app.services.sandbox_school_domain_seed import validate_domain_facts
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
+    from app.services.sandbox_school_role_reconcile import validate_school_roles_20k
 
     db = get_sessionmaker()()
     try:
@@ -130,6 +131,7 @@ def main() -> int:
 
         try:
             master = validate_school_master(db, SANDBOX_TID)
+            role_topology = validate_school_roles_20k(db, SANDBOX_TID)
             domains = validate_domain_facts(db, SANDBOX_TID)
             academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             professional = validate_professional_school_20k(db, SANDBOX_TID)
@@ -145,6 +147,7 @@ def main() -> int:
             "tenantCode": SANDBOX_CODE,
             "schoolName": tenant.school_name,
             "master": master,
+            "roleTopology": role_topology,
             "domains": domains,
             "academicAffairs": academic_affairs,
             "professional": professional,

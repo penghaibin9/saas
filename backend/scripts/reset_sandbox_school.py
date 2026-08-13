@@ -16,8 +16,9 @@
   4. 无 --confirm 一律不落库；删除前打印每张表将影响的行数；
   5. standard-20k 使用确定性虚构数据，不复制任何真实学校或真实个人数据；
   6. standard-20k 不再调用 generic DEMO marker 覆盖数据；
-  7. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
-  8. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
+  7. 学校角色只复用正式内置角色模板，兼岗不重复造教职工账号；
+  8. 教务课程、实习企业岗位、毕设导师选题统一按 32 专业画像对账；
+  9. 重建后从事实表反算岗位/企业人数，并校验宿舍床位、资助、班级、风险、教务成绩与考场容量等关系。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -122,8 +123,15 @@ def main() -> int:
                 validate_professional_school_20k,
             )
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
+            from app.services.sandbox_school_role_reconcile import (
+                reconcile_school_roles_20k,
+                validate_school_roles_20k,
+            )
 
             master = rebuild_school_master_20k(db)
+            # 主账号/学院/专业/班级生成后，先补正式角色兼岗与 COLLEGE/MAJOR/ADVISOR 范围。
+            # 后续六域与工作台选择器因此直接消费完整学校组织，而不是再造临时负责人。
+            role_topology = reconcile_school_roles_20k(db, SANDBOX_TID)
             domains = seed_school_domains_20k(db, SANDBOX_TID)
             academic_affairs = seed_school_academic_affairs_20k(db, SANDBOX_TID)
 
@@ -136,6 +144,7 @@ def main() -> int:
 
             acceptance = {
                 "master": validate_school_master(db, SANDBOX_TID),
+                "roleTopology": validate_school_roles_20k(db, SANDBOX_TID),
                 "domains": validate_domain_facts(db, SANDBOX_TID),
                 "academicAffairs": validate_academic_affairs_facts(db, SANDBOX_TID),
                 "professional": validate_professional_school_20k(db, SANDBOX_TID),
@@ -146,6 +155,7 @@ def main() -> int:
             report = {
                 "reseeded": {
                     "master": master,
+                    "roleTopology": role_topology,
                     "domains": domains,
                     "academicAffairs": academic_affairs,
                     "professional": professional,
@@ -181,7 +191,7 @@ def main() -> int:
             if demo_before != demo_after:
                 return 4
         if args.profile == PROFILE_STANDARD_20K:
-            print("[reset] 完成：20K 标准学校已建立并通过主数据/六域/13A/13B/专业语义/跨表关系对账。")
+            print("[reset] 完成：20K 标准学校已通过主数据/角色拓扑/六域/13A/13B/专业语义/跨表关系对账。")
             print("[reset] 可见演示账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
         else:

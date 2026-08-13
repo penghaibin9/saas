@@ -14,6 +14,7 @@ on:
       - backend/scripts/_seed_sandbox_coverage.py
       - backend/tests/test_sandbox_school_blueprint.py
       - backend/tests/test_sandbox_school_professional_catalog.py
+      - backend/tests/test_sandbox_school_role_topology.py
       - backend/tests/test_sandbox_story_reset_route.py
       - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
       - .github/workflows/sandbox-20k-data-gate.yml
@@ -82,6 +83,7 @@ jobs:
           files=(
             app/services/sandbox_school_blueprint.py
             app/services/sandbox_school_master_seed.py
+            app/services/sandbox_school_role_reconcile.py
             app/services/sandbox_school_domain_seed.py
             app/services/sandbox_school_reconcile.py
             app/services/sandbox_school_affairs_seed.py
@@ -99,6 +101,7 @@ jobs:
             scripts/_seed_sandbox_coverage.py
             tests/test_sandbox_school_blueprint.py
             tests/test_sandbox_school_professional_catalog.py
+            tests/test_sandbox_school_role_topology.py
             tests/test_sandbox_story_reset_route.py
           )
           : > test-results/sandbox-20k/compile.log
@@ -136,12 +139,13 @@ jobs:
           pytest -q \
             tests/test_sandbox_school_blueprint.py \
             tests/test_sandbox_school_professional_catalog.py \
+            tests/test_sandbox_school_role_topology.py \
             -p no:warnings \
             2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_professional_catalog.py::20K blueprint/professional contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_role_topology.py::20K blueprint/professional/role contract failed: ${summary}"
             exit "$status"
           fi
 
@@ -187,6 +191,9 @@ jobs:
           mysql -h127.0.0.1 -uroot -proot sandbox_20k_gate -N -e '
             SELECT "students", COUNT(*) FROM t_student_profile WHERE tenant_id=1000000000000000007;
             SELECT "student_account_links", COUNT(*) FROM t_student_account_link WHERE tenant_id=1000000000000000007 AND link_status="ACTIVE";
+            SELECT "roles", COUNT(*) FROM t_role WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "user_role_bindings", COUNT(*) FROM t_user_role WHERE tenant_id=1000000000000000007 AND is_deleted=0;
+            SELECT "teacher_scopes", COUNT(*) FROM t_teacher_student_scope WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "academic_grades", COUNT(*) FROM t_acad_grade WHERE tenant_id=1000000000000000007;
             SELECT "internship_companies", COUNT(*) FROM t_emp_company WHERE tenant_id=1000000000000000007;
             SELECT "internship_positions", COUNT(*) FROM t_internship_position WHERE tenant_id=1000000000000000007;
