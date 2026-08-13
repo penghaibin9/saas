@@ -7,6 +7,7 @@ const root = process.cwd();
 const required = [
   'backend/scripts/seed_internship_capacity.py',
   'backend/tests/test_internship_capacity_seed_contract.py',
+  'backend/tests/test_internship_student_dashboard_contract.py',
   'performance/k6/internship.js',
   'performance/tools/seed_internship_capacity_env.py',
   '.github/workflows/internship-capacity-fixture.yml',
@@ -20,9 +21,10 @@ for (const file of required) {
 if (failures.length === 0) {
   const seed = read(required[0]);
   const test = read(required[1]);
-  const k6 = read(required[2]);
-  const tokens = read(required[3]);
-  const workflow = read(required[4]);
+  const dashboardTest = read(required[2]);
+  const k6 = read(required[3]);
+  const tokens = read(required[4]);
+  const workflow = read(required[5]);
 
   for (const contract of [
     'default=20_000',
@@ -54,6 +56,9 @@ if (failures.length === 0) {
   if (!test.includes('1_440_000') || !test.includes('208_000') || !test.includes('48_000')) {
     failures.push('seed contract test must lock D20K/D8K row-plan magnitudes');
   }
+  if (!dashboardTest.includes('record.enterprise_mentor_name') || dashboardTest.includes('assert "record.mentor_name" in source')) {
+    failures.push('student dashboard contract must lock canonical enterprise_mentor_name');
+  }
 
   for (const endpoint of [
     '/api/v1/internship/dashboard',
@@ -81,6 +86,13 @@ if (failures.length === 0) {
   if (/print\([^\n]*(token|Bearer)/i.test(tokens)) failures.push('token issuer must not print token material');
 
   for (const workflowContract of [
+    'backend/app/modules/internship/**',
+    'backend/app/models/internship.py',
+    'backend/app/services/mobile_student_service.py',
+    'backend/app/services/_mobile_teacher_service_impl.py',
+    'backend/app/services/student_scope_resolver.py',
+    'backend/tests/test_internship*.py',
+    'test_internship_student_dashboard_contract.py',
     'mysql:8.0',
     'redis:7-alpine',
     'alembic upgrade head',

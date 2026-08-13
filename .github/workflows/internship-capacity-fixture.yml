@@ -3,8 +3,14 @@ name: 岗位实习规模夹具与专用负载
 on:
   pull_request:
     paths:
+      - "backend/app/modules/internship/**"
+      - "backend/app/models/internship.py"
+      - "backend/app/services/mobile_student_service.py"
+      - "backend/app/services/mobile_teacher_service.py"
+      - "backend/app/services/_mobile_teacher_service_impl.py"
+      - "backend/app/services/student_scope_resolver.py"
       - "backend/scripts/seed_internship_capacity.py"
-      - "backend/tests/test_internship_capacity_seed_contract.py"
+      - "backend/tests/test_internship*.py"
       - "performance/k6/internship.js"
       - "performance/tools/seed_internship_capacity_env.py"
       - "scripts/check/check-internship-capacity-gates.mjs"
@@ -37,7 +43,8 @@ jobs:
           python -m py_compile \
             backend/scripts/seed_internship_capacity.py \
             performance/tools/seed_internship_capacity_env.py \
-            backend/tests/test_internship_capacity_seed_contract.py
+            backend/tests/test_internship_capacity_seed_contract.py \
+            backend/tests/test_internship_student_dashboard_contract.py
 
   internship-fixture-smoke:
     name: MySQL 岗位实习夹具 + 专用 k6 smoke
@@ -101,6 +108,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
+      - name: 锁定学生实习工作台字段真值
+        working-directory: backend
+        run: pytest tests/test_internship_student_dashboard_contract.py -q
       - name: 执行 MySQL 真实迁移
         working-directory: backend
         run: alembic upgrade head
