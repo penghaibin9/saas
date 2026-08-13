@@ -136,6 +136,28 @@ def _role_row(db, tenant_id: int, role_code: str):
     return role
 
 
+def _assert_role_delegation_allowed(db, *, actor: dict | None, role, tenant_id: int) -> None:
+    """角色治理写链的最终授权边界：只允许固化 actor 的基础权限。"""
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
+    from app.models import Permission, RolePermission
+
+    role_code = str(role.role_code or "").strip().upper()
+    if role_code.startswith("PLATFORM_"):
+        raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")
+    if str(role.role_type or "").upper() == "SYSTEM":
+        permission_codes = set(ROLE_PERMISSIONS.get(role_code, set()))
+    else:
+        permission_codes = set(db.scalars(select(Permission.permission_code).join(
+            RolePermission, RolePermission.permission_id == Permission.id
+        ).where(
+            RolePermission.tenant_id == tenant_id,
+            RolePermission.role_id == role.id,
+            RolePermission.status == "ACTIVE",
+            RolePermission.is_deleted.is_(False),
+        )).all())
+    assert_delegable_permission_codes(actor, permission_codes)
+
+
 def grant_assignment(user_id: int, role_code: str, *, reason: str,
                      effective_at: Any = None, expires_at: Any = None,
                      source_type: str = SOURCE_MANUAL, source_id: str | None = None,
@@ -161,6 +183,7 @@ def grant_assignment(user_id: int, role_code: str, *, reason: str,
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
         role = _role_row(db, tid, str(role_code or "").strip().upper())
+        _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
 
         link = db.scalars(select(UserRole).where(
             UserRole.tenant_id == tid, UserRole.user_id == account.id,

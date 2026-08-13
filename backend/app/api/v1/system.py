@@ -1430,7 +1430,7 @@ def get_system_context(user=Depends(require_any_permission(
 def assign_system_user_roles(user_id: int, body: dict = Body(...),
                              user=Depends(require_permission("systemAdmin.user.assign-role"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission, User, UserRole
     tenant_id = current_tenant_id()
     codes = sorted({str(code).strip().upper() for code in (body.get("roleCodes") or []) if str(code).strip()})
@@ -1452,6 +1452,8 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
                                               Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all()
         if len(roles) != len(codes): raise AppException("VALIDATION_ERROR", "包含不存在或已停用的角色")
         for role_obj in roles:
+            if str(role_obj.role_code or "").upper().startswith("PLATFORM_"):
+                raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")
             if str(role_obj.role_type or "").upper() == "SYSTEM":
                 patterns = ROLE_PERMISSIONS.get(role_obj.role_code, set())
             else:
@@ -1459,8 +1461,12 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
                     RolePermission.permission_id == Permission.id).where(RolePermission.tenant_id == tenant_id,
                     RolePermission.role_id == role_obj.id, RolePermission.status == "ACTIVE",
                     RolePermission.is_deleted.is_(False))).all())
-            if any(not has_permission(user, pattern) for pattern in patterns):
-                raise AppException("NO_PERMISSION", f"不能分配超出自身权限边界的角色：{role_obj.role_name}")
+            try:
+                assert_delegable_permission_codes(user, patterns)
+            except AppException as exc:
+                if exc.code == "NO_PERMISSION":
+                    raise AppException("NO_PERMISSION", f"不能分配超出自身基础权限边界的角色：{role_obj.role_name}") from None
+                raise
         existing = {link.role_id: link for link in db.scalars(select(UserRole).where(
             UserRole.tenant_id == tenant_id, UserRole.user_id == account.id)).all()}
         wanted = {role_obj.id for role_obj in roles}
@@ -1554,7 +1560,7 @@ def create_system_role(body: dict = Body(...), user=Depends(require_permission("
 @router.post("/system/roles/{role_id}/copy", summary="从预设或自定义角色复制学校自定义角色")
 def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.create"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission
     from app.services.system_admin_catalog_service import expand_permission_patterns
     tenant_id = current_tenant_id()
@@ -1564,6 +1570,8 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
                                                Role.is_deleted.is_(False))).first()
         if source is None:
             raise AppException("DATA_NOT_FOUND", "源角色不存在")
+        if str(source.role_code or "").upper().startswith("PLATFORM_"):
+            raise AppException("NO_PERMISSION", "学校角色治理不能复制平台角色")
         if str(source.role_type or "").upper() == "SYSTEM":
             source_codes = expand_permission_patterns(set(ROLE_PERMISSIONS.get(source.role_code, set())))
         else:
@@ -1574,9 +1582,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
             source_codes = expand_permission_patterns(source_codes)
         # 禁止落库通配或 *
         source_codes = {c for c in source_codes if c and c != "*" and not c.endswith(".*") and not c.startswith("*.")}
-        excess = sorted(code for code in source_codes if not has_permission(user, code))
-        if excess:
-            raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})
+        assert_delegable_permission_codes(user, source_codes)
         base = re.sub(r"[^A-Z0-9_]", "_", f"{source.role_code}_CUSTOM")[:44].rstrip("_") or "CUSTOM"
         existing_codes = set(db.scalars(select(Role.role_code).where(Role.tenant_id == tenant_id)).all())
         code = next((f"{base}_{i}" for i in range(1, 1000) if f"{base}_{i}" not in existing_codes), None)
@@ -1612,7 +1618,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
 def save_system_role_permissions(role_id: int, body: dict = Body(...),
                                  user=Depends(require_permission("systemAdmin.role.config"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import has_permission
+    from app.core.permissions import assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission
     from app.services.system_admin_catalog_service import build_permission_tree, expand_permission_patterns, visible_codes_from_tree
     tenant_id = current_tenant_id()
@@ -1623,9 +1629,7 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
     codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.") and not c.startswith("platform.")}
     if len(codes) > 500:
         raise AppException("VALIDATION_ERROR", "权限点超出学校角色可配置范围")
-    forbidden = [code for code in codes if not has_permission(user, code)]
-    if forbidden:
-        raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})
+    assert_delegable_permission_codes(user, codes)
     # 可见码集合：仅替换本页能展示的权限，页外已有权限保留，防止误伤实习/教务等码
     raw_visible = body.get("visiblePermissionCodes")
     if isinstance(raw_visible, list) and raw_visible:
