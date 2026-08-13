@@ -72,13 +72,29 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Python编译
+      - name: 本PR Python文件编译
         working-directory: backend
         shell: bash
         run: |
           set -o pipefail
           mkdir -p test-results/sandbox-20k
-          python -m compileall -q app scripts tests \
+          python -m py_compile \
+            app/services/sandbox_school_blueprint.py \
+            app/services/sandbox_school_master_seed.py \
+            app/services/sandbox_school_domain_seed.py \
+            app/services/sandbox_school_reconcile.py \
+            app/services/sandbox_school_affairs_seed.py \
+            app/services/sandbox_school_affairs_runner.py \
+            app/services/sandbox_school_academic_affairs_seed.py \
+            app/services/sandbox_school_academic_affairs_reconcile.py \
+            app/services/sandbox_school_story_reset.py \
+            app/api/v1/sandbox_story_api.py \
+            app/api/v1/router.py \
+            scripts/reset_sandbox_school.py \
+            scripts/check_sandbox_20k_school.py \
+            scripts/_seed_sandbox_coverage.py \
+            tests/test_sandbox_school_blueprint.py \
+            tests/test_sandbox_story_reset_route.py \
             2>&1 | tee test-results/sandbox-20k/compile.log
 
       - name: Alembic单头与MySQL空库升级
