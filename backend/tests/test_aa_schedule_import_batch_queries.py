@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import event
 
 TID = 1000000000000000001
@@ -154,13 +156,22 @@ def _count_relevant_selects(engine, fn) -> dict[str, int]:
         "t_aa_schedule_item",
     )
     counts = {table: 0 for table in tables}
+    table_patterns = {
+        table: re.compile(
+            rf"(?<![A-Z0-9_]){re.escape(table.upper())}(?![A-Z0-9_])"
+        )
+        for table in tables
+    }
 
     def before_cursor_execute(_conn, _cursor, statement, *_args, **_kwargs):
         upper = statement.strip().upper()
         if not upper.startswith("SELECT"):
             return
-        for table in tables:
-            if table.upper() in upper:
+        # 必须按完整 SQL 标识符计数，不能做子串包含：
+        # t_aa_teaching_task_batch 会包含 t_aa_teaching_task 前缀，子串统计会把
+        # 同一条 task-batch SELECT 误计到 teaching-task，制造固定开销假红灯。
+        for table, pattern in table_patterns.items():
+            if pattern.search(upper):
                 counts[table] += 1
 
     event.listen(engine, "before_cursor_execute", before_cursor_execute)
