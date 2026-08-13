@@ -66,9 +66,10 @@ jobs:
         run: |
           pytest -q -p no:warnings \
             tests/test_message_channel_delivery.py \
-            tests/test_message_center.py \
+            tests/test_message_center_followups.py \
             tests/test_message_governance.py \
             tests/test_message_delivery_async.py \
+            tests/test_p0_txn_audit_delivery.py \
             --timeout=300 --timeout-method=signal
       - name: No plaintext phone in durable channel diff
         run: |
