@@ -15,7 +15,7 @@ from app.services.sandbox_school_master_seed import _bulk_insert
 def reconcile_exam_rooms(db, tenant_id: int) -> dict:
     from app.models import (
         AaClassroom, AaExamCourse, AaExamInvigilator, AaExamRoom,
-        AaExamRoomStudent, SchoolClass, StudentProfile, User,
+        AaExamRoomStudent, StudentProfile, User,
     )
 
     # 主种子的临时单考场仅用于建立考试课程；正式验收前全部按真实考试容量重排。
@@ -90,6 +90,7 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
                 "tenant_id": tenant_id,
                 "exam_course_id": int(ec.id),
                 "room_seq": room_seq,
+                "classroom_id": int(classroom.id),
                 "classroom_text": classroom.room_name,
                 "capacity": capacity,
                 "planned_count": len(people),
@@ -149,6 +150,11 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
         AaExamRoom.planned_count > AaExamRoom.capacity,
         AaExamRoom.is_deleted.is_(False),
     )) or 0)
+    unlinked_rooms = int(db.scalar(select(func.count()).select_from(AaExamRoom).where(
+        AaExamRoom.tenant_id == tenant_id,
+        AaExamRoom.classroom_id.is_(None),
+        AaExamRoom.is_deleted.is_(False),
+    )) or 0)
     seat_count = int(db.scalar(select(func.count()).select_from(AaExamRoomStudent).where(
         AaExamRoomStudent.tenant_id == tenant_id,
         AaExamRoomStudent.is_deleted.is_(False),
@@ -164,6 +170,8 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
     )) or 0)
     if over_capacity:
         raise RuntimeError(f"存在 {over_capacity} 个超容量考场")
+    if unlinked_rooms:
+        raise RuntimeError(f"存在 {unlinked_rooms} 个未回链教室主档的考场")
     if distinct_students_per_course != seat_count:
         raise RuntimeError(
             f"考试座位重复: seats={seat_count}, uniqueCourseStudents={distinct_students_per_course}"
@@ -174,5 +182,6 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
         "examSeats": seat_count,
         "invigilators": len(invigilator_rows),
         "roomsOverCapacity": over_capacity,
+        "roomsWithoutClassroomId": unlinked_rooms,
         "passed": True,
     }
