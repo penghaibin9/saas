@@ -241,6 +241,39 @@
 
         <section v-if="currentItem.embed" class="help-section help-section--embed">
           <h3>可视化说明</h3>
+          <p v-if="visualGallery.length" class="help-visual-intro">先用图解快速定位环节；需要查看步骤、角色和操作入口时，再阅读下方交互式说明。</p>
+          <div v-if="visualGallery.length" class="help-visual-gallery" aria-label="流程图解">
+            <a
+              v-for="image in primaryVisuals"
+              :key="image.src"
+              class="help-visual-card"
+              :class="{ 'is-primary': image.primary, 'is-mobile': image.mobile }"
+              :href="image.src"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img :src="image.src" :alt="image.title" loading="lazy" />
+              <span>{{ image.title }}</span>
+              <small>点击查看大图</small>
+            </a>
+          </div>
+          <details v-if="archiveVisuals.length" class="help-visual-history">
+            <summary>查看图解迭代留存（仅供设计回溯）</summary>
+            <div class="help-visual-gallery">
+              <a
+                v-for="image in archiveVisuals"
+                :key="image.src"
+                class="help-visual-card"
+                :href="image.src"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img :src="image.src" :alt="image.title" loading="lazy" />
+                <span>{{ image.title }}</span>
+                <small>点击查看大图</small>
+              </a>
+            </div>
+          </details>
           <iframe
             :src="currentItem.embed"
             sandbox="allow-scripts"
@@ -425,6 +458,7 @@ import {
   recordHelpMetric
 } from '@/config/help/helpMetrics'
 import { getAuthContext } from '@/security/auth/auth.context'
+import { getHelpVisualGallery } from '@/config/help/helpVisualGallery'
 
 export default {
   name: 'AdminHelpView',
@@ -469,6 +503,15 @@ export default {
     },
     currentItem() {
       return this.currentEntry?.item || {}
+    },
+    visualGallery() {
+      return getHelpVisualGallery(this.currentId)
+    },
+    primaryVisuals() {
+      return this.visualGallery.filter((image) => !image.archive)
+    },
+    archiveVisuals() {
+      return this.visualGallery.filter((image) => image.archive)
     },
     currentFeedback() {
       return this.articleFeedback[this.currentId] || ''
@@ -725,6 +768,17 @@ export default {
 .help-faq summary { cursor: pointer; color: var(--t1); font-weight: 700; }
 .help-faq p { margin-bottom: 0; }
 .help-related { display: flex; flex-wrap: wrap; gap: 9px; }
+.help-visual-intro { margin: 0 0 12px; color: var(--t3); }
+.help-visual-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.help-visual-card { display: grid; gap: 7px; min-width: 0; padding: 10px; border: 1px solid var(--dv); border-radius: 12px; color: var(--t2); text-decoration: none; background: var(--c1); transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.help-visual-card:hover { border-color: var(--brand); box-shadow: 0 8px 20px color-mix(in srgb, var(--brand) 14%, transparent); transform: translateY(-1px); }
+.help-visual-card.is-primary { grid-column: 1 / -1; }
+.help-visual-card img { width: 100%; max-height: 430px; object-fit: contain; border-radius: 8px; background: white; }
+.help-visual-card span { color: var(--t1); font-weight: 750; }
+.help-visual-card small { color: var(--t3); }
+.help-visual-history { margin: 0 0 16px; padding: 12px; border: 1px dashed var(--dv); border-radius: 12px; }
+.help-visual-history summary { cursor: pointer; color: var(--t2); font-weight: 700; }
+.help-visual-history .help-visual-gallery { margin: 12px 0 0; }
 .help-section--embed iframe { width: 100%; min-height: 680px; border: 1px solid var(--dv); border-radius: 13px; background: white; }
 .help-feedback { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin-top: 20px; padding: 16px; border: 1px solid var(--dv); border-radius: 13px; background: var(--c1); }
 .help-feedback > div:first-child { display: grid; gap: 4px; }
@@ -790,6 +844,9 @@ export default {
   .help-feedback,
   .help-section-heading,
   .help-journey header > div { align-items: flex-start; flex-direction: column; }
+  .help-visual-gallery { grid-template-columns: 1fr; }
+  .help-visual-card.is-primary { grid-column: auto; }
+  .help-visual-card img { max-height: 310px; }
   .help-section--embed iframe { min-height: 520px; }
 }
 </style>
