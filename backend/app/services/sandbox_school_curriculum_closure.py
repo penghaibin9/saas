@@ -442,7 +442,7 @@ def _historical_context(db, tenant_id: int) -> dict:
         for row in db.scalars(select(Major).where(
             Major.tenant_id == tenant_id,
             Major.is_deleted.is_(False),
-        ).all()
+        )).all()
     }
     courses = {
         str(row.course_code): row
@@ -629,7 +629,7 @@ def seed_historical_teaching_closure_20k(db, tenant_id: int) -> dict:
                 "course_id": int(course.id),
                 "course_name": course.course_name,
                 "class_id": int(cls.id),
-                "class_name": task.teaching_class_name,
+                "class_name": cls.class_name,
                 "teacher_key": task.teacher_key,
                 "teacher_name": task.teacher_name,
                 "weekday": 1 + position,
