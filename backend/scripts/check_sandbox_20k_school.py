@@ -147,9 +147,11 @@ def main() -> int:
     from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
     from app.services.sandbox_school_employment_seed import validate_employment_facts_20k
     from app.services.sandbox_school_graduation_process_seed import validate_school_graduation_process_20k
+    from app.services.sandbox_school_legacy_cleanup import validate_no_legacy_identity_residue
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
     from app.services.sandbox_school_professional_reconcile import validate_professional_school_20k
+    from app.services.sandbox_school_profile import PROFILE_STANDARD, classify_sandbox_profile
 
     db = get_sessionmaker()()
     try:
@@ -159,6 +161,10 @@ def main() -> int:
             return 3
 
         try:
+            profile = classify_sandbox_profile(db, SANDBOX_TID)
+            if profile["profile"] != PROFILE_STANDARD:
+                raise RuntimeError(f"20K 沙箱档位签名异常: {profile}")
+            legacy_residue = validate_no_legacy_identity_residue(db, SANDBOX_TID)
             master = validate_school_master(db, SANDBOX_TID)
             mentor_workload = validate_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = validate_school_graduation_process_20k(db, SANDBOX_TID)
@@ -178,6 +184,8 @@ def main() -> int:
             "tenantId": str(SANDBOX_TID),
             "tenantCode": SANDBOX_CODE,
             "schoolName": tenant.school_name,
+            "profile": profile,
+            "legacyIdentityResidue": legacy_residue,
             "rebuildBudget": rebuild_budget,
             "master": master,
             "mentorWorkload": mentor_workload,
@@ -198,7 +206,7 @@ def main() -> int:
         if not exam["passed"]:
             print("[20k-check] FAIL 考场容量/座位唯一性不一致")
             return 6
-        print("[20k-check] PASS 20K 售前标准学校数据、教材准备、毕设时间线、导师工作量与就业域验收通过")
+        print("[20k-check] PASS 20K 售前标准学校数据、旧假身份清零、教材准备、毕设时间线、导师工作量与就业域验收通过")
         return 0
     finally:
         db.close()
