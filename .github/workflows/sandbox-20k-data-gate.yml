@@ -122,17 +122,35 @@ jobs:
             alembic current
           } 2>&1 | tee test-results/sandbox-20k/alembic.log
 
-      - name: 数据规格与沙箱恢复路由合同
+      - name: 20K纯数据规格合同
         working-directory: backend
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           mkdir -p test-results/sandbox-20k
-          pytest -q \
-            tests/test_sandbox_school_blueprint.py \
-            tests/test_sandbox_story_reset_route.py \
-            -p no:warnings \
-            2>&1 | tee test-results/sandbox-20k/contracts.log
+          pytest -q tests/test_sandbox_school_blueprint.py -p no:warnings \
+            2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error file=backend/tests/test_sandbox_school_blueprint.py::20K blueprint contract failed: ${summary}"
+            exit "$status"
+          fi
+
+      - name: 平台沙箱恢复路由合同
+        working-directory: backend
+        shell: bash
+        run: |
+          set +e
+          mkdir -p test-results/sandbox-20k
+          pytest -q tests/test_sandbox_story_reset_route.py -p no:warnings \
+            2>&1 | tee test-results/sandbox-20k/story-route-contract.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError|IntegrityError|OperationalError' test-results/sandbox-20k/story-route-contract.log | tail -n 30 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error file=backend/tests/test_sandbox_story_reset_route.py::sandbox story route contract failed: ${summary}"
+            exit "$status"
+          fi
 
       - name: 全量生成20K真实学校演示数据
         working-directory: backend
