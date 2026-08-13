@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { spawnSync } from 'node:child_process'
 
 const root = process.cwd()
 const requiredFiles = [
@@ -13,6 +14,7 @@ const requiredFiles = [
   'performance/tools/probe_observability.py',
   'performance/tools/seed_local_capacity_env.py',
   'performance/tools/evaluate_capacity_result.py',
+  'performance/tools/test_evaluate_capacity_result.py',
   'performance/capacity-report-template.md',
   '.github/workflows/capacity-load-gates.yml',
 ]
@@ -143,13 +145,29 @@ if (failures.length === 0) {
   for (const profile of ['"p300": 10000', '"p500": 20000']) {
     if (!evaluator.includes(profile)) failures.push(`capacity evaluator missing high-load minimum ${profile}`)
   }
-  for (const diagnosticContract of ['"local-functional"', '"full-capacity"', '"latencyGateEnforced"', '"enforced"']) {
+  for (const diagnosticContract of [
+    '"local-functional"',
+    '"full-capacity"',
+    '"latencyGateEnforced"',
+    '"functionalPassed"',
+    '"executionPassed"',
+    '"releaseCapacityPassed"',
+    '"diagnosticOnly"',
+    '"enforced"',
+    'DIAGNOSTIC_FUNCTIONAL_PASS',
+  ]) {
     if (!evaluator.includes(diagnosticContract)) {
       failures.push(`capacity evaluator missing target-aware contract ${diagnosticContract}`)
     }
   }
   if (!evaluator.includes('target_mode == "local"')) {
     failures.push('only local targets may use functional-only high-load verdicts')
+  }
+  if (!evaluator.includes('"passed": release_capacity_passed')) {
+    failures.push('top-level passed must mean release-capacity truth, not local diagnostic success')
+  }
+  if (!evaluator.includes('execution_passed = functional_passed if local_high_load else release_capacity_passed')) {
+    failures.push('local diagnostic process exit must be separated from release-capacity truth')
   }
 
   const secretLeakPatterns = [
@@ -159,6 +177,18 @@ if (failures.length === 0) {
   ]
   for (const pattern of secretLeakPatterns) {
     if (pattern.test(k6)) failures.push(`possible hard-coded secret in k6 files: ${pattern}`)
+  }
+}
+
+if (failures.length === 0) {
+  const behavior = spawnSync('python', ['performance/tools/test_evaluate_capacity_result.py'], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  if (behavior.status !== 0) {
+    failures.push(
+      `capacity evaluator behavior contract failed:\n${behavior.stdout || ''}${behavior.stderr || ''}`.trim(),
+    )
   }
 }
 
