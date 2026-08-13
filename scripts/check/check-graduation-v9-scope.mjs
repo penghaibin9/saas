@@ -11,6 +11,7 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/api\/graduation-batch-context\.js$/,
     /^frontend\/src\/modules\/graduation\/api\/graduation(?:-more|-student|-risk-archive|-taskbook)?\.api\.js$/,
     /^frontend\/tests\/graduation\.v9-batch-context\.contract\.test\.mjs$/,
+    /^backend\/tests\/test_graduation_round5_contracts\.py$/,
     /^scripts\/check\/check-graduation-production-gates\.mjs$/,
   ],
   M2: [

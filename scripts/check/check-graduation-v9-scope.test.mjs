@@ -12,11 +12,12 @@ test('S0.5 only allows its own scope gate files', () => {
   assert.match(validateFiles(['frontend/src/modules/graduation/views/ProposalListView.vue'], 'S0_5')[0], /out of S0_5 allowlist/)
 })
 
-test('M1 allows graduation batch adapters but denies shared HTTP foundation', () => {
+test('M1 allows shared batch adapters and the migrated round5 contract, but denies shared HTTP foundation', () => {
   assert.deepEqual(validateFiles([
     'frontend/src/modules/graduation/api/graduation-batch-context.js',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'frontend/tests/graduation.v9-batch-context.contract.test.mjs',
+    'backend/tests/test_graduation_round5_contracts.py',
   ], 'M1'), [])
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M1')[0], /shared foundation denied/)
 })
@@ -56,6 +57,7 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
     'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
+    'backend/tests/test_graduation_round5_contracts.py',
     'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
