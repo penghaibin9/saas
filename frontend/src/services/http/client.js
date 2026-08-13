@@ -15,7 +15,7 @@ const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1']
 try { LEGACY_TOKEN_KEYS.forEach((key) => sessionStorage.removeItem(key)) } catch { /* ignore */ }
 try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch { /* ignore */ }
 
-const state = { token: '', sessionGeneration: 0, offlineUntil: 0, notified: false }
+const state = { token: '', sessionGeneration: 0, roleSwitchInFlight: false, offlineUntil: 0, notified: false }
 
 /** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
 const REQUEST_TIMEOUT_MS =
@@ -63,6 +63,10 @@ function staleSessionError() {
   err.bizCode = 'SESSION_CHANGED'
   err.staleSession = true
   return err
+}
+
+function assertNoRoleSwitchTransition() {
+  if (state.roleSwitchInFlight) throw staleSessionError()
 }
 
 export function shouldTryReal() {
@@ -179,6 +183,7 @@ function browserSessionHeaders() {
 
 let refreshPromise = null
 async function tryRefresh() {
+  assertNoRoleSwitchTransition()
   if (refreshPromise) return refreshPromise
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
@@ -283,27 +288,34 @@ export async function fetchMyAuthContexts() {
 
 export async function switchAuthContext(contextId, clientType = 'PC') {
   await ensureToken()
+  if (state.roleSwitchInFlight) throw staleSessionError()
 
   // browser-switch-role revokes every old refresh token before issuing the target role's durable
   // session. Never let an already-running browser-refresh race that revocation/issuance window:
-  // first finish the one legitimate refresh already in flight, then advance the logical session
-  // generation before yielding again so all old-page 401 handlers fail closed instead of sending
-  // another refresh with a cookie that is being replaced by the role switch.
+  // first finish the one legitimate refresh already in flight, then close the ordinary business
+  // request gate before advancing the logical session generation. Any old page request started
+  // during the switch fails locally instead of sending an old access token and starting a doomed
+  // browser-refresh against a cookie the server is replacing.
   if (refreshPromise) await refreshPromise
   if (!state.token) await ensureToken()
   const accessTokenAtStart = state.token
+  state.roleSwitchInFlight = true
   state.sessionGeneration += 1
   const generationAtStart = state.sessionGeneration
 
-  const data = await rawRequest('/auth/browser-switch-role', {
-    method: 'POST',
-    body: { contextId, clientType }
-  })
-  if (state.sessionGeneration !== generationAtStart || state.token !== accessTokenAtStart) {
-    throw staleSessionError()
+  try {
+    const data = await rawRequest('/auth/browser-switch-role', {
+      method: 'POST',
+      body: { contextId, clientType }
+    })
+    if (state.sessionGeneration !== generationAtStart || state.token !== accessTokenAtStart) {
+      throw staleSessionError()
+    }
+    if (data && data.accessToken) applyAuthSession(data.accessToken)
+    return data
+  } finally {
+    state.roleSwitchInFlight = false
   }
-  if (data && data.accessToken) applyAuthSession(data.accessToken)
-  return data
 }
 
 export function isPlatformSuperAdmin() {
@@ -343,7 +355,9 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 }
 
 export async function request(path, options = {}) {
+  assertNoRoleSwitchTransition()
   await ensureToken()
+  assertNoRoleSwitchTransition()
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   try {
@@ -380,7 +394,9 @@ export async function logoutRemote() {
 }
 
 export async function requestUpload(path, file, fieldName = 'file') {
+  assertNoRoleSwitchTransition()
   await ensureToken()
+  assertNoRoleSwitchTransition()
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   const fd = new FormData()
@@ -421,7 +437,9 @@ export async function requestUpload(path, file, fieldName = 'file') {
 }
 
 export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
+  assertNoRoleSwitchTransition()
   await ensureToken()
+  assertNoRoleSwitchTransition()
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   const qs = params

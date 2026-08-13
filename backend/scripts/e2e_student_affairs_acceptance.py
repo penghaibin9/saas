@@ -8,7 +8,7 @@ import json
 import sys
 import time
 import traceback
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,10 +130,12 @@ def test_leave_six_step(admin_token: str):
     # 1) student portal apply
     time.sleep(7)
     st = tok("E2E20260001", "PC")
-    start = (date.today() + timedelta(days=3)).isoformat()
-    end = (date.today() + timedelta(days=4)).isoformat()
-    apply = _req("POST", "/portal/affairs/service-apply", token=st, body={
-        "serviceKey": "LEAVE",
+    # Include a per-run time component so repeated acceptance runs remain idempotent and never
+    # collide with an earlier in-flight E2E leave on the same calendar days.
+    run_slot = datetime.now().replace(microsecond=0) + timedelta(days=30)
+    start = run_slot.isoformat()
+    end = (run_slot + timedelta(hours=2)).isoformat()
+    apply = _req("POST", "/portal/affairs/leave", token=st, body={
         "leaveType": "PERSONAL",
         "startTime": start,
         "endTime": end,
@@ -142,7 +144,7 @@ def test_leave_six_step(admin_token: str):
     leave_id = str((apply.get("data") or {}).get("id") or "")
     IDS["leaveId"] = leave_id
     if apply.get("code") != 0 or not leave_id:
-        bid = bug("学生PC门户发起请假失败", endpoint="/portal/affairs/service-apply", response=apply)
+        bid = bug("学生PC门户发起请假失败", endpoint="/portal/affairs/leave", response=apply)
         add_matrix(module="请假销假", initiatorEnd="学生PC", initiatorRole="E2E学生A",
                    conclusion="FAIL", bugId=bid, apiResult=apply)
         return
@@ -185,36 +187,36 @@ def test_leave_six_step(admin_token: str):
         bug("辅导员B越权看到A班请假待办", leaveId=leave_id)
 
     # 6) return via mini, student sees reason
+    current_version = int(next(
+        (x.get("version") for x in m_items if str(x.get("id") or x.get("leaveId")) == leave_id),
+        0,
+    ) or 0)
     ret = _req("POST", f"/mobile/teacher/affairs/leaves/{leave_id}/return", token=ct_m, body={
         "reason": "E2E退回请补充行程说明材料",
+        "version": current_version,
     })
     time.sleep(2)
     mine2 = _req("GET", "/mobile/affairs/leave/my", token=st_m)
     portal_leave = _req("GET", "/portal/affairs/leave", token=st)
-    # resubmit via portal service or student-affairs resubmit
+    # update returned request, then resubmit through the student-owned portal contract
     detail = _req("GET", f"/student-affairs/leave/{leave_id}", token=ct)
     status_after_return = ((detail.get("data") or {}).get("affairsStatus")
                            or (ret.get("data") or {}).get("affairsStatus"))
 
-    resub = _req("POST", f"/student-affairs/leave/{leave_id}/resubmit", token=st, body={
-        "reason": "E2E联测已补充行程说明可以审批",
-        "startTime": start, "endTime": end, "leaveType": "PERSONAL",
+    editable = _req("GET", f"/mobile/affairs/leave/{leave_id}/editable", token=st)
+    version = int((editable.get("data") or {}).get("version") or 0)
+    updated = _req("PUT", f"/mobile/affairs/leave/{leave_id}/returned", token=st, body={
+        "leaveType": "PERSONAL", "startTime": start, "endTime": end,
+        "reason": "E2E联测已补充行程说明可以审批", "version": version,
     })
-    # student may lack student-affairs permission — try portal re-apply path if needed
-    if resub.get("code") != 0:
-        # student should use portal; check if there's dedicated resubmit
-        resub2 = _req("POST", f"/portal/affairs/service-apply", token=st, body={
-            "serviceKey": "LEAVE", "leaveType": "PERSONAL",
-            "startTime": start, "endTime": end,
-            "reason": "E2E联测退回后重交补充行程说明",
-            "resubmitLeaveId": leave_id,
-        })
-        IDS["leaveResubmitAttempt"] = resub2
+    resub = _req("POST", f"/portal/affairs/leave/{leave_id}/resubmit", token=st,
+                 body={"version": int((updated.get("data") or {}).get("version") or version + 1)})
 
     time.sleep(7)
     ct2 = tok("e2e_counselor_a", "PC")
     approve = _req("POST", f"/student-affairs/leave/{leave_id}/approve", token=ct2, body={
         "comment": "E2E同意请假",
+        "version": int((resub.get("data") or {}).get("version") or 0),
     })
 
     # student cannot approve via teacher API
@@ -222,6 +224,7 @@ def test_leave_six_step(admin_token: str):
     st2 = tok("E2E20260001", "PC")
     hijack = _req("POST", f"/student-affairs/leave/{leave_id}/approve", token=st2, body={
         "comment": "学生冒充审批",
+        "version": int((resub.get("data") or {}).get("version") or 0),
     })
     hijack_blocked = hijack.get("code") in (403001, 403002) or hijack.get("bizCode") in (
         "NO_PERMISSION", "NO_DATA_SCOPE") or str(hijack.get("code")).startswith("403")
@@ -252,7 +255,7 @@ def test_leave_six_step(admin_token: str):
 
     add_matrix(
         module="请假销假",
-        initiatorEnd="学生PC(/portal/service-apply)",
+        initiatorEnd="学生PC(/portal/affairs/leave)",
         initiatorRole="E2E学生A",
         handlerEnd="老师小程序退回→老师PC审批",
         handlerRole="e2e_counselor_a",
@@ -265,7 +268,7 @@ def test_leave_six_step(admin_token: str):
         bugId=bid,
         leaveId=leave_id,
         studentId=sid,
-        notes="学生小程序请假页目前仅列表无提交表单(缺失能力)",
+        notes="学生 PC 与学生小程序均使用本人请假专用入口，禁止客户端提交 studentId",
     )
 
 
@@ -298,7 +301,8 @@ def test_dorm(admin_token: str):
         vacant = bed_items[0] if bed_items else None
     bed_id = (vacant or {}).get("bedId") or (vacant or {}).get("id")
     IDS["bedId"] = bed_id
-    sid = IDS.get("studentAId") or resolve_student_id(admin_token, "E2E20260001")
+    # Use the fourth E2E student so the acceptance run is isolated from the leave/aid student.
+    sid = resolve_student_id(admin_token, "E2E20260004")
     time.sleep(7)
     dm = tok("e2e_dorm_manager")
     checkin = _req("POST", f"/student-affairs/dorm/beds/{bed_id}/checkin", token=dm, body={
@@ -311,7 +315,7 @@ def test_dorm(admin_token: str):
     double_blocked = checkin2.get("code") != 0
     # student my dorm via mobile
     time.sleep(7)
-    st = tok("E2E20260001", "MINI_PROGRAM")
+    st = tok("E2E20260004", "MINI_PROGRAM")
     my_dorm = _req("GET", "/mobile/affairs/dorm/my", token=st)
 
     conclusion = "PASS" if checkin.get("code") == 0 and double_blocked else "FAIL"
@@ -330,10 +334,10 @@ def test_mental_acl():
     print("=== mental ACL ===")
     time.sleep(7)
     mt = tok("e2e_mental_teacher")
-    mental_ok = _req("GET", "/student-affairs/mental?pageSize=10", token=mt)
+    mental_ok = _req("GET", "/student-affairs/mental/list?pageSize=10", token=mt)
     time.sleep(7)
     ct = tok("e2e_counselor_a")
-    mental_c = _req("GET", "/student-affairs/mental?pageSize=10", token=ct)
+    mental_c = _req("GET", "/student-affairs/mental/list?pageSize=10", token=ct)
     counselor_blocked_or_masked = (
         mental_c.get("code") != 0
         or mental_c.get("bizCode") in ("NO_PERMISSION", "NO_DATA_SCOPE")
@@ -346,7 +350,7 @@ def test_mental_acl():
             leaked_detail = True
     time.sleep(7)
     st = tok("E2E20260003", "PC")
-    mental_stu = _req("GET", "/student-affairs/mental?pageSize=10", token=st)
+    mental_stu = _req("GET", "/student-affairs/mental/list?pageSize=10", token=st)
     stu_blocked = mental_stu.get("code") != 0
 
     conclusion = "PASS" if mental_ok.get("code") == 0 and stu_blocked and not leaked_detail else "PARTIAL"
@@ -397,30 +401,30 @@ def test_aid_batch(admin_token: str):
     print("=== aid ===")
     time.sleep(7)
     sa = tok("e2e_sa_admin")
+    suffix = time.strftime("%H%M%S")
     batch = _req("POST", "/student-affairs/aid/batches", token=sa, body={
-        "batchName": "E2E困难认定批次2026",
-        "year": "2026",
-        "action": "PUBLISH",
+        "batchName": f"E2E困难认定批次{suffix}",
+        "schoolYear": "2025-2026",
+        "publicityDays": 5,
+        "levelConfig": {"levels": ["SPECIAL", "DIFFICULT", "GENERAL"]},
+        "publish": True,
     })
-    # schema may differ — try minimal
-    if batch.get("code") != 0:
-        batch = _req("POST", "/student-affairs/aid/batches", token=sa, body={
-            "name": "E2E困难认定批次2026",
-            "academicYear": "2025-2026",
-        })
     IDS["aidBatch"] = batch.get("data")
     time.sleep(7)
     st = tok("E2E20260001", "PC")
     apply = _req("POST", "/portal/affairs/aid/apply", token=st, body={
         "batchId": (batch.get("data") or {}).get("id") or (batch.get("data") or {}).get("batchId"),
-        "reason": "E2E家庭经济困难申请认定测试",
-        "level": "GENERAL",
+        "applyLevel": "GENERAL",
+        "statement": "E2E家庭经济困难申请认定测试说明不少于十个字",
+        "memberCount": 3,
+        "confirm": True,
     })
-    conclusion = "PASS" if batch.get("code") == 0 else "PARTIAL"
+    conclusion = "PASS" if batch.get("code") == 0 and apply.get("code") == 0 else "FAIL"
     bid = None
     if batch.get("code") != 0:
         bid = bug("困难认定批次创建失败", response=batch)
-        conclusion = "FAIL"
+    elif apply.get("code") != 0:
+        bid = bug("学生困难认定申请失败", response=apply, batch=batch.get("data"))
     add_matrix(module="困难认定", initiatorEnd="学生PC", initiatorRole="E2E学生A",
                handlerEnd="老师PC学工处", handlerRole="e2e_sa_admin",
                pcResult={"batch": batch.get("code"), "apply": apply.get("code")},
@@ -431,64 +435,55 @@ def test_aid_batch(admin_token: str):
 def test_activity():
     print("=== activity ===")
     time.sleep(7)
-    am = tok("e2e_activity_manager")
-    created = _req("POST", "/student-affairs/activity", token=am, body={
-        "title": "E2E志愿服务日活动",
-        "activityName": "E2E志愿服务日活动",
-        "startTime": (date.today() + timedelta(days=1)).isoformat() + "T09:00:00",
-        "endTime": (date.today() + timedelta(days=1)).isoformat() + "T12:00:00",
-        "capacity": 50,
+    # School-wide activities require TENANT_ALL scope; the dedicated activity account intentionally
+    # has no school-wide scope, so use the E2E student-affairs administrator for this cross-school flow.
+    am = tok("e2e_sa_admin")
+    suffix = time.strftime("%H%M%S")
+    created = _req("POST", "/student-affairs/activities", token=am, body={
+        "activityName": f"E2E志愿服务日活动{suffix}",
+        "activityType": "ACTIVITY",
+        "description": "E2E四端联测活动，验证创建发布和学生报名闭环",
+        "startAt": (date.today() + timedelta(days=1)).isoformat() + "T09:00:00",
+        "endAt": (date.today() + timedelta(days=1)).isoformat() + "T12:00:00",
+        "enrollDeadline": date.today().isoformat() + "T23:00:00",
+        "quota": 50,
         "location": "E2E广场",
     })
-    if created.get("code") != 0:
-        created = _req("POST", "/student-affairs/activities", token=am, body={
-            "title": "E2E志愿服务日活动",
-            "startAt": (date.today() + timedelta(days=1)).isoformat(),
-            "endAt": (date.today() + timedelta(days=1)).isoformat(),
-            "quota": 50,
-        })
     IDS["activity"] = created.get("data")
     act_id = ((created.get("data") or {}).get("id")
               or (created.get("data") or {}).get("activityId"))
+    publish = None
+    if act_id:
+        publish = _req("POST", f"/student-affairs/activities/{act_id}/publish", token=am, body={
+            "action": "PUBLISH", "reason": "E2E联测发布",
+            "version": int((created.get("data") or {}).get("version") or 0),
+        })
     time.sleep(7)
     st = tok("E2E20260001", "PC")
     enroll = None
-    if act_id:
+    if act_id and publish and publish.get("code") == 0:
         enroll = _req("POST", f"/portal/affairs/activities/{act_id}/enroll", token=st, body={})
-    conclusion = "PASS" if created.get("code") == 0 else "FAIL"
+    conclusion = "PASS" if (created.get("code") == 0 and publish and publish.get("code") == 0
+                              and enroll and enroll.get("code") == 0) else "FAIL"
     bid = None
     if created.get("code") != 0:
         bid = bug("活动创建失败", response=created)
-    add_matrix(module="活动二课", initiatorEnd="老师PC", initiatorRole="e2e_activity_manager",
+    elif not publish or publish.get("code") != 0:
+        bid = bug("活动发布失败", response=publish, activity=created.get("data"))
+    elif not enroll or enroll.get("code") != 0:
+        bid = bug("学生活动报名失败", response=enroll, activity=created.get("data"))
+    add_matrix(module="活动二课", initiatorEnd="老师PC", initiatorRole="e2e_sa_admin",
                handlerEnd="学生PC报名", handlerRole="E2E学生A",
                pcResult={"create": created.get("code"),
+                         "publish": None if publish is None else publish.get("code"),
                          "enroll": None if enroll is None else enroll.get("code")},
                miniResult="N/A", apiResult=created, dbStatus="N/A",
                conclusion=conclusion, bugId=bid, activityId=act_id)
 
 
 def test_missing_capabilities():
-    """Register known gaps discovered from code audit (not fictional)."""
-    gaps = [
-        {
-            "id": "GAP-001",
-            "title": "学生小程序请假页仅列表、无提交表单",
-            "evidence": "miniapp/src/pages/student/affairs/leave.vue 无 submit；写入口实际为 /mobile/campus-service/apply",
-            "impact": "学生无法在小程序请假页直接发起，需走校园服务申请或补页面",
-        },
-        {
-            "id": "GAP-002",
-            "title": "老师/学生小程序同仓 uni-app，非两个独立工程",
-            "evidence": "miniapp/README.md + pages student/* 与 teacher/*",
-            "impact": "验收按同一工程双身份入口计",
-        },
-        {
-            "id": "GAP-003",
-            "title": "SYS_ADMIN 不可经师生导入分配；E2E系统管理员由 admin2/SCHOOL_ADMIN 承担",
-            "evidence": "saas_role_templates teacherAssignable=false",
-            "impact": "符合平台角色模板约束",
-        },
-    ]
+    """Keep an explicit report field; current four-end capability audit has no known gap."""
+    gaps = []
     IDS["missingCapabilities"] = gaps
     for g in gaps:
         print("GAP", g["id"], g["title"])

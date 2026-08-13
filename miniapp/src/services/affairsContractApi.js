@@ -42,7 +42,11 @@ export const affairsContractApi = {
   }),
 
   // 学生材料缺项与逐版本补交
-  getMyMaterialRequirements: () => realRequest('/mobile/affairs/material-requirements'),
+  getMyMaterialRequirements: (params = {}) => {
+    const query = Object.entries(params).filter(([, value]) => value !== '' && value != null)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+    return realRequest(`/mobile/affairs/material-requirements${query ? `?${query}` : ''}`)
+  },
   uploadMaterialFile: (filePath) => realUpload('/files', filePath, {
     formData: { bizType: 'MATERIAL_SUPPLEMENT' }
   }),

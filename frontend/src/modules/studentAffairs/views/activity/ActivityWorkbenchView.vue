@@ -72,12 +72,16 @@
         <div class="af-filters sa-filter-bar">
           <AppSelect v-model="activeType" :options="activityTypeFilters" placeholder="全部类型"
                      @change="setType" />
+          <button type="button" class="af-chip af-chip--exception" :class="{ 'is-on': activePriority === 'EXCEPTION' }" @click="toggleException">
+            异常优先<em>{{ statusCount('EXCEPTION') }}</em>
+          </button>
           <button v-for="f in statusFilters" :key="f.key" type="button" class="af-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}<em>{{ statusCount(f.key) }}</em></button>
         </div>
         <DataTable v-if="items.length" :columns="activityColumns" :rows="items" row-key="activityId">
           <template #cell-name="{ row }">
             <span class="mp-cell-main">{{ row.activityName }}</span>
+            <span v-if="row.exception" class="af-exception">{{ row.exceptionLabel }}</span>
             <em v-if="row.startAt" class="af-time">{{ (row.startAt||'').slice(0,16).replace('T',' ') }}</em>
           </template>
           <template #cell-type="{ row }">{{ typeLabel(row.activityType) }}</template>
@@ -166,6 +170,7 @@ export default {
       participantColumns: PARTICIPANT_COLUMNS,
       loading: true, saving: false, acting: '', errorMessage: '', all: [], items: [], statusCounts: null, categories: [],
       activeStatus: '', statusFilters: STATUS_FILTERS,
+      activePriority: '',
       activeType: '', activityTypeFilters: [{ value: '', label: '全部类型' }, ...TYPE_OPTIONS],
       pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: this.blankForm(),
@@ -187,7 +192,7 @@ export default {
         { key: 't', label: '活动总数', value: this.statusCount(''), accent: 'primary' },
         { key: 'p', label: '报名中', value: s('PUBLISHED'), accent: 'success' },
         { key: 'f', label: '待确认', value: s('FINISHED'), accent: 'warning' },
-        { key: 'c', label: '已确认', value: s('CONFIRMED'), accent: 'info' }
+        { key: 'c', label: '已确认', value: s('CONFIRMED'), accent: 'primary' }
       ]
     }
   },
@@ -201,6 +206,7 @@ export default {
       const [res, cat] = await Promise.all([
         studentAffairsApi.getActivities({
           status: this.activeStatus, activityType: this.activeType,
+          priority: this.activePriority,
           page: this.pagination.page, pageSize: this.pagination.pageSize
         }),
         studentAffairsApi.getCreditCategories()
@@ -217,6 +223,7 @@ export default {
       this.loading = false
     },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.pagination.page = 1; this.load() },
+    toggleException() { this.activePriority = this.activePriority === 'EXCEPTION' ? '' : 'EXCEPTION'; this.pagination.page = 1; this.load() },
     setType() { this.pagination.page = 1; this.load() },
     statusCount(key) {
       if (this.statusCounts === null) return '—'
@@ -294,6 +301,9 @@ export default {
 .af-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 5px 13px; font-size: var(--font-size-sm); cursor: pointer; }
 .af-chip em { margin-left: 5px; font-style: normal; opacity: .72; }
 .af-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.af-chip--exception { border-color: var(--warning-300, #fcd34d); color: var(--warning-800, #92400e); background: var(--warning-50, #fffbeb); font-weight: 650; }
+.af-chip--exception.is-on { border-color: var(--warning-600, #d97706); background: var(--warning-600, #d97706); color: #fff; }
+.af-exception { display: inline-block; margin-top: 4px; padding: 2px 7px; border-radius: 999px; background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-xs); }
 .af-time { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .af-credit { color: var(--primary-700); font-weight: 600; }
 .af-signups { display: inline-grid; place-items: center; min-width: 30px; height: 26px; border-radius: var(--radius-full); background: var(--bg-section); color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }

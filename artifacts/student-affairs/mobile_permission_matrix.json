@@ -1,0 +1,49 @@
+{
+  "/api/v1/mobile/teacher/affairs/student-candidates": [
+    "studentAffairs.talk.create",
+    "studentAffairs.mental.manage",
+    "studentAffairs.risk.psyDetail.view"
+  ],
+  "/api/v1/mobile/teacher/affairs/activities/ongoing": [
+    "studentAffairs.activity.publish"
+  ],
+  "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token": [
+    "studentAffairs.activity.publish"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/{kind}": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/repair": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/repair/metrics": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/repair/jobs": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ],
+  "/api/v1/mobile/teacher/affairs/appeals/repair/jobs/{job_id}/requeue": [
+    "studentAffairs.aid.approve",
+    "studentAffairs.funding.publicity.manage",
+    "studentAffairs.discipline.appeal.review",
+    "studentAffairs.activity.confirm"
+  ]
+}

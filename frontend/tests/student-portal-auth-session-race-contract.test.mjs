@@ -4,8 +4,11 @@ import { readFile } from 'node:fs/promises'
 
 const requestUrl = new URL('../../student-portal/src/services/request.js', import.meta.url)
 
+// 本仓 core.autocrlf=true 且无 .gitattributes：Windows 检出把源码换成 CRLF，
+// 而下面的结构性正则按 LF 书写。不归一化则这些会话竞态守卫在 Windows 本地
+// 全部静默不匹配（只有 Linux CI 才真的跑到）。只统一换行，不放宽任何断言。
 async function source() {
-  return readFile(requestUrl, 'utf8')
+  return (await readFile(requestUrl, 'utf8')).split('\r\n').join('\n')
 }
 
 test('student portal refresh is generation-bound and cannot overwrite a newer session', async () => {

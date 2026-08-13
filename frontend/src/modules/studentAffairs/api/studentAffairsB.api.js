@@ -19,6 +19,32 @@ async function pass(promise) {
   return unwrap(await promise)
 }
 
+/**
+ * 将现有分页选择器接口完整收集为一个候选集。只在楼栋/房间这种小型基础数据上使用；
+ * 床位仍按房间按需加载，避免一次拉取全校床位。
+ */
+async function collectPaged(loadPage, pageSize = 200) {
+  const items = []
+  let page = 1
+  let first = null
+  while (page <= 500) {
+    const res = await pass(loadPage(page, pageSize))
+    if (!first) first = res || {}
+    const data = (res && res.data) || {}
+    const rows = Array.isArray(data.items) ? data.items : []
+    items.push(...rows)
+    const total = Number(data.total == null ? items.length : data.total)
+    const hasMore = Boolean(data.hasMore || data.nextCursor) || items.length < total
+    if (!hasMore || rows.length === 0) break
+    page += 1
+  }
+  const base = first || { code: 0, data: {} }
+  return {
+    ...base,
+    data: { ...(base.data || {}), items, total: items.length, page: 1, pageSize: items.length, hasMore: false, nextCursor: null }
+  }
+}
+
 /** 规范化学生主档展示字段；禁止用 classId 冒充 className。 */
 export function normalizeStudent(row = {}) {
   const classId = row.classId != null ? String(row.classId) : (row.class_id != null ? String(row.class_id) : '')
@@ -97,8 +123,16 @@ export const studentAffairsApi = {
     return pass(core.getBuildings(params))
   },
 
+  listAllDormBuildings(params = {}) {
+    return collectPaged((page, pageSize) => core.getBuildings({ ...params, page, pageSize }))
+  },
+
   listDormRooms(buildingId, params = {}) {
     return pass(core.getRooms(buildingId, params))
+  },
+
+  listAllDormRooms(buildingId, params = {}) {
+    return collectPaged((page, pageSize) => core.getRooms(buildingId, { ...params, page, pageSize }))
   },
 
   listDormBeds(roomId) {

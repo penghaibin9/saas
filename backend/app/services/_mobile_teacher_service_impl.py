@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.db.session import db_enabled, get_sessionmaker
 
 log = logging.getLogger("app.mobile.teacher")
@@ -205,22 +206,22 @@ def can_teacher_view_student(user: dict, student, scope: dict | None = None, db=
         try:
             from app.models import College, SchoolClass
             if getattr(student, "class_id", None):
-                cls = db.get(SchoolClass, student.class_id)
+                cls = tenant_get(db, SchoolClass, student.class_id)
                 if cls and _class_match(scope, cls.class_name):
                     return True
             college_id = getattr(student, "college_id", None)
             if not college_id and getattr(student, "major_id", None):
                 from app.models import Major
-                maj = db.get(Major, student.major_id)
+                maj = tenant_get(db, Major, student.major_id)
                 college_id = maj.college_id if maj else None
             if not college_id and getattr(student, "class_id", None):
                 from app.models import Major
                 cls = db.get(SchoolClass, student.class_id)
                 if cls:
-                    maj = db.get(Major, cls.major_id)
+                    maj = tenant_get(db, Major, cls.major_id)
                     college_id = maj.college_id if maj else None
             if college_id and scope["collegeNames"]:
-                col = db.get(College, college_id)
+                col = tenant_get(db, College, college_id)
                 if col and (col.college_name or "").strip() in scope["collegeNames"]:
                     return True
             # 各域冗余班级名（迎新/在校/学业/毕设/就业按姓名+学号冗余存班级）
@@ -736,36 +737,37 @@ def affairs_leave_detail(user: dict, leave_id: str) -> dict:
     return leave_svc.get_detail(leave_id, u)
 
 
-def affairs_leave_approve(user: dict, leave_id: str, comment: str | None = None) -> dict:
+def affairs_leave_approve(user: dict, leave_id: str, comment: str | None = None,
+                          expected_version=None) -> dict:
     """请假审批通过（owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.approve(leave_id, u, comment or "")
+    result = leave_svc.approve(leave_id, u, comment or "", expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_APPROVE", f"affairs-leave:{leave_id}", {"operator": u.get("realName")})
     return result
 
 
-def affairs_leave_reject(user: dict, leave_id: str, reason: str) -> dict:
+def affairs_leave_reject(user: dict, leave_id: str, reason: str, expected_version=None) -> dict:
     """请假驳回（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.reject(leave_id, u, reason)
+    result = leave_svc.reject(leave_id, u, reason, expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_REJECT", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "reason": (reason or "")[:200]})
     return result
 
 
-def affairs_leave_return(user: dict, leave_id: str, reason: str) -> dict:
+def affairs_leave_return(user: dict, leave_id: str, reason: str, expected_version=None) -> dict:
     """请假退回重提（原因≥5字，owner+审批节点身份校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.return_leave(leave_id, u, reason)
+    result = leave_svc.return_leave(leave_id, u, reason, expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_RETURN", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "reason": (reason or "")[:200]})
     return result
@@ -1134,12 +1136,12 @@ def affairs_dorm_pending(user: dict) -> dict:
                     except (TypeError, ValueError):
                         continue
                     class_id = None
-                    cs = db.get(CsServiceStudent, csid_i)
+                    cs = tenant_get(db, CsServiceStudent, csid_i)
                     if cs and not cs.is_deleted and cs.student_id:
-                        s = db.get(StudentProfile, int(cs.student_id))
+                        s = tenant_get(db, StudentProfile, int(cs.student_id))
                         class_id = s.class_id if s else None
                     if class_id is None:
-                        s2 = db.get(StudentProfile, csid_i)
+                        s2 = tenant_get(db, StudentProfile, csid_i)
                         class_id = s2.class_id if s2 and not s2.is_deleted else None
                     if class_id in allowed:
                         kept.append(x)
@@ -1219,7 +1221,7 @@ def affairs_cadre_list(user: dict, class_id: str) -> dict:
     items = list(dash.list_cadres(class_id, u))
     with _session() as db:
         for it in items:
-            s = db.get(StudentProfile, int(it["studentId"])) if it.get("studentId") else None
+            s = tenant_get(db, StudentProfile, int(it["studentId"])) if it.get("studentId") else None
             it["studentName"] = s.real_name if s else ""
             it["studentNo"] = s.student_no if s else ""
     return {"list": items, "total": len(items)}
@@ -2422,12 +2424,12 @@ def weekly_review(user: dict, report_id: str, action: str, comment: str | None =
                 with _session() as db:
                     from app.models import InternshipRecord, WeeklyReport
                     w = db.get(WeeklyReport, int(report_id))
-                    rec = db.get(InternshipRecord, w.internship_id) if w else None
+                    rec = tenant_get(db, InternshipRecord, w.internship_id) if w else None
                     if rec and (rec.advisor_name or "").strip() in scope["advisorNames"]:
                         allowed = True
                     if rec and rec.student_id:
                         from app.models import StudentProfile
-                        stu = db.get(StudentProfile, rec.student_id)
+                        stu = tenant_get(db, StudentProfile, rec.student_id)
                         if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
                             allowed = True
             except Exception:  # noqa: BLE001

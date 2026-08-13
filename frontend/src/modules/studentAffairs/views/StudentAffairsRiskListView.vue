@@ -53,6 +53,22 @@
       </AppSectionCard>
 
       <AppSectionCard v-else title="风险学生与处置">
+        <nav class="sa-queues" aria-label="风险快捷队列">
+          <button
+            v-for="q in quickQueues"
+            :key="q.key"
+            type="button"
+            class="sa-queue"
+            :class="[`is-${q.tone}`, { 'is-on': activeQueue === q.key, 'is-empty': q.count === 0 }]"
+            :aria-pressed="activeQueue === q.key ? 'true' : 'false'"
+            @click="selectQueue(q.key)"
+          >
+            <span class="sa-queue__dot" aria-hidden="true"></span>
+            <span class="sa-queue__label">{{ q.label }}</span>
+            <span v-if="q.count !== null" class="sa-queue__count">{{ q.count }}</span>
+          </button>
+        </nav>
+
         <div v-if="studentFilterLabel" class="sa-student-filter">
           <span>{{ studentFilterLabel }}</span>
           <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
@@ -85,16 +101,58 @@
             <div v-if="row.mentalMasked" class="mp-cell-sub">心理来源明细已按角色脱敏</div>
           </template>
           <template #cell-actions="{ row }">
-            <div class="sa-actions">
-              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" size="sm" variant="secondary" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
-                详情
-              </AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" size="sm" variant="secondary" :loading="actioning" @click="assign(row)">
-                分派
-              </AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.handle')" code="studentAffairs.risk.handle" size="sm" :loading="actioning" @click="process(row)">
-                处置
-              </AppPermissionButton>
+            <div class="sa-actions" :aria-label="`${row.realName || '该学生'}的可用操作`">
+              <!-- 推荐主动作：按状态机推出「这条现在最该做的一件事」，只是视觉层级，
+                   动作本身仍来自 row.allowedActions，不比它更宽。 -->
+              <div v-if="primaryAction(row)" class="sa-actions__recommended">
+                <span class="sa-actions__hint">推荐下一步</span>
+                <AppPermissionButton
+                  class="sa-actions__primary"
+                  :allowed="canBtn(primaryAction(row).code)"
+                  :code="primaryAction(row).code"
+                  size="sm"
+                  variant="primary"
+                  :loading="isRowActioning(row, primaryAction(row).key)"
+                  :disabled="isOtherRowActioning(row, primaryAction(row).key)"
+                  :native-title="`推荐下一步：${primaryAction(row).label}`"
+                  @click="primaryAction(row).run(row)"
+                >
+                  <span>{{ primaryAction(row).label }}</span>
+                  <span class="sa-actions__arrow" aria-hidden="true">→</span>
+                </AppPermissionButton>
+              </div>
+
+              <!-- 我来处理：仅当服务端下发 canClaim（本人有处置资格且该行可 ASSIGN）。 -->
+              <AppPermissionButton
+                v-if="row.canClaim"
+                class="sa-actions__claim"
+                :allowed="canBtn('studentAffairs.risk.assign')"
+                code="studentAffairs.risk.assign"
+                size="sm"
+                variant="secondary"
+                :loading="isRowActioning(row, 'CLAIM')"
+                :disabled="isOtherRowActioning(row, 'CLAIM')"
+                native-title="跳过责任人选择，直接分派给我"
+                @click="claim(row)"
+              ><span class="sa-actions__claim-dot" aria-hidden="true"></span>我来处理</AppPermissionButton>
+
+              <div class="sa-actions__secondary">
+                <AppPermissionButton
+                  v-for="a in secondaryActions(row)"
+                  :key="a.key"
+                  :allowed="canBtn(a.code)"
+                  :code="a.code"
+                  size="sm"
+                  variant="secondary"
+                  :loading="isRowActioning(row, a.key)"
+                  :disabled="isOtherRowActioning(row, a.key)"
+                  @click="a.run(row)"
+                >{{ a.label }}</AppPermissionButton>
+
+                <AppPermissionButton class="sa-actions__detail" :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" size="sm" variant="ghost" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
+                  查看详情
+                </AppPermissionButton>
+              </div>
             </div>
           </template>
         </DataTable>
@@ -137,8 +195,8 @@
     </AppConfirmDialog>
 
     <AppConfirmDialog
-      v-model:visible="processDlg.visible" title="记录处置" type="primary" confirm-text="确认处置"
-      require-reason reason-label="处置内容（≥5字）" phrase-scene-key="sa.risk.handle"
+      v-model:visible="processDlg.visible" :title="processDialog.title" type="primary" :confirm-text="processDialog.confirmText"
+      require-reason :reason-label="processDialog.reasonLabel" phrase-scene-key="sa.risk.handle"
       :submitting="actioning" @confirm="submitProcess"
     />
   </AppPageShell>
@@ -176,7 +234,7 @@ const RISK_COLUMNS = [
   { key: 'status', title: '状态' },
   { key: 'owner', title: '责任人' },
   { key: 'summary', title: '摘要' },
-  { key: 'actions', title: '操作', align: 'right', width: '220px' }
+  { key: 'actions', title: '操作', align: 'right', width: '270px' }
 ]
 
 const RISK_LEVELS = [
@@ -248,6 +306,7 @@ export default {
       STATUS_FILTER_OPTIONS,
       loading: true,
       actioning: false,
+      rowActioning: { riskId: '', action: '' },
       errorMessage: '',
       risks: [],
       total: 0,
@@ -256,14 +315,16 @@ export default {
       scanResult: '',
       createDlg: { visible: false, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' },
       assignDlg: { visible: false, riskId: '', ownerId: '', version: null },
-      processDlg: { visible: false, riskId: '', version: null },
+      processDlg: { visible: false, riskId: '', version: null, action: 'PROCESS' },
       filters: {
         source: '',
         riskLevel: '',
         status: '',
         studentId: ''
       },
-      studentFilter: { studentId: '', studentNo: '', studentName: '' }
+      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      activeQueue: 'ALL',
+      routeIntentConsumed: false
     }
   },
   computed: {
@@ -312,6 +373,31 @@ export default {
       const role = (this.ctx?.currentRoleCode || this.ctx?.currentRole?.roleCode || '').toUpperCase()
       return SCAN_ROLES.has(role) && this.canBtn('studentAffairs.risk.handle')
     },
+    processDialog() {
+      return ({
+        PROCESS: { title: '记录本次处置', confirmText: '确认记录', reasonLabel: '处置内容（≥5字）' },
+        FOLLOW: { title: '转为持续跟进', confirmText: '开始跟进', reasonLabel: '本次跟进安排（≥5字）' },
+        TAKEOVER: { title: '接管升级风险', confirmText: '确认接管', reasonLabel: '接管说明（≥5字）' }
+      })[this.processDlg.action] || { title: '记录风险动作', confirmText: '确认', reasonLabel: '办理说明（≥5字）' }
+    },
+    /**
+     * 快捷队列。数字直接取服务端 stats——后端用同一份谓词算卡片和过滤，
+     * 所以「点进去看到的条数」必然等于这里显示的数字（有合同用例锁住）。
+     * 「我负责的」传 ownerId=me 由服务端认自己是谁：/rbac/current-context 不返回
+     * userId，前端拿不到自己的数字 id，也不该把身份解析规则复制到浏览器里。
+     */
+    quickQueues() {
+      const s = this.stats || {}
+      const list = [
+        { key: 'ALL', label: '全部', tone: 'neutral', count: Number(s.total ?? this.total) },
+        { key: 'HIGH', label: '高危 / 危急', tone: 'risk', count: Number(s.highCritical || 0) },
+        { key: 'OVERDUE', label: '已超时', tone: 'risk', count: Number(s.overdue || 0) },
+        { key: 'UNASSIGNED', label: '待分派', tone: 'warning', count: Number(s.unassigned || 0) },
+        { key: 'FOLLOWING', label: '持续跟进', tone: 'neutral', count: null }
+      ]
+      list.splice(4, 0, { key: 'MINE', label: '我负责的', tone: 'primary', count: null })
+      return list
+    },
     metricCards() {
       const s = this.stats || {}
       const high = Number(s.highCritical || 0)
@@ -344,6 +430,7 @@ export default {
   mounted() {
     this.applyRouteFilters()
     this.load()
+    this.consumeRouteIntent()
   },
   methods: {
     clearTaskFilters() {
@@ -354,6 +441,67 @@ export default {
       this.reload()
     },
     canBtn(code) { return canCode(this.ctx, code) },
+    consumeRouteIntent() {
+      if (this.routeIntentConsumed || this.$route.query?.intent !== 'create') return
+      const sid = this.studentFilter?.studentId
+      if (!sid || !this.canBtn('studentAffairs.risk.create')) return
+      this.routeIntentConsumed = true
+      this.createRisk()
+    },
+    /**
+     * 行级动作以服务端下发的 allowedActions 为准（fail-closed）。
+     * canBtn 只表示"这个角色有没有这类权限"，无法表达"这条记录当前状态下、
+     * 以当前责任关系能不能做"——只看它会显示出后端必然拒绝的按钮。
+     * 后端未下发时一律不显示，不得回落成全开。
+     */
+    canAction(row, action) {
+      return Array.isArray(row && row.allowedActions) && row.allowedActions.includes(action)
+    },
+    isRowActioning(row, action) {
+      return String(this.rowActioning.riskId) === String(row && row.riskId) && this.rowActioning.action === action
+    },
+    isOtherRowActioning(row, action) {
+      return !!this.rowActioning.riskId && !this.isRowActioning(row, action)
+    },
+    /**
+     * 行级动作目录。key 与后端 RISK_TRANSITIONS 的动作名一一对应，
+     * 前端只负责「怎么排版」，不负责「能不能做」——能不能做只看 row.allowedActions。
+     */
+    actionCatalog() {
+      return {
+        ASSIGN: { key: 'ASSIGN', label: '分派', code: 'studentAffairs.risk.assign', run: (r) => this.assign(r) },
+        PROCESS: { key: 'PROCESS', label: '记录处置', code: 'studentAffairs.risk.handle', run: (r) => this.process(r, 'PROCESS') },
+        FOLLOW: { key: 'FOLLOW', label: '继续跟进', code: 'studentAffairs.risk.handle', run: (r) => this.process(r, 'FOLLOW') },
+        TAKEOVER: { key: 'TAKEOVER', label: '上级接管', code: 'studentAffairs.risk.handle', run: (r) => this.process(r, 'TAKEOVER') }
+      }
+    },
+    /**
+     * 推荐主动作：NEW→分派、已分派→记录处置、处置中→继续跟进、已升级→上级接管。
+     * 纯视觉层级，不新增状态机；候选动作必须同时出现在 row.allowedActions 里，
+     * 否则不推荐（宁可没有主按钮，也不给一个后端会拒的按钮）。
+     */
+    primaryAction(row) {
+      const catalog = this.actionCatalog()
+      for (const key of ['ASSIGN', 'PROCESS', 'FOLLOW', 'TAKEOVER']) {
+        if (this.canAction(row, key)) return catalog[key]
+      }
+      return null
+    },
+    /** 主动作之外仍可执行的动作，放次级区域，避免一行堆满按钮。 */
+    secondaryActions(row) {
+      const primary = this.primaryAction(row)
+      const catalog = this.actionCatalog()
+      return ['ASSIGN', 'PROCESS', 'FOLLOW', 'TAKEOVER']
+        .filter((k) => this.canAction(row, k) && (!primary || primary.key !== k))
+        .map((k) => catalog[k])
+    },
+    /**
+     * 我来处理：复用既有 ASSIGN 命令，ownerId 传 me 由服务端解析成本人，
+     * 服务端仍走 _validate_owner / 状态机 / 乐观锁 / 待办 / 通知 / 审计。
+     */
+    async claim(row) {
+      await this.runRowAction(row, 'CLAIM', () => studentAffairsApi.assignRisk(row.riskId, 'me', row.version))
+    },
     applyRouteFilters() {
       const q = this.$route.query || {}
       this.studentFilter = readStudentFilter(q)
@@ -385,12 +533,31 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
       this.reload()
     },
-    async load() {
-      this.loading = true
+    /** 切换快捷队列：条件变了必须回第一页，否则会停在新条件下不存在的页码。 */
+    selectQueue(key) {
+      this.activeQueue = this.activeQueue === key && key !== 'ALL' ? 'ALL' : key
+      this.scanResult = ''
+      this.pagination.page = 1
+      this.load()
+    },
+    /** 队列 → 服务端只读过滤参数。全部交给后端做 SQL 条件，前端不做本地筛。 */
+    queueParams() {
+      switch (this.activeQueue) {
+        case 'HIGH': return { priority: 'HIGH_CRITICAL' }
+        case 'OVERDUE': return { overdueOnly: true }
+        case 'UNASSIGNED': return { unassignedOnly: true }
+        case 'MINE': return { ownerId: 'me' }
+        case 'FOLLOWING': return { status: 'FOLLOWING' }
+        default: return {}
+      }
+    },
+    async load({ background = false } = {}) {
+      if (!background) this.loading = true
       this.errorMessage = ''
       try {
         const res = await studentAffairsApi.listRiskRecords({
           ...this.filters,
+          ...this.queueParams(),
           page: this.pagination.page,
           pageSize: this.pagination.pageSize
         })
@@ -401,7 +568,7 @@ export default {
       } catch (e) {
         this.errorMessage = e.message || '风险数据加载失败'
       } finally {
-        this.loading = false
+        if (!background) this.loading = false
       }
     },
     reload() {
@@ -423,7 +590,8 @@ export default {
       return '责任人账号异常'
     },
     createRisk() {
-      this.createDlg = { visible: true, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' }
+      const sid = this.studentFilter?.studentId
+      this.createDlg = { visible: true, studentId: sid ? String(sid) : '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' }
     },
     async submitCreate() {
       const d = this.createDlg
@@ -455,12 +623,17 @@ export default {
       const ok = await this.runAction(() => studentAffairsApi.assignRisk(d.riskId, d.ownerId, d.version))
       if (ok) d.visible = false
     },
-    process(risk) {
-      this.processDlg = { visible: true, riskId: risk.riskId, version: risk.version }
+    process(risk, action = 'PROCESS') {
+      this.processDlg = { visible: true, riskId: risk.riskId, version: risk.version, action }
     },
     async submitProcess({ reason }) {
-      const ok = await this.runAction(() => studentAffairsApi.processRisk(
-        this.processDlg.riskId, reason, this.processDlg.version))
+      const d = this.processDlg
+      const request = {
+        PROCESS: () => studentAffairsApi.processRisk(d.riskId, reason, d.version),
+        FOLLOW: () => studentAffairsApi.followRisk(d.riskId, reason, d.version),
+        TAKEOVER: () => studentAffairsApi.takeoverRisk(d.riskId, reason, d.version)
+      }[d.action]
+      const ok = await this.runAction(request)
       if (ok) this.processDlg.visible = false
     },
     async scanTimeout() {
@@ -492,6 +665,26 @@ export default {
         return false
       } finally {
         this.actioning = false
+      }
+    },
+    async runRowAction(row, action, fn) {
+      if (this.rowActioning.riskId) return false
+      this.rowActioning = { riskId: String(row.riskId), action }
+      this.errorMessage = ''
+      try {
+        await fn()
+        await this.load({ background: true })
+        return true
+      } catch (e) {
+        if (e.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this.errorMessage = '该记录已被其他人处理，数据已刷新'
+          await this.load({ background: true })
+          return false
+        }
+        this.errorMessage = e.message || '操作失败'
+        return false
+      } finally {
+        this.rowActioning = { riskId: '', action: '' }
       }
     },
     sourceLabel(source) {
@@ -531,6 +724,105 @@ export default {
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
+
+/* 快捷队列：一排可切换的胶囊，数字直接来自服务端 stats，
+   点进去的列表条数与这里显示的一致（后端同一份谓词）。 */
+.sa-queues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light, #eef0f4);
+}
+.sa-queue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 14px 7px 11px;
+  border: 1px solid var(--border-light, #e5e8ee);
+  border-radius: 999px;
+  background: var(--bg-card, #fff);
+  color: var(--text-secondary, #5a6473);
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease,
+              color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+.sa-queue:hover {
+  border-color: var(--queue-accent, var(--primary-400, #93b4fd));
+  color: var(--text-primary, #1f2937);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.06);
+}
+.sa-queue:focus-visible {
+  outline: 2px solid var(--queue-accent, var(--primary-600, #2563eb));
+  outline-offset: 2px;
+}
+.sa-queue__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--queue-accent, var(--text-tertiary, #98a2b3));
+  flex: none;
+}
+.sa-queue__label { white-space: nowrap; }
+.sa-queue__count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle, #f2f4f7);
+  color: var(--text-secondary, #5a6473);
+  font-size: var(--font-size-xs, 12px);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+/* 选中态：整枚胶囊染成该队列的语义色，一眼看出当前在看哪一队 */
+.sa-queue.is-on {
+  border-color: var(--queue-accent, var(--primary-600, #2563eb));
+  background: var(--queue-soft, var(--primary-50, #eff6ff));
+  color: var(--queue-strong, var(--primary-700, #1d4ed8));
+  font-weight: var(--font-weight-medium, 500);
+}
+.sa-queue.is-on .sa-queue__count {
+  background: var(--queue-accent, var(--primary-600, #2563eb));
+  color: #fff;
+}
+/* 语义色：高危/超时=红，待分派=橙，我负责的=蓝，全部/跟进=中性 */
+.sa-queue.is-risk {
+  --queue-accent: var(--danger-600, #dc2626);
+  --queue-soft: var(--danger-50, #fef2f2);
+  --queue-strong: var(--danger-700, #b91c1c);
+}
+.sa-queue.is-warning {
+  --queue-accent: var(--warning-600, #d97706);
+  --queue-soft: var(--warning-50, #fffbeb);
+  --queue-strong: var(--warning-700, #b45309);
+}
+.sa-queue.is-primary {
+  --queue-accent: var(--primary-600, #2563eb);
+  --queue-soft: var(--primary-50, #eff6ff);
+  --queue-strong: var(--primary-700, #1d4ed8);
+}
+.sa-queue.is-neutral {
+  --queue-accent: var(--text-tertiary, #98a2b3);
+  --queue-soft: var(--bg-subtle, #f2f4f7);
+  --queue-strong: var(--text-primary, #1f2937);
+}
+/* 数字为 0 的队列淡出：让老师一眼看出哪几队真的有事要做。
+   仍可点击（点进去是"当前没有"的空态，比按钮直接消失更好理解）。 */
+.sa-queue.is-empty:not(.is-on) {
+  opacity: 0.55;
+}
+.sa-queue.is-empty:not(.is-on):hover {
+  opacity: 1;
+}
+@media (max-width: 720px) {
+  .sa-queues { gap: 6px; }
+  .sa-queue { padding: 6px 10px 6px 8px; }
+}
 .sa-student-filter {
   display: flex;
   align-items: center;
@@ -561,8 +853,90 @@ export default {
 }
 .sa-actions {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: 7px;
+  min-width: 240px;
+}
+.sa-actions__recommended {
+  position: relative;
+  display: inline-flex;
+  padding-top: 12px;
+}
+.sa-actions__hint {
+  position: absolute;
+  top: -2px;
+  left: 9px;
+  z-index: 1;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary-50, #eff6ff);
+  color: var(--primary-700, #1d4ed8);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+.sa-actions__primary :deep(.app-button) {
+  min-width: 96px;
+  padding-inline: 13px 11px;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px -10px var(--glow, rgba(37, 99, 235, .65));
+}
+.sa-actions__arrow {
+  margin-left: 2px;
+  font-size: 15px;
+  line-height: 1;
+  transition: transform .16s ease;
+}
+.sa-actions__primary:hover .sa-actions__arrow {
+  transform: translateX(2px);
+}
+.sa-actions__claim :deep(.app-button) {
+  border-color: var(--primary-200, #bfdbfe);
+  background: var(--primary-50, #eff6ff);
+  color: var(--primary-700, #1d4ed8);
+  font-weight: 600;
+}
+.sa-actions__claim :deep(.app-button:hover:not(:disabled)) {
+  border-color: var(--primary-400, #60a5fa);
+  background: #fff;
+}
+.sa-actions__claim-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-500, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
+}
+.sa-actions__secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.sa-actions__secondary :deep(.app-button) {
+  padding-inline: 9px;
+}
+.sa-actions__detail :deep(.app-button) {
+  color: var(--text-tertiary, #8a94a3);
+}
+@media (max-width: 1080px) {
+  .sa-actions {
+    min-width: 210px;
+  }
+  .sa-actions__hint {
+    position: static;
+    align-self: center;
+    margin-right: 4px;
+  }
+  .sa-actions__recommended {
+    padding-top: 0;
+    align-items: center;
+  }
 }
 .sa-empty {
   color: var(--text-tertiary);
