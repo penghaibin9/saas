@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Reapply A3 and fix the two proven red roots
+      - name: Reapply A3 and fix proven red roots
         shell: bash
         run: |
           python - <<'PY'
@@ -84,8 +84,7 @@ jobs:
           block = text[set_start:set_end]
           missing = [a for a in actions if f'"{a}"' not in block]
           if missing:
-              insertion = ''.join(f'    "{a}",\n' for a in missing)
-              text = text[:set_end] + insertion + text[set_end:]
+              text = text[:set_end] + ''.join(f'    "{a}",\n' for a in missing) + text[set_end:]
               audit.write_text(text, encoding='utf-8')
 
           tests = Path('backend/tests/test_role_assignment_validity.py')
@@ -99,6 +98,16 @@ jobs:
               raise SystemExit('tenant fixture no longer has the expected tenant_code field')
           text = text[:helper_start] + helper + text[helper_end:]
           tests.write_text(text, encoding='utf-8')
+
+          service = Path('backend/app/services/role_assignment_service.py')
+          text = service.read_text(encoding='utf-8')
+          stale = '_record_expiry_audit(db, tid, touched, source="READ_EFFECTIVE_ASSIGNMENTS")'
+          canonical = '_audit_expiry_in_session(db, tid, touched, source="READ_EFFECTIVE_ASSIGNMENTS")'
+          if stale in text:
+              text = text.replace(stale, canonical, 1)
+          elif canonical not in text:
+              raise SystemExit('expiry audit call no longer matches either expected form')
+          service.write_text(text, encoding='utf-8')
           PY
       - name: Compile A3 Python
         run: |
