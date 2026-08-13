@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -57,6 +57,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          import base64
           from pathlib import Path
 
           def replace_exact(path: str, old: str, new: str, *, count: int = 1):
@@ -100,7 +101,7 @@ jobs:
           replace_exact(
               'backend/app/api/v1/system.py',
               '''        excess = sorted(code for code in source_codes if not has_permission(user, code))\n        if excess:\n            raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})\n''',
-              '''        assert_delegable_permission_codes(user, source_codes)\n''',
+              '        assert_delegable_permission_codes(user, source_codes)\n',
           )
           replace_exact(
               'backend/app/api/v1/system.py',
@@ -111,12 +112,12 @@ jobs:
           replace_exact(
               'backend/app/api/v1/system.py',
               '''    forbidden = [code for code in codes if not has_permission(user, code)]\n    if forbidden:\n        raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})\n''',
-              '''    assert_delegable_permission_codes(user, codes)\n''',
+              '    assert_delegable_permission_codes(user, codes)\n',
           )
 
           role_service = Path('backend/app/services/role_assignment_service.py')
           text = role_service.read_text(encoding='utf-8')
-          needle = '''def grant_assignment(user_id: int, role_code: str, *, reason: str,\n'''
+          needle = 'def grant_assignment(user_id: int, role_code: str, *, reason: str,\n'
           helper = '''def _assert_role_delegation_allowed(db, *, actor: dict | None, role, tenant_id: int) -> None:\n    """角色治理写链的最终授权边界：只允许固化 actor 的基础权限。"""\n    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes\n    from app.models import Permission, RolePermission\n\n    role_code = str(role.role_code or "").strip().upper()\n    if role_code.startswith("PLATFORM_"):\n        raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")\n    if str(role.role_type or "").upper() == "SYSTEM":\n        permission_codes = set(ROLE_PERMISSIONS.get(role_code, set()))\n    else:\n        permission_codes = set(db.scalars(select(Permission.permission_code).join(\n            RolePermission, RolePermission.permission_id == Permission.id\n        ).where(\n            RolePermission.tenant_id == tenant_id,\n            RolePermission.role_id == role.id,\n            RolePermission.status == "ACTIVE",\n            RolePermission.is_deleted.is_(False),\n        )).all())\n    assert_delegable_permission_codes(actor, permission_codes)\n\n\ndef grant_assignment(user_id: int, role_code: str, *, reason: str,\n'''
           if text.count(needle) != 1:
               raise SystemExit('role_assignment_service.py insertion anchor changed')
@@ -127,151 +128,8 @@ jobs:
               raise SystemExit('role grant anchor changed')
           role_service.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          test_file = Path('backend/tests/test_role_assignment_privilege_boundary.py')
-          test_file.write_text(r'''"""生产审计 Issue 1：永久角色授予只能使用 actor 的基础权限。"""
-from __future__ import annotations
-
-import uuid
-
-import pytest
-from sqlalchemy import select
-
-from app.core.context import set_tenant
-from app.core.exceptions import AppException
-from app.core.security import hash_password
-from app.services import role_assignment_service as ras
-
-TENANT_ID = 1000000000000000001
-
-
-def _session():
-    from app.db.session import get_sessionmaker
-    return get_sessionmaker()()
-
-
-def _ensure_tenant(tenant_id: int = TENANT_ID) -> None:
-    from app.models import Tenant
-    with _session() as db:
-        if db.get(Tenant, tenant_id) is None:
-            db.add(Tenant(id=tenant_id, tenant_code=f"rbac-{tenant_id}", school_name="授权边界测试学校", status="ACTIVE"))
-            db.commit()
-
-
-def _role(code: str, *, role_type: str = "SYSTEM", tenant_id: int = TENANT_ID):
-    from app.models import Role
-    _ensure_tenant(tenant_id)
-    with _session() as db:
-        row = db.scalars(select(Role).where(Role.tenant_id == tenant_id, Role.role_code == code)).first()
-        if row is None:
-            row = Role(tenant_id=tenant_id, role_code=code, role_name=code, role_type=role_type, status="ACTIVE")
-            db.add(row)
-            db.commit()
-            db.refresh(row)
-        return int(row.id)
-
-
-def _user(*, tenant_id: int = TENANT_ID) -> int:
-    from app.models import User
-    _ensure_tenant(tenant_id)
-    login = f"rbac_{uuid.uuid4().hex[:12]}"
-    with _session() as db:
-        row = User(tenant_id=tenant_id, login_name=login, real_name="授权边界用户",
-                   password_hash=hash_password("Init123456"), user_type="TEACHER", status="ACTIVE")
-        db.add(row)
-        db.commit()
-        return int(row.id)
-
-
-def _actor(role_code: str = "ACADEMIC_TEACHER") -> dict:
-    return {"userId": "db-900001", "tenantId": str(TENANT_ID), "currentRoleCode": role_code, "userType": "TEACHER"}
-
-
-def _temporary(monkeypatch, patterns):
-    from app.services import system_governance_service as gov
-    monkeypatch.setattr(gov, "active_delegation_permission_patterns", lambda user: list(patterns))
-
-
-def _assert_no_active_role(user_id: int, role_code: str) -> None:
-    from app.models import Role, UserRole
-    with _session() as db:
-        row = db.scalars(select(UserRole).join(Role, Role.id == UserRole.role_id).where(
-            UserRole.tenant_id == TENANT_ID, UserRole.user_id == user_id,
-            Role.role_code == role_code, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False))).first()
-        assert row is None
-
-
-def test_new_role_assignment_rejects_role_above_actor_base_permissions(db_mode, monkeypatch):
-    _role("SCHOOL_ADMIN")
-    target = _user()
-    _temporary(monkeypatch, ["*"])
-    with pytest.raises(AppException) as caught:
-        ras.grant_assignment(target, "SCHOOL_ADMIN", reason="安全边界测试授权", tenant_id=TENANT_ID, user=_actor())
-    assert caught.value.code == "NO_PERMISSION"
-    _assert_no_active_role(target, "SCHOOL_ADMIN")
-
-
-def test_legacy_assign_roles_rejects_temporary_delegation_redelegation(db_mode, monkeypatch):
-    from app.api.v1.system import assign_system_user_roles
-    _role("SCHOOL_ADMIN")
-    target = _user()
-    set_tenant({"tenantId": TENANT_ID})
-    _temporary(monkeypatch, ["*"])
-    with pytest.raises(AppException) as caught:
-        assign_system_user_roles(target, {"roleCodes": ["SCHOOL_ADMIN"]}, user=_actor())
-    assert caught.value.code == "NO_PERMISSION"
-    _assert_no_active_role(target, "SCHOOL_ADMIN")
-
-
-def test_role_copy_cannot_persist_temporary_delegated_permission(db_mode, monkeypatch):
-    from app.api.v1.system import copy_system_role
-    role_id = _role("SECURITY_AUDITOR")
-    set_tenant({"tenantId": TENANT_ID})
-    _temporary(monkeypatch, ["*"])
-    with pytest.raises(AppException) as caught:
-        copy_system_role(role_id, user=_actor())
-    assert caught.value.code == "NO_PERMISSION"
-
-
-def test_role_permission_save_cannot_persist_temporary_delegated_permission(db_mode, monkeypatch):
-    from app.api.v1.system import save_system_role_permissions
-    role_id = _role(f"CUSTOM_{uuid.uuid4().hex[:8].upper()}", role_type="CUSTOM")
-    code = "systemAdmin.audit.sensitive.view"
-    set_tenant({"tenantId": TENANT_ID})
-    _temporary(monkeypatch, [code])
-    with pytest.raises(AppException) as caught:
-        save_system_role_permissions(role_id, {"permissionCodes": [code], "visiblePermissionCodes": [code]}, user=_actor())
-    assert caught.value.code == "NO_PERMISSION"
-
-
-def test_school_role_governance_rejects_platform_role(db_mode, monkeypatch):
-    _role("PLATFORM_OWNER")
-    target = _user()
-    _temporary(monkeypatch, ["*"])
-    with pytest.raises(AppException) as caught:
-        ras.grant_assignment(target, "PLATFORM_OWNER", reason="安全边界测试授权", tenant_id=TENANT_ID,
-                             user=_actor("SCHOOL_ADMIN"))
-    assert caught.value.code == "NO_PERMISSION"
-    _assert_no_active_role(target, "PLATFORM_OWNER")
-
-
-def test_base_wildcard_can_delegate_school_role(db_mode):
-    _role("SECURITY_AUDITOR")
-    target = _user()
-    out = ras.grant_assignment(target, "SECURITY_AUDITOR", reason="学校管理员正常授权", tenant_id=TENANT_ID,
-                               user=_actor("SCHOOL_ADMIN"))
-    assert out["userId"] == str(target)
-    assert out["roleCode"] == "SECURITY_AUDITOR"
-
-
-def test_cross_tenant_role_assignment_fails_closed(db_mode):
-    other_tenant = TENANT_ID + 91
-    _role("SECURITY_AUDITOR")
-    target = _user(tenant_id=other_tenant)
-    with pytest.raises(AppException) as caught:
-        ras.grant_assignment(target, "SECURITY_AUDITOR", reason="跨租户必须拒绝授权", tenant_id=TENANT_ID,
-                             user=_actor("SCHOOL_ADMIN"))
-    assert caught.value.code == "DATA_NOT_FOUND"
-''', encoding='utf-8')
+          test_b64 = 'IiIi55Sf5Lqn5a6h6K6hIElzc3VlIDHvvJrmsLjkuYXop5LoibLmjojkuojlj6rog73kvb/nlKggYWN0b3Ig55qE5Z+656GA5p2D6ZmQ44CCIiIiCmZyb20gX19mdXR1cmVfXyBpbXBvcnQgYW5ub3RhdGlvbnMKCmltcG9ydCB1dWlkCgppbXBvcnQgcHl0ZXN0CmZyb20gc3FsYWxjaGVteSBpbXBvcnQgc2VsZWN0Cgpmcm9tIGFwcC5jb3JlLmNvbnRleHQgaW1wb3J0IHNldF90ZW5hbnQKZnJvbSBhcHAuY29yZS5leGNlcHRpb25zIGltcG9ydCBBcHBFeGNlcHRpb24KZnJvbSBhcHAuY29yZS5zZWN1cml0eSBpbXBvcnQgaGFzaF9wYXNzd29yZApmcm9tIGFwcC5zZXJ2aWNlcyBpbXBvcnQgcm9sZV9hc3NpZ25tZW50X3NlcnZpY2UgYXMgcmFzCgpURU5BTlRfSUQgPSAxMDAwMDAwMDAwMDAwMDAwMDAxCgoKZGVmIF9zZXNzaW9uKCk6CiAgICBmcm9tIGFwcC5kYi5zZXNzaW9uIGltcG9ydCBnZXRfc2Vzc2lvbm1ha2VyCiAgICByZXR1cm4gZ2V0X3Nlc3Npb25tYWtlcigpKCkKCgpkZWYgX2Vuc3VyZV90ZW5hbnQodGVuYW50X2lkOiBpbnQgPSBURU5BTlRfSUQpIC0+IE5vbmU6CiAgICBmcm9tIGFwcC5tb2RlbHMgaW1wb3J0IFRlbmFudAogICAgd2l0aCBfc2Vzc2lvbigpIGFzIGRiOgogICAgICAgIGlmIGRiLmdldChUZW5hbnQsIHRlbmFudF9pZCkgaXMgTm9uZToKICAgICAgICAgICAgZGIuYWRkKFRlbmFudChpZD10ZW5hbnRfaWQsIHRlbmFudF9jb2RlPWYicmJhYy17dGVuYW50X2lkfSIsIHNjaG9vbF9uYW1lPSLmjojmnYPovrnnlYzmtYvor5XlrabmoKEiLCBzdGF0dXM9IkFDVElWRSIpKQogICAgICAgICAgICBkYi5jb21taXQoKQoKCmRlZiBfcm9sZShjb2RlOiBzdHIsICosIHJvbGVfdHlwZTogc3RyID0gIlNZU1RFTSIsIHRlbmFudF9pZDogaW50ID0gVEVOQU5UX0lEKToKICAgIGZyb20gYXBwLm1vZGVscyBpbXBvcnQgUm9sZQogICAgX2Vuc3VyZV90ZW5hbnQodGVuYW50X2lkKQogICAgd2l0aCBfc2Vzc2lvbigpIGFzIGRiOgogICAgICAgIHJvdyA9IGRiLnNjYWxhcnMoc2VsZWN0KFJvbGUpLndoZXJlKFJvbGUudGVuYW50X2lkID09IHRlbmFudF9pZCwgUm9sZS5yb2xlX2NvZGUgPT0gY29kZSkpLmZpcnN0KCkKICAgICAgICBpZiByb3cgaXMgTm9uZToKICAgICAgICAgICAgcm93ID0gUm9sZSh0ZW5hbnRfaWQ9dGVuYW50X2lkLCByb2xlX2NvZGU9Y29kZSwgcm9sZV9uYW1lPWNvZGUsIHJvbGVfdHlwZT1yb2xlX3R5cGUsIHN0YXR1cz0iQUNUSVZFIikKICAgICAgICAgICAgZGIuYWRkKHJvdykKICAgICAgICAgICAgZGIuY29tbWl0KCkKICAgICAgICAgICAgZGIucmVmcmVzaChyb3cpCiAgICAgICAgcmV0dXJuIGludChyb3cuaWQpCgoKZGVmIF91c2VyKCosIHRlbmFudF9pZDogaW50ID0gVEVOQU5UX0lEKSAtPiBpbnQ6CiAgICBmcm9tIGFwcC5tb2RlbHMgaW1wb3J0IFVzZXIKICAgIF9lbnN1cmVfdGVuYW50KHRlbmFudF9pZCkKICAgIGxvZ2luID0gZiJyYmFjX3t1dWlkLnV1aWQ0KCkuaGV4WzoxMl19IgogICAgd2l0aCBfc2Vzc2lvbigpIGFzIGRiOgogICAgICAgIHJvdyA9IFVzZXIodGVuYW50X2lkPXRlbmFudF9pZCwgbG9naW5fbmFtZT1sb2dpbiwgcmVhbF9uYW1lPSLmjojmnYPovrnnlYznlKjmiLciLAogICAgICAgICAgICAgICAgICAgcGFzc3dvcmRfaGFzaD1oYXNoX3Bhc3N3b3JkKCJJbml0MTIzNDU2IiksIHVzZXJfdHlwZT0iVEVBQ0hFUiIsIHN0YXR1cz0iQUNUSVZFIikKICAgICAgICBkYi5hZGQocm93KQogICAgICAgIGRiLmNvbW1pdCgpCiAgICAgICAgcmV0dXJuIGludChyb3cuaWQpCgoKZGVmIF9hY3Rvcihyb2xlX2NvZGU6IHN0ciA9ICJBQ0FERU1JQ19URUFDSEVSIikgLT4gZGljdDoKICAgIHJldHVybiB7InVzZXJJZCI6ICJkYi05MDAwMDEiLCAidGVuYW50SWQiOiBzdHIoVEVOQU5UX0lEKSwgImN1cnJlbnRSb2xlQ29kZSI6IHJvbGVfY29kZSwgInVzZXJUeXBlIjogIlRFQUNIRVIifQoKCmRlZiBfdGVtcG9yYXJ5KG1vbmtleXBhdGNoLCBwYXR0ZXJucyk6CiAgICBmcm9tIGFwcC5zZXJ2aWNlcyBpbXBvcnQgc3lzdGVtX2dvdmVybmFuY2Vfc2VydmljZSBhcyBnb3YKICAgIG1vbmtleXBhdGNoLnNldGF0dHIoZ292LCAiYWN0aXZlX2RlbGVnYXRpb25fcGVybWlzc2lvbl9wYXR0ZXJucyIsIGxhbWJkYSB1c2VyOiBsaXN0KHBhdHRlcm5zKSkKCgpkZWYgX2Fzc2VydF9ub19hY3RpdmVfcm9sZSh1c2VyX2lkOiBpbnQsIHJvbGVfY29kZTogc3RyKSAtPiBOb25lOgogICAgZnJvbSBhcHAubW9kZWxzIGltcG9ydCBSb2xlLCBVc2VyUm9sZQogICAgd2l0aCBfc2Vzc2lvbigpIGFzIGRiOgogICAgICAgIHJvdyA9IGRiLnNjYWxhcnMoc2VsZWN0KFVzZXJSb2xlKS5qb2luKFJvbGUsIFJvbGUuaWQgPT0gVXNlclJvbGUucm9sZV9pZCkud2hlcmUoCiAgICAgICAgICAgIFVzZXJSb2xlLnRlbmFudF9pZCA9PSBURU5BTlRfSUQsIFVzZXJSb2xlLnVzZXJfaWQgPT0gdXNlcl9pZCwKICAgICAgICAgICAgUm9sZS5yb2xlX2NvZGUgPT0gcm9sZV9jb2RlLCBVc2VyUm9sZS5zdGF0dXMgPT0gIkFDVElWRSIsIFVzZXJSb2xlLmlzX2RlbGV0ZWQuaXNfKEZhbHNlKSkpLmZpcnN0KCkKICAgICAgICBhc3NlcnQgcm93IGlzIE5vbmUKCgpkZWYgdGVzdF9uZXdfcm9sZV9hc3NpZ25tZW50X3JlamVjdHNfcm9sZV9hYm92ZV9hY3Rvcl9iYXNlX3Blcm1pc3Npb25zKGRiX21vZGUsIG1vbmtleXBhdGNoKToKICAgIF9yb2xlKCJTQ0hPT0xfQURNSU4iKQogICAgdGFyZ2V0ID0gX3VzZXIoKQogICAgX3RlbXBvcmFyeShtb25rZXlwYXRjaCwgWyIqIl0pCiAgICB3aXRoIHB5dGVzdC5yYWlzZXMoQXBwRXhjZXB0aW9uKSBhcyBjYXVnaHQ6CiAgICAgICAgcmFzLmdyYW50X2Fzc2lnbm1lbnQodGFyZ2V0LCAiU0NIT09MX0FETUlOIiwgcmVhc29uPSLlronlhajovrnnlYzmtYvor5XmjojmnYMiLCB0ZW5hbnRfaWQ9VEVOQU5UX0lELCB1c2VyPV9hY3RvcigpKQogICAgYXNzZXJ0IGNhdWdodC52YWx1ZS5jb2RlID09ICJOT19QRVJNSVNTSU9OIgogICAgX2Fzc2VydF9ub19hY3RpdmVfcm9sZSh0YXJnZXQsICJTQ0hPT0xfQURNSU4iKQoKCmRlZiB0ZXN0X2xlZ2FjeV9hc3NpZ25fcm9sZXNfcmVqZWN0c190ZW1wb3JhcnlfZGVsZWdhdGlvbl9yZWRlbGVnYXRpb24oZGJfbW9kZSwgbW9ua2V5cGF0Y2gpOgogICAgZnJvbSBhcHAuYXBpLnYxLnN5c3RlbSBpbXBvcnQgYXNzaWduX3N5c3RlbV91c2VyX3JvbGVzCiAgICBfcm9sZSgiU0NIT09MX0FETUlOIikKICAgIHRhcmdldCA9IF91c2VyKCkKICAgIHNldF90ZW5hbnQoeyJ0ZW5hbnRJZCI6IFRFTkFOVF9JRH0pCiAgICBfdGVtcG9yYXJ5KG1vbmtleXBhdGNoLCBbIioiXSkKICAgIHdpdGggcHl0ZXN0LnJhaXNlcyhBcHBFeGNlcHRpb24pIGFzIGNhdWdodDoKICAgICAgICBhc3NpZ25fc3lzdGVtX3VzZXJfcm9sZXModGFyZ2V0LCB7InJvbGVDb2RlcyI6IFsiU0NIT09MX0FETUlOIl19LCB1c2VyPV9hY3RvcigpKQogICAgYXNzZXJ0IGNhdWdodC52YWx1ZS5jb2RlID09ICJOT19QRVJNSVNTSU9OIgogICAgX2Fzc2VydF9ub19hY3RpdmVfcm9sZSh0YXJnZXQsICJTQ0hPT0xfQURNSU4iKQoKCmRlZiB0ZXN0X3JvbGVfY29weV9jYW5ub3RfcGVyc2lzdF90ZW1wb3JhcnlfZGVsZWdhdGVkX3Blcm1pc3Npb24oZGJfbW9kZSwgbW9ua2V5cGF0Y2gpOgogICAgZnJvbSBhcHAuYXBpLnYxLnN5c3RlbSBpbXBvcnQgY29weV9zeXN0ZW1fcm9sZQogICAgcm9sZV9pZCA9IF9yb2xlKCJTRUNVUklUWV9BVURJVE9SIikKICAgIHNldF90ZW5hbnQoeyJ0ZW5hbnRJZCI6IFRFTkFOVF9JRH0pCiAgICBfdGVtcG9yYXJ5KG1vbmtleXBhdGNoLCBbIioiXSkKICAgIHdpdGggcHl0ZXN0LnJhaXNlcyhBcHBFeGNlcHRpb24pIGFzIGNhdWdodDoKICAgICAgICBjb3B5X3N5c3RlbV9yb2xlKHJvbGVfaWQsIHVzZXI9X2FjdG9yKCkpCiAgICBhc3NlcnQgY2F1Z2h0LnZhbHVlLmNvZGUgPT0gIk5PX1BFUk1JU1NJT04iCgoKZGVmIHRlc3Rfcm9sZV9wZXJtaXNzaW9uX3NhdmVfY2Fubm90X3BlcnNpc3RfdGVtcG9yYXJ5X2RlbGVnYXRlZF9wZXJtaXNzaW9uKGRiX21vZGUsIG1vbmtleXBhdGNoKToKICAgIGZyb20gYXBwLmFwaS52MS5zeXN0ZW0gaW1wb3J0IHNhdmVfc3lzdGVtX3JvbGVfcGVybWlzc2lvbnMKICAgIHJvbGVfaWQgPSBfcm9sZShmIkNVU1RPTV97dXVpZC51dWlkNCgpLmhleFs6OF0udXBwZXIoKX0iLCByb2xlX3R5cGU9IkNVU1RPTSIpCiAgICBjb2RlID0gInN5c3RlbUFkbWluLmF1ZGl0LnNlbnNpdGl2ZS52aWV3IgogICAgc2V0X3RlbmFudCh7InRlbmFudElkIjogVEVOQU5UX0lEfSkKICAgIF90ZW1wb3JhcnkobW9ua2V5cGF0Y2gsIFtjb2RlXSkKICAgIHdpdGggcHl0ZXN0LnJhaXNlcyhBcHBFeGNlcHRpb24pIGFzIGNhdWdodDoKICAgICAgICBzYXZlX3N5c3RlbV9yb2xlX3Blcm1pc3Npb25zKHJvbGVfaWQsIHsicGVybWlzc2lvbkNvZGVzIjogW2NvZGVdLCAidmlzaWJsZVBlcm1pc3Npb25Db2RlcyI6IFtjb2RlXX0sIHVzZXI9X2FjdG9yKCkpCiAgICBhc3NlcnQgY2F1Z2h0LnZhbHVlLmNvZGUgPT0gIk5PX1BFUk1JU1NJT04iCgoKZGVmIHRlc3Rfc2Nob29sX3JvbGVfZ292ZXJuYW5jZV9yZWplY3RzX3BsYXRmb3JtX3JvbGUoZGJfbW9kZSwgbW9ua2V5cGF0Y2gpOgogICAgX3JvbGUoIlBMQVRGT1JNX09XTkVSIikKICAgIHRhcmdldCA9IF91c2VyKCkKICAgIF90ZW1wb3JhcnkobW9ua2V5cGF0Y2gsIFsiKiJdKQogICAgd2l0aCBweXRlc3QucmFpc2VzKEFwcEV4Y2VwdGlvbikgYXMgY2F1Z2h0OgogICAgICAgIHJhcy5ncmFudF9hc3NpZ25tZW50KHRhcmdldCwgIlBMQVRGT1JNX09XTkVSIiwgcmVhc29uPSLlronlhajovrnnlYzmtYvor5XmjojmnYMiLCB0ZW5hbnRfaWQ9VEVOQU5UX0lELAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIHVzZXI9X2FjdG9yKCJTQ0hPT0xfQURNSU4iKSkKICAgIGFzc2VydCBjYXVnaHQudmFsdWUuY29kZSA9PSAiTk9fUEVSTUlTU0lPTiIKICAgIF9hc3NlcnRfbm9fYWN0aXZlX3JvbGUodGFyZ2V0LCAiUExBVEZPUk1fT1dORVIiKQoKCmRlZiB0ZXN0X2Jhc2Vfd2lsZGNhcmRfY2FuX2RlbGVnYXRlX3NjaG9vbF9yb2xlKGRiX21vZGUpOgogICAgX3JvbGUoIlNFQ1VSSVRZX0FVRElUT1IiKQogICAgdGFyZ2V0ID0gX3VzZXIoKQogICAgb3V0ID0gcmFzLmdyYW50X2Fzc2lnbm1lbnQodGFyZ2V0LCAiU0VDVVJJVFlfQVVESVRPUiIsIHJlYXNvbj0i5a2m5qCh566h55CG5ZGY5q2j5bi45o6I5p2DIiwgdGVuYW50X2lkPVRFTkFOVF9JRCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHVzZXI9X2FjdG9yKCJTQ0hPT0xfQURNSU4iKSkKICAgIGFzc2VydCBvdXRbInVzZXJJZCJdID09IHN0cih0YXJnZXQpCiAgICBhc3NlcnQgb3V0WyJyb2xlQ29kZSJdID09ICJTRUNVUklUWV9BVURJVE9SIgoKCmRlZiB0ZXN0X2Nyb3NzX3RlbmFudF9yb2xlX2Fzc2lnbm1lbnRfZmFpbHNfY2xvc2VkKGRiX21vZGUpOgogICAgb3RoZXJfdGVuYW50ID0gVEVOQU5UX0lEICsgOTEKICAgIF9yb2xlKCJTRUNVUklUWV9BVURJVE9SIikKICAgIHRhcmdldCA9IF91c2VyKHRlbmFudF9pZD1vdGhlcl90ZW5hbnQpCiAgICB3aXRoIHB5dGVzdC5yYWlzZXMoQXBwRXhjZXB0aW9uKSBhcyBjYXVnaHQ6CiAgICAgICAgcmFzLmdyYW50X2Fzc2lnbm1lbnQodGFyZ2V0LCAiU0VDVVJJVFlfQVVESVRPUiIsIHJlYXNvbj0i6Leo56ef5oi35b+F6aG75ouS57ud5o6I5p2DIiwgdGVuYW50X2lkPVRFTkFOVF9JRCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICB1c2VyPV9hY3RvcigiU0NIT09MX0FETUlOIikpCiAgICBhc3NlcnQgY2F1Z2h0LnZhbHVlLmNvZGUgPT0gIkRBVEFfTk9UX0ZPVU5EIgo='
+          Path('backend/tests/test_role_assignment_privilege_boundary.py').write_bytes(base64.b64decode(test_b64))
           PY
       - name: Compile changed Python
         run: |
