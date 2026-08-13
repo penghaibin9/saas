@@ -25,6 +25,7 @@ from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
+from app.api.v1.sandbox_story_api import router as sandbox_story_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
@@ -72,7 +73,21 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
         existing.add(signature)
 
 
+# 历史 platform.py 的 reset-sandbox-data 是“全量删除后重建 100 人”语义。
+# standard-20k 上线后同一路径必须切换成轻量故事线恢复；legacy fixture 仍由
+# sandbox_story_api 内部识别并调用旧 reset_sandbox()，因此路径和旧测试合同均保持兼容。
+_RESET_SANDBOX_PATH = "/platform/tenants/{tenant_id}/reset-sandbox-data"
+api_router.routes[:] = [
+    route for route in api_router.routes
+    if not (
+        isinstance(route, APIRoute)
+        and str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
+        and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+    )
+]
+
 for supplemental_router in (
+    sandbox_story_router,
     auth_browser_router,
     affairs_material_center_router,
     affairs_four_end_router,
