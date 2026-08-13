@@ -87,7 +87,11 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     execFileSync(
       'python',
       ['scripts/e2e_seed_graduation_final_prerequisite.py', fixture.gdStudentId],
-      { cwd: BACKEND_DIR, env: process.env, encoding: 'utf8' }
+      {
+        cwd: BACKEND_DIR,
+        env: { ...process.env, PYTHONPATH: BACKEND_DIR },
+        encoding: 'utf8'
+      }
     )
 
     const studentApi = await loginApi(config.student)
