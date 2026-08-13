@@ -115,18 +115,31 @@ def get_visit_plan(pid, user=None):
         return item
 
 
+def _resolved_values(p, body):
+    """把 body 叠加到当前行上，算出应落库的字段值——不改动 ORM 实例。
+
+    编辑走的是条件更新（版本+状态）。一旦这里先改了 ORM 实例，SQLAlchemy 的 autoflush 会在
+    条件更新执行之前把改动无条件写进去：输家表面上拿到 409，数据其实已经被它盖掉了。
+    """
+    return {
+        "batch_id": int(body["batchId"]) if body.get("batchId") else p.batch_id,
+        "college_id": int(body["collegeId"]) if body.get("collegeId") else p.college_id,
+        "enterprise_id": int(body["enterpriseId"]) if body.get("enterpriseId") else p.enterprise_id,
+        "enterprise_name": (body.get("enterpriseName") or p.enterprise_name or "").strip() or None,
+        "collaborators": (body.get("collaborators") or p.collaborators or "").strip() or None,
+        "student_scope": (body.get("studentScope") or p.student_scope or "").strip() or None,
+        "plan_date": (body.get("planDate") or p.plan_date or "").strip() or None,
+        "time_window": (body.get("timeWindow") or p.time_window or "").strip() or None,
+        "method": (body.get("method") or p.method or "ONSITE").upper(),
+        "location": (body.get("location") or p.location or "").strip() or None,
+        "objective": (body.get("objective") or p.objective or "").strip() or None,
+    }
+
+
 def _apply(p, body):
-    p.batch_id = int(body["batchId"]) if body.get("batchId") else p.batch_id
-    p.college_id = int(body["collegeId"]) if body.get("collegeId") else p.college_id
-    p.enterprise_id = int(body["enterpriseId"]) if body.get("enterpriseId") else p.enterprise_id
-    p.enterprise_name = (body.get("enterpriseName") or p.enterprise_name or "").strip() or None
-    p.collaborators = (body.get("collaborators") or p.collaborators or "").strip() or None
-    p.student_scope = (body.get("studentScope") or p.student_scope or "").strip() or None
-    p.plan_date = (body.get("planDate") or p.plan_date or "").strip() or None
-    p.time_window = (body.get("timeWindow") or p.time_window or "").strip() or None
-    p.method = (body.get("method") or p.method or "ONSITE").upper()
-    p.location = (body.get("location") or p.location or "").strip() or None
-    p.objective = (body.get("objective") or p.objective or "").strip() or None
+    """创建路径仍走 ORM 赋值：新行还没有并发对手，不需要条件更新。"""
+    for key, value in _resolved_values(p, body).items():
+        setattr(p, key, value)
 
 
 def create_visit_plan(body, user=None):
@@ -164,6 +177,15 @@ def create_visit_plan(body, user=None):
 
 
 def update_visit_plan(pid, body, user=None):
+    """编辑：与 transition() 同一套并发合同，避免两人同时改同一份计划互相覆盖。
+
+    字段值由 _resolved_values() 纯计算得出，全程不碰 ORM 实例——否则 autoflush 会在条件更新
+    执行前把改动无条件落库，输家拿到 409 的同时数据已经被它盖掉了。
+    """
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+
     with session() as db:
         p = _get(db, pid)
         if not _scope_ok(_scope(user), p, db):
@@ -171,6 +193,10 @@ def update_visit_plan(pid, body, user=None):
         if p.status not in ("DRAFT", "PUBLISHED"):
             raise AppException("DATA_CONFLICT", "进行中/已完成/已取消的计划不可编辑")
         body = body or {}
+        client_version = extract_expected_version(body, required=False)
+        current_status, current_version = p.status, int(p.version or 0)
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
         scope = _scope(user)
         if scope.get("mode") == "SCOPED" and body.get("collegeId"):
             college_names = scope.get("collegeNames") or set()
@@ -179,36 +205,69 @@ def update_visit_plan(pid, body, user=None):
                 col = db.get(College, int(body["collegeId"]))
                 if not col or (col.college_name or "").strip() not in college_names:
                     raise no_permission("巡访计划学院不在你的数据范围内")
-        _apply(p, body)
-        p.version = int(p.version or 0) + 1
-        _trail(db, p.id, "UPDATE", {}, user)
+        values = _resolved_values(p, body)
+        versioned_update(
+            db, InternshipVisitPlan,
+            entity_id=_as_id(pid), tenant_id=_tid(),
+            expected_version=current_version, values=values,
+            expected_status=current_status,
+        )
+        _trail(db, _as_id(pid), "UPDATE", {}, user)
         db.commit()
+        p = _get(db, pid)
         return _row(p)
 
 
 def transition(pid, action, body=None, user=None):
+    """状态迁移：条件原子更新，两个教师同时操作只有一个能赢。
+
+    原实现是「读 status → 校验 → 改 → version+1 → commit」，两人并发时会双双读到
+    PUBLISHED、双双通过校验，后写覆盖先写（last-write-wins），version 虽然自增却没人比对。
+    这里改为 UPDATE ... WHERE version=读到的版本 AND status=读到的状态：并发下只有一条能
+    匹配，输家拿 DATA_CONFLICT。
+
+    expectedVersion 仍是可选的：PC 端目前不传，强制要求会直接打断现有页面。客户端传了就
+    额外校验它是否已过期（能更早地把「你看的是旧数据」告诉用户），不传则以服务端刚读到的
+    版本为准——并发正确性由数据库条件更新保证，不依赖客户端是否配合。
+    """
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+
     action = (action or "").upper()
     if action not in _TRANSITIONS:
         raise AppException("VALIDATION_ERROR", "action 必须是 PUBLISH/START/COMPLETE/CANCEL")
     allowed_from, to = _TRANSITIONS[action]
     body = body or {}
+    client_version = extract_expected_version(body, required=False)
     with session() as db:
         p = _get(db, pid)
         if not _scope_ok(_scope(user), p, db):
             raise no_permission("不在当前数据范围内")
-        if p.status not in allowed_from:
-            raise AppException("DATA_CONFLICT", f"当前状态 {p.status} 不可执行 {action}")
+        current_status, current_version = p.status, int(p.version or 0)
+        if current_status not in allowed_from:
+            raise AppException("DATA_CONFLICT", f"当前状态 {current_status} 不可执行 {action}")
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
+
+        values = {"status": to}
         if action == "CANCEL":
             reason = (body.get("reason") or "").strip()
             if len(reason) < 2:
                 raise AppException("VALIDATION_ERROR", "取消原因不少于 2 个字符")
-            p.cancel_reason = reason
+            values["cancel_reason"] = reason
         if action == "COMPLETE":
-            p.completed_at = datetime.utcnow()
+            values["completed_at"] = datetime.utcnow()
             if body.get("visitId"):
-                p.visit_id = int(body["visitId"])
-        p.status = to
-        p.version = int(p.version or 0) + 1
+                values["visit_id"] = int(body["visitId"])
+
+        versioned_update(
+            db, InternshipVisitPlan,
+            entity_id=p.id, tenant_id=_tid(),
+            expected_version=current_version, values=values,
+            expected_status=current_status,
+        )
         _trail(db, p.id, action, {k: v for k, v in body.items() if k in ("reason", "visitId")}, user)
         db.commit()
+        db.refresh(p)
         return _row(p)
