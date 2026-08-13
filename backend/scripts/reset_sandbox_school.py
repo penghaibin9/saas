@@ -15,7 +15,8 @@
   3. 禁止无租户条件删除 / 禁止 truncate / 不触碰 demo-school 与正式租户；
   4. 无 --confirm 一律不落库；删除前打印每张表将影响的行数；
   5. standard-20k 使用确定性虚构数据，不复制任何真实学校或真实个人数据；
-  6. standard-20k 不再调用 generic DEMO marker 覆盖数据。
+  6. standard-20k 不再调用 generic DEMO marker 覆盖数据；
+  7. 重建后从事实表反算岗位/企业人数，再执行整校数据验收，禁止统计冗余字段漂移。
 连接：默认读取 backend/.env；--sqlite-dev 仅供本地调试，不作为 MySQL 正式验收。
 """
 from __future__ import annotations
@@ -88,12 +89,21 @@ def main() -> int:
             return 0
 
         if args.profile == PROFILE_STANDARD_20K:
-            from app.services.sandbox_school_domain_seed import seed_school_domains_20k
-            from app.services.sandbox_school_master_seed import rebuild_school_master_20k
+            from app.services.sandbox_school_domain_seed import (seed_school_domains_20k,
+                                                                 validate_domain_facts)
+            from app.services.sandbox_school_master_seed import (rebuild_school_master_20k,
+                                                                 validate_school_master)
+            from app.services.sandbox_school_reconcile import reconcile_internship_capacity
 
             master = rebuild_school_master_20k(db)
             domains = seed_school_domains_20k(db, SANDBOX_TID)
-            report = {"reseeded": {"master": master, "domains": domains}}
+            reconciliation = reconcile_internship_capacity(db, SANDBOX_TID)
+            acceptance = {
+                "master": validate_school_master(db, SANDBOX_TID),
+                "domains": validate_domain_facts(db, SANDBOX_TID),
+                "reconciliation": reconciliation,
+            }
+            report = {"reseeded": {"master": master, "domains": domains, "acceptance": acceptance}}
         else:
             report = reset_sandbox(db, dry_run=False) if t is not None else {"reseeded": seed_sandbox(db)}
 
@@ -111,7 +121,8 @@ def main() -> int:
             if demo_before != demo_after:
                 return 4
         if args.profile == PROFILE_STANDARD_20K:
-            print("[reset] 完成：20K 标准学校已建立。可见演示账号：admin2 / teacher2 / student2（密码 123456）")
+            print("[reset] 完成：20K 标准学校已建立并通过数量/关系对账。")
+            print("[reset] 可见演示账号：admin2 / teacher2 / student2（密码 123456）")
             print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
         else:
             print("[reset] 完成：legacy-100 开发兼容沙箱。账号：admin2 / teacher2 / student2（密码 123456）")
