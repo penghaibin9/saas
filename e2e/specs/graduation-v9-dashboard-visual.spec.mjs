@@ -39,9 +39,10 @@ test.describe.serial('V9.2 U1 Dashboard Before evidence', () => {
     expect(envelope?.code, JSON.stringify(envelope)).toBe(0)
 
     await expect(page).toHaveURL(/\/admin\/graduation\?batchId=/)
-    await expect(page.locator('.gdb-page')).toBeVisible()
+    const dashboard = page.locator('.gdb-page')
+    await expect(dashboard).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
-    await expect(page.getByText(fixture.batchName, { exact: false }).first()).toBeVisible()
+    await expect(dashboard).toContainText(fixture.batchName)
     await expect(page.locator('body')).not.toContainText(/正在加载毕业设计中心|真实接口不可用|权限上下文加载失败/)
 
     await settleVisual(page)
