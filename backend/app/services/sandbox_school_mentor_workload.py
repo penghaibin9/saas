@@ -217,10 +217,13 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
     )) or 0)
 
     report = {
-        "internshipMentors": intern_role_users,
+        # “导师编制”按真实带学生的人员计算；仅有角色、无 ADVISOR 范围的体验兼容账号不冒充编制。
+        "internshipMentors": len(intern_loads),
+        "internshipRoleUsers": intern_role_users,
         "internshipAdvisorScopes": intern_scopes,
         "internshipMaxStudentsPerMentor": max(intern_loads, default=0),
         "graduationMentors": graduation_mentor_rows,
+        "graduationActiveMentors": len(graduation_loads),
         "graduationRoleUsers": grad_role_users,
         "graduationAdvisorScopes": grad_scopes,
         "graduationMaxStudentsPerMentor": max(graduation_loads, default=0),
@@ -238,7 +241,7 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
         "internshipMentors": EXPECTED_INTERNSHIP_MENTORS,
         "internshipAdvisorScopes": EXPECTED_INTERNSHIP_MENTORS,
         "graduationMentors": EXPECTED_GRADUATION_MENTORS,
-        "graduationRoleUsers": EXPECTED_GRADUATION_MENTORS,
+        "graduationActiveMentors": EXPECTED_GRADUATION_MENTORS,
         "graduationAdvisorScopes": EXPECTED_GRADUATION_MENTORS,
         "graduationCurrentCountSum": 6400,
         "weeklyReviewerMismatches": 0,
@@ -253,6 +256,16 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
         for key, value in expected.items()
         if report[key] != value
     }
+    if intern_role_users < intern_scopes:
+        mismatches["internshipRoleCoverage"] = {
+            "requiredAdvisorScopes": intern_scopes,
+            "roleUsers": intern_role_users,
+        }
+    if grad_role_users < grad_scopes:
+        mismatches["graduationRoleCoverage"] = {
+            "requiredAdvisorScopes": grad_scopes,
+            "roleUsers": grad_role_users,
+        }
     if report["internshipMaxStudentsPerMentor"] > MAX_INTERNSHIP_STUDENTS_PER_MENTOR:
         mismatches["internshipMaxStudentsPerMentor"] = {
             "max": MAX_INTERNSHIP_STUDENTS_PER_MENTOR,
