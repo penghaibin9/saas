@@ -72,12 +72,12 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Python编译与轻量数据规格合同
+      - name: Python编译与纯数据规格合同
         working-directory: backend
         run: |
           set -euo pipefail
           python -m compileall -q app scripts tests
-          pytest -q tests/test_sandbox_school_blueprint.py tests/test_sandbox_story_reset_route.py -p no:warnings
+          pytest -q tests/test_sandbox_school_blueprint.py -p no:warnings
 
       - name: Alembic单头与MySQL空库升级
         working-directory: backend
@@ -86,6 +86,12 @@ jobs:
           test "$(alembic heads | wc -l)" -eq 1
           alembic upgrade head
           alembic current
+
+      - name: 数据库沙箱恢复路由合同
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_sandbox_story_reset_route.py -p no:warnings
 
       - name: 全量生成20K真实学校演示数据
         working-directory: backend
