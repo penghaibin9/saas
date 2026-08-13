@@ -322,6 +322,8 @@ def _task_row_status(program_course, catalog, tasks) -> tuple[str, str]:
 
 def opening_differences(user, term_id: int, major_id: int | None = None, grade_year: str | None = None,
                         status: str | None = None) -> dict:
+    from sqlalchemy import and_, or_
+
     from app.models import (
         AaCourse, AaProgram, AaProgramBinding, AaProgramCourse, AaTeachingTask,
         AaTeachingTaskBatch, AaTerm, SchoolClass,
@@ -353,17 +355,23 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
         if major_id and not tenant_all and int(major_id) not in allowed_major_ids:
             raise no_data_scope("所选专业不在当前数据范围内")
 
-        programs = db.query(AaProgram).filter(
+        program_query = db.query(AaProgram).filter(
             AaProgram.tenant_id == _tid(),
             AaProgram.status.in_(sorted(_ACTIVE_PROGRAM_STATUSES)),
             AaProgram.is_deleted.is_(False),
-        ).all()
+        )
         if major_id:
-            programs = [row for row in programs if int(row.major_id or 0) == int(major_id)]
+            program_query = program_query.filter(AaProgram.major_id == int(major_id))
         if grade_year:
-            programs = [row for row in programs if str(row.grade_year or "") == str(grade_year)]
+            program_query = program_query.filter(AaProgram.grade_year == str(grade_year))
         if not tenant_all:
-            programs = [row for row in programs if row.major_id and int(row.major_id) in allowed_major_ids]
+            if allowed_major_ids:
+                program_query = program_query.filter(AaProgram.major_id.in_(sorted(allowed_major_ids)))
+                programs = program_query.all()
+            else:
+                programs = []
+        else:
+            programs = program_query.all()
 
         batch_ids = [int(value) for (value,) in db.query(AaTeachingTaskBatch.id).filter(
             AaTeachingTaskBatch.tenant_id == _tid(),
@@ -382,39 +390,89 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
         for task in tasks:
             task_map[(int(task.course_id), int(task.class_id or 0))].append(task)
 
+        program_ids = [int(row.id) for row in programs]
+        bindings = db.query(AaProgramBinding).filter(
+            AaProgramBinding.tenant_id == _tid(),
+            AaProgramBinding.program_id.in_(program_ids),
+            AaProgramBinding.status == "ACTIVE",
+            AaProgramBinding.is_deleted.is_(False),
+        ).all() if program_ids else []
+        program_courses = db.query(AaProgramCourse).filter(
+            AaProgramCourse.tenant_id == _tid(),
+            AaProgramCourse.program_id.in_(program_ids),
+            AaProgramCourse.is_deleted.is_(False),
+        ).all() if program_ids else []
+
+        bindings_by_program = defaultdict(list)
+        for row in bindings:
+            bindings_by_program[int(row.program_id)].append(row)
+        courses_by_program = defaultdict(list)
+        for row in program_courses:
+            courses_by_program[int(row.program_id)].append(row)
+
+        program_by_id = {int(row.id): row for row in programs}
+        explicit_class_ids = {int(row.class_id) for row in bindings if row.class_id}
+        task_class_ids = {int(row.class_id) for row in tasks if row.class_id}
+        direct_class_ids = sorted(explicit_class_ids | task_class_ids)
+        direct_classes = db.query(SchoolClass).filter(
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.id.in_(direct_class_ids),
+            SchoolClass.is_deleted.is_(False),
+        ).all() if direct_class_ids else []
+        direct_class_by_id = {int(row.id): row for row in direct_classes}
+
+        generic_pairs = set()
+        for binding in bindings:
+            if binding.class_id:
+                continue
+            program = program_by_id.get(int(binding.program_id))
+            binding_grade = binding.grade_year or (program.grade_year if program else None)
+            generic_pairs.add((binding.major_id, binding_grade))
+
+        normal_classes = []
+        if generic_pairs:
+            pair_conditions = []
+            non_null_pairs = {(int(major), str(grade)) for major, grade in generic_pairs if major is not None and grade is not None}
+            if non_null_pairs:
+                pair_conditions.append(and_(
+                    SchoolClass.major_id.in_(sorted({major for major, _grade in non_null_pairs})),
+                    SchoolClass.grade.in_(sorted({grade for _major, grade in non_null_pairs})),
+                ))
+            for pair_major, pair_grade in generic_pairs:
+                if pair_major is not None and pair_grade is not None:
+                    continue
+                major_condition = SchoolClass.major_id.is_(None) if pair_major is None else SchoolClass.major_id == int(pair_major)
+                grade_condition = SchoolClass.grade.is_(None) if pair_grade is None else SchoolClass.grade == str(pair_grade)
+                pair_conditions.append(and_(major_condition, grade_condition))
+            normal_classes = db.query(SchoolClass).filter(
+                SchoolClass.tenant_id == _tid(),
+                SchoolClass.class_status == "NORMAL",
+                SchoolClass.is_deleted.is_(False),
+                or_(*pair_conditions),
+            ).all()
+        normal_classes_by_pair = defaultdict(list)
+        for row in normal_classes:
+            normal_classes_by_pair[(row.major_id, row.grade)].append(row)
+
+        course_ids = sorted({int(row.course_id) for row in program_courses if row.course_id})
+        catalogs = db.query(AaCourse).filter(
+            AaCourse.tenant_id == _tid(),
+            AaCourse.id.in_(course_ids),
+            AaCourse.is_deleted.is_(False),
+        ).all() if course_ids else []
+        catalog_by_id = {int(row.id): row for row in catalogs}
+
         items = []
         expected_keys = set()
         for program in programs:
-            bindings = db.query(AaProgramBinding).filter(
-                AaProgramBinding.tenant_id == _tid(),
-                AaProgramBinding.program_id == int(program.id),
-                AaProgramBinding.status == "ACTIVE",
-                AaProgramBinding.is_deleted.is_(False),
-            ).all()
-            program_courses = db.query(AaProgramCourse).filter(
-                AaProgramCourse.tenant_id == _tid(),
-                AaProgramCourse.program_id == int(program.id),
-                AaProgramCourse.is_deleted.is_(False),
-            ).all()
-            for binding in bindings:
+            for binding in bindings_by_program.get(int(program.id), []):
                 binding_grade = binding.grade_year or program.grade_year
                 plan_term = validator._plan_term_no(term.year_code, term.term_no, binding_grade)
                 if binding.class_id:
-                    target_classes = [db.query(SchoolClass).filter(
-                        SchoolClass.id == int(binding.class_id),
-                        SchoolClass.tenant_id == _tid(),
-                        SchoolClass.class_status == "NORMAL",
-                        SchoolClass.is_deleted.is_(False),
-                    ).first()]
+                    clazz = direct_class_by_id.get(int(binding.class_id))
+                    target_classes = [clazz] if clazz and str(clazz.class_status or "").upper() == "NORMAL" else []
                 else:
-                    target_classes = db.query(SchoolClass).filter(
-                        SchoolClass.tenant_id == _tid(),
-                        SchoolClass.major_id == binding.major_id,
-                        SchoolClass.grade == binding_grade,
-                        SchoolClass.class_status == "NORMAL",
-                        SchoolClass.is_deleted.is_(False),
-                    ).all()
-                target_classes = [row for row in target_classes if row]
+                    target_classes = list(normal_classes_by_pair.get((binding.major_id, binding_grade), []))
                 if not tenant_all:
                     target_classes = [row for row in target_classes if int(row.id) in allowed_class_ids]
                 if not target_classes:
@@ -429,6 +487,7 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
                         "fixRoute": f"/admin/academic-affairs/programs/{program.id}",
                     })
                     continue
+                program_rows = courses_by_program.get(int(program.id), [])
                 for clazz in target_classes:
                     if plan_term is None:
                         items.append({
@@ -443,13 +502,9 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
                             "fixRoute": f"/admin/academic-affairs/programs/{program.id}",
                         })
                         continue
-                    selected_courses = [row for row in program_courses if int(row.open_term_no or 0) == int(plan_term)]
+                    selected_courses = [row for row in program_rows if int(row.open_term_no or 0) == int(plan_term)]
                     for program_course in selected_courses:
-                        catalog = db.query(AaCourse).filter(
-                            AaCourse.id == int(program_course.course_id or 0),
-                            AaCourse.tenant_id == _tid(),
-                            AaCourse.is_deleted.is_(False),
-                        ).first() if program_course.course_id else None
+                        catalog = catalog_by_id.get(int(program_course.course_id)) if program_course.course_id else None
                         key = (int(program_course.course_id or 0), int(clazz.id))
                         matched_tasks = task_map.get(key, []) if program_course.course_id else []
                         item_status, message = _task_row_status(program_course, catalog, matched_tasks)
@@ -479,11 +534,7 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
             key = (int(task.course_id), int(task.class_id or 0))
             if key in expected_keys:
                 continue
-            clazz = db.query(SchoolClass).filter(
-                SchoolClass.id == int(task.class_id or 0),
-                SchoolClass.tenant_id == _tid(),
-                SchoolClass.is_deleted.is_(False),
-            ).first() if task.class_id else None
+            clazz = direct_class_by_id.get(int(task.class_id)) if task.class_id else None
             major_value = int(clazz.major_id) if clazz and clazz.major_id else None
             if major_id and major_value != int(major_id):
                 continue
