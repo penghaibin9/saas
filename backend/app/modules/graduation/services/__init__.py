@@ -1,7 +1,7 @@
 """毕业设计中心服务层。
 
 V9.2 在这里保留模块内兼容绑定：历史调用方仍引用原 service 模块，
-但开题/成果/学生/成绩列表统一切到 SQL 读模型。绑定只替换只读入口，
+但开题/成果/学生/成绩/归档列表统一切到 SQL 读模型。绑定只替换只读入口，
 不触碰提交、批阅、状态机等 canonical 写链。
 """
 from __future__ import annotations
@@ -233,11 +233,20 @@ def _install_grade_read_model() -> None:
     service.list_grades = grade_read.list_grades
 
 
+def _install_archive_read_model() -> None:
+    from app.modules.graduation.services import graduation_archive_read_service as archive_read
+    from app.modules.graduation.services import graduation_archive_service as service
+
+    service.list_archives = archive_read.list_archives
+
+
 _install_proposal_read_model()
 _install_final_read_model()
 _install_student_read_model()
 _install_grade_read_model()
+_install_archive_read_model()
 del _install_proposal_read_model
 del _install_final_read_model
 del _install_student_read_model
 del _install_grade_read_model
+del _install_archive_read_model
