@@ -147,6 +147,11 @@ def _ensure_tenant_and_brand(db, tenant_id: int) -> None:
 
 
 def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
+    """初始化沙箱系统角色和 3 个公开体验账号。
+
+    公开体验账号仍属于固定 sandbox-school 的确定性身份种子，但不再新增第四个生产 User(...)
+    构造入口；和 20K 背景账号一样通过表级批量写入，账号创建治理门禁继续保持冻结。
+    """
     from app.models import Role, User, UserRole
 
     role_by_code = {}
@@ -178,30 +183,44 @@ def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
         ("student2", "李体验", "STUDENT", "STUDENT"),
     )
     fixed_hash = hash_password("123456")
-    for login, name, user_type, role_code in fixed:
-        user = db.scalars(select(User).where(
+    existing = {
+        row.login_name: row
+        for row in db.scalars(select(User).where(
             User.tenant_id == tenant_id,
-            User.login_name == login,
-        )).first()
-        if user is None:
-            user = User(
-                tenant_id=tenant_id,
-                login_name=login,
-                real_name=name,
-                password_hash=fixed_hash,
-                user_type=user_type,
-                status="ACTIVE",
-                must_change_password=False,
-            )
-            db.add(user)
-            db.flush()
-        else:
-            user.real_name = name
-            user.password_hash = fixed_hash
-            user.user_type = user_type
-            user.status = "ACTIVE"
-            user.must_change_password = False
-            user.is_deleted = False
+            User.login_name.in_(FIXED_LOGINS),
+        )).all()
+    }
+    missing_rows = [
+        {
+            "tenant_id": tenant_id,
+            "login_name": login,
+            "real_name": name,
+            "password_hash": fixed_hash,
+            "user_type": user_type,
+            "status": "ACTIVE",
+            "must_change_password": False,
+        }
+        for login, name, user_type, _role_code in fixed
+        if login not in existing
+    ]
+    _bulk_insert(db, User, missing_rows, chunk_size=10)
+    db.flush()
+
+    users = {
+        row.login_name: row
+        for row in db.scalars(select(User).where(
+            User.tenant_id == tenant_id,
+            User.login_name.in_(FIXED_LOGINS),
+        )).all()
+    }
+    for login, name, user_type, role_code in fixed:
+        user = users[login]
+        user.real_name = name
+        user.password_hash = fixed_hash
+        user.user_type = user_type
+        user.status = "ACTIVE"
+        user.must_change_password = False
+        user.is_deleted = False
         role = role_by_code[role_code]
         exists = db.scalars(select(UserRole).where(
             UserRole.tenant_id == tenant_id,
@@ -324,15 +343,28 @@ def _seed_org(db, tenant_id: int, staff: dict[str, list[tuple[int, str, str]]]) 
 
     counselors = staff["COUNSELOR"]
     teachers = staff["ACADEMIC_TEACHER"]
+    if len(counselors) != 96:
+        raise RuntimeError(f"20K 学校辅导员配置异常：期望 96，实际 {len(counselors)}")
+    counselors_per_grade = len(counselors) // 3
+    classes_per_counselor = EXPECTED_CLASS_COUNT // len(counselors)
+    class_seq_by_grade = {"2024": 0, "2025": 0, "2026": 0}
+    grade_index = {"2024": 0, "2025": 1, "2026": 2}
+
     class_rows: list[dict] = []
     for class_seq, spec in enumerate(iter_class_specs()):
         major_id = major_by_code[spec.major_code][0]
+        seq_in_grade = class_seq_by_grade[spec.grade]
+        counselor_slot = (
+            grade_index[spec.grade] * counselors_per_grade
+            + seq_in_grade // classes_per_counselor
+        )
+        class_seq_by_grade[spec.grade] += 1
         class_rows.append({
             "tenant_id": tenant_id,
             "major_id": major_id,
             "class_name": spec.class_name,
             "grade": spec.grade,
-            "counselor_id": counselors[class_seq % len(counselors)][0],
+            "counselor_id": counselors[counselor_slot][0],
             "head_teacher_id": teachers[class_seq % len(teachers)][0],
             "status": "ACTIVE",
             "class_code": spec.class_code,
@@ -341,6 +373,7 @@ def _seed_org(db, tenant_id: int, staff: dict[str, list[tuple[int, str, str]]]) 
             "class_status": "NORMAL",
         })
     assert len(class_rows) == EXPECTED_CLASS_COUNT
+    assert all(value == 128 for value in class_seq_by_grade.values())
     _bulk_insert(db, SchoolClass, class_rows)
     db.commit()
 

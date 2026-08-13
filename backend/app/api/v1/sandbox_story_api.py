@@ -20,8 +20,7 @@ router = APIRouter(prefix="/platform", tags=["16·平台总控（仅平台超管
 def reset_sandbox_compat(tenant_id: int, user=Depends(require_platform_super_admin)):
     from app.db.session import db_enabled, get_sessionmaker
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID, reset_sandbox
-    from app.services.sandbox_school_story_reset import (is_standard_20k_sandbox,
-                                                         restore_sales_storylines)
+    from app.services import sandbox_school_story_reset as story_svc
 
     if tenant_id != SANDBOX_TID:
         raise AppException("NO_PERMISSION", f"仅 {SANDBOX_CODE} 支持恢复演示数据")
@@ -30,8 +29,10 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(require_platform_super_adm
 
     db = get_sessionmaker()()
     try:
-        if is_standard_20k_sandbox(db, SANDBOX_TID):
-            story = restore_sales_storylines(db, SANDBOX_TID)
+        # 从服务模块动态取函数：既保持生产调用边界清晰，也让合同测试能够替换真实 20K 判定器，
+        # 避免测试误走 legacy-100 全量重建。
+        if story_svc.is_standard_20k_sandbox(db, SANDBOX_TID):
+            story = story_svc.restore_sales_storylines(db, SANDBOX_TID)
             out = {
                 "tenant": SANDBOX_CODE,
                 "tenantId": str(SANDBOX_TID),

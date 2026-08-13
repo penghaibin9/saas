@@ -1,14 +1,15 @@
-"""演示沙箱 · 真实学校 20K 数据蓝图。
+"""演示沙箱 · 一所 20K 职业院校的专业化数据蓝图。
 
-这里不是“为了让页面不空”的随机造数，而是给 sandbox-school 固化一套可审计、可重复、
-与 2026-08 售前演示时间点一致的职业院校数据规模合同。
+这不是“为了让页面不空”的平均造数，而是给 sandbox-school 固化一套可审计、可重复、
+与 2026-08 售前演示时点一致的职业院校数据规模合同。
 
 原则：
 - 20,000 = 当前学校学生规模，不等于 20,000 并发；
-- 年级、学院、专业、班级、师生比必须先自洽，再允许业务域造数；
-- 2026-08-13 时间点：2026 级处于迎新/报到准备，2025 级升二年级，2024 级进入三年级/岗位实习；
+- 年级、学院、专业、班级、师生比先自洽，再允许业务域造数；
+- 热门专业多班、长尾专业少班，禁止 32 个专业完全等规模这种“压测型假学校”；
+- 2026-08-13：2026 级处于迎新/报到准备，2025 级升二年级，2024 级进入三年级/岗位实习；
 - 所有姓名/手机号/业务内容均为确定性虚构数据，不复制任何真实学校或真实个人数据；
-- 业务域不得再使用 DEMO-xxx、演示数据-xxx、9 亿 marker 关系 ID 等 generic 填空方式。
+- 业务域不得使用 DEMO-xxx、演示数据-xxx、9 亿 marker 关系 ID 等 generic 填空方式。
 """
 from __future__ import annotations
 
@@ -16,35 +17,35 @@ from dataclasses import dataclass
 from typing import Iterable
 
 PROFILE_CODE = "SALES_REAL_SCHOOL_20K_202608"
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 REFERENCE_DATE = "2026-08-13"
 
-# 当前学生规模：三届合计恰好 20,000。
+# 三届在校/准在校学生合计恰好 20,000。
 GRADE_STUDENT_COUNTS: dict[str, int] = {
     "2024": 6400,
     "2025": 6600,
     "2026": 7000,
 }
 
-# 每个专业每届 4 个行政班：32 专业 × 3 届 × 4 班 = 384 班。
-CLASSES_PER_MAJOR_PER_GRADE = 4
 EXPECTED_CLASS_COUNT = 384
 EXPECTED_MAJOR_COUNT = 32
 EXPECTED_COLLEGE_COUNT = 8
 EXPECTED_STUDENT_COUNT = 20_000
+EXPECTED_CLASSES_PER_GRADE = 128
 
-# 教职工账号只用于形成真实组织、权限、选择器、数据范围与容量背景；不在登录页展示 1,280 个账号。
+# 一所 2 万人职业院校的后台身份规模：教学、辅导员、教务、学工、实习与毕设角色都有真实选择器背景。
+# 96 名辅导员对应 384 个行政班，平均 4 班/人、约 208 名学生/人；比原先 192 人更接近日常院校配置。
 STAFF_ACCOUNT_COUNTS: dict[str, int] = {
-    "ACADEMIC_TEACHER": 960,
-    "COUNSELOR": 192,
-    "ACADEMIC_ADMIN": 32,
+    "ACADEMIC_TEACHER": 912,
+    "COUNSELOR": 96,
+    "ACADEMIC_ADMIN": 48,
     "STUDENT_AFFAIRS_ADMIN": 32,
-    "INTERN_MENTOR": 32,
-    "GD_MENTOR": 32,
+    "INTERN_MENTOR": 96,
+    "GD_MENTOR": 96,
 }
 EXPECTED_STAFF_ACCOUNT_COUNT = sum(STAFF_ACCOUNT_COUNTS.values())
 
-# 8 个二级学院、32 个高职专业。名称采用常见专业名称，但学校与人员均为虚构。
+# 8 个二级学院、32 个常见高职专业。学校与人员均为虚构。
 COLLEGE_MAJOR_BLUEPRINT: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("C01", "信息工程学院", (
         "软件技术", "大数据技术", "计算机网络技术", "人工智能技术应用",
@@ -71,6 +72,19 @@ COLLEGE_MAJOR_BLUEPRINT: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "数字媒体艺术设计", "广告艺术设计", "动漫设计", "视觉传达设计",
     )),
 )
+
+# 每个专业“每届”行政班数。合计 128 班/届，三届即 384 班。
+# 规模刻意不均匀：软件、护理、新能源、电商等热门专业班数更多；空乘、健康管理、视觉传达等较小。
+MAJOR_CLASS_COUNTS_PER_GRADE: dict[str, int] = {
+    "C01M01": 6, "C01M02": 5, "C01M03": 4, "C01M04": 4,   # 信息 19
+    "C02M01": 5, "C02M02": 4, "C02M03": 4, "C02M04": 4,   # 制造 17
+    "C03M01": 5, "C03M02": 4, "C03M03": 4, "C03M04": 3,   # 汽车 16
+    "C04M01": 5, "C04M02": 5, "C04M03": 4, "C04M04": 4,   # 经管 18
+    "C05M01": 3, "C05M02": 3, "C05M03": 4, "C05M04": 3,   # 文旅 13
+    "C06M01": 4, "C06M02": 4, "C06M03": 4, "C06M04": 3,   # 建筑 15
+    "C07M01": 8, "C07M02": 4, "C07M03": 3, "C07M04": 3,   # 医药 18
+    "C08M01": 4, "C08M02": 3, "C08M03": 3, "C08M04": 2,   # 艺设 12
+}
 
 SURNAMES = (
     "王", "李", "张", "刘", "陈", "杨", "黄", "赵", "周", "吴",
@@ -106,11 +120,10 @@ def _major_specs() -> Iterable[tuple[str, str, str, str]]:
 
 
 def _grade_class_sizes(grade: str) -> list[int]:
-    """把该届学生均匀分到 128 个班；差值最多 1 人。"""
+    """把该届学生均匀分到 128 个行政班；专业规模差异由班级数体现，班额差值最多 1 人。"""
     total = GRADE_STUDENT_COUNTS[grade]
-    class_count = EXPECTED_MAJOR_COUNT * CLASSES_PER_MAJOR_PER_GRADE
-    base, remainder = divmod(total, class_count)
-    return [base + (1 if i < remainder else 0) for i in range(class_count)]
+    base, remainder = divmod(total, EXPECTED_CLASSES_PER_GRADE)
+    return [base + (1 if i < remainder else 0) for i in range(EXPECTED_CLASSES_PER_GRADE)]
 
 
 def iter_class_specs() -> Iterable[ClassSpec]:
@@ -118,7 +131,8 @@ def iter_class_specs() -> Iterable[ClassSpec]:
         sizes = _grade_class_sizes(grade)
         class_seq = 0
         for college_code, college_name, major_code, major_name in _major_specs():
-            for class_index in range(1, CLASSES_PER_MAJOR_PER_GRADE + 1):
+            class_count = MAJOR_CLASS_COUNTS_PER_GRADE[major_code]
+            for class_index in range(1, class_count + 1):
                 class_code = f"{grade}-{major_code}-{class_index:02d}"
                 class_name = f"{major_name}{grade[-2:]}{class_index:02d}班"
                 target = sizes[class_seq]
@@ -136,6 +150,7 @@ def iter_class_specs() -> Iterable[ClassSpec]:
                     target_students=target,
                     graduate_year=str(int(grade) + 3),
                 )
+        assert class_seq == EXPECTED_CLASSES_PER_GRADE
 
 
 def student_no(grade: str, seq: int) -> str:
@@ -149,7 +164,7 @@ def person_name(seq: int) -> str:
 
 
 def student_name(grade: str, seq: int) -> str:
-    # 三条固定销售故事线：student2 仍绑定李体验；另外两位用于学业/实习深度演示。
+    # 三条固定销售故事线：student2 仍绑定李体验；另外两位用于学工/实习深度演示。
     if grade == "2026" and seq == 1:
         return "李体验"
     if grade == "2025" and seq == 1:
@@ -162,7 +177,7 @@ def student_name(grade: str, seq: int) -> str:
 def lifecycle_stage(grade: str, seq: int) -> str:
     """2026-08-13 时点的主档生命周期分布。"""
     if grade == "2024":
-        # 三年制高职进入三年级；大部分已进入岗位实习，小部分仍在校做实习准备。
+        # 三年制高职进入三年级；5,600 人已进入岗位实习，800 人仍在校做实习准备/补修。
         return "INTERN" if seq <= 5600 else "ENROLLED"
     if grade == "2025":
         return "ENROLLED"
@@ -174,19 +189,38 @@ def lifecycle_stage(grade: str, seq: int) -> str:
     return "REGISTERED_PENDING_ENROLLMENT"
 
 
+def _classes_by_college_per_grade() -> dict[str, int]:
+    out: dict[str, int] = {}
+    for college_code, _college_name, majors in COLLEGE_MAJOR_BLUEPRINT:
+        out[college_code] = sum(
+            MAJOR_CLASS_COUNTS_PER_GRADE[f"{college_code}M{index:02d}"]
+            for index, _major in enumerate(majors, 1)
+        )
+    return out
+
+
 def blueprint_summary() -> dict:
     classes = list(iter_class_specs())
+    students_by_college: dict[str, int] = {}
+    for college_code, _college_name, _majors in COLLEGE_MAJOR_BLUEPRINT:
+        students_by_college[college_code] = sum(
+            item.target_students for item in classes if item.college_code == college_code
+        )
     return {
         "profile": PROFILE_CODE,
         "version": PROFILE_VERSION,
         "referenceDate": REFERENCE_DATE,
         "students": sum(GRADE_STUDENT_COUNTS.values()),
         "studentsByGrade": dict(GRADE_STUDENT_COUNTS),
+        "studentsByCollege": students_by_college,
         "staffAccounts": EXPECTED_STAFF_ACCOUNT_COUNT,
         "staffByRole": dict(STAFF_ACCOUNT_COUNTS),
         "colleges": len(COLLEGE_MAJOR_BLUEPRINT),
         "majors": sum(len(x[2]) for x in COLLEGE_MAJOR_BLUEPRINT),
         "classes": len(classes),
+        "classesPerGrade": EXPECTED_CLASSES_PER_GRADE,
+        "classesByCollegePerGrade": _classes_by_college_per_grade(),
+        "classesByMajorPerGrade": dict(MAJOR_CLASS_COUNTS_PER_GRADE),
         "classSizeMin": min(x.target_students for x in classes),
         "classSizeMax": max(x.target_students for x in classes),
         "classSizeAverage": round(EXPECTED_STUDENT_COUNT / len(classes), 2),
@@ -197,13 +231,20 @@ def assert_blueprint() -> None:
     classes = list(iter_class_specs())
     assert len(COLLEGE_MAJOR_BLUEPRINT) == EXPECTED_COLLEGE_COUNT
     assert sum(len(x[2]) for x in COLLEGE_MAJOR_BLUEPRINT) == EXPECTED_MAJOR_COUNT
+    assert len(MAJOR_CLASS_COUNTS_PER_GRADE) == EXPECTED_MAJOR_COUNT
+    assert sum(MAJOR_CLASS_COUNTS_PER_GRADE.values()) == EXPECTED_CLASSES_PER_GRADE
     assert len(classes) == EXPECTED_CLASS_COUNT
     assert sum(x.target_students for x in classes) == EXPECTED_STUDENT_COUNT
+    assert STAFF_ACCOUNT_COUNTS["COUNSELOR"] * 4 == EXPECTED_CLASS_COUNT
     for grade, expected in GRADE_STUDENT_COUNTS.items():
-        actual = sum(x.target_students for x in classes if x.grade == grade)
+        grade_classes = [x for x in classes if x.grade == grade]
+        assert len(grade_classes) == EXPECTED_CLASSES_PER_GRADE
+        actual = sum(x.target_students for x in grade_classes)
         assert actual == expected, (grade, actual, expected)
     assert min(x.target_students for x in classes) >= 50
     assert max(x.target_students for x in classes) <= 55
+    assert min(MAJOR_CLASS_COUNTS_PER_GRADE.values()) >= 2
+    assert max(MAJOR_CLASS_COUNTS_PER_GRADE.values()) <= 8
 
 
 assert_blueprint()
