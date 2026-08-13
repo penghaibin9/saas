@@ -6,7 +6,9 @@
 ``backend/requirements.txt`` intentionally mirrors the lock so every existing production/CI
 installer remains reproducible without a second installation path.
 
-The checker uses only the stdlib so it can run before dependency installation.
+Exact pins may carry a PEP 508 environment marker when the resolved package itself is platform
+conditional (for example uvloop on non-Windows systems). The checker uses only the stdlib so it can
+run before dependency installation.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ SOURCE = ROOT / "backend" / "requirements.in"
 LOCK = ROOT / "backend" / "requirements.lock"
 DEFAULT_INSTALL = ROOT / "backend" / "requirements.txt"
 NAME = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^]]+\])?")
-PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s;]+)$")
+PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s;]+)(?:\s*;\s*(.+))?$")
 
 
 def norm(value: str) -> str:
@@ -49,18 +51,23 @@ def main() -> int:
             return 1
         direct.add(norm(match.group(1)))
 
-    locked: dict[str, str] = {}
+    locked: dict[str, tuple[str, str]] = {}
     lock_lines = active_lines(LOCK)
     for value in lock_lines:
         match = PIN.fullmatch(value)
         if not match:
-            print(f"python_lock_error: lock entry is not exact name==version: {value}", file=sys.stderr)
+            print(
+                "python_lock_error: lock entry must be exact name==version with an optional PEP 508 marker: "
+                f"{value}",
+                file=sys.stderr,
+            )
             return 1
         name, version = norm(match.group(1)), match.group(2)
+        marker = (match.group(3) or "").strip()
         if name in locked:
             print(f"python_lock_error: duplicate lock entry: {name}", file=sys.stderr)
             return 1
-        locked[name] = version
+        locked[name] = (version, marker)
 
     missing = sorted(direct - locked.keys())
     if missing:
@@ -73,6 +80,17 @@ def main() -> int:
         print("python_lock_error: pytest-timeout must be frozen in requirements.lock", file=sys.stderr)
         return 1
 
+    uvloop = locked.get("uvloop")
+    if uvloop is not None:
+        marker = uvloop[1].replace("'", '"').replace(" ", "")
+        if 'sys_platform!="win32"' not in marker:
+            print(
+                "python_lock_error: uvloop must be exactly pinned behind sys_platform != \"win32\"; "
+                "the repository keeps a supported Windows PowerShell bootstrap",
+                file=sys.stderr,
+            )
+            return 1
+
     install_lines = active_lines(DEFAULT_INSTALL)
     if install_lines != lock_lines:
         print(
@@ -84,7 +102,7 @@ def main() -> int:
 
     print(
         f"python_lock_ok: {len(direct)} direct deps covered by "
-        f"{len(locked)} exact pins; default installer matches lock"
+        f"{len(locked)} exact pins; platform markers validated; default installer matches lock"
     )
     return 0
 

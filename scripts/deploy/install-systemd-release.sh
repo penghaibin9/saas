@@ -138,6 +138,36 @@ ACTIVATED=0
 MIGRATION_STARTED=0
 ROLLBACK_MANIFEST=""
 backup_file=""
+BACKUP_TIMER_UNIT="school-lifecycle-backup.timer"
+BACKUP_SERVICE_UNIT="school-lifecycle-backup.service"
+BACKUP_TIMER_WAS_ACTIVE=0
+BACKUP_TIMER_PAUSED=0
+
+quiesce_scheduled_backup() {
+  # The timer is release-external state: preserve whether it was actually active instead of
+  # blindly enabling it later. Stop the timer first so it cannot launch a new oneshot while the
+  # release drains an already-running backup service.
+  if systemctl is-active --quiet "$BACKUP_TIMER_UNIT" 2>/dev/null; then
+    BACKUP_TIMER_WAS_ACTIVE=1
+  fi
+  BACKUP_TIMER_PAUSED=1
+  if [ "$BACKUP_TIMER_WAS_ACTIVE" = "1" ]; then
+    systemctl stop "$BACKUP_TIMER_UNIT"
+  fi
+  if systemctl is-active --quiet "$BACKUP_SERVICE_UNIT" 2>/dev/null; then
+    systemctl stop "$BACKUP_SERVICE_UNIT"
+  fi
+}
+
+restore_scheduled_backup_timer() {
+  if [ "$BACKUP_TIMER_PAUSED" != "1" ]; then
+    return 0
+  fi
+  if [ "$BACKUP_TIMER_WAS_ACTIVE" = "1" ]; then
+    systemctl start "$BACKUP_TIMER_UNIT"
+  fi
+  BACKUP_TIMER_PAUSED=0
+}
 
 restore_previous_systemd_units() {
   if [ -z "$previous" ] || [ ! -d "$previous" ]; then
@@ -154,6 +184,11 @@ restore_previous_systemd_units() {
 release_failure_guard() {
   status=$?
   trap - EXIT
+  if [ "$status" -ne 0 ] && [ "$BACKUP_TIMER_PAUSED" = "1" ]; then
+    # Recovery itself must not race a timer event. A timer that was originally active is restored
+    # only after rollback and the previous service set are healthy again.
+    systemctl stop "$BACKUP_TIMER_UNIT" "$BACKUP_SERVICE_UNIT" >/dev/null 2>&1 || true
+  fi
   if [ "$status" -ne 0 ] && [ "$QUIESCED" = "1" ]; then
     # 任何候选写入者都必须先停；数据库/文件恢复期间绝不能有并发业务写。
     systemctl stop school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan \
@@ -192,12 +227,20 @@ release_failure_guard() {
       fi
     fi
   fi
+  if [ "$BACKUP_TIMER_PAUSED" = "1" ]; then
+    if ! restore_scheduled_backup_timer; then
+      echo "CRITICAL: application state recovered but the scheduled backup timer could not be restored." >&2
+      exit 93
+    fi
+  fi
   unset DB_PASSWORD_VALUE || true
   exit "$status"
 }
 trap release_failure_guard EXIT
 
-# 单机生产部署进入短暂静默窗口：先停 Web 和所有后台写入者，再在同一静默点取治理备份。
+# 单机生产部署进入短暂静默窗口：先停定时备份触发器，再停 Web 和所有后台写入者；
+# 若定时备份已经在跑，先终止该 oneshot，随后由 release 自己在静默点重新取一份完整治理备份。
+quiesce_scheduled_backup
 if [ "${#ACTIVE_OLD_SERVICES[@]}" -gt 0 ]; then
   systemctl stop "${ACTIVE_OLD_SERVICES[@]}"
 fi
@@ -274,6 +317,9 @@ EXPECTED_RELEASE_COMMIT="$SOURCE_COMMIT" BACKUP_FILE="$backup_file" \
   APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" \
   bash "$RELEASE_DIR/scripts/deploy/accept-production-release.sh"
 
+# Final acceptance succeeded. Restore exactly the scheduled-backup timer state observed before the
+# release. If that restoration fails, keep the rollback guard armed and fail the release.
+restore_scheduled_backup_timer
 MIGRATION_STARTED=0
 QUIESCED=0
 unset DB_PASSWORD_VALUE
