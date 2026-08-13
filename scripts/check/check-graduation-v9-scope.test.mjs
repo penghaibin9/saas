@@ -40,6 +40,15 @@ test('M4 allows only declared product-truth views and contracts', () => {
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M4')[0], /shared foundation denied/)
 })
 
+test('U1 Dashboard keeps visual work page-local and allows only its evidence spec', () => {
+  assert.deepEqual(validateFiles([
+    'frontend/src/modules/graduation/views/GraduationDashboardView.vue',
+    'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
+  ], 'U1'), [])
+  assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'U1')[0], /shared foundation denied/)
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U1')[0], /shared foundation denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
@@ -47,6 +56,7 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
     'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
+    'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })

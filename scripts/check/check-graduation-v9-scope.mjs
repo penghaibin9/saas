@@ -23,6 +23,10 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/(AdminGraduationLayout|ProposalListView|FinalSubmissionListView|GraduationStudentListView)\.vue$/,
     /^frontend\/tests\/graduation\.v9-(?:product|reminder)-truth\.contract\.test\.mjs$/,
   ],
+  U1: [
+    /^frontend\/src\/modules\/graduation\/views\/GraduationDashboardView\.vue$/,
+    /^e2e\/specs\/graduation-v9-dashboard-visual\.spec\.mjs$/,
+  ],
 }
 
 const ALWAYS_DENY = [
