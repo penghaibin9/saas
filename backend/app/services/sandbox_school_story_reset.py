@@ -201,7 +201,7 @@ def restore_sales_storylines(db, tenant_id: int) -> dict:
         title="开具在读证明",
         wo_type="CERT",
         priority="MEDIUM",
-        handler=chen.real_name,
+        handler="学生事务服务中心",
         status="PENDING_HANDLE",
         detail="学生申请用于暑期实践单位资格审核的在读证明。",
     )
