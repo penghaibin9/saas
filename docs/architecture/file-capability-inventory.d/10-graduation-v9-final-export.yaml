@@ -1,0 +1,23 @@
+entries:
+  - module: graduation
+    client: backend
+    route: /api/v1/graduation/finals/export
+    page: frontend/src/modules/graduation/views/FinalSubmissionListView.vue
+    action: export-final-ledger
+    fileCategory: GRADUATION_FINAL_XLSX
+    api: POST /api/v1/graduation/finals/export
+    backendService: backend/app/modules/graduation/services/__init__.py; backend/app/modules/graduation/services/graduation_final_read_service.py
+    storageMode: generated-xlsx-inline-base64-response
+    authMode: authenticated+graduationDesign.final.export
+    dataScope: tenant+selected-batch+graduation-role-sql-scope
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: V9.2 U3/M10 成果提交台账。服务端按 200 行分块读取 SQL 真分页结果并生成 XLSX，NOT_SUBMITTED 由 SQL NOT EXISTS 派生；单元格经 sanitize_xlsx_export 防公式注入，导出写 Graduation audit trail 并绑定 batchId。

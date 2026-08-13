@@ -435,10 +435,18 @@ export default {
     },
     ensureSelection() {
       if (this.selectedRow) { this.loadSelectedDetail(); return }
-      if (!this.rows.length) { this.selKey = ''; this.resetDetail(); return }
+      if (!this.rows.length) {
+        this.selKey = ''
+        this._selectIndexAfterLoad = null
+        this.resetDetail()
+        return
+      }
       let target = null
-      if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
+      if (Number.isInteger(this._selectIndexAfterLoad)) {
+        target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
+      } else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
       else target = this.rows.find((row) => row.status === 'PENDING_REVIEW') || this.rows[0]
+      this._selectIndexAfterLoad = null
       this._selectLastAfterLoad = false
       this._selectPendingAfterLoad = false
       if (target && !this.isNarrow) this.select(target)
@@ -461,6 +469,8 @@ export default {
         this.formError = '退回原因必填且不少于 5 个字'
         return
       }
+      const reviewedIndex = Math.max(0, this.selIndex)
+      const pendingQueue = this.filters.status === 'PENDING_REVIEW'
       this.submitting = true
       const res = await graduationApi.reviewFinal(this.selectedRow.id, {
         action,
@@ -472,12 +482,30 @@ export default {
       if (res.code === 0) {
         toast.success(`批阅完成：${res.data.statusLabel}，已锁定当前安全版本并同步学生端`)
         const row = this.selectedRow
-        row.status = res.data.status
-        row.statusLabel = res.data.statusLabel
         this.comment = ''
-        this.loadStats()
-        await this.loadSelectedDetail()
-        if (this.autoNext) this.nextPending()
+
+        if (!this.autoNext || !pendingQueue) {
+          if (row) {
+            row.status = res.data.status
+            row.statusLabel = res.data.statusLabel
+          }
+          await this.loadStats()
+          await this.loadSelectedDetail()
+          if (this.autoNext) this.nextPending()
+          return
+        }
+
+        this.selKey = ''
+        this.resetDetail()
+        await this.loadStats()
+        this._selectIndexAfterLoad = reviewedIndex
+        await this.load()
+        if (!this.rows.length && this.page > 1) {
+          this.page -= 1
+          this._selectIndexAfterLoad = this.pageSize - 1
+          await this.load()
+        }
+        if (!this.rows.length) toast.success('待审成果已全部处理完')
       } else if (res.message && (res.message.includes('已批阅') || res.message.includes('已被处理') || res.message.includes('版本已变化'))) {
         this.formError = res.message
         this.loadStats()
