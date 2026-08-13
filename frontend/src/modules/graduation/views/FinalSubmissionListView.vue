@@ -116,6 +116,10 @@
                   <div v-else-if="!finalDetail?.reviewReady" class="version-warning">
                     当前成果仍在扫描、扫描失败或版本关系已变化。请刷新详情，系统不会绕过安全门审核。
                   </div>
+                  <div v-if="secureVersionFiles.length" class="fr-security-keyline">
+                    <span class="fr-security-keyline__label">SHA-256</span>
+                    <code class="mono hash" :title="secureVersionFiles[0].sha256">{{ shortHash(secureVersionFiles[0].sha256) }}</code>
+                  </div>
                   <SecureFileList
                     :items="secureVersionFiles"
                     :loading="detailLoading"
@@ -603,6 +607,9 @@ export default {
 .fr-result-card .mp-card__body { padding: var(--space-2) 10px; }
 .fr-security-card .mp-card__body { max-height: 220px; overflow: auto; display: flex; flex-direction: column; }
 .fr-security-card .version-warning { order: -2; }
+.fr-security-keyline { order: -1; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 0 6px; font-size: 12px; }
+.fr-security-keyline__label { flex: none; color: var(--text-tertiary); font-weight: 600; }
+.fr-security-keyline .hash { max-width: none; color: var(--text-primary); }
 .fr-security-card .version-table-wrap { order: -1; margin-top: 0; margin-bottom: 6px; }
 .fr-review-card .mp-card__body { display: flex; flex-direction: column; }
 .fr-review-card .mp-textarea { min-height: 54px; }
