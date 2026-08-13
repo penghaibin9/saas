@@ -19,6 +19,9 @@ from app.services.sandbox_school_affairs_seed import (
     _seed_talks_and_family,
     validate_affairs_facts,
 )
+from app.services.sandbox_school_affairs_counselor_reconcile import (
+    reconcile_counselor_assessments,
+)
 from app.services.sandbox_school_master_seed import _bulk_insert
 
 
@@ -178,10 +181,15 @@ def seed_school_affairs_20k(db, tenant_id: int) -> dict:
     result = {
         "dorm": _seed_dorm_inventory(db, tenant_id),
         "classAndCounselor": _seed_class_and_counselor(db, tenant_id, roster),
+    }
+    # 主数据现在是 96 名辅导员/384 班；旧班级种子只覆盖 2024/2025 两届 64 名责任人。
+    # 在继续生成其它学工事实前，把全校 96 名辅导员的年度+开学专项考评统一重建为 192 条。
+    result["counselorAssessmentReconciliation"] = reconcile_counselor_assessments(db, tenant_id)
+    result.update({
         "talkAndFamily": _seed_talks_and_family(db, tenant_id, roster),
         "aidAndFunding": _seed_aid_and_funding(db, tenant_id, roster),
         "discipline": _seed_discipline(db, tenant_id, roster),
         "riskHub": _seed_real_source_risks(db, tenant_id),
-    }
+    })
     result["validation"] = validate_affairs_facts(db, tenant_id)
     return result
