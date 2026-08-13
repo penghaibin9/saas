@@ -295,6 +295,7 @@ export default {
       if (this.autoNext) this.nextPending()
     },
     onConflict() {
+      // 并发冲突：他人已批阅，刷新本页与计数
       this.loadStats()
       this.load()
     },
