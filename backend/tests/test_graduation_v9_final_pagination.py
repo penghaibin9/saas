@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.core.context import set_current_user
 from app.db.session import get_sessionmaker
 from app.models import GraduationBatch, GraduationFinal, GraduationStudent
 from app.modules.graduation.services import graduation_final_read_service as final_read
@@ -140,6 +141,12 @@ def test_m10_keyword_reaches_late_not_submitted_row(db_mode, graduation_client, 
 
 def test_m10_direct_read_model_page_contract(db_mode):
     batch_id, _student_ids = _seed_600_finals()
+    set_current_user({
+        "tenantId": str(MAIN_TENANT_ID),
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "userType": "TEACHER",
+        "loginName": "school_admin01",
+    })
     db = get_sessionmaker()()
     try:
         rows, total = final_read.list_finals(
@@ -149,3 +156,4 @@ def test_m10_direct_read_model_page_contract(db_mode):
         assert len(rows) == 37
     finally:
         db.close()
+        set_current_user(None)
