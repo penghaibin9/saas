@@ -134,6 +134,10 @@ def build_router() -> APIRouter:
     # 静态 stats/archive 必须先于动态详情，状态机与课表改写继续唯一由 sched_change_svc 持有。
     schedule_change_module = importlib.import_module(f"{__package__}.schedule_change_router")
     _mount_routes(router, schedule_change_module.router)
+    # D7-S：考试批次/排考/考场座位/监巡考/发布归档/缓考审批从 legacy Move Only 迁出。
+    # mobile exam-v2 与 incident resolve 仍由既有 extension owner 持有；成绩域留给 D8。
+    exam_core_module = importlib.import_module(f"{__package__}.exam_core_router")
+    _mount_routes(router, exam_core_module.router)
     _mount_routes(
         router,
         base_router.router,
