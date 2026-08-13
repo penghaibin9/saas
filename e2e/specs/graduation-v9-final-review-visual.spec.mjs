@@ -65,16 +65,24 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     const student = new StudentGraduationPage(page, config.studentBaseUrl)
     await student.open()
     await student.signTaskbookIfNeeded()
-    await student.submitProposal({
-      suffix: `${fixture.runId}-u3`,
-      fileName: `u3-proposal-${fixture.runId}.pdf`
-    })
 
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
-    const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
-    await staff.openProposals('PENDING_REVIEW')
-    await staff.selectStudent()
-    await staff.approve()
+    // The full interaction suite may already have completed the same run-scoped
+    // proposal before this visual test starts. Reuse that canonical state instead
+    // of trying to submit an already-approved proposal a second time.
+    const proposalStep = student.step('开题')
+    const alreadyApproved = await proposalStep.getByText(/已通过|通过/).count() > 0
+    if (!alreadyApproved) {
+      await student.submitProposal({
+        suffix: `${fixture.runId}-u3`,
+        fileName: `u3-proposal-${fixture.runId}.pdf`
+      })
+
+      await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+      const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
+      await staff.openProposals('PENDING_REVIEW')
+      await staff.selectStudent()
+      await staff.approve()
+    }
 
     execFileSync(
       'python',
