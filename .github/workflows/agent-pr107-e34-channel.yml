@@ -43,6 +43,27 @@ jobs:
         run: |
           python -m py_compile .github/agent/patch_pr107_e34.py
           python .github/agent/patch_pr107_e34.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/tests/test_message_channel_delivery.py')
+          t = p.read_text(encoding='utf-8')
+          old = "def _actor(tid, uid, perms, ctx='ctx-1'):\n    return {'tenantId':str(tid),'userId':str(uid),'activeContextId':ctx,'permissions':list(perms),'realName':'发布人','userType':'TEACHER'}\n"
+          new = "def _actor(tid, uid, role, ctx='ctx-1'):\n    return {'tenantId':str(tid),'userId':str(uid),'activeContextId':ctx,'currentRoleCode':role,'realName':'发布人','userType':'TEACHER'}\n"
+          if t.count(old) != 1:
+              raise SystemExit('E34 actor fixture anchor mismatch')
+          t = t.replace(old, new, 1)
+          replacements = {
+              "_actor(1,1,[])": "_actor(1,1,'TEACHER')",
+              "_actor(1,7,['workbench.message.publish'])": "_actor(1,7,'COLLEGE_ADMIN')",
+              "_actor(1,8,['workbench.message.publish'])": "_actor(1,8,'COLLEGE_ADMIN')",
+              "_actor(1,8,['workbench.message.schoolAll.publish'])": "_actor(1,8,'SCHOOL_ADMIN')",
+          }
+          for old_call, new_call in replacements.items():
+              if old_call not in t:
+                  raise SystemExit(f'E34 role fixture call missing: {old_call}')
+              t = t.replace(old_call, new_call)
+          p.write_text(t, encoding='utf-8')
+          PY
           python -m py_compile \
             backend/app/models/message.py \
             backend/app/services/message_campaign_service.py \
