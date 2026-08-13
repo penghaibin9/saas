@@ -125,6 +125,29 @@ def test_schedule_conflict_service_change_selects_semantics_and_scale_contracts(
         assert "tests/test_aa_route_registration_main_compat.py" in targets
 
 
+def test_d6_selection_owner_changes_select_truth_scope_and_scale_contracts():
+    """D6：真链/读侧/轮次/TeachingRoster 任一 production owner 变化都必须跑完整专项。"""
+    mod = _load()
+    required = {
+        "tests/test_aa_selection.py",
+        "tests/test_aa_d6_selection_truth_contract.py",
+        "tests/test_aa_selection_read_production_contract.py",
+        "tests/test_aa_selection_scope_mysql.py",
+        "tests/test_aa_selection_lock_scaling.py",
+        "tests/test_aa_teaching_roster_unification.py",
+        "tests/test_aa_p0_authz.py",
+        "tests/test_aa_route_registration_main_compat.py",
+    }
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_read_guard.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py",
+    ):
+        targets = set(mod.select([path]))
+        assert required <= targets
+
+
 def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
     """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
     mod = _load()
