@@ -37,6 +37,8 @@ const CARD_ALLOW = {
     /^backend\/tests\/test_graduation_v9_proposal_pagination\.py$/,
     /^frontend\/src\/modules\/graduation\/views\/ProposalListView\.vue$/,
     /^frontend\/tests\/graduation\.v9-proposal-review\.contract\.test\.mjs$/,
+    /^e2e\/pages\/graduation\.page\.mjs$/,
+    /^docs\/architecture\/file-capability-inventory\.d\/10-graduation-v9-export\.yaml$/,
   ],
 }
 
