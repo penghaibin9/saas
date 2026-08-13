@@ -57,7 +57,7 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
                 "DATA_CONFLICT",
                 "检测到受损的 standard-20k 试点沙箱，已阻断 legacy-100 降级恢复；"
                 "请使用维护级 standard-20k 重建/修复流程。",
-                data=profile,
+                details=profile,
             )
         elif mode == PROFILE_LEGACY:
             out = reset_sandbox(db, dry_run=False)
@@ -68,7 +68,7 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
             raise AppException(
                 "DATA_CONFLICT",
                 "当前 sandbox 数据形态无法安全识别，已拒绝自动恢复，避免误删试点数据。",
-                data=profile,
+                details=profile,
             )
     finally:
         db.close()
