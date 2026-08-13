@@ -60,6 +60,47 @@ def _internship_capacity_audit(db, tenant_id: int) -> dict:
     }
 
 
+def _exam_capacity_audit(db, tenant_id: int) -> dict:
+    from sqlalchemy import func, select
+    from app.models import AaExamCourse, AaExamRoom, AaExamRoomStudent
+
+    rooms = int(db.scalar(select(func.count()).select_from(AaExamRoom).where(
+        AaExamRoom.tenant_id == tenant_id,
+        AaExamRoom.is_deleted.is_(False),
+    )) or 0)
+    seats = int(db.scalar(select(func.count()).select_from(AaExamRoomStudent).where(
+        AaExamRoomStudent.tenant_id == tenant_id,
+        AaExamRoomStudent.is_deleted.is_(False),
+    )) or 0)
+    over_capacity = int(db.scalar(select(func.count()).select_from(AaExamRoom).where(
+        AaExamRoom.tenant_id == tenant_id,
+        AaExamRoom.planned_count > AaExamRoom.capacity,
+        AaExamRoom.is_deleted.is_(False),
+    )) or 0)
+    course_count = int(db.scalar(select(func.count()).select_from(AaExamCourse).where(
+        AaExamCourse.tenant_id == tenant_id,
+        AaExamCourse.is_deleted.is_(False),
+    )) or 0)
+    unique_course_students = int(db.scalar(select(func.count()).select_from(
+        select(AaExamRoomStudent.exam_course_id, AaExamRoomStudent.student_id)
+        .where(
+            AaExamRoomStudent.tenant_id == tenant_id,
+            AaExamRoomStudent.is_deleted.is_(False),
+        )
+        .distinct()
+        .subquery()
+    )) or 0)
+    passed = rooms >= course_count and seats == unique_course_students and over_capacity == 0
+    return {
+        "examCourses": course_count,
+        "examRooms": rooms,
+        "examSeats": seats,
+        "uniqueCourseStudents": unique_course_students,
+        "roomsOverCapacity": over_capacity,
+        "passed": passed,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="只读验收 20K 售前演示学校数据")
     ap.add_argument("--sqlite-dev", action="store_true", help="仅本地开发调试；正式验收使用 MySQL")
@@ -74,6 +115,7 @@ def main() -> int:
 
     from app.models import Tenant
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID
+    from app.services.sandbox_school_academic_affairs_seed import validate_academic_affairs_facts
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
     from app.services.sandbox_school_domain_seed import validate_domain_facts
     from app.services.sandbox_school_master_seed import validate_school_master
@@ -88,25 +130,32 @@ def main() -> int:
         try:
             master = validate_school_master(db, SANDBOX_TID)
             domains = validate_domain_facts(db, SANDBOX_TID)
+            academic_affairs = validate_academic_affairs_facts(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
         except RuntimeError as exc:
             print("[20k-check] FAIL", str(exc))
             return 4
 
         internship = _internship_capacity_audit(db, SANDBOX_TID)
+        exam = _exam_capacity_audit(db, SANDBOX_TID)
         report = {
             "tenantId": str(SANDBOX_TID),
             "tenantCode": SANDBOX_CODE,
             "schoolName": tenant.school_name,
             "master": master,
             "domains": domains,
+            "academicAffairs": academic_affairs,
             "studentAffairs": affairs,
             "internshipReconciliation": internship,
+            "examReconciliation": exam,
         }
         print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
         if not internship["passed"]:
             print("[20k-check] FAIL 实习岗位/企业/学生人数不一致")
             return 5
+        if not exam["passed"]:
+            print("[20k-check] FAIL 考场容量/座位唯一性不一致")
+            return 6
         print("[20k-check] PASS 20K 售前标准学校数据验收通过")
         return 0
     finally:
