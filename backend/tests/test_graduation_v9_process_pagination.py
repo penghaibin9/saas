@@ -77,12 +77,16 @@ def test_u4_read_models_lock_sql_join_pagination_and_full_stats():
         source = inspect.getsource(fn)
         assert ".join(GraduationStudent" in source
         assert ".offset(" in source and ".limit(" in source
+        assert "student_scope_select" in source
+        assert "accessible_student_ids" not in source
         assert "db.get(GraduationStudent" not in source
 
     grouped_source = inspect.getsource(stats_read._grouped_counts)
     assert ".outerjoin(" in grouped_source
     assert ".group_by(" in grouped_source
     stats_source = inspect.getsource(stats_read.guidance_stats)
+    assert "student_scope_select" in stats_source
+    assert "accessible_student_ids" not in stats_source
     assert ".having(" in stats_source
     assert "[:50]" not in stats_source
     assert "if count < threshold" not in stats_source
