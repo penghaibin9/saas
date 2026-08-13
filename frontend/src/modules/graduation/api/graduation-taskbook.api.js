@@ -4,6 +4,7 @@
  */
 import { request } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { withGraduationBatch } from '@/modules/graduation/api/graduation-batch-context'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -16,7 +17,7 @@ async function call(fn) {
 }
 async function callList(path, params = {}) {
   try {
-    const d = await request(path, { params })
+    const d = await request(path, { params: withGraduationBatch(params) })
     return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
   } catch (e) { return toErr(e) }
 }
@@ -28,21 +29,29 @@ const SE = '/graduation/gd-student-evals'
 const MT = '/graduation/gd-midterms'
 
 export const graduationTaskbookApi = {
-  getTaskbook(gdStudentId) { return call(() => request(`${TB}/${gdStudentId}`)) },
-  issueTaskbook(gdStudentId, body) { return call(() => request(`${TB}/${gdStudentId}/issue`, { method: 'POST', body })) },
-  confirmTaskbook(gdStudentId, body = {}) {
-    return call(() => request(`${TB}/${gdStudentId}/confirm`, { method: 'POST', body }))
+  getTaskbook(gdStudentId, params = {}) {
+    return call(() => request(`${TB}/${gdStudentId}`, { params: withGraduationBatch(params) }))
   },
-  changeTaskbook(gdStudentId, body) { return call(() => request(`${TB}/${gdStudentId}/change`, { method: 'POST', body })) },
-  getTaskbookStats() { return call(() => request(`${TB}/stats`)) },
+  issueTaskbook(gdStudentId, body, params = {}) {
+    return call(() => request(`${TB}/${gdStudentId}/issue`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  confirmTaskbook(gdStudentId, body = {}, params = {}) {
+    return call(() => request(`${TB}/${gdStudentId}/confirm`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  changeTaskbook(gdStudentId, body, params = {}) {
+    return call(() => request(`${TB}/${gdStudentId}/change`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  getTaskbookStats(params = {}) {
+    return call(() => request(`${TB}/stats`, { params: withGraduationBatch(params) }))
+  },
   async downloadTaskbookExport(params = {}) {
-    const res = await call(() => request(`${TB}/export`, { method: 'POST', params }))
+    const res = await call(() => request(`${TB}/export`, { method: 'POST', params: withGraduationBatch(params) }))
     if (res.code === 0) downloadXlsxFromApi(res.data, '任务书台账.xlsx')
     return res
   },
   /** 任务书 PDF 导出：返回 { filename, contentBase64, mediaType }，并写下载审计 */
   exportTaskbookPdf(gdStudentId, params = {}) {
-    return call(() => request(`${TB}/${gdStudentId}/export-pdf`, { method: 'POST', params }))
+    return call(() => request(`${TB}/${gdStudentId}/export-pdf`, { method: 'POST', params: withGraduationBatch(params) }))
   },
   async downloadTaskbookPdf(gdStudentId, params = {}) {
     const res = await this.exportTaskbookPdf(gdStudentId, params)
@@ -50,21 +59,49 @@ export const graduationTaskbookApi = {
     return res
   },
   getGuidanceList(params = {}) { return callList(GD, params) },
-  createGuidance(gdStudentId, body) { return call(() => request(`${GD}/${gdStudentId}`, { method: 'POST', body })) },
-  voidGuidance(id, reason) { return call(() => request(`${GD}/records/${id}/void`, { method: 'POST', body: { reason } })) },
-  getGuidanceStats(threshold = 3) { return call(() => request(`${GD}/stats`, { params: { threshold } })) },
+  createGuidance(gdStudentId, body, params = {}) {
+    return call(() => request(`${GD}/${gdStudentId}`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  voidGuidance(id, reason, params = {}) {
+    return call(() => request(`${GD}/records/${id}/void`, { method: 'POST', params: withGraduationBatch(params), body: { reason } }))
+  },
+  getGuidanceStats(threshold = 3, params = {}) {
+    return call(() => request(`${GD}/stats`, { params: withGraduationBatch({ ...params, threshold }) }))
+  },
   getGuidancePlans(params = {}) { return callList(GP, params) },
-  createGuidancePlan(gdStudentId, body) { return call(() => request(`${GP}/${gdStudentId}`, { method: 'POST', body })) },
-  checkinGuidancePlan(planId, body = {}) { return call(() => request(`${GP}/${planId}/checkin`, { method: 'POST', body })) },
-  cancelGuidancePlan(planId, reason) { return call(() => request(`${GP}/${planId}/cancel`, { method: 'POST', body: { reason } })) },
+  createGuidancePlan(gdStudentId, body, params = {}) {
+    return call(() => request(`${GP}/${gdStudentId}`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  checkinGuidancePlan(planId, body = {}, params = {}) {
+    return call(() => request(`${GP}/${planId}/checkin`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  cancelGuidancePlan(planId, reason, params = {}) {
+    return call(() => request(`${GP}/${planId}/cancel`, { method: 'POST', params: withGraduationBatch(params), body: { reason } }))
+  },
   getStudentEvals(params = {}) { return callList(SE, params) },
-  createStudentEval(gdStudentId, body) { return call(() => request(`${SE}/${gdStudentId}`, { method: 'POST', body })) },
-  submitStudentEval(evalId) { return call(() => request(`${SE}/records/${evalId}/submit`, { method: 'POST' })) },
-  getMidterm(gdStudentId) { return call(() => request(`${MT}/${gdStudentId}`)) },
-  checkMidterm(gdStudentId, body) { return call(() => request(`${MT}/${gdStudentId}/check`, { method: 'POST', body })) },
-  submitRectification(gdStudentId, content) { return call(() => request(`${MT}/${gdStudentId}/rectify`, { method: 'POST', body: { content } })) },
-  reviewRectification(gdStudentId, body) { return call(() => request(`${MT}/${gdStudentId}/rectify/review`, { method: 'POST', body })) },
-  getMidtermStats() { return call(() => request(`${MT}/stats`)) }
+  createStudentEval(gdStudentId, body, params = {}) {
+    return call(() => request(`${SE}/${gdStudentId}`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  submitStudentEval(evalId, params = {}) {
+    return call(() => request(`${SE}/records/${evalId}/submit`, { method: 'POST', params: withGraduationBatch(params) }))
+  },
+  getMidterm(gdStudentId, params = {}) {
+    return call(() => request(`${MT}/${gdStudentId}`, { params: withGraduationBatch(params) }))
+  },
+  checkMidterm(gdStudentId, body, params = {}) {
+    return call(() => request(`${MT}/${gdStudentId}/check`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  submitRectification(gdStudentId, content, params = {}) {
+    return call(() => request(`${MT}/${gdStudentId}/rectify`, {
+      method: 'POST', params: withGraduationBatch(params), body: { content },
+    }))
+  },
+  reviewRectification(gdStudentId, body, params = {}) {
+    return call(() => request(`${MT}/${gdStudentId}/rectify/review`, { method: 'POST', params: withGraduationBatch(params), body }))
+  },
+  getMidtermStats(params = {}) {
+    return call(() => request(`${MT}/stats`, { params: withGraduationBatch(params) }))
+  }
 }
 
 export default graduationTaskbookApi
