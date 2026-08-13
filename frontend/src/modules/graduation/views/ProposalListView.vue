@@ -83,7 +83,7 @@
                 <div style="margin-top: var(--space-3)">
                   <AppButton variant="primary" :loading="reminding" @click="remind(selectedRow)">发送开题催交提醒</AppButton>
                 </div>
-                <p class="mp-note" style="margin-top: var(--space-2)">当前仅记录线下催办留痕，不代表站内消息已送达；学生提交后将出现在「待审阅」页签。</p>
+                <p class="mp-note" style="margin-top: var(--space-2)">本操作会创建真实站内消息并写入催办留痕；学生提交后将进入「待审阅」页签。</p>
               </div>
             </section>
           </template>
@@ -295,7 +295,6 @@ export default {
       if (this.autoNext) this.nextPending()
     },
     onConflict() {
-      // 并发冲突：他人已批阅，刷新本页与计数
       this.loadStats()
       this.load()
     },
@@ -340,7 +339,7 @@ export default {
       this.reminding = true
       const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
       this.reminding = false
-      if (res.code === 0) toast.success('已记录对 ' + row.studentName + ' 的线下开题催办（未发送站内消息）')
+      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交站内消息并记录催办留痕')
       else toast.error(res.message || '催交失败')
     },
     async load() {
