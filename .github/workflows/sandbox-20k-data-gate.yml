@@ -1,0 +1,137 @@
+name: Sandbox 20K Real-School Data Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/services/sandbox_school_*.py
+      - backend/app/services/sandbox_service.py
+      - backend/app/api/v1/sandbox_story_api.py
+      - backend/app/api/v1/router.py
+      - backend/scripts/reset_sandbox_school.py
+      - backend/scripts/check_sandbox_20k_school.py
+      - backend/scripts/_seed_sandbox_coverage.py
+      - backend/tests/test_sandbox_school_blueprint.py
+      - backend/tests/test_sandbox_story_reset_route.py
+      - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
+      - .github/workflows/sandbox-20k-data-gate.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-20k-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DB_ENABLED: "true"
+  MOCK_LOGIN_ENABLED: "false"
+  JWT_SECRET: sandbox-20k-gate-secret-at-least-32-bytes
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/sandbox_20k_gate?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/sandbox_20k_gate?charset=utf8mb4
+  SENSITIVE_SEARCH_HMAC_KEY: sandbox-20k-stable-search-hmac-key-for-test-only
+  FAST_TEST_SCHEMA: "0"
+
+jobs:
+  mysql-20k-real-school:
+    name: MySQL 8 · 20K真实学校全量重建与对账
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: sandbox_20k_gate
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 安装冻结后端依赖
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Python编译与轻量数据规格合同
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m compileall -q app scripts tests
+          pytest -q tests/test_sandbox_school_blueprint.py tests/test_sandbox_story_reset_route.py -p no:warnings
+
+      - name: Alembic单头与MySQL空库升级
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l)" -eq 1
+          alembic upgrade head
+          alembic current
+
+      - name: 全量生成20K真实学校演示数据
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/sandbox-20k
+          /usr/bin/time -v python scripts/reset_sandbox_school.py --confirm --profile standard-20k \
+            2>&1 | tee test-results/sandbox-20k/rebuild.log
+
+      - name: 20K只读数据与关系验收
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/check_sandbox_20k_school.py \
+            2>&1 | tee test-results/sandbox-20k/acceptance.log
+
+      - name: 固化MySQL规模摘要
+        if: always()
+        working-directory: backend
+        shell: bash
+        run: |
+          set +e
+          mkdir -p test-results/sandbox-20k
+          mysql -h127.0.0.1 -uroot -proot sandbox_20k_gate -N -e '
+            SELECT "students", COUNT(*) FROM t_student_profile WHERE tenant_id=1000000000000000007;
+            SELECT "student_account_links", COUNT(*) FROM t_student_account_link WHERE tenant_id=1000000000000000007 AND link_status="ACTIVE";
+            SELECT "academic_grades", COUNT(*) FROM t_acad_grade WHERE tenant_id=1000000000000000007;
+            SELECT "internship_checkins", COUNT(*) FROM t_internship_checkin WHERE tenant_id=1000000000000000007;
+            SELECT "exam_seats", COUNT(*) FROM t_aa_exam_room_student WHERE tenant_id=1000000000000000007;
+            SELECT "dorm_beds", COUNT(*) FROM t_affairs_dorm_bed WHERE tenant_id=1000000000000000007;
+          ' > test-results/sandbox-20k/mysql-row-counts.txt 2>&1
+          {
+            echo "commitSha=${GITHUB_SHA}"
+            echo "workflowRun=${GITHUB_RUN_ID}"
+            echo "mysql=8.0"
+            echo "profile=standard-20k"
+            echo "referenceDate=2026-08-13"
+          } > test-results/sandbox-20k/gate-summary.txt
+
+      - name: 上传20K验收证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-20k-real-school-${{ github.sha }}
+          path: backend/test-results/sandbox-20k
+          if-no-files-found: error
+          retention-days: 14
