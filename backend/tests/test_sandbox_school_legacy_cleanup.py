@@ -1,4 +1,4 @@
-"""旧假身份清洗数据库合同：先造脏，再证明只删高置信旧 seed 身份。"""
+"""旧假身份清洗数据库合同：先识别历史残留、再造脏，证明只删高置信旧 seed 身份。"""
 from __future__ import annotations
 
 
@@ -26,6 +26,13 @@ def test_legacy_identity_cleanup_removes_only_old_seed_account(db_mode):
             )).all()
         }
         assert set(fixed_before) == {"admin2", "teacher2", "student2"}
+
+        # legacy-100 自己就会经旧岗位实习种子产生 demo_intern_mentor；
+        # 这正是 standard-20k 重建时必须清掉的历史残留，不能在测试里假装基线为 0。
+        baseline = legacy_identity_report(db, SANDBOX_TID)
+        assert baseline["legacyUsers"] >= 1
+        assert "demo_intern_mentor" in baseline["legacyLogins"]
+        assert baseline["passed"] is False
 
         role = db.scalars(select(Role).where(
             Role.tenant_id == SANDBOX_TID,
@@ -55,13 +62,16 @@ def test_legacy_identity_cleanup_removes_only_old_seed_account(db_mode):
         db.commit()
 
         dirty = legacy_identity_report(db, SANDBOX_TID)
-        assert dirty["legacyUsers"] == 1
-        assert dirty["legacyUserRoles"] == 1
+        assert dirty["legacyUsers"] == baseline["legacyUsers"] + 1
+        assert dirty["legacyUserRoles"] == baseline["legacyUserRoles"] + 1
+        assert "t_dong_kejian" in dirty["legacyLogins"]
         assert dirty["passed"] is False
 
         result = clean_legacy_identity_residue(db, SANDBOX_TID)
-        assert result["removedUsers"] == 1
-        assert result["removedUserRoles"] == 1
+        assert result["removedUsers"] == dirty["legacyUsers"]
+        assert result["removedUserRoles"] == dirty["legacyUserRoles"]
+        assert result["after"]["legacyUsers"] == 0
+        assert result["after"]["legacyUserRoles"] == 0
         assert result["after"]["passed"] is True
 
         fixed_after = {
