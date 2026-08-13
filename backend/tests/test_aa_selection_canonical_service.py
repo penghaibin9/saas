@@ -93,8 +93,9 @@ def test_locked_adjustment_uses_exact_r9_consumers_and_new_roster_version():
 
     assert "def adjust_record(user, record_id, reason)" in source
     assert "record.status != _base._REC_LOCKED" in source
-    assert "consumer_counts(db, int(course.teaching_task_id), student_id=int(record.student_id))" in source
-    assert "已产生考勤、成绩或评教等下游事实" in source
+    assert "consumer_counts(db, teaching_task_id=int(course.teaching_task_id))" in source
+    assert 'counts.get("TOTAL")' in source
+    assert "已冻结考勤、考务或成绩名单" in source
     assert "record.status = _base._REC_DROPPED" in source
     assert "AaSelectionCourse.selected_count - 1" in source
     assert "db.flush()" in source

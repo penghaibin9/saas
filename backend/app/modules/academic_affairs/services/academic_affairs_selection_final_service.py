@@ -446,9 +446,9 @@ def adjust_record(user, record_id, reason):
         if not course.teaching_task_id:
             raise AppException("DATA_CONFLICT", "选课课程未绑定教学任务，无法调整正式名单", http_status=409)
 
-        counts = consumer_counts(db, int(course.teaching_task_id), student_id=int(record.student_id))
-        if any(int(value or 0) > 0 for value in counts.values()):
-            raise _base._core._invalid("该学生已产生考勤、成绩或评教等下游事实，不可直接退课")
+        counts = consumer_counts(db, teaching_task_id=int(course.teaching_task_id))
+        if int(counts.get("TOTAL") or 0) > 0:
+            raise _base._core._invalid("该教学任务已冻结考勤、考务或成绩名单，不可直接调整正式名单")
 
         record.status = _base._REC_DROPPED
         record.dropped_at = datetime.utcnow()
