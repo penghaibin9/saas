@@ -141,7 +141,7 @@ backup_file=""
 BACKUP_TIMER_UNIT="school-lifecycle-backup.timer"
 BACKUP_SERVICE_UNIT="school-lifecycle-backup.service"
 BACKUP_TIMER_WAS_ACTIVE=0
-BACKUP_TIMER_QUIESCED=0
+BACKUP_TIMER_PAUSED=0
 
 quiesce_scheduled_backup() {
   # The timer is release-external state: preserve whether it was actually active instead of
@@ -150,7 +150,7 @@ quiesce_scheduled_backup() {
   if systemctl is-active --quiet "$BACKUP_TIMER_UNIT" 2>/dev/null; then
     BACKUP_TIMER_WAS_ACTIVE=1
   fi
-  BACKUP_TIMER_QUIESCED=1
+  BACKUP_TIMER_PAUSED=1
   if [ "$BACKUP_TIMER_WAS_ACTIVE" = "1" ]; then
     systemctl stop "$BACKUP_TIMER_UNIT"
   fi
@@ -160,13 +160,13 @@ quiesce_scheduled_backup() {
 }
 
 restore_scheduled_backup_timer() {
-  if [ "$BACKUP_TIMER_QUIESCED" != "1" ]; then
+  if [ "$BACKUP_TIMER_PAUSED" != "1" ]; then
     return 0
   fi
   if [ "$BACKUP_TIMER_WAS_ACTIVE" = "1" ]; then
     systemctl start "$BACKUP_TIMER_UNIT"
   fi
-  BACKUP_TIMER_QUIESCED=0
+  BACKUP_TIMER_PAUSED=0
 }
 
 restore_previous_systemd_units() {
@@ -184,7 +184,7 @@ restore_previous_systemd_units() {
 release_failure_guard() {
   status=$?
   trap - EXIT
-  if [ "$status" -ne 0 ] && [ "$BACKUP_TIMER_QUIESCED" = "1" ]; then
+  if [ "$status" -ne 0 ] && [ "$BACKUP_TIMER_PAUSED" = "1" ]; then
     # Recovery itself must not race a timer event. A timer that was originally active is restored
     # only after rollback and the previous service set are healthy again.
     systemctl stop "$BACKUP_TIMER_UNIT" "$BACKUP_SERVICE_UNIT" >/dev/null 2>&1 || true
@@ -227,7 +227,7 @@ release_failure_guard() {
       fi
     fi
   fi
-  if [ "$BACKUP_TIMER_QUIESCED" = "1" ]; then
+  if [ "$BACKUP_TIMER_PAUSED" = "1" ]; then
     if ! restore_scheduled_backup_timer; then
       echo "CRITICAL: application state recovered but the scheduled backup timer could not be restored." >&2
       exit 93
