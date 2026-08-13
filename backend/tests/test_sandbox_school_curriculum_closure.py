@@ -43,3 +43,10 @@ def test_three_year_curriculum_credit_structure_and_term_truth():
         assert len(plan) == 37
         assert set(plan) == set(public_codes + major_codes)
         assert all(1 <= term <= 6 for term in plan.values())
+
+
+def test_professional_course_category_matches_final_three_year_modules():
+    from app.services.sandbox_school_professional_runner import _canonical_major_course_category
+
+    expected = ["MAJOR_CORE"] * 17 + ["PRACTICE"] * 6
+    assert [_canonical_major_course_category(index) for index in range(23)] == expected
