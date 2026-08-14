@@ -21,7 +21,7 @@ concatenation: a key already near the 80-char column limit would otherwise lose
 the very suffix that makes it unique, and the constraint would still fail.
 
 Revision ID: 20260813_ix_incident_idem
-Revises: msg_channel_delivery_20260813
+Revises: 20260810_grad_audit_text
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import sqlalchemy as sa
 
 
 revision = "20260813_ix_incident_idem"
-down_revision = "msg_channel_delivery_20260813"
+down_revision = "20260810_grad_audit_text"
 branch_labels = None
 depends_on = None
 
