@@ -207,7 +207,11 @@ def restore_sales_storylines(db, tenant_id: int) -> dict:
     )
     db.add(workorder)
     db.flush()
-    chen_class = db.get(SchoolClass, chen.class_id)
+    chen_class = db.scalars(select(SchoolClass).where(
+        SchoolClass.id == chen.class_id,
+        SchoolClass.tenant_id == tenant_id,
+        SchoolClass.is_deleted.is_(False),
+    )).first()
     if chen_class is None or not chen_class.counselor_id:
         raise RuntimeError("陈思雨班级缺少辅导员")
     db.add(UnifiedTodo(
@@ -258,7 +262,7 @@ def restore_sales_storylines(db, tenant_id: int) -> dict:
         remark=STORY_REMARK,
     ))
 
-    db.commit()
+    db.flush()
     story_todos = int(db.scalar(select(func.count()).select_from(UnifiedTodo).where(
         UnifiedTodo.tenant_id == tenant_id,
         UnifiedTodo.source_biz_type == STORY_BIZ_TYPE,
