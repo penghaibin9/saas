@@ -126,6 +126,7 @@ export default {
       rows: [],
       selected: [],
       batchSubmitting: false,
+      workContextReady: false,
       filters: { status: 'PENDING_REVIEW' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
@@ -221,9 +222,10 @@ export default {
     }
   },
   created() {
-    // 页签走 URL 的 panel，applyPanel 已按默认页码拉过一次；
-    // 这里只找回页码：老师在第 3 页批完一条，回来不该被丢回第 1 页。
-    if (restoreWorkContext(this, WORK_FIELDS)) this.load()
+    // immediate watcher 会先按 URL 页签加载默认页码，但首次 load 不得覆盖已有工作上下文。
+    const restored = restoreWorkContext(this, WORK_FIELDS)
+    this.workContextReady = true
+    if (restored) this.load()
   },
   watch: {
     '$route.query.type': {
@@ -333,7 +335,7 @@ export default {
       }
     },
     async load() {
-      captureWorkContext(this, WORK_FIELDS)
+      if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
       const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize, batchId: this.batchStore.selectedBatchId }
