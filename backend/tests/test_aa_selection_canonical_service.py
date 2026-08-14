@@ -89,17 +89,20 @@ def test_selection_source_uses_course_code_and_effective_grades_not_course_name(
 
 
 def test_locked_adjustment_uses_exact_r9_consumers_and_new_roster_version():
-    core = (SERVICES / "academic_affairs_selection_core_service.py").read_text(encoding="utf-8")
+    source = (SERVICES / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
 
-    # 当前 Router 的正式人工调整入口是 core.adjust_record：只能处理 LOCKED 记录，
-    # 同事务转 DROPPED、回退容量并写审计；不得再验证已经废弃的 admin_drop 兼容实现。
-    assert "def adjust_record(user, record_id, reason)" in core
-    assert "rec.status != _REC_LOCKED" in core
-    assert "AaSelectionRecord.status == _REC_LOCKED" in core
-    assert "AaSelectionRecord.status: _REC_DROPPED" in core
-    assert "AaSelectionCourse.selected_count - 1" in core
-    assert '"SELECTION_RECORD_ADJUST"' in core
-    assert "course_name ==" not in core
+    assert "def adjust_record(user, record_id, reason)" in source
+    assert "record.status != _base._REC_LOCKED" in source
+    assert "consumer_counts(db, teaching_task_id=int(course.teaching_task_id))" in source
+    assert 'counts.get("TOTAL")' in source
+    assert "已冻结考勤、考务或成绩名单" in source
+    assert "record.status = _base._REC_DROPPED" in source
+    assert "AaSelectionCourse.selected_count - 1" in source
+    assert "db.flush()" in source
+    assert "roster_projection.project_selection_course_locked(" in source
+    assert '"SELECTION_RECORD_ADJUST"' in source
+    assert "db.commit()" in source
+    assert "AaSelectionRecord(" not in source[source.index("def adjust_record(user, record_id, reason)"):]
 
 
 def test_lock_batch_validates_then_atomically_projects_roster():

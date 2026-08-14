@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/backend-d5-schedule-change
+    page: backend/app/modules/academic_affairs/routers/schedule_change_router.py
+    action: archive
+    fileCategory: MIXED
+    api: multiple; see notes
+    backendService: backend/app/modules/academic_affairs/routers/schedule_change_router.py
+    storageMode: mixed
+    authMode: existing endpoint guards; Move Only from academic_affairs.py
+    dataScope: existing academic-affairs schedule-change scope; Move Only
+    versioned: unknown
+    scanGated: unknown
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: '1'
+    notes: 'D5-S4 source-owner registration only. The scanner sees /schedule-change/archive because the business route name contains archive; this endpoint is a terminal-state business ledger list, not a new file archive contract. schedule_change_router.py Move Only reuses legacy DTOs, _SC_REVIEW and sched_change_svc.'

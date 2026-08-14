@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/backend-d5-schedule-core
+    page: backend/app/modules/academic_affairs/routers/schedule_core_router.py
+    action: import
+    fileCategory: MIXED
+    api: multiple; see notes
+    backendService: backend/app/modules/academic_affairs/routers/schedule_core_router.py
+    storageMode: mixed
+    authMode: existing endpoint guard; Move Only from academic_affairs.py
+    dataScope: existing academic-affairs schedule scope; Move Only
+    versioned: unknown
+    scanGated: unknown
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: '1'
+    notes: 'D5-S1 source-owner registration only. schedule_core_router.py Move Only reuses legacy DTO, permissions and sched_svc. Scanner sees /schedule-batches/{batchId}/import because the route name contains import; this canonical endpoint accepts structured ScheduleImportBody rather than a new file-upload contract. /schedule/export remains owned by academic_export_compat_router.'

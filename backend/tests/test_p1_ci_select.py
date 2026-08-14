@@ -64,8 +64,6 @@ def test_academic_change_runs_stable_gate_and_changed_regression_only():
 
 
 def test_academic_source_only_still_runs_permission_gate():
-    """P1 批次D：教务源码改动除了权限/路由闸门，还必须带上已知的 MySQL 并发回归——
-    行锁/唯一约束竞态原来只有每日定时全量才受保护，PR 阶段一路绿灯。"""
     mod = _load()
     targets = mod.select([
         "backend/app/modules/academic_affairs/routers/stats_snapshot_router.py",
@@ -80,8 +78,73 @@ def test_academic_source_only_still_runs_permission_gate():
     ]
 
 
+def test_roster_registration_owner_change_selects_d2_domain_regressions():
+    mod = _load()
+    targets = mod.select([
+        "backend/app/modules/academic_affairs/routers/roster_registration_router.py",
+    ])
+    for expected in (
+        "tests/test_aa_registration.py",
+        "tests/test_aa_roster_correction.py",
+        "tests/test_student_sensitive_contract.py",
+        "tests/test_academic_export_compat.py",
+        "tests/test_aa_p0_authz.py",
+        "tests/test_aa_route_registration_main_compat.py",
+    ):
+        assert expected in targets
+
+
+def test_schedule_import_service_change_selects_semantics_and_query_contracts():
+    mod = _load()
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_import_preload.py",
+    ):
+        targets = mod.select([path])
+        assert "tests/test_aa_schedule_import_dry_run.py" in targets
+        assert "tests/test_aa_schedule_import_batch_queries.py" in targets
+        assert "tests/test_aa_p0_authz.py" in targets
+        assert "tests/test_aa_route_registration_main_compat.py" in targets
+
+
+def test_schedule_conflict_service_change_selects_semantics_and_scale_contracts():
+    mod = _load()
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_schedule_conflict_index.py",
+    ):
+        targets = mod.select([path])
+        assert "tests/test_aa_scheduling.py" in targets
+        assert "tests/test_aa_schedule_conflict_index.py" in targets
+        assert "tests/test_aa_p0_authz.py" in targets
+        assert "tests/test_aa_route_registration_main_compat.py" in targets
+
+
+def test_d6_selection_owner_changes_select_truth_scope_and_scale_contracts():
+    mod = _load()
+    required = {
+        "tests/test_aa_selection.py",
+        "tests/test_aa_d6_selection_truth_contract.py",
+        "tests/test_aa_selection_read_production_contract.py",
+        "tests/test_aa_selection_scope_mysql.py",
+        "tests/test_aa_selection_round_concurrency.py",
+        "tests/test_aa_selection_lock_scaling.py",
+        "tests/test_aa_teaching_roster_unification.py",
+        "tests/test_aa_p0_authz.py",
+        "tests/test_aa_route_registration_main_compat.py",
+    }
+    for path in (
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_service.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_read_guard.py",
+        "backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py",
+    ):
+        targets = set(mod.select([path]))
+        assert required <= targets
+
+
 def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
-    """canonical workflow 通过 shell array 调 pytest，选择器必须先展开 glob。"""
     mod = _load()
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
@@ -102,7 +165,6 @@ def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
 
 
 def test_large_pr_uses_full_regression_with_main_failure_baseline():
-    """大 PR 必须跑全量；只豁免 main 已知失败，禁止新增失败。"""
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert 'push:\n    branches: [ "main" ]' in workflow

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import success
 from app.core.security import get_current_user
-from app.modules.academic_affairs.services import academic_affairs_evaluation_service as service
+from app.modules.academic_affairs.services import academic_affairs_evaluation_student_read_service as service
 
 router = APIRouter(
     prefix="/academic-affairs/evaluation",

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="注册名单"
-    subtitle="批次内已注册学生；从下方检索在籍学生并逐个注册"
+    subtitle="系统先圈定权威候选并解释资格，再批量预览确认；已注册事实在下方持续可追溯"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,16 +10,14 @@
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard title="注册学生">
-        <div class="aa-reg-search">
-          <AppStudentPicker v-model="selectedStudentId" class="aa-input--grow" placeholder="按姓名/学号检索在籍学生" :disabled="!!registeringId" @change="onStudentChange" />
-        </div>
+      <AppSectionCard title="批量办理注册">
+        <AaRegistrationBulkPanel :batch-id="batchId" @applied="load" />
       </AppSectionCard>
 
       <AppSectionCard title="已注册名单">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="本批次暂无注册记录" description="用上方检索为学生完成注册" />
+        <EmptyState v-else-if="!rows.length" title="本批次暂无注册记录" description="完成上方批量预览并确认后，正式注册事实会出现在这里" />
         <DataTable
           v-else
           :columns="columns"
@@ -38,16 +36,26 @@
 </template>
 
 <script>
-/** 注册名单（/admin/academic-affairs/registration/:batchId）：注册记录 + roster 检索注册。 */
+/** 注册名单：D2-U 以权威候选→批量预览→逐项 canonical 注册替代人工逐个挑学生提交。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppStudentPicker } from '@/components/common'
+import { AppSectionCard, AppStatusTag } from '@/components/common'
+import AaRegistrationBulkPanel from '@/modules/academicAffairs/components/AaRegistrationBulkPanel.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaRegistrationDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppStudentPicker },
+  components: {
+    ModulePageShell,
+    DataTable,
+    LoadingState,
+    ErrorState,
+    EmptyState,
+    AppButton,
+    AppSectionCard,
+    AppStatusTag,
+    AaRegistrationBulkPanel
+  },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -55,8 +63,6 @@ export default {
       error: '',
       rows: [],
       pagination: { page: 1, pageSize: 50, total: 0 },
-      selectedStudentId: '',
-      registeringId: '',
       columns: [
         { key: 'realName', title: '学生' },
         { key: 'registerAt', title: '注册时间' },
@@ -77,28 +83,13 @@ export default {
       this.pagination.page = page
       this.load()
     },
-    onStudentChange(value, items) {
-      const item = items?.[0]
-      if (!value || !item) return
-      this.doRegister(item.raw || { studentId: value, realName: item.label })
-    },
-    async doRegister(s) {
-      if (this.registeringId) return
-      this.registeringId = s.studentId
-      const res = await academicAffairsApi.registerStudent(this.batchId, s.studentId)
-      this.registeringId = ''
-      if (res.code === 0) {
-        toast.success(`${s.realName} 注册成功`)
-        this.selectedStudentId = ''
-        this.load()
-      } else {
-        toast.error(res.message || '注册失败')
-      }
-    },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getRegistrations(this.batchId, { page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await academicAffairsApi.getRegistrations(this.batchId, {
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize
+      })
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
@@ -113,9 +104,4 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-reg-search { display: flex; gap: 12px; align-items: center; }
-.aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
-.aa-input--grow { flex: 1; }
-.aa-cand-list { list-style: none; margin: 12px 0 0; padding: 0; }
-.aa-cand-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }
 </style>

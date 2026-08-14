@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/backend-d5-scheduling-operations
+    page: backend/app/modules/academic_affairs/routers/scheduling_operations_router.py
+    action: download+import+archive
+    fileCategory: MIXED
+    api: multiple; see notes
+    backendService: backend/app/modules/academic_affairs/routers/scheduling_operations_router.py
+    storageMode: mixed
+    authMode: existing endpoint guards; Move Only from academic_affairs.py
+    dataScope: existing academic-affairs scheduling scope; Move Only
+    versioned: unknown
+    scanGated: unknown
+    preview: false
+    download: true
+    import: true
+    export: false
+    archive: true
+    status: needs-verification
+    risk: P0
+    targetPhase: '1'
+    notes: 'D5-S2 source-owner registration only. scheduling_operations_router.py Move Only reuses legacy DTOs, xlsx_util, sched_svc, scheduling_svc and autosched_svc. It includes the existing schedule XLSX template/download and XLSX upload/import paths plus schedule archive; no new file contract is introduced. /scheduling/rules remains owned by scheduling_rule_router and /schedule/export remains owned by academic_export_compat_router.'
