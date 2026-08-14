@@ -13,7 +13,7 @@ on:
       - ".github/workflows/internship-enterprise-portal.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: enterprise-portal-${{ github.event.pull_request.number || github.ref }}
@@ -32,15 +32,29 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - name: Install enterprise portal dependencies
+      - name: Detect dependency lock
+        id: dependency-lock
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Bootstrap enterprise portal dependencies
+        if: steps.dependency-lock.outputs.present != 'true'
         run: npm install --no-audit --no-fund
-      - name: Capture generated dependency lock
-        uses: actions/upload-artifact@v7
-        with:
-          name: a02-generated-package-lock
-          path: enterprise-portal/package-lock.json
-          if-no-files-found: error
-          retention-days: 1
+      - name: Install locked enterprise portal dependencies
+        if: steps.dependency-lock.outputs.present == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Commit generated dependency lock
+        if: github.event_name == 'push' && github.ref == 'refs/heads/agent/internship-e-a02-enterprise-portal' && steps.dependency-lock.outputs.present != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m "build(internship-ui): lock enterprise portal dependencies"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
       - name: A02 authority and UX contract tests
         run: npm test
       - name: Enterprise portal lint
