@@ -20,12 +20,19 @@ test('production audit repair card is narrow and keeps shared foundations denied
     'scripts/check/check-npm-production-audit.test.mjs',
     '.github/security/npm-production-audit-waivers.json',
     '.github/workflows/production-dependency-audit.yml',
+    'frontend/package.json',
+    'frontend/package-lock.json',
+    'student-portal/package.json',
+    'student-portal/package-lock.json',
+    'miniapp/package.json',
+    'miniapp/package-lock.json',
     'backend/app/modules/graduation/services/graduation_archive_batch_scale.py',
     'backend/app/modules/graduation/services/graduation_archive_batch_consistency.py',
     'backend/tests/test_graduation_v9_u7_batch_production.py',
   ], 'AUDIT_REPAIR'), [])
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'AUDIT_REPAIR')[0], /shared foundation denied/)
   assert.match(validateFiles(['.github/workflows/ci.yml'], 'AUDIT_REPAIR')[0], /out of AUDIT_REPAIR allowlist/)
+  assert.match(validateFiles(['e2e/package.json'], 'AUDIT_REPAIR')[0], /out of AUDIT_REPAIR allowlist/)
 })
 
 test('M1 allows shared batch adapters and the migrated round5 contract, but denies shared HTTP foundation', () => {
@@ -194,6 +201,12 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     '.github/security/npm-production-audit-waivers.json',
     'scripts/check/check-npm-production-audit.mjs',
     'scripts/check/check-npm-production-audit.test.mjs',
+    'frontend/package.json',
+    'frontend/package-lock.json',
+    'student-portal/package.json',
+    'student-portal/package-lock.json',
+    'miniapp/package.json',
+    'miniapp/package-lock.json',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
     'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',

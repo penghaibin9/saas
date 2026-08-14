@@ -12,6 +12,7 @@ const CARD_ALLOW = {
     /^scripts\/check\/check-npm-production-audit(?:\.test)?\.mjs$/,
     /^\.github\/security\/npm-production-audit-waivers\.json$/,
     /^\.github\/workflows\/production-dependency-audit\.yml$/,
+    /^(?:frontend|student-portal|miniapp)\/package(?:-lock)?\.json$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_archive_batch_(?:scale|consistency)\.py$/,
     /^backend\/tests\/test_graduation_v9_u7_batch_production\.py$/,
   ],
