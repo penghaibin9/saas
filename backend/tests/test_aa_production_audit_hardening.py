@@ -13,6 +13,7 @@ from app.modules.academic_affairs.routers import roster_registration_router
 from app.modules.academic_affairs.routers import scheduling_operations_router
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as guard
 from app.modules.academic_affairs.services import academic_affairs_registration_read_guard as registration_guard
+from app.modules.academic_affairs.services import academic_affairs_roster_export_guard as roster_export_guard
 from app.modules.academic_affairs.services import academic_affairs_selection_read_service as selection_read
 from app.modules.academic_affairs.services import academic_affairs_service as academic_read
 
@@ -58,6 +59,16 @@ def test_roster_hot_reads_are_sql_paged_and_aggregated_on_existing_owner():
     summary_source = inspect.getsource(guard._roster_status_summary_sql)
     assert ".group_by(StudentProfile.student_status)" in summary_source
     assert "select(func.count()).select_from(AaStatusChange)" in summary_source
+
+
+def test_roster_full_export_is_independent_from_interactive_page_cap():
+    assert academic_read.export_roster_xlsx is roster_export_guard.export_roster_xlsx
+    source = inspect.getsource(roster_export_guard.export_roster_xlsx)
+    assert "10000" not in source
+    assert "select(StudentProfile)" in source
+    assert "build_ledger_xlsx" in source
+    assert "mask_id_card_encrypted" in source
+    assert "legacy._audit" in source
 
 
 def test_registration_archive_is_school_scoped_and_never_truncated_at_10k():
