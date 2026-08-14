@@ -6,6 +6,7 @@
         <h1>实习选岗</h1>
         <p>浏览学校认可实习岗位，完善材料后选择 1–3 个志愿并整组投递。</p>
       </div>
+      <button type="button" class="profile-entry" @click="router.push('/internship/profile')">实习档案</button>
     </header>
 
     <div v-if="loading" class="selection-state">正在加载当前招聘季…</div>
@@ -196,6 +197,7 @@ onBeforeUnmount(() => {
 .selection-kicker { margin:0 0 4px; color:#2f6bff; font-size:12px; font-weight:600; }
 h1 { margin:0; color:#1a1a1a; font-size:24px; line-height:1.35; }
 .selection-header p:last-child { margin:6px 0 0; color:#666; font-size:13px; }
+.profile-entry { flex-shrink:0; height:36px; padding:0 13px; border:1px solid #adc6ff; border-radius:7px; background:#fff; color:#2f6bff; cursor:pointer; font-weight:600; }
 .selection-state { display:flex; align-items:center; gap:12px; padding:18px 20px; border:1px solid #eef0f3; border-radius:12px; background:#fff; color:#595959; }
 .selection-state--error { align-items:flex-start; flex-direction:column; border-color:#ffccc7; background:#fff2f0; color:#a8071a; }
 .selection-state button,.catalog-state button,.catalog-pagination button { border:0; border-radius:6px; padding:7px 12px; background:#2f6bff; color:#fff; cursor:pointer; }
@@ -219,6 +221,7 @@ h1 { margin:0; color:#1a1a1a; font-size:24px; line-height:1.35; }
 }
 @media (max-width:899px) {
   .selection-page { padding:12px; }
+  .selection-header { align-items:flex-start; flex-direction:column; }
   .catalog-workspace { grid-template-columns:1fr; }
   .catalog-summary { align-items:flex-start; flex-direction:column; }
   .position-list { max-height:none; overflow:visible; }
