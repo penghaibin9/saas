@@ -41,7 +41,6 @@
                 v-if="current.status === 'COURSE_CONFIRMED'"
                 size="small"
                 variant="primary"
-                :disabled="!readiness || !readiness.canPublish"
                 @click="lc('publishBatch', '发布')"
               >发布</AppButton>
               <AppButton v-if="current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
@@ -49,7 +48,11 @@
             </div>
           </div>
 
-          <AppInlineAlert v-if="readinessError" type="danger" :description="'发布就绪检查失败：' + readinessError" />
+          <AppInlineAlert
+            v-if="readinessError"
+            type="danger"
+            :description="'发布就绪检查失败：' + readinessError + '；仍可尝试发布，由正式门禁最终判定'"
+          />
           <div v-if="readiness" class="aaexam-readiness" aria-label="考务发布就绪摘要">
             <div class="aaexam-readiness__item">
               <span>应考课程</span>
@@ -77,16 +80,16 @@
               <small>容量不足或尚无考场</small>
             </div>
             <div class="aaexam-readiness__item is-conclusion" :class="readiness.canPublish ? 'is-ready' : 'is-risk'">
-              <span>发布结论</span>
-              <strong>{{ readiness.canPublish ? '可以发布' : '暂不可发布' }}</strong>
-              <small>{{ readiness.canPublish ? '正式发布门禁已满足' : '先处理下方阻断项' }}</small>
+              <span>就绪提示</span>
+              <strong>{{ readiness.canPublish ? '就绪检查通过' : '存在待处理提示' }}</strong>
+              <small>{{ readiness.canPublish ? '仍以正式发布校验为准' : '可点击发布，由正式门禁最终判定' }}</small>
             </div>
           </div>
 
           <AppInlineAlert
             v-if="readiness && !readiness.canPublish && readiness.blockingReasons && readiness.blockingReasons.length"
             type="warning"
-            :description="'发布前还需处理：' + readiness.blockingReasons.join('；')"
+            :description="'就绪检查提示：' + readiness.blockingReasons.join('；')"
           />
 
           <div v-if="stats" class="aaexam-stats">

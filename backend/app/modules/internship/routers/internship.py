@@ -336,10 +336,15 @@ def risks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 @router.post("/risks/export", summary="风险处置台账导出 Excel(.xlsx)")
 def risks_export(keyword: Optional[str] = None, batchId: Optional[str] = None,
                  level: Optional[str] = None, status: Optional[str] = None,
+                 riskCode: Optional[str] = None,
                  user=Depends(require_permission("internship.risk.export"))):
-    data = risk.export_risks(keyword=keyword, batch_id=batchId, level=level, status=status, user=user)
+    # riskCode 必须与 GET /risks 同名参数一一对应：前端「风险聚焦」标签和导出按钮
+    # 共用同一份 filters，此处漏声明会被 FastAPI 静默丢弃，导出比页面多出数据（U14）。
+    data = risk.export_risks(keyword=keyword, batch_id=batchId, level=level, status=status,
+                             risk_code=riskCode, user=user)
     audit_log.record("导出风险处置台账", "internship-risk:export",
-                     detail={"rowCount": data["rowCount"], "batchId": batchId})
+                     detail={"rowCount": data["rowCount"], "batchId": batchId,
+                             "riskCode": riskCode or ""})
     return success(data)
 
 

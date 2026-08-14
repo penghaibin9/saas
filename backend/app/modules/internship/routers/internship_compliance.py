@@ -34,6 +34,23 @@ def compliance_workbench(
     return success(workbench.get_workbench(batch_id, user))
 
 
+@router.get("/workbench/{batch_id}/summary", summary="合规工作台首屏：批次信息 + 6 项统计数字")
+def compliance_workbench_summary(
+    batch_id: str,
+    user=Depends(require_permission("internship.compliance.view")),
+):
+    return success(workbench.get_workbench_summary(batch_id, user))
+
+
+@router.get("/workbench/{batch_id}/groups/{group}", summary="合规工作台按 Tab 懒加载分组明细")
+def compliance_workbench_group(
+    batch_id: str,
+    group: str,
+    user=Depends(require_permission("internship.compliance.view")),
+):
+    return success(workbench.get_workbench_group(batch_id, group, user))
+
+
 @router.post("/workbench/enterprise-evals/{eval_id}/review")
 def workbench_enterprise_eval_review(
     eval_id: str,
