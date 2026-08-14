@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
 from app.models import (
@@ -98,6 +99,20 @@ def review_plan(pid, action, user=None, expected_version=None, comment=""):
         return {"id": str(x.id), "status": x.status, "version": int(x.version or 0)}
 
 
+def _idempotent_result(row) -> dict:
+    return {"id": str(row.id), "status": row.status,
+            "version": int(row.version or 0), "idempotent": True}
+
+
+def _find_by_idempotency_key(db, key: str, *, include_deleted: bool = False):
+    stmt = select(InternshipIncident).where(
+        InternshipIncident.tenant_id == _tid(),
+        InternshipIncident.idempotency_key == key)
+    if not include_deleted:
+        stmt = stmt.where(InternshipIncident.is_deleted.is_(False))
+    return db.scalars(stmt).first()
+
+
 def report_incident(body, user=None):
     b = dict(body or {})
     key = str(b.get("idempotencyKey") or "").strip()
@@ -111,13 +126,9 @@ def report_incident(body, user=None):
             rec = assert_internship_record_scope(db, b["internshipId"], user, "事故上报")
             b["studentId"], b["batchId"], b["companyId"] = (
                 rec.student_id, rec.batch_id, rec.enterprise_id)
-        existing = db.scalars(select(InternshipIncident).where(
-            InternshipIncident.tenant_id == _tid(),
-            InternshipIncident.idempotency_key == key,
-            InternshipIncident.is_deleted.is_(False))).first()
+        existing = _find_by_idempotency_key(db, key)
         if existing:
-            return {"id": str(existing.id), "status": existing.status,
-                    "version": int(existing.version or 0), "idempotent": True}
+            return _idempotent_result(existing)
         no = f"INC-{datetime.utcnow():%Y%m%d%H%M%S%f}"
         x = InternshipIncident(
             tenant_id=_tid(), incident_no=no,
@@ -135,7 +146,19 @@ def report_incident(body, user=None):
             file_ids=b.get("fileIds") or [], reported_by_name=_op(user),
             reported_at=datetime.utcnow(), idempotency_key=key, status="REPORTED")
         db.add(x)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            # 并发穿透了应用层查重，由 uk_ix_incident_idem 兜底。输家绝不能看到 500：
+            # 同一幂等键返回赢家的幂等结果，其它约束冲突降级为可重试的业务冲突。
+            db.rollback()
+            winner = _find_by_idempotency_key(db, key, include_deleted=True)
+            if winner is None:
+                raise AppException("DATA_CONFLICT", "事故上报写入冲突，请重试") from None
+            if winner.is_deleted:
+                raise AppException(
+                    "DATA_CONFLICT", "该幂等键已被历史事故占用，请更换 idempotencyKey") from None
+            return _idempotent_result(winner)
         if x.internship_id and x.severity in ("HIGH", "CRITICAL"):
             r = RiskRecord(
                 tenant_id=_tid(), internship_id=x.internship_id,

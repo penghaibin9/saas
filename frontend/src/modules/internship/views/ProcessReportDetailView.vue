@@ -31,6 +31,8 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
           <div class="mp-card__body">
+            <!-- 同 WeeklyReportDetailView：提示条不能放进会被状态换掉的那块模板里 -->
+            <ConflictNotice :state="conflict" />
             <template v-if="detail.status === 'PENDING_REVIEW'">
               <div class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }" @click="action = 'APPROVE'">
                 <input type="radio" :checked="action === 'APPROVE'" />
@@ -67,16 +69,18 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internship/constants/presetPrompts'
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, conflict: emptyConflict() }
   },
   computed: {
     activeChips() { return this.action === 'RETURN' ? REJECT_PROCESS_REPORT : APPROVE_REPORT_SHORT },
@@ -95,6 +99,7 @@ export default {
       this.action = 'APPROVE'
       this.comment = ''
       this.formError = ''
+      this.conflict = emptyConflict()
       this.load()
     }
   },
@@ -131,6 +136,20 @@ export default {
         this.load()
         // 连续批阅：有下一条自动跳转，无则提示队列完成
         this.$refs.queueBar && this.$refs.queueBar.advance()
+      } else if (isConflict(res)) {
+        // 撞车：评语原样留着，只拉最新真值（含 version）让老师自己决定要不要重新提交
+        this.conflict = await captureConflict({
+          res,
+          kept: this.comment,
+          refresh: () => this.load(),
+          latest: () => {
+            if (!this.detail) throw new Error('最新详情未拉回')
+            return [
+              { label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },
+              { label: '最新评语', value: this.detail.reviewComment || '' }
+            ]
+          }
+        })
       } else {
         toast.error(res.message || '批阅失败')
       }

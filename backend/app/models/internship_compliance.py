@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, Integer, String, Text,
-                        Index, UniqueConstraint)
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Float, Integer,
+                        String, Text, Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -196,6 +196,15 @@ class InternshipSpecialFiling(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="DRAFT",
         comment="NOT_REQUIRED/DRAFT/PENDING_COLLEGE/PENDING_SCHOOL/APPROVED/REJECTED/WITHDRAWN/EXPIRED/SUPERSEDED")
+    # 申请人/审核人：service 与合规工作台一直在读写这四个字段，但模型和真实表里都没有，
+    # 于是 create() 直接 TypeError（POST /internship/filings 100% 500）。因为创建永远失败、
+    # 表里永远 0 行，review() 里那条「申请人与审核人必须分离」的守卫（它读
+    # requested_by_user_id）也就一直没机会执行——这个 bug 一直在自我掩盖。
+    # 迁移见 20260814_ix_filing_actor_cols。
+    requested_by_name: Mapped[str | None] = mapped_column(String(100))
+    requested_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     approved_by_name: Mapped[str | None] = mapped_column(String(100))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime)
@@ -253,6 +262,9 @@ class InternshipIncident(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_internship_incident"
     __table_args__ = (
         UniqueConstraint("tenant_id", "incident_no", name="uk_ix_incident_no"),
+        # 幂等键必须由数据库保证唯一：应用层「先查后插」挡不住并发穿透，
+        # 而事故 HIGH/CRITICAL 会派生 RiskRecord，重复穿透会同时造出重复事故、重复风险和重复审计。
+        UniqueConstraint("tenant_id", "idempotency_key", name="uk_ix_incident_idem"),
         Index("ix_ix_incident_batch", "tenant_id", "batch_id", "is_deleted"),
     )
 
@@ -292,13 +304,30 @@ class InternshipIncident(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class InternshipComplianceExemption(PKMixin, TenantMixin, CommonMixin, Base):
-    """单项合规豁免（有权限/原因/依据/有效期）。"""
+    """单项合规豁免（有权限/原因/依据/有效期）。
+
+    并发不变量：同一实习记录 + 同一检查项，同时只能有一条**待审核**豁免申请。
+    `grant_exemption()` 原本连查重都没写，连点两下就会落两条。
+
+    为什么只锁 PENDING_REVIEW、不含 APPROVED：已批准的豁免会随 `valid_until` 过期
+    （见 evaluate 里的 apply_exemption），过期后学校应当能重新申请。而 MySQL 生成列必须
+    是确定性表达式、不能引用 NOW()，所以"是否过期"无法进约束。已生效豁免的重复申请由
+    service 层显式校验拦截（那不是竞态——已有行是可见的），数据完整性只由本约束兜底。
+    见迁移 20260814_ix_first_create。
+    """
     __tablename__ = "t_internship_compliance_exemption"
     __table_args__ = (
         Index("ix_ix_exempt_intern", "tenant_id", "internship_id", "check_code", "is_deleted"),
+        UniqueConstraint("tenant_id", "active_pending_internship_id", "check_code",
+                         name="uk_ix_exempt_active_pending"),
     )
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING_REVIEW' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="仅待审核时等于 internship_id，用于唯一索引；其余为 NULL")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     check_code: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)

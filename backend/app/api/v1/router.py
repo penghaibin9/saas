@@ -5,6 +5,10 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
 from app.api.v1.route_registration import register_all_routes
+# 必须早于 register_all_routes：sandbox_story_api 会先把 platform.router 的历史
+# reset-sandbox-data 原位替换。这样即使循环导入导致应用提前复制主 Router，
+# 拿到的也已经是 standard-20k/legacy-100 兼容语义。
+from app.api.v1.sandbox_story_api import router as sandbox_story_router
 
 api_router = APIRouter()
 register_all_routes(api_router)
@@ -72,7 +76,21 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
         existing.add(signature)
 
 
+# standard-20k 的兼容路由已经在 register_all_routes 前注入 platform.router。
+# 此处仍执行一次签名去重再挂载同一 replacement，保证历史导入时序和普通导入时序
+# 最终都只有一个公开 POST 路由。
+_RESET_SANDBOX_PATH = "/platform/tenants/{tenant_id}/reset-sandbox-data"
+api_router.routes[:] = [
+    route for route in api_router.routes
+    if not (
+        isinstance(route, APIRoute)
+        and str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
+        and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+    )
+]
+
 for supplemental_router in (
+    sandbox_story_router,
     auth_browser_router,
     affairs_material_center_router,
     affairs_four_end_router,

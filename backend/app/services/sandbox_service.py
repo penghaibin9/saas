@@ -478,13 +478,29 @@ def _seed_sandbox_affairs_13a(db, stu) -> dict:
 
 
 def reset_sandbox(db, dry_run: bool = True) -> dict:
-    """重置沙箱：dry_run=True 只统计不落库；False 时删除并重建。返回报告。"""
+    """重置 legacy 沙箱；standard-20k 家族只能走专用维护/轻量故事线恢复链。"""
     counts = sandbox_row_counts(db)
     report = {"tenant": SANDBOX_CODE, "tenantId": str(SANDBOX_TID),
               "dryRun": dry_run, "wouldRemove": counts}
     if dry_run:
         db.rollback()  # 保证 dry-run 绝不落库
         return report
+
+    # 这是 web/external scheduler 与历史平台入口共用的最后一道保护。
+    # standard-20k 全量建站会直接调用 wipe_sandbox()，因此这里只阻断 legacy reset，
+    # 不影响显式维护脚本的 20K 重建链。
+    from app.core.exceptions import AppException
+    from app.services.sandbox_school_profile import classify_sandbox_profile, is_standard_family
+    profile = classify_sandbox_profile(db, SANDBOX_TID)
+    if is_standard_family(profile):
+        db.rollback()
+        raise AppException(
+            "DATA_CONFLICT",
+            "检测到 standard-20k 沙箱，已阻断 legacy 自动/手动重置；"
+            "请使用 standard-20k 专用维护重建或轻量故事线恢复。",
+            details=profile,
+        )
+
     report["removed"] = wipe_sandbox(db)
     report["reseeded"] = seed_sandbox(db)
     try:

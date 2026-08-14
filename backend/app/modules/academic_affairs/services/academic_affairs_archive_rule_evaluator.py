@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 
 from app.services.db_service import _tid
 
+from .academic_affairs_archive_term_scope import cohort_term_scope
 from .academic_affairs_program_binding_quality_service import validate_program_db
 from .student_program_resolution_service import resolve_student_program
 
@@ -51,8 +52,12 @@ def normalize_legacy_result(code: str, result: dict) -> dict:
     }
 
 
-def evaluate_program(db, *, college_ids=None) -> dict:
-    """所有在读学生均能解析到方案，且涉及方案的BLOCKER为0。"""
+def evaluate_program(db, term=None, *, college_ids=None) -> dict:
+    """指定学期范围内在读学生均能解析到方案，且涉及方案的BLOCKER为0。
+
+    历史归档只核当时处于1..12培养学期范围的 cohort；合法未来届/已超学制届属于
+    OUT_OF_SCOPE，不应阻断该历史学期。年级格式异常仍 fail-closed。
+    """
     from app.models import StudentProfile
     from .academic_affairs_status_service import is_enrolled
 
@@ -62,12 +67,36 @@ def evaluate_program(db, *, college_ids=None) -> dict:
     )
     if college_ids:
         query = query.filter(StudentProfile.college_id.in_(list(college_ids)))
-    students = [row for row in query.all() if is_enrolled(getattr(row, "student_status", None))]
+    enrolled = [row for row in query.all() if is_enrolled(getattr(row, "student_status", None))]
+
+    students = []
+    out_of_scope = 0
+    invalid_scope = []
+    for student in enrolled:
+        if term is None:
+            students.append(student)
+            continue
+        scope = cohort_term_scope(term.year_code, term.term_no, getattr(student, "grade", None))
+        if scope["state"] == "OUT_OF_SCOPE":
+            out_of_scope += 1
+            continue
+        if scope["state"] == "INVALID":
+            invalid_scope.append({
+                "type": "INVALID_COHORT_TERM_SCOPE",
+                "studentId": str(student.id),
+                "studentNo": getattr(student, "student_no", None),
+                "grade": getattr(student, "grade", None),
+                "termId": str(getattr(term, "id", "") or ""),
+            })
+            continue
+        students.append(student)
+
     if not students:
         return rule_result(
             "PROGRAM", passed=False, rule_code="PROGRAM_NO_ENROLLED_STUDENT",
-            summary="当前范围没有可核验的在读学生，不能证明培养方案覆盖率",
-            blocker_count=1,
+            summary="当前学期范围没有可核验的在读学生，不能证明培养方案覆盖率",
+            blocker_count=max(1, len(invalid_scope)),
+            evidence=[*invalid_scope[:30], {"type": "OUT_OF_SCOPE_COHORTS", "students": out_of_scope}],
         )
 
     unresolved = []
@@ -103,16 +132,19 @@ def evaluate_program(db, *, college_ids=None) -> dict:
                 "fixRoute": issue.get("fixRoute") or f"/admin/academic-affairs/programs/{program_id}",
             })
 
-    blockers = len(unresolved) + len(validation_blockers)
+    blockers = len(invalid_scope) + len(unresolved) + len(validation_blockers)
     coverage = round((len(resolved) / len(students)) * 100, 2) if students else 0
     evidence = [
         {
             "type": "PROGRAM_COVERAGE",
             "enrolledStudents": len(students),
             "resolvedStudents": len(resolved),
+            "outOfScopeStudents": out_of_scope,
+            "invalidScopeStudents": len(invalid_scope),
             "coveragePercent": coverage,
             "programIds": [str(value) for value in program_ids],
         },
+        *invalid_scope[:30],
         *unresolved[:30],
         *validation_blockers[:30],
     ]
@@ -123,9 +155,9 @@ def evaluate_program(db, *, college_ids=None) -> dict:
         blocker_count=blockers,
         rule_code="PROGRAM_COVERAGE_AND_VALIDATION",
         summary=(
-            f"在读学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
+            f"本学期在读学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
             if blockers == 0 and coverage == 100
-            else f"方案覆盖率{coverage}%，未解析学生{len(unresolved)}人，方案BLOCKER {len(validation_blockers)}项"
+            else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案BLOCKER {len(validation_blockers)}项"
         ),
         evidence=evidence,
     )
@@ -133,7 +165,6 @@ def evaluate_program(db, *, college_ids=None) -> dict:
 
 def _expected_opening(db, term, *, college_ids=None):
     from app.models import AaProgram, AaProgramBinding, AaProgramCourse, SchoolClass
-    from .academic_affairs_program_opening_closure_service import _plan_term_no
 
     programs = db.query(AaProgram).filter(
         AaProgram.tenant_id == _tid(),
@@ -154,13 +185,16 @@ def _expected_opening(db, term, *, college_ids=None):
     for program in programs:
         for binding in binding_by_program.get(int(program.id), []):
             grade = binding.grade_year or program.grade_year
-            plan_term = _plan_term_no(term.year_code, term.term_no, grade)
-            if plan_term is None:
+            scope = cohort_term_scope(term.year_code, term.term_no, grade)
+            if scope["state"] == "OUT_OF_SCOPE":
+                continue
+            if scope["state"] == "INVALID":
                 structural.append({
-                    "type": "TERM_UNRESOLVED", "programId": str(program.id),
-                    "bindingId": str(binding.id), "gradeYear": grade,
+                    "type": "TERM_UNRESOLVED", "reason": "INVALID_COHORT_TERM_SCOPE",
+                    "programId": str(program.id), "bindingId": str(binding.id), "gradeYear": grade,
                 })
                 continue
+            plan_term = int(scope["planTerm"])
             if binding.class_id:
                 classes = db.query(SchoolClass).filter(
                     SchoolClass.id == int(binding.class_id),
@@ -187,7 +221,7 @@ def _expected_opening(db, term, *, college_ids=None):
             courses = db.query(AaProgramCourse).filter(
                 AaProgramCourse.tenant_id == _tid(),
                 AaProgramCourse.program_id == int(program.id),
-                AaProgramCourse.open_term_no == int(plan_term),
+                AaProgramCourse.open_term_no == plan_term,
                 AaProgramCourse.is_deleted.is_(False),
             ).all()
             for clazz in classes:
@@ -490,8 +524,17 @@ def evaluate_grade(db, term_code, previous_result: dict) -> dict:
 
 
 def evaluate_first_batch(db, term_id, term_code, previous: dict, *, college_ids=None) -> dict:
+    from app.models import AaTerm
+
     results = {code: normalize_legacy_result(code, value) for code, value in (previous or {}).items()}
-    results["PROGRAM"] = evaluate_program(db, college_ids=college_ids)
+    term = None
+    if term_id:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(term_id),
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
+    results["PROGRAM"] = evaluate_program(db, term=term, college_ids=college_ids)
     results["TEACHING_TASK"] = evaluate_teaching_task(db, term_id, college_ids=college_ids)
     results["SCHEDULE"] = evaluate_schedule(
         db, term_id, results.get("SCHEDULE") or {}, college_ids=college_ids,

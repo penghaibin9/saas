@@ -302,30 +302,55 @@ def create_complaint(body, user=None):
 
 
 def transition(cid, action, body=None, user=None):
+    """投诉状态迁移：条件原子更新，两个处理人同时操作只有一个能赢。
+
+    原实现是「读 status → 校验 → 改 → Python 里 version+1 → commit」：两人并发时双双读到同一
+    状态、双双通过校验，后提交者静默覆盖先提交者的结论。同文件的 to_risk() 早就用了
+    with_for_update，这条迁移是漏网的那个。
+
+    expectedVersion 保持可选：现有前端不传，强制要求会直接打断页面；并发正确性由条件更新
+    保证，客户端传了则额外做过期校验，好让「你看的是旧数据」更早暴露。
+    """
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+
     action = (action or "").upper()
     if action not in _TRANSITIONS:
         raise AppException("VALIDATION_ERROR", "action 不合法")
     allowed_from, to = _TRANSITIONS[action]
     body = body or {}
+    client_version = extract_expected_version(body, required=False)
     with session() as db:
         c = _get(db, cid)
         _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
-        if c.status not in allowed_from:
-            raise AppException("DATA_CONFLICT", f"当前状态 {c.status} 不可执行 {action}")
+        current_status, current_version = c.status, int(c.version or 0)
+        if current_status not in allowed_from:
+            raise AppException("DATA_CONFLICT", f"当前状态 {current_status} 不可执行 {action}")
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
+
+        values = {"status": to}
         if action == "ACCEPT":
-            c.accepted_by_name = _op_name(user)
-            c.owner_name = (body.get("ownerName") or "").strip() or _op_name(user)
-            c.accept_deadline = (body.get("acceptDeadline") or "").strip() or None
-            c.resolve_deadline = (body.get("resolveDeadline") or "").strip() or None
+            values["accepted_by_name"] = _op_name(user)
+            values["owner_name"] = (body.get("ownerName") or "").strip() or _op_name(user)
+            values["accept_deadline"] = (body.get("acceptDeadline") or "").strip() or None
+            values["resolve_deadline"] = (body.get("resolveDeadline") or "").strip() or None
         if action in ("RESOLVE", "REJECT"):
             conclusion = (body.get("conclusion") or "").strip()
             if len(conclusion) < 5:
                 raise AppException("VALIDATION_ERROR", "结论/处理意见不少于 5 个字符")
-            c.conclusion = conclusion
-        c.status = to
-        c.version = int(c.version or 0) + 1
+            values["conclusion"] = conclusion
+
+        versioned_update(
+            db, InternshipComplaint,
+            entity_id=c.id, tenant_id=_tid(),
+            expected_version=current_version, values=values,
+            expected_status=current_status,
+        )
         _trail(db, c.id, action, {"conclusion": body.get("conclusion")} if action in ("RESOLVE", "REJECT") else {}, user)
         db.commit()
+        db.refresh(c)
         return _row(c, user)
 
 

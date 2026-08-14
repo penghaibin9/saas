@@ -94,7 +94,9 @@
       reason-label="审核意见"
       :submitting="confirm.submitting"
       @confirm="submitReview"
-    />
+    >
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -106,12 +108,19 @@ import {
   AppFilePreview, AppAuditTrail, AppPermissionButton, AppConfirmDialog
 } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
+import { pickNextPending, anchorIndexOf } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
 import { internshipApplicationApi } from '@/modules/internship/api/internship-application.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { REJECT_APPLICATION } from '@/modules/internship/constants/presetPrompts'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+
+// U8：申请类型/状态/详情 id 已由 URL 承载，这里补上没进 URL 的关键词与页码
+const WORK_FIELDS = ['keyword', 'page']
 
 const TYPE_OPTIONS = [
   { value: '', label: '全部申请' },
@@ -141,7 +150,7 @@ export default {
   components: {
     ModulePageShell, DataTable, AppDrawer, AppButton, AppStatusTag, AppSearchBox,
     AppQuickFilterChips, AppDescriptionList, AppFilePreview, AppAuditTrail,
-    AppPermissionButton, AppConfirmDialog, ModuleSummaryStrip
+    AppPermissionButton, AppConfirmDialog, ModuleSummaryStrip, ConflictNotice
   },
   data() {
     return {
@@ -151,6 +160,7 @@ export default {
       typeOptions: TYPE_OPTIONS, statusOptions: STATUS_OPTIONS, columns: COLUMNS,
       drawer: { visible: false, id: '', loading: false, error: '', data: null },
       confirm: { visible: false, title: '', content: '', danger: false, confirmText: '', requireReason: false, submitting: false, action: '' },
+      conflict: emptyConflict(),
       scopeHint: '指导教师仅可审核本人指导学生；管理员按当前数据范围审核'
     }
   },
@@ -229,7 +239,10 @@ export default {
       if (value) this.openDetail(value)
     }
   },
-  created() { this.load() },
+  created() {
+    restoreWorkContext(this, WORK_FIELDS)
+    this.load()
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     statusTone(value) {
@@ -249,6 +262,7 @@ export default {
     reload() { this.page = 1; this.load() },
     onPageChange(page) { this.page = page; this.load() },
     async load() {
+      captureWorkContext(this, WORK_FIELDS)
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
         this.error = '请先选择实习批次'
@@ -321,6 +335,7 @@ export default {
         submitting: false,
         action
       }
+      this.conflict = emptyConflict()
     },
     async submitReview({ reason }) {
       const data = this.drawer.data
@@ -333,11 +348,44 @@ export default {
         recordExpectedVersion: data.recordVersion
       })
       this.confirm.submitting = false
+      if (isConflict(result)) {
+        // 撞车：审核意见原样留着，只把最新真值摆出来，由老师自己决定要不要按新状态重提
+        this.conflict = await captureConflict({
+          res: result,
+          refresh: () => this.loadDetail(data.id),
+          latest: () => {
+            const fresh = this.drawer.data
+            if (!fresh) throw new Error('最新详情未拉回')
+            return [
+              { label: '最新状态', value: fresh.statusLabel || fresh.status || '' },
+              { label: '审核人', value: fresh.reviewedBy || '' },
+              { label: '审核意见', value: fresh.reviewComment || '' }
+            ]
+          }
+        })
+        return
+      }
       if (result.code !== 0) return toast.error(result.message || '审核失败')
       this.confirm.visible = false
+      this.conflict = emptyConflict()
       toast.success(this.confirm.action === 'APPROVE' ? '申请已通过，实习去向已落实' : '申请已驳回')
+      await this.advanceAfterReview(data.id)
+    },
+    /**
+     * 连续审核：批完一条直接在抽屉里换成下一条待审核，不用退回列表重新找人。
+     * 列表筛选、页码、抽屉都原样保留；本页没有待审核了才关抽屉并提示。
+     */
+    async advanceAfterReview(oldId) {
+      const anchor = anchorIndexOf(this.rows, oldId)
       await this.load()
-      await this.loadDetail(data.id)
+      const next = pickNextPending(this.rows, anchor, oldId, (r) => r.status === 'PENDING_REVIEW')
+      if (next) {
+        this.drawer.id = String(next.id)
+        await this.loadDetail(next.id)
+        return
+      }
+      this.drawer = { visible: false, id: '', loading: false, error: '', data: null }
+      toast.success('当前筛选下的待审核申请已全部处理完')
     }
   }
 }

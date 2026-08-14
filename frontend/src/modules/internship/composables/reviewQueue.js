@@ -54,6 +54,41 @@ export function clearReviewQueue() {
   try { sessionStorage.removeItem(KEY) } catch { /* 忽略 */ }
 }
 
+/**
+ * 单页工作台（列表 + 右侧详情/抽屉，不跳路由）的「处理完自动接下一条」。
+ *
+ * 用法固定两步，顺序不能反：
+ *   const anchor = anchorIndexOf(this.rows, id)   // 刷新前先记住它在旧列表里的位置
+ *   await this.load()                            // 刷新（这条通常已经离开待办状态）
+ *   const next = pickNextPending(this.rows, anchor, id, (r) => r.status === 'PENDING')
+ *
+ * 先往下找、找不到再往回找：老师的视线是从上往下走的，跳回顶部会打断节奏。
+ *
+ * @param {Array} rows 刷新后的列表
+ * @param {number} anchorIndex 刚处理那条在刷新前列表里的下标
+ * @param {string|number} currentId 刚处理那条的 id（排除自身，避免原地打转）
+ * @param {Function} isPending 判定一行是否还需要处理
+ * @returns {object|null} 下一条；没有则 null（调用方据此提示队列已清空）
+ */
+export function pickNextPending(rows, anchorIndex, currentId, isPending) {
+  const list = Array.isArray(rows) ? rows : []
+  const anchor = Number.isInteger(anchorIndex) && anchorIndex >= 0 ? anchorIndex : 0
+  let after = null
+  let before = null
+  list.forEach((r, i) => {
+    if (!r || String(r.id) === String(currentId)) return
+    if (typeof isPending === 'function' && !isPending(r)) return
+    if (i >= anchor) { if (!after) after = r } else if (!before) before = r
+  })
+  return after || before
+}
+
+/** 刷新前记录锚点下标；找不到时返回 0（从头往下找，不会漏） */
+export function anchorIndexOf(rows, id) {
+  const list = Array.isArray(rows) ? rows : []
+  return Math.max(0, list.findIndex((r) => r && String(r.id) === String(id)))
+}
+
 /** 根据当前 id 计算队列位置（找不到时 index=-1，页面退化为无队列模式） */
 export function queuePosition(queue, currentId) {
   const id = String(currentId)
