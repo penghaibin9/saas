@@ -1,0 +1,44 @@
+name: Internship Enterprise Portal
+
+on:
+  push:
+    branches:
+      - agent/internship-e-a02-enterprise-portal
+    paths:
+      - "enterprise-portal/**"
+      - ".github/workflows/internship-enterprise-portal.yml"
+  pull_request:
+    paths:
+      - "enterprise-portal/**"
+      - ".github/workflows/internship-enterprise-portal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-portal-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  targeted:
+    name: A02 targeted test + lint + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: enterprise-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install enterprise portal dependencies
+        run: npm install --no-audit --no-fund
+      - name: A02 authority and UX contract tests
+        run: npm test
+      - name: Enterprise portal lint
+        run: npm run lint
+      - name: Enterprise portal production build
+        run: npm run build
+      - name: Scan fixed demo credentials
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
