@@ -159,6 +159,8 @@ def build_router() -> APIRouter:
     # 证书台账留给 S1b，避免一个结构 commit 同时扩大两个 owner 面。
     graduation_core_module = importlib.import_module(f"{__package__}.graduation_core_router")
     _mount_routes(router, graduation_core_module.router)
+    graduation_certificate_module = importlib.import_module(f"{__package__}.graduation_certificate_router")
+    _mount_routes(router, graduation_certificate_module.router)
     _mount_routes(
         router,
         base_router.router,
