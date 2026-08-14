@@ -284,8 +284,12 @@ def main() -> int:
                 "毕设早期过程/就业/专业核心与完整课程双阶段/教材准备/历史评教与教学质量/"
                 "历史十三域归档/基础13B与完整13B双阶段/六域/13A/跨表关系对账。"
             )
-            print("[reset] 可见体验账号：admin2 / teacher2 / student2（密码 123456）")
-            print("[reset] 其余背景账号用于真实规模与权限/查询容量，不在销售登录页公开。")
+            print(
+                "[reset] 可见体验账号：admin2 / teacher2 / student2；"
+                "三份强口令由 SANDBOX_ADMIN2_PASSWORD / SANDBOX_TEACHER2_PASSWORD / "
+                "SANDBOX_STUDENT2_PASSWORD 环境变量分别注入，日志不回显凭据。"
+            )
+            print("[reset] 其余背景账号用于真实规模与权限/查询容量，密码为建站时随机不可知值，不在销售登录页公开。")
         else:
             print("[reset] 完成：legacy-100 开发兼容沙箱。账号：admin2 / teacher2 / student2（密码 123456）")
         return 0
