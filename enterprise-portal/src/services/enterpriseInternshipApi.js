@@ -1,0 +1,30 @@
+import { request } from './request'
+
+// E-A02 只消费 A01 canonical facade。这里故意没有 companyId 参数、PUBLISH、APPROVED 或 assign API。
+const ROOT = '/enterprise/internship'
+const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
+
+export const enterpriseInternshipApi = {
+  context: () => request(`${ROOT}/context`),
+  dashboard: () => request(`${ROOT}/dashboard`),
+  company: () => request(`${ROOT}/company`),
+  updateCompany: (patch) => request(`${ROOT}/company`, { method:'PUT', body:patch }),
+  positions: (params) => request(`${ROOT}/positions`, { params }),
+  position: (id) => request(`${ROOT}/positions/${id}`),
+  createPosition: (payload) => request(`${ROOT}/positions`, { method:'POST', body:payload }),
+  updatePosition: (id,payload) => request(`${ROOT}/positions/${id}`, { method:'PUT', body:payload }),
+  submitPosition: (id) => request(`${ROOT}/positions/${id}/submit`, { method:'POST' }),
+  withdrawPosition: (id) => request(`${ROOT}/positions/${id}/withdraw`, { method:'POST' }),
+  applications: (params) => request(`${ROOT}/applications`, { params }),
+  application: (id) => request(`${ROOT}/applications/${id}`),
+  decideApplication: (id,status,payload={}) => {
+    if (!DECISIONS.has(status)) throw new Error(`不允许的企业 Decision: ${status}`)
+    return request(`${ROOT}/applications/${id}/decision`, { method:'POST', body:{ status, ...payload } })
+  },
+  revealContact: (id) => request(`${ROOT}/applications/${id}/contact-view`, { method:'POST' }),
+  withdrawAccept: (id) => request(`${ROOT}/applications/${id}/withdraw-accept`, { method:'POST' }),
+  internshipStudents: (params) => request(`${ROOT}/students`, { params }),
+  evaluationTasks: (params) => request(`${ROOT}/evaluations`, { params }),
+}
+
+export const enterpriseDecisionStatuses = Object.freeze([...DECISIONS])

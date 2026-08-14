@@ -1,0 +1,1 @@
+<template><section class="ep-page"><div class="ep-page-head"><div><h1 class="ep-title">报名学生</h1><p class="ep-subtitle">E8 两栏候选人处理台将在下一独立提交接入 ApplicationMaterialSnapshot projection。</p></div></div><div class="ep-card ep-empty">当前保持空壳，绝不从 StudentProfile 拼企业“简历”。</div></section></template>

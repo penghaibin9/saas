@@ -1,0 +1,1 @@
+<template><section class="ep-page"><div class="ep-page-head"><div><h1 class="ep-title">实习学生</h1><p class="ep-subtitle">只允许展示正式 InternshipRecord；ACCEPT_INTENT 不计为已实习。</p></div></div><div class="ep-card ep-empty">等待 A01 正式 InternshipRecord company/member scope API。</div></section></template>
