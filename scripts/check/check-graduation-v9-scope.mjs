@@ -93,6 +93,7 @@ const CARD_ALLOW = {
   ],
   U8: [
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^\.github\/workflows\/playwright-production-e2e\.yml$/,
     /^backend\/app\/api\/v1\/mobile_graduation_teacher_context\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_mobile_teacher_query_service\.py$/,
     /^backend\/tests\/test_graduation_premerge_contracts\.py$/,
