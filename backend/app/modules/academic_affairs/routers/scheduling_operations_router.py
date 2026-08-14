@@ -126,7 +126,7 @@ async def schedule_import_xlsx(
     file: UploadFile = File(...),
     user=Depends(require_permission(_SCHED_IMPORT)),
 ):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = xlsx_util.read_xlsx(content, sched_svc.IMPORT_HEADER_MAP)
     if len(rows) > sched_svc.IMPORT_MAX_ROWS:
         raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {sched_svc.IMPORT_MAX_ROWS} 行")

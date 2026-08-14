@@ -11,11 +11,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as production_guard
+
+# PR #101 production-audit hardening. Idempotent and read-side only: this tightens
+# D6-D8 scope/page-size contracts without changing any canonical write owner.
+production_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心·选课管理"])
 
@@ -168,13 +173,15 @@ def sel_stats(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIE
     return success(selection_svc.batch_stats(user, batchId))
 
 
-@router.get("/selection/batches/{batchId}/conflict-report", summary="冲突预警报表（09号卡，studentNo 可选按学号查询）")
+@router.get("/selection/batches/{batchId}/conflict-report", summary="冲突预警报表（SQL 聚合 + 分页钻取）")
 def sel_conflict_report(
     batchId: int = Path(...),
-    studentNo: Optional[str] = None,
+    studentNo: Optional[str] = Query(None, max_length=50),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
     user=Depends(require_permission(_SEL_VIEW)),
 ):
-    return success(selection_svc.get_conflict_report(user, batchId, studentNo))
+    return success(selection_svc.get_conflict_report(user, batchId, studentNo, page, pageSize))
 
 
 @router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")

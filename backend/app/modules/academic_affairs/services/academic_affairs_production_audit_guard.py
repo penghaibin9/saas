@@ -1,0 +1,241 @@
+"""PR #101 production-audit hardening without creating new business truth.
+
+This guard only tightens read-side scope/pagination contracts that were introduced by
+D6-D8 convenience/read refactors. Canonical write services, state machines, DTOs and
+persistent facts remain owned by their existing modules.
+"""
+from __future__ import annotations
+
+import re
+from functools import wraps
+
+from sqlalchemy import func, or_
+
+from app.core.affairs_security import no_data_scope
+from app.core.exceptions import AppException
+
+_MAX_PAGE_SIZE = 200
+
+
+def _bounded_page_size(value, *, default: int) -> int:
+    try:
+        size = int(value if value is not None else default)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "pageSize 必须为整数") from None
+    if size < 1 or size > _MAX_PAGE_SIZE:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"pageSize 必须在 1-{_MAX_PAGE_SIZE} 之间",
+        )
+    return size
+
+
+def _selection_scope_values(db, ctx):
+    """Only TENANT_ALL is unscoped; every other staff identity is explicitly narrowed."""
+    from . import academic_affairs_selection_read_service as read
+
+    scope_type = str(getattr(ctx, "scope_type", "") or "").upper()
+    if scope_type == "TENANT_ALL":
+        return None
+
+    roles = {str(value or "").upper() for value in (getattr(ctx, "role_codes", set()) or set())}
+    if "ACADEMIC_TEACHER" in roles:
+        identity = {
+            "userId": str(getattr(ctx, "user_id", "") or ""),
+            "loginName": str(getattr(ctx, "login_name", "") or ""),
+        }
+        teacher_keys = {str(value) for value in read._core._derive_keys(identity) if str(value)}
+        if not teacher_keys:
+            raise no_data_scope("当前教师身份无法解析本人授课范围")
+        # Teacher visibility is always COURSE/teacher-key based. A coincidental class scope
+        # must never widen a teacher from "own course" to "all courses in the class".
+        return set(), set(), teacher_keys
+
+    if scope_type in {"COLLEGE", "CLASS"}:
+        class_ids = {int(value) for value in (ctx.allowed_class_ids(db) or set())}
+        college_ids = {
+            int(value) for value in (getattr(ctx, "college_ids", set()) or set())
+            if value is not None
+        }
+        if not class_ids and not college_ids:
+            raise no_data_scope("当前身份未配置选课班级或学院数据范围")
+        return class_ids, college_ids, set()
+
+    # STUDENT/SELF/NONE/DORM_BUILDING and any future unknown scope must not silently
+    # become tenant-wide merely because the caller has selection.view permission.
+    raise no_data_scope("当前身份未配置可用的选课数据范围")
+
+
+def _selection_scope_course_query(query, scoped):
+    if scoped is None:
+        return query
+
+    from app.models import AaSelectionCourse, AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_selection_read_service as read
+
+    class_ids, college_ids, teacher_keys = scoped
+    predicates = []
+    if teacher_keys:
+        predicates.append(AaTeachingTask.teacher_key.in_(sorted(teacher_keys)))
+    else:
+        if class_ids:
+            predicates.append(AaTeachingTask.class_id.in_(sorted(class_ids)))
+        if college_ids:
+            predicates.append(AaTeachingTaskBatch.college_id.in_(sorted(college_ids)))
+    if not predicates:
+        raise no_data_scope("当前身份未配置可用的选课课程范围")
+
+    return (
+        query.join(AaTeachingTask, AaTeachingTask.id == AaSelectionCourse.teaching_task_id)
+        .join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id)
+        .filter(
+            AaTeachingTask.tenant_id == read._core._tid(),
+            AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTaskBatch.tenant_id == read._core._tid(),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+            or_(*predicates),
+        )
+    )
+
+
+def _escape_like(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _redact_conflict_detail(value) -> str:
+    """Keep the existing human-readable detail contract without returning student PII."""
+    text = str(value or "")
+    text = re.sub(r"studentNo=[^ ]*", "studentNo=***", text, count=1)
+    text = re.sub(r"studentName=.*? courseName=", "studentName=*** courseName=", text, count=1)
+    return text
+
+
+def _selection_conflict_report(user, batch_id, student_no=None, page=1, page_size=50):
+    """SQL aggregate + paged drilldown; exact studentNo matching treats LIKE wildcards literally."""
+    from app.models import AaSelectionCourse, AffairsAuditTrail
+    from . import academic_affairs_selection_read_service as read
+
+    page_no = max(1, int(page or 1))
+    size = _bounded_page_size(page_size, default=50)
+    with read._core.session() as db:
+        ctx = read._core._ctx(user, db)
+        scoped = read._scope_values(db, ctx)
+        batch = read._core._get_batch(db, int(batch_id))
+        read._require_batch_visible(db, int(batch.id), scoped)
+        course_rows = read._course_query(db, int(batch.id), scoped).with_entities(
+            AaSelectionCourse.id,
+            AaSelectionCourse.course_name,
+        ).all()
+        course_ids = [int(cid) for cid, _name in course_rows]
+        course_names = {int(cid): (name or "") for cid, name in course_rows}
+        if not course_ids:
+            return {
+                "batchId": str(batch.id), "summary": [], "items": [],
+                "total": 0, "page": page_no, "pageSize": size,
+            }
+
+        conditions = [
+            AffairsAuditTrail.tenant_id == read._core._tid(),
+            AffairsAuditTrail.biz_type == "AA_SELECTION_CONFLICT",
+            AffairsAuditTrail.action == "SELECTION_CONFLICT_REJECT",
+            AffairsAuditTrail.biz_id.in_(course_ids),
+        ]
+        normalized_student_no = str(student_no or "").strip()
+        if normalized_student_no:
+            escaped = _escape_like(normalized_student_no[:50])
+            conditions.append(
+                AffairsAuditTrail.detail.like(f"%studentNo={escaped} %", escape="\\")
+            )
+
+        summary_rows = db.query(
+            AffairsAuditTrail.biz_id,
+            func.count(AffairsAuditTrail.id),
+        ).filter(*conditions).group_by(AffairsAuditTrail.biz_id).all()
+        summary = [
+            {
+                "courseName": course_names.get(int(cid), ""),
+                "conflictRejectCount": int(count or 0),
+            }
+            for cid, count in sorted(
+                summary_rows,
+                key=lambda item: (-int(item[1] or 0), course_names.get(int(item[0]), "")),
+            )
+        ]
+        total = sum(item["conflictRejectCount"] for item in summary)
+        rows = db.query(AffairsAuditTrail).filter(*conditions).order_by(
+            AffairsAuditTrail.occurred_at.desc(), AffairsAuditTrail.id.desc()
+        ).offset((page_no - 1) * size).limit(size).all()
+        items = [
+            {
+                "occurredAt": read._core._iso(row.occurred_at),
+                "courseName": course_names.get(int(row.biz_id), ""),
+                "detail": _redact_conflict_detail(row.detail),
+            }
+            for row in rows
+        ]
+        if normalized_student_no:
+            read._core._audit(
+                db,
+                int(batch.id),
+                "SELECTION_CONFLICT_QUERY",
+                f"按学号查询冲突详情 studentNo={normalized_student_no[:50]}",
+            )
+            db.commit()
+        return {
+            "batchId": str(batch.id),
+            "summary": summary,
+            "items": items,
+            "total": total,
+            "page": page_no,
+            "pageSize": size,
+        }
+
+
+def _wrap_page_size(func, *, position: int, default: int):
+    """Reject oversized internal calls too; Router validation is not the only safety boundary."""
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        args_list = list(args)
+        if "page_size" in kwargs:
+            kwargs["page_size"] = _bounded_page_size(kwargs["page_size"], default=default)
+        elif len(args_list) > position:
+            args_list[position] = _bounded_page_size(args_list[position], default=default)
+        else:
+            kwargs["page_size"] = _bounded_page_size(None, default=default)
+        return func(*args_list, **kwargs)
+
+    return wrapped
+
+
+def install() -> None:
+    """Idempotently tighten only the audited read-side functions."""
+    from . import academic_affairs_selection_read_service as selection_read
+    from . import academic_affairs_selection_final_service as selection_public
+    from . import exam_convenience_service as exam_read
+    from . import academic_affairs_grade_task_read_service as grade_task_read
+    from . import academic_affairs_grade_recheck_read_service as grade_recheck_read
+    from . import academic_affairs_recognition_read_service as recognition_read
+
+    if getattr(selection_read, "_production_audit_guard_installed", False):
+        return
+
+    selection_read._scope_values = _selection_scope_values
+    selection_read._scope_course_query = _selection_scope_course_query
+
+    selection_read.list_batches = _wrap_page_size(selection_read.list_batches, position=4, default=20)
+    selection_read.list_courses = _wrap_page_size(selection_read.list_courses, position=3, default=50)
+    selection_read.course_roster = _wrap_page_size(selection_read.course_roster, position=3, default=50)
+    selection_read.get_conflict_report = _selection_conflict_report
+
+    # Selection Final is the public module object; refresh only the read-side attributes that
+    # services/__init__.py already delegates to selection_read_service.
+    for name in ("list_batches", "list_courses", "course_roster", "get_conflict_report"):
+        setattr(selection_public, name, getattr(selection_read, name))
+
+    exam_read.list_course_candidates = _wrap_page_size(exam_read.list_course_candidates, position=5, default=20)
+    exam_read.list_courses = _wrap_page_size(exam_read.list_courses, position=3, default=100)
+    grade_task_read.list_tasks = _wrap_page_size(grade_task_read.list_tasks, position=3, default=20)
+    grade_recheck_read.list_all = _wrap_page_size(grade_recheck_read.list_all, position=3, default=50)
+    recognition_read.list_all = _wrap_page_size(recognition_read.list_all, position=3, default=50)
+
+    selection_read._production_audit_guard_installed = True

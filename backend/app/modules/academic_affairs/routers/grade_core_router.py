@@ -90,7 +90,7 @@ async def grade_import_xlsx(
     file: UploadFile = File(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = xlsx_util.read_xlsx(content, grade_svc.IMPORT_HEADER_MAP)
     return success({**grade_svc.grade_import_dry_run(taskId, user, rows), "rows": rows})
 
