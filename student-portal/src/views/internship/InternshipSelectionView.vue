@@ -19,41 +19,55 @@
     <main class="selection-shell" aria-label="实习选岗工作区">
       <PositionSearchFilters v-model="query" @search="loadPositions" />
 
-      <section class="catalog-panel" aria-live="polite">
-        <div class="catalog-summary">
-          <div>
-            <strong>学校认可岗位</strong>
-            <span v-if="!catalogLoading">共 {{ total }} 个符合条件的岗位</span>
+      <div class="catalog-workspace">
+        <section class="catalog-panel" aria-live="polite">
+          <div class="catalog-summary">
+            <div>
+              <strong>学校认可岗位</strong>
+              <span v-if="!catalogLoading">共 {{ total }} 个符合条件的岗位</span>
+            </div>
+            <span class="server-note">服务端筛选 · 每页 {{ query.pageSize }} 条</span>
           </div>
-          <span class="server-note">服务端筛选 · 每页 {{ query.pageSize }} 条</span>
-        </div>
 
-        <div v-if="catalogLoading" class="catalog-state">正在查询岗位…</div>
-        <div v-else-if="catalogError" class="catalog-state catalog-state--error">
-          <span>{{ catalogError }}</span>
-          <button type="button" @click="loadPositions(query)">重新查询</button>
-        </div>
-        <div v-else-if="!positions.length" class="catalog-state">暂无符合条件的岗位，请调整筛选条件。</div>
-        <div v-else class="catalog-rows">
-          <button
-            v-for="position in positions"
-            :key="position.id"
-            type="button"
-            class="catalog-row"
-            @click="selectedPositionId = position.id"
-          >
-            <strong>{{ position.title || position.positionName || '岗位名称待完善' }}</strong>
-            <span>{{ position.companyName || '企业信息待完善' }}</span>
-            <span>{{ position.workLocation || position.city || '地点待定' }}</span>
-          </button>
-        </div>
+          <div v-if="catalogLoading" class="catalog-state">正在查询岗位…</div>
+          <div v-else-if="catalogError" class="catalog-state catalog-state--error">
+            <span>{{ catalogError }}</span>
+            <button type="button" @click="loadPositions(query)">重新查询</button>
+          </div>
+          <div v-else-if="!positions.length" class="catalog-state">暂无符合条件的岗位，请调整筛选条件。</div>
+          <div v-else class="position-list">
+            <PositionCard
+              v-for="position in positions"
+              :key="position.id"
+              :position="position"
+              :selected="String(selectedPositionId) === String(position.id)"
+              @select="selectPosition"
+            />
+          </div>
 
-        <div v-if="totalPages > 1" class="catalog-pagination">
-          <button type="button" :disabled="query.page <= 1 || catalogLoading" @click="changePage(query.page - 1)">上一页</button>
-          <span>第 {{ query.page }} / {{ totalPages }} 页</span>
-          <button type="button" :disabled="query.page >= totalPages || catalogLoading" @click="changePage(query.page + 1)">下一页</button>
-        </div>
-      </section>
+          <div v-if="totalPages > 1" class="catalog-pagination">
+            <button type="button" :disabled="query.page <= 1 || catalogLoading" @click="changePage(query.page - 1)">上一页</button>
+            <span>第 {{ query.page }} / {{ totalPages }} 页</span>
+            <button type="button" :disabled="query.page >= totalPages || catalogLoading" @click="changePage(query.page + 1)">下一页</button>
+          </div>
+        </section>
+
+        <section class="detail-panel" aria-live="polite">
+          <div v-if="detailLoading" class="catalog-state">正在加载岗位详情…</div>
+          <div v-else-if="detailError" class="catalog-state catalog-state--error">
+            <span>{{ detailError }}</span>
+            <button v-if="selectedPositionId" type="button" @click="selectPosition(selectedPositionId, true)">重新加载</button>
+          </div>
+          <div v-else-if="!selectedPosition" class="catalog-state">从左侧选择一个岗位查看完整实习条件。</div>
+          <PositionDetail
+            v-else
+            :position="selectedPosition"
+            :disabled="!context.canSelect || selectedPosition.remaining <= 0"
+            @add-volunteer="prepareVolunteer"
+            @view-company="viewCompany"
+          />
+        </section>
+      </div>
     </main>
   </div>
 </template>
@@ -62,7 +76,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import RecruitmentContextBar from '../../components/recruitment/RecruitmentContextBar.vue'
 import PositionSearchFilters from '../../components/recruitment/PositionSearchFilters.vue'
+import PositionCard from '../../components/recruitment/PositionCard.vue'
+import PositionDetail from '../../components/recruitment/PositionDetail.vue'
 import { normalizeRecruitmentContext } from '../../modules/internshipRecruitment/contextModel'
+import { normalizePosition } from '../../modules/internshipRecruitment/positionModel'
 import { normalizeCatalogQuery } from '../../modules/internshipRecruitment/selectionContract'
 import { internshipSelectionApi } from '../../services/internshipSelectionApi'
 
@@ -77,7 +94,13 @@ const total = ref(0)
 const catalogLoading = ref(false)
 const catalogError = ref('')
 const selectedPositionId = ref(null)
+const selectedPosition = ref(null)
+const detailLoading = ref(false)
+const detailError = ref('')
+const pendingVolunteerPositionId = ref(null)
+const pendingCompanyId = ref(null)
 let catalogRequestSeq = 0
+let detailRequestSeq = 0
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / query.value.pageSize)))
 
@@ -103,18 +126,43 @@ async function loadPositions(nextQuery = query.value) {
     const data = await internshipSelectionApi.positions(normalized)
     if (requestId !== catalogRequestSeq) return
     const items = data?.items || data?.list || []
-    positions.value = Array.isArray(items) ? items : []
+    positions.value = (Array.isArray(items) ? items : []).map(normalizePosition)
     total.value = Number(data?.total ?? data?.pagination?.total ?? positions.value.length) || 0
-    if (selectedPositionId.value && !positions.value.some((item) => String(item.id) === String(selectedPositionId.value))) {
+    const currentStillVisible = positions.value.find((item) => String(item.id) === String(selectedPositionId.value))
+    if (!currentStillVisible) {
       selectedPositionId.value = null
+      selectedPosition.value = null
+      if (positions.value[0]?.id) await selectPosition(positions.value[0].id)
     }
   } catch (err) {
     if (requestId !== catalogRequestSeq) return
     positions.value = []
     total.value = 0
+    selectedPositionId.value = null
+    selectedPosition.value = null
     catalogError.value = err?.message || '岗位查询失败，请稍后重试'
   } finally {
     if (requestId === catalogRequestSeq) catalogLoading.value = false
+  }
+}
+
+async function selectPosition(positionId, force = false) {
+  if (!positionId) return
+  if (!force && String(selectedPositionId.value) === String(positionId) && selectedPosition.value) return
+  selectedPositionId.value = positionId
+  const requestId = ++detailRequestSeq
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const data = await internshipSelectionApi.position(positionId)
+    if (requestId !== detailRequestSeq) return
+    selectedPosition.value = normalizePosition(data || {})
+  } catch (err) {
+    if (requestId !== detailRequestSeq) return
+    selectedPosition.value = positions.value.find((item) => String(item.id) === String(positionId)) || null
+    detailError.value = err?.message || '岗位详情加载失败，请稍后重试'
+  } finally {
+    if (requestId === detailRequestSeq) detailLoading.value = false
   }
 }
 
@@ -122,11 +170,22 @@ function changePage(page) {
   loadPositions({ ...query.value, page })
 }
 
+function prepareVolunteer(position) {
+  pendingVolunteerPositionId.value = position?.id || null
+}
+
+function viewCompany(companyId) {
+  pendingCompanyId.value = companyId || null
+}
+
 onMounted(async () => {
   await loadContext()
   await loadPositions(query.value)
 })
-onBeforeUnmount(() => { catalogRequestSeq += 1 })
+onBeforeUnmount(() => {
+  catalogRequestSeq += 1
+  detailRequestSeq += 1
+})
 </script>
 
 <style scoped>
@@ -139,24 +198,28 @@ h1 { margin:0; color:#1a1a1a; font-size:24px; line-height:1.35; }
 .selection-state--error { align-items:flex-start; flex-direction:column; border-color:#ffccc7; background:#fff2f0; color:#a8071a; }
 .selection-state button,.catalog-state button,.catalog-pagination button { border:0; border-radius:6px; padding:7px 12px; background:#2f6bff; color:#fff; cursor:pointer; }
 .selection-shell { display:grid; gap:12px; margin-top:14px; }
-.catalog-panel { min-width:0; border:1px solid #eef0f3; border-radius:10px; background:#fff; overflow:hidden; }
+.catalog-workspace { display:grid; grid-template-columns:360px minmax(0,1fr); gap:12px; align-items:start; }
+.catalog-panel,.detail-panel { min-width:0; }
+.catalog-panel { border:1px solid #eef0f3; border-radius:10px; background:#fff; overflow:hidden; }
 .catalog-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 14px; border-bottom:1px solid #f0f0f0; }
-.catalog-summary div { display:flex; align-items:baseline; gap:10px; }
+.catalog-summary div { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
 .catalog-summary strong { color:#1a1a1a; font-size:15px; }
 .catalog-summary span { color:#8c8c8c; font-size:12px; }
 .server-note { white-space:nowrap; }
-.catalog-state { display:flex; align-items:center; justify-content:center; gap:10px; min-height:160px; padding:20px; color:#8c8c8c; }
+.catalog-state { display:flex; align-items:center; justify-content:center; gap:10px; min-height:160px; padding:20px; color:#8c8c8c; text-align:center; }
 .catalog-state--error { color:#a8071a; }
-.catalog-rows { display:flex; flex-direction:column; }
-.catalog-row { display:grid; grid-template-columns:minmax(220px,1.4fr) minmax(160px,1fr) minmax(120px,.8fr); gap:12px; width:100%; padding:14px; border:0; border-bottom:1px solid #f3f3f3; background:#fff; text-align:left; cursor:pointer; }
-.catalog-row:hover { background:#f7faff; }
-.catalog-row strong { color:#1a1a1a; }
-.catalog-row span { color:#666; font-size:13px; }
+.position-list { display:flex; flex-direction:column; gap:8px; padding:10px; max-height:calc(100vh - 320px); overflow:auto; }
 .catalog-pagination { display:flex; align-items:center; justify-content:center; gap:12px; padding:12px; border-top:1px solid #f0f0f0; color:#666; font-size:13px; }
 .catalog-pagination button:disabled { background:#d9d9d9; cursor:not-allowed; }
+.detail-panel { position:sticky; top:12px; }
+@media (max-width:1099px) {
+  .catalog-workspace { grid-template-columns:340px minmax(0,1fr); }
+}
 @media (max-width:899px) {
   .selection-page { padding:12px; }
+  .catalog-workspace { grid-template-columns:1fr; }
   .catalog-summary { align-items:flex-start; flex-direction:column; }
-  .catalog-row { grid-template-columns:1fr; gap:4px; }
+  .position-list { max-height:none; overflow:visible; }
+  .detail-panel { position:static; }
 }
 </style>
