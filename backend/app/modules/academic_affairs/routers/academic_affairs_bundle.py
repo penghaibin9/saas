@@ -154,6 +154,11 @@ def build_router() -> APIRouter:
     # mobile exam-v2 与 incident resolve 仍由既有 extension owner 持有；成绩域留给 D8。
     exam_core_module = importlib.import_module(f"{__package__}.exam_core_router")
     _mount_routes(router, exam_core_module.router)
+    # D9-S1a：毕业资格审核主链 Move Only。只切换公开 owner，DTO、权限、三态真值、
+    # evidence/immutable/DecisionTrace 与学籍终态写入继续唯一复用 graduation service 真链。
+    # 证书台账留给 S1b，避免一个结构 commit 同时扩大两个 owner 面。
+    graduation_core_module = importlib.import_module(f"{__package__}.graduation_core_router")
+    _mount_routes(router, graduation_core_module.router)
     _mount_routes(
         router,
         base_router.router,
