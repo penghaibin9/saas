@@ -32,6 +32,14 @@ test('canonical nested snapshot renders all public profile item families without
   assert.doesNotMatch(material,/studentNo|身份证|idCard|phone|email/)
 })
 
+test('A01 contact sharing enum is canonical and old client-only modes are gone',()=>{
+  for(const mode of ['NONE','AFTER_ACCEPT_INTENT','AFTER_SCHOOL_APPROVAL','EXPLICIT'])assert.match(types,new RegExp(`'${mode}'`))
+  for(const legacy of ['MASKED_ONLY','AFTER_INTERVIEW','IMMEDIATE'])assert.doesNotMatch(types,new RegExp(`'${legacy}'`))
+  assert.match(types,/interface ContactSharingPolicy/)
+  assert.match(types,/sharePhone:boolean/)
+  assert.match(types,/shareEmail:boolean/)
+})
+
 test('position payload is whitelist-only and follows V3 editable field names',()=>{
   for(const field of ['title','majorRequirement','gradeRequirement','workLocation','workContent','dailyHours','weeklyHours','remunerationType','remunerationAmount','remunerationCycle','salaryRange','accommodationProvided','mealProvided','hazardousFlag','prohibitedReason']) assert.match(contract,new RegExp(`'${field}'`))
   for(const forbidden of ['companyId','allocatedCount','rightsStatus','rightsCheckedAt','rightsRuleVersion','riskFlag','riskNote']) assert.doesNotMatch(contract,new RegExp(`'${forbidden}'`))
