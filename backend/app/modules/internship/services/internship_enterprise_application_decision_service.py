@@ -51,7 +51,6 @@ def material_detail_in_tx(db, *, context, application_id: int) -> dict:
     ))
     if not snapshot:
         raise not_found("投递材料快照不存在")
-    # Never serialize sibling volunteers/company choices or canonical mutable StudentProfile here.
     return {
         "applicationId": str(application.id),
         "positionId": str(position.id),
@@ -63,6 +62,23 @@ def material_detail_in_tx(db, *, context, application_id: int) -> dict:
         "snapshotHash": snapshot.snapshot_hash,
         "contactSharingPolicy": snapshot.contact_sharing_policy,
     }
+
+
+def expire_effect_if_needed_in_tx(decision: InternshipEnterpriseApplicationDecision, *, now: datetime | None = None) -> bool:
+    current = now or datetime.utcnow()
+    if decision.effect_status == "ACTIVE" and decision.valid_until and decision.valid_until <= current:
+        decision.effect_status = "EXPIRED"
+        decision.superseded_reason = decision.superseded_reason or "VALID_UNTIL_EXPIRED"
+        decision.version = int(decision.version or 0) + 1
+        return True
+    return False
+
+
+def consume_accept_intent_in_tx(decision: InternshipEnterpriseApplicationDecision) -> None:
+    if decision.decision_status != "ACCEPT_INTENT" or decision.effect_status != "ACTIVE":
+        raise AppException("DATA_CONFLICT", "企业拟接收决定当前无效，不能用于正式落岗")
+    decision.effect_status = "CONSUMED"
+    decision.version = int(decision.version or 0) + 1
 
 
 def set_decision_in_tx(db, *, context, application_id: int, status: str, reason: str | None = None, interview_at=None, interview_note: str | None = None):
@@ -93,12 +109,15 @@ def set_decision_in_tx(db, *, context, application_id: int, status: str, reason:
             tenant_id=context.tenant_id, application_id=application.id, volunteer_group_id=group.id,
             campaign_id=context.campaign_id, batch_id=context.batch_id, company_id=context.company_id,
             position_id=position.id, material_snapshot_id=application.material_snapshot_id,
-            submission_version=group.submission_version, decision_status="PENDING",
+            submission_version=group.submission_version, decision_status="PENDING", effect_status="ACTIVE",
         )
         db.add(decision)
         db.flush()
+    expire_effect_if_needed_in_tx(decision)
+    if decision.effect_status in {"CONSUMED", "SUPERSEDED"}:
+        raise AppException("DATA_CONFLICT", "该企业决定已被消费或替代，不能覆盖历史事实")
     current = decision.decision_status
-    if target == current:
+    if target == current and decision.effect_status == "ACTIVE":
         return decision
     if target not in _ALLOWED.get(current, set()):
         raise AppException("DATA_CONFLICT", f"企业决定不能从 {current} 变更为 {target}")
@@ -107,6 +126,8 @@ def set_decision_in_tx(db, *, context, application_id: int, status: str, reason:
         raise AppException("VALIDATION_ERROR", "撤回拟接收必须填写原因")
     now = datetime.utcnow()
     decision.decision_status = target
+    decision.effect_status = "ACTIVE"
+    decision.superseded_reason = None
     decision.decision_reason = text or None
     decision.interview_at = interview_at if target == "INTERVIEW" else decision.interview_at
     decision.interview_note = str(interview_note or "").strip() or decision.interview_note
@@ -120,12 +141,21 @@ def set_decision_in_tx(db, *, context, application_id: int, status: str, reason:
             InternshipRecruitmentCampaign.tenant_id == context.tenant_id,
             InternshipRecruitmentCampaign.is_deleted.is_(False),
         ))
+        if not campaign:
+            raise AppException("DATA_CONFLICT", "招聘季已不存在，不能拟接收")
+        decision.valid_until = min(
+            value for value in (campaign.school_confirm_end_at, campaign.enterprise_access_end_at)
+            if value is not None
+        ) if any(value is not None for value in (campaign.school_confirm_end_at, campaign.enterprise_access_end_at)) else None
         group_svc.lock_for_accept_intent_in_tx(
-            db, group=group, decision_id=decision.id,
-            teacher_confirm_sla_hours=getattr(campaign, "teacher_confirm_sla_hours", None), now=now,
+            db, group=group, application_id=application.id, decision_id=decision.id,
+            teacher_confirm_sla_hours=campaign.teacher_confirm_sla_hours, now=now,
         )
+        if decision.valid_until and group.teacher_confirm_deadline and group.teacher_confirm_deadline > decision.valid_until:
+            group.teacher_confirm_deadline = decision.valid_until
     elif current == "ACCEPT_INTENT" and target == "REJECTED":
-        # Release only the lock owned by this historical decision; retain the decision row itself.
+        decision.effect_status = "SUPERSEDED"
+        decision.superseded_reason = text
         if group.status == "LOCKED" and group.locked_by_decision_id == decision.id:
             group_svc.teacher_request_revision_in_tx(db, group=group, reason=text, now=now)
     db.flush()
