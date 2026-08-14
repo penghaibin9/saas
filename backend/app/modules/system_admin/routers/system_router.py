@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.context import current_tenant_id
 from app.core.permissions import require_any_permission, require_permission
 from app.db.session import get_sessionmaker
+from app.modules.system_admin.routers import school_iam_router as _school_iam
 from app.modules.system_admin.routers import system_bundle as _bundle
 
 _replacements = APIRouter()
@@ -68,9 +69,6 @@ def get_system_context(user=Depends(require_any_permission(
         if isinstance(data, dict):
             for key in _EFFECTIVE_ACCESS_KEYS:
                 data[key] = access.get(key)
-            # Current System frontend deliberately preserves permissionActions verbatim.
-            # Nest the complete context here as a compatibility projection so B4 never
-            # loses None/error/revision semantics while the top-level UI DTO is migrated.
             actions = data.get("permissionActions")
             if not isinstance(actions, dict):
                 actions = {}
@@ -151,6 +149,12 @@ def _compose_router() -> APIRouter:
     if replacement_by_key:
         missing = sorted(replacement_by_key)
         raise RuntimeError(f"Control Plane replacement route has no legacy target: {missing}")
+    school_keys = {_route_key(route) for route in _school_iam.router.routes}
+    existing_keys = {_route_key(route) for route in routes}
+    collisions = sorted(school_keys & existing_keys)
+    if collisions:
+        raise RuntimeError(f"School IAM route collision: {collisions}")
+    routes.extend(_school_iam.router.routes)
     composed.routes = routes
     return composed
 
