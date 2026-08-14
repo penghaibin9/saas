@@ -6,11 +6,16 @@
 """
 from __future__ import annotations
 
+import importlib
+
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
 
-from . import academic_affairs_stats_service as stats
+stats = importlib.import_module(
+    ".academic_affairs_stats_service",
+    package=__package__,
+)
 from .academic_affairs_production_audit_guard import _bounded_page_size
 
 
