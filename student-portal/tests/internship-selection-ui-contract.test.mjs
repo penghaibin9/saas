@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   CATALOG_MAX_PAGE_SIZE,
@@ -13,6 +14,8 @@ import {
   buildVolunteerSubmitPayload,
   normalizeCatalogQuery
 } from '../src/modules/internshipRecruitment/selectionContract.js'
+
+const selectionViewSource = readFileSync(new URL('../src/views/internship/InternshipSelectionView.vue', import.meta.url), 'utf8')
 
 test('A03-0 freezes student selection naming, route and responsive layout', () => {
   assert.equal(INTERNSHIP_SELECTION_TITLE, '实习选岗')
@@ -77,4 +80,12 @@ test('A03-0 submit requires preview hash and explicit contact policy', () => {
     confirmMaterialPreviewHash: 'sha256:abc'
   })
   assert.throws(() => buildVolunteerSubmitPayload({ consentPolicyVersion: 'v1' }), /必须确认/)
+})
+
+test('A03-11 student-facing selection fails closed when volunteer authority is unavailable', () => {
+  assert.match(selectionViewSource, /normalizeVolunteerGroup\(\{ status: 'UNAVAILABLE' \}\)/)
+  assert.match(selectionViewSource, /系统不会用本地数据替代学校记录/)
+  assert.match(selectionViewSource, /if \(!volunteerEditable\.value \|\| submissionBusy\.value\)/)
+  assert.match(selectionViewSource, /if \(!submissionConfirmed\.value \|\| !volunteerEditable\.value \|\| submissionBusy\.value\) return/)
+  assert.doesNotMatch(selectionViewSource, /A01 接口就绪后/)
 })

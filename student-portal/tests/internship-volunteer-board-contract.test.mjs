@@ -70,3 +70,10 @@ test('A03-11 volunteer board labels canonical APPROVED as school-confirmed', () 
   assert.match(boardSource, /CONFIRMED: '学校已确认'/)
   assert.equal(canEditVolunteerGroup({ status: 'APPROVED' }), false)
 })
+
+test('A03-11 missing volunteer authority state fails closed as UNAVAILABLE', () => {
+  const unavailable = normalizeVolunteerGroup()
+  assert.equal(unavailable.status, 'UNAVAILABLE')
+  assert.equal(canEditVolunteerGroup(unavailable), false)
+  assert.match(boardSource, /UNAVAILABLE: '暂不可用'/)
+})

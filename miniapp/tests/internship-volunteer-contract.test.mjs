@@ -92,3 +92,14 @@ test('A03-11 canonical APPROVED is final and cannot reopen mobile submission', (
   assert.match(pageSource, /v-else-if="volunteerFinalized"[^>]*disabled>学校已确认<\/button>/)
   assert.match(pageSource, /!volunteerEditable \|\| activeSlots\.length < 1/)
 })
+
+test('A03-11 unavailable volunteer authority fails closed on mobile', () => {
+  const group = normalizeMobileVolunteerGroup()
+  assert.equal(group.status, 'UNAVAILABLE')
+  assert.equal(canEditMobileVolunteers(group), false)
+  assert.match(pageSource, /volunteerState === 'ready' && canEditMobileVolunteers/)
+  assert.match(pageSource, /normalizeMobileVolunteerGroup\(\{ status: 'UNAVAILABLE' \}\)/)
+  assert.match(pageSource, /UNAVAILABLE: '暂不可用'/)
+  assert.match(pageSource, /系统不会用本地数据替代学校记录/)
+  assert.match(pageSource, /!this\.consentConfirmed \|\| !this\.volunteerEditable \|\| this\.volunteerBusy/)
+})

@@ -257,6 +257,8 @@ async function loadVolunteerGroup() {
   const requestId = ++volunteerRequestSeq
   volunteerLoading.value = true
   volunteerError.value = ''
+  volunteerGroup.value = normalizeVolunteerGroup({ status: 'UNAVAILABLE' })
+  volunteerSlots.value = volunteerGroup.value.slots
   try {
     const data = await internshipSelectionApi.volunteers()
     if (requestId !== volunteerRequestSeq) return
@@ -266,9 +268,9 @@ async function loadVolunteerGroup() {
     candidatePosition.value = null
   } catch (err) {
     if (requestId !== volunteerRequestSeq) return
-    volunteerGroup.value = normalizeVolunteerGroup()
+    volunteerGroup.value = normalizeVolunteerGroup({ status: 'UNAVAILABLE' })
     volunteerSlots.value = volunteerGroup.value.slots
-    volunteerError.value = err?.message || '志愿组加载失败；A01 接口就绪后将在此读取真实志愿。'
+    volunteerError.value = err?.message || '暂时无法读取学校志愿记录，请稍后重试；系统不会用本地数据替代学校记录。'
   } finally {
     if (requestId === volunteerRequestSeq) volunteerLoading.value = false
   }
@@ -343,6 +345,10 @@ function changeVolunteerStatement(volunteerNo, statement) {
 }
 
 async function prepareFinalSubmit() {
+  if (!volunteerEditable.value || submissionBusy.value) {
+    submitError.value = { code: 'VOLUNTEER_NOT_EDITABLE', message: '当前志愿状态不可提交，请刷新后查看学校最新记录。', invalidItems: [] }
+    return
+  }
   submitError.value = { code: '', message: '', invalidItems: [] }
   submissionConfirmed.value = false
   submissionBusy.value = true
@@ -368,7 +374,7 @@ function cancelFinalSubmit() {
 }
 
 async function submitFinalVolunteerGroup() {
-  if (!submissionConfirmed.value) return
+  if (!submissionConfirmed.value || !volunteerEditable.value || submissionBusy.value) return
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
   try {

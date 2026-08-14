@@ -35,7 +35,7 @@ export function normalizeVolunteerGroup(raw = {}) {
       applicationVersion: Number(item.version || item.applicationVersion || 0)
     }
   })
-  const status = String(raw.status || raw.groupStatus || 'DRAFT').toUpperCase()
+  const status = String(raw.status || raw.groupStatus || 'UNAVAILABLE').toUpperCase()
   return {
     id: raw.id || raw.groupId || null,
     status,

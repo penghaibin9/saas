@@ -54,6 +54,14 @@ test('A03-11 canonical APPROVED is a final school-confirmed state', () => {
   assert.match(submissionStateMessage({ status: 'APPROVED' }), /学校已完成最终确认/)
 })
 
+test('A03-11 unavailable authority state exposes no write action', () => {
+  assert.equal(VOLUNTEER_STATUS_META.UNAVAILABLE.label, '志愿暂不可用')
+  assert.equal(canSubmitVolunteerGroup({ status: 'UNAVAILABLE' }), false)
+  assert.equal(canWithdrawVolunteerGroup({ status: 'UNAVAILABLE' }), false)
+  assert.equal(canRequestVolunteerUnlock({ status: 'UNAVAILABLE' }), false)
+  assert.match(submissionStateMessage({ status: 'UNAVAILABLE' }), /不会用本地数据替代学校记录/)
+})
+
 test('A03-8 invalid job response remains whole-group failure and exposes every item', () => {
   const result = normalizeVolunteerSubmitError({
     bizCode: 'VOLUNTEER_POSITION_INVALID',

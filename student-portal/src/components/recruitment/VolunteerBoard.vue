@@ -78,7 +78,7 @@ defineEmits(['move', 'remove', 'replace', 'statement', 'save'])
 
 const selectedCount = computed(() => props.slots.filter((slot) => slot.positionId).length)
 const statusLabel = computed(() => ({
-  DRAFT: '待提交', SUBMITTED: '已提交', LOCKED: '已锁定', NEEDS_REVISION: '可调整',
+  UNAVAILABLE: '暂不可用', DRAFT: '待提交', SUBMITTED: '已提交', LOCKED: '已锁定', NEEDS_REVISION: '可调整',
   APPROVED: '学校已确认', CONFIRMED: '学校已确认'
 }[props.group.status] || props.group.status || '待加载'))
 

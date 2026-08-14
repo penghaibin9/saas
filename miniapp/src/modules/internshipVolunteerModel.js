@@ -69,7 +69,7 @@ export function normalizeMobileVolunteerGroup(raw = {}) {
     }
   })
   return {
-    status: String(raw.status || raw.groupStatus || 'DRAFT').toUpperCase(),
+    status: String(raw.status || raw.groupStatus || 'UNAVAILABLE').toUpperCase(),
     version: Number(raw.version || raw.groupVersion || 0),
     recordVersion: Number(raw.recordVersion || raw.internshipRecordVersion || 0),
     batchId: raw.batchId || null,

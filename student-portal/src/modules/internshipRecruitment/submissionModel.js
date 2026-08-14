@@ -1,6 +1,7 @@
 import { buildVolunteerSubmitPayload } from './selectionContract.js'
 
 export const VOLUNTEER_STATUS_META = Object.freeze({
+  UNAVAILABLE: { label: '志愿暂不可用', tone: 'neutral' },
   DRAFT: { label: '志愿待提交', tone: 'neutral' },
   SUBMITTED: { label: '志愿已提交', tone: 'info' },
   LOCKED: { label: '等待学校最终确认', tone: 'warning' },
@@ -59,7 +60,8 @@ export function normalizeVolunteerSubmitError(error = {}) {
 }
 
 export function submissionStateMessage(group = {}) {
-  const status = String(group.status || 'DRAFT').toUpperCase()
+  const status = String(group.status || 'UNAVAILABLE').toUpperCase()
+  if (status === 'UNAVAILABLE') return '暂时无法读取学校志愿记录，请稍后重试；系统不会用本地数据替代学校记录。'
   if (status === 'LOCKED') {
     return group.lockedCompanyName
       ? `${group.lockedCompanyName} 已拟接收，等待学校最终确认`
