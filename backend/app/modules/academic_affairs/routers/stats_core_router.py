@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -31,7 +31,8 @@ def stats_filters(user=Depends(require_permission(_STATS_VIEW))):
 
 @router.get("/stats/registration", summary="注册统计下钻：未注册学生名单（脱敏+审计）")
 def stats_registration(termId: Optional[int] = None, collegeId: Optional[int] = None,
-                       majorId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                       majorId: Optional[int] = None, page: int = Query(1, ge=1),
+                       pageSize: int = Query(20, ge=1, le=200),
                        user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.registration_unregistered(user, termId, collegeId, majorId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -39,7 +40,8 @@ def stats_registration(termId: Optional[int] = None, collegeId: Optional[int] = 
 
 @router.get("/stats/status-change", summary="学籍统计下钻：EFFECTIVE 异动明细")
 def stats_status_change(changeType: Optional[str] = None, termId: Optional[int] = None,
-                        collegeId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                        collegeId: Optional[int] = None, page: int = Query(1, ge=1),
+                        pageSize: int = Query(20, ge=1, le=200),
                         user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.status_change_detail(user, changeType, termId, collegeId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -47,7 +49,8 @@ def stats_status_change(changeType: Optional[str] = None, termId: Optional[int] 
 
 @router.get("/stats/warning", summary="学业预警统计下钻：非 CLOSED 预警明细（脱敏+审计）")
 def stats_warning(level: Optional[str] = None, source: Optional[str] = None,
-                  collegeId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                  collegeId: Optional[int] = None, page: int = Query(1, ge=1),
+                  pageSize: int = Query(20, ge=1, le=200),
                   user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.warning_detail(user, level, source, collegeId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -74,7 +77,7 @@ def stats_course(category: Optional[str] = None, collegeId: Optional[int] = None
 
 @router.get("/stats/course/detail", summary="课程统计下钻：ENABLED 课程明细")
 def stats_course_detail(category: Optional[str] = None, collegeId: Optional[int] = None,
-                        page: int = 1, pageSize: int = 20,
+                        page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                         user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.course_detail(user, category, collegeId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -88,7 +91,7 @@ def stats_teaching_task(collegeId: Optional[int] = None, termId: Optional[int] =
 
 @router.get("/stats/teaching-task/pending", summary="教学任务统计下钻：未确认任务清单")
 def stats_teaching_task_pending(collegeId: Optional[int] = None, termId: Optional[int] = None,
-                                page: int = 1, pageSize: int = 20,
+                                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                                 user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.teaching_task_pending(user, collegeId, termId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -102,7 +105,7 @@ def stats_schedule(collegeId: Optional[int] = None, termId: Optional[int] = None
 
 @router.get("/stats/schedule/conflicts", summary="课表统计下钻：冲突明细")
 def stats_schedule_conflicts(collegeId: Optional[int] = None, termId: Optional[int] = None,
-                             page: int = 1, pageSize: int = 20,
+                             page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                              user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.schedule_conflicts(user, collegeId, termId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -116,7 +119,8 @@ def stats_grade(termId: Optional[int] = None, collegeId: Optional[int] = None,
 
 @router.get("/stats/grade/detail", summary="成绩统计下钻：挂科学生明细（脱敏+审计）")
 def stats_grade_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
-                       courseName: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                       courseName: Optional[str] = None, page: int = Query(1, ge=1),
+                       pageSize: int = Query(20, ge=1, le=200),
                        user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.grade_detail(user, termId, collegeId, courseName, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -136,7 +140,8 @@ def stats_graduation(batchId: Optional[int] = None, collegeId: Optional[int] = N
 
 @router.get("/stats/graduation/abnormal", summary="毕业资格统计下钻：异常项学生名单（脱敏+审计）")
 def stats_graduation_abnormal(batchId: Optional[int] = None, collegeId: Optional[int] = None,
-                              itemType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                              itemType: Optional[str] = None, page: int = Query(1, ge=1),
+                              pageSize: int = Query(20, ge=1, le=200),
                               user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.graduation_abnormal(user, batchId, collegeId, itemType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -150,7 +155,7 @@ def stats_workload(termId: Optional[int] = None, collegeId: Optional[int] = None
 
 @router.get("/stats/workload/detail", summary="教师工作量统计下钻：单教师授课明细")
 def stats_workload_detail(teacherKey: str, collegeId: Optional[int] = None,
-                          page: int = 1, pageSize: int = 20,
+                          page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                           user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.workload_detail(user, teacherKey, collegeId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -164,7 +169,7 @@ def stats_course_selection(termId: Optional[int] = None, collegeId: Optional[int
 
 @router.get("/stats/course-selection/detail", summary="选课统计下钻：低人数课程清单")
 def stats_course_selection_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
-                                  page: int = 1, pageSize: int = 20,
+                                  page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                                   user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.course_selection_detail(user, termId, collegeId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -178,7 +183,8 @@ def stats_exam(termId: Optional[int] = None, collegeId: Optional[int] = None,
 
 @router.get("/stats/exam/detail", summary="考务统计下钻：缺考/违纪明细（脱敏+审计）")
 def stats_exam_detail(termId: Optional[int] = None, collegeId: Optional[int] = None,
-                      incidentType: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                      incidentType: Optional[str] = None, page: int = Query(1, ge=1),
+                      pageSize: int = Query(20, ge=1, le=200),
                       user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.exam_detail(user, termId, collegeId, incidentType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
@@ -190,7 +196,7 @@ def stats_resource(user=Depends(require_permission(_STATS_VIEW))):
 
 
 @router.get("/stats/resource/detail", summary="教学资源统计下钻：待审核教室预约清单")
-def stats_resource_detail(page: int = 1, pageSize: int = 20,
+def stats_resource_detail(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                           user=Depends(require_permission(_STATS_VIEW))):
     items, total = stats_svc.resource_detail(user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
