@@ -124,10 +124,7 @@ jobs:
           pkg.overrides = { ...(pkg.overrides || {}), nanoid: '3.3.18' }
           if (app === 'miniapp') {
             const buildOnly = [
-              '@dcloudio/types',
-              '@dcloudio/uni-cli-shared',
-              '@dcloudio/uni-mp-weixin',
-              '@dcloudio/vite-plugin-uni',
+              ...Object.keys(pkg.dependencies || {}).filter((name) => name.startsWith('@dcloudio/')),
               'sass',
               'vite',
             ]
