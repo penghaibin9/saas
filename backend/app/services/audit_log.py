@@ -9,6 +9,7 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_DUTY_CHANGE",
     "PLATFORM_ELEVATION_CHANGE",
     "PLATFORM_SUPPORT_SESSION_CHANGE",
+    "PLATFORM_ACCESS_REVIEW_CHANGE",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402

@@ -1,4 +1,4 @@
 """Platform Operations routers."""
-from .platform_bundle import router
+from .platform_router import router
 
 __all__ = ["router"]

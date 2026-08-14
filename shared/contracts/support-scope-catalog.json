@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "owner": "CONTROL_PLANE",
+  "scopes": [
+    {"scopeCode":"tenant.context.read","label":"查看学校支持上下文","riskLevel":"MEDIUM","requiresMfa":false},
+    {"scopeCode":"tenant.audit.read","label":"查看学校支持审计摘要","riskLevel":"HIGH","requiresMfa":true},
+    {"scopeCode":"identity.metadata.read","label":"查看账号身份元数据","riskLevel":"HIGH","requiresMfa":true},
+    {"scopeCode":"file.metadata.read","label":"查看文件元数据","riskLevel":"HIGH","requiresMfa":true},
+    {"scopeCode":"sensitive.identity.read","label":"查看敏感身份字段","riskLevel":"CRITICAL","requiresMfa":true}
+  ],
+  "wildcardAllowed": false
+}
