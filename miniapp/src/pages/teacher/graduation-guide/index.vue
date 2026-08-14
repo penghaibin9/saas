@@ -48,17 +48,26 @@
             </view>
           </template>
 
-          <!-- 中期检查队列 -->
+          <!-- 中期检查队列：服务端真分页 -->
           <template v-else-if="tab === 'midterm'">
             <view v-if="midtermError" class="gg__empty"><text>{{ midtermError }}</text></view>
             <view v-else-if="!midtermQueue.length" class="gg__empty"><text>暂无待检查/待复核整改</text></view>
-            <view class="stack">
-              <view v-for="(m, i) in midtermQueue" :key="m.gdStudentId" class="gg card" @click="enterReview('midterm', midtermQueue, i)">
-                <view class="row-between"><text class="t-md t-bold">{{ m.studentName }}</text><text class="gg__st">{{ m.statusLabel }}</text></view>
-                <text class="gg__cls">{{ m.studentNo }}</text>
-                <button class="gg__go sm" @click.stop="enterReview('midterm', midtermQueue, i)">去处理</button>
+            <template v-else>
+              <view class="stack">
+                <view v-for="(m, i) in midtermQueue" :key="m.gdStudentId" class="gg card" @click="enterReview('midterm', midtermQueue, i)">
+                  <view class="row-between"><text class="t-md t-bold">{{ m.studentName }}</text><text class="gg__st">{{ m.statusLabel }}</text></view>
+                  <text class="gg__cls">{{ m.studentNo }}</text>
+                  <button class="gg__go sm" @click.stop="enterReview('midterm', midtermQueue, i)">去处理</button>
+                </view>
               </view>
-            </view>
+              <view class="gg__paging">
+                <text>已加载 {{ midtermQueue.length }} / {{ midtermTotal }} 条</text>
+                <button v-if="midtermHasMore" class="gg__more" :disabled="midtermLoadingMore" @click="loadMoreMidterm">
+                  {{ midtermLoadingMore ? '加载中…' : '加载更多' }}
+                </button>
+                <text v-else>已到最后</text>
+              </view>
+            </template>
           </template>
 
           <!-- 评阅任务 -->
@@ -97,17 +106,26 @@
             </view>
           </template>
 
-          <!-- 成绩待复核队列 -->
+          <!-- 成绩待复核队列：服务端真分页 -->
           <template v-else-if="tab === 'grade'">
             <view v-if="gradeError" class="gg__empty"><text>{{ gradeError }}</text></view>
             <view v-else-if="!gradeQueue.length" class="gg__empty"><text>暂无待复核成绩</text></view>
-            <view class="stack">
-              <view v-for="(gr, i) in gradeQueue" :key="gr.gdStudentId" class="gg card" @click="enterReview('grade', gradeQueue, i)">
-                <view class="row-between"><text class="t-md t-bold">{{ gr.studentName }}</text><text class="gg__st">{{ gr.statusLabel }}</text></view>
-                <text class="gg__cls">{{ gr.studentNo }} · 综合 {{ gr.totalScore }} 分（{{ gr.gradeLevel || '—' }}）</text>
-                <button class="gg__go sm" @click.stop="enterReview('grade', gradeQueue, i)">去复核</button>
+            <template v-else>
+              <view class="stack">
+                <view v-for="(gr, i) in gradeQueue" :key="gr.gdStudentId" class="gg card" @click="enterReview('grade', gradeQueue, i)">
+                  <view class="row-between"><text class="t-md t-bold">{{ gr.studentName }}</text><text class="gg__st">{{ gr.statusLabel }}</text></view>
+                  <text class="gg__cls">{{ gr.studentNo }} · 综合 {{ gr.totalScore }} 分（{{ gr.gradeLevel || '—' }}）</text>
+                  <button class="gg__go sm" @click.stop="enterReview('grade', gradeQueue, i)">去复核</button>
+                </view>
               </view>
-            </view>
+              <view class="gg__paging">
+                <text>已加载 {{ gradeQueue.length }} / {{ gradeTotal }} 条</text>
+                <button v-if="gradeHasMore" class="gg__more" :disabled="gradeLoadingMore" @click="loadMoreGrade">
+                  {{ gradeLoadingMore ? '加载中…' : '加载更多' }}
+                </button>
+                <text v-else>已到最后</text>
+              </view>
+            </template>
           </template>
         </view>
       </MobileGlobalState>
@@ -225,6 +243,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherPagingApi, GRADUATION_TEACHER_PAGE_SIZE } from '@/services/graduationTeacherPagingApi'
 import { normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
@@ -240,12 +259,14 @@ export default {
       data: null, state: 'loading', f: 'all', acting: false,
       reviewQueue: [], finalQueue: [],
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
+      midtermPage: 1, midtermTotal: 0, midtermHasMore: false, midtermLoadingMore: false,
+      gradePage: 1, gradeTotal: 0, gradeHasMore: false, gradeLoadingMore: false,
       midtermError: '', reviewsError: '', defenseError: '', gradeError: '',
       defenseScorePending: 0,
       loaded: { midterm: false, peer: false, defense: false, grade: false },
       mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading',
       peerScore: '', peerOpinion: '',
-      _bootKind: '' // onLoad ?kind=proposal|final → 数据就绪后自动进入对应批阅队列
+      _bootKind: ''
     }
   },
   onLoad(options) {
@@ -265,10 +286,10 @@ export default {
     tabs() {
       return [
         { key: 'review', label: '批阅', count: this.pendingReviewCount },
-        { key: 'midterm', label: '中期', count: this.midtermQueue.length },
+        { key: 'midterm', label: '中期', count: this.midtermTotal },
         { key: 'peer', label: '评阅', count: this.reviews.length },
         { key: 'defense', label: '答辩', count: this.defenseScorePending },
-        { key: 'grade', label: '成绩', count: this.gradeQueue.length }
+        { key: 'grade', label: '成绩', count: this.gradeTotal }
       ]
     },
     pendingReviewCount() { return this.reviewQueue.length + this.finalQueue.length },
@@ -303,7 +324,6 @@ export default {
         this.reviewQueue = (d && d.reviewQueue) || []
         this.finalQueue = (d && d.finalQueue) || []
         this.state = 'ready'
-        // 预取各分区待办计数，让 tab 徽标准确（静默失败，不阻塞主界面）
         this.loadMidterm(); this.loadReviews(); this.loadGrade(); this.loadDefenseScorePending()
         this._maybeBootReview()
       }).catch(() => { if (!this.data) this.state = 'error' }).finally(() => { if (done) done() })
@@ -323,16 +343,31 @@ export default {
       else if (k === 'grade' && !this.loaded.grade) this.loadGrade()
     },
     reloadTab(done) {
-      // 返回/下拉：刷新当前 tab 数据（批阅始终刷 getGdStudents）
       this.load()
       const map = { midterm: this.loadMidterm, peer: this.loadReviews, defense: this.loadDefense, grade: this.loadGrade }
       if (map[this.tab]) map[this.tab].call(this, done)
       else if (done) done()
     },
-    loadMidterm(done) {
-      teacherApi.getGraduationMidtermQueue().then((r) => {
-        this.midtermQueue = r || []; this.loaded.midterm = true; this.midtermError = ''
-      }).catch(() => { this.midtermError = '中期队列加载失败' }).finally(() => done && done())
+    loadMidterm(done, append = false) {
+      const targetPage = append ? this.midtermPage + 1 : 1
+      if (append) this.midtermLoadingMore = true
+      graduationTeacherPagingApi.midtermQueue(targetPage, GRADUATION_TEACHER_PAGE_SIZE).then((r) => {
+        const rows = r || []
+        const meta = rows._pageMeta || {}
+        this.midtermQueue = append ? [...this.midtermQueue, ...rows] : rows
+        this.midtermPage = Number(meta.page || targetPage)
+        this.midtermTotal = Number(meta.total || this.midtermQueue.length)
+        this.midtermHasMore = !!meta.hasMore
+        this.loaded.midterm = true
+        this.midtermError = ''
+      }).catch(() => { this.midtermError = '中期队列加载失败' }).finally(() => {
+        this.midtermLoadingMore = false
+        if (done) done()
+      })
+    },
+    loadMoreMidterm() {
+      if (!this.midtermHasMore || this.midtermLoadingMore) return
+      this.loadMidterm(null, true)
     },
     loadReviews(done) {
       teacherApi.getGraduationMyReviews().then((r) => {
@@ -352,10 +387,26 @@ export default {
         this.defenseScorePending = list.filter((x) => x.myStatus === 'PENDING').length
       }).catch(() => { /* 非评委身份常见，不挡主流程 */ }).finally(() => done && done())
     },
-    loadGrade(done) {
-      teacherApi.getGraduationGradeQueue().then((r) => {
-        this.gradeQueue = r || []; this.loaded.grade = true; this.gradeError = ''
-      }).catch(() => { this.gradeError = '成绩队列加载失败' }).finally(() => done && done())
+    loadGrade(done, append = false) {
+      const targetPage = append ? this.gradePage + 1 : 1
+      if (append) this.gradeLoadingMore = true
+      graduationTeacherPagingApi.gradeQueue(targetPage, GRADUATION_TEACHER_PAGE_SIZE).then((r) => {
+        const rows = r || []
+        const meta = rows._pageMeta || {}
+        this.gradeQueue = append ? [...this.gradeQueue, ...rows] : rows
+        this.gradePage = Number(meta.page || targetPage)
+        this.gradeTotal = Number(meta.total || this.gradeQueue.length)
+        this.gradeHasMore = !!meta.hasMore
+        this.loaded.grade = true
+        this.gradeError = ''
+      }).catch(() => { this.gradeError = '成绩队列加载失败' }).finally(() => {
+        this.gradeLoadingMore = false
+        if (done) done()
+      })
+    },
+    loadMoreGrade() {
+      if (!this.gradeHasMore || this.gradeLoadingMore) return
+      this.loadGrade(null, true)
     },
     pIndexOf(g) { return this.reviewQueue.findIndex((q) => q.gdStudentId === g.id) },
     fIndexOf(g) { return this.finalQueue.findIndex((q) => q.gdStudentId === g.id) },
@@ -379,13 +430,12 @@ export default {
       const it = this.current || {}
       if (this.reviewKind === 'proposal') return it.proposalId
       if (this.reviewKind === 'final') return it.finalId
-      return it.gdStudentId // midterm / grade
+      return it.gdStudentId
     },
     loadDetail() {
       const it = this.current
       if (!it) { this.detailState = 'empty'; return }
       this.peerScore = ''; this.peerOpinion = ''
-      // 评阅任务：列表行即详情（含 score/opinion），无独立详情接口
       if (this.reviewKind === 'peer') {
         this.detail = { ...it }
         if (it.status === 'RETURNED') { this.peerScore = it.score != null ? String(it.score) : ''; this.peerOpinion = it.opinion || '' }
@@ -406,7 +456,6 @@ export default {
     next() { if (this.queueIndex < this.queue.length - 1) { this.queueIndex++; this.loadDetail() } },
     afterAction() {
       this.queue.splice(this.queueIndex, 1)
-      // 同步移除对应外层队列引用（queue 就是外层数组引用，splice 已同步）
       if (!this.queue.length) { this.exitReview(); return }
       if (this.queueIndex > this.queue.length - 1) this.queueIndex = this.queue.length - 1
       this.loadDetail()
@@ -533,6 +582,10 @@ export default {
 .gg__go { min-height: 40px; border-radius: var(--radius-md); border: none; background: var(--teacher-600); color: #fff; font-size: var(--font-size-md); padding: 0 var(--space-4); margin-top: var(--space-2); }
 .gg__go.sm { min-height: 38px; margin-top: 0; }
 .gg__go::after { border: none; }
+.gg__paging { display: flex; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-4) 0 calc(var(--space-4) + env(safe-area-inset-bottom)); font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.gg__more { min-height: 38px; padding: 0 var(--space-4); border: 1px solid var(--teacher-300, var(--border-base)); border-radius: var(--radius-md); background: var(--bg-card); color: var(--teacher-700); font-size: var(--font-size-sm); }
+.gg__more::after { border: none; }
+.gg__more[disabled] { opacity: .5; }
 .rv { position: fixed; inset: 0; background: var(--bg-page, var(--gray-50)); display: flex; flex-direction: column; z-index: var(--z-modal, 100); }
 .rv__head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--page-padding-mobile) var(--space-3); background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
 .rv__back { font-size: var(--font-size-base); color: var(--teacher-700); min-width: 56px; }
