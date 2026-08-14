@@ -239,7 +239,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Graduation material center · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/material-center?tab=students')
+    await openGoldenStaffPage(page, '/admin/graduation/material-center?tab=students')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
     await page.reload()
 

@@ -2,6 +2,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const counselorLogin = 'e2e_counselor_a'
@@ -191,7 +192,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Internship batch configuration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/internship/batches?panel=list')
+    await openGoldenStaffPage(page, '/admin/internship/batches?panel=list')
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
     await page.reload()
 
