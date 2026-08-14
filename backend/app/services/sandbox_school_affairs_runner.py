@@ -6,13 +6,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
+from app.services import sandbox_school_affairs_seed as _affairs_seed
 from app.services.sandbox_school_affairs_seed import (
     EXPECTED_AFFAIRS_RISKS,
+    EXPECTED_FUNDING_GRANTED,
     _returning_roster,
-    _seed_aid_and_funding,
     _seed_class_and_counselor,
     _seed_discipline,
     _seed_dorm_inventory,
@@ -23,6 +25,132 @@ from app.services.sandbox_school_affairs_counselor_reconcile import (
     reconcile_counselor_assessments,
 )
 from app.services.sandbox_school_master_seed import _bulk_insert
+
+
+FUNDING_GRANT_AMOUNT = Decimal("3300.00")
+FUNDING_GRANT_BUDGET = FUNDING_GRANT_AMOUNT * EXPECTED_FUNDING_GRANTED
+FUNDING_GRANT_AT = datetime(2025, 11, 25, 10, 0)
+
+
+def _seed_aid_and_funding_via_canonical_transition(db, tenant_id: int, roster: list[dict]) -> dict:
+    """兼容迁移 schema：资助必须 PUBLICITY → GRANTED，禁止直插终态。
+
+    旧 20K 数据函数把历史助学金作为最终快照直接 INSERT GRANTED；真实 MySQL package-10
+    trigger 会正确拒绝这种写法。这里仅在 20K 串行建站编排期间拦截 FundingApplication
+    的 bulk insert：先落 PUBLICITY，再用一次正式 UPDATE 进入 GRANTED，让 MySQL trigger
+    原子预占批次名额和金额。非 MySQL 开发库没有 trigger，因此显式模拟同一最终账面。
+
+    其它模型仍走原 bulk helper；finally 必须恢复模块全局，避免影响同进程其它建站步骤。
+    """
+    from app.models import FundingApplication, FundingBatch
+
+    original_bulk_insert = _affairs_seed._bulk_insert
+
+    def canonical_bulk_insert(db_arg, model, rows, *, chunk_size=1000):
+        if model is not FundingApplication:
+            return original_bulk_insert(db_arg, model, rows, chunk_size=chunk_size)
+
+        if not rows:
+            return None
+        if len(rows) != EXPECTED_FUNDING_GRANTED:
+            raise RuntimeError(
+                f"历史助学金申请基数异常 expected={EXPECTED_FUNDING_GRANTED} actual={len(rows)}"
+            )
+        if any(str(row.get("status") or "").upper() != "GRANTED" for row in rows):
+            raise RuntimeError("20K 历史助学金 bulk 只允许把既定 GRANTED 快照改走 canonical transition")
+
+        batch_ids = {int(row["batch_id"]) for row in rows}
+        if len(batch_ids) != 1:
+            raise RuntimeError(f"历史助学金必须属于单一批次: {sorted(batch_ids)}")
+        batch_id = next(iter(batch_ids))
+
+        # 旧快照曾预填 reserved_*；真实 trigger 必须从 0 开始逐笔原子预占。
+        batch_reset = db_arg.execute(
+            update(FundingBatch)
+            .where(
+                FundingBatch.tenant_id == tenant_id,
+                FundingBatch.id == batch_id,
+            )
+            .values(reserved_quota=0, reserved_amount=Decimal("0.00"))
+        )
+        if int(batch_reset.rowcount or 0) != 1:
+            raise RuntimeError(f"历史助学金批次不存在或不可更新: batch={batch_id}")
+
+        publicity_rows = []
+        for row in rows:
+            clean = dict(row)
+            clean.update({
+                "status": "PUBLICITY",
+                "approved_amount": None,
+                "approved_at": None,
+                "quota_reserved": False,
+                "result_at": None,
+            })
+            publicity_rows.append(clean)
+        original_bulk_insert(
+            db_arg,
+            FundingApplication,
+            publicity_rows,
+            chunk_size=chunk_size,
+        )
+        db_arg.flush()
+
+        grant_result = db_arg.execute(
+            update(FundingApplication)
+            .where(
+                FundingApplication.tenant_id == tenant_id,
+                FundingApplication.batch_id == batch_id,
+                FundingApplication.status == "PUBLICITY",
+                FundingApplication.is_deleted.is_(False),
+            )
+            .values(
+                status="GRANTED",
+                approved_amount=FUNDING_GRANT_AMOUNT,
+                approved_at=FUNDING_GRANT_AT,
+                quota_reserved=True,
+                result_at=FUNDING_GRANT_AT,
+            )
+        )
+        if int(grant_result.rowcount or 0) != EXPECTED_FUNDING_GRANTED:
+            raise RuntimeError(
+                "历史助学金 PUBLICITY→GRANTED 数量异常 "
+                f"expected={EXPECTED_FUNDING_GRANTED} actual={grant_result.rowcount}"
+            )
+
+        # SQLite/ORM 开发 schema 不包含 package-10 trigger，只在非 MySQL 下模拟 trigger 终态。
+        if db_arg.get_bind().dialect.name != "mysql":
+            db_arg.execute(
+                update(FundingBatch)
+                .where(
+                    FundingBatch.tenant_id == tenant_id,
+                    FundingBatch.id == batch_id,
+                )
+                .values(
+                    reserved_quota=EXPECTED_FUNDING_GRANTED,
+                    reserved_amount=FUNDING_GRANT_BUDGET,
+                )
+            )
+        db_arg.flush()
+
+        reserved_quota, reserved_amount = db_arg.execute(
+            select(FundingBatch.reserved_quota, FundingBatch.reserved_amount).where(
+                FundingBatch.tenant_id == tenant_id,
+                FundingBatch.id == batch_id,
+            )
+        ).one()
+        actual_amount = Decimal(str(reserved_amount or 0))
+        if int(reserved_quota or 0) != EXPECTED_FUNDING_GRANTED or actual_amount != FUNDING_GRANT_BUDGET:
+            raise RuntimeError(
+                "历史助学金额度预占未收敛到 canonical 终态: "
+                f"quota={reserved_quota}, amount={actual_amount}"
+            )
+        return None
+
+    _affairs_seed._bulk_insert = canonical_bulk_insert
+    try:
+        return _affairs_seed._seed_aid_and_funding(db, tenant_id, roster)
+    finally:
+        _affairs_seed._bulk_insert = original_bulk_insert
 
 
 def _seed_real_source_risks(db, tenant_id: int) -> dict:
@@ -187,7 +315,7 @@ def seed_school_affairs_20k(db, tenant_id: int) -> dict:
     result["counselorAssessmentReconciliation"] = reconcile_counselor_assessments(db, tenant_id)
     result.update({
         "talkAndFamily": _seed_talks_and_family(db, tenant_id, roster),
-        "aidAndFunding": _seed_aid_and_funding(db, tenant_id, roster),
+        "aidAndFunding": _seed_aid_and_funding_via_canonical_transition(db, tenant_id, roster),
         "discipline": _seed_discipline(db, tenant_id, roster),
         "riskHub": _seed_real_source_risks(db, tenant_id),
     })
