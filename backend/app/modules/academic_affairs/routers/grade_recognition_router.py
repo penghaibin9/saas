@@ -1,7 +1,7 @@
-"""D8-S4 成绩认定/课程替代 Move Only Router。
+"""D8-S4 成绩认定/课程替代 Router；D8-U 管理列表使用 SQL 分页读侧。
 
-只迁移 legacy 已公开的五条认定入口；DTO、权限、学生身份守卫、hardened
-recognition public service、FileBinding/冻结证据与并发互斥语义全部原样复用。
+五条公开入口、DTO、权限、学生身份守卫、hardened recognition public service、
+FileBinding/冻结证据与并发互斥语义保持不变；只读列表不再全租户 materialize。
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.core.exceptions import AppException
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_recognition_read_service as recog_read_svc
 
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩认定"])
@@ -40,7 +41,7 @@ def recog_list(
     pageSize: int = 50,
     user=Depends(require_permission("academicAffairs.gradeRecognition.view")),
 ):
-    items, total = recog_svc.list_all(user, status, page, pageSize)
+    items, total = recog_read_svc.list_all(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
