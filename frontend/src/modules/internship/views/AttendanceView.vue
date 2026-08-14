@@ -132,6 +132,7 @@ export default {
       // 处理完一条后指向下一条待办；不自动弹窗，由老师点「继续处理」再开，
       // 避免刚确认完 A 的手速直接把 B 也点掉。
       nextUp: null,
+      workContextReady: false,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -153,9 +154,10 @@ export default {
     }
   },
   created() {
-    // applyPanel（immediate watch）已经按默认条件拉过一次；
-    // 真有上次的筛选才补拉一次，没有就不多发这个请求。
-    if (restoreWorkContext(this, WORK_FIELDS)) this.load()
+    // immediate watcher 会先按 URL 页签加载默认条件，但首次 load 不得覆盖已有工作上下文。
+    const restored = restoreWorkContext(this, WORK_FIELDS)
+    this.workContextReady = true
+    if (restored) this.load()
   },
   watch: {
     '$route.query.panel': {
@@ -188,7 +190,7 @@ export default {
       }
     },
     async load() {
-      captureWorkContext(this, WORK_FIELDS)
+      if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
