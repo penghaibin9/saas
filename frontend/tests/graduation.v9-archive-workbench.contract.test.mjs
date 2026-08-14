@@ -28,4 +28,11 @@ test('U7 dirty archive rows are visibly read-only and preview reasons are human-
   assert.ok(view.includes("selectedArchive.dataAnomaly ? '查看学生档案 →' : '去补齐 →'"))
   assert.ok(view.includes('历史主档异常，当前归档记录仅允许只读查看'))
   assert.ok(view.includes("dirty_data: '历史主档异常（只读）'"))
+
+  // Dirty-data rows must not merely fail at the API after showing write controls.
+  // The write controls live exclusively in the v-else branch of the anomaly notice.
+  assert.match(
+    view,
+    /<span v-if="selectedArchive\.dataAnomaly"[^>]*>历史主档异常，当前归档记录仅允许只读查看<\/span>\s*<template v-else>[\s\S]*?@click="doGenerate\(selectedArchive\)"[\s\S]*?@click="doSubmit\(selectedArchive\)"[\s\S]*?@click="doFile\(selectedArchive\)"[\s\S]*?@click="doReject\(selectedArchive\)"[\s\S]*?<\/template>/
+  )
 })

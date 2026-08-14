@@ -146,13 +146,15 @@
                 </ul>
               </template>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
-                <button v-if="['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" @click="doGenerate(selectedArchive)">生成清单</button>
-                <button v-if="selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" @click="doSubmit(selectedArchive)">提交归档</button>
-                <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
-                <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
-                <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
-                <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
                 <span v-if="selectedArchive.dataAnomaly" class="mp-note" style="color: var(--danger, #dc2626); font-weight: 600">历史主档异常，当前归档记录仅允许只读查看</span>
+                <template v-else>
+                  <button v-if="['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" @click="doGenerate(selectedArchive)">生成清单</button>
+                  <button v-if="selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" @click="doSubmit(selectedArchive)">提交归档</button>
+                  <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
+                  <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
+                  <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
+                  <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
+                </template>
               </div>
               <p class="mp-note" style="margin-top: var(--space-2)">生成 / 提交 / 核验 / 驳回均写入审计留痕；完整性以后端清单核验为准。</p>
             </div>
