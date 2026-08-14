@@ -522,18 +522,28 @@ def get_score(sid, user=None) -> dict:
                                for t in trail]}
 
 
-def export_scores(status=None, keyword=None, batch_id=None, user=None) -> dict:
+def export_scores(status=None, keyword=None, batch_id=None, user=None,
+                  incomplete_only=False) -> dict:
+    """导出必须与老师屏幕上的筛选口径一致。
+
+    `incomplete_only` 不透传的话，老师开着「仅看缺项」看到 3 条、点导出却拿到全部，
+    然后照着导出的表去核对——成绩是要报出去的，这种不一致比慢更危险。
+    """
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import require_exportable
-    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
     require_exportable(total)
-    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
     headers = ["学号", "姓名", "指导教师", "打卡", "周报", "月报总结", "企业评价", "学校评价",
                "总分", "及格线", "是否及格", "缺项", "状态"]
+    scope_note = "（仅缺项）" if incomplete_only else ""
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinScore"], it["weeklyScore"],
              it["monthlyScore"], it["enterpriseScore"], it["schoolScore"], it["totalScore"], it["passLine"],
              "是" if it["isPass"] else "否", it["incompleteReason"] or "无", it["statusLabel"]]
             for it in items]
-    wm = f"岗位实习中心·实习成绩台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
-    content = xlsx_util.build_ledger_xlsx("实习成绩台账", headers, rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "实习成绩台账.xlsx", len(items))
+    wm = (f"岗位实习中心·实习成绩台账{scope_note} · 导出人：{_op_name(user)}"
+          f" · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx(f"实习成绩台账{scope_note}", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, f"实习成绩台账{scope_note}.xlsx", len(items))

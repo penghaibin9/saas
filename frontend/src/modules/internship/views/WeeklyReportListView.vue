@@ -86,8 +86,12 @@ import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+
+// U8：页签由 URL 的 panel 承载，这里只保持页码
+const WORK_FIELDS = ['pagination.page']
 
 const PANEL_STATUS = {
   all: '',
@@ -216,6 +220,11 @@ export default {
       return ''
     }
   },
+  created() {
+    // 页签走 URL 的 panel，applyPanel 已按默认页码拉过一次；
+    // 这里只找回页码：老师在第 3 页批完一条，回来不该被丢回第 1 页。
+    if (restoreWorkContext(this, WORK_FIELDS)) this.load()
+  },
   watch: {
     '$route.query.type': {
       immediate: true,
@@ -324,6 +333,7 @@ export default {
       }
     },
     async load() {
+      captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
       const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize, batchId: this.batchStore.selectedBatchId }

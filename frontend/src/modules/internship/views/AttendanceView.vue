@@ -22,6 +22,16 @@
       <span class="bar__hint">共 {{ total }} 条 · 数据范围内可见</span>
     </div>
 
+    <div v-if="nextUp" class="nextup">
+      <span class="nextup__text">
+        处理完了。下一条待处理：<b>{{ nextUp.row.studentName }}</b>
+        <span v-if="nextUp.row.checkinDate"> · {{ nextUp.row.checkinDate }}</span>
+        （当前筛选下还剩 {{ nextUp.remaining }} 条）
+      </span>
+      <AppButton variant="secondary" size="sm" @click="openNextUp">继续处理</AppButton>
+      <AppButton variant="ghost" size="sm" @click="nextUp = null">先不处理</AppButton>
+    </div>
+
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <EmptyState v-else-if="!rows.length" title="暂无数据" />
@@ -52,7 +62,9 @@
 
     <AppConfirmDialog v-model:visible="dlg.visible" :title="dlg.title" :content="dlg.content"
       :danger="dlg.danger" :confirm-text="dlg.confirmText" :require-reason="dlg.requireReason"
-      reason-label="处理意见" :submitting="dlg.submitting" @confirm="onConfirm" />
+      reason-label="处理意见" :submitting="dlg.submitting" @confirm="onConfirm">
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -61,10 +73,17 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
+import { pickNextPending, anchorIndexOf } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+
+// U8：页签由 URL 的 panel 承载，这里补上 applyPanel 会重置掉的关键词/状态/页码
+const WORK_FIELDS = ['keyword', 'statusFilter', 'page']
 
 const COLS = {
   checkins: [
@@ -99,7 +118,7 @@ const TAB_PANEL = { checkins: 'checkins', exceptions: 'exceptions', makeups: 'ma
 export default {
   name: 'AttendanceView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips, ModuleSummaryStrip, ConflictNotice },
   data() {
     return {
       tab: 'checkins',
@@ -109,6 +128,10 @@ export default {
       keyword: '', statusFilter: '',
       dlg: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: true, submitting: false },
       pending: null,
+      conflict: emptyConflict(),
+      // 处理完一条后指向下一条待办；不自动弹窗，由老师点「继续处理」再开，
+      // 避免刚确认完 A 的手速直接把 B 也点掉。
+      nextUp: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -129,6 +152,11 @@ export default {
       return m
     }
   },
+  created() {
+    // applyPanel（immediate watch）已经按默认条件拉过一次；
+    // 真有上次的筛选才补拉一次，没有就不多发这个请求。
+    if (restoreWorkContext(this, WORK_FIELDS)) this.load()
+  },
   watch: {
     '$route.query.panel': {
       immediate: true,
@@ -148,9 +176,10 @@ export default {
       this.page = 1
       this.load()
     },
-    search() { this.page = 1; this.load() },
-    onPageChange(p) { this.page = p; this.load() },
+    search() { this.nextUp = null; this.page = 1; this.load() },
+    onPageChange(p) { this.nextUp = null; this.page = p; this.load() },
     switchTab(k) {
+      this.nextUp = null
       const panel = TAB_PANEL[k] || k
       if (this.$route.query.panel !== panel) {
         this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
@@ -159,6 +188,7 @@ export default {
       }
     },
     async load() {
+      captureWorkContext(this, WORK_FIELDS)
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
@@ -181,17 +211,20 @@ export default {
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（脱敏 + 水印，已写审计）`) },
     openHandle(r, action) {
+      this.conflict = emptyConflict()
       const label = { REASONABLE: '标记合理', ABNORMAL: '记为异常', TO_RISK: '转风险跟进' }[action]
       this.pending = { kind: 'handle', id: r.id, action, expectedVersion: r.version }
       this.dlg = { visible: true, title: `打卡异常 · ${label}`, content: `对「${r.studentName}」的打卡异常${label}，处理意见将写入审计。`,
         danger: action === 'TO_RISK', confirmText: label, requireReason: true, submitting: false }
     },
     openApprove(r) {
+      this.conflict = emptyConflict()
       this.pending = { kind: 'approve', id: r.id, expectedVersion: r.version }
       this.dlg = { visible: true, title: '补卡 · 通过', content: `通过「${r.studentName}」${r.checkinDate} 的补卡，将真实补写一条打卡留痕并写审计。`,
         danger: false, confirmText: '通过', requireReason: false, submitting: false }
     },
     openReject(r) {
+      this.conflict = emptyConflict()
       this.pending = { kind: 'reject', id: r.id, expectedVersion: r.version }
       this.dlg = { visible: true, title: '补卡 · 驳回', content: `驳回「${r.studentName}」${r.checkinDate} 的补卡，原因将写入审计。`,
         danger: true, confirmText: '驳回', requireReason: true, submitting: false }
@@ -205,10 +238,55 @@ export default {
       else if (p.kind === 'approve') res = await attendanceApi.approveMakeup(p.id, { comment: reason, ...ver })
       else res = await attendanceApi.rejectMakeup(p.id, { comment: reason, ...ver })
       this.dlg.submitting = false
+      if (isConflict(res)) {
+        // 撞车：处理意见原样留着，只把最新真值摆出来让老师重新决定
+        this.conflict = await captureConflict({
+          res,
+          refresh: () => this.load(),
+          latest: () => {
+            const fresh = this.rows.find((r) => String(r.id) === String(p.id))
+            if (!fresh) throw new Error('这条记录已不在当前列表里')
+            this.pending.expectedVersion = fresh.version
+            return [
+              { label: '最新状态', value: fresh.statusLabel || fresh.status || '' },
+              { label: '最新版本', value: fresh.version }
+            ]
+          }
+        })
+        return
+      }
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.dlg.visible = false
+      this.conflict = emptyConflict()
       toast.success('操作成功，已写审计')
-      this.load()
+      await this.advanceAfterHandle(p)
+    },
+    /** 当前页签里还需要处理的状态：异常是 PENDING_HANDLE，补卡是 PENDING */
+    isRowPending(row) {
+      if (this.tab === 'exceptions') return row.status === 'PENDING_HANDLE'
+      if (this.tab === 'makeups') return row.status === 'PENDING'
+      return false
+    },
+    /**
+     * 处理完一条后刷新并指向下一条待办：筛选、页码、页签全部原样不动。
+     * 只给入口不自动弹窗——弹窗里换的是另一个学生，自动打开容易误点。
+     */
+    async advanceAfterHandle(done) {
+      const anchor = anchorIndexOf(this.rows, done.id)
+      await this.load()
+      const next = pickNextPending(this.rows, anchor, done.id, (r) => this.isRowPending(r))
+      if (!next) { this.nextUp = null; return }
+      const remaining = this.rows.filter((r) => this.isRowPending(r)).length
+      this.nextUp = { row: next, kind: done.kind, remaining }
+    },
+    /** 点「继续处理」才真正打开下一条的确认弹窗（弹窗重开会清空上一条的处理意见） */
+    openNextUp() {
+      const up = this.nextUp
+      if (!up) return
+      this.nextUp = null
+      if (this.tab === 'exceptions') this.openHandle(up.row, 'REASONABLE')
+      else if (up.kind === 'reject') this.openReject(up.row)
+      else this.openApprove(up.row)
     }
   }
 }
@@ -224,6 +302,10 @@ export default {
 .bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); flex-wrap: wrap; }
 .bar__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: auto; }
 .tbl__muted { color: var(--text-disabled); }
+.nextup { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3);
+  padding: 10px 12px; border: 1px solid var(--success-100, #d1fae5); border-radius: 12px; background: var(--success-50, #ecfdf5); }
+.nextup__text { flex: 1 1 auto; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.nextup__text b { color: var(--text-primary); }
 .tbl__ops { display: flex; gap: var(--space-1); align-items: center; }
 .op { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-sm);
   padding: 2px var(--space-2); font-size: var(--font-size-xs); cursor: pointer; color: var(--text-secondary); }
