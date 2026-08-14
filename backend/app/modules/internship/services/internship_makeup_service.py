@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipMakeup,
@@ -199,7 +200,13 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
                              checkin_date=checkin_date.strip(), makeup_type=makeup_type,
                              reason=reason.strip(), status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)))
-        db.add(m); db.flush()
+        db.add(m)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         if evidence_file_id:
             from app.services import file_service
             file_service.bind_file_biz(evidence_file_id, "INTERNSHIP", str(m.id), user=user, db=db)
@@ -208,7 +215,14 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
             "evidenceFileId": evidence_file_id or "",
             "evidenceRequired": _evidence_required(makeup_type),
         }, operator=m.apply_by_name or "学生")
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            # 与请假同理：上面的查重是无锁读，并发两次会同时看到「该日期没有待审核」。
+            # 真正的不变量由 uk_ix_makeup_active_pending 兜底（迁移 20260814），
+            # 输家在这里转成与串行重复申请一致的业务冲突，而不是 500。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         return {"id": str(m.id), "status": "PENDING", "statusLabel": "待审核",
                 "version": int(m.version or 0), "hasEvidence": bool(evidence_file_id)}
 

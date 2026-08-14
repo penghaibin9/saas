@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
@@ -199,7 +200,14 @@ def apply(user, body) -> dict:
                              leave_type=leave_type, start_date=start,
                              end_date=end, days=days, reason=reason, status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)), file_id=file_id)
-        db.add(lv); db.flush()
+        db.add(lv)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT", "你有待审批的请假申请，请先等待处理或撤回") from exc
         if file_id:
             from app.services import file_service
             file_service.bind_file_biz(file_id, "INTERNSHIP", str(lv.id), user=user, db=db)
@@ -210,7 +218,15 @@ def apply(user, body) -> dict:
         }, operator=lv.apply_by_name or "学生")
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.push_leave_todo(db, lv, rec)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            # 上面那次查重是无锁读，两个并发请求会同时看到「没有待审批」。真正的不变量由
+            # uk_ix_leave_active_pending 兜底（迁移 20260814）；输家在这里转成业务冲突，
+            # 拿到的提示与串行重复申请完全一致，而不是一个 500。
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT", "你有待审批的请假申请，请先等待处理或撤回") from exc
         return {"id": str(lv.id), "status": "PENDING", "statusLabel": "待审批",
                 "days": days, "version": int(lv.version or 0), "hasEvidence": bool(file_id)}
 

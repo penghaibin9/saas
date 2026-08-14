@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, Integer, String, Text,
-                        Index, UniqueConstraint)
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Float, Integer, String,
+                        Text, Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -136,10 +136,21 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
 class InternshipMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_makeup 补卡申请（学生对某日缺卡发起，指导教师审批）。
     状态机：PENDING 待审核 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
-    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生的申请（advisor_name）。"""
+    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生的申请（advisor_name）。
+
+    并发不变量：同一实习记录同一天同时只能有一条 PENDING。与请假同一套写法（生成列 + 唯一
+    索引），唯一键额外带 checkin_date，因为补卡是按天去重的。"""
     __tablename__ = "t_internship_makeup"
+    __table_args__ = (UniqueConstraint("tenant_id", "active_pending_internship_id",
+                                       "checkin_date",
+                                       name="uk_ix_makeup_active_pending"),)
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="仅待审核时等于 internship_id，用于唯一索引；其余为 NULL")
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     checkin_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="补卡日期 YYYY-MM-DD")
     makeup_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MISSING",
@@ -379,10 +390,22 @@ class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
 class InternshipLeave(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_leave 实习请假（学生对实习期请假，指导教师审批）。
     状态机：PENDING 待审批 →(教师) APPROVED 已通过 / REJECTED 已驳回；PENDING →(学生) WITHDRAWN 已撤回。
-    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生（advisor_name）。"""
+    owner 边界：学生只能对本人实习记录申请/撤回；教师只能审批本人指导学生（advisor_name）。
+
+    并发不变量：同一实习记录同时只能有一条 PENDING。学生整个实习期会请很多次假，冲突的只有
+    「同时活动」的那些，普通唯一约束表达不了；用生成列（非待审批时为 NULL）+ 唯一索引实现，
+    MySQL 视 NULL 互不相同，于是历史行不限、活动行至多一条。写法沿用本仓
+    `20260806_discipline_package11.py` 的 active_student_id。"""
     __tablename__ = "t_internship_leave"
+    __table_args__ = (UniqueConstraint("tenant_id", "active_pending_internship_id",
+                                       name="uk_ix_leave_active_pending"),)
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="仅待审批时等于 internship_id，用于唯一索引；其余为 NULL")
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     leave_type: Mapped[str] = mapped_column(String(20), nullable=False, default="PERSONAL",
                                             comment="SICK 病假 / PERSONAL 事假 / OTHER 其他")
