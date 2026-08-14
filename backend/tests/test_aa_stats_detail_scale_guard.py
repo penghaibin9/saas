@@ -36,6 +36,18 @@ def test_schedule_conflicts_use_sql_group_count_and_sql_page():
     assert "batch_ids = db.scalars" not in source
 
 
+def test_schedule_conflict_key_matches_overview_and_class_name_is_display_only():
+    source = inspect.getsource(guard.schedule_conflicts)
+    group_body = source[source.index("group_query = ("):source.index("total = int(")]
+    assert "func.max(AaScheduleItem.class_name).label(\"class_name\")" in group_body
+    group_by_body = group_body[group_body.index(".group_by("):group_body.index(".having(")]
+    assert "AaScheduleItem.class_id" in group_by_body
+    assert "AaScheduleItem.weekday" in group_by_body
+    assert "AaScheduleItem.slot_no" in group_by_body
+    assert "AaScheduleItem.week_parity" in group_by_body
+    assert "AaScheduleItem.class_name" not in group_by_body
+
+
 def test_schedule_conflict_page_details_are_fetched_once_not_per_group():
     source = inspect.getsource(guard.schedule_conflicts)
     assert "detail_predicates = []" in source
