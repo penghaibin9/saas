@@ -14,6 +14,8 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 from app.modules.internship.enterprise_collaboration_contract import (
     CAMPAIGN_ENTERPRISE_INVITE_SOURCES,
     CAMPAIGN_ENTERPRISE_STATUSES,
+    ENTERPRISE_GRANT_STATUSES,
+    ENTERPRISE_GRANT_TYPES,
     ENTERPRISE_MEMBER_ROLES,
     ENTERPRISE_MEMBER_STATUSES,
     RECRUITMENT_CAMPAIGN_STATUSES,
@@ -96,3 +98,45 @@ class InternshipEnterpriseMember(PKMixin, TenantMixin, CommonMixin, Base):
     invited_at: Mapped[datetime | None] = mapped_column(DateTime)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipEnterpriseAccessGrant(PKMixin, TenantMixin, CommonMixin, Base):
+    """企业成员的时效访问授权；招聘权与实习期协同权严格分离。"""
+
+    __tablename__ = "t_internship_enterprise_access_grant"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "member_id",
+            "grant_type",
+            "campaign_id",
+            "batch_id",
+            name="uk_intern_enterprise_access_grant",
+        ),
+        Index(
+            "ix_intern_enterprise_grant_member_validity",
+            "tenant_id",
+            "member_id",
+            "status",
+            "valid_until",
+        ),
+        Index(
+            "ix_intern_enterprise_grant_company_validity",
+            "tenant_id",
+            "company_id",
+            "status",
+            "valid_until",
+        ),
+    )
+
+    member_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_internship_enterprise_member.id")
+    company_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_emp_company.id")
+    grant_type: Mapped[str] = mapped_column(String(30), nullable=False, comment="/".join(sorted(ENTERPRISE_GRANT_TYPES)))
+    campaign_id: Mapped[int | None] = mapped_column(BigInteger, comment="RECRUITMENT grant → t_internship_recruitment_campaign.id")
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, comment="招聘/实习协同所属 t_internship_batch.id")
+    valid_from: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", comment="/".join(sorted(ENTERPRISE_GRANT_STATUSES)))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    revoke_reason: Mapped[str | None] = mapped_column(String(500))
