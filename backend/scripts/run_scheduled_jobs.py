@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.context import set_tenant
-from app.core.timeutil import local_now, utc_now_naive
+from app.core.timeutil import utc_now_naive
 from app.db.session import db_enabled, get_sessionmaker
 from app.models import Tenant
 
@@ -136,7 +136,6 @@ def _run_for_tenants(name: str, job_class: str, fn: Callable[[int], object]) -> 
             set_tenant(None)
 
 
-
 def _run_isolated(name: str, fn: Callable[[], object]) -> None:
     m = _metric(name)
     try:
@@ -221,7 +220,6 @@ def job_delivery_and_outbox() -> None:
     _refresh_delivery_metrics()
 
 
-
 def job_scheduled_messages() -> None:
     from app.services import message_campaign_service as camp_svc
     from app.services import tenant_effective_state_service as tenant_state
@@ -229,7 +227,6 @@ def job_scheduled_messages() -> None:
         "scheduled_msg", tenant_state.BACKGROUND_BUSINESS_WRITE,
         lambda _tid: camp_svc.process_scheduled_campaigns(limit=30),
     )
-
 
 
 def job_expire_and_nudge() -> None:
@@ -243,7 +240,6 @@ def job_expire_and_nudge() -> None:
         "nudge", tenant_state.BACKGROUND_BUSINESS_WRITE,
         lambda _tid: camp_svc.nudge_unacked_emergency(limit=80),
     )
-
 
 
 def job_student_affairs_background() -> None:
@@ -266,7 +262,6 @@ def job_student_affairs_background() -> None:
                      lambda _tid: archive.run_pending_packages(limit=2))
 
 
-
 def job_academic_future_effective() -> None:
     """Stage C1 due changes create business facts and require writable effective state."""
     from app.modules.academic_affairs.services import academic_affairs_change_temporal_guard as temporal
@@ -275,7 +270,6 @@ def job_academic_future_effective() -> None:
         "academic_future_effective", tenant_state.BACKGROUND_BUSINESS_WRITE,
         lambda _tid: temporal.apply_due_changes(limit=100),
     )
-
 
 
 def job_leave_overdue() -> None:
@@ -290,7 +284,6 @@ def job_leave_overdue() -> None:
                          lambda _tid: affairs_leave_service.scan_overdue())
 
 
-
 def job_risk_timeout() -> None:
     """Risk timeout processing mutates business state."""
     if not settings.AFFAIRS_RISK_TIMEOUT_AUTO_SCAN:
@@ -299,7 +292,6 @@ def job_risk_timeout() -> None:
     from app.services import tenant_effective_state_service as tenant_state
     _run_for_tenants("affairs_risk_timeout", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda _tid: affairs_risk_service.scan_timeout())
-
 
 
 def job_counselor_temp_expire() -> None:
@@ -312,7 +304,6 @@ def job_counselor_temp_expire() -> None:
                      lambda _tid: affairs_counselor_service.scan_expired_temps())
 
 
-
 def job_stats_reconcile() -> None:
     """Derived counter repair is maintenance and remains enabled for readonly/expired tenants."""
     from app.services import message_ops_service as ops_svc
@@ -321,28 +312,10 @@ def job_stats_reconcile() -> None:
                      lambda _tid: ops_svc.reconcile_message_stats())
 
 
-
 def cleanup_import_batches() -> None:
     from scripts.cleanup_shared_import_batches import run
     result = run(apply=True, purge_after_days=30)
     log.info("shared import batch cleanup result=%s", result)
-
-
-def reset_sandbox_if_due(last_reset_date):
-    """中国本地午夜后第一轮调度触发沙箱重置。"""
-    local = local_now()
-    if not settings.sandbox_auto_reset or local.hour != 0:
-        return last_reset_date
-    if last_reset_date == local.date():
-        return last_reset_date
-    from app.services.sandbox_service import reset_sandbox
-    db = get_sessionmaker()()
-    try:
-        reset_sandbox(db, dry_run=False)
-        log.info("sandbox reset complete local_date=%s", local.date())
-        return local.date()
-    finally:
-        db.close()
 
 
 @dataclass
@@ -379,7 +352,6 @@ def main() -> int:
         _Ticker(INTERVAL_STATS, now0, job_stats_reconcile),
         _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches)),
     ]
-    last_reset_date = local_now().date()
     while True:
         now = time.monotonic()
         for t in tickers:
@@ -387,7 +359,6 @@ def main() -> int:
                 t.maybe_run(now)
             except Exception:  # noqa: BLE001 — ticker 自身保护
                 log.exception("ticker crashed interval=%s", t.interval)
-        last_reset_date = reset_sandbox_if_due(last_reset_date)
         if int(now) % 60 < 2:
             log.info("scheduler_metrics %s", get_scheduler_metrics()[:8])
         time.sleep(5)
