@@ -232,7 +232,10 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Graduation material center · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openGoldenStaffPage(page, `/admin/graduation/material-center?tab=students&batchId=${encodeURIComponent(graduationFixture.batchId)}`)
+    await openGoldenStaffPage(
+      page,
+      `/admin/graduation/material-center?tab=students&batchId=${encodeURIComponent(graduationFixture.batchId)}`
+    )
 
     await expect(page).toHaveURL(/\/admin\/graduation\/material-center/)
     await expect(page.locator('.mc-hero')).toBeVisible()
