@@ -116,7 +116,7 @@ def _rebuild_budget_audit() -> dict | None:
     return {
         **metrics,
         "maxSeconds": MAX_SECONDS,
-        "maxRssMiB": MAX_RSS_MIB,
+        "maxRssLimitMiB": MAX_RSS_MIB,
         "passed": True,
     }
 
