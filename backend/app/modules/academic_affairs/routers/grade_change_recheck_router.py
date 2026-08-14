@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Path
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_service as recheck_read_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩更正复查"])
 
@@ -64,7 +65,7 @@ def grade_recheck_list(
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
 ):
-    items, total = recheck_svc.list_all(user, status, page, pageSize)
+    items, total = recheck_read_svc.list_all(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
