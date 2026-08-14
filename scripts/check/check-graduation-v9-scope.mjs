@@ -25,10 +25,10 @@ const CARD_ALLOW = {
     /^frontend\/tests\/graduation\.v9-(?:product|reminder)-truth\.contract\.test\.mjs$/,
   ],
   M5: [
-    /^backend\/app\/modules\/graduation\/materials\/manifest_service\.py$/,
+    /^backend\/app\/modules\/graduation\/materials\/(?:manifest|snapshot)_service\.py$/,
     /^backend\/app\/modules\/graduation\/routers\/graduation_archive_sensitive_router\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_archive_(?:service|consistency|data_quality)\.py$/,
-    /^backend\/tests\/test_graduation_v9_u7_archive_dirty_data\.py$/,
+    /^backend\/tests\/test_graduation_v9_u7_(?:archive_dirty_data|snapshot_dirty_guard)\.py$/,
   ],
   M7: [
     /^backend\/app\/modules\/graduation\/routers\/graduation_sensitive_router\.py$/,
@@ -82,10 +82,11 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/GraduationDefenseGrade(?:Form)?View\.vue$/,
   ],
   U7: [
+    /^backend\/app\/modules\/graduation\/materials\/snapshot_service\.py$/,
     /^backend\/app\/modules\/graduation\/routers\/graduation_archive_sensitive_router\.py$/,
     /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_archive_(?:read_service|consistency|data_quality)\.py$/,
-    /^backend\/tests\/test_graduation_v9_u7_archive_dirty_data\.py$/,
+    /^backend\/tests\/test_graduation_v9_u7_(?:archive_dirty_data|snapshot_dirty_guard)\.py$/,
     /^frontend\/src\/modules\/graduation\/views\/GraduationRiskArchiveView\.vue$/,
     /^frontend\/tests\/graduation\.v9-archive-workbench\.contract\.test\.mjs$/,
     /^e2e\/specs\/graduation-v9-archive-visual\.spec\.mjs$/,
