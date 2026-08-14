@@ -117,7 +117,7 @@ def reconcile_discipline_decision_links(db, tenant_id: int) -> dict:
                 disc_type=str(row["disc_type"]),
                 reason=row["reason"],
                 doc_no=row["doc_no"],
-                source_type="SANDBOX_REAL_SCHOOL_SEED",
+                source_type="LEGACY_BACKFILL",
                 source_id=case_id,
                 decided_by=None,
                 decided_at=decided_at,
@@ -231,7 +231,7 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
            AND v.version_no = 1
            AND v.decision_kind = 'ORIGINAL'
            AND v.previous_version_id IS NULL
-           AND v.source_type = 'SANDBOX_REAL_SCHOOL_SEED'
+           AND v.source_type = 'LEGACY_BACKFILL'
            AND v.source_id = c.id
            AND v.disc_type = c.disc_type
     """), {"tenant_id": tenant_id}).scalar() or 0)
