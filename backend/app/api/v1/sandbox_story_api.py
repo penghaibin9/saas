@@ -24,6 +24,7 @@ router = APIRouter(prefix="/platform", tags=["16·平台总控（仅平台超管
 def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platform_super_admin)):
     from app.db.session import db_enabled, get_sessionmaker
     from app.services.sandbox_service import SANDBOX_CODE, SANDBOX_TID, reset_sandbox
+    from app.services import db_service
     from app.services import sandbox_school_story_reset as story_svc
     from app.services.sandbox_school_profile import (
         PROFILE_LEGACY,
@@ -38,6 +39,7 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
         raise AppException("VALIDATION_ERROR", "恢复演示沙箱需要启用真实数据库")
 
     db = get_sessionmaker()()
+    audit_after_close = True
     try:
         profile = classify_sandbox_profile(db, SANDBOX_TID)
         mode = profile["profile"]
@@ -52,6 +54,18 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
             }
             message = "20K 背景数据已保留，销售演示故事线已恢复"
             action = "PLATFORM_SANDBOX_STORY_RESET"
+            # standard-20k 是平台超管真实写操作：业务事实与安全审计必须同事务。
+            # 直接复用 #107 已落地的 canonical audit_insert_in_session，避免修改共享 audit primitive。
+            db_service.audit_insert_in_session(
+                db,
+                action,
+                str(tenant_id),
+                {"mode": story.get("mode", "storyline")},
+                "SUCCESS",
+                tenant_id=tenant_id,
+            )
+            db.commit()
+            audit_after_close = False
         elif mode == PROFILE_STANDARD_DAMAGED:
             raise AppException(
                 "DATA_CONFLICT",
@@ -70,16 +84,21 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
                 "当前 sandbox 数据形态无法安全识别，已拒绝自动恢复，避免误删试点数据。",
                 details=profile,
             )
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
-    audit_log.record(
-        action,
-        str(tenant_id),
-        detail={"mode": out.get("reseeded", {}).get("mode", "legacy-100")},
-        result="SUCCESS",
-        tenant_id=tenant_id,
-    )
+    # legacy-100 保持历史合同；standard-20k 已在上面的业务事务内完成审计。
+    if audit_after_close:
+        audit_log.record(
+            action,
+            str(tenant_id),
+            detail={"mode": out.get("reseeded", {}).get("mode", "legacy-100")},
+            result="SUCCESS",
+            tenant_id=tenant_id,
+        )
     return success(out, message=message)
 
 
