@@ -1,18 +1,24 @@
-import { request, setAccessToken } from './request'
+import { request, setAuthTokens, setSelectedCampaignId, setTenantCode } from './request'
 
-const ROOT='/enterprise/internship'
+const ROOT='/internship/enterprise-portal'
+
+function captureAuth(data,tenantCode,campaignId=''){
+  setAuthTokens(data||{})
+  setTenantCode(tenantCode)
+  if(campaignId)setSelectedCampaignId(campaignId)
+  return data
+}
 
 export const enterpriseAuthApi={
-  login: async ({schoolCode,loginName,password}) => {
-    const data=await request(`${ROOT}/auth/login`,{method:'POST',auth:false,body:{schoolCode,loginName,password}})
-    if(!data?.accessToken) throw new Error('企业登录响应缺少 accessToken')
-    setAccessToken(data.accessToken)
-    return data
+  login: async ({tenantCode,loginName,password,memberId}) => {
+    const data=await request(`${ROOT}/auth/login`,{method:'POST',auth:false,body:{tenantCode,loginName,password,...(memberId?{memberId}:{})}})
+    if(!data?.accessToken)throw new Error('企业登录响应缺少 accessToken')
+    return captureAuth(data,tenantCode)
   },
-  invitePreview: (token) => request(`${ROOT}/invite/preview`,{auth:false,params:{token}}),
-  acceptInvite: async ({token,identity,password}) => {
-    const data=await request(`${ROOT}/invite/accept`,{method:'POST',auth:false,body:{token,identity,password}})
-    if(data?.accessToken) setAccessToken(data.accessToken)
-    return data
+  inspectInvite: ({tenantCode,token}) => request(`${ROOT}/auth/invite/inspect`,{method:'POST',auth:false,body:{tenantCode,token}}),
+  acceptInvite: async ({tenantCode,token,phone,password,campaignId}) => {
+    const data=await request(`${ROOT}/auth/invite/accept`,{method:'POST',auth:false,body:{tenantCode,token,phone,password}})
+    if(!data?.accessToken)throw new Error('企业邀请激活响应缺少 accessToken')
+    return captureAuth(data,tenantCode,campaignId)
   },
 }

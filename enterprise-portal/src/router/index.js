@@ -3,7 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/login', name: 'enterprise-login', component: () => import('../views/EnterpriseLoginView.vue'), meta: { public: true } },
   { path: '/invite/accept', name: 'invite-accept', component: () => import('../views/InviteAcceptView.vue'), meta: { public: true } },
-  { path: '/invite/:token', redirect: to => ({ path:'/invite/accept', query:{ token:to.params.token } }) },
+  { path: '/invite/:token', redirect: to => ({ path:'/invite/accept', query:{ token:to.params.token, tenantCode:to.query.tenantCode||to.query.tenant } }) },
+  { path: '/campaign-select', name: 'campaign-select', component: () => import('../views/CampaignSelectView.vue') },
   {
     path: '/',
     component: () => import('../layouts/EnterprisePortalLayout.vue'),

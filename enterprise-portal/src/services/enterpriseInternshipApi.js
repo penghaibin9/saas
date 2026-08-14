@@ -1,11 +1,12 @@
 import { request } from './request'
 import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract'
 
+const AUTH_ROOT = '/internship/enterprise-portal'
 const ROOT = '/enterprise/internship'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 
 export const enterpriseInternshipApi = {
-  context: () => request(`${ROOT}/context`),
+  context: (campaignId) => request(`${AUTH_ROOT}/context`, { params:{ campaignId } }),
   dashboard: () => request(`${ROOT}/dashboard`),
   campaigns: () => request(`${ROOT}/campaigns`),
   company: () => request(`${ROOT}/company`),
