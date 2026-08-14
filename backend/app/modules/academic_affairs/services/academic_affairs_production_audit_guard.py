@@ -1,17 +1,18 @@
 """PR #101 production-audit hardening without creating new business truth.
 
 This guard only tightens read-side scope/pagination contracts that were introduced by
-D6-D8 convenience/read refactors. Canonical write services, state machines, DTOs and
+D2/D6-D8 convenience/read refactors. Canonical write services, state machines, DTOs and
 persistent facts remain owned by their existing modules.
 """
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 from functools import wraps
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 
-from app.core.affairs_security import no_data_scope
+from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException
 
 _MAX_PAGE_SIZE = 200
@@ -98,6 +99,124 @@ def _selection_scope_course_query(query, scoped):
     )
 
 
+def _roster_sql(user, keyword=None, status=None, page=1, page_size=20):
+    """Keep the roster contract while pushing scope, search, count and paging into SQL."""
+    from app.core.field_crypto import mask_id_card_encrypted
+    from app.models import StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+    from . import academic_affairs_service as roster_read
+
+    try:
+        page_no = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "page 必须为整数") from None
+    size = _bounded_page_size(page_size, default=20)
+    with roster_read.session() as db:
+        ctx = build_affairs_context(user, db)
+        conditions = [
+            StudentProfile.tenant_id == roster_read._tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        if status:
+            conditions.append(StudentProfile.student_status == status)
+        allowed = ctx.allowed_class_ids(db)
+        if allowed is not None:
+            conditions.append(
+                StudentProfile.class_id.in_(sorted(allowed)) if allowed else StudentProfile.id == -1
+            )
+        term = str(keyword or "").strip()
+        if term:
+            conditions.append(or_(
+                StudentProfile.real_name.contains(term, autoescape=True),
+                StudentProfile.student_no.contains(term, autoescape=True),
+            ))
+
+        total = int(db.scalar(select(func.count(StudentProfile.id)).where(*conditions)) or 0)
+        rows = db.scalars(
+            select(StudentProfile)
+            .where(*conditions)
+            .order_by(StudentProfile.id.desc())
+            .offset((page_no - 1) * size)
+            .limit(size)
+        ).all()
+        return [
+            {
+                "studentId": str(student.id),
+                "studentNo": student.student_no,
+                "realName": student.real_name,
+                "className": str(student.class_id or ""),
+                "studentStatus": student.student_status,
+                "enrolled": is_enrolled(student.student_status),
+                "idCardMasked": mask_id_card_encrypted(student.id_card_encrypted),
+            }
+            for student in rows
+        ], total
+
+
+def _roster_status_summary_sql(user) -> dict:
+    """Aggregate the 20k+ student roster in SQL instead of materializing every profile."""
+    from app.models import AaStatusChange, StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+    from . import academic_affairs_service as roster_read
+
+    with roster_read.session() as db:
+        ctx = build_affairs_context(user, db)
+        conditions = [
+            StudentProfile.tenant_id == roster_read._tid(),
+            StudentProfile.is_deleted.is_(False),
+        ]
+        allowed = ctx.allowed_class_ids(db)
+        if allowed is not None:
+            conditions.append(
+                StudentProfile.class_id.in_(sorted(allowed)) if allowed else StudentProfile.id == -1
+            )
+
+        grouped = db.execute(
+            select(StudentProfile.student_status, func.count(StudentProfile.id))
+            .where(*conditions)
+            .group_by(StudentProfile.student_status)
+        ).all()
+        counts = {str(status or ""): int(count or 0) for status, count in grouped}
+        total = sum(counts.values())
+        enrolled_count = sum(
+            count for status, count in counts.items() if is_enrolled(status)
+        )
+
+        since = datetime.utcnow() - timedelta(days=30)
+        change_conditions = [
+            AaStatusChange.tenant_id == roster_read._tid(),
+            AaStatusChange.is_deleted.is_(False),
+            AaStatusChange.status == "EFFECTIVE",
+            AaStatusChange.effective_date >= since,
+        ]
+        if allowed is not None:
+            if allowed:
+                allowed_values = sorted(allowed)
+                change_conditions.append(or_(
+                    AaStatusChange.from_class_id.in_(allowed_values),
+                    AaStatusChange.to_class_id.in_(allowed_values),
+                ))
+            else:
+                change_conditions.append(AaStatusChange.id == -1)
+        recent = int(
+            db.scalar(select(func.count()).select_from(AaStatusChange).where(*change_conditions)) or 0
+        )
+        return {
+            "total": total,
+            "byStatus": [
+                {
+                    "status": status,
+                    "label": roster_read._STATUS_LABEL.get(status, status),
+                    "count": count,
+                }
+                for status, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            ],
+            "enrolledCount": enrolled_count,
+            "notEnrolledCount": total - enrolled_count,
+            "recentChanges30d": recent,
+        }
+
+
 def _escape_like(value: str) -> str:
     return str(value).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -115,7 +234,10 @@ def _selection_conflict_report(user, batch_id, student_no=None, page=1, page_siz
     from app.models import AaSelectionCourse, AffairsAuditTrail
     from . import academic_affairs_selection_read_service as read
 
-    page_no = max(1, int(page or 1))
+    try:
+        page_no = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "page 必须为整数") from None
     size = _bounded_page_size(page_size, default=50)
     with read._core.session() as db:
         ctx = read._core._ctx(user, db)
@@ -209,6 +331,7 @@ def _wrap_page_size(func, *, position: int, default: int):
 
 def install() -> None:
     """Idempotently tighten only the audited read-side functions."""
+    from . import academic_affairs_service as roster_read
     from . import academic_affairs_selection_read_service as selection_read
     from . import academic_affairs_selection_final_service as selection_public
     from . import exam_convenience_service as exam_read
@@ -218,6 +341,9 @@ def install() -> None:
 
     if getattr(selection_read, "_production_audit_guard_installed", False):
         return
+
+    roster_read.roster = _roster_sql
+    roster_read.roster_status_summary = _roster_status_summary_sql
 
     selection_read._scope_values = _selection_scope_values
     selection_read._scope_course_query = _selection_scope_course_query
