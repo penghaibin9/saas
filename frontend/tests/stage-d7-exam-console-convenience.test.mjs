@@ -16,6 +16,13 @@ test('D7-U 首屏给出发布就绪结论与关键缺口', async () => {
   }
 })
 
+test('D7-U 新建考试批次必须选择正式学期并提交 termId', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  assert.ok(source.includes('AppTermEntityPicker'))
+  assert.ok(source.includes("if (!this.form.termId)"))
+  assert.ok(source.includes("termId: this.form.termId"))
+})
+
 test('D7-U 批量圈课先预览再确认，自动排考与发布继续复用既有动作', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
