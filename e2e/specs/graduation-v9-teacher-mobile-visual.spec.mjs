@@ -4,7 +4,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 
-const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
+const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 
 async function loginTeacherMini(page) {
   await page.goto(`${miniBase}/#/pages/login/teacher/index`)

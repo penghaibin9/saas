@@ -73,7 +73,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+      E2E_MINIAPP_BASE_URL: http://localhost:5188
 
     steps:
       - uses: actions/checkout@v4
@@ -164,7 +164,7 @@ jobs:
 
       - name: Wait for browser applications
         run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
             ok=''
             for i in {1..60}; do
               if curl -fsS "$url" >/dev/null; then ok=1; break; fi
