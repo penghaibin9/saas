@@ -84,7 +84,7 @@ function initBrowserSessionCollisionGuard() {
   } catch { /* cross-origin opener / SSR */ }
 
   try {
-    if (typeof BroadcastChannel !== 'function') return
+    if (typeof window === 'undefined' || typeof BroadcastChannel !== 'function') return
     const channel = new BroadcastChannel(BROWSER_SESSION_COORDINATION_CHANNEL)
     browserSessionCoordinator = channel
     const probedSessionId = sessionId
