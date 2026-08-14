@@ -228,11 +228,10 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
 
   test('Graduation result statistics · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/stats-report')
-    await setStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
-    await page.reload()
+    const batchPath = `/admin/graduation/stats-report?batchId=${encodeURIComponent(graduationFixture.batchId)}`
+    await openWithApiSession(page, adminApi, batchPath)
 
-    await expect(page).toHaveURL(/\/admin\/graduation\/stats-report/)
+    await expect(page).toHaveURL(/\/admin\/graduation\/stats-report\?batchId=/)
     await expect(page.getByRole('heading', { name: '毕设统计报表', exact: true })).toBeVisible()
     await expect(page.locator('.gs-grid').first()).toBeVisible()
     await expect(page.locator('.mp-card').filter({ hasText: '开题统计' }).first()).toBeVisible()
