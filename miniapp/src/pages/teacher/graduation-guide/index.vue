@@ -1,6 +1,5 @@
 <template>
   <view class="page-wrap">
-    <!-- 工作台（列表模式）：顶部分区 tab + 各分区队列/列表 -->
     <template v-if="mode === 'list'">
       <view class="gg__tabs">
         <text v-for="t in tabs" :key="t.key" class="gg__tab" :class="{ 'is-active': tab === t.key }"
@@ -9,7 +8,6 @@
 
       <MobileGlobalState :state="state" @retry="load">
         <view class="page-pad" v-if="data">
-          <!-- 批阅：开题 + 成果 队列 + 指导学生 -->
           <template v-if="tab === 'review'">
             <view class="gg__hub">
               <text class="gg__hub-link" @click="goPage('/pages/teacher/graduation-topics/index')">选题审核</text>
@@ -18,13 +16,13 @@
               <text class="gg__hub-sep">·</text>
               <text class="gg__hub-link" @click="goPage('/pages/teacher/defense-score/index')">答辩评分</text>
             </view>
-            <view v-if="reviewQueue.length" class="gg__queue card" @click="enterReview('proposal', reviewQueue, 0)">
-              <view class="row-between"><text class="t-md t-bold">开题待批阅</text><text class="gg__qc">{{ reviewQueue.length }} 条</text></view>
+            <view v-if="proposalTotal > 0" class="gg__queue card" @click="enterReview('proposal', reviewQueue, 0)">
+              <view class="row-between"><text class="t-md t-bold">开题待批阅</text><text class="gg__qc">{{ proposalTotal }} 条</text></view>
               <text class="gg__qh">逐条看背景/方案/成果，处理后自动下一条</text>
               <button class="gg__go" @click.stop="enterReview('proposal', reviewQueue, 0)">开始批阅开题</button>
             </view>
-            <view v-if="finalQueue.length" class="gg__queue card" @click="enterReview('final', finalQueue, 0)">
-              <view class="row-between"><text class="t-md t-bold">成果待批阅</text><text class="gg__qc">{{ finalQueue.length }} 条</text></view>
+            <view v-if="finalTotal > 0" class="gg__queue card" @click="enterReview('final', finalQueue, 0)">
+              <view class="row-between"><text class="t-md t-bold">成果待批阅</text><text class="gg__qc">{{ finalTotal }} 条</text></view>
               <text class="gg__qh">逐条看论文类型/版本/查重/附件，查重超标不可通过</text>
               <button class="gg__go" @click.stop="enterReview('final', finalQueue, 0)">开始批阅成果</button>
             </view>
@@ -48,7 +46,6 @@
             </view>
           </template>
 
-          <!-- 中期检查队列：服务端真分页 -->
           <template v-else-if="tab === 'midterm'">
             <view v-if="midtermError" class="gg__empty"><text>{{ midtermError }}</text></view>
             <view v-else-if="!midtermQueue.length" class="gg__empty"><text>暂无待检查/待复核整改</text></view>
@@ -70,7 +67,6 @@
             </template>
           </template>
 
-          <!-- 评阅任务 -->
           <template v-else-if="tab === 'peer'">
             <view v-if="reviewsError" class="gg__empty"><text>{{ reviewsError }}</text></view>
             <view v-else-if="!reviews.length" class="gg__empty"><text>暂无待评阅任务</text></view>
@@ -83,7 +79,6 @@
             </view>
           </template>
 
-          <!-- 答辩安排（只读）+ 评分入口 -->
           <template v-else-if="tab === 'defense'">
             <view v-if="defenseScorePending > 0" class="gg__queue card" @click="goPage('/pages/teacher/defense-score/index')">
               <view class="row-between"><text class="t-md t-bold">待录入答辩评分</text><text class="gg__qc">{{ defenseScorePending }} 条</text></view>
@@ -106,7 +101,6 @@
             </view>
           </template>
 
-          <!-- 成绩待复核队列：服务端真分页 -->
           <template v-else-if="tab === 'grade'">
             <view v-if="gradeError" class="gg__empty"><text>{{ gradeError }}</text></view>
             <view v-else-if="!gradeQueue.length" class="gg__empty"><text>暂无待复核成绩</text></view>
@@ -131,7 +125,6 @@
       </MobileGlobalState>
     </template>
 
-    <!-- 单页队列处理（开题/成果/中期/评阅/成绩） -->
     <view v-else class="rv">
       <view class="rv__head">
         <text class="rv__back" @click="exitReview">‹ 返回</text>
@@ -143,30 +136,22 @@
           <view v-if="detail" class="rv__content">
             <text class="rv__stu">{{ detail.studentName }}<text v-if="detail.className"> · {{ detail.className }}</text></text>
             <text v-if="detail.topicTitle" class="rv__topic">{{ detail.topicTitle }}</text>
-
-            <!-- 开题 -->
             <template v-if="reviewKind === 'proposal'">
               <view class="rv__tags"><text class="rv__tag">版本 {{ detail.version || '—' }}</text><text v-if="detail.isResubmit" class="rv__tag rv__tag--warn">重交</text><text class="rv__tag">提交 {{ detail.submitAt || '—' }}</text></view>
               <view class="rv__block"><text class="rv__label">选题背景</text><text class="rv__text">{{ detail.background || '（未填写）' }}</text></view>
               <view class="rv__block"><text class="rv__label">研究方案与进度</text><text class="rv__text">{{ detail.plan || '（未填写）' }}</text></view>
               <view class="rv__block"><text class="rv__label">预期成果</text><text class="rv__text">{{ detail.outcome || '（未填写）' }}</text></view>
             </template>
-
-            <!-- 成果 -->
             <template v-else-if="reviewKind === 'final'">
               <view class="rv__tags"><text class="rv__tag">{{ detail.type }} {{ detail.version }}</text><text class="rv__tag" :class="detail.plagiarismTone === 'danger' ? 'rv__tag--warn' : ''">查重 {{ detail.plagiarismRate }}</text><text class="rv__tag">提交 {{ detail.submitAt || '—' }}</text></view>
               <view class="rv__block"><text class="rv__label">查重状态</text><text class="rv__text">{{ detail.plagiarismStatus }}<text v-if="detail.plagiarismTone === 'danger'" class="rv__warn"> · 超标，须退回修改（GD-R09）</text></text></view>
             </template>
-
-            <!-- 中期 -->
             <template v-else-if="reviewKind === 'midterm'">
               <view class="rv__tags"><text class="rv__tag">{{ detail.statusLabel }}</text><text v-if="detail.conclusionLabel" class="rv__tag">{{ detail.conclusionLabel }}</text></view>
               <view v-if="detail.checkComment" class="rv__block"><text class="rv__label">上次检查意见</text><text class="rv__text">{{ detail.checkComment }}</text></view>
               <view v-if="detail.rectifyContent" class="rv__block"><text class="rv__label">学生整改内容</text><text class="rv__text">{{ detail.rectifyContent }}</text></view>
               <view v-if="detail.rectifyDeadline" class="rv__block"><text class="rv__label">整改截止</text><text class="rv__text">{{ detail.rectifyDeadline }}</text></view>
             </template>
-
-            <!-- 评阅：内联评分 + 意见 -->
             <template v-else-if="reviewKind === 'peer'">
               <view class="rv__tags"><text class="rv__tag">{{ detail.statusLabel }}</text><text v-if="detail.score != null" class="rv__tag">原评分 {{ detail.score }}</text></view>
               <view class="rv__block"><text class="rv__label">评分（0-100）</text><input class="rv__input" type="number" v-model="peerScore" placeholder="请输入评分" /></view>
@@ -178,8 +163,6 @@
                 </view>
               </view>
             </template>
-
-            <!-- 成绩：三段构成 -->
             <template v-else-if="reviewKind === 'grade'">
               <view class="rv__tags"><text class="rv__tag">{{ detail.statusLabel }}</text><text class="rv__tag">{{ detail.gradeLevel || '—' }}</text></view>
               <view class="rv__grade">
@@ -189,8 +172,6 @@
                 <view class="rv__gcell rv__gcell--total"><text class="rv__gnum">{{ fmt(detail.totalScore) }}</text><text class="rv__glab">综合</text></view>
               </view>
             </template>
-
-            <!-- 通用：上次意见 + 历史版本 + 真实附件 -->
             <view v-if="detail.reviewComment" class="rv__block"><text class="rv__label">上次批阅/退回意见</text><text class="rv__text rv__text--warn">{{ detail.reviewComment }}</text></view>
             <view v-if="detail.versions && detail.versions.length > 1" class="rv__block"><text class="rv__label">历史版本</text><text v-for="(v, i) in detail.versions" :key="i" class="rv__ver">· {{ v.title }}<text v-if="v.desc"> — {{ v.desc }}</text></text></view>
             <view v-if="detail.currentSafeVersions && detail.currentSafeVersions.length" class="rv__block">
@@ -208,8 +189,6 @@
           </view>
         </MobileGlobalState>
       </scroll-view>
-
-      <!-- 底部固定操作区（按 kind + 状态动态） -->
       <view class="rv__foot">
         <button class="rv__nav" :disabled="queueIndex <= 0 || acting" @click="prev">上一条</button>
         <template v-if="reviewKind === 'proposal' || reviewKind === 'final'">
@@ -243,6 +222,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherCountTruth } from '@/services/graduationTeacherCountTruth'
 import { graduationTeacherPagingApi, GRADUATION_TEACHER_PAGE_SIZE } from '@/services/graduationTeacherPagingApi'
 import { normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
@@ -257,7 +237,7 @@ export default {
     return {
       PEER_OPINION_CHIPS,
       data: null, state: 'loading', f: 'all', acting: false,
-      reviewQueue: [], finalQueue: [],
+      reviewQueue: [], finalQueue: [], proposalTotal: 0, finalTotal: 0,
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
       midtermPage: 1, midtermTotal: 0, midtermHasMore: false, midtermLoadingMore: false,
       gradePage: 1, gradeTotal: 0, gradeHasMore: false, gradeLoadingMore: false,
@@ -292,7 +272,7 @@ export default {
         { key: 'grade', label: '成绩', count: this.gradeTotal }
       ]
     },
-    pendingReviewCount() { return this.reviewQueue.length + this.finalQueue.length },
+    pendingReviewCount() { return this.proposalTotal + this.finalTotal },
     filtered() {
       if (!this.data) return []
       if (this.f === 'review') {
@@ -317,12 +297,17 @@ export default {
   methods: {
     toast,
     goPage(url) { go(url) },
+    applyReviewTruth(d) {
+      this.data = d
+      this.reviewQueue = (d && d.reviewQueue) || []
+      this.finalQueue = (d && d.finalQueue) || []
+      this.proposalTotal = Number((d && d.proposalTotal) || 0)
+      this.finalTotal = Number((d && d.finalTotal) || 0)
+    },
     load(done) {
       if (!this.data) this.state = 'loading'
-      teacherApi.getGdStudents().then((d) => {
-        this.data = d
-        this.reviewQueue = (d && d.reviewQueue) || []
-        this.finalQueue = (d && d.finalQueue) || []
+      graduationTeacherCountTruth().then((d) => {
+        this.applyReviewTruth(d)
         this.state = 'ready'
         this.loadMidterm(); this.loadReviews(); this.loadGrade(); this.loadDefenseScorePending()
         this._maybeBootReview()
@@ -365,10 +350,7 @@ export default {
         if (done) done()
       })
     },
-    loadMoreMidterm() {
-      if (!this.midtermHasMore || this.midtermLoadingMore) return
-      this.loadMidterm(null, true)
-    },
+    loadMoreMidterm() { if (this.midtermHasMore && !this.midtermLoadingMore) this.loadMidterm(null, true) },
     loadReviews(done) {
       teacherApi.getGraduationMyReviews().then((r) => {
         this.reviews = r || []; this.loaded.peer = true; this.reviewsError = ''
@@ -377,15 +359,13 @@ export default {
     loadDefense(done) {
       teacherApi.getGraduationDefenseArrangements().then((r) => {
         this.defense = r || []; this.loaded.defense = true; this.defenseError = ''
-      }).catch(() => { this.defenseError = '答辩安排加载失败' }).finally(() => {
-        this.loadDefenseScorePending(done)
-      })
+      }).catch(() => { this.defenseError = '答辩安排加载失败' }).finally(() => this.loadDefenseScorePending(done))
     },
     loadDefenseScorePending(done) {
       teacherApi.getGraduationDefenseScorePending().then((r) => {
         const list = r || []
         this.defenseScorePending = list.filter((x) => x.myStatus === 'PENDING').length
-      }).catch(() => { /* 非评委身份常见，不挡主流程 */ }).finally(() => done && done())
+      }).catch(() => {}).finally(() => done && done())
     },
     loadGrade(done, append = false) {
       const targetPage = append ? this.gradePage + 1 : 1
@@ -404,10 +384,7 @@ export default {
         if (done) done()
       })
     },
-    loadMoreGrade() {
-      if (!this.gradeHasMore || this.gradeLoadingMore) return
-      this.loadGrade(null, true)
-    },
+    loadMoreGrade() { if (this.gradeHasMore && !this.gradeLoadingMore) this.loadGrade(null, true) },
     pIndexOf(g) { return this.reviewQueue.findIndex((q) => q.gdStudentId === g.id) },
     fIndexOf(g) { return this.finalQueue.findIndex((q) => q.gdStudentId === g.id) },
     enterReview(kind, queueArr, index) {
@@ -423,9 +400,7 @@ export default {
       this.peerScore = ''; this.peerOpinion = ''
       this.reloadTab()
     },
-    pickPeerOpinionChip(t) {
-      this.peerOpinion = this.peerOpinion ? this.peerOpinion + '\n' + t : t
-    },
+    pickPeerOpinionChip(t) { this.peerOpinion = this.peerOpinion ? this.peerOpinion + '\n' + t : t },
     curId() {
       const it = this.current || {}
       if (this.reviewKind === 'proposal') return it.proposalId
@@ -455,10 +430,17 @@ export default {
     prev() { if (this.queueIndex > 0) { this.queueIndex--; this.loadDetail() } },
     next() { if (this.queueIndex < this.queue.length - 1) { this.queueIndex++; this.loadDetail() } },
     afterAction() {
-      this.queue.splice(this.queueIndex, 1)
-      if (!this.queue.length) { this.exitReview(); return }
-      if (this.queueIndex > this.queue.length - 1) this.queueIndex = this.queue.length - 1
-      this.loadDetail()
+      const kind = this.reviewKind
+      graduationTeacherCountTruth().then((d) => {
+        this.applyReviewTruth(d)
+        this.queue = kind === 'proposal' ? this.reviewQueue : kind === 'final' ? this.finalQueue : this.queue
+        if (!this.queue.length) { this.exitReview(); return }
+        if (this.queueIndex > this.queue.length - 1) this.queueIndex = this.queue.length - 1
+        this.loadDetail()
+      }).catch((e) => {
+        toast(normalizeError(e).text || '处理已提交，请刷新确认最新数量')
+        this.exitReview()
+      })
     },
     _confirm(title, placeholder, minLen, fn) {
       uni.showModal({ title, editable: true, placeholderText: placeholder, success: (r) => {
