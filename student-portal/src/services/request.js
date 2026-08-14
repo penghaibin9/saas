@@ -13,7 +13,8 @@ const REFRESH_KEY = 'sp_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
-const BROWSER_SESSION_HEADERS = { 'X-Browser-Session': 'student' }
+const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
+let volatileBrowserSessionId = ''
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
@@ -37,6 +38,27 @@ function _sessionSet(key, value) {
     if (value) sessionStorage.setItem(key, value)
     else sessionStorage.removeItem(key)
   } catch { /* ignore */ }
+}
+
+function getOrCreateBrowserSessionId() {
+  try {
+    const existing = String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim()
+    if (existing) return existing
+    const generated = globalThis.crypto?.randomUUID?.()
+    if (!generated) throw new Error('secure random UUID unavailable')
+    sessionStorage.setItem(BROWSER_SESSION_ID_KEY, generated)
+    return generated
+  } catch {
+    if (!volatileBrowserSessionId) volatileBrowserSessionId = globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+    return volatileBrowserSessionId
+  }
+}
+
+function browserSessionHeaders() {
+  return {
+    'X-Browser-Session': 'student',
+    'X-Browser-Session-Id': getOrCreateBrowserSessionId()
+  }
 }
 
 function _replaceAccessToken(token) {
@@ -137,8 +159,9 @@ function addInternshipBatchHeader(headers, path) {
 }
 
 function addBrowserSessionHeader(headers, path) {
-  if (String(path || '').startsWith('/auth/browser-')) {
-    headers['X-Browser-Session'] = BROWSER_SESSION_HEADERS['X-Browser-Session']
+  const value = String(path || '')
+  if (value === '/auth/login' || value.startsWith('/auth/browser-')) {
+    Object.assign(headers, browserSessionHeaders())
   }
 }
 
@@ -181,7 +204,7 @@ async function refreshOnce() {
     try {
       res = await fetch(`${API_BASE}${API_PREFIX}/auth/browser-refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...BROWSER_SESSION_HEADERS },
+        headers: { 'Content-Type': 'application/json', ...browserSessionHeaders() },
         credentials: 'include'
       })
     } catch {

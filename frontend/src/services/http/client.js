@@ -12,6 +12,8 @@ import { toast } from '@/utils/toast'
 import { normalizeUiError } from '@/utils/presentationSafety'
 
 const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1']
+const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
+let volatileBrowserSessionId = ''
 try { LEGACY_TOKEN_KEYS.forEach((key) => sessionStorage.removeItem(key)) } catch { /* ignore */ }
 try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch { /* ignore */ }
 
@@ -164,6 +166,20 @@ async function rawRequest(path, {
   }
 }
 
+function getOrCreateBrowserSessionId() {
+  try {
+    const existing = String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim()
+    if (existing) return existing
+    const generated = globalThis.crypto?.randomUUID?.()
+    if (!generated) throw new Error('secure random UUID unavailable')
+    sessionStorage.setItem(BROWSER_SESSION_ID_KEY, generated)
+    return generated
+  } catch {
+    if (!volatileBrowserSessionId) volatileBrowserSessionId = globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+    return volatileBrowserSessionId
+  }
+}
+
 function browserSessionChannel() {
   const u = currentUserFromToken()
   const userType = String(u?.userType || '').toUpperCase()
@@ -178,7 +194,10 @@ function browserSessionChannel() {
 }
 
 function browserSessionHeaders() {
-  return { 'X-Browser-Session': browserSessionChannel() }
+  return {
+    'X-Browser-Session': browserSessionChannel(),
+    'X-Browser-Session-Id': getOrCreateBrowserSessionId()
+  }
 }
 
 let refreshPromise = null
@@ -306,7 +325,8 @@ export async function switchAuthContext(contextId, clientType = 'PC') {
   try {
     const data = await rawRequest('/auth/browser-switch-role', {
       method: 'POST',
-      body: { contextId, clientType }
+      body: { contextId, clientType },
+      headers: browserSessionHeaders()
     })
     if (state.sessionGeneration !== generationAtStart || state.token !== accessTokenAtStart) {
       throw staleSessionError()
@@ -346,6 +366,7 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
     method: 'POST',
     auth: false,
     forceProbe: true,
+    headers: browserSessionHeaders(),
     body: { loginName, password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
       captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }

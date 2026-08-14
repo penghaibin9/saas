@@ -41,6 +41,7 @@ class JobMetric:
     pending_job_count: int = 0
     dead_job_count: int = 0
     oldest_pending_age: float | None = None
+    tenant_skip_count: int = 0
 
     def lag_seconds(self) -> float | None:
         if self.last_success_at is None:
@@ -57,6 +58,7 @@ class JobMetric:
             "pending_job_count": self.pending_job_count,
             "dead_job_count": self.dead_job_count,
             "oldest_pending_age": self.oldest_pending_age,
+            "tenant_skip_count": self.tenant_skip_count,
             "run_count": self.run_count,
             "error_count": self.error_count,
             "last_error": self.last_error,
@@ -76,14 +78,63 @@ def _metric(name: str) -> JobMetric:
     return _METRICS[name]
 
 
-def _schedulable_tenant_ids() -> list[int]:
-    """ACTIVE + TRIAL 均需调度（试用校同样有消息/请假时效）。"""
+def _candidate_tenant_ids() -> list[int]:
+    """Enumerate candidates only; effective-state policy decides execution."""
     db = get_sessionmaker()()
     try:
-        return list(db.scalars(select(Tenant.id).where(
-            Tenant.status.in_(("ACTIVE", "TRIAL", "active", "trial")))))
+        return list(db.scalars(
+            select(Tenant.id)
+            .where(Tenant.is_deleted.is_(False))
+            .order_by(Tenant.id.asc())
+        ))
     finally:
         db.close()
+
+
+def _record_tenant_skip(name: str, tenant_id: int, job_class: str, *,
+                        effective_status: str = "unresolved",
+                        reason: str = "TENANT_STATE_UNRESOLVED") -> None:
+    _metric(name).tenant_skip_count += 1
+    log.warning(
+        "scheduler_tenant_skipped tenantId=%s jobClass=%s effectiveStatus=%s reason=%s",
+        tenant_id, job_class, effective_status, reason,
+    )
+
+
+def _run_for_tenants(name: str, job_class: str, fn: Callable[[int], object]) -> None:
+    """Resolve canonical state for every job/tenant iteration and fail closed."""
+    from app.services import tenant_effective_state_service as tenant_state
+
+    allowed_key = {
+        tenant_state.BACKGROUND_BUSINESS_WRITE: "businessWriteAllowed",
+        tenant_state.BACKGROUND_MAINTENANCE: "maintenanceAllowed",
+        tenant_state.BACKGROUND_AUTH_SECURITY: "authSecurityAllowed",
+    }.get(job_class)
+    if allowed_key is None:
+        raise ValueError(f"unknown background job class: {job_class}")
+
+    for tenant_id in _candidate_tenant_ids():
+        try:
+            policy = tenant_state.background_execution_policy(tenant_id)
+        except Exception as exc:  # noqa: BLE001
+            _record_tenant_skip(
+                name, tenant_id, job_class,
+                reason=getattr(exc, "code", None) or type(exc).__name__,
+            )
+            continue
+        if not bool(policy.get(allowed_key)):
+            _record_tenant_skip(
+                name, tenant_id, job_class,
+                effective_status=str(policy.get("effectiveStatus") or "unresolved"),
+                reason=str(policy.get("reason") or "TENANT_STATE_UNRESOLVED"),
+            )
+            continue
+        set_tenant({"tenantId": str(tenant_id)})
+        try:
+            _run_isolated(f"{name}:{tenant_id}", lambda tid=tenant_id: fn(tid))
+        finally:
+            set_tenant(None)
+
 
 
 def _run_isolated(name: str, fn: Callable[[], object]) -> None:
@@ -134,32 +185,34 @@ def job_delivery_and_outbox() -> None:
     from app.services import message_event_outbox_service as msg_outbox
     from app.services import message_campaign_service as camp_svc
     from app.services import password_reset_service as password_reset_svc
+    from app.services import message_channel_delivery_service as channel_svc
+    from app.services import tenant_effective_state_service as tenant_state
     from app.modules.internship.services import internship_audit_service as internship_audit
 
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"delivery:{tenant_id}",
-                lambda: delivery_svc.claim_and_process_delivery_jobs(
-                    limit=40, worker_id="scheduler-delivery"))
-            _run_isolated(
-                f"outbox:{tenant_id}",
-                lambda: msg_outbox.process_pending_outbox(
-                    limit=80, worker_id="scheduler-outbox"))
-            _run_isolated(
-                f"repair_publishing:{tenant_id}",
-                lambda: camp_svc.repair_publishing_without_jobs(limit=20))
-            _run_isolated(
-                f"password_reset_sms:{tenant_id}",
-                lambda: password_reset_svc.process_delivery_jobs(
-                    limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id))
-        finally:
-            set_tenant(None)
-
-    # 审计 outbox 自身携带 tenant_id，消费者按行落到对应租户的安全审计表，
-    # 因此全局消费一次即可，不能只挂在 SCHEDULER_MODE=web 的 lifespan 中。
-    # 生产 compose 固定 external scheduler；没有这一步 PENDING 会永久堆积。
+    _run_for_tenants(
+        "delivery", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: delivery_svc.claim_and_process_delivery_jobs(
+            limit=40, worker_id="scheduler-delivery"),
+    )
+    _run_for_tenants(
+        "outbox", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: msg_outbox.process_pending_outbox(
+            limit=80, worker_id="scheduler-outbox"),
+    )
+    _run_for_tenants(
+        "channel_delivery", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: channel_svc.claim_and_process_channel_deliveries(
+            limit=100, worker_id="scheduler-channel"),
+    )
+    _run_for_tenants(
+        "repair_publishing", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: camp_svc.repair_publishing_without_jobs(limit=20),
+    )
+    _run_for_tenants(
+        "password_reset_sms", tenant_state.BACKGROUND_AUTH_SECURITY,
+        lambda tenant_id: password_reset_svc.process_delivery_jobs(
+            limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id),
+    )
     _run_isolated(
         "internship_audit_outbox",
         lambda: internship_audit.process_pending(
@@ -168,140 +221,105 @@ def job_delivery_and_outbox() -> None:
     _refresh_delivery_metrics()
 
 
+
 def job_scheduled_messages() -> None:
     from app.services import message_campaign_service as camp_svc
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"scheduled_msg:{tenant_id}",
-                lambda: camp_svc.process_scheduled_campaigns(limit=30))
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants(
+        "scheduled_msg", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: camp_svc.process_scheduled_campaigns(limit=30),
+    )
+
 
 
 def job_expire_and_nudge() -> None:
     from app.services import message_campaign_service as camp_svc
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"expire:{tenant_id}",
-                lambda: camp_svc.process_expired_campaigns(limit=80))
-            _run_isolated(
-                f"nudge:{tenant_id}",
-                lambda: camp_svc.nudge_unacked_emergency(limit=80))
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants(
+        "expire", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: camp_svc.process_expired_campaigns(limit=80),
+    )
+    _run_for_tenants(
+        "nudge", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: camp_svc.nudge_unacked_emergency(limit=80),
+    )
+
 
 
 def job_student_affairs_background() -> None:
-    """学工/审批高频后台任务：补偿、异步导出与档案包生成。"""
+    """Student-affairs mutation jobs require a writable effective tenant."""
     from app.services import affairs_appeal_repair_service as repair
     from app.services import affairs_archive_service as archive
     from app.services import affairs_leave_export_service as leave_export
     from app.services import approval_export_service as approval_export
+    from app.services import tenant_effective_state_service as tenant_state
 
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"affairs_appeal_repair:{tenant_id}",
-                lambda: repair.repair_pending(limit=100),
-            )
-            _run_isolated(
-                f"affairs_leave_export:{tenant_id}",
-                lambda: leave_export.run_pending(limit=2, worker_id=f"scheduler-affairs:{tenant_id}"),
-            )
-            _run_isolated(
-                f"approval_export:{tenant_id}",
-                lambda: approval_export.run_pending(
-                    limit=2, worker_id=f"scheduler-approval:{tenant_id}"
-                ),
-            )
-            _run_isolated(
-                f"affairs_archive_package:{tenant_id}",
-                lambda: archive.run_pending_packages(limit=2),
-            )
-        finally:
-            set_tenant(None)
+    _run_for_tenants("affairs_appeal_repair", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda _tid: repair.repair_pending(limit=100))
+    _run_for_tenants("affairs_leave_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda tenant_id: leave_export.run_pending(
+                         limit=2, worker_id=f"scheduler-affairs:{tenant_id}"))
+    _run_for_tenants("approval_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda tenant_id: approval_export.run_pending(
+                         limit=2, worker_id=f"scheduler-approval:{tenant_id}"))
+    _run_for_tenants("affairs_archive_package", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda _tid: archive.run_pending_packages(limit=2))
+
 
 
 def job_academic_future_effective() -> None:
-    """Stage C1：把已批准且到期的学籍异动按租户 exactly-once 生效。"""
+    """Stage C1 due changes create business facts and require writable effective state."""
     from app.modules.academic_affairs.services import academic_affairs_change_temporal_guard as temporal
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants(
+        "academic_future_effective", tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: temporal.apply_due_changes(limit=100),
+    )
 
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"academic_future_effective:{tenant_id}",
-                lambda: temporal.apply_due_changes(limit=100),
-            )
-        finally:
-            set_tenant(None)
 
 
 def job_leave_overdue() -> None:
     from app.modules.internship.services import internship_leave_service
     from app.services import affairs_leave_service
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            if settings.INTERNSHIP_OVERDUE_AUTO_SCAN:
-                _run_isolated(
-                    f"internship_overdue:{tenant_id}",
-                    lambda: internship_leave_service.refresh_overdue(system=True))
-            if settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN:
-                _run_isolated(
-                    f"affairs_overdue:{tenant_id}",
-                    lambda: affairs_leave_service.scan_overdue())
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    if settings.INTERNSHIP_OVERDUE_AUTO_SCAN:
+        _run_for_tenants("internship_overdue", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                         lambda _tid: internship_leave_service.refresh_overdue(system=True))
+    if settings.AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN:
+        _run_for_tenants("affairs_overdue", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                         lambda _tid: affairs_leave_service.scan_overdue())
+
 
 
 def job_risk_timeout() -> None:
-    """按租户扫描风险分派/处置超时；单租户失败不阻塞其余租户。"""
+    """Risk timeout processing mutates business state."""
     if not settings.AFFAIRS_RISK_TIMEOUT_AUTO_SCAN:
         return
-
     from app.services import affairs_risk_service
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"affairs_risk_timeout:{tenant_id}",
-                lambda: affairs_risk_service.scan_timeout())
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants("affairs_risk_timeout", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda _tid: affairs_risk_service.scan_timeout())
+
 
 
 def job_counselor_temp_expire() -> None:
-    """按租户结束到期临时代班。"""
+    """Ending temporary counselor assignments mutates business facts."""
     if not settings.AFFAIRS_COUNSELOR_TEMP_AUTO_SCAN:
         return
-
     from app.services import affairs_counselor_service
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"affairs_counselor_temp:{tenant_id}",
-                lambda: affairs_counselor_service.scan_expired_temps())
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants("affairs_counselor_temp", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda _tid: affairs_counselor_service.scan_expired_temps())
+
 
 
 def job_stats_reconcile() -> None:
+    """Derived counter repair is maintenance and remains enabled for readonly/expired tenants."""
     from app.services import message_ops_service as ops_svc
-    for tenant_id in _schedulable_tenant_ids():
-        set_tenant({"tenantId": str(tenant_id)})
-        try:
-            _run_isolated(
-                f"stats:{tenant_id}",
-                lambda: ops_svc.reconcile_message_stats())
-        finally:
-            set_tenant(None)
+    from app.services import tenant_effective_state_service as tenant_state
+    _run_for_tenants("stats", tenant_state.BACKGROUND_MAINTENANCE,
+                     lambda _tid: ops_svc.reconcile_message_stats())
+
 
 
 def cleanup_import_batches() -> None:

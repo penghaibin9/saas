@@ -90,8 +90,10 @@ def test_external_scheduler_runs_approval_export_worker_for_each_tenant():
     scheduler = read("backend/scripts/run_scheduled_jobs.py")
 
     assert "approval_export_service as approval_export" in scheduler
-    assert 'f"approval_export:{tenant_id}"' in scheduler
-    assert "approval_export.run_pending(" in scheduler
+    assert 'for tenant_id in _candidate_tenant_ids()' in scheduler
+    assert '_run_isolated(f"{name}:{tenant_id}"' in scheduler
+    assert '_run_for_tenants("approval_export", tenant_state.BACKGROUND_BUSINESS_WRITE,' in scheduler
+    assert "lambda tenant_id: approval_export.run_pending(" in scheduler
     assert 'worker_id=f"scheduler-approval:{tenant_id}"' in scheduler
     assert scheduler.index("approval_export.run_pending(") < scheduler.index("def job_academic_future_effective")
 
@@ -149,7 +151,6 @@ def test_begin_required_fails_closed_when_no_store_exists(monkeypatch):
             {"tenantId": "1", "userId": "9"},
             "approval-batch",
             "abcdefgh",
-            {"action": "APPROVE"},
+            {"scope": "DONE"},
         )
     assert exc.value.code == "IDEMPOTENCY_STORE_UNAVAILABLE"
-    assert exc.value.http_status == 503

@@ -98,10 +98,27 @@ def test_idempotency_guard_releases_on_exception(monkeypatch):
     assert handle is not None
 
 
-def test_scheduler_includes_trial_tenants():
+def test_scheduler_includes_trial_tenants_via_canonical_effective_state_policy():
     from scripts import run_scheduled_jobs as sched
+    from app.services import tenant_effective_state_service as tenant_state
+
+    # Trial is no longer hard-coded in the scheduler. The scheduler enumerates every
+    # non-deleted tenant, then asks the canonical effective-state policy whether a
+    # job class may execute. Prove the policy keeps trial tenants writable instead
+    # of relying on a stale source-string sentinel.
+    policy = tenant_state._background_policy_from_state({
+        "effectiveStatus": "trial",
+        "writable": True,
+    })
+    assert policy["effectiveStatus"] == "trial"
+    assert policy["businessWriteAllowed"] is True
+    assert policy["maintenanceAllowed"] is True
+    assert policy["authSecurityAllowed"] is True
+
     src = open(sched.__file__, encoding="utf-8").read()
-    assert "TRIAL" in src
+    assert "Tenant.is_deleted.is_(False)" in src
+    assert "background_execution_policy" in src
+    assert "BACKGROUND_BUSINESS_WRITE" in src
     assert "INTERVAL_DELIVERY" in src
     assert "job_delivery_and_outbox" in src
 

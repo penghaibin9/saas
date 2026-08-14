@@ -1,20 +1,11 @@
 import { test, expect } from '../lib/observability.mjs'
-import { config } from '../lib/config.mjs'
-import { loginApi } from '../lib/api-fixture.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
-}
-
 test('Golden risk layout contract · five metric cards stay in one desktop row', async ({ page }, testInfo) => {
   await page.setViewportSize(VIEWPORT)
-  const api = await loginApi(config.sandboxAdmin)
-  await openWithApiSession(page, api, '/admin/student-affairs/risk')
+  await openGoldenStaffPage(page, '/admin/student-affairs/risk')
 
   const metrics = page.locator('.sa-grid--metrics')
   await expect(metrics).toBeVisible()
