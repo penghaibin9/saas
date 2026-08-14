@@ -1,0 +1,45 @@
+name: Graduation V9 Scope Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'frontend/src/modules/graduation/**'
+      - 'backend/app/modules/graduation/**'
+      - 'backend/tests/test_graduation*'
+      - 'scripts/check/check-graduation-v9-scope*'
+      - '.github/workflows/graduation-v9-scope.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-v9-scope-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: V9.2 scope gate self-test
+        run: node --test scripts/check/check-graduation-v9-scope.test.mjs
+
+      - name: V9.2 PR diff scope gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$BASE_SHA"
+          CURRENT_CARD=V9_PR BASE_SHA="$BASE_SHA" HEAD_SHA=HEAD \
+            node scripts/check/check-graduation-v9-scope.mjs

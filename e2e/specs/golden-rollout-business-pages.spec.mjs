@@ -147,7 +147,7 @@ test.describe.serial('Golden rollout · representative business pages', () => {
 
     await expect(page).toHaveURL(/\/admin\/graduation/)
     await expect(page.locator('.gdb-page')).toBeVisible()
-    await expect(page.locator('.gdb-page > .mh')).toBeVisible()
+    await expect(page.locator('.gdb-overview')).toBeVisible()
     await expect(page.locator('.gdb-modstats')).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('请先选择或创建毕设批次')

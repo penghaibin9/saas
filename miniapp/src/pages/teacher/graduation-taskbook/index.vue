@@ -4,7 +4,7 @@
 
     <view class="tb__tabs">
       <view class="tb__tab" :class="{ 'is-on': tab === 'list' }" @click="tab = 'list'">
-        任务书列表<text v-if="list && list.length" class="tb__tab-badge">{{ list.length }}</text>
+        任务书列表<text v-if="total" class="tb__tab-badge">{{ total }}</text>
         <text v-if="tab === 'list'" class="tb__tab-u" />
       </view>
       <view class="tb__tab" :class="{ 'is-on': tab === 'issue' }" @click="onIssueTab">
@@ -17,41 +17,50 @@
       <view class="page-pad" v-if="tab === 'list'">
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无任务书"
           description="为本人指导学生下达任务书后会出现在这里。" />
-        <view class="stack" v-else>
-          <view v-for="t in list" :key="t.id" class="card tb">
-            <view class="row-between" @click="toggle(t)">
-              <view class="flex-1">
-                <text class="t-md t-bold">{{ t.studentName || '—' }}</text>
-                <text class="tb__sub">{{ t.studentNo || '' }} · v{{ t.taskbookVersion }}</text>
+        <template v-else>
+          <view class="stack">
+            <view v-for="t in list" :key="t.id" class="card tb">
+              <view class="row-between" @click="toggle(t)">
+                <view class="flex-1">
+                  <text class="t-md t-bold">{{ t.studentName || '—' }}</text>
+                  <text class="tb__sub">{{ t.studentNo || '' }} · v{{ t.taskbookVersion }}</text>
+                </view>
+                <MobileStatusTag :label="t.statusLabel" :type="t.statusTone || 'default'" />
               </view>
-              <MobileStatusTag :label="t.statusLabel" :type="t.statusTone || 'default'" />
-            </view>
-            <view class="tb__row"><text class="tb__row-k">培养目标</text><text class="flex-1 t-sm">{{ t.objective || '—' }}</text></view>
+              <view class="tb__row"><text class="tb__row-k">培养目标</text><text class="flex-1 t-sm">{{ t.objective || '—' }}</text></view>
 
-            <template v-if="expanded === t.id && t.status === 'CONFIRMED'">
-              <view class="tb__row tb__row--top">
-                <text class="tb__row-k">任务内容</text>
-                <textarea class="tb__textarea" v-model="drafts[t.id].content" :maxlength="1000" placeholder-class="tb__ph" />
-              </view>
-              <view class="tb__row tb__row--top">
-                <text class="tb__row-k">进度计划</text>
-                <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].progressPlan" :maxlength="500" placeholder-class="tb__ph" />
-              </view>
-              <view class="tb__row tb__row--top">
-                <text class="tb__row-k">成果要求</text>
-                <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].outcomeRequirement" :maxlength="500" placeholder-class="tb__ph" />
-              </view>
-              <view class="tb__row tb__row--top">
-                <text class="tb__row-k">变更原因</text>
-                <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].reason" :maxlength="200" placeholder="请填写变更原因（≥5 字，必填）" placeholder-class="tb__ph" />
-              </view>
-              <button class="btn btn-primary" :disabled="acting" @click="submitChange(t)">提交变更（学生需重新确认）</button>
-            </template>
-            <text class="tb__hint" v-else-if="t.status === 'CONFIRMED'" @click="toggle(t)">点击发起变更 ›</text>
-            <text class="tb__hint" v-else-if="t.status === 'PENDING_CONFIRM'">等待学生确认</text>
-            <text class="tb__hint" v-else-if="t.status === 'CHANGE_PENDING'">变更已提交，等待学生重新确认</text>
+              <template v-if="expanded === t.id && t.status === 'CONFIRMED'">
+                <view class="tb__row tb__row--top">
+                  <text class="tb__row-k">任务内容</text>
+                  <textarea class="tb__textarea" v-model="drafts[t.id].content" :maxlength="1000" placeholder-class="tb__ph" />
+                </view>
+                <view class="tb__row tb__row--top">
+                  <text class="tb__row-k">进度计划</text>
+                  <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].progressPlan" :maxlength="500" placeholder-class="tb__ph" />
+                </view>
+                <view class="tb__row tb__row--top">
+                  <text class="tb__row-k">成果要求</text>
+                  <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].outcomeRequirement" :maxlength="500" placeholder-class="tb__ph" />
+                </view>
+                <view class="tb__row tb__row--top">
+                  <text class="tb__row-k">变更原因</text>
+                  <textarea class="tb__textarea tb__textarea--sm" v-model="drafts[t.id].reason" :maxlength="200" placeholder="请填写变更原因（≥5 字，必填）" placeholder-class="tb__ph" />
+                </view>
+                <button class="btn btn-primary" :disabled="acting" @click="submitChange(t)">提交变更（学生需重新确认）</button>
+              </template>
+              <text class="tb__hint" v-else-if="t.status === 'CONFIRMED'" @click="toggle(t)">点击发起变更 ›</text>
+              <text class="tb__hint" v-else-if="t.status === 'PENDING_CONFIRM'">等待学生确认</text>
+              <text class="tb__hint" v-else-if="t.status === 'CHANGE_PENDING'">变更已提交，等待学生重新确认</text>
+            </view>
           </view>
-        </view>
+          <view class="tb__paging">
+            <text class="tb__paging-meta">已加载 {{ list.length }} / {{ total }} 条</text>
+            <button v-if="hasMore" class="btn btn-ghost tb__more" :disabled="loadingMore" @click="loadMore">
+              {{ loadingMore ? '加载中…' : '加载更多' }}
+            </button>
+            <text v-else class="tb__paging-meta">已到最后</text>
+          </view>
+        </template>
       </view>
 
       <!-- 下达 -->
@@ -92,6 +101,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherPagingApi, GRADUATION_TEACHER_PAGE_SIZE } from '@/services/graduationTeacherPagingApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
@@ -100,7 +110,8 @@ const submitLock = createSubmitLock(1500)
 export default {
   data() {
     return {
-      tab: 'list', list: null, state: 'loading', expanded: null, drafts: {}, acting: false,
+      tab: 'list', list: null, total: 0, page: 1, hasMore: false, loadingMore: false,
+      state: 'loading', expanded: null, drafts: {}, acting: false,
       students: [], studentIndex: 0,
       issueForm: { objective: '', content: '', progressPlan: '', outcomeRequirement: '' },
       submitting: false
@@ -115,12 +126,25 @@ export default {
     studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.topicTitle || '未选题'}`) }
   },
   methods: {
-    load(done) {
-      this.state = 'loading'
-      teacherApi.getGraduationTaskbookList()
-        .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
-        .finally(() => { if (done) done() })
+    load(done, append = false) {
+      if (!append) this.state = 'loading'
+      const targetPage = append ? this.page + 1 : 1
+      if (append) this.loadingMore = true
+      graduationTeacherPagingApi.taskbooks(targetPage, GRADUATION_TEACHER_PAGE_SIZE)
+        .then((d) => {
+          const rows = (d && d.list) || []
+          this.list = append ? [...(this.list || []), ...rows] : rows
+          this.page = Number((d && d.page) || targetPage)
+          this.total = Number((d && d.total) || this.list.length)
+          this.hasMore = !!(d && d.hasMore)
+          this.state = 'ready'
+        })
+        .catch(() => { if (!append) this.state = 'error' })
+        .finally(() => { this.loadingMore = false; if (done) done() })
+    },
+    loadMore() {
+      if (!this.hasMore || this.loadingMore) return
+      this.load(null, true)
     },
     onIssueTab() {
       this.tab = 'issue'
@@ -197,4 +221,7 @@ export default {
 .tb__picker { flex: 1; }
 .tb__pick-val { font-size: var(--font-size-base); color: var(--text-primary); text-align: right; }
 .tb__arrow { color: var(--text-tertiary); font-size: var(--font-size-xs); margin-left: 4px; }
+.tb__paging { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4) 0 calc(var(--space-4) + env(safe-area-inset-bottom)); }
+.tb__paging-meta { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.tb__more { min-width: 140px; min-height: 40px; }
 </style>

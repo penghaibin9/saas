@@ -48,7 +48,10 @@ jobs:
           text = Path("frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue").read_text(encoding="utf-8")
           assert "grade.status === 'REVIEWED'" in text
           assert "grade.status === 'CALCULATED' && grade.reviewedAt" not in text
-          assert "{ value: 'REVIEWED', label: '已复核' }" in text
+          assert "{ value: 'REVIEW', label: '待复核', status: 'CALCULATED' }" in text
+          assert "{ value: 'PUBLISH', label: '待发布', status: 'REVIEWED' }" in text
+          assert "status: q.status || undefined" in text
+          assert "missingType: q.missingType || undefined" in text
           PY
           git diff --check
 

@@ -4,7 +4,7 @@
  */
 import { request } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
-import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { withGraduationBatch as withBatch } from '@/modules/graduation/api/graduation-batch-context'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -14,12 +14,6 @@ function toErr(e) {
 }
 async function call(fn) {
   try { return ok(await fn()) } catch (e) { return toErr(e) }
-}
-function withBatch(params = {}) {
-  const store = useGraduationBatchStore()
-  const batchId = params.batchId || store.selectedBatchId
-  if (!batchId) throw new Error('请先选择毕业设计批次')
-  return { ...params, batchId: String(batchId) }
 }
 async function callList(path, params = {}) {
   try {
