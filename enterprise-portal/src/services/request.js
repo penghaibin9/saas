@@ -21,6 +21,7 @@ export function setAuthTokens(data={}){
 }
 export function setAccessToken(token){ accessToken=String(token||'') }
 export function clearAccessToken(){ accessToken='';refreshToken='' }
+export function hasEnterpriseAuth(){ return Boolean(accessToken||refreshToken) }
 export function setSelectedCampaignId(value){ sessionSet(CAMPAIGN_KEY,value) }
 export function getSelectedCampaignId(){ return sessionGet(CAMPAIGN_KEY) }
 export function setTenantCode(value){ sessionSet(TENANT_CODE_KEY,value) }
