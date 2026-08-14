@@ -8,6 +8,7 @@ const helper = fs.readFileSync(new URL('../src/modules/graduation/utils/form-sta
 const proposal = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/ProposalReviewCard.vue', import.meta.url), 'utf8')
 const grade = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')
 const processAction = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationProcessActionBaseView.vue', import.meta.url), 'utf8')
+const finalReview = fs.readFileSync(new URL('../src/modules/graduation/views/FinalSubmissionListView.vue', import.meta.url), 'utf8')
 
 test('U9 graduation conflict contract keeps draft, refreshes truth and requires explicit reconfirm', () => {
   assert.match(helper, /isGraduationConflictResponse/)
@@ -33,6 +34,18 @@ test('U9 grade and process forms keep editable drafts while refreshing real serv
   assert.match(processAction, /await this\.refreshConflictTruth\(\)/)
 })
 
+test('U9 final review keeps the selected teacher draft and refreshes only current server truth on conflict', () => {
+  assert.match(finalReview, /isGraduationConflictResponse/)
+  assert.match(finalReview, /const draft = this\.comment/)
+  assert.match(finalReview, /await this\.refreshSelectedConflictTruth\(res, draft\)/)
+  assert.match(finalReview, /await this\.loadStats\(\)/)
+  assert.match(finalReview, /await this\.loadSelectedDetail\(\)/)
+  assert.match(finalReview, /this\.comment = draft/)
+  assert.match(finalReview, /graduationConflictMessage/)
+  assert.match(finalReview, /graduationActionErrorMessage/)
+  assert.equal((finalReview.match(/graduationApi\.reviewFinal\(/g) || []).length, 1)
+})
+
 test('U9 scope stays module-local and keeps shared foundations denied', () => {
   assert.deepEqual(validateFiles([
     'scripts/check/check-graduation-v9-scope.mjs',
@@ -40,6 +53,7 @@ test('U9 scope stays module-local and keeps shared foundations denied', () => {
     'frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue',
     'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue',
     'frontend/src/modules/graduation/views/GraduationProcessActionBaseView.vue',
+    'frontend/src/modules/graduation/views/FinalSubmissionListView.vue',
     'frontend/tests/graduation.v9-form-state.contract.test.mjs',
   ], 'U9'), [])
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U9')[0], /shared foundation denied/)

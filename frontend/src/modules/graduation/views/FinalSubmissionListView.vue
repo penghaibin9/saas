@@ -207,6 +207,7 @@ import SecureFileList from '@/components/file/SecureFileList.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
+import { graduationActionErrorMessage, graduationConflictMessage, isGraduationConflictResponse } from '@/modules/graduation/utils/form-state'
 import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { matchPermission } from '@/config/navPlan'
@@ -470,6 +471,22 @@ export default {
         return res
       })
     },
+    async refreshSelectedConflictTruth(response, draft) {
+      const selectedKey = this.selKey
+      await this.loadStats()
+      if (this.selKey !== selectedKey) return
+      await this.loadSelectedDetail()
+      if (this.selKey !== selectedKey) return
+      const row = this.selectedRow
+      if (row && this.finalDetail?.status) {
+        row.status = this.finalDetail.status
+        row.statusLabel = this.finalDetail.statusLabel || row.statusLabel
+      }
+      this.comment = draft
+      const message = graduationConflictMessage(response)
+      this.formError = message
+      toast.error(message)
+    },
     async submitReview(action) {
       if (!this.canReview || !this.selectedRow) return
       this.formError = ''
@@ -514,11 +531,10 @@ export default {
           await this.load()
         }
         if (!this.rows.length) toast.success('待审成果已全部处理完')
-      } else if (res.message && (res.message.includes('已批阅') || res.message.includes('已被处理') || res.message.includes('版本已变化'))) {
-        this.formError = res.message
-        this.loadStats()
-        this.load()
-      } else this.formError = res.message
+      } else if (isGraduationConflictResponse(res)) {
+        const draft = this.comment
+        await this.refreshSelectedConflictTruth(res, draft)
+      } else this.formError = graduationActionErrorMessage(res, '成果批阅未完成，请稍后重试')
     },
     async remind(row) {
       this.reminding = true

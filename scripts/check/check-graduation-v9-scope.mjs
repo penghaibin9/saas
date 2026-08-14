@@ -117,6 +117,7 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/_shared\/ProposalReviewCard\.vue$/,
     /^frontend\/src\/modules\/graduation\/views\/GraduationDefenseGradeFormView\.vue$/,
     /^frontend\/src\/modules\/graduation\/views\/GraduationProcessActionBaseView\.vue$/,
+    /^frontend\/src\/modules\/graduation\/views\/FinalSubmissionListView\.vue$/,
     /^frontend\/tests\/graduation\.v9-form-state\.contract\.test\.mjs$/,
   ],
 }
