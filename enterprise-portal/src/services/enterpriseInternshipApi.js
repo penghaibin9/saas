@@ -7,6 +7,7 @@ const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 export const enterpriseInternshipApi = {
   context: () => request(`${ROOT}/context`),
   dashboard: () => request(`${ROOT}/dashboard`),
+  campaignHistory: () => request(`${ROOT}/campaigns/history`),
   company: () => request(`${ROOT}/company`),
   updateCompany: (patch) => request(`${ROOT}/company`, { method:'PUT', body:patch }),
   positions: (params) => request(`${ROOT}/positions`, { params }),
