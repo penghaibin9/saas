@@ -34,8 +34,8 @@ def test_only_tenant_all_is_unscoped_and_teacher_is_own_course_scope():
     assert exc.value.code == "NO_DATA_SCOPE"
 
 
-def test_selection_scope_guard_is_installed_on_existing_owner():
-    guard.install()
+def test_selection_scope_guard_is_installed_on_existing_owner_at_package_import():
+    assert selection_read._production_audit_guard_installed is True
     assert selection_read._scope_values is guard._selection_scope_values
     assert selection_read._scope_course_query is guard._selection_scope_course_query
     assert selection_read.get_conflict_report is guard._selection_conflict_report

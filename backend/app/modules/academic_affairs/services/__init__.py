@@ -142,3 +142,9 @@ academic_affairs_grade_correction_command.install()
 from . import academic_affairs_grade_audit_scope_guard
 
 academic_affairs_grade_audit_scope_guard.install()
+
+# PR #101 生产复审：只读便利性加固必须在真实包初始化时自动生效，不能依赖测试手动 install。
+# 该 guard 仅收紧 dataScope、pageSize 和冲突详情脱敏，不接管任何 canonical 写链。
+from . import academic_affairs_production_audit_guard
+
+academic_affairs_production_audit_guard.install()
