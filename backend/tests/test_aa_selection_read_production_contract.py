@@ -75,10 +75,14 @@ def test_aggregates_filter_by_scoped_course_ids_not_only_batch_visibility():
     assert "_course_query(db, int(batch.id), scoped)" in archive_source
 
 
-def test_conflict_student_drilldown_is_audited_and_linear_counted():
+def test_conflict_student_drilldown_is_audited_and_sql_aggregated():
     source = inspect.getsource(read.get_conflict_report)
     assert "SELECTION_CONFLICT_QUERY" in source
-    assert "counts[cid] += 1" in source
+    assert "func.count(AffairsAuditTrail.id)" in source
+    assert ".group_by(AffairsAuditTrail.biz_id)" in source
+    assert ".offset((page_no - 1) * size)" in source
+    assert ".limit(size)" in source
+    assert "counts[cid] += 1" not in source
     assert "sum(1 for" not in source
 
 
