@@ -10,6 +10,7 @@ from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest, ArchiveRejectRequest
 from app.modules.graduation.materials import manifest_service as manifests
+from app.modules.graduation.services import graduation_archive_read_service as archive_read
 from app.modules.graduation.services import graduation_archive_service as svc
 material_center = manifests  # compatibility name; V2 manifest service is the only writer
 from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
@@ -63,7 +64,9 @@ def export_rows(
     status: Optional[str] = None, keyword: Optional[str] = None,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    return success(svc.export_archives_xlsx(status=status, keyword=keyword, batch_id=batchId))
+    return success(archive_read.export_archives_xlsx(
+        status=status, keyword=keyword, batch_id=require_batch_id(batchId),
+    ))
 
 
 # 动态 /{gd_student_id} 之前注册批量固定路径，避免被误识别为学生 ID。
