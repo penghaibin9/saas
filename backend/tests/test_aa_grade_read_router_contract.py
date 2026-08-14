@@ -49,11 +49,15 @@ def test_d8_grade_read_does_not_steal_exportjob_owners():
     )
 
 
-def test_d8_grade_read_keeps_grade_change_recheck_and_recognition_on_existing_owner():
+def test_d8_grade_read_does_not_steal_adjacent_grade_write_owners():
+    """S2 只锁自身边界；相邻写链允许由后续 S3/S4 从 legacy 继续迁出。"""
     owners = _owners()
-    legacy = "app.modules.academic_affairs.routers.academic_affairs"
-    assert owners[("/academic-affairs/grade-tasks/{}/records/{}/change-request", ("POST",))] == legacy
-    assert owners[("/academic-affairs/grade-rechecks", ("GET",))] == legacy
-    assert owners[("/academic-affairs/grade-rechecks/{}/review", ("POST",))] == legacy
-    assert owners[("/academic-affairs/grade-recognitions", ("GET",))] == legacy
-    assert owners[("/academic-affairs/grade-recognitions", ("POST",))] == legacy
+    read_owner = "app.modules.academic_affairs.routers.grade_read_router"
+    for key in (
+        ("/academic-affairs/grade-tasks/{}/records/{}/change-request", ("POST",)),
+        ("/academic-affairs/grade-rechecks", ("GET",)),
+        ("/academic-affairs/grade-rechecks/{}/review", ("POST",)),
+        ("/academic-affairs/grade-recognitions", ("GET",)),
+        ("/academic-affairs/grade-recognitions", ("POST",)),
+    ):
+        assert owners[key] != read_owner, f"D8-S2 must not own adjacent write route: {key}"
