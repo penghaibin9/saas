@@ -1,4 +1,4 @@
-import { CONTACT_SHARING_MODES } from './selectionContract'
+import { CONTACT_SHARING_MODES } from './selectionContract.js'
 
 export const CONTACT_SHARING_OPTIONS = Object.freeze([
   { value: 'MASKED_ONLY', label: '仅脱敏联系方式', help: '企业始终只看到脱敏联系方式。' },

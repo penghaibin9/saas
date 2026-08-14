@@ -78,20 +78,38 @@
             <button type="button" @click="volunteerOpen = false">关闭</button>
           </div>
           <div v-if="volunteerLoading" class="volunteer-state">正在加载我的志愿…</div>
-          <VolunteerBoard
-            v-else
-            :group="volunteerGroup"
-            :slots="volunteerSlots"
-            :candidate="candidatePosition"
-            :editable="volunteerEditable"
-            :busy="volunteerBusy"
-            :error="volunteerError"
-            @move="moveVolunteerSlot"
-            @remove="removeVolunteerSlot"
-            @replace="replaceVolunteerSlot"
-            @statement="changeVolunteerStatement"
-            @save="persistVolunteerSlots(volunteerSlots)"
-          />
+          <template v-else>
+            <VolunteerBoard
+              :group="volunteerGroup"
+              :slots="volunteerSlots"
+              :candidate="candidatePosition"
+              :editable="volunteerEditable"
+              :busy="volunteerBusy"
+              :error="volunteerError"
+              @move="moveVolunteerSlot"
+              @remove="removeVolunteerSlot"
+              @replace="replaceVolunteerSlot"
+              @statement="changeVolunteerStatement"
+              @save="persistVolunteerSlots(volunteerSlots)"
+            />
+            <VolunteerSubmissionPanel
+              :group="volunteerGroup"
+              :slots="volunteerSlots"
+              :preview="submissionPreview"
+              :contact-sharing-mode="contactSharingMode"
+              :confirmed="submissionConfirmed"
+              :confirm-open="submitConfirmOpen"
+              :busy="submissionBusy"
+              :submit-error="submitError"
+              @prepare-submit="prepareFinalSubmit"
+              @cancel-confirm="cancelFinalSubmit"
+              @submit="submitFinalVolunteerGroup"
+              @withdraw="withdrawVolunteerGroup"
+              @unlock="requestVolunteerUnlock"
+              @update:contact-sharing-mode="contactSharingMode = $event"
+              @update:confirmed="submissionConfirmed = $event"
+            />
+          </template>
         </div>
       </div>
     </main>
@@ -109,9 +127,15 @@ import PositionSearchFilters from '../../components/recruitment/PositionSearchFi
 import PositionCard from '../../components/recruitment/PositionCard.vue'
 import PositionDetail from '../../components/recruitment/PositionDetail.vue'
 import VolunteerBoard from '../../components/recruitment/VolunteerBoard.vue'
+import VolunteerSubmissionPanel from '../../components/recruitment/VolunteerSubmissionPanel.vue'
 import { normalizeRecruitmentContext } from '../../modules/internshipRecruitment/contextModel.js'
+import { normalizeMaterialPreview } from '../../modules/internshipRecruitment/materialPreviewModel.js'
 import { normalizePosition } from '../../modules/internshipRecruitment/positionModel.js'
 import { normalizeCatalogQuery } from '../../modules/internshipRecruitment/selectionContract.js'
+import {
+  buildVolunteerFinalSubmitRequest,
+  normalizeVolunteerSubmitError
+} from '../../modules/internshipRecruitment/submissionModel.js'
 import {
   addVolunteer,
   buildVolunteerGroupSaveRequest,
@@ -146,6 +170,12 @@ const volunteerGroup = ref(normalizeVolunteerGroup())
 const volunteerSlots = ref(volunteerGroup.value.slots)
 const candidatePosition = ref(null)
 const volunteerOpen = ref(false)
+const submissionPreview = ref(normalizeMaterialPreview())
+const contactSharingMode = ref('AFTER_INTERVIEW')
+const submissionConfirmed = ref(false)
+const submitConfirmOpen = ref(false)
+const submissionBusy = ref(false)
+const submitError = ref({ code: '', message: '', invalidItems: [] })
 let catalogRequestSeq = 0
 let detailRequestSeq = 0
 let volunteerRequestSeq = 0
@@ -153,6 +183,13 @@ let volunteerRequestSeq = 0
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / query.value.pageSize)))
 const volunteerEditable = computed(() => canEditVolunteerGroup(volunteerGroup.value) && context.value.canSelect)
 const volunteerSelectedCount = computed(() => volunteerSlots.value.filter((slot) => slot.positionId).length)
+
+function resetSubmitPreview() {
+  submissionPreview.value = normalizeMaterialPreview()
+  submissionConfirmed.value = false
+  submitConfirmOpen.value = false
+  submitError.value = { code: '', message: '', invalidItems: [] }
+}
 
 async function loadContext() {
   loading.value = true
@@ -258,6 +295,7 @@ async function persistVolunteerSlots(nextSlots) {
       await loadVolunteerGroup()
     }
     candidatePosition.value = null
+    resetSubmitPreview()
     return true
   } catch (err) {
     volunteerSlots.value = previousSlots
@@ -303,6 +341,83 @@ function replaceVolunteerSlot(volunteerNo, position) {
 function changeVolunteerStatement(volunteerNo, statement) {
   persistVolunteerSlots(updateVolunteerStatement(volunteerSlots.value, volunteerNo, statement))
 }
+
+async function prepareFinalSubmit() {
+  submitError.value = { code: '', message: '', invalidItems: [] }
+  submissionConfirmed.value = false
+  submissionBusy.value = true
+  try {
+    const data = await internshipSelectionApi.materialPreview()
+    submissionPreview.value = normalizeMaterialPreview(data || {})
+    if (!submissionPreview.value.previewHash || !submissionPreview.value.consentPolicyVersion) {
+      throw new Error('企业视角材料预览不完整，请先完善实习档案。')
+    }
+    submitConfirmOpen.value = true
+    volunteerOpen.value = true
+  } catch (err) {
+    submitError.value = normalizeVolunteerSubmitError(err)
+    submitConfirmOpen.value = false
+  } finally {
+    submissionBusy.value = false
+  }
+}
+
+function cancelFinalSubmit() {
+  submissionConfirmed.value = false
+  submitConfirmOpen.value = false
+}
+
+async function submitFinalVolunteerGroup() {
+  if (!submissionConfirmed.value) return
+  submissionBusy.value = true
+  submitError.value = { code: '', message: '', invalidItems: [] }
+  try {
+    const payload = buildVolunteerFinalSubmitRequest({
+      group: volunteerGroup.value,
+      preview: submissionPreview.value,
+      contactSharingMode: contactSharingMode.value
+    })
+    await internshipSelectionApi.submitVolunteers(payload)
+    submitConfirmOpen.value = false
+    submissionConfirmed.value = false
+    await Promise.all([loadVolunteerGroup(), loadContext()])
+  } catch (err) {
+    submitError.value = normalizeVolunteerSubmitError(err)
+  } finally {
+    submissionBusy.value = false
+  }
+}
+
+async function withdrawVolunteerGroup() {
+  submissionBusy.value = true
+  submitError.value = { code: '', message: '', invalidItems: [] }
+  try {
+    await internshipSelectionApi.withdrawVolunteers({ expectedGroupVersion: volunteerGroup.value.version })
+    resetSubmitPreview()
+    await Promise.all([loadVolunteerGroup(), loadContext()])
+  } catch (err) {
+    submitError.value = normalizeVolunteerSubmitError(err)
+  } finally {
+    submissionBusy.value = false
+  }
+}
+
+async function requestVolunteerUnlock() {
+  submissionBusy.value = true
+  submitError.value = { code: '', message: '', invalidItems: [] }
+  try {
+    await internshipSelectionApi.requestUnlock({
+      expectedGroupVersion: volunteerGroup.value.version,
+      reason: '学生申请重新调整岗位志愿'
+    })
+    await loadVolunteerGroup()
+  } catch (err) {
+    submitError.value = normalizeVolunteerSubmitError(err)
+  } finally {
+    submissionBusy.value = false
+  }
+}
+
 function changePage(page) {
   loadPositions({ ...query.value, page })
 }
@@ -354,7 +469,7 @@ h1 { margin:0; color:#1a1a1a; font-size:24px; line-height:1.35; }
 @media (max-width:1439px) {
   .catalog-workspace { grid-template-columns:360px minmax(0,1fr); }
   .volunteer-entry { display:inline-flex; align-items:center; }
-  .volunteer-pane { position:fixed; z-index:60; top:78px; right:18px; width:300px; max-height:calc(100vh - 96px); overflow:auto; transform:translateX(calc(100% + 32px)); transition:transform .18s ease; box-shadow:0 14px 40px rgba(25,49,83,.18); }
+  .volunteer-pane { position:fixed; z-index:60; top:78px; right:18px; width:310px; max-height:calc(100vh - 96px); overflow:auto; transform:translateX(calc(100% + 32px)); transition:transform .18s ease; box-shadow:0 14px 40px rgba(25,49,83,.18); }
   .volunteer-pane.is-open { transform:translateX(0); }
   .volunteer-pane__mobile-head { display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid #dfe8f8; border-bottom:0; border-radius:10px 10px 0 0; background:#fff; }
   .volunteer-pane__mobile-head strong { color:#333; font-size:13px; }
