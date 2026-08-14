@@ -6,6 +6,8 @@ let timer=null
 onMounted(()=>{timer=setInterval(()=>{now.value=Date.now()},60_000)})
 onUnmounted(()=>{if(timer)clearInterval(timer)})
 const deadline=computed(()=>props.campaign?.currentDeadlineAt||props.campaign?.phaseDeadlineAt||props.campaign?.enterpriseDecisionDeadline||props.campaign?.enterpriseDecisionEndAt||'')
+const campaignLabel=computed(()=>props.campaign?.name||props.campaign?.campaignName||(props.campaign?.id?`招聘季 #${props.campaign.id}`:'未选择招聘季'))
+const phaseLabel=computed(()=>props.campaign?.phaseLabel||props.campaign?.status||'状态待服务端返回')
 const remaining=computed(()=>{
   if(!deadline.value)return '—'
   const at=new Date(deadline.value).getTime()
@@ -22,8 +24,8 @@ const remaining=computed(()=>{
 </script>
 <template>
   <div class="bar ep-card">
-    <div><span class="label">当前招聘季</span><strong>{{ loading ? '加载中…' : (campaign?.name || campaign?.campaignName || '未开放招聘季') }}</strong></div>
-    <div><span class="label">当前阶段</span><strong>{{ campaign?.phaseLabel || campaign?.status || '—' }}</strong></div>
+    <div><span class="label">当前招聘季</span><strong>{{ loading ? '加载中…' : campaignLabel }}</strong></div>
+    <div><span class="label">当前阶段</span><strong>{{ phaseLabel }}</strong></div>
     <div><span class="label">当前阶段截止</span><strong>{{ deadline || '—' }}</strong></div>
     <div><span class="label">距离截止</span><strong class="remaining">{{ remaining }}</strong></div>
   </div>
