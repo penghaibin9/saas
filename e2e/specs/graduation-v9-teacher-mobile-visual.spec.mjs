@@ -8,12 +8,13 @@ const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 
 async function loginTeacherMini(page) {
   await page.goto(`${miniBase}/#/pages/login/teacher/index`)
-  await page.locator('input[placeholder="工号 / 手机号"]').fill(config.mentor.username)
-  await page.locator('input[placeholder="密码"]').fill(config.mentor.password)
+  const loginFields = page.getByRole('textbox')
+  await loginFields.nth(0).fill(config.mentor.username)
+  await loginFields.nth(1).fill(config.mentor.password)
   await page.getByText('填写', { exact: true }).click()
-  await page.locator('input[placeholder="请输入学校编码"]').fill(config.mentor.tenant)
+  await loginFields.nth(2).fill(config.mentor.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByRole('button', { name: '进入教师工作台' }).click()
+  await page.getByText('进入教师工作台', { exact: true }).click()
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 10_000 })
 }
 
