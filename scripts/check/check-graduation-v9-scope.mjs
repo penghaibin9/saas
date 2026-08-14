@@ -126,6 +126,12 @@ const CARD_ALLOW = {
     /^frontend\/tests\/graduation\.v9-student-dual-end\.contract\.test\.mjs$/,
     /^backend\/tests\/test_graduation_v9_u10_student_dual_end\.py$/,
   ],
+  U12: [
+    /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^miniapp\/src\/services\/graduationTeacherCountTruth\.js$/,
+    /^miniapp\/src\/pages\/teacher\/graduation-guide\/index\.vue$/,
+    /^miniapp\/tests\/graduation\.v9-cross-end-count\.contract\.test\.mjs$/,
+  ],
 }
 
 const ALWAYS_DENY = [
