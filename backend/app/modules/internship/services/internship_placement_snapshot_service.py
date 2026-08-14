@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from sqlalchemy import func, select
 
-from app.core.context import get_current_user
+from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
 from app.models import EmpCompany, InternshipPosition
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
@@ -21,7 +21,7 @@ def snapshot_sha256(payload: dict) -> str:
 
 
 def _captured_by_user_id() -> int | None:
-    user = get_current_user() or {}
+    user = get_current_user_ctx() or {}
     value = str(user.get("userId") or "")
     if value.startswith("db-"):
         value = value[3:]
@@ -41,7 +41,7 @@ def capture_placement_snapshot_in_tx(
     source_application_id: int | None = None,
     source_enterprise_decision_id: int | None = None,
 ) -> InternshipPlacementSnapshot:
-    """Caller already holds record/position locks; any failure must abort the caller transaction."""
+    """Caller already holds record/position locks; any failure aborts the caller transaction."""
     if not record.batch_id:
         raise AppException("DATA_CONFLICT", "正式落岗缺少实习批次，不能生成历史快照")
     current_max = db.scalar(
@@ -51,10 +51,12 @@ def capture_placement_snapshot_in_tx(
         )
     )
     placement_seq = int(current_max or 0) + 1
-    captured_at = datetime.utcnow()
+    placement_at = datetime.utcnow()
+    snapshot_version = 1
     payload = {
         "recordId": str(record.id),
         "placementSeq": placement_seq,
+        "snapshotVersion": snapshot_version,
         "applicationId": str(source_application_id) if source_application_id else None,
         "enterpriseDecisionId": str(source_enterprise_decision_id) if source_enterprise_decision_id else None,
         "campaignId": str(position.campaign_id) if position.campaign_id else None,
@@ -97,13 +99,14 @@ def capture_placement_snapshot_in_tx(
             "passed": bool(rights.get("passed")),
             "ruleVersion": rights.get("ruleVersion") or position.rights_rule_version,
         },
-        "capturedAt": captured_at.isoformat(),
+        "placementAt": placement_at.isoformat(),
     }
     digest = snapshot_sha256(payload)
     row = InternshipPlacementSnapshot(
         tenant_id=record.tenant_id,
         record_id=record.id,
         placement_seq=placement_seq,
+        snapshot_version=snapshot_version,
         application_id=source_application_id,
         enterprise_decision_id=source_enterprise_decision_id,
         campaign_id=position.campaign_id,
@@ -143,8 +146,10 @@ def capture_placement_snapshot_in_tx(
         position_version=int(position.version or 0),
         position_updated_at=position.updated_at,
         snapshot_json=payload,
+        snapshot_hash=digest,
         snapshot_sha256=digest,
-        captured_at=captured_at,
+        placement_at=placement_at,
+        captured_at=placement_at,
         captured_by_user_id=_captured_by_user_id(),
     )
     db.add(row)
