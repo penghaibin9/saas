@@ -5,6 +5,7 @@ import fs from 'node:fs'
 const read=(p)=>fs.readFileSync(new URL(p,import.meta.url),'utf8')
 const layout=read('../src/layouts/EnterprisePortalLayout.vue')
 const positions=read('../src/views/PositionListView.vue')
+const positionForm=read('../src/views/PositionFormView.vue')
 const applicants=read('../src/views/ApplicantListView.vue')
 const detail=read('../src/views/ApplicantDetailView.vue')
 const contact=read('../src/components/applicant/ContactRevealButton.vue')
@@ -25,10 +26,12 @@ test('campaign closed and unavailable context fail closed',()=>{
   assert.match(positions,/招聘季已关闭/)
 })
 
-test('pending position is school-review state, never enterprise published state',()=>{
-  assert.match(positions,/待学校审核/)
-  assert.match(positions,/PENDING/)
-  assert.doesNotMatch(positions,/直接发布/)
+test('pending position is read-only until canonical withdraw action returns it to draft',()=>{
+  assert.match(positions,/撤回修改/)
+  assert.match(positionForm,/positionStatus\.value==='PENDING'/)
+  assert.match(positionForm,/撤回到草稿修改/)
+  assert.match(positionForm,/withdrawPosition/)
+  assert.match(positionForm,/PENDING 必须先撤回再修改/)
 })
 
 test('contact forbidden stays masked and disabled',()=>{
