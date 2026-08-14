@@ -4,6 +4,7 @@ import fs from 'node:fs'
 
 const api=fs.readFileSync(new URL('../src/services/enterpriseInternshipApi.js',import.meta.url),'utf8')
 const form=fs.readFileSync(new URL('../src/views/PositionFormView.vue',import.meta.url),'utf8')
+const types=fs.readFileSync(new URL('../src/types/enterpriseInternship.d.ts',import.meta.url),'utf8')
 
 test('A02 adapter uses V3 frozen enterprise portal routes',()=>{
   for(const route of ['/campaigns','/applications/${id}/material','/applications/${id}/resume-pdf','/evaluation-tasks','/evaluation-tasks/${id}/submit']) assert.match(api,new RegExp(route.replace(/[${}()]/g,'\\$&')))
@@ -16,4 +17,10 @@ test('position payload is whitelist-only and follows V3 editable field names',()
   for(const forbidden of ['companyId','allocatedCount','rightsStatus','rightsCheckedAt','rightsRuleVersion','riskFlag','riskNote']) assert.doesNotMatch(api,new RegExp(`'${forbidden}'`))
   assert.match(form,/form\.title/)
   assert.match(form,/form\.remunerationAmount/)
+})
+
+test('typed frontend contract includes full canonical status surfaces without adding new authorities',()=>{
+  for(const status of ['DRAFT','PENDING','PUBLISHED','OFFLINE','SUSPENDED','FULL','RISK','ARCHIVED']) assert.match(types,new RegExp(`'${status}'`))
+  for(const role of ['COMPANY_ADMIN','HR','MENTOR']) assert.match(types,new RegExp(`'${role}'`))
+  for(const decision of ['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED']) assert.match(types,new RegExp(`'${decision}'`))
 })
