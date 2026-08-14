@@ -13,7 +13,10 @@ import { normalizeUiError } from '@/utils/presentationSafety'
 
 const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1']
 const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
+const BROWSER_SESSION_COORDINATION_CHANNEL = 'gx_browser_session_coord_v2'
+const BROWSER_SESSION_COLLISION_WINDOW_MS = 60
 let volatileBrowserSessionId = ''
+let browserSessionCoordinator = null
 try { LEGACY_TOKEN_KEYS.forEach((key) => sessionStorage.removeItem(key)) } catch { /* ignore */ }
 try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch { /* ignore */ }
 
@@ -166,19 +169,79 @@ async function rawRequest(path, {
   }
 }
 
+function newBrowserSessionId() {
+  return globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+}
+
+function readBrowserSessionId() {
+  try { return String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim() } catch { return volatileBrowserSessionId }
+}
+
+function writeBrowserSessionId(value) {
+  const sessionId = String(value || '').trim() || newBrowserSessionId()
+  volatileBrowserSessionId = sessionId
+  try { sessionStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId) } catch { /* memory fallback */ }
+  return sessionId
+}
+
 function getOrCreateBrowserSessionId() {
   try {
     const existing = String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim()
     if (existing) return existing
-    const generated = globalThis.crypto?.randomUUID?.()
-    if (!generated) throw new Error('secure random UUID unavailable')
+    const generated = newBrowserSessionId()
     sessionStorage.setItem(BROWSER_SESSION_ID_KEY, generated)
+    volatileBrowserSessionId = generated
     return generated
   } catch {
-    if (!volatileBrowserSessionId) volatileBrowserSessionId = globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+    if (!volatileBrowserSessionId) volatileBrowserSessionId = newBrowserSessionId()
     return volatileBrowserSessionId
   }
 }
+
+function initBrowserSessionCollisionGuard() {
+  const inheritedSessionId = readBrowserSessionId()
+  let sessionId = inheritedSessionId || getOrCreateBrowserSessionId()
+  const instanceId = newBrowserSessionId()
+
+  // window.open / opener-created same-origin tabs synchronously clone sessionStorage. Rotate before
+  // a user can log a different account into the child tab, so it can never overwrite the opener's
+  // per-tab refresh cookie slot.
+  try {
+    if (inheritedSessionId && typeof window !== 'undefined' && window.opener) {
+      sessionId = writeBrowserSessionId(newBrowserSessionId())
+    }
+  } catch { /* cross-origin opener / SSR */ }
+
+  // Browser-level “Duplicate tab” can clone sessionStorage without a useful window.opener. Keep a
+  // tiny BroadcastChannel probe alive in every page: an already-open owner claims the cloned ID;
+  // only the newcomer rotates. Reload/navigation of the same tab has no concurrent claimant and
+  // therefore preserves the ID, so its HttpOnly refresh cookie remains usable.
+  try {
+    if (typeof BroadcastChannel !== 'function') return
+    const channel = new BroadcastChannel(BROWSER_SESSION_COORDINATION_CHANNEL)
+    browserSessionCoordinator = channel
+    const probedSessionId = sessionId
+    let probing = true
+    channel.addEventListener('message', (event) => {
+      const message = event?.data || {}
+      if (!message || message.instanceId === instanceId) return
+      const activeSessionId = getOrCreateBrowserSessionId()
+      if (message.type === 'probe' && message.sessionId === activeSessionId) {
+        channel.postMessage({ type: 'claim', sessionId: activeSessionId, instanceId })
+        return
+      }
+      if (probing && message.type === 'claim' && message.sessionId === probedSessionId) {
+        writeBrowserSessionId(newBrowserSessionId())
+        probing = false
+      }
+    })
+    channel.postMessage({ type: 'probe', sessionId: probedSessionId, instanceId })
+    setTimeout(() => { probing = false }, BROWSER_SESSION_COLLISION_WINDOW_MS)
+    try { window.addEventListener('pagehide', () => browserSessionCoordinator?.close(), { once: true }) } catch { /* SSR */ }
+  } catch { /* BroadcastChannel unavailable */ }
+}
+
+initBrowserSessionCollisionGuard()
 
 function browserSessionChannel() {
   const u = currentUserFromToken()
