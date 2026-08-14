@@ -1,0 +1,152 @@
+name: U11 Gold freezer
+
+on:
+  push:
+    branches:
+      - 'ops/graduation-u11-gold-freezer-20260814'
+    paths:
+      - '.github/workflows/u11-gold-freezer.yml'
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: candidate/graduation-u11-gold-seal-20260814
+  EXPECTED_TARGET_HEAD: aea74884679cbaea48ddc0b5fc48027e31e9ff04
+  EVIDENCE_ARTIFACT_ID: '9220778951'
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout freezer source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: source
+
+      - name: Checkout exact U11 target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          path: target
+
+      - name: Fail closed on target drift
+        working-directory: target
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_TARGET_HEAD" || {
+            echo "Target drifted: expected=$EXPECTED_TARGET_HEAD actual=$actual"
+            exit 1
+          }
+
+      - name: Download exact green Playwright evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${EVIDENCE_ARTIFACT_ID}/zip" \
+            -o /tmp/u11-evidence.zip
+          mkdir -p /tmp/u11-evidence
+          unzip -q /tmp/u11-evidence.zip -d /tmp/u11-evidence
+
+      - name: Materialize phase2 text and 12 verified PNG masters
+        run: |
+          set -euo pipefail
+          install -D source/u11-freeze/graduation-gold.mjs target/e2e/lib/graduation-gold.mjs
+          install -D source/u11-freeze/graduation-gold-stability.css target/e2e/gold/graduation-gold-stability.css
+          install -D source/u11-freeze/graduation-v9-gold-manifest.json target/e2e/gold/graduation-v9-gold-manifest.json
+          install -D source/u11-freeze/check-graduation-v9-scope.mjs target/scripts/check/check-graduation-v9-scope.mjs
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, shutil
+
+          target = Path('target')
+          evidence = Path('/tmp/u11-evidence')
+          manifest_path = target / 'e2e/gold/graduation-v9-gold-manifest.json'
+          manifest = json.loads(manifest_path.read_text())
+          assert manifest['baselineCount'] == 12
+          assert manifest['source']['head'] == 'aea74884679cbaea48ddc0b5fc48027e31e9ff04'
+          assert manifest['source']['workflowRunId'] == 31803964135
+          assert manifest['environment']['browser'] == 'chromium'
+          assert manifest['environment']['browserProject'] == 'default'
+
+          copied = []
+          for item in manifest['baselines']:
+              matches = [p for p in evidence.rglob(item['candidateName']) if 'attachments' not in p.parts]
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected one {item['candidateName']}, got {len(matches)}: {matches}")
+              source = matches[0]
+              actual = hashlib.sha256(source.read_bytes()).hexdigest()
+              if actual != item['sha256']:
+                  raise SystemExit(f"SHA mismatch {item['candidateName']}: {actual} != {item['sha256']}")
+              destination = target / 'e2e/specs' / f"{item['spec']}-snapshots" / item['snapshotName']
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, destination)
+              copied.append(destination)
+
+          if len(copied) != 12:
+              raise SystemExit(f"Expected 12 Gold PNGs, copied {len(copied)}")
+          print('\n'.join(str(p) for p in copied))
+          PY
+
+      - name: Validate phase2 before commit
+        working-directory: target
+        run: |
+          set -euo pipefail
+          node --check e2e/lib/graduation-gold.mjs
+          node --check scripts/check/check-graduation-v9-scope.mjs
+          node --test scripts/check/check-graduation-v9-scope.test.mjs
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, struct
+          manifest = json.loads(Path('e2e/gold/graduation-v9-gold-manifest.json').read_text())
+          for item in manifest['baselines']:
+              path = Path('e2e/specs') / f"{item['spec']}-snapshots" / item['snapshotName']
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              assert actual == item['sha256'], (path, actual, item['sha256'])
+              data = path.read_bytes()
+              assert data[:8] == b'\x89PNG\r\n\x1a\n'
+              width, height = struct.unpack('>II', data[16:24])
+              assert (width, height) == (item['width'], item['height']), (path, width, height)
+          print('U11 Gold manifest/PNG SHA + dimensions GREEN')
+          PY
+          git diff --check
+
+      - name: Create one atomic phase2 commit
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add e2e/lib/graduation-gold.mjs
+          git add e2e/gold/graduation-gold-stability.css
+          git add e2e/gold/graduation-v9-gold-manifest.json
+          git add scripts/check/check-graduation-v9-scope.mjs
+          git add e2e/specs/graduation-v9-dashboard-visual.spec.mjs-snapshots/*.png
+          git add e2e/specs/graduation-v9-final-review-visual.spec.mjs-snapshots/*.png
+          git add e2e/specs/graduation-v9-process-visual.spec.mjs-snapshots/*.png
+          git add e2e/specs/graduation-v9-archive-visual.spec.mjs-snapshots/*.png
+          git add e2e/specs/graduation-v9-teacher-mobile-visual.spec.mjs-snapshots/*.png
+
+          files="$(git diff --cached --name-only)"
+          printf '%s\n' "$files"
+          test "$(printf '%s\n' "$files" | sed '/^$/d' | wc -l)" -eq 16
+          test -z "$(printf '%s\n' "$files" | grep -Ev '^(e2e/lib/graduation-gold\.mjs|e2e/gold/graduation-gold-stability\.css|e2e/gold/graduation-v9-gold-manifest\.json|scripts/check/check-graduation-v9-scope\.mjs|e2e/specs/graduation-v9-(dashboard|final-review|process|archive|teacher-mobile)-visual\.spec\.mjs-snapshots/[^/]+\.png)$' || true)"
+
+          git commit -m 'test(gd): freeze U11 visual Gold masters'
+          CURRENT_CARD=U11 BASE_SHA="$EXPECTED_TARGET_HEAD" HEAD_SHA=HEAD \
+            node scripts/check/check-graduation-v9-scope.mjs
+          phase2_sha="$(git rev-parse HEAD)"
+          echo "PHASE2_COMMIT=$phase2_sha"
+          git push origin "HEAD:refs/tags/u11-phase2-freeze-${GITHUB_RUN_ID}"
+          echo "PHASE2_TAG=u11-phase2-freeze-${GITHUB_RUN_ID}"
