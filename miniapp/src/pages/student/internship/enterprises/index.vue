@@ -1,8 +1,8 @@
 <template>
-  <view class="page-wrap selection-page" :class="{ 'has-safe-bar': mode !== 'list' }">
+  <view class="page-wrap selection-page" :class="{ 'has-safe-bar': mode === 'detail' || mode === 'volunteers' }">
     <MobileNavBar variant="brand" :title="navTitle" :show-back="mode === 'list'">
       <template v-if="mode !== 'list'" #left>
-        <text class="internal-back" @click.stop="showList">‹</text>
+        <text class="internal-back" @click.stop="backInternal">‹</text>
       </template>
       <template #right>
         <text v-if="mode !== 'volunteers'" class="nav-action" @click.stop="openVolunteers">志愿 {{ selectedCount }}/3</text>
@@ -12,10 +12,7 @@
     <view v-if="mode === 'list'" class="page-pad">
       <view v-if="context" class="context-card">
         <view class="context-head">
-          <view>
-            <text class="context-eyebrow">当前招聘季</text>
-            <text class="context-title">{{ context.campaignName }}</text>
-          </view>
+          <view><text class="context-eyebrow">当前招聘季</text><text class="context-title">{{ context.campaignName }}</text></view>
           <MobileStatusTag :status="context.canSelect ? 'OPEN' : 'CLOSED'" :label="context.phaseLabel" />
         </view>
         <text class="context-deadline">学生选岗截止：{{ deadlineText }}</text>
@@ -27,28 +24,12 @@
         </view>
       </view>
 
-      <MobileInlineAlert
-        v-if="context && !context.canSelect"
-        type="warning"
-        title="当前阶段暂不可调整志愿"
-        :description="context.blockReason || '请关注学校公布的招聘季阶段与截止时间。'"
-      />
+      <MobileInlineAlert v-if="context && !context.canSelect" type="warning" title="当前阶段暂不可调整志愿" :description="context.blockReason || '请关注学校公布的招聘季阶段与截止时间。'" />
 
       <view class="search-card">
-        <view class="search-box">
-          <text class="search-icon">⌕</text>
-          <input class="search-input" :value="query.keyword" type="text" confirm-type="search" placeholder="搜索岗位、企业、地点" @input="onKeywordInput" @confirm="flushSearch" />
-          <text v-if="query.keyword" class="clear" @click="clearKeyword">×</text>
-        </view>
-        <view class="quick-row">
-          <input class="quick-input" :value="query.city" placeholder="城市" @input="onCityInput" @confirm="flushSearch" />
-          <picker :range="sortLabels" :value="sortIndex" @change="onSortChange"><view class="sort-picker">{{ sortLabels[sortIndex] }}⌄</view></picker>
-        </view>
-        <view class="filter-row">
-          <view class="filter-chip" :class="{ 'is-on': query.majorMatched === true }" @click="toggleFilter('majorMatched')">专业匹配</view>
-          <view class="filter-chip" :class="{ 'is-on': query.accommodation === true }" @click="toggleFilter('accommodation')">住宿</view>
-          <view class="filter-chip" :class="{ 'is-on': query.meal === true }" @click="toggleFilter('meal')">餐食</view>
-        </view>
+        <view class="search-box"><text class="search-icon">⌕</text><input class="search-input" :value="query.keyword" type="text" confirm-type="search" placeholder="搜索岗位、企业、地点" @input="onKeywordInput" @confirm="flushSearch" /><text v-if="query.keyword" class="clear" @click="clearKeyword">×</text></view>
+        <view class="quick-row"><input class="quick-input" :value="query.city" placeholder="城市" @input="onCityInput" @confirm="flushSearch" /><picker :range="sortLabels" :value="sortIndex" @change="onSortChange"><view class="sort-picker">{{ sortLabels[sortIndex] }}⌄</view></picker></view>
+        <view class="filter-row"><view class="filter-chip" :class="{ 'is-on': query.majorMatched === true }" @click="toggleFilter('majorMatched')">专业匹配</view><view class="filter-chip" :class="{ 'is-on': query.accommodation === true }" @click="toggleFilter('accommodation')">住宿</view><view class="filter-chip" :class="{ 'is-on': query.meal === true }" @click="toggleFilter('meal')">餐食</view></view>
       </view>
 
       <MobileGlobalState :state="listState" @retry="loadPositions">
@@ -62,112 +43,66 @@
             <view class="tag-row"><text v-for="tag in p.tags" :key="tag" class="job-tag">{{ tag }}</text></view>
           </view>
         </view>
-        <view v-if="totalPages > 1" class="pager">
-          <button class="pager-btn" size="mini" :disabled="query.page <= 1 || listState === 'loading'" @click="changePage(query.page - 1)">上一页</button>
-          <text>第 {{ query.page }}/{{ totalPages }} 页</text>
-          <button class="pager-btn" size="mini" :disabled="query.page >= totalPages || listState === 'loading'" @click="changePage(query.page + 1)">下一页</button>
-        </view>
+        <view v-if="totalPages > 1" class="pager"><button class="pager-btn" size="mini" :disabled="query.page <= 1 || listState === 'loading'" @click="changePage(query.page - 1)">上一页</button><text>第 {{ query.page }}/{{ totalPages }} 页</text><button class="pager-btn" size="mini" :disabled="query.page >= totalPages || listState === 'loading'" @click="changePage(query.page + 1)">下一页</button></view>
       </MobileGlobalState>
     </view>
 
     <view v-else-if="mode === 'detail'" class="page-pad detail-wrap">
       <MobileGlobalState :state="detailState" @retry="reloadDetail">
         <template v-if="detail">
-          <view class="detail-hero card">
-            <view class="position-top"><text class="detail-title">{{ detail.title }}</text><text class="position-salary">{{ detail.remuneration }}</text></view>
-            <text class="position-company">{{ detail.companyName }}</text>
-            <view class="position-meta"><text>{{ detail.workLocation }}</text><text>剩余 {{ detail.remaining }} 个</text></view>
-          </view>
-
-          <view class="card condition-card">
-            <view class="section-head"><text>工作安排与劳动条件</text><text>学校实习重点</text></view>
-            <view class="condition-grid">
-              <view v-for="row in conditionRows" :key="row[0]" class="condition-item"><text>{{ row[0] }}</text><text>{{ row[1] }}</text></view>
-            </view>
-          </view>
-
+          <view class="detail-hero card"><view class="position-top"><text class="detail-title">{{ detail.title }}</text><text class="position-salary">{{ detail.remuneration }}</text></view><text class="position-company">{{ detail.companyName }}</text><view class="position-meta"><text>{{ detail.workLocation }}</text><text>剩余 {{ detail.remaining }} 个</text></view></view>
+          <view class="card condition-card"><view class="section-head"><text>工作安排与劳动条件</text><text>学校实习重点</text></view><view class="condition-grid"><view v-for="row in conditionRows" :key="row[0]" class="condition-item"><text>{{ row[0] }}</text><text>{{ row[1] }}</text></view></view></view>
           <view class="card detail-section"><text class="section-title">岗位介绍</text><text class="section-copy">{{ detail.description }}</text></view>
           <view class="card detail-section"><text class="section-title">岗位要求</text><text class="section-copy">{{ detail.requirements }}</text></view>
           <view class="card detail-section safety-card"><text class="section-title">安全权益</text><text class="section-copy">危险因素：{{ detail.hazardous }}</text><text class="section-copy">劳动防护/设备：{{ detail.equipment }}</text></view>
-          <view class="card detail-section" @click="openCompany"><text class="section-title">企业信息</text><text class="section-copy">{{ detail.companyName }} · 点击查看学校公开企业资料</text></view>
+          <view class="card detail-section company-link" @click="openCompany"><view><text class="section-title">企业信息</text><text class="section-copy">{{ detail.companyName }} · 学校公开企业资料</text></view><text class="company-link__arrow">›</text></view>
+        </template>
+      </MobileGlobalState>
+    </view>
+
+    <view v-else-if="mode === 'company'" class="page-pad company-wrap">
+      <MobileGlobalState :state="companyState" @retry="reloadCompany">
+        <template v-if="company">
+          <view class="card company-hero">
+            <view class="company-logo"><image v-if="company.logo" :src="company.logo" mode="aspectFit" /><text v-else>{{ company.name.slice(0, 1) }}</text></view>
+            <view class="company-hero__body"><view class="company-name-row"><text class="company-name">{{ company.name }}</text><MobileStatusTag v-if="company.schoolVerified" status="CONFIRMED" label="学校已核验" /></view><text class="company-location">{{ companyLocation }}</text><text class="company-meta">{{ company.industry }} · {{ company.nature }} · {{ company.scale }}</text></view>
+          </view>
+          <view class="company-metrics card"><view><text>{{ company.internCount }}</text><text>当前实习学生</text></view><view><text>{{ company.activeJobs }}</text><text>在招实习岗位</text></view></view>
+          <view class="card detail-section"><text class="section-title">企业简介</text><text class="section-copy">{{ company.shortIntro }}</text></view>
+          <view class="card detail-section"><text class="section-title">主营业务</text><text class="section-copy">{{ company.mainBusiness }}</text></view>
+          <view v-if="company.website" class="card detail-section"><text class="section-title">官方网站</text><text class="section-copy website">{{ company.website }}</text></view>
+          <MobileInlineAlert type="info" title="学生公开视图" description="这里只展示学校允许公开的企业资料，不展示统一社会信用代码、内部手机号、黑名单原因、审核意见或内部备注。" />
         </template>
       </MobileGlobalState>
     </view>
 
     <view v-else class="page-pad volunteer-wrap">
       <MobileGlobalState :state="volunteerState" @retry="loadVolunteers">
-        <view class="profile-core card">
-          <view><text class="section-title">实习档案</text><text class="profile-status">{{ profileCompleteness.ready ? '可投递' : '待完善' }}</text></view>
-          <text class="profile-percent">完成度 {{ profileCompleteness.percent }}%</text>
-          <text class="profile-line">{{ profileCoreText }}</text>
-        </view>
-
+        <view class="profile-core card"><view><text class="section-title">实习档案</text><text class="profile-status">{{ profileCompleteness.ready ? '可投递' : '待完善' }}</text></view><text class="profile-percent">完成度 {{ profileCompleteness.percent }}%</text><text class="profile-line">{{ profileCoreText }}</text></view>
         <MobileInlineAlert v-if="group.status === 'LOCKED'" type="warning" title="志愿已锁定" :description="lockedDescription" />
         <MobileInlineAlert v-else-if="group.status === 'NEEDS_REVISION'" type="info" title="可重新调整志愿" description="旧拟接收处理仅保留为历史状态，现在可重新修改后再次投递。" />
         <MobileInlineAlert v-if="volunteerError" type="danger" title="操作未完成" :description="volunteerError" />
-
         <view class="volunteer-status card"><text>当前状态</text><MobileStatusTag :status="group.status" :label="groupStatusLabel" /></view>
-
         <view class="slot-stack">
           <view v-for="slot in slots" :key="slot.volunteerNo" class="slot-card card" :class="{ 'is-empty': !slot.positionId }">
-            <view class="slot-head">
-              <text class="slot-label">第{{ slot.volunteerNo }}志愿</text>
-              <view v-if="slot.positionId && volunteerEditable" class="slot-actions">
-                <text :class="{ disabled: slot.volunteerNo === 1 || !slots[slot.volunteerNo - 2]?.positionId }" @click="moveSlot(slot.volunteerNo, 'UP')">上移</text>
-                <text :class="{ disabled: slot.volunteerNo === 3 || !slots[slot.volunteerNo]?.positionId }" @click="moveSlot(slot.volunteerNo, 'DOWN')">下移</text>
-                <text class="danger" @click="removeSlot(slot.volunteerNo)">删除</text>
-              </view>
-            </view>
-            <template v-if="slot.positionId">
-              <text class="slot-title">{{ slot.positionName || `岗位 #${slot.positionId}` }}</text>
-              <text class="slot-company">{{ slot.companyName }} · {{ slot.workLocation }}</text>
-              <textarea class="statement" :value="slot.applicationStatement" :disabled="!volunteerEditable || volunteerBusy" maxlength="500" placeholder="填写这个岗位的申请说明" @blur="saveStatement(slot.volunteerNo, $event.detail.value)" />
-            </template>
-            <text v-else class="empty-slot">尚未选择岗位</text>
+            <view class="slot-head"><text class="slot-label">第{{ slot.volunteerNo }}志愿</text><view v-if="slot.positionId && volunteerEditable" class="slot-actions"><text :class="{ disabled: slot.volunteerNo === 1 || !slots[slot.volunteerNo - 2]?.positionId }" @click="moveSlot(slot.volunteerNo, 'UP')">上移</text><text :class="{ disabled: slot.volunteerNo === 3 || !slots[slot.volunteerNo]?.positionId }" @click="moveSlot(slot.volunteerNo, 'DOWN')">下移</text><text class="danger" @click="removeSlot(slot.volunteerNo)">删除</text></view></view>
+            <template v-if="slot.positionId"><text class="slot-title">{{ slot.positionName || `岗位 #${slot.positionId}` }}</text><text class="slot-company">{{ slot.companyName }} · {{ slot.workLocation }}</text><textarea class="statement" :value="slot.applicationStatement" :disabled="!volunteerEditable || volunteerBusy" maxlength="500" placeholder="填写这个岗位的申请说明" @blur="saveStatement(slot.volunteerNo, $event.detail.value)" /></template><text v-else class="empty-slot">尚未选择岗位</text>
           </view>
         </view>
-
-        <view v-if="confirmOpen" class="confirm-card card">
-          <text class="section-title">投递确认</text>
-          <view v-for="slot in activeSlots" :key="slot.volunteerNo" class="confirm-row"><text>第{{ slot.volunteerNo }}志愿</text><text>{{ slot.positionName }}</text></view>
-          <view class="confirm-row"><text>材料版本</text><text>Profile v{{ materialPreview.profileVersion || '—' }}</text></view>
-          <view class="confirm-row"><text>企业将看到</text><text>{{ materialPreview.maskedContact || '联系方式默认脱敏' }}</text></view>
-          <picker :range="contactLabels" :value="contactIndex" @change="changeContactMode"><view class="contact-picker">联系方式策略：{{ contactLabels[contactIndex] }}⌄</view></picker>
-          <label class="consent-row"><checkbox :checked="consentConfirmed" :disabled="volunteerBusy" @click="consentConfirmed = !consentConfirmed" /><text>我已确认志愿、投递材料与联系方式共享范围。</text></label>
-        </view>
+        <view v-if="confirmOpen" class="confirm-card card"><text class="section-title">投递确认</text><view v-for="slot in activeSlots" :key="slot.volunteerNo" class="confirm-row"><text>第{{ slot.volunteerNo }}志愿</text><text>{{ slot.positionName }}</text></view><view class="confirm-row"><text>材料版本</text><text>Profile v{{ materialPreview.profileVersion || '—' }}</text></view><view class="confirm-row"><text>企业将看到</text><text>{{ materialPreview.maskedContact || '联系方式默认脱敏' }}</text></view><picker :range="contactLabels" :value="contactIndex" @change="changeContactMode"><view class="contact-picker">联系方式策略：{{ contactLabels[contactIndex] }}⌄</view></picker><label class="consent-row"><checkbox :checked="consentConfirmed" :disabled="volunteerBusy" @click="consentConfirmed = !consentConfirmed" /><text>我已确认志愿、投递材料与联系方式共享范围。</text></label></view>
       </MobileGlobalState>
     </view>
 
-    <MobileSafeAreaBar v-if="mode === 'detail'">
-      <view class="safe-summary"><text>剩余名额</text><text>{{ detail ? detail.remaining : 0 }}</text></view>
-      <button class="safe-primary" :disabled="!canAddCurrentPosition" @click="addCurrentPosition">{{ currentPositionActionText }}</button>
-    </MobileSafeAreaBar>
-
-    <MobileSafeAreaBar v-else-if="mode === 'volunteers'">
-      <button v-if="confirmOpen" class="safe-primary full" :disabled="volunteerBusy || !consentConfirmed || !materialPreview.previewHash" @click="submitVolunteers">{{ volunteerBusy ? '提交中…' : '确认整组投递' }}</button>
-      <button v-else-if="group.status === 'SUBMITTED'" class="safe-secondary full" :disabled="volunteerBusy" @click="withdrawVolunteers">整组撤回并修改</button>
-      <button v-else-if="group.status === 'LOCKED'" class="safe-secondary full" :disabled="volunteerBusy" @click="requestUnlock">申请改志愿</button>
-      <button v-else class="safe-primary full" :disabled="volunteerBusy || activeSlots.length < 1 || !profileCompleteness.ready" @click="prepareSubmit">投递确认</button>
-    </MobileSafeAreaBar>
+    <MobileSafeAreaBar v-if="mode === 'detail'"><view class="safe-summary"><text>剩余名额</text><text>{{ detail ? detail.remaining : 0 }}</text></view><button class="safe-primary" :disabled="!canAddCurrentPosition" @click="addCurrentPosition">{{ currentPositionActionText }}</button></MobileSafeAreaBar>
+    <MobileSafeAreaBar v-else-if="mode === 'volunteers'"><button v-if="confirmOpen" class="safe-primary full" :disabled="volunteerBusy || !consentConfirmed || !materialPreview.previewHash" @click="submitVolunteers">{{ volunteerBusy ? '提交中…' : '确认整组投递' }}</button><button v-else-if="group.status === 'SUBMITTED'" class="safe-secondary full" :disabled="volunteerBusy" @click="withdrawVolunteers">整组撤回并修改</button><button v-else-if="group.status === 'LOCKED'" class="safe-secondary full" :disabled="volunteerBusy" @click="requestUnlock">申请改志愿</button><button v-else class="safe-primary full" :disabled="volunteerBusy || activeSlots.length < 1 || !profileCompleteness.ready" @click="prepareSubmit">投递确认</button></MobileSafeAreaBar>
   </view>
 </template>
 
 <script>
 import { internshipSelectionApi, normalizeMobileCatalogQuery } from '@/services/internshipSelectionApi'
+import { mobileCompanyLocation, normalizeMobilePublicCompany } from '@/modules/internshipCompanyPublicModel'
 import { formatMobileDeadline, normalizeMobilePage, normalizeMobileSelectionContext } from '@/modules/internshipSelectionModel'
-import {
-  addMobileVolunteer,
-  buildMobileVolunteerSaveRequest,
-  buildMobileVolunteerSubmitRequest,
-  canEditMobileVolunteers,
-  mobileConditionRows,
-  moveMobileVolunteer,
-  normalizeMobileMaterialPreview,
-  normalizeMobilePositionDetail,
-  normalizeMobileVolunteerGroup,
-  removeMobileVolunteer,
-  updateMobileStatement
-} from '@/modules/internshipVolunteerModel'
+import { addMobileVolunteer, buildMobileVolunteerSaveRequest, buildMobileVolunteerSubmitRequest, canEditMobileVolunteers, mobileConditionRows, moveMobileVolunteer, normalizeMobileMaterialPreview, normalizeMobilePositionDetail, normalizeMobileVolunteerGroup, removeMobileVolunteer, updateMobileStatement } from '@/modules/internshipVolunteerModel'
 
 const SORTS = ['RECOMMENDED', 'LATEST', 'REMUNERATION', 'REMAINING']
 const SORT_LABELS = ['推荐', '最新', '薪资', '剩余名额']
@@ -177,140 +112,38 @@ const CONTACT_LABELS = ['仅脱敏', '面试后可查看', '拟接收后可查�
 export default {
   data() {
     const group = normalizeMobileVolunteerGroup()
-    return {
-      mode: 'list',
-      context: null,
-      listState: 'loading', positions: [], total: 0,
-      query: normalizeMobileCatalogQuery({ page: 1, pageSize: 20 }), sortLabels: SORT_LABELS,
-      searchTimer: null, requestSeq: 0,
-      detailState: 'ready', detail: null, detailId: null,
-      volunteerState: 'loading', group, slots: group.slots, volunteerBusy: false, volunteerError: '',
-      profile: null, profileCompleteness: { percent: 0, ready: false },
-      materialPreview: normalizeMobileMaterialPreview(), confirmOpen: false, consentConfirmed: false,
-      contactMode: 'AFTER_INTERVIEW', contactLabels: CONTACT_LABELS
-    }
+    return { mode: 'list', context: null, listState: 'loading', positions: [], total: 0, query: normalizeMobileCatalogQuery({ page: 1, pageSize: 20 }), sortLabels: SORT_LABELS, searchTimer: null, requestSeq: 0, detailState: 'ready', detail: null, detailId: null, companyState: 'ready', company: null, companyId: null, volunteerState: 'loading', group, slots: group.slots, volunteerBusy: false, volunteerError: '', profile: null, profileCompleteness: { percent: 0, ready: false }, materialPreview: normalizeMobileMaterialPreview(), confirmOpen: false, consentConfirmed: false, contactMode: 'AFTER_INTERVIEW', contactLabels: CONTACT_LABELS }
   },
   computed: {
-    navTitle() { return this.mode === 'detail' ? '岗位详情' : this.mode === 'volunteers' ? '我的志愿' : '实习选岗' },
-    deadlineText() { return formatMobileDeadline(this.context && this.context.selectionDeadline) },
-    totalPages() { return Math.max(1, Math.ceil(this.total / 20)) },
-    sortIndex() { const index = SORTS.indexOf(this.query.sort); return index >= 0 ? index : 0 },
-    conditionRows() { return mobileConditionRows(this.detail || {}) },
-    selectedCount() { return this.slots.filter((slot) => slot.positionId).length },
-    activeSlots() { return this.slots.filter((slot) => slot.positionId) },
-    volunteerEditable() { return canEditMobileVolunteers(this.group) && (!this.context || this.context.canSelect) },
-    groupStatusLabel() { return ({ DRAFT: '待提交', SUBMITTED: '已提交', LOCKED: '等待学校确认', NEEDS_REVISION: '可重新调整', CONFIRMED: '已正式落岗' })[this.group.status] || '状态待确认' },
-    lockedDescription() { const company = this.group.lockedCompanyName || '某企业'; const deadline = formatMobileDeadline(this.group.teacherConfirmDeadline); return `${company} 已拟接收，等待学校最终确认。学校确认截止：${deadline}` },
-    profileCoreText() { if (!this.profile) return '打开实习档案完善自我介绍、技能、项目与到岗信息'; const school = this.profile.schoolFacts || this.profile.school || {}; return [school.major || school.majorName, school.grade || school.gradeName, this.profile.availableFrom ? `可到岗 ${this.profile.availableFrom}` : ''].filter(Boolean).join(' · ') || '实习档案已加载' },
-    contactIndex() { const index = CONTACT_MODES.indexOf(this.contactMode); return index >= 0 ? index : 1 },
-    currentAlreadySelected() { return !!(this.detail && this.slots.some((slot) => String(slot.positionId) === String(this.detail.id))) },
-    canAddCurrentPosition() { return !!(this.detail && this.volunteerEditable && this.detail.remaining > 0 && !this.currentAlreadySelected && this.selectedCount < 3 && !this.volunteerBusy) },
-    currentPositionActionText() { if (this.currentAlreadySelected) return '已加入志愿'; if (!this.volunteerEditable) return this.group.status === 'LOCKED' ? '志愿已锁定' : '当前不可加入'; if (this.selectedCount >= 3) return '三志愿已满'; return '加入志愿' }
+    navTitle() { return this.mode === 'detail' ? '岗位详情' : this.mode === 'company' ? '企业详情' : this.mode === 'volunteers' ? '我的志愿' : '实习选岗' },
+    deadlineText() { return formatMobileDeadline(this.context && this.context.selectionDeadline) }, totalPages() { return Math.max(1, Math.ceil(this.total / 20)) }, sortIndex() { const index = SORTS.indexOf(this.query.sort); return index >= 0 ? index : 0 }, conditionRows() { return mobileConditionRows(this.detail || {}) }, companyLocation() { return mobileCompanyLocation(this.company) }, selectedCount() { return this.slots.filter((slot) => slot.positionId).length }, activeSlots() { return this.slots.filter((slot) => slot.positionId) }, volunteerEditable() { return canEditMobileVolunteers(this.group) && (!this.context || this.context.canSelect) }, groupStatusLabel() { return ({ DRAFT: '待提交', SUBMITTED: '已提交', LOCKED: '等待学校确认', NEEDS_REVISION: '可重新调整', CONFIRMED: '已正式落岗' })[this.group.status] || '状态待确认' }, lockedDescription() { const company = this.group.lockedCompanyName || '某企业'; const deadline = formatMobileDeadline(this.group.teacherConfirmDeadline); return `${company} 已拟接收，等待学校最终确认。学校确认截止：${deadline}` }, profileCoreText() { if (!this.profile) return '打开实习档案完善自我介绍、技能、项目与到岗信息'; const school = this.profile.schoolFacts || this.profile.school || {}; return [school.major || school.majorName, school.grade || school.gradeName, this.profile.availableFrom ? `可到岗 ${this.profile.availableFrom}` : ''].filter(Boolean).join(' · ') || '实习档案已加载' }, contactIndex() { const index = CONTACT_MODES.indexOf(this.contactMode); return index >= 0 ? index : 1 }, currentAlreadySelected() { return !!(this.detail && this.slots.some((slot) => String(slot.positionId) === String(this.detail.id))) }, canAddCurrentPosition() { return !!(this.detail && this.volunteerEditable && this.detail.remaining > 0 && !this.currentAlreadySelected && this.selectedCount < 3 && !this.volunteerBusy) }, currentPositionActionText() { if (this.currentAlreadySelected) return '已加入志愿'; if (!this.volunteerEditable) return this.group.status === 'LOCKED' ? '志愿已锁定' : '当前不可加入'; if (this.selectedCount >= 3) return '三志愿已满'; return '加入志愿' }
   },
-  onLoad() {
-    this.loadContext(); this.loadVolunteers(); this.loadPositions()
-  },
-  onUnload() { clearTimeout(this.searchTimer); this.requestSeq += 1 },
+  onLoad() { this.loadContext(); this.loadVolunteers(); this.loadPositions() }, onUnload() { clearTimeout(this.searchTimer); this.requestSeq += 1 },
   methods: {
     showList() { this.mode = 'list'; this.confirmOpen = false; this.volunteerError = '' },
-    loadContext() { internshipSelectionApi.context().then((data) => { this.context = normalizeMobileSelectionContext(data || {}) }).catch(() => { this.context = null }) },
-    loadPositions(nextQuery) {
-      const query = normalizeMobileCatalogQuery(nextQuery || this.query); this.query = query
-      const requestId = ++this.requestSeq; this.listState = 'loading'
-      internshipSelectionApi.positions(query).then((data) => {
-        if (requestId !== this.requestSeq) return
-        const page = normalizeMobilePage(data || {}); this.positions = page.items; this.total = page.total; this.listState = 'ready'
-      }).catch(() => { if (requestId !== this.requestSeq) return; this.positions = []; this.total = 0; this.listState = 'error' })
-    },
-    scheduleSearch() { clearTimeout(this.searchTimer); this.searchTimer = setTimeout(() => this.loadPositions({ ...this.query, page: 1 }), 350) },
-    onKeywordInput(e) { this.query = { ...this.query, keyword: e.detail.value }; this.scheduleSearch() },
-    onCityInput(e) { this.query = { ...this.query, city: e.detail.value }; this.scheduleSearch() },
-    flushSearch() { clearTimeout(this.searchTimer); this.loadPositions({ ...this.query, page: 1 }) },
-    clearKeyword() { this.query = { ...this.query, keyword: '' }; this.flushSearch() },
-    onSortChange(e) { const index = Number(e.detail.value || 0); this.loadPositions({ ...this.query, page: 1, sort: SORTS[index] || 'RECOMMENDED' }) },
-    toggleFilter(key) { this.loadPositions({ ...this.query, page: 1, [key]: this.query[key] === true ? '' : true }) },
-    changePage(page) { this.loadPositions({ ...this.query, page }) },
-    openPosition(position) {
-      this.mode = 'detail'; this.detailId = position.id; this.detail = normalizeMobilePositionDetail(position); this.detailState = 'loading'
-      internshipSelectionApi.position(position.id).then((data) => { this.detail = normalizeMobilePositionDetail(data || position); this.detailState = 'ready' }).catch(() => { this.detailState = 'error' })
-    },
-    reloadDetail() { if (this.detailId) this.openPosition({ ...(this.detail || {}), id: this.detailId }) },
-    openCompany() { if (!this.detail?.companyId) return; uni.showToast({ title: '企业公开详情将在 Gold UX 中接入移动展示', icon: 'none' }) },
-    loadVolunteers() {
-      this.volunteerState = 'loading'; this.volunteerError = ''
-      Promise.allSettled([internshipSelectionApi.volunteers(), internshipSelectionApi.profile(), internshipSelectionApi.profileCompleteness()]).then((results) => {
-        if (results[0].status === 'fulfilled') { const group = normalizeMobileVolunteerGroup(results[0].value || {}); this.group = group; this.slots = group.slots }
-        else this.volunteerError = results[0].reason?.message || '志愿组加载失败'
-        if (results[1].status === 'fulfilled') this.profile = results[1].value || null
-        if (results[2].status === 'fulfilled') { const raw = results[2].value || {}; const blockers = Array.isArray(raw.blockers) ? raw.blockers : []; const percent = Math.max(0, Math.min(100, Number(raw.percent ?? raw.completeness ?? 0) || 0)); this.profileCompleteness = { percent, ready: Boolean(raw.readyToSubmit ?? raw.canSubmit ?? (percent === 100 && blockers.length === 0)) } }
-        this.volunteerState = results[0].status === 'fulfilled' ? 'ready' : 'error'
-      })
-    },
+    backInternal() { if (this.mode === 'company' && this.detail) { this.mode = 'detail'; return } this.showList() },
+    loadContext() { return internshipSelectionApi.context().then((data) => { this.context = normalizeMobileSelectionContext(data || {}) }).catch(() => { this.context = null }) },
+    loadPositions(nextQuery) { const query = normalizeMobileCatalogQuery(nextQuery || this.query); this.query = query; const requestId = ++this.requestSeq; this.listState = 'loading'; return internshipSelectionApi.positions(query).then((data) => { if (requestId !== this.requestSeq) return; const page = normalizeMobilePage(data || {}); this.positions = page.items; this.total = page.total; this.listState = 'ready' }).catch(() => { if (requestId !== this.requestSeq) return; this.positions = []; this.total = 0; this.listState = 'error' }) },
+    scheduleSearch() { clearTimeout(this.searchTimer); this.searchTimer = setTimeout(() => this.loadPositions({ ...this.query, page: 1 }), 350) }, onKeywordInput(e) { this.query = { ...this.query, keyword: e.detail.value }; this.scheduleSearch() }, onCityInput(e) { this.query = { ...this.query, city: e.detail.value }; this.scheduleSearch() }, flushSearch() { clearTimeout(this.searchTimer); this.loadPositions({ ...this.query, page: 1 }) }, clearKeyword() { this.query = { ...this.query, keyword: '' }; this.flushSearch() }, onSortChange(e) { const index = Number(e.detail.value || 0); this.loadPositions({ ...this.query, page: 1, sort: SORTS[index] || 'RECOMMENDED' }) }, toggleFilter(key) { this.loadPositions({ ...this.query, page: 1, [key]: this.query[key] === true ? '' : true }) }, changePage(page) { this.loadPositions({ ...this.query, page }) },
+    openPosition(position) { this.mode = 'detail'; this.detailId = position.id; this.detail = normalizeMobilePositionDetail(position); this.detailState = 'loading'; internshipSelectionApi.position(position.id).then((data) => { this.detail = normalizeMobilePositionDetail(data || position); this.detailState = 'ready' }).catch(() => { this.detailState = 'error' }) }, reloadDetail() { if (this.detailId) this.openPosition({ ...(this.detail || {}), id: this.detailId }) },
+    openCompany() { if (!this.detail?.companyId) return; this.companyId = this.detail.companyId; this.mode = 'company'; this.companyState = 'loading'; this.company = null; internshipSelectionApi.company(this.companyId).then((data) => { this.company = normalizeMobilePublicCompany(data || {}); this.companyState = 'ready' }).catch(() => { this.companyState = 'error' }) }, reloadCompany() { if (this.companyId) { const id = this.companyId; this.mode = 'detail'; this.detail = this.detail || { companyId: id }; this.openCompany() } },
+    loadVolunteers() { this.volunteerState = 'loading'; this.volunteerError = ''; return Promise.allSettled([internshipSelectionApi.volunteers(), internshipSelectionApi.profile(), internshipSelectionApi.profileCompleteness()]).then((results) => { if (results[0].status === 'fulfilled') { const group = normalizeMobileVolunteerGroup(results[0].value || {}); this.group = group; this.slots = group.slots } else this.volunteerError = results[0].reason?.message || '志愿组加载失败'; if (results[1].status === 'fulfilled') this.profile = results[1].value || null; if (results[2].status === 'fulfilled') { const raw = results[2].value || {}; const blockers = Array.isArray(raw.blockers) ? raw.blockers : []; const percent = Math.max(0, Math.min(100, Number(raw.percent ?? raw.completeness ?? 0) || 0)); this.profileCompleteness = { percent, ready: Boolean(raw.readyToSubmit ?? raw.canSubmit ?? (percent === 100 && blockers.length === 0)) } } this.volunteerState = results[0].status === 'fulfilled' ? 'ready' : 'error' }) },
     openVolunteers() { this.mode = 'volunteers'; this.confirmOpen = false; this.consentConfirmed = false; this.loadVolunteers() },
-    persistSlots(next) {
-      if (!this.volunteerEditable || this.volunteerBusy) return
-      const previous = this.slots; this.slots = next; this.volunteerBusy = true; this.volunteerError = ''
-      let payload
-      try { payload = buildMobileVolunteerSaveRequest(this.group, next) } catch (e) { this.slots = previous; this.volunteerBusy = false; this.volunteerError = e.message; return }
-      internshipSelectionApi.saveVolunteers(payload).then((data) => {
-        if (data) { const group = normalizeMobileVolunteerGroup(data); this.group = group; this.slots = group.slots }
-        else this.loadVolunteers()
-        this.confirmOpen = false; this.materialPreview = normalizeMobileMaterialPreview()
-      }).catch((e) => { this.slots = previous; this.volunteerError = e?.message || '志愿整组保存失败' }).finally(() => { this.volunteerBusy = false })
-    },
-    addCurrentPosition() {
-      if (!this.canAddCurrentPosition) { this.openVolunteers(); return }
-      let next
-      try { next = addMobileVolunteer(this.slots, this.detail) } catch (e) { this.volunteerError = e.message; this.openVolunteers(); return }
-      this.persistSlots(next); this.mode = 'volunteers'
-    },
-    moveSlot(no, direction) { this.persistSlots(moveMobileVolunteer(this.slots, no, direction)) },
-    removeSlot(no) { if (this.selectedCount <= 1) { this.volunteerError = '至少保留 1 个志愿；已提交志愿请整组撤回。'; return } this.persistSlots(removeMobileVolunteer(this.slots, no)) },
-    saveStatement(no, value) { if (!this.volunteerEditable) return; this.persistSlots(updateMobileStatement(this.slots, no, value)) },
-    prepareSubmit() {
-      this.volunteerBusy = true; this.volunteerError = ''; this.consentConfirmed = false
-      internshipSelectionApi.materialPreview().then((data) => { this.materialPreview = normalizeMobileMaterialPreview(data || {}); if (!this.materialPreview.previewHash) throw new Error('请先完善实习档案并生成企业视角材料预览'); this.confirmOpen = true }).catch((e) => { this.volunteerError = e?.message || '投递材料预览失败' }).finally(() => { this.volunteerBusy = false })
-    },
-    changeContactMode(e) { this.contactMode = CONTACT_MODES[Number(e.detail.value || 0)] || 'AFTER_INTERVIEW' },
-    submitVolunteers() {
-      if (!this.consentConfirmed || this.volunteerBusy) return
-      this.volunteerBusy = true; this.volunteerError = ''
-      let payload
-      try { payload = buildMobileVolunteerSubmitRequest(this.group, this.materialPreview, this.contactMode) } catch (e) { this.volunteerBusy = false; this.volunteerError = e.message; return }
-      internshipSelectionApi.submitVolunteers(payload).then(() => { this.confirmOpen = false; this.consentConfirmed = false; return Promise.all([this.loadContext(), this.loadVolunteers()]) }).catch((e) => { const items = e?.details?.invalidItems || []; this.volunteerError = items.length ? items.map((item) => `第${item.volunteerNo}志愿：${item.reason || '岗位不可提交'}`).join('；') : (e?.message || '整组投递失败') }).finally(() => { this.volunteerBusy = false })
-    },
-    withdrawVolunteers() { if (this.volunteerBusy) return; this.volunteerBusy = true; internshipSelectionApi.withdrawVolunteers({ expectedGroupVersion: this.group.version }).then(() => { this.confirmOpen = false; return this.loadVolunteers() }).catch((e) => { this.volunteerError = e?.message || '整组撤回失败' }).finally(() => { this.volunteerBusy = false }) },
-    requestUnlock() { if (this.volunteerBusy) return; this.volunteerBusy = true; internshipSelectionApi.requestUnlock({ expectedGroupVersion: this.group.version, reason: '学生申请重新调整岗位志愿' }).then(() => this.loadVolunteers()).catch((e) => { this.volunteerError = e?.message || '申请改志愿失败' }).finally(() => { this.volunteerBusy = false }) }
+    persistSlots(next) { if (!this.volunteerEditable || this.volunteerBusy) return; const previous = this.slots; this.slots = next; this.volunteerBusy = true; this.volunteerError = ''; let payload; try { payload = buildMobileVolunteerSaveRequest(this.group, next) } catch (e) { this.slots = previous; this.volunteerBusy = false; this.volunteerError = e.message; return } internshipSelectionApi.saveVolunteers(payload).then((data) => { if (data) { const group = normalizeMobileVolunteerGroup(data); this.group = group; this.slots = group.slots } else this.loadVolunteers(); this.confirmOpen = false; this.materialPreview = normalizeMobileMaterialPreview() }).catch((e) => { this.slots = previous; this.volunteerError = e?.message || '志愿整组保存失败' }).finally(() => { this.volunteerBusy = false }) },
+    addCurrentPosition() { if (!this.canAddCurrentPosition) { this.openVolunteers(); return } let next; try { next = addMobileVolunteer(this.slots, this.detail) } catch (e) { this.volunteerError = e.message; this.openVolunteers(); return } this.persistSlots(next); this.mode = 'volunteers' }, moveSlot(no, direction) { this.persistSlots(moveMobileVolunteer(this.slots, no, direction)) }, removeSlot(no) { if (this.selectedCount <= 1) { this.volunteerError = '至少保留 1 个志愿；已提交志愿请整组撤回。'; return } this.persistSlots(removeMobileVolunteer(this.slots, no)) }, saveStatement(no, value) { if (!this.volunteerEditable) return; this.persistSlots(updateMobileStatement(this.slots, no, value)) },
+    prepareSubmit() { this.volunteerBusy = true; this.volunteerError = ''; this.consentConfirmed = false; internshipSelectionApi.materialPreview().then((data) => { this.materialPreview = normalizeMobileMaterialPreview(data || {}); if (!this.materialPreview.previewHash) throw new Error('请先完善实习档案并生成企业视角材料预览'); this.confirmOpen = true }).catch((e) => { this.volunteerError = e?.message || '投递材料预览失败' }).finally(() => { this.volunteerBusy = false }) }, changeContactMode(e) { this.contactMode = CONTACT_MODES[Number(e.detail.value || 0)] || 'AFTER_INTERVIEW' },
+    submitVolunteers() { if (!this.consentConfirmed || this.volunteerBusy) return; this.volunteerBusy = true; this.volunteerError = ''; let payload; try { payload = buildMobileVolunteerSubmitRequest(this.group, this.materialPreview, this.contactMode) } catch (e) { this.volunteerBusy = false; this.volunteerError = e.message; return } internshipSelectionApi.submitVolunteers(payload).then(() => { this.confirmOpen = false; this.consentConfirmed = false; return Promise.all([this.loadContext(), this.loadVolunteers()]) }).catch((e) => { const items = e?.details?.invalidItems || []; this.volunteerError = items.length ? items.map((item) => `第${item.volunteerNo}志愿：${item.reason || '岗位不可提交'}`).join('；') : (e?.message || '整组投递失败') }).finally(() => { this.volunteerBusy = false }) },
+    withdrawVolunteers() { if (this.volunteerBusy) return; this.volunteerBusy = true; internshipSelectionApi.withdrawVolunteers({ expectedGroupVersion: this.group.version }).then(() => { this.confirmOpen = false; return this.loadVolunteers() }).catch((e) => { this.volunteerError = e?.message || '整组撤回失败' }).finally(() => { this.volunteerBusy = false }) }, requestUnlock() { if (this.volunteerBusy) return; this.volunteerBusy = true; internshipSelectionApi.requestUnlock({ expectedGroupVersion: this.group.version, reason: '学生申请重新调整岗位志愿' }).then(() => this.loadVolunteers()).catch((e) => { this.volunteerError = e?.message || '申请改志愿失败' }).finally(() => { this.volunteerBusy = false }) }
   }
 }
 </script>
 
 <style scoped>
-.selection-page { background: var(--bg-page); min-height: 100vh; }
-.selection-page.has-safe-bar { padding-bottom: 92px; }
-.internal-back { color:#fff; font-size:28px; line-height:1; padding:6px; }
-.nav-action { color:#fff; font-size:11px; white-space:nowrap; }
-.context-card,.search-card,.card { margin-bottom: var(--space-3); padding: var(--card-padding-mobile); border-radius: var(--radius-lg); background: var(--bg-card); box-shadow: var(--shadow-card); }
-.context-head,.position-top,.slot-head,.volunteer-status,.section-head { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-2); }
-.context-eyebrow { display:block; color:var(--text-tertiary); font-size:var(--font-size-xs); }
-.context-title { display:block; margin-top:2px; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }
-.context-deadline { display:block; margin-top:var(--space-2); color:var(--text-secondary); font-size:var(--font-size-xs); }
-.context-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:var(--space-3); }
-.context-metrics view { padding:8px 4px; border-radius:var(--radius-md); background:var(--gray-50); text-align:center; }
-.context-metrics text:first-child { display:block; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }
-.context-metrics text:last-child { display:block; margin-top:2px; color:var(--text-tertiary); font-size:10px; white-space:nowrap; }
-.search-card { margin-top:var(--space-3); }
-.search-box { display:flex; align-items:center; gap:8px; height:40px; padding:0 12px; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--gray-50); }
-.search-input { flex:1; min-width:0; font-size:var(--font-size-sm); }.search-icon,.clear { color:var(--text-tertiary); }.clear { padding:4px; font-size:18px; }
-.quick-row { display:grid; grid-template-columns:1fr 108px; gap:8px; margin-top:8px; }
-.quick-input,.sort-picker { box-sizing:border-box; height:36px; padding:0 10px; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-sm); line-height:36px; }
-.filter-row,.tag-row,.slot-actions { display:flex; gap:8px; margin-top:8px; overflow-x:auto; }.filter-chip,.job-tag { flex-shrink:0; padding:3px 7px; border-radius:4px; background:#f0f5ff; color:#34527a; font-size:12px; }.filter-chip { padding:6px 10px; }.filter-chip.is-on { background:var(--brand-primary); color:#fff; }
-.list-summary,.position-meta { display:flex; justify-content:space-between; gap:8px; color:var(--text-tertiary); font-size:var(--font-size-xs); }.list-summary { margin-bottom:var(--space-2); }.list-summary text:first-child { color:var(--text-primary); font-weight:var(--font-weight-semibold); }
-.position-stack,.slot-stack { display:flex; flex-direction:column; gap:var(--space-3); }.position-card { padding:var(--card-padding-mobile); border:1px solid #eef0f3; border-radius:10px; background:#fff; }.position-title,.detail-title { flex:1; color:#1a1a1a; font-size:18px; font-weight:var(--font-weight-semibold); line-height:1.35; }.position-salary { flex-shrink:0; color:#fa541c; font-size:16px; font-weight:var(--font-weight-semibold); }.position-company { display:block; margin-top:6px; color:var(--text-secondary); font-size:var(--font-size-sm); }.position-meta { margin-top:5px; }
-.pager { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); }.pager-btn { min-width:74px; }
-.detail-wrap,.volunteer-wrap { padding-bottom:20px; }.detail-hero { margin-top:var(--space-3); }.condition-card { border:1px solid #dfe8f8; background:#f8fbff; }.section-head text:first-child,.section-title { color:var(--text-primary); font-size:var(--font-size-sm); font-weight:var(--font-weight-semibold); }.section-head text:last-child { color:#6f7f95; font-size:10px; }.condition-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }.condition-item { padding:9px; border-radius:var(--radius-md); background:#fff; }.condition-item text:first-child { display:block; color:var(--text-tertiary); font-size:10px; }.condition-item text:last-child { display:block; margin-top:3px; color:var(--text-primary); font-size:var(--font-size-xs); overflow-wrap:anywhere; }.detail-section { display:flex; flex-direction:column; gap:8px; }.section-copy { color:var(--text-secondary); font-size:var(--font-size-sm); line-height:1.7; white-space:pre-wrap; }.safety-card { background:#fffdf7; }
-.profile-core > view { display:flex; align-items:center; justify-content:space-between; }.profile-status { color:var(--brand-primary); font-size:var(--font-size-xs); }.profile-percent { display:block; margin-top:8px; color:var(--text-primary); font-size:20px; font-weight:var(--font-weight-semibold); }.profile-line { display:block; margin-top:5px; color:var(--text-secondary); font-size:var(--font-size-xs); }.volunteer-status { align-items:center; }.volunteer-status > text { color:var(--text-secondary); font-size:var(--font-size-sm); }
-.slot-card.is-empty { border:1px dashed var(--border-base); box-shadow:none; }.slot-label { color:var(--text-secondary); font-size:var(--font-size-xs); font-weight:var(--font-weight-semibold); }.slot-actions { margin-top:0; }.slot-actions text { padding:3px 5px; color:var(--brand-primary); font-size:10px; }.slot-actions .danger { color:var(--danger-600); }.slot-actions .disabled { color:var(--text-disabled); pointer-events:none; }.slot-title { display:block; margin-top:8px; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }.slot-company { display:block; margin-top:4px; color:var(--text-secondary); font-size:var(--font-size-xs); }.statement { box-sizing:border-box; width:100%; min-height:78px; margin-top:9px; padding:8px; border:1px solid var(--border-base); border-radius:var(--radius-md); font-size:var(--font-size-xs); }.empty-slot { display:block; padding:18px 0; color:var(--text-tertiary); font-size:var(--font-size-sm); text-align:center; }
-.confirm-card { display:flex; flex-direction:column; gap:8px; }.confirm-row { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-light); font-size:var(--font-size-xs); }.confirm-row text:first-child { color:var(--text-tertiary); }.confirm-row text:last-child { color:var(--text-primary); text-align:right; }.contact-picker { padding:10px; border-radius:var(--radius-md); background:var(--gray-50); color:var(--text-secondary); font-size:var(--font-size-xs); }.consent-row { display:flex; align-items:flex-start; gap:7px; color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.5; }
-.safe-summary { display:flex; flex-direction:column; min-width:62px; }.safe-summary text:first-child { color:var(--text-tertiary); font-size:10px; }.safe-summary text:last-child { color:var(--text-primary); font-size:18px; font-weight:var(--font-weight-semibold); }.safe-primary,.safe-secondary { flex:1; min-height:44px; border:0; border-radius:var(--radius-md); font-size:var(--font-size-sm); font-weight:var(--font-weight-semibold); }.safe-primary { background:var(--brand-primary); color:#fff; }.safe-secondary { background:#eef4ff; color:var(--brand-primary); }.safe-primary[disabled],.safe-secondary[disabled] { opacity:.5; }.full { width:100%; }
+.selection-page { background:var(--bg-page); min-height:100vh; }.selection-page.has-safe-bar { padding-bottom:92px; }.internal-back { color:#fff; font-size:28px; line-height:1; padding:6px; }.nav-action { color:#fff; font-size:11px; white-space:nowrap; }
+.context-card,.search-card,.card { margin-bottom:var(--space-3); padding:var(--card-padding-mobile); border-radius:var(--radius-lg); background:var(--bg-card); box-shadow:var(--shadow-card); }.context-head,.position-top,.slot-head,.volunteer-status,.section-head { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-2); }.context-eyebrow { display:block; color:var(--text-tertiary); font-size:var(--font-size-xs); }.context-title { display:block; margin-top:2px; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }.context-deadline { display:block; margin-top:var(--space-2); color:var(--text-secondary); font-size:var(--font-size-xs); }.context-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:var(--space-3); }.context-metrics view { padding:8px 4px; border-radius:var(--radius-md); background:var(--gray-50); text-align:center; }.context-metrics text:first-child { display:block; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }.context-metrics text:last-child { display:block; margin-top:2px; color:var(--text-tertiary); font-size:10px; white-space:nowrap; }
+.search-card { margin-top:var(--space-3); }.search-box { display:flex; align-items:center; gap:8px; height:40px; padding:0 12px; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--gray-50); }.search-input { flex:1; min-width:0; font-size:var(--font-size-sm); }.search-icon,.clear { color:var(--text-tertiary); }.clear { padding:4px; font-size:18px; }.quick-row { display:grid; grid-template-columns:1fr 108px; gap:8px; margin-top:8px; }.quick-input,.sort-picker { box-sizing:border-box; height:36px; padding:0 10px; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-sm); line-height:36px; }.filter-row,.tag-row,.slot-actions { display:flex; gap:8px; margin-top:8px; overflow-x:auto; }.filter-chip,.job-tag { flex-shrink:0; padding:3px 7px; border-radius:4px; background:#f0f5ff; color:#34527a; font-size:12px; }.filter-chip { padding:6px 10px; }.filter-chip.is-on { background:var(--brand-primary); color:#fff; }
+.list-summary,.position-meta { display:flex; justify-content:space-between; gap:8px; color:var(--text-tertiary); font-size:var(--font-size-xs); }.list-summary { margin-bottom:var(--space-2); }.list-summary text:first-child { color:var(--text-primary); font-weight:var(--font-weight-semibold); }.position-stack,.slot-stack { display:flex; flex-direction:column; gap:var(--space-3); }.position-card { padding:var(--card-padding-mobile); border:1px solid #eef0f3; border-radius:10px; background:#fff; }.position-title,.detail-title { flex:1; color:#1a1a1a; font-size:18px; font-weight:var(--font-weight-semibold); line-height:1.35; }.position-salary { flex-shrink:0; color:#fa541c; font-size:16px; font-weight:var(--font-weight-semibold); }.position-company { display:block; margin-top:6px; color:var(--text-secondary); font-size:var(--font-size-sm); }.position-meta { margin-top:5px; }.pager { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:var(--space-4); color:var(--text-tertiary); font-size:var(--font-size-xs); }.pager-btn { min-width:74px; }
+.detail-wrap,.volunteer-wrap,.company-wrap { padding-bottom:20px; }.detail-hero { margin-top:var(--space-3); }.condition-card { border:1px solid #dfe8f8; background:#f8fbff; }.section-head text:first-child,.section-title { color:var(--text-primary); font-size:var(--font-size-sm); font-weight:var(--font-weight-semibold); }.section-head text:last-child { color:#6f7f95; font-size:10px; }.condition-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }.condition-item { padding:9px; border-radius:var(--radius-md); background:#fff; }.condition-item text:first-child { display:block; color:var(--text-tertiary); font-size:10px; }.condition-item text:last-child { display:block; margin-top:3px; color:var(--text-primary); font-size:var(--font-size-xs); overflow-wrap:anywhere; }.detail-section { display:flex; flex-direction:column; gap:8px; }.section-copy { color:var(--text-secondary); font-size:var(--font-size-sm); line-height:1.7; white-space:pre-wrap; }.safety-card { background:#fffdf7; }.company-link { flex-direction:row; align-items:center; justify-content:space-between; }.company-link > view { display:flex; flex-direction:column; gap:8px; }.company-link__arrow { color:var(--text-tertiary); font-size:26px; }
+.company-hero { display:flex; gap:12px; align-items:center; margin-top:var(--space-3); }.company-logo { width:54px; height:54px; flex-shrink:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid var(--border-light); border-radius:12px; background:#f0f5ff; color:var(--brand-primary); font-size:22px; font-weight:var(--font-weight-semibold); }.company-logo image { width:100%; height:100%; }.company-hero__body { flex:1; min-width:0; }.company-name-row { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }.company-name { color:var(--text-primary); font-size:18px; font-weight:var(--font-weight-semibold); }.company-location,.company-meta { display:block; margin-top:5px; color:var(--text-secondary); font-size:var(--font-size-xs); }.company-metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; }.company-metrics view { padding:10px; border-radius:var(--radius-md); background:var(--gray-50); text-align:center; }.company-metrics text:first-child { display:block; color:var(--text-primary); font-size:20px; font-weight:var(--font-weight-semibold); }.company-metrics text:last-child { display:block; margin-top:3px; color:var(--text-tertiary); font-size:10px; }.website { color:var(--brand-primary); overflow-wrap:anywhere; }
+.profile-core > view { display:flex; align-items:center; justify-content:space-between; }.profile-status { color:var(--brand-primary); font-size:var(--font-size-xs); }.profile-percent { display:block; margin-top:8px; color:var(--text-primary); font-size:20px; font-weight:var(--font-weight-semibold); }.profile-line { display:block; margin-top:5px; color:var(--text-secondary); font-size:var(--font-size-xs); }.volunteer-status { align-items:center; }.volunteer-status > text { color:var(--text-secondary); font-size:var(--font-size-sm); }.slot-card.is-empty { border:1px dashed var(--border-base); box-shadow:none; }.slot-label { color:var(--text-secondary); font-size:var(--font-size-xs); font-weight:var(--font-weight-semibold); }.slot-actions { margin-top:0; }.slot-actions text { padding:3px 5px; color:var(--brand-primary); font-size:10px; }.slot-actions .danger { color:var(--danger-600); }.slot-actions .disabled { color:var(--text-disabled); pointer-events:none; }.slot-title { display:block; margin-top:8px; color:var(--text-primary); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); }.slot-company { display:block; margin-top:4px; color:var(--text-secondary); font-size:var(--font-size-xs); }.statement { box-sizing:border-box; width:100%; min-height:78px; margin-top:9px; padding:8px; border:1px solid var(--border-base); border-radius:var(--radius-md); font-size:var(--font-size-xs); }.empty-slot { display:block; padding:18px 0; color:var(--text-tertiary); font-size:var(--font-size-sm); text-align:center; }.confirm-card { display:flex; flex-direction:column; gap:8px; }.confirm-row { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-light); font-size:var(--font-size-xs); }.confirm-row text:first-child { color:var(--text-tertiary); }.confirm-row text:last-child { color:var(--text-primary); text-align:right; }.contact-picker { padding:10px; border-radius:var(--radius-md); background:var(--gray-50); color:var(--text-secondary); font-size:var(--font-size-xs); }.consent-row { display:flex; align-items:flex-start; gap:7px; color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.5; }.safe-summary { display:flex; flex-direction:column; min-width:62px; }.safe-summary text:first-child { color:var(--text-tertiary); font-size:10px; }.safe-summary text:last-child { color:var(--text-primary); font-size:18px; font-weight:var(--font-weight-semibold); }.safe-primary,.safe-secondary { flex:1; min-height:44px; border:0; border-radius:var(--radius-md); font-size:var(--font-size-sm); font-weight:var(--font-weight-semibold); }.safe-primary { background:var(--brand-primary); color:#fff; }.safe-secondary { background:#eef4ff; color:var(--brand-primary); }.safe-primary[disabled],.safe-secondary[disabled] { opacity:.5; }.full { width:100%; }
 </style>
