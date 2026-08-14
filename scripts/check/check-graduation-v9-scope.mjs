@@ -7,6 +7,9 @@ const CARD_ALLOW = {
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
     /^\.github\/workflows\/graduation-v9-scope\.yml$/,
   ],
+  CI_PREREQ: [
+    /^\.github\/workflows\/ci\.yml$/,
+  ],
   AUDIT_REPAIR: [
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
     /^scripts\/check\/check-npm-production-audit(?:\.test)?\.mjs$/,
