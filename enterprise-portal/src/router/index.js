@@ -14,6 +14,7 @@ const routes = [
       { path: 'positions/new', name: 'position-new', component: () => import('../views/PositionFormView.vue') },
       { path: 'positions/:id/edit', name: 'position-edit', component: () => import('../views/PositionFormView.vue') },
       { path: 'applications', name: 'application-list', component: () => import('../views/ApplicantListView.vue') },
+      { path: 'applications/:id', name: 'application-detail', component: () => import('../views/ApplicantListView.vue') },
       { path: 'students', name: 'internship-students', component: () => import('../views/InternshipStudentListView.vue') },
       { path: 'evaluations', name: 'evaluation-tasks', component: () => import('../views/EvaluationTaskListView.vue') },
     ],
