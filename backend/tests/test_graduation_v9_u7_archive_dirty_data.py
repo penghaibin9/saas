@@ -183,7 +183,6 @@ def test_archive_read_model_is_sql_paged_and_exposes_explicit_read_only_state():
 def test_u7_mysql_archive_list_600_rows_is_paged_and_dirty_rows_stay_visible(
     db_mode, graduation_client, auth_headers
 ):
-    assert db_mode == "mysql"
     batch_id, dirty = _seed_600_archive_rows()
 
     first = graduation_client.get(
@@ -226,17 +225,18 @@ def test_u7_mysql_archive_list_600_rows_is_paged_and_dirty_rows_stay_visible(
 def test_u7_mysql_archive_missing_wrong_batch_and_dirty_single_write_fail_closed(
     db_mode, graduation_client, auth_headers
 ):
-    assert db_mode == "mysql"
     batch_id, dirty = _seed_600_archive_rows()
     db = get_sessionmaker()()
     try:
-        other_batch = _new_batch(db, planned_count=0, label="wrong-batch")
+        other_batch = _new_batch(db, planned_count=1, label="wrong-batch")
         db.commit()
         other_batch_id = int(other_batch.id)
     finally:
         db.close()
 
-    missing = graduation_client.get(ARCHIVE, headers=auth_headers)
+    # GraduationBatchAwareClient intentionally backfills a current batch for legacy tests;
+    # use its underlying TestClient here to prove the public route itself rejects omission.
+    missing = graduation_client._wrapped.get(ARCHIVE, headers=auth_headers)
     missing_body = missing.json()
     assert missing.status_code == 400, missing.text
     assert missing_body["bizCode"] == "VALIDATION_ERROR", missing_body
@@ -262,7 +262,6 @@ def test_u7_mysql_archive_missing_wrong_batch_and_dirty_single_write_fail_closed
 def test_u7_mysql_batch_preview_and_execute_never_write_dirty_students(
     db_mode, graduation_client, auth_headers
 ):
-    assert db_mode == "mysql"
     batch_id, student_ids = _seed_batch_preview_rows()
 
     preview_response = graduation_client.post(

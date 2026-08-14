@@ -43,11 +43,9 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
   test.beforeAll(async () => {
     fixture = await prepareGraduationFixture()
     const admin = await loginApi(config.sandboxAdmin)
-    await admin.post(
-      `/graduation/gd-archives/${fixture.gdStudentId}/generate`,
-      {},
-      { batchId: fixture.batchId }
-    )
+    await admin.request('POST', `/graduation/gd-archives/${fixture.gdStudentId}/generate`, {
+      params: { batchId: fixture.batchId }
+    })
   })
 
   test('real archive row · exact missing-item deep-link · Screenshot B 1440/1280', async ({ page }, testInfo) => {
