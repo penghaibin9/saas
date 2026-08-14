@@ -12,6 +12,7 @@ from app.modules.academic_affairs.routers import grade_core_router
 from app.modules.academic_affairs.routers import roster_registration_router
 from app.modules.academic_affairs.routers import scheduling_operations_router
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as guard
+from app.modules.academic_affairs.services import academic_affairs_registration_read_guard as registration_guard
 from app.modules.academic_affairs.services import academic_affairs_selection_read_service as selection_read
 from app.modules.academic_affairs.services import academic_affairs_service as academic_read
 
@@ -73,6 +74,27 @@ def test_registration_archive_is_school_scoped_and_never_truncated_at_10k():
     assert "select(func.count(AaRegistration.id))" in detail_source
     assert "AaRegistration.status == \"REGISTERED\"" in detail_source
     assert "select(AaRegistration, StudentProfile)" in export_source
+
+
+def test_registration_review_ledgers_are_sql_paged_and_preserve_exact_student_scope():
+    assert academic_read.list_registration_eligibility is registration_guard.list_registration_eligibility
+    assert academic_read.list_registration_exceptions is registration_guard.list_registration_exceptions
+    assert academic_read.list_registration_deferrals is registration_guard.list_registration_deferrals
+
+    scope_source = inspect.getsource(registration_guard._scope_condition)
+    assert 'scope_type == "STUDENT"' in scope_source
+    assert "StudentProfile.id.in_" in scope_source
+    assert "allowed_class_ids" in scope_source
+
+    for fn in (
+        registration_guard.list_registration_eligibility,
+        registration_guard.list_registration_exceptions,
+        registration_guard.list_registration_deferrals,
+    ):
+        source = inspect.getsource(fn)
+        assert "func.count" in source
+        assert ".offset(" in source
+        assert ".limit(" in source
 
 
 def test_page_size_guard_rejects_oversized_requests():
