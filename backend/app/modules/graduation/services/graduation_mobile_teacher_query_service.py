@@ -122,7 +122,7 @@ def grades_page(user: dict, page=1, page_size=20) -> dict:
     from app.db.session import db_enabled
     if not db_enabled():
         return _result([], 0, page, page_size)
-    from app.modules.graduation.services import graduation_grade_service as svc
+    from app.modules.graduation.services import graduation_grade_read_service as svc
 
     page, page_size = _page(page, page_size)
     rows, total = svc.list_grades(
