@@ -11,7 +11,7 @@
 好在停机窗口之前就把清单发给学校确认。
 
 本脚本会报告四件事：
-1. 三条迁移是否已经应用（看 alembic_version）；
+1. 三条迁移是否已经应用（按当前 alembic revision 的祖先链判断）；
 2. 会不会被脏数据拦下——逐条列出冲突分组，附带学号/姓名，学校能直接照着看；
 3. 索引补齐迁移要动几张表、各有多少行（估算停机耗时的依据）；
 4. 特殊备案的四个新列是否已存在。
@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import sys
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app.db.session import db_enabled, get_sessionmaker
@@ -71,6 +73,17 @@ def _current_revision(db) -> str:
     return str(db.execute(text("SELECT version_num FROM alembic_version")).scalar() or "")
 
 
+def _applied_revisions(current: str) -> set[str]:
+    """返回当前 revision 可证明已经经过的整条祖先链。"""
+    if not current or current.startswith("("):
+        return set()
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    try:
+        return {rev.revision for rev in script.iterate_revisions(current, "base")}
+    except Exception:  # noqa: BLE001 - 预检不能因为仓库外历史 revision 直接崩掉
+        return {current}
+
+
 def _scan_conflicts(db, table, source_col, active_sql, extra):
     """列出会拦住迁移的冲突分组，带上学号/姓名方便学校直接核对。"""
     group_cols = ", ".join(("tenant_id", source_col, *extra))
@@ -85,15 +98,18 @@ def _scan_conflicts(db, table, source_col, active_sql, extra):
     """)).mappings().all()
     detailed = []
     for g in groups:
+        extra_where = "".join(f" AND t.{col} = :extra_{col}" for col in extra)
+        params = {"tid": g["tenant_id"], "sid": g[source_col]}
+        params.update({f"extra_{col}": g[col] for col in extra})
         rows = db.execute(text(f"""
             SELECT t.id, t.created_at, s.student_no, s.real_name
             FROM {table} t
             LEFT JOIN t_internship_record r ON r.id = t.{source_col}
             LEFT JOIN t_student_profile s ON s.id = r.student_id
             WHERE t.is_deleted = 0 AND {active_sql.format(a="t.")}
-              AND t.tenant_id = :tid AND t.{source_col} = :sid
+              AND t.tenant_id = :tid AND t.{source_col} = :sid{extra_where}
             ORDER BY t.created_at
-        """), {"tid": g["tenant_id"], "sid": g[source_col]}).mappings().all()
+        """), params).mappings().all()
         detailed.append({"group": dict(g), "rows": [dict(r) for r in rows]})
     return detailed
 
@@ -111,9 +127,10 @@ def main() -> int:
         print("=" * 72)
 
         current = _current_revision(db)
+        applied = _applied_revisions(current)
         print(f"\n[1] 当前 alembic 版本：{current}")
         for rev in _REVISIONS:
-            print(f"    {'已应用' if current == rev else '待应用/未知'}  {rev}")
+            print(f"    {'已应用' if rev in applied else '待应用/未知'}  {rev}")
 
         print("\n[2] 会不会被脏数据拦住（20260814_ix_first_create）")
         for table, source_col, active_sql, extra, label in _ACTIVE_SPECS:
@@ -133,7 +150,8 @@ def main() -> int:
                     if r.get("student_no"):
                         who = f"{r['student_no']} {r.get('real_name') or ''}".strip()
                         break
-                print(f"        · {source_col}={g[source_col]} 共 {g['c']} 条"
+                extra_label = "".join(f" {col}={g[col]}" for col in extra)
+                print(f"        · {source_col}={g[source_col]}{extra_label} 共 {g['c']} 条"
                       + (f"（{who}）" if who else ""))
                 for r in item["rows"]:
                     print(f"            id={r['id']} 创建于 {r['created_at']}")

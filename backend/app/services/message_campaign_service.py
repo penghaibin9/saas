@@ -42,6 +42,27 @@ def _can_publish(user: dict) -> bool:
     ))
 
 
+
+def assert_campaign_channel_send_allowed(db, user: dict, camp, channel: str) -> None:
+    """Canonical channel-send authorization: same publish capability + existing campaign ownership scope."""
+    ch = str(channel or "").upper()
+    if ch not in ("SMS", "WECHAT"):
+        raise AppException("VALIDATION_ERROR", "仅支持 SMS/WECHAT", http_status=422)
+    if not _can_publish(user):
+        raise no_permission("无消息发布权限")
+    if camp.status not in ("PUBLISHED", "PUBLISHING", "PARTIAL_FAILED"):
+        raise AppException("DATA_CONFLICT", "仅已发布消息可外发渠道", http_status=409)
+    if has_permission(user, "workbench.message.schoolAll.publish"):
+        return
+    uid = _uid(user)
+    if int(camp.sender_user_id or 0) == int(uid or 0) and uid:
+        return
+    ctx = str(user.get("activeContextId") or "").strip()
+    if int(camp.sender_user_id or 0) == 0 and ctx and str(camp.sender_context_id or "") == ctx:
+        return
+    # Existing product scope for non-school publishers is owner-only (same as list/get campaign).
+    raise not_found("发布单不存在")
+
 def _campaign_dict(row, *, attachments: list | None = None) -> dict:
     return {
         "campaignId": str(row.id),

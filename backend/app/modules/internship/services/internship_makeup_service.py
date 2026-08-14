@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipMakeup,
                         InternshipRecord, StudentProfile)
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
@@ -40,8 +41,8 @@ def _trail(db, mid: int, action: str, detail: dict | None = None, operator: str 
 
 
 def _get(db, mid) -> InternshipMakeup:
-    m = db.get(InternshipMakeup, _as_id(mid))
-    if not m or m.is_deleted or m.tenant_id != _tid():
+    m = tenant_get(db, InternshipMakeup, _as_id(mid))
+    if not m or m.is_deleted:
         raise not_found("补卡申请不存在")
     return m
 
@@ -204,7 +205,6 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
         try:
             db.flush()
         except IntegrityError as exc:
-            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
             db.rollback()
             raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         if evidence_file_id:
@@ -218,9 +218,6 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
         try:
             db.commit()
         except IntegrityError as exc:
-            # 与请假同理：上面的查重是无锁读，并发两次会同时看到「该日期没有待审核」。
-            # 真正的不变量由 uk_ix_makeup_active_pending 兜底（迁移 20260814），
-            # 输家在这里转成与串行重复申请一致的业务冲突，而不是 500。
             db.rollback()
             raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         return {"id": str(m.id), "status": "PENDING", "statusLabel": "待审核",
@@ -350,8 +347,8 @@ def get_makeup(makeup_id, user=None) -> dict:
     from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该补卡申请不在你的数据范围内")
         evidence_file_id = _evidence_file_id(db, m)
@@ -370,8 +367,8 @@ def mark_evidence_viewed(user, makeup_id) -> dict:
     from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该补卡申请不在你的数据范围内")
         evidence_file_id = _evidence_file_id(db, m)
@@ -396,8 +393,8 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的补卡申请")
         from app.modules.internship.services.internship_batch_context import assert_record_batch

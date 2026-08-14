@@ -465,6 +465,35 @@ def get_base_permission_patterns(user: dict) -> list[str]:
     return sorted(set(_granted(role)))
 
 
+def has_base_permission(user: dict, code: str) -> bool:
+    """永久授权上限判定：只看基础权限，绝不包含 temporary delegation。"""
+    if is_super_admin(user):
+        return True
+    role = _role_of(user)
+    patterns = get_base_permission_patterns(user)
+    if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:
+        from_db = _db_granted(user)
+        if from_db is None:
+            return False
+    return _match(code, patterns)
+
+
+def assert_delegable_permission_codes(user: dict | None, permission_codes: Iterable[str]) -> None:
+    """拒绝把操作者基础权限之外的能力固化给其他主体或角色。"""
+    if not user:
+        from app.core.exceptions import AppException
+        raise AppException("NO_PERMISSION", "永久角色授权必须提供明确操作者")
+    codes = sorted({str(code or "").strip() for code in permission_codes if str(code or "").strip()})
+    forbidden = [code for code in codes if not has_base_permission(user, code)]
+    if forbidden:
+        from app.core.exceptions import AppException
+        raise AppException(
+            "NO_PERMISSION",
+            "不能授予当前操作者基础权限之外的权限",
+            {"codes": forbidden[:10]},
+        )
+
+
 def get_effective_permission_patterns(user: dict) -> list[str]:
     """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""
     if is_super_admin(user):

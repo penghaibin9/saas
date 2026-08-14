@@ -201,8 +201,9 @@ def update_visit_plan(pid, body, user=None):
         if scope.get("mode") == "SCOPED" and body.get("collegeId"):
             college_names = scope.get("collegeNames") or set()
             if college_names:
+                from app.core.tenant_scoped import tenant_get
                 from app.models import College
-                col = db.get(College, int(body["collegeId"]))
+                col = tenant_get(db, College, int(body["collegeId"]))
                 if not col or (col.college_name or "").strip() not in college_names:
                     raise no_permission("巡访计划学院不在你的数据范围内")
         values = _resolved_values(p, body)

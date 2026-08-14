@@ -331,34 +331,64 @@ def freeze_effective_grade_policy(
 
 
 def policy_snapshot_debt(db, *, term=None) -> dict:
-    """只读欠账：历史成绩不自动补快照。"""
+    """只读欠账：历史成绩不自动补快照；大规模数据只在 SQL 侧计数/取样。"""
+    from sqlalchemy import func
+
     from app.models import AcademicGrade
     from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicySnapshot
 
-    query = db.query(AcademicGrade).filter(
-        AcademicGrade.tenant_id == _tid(),
+    tenant_id = _tid()
+    grade_filters = [
+        AcademicGrade.tenant_id == tenant_id,
         AcademicGrade.record_status == "ACTIVE",
         AcademicGrade.is_deleted.is_(False),
-    )
+    ]
     if term:
-        query = query.filter(AcademicGrade.term == term)
-    grades = query.all()
-    grade_ids = [int(row.id) for row in grades]
-    snap_ids = {
-        int(value) for (value,) in db.query(AaEffectiveGradePolicySnapshot.academic_grade_id).filter(
-            AaEffectiveGradePolicySnapshot.tenant_id == _tid(),
-            AaEffectiveGradePolicySnapshot.academic_grade_id.in_(grade_ids or [0]),
-            AaEffectiveGradePolicySnapshot.is_deleted.is_(False),
-        ).all()
-    }
-    missing = [row for row in grades if int(row.id) not in snap_ids]
-    legacy = [row for row in grades if grade_identity_key(row)[1] == "LEGACY_NAME_KEY"]
+        grade_filters.append(AcademicGrade.term == term)
+
+    snapshot_exists = db.query(AaEffectiveGradePolicySnapshot.id).filter(
+        AaEffectiveGradePolicySnapshot.tenant_id == tenant_id,
+        AaEffectiveGradePolicySnapshot.academic_grade_id == AcademicGrade.id,
+        AaEffectiveGradePolicySnapshot.is_deleted.is_(False),
+    ).exists()
+    legacy_identity = (
+        AcademicGrade.course_id.is_(None)
+        & (func.trim(func.coalesce(AcademicGrade.course_code, "")) == "")
+    )
+
+    total = int(db.query(func.count(AcademicGrade.id)).filter(*grade_filters).scalar() or 0)
+    missing_count = int(db.query(func.count(AcademicGrade.id)).filter(
+        *grade_filters,
+        ~snapshot_exists,
+    ).scalar() or 0)
+    legacy_count = int(db.query(func.count(AcademicGrade.id)).filter(
+        *grade_filters,
+        legacy_identity,
+    ).scalar() or 0)
+
+    missing_sample = [
+        str(value)
+        for (value,) in db.query(AcademicGrade.id).filter(
+            *grade_filters,
+            ~snapshot_exists,
+        ).order_by(AcademicGrade.id).limit(50).all()
+    ]
+    remaining = max(0, 50 - len(missing_sample))
+    legacy_sample = []
+    if remaining:
+        legacy_sample = [
+            str(value)
+            for (value,) in db.query(AcademicGrade.id).filter(
+                *grade_filters,
+                legacy_identity,
+            ).order_by(AcademicGrade.id).limit(remaining).all()
+        ]
     return {
-        "total": len(grades),
-        "missingPolicySnapshot": len(missing),
-        "legacyNameKey": len(legacy),
-        "ready": not missing and not legacy,
-        "sampleGradeIds": [str(row.id) for row in (missing + legacy)[:50]],
+        "total": total,
+        "missingPolicySnapshot": missing_count,
+        "legacyNameKey": legacy_count,
+        "ready": missing_count == 0 and legacy_count == 0,
+        "sampleGradeIds": missing_sample + legacy_sample,
     }
 
 

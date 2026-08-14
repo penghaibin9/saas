@@ -3,13 +3,12 @@
  * 全部经 realFirst() 使用：后端挂了自动回退 mock。
  */
 import { ENV } from '@/config/env'
-import { realRequest, setRefreshToken, setToken } from './request'
+import { commitNewSessionTokens, realRequest } from './request'
 
 /* 小程序角色 key → 正式演示租户真实账号（demo-school，数据只读，行级隔离）。
  * P12：演示/体验全部走真实 /api/v1/auth/login，不再调用 /auth/mock-login。 */
 function _holdLogin(data) {
-  setToken(data.accessToken)
-  setRefreshToken(data.refreshToken || '')
+  commitNewSessionTokens(data.accessToken, data.refreshToken || '')
   return data
 }
 

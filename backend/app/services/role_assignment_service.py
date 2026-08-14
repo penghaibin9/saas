@@ -104,12 +104,47 @@ def _expire_due(db, tenant_id: int, *, now: datetime | None = None,
     return touched
 
 
+
+def _audit_expiry_in_session(db, tenant_id: int, touched: set[int], *, source: str) -> None:
+    if not touched:
+        return
+    from app.services import audit_log
+
+    audit_log.record_critical_in_session(
+        db,
+        "ROLE_ASSIGNMENT_EXPIRE",
+        f"tenant:{tenant_id}:role-assignments",
+        detail={
+            "count": len(touched),
+            "userIds": sorted(touched)[:50],
+            "source": source,
+            "moduleCode": "systemAdmin",
+        },
+        tenant_id=tenant_id,
+    )
+
+
 def sweep_expired(*, tenant_id: int | None = None) -> dict:
-    """定时任务入口：回收本校全部到期授权。"""
+    """定时任务入口：回收本校全部到期授权；业务事实与审计证据同事务提交。"""
     tid = _tid(tenant_id)
     db = get_sessionmaker()()
     try:
         touched = _expire_due(db, tid)
+        if touched:
+            from app.services import audit_log
+            audit_log.record_critical_in_session(
+                db,
+                "ROLE_ASSIGNMENT_EXPIRE",
+                f"tenant:{tid}:role-assignment-expiry",
+                detail={
+                    "count": len(touched),
+                    "userIds": sorted(touched)[:50],
+                    "source": "SCHEDULER_OR_MANUAL",
+                    "moduleCode": "systemAdmin",
+                },
+                tenant_id=tid,
+                operator_name_override="SYSTEM_SCHEDULER",
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -117,11 +152,6 @@ def sweep_expired(*, tenant_id: int | None = None) -> dict:
     finally:
         db.close()
     _invalidate(touched, tid)
-    if touched:
-        from app.services import audit_log
-
-        audit_log.record("ROLE_ASSIGNMENT_EXPIRE", f"到期回收 {len(touched)} 个账号的角色",
-                         detail={"userIds": sorted(touched), "moduleCode": "systemAdmin"})
     return {"expiredUsers": sorted(str(u) for u in touched), "count": len(touched)}
 
 
@@ -136,14 +166,99 @@ def _role_row(db, tenant_id: int, role_code: str):
     return role
 
 
+def _assert_role_delegation_allowed(db, *, actor: dict | None, role, tenant_id: int) -> None:
+    """角色治理写链的最终授权边界：只允许固化 actor 的基础权限。"""
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
+    from app.models import Permission, RolePermission
+
+    role_code = str(role.role_code or "").strip().upper()
+    if role_code.startswith("PLATFORM_"):
+        raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")
+    if str(role.role_type or "").upper() == "SYSTEM":
+        permission_codes = set(ROLE_PERMISSIONS.get(role_code, set()))
+    else:
+        permission_codes = set(db.scalars(select(Permission.permission_code).join(
+            RolePermission, RolePermission.permission_id == Permission.id
+        ).where(
+            RolePermission.tenant_id == tenant_id,
+            RolePermission.role_id == role.id,
+            RolePermission.status == "ACTIVE",
+            RolePermission.is_deleted.is_(False),
+        )).all())
+    assert_delegable_permission_codes(actor, permission_codes)
+
+
+def _grant_assignment_in_db(
+    db,
+    *,
+    user_id: int,
+    role_code: str,
+    reason: str,
+    start: datetime,
+    end: datetime | None,
+    source_type: str,
+    source_id: str | None,
+    tenant_id: int,
+    actor: dict | None,
+):
+    """内部原子 mutation：不 commit、不关 session、不做 cache、不独立审计。"""
+    from app.models import User, UserRole
+    from app.models.role_assignment import RoleAssignmentValidity
+
+    account = db.scalars(select(User).where(
+        User.id == int(user_id), User.tenant_id == tenant_id,
+        User.is_deleted.is_(False)).with_for_update()).first()
+    if account is None:
+        raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
+    role = _role_row(db, tenant_id, str(role_code or "").strip().upper())
+    _assert_role_delegation_allowed(db, actor=actor, role=role, tenant_id=tenant_id)
+
+    link = db.scalars(select(UserRole).where(
+        UserRole.tenant_id == tenant_id, UserRole.user_id == account.id,
+        UserRole.role_id == role.id, UserRole.is_deleted.is_(False)).with_for_update()).first()
+    if link is None:
+        link = UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role.id, status="ACTIVE")
+        db.add(link)
+        db.flush()
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+        link.version = int(link.version or 0) + 1
+
+    validity = db.scalars(select(RoleAssignmentValidity).where(
+        RoleAssignmentValidity.tenant_id == tenant_id,
+        RoleAssignmentValidity.user_role_id == link.id,
+        RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
+    if validity is None:
+        validity = RoleAssignmentValidity(
+            tenant_id=tenant_id, user_role_id=int(link.id), user_id=int(account.id),
+            role_code=role.role_code, effective_at=start, expires_at=end,
+            source_type=source_type, source_id=source_id, reason=reason,
+            granted_by=_actor_id(actor), status=VALIDITY_ACTIVE,
+            created_by=_actor_id(actor), updated_by=_actor_id(actor))
+        db.add(validity)
+    else:
+        validity.effective_at = start
+        validity.expires_at = end
+        validity.source_type = source_type
+        validity.source_id = source_id
+        validity.reason = reason
+        validity.status = VALIDITY_ACTIVE
+        validity.revoked_at = None
+        validity.revoked_by = None
+        validity.revoke_reason = None
+        validity.transferred_to_user_id = None
+        validity.updated_by = _actor_id(actor)
+        validity.version = int(validity.version or 0) + 1
+    db.flush()
+    return validity, account, role
+
+
 def grant_assignment(user_id: int, role_code: str, *, reason: str,
                      effective_at: Any = None, expires_at: Any = None,
                      source_type: str = SOURCE_MANUAL, source_id: str | None = None,
                      tenant_id: int | None = None, user: dict | None = None) -> dict:
-    """授予角色并登记有效期。已存在的授权则续期/改期，不重复建行。"""
-    from app.models import User, UserRole
-    from app.models.role_assignment import RoleAssignmentValidity
-
+    """授予角色并登记有效期；mutation + critical audit 一次提交。"""
     reason = str(reason or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "授予原因不少于 5 个字")
@@ -155,151 +270,233 @@ def grant_assignment(user_id: int, role_code: str, *, reason: str,
 
     db = get_sessionmaker()()
     try:
-        account = db.scalars(select(User).where(
-            User.id == int(user_id), User.tenant_id == tid,
-            User.is_deleted.is_(False))).first()
-        if account is None:
-            raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
-        role = _role_row(db, tid, str(role_code or "").strip().upper())
-
-        link = db.scalars(select(UserRole).where(
-            UserRole.tenant_id == tid, UserRole.user_id == account.id,
-            UserRole.role_id == role.id, UserRole.is_deleted.is_(False))).first()
-        if link is None:
-            link = UserRole(tenant_id=tid, user_id=account.id, role_id=role.id, status="ACTIVE")
-            db.add(link)
-            db.flush()
-        else:
-            link.status = "ACTIVE"
-            link.version = int(link.version or 0) + 1
-
-        validity = db.scalars(select(RoleAssignmentValidity).where(
-            RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.user_role_id == link.id,
-            RoleAssignmentValidity.is_deleted.is_(False))).first()
-        if validity is None:
-            validity = RoleAssignmentValidity(
-                tenant_id=tid, user_role_id=int(link.id), user_id=int(account.id),
-                role_code=role.role_code, effective_at=start, expires_at=end,
-                source_type=source_type, source_id=source_id, reason=reason,
-                granted_by=_actor_id(user), status=VALIDITY_ACTIVE,
-                created_by=_actor_id(user), updated_by=_actor_id(user))
-            db.add(validity)
-        else:
-            validity.effective_at = start
-            validity.expires_at = end
-            validity.source_type = source_type
-            validity.source_id = source_id
-            validity.reason = reason
-            validity.status = VALIDITY_ACTIVE
-            validity.revoked_at = None
-            validity.revoked_by = None
-            validity.revoke_reason = None
-            validity.updated_by = _actor_id(user)
-            validity.version = int(validity.version or 0) + 1
-        db.flush()
+        validity, account, role = _grant_assignment_in_db(
+            db, user_id=int(user_id), role_code=role_code, reason=reason,
+            start=start, end=end, source_type=source_type, source_id=source_id,
+            tenant_id=tid, actor=user,
+        )
         assignment_id = int(validity.id)
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_ASSIGNMENT_GRANT",
+            f"role-assignment:{assignment_id}",
+            detail={
+                "userId": int(account.id),
+                "roleCode": role.role_code,
+                "reason": reason,
+                "effectiveAt": str(start),
+                "expiresAt": str(end or ""),
+                "sourceType": source_type,
+                "moduleCode": "systemAdmin",
+            },
+            tenant_id=tid,
+            resource_id=str(assignment_id),
+        )
         db.commit()
-    except AppException:
+    except Exception:
         db.rollback()
         raise
     finally:
         db.close()
 
     _invalidate({int(user_id)}, tid)
-    from app.services import audit_log
-
-    audit_log.record("ROLE_ASSIGNMENT_GRANT", f"账号 {user_id} 授予角色 {role_code}",
-                     detail={"reason": reason, "effectiveAt": str(start),
-                             "expiresAt": str(end or ""), "sourceType": source_type,
-                             "moduleCode": "systemAdmin"})
     return get_assignment(assignment_id, tenant_id=tid)
+
+
+def _require_expected_version(expected_version: int | None, *, operation: str) -> int:
+    if expected_version is None:
+        raise AppException(
+            "VALIDATION_ERROR",
+            f"{operation}必须提供 expectedVersion",
+            http_status=422,
+        )
+    try:
+        return int(expected_version)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{operation}的 expectedVersion 必须为整数", http_status=422) from None
+
+
+def _revoke_assignment_in_db(
+    db,
+    *,
+    row,
+    reason: str,
+    actor: dict | None,
+    transferred_to_user_id: int | None = None,
+):
+    """内部回收 mutation：调用者负责锁、版本、审计与 commit。"""
+    from app.core.tenant_scoped import tenant_get
+    from app.models import UserRole
+
+    if row.status != VALIDITY_ACTIVE:
+        raise AppException("VALIDATION_ERROR", "该授权当前不是生效状态，不能重复回收")
+    row.status = VALIDITY_REVOKED
+    row.revoked_at = _now()
+    row.revoked_by = _actor_id(actor)
+    row.revoke_reason = reason
+    row.transferred_to_user_id = transferred_to_user_id
+    row.version = int(row.version or 0) + 1
+    link = tenant_get(db, UserRole, int(row.user_role_id), tenant_id=int(row.tenant_id))
+    if link is not None:
+        link.status = VALIDITY_REVOKED
+        link.version = int(link.version or 0) + 1
+    db.flush()
+    return int(row.user_id)
 
 
 def revoke_assignment(assignment_id: int, *, reason: str, expected_version: int | None = None,
                       tenant_id: int | None = None, user: dict | None = None,
                       transferred_to_user_id: int | None = None) -> dict:
-    from app.models import UserRole
+    """显式回收：行锁 + expectedVersion + critical audit + 单事务。"""
     from app.models.role_assignment import RoleAssignmentValidity
 
     reason = str(reason or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "回收原因不少于 5 个字")
+    expected = _require_expected_version(expected_version, operation="角色回收")
     tid = _tid(tenant_id)
     db = get_sessionmaker()()
     try:
         row = db.scalars(select(RoleAssignmentValidity).where(
             RoleAssignmentValidity.id == int(assignment_id),
             RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.is_deleted.is_(False))).first()
+            RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "角色授权记录不存在")
-        if expected_version is not None and int(expected_version) != int(row.version or 0):
+        if expected != int(row.version or 0):
             raise AppException("DATA_CONFLICT", "授权记录已被他人更新，请刷新后重试")
-        if row.status == VALIDITY_REVOKED:
-            raise AppException("VALIDATION_ERROR", "该授权已回收，无需重复操作")
-        row.status = VALIDITY_REVOKED
-        row.revoked_at = _now()
-        row.revoked_by = _actor_id(user)
-        row.revoke_reason = reason
-        row.transferred_to_user_id = transferred_to_user_id
-        row.version = int(row.version or 0) + 1
-        link = db.get(UserRole, int(row.user_role_id))
-        if link is not None:
-            link.status = VALIDITY_REVOKED
-            link.version = int(link.version or 0) + 1
-        user_id = int(row.user_id)
+        user_id = _revoke_assignment_in_db(
+            db, row=row, reason=reason, actor=user,
+            transferred_to_user_id=transferred_to_user_id,
+        )
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_ASSIGNMENT_REVOKE",
+            f"role-assignment:{assignment_id}",
+            detail={
+                "userId": user_id,
+                "roleCode": row.role_code,
+                "reason": reason,
+                "expectedVersion": expected,
+                "moduleCode": "systemAdmin",
+            },
+            tenant_id=tid,
+            resource_id=str(assignment_id),
+        )
         db.commit()
-    except AppException:
+    except Exception:
         db.rollback()
         raise
     finally:
         db.close()
 
     _invalidate({user_id}, tid)
-    from app.services import audit_log
-
-    audit_log.record("ROLE_ASSIGNMENT_REVOKE", f"回收账号 {user_id} 的角色授权 {assignment_id}",
-                     detail={"reason": reason, "moduleCode": "systemAdmin"})
     return get_assignment(int(assignment_id), tenant_id=tid)
 
 
 def transfer_assignment(assignment_id: int, *, to_user_id: int, reason: str,
                         expires_at: Any = None, expected_version: int | None = None,
                         tenant_id: int | None = None, user: dict | None = None) -> dict:
-    """工作转交：旧人立刻失去角色，新人按同一原因获得授权。"""
+    """工作转交：旧回收 + 新授予 + transfer audit 必须同一事务。"""
+    from app.models import User
+    from app.models.role_assignment import RoleAssignmentValidity
+
+    reason = str(reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "转交原因不少于 5 个字")
+    expected = _require_expected_version(expected_version, operation="角色转交")
     tid = _tid(tenant_id)
     db = get_sessionmaker()()
     try:
-        from app.models.role_assignment import RoleAssignmentValidity
-
         row = db.scalars(select(RoleAssignmentValidity).where(
             RoleAssignmentValidity.id == int(assignment_id),
             RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.is_deleted.is_(False))).first()
+            RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "角色授权记录不存在")
-        role_code = row.role_code
-        if int(row.user_id) == int(to_user_id):
+        if expected != int(row.version or 0):
+            raise AppException("DATA_CONFLICT", "授权记录已被他人更新，请刷新后重试")
+        if row.status != VALIDITY_ACTIVE:
+            raise AppException("VALIDATION_ERROR", "只有生效中的授权可以转交")
+        old_user_id = int(row.user_id)
+        target_user_id = int(to_user_id)
+        if old_user_id == target_user_id:
             raise AppException("VALIDATION_ERROR", "转交对象不能是本人")
+        target = db.scalars(select(User).where(
+            User.id == target_user_id,
+            User.tenant_id == tid,
+            User.is_deleted.is_(False)).with_for_update()).first()
+        if target is None:
+            raise AppException("DATA_NOT_FOUND", "转交目标账号不存在或不在当前学校")
+
+        role_code = row.role_code
+        role = _role_row(db, tid, role_code)
+        _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
         keep_expires = row.expires_at
+
+        _revoke_assignment_in_db(
+            db, row=row, reason=reason, actor=user,
+            transferred_to_user_id=target_user_id,
+        )
+        new_start = _now()
+        new_end = _parse_dt(expires_at, "expiresAt") if expires_at is not None else keep_expires
+        if new_end is not None and new_end <= new_start:
+            raise AppException("VALIDATION_ERROR", "到期时间必须晚于转交生效时间")
+        new_validity, _, _ = _grant_assignment_in_db(
+            db,
+            user_id=target_user_id,
+            role_code=role_code,
+            reason=reason,
+            start=new_start,
+            end=new_end,
+            source_type=SOURCE_TRANSFER,
+            source_id=str(assignment_id),
+            tenant_id=tid,
+            actor=user,
+        )
+        row.transferred_to_user_id = target_user_id
+        new_assignment_id = int(new_validity.id)
+
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_ASSIGNMENT_TRANSFER",
+            f"role-assignment:{assignment_id}",
+            detail={
+                "assignmentId": int(assignment_id),
+                "fromUserId": old_user_id,
+                "toUserId": target_user_id,
+                "roleCode": role_code,
+                "reason": reason,
+                "expectedVersion": expected,
+                "sourceType": SOURCE_TRANSFER,
+                "expiresAt": str(new_end or ""),
+                "newAssignmentId": new_assignment_id,
+                "moduleCode": "systemAdmin",
+            },
+            tenant_id=tid,
+            resource_id=str(assignment_id),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
-    revoke_assignment(assignment_id, reason=reason, expected_version=expected_version,
-                      tenant_id=tid, user=user, transferred_to_user_id=int(to_user_id))
-    return grant_assignment(int(to_user_id), role_code, reason=reason,
-                            expires_at=expires_at or keep_expires,
-                            source_type=SOURCE_TRANSFER, source_id=str(assignment_id),
-                            tenant_id=tid, user=user)
+    _invalidate({old_user_id, target_user_id}, tid)
+    return get_assignment(new_assignment_id, tenant_id=tid)
 
 
 def review_assignment(assignment_id: int, *, term: str, reason: str,
                       tenant_id: int | None = None, user: dict | None = None) -> dict:
-    """跨学期复核：确认这条长期授权仍然需要。"""
+    """跨学期复核：复核事实与 critical audit 同事务。"""
     from app.models.role_assignment import RoleAssignmentValidity
 
-    if len(str(reason or "").strip()) < 5:
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
         raise AppException("VALIDATION_ERROR", "复核结论不少于 5 个字")
     tid = _tid(tenant_id)
     db = get_sessionmaker()()
@@ -307,22 +504,33 @@ def review_assignment(assignment_id: int, *, term: str, reason: str,
         row = db.scalars(select(RoleAssignmentValidity).where(
             RoleAssignmentValidity.id == int(assignment_id),
             RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.is_deleted.is_(False))).first()
+            RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "角色授权记录不存在")
         row.last_reviewed_at = _now()
         row.last_reviewed_term = str(term or "").strip() or None
         row.version = int(row.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_ASSIGNMENT_REVIEW",
+            f"role-assignment:{assignment_id}",
+            detail={
+                "term": term,
+                "reason": reason_text,
+                "roleCode": row.role_code,
+                "userId": int(row.user_id),
+                "moduleCode": "systemAdmin",
+            },
+            tenant_id=tid,
+            resource_id=str(assignment_id),
+        )
         db.commit()
-    except AppException:
+    except Exception:
         db.rollback()
         raise
     finally:
         db.close()
-    from app.services import audit_log
-
-    audit_log.record("ROLE_ASSIGNMENT_REVIEW", f"复核角色授权 {assignment_id}",
-                     detail={"term": term, "reason": reason, "moduleCode": "systemAdmin"})
     return get_assignment(int(assignment_id), tenant_id=tid)
 
 
@@ -379,6 +587,7 @@ def get_assignment(assignment_id: int, *, tenant_id: int | None = None) -> dict:
 
 def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list[dict]:
     """某人当前真正生效的角色授权。读取时顺手回收到期项（双保险的第二道）。"""
+    from app.core.tenant_scoped import tenant_get
     from app.models import User, UserRole
     from app.models.role_assignment import RoleAssignmentValidity
 
@@ -388,6 +597,7 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
     try:
         touched = _expire_due(db, tid, now=now, user_id=int(user_id))
         if touched:
+            _audit_expiry_in_session(db, tid, touched, source="READ_EFFECTIVE_ASSIGNMENTS")
             db.commit()
         rows = db.scalars(select(RoleAssignmentValidity).where(
             RoleAssignmentValidity.tenant_id == tid,
@@ -396,10 +606,10 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
             RoleAssignmentValidity.is_deleted.is_(False),
             RoleAssignmentValidity.effective_at <= now,
         )).all()
-        account = db.get(User, int(user_id))
+        account = tenant_get(db, User, int(user_id), tenant_id=tid)
         out = []
         for row in rows:
-            link = db.get(UserRole, int(row.user_role_id))
+            link = tenant_get(db, UserRole, int(row.user_role_id), tenant_id=tid)
             out.append(_row_dto(row, str(getattr(link, "status", "") or ""),
                                 getattr(account, "login_name", ""),
                                 getattr(account, "real_name", ""), now=now))
@@ -422,6 +632,7 @@ def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
     try:
         touched = _expire_due(db, tid, now=now)
         if touched:
+            _audit_expiry_in_session(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
             db.commit()
 
         stmt = select(RoleAssignmentValidity).where(

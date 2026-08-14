@@ -1,8 +1,12 @@
-"""为真实演示沙箱补齐四大业务域的页面与流程状态数据。
+"""开发期页面覆盖兜底（DEV ONLY）。
 
-主流程由各领域的显式种子负责；本文件只兜底适合“独立状态行”的 ORM 业务表。
-任何依赖真实父记录、追加式版本、唯一活动子流程或数据库规则维持关系完整性的表，
-必须由领域显式 seed / service 构造，禁止用通用 marker 伪造外键。
+这个脚本历史上会根据 ORM 表结构自动补状态行，用于快速发现空页面。它会生成
+DEMO-xxx、演示数据-xxx、9 亿段关系 marker 等“结构覆盖数据”，这些数据不能进入
+正式售前演示沙箱，也不能冒充真实学校业务数据。
+
+2026-08-13 起：默认调用不再写任何 generic 行。只有开发者显式传
+``allow_generic=True`` 时才允许使用旧能力。正式 sandbox-school 必须由领域显式 seed
+或 20K 真实学校数据生成器提供数据。
 """
 from __future__ import annotations
 
@@ -47,11 +51,7 @@ def _domain_candidates(db):
 
 
 def required_relation_columns(table) -> tuple[str, ...]:
-    """返回 generic seed 无法安全解析的必填关系 ID。
-
-    tenant_id 由调用方给定，student_id 会解析为本租户真实学生；其余必填 *_id
-    都必须来自真实父记录，绝不能使用 900... marker 猜造。
-    """
+    """返回 generic seed 无法安全解析的必填关系 ID。"""
     safe_ids = {"id", "tenant_id", "student_id"}
     return tuple(
         column.name for column in table.c
@@ -106,7 +106,6 @@ def _value_for(column, seq: int, row_index: int, student_id: int):
         raise AssertionError("tenant_id is supplied separately")
     if name == "student_id":
         return student_id
-    # 这里只可能处理可选关系 ID；必填关系 ID 已被 requires_explicit_relationship_seed 排除。
     if name.endswith("_id") or name in {"assignee_id", "applicant_id", "receiver_id"}:
         return marker
     if isinstance(typ, Boolean):
@@ -177,12 +176,21 @@ def _row_values(table, tenant_id: int, status: str | None, seq: int,
     return values
 
 
-def seed_sandbox_flow_coverage(db, tenant_id: int) -> dict:
+def seed_sandbox_flow_coverage(db, tenant_id: int, *, allow_generic: bool = False) -> dict:
+    """开发期 generic 覆盖；正式沙箱默认拒绝生成 marker 数据。"""
+    if not allow_generic:
+        return {
+            "skipped": True,
+            "reason": "generic coverage disabled for sales sandbox; use explicit real-school seeds",
+            "insertedRows": 0,
+            "inserted": {},
+        }
+
     from app.models import StudentProfile
     student_id = db.scalar(select(StudentProfile.id).where(
         StudentProfile.tenant_id == tenant_id).order_by(StudentProfile.id))
     if student_id is None:
-        return {"skipped": True, "reason": "no students"}
+        return {"skipped": True, "reason": "no students", "insertedRows": 0, "inserted": {}}
 
     inserted: dict[str, int] = {}
     tables = _domain_tables(db)

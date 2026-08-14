@@ -10,6 +10,7 @@ from sqlalchemy import and_, false
 
 from app.core.exceptions import AppException
 from app.models import InternshipRecord
+from app.modules.internship.services.internship_identity import stable_user_id
 from app.modules.internship.services import internship_scope as scope_service
 from app.modules.internship.services import internship_service as domain_service
 from app.modules.internship.services import internship_student_service as student_service
@@ -19,12 +20,7 @@ _INSTALLED = False
 
 
 def _user_id(user) -> int | None:
-    value = (user or {}).get("userId")
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
+    return stable_user_id(user)
 
 
 def stable_advisor_matches(record, user) -> bool:

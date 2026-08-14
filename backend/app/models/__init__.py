@@ -14,6 +14,7 @@ from app.models.message import (  # noqa: F401
     MessageAttachment,
     MessageAudience,
     MessageCampaign,
+    MessageChannelDelivery,
     MessageDeliveryJob,
     MessageEventOutbox,
     UnifiedMessage,

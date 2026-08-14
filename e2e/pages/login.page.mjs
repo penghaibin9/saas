@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { expect } from '../lib/observability.mjs'
 
 function accessTokenFromEnvelope(payload) {
@@ -5,7 +6,10 @@ function accessTokenFromEnvelope(payload) {
 }
 
 async function browserRefreshCookie(page, channel = 'staff') {
-  const name = `gx_${channel}_refresh_v1`
+  const sessionId = await page.evaluate(() => String(sessionStorage.getItem('gx_browser_session_id_v2') || ''))
+  if (!sessionId) return ''
+  const suffix = createHash('sha256').update(sessionId).digest('hex').slice(0, 24)
+  const name = `gx_${channel}_refresh_v2_${suffix}`
   const cookies = await page.context().cookies()
   return String(cookies.find((cookie) => cookie.name === name)?.value || '')
 }
@@ -70,10 +74,15 @@ export class StaffLoginPage {
     const responsePromise = this.page.waitForResponse((response) =>
       response.url().includes('/api/v1/auth/browser-switch-role') && response.request().method() === 'POST'
     )
+    const navigationPromise = this.page.waitForEvent('framenavigated', {
+      predicate: (frame) => frame === this.page.mainFrame(),
+      timeout: 60_000,
+    })
     await target.click()
     const response = await responsePromise
     expect(response.ok(), `staff role switch HTTP ${response.status()}`).toBeTruthy()
-    await this.page.waitForURL(/\/workbench/, { timeout: 60_000 })
+    await navigationPromise
+    await expect(this.page).toHaveURL(/\/workbench/)
 
     await expect.poll(
       () => browserRefreshCookie(this.page, 'staff'),
@@ -82,7 +91,7 @@ export class StaffLoginPage {
     const newRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(newRefreshToken, 'staff role switch must leave a resumable HttpOnly refresh session').toBeTruthy()
     // The app navigates only after switchAuthContext succeeds. Combining the real switch response,
-    // rotated HttpOnly cookie, workbench navigation and caller-side role UI assertion proves the
+    // rotated HttpOnly cookie, completed main-frame navigation and caller-side role UI assertion proves the
     // switch without racing response delivery against window.location.replace().
     this.lastAccessToken = ''
   }

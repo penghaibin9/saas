@@ -142,27 +142,6 @@ async def lifespan(app: FastAPI):
         yield
         return
 
-    if settings.sandbox_auto_reset and db_enabled():
-        async def _sandbox_loop():
-            from anyio import to_thread
-
-            from app.services.sandbox_service import reset_sandbox, seconds_until_next_midnight
-            while True:
-                try:
-                    await asyncio.sleep(seconds_until_next_midnight())
-                    from app.db.session import get_sessionmaker
-                    db = get_sessionmaker()()
-                    try:
-                        await to_thread.run_sync(lambda: reset_sandbox(db, dry_run=False))
-                    finally:
-                        db.close()
-                except asyncio.CancelledError:
-                    return
-                except Exception:  # noqa: BLE001
-                    logging.getLogger("app.sandbox").exception("sandbox midnight reset failed")
-
-        tasks.append(asyncio.create_task(_sandbox_loop(), name="sandbox-midnight-reset"))
-
     if db_enabled():
         async def _password_reset_sms_loop():
             from anyio import to_thread
