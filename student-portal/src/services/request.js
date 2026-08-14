@@ -14,7 +14,10 @@ const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
 const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
+const BROWSER_SESSION_COORDINATION_CHANNEL = 'gx_browser_session_coord_v2'
+const BROWSER_SESSION_COLLISION_WINDOW_MS = 60
 let volatileBrowserSessionId = ''
+let browserSessionCoordinator = null
 
 const API_BASE = (() => {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
@@ -40,19 +43,72 @@ function _sessionSet(key, value) {
   } catch { /* ignore */ }
 }
 
+function newBrowserSessionId() {
+  return globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+}
+
+function readBrowserSessionId() {
+  try { return String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim() } catch { return volatileBrowserSessionId }
+}
+
+function writeBrowserSessionId(value) {
+  const sessionId = String(value || '').trim() || newBrowserSessionId()
+  volatileBrowserSessionId = sessionId
+  try { sessionStorage.setItem(BROWSER_SESSION_ID_KEY, sessionId) } catch { /* memory fallback */ }
+  return sessionId
+}
+
 function getOrCreateBrowserSessionId() {
   try {
     const existing = String(sessionStorage.getItem(BROWSER_SESSION_ID_KEY) || '').trim()
     if (existing) return existing
-    const generated = globalThis.crypto?.randomUUID?.()
-    if (!generated) throw new Error('secure random UUID unavailable')
+    const generated = newBrowserSessionId()
     sessionStorage.setItem(BROWSER_SESSION_ID_KEY, generated)
+    volatileBrowserSessionId = generated
     return generated
   } catch {
-    if (!volatileBrowserSessionId) volatileBrowserSessionId = globalThis.crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random()}`
+    if (!volatileBrowserSessionId) volatileBrowserSessionId = newBrowserSessionId()
     return volatileBrowserSessionId
   }
 }
+
+function initBrowserSessionCollisionGuard() {
+  const inheritedSessionId = readBrowserSessionId()
+  let sessionId = inheritedSessionId || getOrCreateBrowserSessionId()
+  const instanceId = newBrowserSessionId()
+
+  try {
+    if (inheritedSessionId && typeof window !== 'undefined' && window.opener) {
+      sessionId = writeBrowserSessionId(newBrowserSessionId())
+    }
+  } catch { /* cross-origin opener / SSR */ }
+
+  try {
+    if (typeof BroadcastChannel !== 'function') return
+    const channel = new BroadcastChannel(BROWSER_SESSION_COORDINATION_CHANNEL)
+    browserSessionCoordinator = channel
+    const probedSessionId = sessionId
+    let probing = true
+    channel.addEventListener('message', (event) => {
+      const message = event?.data || {}
+      if (!message || message.instanceId === instanceId) return
+      const activeSessionId = getOrCreateBrowserSessionId()
+      if (message.type === 'probe' && message.sessionId === activeSessionId) {
+        channel.postMessage({ type: 'claim', sessionId: activeSessionId, instanceId })
+        return
+      }
+      if (probing && message.type === 'claim' && message.sessionId === probedSessionId) {
+        writeBrowserSessionId(newBrowserSessionId())
+        probing = false
+      }
+    })
+    channel.postMessage({ type: 'probe', sessionId: probedSessionId, instanceId })
+    setTimeout(() => { probing = false }, BROWSER_SESSION_COLLISION_WINDOW_MS)
+    try { window.addEventListener('pagehide', () => browserSessionCoordinator?.close(), { once: true }) } catch { /* SSR */ }
+  } catch { /* BroadcastChannel unavailable */ }
+}
+
+initBrowserSessionCollisionGuard()
 
 function browserSessionHeaders() {
   return {
