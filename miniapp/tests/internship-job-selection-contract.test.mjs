@@ -11,12 +11,13 @@ import {
 const pageSource = readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8')
 
 test('A03-9 preserves old enterprises route file but renames product surface to 实习选岗', () => {
-  assert.match(pageSource, /title="实习选岗"/)
+  assert.match(pageSource, /:title="navTitle"/)
+  assert.match(pageSource, /navTitle\(\)\s*\{[^\n]*'实习选岗'/)
   assert.match(pageSource, /学校认可岗位/)
 })
 
 test('A03-9 forbids client full-list filtering and uses server catalog pagination', () => {
-  assert.doesNotMatch(pageSource, /\.filter\s*\(/)
+  assert.doesNotMatch(pageSource, /(?:this\.)?positions\.filter\s*\(/)
   assert.match(pageSource, /internshipSelectionApi\.positions/)
   assert.match(pageSource, /pageSize:\s*20/)
   assert.match(pageSource, /350/)

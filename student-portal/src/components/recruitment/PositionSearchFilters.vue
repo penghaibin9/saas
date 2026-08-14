@@ -48,13 +48,14 @@
       </select>
       <input v-model.trim="draft.weeklyHours" class="filter-control" placeholder="周工时上限" inputmode="numeric" @change="emitSearch" />
       <input v-model.trim="draft.remaining" class="filter-control" placeholder="最低剩余名额" inputmode="numeric" @change="emitSearch" />
-      <input v-model="draft.publishedFrom" class="filter-control" type="date" aria-label="发布时间起" @change="emitSearch" />
+      <AppDatePicker v-model="draft.publishedFrom" class="filter-control" aria-label="发布时间起" @change="emitSearch" />
     </div>
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import AppDatePicker from '../AppDatePicker.vue'
 
 const props = defineProps({ modelValue: { type: Object, required: true } })
 const emit = defineEmits(['update:modelValue', 'search'])

@@ -32,7 +32,7 @@
         <label class="field field--full"><span>自我介绍</span><textarea v-model.trim="draft.selfIntroduction" rows="5" maxlength="1000" placeholder="介绍你的专业方向、学习经历和实习目标" /></label>
         <label class="field field--full"><span>个人优势</span><textarea v-model.trim="draft.strengths" rows="4" maxlength="1000" placeholder="如设备操作、沟通协作、竞赛经历等" /></label>
         <label class="field"><span>技能标签</span><input v-model="skillText" placeholder="用逗号分隔，如 CAD, PLC, 数控编程" /></label>
-        <label class="field"><span>可到岗时间</span><input v-model="draft.availableFrom" type="date" /></label>
+        <label class="field"><span>可到岗时间</span><AppDatePicker v-model="draft.availableFrom" aria-label="可到岗时间" /></label>
         <label class="field field--full"><span>地点偏好</span><input v-model="locationText" placeholder="用逗号分隔，如 长沙, 株洲" /></label>
       </div>
       <div class="form-actions">
@@ -65,7 +65,7 @@
         <select v-model="newItem.type"><option v-for="type in itemTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select>
         <input v-model.trim="newItem.title" placeholder="名称 / 标题" />
         <input v-model.trim="newItem.issuedBy" placeholder="组织 / 发证单位（可选）" />
-        <input v-model="newItem.occurredAt" type="date" />
+        <AppDatePicker v-model="newItem.occurredAt" aria-label="发生日期" />
         <textarea v-model.trim="newItem.description" rows="3" placeholder="简要说明你做了什么、掌握了什么" />
         <button type="button" class="secondary" :disabled="busy || !newItem.title" @click="addItem">添加</button>
       </div>
@@ -75,6 +75,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import AppDatePicker from '../AppDatePicker.vue'
 import { PROFILE_ITEM_TYPES, buildInternshipProfileUpdate } from '../../modules/internshipRecruitment/profileModel'
 
 const props = defineProps({
