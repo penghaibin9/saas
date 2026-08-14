@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const VIEWPORT = { width: 1440, height: 900 }
@@ -61,6 +62,20 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
     const screenshot = testInfo.outputPath('gd-U1-dashboard-B-1440x900.png')
     await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', caret: 'hide' })
 
+    // U11 Gold candidate: preserve all business layout/status content while masking only
+    // the security watermark and the run-scoped batch label that necessarily changes per CI run.
+    const goldMasks = [
+      page.locator('.gbs__select'),
+      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName]),
+    ]
+    await captureGoldCandidate(page, testInfo, {
+      name: 'gd-U1-dashboard-GoldCandidate', width: 1440, height: 900, masks: goldMasks,
+    })
+    await captureGoldCandidate(page, testInfo, {
+      name: 'gd-U1-dashboard-GoldCandidate', width: 1280, height: 800, masks: goldMasks,
+    })
+    await page.setViewportSize(VIEWPORT)
+
     const batchId = fixture.batchId
     const cases = [
       ['开题材料待审阅', { path: '/admin/graduation/proposals', batchId, tab: 'PENDING_REVIEW' }],
@@ -88,16 +103,25 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
       })
     }
 
+    const environment = await goldEnvironment(page, testInfo)
     const meta = {
       phase: 'B',
       card: 'U1',
-      head: process.env.GITHUB_SHA || 'local',
+      head: environment.goldHead,
+      goldHead: environment.goldHead,
       tenant: config.mentor.tenant,
       role: 'GD_MENTOR',
       batchId,
       batchName: fixture.batchName,
+      fixtureVersion: { runId: fixture.runId, gdStudentId: fixture.gdStudentId },
       viewport: VIEWPORT,
+      viewports: [VIEWPORT, { width: 1280, height: 800 }],
       route: `/admin/graduation?batchId=${batchId}`,
+      browserProject: environment.browserProject,
+      deviceScaleFactor: environment.deviceScaleFactor,
+      language: environment.language,
+      fontEnvironment: environment.fontEnvironment,
+      dynamicZones: ['security-watermark', 'run-scoped-batch-label'],
       dashboard: {
         batchName: envelope?.data?.batchName || '',
         todoCount: Array.isArray(envelope?.data?.todos) ? envelope.data.todos.length : 0,
