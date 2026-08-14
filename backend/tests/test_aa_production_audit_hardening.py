@@ -59,6 +59,22 @@ def test_roster_hot_reads_are_sql_paged_and_aggregated_on_existing_owner():
     assert "select(func.count()).select_from(AaStatusChange)" in summary_source
 
 
+def test_registration_archive_is_school_scoped_and_never_truncated_at_10k():
+    assert academic_read.list_archived_registration_batches is guard._registration_archive_list_sql
+    assert academic_read.registration_archive_detail is guard._registration_archive_detail_sql
+    assert academic_read.export_registration_archive_xlsx is guard._registration_archive_export_full
+
+    list_source = inspect.getsource(guard._registration_archive_list_sql)
+    detail_source = inspect.getsource(guard._registration_archive_detail_sql)
+    export_source = inspect.getsource(guard._registration_archive_export_full)
+    for source in (list_source, detail_source, export_source):
+        assert "_require_school_scope" in source
+        assert "10000" not in source
+    assert "select(func.count(AaRegistration.id))" in detail_source
+    assert "AaRegistration.status == \"REGISTERED\"" in detail_source
+    assert "select(AaRegistration, StudentProfile)" in export_source
+
+
 def test_page_size_guard_rejects_oversized_requests():
     assert guard._bounded_page_size(1, default=20) == 1
     assert guard._bounded_page_size(200, default=20) == 200
