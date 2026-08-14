@@ -274,18 +274,6 @@ jobs:
             node scripts/check/check-npm-production-audit.mjs \
               "/tmp/audit-$app.json" "$app" .github/security/npm-production-audit-waivers.json
           done
-      - name: Remove one-shot remediation jobs from permanent workflow
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/production-dependency-audit.yml')
-          text = path.read_text(encoding='utf-8')
-          start_marker = '  # BEGIN TEMP NPM REMEDIATION\n'
-          end_marker = '  # END TEMP NPM REMEDIATION\n'
-          start = text.index(start_marker)
-          end = text.index(end_marker, start) + len(end_marker)
-          path.write_text((text[:start] + text[end:]).rstrip('\n') + '\n', encoding='utf-8')
-          PY
       - name: Commit exact generated locks without force
         run: |
           set -euo pipefail
@@ -296,8 +284,7 @@ jobs:
           git add \
             frontend/package.json frontend/package-lock.json \
             student-portal/package.json student-portal/package-lock.json \
-            miniapp/package.json miniapp/package-lock.json \
-            .github/workflows/production-dependency-audit.yml
+            miniapp/package.json miniapp/package-lock.json
           git diff --cached --check
           git diff --cached --quiet && exit 0
           git commit -m "fix(security): seal production npm dependency graph"
