@@ -43,10 +43,16 @@ def test_d9_s1a_graduation_qualification_routes_are_owned_by_graduation_core_rou
     assert not wrong, f"D9-S1a public owner drift: {wrong}"
 
 
-def test_d9_s1a_does_not_steal_certificate_routes_yet():
+def test_d9_s1a_graduation_core_never_owns_certificate_routes():
     owners = _owners()
-    legacy_owner = "app.modules.academic_affairs.routers.academic_affairs"
-    assert owners[("/academic-affairs/graduation-batches/{}/certificates/generate", ("POST",))] == legacy_owner
-    assert owners[("/academic-affairs/graduation-certificates", ("GET",))] == legacy_owner
-    assert owners[("/academic-affairs/graduation-certificates/{}/issue", ("POST",))] == legacy_owner
-    assert owners[("/academic-affairs/graduation-certificates/{}/void", ("POST",))] == legacy_owner
+    graduation_core_owner = "app.modules.academic_affairs.routers.graduation_core_router"
+    certificate_routes = {
+        ("/academic-affairs/graduation-batches/{}/certificates/generate", ("POST",)),
+        ("/academic-affairs/graduation-certificates", ("GET",)),
+        ("/academic-affairs/graduation-certificates/{}/issue", ("POST",)),
+        ("/academic-affairs/graduation-certificates/{}/void", ("POST",)),
+    }
+    missing = certificate_routes - set(owners)
+    assert not missing, f"certificate routes missing from public bundle: {sorted(missing)}"
+    stolen = {key: owners[key] for key in certificate_routes if owners[key] == graduation_core_owner}
+    assert not stolen, f"graduation core must not own certificate routes: {stolen}"
