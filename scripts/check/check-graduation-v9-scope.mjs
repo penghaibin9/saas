@@ -21,6 +21,7 @@ const CARD_ALLOW = {
     /^(?:frontend|student-portal|miniapp)\/package(?:-lock)?\.json$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_archive_batch_(?:scale|consistency)\.py$/,
     /^backend\/tests\/test_graduation_v9_u7_batch_production\.py$/,
+    /^backend\/tests\/test_graduation_v9_production_review_regressions\.py$/,
   ],
   M1: [
     /^frontend\/src\/modules\/graduation\/api\/graduation-batch-context\.js$/,
