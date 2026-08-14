@@ -1,0 +1,134 @@
+name: Cleanup runs before 2026-08-14 17:20 GMT+8
+
+on:
+  push:
+    branches:
+      - cleanup/actions-before-20260814-1720-r1
+    paths:
+      - .github/workflows/cleanup-actions-before-20260814-1720.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel and delete runs before cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.parse
+          import urllib.request
+          import urllib.error
+
+          repo = os.environ['REPO']
+          token = os.environ['GH_TOKEN']
+          current_run_id = int(os.environ['CURRENT_RUN_ID'])
+          cutoff = '2026-08-14T09:20:00Z'  # 2026-08-14 17:20 GMT+8
+          created_range = '1970-01-01T00:00:00Z..2026-08-14T09:19:59Z'
+          api = f'https://api.github.com/repos/{repo}'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'actions-run-cleanup',
+          }
+
+          def request(method, path, data=None):
+              body = None if data is None else json.dumps(data).encode()
+              req = urllib.request.Request(api + path, data=body, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      raw = resp.read()
+                      return resp.status, (json.loads(raw) if raw else None)
+              except urllib.error.HTTPError as e:
+                  raw = e.read().decode(errors='replace')
+                  if e.code in (404, 409, 422):
+                      return e.code, raw
+                  raise RuntimeError(f'{method} {path} -> {e.code}: {raw}')
+
+          def list_target_runs():
+              query = urllib.parse.urlencode({'per_page': 100, 'created': created_range})
+              status, payload = request('GET', f'/actions/runs?{query}')
+              if status != 200:
+                  raise RuntimeError(f'list runs failed: {status} {payload}')
+              runs = payload.get('workflow_runs', [])
+              return [r for r in runs if r.get('created_at', '') < cutoff and int(r['id']) != current_run_id]
+
+          deleted = 0
+          cancel_requested = 0
+          for round_no in range(1, 121):
+              runs = list_target_runs()
+              if not runs:
+                  print(f'No runs remain before cutoff after round {round_no}.')
+                  break
+
+              progress = False
+              for run in runs:
+                  rid = int(run['id'])
+                  status = run.get('status')
+                  if status != 'completed':
+                      code, _ = request('POST', f'/actions/runs/{rid}/cancel')
+                      if code in (202, 409):
+                          cancel_requested += 1
+                          progress = True
+                          print(f'cancel requested: {rid} status={status}')
+                  else:
+                      code, _ = request('DELETE', f'/actions/runs/{rid}')
+                      if code in (204, 404):
+                          deleted += 1
+                          progress = True
+                          print(f'deleted: {rid}')
+
+              if not progress:
+                  print('No progress this round; waiting for cancellations to settle.')
+              time.sleep(5)
+          else:
+              remaining = list_target_runs()
+              raise RuntimeError(f'Cleanup did not converge; remaining={len(remaining)}')
+
+          remaining = list_target_runs()
+          if remaining:
+              raise RuntimeError(f'Cleanup verification failed; remaining={len(remaining)}')
+
+          print(f'Cleanup verified. deleted={deleted}, cancel_requests={cancel_requested}')
+          PY
+
+      - name: Remove temporary cleanup branch
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ['REPO']
+          branch = os.environ['BRANCH']
+          token = os.environ['GH_TOKEN']
+          ref = urllib.parse.quote(f'heads/{branch}', safe='/')
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/git/refs/{ref}',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'actions-run-cleanup',
+              },
+              method='DELETE',
+          )
+          with urllib.request.urlopen(req, timeout=60) as resp:
+              print(f'deleted temporary branch {branch}: HTTP {resp.status}')
+          PY
