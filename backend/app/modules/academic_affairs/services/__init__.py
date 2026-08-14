@@ -202,3 +202,9 @@ academic_affairs_workload_stats_guard.install()
 from . import academic_affairs_graduation_stats_scale_guard
 
 academic_affairs_graduation_stats_scale_guard.install()
+
+# PR #101 生产复审：学生级统计下钻统一在 service 边界掩码学号并约束 page/pageSize；
+# 原查询、dataScope 与审计 owner 不变，考务/毕业继续由各自 canonical guard 持有。
+from . import academic_affairs_stats_privacy_guard
+
+academic_affairs_stats_privacy_guard.install()
