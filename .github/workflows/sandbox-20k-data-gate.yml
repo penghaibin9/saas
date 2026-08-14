@@ -273,7 +273,7 @@ jobs:
             SELECT "archive_batches", COUNT(*) FROM t_aa_archive_batch WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "archive_items", COUNT(*) FROM t_aa_archive_item WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "internship_distinct_advisors", COUNT(DISTINCT advisor_user_id) FROM t_internship_record WHERE tenant_id=1000000000000000007 AND is_deleted=0;
-            SELECT "graduation_mentors", COUNT(*) FROM t_gd_mentor WHERE tenant_id=1000000000000000007;
+            SELECT "graduation_mentors", COUNT(*) FROM t_gd_mentor WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "graduation_distinct_advisors", COUNT(DISTINCT mentor_id) FROM t_gd_student WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "employment_students", COUNT(*) FROM t_emp_student WHERE tenant_id=1000000000000000007 AND is_deleted=0;
             SELECT "employment_signed", COUNT(*) FROM t_emp_student WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND destination_type="SIGNED";
