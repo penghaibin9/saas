@@ -162,7 +162,12 @@ def list_archives(page: int, page_size: int, keyword=None, status=None, batch_id
         rows = db.scalars(q.order_by(GraduationArchiveRecord.id.desc())).all()
         items = []
         for a in rows:
-            stu = db.get(GraduationStudent, a.gd_student_id)
+            stu = db.scalars(select(GraduationStudent).where(
+                GraduationStudent.id == int(a.gd_student_id),
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+                GraduationStudent.record_status == "ACTIVE",
+            )).first()
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_row(a, stu))
@@ -392,7 +397,12 @@ def preview_batch_file(batch_id=None) -> dict:
         colleges: set[str] = set()
         has_abnormal = False
         for a in subs:
-            stu = db.get(GraduationStudent, a.gd_student_id)
+            stu = db.scalars(select(GraduationStudent).where(
+                GraduationStudent.id == int(a.gd_student_id),
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+                GraduationStudent.record_status == "ACTIVE",
+            )).first()
             if not stu or not can_access_student(db, stu) or stu.batch_id != batch.id:
                 skip_reasons["out_of_scope"] += 1
                 continue

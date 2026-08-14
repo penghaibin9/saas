@@ -48,7 +48,13 @@ def _json_hash(value) -> str:
 
 
 def _batch_rules(db, student: GraduationStudent) -> dict:
-    batch = db.get(GraduationBatch, student.batch_id) if student.batch_id else None
+    batch = None
+    if student.batch_id:
+        batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.id == int(student.batch_id),
+            GraduationBatch.tenant_id == _tid(),
+            GraduationBatch.is_deleted.is_(False),
+        )).first()
     rules = (batch.rules_config or {}) if batch else {}
     archive = rules.get("archive") if isinstance(rules, dict) else None
     return archive if isinstance(archive, dict) else {}
