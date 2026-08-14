@@ -14,7 +14,6 @@ from typing import Iterable
 from sqlalchemy import delete, or_, select
 
 from app.core.field_crypto import encrypt_sensitive, hash_sensitive
-from app.core.security import hash_password
 from app.services.sandbox_school_blueprint import (
     COLLEGE_MAJOR_BLUEPRINT,
     EXPECTED_CLASS_COUNT,
@@ -31,6 +30,10 @@ from app.services.sandbox_school_blueprint import (
     student_name,
     student_no,
 )
+from app.services.sandbox_school_credentials import (
+    opaque_background_password_hash,
+    public_account_password_hashes,
+)
 
 SCHOOL_NAME = "跃科职业技术学院（演示）"
 SCHOOL_SHORT_NAME = "跃科职院"
@@ -39,7 +42,6 @@ GENERATED_LOGIN_PREFIXES = (
     "2024S", "2025S", "2026S",
     "sbx_t", "sbx_c", "sbx_aa", "sbx_sa", "sbx_im", "sbx_gm",
 )
-STUDENT_BACKGROUND_PASSWORD = "Sbx@2026!"
 
 ROLE_SPECS = (
     ("SCHOOL_ADMIN", "学校管理员"),
@@ -149,8 +151,8 @@ def _ensure_tenant_and_brand(db, tenant_id: int) -> None:
 def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
     """初始化沙箱系统角色和 3 个公开体验账号。
 
-    公开体验账号仍属于固定 sandbox-school 的确定性身份种子，但不再新增第四个生产 User(...)
-    构造入口；和 20K 背景账号一样通过表级批量写入，账号创建治理门禁继续保持冻结。
+    公开体验账号仍属于固定 sandbox-school 的确定性身份种子，但凭据必须由部署环境注入；
+    和 20K 背景账号一样通过表级批量写入，账号创建治理门禁继续保持冻结。
     """
     from app.models import Role, User, UserRole
 
@@ -182,7 +184,7 @@ def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
         ("teacher2", "王老师", "TEACHER", "COUNSELOR"),
         ("student2", "李体验", "STUDENT", "STUDENT"),
     )
-    fixed_hash = hash_password("123456")
+    fixed_hashes = public_account_password_hashes()
     existing = {
         row.login_name: row
         for row in db.scalars(select(User).where(
@@ -195,7 +197,7 @@ def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
             "tenant_id": tenant_id,
             "login_name": login,
             "real_name": name,
-            "password_hash": fixed_hash,
+            "password_hash": fixed_hashes[login],
             "user_type": user_type,
             "status": "ACTIVE",
             "must_change_password": False,
@@ -216,7 +218,7 @@ def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
     for login, name, user_type, role_code in fixed:
         user = users[login]
         user.real_name = name
-        user.password_hash = fixed_hash
+        user.password_hash = fixed_hashes[login]
         user.user_type = user_type
         user.status = "ACTIVE"
         user.must_change_password = False
@@ -242,7 +244,7 @@ def _ensure_roles_and_fixed_accounts(db, tenant_id: int) -> dict[str, int]:
 def _seed_staff_accounts(db, tenant_id: int, role_ids: dict[str, int]) -> dict[str, list[tuple[int, str, str]]]:
     from app.models import User, UserRole
 
-    shared_hash = hash_password(STUDENT_BACKGROUND_PASSWORD)
+    shared_hash = opaque_background_password_hash()
     user_rows: list[dict] = []
     role_by_login: dict[str, str] = {}
     global_seq = 1
@@ -483,7 +485,7 @@ def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int
         })
     _bulk_insert(db, StudentContact, contact_rows, chunk_size=500)
 
-    shared_hash = hash_password(STUDENT_BACKGROUND_PASSWORD)
+    shared_hash = opaque_background_password_hash()
     account_rows: list[dict] = []
     for item in specs:
         if item["student_no"] == "2026S0001":
