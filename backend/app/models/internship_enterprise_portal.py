@@ -52,8 +52,9 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
     enterprise_access_end_at: Mapped[datetime | None] = mapped_column(DateTime)
     enterprise_confirm_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     application_material_policy_json: Mapped[dict | None] = mapped_column(JSON)
-    teacher_confirm_sla_hours: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="企业 ACCEPT_INTENT 后学校确认 SLA；NULL 按服务默认 72 小时"
+    teacher_confirm_sla_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=48,
+        comment="企业 ACCEPT_INTENT 后学校确认 SLA；冻结范围 1-168 小时",
     )
     remark: Mapped[str | None] = mapped_column(String(500))
 
