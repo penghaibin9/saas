@@ -169,6 +169,8 @@ def build_router() -> APIRouter:
     _mount_routes(router, textbook_core_module.router)
     archive_core_module = importlib.import_module(f"{__package__}.archive_core_router")
     _mount_routes(router, archive_core_module.router)
+    stats_core_module = importlib.import_module(f"{__package__}.stats_core_router")
+    _mount_routes(router, stats_core_module.router)
     _mount_routes(
         router,
         base_router.router,
