@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, or_, select
 
 from app.models import GraduationArchiveRecord, GraduationStudent
+from app.modules.graduation.services.graduation_archive_data_quality import identity_anomaly_reasons
 from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 from app.services.db_service import _tid, session
 
@@ -11,16 +12,20 @@ def _row(archive, student):
     from app.modules.graduation.services import graduation_archive_service as service
 
     item = service._row(archive, student)
-    reasons = []
+    reasons = identity_anomaly_reasons(student)
     if not str(student.name or "").strip():
-        reasons.append("学生姓名缺失")
         item["studentName"] = "历史数据异常（姓名缺失）"
     if not str(student.student_no or "").strip():
-        reasons.append("学号缺失")
         item["studentNo"] = "历史数据异常（学号缺失）"
     item["dataAnomaly"] = bool(reasons)
     item["anomalyReasons"] = reasons
     if reasons:
+        # 仅改变读模型展示，不篡改数据库真实状态。前端现有状态按钮条件会自然失效，
+        # 同时服务端写守卫提供最终 fail-closed，避免只靠隐藏按钮。
+        item["status"] = "DATA_ANOMALY"
+        item["statusLabel"] = "历史数据异常 · 只读"
+        item["statusTone"] = "danger"
+        item["missingItems"] = list(dict.fromkeys([*(item.get("missingItems") or []), *reasons]))
         item["allowedActions"] = []
     return item
 

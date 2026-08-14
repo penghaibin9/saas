@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, not_found
 from app.models import (
     FileObject,
     GraduationArchiveRecord,
@@ -31,6 +31,10 @@ from app.models import (
     GraduationStudent,
     GraduationTaskBook,
     PortalSignRecord,
+)
+from app.modules.graduation.services.graduation_archive_data_quality import (
+    identity_anomaly_reasons,
+    readonly_missing_markers,
 )
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, can_access_student
 from app.services.db_service import _iso, _tid, session
@@ -280,12 +284,18 @@ def _snapshot(db, batch: GraduationBatch, mode: str, *, lock: bool = False) -> d
         if mode == "FILE" and (not archive or archive.status != "SUBMITTED"):
             continue
         checklist, missing = svc._check_completeness(db, student)
+        anomaly_reasons = identity_anomaly_reasons(student)
+        readonly_markers = readonly_missing_markers(student)
         result.append({
             "studentId": str(student.id), "studentVersion": int(student.version or 0),
             "archiveId": str(archive.id) if archive else None,
             "archiveVersion": int(archive.version or 0) if archive else 0,
             "archiveStatus": archive.status if archive else "NOT_GENERATED",
-            "missing": missing, "openRisks": svc._count_open_risks(db, student),
+            # dirty-data rows stay in the signed snapshot for visibility/audit, but are
+            # deliberately made non-executable. This also makes V2 batch_file skip them.
+            "missing": list(dict.fromkeys([*missing, *readonly_markers])),
+            "dataAnomaly": bool(anomaly_reasons), "anomalyReasons": anomaly_reasons,
+            "openRisks": svc._count_open_risks(db, student),
             "manifestHash": manifest_payload(db, student, "PREVIEW")["manifestHash"],
         })
     return {"mode": mode, "batchId": str(batch.id), "rows": result}
@@ -299,7 +309,10 @@ def _preview(mode: str, batch_id) -> dict:
         skip_reasons: dict[str, int] = {}
         for row in snapshot["rows"]:
             reasons = []
-            if row["missing"]:
+            if row.get("dataAnomaly"):
+                reasons.append("dirty_data")
+            real_missing = [m for m in row["missing"] if not str(m).startswith("历史主档异常：")]
+            if real_missing:
                 reasons.append("missing_materials")
             if row["openRisks"] > 0:
                 reasons.append("open_risks")
@@ -307,8 +320,11 @@ def _preview(mode: str, batch_id) -> dict:
                 reasons.append("already_submitted")
             for reason in reasons:
                 skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
-        executable = sum(1 for row in snapshot["rows"] if not row["missing"] and row["openRisks"] == 0
-                         and (mode != "GENERATE" or row["archiveStatus"] not in ("SUBMITTED", "FILED")))
+        executable = sum(
+            1 for row in snapshot["rows"]
+            if not row["missing"] and not row.get("dataAnomaly") and row["openRisks"] == 0
+            and (mode != "GENERATE" or row["archiveStatus"] not in ("SUBMITTED", "FILED"))
+        )
         payload = _token_payload(mode, batch, snapshot)
         return {
             "batchId": str(batch.id), "batchName": batch.batch_name,
@@ -351,9 +367,22 @@ def batch_generate_submit(batch_id=None, preview_token: str | None = None) -> di
         batch = svc._require_batch(db, batch_id)
         snapshot = _snapshot(db, batch, "GENERATE", lock=True)
         _verify_token(preview_token, _token_payload("GENERATE", batch, snapshot))
-        submitted = skipped = 0
+        submitted = skipped = dirty_skipped = 0
         for snap in snapshot["rows"]:
-            student = db.get(GraduationStudent, int(snap["studentId"]))
+            if snap.get("dataAnomaly"):
+                skipped += 1
+                dirty_skipped += 1
+                continue
+            student = db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.batch_id == batch.id,
+                GraduationStudent.id == int(snap["studentId"]),
+                GraduationStudent.record_status == "ACTIVE",
+                GraduationStudent.is_deleted.is_(False),
+            )).first()
+            if not student:
+                skipped += 1
+                continue
             archive = svc._get_or_create(db, student, for_update=True)
             if archive.status in ("FILED", "SUBMITTED"):
                 skipped += 1
@@ -369,11 +398,16 @@ def batch_generate_submit(batch_id=None, preview_token: str | None = None) -> di
                 archive.submitted_at = datetime.now(timezone.utc)
                 submitted += 1
             archive.version = int(archive.version or 0) + 1
-        svc._audit(db, f"batch-gen-{batch.id}", "批量生成并提交归档",
-                   detail=f"batchId={batch.id};submitted={submitted};skipped={skipped};preview={_json_hash(snapshot)}")
+        svc._audit(
+            db, f"batch-gen-{batch.id}", "批量生成并提交归档",
+            detail=(f"batchId={batch.id};submitted={submitted};skipped={skipped};"
+                    f"dirtySkipped={dirty_skipped};preview={_json_hash(snapshot)}"),
+        )
         db.commit()
-        return {"submitted": submitted, "skipped": skipped, "batchId": str(batch.id),
-                "batchName": batch.batch_name}
+        return {
+            "submitted": submitted, "skipped": skipped, "dirtySkipped": dirty_skipped,
+            "batchId": str(batch.id), "batchName": batch.batch_name,
+        }
 
 
 def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token: str | None = None) -> dict:
@@ -386,8 +420,22 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
         archive_no = archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}"
         filed = skipped = 0
         for snap in snapshot["rows"]:
-            student = db.get(GraduationStudent, int(snap["studentId"]))
-            archive = db.get(GraduationArchiveRecord, int(snap["archiveId"]))
+            if snap.get("dataAnomaly"):
+                skipped += 1
+                continue
+            student = db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.batch_id == batch.id,
+                GraduationStudent.id == int(snap["studentId"]),
+                GraduationStudent.record_status == "ACTIVE",
+                GraduationStudent.is_deleted.is_(False),
+            )).first()
+            archive = db.scalars(select(GraduationArchiveRecord).where(
+                GraduationArchiveRecord.tenant_id == _tid(),
+                GraduationArchiveRecord.id == int(snap["archiveId"] or 0),
+                GraduationArchiveRecord.gd_student_id == int(snap["studentId"]),
+                GraduationArchiveRecord.is_deleted.is_(False),
+            )).first()
             if not student or not archive or archive.status != "SUBMITTED":
                 skipped += 1
                 continue

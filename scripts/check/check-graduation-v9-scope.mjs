@@ -76,8 +76,12 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/GraduationDefenseGrade(?:Form)?View\.vue$/,
   ],
   U7: [
+    /^backend\/app\/modules\/graduation\/routers\/graduation_archive_sensitive_router\.py$/,
     /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
-    /^backend\/app\/modules\/graduation\/services\/graduation_archive_read_service\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_archive_(?:read_service|consistency|data_quality)\.py$/,
+    /^backend\/tests\/test_graduation_v9_u7_archive_dirty_data\.py$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationRiskArchiveView\.vue$/,
+    /^frontend\/tests\/graduation\.v9-archive-workbench\.contract\.test\.mjs$/,
   ],
 }
 
