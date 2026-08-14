@@ -84,6 +84,10 @@ def build_router() -> APIRouter:
     # 对 ARCHIVED 学期 fail-closed；精确 V2 入口必须先于历史大 Router 的旧 Pydantic 模型。
     grade_task_create_module = importlib.import_module(f"{__package__}.grade_task_create_v2_router")
     _mount_routes(router, grade_task_create_module.router)
+    # D8-S1：成绩任务主链 Move Only。POST /grade-tasks 继续由上方稳定身份 V2 owner 持有；
+    # 动态分项、移动录分、更正/复查与成绩读侧视图留在既有 owner/后续 D8 子批次。
+    grade_core_module = importlib.import_module(f"{__package__}.grade_core_router")
+    _mount_routes(router, grade_core_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
     # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
