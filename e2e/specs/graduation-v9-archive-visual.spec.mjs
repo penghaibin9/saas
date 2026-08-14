@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 async function dismissGuide(page, { waitForArrival = false } = {}) {
@@ -27,13 +28,16 @@ async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 }
 
-async function capture(page, testInfo, name, width, height) {
+async function capture(page, testInfo, name, width, height, goldMasks = []) {
   await page.setViewportSize({ width, height })
   await dismissGuide(page)
   await settle(page)
   const path = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path, contentType: 'image/png' })
+  await captureGoldCandidate(page, testInfo, {
+    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+  })
   return path
 }
 
@@ -83,8 +87,12 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
     const exactTab = expectedTabForMissingItem(missingLabel)
     expect(exactTab, `U7 missing item must have an exact deep-link mapping: ${missingLabel}`).not.toBe('')
 
-    await capture(page, testInfo, 'gd-U7-archive-B', 1440, 900)
-    await capture(page, testInfo, 'gd-U7-archive-B', 1280, 800)
+    const goldMasks = [
+      page.locator('.gbs__select'),
+      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle]),
+    ]
+    await capture(page, testInfo, 'gd-U7-archive-B', 1440, 900, goldMasks)
+    await capture(page, testInfo, 'gd-U7-archive-B', 1280, 800, goldMasks)
 
     // U7 exact deep-link: exact student + batch + source + clicked missing-item destination.
     await fixButton.click()
@@ -106,12 +114,23 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
     // the fixture's unique topic proves the intended student loaded without violating PII UI rules.
     await expect(page.locator('body')).toContainText(fixture.topicTitle)
 
+    const environment = await goldEnvironment(page, testInfo)
     const metaPath = testInfo.outputPath('gd-U7-archive-B-meta.json')
     await fs.writeFile(metaPath, JSON.stringify({
       phase: 'B',
       card: 'U7',
-      head: process.env.GITHUB_SHA || 'local',
+      head: environment.goldHead,
+      goldHead: environment.goldHead,
+      tenant: config.sandboxAdmin.tenant,
+      role: 'SCHOOL_ADMIN',
       batchId: fixture.batchId,
+      route: `/admin/graduation/risk-archive?panel=archive&batchId=${fixture.batchId}`,
+      fixtureVersion: { runId: fixture.runId, gdStudentId: fixture.gdStudentId, studentNo: fixture.studentNo },
+      browserProject: environment.browserProject,
+      deviceScaleFactor: environment.deviceScaleFactor,
+      language: environment.language,
+      fontEnvironment: environment.fontEnvironment,
+      dynamicZones: ['security-watermark', 'run-scoped-batch-label', 'run-scoped-topic-title'],
       gdStudentId: fixture.gdStudentId,
       studentNo: fixture.studentNo,
       source: 'archive',

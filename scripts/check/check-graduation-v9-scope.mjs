@@ -138,6 +138,14 @@ const CARD_ALLOW = {
     /^miniapp\/src\/pages\/teacher\/graduation-guide\/index\.vue$/,
     /^miniapp\/tests\/graduation\.v9-cross-end-count\.contract\.test\.mjs$/,
   ],
+  U11: [
+    /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^e2e\/lib\/graduation-gold\.mjs$/,
+    /^e2e\/gold\/graduation-gold-stability\.css$/,
+    /^e2e\/specs\/graduation-v9-(?:dashboard|final-review|process|archive|teacher-mobile)-visual\.spec\.mjs$/,
+    /^e2e\/specs\/graduation-v9-(?:dashboard|final-review|process|archive|teacher-mobile)-visual\.spec\.mjs-snapshots\/[^/]+\.png$/,
+    /^e2e\/gold\/graduation-v9-gold-manifest\.json$/,
+  ],
 }
 
 const ALWAYS_DENY = [

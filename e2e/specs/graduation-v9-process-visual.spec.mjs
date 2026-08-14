@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const BACKEND_DIR = fileURLToPath(new URL('../../backend/', import.meta.url))
@@ -79,13 +80,16 @@ async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 }
 
-async function capture(page, testInfo, name, width, height) {
+async function capture(page, testInfo, name, width, height, goldMasks = []) {
   await page.setViewportSize({ width, height })
   await dismissGuide(page)
   await settle(page)
   const path = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path, contentType: 'image/png' })
+  await captureGoldCandidate(page, testInfo, {
+    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+  })
   return path
 }
 
@@ -149,15 +153,30 @@ test.describe.serial('V9.2 U4 · process WorkContext production evidence', () =>
     await expectProcessContext(page, target, fixture.batchId)
     await expect(page.locator('.gp-panel')).toContainText(guidanceText)
 
-    await capture(page, testInfo, 'gd-U4-process-B', 1440, 900)
-    await capture(page, testInfo, 'gd-U4-process-B', 1280, 800)
+    const goldMasks = [
+      page.locator('.gbs__select'),
+      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, guidanceText, fixture.topicTitle]),
+    ]
+    await capture(page, testInfo, 'gd-U4-process-B', 1440, 900, goldMasks)
+    await capture(page, testInfo, 'gd-U4-process-B', 1280, 800, goldMasks)
 
+    const environment = await goldEnvironment(page, testInfo)
     const metaPath = testInfo.outputPath('gd-U4-process-B-meta.json')
     await fs.writeFile(metaPath, JSON.stringify({
       phase: 'B',
       card: 'U4',
-      head: process.env.GITHUB_SHA || 'local',
+      head: environment.goldHead,
+      goldHead: environment.goldHead,
+      tenant: config.mentor.tenant,
+      role: 'GD_MENTOR',
       batchId: fixture.batchId,
+      route: `/admin/graduation/process?batchId=${fixture.batchId}&studentId=${target.targetId}&panel=${CONTEXT.panel}&queue=${CONTEXT.queue}&source=${CONTEXT.source}`,
+      fixtureVersion: { runId: fixture.runId, gdStudentId: fixture.gdStudentId, targetSeedCount: target.count },
+      browserProject: environment.browserProject,
+      deviceScaleFactor: environment.deviceScaleFactor,
+      language: environment.language,
+      fontEnvironment: environment.fontEnvironment,
+      dynamicZones: ['security-watermark', 'run-scoped-batch-label', 'run-scoped-guidance-text'],
       targetIndex: target.targetIndex,
       targetId: target.targetId,
       studentNo: target.studentNo,

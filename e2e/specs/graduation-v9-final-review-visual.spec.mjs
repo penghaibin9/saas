@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process'
+import fs from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
@@ -46,7 +48,7 @@ async function expectDecisionAboveFold(page) {
   }
 }
 
-async function attachScreenshot(page, testInfo, name, width, height) {
+async function attachScreenshot(page, testInfo, name, width, height, goldMasks = []) {
   await page.setViewportSize({ width, height })
   await dismissGuide(page)
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
@@ -54,6 +56,9 @@ async function attachScreenshot(page, testInfo, name, width, height) {
   const output = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path: output, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path: output, contentType: 'image/png' })
+  await captureGoldCandidate(page, testInfo, {
+    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+  })
 }
 
 test.describe.serial('V9.2 U3 · final review production visual', () => {
@@ -165,7 +170,36 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
 
-    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1440, 900)
-    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1280, 800)
+    const goldMasks = [
+      page.locator('.gbs__select'),
+      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle]),
+    ]
+    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1440, 900, goldMasks)
+    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1280, 800, goldMasks)
+
+    const environment = await goldEnvironment(page, testInfo)
+    const metaPath = testInfo.outputPath('gd-U3-final-B-meta.json')
+    await fs.writeFile(metaPath, JSON.stringify({
+      phase: 'B',
+      card: 'U3',
+      head: environment.goldHead,
+      goldHead: environment.goldHead,
+      tenant: config.mentor.tenant,
+      role: 'GD_MENTOR',
+      batchId: fixture.batchId,
+      route: `/admin/graduation/finals?batchId=${fixture.batchId}&tab=PENDING_REVIEW`,
+      fixtureVersion: {
+        runId: fixture.runId,
+        gdStudentId: fixture.gdStudentId,
+        studentNo: fixture.studentNo,
+      },
+      browserProject: environment.browserProject,
+      deviceScaleFactor: environment.deviceScaleFactor,
+      language: environment.language,
+      fontEnvironment: environment.fontEnvironment,
+      dynamicZones: ['security-watermark', 'run-scoped-batch-label', 'run-scoped-topic-title'],
+      viewports: [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]
+    }, null, 2), 'utf8')
+    await testInfo.attach('gd-U3-final-B-meta', { path: metaPath, contentType: 'application/json' })
   })
 })
