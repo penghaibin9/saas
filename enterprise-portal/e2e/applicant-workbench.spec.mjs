@@ -1,0 +1,99 @@
+import { test, expect } from '@playwright/test'
+
+const ok = (data) => ({ code: 0, message: 'ok', data })
+
+async function installEnterpriseApi(page, { released = false } = {}) {
+  await page.route('**/api/v1/enterprise/internship/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const path = url.pathname
+
+    if (path.endsWith('/context')) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          schoolName: '长沙职业技术学院',
+          companyName: '中联重科股份有限公司',
+          memberName: '企业HR',
+          memberRole: 'HR',
+          campaign: {
+            id: '2027-spring',
+            name: '2027届春季岗位实习双选季',
+            status: 'OPEN',
+            phaseLabel: '企业处理报名学生',
+            enterpriseDecisionDeadline: '2027-03-20 18:00',
+          },
+          capabilities: { recruitmentWrite: true },
+        })),
+      })
+    }
+
+    if (path.endsWith('/applications')) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          counts: { ALL: 2, PENDING: 1, INTERESTED: 0, INTERVIEW: 1, ACCEPT_INTENT: 0, REJECTED: 0 },
+          items: [
+            { applicationId: '501', name: '张三', major: '机械制造及自动化', grade: '2025级', positionName: '机械装配技术实习生', volunteerNo: 1, skillTags: ['CAD', '数控', '装配'], matchPercent: 95, appliedAt: '03-06 10:21' },
+            { applicationId: '502', name: '李四', major: '机电一体化', grade: '2025级', positionName: '自动化维护实习生', volunteerNo: 2, skillTags: ['PLC'], matchPercent: 88, appliedAt: '03-06 11:15' },
+          ],
+        })),
+      })
+    }
+
+    if (path.endsWith('/applications/501')) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          id: '501',
+          name: '张三',
+          major: '机械制造及自动化',
+          grade: '2025级',
+          positionName: '机械装配技术实习生',
+          volunteerNo: 1,
+          appliedAt: '03-06 10:21',
+          matchPercent: 95,
+          studentVerified: true,
+          volunteerGroupStatus: released ? 'NEEDS_REVISION' : 'SUBMITTED',
+          releaseReason: released ? 'TEACHER_CONFIRM_TIMEOUT' : '',
+          acceptIntentReleased: released,
+          decisionStatus: released ? 'ACCEPT_INTENT' : 'INTERVIEW',
+          contactPolicy: { allowed: false, maskedValue: '138****5678' },
+          materialSnapshot: {
+            applicationStatement: '具备机械装配实训经验，希望从事智能制造方向。',
+            skillTags: ['CAD', '数控', '装配'],
+            projects: [{ id: 'p1', title: '数控加工综合实训', description: '完成工艺编制与加工验证', verificationStatus: 'VERIFIED' }],
+            certificates: [{ id: 'c1', title: '数控车工技能证书', verificationStatus: 'VERIFIED' }],
+          },
+          decisionHistory: [{ id: 'd1', status: 'INTERVIEW', effectStatus: 'ACTIVE', at: '03-08 14:00' }],
+        })),
+      })
+    }
+
+    return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 404001, message: 'test route missing' }) })
+  })
+}
+
+test('A02-6 BOSS-style applicant workbench keeps snapshot privacy boundary', async ({ page }) => {
+  await installEnterpriseApi(page)
+  await page.goto('applications')
+
+  await expect(page.getByRole('heading', { name: '报名学生' })).toBeVisible()
+  await expect(page.getByText('张三', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('岗位申请说明')).toBeVisible()
+  await expect(page.getByText('学校已核验').first()).toBeVisible()
+  await expect(page.getByText('138****5678')).toBeVisible()
+  await expect(page.getByRole('button', { name: '联系方式未授权' })).toBeDisabled()
+  await expect(page.getByText('身份证')).toHaveCount(0)
+  await expect(page.getByText('其他志愿')).toHaveCount(0)
+
+  await page.screenshot({ path: 'test-results/a02-applicant-workbench.png', fullPage: true })
+})
+
+test('A02-7 released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
+  await installEnterpriseApi(page, { released: true })
+  await page.goto('applications/501')
+
+  await expect(page.getByText('学校未在确认期限内完成最终确认，本次拟接收已释放，申请状态可能发生变化。历史 Decision 仍保留在处理记录。')).toBeVisible()
+  await expect(page.getByText('已录用')).toHaveCount(0)
+})
