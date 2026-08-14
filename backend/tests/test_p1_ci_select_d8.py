@@ -1,4 +1,4 @@
-"""D8：成绩 Router 变更必须永久拉起 owner 合同。"""
+"""D8：成绩 Router 变更必须永久拉起 owner 与并发合同。"""
 from __future__ import annotations
 
 import importlib.util
@@ -15,14 +15,18 @@ def _load():
     return mod
 
 
-def test_d8_grade_router_changes_select_both_owner_contracts():
+def test_d8_grade_router_changes_select_all_owner_and_concurrency_contracts():
     mod = _load()
     for path in (
         "backend/app/modules/academic_affairs/routers/grade_core_router.py",
         "backend/app/modules/academic_affairs/routers/grade_read_router.py",
+        "backend/app/modules/academic_affairs/routers/grade_change_recheck_router.py",
     ):
         targets = mod.select([path])
         assert "tests/test_aa_grade_core_router_contract.py" in targets
         assert "tests/test_aa_grade_read_router_contract.py" in targets
+        assert "tests/test_aa_grade_change_recheck_router_contract.py" in targets
+        assert "tests/test_aa_grade_identity_head_concurrency.py" in targets
+        assert "tests/test_aa_grade_recheck_concurrency.py" in targets
         assert "tests/test_aa_p0_authz.py" in targets
         assert "tests/test_aa_route_registration_main_compat.py" in targets
