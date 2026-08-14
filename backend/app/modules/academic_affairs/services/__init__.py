@@ -155,6 +155,12 @@ from . import academic_affairs_roster_export_guard
 
 academic_affairs_roster_export_guard.install()
 
+# 学籍更正高频台账只读收口：SQL count/page + STUDENT/SELF 精确到人，
+# 创建、材料、敏感字段加密和审核命令仍由既有 canonical service 持有。
+from . import academic_affairs_roster_correction_read_guard
+
+academic_affairs_roster_correction_read_guard.install()
+
 # 注册管理高频读侧继续复用原事实与写链，仅把资格/异常/暂缓改为 SQL 真分页，
 # 并保持 STUDENT/SELF 精确到人的 fail-closed dataScope，禁止扩大到整班。
 from . import academic_affairs_registration_read_guard
