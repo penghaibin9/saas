@@ -18,6 +18,7 @@ export const STATUS_LABEL = {
   IN_REVIEW: '审批中',
   RETURNED: '已退回',
   REJECTED: '已驳回',
+  APPROVED_PENDING_EFFECTIVE: '已通过·待生效',
   EFFECTIVE: '已生效'
 }
 
@@ -47,7 +48,8 @@ export function statusColor(status) {
   switch (status) {
     case 'EFFECTIVE': return 'success'
     case 'REJECTED': return 'danger'
-    case 'RETURNED': return 'warning'
+    case 'RETURNED':
+    case 'APPROVED_PENDING_EFFECTIVE': return 'warning'
     case 'IN_REVIEW':
     case 'SUBMITTED': return 'primary'
     default: return 'default'

@@ -36,10 +36,21 @@ def _seed_granted(sid, n=2):
             student_status="NORMAL", status="ACTIVE", is_deleted=False, version=0,
         )
         db.add(other); db.flush(); student_ids.append(int(other.id))
-    for student_id in student_ids:
-        db.add(FundingApplication(tenant_id=TID, batch_id=b.id, student_id=student_id,
-                                  apply_source="SELF", project_type="GRANT", amount=3300,
-                                  status="GRANTED", is_deleted=False, version=0))
+    applications = [
+        FundingApplication(
+            tenant_id=TID, batch_id=b.id, student_id=student_id,
+            apply_source="SELF", project_type="GRANT", amount=3300,
+            status="PUBLICITY", is_deleted=False, version=0,
+        )
+        for student_id in student_ids
+    ]
+    db.add_all(applications)
+    # 真实迁移禁止 INSERT 直接伪造 GRANTED。先落 PUBLICITY，再让 MySQL 的
+    # package-10 trigger 执行正式的 PUBLICITY→GRANTED 金额/额度原子占用约束。
+    db.flush()
+    for application in applications:
+        application.status = "GRANTED"
+    db.flush()
     db.commit()
     bid = b.id
     db.close()

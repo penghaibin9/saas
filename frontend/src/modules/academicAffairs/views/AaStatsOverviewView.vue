@@ -697,7 +697,7 @@ export default {
       this.detail.loading = false
     },
     async viewWorkloadDetail(row) {
-      const res = await academicAffairsApi.getStatsWorkloadDetail({ teacherKey: row.teacherKey, collegeId: this.filters.collegeId || undefined, page: 1, pageSize: 20 })
+      const res = await academicAffairsApi.getStatsWorkloadDetail({ teacherKey: row.teacherKey, termId: this.filters.termId || undefined, collegeId: this.filters.collegeId || undefined, page: 1, pageSize: 20 })
       if (res.code !== 0) {
         toast.error(res.message || '加载失败')
         return

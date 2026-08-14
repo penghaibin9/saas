@@ -21,6 +21,20 @@
         </AppDescriptionList>
       </AppSectionCard>
 
+      <AppSectionCard title="申请材料">
+        <div v-if="materialsLoading" class="mp-note">正在读取正式申请材料…</div>
+        <AppInlineAlert v-else-if="materialsError" type="warning" :message="materialsError" />
+        <div v-else-if="materials.length" class="aa-materials">
+          <FilePreviewer
+            v-for="file in materials"
+            :key="file.bindingId || file.fileId"
+            :file="file"
+            @error="onFileError"
+          />
+        </div>
+        <p v-else class="mp-note">本异动未提交申请材料。</p>
+      </AppSectionCard>
+
       <AppSectionCard title="审批流程">
         <ol class="aa-flow">
           <li v-for="(n, i) in flowNodes" :key="n" class="aa-flow__node" :class="nodeState(i)">
@@ -37,8 +51,9 @@
           <AppButton @click="openReturn">退回</AppButton>
           <AppButton variant="danger" @click="openReject">驳回</AppButton>
         </div>
-        <p class="mp-note">驳回 / 退回原因必填且不少于 5 字。终审「通过」后异动即刻生效并写入学籍主档。</p>
+        <p class="mp-note">{{ reviewHint }}</p>
       </AppSectionCard>
+      <AppInlineAlert v-else-if="isPendingEffective" type="info" :message="pendingEffectiveMessage" />
       <AppInlineAlert v-else-if="!isActive(change.status)" type="info" :message="`本异动已${statusLabel(change.status)}，无需再审批。`" />
     </div>
 
@@ -57,23 +72,33 @@
 </template>
 
 <script>
-/** 学籍异动详情 + 审批（/admin/academic-affairs/status-changes/:id）：GET + POST review。 */
+/** 学籍异动详情 + 审批。材料只从正式 AA_STATUS_CHANGE FileBinding 枚举；
+ *  每次预览/下载仍交公共文件中心 resolver 重新做异动 dataScope 与审批权限裁决。
+ *  future-effective 只做展示语义：终审待生效仍由既有 temporal guard/worker 掌握写事实。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton } from '@/components/common'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { statusChangeConvenienceApi } from '@/modules/academicAffairs/api/status-change-convenience.api'
+import { fileSdk } from '@/services/file/fileSdk'
 import { STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
 import { toast } from '@/utils/toast'
 
+const PENDING_EFFECTIVE = 'APPROVED_PENDING_EFFECTIVE'
+
 export default {
   name: 'AaStatusChangeDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton, FilePreviewer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
       change: null,
+      materialsLoading: false,
+      materialsError: '',
+      materials: [],
       dlg: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
     }
   },
@@ -84,8 +109,24 @@ export default {
       if (!this.change || !this.change.currentNode) return -1
       return this.flowNodes.indexOf(this.change.currentNode)
     },
+    isPendingEffective() {
+      return this.change?.status === PENDING_EFFECTIVE
+    },
+    workflowFinished() {
+      return this.change?.status === 'EFFECTIVE' || this.isPendingEffective
+    },
     canReview() {
       return this.change && isActive(this.change.status) && this.currentIndex >= 0
+    },
+    reviewHint() {
+      if (this.change?.effectiveDate) {
+        return `本申请设置指定生效时间 ${this.change.effectiveDate}。终审通过时若该时间仍在未来，将先进入「已通过·待生效」，当前学籍不会提前改写；若已到期则按正式异动链生效。驳回 / 退回原因必填且不少于 5 字。`
+      }
+      return '驳回 / 退回原因必填且不少于 5 字。终审「通过」后立即生效并写入学籍主档。'
+    },
+    pendingEffectiveMessage() {
+      const at = this.change?.effectiveDate || '指定时间'
+      return `终审已经通过，当前学籍尚未变更；系统将在 ${at} 到期后由既有 future-effective 任务正式生效。`
     },
     descItems() {
       const c = this.change
@@ -95,10 +136,10 @@ export default {
         { label: '异动类型', value: c.changeTypeLabel },
         { label: '状态变化', value: `${c.fromStatus} → ${c.toStatus}` },
         { key: 'status', label: '当前状态', value: c.status },
-        { label: '当前节点', value: this.nodeLabel(c.currentNode) }
+        { label: '当前节点', value: this.nodeLabel(c.currentNode) },
+        { label: '生效方式', value: c.effectiveDate ? `指定日期 · ${c.effectiveDate}` : '终审通过立即生效' }
       ]
       if (c.expireDate) items.push({ label: '休学到期', value: c.expireDate })
-      if (c.effectiveDate) items.push({ label: '生效日期', value: c.effectiveDate })
       items.push({ label: '申请原因', value: c.reason || '（无）', span: 2 })
       return items
     }
@@ -112,13 +153,13 @@ export default {
     isActive,
     nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
     nodeState(i) {
-      if (this.change && this.change.status === 'EFFECTIVE') return 'is-done'
+      if (this.workflowFinished) return 'is-done'
       if (i < this.currentIndex) return 'is-done'
       if (i === this.currentIndex) return 'is-current'
       return 'is-todo'
     },
     nodeStateText(i) {
-      if (this.change && this.change.status === 'EFFECTIVE') return '已通过'
+      if (this.workflowFinished) return '已通过'
       if (i < this.currentIndex) return '已通过'
       if (i === this.currentIndex) return '审批中'
       return '待处理'
@@ -126,8 +167,31 @@ export default {
     print() {
       window.open(`/admin/academic-affairs/print/status-change/${this.changeId}`, '_blank')
     },
+    onFileError(error) {
+      toast.error(error?.message || '材料预览或下载失败')
+    },
+    async loadMaterials() {
+      this.materialsLoading = true
+      this.materialsError = ''
+      const res = await statusChangeConvenienceApi.listMaterials(this.changeId)
+      this.materialsLoading = false
+      if (res.code === 0) {
+        const items = Array.isArray(res.data?.items) ? res.data.items : []
+        this.materials = items.map((file) => fileSdk.normalize(file))
+      } else {
+        this.materials = []
+        this.materialsError = res.message || '申请材料读取失败'
+      }
+    },
     openApprove() {
-      this.dlg = { visible: true, title: `通过「${this.change.changeTypeLabel}」`, message: this.currentIndex + 1 >= this.flowNodes.length ? '这是终审节点，通过后异动将即刻生效并写入学籍主档。' : '通过后流转到下一审批节点。', type: 'primary', confirmText: '确认通过', requireReason: false, submitting: false, action: 'APPROVE' }
+      const isFinal = this.currentIndex + 1 >= this.flowNodes.length
+      let message = '通过后流转到下一审批节点。'
+      if (isFinal && this.change.effectiveDate) {
+        message = `这是终审节点。该申请设置指定生效时间 ${this.change.effectiveDate}；终审通过时若该时间仍在未来，将先进入「已通过·待生效」，当前学籍不会提前改写；若已到期则按正式异动链生效。`
+      } else if (isFinal) {
+        message = '这是终审节点，通过后异动将立即生效并写入学籍主档。'
+      }
+      this.dlg = { visible: true, title: `通过「${this.change.changeTypeLabel}」`, message, type: 'primary', confirmText: '确认通过', requireReason: false, submitting: false, action: 'APPROVE' }
     },
     openReturn() {
       this.dlg = { visible: true, title: '退回异动', message: '退回给申请方修改，请填写退回原因。', type: 'warning', confirmText: '确认退回', requireReason: true, submitting: false, action: 'RETURN' }
@@ -154,6 +218,7 @@ export default {
       const res = await academicAffairsApi.getStatusChange(this.changeId)
       if (res.code === 0) {
         this.change = res.data
+        await this.loadMaterials()
       } else {
         this.error = res.message
       }
@@ -170,6 +235,7 @@ export default {
 .aa-kv--full { grid-column: 1 / -1; }
 .aa-kv span { color: var(--text-500, #646a73); min-width: 72px; }
 .aa-kv b { color: var(--text-900, #1f2329); font-weight: 500; }
+.aa-materials { display: grid; gap: 10px; }
 .aa-flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .aa-flow__node { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .aa-flow__dot { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; background: var(--fill-200, #e5e6eb); color: var(--text-500, #646a73); }

@@ -57,8 +57,9 @@ function fmt(v, column = {}, row = {}) {
   if (typeof v === 'boolean') return v ? '是' : '否'
   if (typeof v === 'object') return Array.isArray(v) ? `${v.length} 项` : '详细信息已收起'
   const text = String(v)
-  // 只在明确的状态、类型、审核节点等语义列中转换整个枚举值。
-  return ENUM_FIELD_RE.test(String(column.key || '')) ? safeVisibleEnumLabel(text) : text
+  // 只在明确的状态、类型、审核节点等语义列中转换整个枚举值；同码跨域时再带上字段+表头上下文。
+  const contextKey = `${column.key || ''}:${column.label || ''}`
+  return ENUM_FIELD_RE.test(String(column.key || '')) ? safeVisibleEnumLabel(text, '状态待确认', contextKey) : text
 }
 </script>
 

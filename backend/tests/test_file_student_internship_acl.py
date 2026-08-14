@@ -7,7 +7,7 @@ TID = 1000000000000000001
 def test_student_without_batch_header_can_only_read_own_bound_internship_file(db_mode):
     from app.core.context import set_current_user, set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile, Tenant
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile, Tenant
     from app.models.file import FileObject
     from app.services.file_business_binding_service import bind_file_to_business
     from app.services.file_public_acl_guard import strict_scoped_binding_resolver
@@ -34,6 +34,14 @@ def test_student_without_batch_header_can_only_read_own_bound_internship_file(db
                 status="ACTIVE",
             ))
             db.flush()
+        batch = InternshipBatch(
+            tenant_id=TID,
+            batch_name="文件学生范围测试批次",
+            batch_no="FILE-STUDENT-ACL-BATCH",
+            status="RUNNING",
+        )
+        db.add(batch)
+        db.flush()
         student = StudentProfile(
             tenant_id=TID,
             student_no="FILE-STUDENT-ACL-001",
@@ -55,6 +63,7 @@ def test_student_without_batch_header_can_only_read_own_bound_internship_file(db
         record = InternshipRecord(
             tenant_id=TID,
             student_id=student.id,
+            batch_id=batch.id,
             advisor_user_id=9001,
             advisor_name="文件绑定老师",
             status="PREPARING",

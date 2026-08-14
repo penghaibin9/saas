@@ -84,8 +84,93 @@ def build_router() -> APIRouter:
     # 对 ARCHIVED 学期 fail-closed；精确 V2 入口必须先于历史大 Router 的旧 Pydantic 模型。
     grade_task_create_module = importlib.import_module(f"{__package__}.grade_task_create_v2_router")
     _mount_routes(router, grade_task_create_module.router)
+    # D8-S1：成绩任务主链 Move Only。POST /grade-tasks 继续由上方稳定身份 V2 owner 持有；
+    # 动态分项、移动录分、更正/复查与成绩读侧视图留在既有 owner/后续 D8 子批次。
+    grade_core_module = importlib.import_module(f"{__package__}.grade_core_router")
+    _mount_routes(router, grade_core_module.router)
+    # D8-S2：学生成绩单、挂科清单、成绩分析、异常清单与成绩审计只读入口 Move Only。
+    # 正式成绩导出仍由上方 ExportJob compat owner 持有；更正/复查/认定写链不在本批迁移。
+    grade_read_module = importlib.import_module(f"{__package__}.grade_read_router")
+    _mount_routes(router, grade_read_module.router)
+    # D8-S3：成绩更正三段写链 + 成绩复查台账/复审 Move Only。
+    # DTO、权限、canonical service 与并发保护全部复用 legacy；成绩认定/课程替代继续留给 S4。
+    grade_change_recheck_module = importlib.import_module(f"{__package__}.grade_change_recheck_router")
+    _mount_routes(router, grade_change_recheck_module.router)
+    # D8-S4：成绩认定/课程替代五入口 Move Only；佐证附件继续走既有 FileBinding/manifest canonical，
+    # DTO、权限、学生身份守卫、review/identity/并发语义全部复用 legacy hardened service。
+    grade_recognition_module = importlib.import_module(f"{__package__}.grade_recognition_router")
+    _mount_routes(router, grade_recognition_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
+    # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
+    # 必须在 legacy 之前挂载，确保公开 owner 真正切换到 term_calendar_router；
+    # legacy 中同 method/path 继续保留为兼容来源并由确定性去重跳过。
+    term_calendar_module = importlib.import_module(f"{__package__}.term_calendar_router")
+    _mount_routes(router, term_calendar_module.router)
+    # D1-U：便利性只读 preview。它不替代 canonical 写链，只把系统能计算的
+    # 校历复制/标准作息候选提前算给用户看，确认后仍走原正式写端点。
+    convenience_module = importlib.import_module(f"{__package__}.term_calendar_convenience_router")
+    _mount_routes(router, convenience_module.router)
+    # D2-S：学籍名册 + 注册管理 Move Only。三条正式导出由上方 compat 继续先占 owner；
+    # 其余 legacy 同路径由 normalized method/path 去重切换到 roster_registration_router。
+    roster_registration_module = importlib.import_module(f"{__package__}.roster_registration_router")
+    _mount_routes(router, roster_registration_module.router)
+    # D2-U：候选 enrich / 批量注册 preview+confirm 只做便利性编排；最终写入仍逐项
+    # 调用原 register_student canonical，且新路径不覆盖任何 legacy/compat shape。
+    roster_registration_convenience_module = importlib.import_module(
+        f"{__package__}.roster_registration_convenience_router"
+    )
+    _mount_routes(router, roster_registration_convenience_module.router)
+    # D3-S：只迁 legacy base 仍持有的 status-change 主入口。future-effective /scheduled
+    # 继续由下方 status_change_temporal_router extension 持有，禁止复制 temporal 逻辑。
+    status_change_module = importlib.import_module(f"{__package__}.status_change_router")
+    _mount_routes(router, status_change_module.router)
+    # D3-U：统一立即/计划生效 + 正式材料便利性。新路径只编排上面的 canonical submit，
+    # 不覆盖 D3-S 五入口，也不覆盖 temporal /scheduled；材料在同一事务通过 FileBinding 落地。
+    status_change_convenience_module = importlib.import_module(f"{__package__}.status_change_convenience_router")
+    _mount_routes(router, status_change_convenience_module.router)
+    # D4-S：课程库 / 培养方案 / 教学任务从 legacy 大 Router Move Only 迁出。
+    # 已独立的 program_quality_router / teaching_class_router 继续保持 extension owner，
+    # 本批不复制其路径、不改 canonical service / permission / DTO / schema。
+    course_program_task_module = importlib.import_module(f"{__package__}.course_program_task_router")
+    _mount_routes(router, course_program_task_module.router)
+    # D5-S1：课表批次主链与课表只读主入口 Move Only。
+    # /schedule/export 继续由上方 compat owner 持有；scheduling rules 继续由 live_rule_router 持有。
+    schedule_core_module = importlib.import_module(f"{__package__}.schedule_core_router")
+    _mount_routes(router, schedule_core_module.router)
+    # D5-S2：教师可用时间、冲突报告、排课增强、Excel 结果导入、异议、归档与自动排课 Move Only。
+    # 不复制 scheduling rules，不接管 D5-S1 主链，也不改 canonical service / permission / DTO。
+    scheduling_operations_module = importlib.import_module(f"{__package__}.scheduling_operations_router")
+    _mount_routes(router, scheduling_operations_module.router)
+    # D5-S3：教室、实训室、设备、预约、占用、冲突、维修与资源统计 Move Only。
+    # 保持 bookings/options 字面量路径在动态详情之前，不改 resource_svc 规则或权限。
+    teaching_resource_module = importlib.import_module(f"{__package__}.teaching_resource_router")
+    _mount_routes(router, teaching_resource_module.router)
+    # D5-S4：调课/停课/补课申请、预检、统计、终态归档、审批与撤销 Move Only。
+    # 静态 stats/archive 必须先于动态详情，状态机与课表改写继续唯一由 sched_change_svc 持有。
+    schedule_change_module = importlib.import_module(f"{__package__}.schedule_change_router")
+    _mount_routes(router, schedule_change_module.router)
+    # D7-S：考试批次/排考/考场座位/监巡考/发布归档/缓考审批从 legacy Move Only 迁出。
+    # mobile exam-v2 与 incident resolve 仍由既有 extension owner 持有；成绩域留给 D8。
+    exam_core_module = importlib.import_module(f"{__package__}.exam_core_router")
+    _mount_routes(router, exam_core_module.router)
+    # D9-S1a：毕业资格审核主链 Move Only。只切换公开 owner，DTO、权限、三态真值、
+    # evidence/immutable/DecisionTrace 与学籍终态写入继续唯一复用 graduation service 真链。
+    # 证书台账留给 S1b，避免一个结构 commit 同时扩大两个 owner 面。
+    graduation_core_module = importlib.import_module(f"{__package__}.graduation_core_router")
+    _mount_routes(router, graduation_core_module.router)
+    graduation_certificate_module = importlib.import_module(f"{__package__}.graduation_certificate_router")
+    _mount_routes(router, graduation_certificate_module.router)
+    warning_core_module = importlib.import_module(f"{__package__}.warning_core_router")
+    _mount_routes(router, warning_core_module.router)
+    evaluation_core_module = importlib.import_module(f"{__package__}.evaluation_core_router")
+    _mount_routes(router, evaluation_core_module.router)
+    textbook_core_module = importlib.import_module(f"{__package__}.textbook_core_router")
+    _mount_routes(router, textbook_core_module.router)
+    archive_core_module = importlib.import_module(f"{__package__}.archive_core_router")
+    _mount_routes(router, archive_core_module.router)
+    stats_core_module = importlib.import_module(f"{__package__}.stats_core_router")
+    _mount_routes(router, stats_core_module.router)
     _mount_routes(
         router,
         base_router.router,

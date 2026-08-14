@@ -106,6 +106,46 @@ def _active_row(rows):
     return active[0] if active else None
 
 
+def _lock_teaching_class_for_task(db, teaching_task_id: int, *, create_if_missing=False):
+    """按 canonical 锁序锁 TeachingClass；预检默认无写副作用。
+
+    名单版本 canonical 写链既有锁序是 TeachingClass → current RosterVersion。
+    ``consumer_counts`` 只锁已有教学班，绝不因为影响预检创建投影；freeze 为兼容
+    历史任务可显式 ``create_if_missing=True``，沿既有 helper 建立投影后再锁同一行。
+    """
+    from app.models import AaTeachingClass
+
+    task_id = int(teaching_task_id)
+    row = db.query(AaTeachingClass).filter(
+        AaTeachingClass.tenant_id == _tid(),
+        AaTeachingClass.teaching_task_id == task_id,
+        AaTeachingClass.is_deleted.is_(False),
+    ).with_for_update().first()
+    if row or not create_if_missing:
+        return row
+
+    teaching_class_service.ensure_teaching_class_for_task(db, task_id)
+    row = db.query(AaTeachingClass).filter(
+        AaTeachingClass.tenant_id == _tid(),
+        AaTeachingClass.teaching_task_id == task_id,
+        AaTeachingClass.is_deleted.is_(False),
+    ).with_for_update().first()
+    if not row:
+        raise not_found("教学任务尚未形成独立教学班")
+    return row
+
+
+def _same_resolved_roster(left: dict, right: dict) -> bool:
+    return (
+        int(left.get("teachingClassId") or 0) == int(right.get("teachingClassId") or 0)
+        and int(left.get("rosterVersionId") or 0) == int(right.get("rosterVersionId") or 0)
+        and int(left.get("rosterVersionNo") or 0) == int(right.get("rosterVersionNo") or 0)
+        and str(left.get("rosterHash") or "") == str(right.get("rosterHash") or "")
+        and int(left.get("memberCount") or 0) == int(right.get("memberCount") or 0)
+        and _ids(left.get("studentIds")) == _ids(right.get("studentIds"))
+    )
+
+
 def resolve_versioned_roster(db, teaching_task_id: int) -> dict:
     """确保教学任务已有独立教学班与当前LOCKED版本，再返回同一权威名单。"""
     teaching_class_service.ensure_teaching_class_for_task(db, int(teaching_task_id))
@@ -190,11 +230,31 @@ def freeze_consumer_snapshot(
 
     默认情况下，已冻结消费者只能重复命中同一版本。业务被正式退回并允许重新提交时，
     调用方须显式传 ``allow_replace=True`` 和可审计原因，旧版转为 SUPERSEDED。
+
+    R9 写消费者快照前先锁 TeachingClass，并在锁内重新解析 current roster：调用方即便
+    更早预读过 roster，也不能把并发换版后的旧 roster 静默冻结成 ACTIVE 快照。
     """
     from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
 
     kind = _kind(consumer_type)
-    resolved = roster or resolve_versioned_roster(db, int(teaching_task_id))
+    _lock_teaching_class_for_task(
+        db,
+        int(teaching_task_id),
+        create_if_missing=True,
+    )
+    current = resolve_versioned_roster(db, int(teaching_task_id))
+    if roster is not None and not _same_resolved_roster(roster, current):
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "正式名单已在业务冻结前换版，请刷新后重试",
+            details={
+                "requestedRosterVersionId": str(roster.get("rosterVersionId") or ""),
+                "currentRosterVersionId": str(current.get("rosterVersionId") or ""),
+                "currentRosterVersionNo": int(current.get("rosterVersionNo") or 0),
+            },
+            http_status=409,
+        )
+    resolved = current
     rows = _consumer_rows(db, kind, int(consumer_id), lock=True)
     existing = _active_row(rows)
 
@@ -305,8 +365,16 @@ def require_consumer_snapshot_current(
 
 
 def consumer_counts(db, *, teaching_class_id: int | None = None, teaching_task_id: int | None = None) -> dict:
-    """返回当前ACTIVE快照的消费者数量，供名单变更影响预检使用。"""
+    """返回当前ACTIVE快照的消费者数量，供名单变更影响预检使用。
+
+    ``teaching_task_id`` 是名单换版写前预检路径：只锁已有 TeachingClass，绝不创建
+    投影；随后统计 ACTIVE 快照，使其与 ``freeze_consumer_snapshot`` 在同一锁上串行。
+    仅按 teaching_class_id 的普通影响读取保持原无锁行为。
+    """
     from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
+
+    if teaching_task_id is not None:
+        _lock_teaching_class_for_task(db, int(teaching_task_id))
 
     query = db.query(
         AaRosterConsumerSnapshot.consumer_type,

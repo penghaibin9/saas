@@ -35,12 +35,81 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
      ["tests/test_import_export_p0_authz.py", "tests/test_import_export.py"]),
     (("backend/app/api/v1/help_metrics.py", "backend/app/services/help_metrics_service.py"),
      ["tests/test_help_metrics.py"]),
-    # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入
+    # D2 学籍名册/注册的公开 owner 已从历史大 Router 迁出；仅靠通用教务闸门
+    # 无法及时发现注册 canonical、名册更正、敏感查看或导出 compat 回归。
+    # 精确命中 roster_registration（包括后续 convenience service/router）时只增加
+    # 这四组稳定专项，不删通用教务权限/并发闸门。
+    (("roster_registration",),
+     ["tests/test_aa_registration.py",
+      "tests/test_aa_roster_correction.py",
+      "tests/test_student_sensitive_contract.py",
+      "tests/test_academic_export_compat.py"]),
+    # D5-U：排课批量导入修改 canonical final service 或 preload 取数层时，
+    # 除通用教务权限/并发闸门外，必须立即跑导入语义回归 + 查询数合同。
+    (("academic_affairs_schedule_final_service.py",
+      "academic_affairs_schedule_import_preload.py"),
+     ["tests/test_aa_schedule_import_dry_run.py",
+      "tests/test_aa_schedule_import_batch_queries.py"]),
+    # D5-U：冲突报告 production owner 或候选分桶索引变化时，必须同时验证
+    # 原 MySQL 业务语义与 1000 ScheduleItem 大数据量合同。
+    (("academic_affairs_scheduling_final_service.py",
+      "academic_affairs_schedule_conflict_index.py"),
+     ["tests/test_aa_scheduling.py",
+      "tests/test_aa_schedule_conflict_index.py"]),
+    # D6：Selection Final 真链、学院范围读侧、轮次写/读 guard 或 TeachingRoster 锁定投影
+    # 任一变化，都立即跑完整状态机 + 真值 owner + MySQL 学院隔离 + 轮次并发 + 大批次锁定合同。
+    (("academic_affairs_selection_final_service.py",
+      "academic_affairs_selection_read_service.py",
+      "academic_affairs_selection_round_service.py",
+      "academic_affairs_selection_round_read_guard.py",
+      "academic_affairs_teaching_roster_service.py"),
+     ["tests/test_aa_selection.py",
+      "tests/test_aa_d6_selection_truth_contract.py",
+      "tests/test_aa_selection_read_production_contract.py",
+      "tests/test_aa_selection_scope_mysql.py",
+      "tests/test_aa_selection_round_concurrency.py",
+      "tests/test_aa_selection_lock_scaling.py",
+      "tests/test_aa_teaching_roster_unification.py"]),
+    # D7-U：考务便利性 service 或 D7 canonical HTTP owner 发生变化时，必须同时跑
+    # 批量圈课 preview/confirm + readiness + roster snapshot 查询数合同，以及原考务 facade 回归。
+    (("exam_convenience_service.py", "exam_core_router.py"),
+     ["tests/test_aa_exam_convenience.py",
+      "tests/test_aa_exam_facade_contract_and_changes.py"]),
+    # D8：成绩任务主链、读侧、更正/复查、认定 owner/read service 或结构/规模合同变化时，立即验证全部 D8 owner；
+    # 同时拉起成绩并发、认定证据/互斥、三类 SQL 分页与服务入口合同，禁止大校规模回退成全量 materialize。
+    (("grade_core_router.py",
+      "grade_read_router.py",
+      "grade_change_recheck_router.py",
+      "grade_recognition_router.py",
+      "academic_affairs_recognition_read_service.py",
+      "academic_affairs_grade_task_read_service.py",
+      "academic_affairs_grade_recheck_read_service.py",
+      "test_aa_grade_core_router_contract.py",
+      "test_aa_grade_read_router_contract.py",
+      "test_aa_grade_change_recheck_router_contract.py",
+      "test_aa_grade_recognition_router_contract.py",
+      "test_aa_recognition_pagination_scaling.py",
+      "test_aa_grade_task_pagination_scaling.py",
+      "test_aa_grade_recheck_pagination_scaling.py",
+      "test_p1_ci_select_d8.py"),
+     ["tests/test_aa_grade_core_router_contract.py",
+      "tests/test_aa_grade_read_router_contract.py",
+      "tests/test_aa_grade_change_recheck_router_contract.py",
+      "tests/test_aa_grade_recognition_router_contract.py",
+      "tests/test_aa_grade_identity_head_concurrency.py",
+      "tests/test_aa_grade_recheck_concurrency.py",
+      "tests/test_aa_grade_recheck.py",
+      "tests/test_aa_grade_recheck_pagination_scaling.py",
+      "tests/test_aa_recognition.py",
+      "tests/test_aa_recognition_evidence_and_mutex.py",
+      "tests/test_aa_recognition_pagination_scaling.py",
+      "tests/test_aa_grade_task_pagination_scaling.py",
+      "tests/test_aa_service_entrypoint_integrity.py",
+      "tests/test_aa_p0_authz.py",
+      "tests/test_aa_route_registration_main_compat.py"]),
+    # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入。
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
-    # _changed_backend_tests 精确加入，既不漏掉新回归，也不制造历史基线假红。
-    # P1 批次D：教务域并发正确性测试(行锁/唯一约束竞态)原来只有每日定时全量才跑，
-    # PR 阶段不受保护——一个改坏行锁语义的 PR 可以一路绿灯合并，等到凌晨定时任务
-    # 才发现。改为教务源码改动即拉起这几个已知的 MySQL 并发回归。
+    # _changed_backend_tests 精确加入。教务源码改动同时拉起已知 MySQL 并发回归。
     (("backend/app/modules/academic_affairs", "backend/app/api/v1/academic"),
      ["tests/test_aa_p0_authz.py",
       "tests/test_aa_route_registration_main_compat.py",
@@ -54,7 +123,6 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
     (("backend/app/api/v1/todos", "backend/app/services/workbench_todo",
       "backend/app/services/workbench_snapshot"),
      ["tests/test_workbench_snapshot.py", "tests/test_mobile_stage_a_contracts.py"]),
-    # 学生主档统一整改：主档写入口/投影/敏感字段读取链
     (("backend/app/core/field_crypto", "backend/app/services/student_projection",
       "backend/app/services/db_service", "backend/app/api/v1/student.py",
       "backend/app/models/student", "backend/app/schemas/student",
@@ -64,10 +132,8 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
      ["tests/test_student*.py", "tests/test_students_scope.py",
       "tests/test_student_sensitive_contract.py", "tests/test_student_master_service.py",
       "tests/test_school_onboarding.py"]),
-    (("backend/app/modules/internship",),
-     ["tests/test_internship*.py"]),
-    (("backend/app/modules/graduation",),
-     ["tests/test_graduation*.py"]),
+    (("backend/app/modules/internship",), ["tests/test_internship*.py"]),
+    (("backend/app/modules/graduation",), ["tests/test_graduation*.py"]),
     (("backend/alembic/", "backend/app/models/", "backend/app/db/"),
      ["tests/test_p1_config_guards.py", "tests/test_alembic*.py"]),
     (("backend/app/main.py", "backend/app/core/runtime_metrics",
@@ -77,7 +143,6 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
      ["tests/test_p1_config_guards.py", "tests/test_p1_ci_select.py"]),
 ]
 
-# 公共底座改动：多域安全回归
 CORE_TOUCH = (
     "backend/app/core/", "backend/app/middleware/", "backend/app/main.py",
 )
@@ -112,7 +177,6 @@ def _changed_files() -> list[str]:
             line = line.strip()
             if not line:
                 continue
-            # status --porcelain: " M path" / "?? path"
             if len(line) > 3 and line[2] == " ":
                 path = line[3:].strip().strip('"')
             else:
@@ -124,7 +188,6 @@ def _changed_files() -> list[str]:
 
 
 def _changed_backend_tests(files: list[str]) -> list[str]:
-    """把 PR 中实际新增/修改的 pytest 文件转换为 backend 工作目录下的路径。"""
     prefix = "backend/tests/"
     return [
         path[len("backend/"):]
@@ -136,7 +199,6 @@ def _changed_backend_tests(files: list[str]) -> list[str]:
 
 
 def select(files: list[str]) -> list[str]:
-    # 测试与实现必须同批验证；精确测试路径优先于域级稳定闸门。
     selected: list[str] = _changed_backend_tests(files)
     joined = "\n".join(files)
     core_hit = any(any(p.startswith(c) or c.rstrip("/") in p for c in CORE_TOUCH) for p in files)
@@ -145,7 +207,6 @@ def select(files: list[str]) -> list[str]:
     for needles, targets in RULES:
         if any(n in joined or any(n in f for f in files) for n in needles):
             selected.extend(targets)
-    # 去重保序
     seen = set()
     out = []
     for t in selected:
@@ -153,7 +214,6 @@ def select(files: list[str]) -> list[str]:
             seen.add(t)
             out.append(t)
     if not out:
-        # 无后端改动时仍跑门户快测 + P1 安全最小集，避免只跑空
         out = [
             "tests/test_portal_*.py",
             "tests/test_p1_tenant_readonly_guard.py",
@@ -164,12 +224,7 @@ def select(files: list[str]) -> list[str]:
 
 
 def existing_targets(targets: list[str]) -> list[str]:
-    """把 glob 展开成真实文件，并剔除不存在的精确路径。
-
-    Main canonical workflow 会把选择结果读入 shell array 后逐参数传给 pytest；
-    shell 不会再次展开数组元素里的通配符。因此选择器必须在这里完成 glob
-    展开，不能把 ``tests/test_portal_*.py`` 这类字面量交给 pytest。
-    """
+    """展开 glob 并剔除不存在路径；canonical workflow 的 shell array 不会二次展开。"""
     existing: list[str] = []
     seen: set[str] = set()
     for target in targets:

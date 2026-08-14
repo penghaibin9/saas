@@ -27,6 +27,7 @@ async function handleChange(event) {
   fileName.value = file.name || ''
   progress.value = 0
   uploading.value = true
+  emit('progress', 0)
   activeTask = fileSdk.upload(file, {
     bizType: props.bizType,
     bizId: props.bizId,

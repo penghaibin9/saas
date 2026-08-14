@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: academic-affairs
+    client: backend
+    route: /graduation-audit-batches/{batchId}/archive
+    page: backend/app/modules/academic_affairs/routers/graduation_core_router.py
+    action: archive
+    fileCategory: GRADUATION_QUALIFICATION_ARCHIVE
+    api: POST /api/v1/academic-affairs/graduation-audit-batches/{batchId}/archive
+    backendService: backend/app/modules/academic_affairs/routers/graduation_core_router.py -> academic_affairs_graduation_service.archive_batch
+    storageMode: canonical-graduation-immutable-archive
+    authMode: authenticated+academicAffairs.graduation.manage
+    dataScope: tenant+graduation-audit-batch
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: D9-S1a Move Only 后文件能力扫描源路径从 legacy academic_affairs.py 切换到 graduation_core_router.py；仅同步 inventory owner，不新增文件或归档事实链。

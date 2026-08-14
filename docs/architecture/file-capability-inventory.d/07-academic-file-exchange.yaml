@@ -131,3 +131,25 @@ entries:
     risk: P0
     targetPhase: '7'
     notes: 页面轮询SCANNING/PARSING任务，只有VALIDATED可确认；确认不回传rows，导出通过一次性票据下载并支持撤销。
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/roster-registration-legacy-file-owner
+    page: backend/app/modules/academic_affairs/routers/roster_registration_router.py
+    action: upload+preview+download+import
+    fileCategory: ROSTER_XLSX_LEGACY_COMPAT
+    api: GET roster/import/template; POST roster/import/dry-run; POST roster/import/xlsx; POST roster/import/errors-xlsx; POST roster/import/confirm; registration archive state routes are non-file business archive APIs
+    backendService: backend/app/modules/academic_affairs/routers/roster_registration_router.py -> backend/app/modules/academic_affairs/services/academic_affairs_service.py
+    storageMode: legacy-synchronous-compatibility
+    authMode: authenticated+original-academicAffairs-permission
+    dataScope: tenant+academic-affairs-context+student-scope
+    versioned: false
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: false
+    archive: false
+    status: legacy
+    risk: P0
+    targetPhase: '7'
+    notes: D2-S Move Only ownership relocation; no new file capability. These historical synchronous roster template/dry-run/xlsx/error/confirm handlers moved from academic_affairs.py without semantic change. Formal roster import/export remains the active FileObject + ImportJob/ExportJob chain above; the three registration/roster export URLs remain owned by academic_export_compat_router. Scanner also sees registration /archive path tokens in this source, but those are business-state archival rather than file archives.

@@ -14,6 +14,8 @@
 
       <!-- 节次管理 -->
       <template v-if="tab === 'periods'">
+        <AaTimeSlotTemplatePanel @applied="load" />
+
         <AppSectionCard title="新增节次">
           <div class="aa-slot-form">
             <label class="aa-slot-form__item">
@@ -177,6 +179,7 @@
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppSectionCard, AppTextInput, AppNumberInput, AppFormItem, AppDatePicker, AppTimePicker, AppConfirmDialog, AppInlineAlert, AppTimeSlotPicker } from '@/components/common'
+import AaTimeSlotTemplatePanel from '@/modules/academicAffairs/components/AaTimeSlotTemplatePanel.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -187,7 +190,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppSectionCard, AppTextInput, AppNumberInput, AppFormItem, AppDatePicker, AppTimePicker, AppTimeSlotPicker,
-    AppConfirmDialog, AppInlineAlert
+    AppConfirmDialog, AppInlineAlert, AaTimeSlotTemplatePanel
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -241,7 +244,7 @@ export default {
   created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q === 'bands') this.tab = 'bands'
-    this.includeDisabled = this.tab === 'bands' // 上课时间段选节次需覆盖全部（含已停用）
+    this.includeDisabled = this.tab === 'bands'
     this.load()
   },
   methods: {

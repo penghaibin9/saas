@@ -12,7 +12,10 @@
         <view class="stx__empty" v-if="!(data.changes || []).length"><text>暂无异动记录</text></view>
         <view v-for="c in data.changes" :key="c.changeId" class="stx__ch">
           <text class="stx__ch-t">{{ ctText(c.changeType) }}</text>
-          <text class="stx__ch-s" :class="c.status === 'EFFECTIVE' ? 'is-ok' : ''">{{ statusLabel(c.status) }}</text>
+          <view class="stx__ch-state">
+            <text class="stx__ch-s" :class="c.status === 'EFFECTIVE' ? 'is-ok' : ''">{{ statusLabel(c.status) }}</text>
+            <text v-if="c.status === 'APPROVED_PENDING_EFFECTIVE' && c.effectiveDate" class="stx__ch-plan">计划 {{ dateTime(c.effectiveDate) }} 生效</text>
+          </view>
         </view>
 
         <view class="stx__sec-t">发起异动申请</view>
@@ -61,7 +64,10 @@ const CT = {
   SUSPEND: '休学', PRESERVE: '保留学籍', RESUME: '复学', WITHDRAW: '退学',
   RETAIN: '留级', TRANSFER_MAJOR: '转专业', TRANSFER_CLASS: '转班'
 }
-const SL = { SUBMITTED: '已提交', IN_REVIEW: '审批中', EFFECTIVE: '已生效', REJECTED: '已驳回', RETURNED: '已退回' }
+const SL = {
+  SUBMITTED: '已提交', IN_REVIEW: '审批中', APPROVED_PENDING_EFFECTIVE: '已通过·待生效',
+  EFFECTIVE: '已生效', REJECTED: '已驳回', RETURNED: '已退回'
+}
 
 export default {
   data() {
@@ -104,6 +110,7 @@ export default {
     statusText(s) { return ST[s] || s },
     ctText(c) { return CT[c] || c },
     statusLabel(s) { return SL[s] || s },
+    dateTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
     onType(v) {
       this.form.changeType = v
       this.form.toMajorId = ''
@@ -213,7 +220,9 @@ export default {
 .stx__sec-t { font-weight: 700; margin: var(--space-4) 0 var(--space-2); }
 .stx__empty { color: var(--text-tertiary); font-size: var(--font-size-sm); padding: var(--space-2) 0; }
 .stx__ch { display: flex; justify-content: space-between; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
+.stx__ch-state { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .stx__ch-s.is-ok { color: #16a34a; }
+.stx__ch-plan { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .stx__form { background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
 .stx__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
 .stx__chip { padding: 8px 16px; border-radius: var(--radius-full); background: var(--bg-page); border: 1px solid var(--border-base); font-size: var(--font-size-sm); }

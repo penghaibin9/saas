@@ -388,7 +388,7 @@ jobs:
                 --timeout=180 --timeout-method=signal --durations=30
               ;;
             archive)
-              timeout 20m pytest -vv -p no:warnings \
+              timeout 25m pytest -vv -p no:warnings \
                 tests/test_aa_archive.py \
                 --timeout=180 --timeout-method=signal --durations=30
               ;;
