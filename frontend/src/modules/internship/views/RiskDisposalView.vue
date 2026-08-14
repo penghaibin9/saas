@@ -119,7 +119,9 @@
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
-      :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm" />
+      :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm">
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -128,8 +130,10 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
   AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
 import { riskApi, complaintApi } from '@/modules/internship/api/leave-risk.api'
 import { canCode } from '@/modules/internship/composables/permission'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
@@ -149,7 +153,8 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DualPaneWorkspace, LoadingState, ErrorState, EmptyState,
     AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
-    AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination },
+    AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination,
+    ConflictNotice },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -159,6 +164,7 @@ export default {
       selectedId: '', detail: null, detailLoading: false, detailError: '', queueDone: false,
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
       pending: null,
+      conflict: emptyConflict(),
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -373,6 +379,7 @@ export default {
         close: { title: '风险关闭', content: `将「${d.studentName}」的风险化解并关闭归档，关闭说明将写审计。`, danger: true, confirmText: '关闭', reasonLabel: '关闭说明（≥5字）', requireReason: true }
       }[kind]
       this.pending = { id: d.id, kind, level: d.riskLevel, mode: 'risk', expectedVersion: d.version }
+      this.conflict = emptyConflict()
       this.cd = { visible: true, ...map, submitting: false }
     },
     openComplaintAction(action) {
@@ -387,6 +394,7 @@ export default {
         TO_RISK: { title: '转风险单', content: '将本投诉转为实习风险单，保留双向链接。', danger: true, confirmText: '转风险', reasonLabel: '', requireReason: false }
       }[action]
       this.pending = { id: d.id, kind: action, mode: 'complaint' }
+      this.conflict = emptyConflict()
       this.cd = { visible: true, ...map, submitting: false }
     },
     async onConfirm({ reason }) {
@@ -411,7 +419,9 @@ export default {
       } finally {
         this.cd.submitting = false
       }
+      if (isConflict(res)) return this.onConflict(res)
       if (!res || res.code !== 0) return toast.error((res && res.message) || '操作失败')
+      this.conflict = emptyConflict()
       this.cd.visible = false
       toast.success('操作成功，已写审计')
       if (p.kind === 'close' || p.kind === 'CLOSE') {
@@ -420,6 +430,27 @@ export default {
         await this.load()
         if (this.selectedId) this.loadDetail(this.selectedId)
       }
+    },
+    /**
+     * 撞车（409）善后：弹窗不关、老师刚敲的处理意见原样留着，只把最新真值摆出来。
+     * 风险单同步一次 expectedVersion，是为了老师看完最新状态后「再点一次确认」能真正生效；
+     * 重新提交必须由老师本人触发，这里绝不自动重放他上一次的决定。
+     */
+    async onConflict(res) {
+      this.conflict = await captureConflict({
+        res,
+        refresh: () => this.loadDetail(this.selectedId),
+        latest: () => {
+          const d = this.detail
+          if (!d) throw new Error('最新详情未拉回')
+          if (this.pending && this.pending.mode === 'risk') this.pending.expectedVersion = d.version
+          return [
+            { label: '最新状态', value: d.statusLabel || d.status || '' },
+            { label: '当前责任人', value: d.ownerName || d.acceptedByName || '未指派' },
+            { label: '最新结论', value: d.conclusion || '' }
+          ]
+        }
+      })
     },
     /** 关闭成功：刷新列表后自动选中下一条未关闭风险；没有则清空选中并提示队列已清 */
     async afterClose(closedId) {

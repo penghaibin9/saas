@@ -290,6 +290,7 @@
       <section class="action-dialog" role="dialog" aria-modal="true" :aria-label="dialog.title">
         <div class="dialog-head"><strong>{{ dialog.title }}</strong><button type="button" class="dialog-close" @click="closeDialog">×</button></div>
         <p v-if="dialog.description" class="mp-note">{{ dialog.description }}</p>
+        <ConflictNotice :state="conflict" />
         <label v-if="dialog.showScore">审核分数（0-100）<input v-model.number="dialog.score" type="number" min="0" max="100" /></label>
         <label v-if="dialog.showInvestigation">调查结论<textarea v-model.trim="dialog.investigationConclusion" rows="3" maxlength="2000" /></label>
         <label v-if="dialog.showInvestigation">整改方案<textarea v-model.trim="dialog.rectificationPlan" rows="3" maxlength="2000" /></label>
@@ -307,6 +308,8 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert } from '@/components/common'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { complianceApi } from '@/modules/internship/api/compliance.api'
 import { getPermissionPatterns } from '@/security/permissionGate'
 
@@ -348,13 +351,13 @@ function emptyDialog() {
 
 export default {
   name: 'InternshipComplianceView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert, ConflictNotice },
   props: { ctx: { type: Object, required: true } },
   data: () => ({
     loading: false, acting: false, error: '', activeTab: 'overview',
     stats: {}, workbench: {}, auditHealth: null, selectedFilter: 'ALL', forms: freshForms(),
     filingTypes: FILING_TYPES, exemptionChecks: EXEMPTION_CHECKS,
-    dialog: emptyDialog(), dialogError: ''
+    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict()
   }),
   computed: {
     batchStore() { return useInternshipBatchStore() },
@@ -441,11 +444,14 @@ export default {
       } finally { this.loading = false }
     },
     openStudent(row) { this.$router.push(row.route || `/admin/internship/students/${row.internshipId}`) },
-    async run(resultPromise, successMessage, { resetForm = '' } = {}) {
+    async run(resultPromise, successMessage, { resetForm = '', onConflict = null } = {}) {
       if (this.acting) return false
       this.acting = true
       try {
         const result = await resultPromise
+        // 撞车（409）单独走 onConflict：弹窗要留着、老师填的长文本要留着，
+        // 所以不能把它降级成一个一闪而过的错误 toast。
+        if (onConflict && isConflict(result)) { await onConflict(result); return false }
         if (result.code !== 0) throw new Error(result.message || '操作失败')
         this.$message?.success?.(successMessage)
         if (resetForm) this.forms[resetForm] = freshForms()[resetForm]
@@ -538,9 +544,38 @@ export default {
       if (kind === 'incident-transition') { dialog.title = this.incidentTargetText(action); dialog.showInvestigation = ['PENDING_REVIEW', 'CLOSED'].includes(action); dialog.investigationConclusion = row.investigationConclusion || ''; dialog.rectificationPlan = row.rectificationPlan || ''; dialog.responsibilityConclusion = row.responsibilityConclusion || ''; dialog.commentLabel = '流转说明（可选）'; dialog.confirmText = '确认流转' }
       if (kind === 'emergency-review') { dialog.title = action === 'APPROVE' ? '通过应急预案' : '退回应急预案'; dialog.commentLabel = action === 'APPROVE' ? '审核意见（可选）' : '退回原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认通过' : '确认退回' }
       if (kind === 'exemption-review') { dialog.title = action === 'APPROVE' ? '批准合规豁免' : '拒绝合规豁免'; dialog.commentLabel = action === 'APPROVE' ? '批准意见（建议说明替代控制）' : '拒绝原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认批准' : '确认拒绝' }
-      this.dialog = dialog; this.dialogError = ''
+      this.dialog = dialog; this.dialogError = ''; this.conflict = emptyConflict()
     },
-    closeDialog() { if (!this.acting) { this.dialog = emptyDialog(); this.dialogError = '' } },
+    closeDialog() { if (!this.acting) { this.dialog = emptyDialog(); this.dialogError = ''; this.conflict = emptyConflict() } },
+    /** dialog.kind → workbench 台账集合，冲突后按 id 重新捞同一条的真值 */
+    conflictCollection(kind) {
+      return ({
+        'revoke-consent': 'consents', 'safety-review': 'safetyCompletions', 'filing-review': 'filings',
+        'incident-transition': 'incidents', 'emergency-review': 'emergencyPlans', 'exemption-review': 'exemptions'
+      })[kind] || ''
+    },
+    /**
+     * 撞车善后：重新拉台账，把这条记录的最新状态和版本摆出来。
+     * 三段调查结论最长各 2000 字，绝不能因为一次 409 就让老师重敲——弹窗和输入全部留着。
+     * 版本同步只是让「再点一次确认」能生效；重新提交必须老师自己按。
+     */
+    async onDialogConflict(res) {
+      this.conflict = await captureConflict({
+        res,
+        refresh: () => this.load(),
+        latest: () => {
+          const key = this.conflictCollection(this.dialog.kind)
+          const rows = (key && this.workbench[key]) || []
+          const fresh = rows.find((r) => String(r.id) === String(this.dialog.row?.id))
+          if (!fresh) throw new Error('这条记录已不在当前台账里')
+          this.dialog.row = fresh
+          return [
+            { label: '最新状态', value: fresh.status },
+            { label: '最新版本', value: fresh.version }
+          ]
+        }
+      })
+    },
     async confirmDialog() {
       const dialog = this.dialog
       const comment = dialog.comment.trim()
@@ -555,7 +590,7 @@ export default {
       if (dialog.kind === 'emergency-review') { promise = complianceApi.reviewEmergencyPlan(dialog.row.id, dialog.action, { expectedVersion: dialog.row.version, comment }); successMessage = '应急预案状态已更新' }
       if (dialog.kind === 'exemption-review') { promise = complianceApi.reviewExemption(dialog.row.id, { action: dialog.action, comment, expectedVersion: dialog.row.version }); successMessage = '豁免审批完成' }
       if (!promise) { this.dialogError = '未知操作，已阻止提交'; return }
-      const ok = await this.run(promise, successMessage)
+      const ok = await this.run(promise, successMessage, { onConflict: (res) => this.onDialogConflict(res) })
       if (ok) this.closeDialog()
     }
   }

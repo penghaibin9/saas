@@ -65,10 +65,13 @@ import { AppStatusTag, AppExportButton } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '' })
+// U8：这一屏没有任何筛选写在 URL 上，刷新/返回必须靠工作上下文找回来
+const WORK_FIELDS = ['filters.keyword', 'filters.type', 'filters.status', 'pagination.page']
 
 export default {
   name: 'AttendanceExceptionListView',
@@ -122,6 +125,7 @@ export default {
     }
   },
   created() {
+    restoreWorkContext(this, WORK_FIELDS)
     this.load()
   },
   methods: {
@@ -186,6 +190,7 @@ export default {
       }
     },
     async load() {
+      captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
       const res = await internshipApi.getAttendanceExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })

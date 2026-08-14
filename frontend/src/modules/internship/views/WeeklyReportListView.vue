@@ -86,8 +86,12 @@ import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+
+// U8：页签由 URL 的 panel 承载，这里只保持页码
+const WORK_FIELDS = ['pagination.page']
 
 const PANEL_STATUS = {
   all: '',
@@ -122,6 +126,7 @@ export default {
       rows: [],
       selected: [],
       batchSubmitting: false,
+      workContextReady: false,
       filters: { status: 'PENDING_REVIEW' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
@@ -215,6 +220,12 @@ export default {
       if (!this.selected.length) return '请先勾选待批阅周报'
       return ''
     }
+  },
+  created() {
+    // immediate watcher 会先按 URL 页签加载默认页码，但首次 load 不得覆盖已有工作上下文。
+    const restored = restoreWorkContext(this, WORK_FIELDS)
+    this.workContextReady = true
+    if (restored) this.load()
   },
   watch: {
     '$route.query.type': {
@@ -324,6 +335,7 @@ export default {
       }
     },
     async load() {
+      if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
       const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize, batchId: this.batchStore.selectedBatchId }

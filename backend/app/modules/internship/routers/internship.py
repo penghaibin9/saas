@@ -621,8 +621,11 @@ def score_config_save(body: dict = Body(...), user=Depends(require_permission("i
 
 @router.post("/scores/export", summary="实习成绩台账导出 Excel(.xlsx)")
 def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                  batchId: Optional[str] = None, user=Depends(require_permission("internship.score.export"))):
-    data = score.export_scores(status=status, keyword=keyword, batch_id=batchId, user=user)
+                  batchId: Optional[str] = None,
+                  incompleteOnly: bool = Query(False, description="只导出还有分项未录入的；与列表页筛选口径保持一致"),
+                  user=Depends(require_permission("internship.score.export"))):
+    data = score.export_scores(status=status, keyword=keyword, batch_id=batchId, user=user,
+                               incomplete_only=incompleteOnly)
     audit_log.record("导出实习成绩台账", "internship-score:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -630,8 +633,12 @@ def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
 @router.get("/scores", summary="实习成绩列表（按数据范围）")
 def scores(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            status: Optional[str] = None, keyword: Optional[str] = None,
-           batchId: Optional[str] = None, user=Depends(require_permission("internship.score.view"))):
-    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
+           batchId: Optional[str] = None,
+           incompleteOnly: bool = Query(False, description="只看还有分项未录入的；服务端筛选，跨页有效"),
+           user=Depends(require_permission("internship.score.view"))):
+    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword,
+                                     batch_id=batchId, user=user,
+                                     incomplete_only=incompleteOnly)
     return success(paginate(items, total, page, pageSize))
 
 

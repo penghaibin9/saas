@@ -9,9 +9,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (EmpCompany, InternshipAuditTrail, InternshipIntention, InternshipMatch,
                         InternshipPosition, InternshipRecord, Major, StudentProfile)
 from app.modules.internship.services import internship_student_service as student_svc
@@ -19,6 +21,8 @@ from app.services import xlsx_util
 from app.services.db_service import _as_id, _iso, _tid, session
 
 INTENTION_LABEL = {"DRAFT": "草稿", "SUBMITTED": "已提交", "WITHDRAWN": "已撤回"}
+#: 串行查重与并发唯一索引兜底必须给出同一句提示
+_DUP_INTENTION_MSG = "该学生已有进行中的意向，请先撤回或编辑"
 MATCH_STATUS_LABEL = {
     "RECOMMENDED": "已推荐", "PENDING_CONFIRM": "待确认", "CONFIRMED": "已确认",
     "REJECTED": "已驳回", "CONFLICT": "冲突", "CANCELLED": "已取消",
@@ -47,22 +51,22 @@ def _trail(db, target_id: int, action: str, detail: dict | None = None):
 
 
 def _get_intention(db, iid) -> InternshipIntention:
-    row = db.get(InternshipIntention, _as_id(iid))
-    if not row or row.is_deleted or row.tenant_id != _tid():
+    row = tenant_get(db, InternshipIntention, _as_id(iid))
+    if not row or row.is_deleted:
         raise not_found("意向不存在或不在当前数据范围内")
     return row
 
 
 def _get_match(db, mid) -> InternshipMatch:
-    row = db.get(InternshipMatch, _as_id(mid))
-    if not row or row.is_deleted or row.tenant_id != _tid():
+    row = tenant_get(db, InternshipMatch, _as_id(mid))
+    if not row or row.is_deleted:
         raise not_found("匹配记录不存在或不在当前数据范围内")
     return row
 
 
 def _get_record(db, rid) -> InternshipRecord:
-    r = db.get(InternshipRecord, _as_id(rid))
-    if not r or r.is_deleted or r.tenant_id != _tid():
+    r = tenant_get(db, InternshipRecord, _as_id(rid))
+    if not r or r.is_deleted:
         raise not_found("实习学生记录不存在或不在当前数据范围内")
     return r
 
@@ -70,7 +74,7 @@ def _get_record(db, rid) -> InternshipRecord:
 def _major_name(db, student: StudentProfile | None) -> str:
     if not student or not student.major_id:
         return ""
-    m = db.get(Major, student.major_id)
+    m = tenant_get(db, Major, student.major_id)
     return (m.major_name if m and not m.is_deleted else "") or ""
 
 
@@ -78,7 +82,7 @@ def _major_hit(major_name: str, requirement: str) -> bool:
     maj = (major_name or "").strip()
     req = (requirement or "").strip()
     if not req:
-        return True  # 岗位不限专业 → 可匹配
+        return True
     if not maj:
         return False
     return maj in req or req in maj
@@ -119,20 +123,19 @@ def _conflict_of(db, record: InternshipRecord, pos: InternshipPosition) -> tuple
         InternshipMatch.status.in_(ACTIVE_MATCH))).all()
     other = [m for m in pending]
     if len(other) >= 1:
-        # 调用方写入前若已有其他待确认，标冲突（同一岗位去重在 upsert）
         pass
     return (bool(reasons), "；".join(reasons) if reasons else "")
 
 
 def _intention_row(db, it: InternshipIntention) -> dict:
-    stu = db.get(StudentProfile, it.student_id)
+    stu = tenant_get(db, StudentProfile, it.student_id)
     company_name = ""
     if it.preferred_company_id:
-        c = db.get(EmpCompany, it.preferred_company_id)
+        c = tenant_get(db, EmpCompany, it.preferred_company_id)
         company_name = c.name if c else ""
     position_title = ""
     if it.preferred_position_id:
-        p = db.get(InternshipPosition, it.preferred_position_id)
+        p = tenant_get(db, InternshipPosition, it.preferred_position_id)
         position_title = p.title if p else ""
     return {
         "id": str(it.id), "recordId": str(it.record_id), "studentId": str(it.student_id),
@@ -150,10 +153,10 @@ def _intention_row(db, it: InternshipIntention) -> dict:
 
 
 def _match_row(db, m: InternshipMatch) -> dict:
-    stu = db.get(StudentProfile, m.student_id)
-    pos = db.get(InternshipPosition, m.position_id)
-    company = db.get(EmpCompany, m.company_id)
-    rec = db.get(InternshipRecord, m.record_id)
+    stu = tenant_get(db, StudentProfile, m.student_id)
+    pos = tenant_get(db, InternshipPosition, m.position_id)
+    company = tenant_get(db, EmpCompany, m.company_id)
+    rec = tenant_get(db, InternshipRecord, m.record_id)
     return {
         "id": str(m.id), "recordId": str(m.record_id), "studentId": str(m.student_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -196,8 +199,8 @@ def _filter_scope(db, rows, scope):
         return rows
     out = []
     for r in rows:
-        rec = db.get(InternshipRecord, r.record_id)
-        stu = db.get(StudentProfile, r.student_id)
+        rec = tenant_get(db, InternshipRecord, r.record_id)
+        stu = tenant_get(db, StudentProfile, r.student_id)
         if _rec_in_scope(scope, db, rec, stu):
             out.append(r)
     return out
@@ -214,7 +217,7 @@ def list_intentions(page: int, page_size: int, keyword=None, status=None,
         if status:
             q = q.where(InternshipIntention.status == status)
         rows = db.scalars(q.order_by(InternshipIntention.id.desc())).all()
-        rows = _filter_scope(db, rows, _current_scope(user))  # P0-D
+        rows = _filter_scope(db, rows, _current_scope(user))
         items = [_intention_row(db, r) for r in rows]
         if keyword:
             kw = keyword.strip().lower()
@@ -228,7 +231,6 @@ def list_intentions(page: int, page_size: int, keyword=None, status=None,
 def create_intention(body, user=None, self_service: bool = False) -> dict:
     with session() as db:
         rec = _get_record(db, body.recordId)
-        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
         if not self_service:
             from app.modules.internship.services.internship_service import assert_student_in_scope
             assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
@@ -237,7 +239,7 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
             InternshipIntention.record_id == rec.id,
             InternshipIntention.status.in_(("DRAFT", "SUBMITTED")))).first()
         if exists:
-            raise AppException("DATA_CONFLICT", "该学生已有进行中的意向，请先撤回或编辑")
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG)
         it = InternshipIntention(
             tenant_id=_tid(), record_id=rec.id, student_id=rec.student_id,
             batch_id=rec.batch_id,
@@ -249,9 +251,17 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
             status="DRAFT",
         )
         db.add(it)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
         _trail(db, it.id, "INTENTION_CREATE", {"recordId": str(rec.id)})
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
         db.refresh(it)
         return _intention_row(db, it)
 
@@ -259,7 +269,6 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
 def update_intention(iid, body, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
-        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
         if not self_service:
             from app.modules.internship.services.internship_service import assert_student_in_scope
             assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
@@ -283,7 +292,6 @@ def update_intention(iid, body, user=None, self_service: bool = False) -> dict:
 def submit_intention(iid, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
-        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
         if not self_service:
             from app.modules.internship.services.internship_service import assert_student_in_scope
             assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
@@ -299,7 +307,6 @@ def submit_intention(iid, user=None, self_service: bool = False) -> dict:
 def withdraw_intention(iid, user=None, self_service: bool = False) -> dict:
     with session() as db:
         it = _get_intention(db, iid)
-        # self_service=True：学生小程序端已校验本人归属，跳过教师数据范围校验
         if not self_service:
             from app.modules.internship.services.internship_service import assert_student_in_scope
             assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
@@ -409,10 +416,9 @@ def export_intentions(keyword=None, status=None, batch_id=None) -> dict:
 def _upsert_match(db, record: InternshipRecord, pos: InternshipPosition,
                   match_type: str, intent: InternshipIntention | None,
                   student_major: str, status_if_ok: str = "RECOMMENDED") -> InternshipMatch | None:
-    company = db.get(EmpCompany, pos.company_id)
+    company = tenant_get(db, EmpCompany, pos.company_id)
     score, major_hit, enterprise_hit = _score(intent, student_major, pos, company)
     conflict, reason = _conflict_of(db, record, pos)
-    # 同一学生+岗位活跃态复用
     existing = db.scalars(select(InternshipMatch).where(
         InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
         InternshipMatch.record_id == record.id, InternshipMatch.position_id == pos.id,
@@ -430,7 +436,6 @@ def _upsert_match(db, record: InternshipRecord, pos: InternshipPosition,
         existing.status = status
         existing.company_id = pos.company_id
         return existing
-    # 若该生已有其他待确认，新的也标冲突提示（一人多岗）
     others = db.scalars(select(InternshipMatch).where(
         InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
         InternshipMatch.record_id == record.id,
@@ -480,16 +485,14 @@ def run_major_match(batch_id=None, user=None) -> dict:
             InternshipIntention.batch_id == batch.id,
             InternshipIntention.status == "SUBMITTED")).all()}
         for rec in records:
-            stu = db.get(StudentProfile, rec.student_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id)
             maj = _major_name(db, stu)
             intent = intent_map.get(rec.id)
-            # 优先：专业命中岗位；岗位不限专业也可被推（弱）
             candidates = []
             for p in positions:
                 hit = _major_hit(maj, p.major_requirement or "")
                 if hit and max(0, p.headcount - p.allocated_count) > 0:
                     candidates.append(p)
-            # 每生最多推 3 个最高分岗位
             scored = []
             for p in candidates:
                 sc, _, _ = _score(intent, maj, p, None)
@@ -520,10 +523,10 @@ def run_enterprise_match(batch_id=None, user=None) -> dict:
             InternshipIntention.status == "SUBMITTED",
             InternshipIntention.preferred_company_id.is_not(None))).all()
         for it in intents:
-            rec = db.get(InternshipRecord, it.record_id)
+            rec = tenant_get(db, InternshipRecord, it.record_id)
             if not rec or rec.is_deleted or rec.batch_id != batch.id or rec.position_id or rec.status == "ARCHIVED":
                 continue
-            stu = db.get(StudentProfile, rec.student_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id)
             maj = _major_name(db, stu)
             positions = db.scalars(select(InternshipPosition).where(
                 InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False),
@@ -546,10 +549,10 @@ def manual_match(record_id, position_id, remark: str = "", user=None) -> dict:
         rec = _get_record(db, record_id)
         from app.modules.internship.services.internship_service import assert_student_in_scope
         assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
-        pos = db.get(InternshipPosition, _as_id(position_id))
-        if not pos or pos.is_deleted or pos.tenant_id != _tid():
+        pos = tenant_get(db, InternshipPosition, _as_id(position_id))
+        if not pos or pos.is_deleted:
             raise not_found("岗位不存在")
-        stu = db.get(StudentProfile, rec.student_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id)
         maj = _major_name(db, stu)
         intent = db.scalars(select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
@@ -573,7 +576,6 @@ def batch_match(pairs: list[dict], user=None) -> dict:
     for i, pair in enumerate(pairs or []):
         try:
             manual_match(pair.get("recordId"), pair.get("positionId"), pair.get("remark") or "", user=user)
-            # 批量覆盖 match_type
             with session() as db:
                 rec = _get_record(db, pair.get("recordId"))
                 m = db.scalars(select(InternshipMatch).where(
@@ -608,7 +610,7 @@ def list_matches(page: int, page_size: int, keyword=None, status=None,
             q = q.where(or_(InternshipMatch.conflict_flag.is_(True),
                             InternshipMatch.status == "CONFLICT"))
         rows = db.scalars(q.order_by(InternshipMatch.score.desc(), InternshipMatch.id.desc())).all()
-        rows = _filter_scope(db, rows, _current_scope(user))  # P0-D
+        rows = _filter_scope(db, rows, _current_scope(user))
         items = [_match_row(db, r) for r in rows]
         if keyword:
             kw = keyword.strip().lower()
@@ -638,7 +640,6 @@ def confirm_match(mid, user=None, *, expected_version=None, record_expected_vers
         if m.status not in ("RECOMMENDED", "PENDING_CONFIRM", "CONFLICT"):
             raise AppException("DATA_CONFLICT", f"当前状态不可确认（{m.status}）")
         if m.conflict_flag and m.status == "CONFLICT":
-            # 允许人工确认冲突项，但岗位满员/非上架仍由 assign 拦截
             pass
         rec = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == m.record_id, InternshipRecord.tenant_id == _tid(),
@@ -653,7 +654,6 @@ def confirm_match(mid, user=None, *, expected_version=None, record_expected_vers
         m.confirmed_by = _op_name()
         m.confirmed_at = datetime.utcnow()
         m.version = match_ver + 1
-        # 取消同学生其他待确认
         others = db.scalars(select(InternshipMatch).where(
             InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
             InternshipMatch.record_id == m.record_id,

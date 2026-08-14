@@ -68,6 +68,9 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
           <div class="mp-card__body">
+            <!-- 撞车提示必须放在状态判断外面：别人先批完之后 detail.status 会变，
+                 下面这块表单整体会被「已处理」态替换掉，提示放里面就跟着一起消失了。 -->
+            <ConflictNotice :state="conflict" />
             <template v-if="detail.status === 'PENDING_REVIEW'">
               <div class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }" @click="action = 'APPROVE'">
                 <input type="radio" :checked="action === 'APPROVE'" style="margin-top: 3px" />
@@ -119,17 +122,19 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/presetPrompts'
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, openVersions: [] }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, openVersions: [], conflict: emptyConflict() }
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.report.review') },
@@ -152,6 +157,7 @@ export default {
       this.action = 'APPROVE'
       this.comment = ''
       this.formError = ''
+      this.conflict = emptyConflict()
       this.openVersions = []
       this.load()
     }
@@ -201,6 +207,22 @@ export default {
         this.load()
         // 连续批阅：有下一条自动跳转，无则提示队列完成
         this.$refs.queueBar && this.$refs.queueBar.advance()
+      } else if (isConflict(res)) {
+        // 撞车：评语一个字都不清，只把最新真值拉回来（this.detail.version 一并刷新），
+        // 由老师看完再决定要不要按原意见重新提交——页面不替他自动重放。
+        this.conflict = await captureConflict({
+          res,
+          kept: this.comment,
+          refresh: () => this.load(),
+          latest: () => {
+            if (!this.detail) throw new Error('最新详情未拉回')
+            return [
+              { label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },
+              { label: '当前版本', value: this.detail.reportVersion || '' },
+              { label: '最新评语', value: this.detail.reviewComment || '' }
+            ]
+          }
+        })
       } else {
         this.formError = res.message
       }
