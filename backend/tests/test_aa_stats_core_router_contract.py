@@ -1,6 +1,7 @@
 """D9-S6 教务统计 Router Move Only 与正式 owner 合同。"""
 from __future__ import annotations
 
+import inspect
 import re
 
 
@@ -55,6 +56,15 @@ def test_d9_s6_public_stats_routes_are_owned_by_stats_core_router():
     expected_owner = "app.modules.academic_affairs.routers.stats_core_router"
     wrong = {key: owners[key] for key in expected if owners[key] != expected_owner}
     assert not wrong, f"D9-S6 stats public owner drift: {wrong}"
+
+
+def test_d9_s6_stats_drilldowns_bound_public_page_size():
+    from app.modules.academic_affairs.routers import stats_core_router
+
+    source = inspect.getsource(stats_core_router)
+    assert source.count("page: int = Query(1, ge=1)") == 12
+    assert source.count("pageSize: int = Query(20, ge=1, le=200)") == 12
+    assert "from fastapi import APIRouter, Depends, Query" in source
 
 
 def test_d9_s6_preserves_exportjob_and_immutable_snapshot_owners():
