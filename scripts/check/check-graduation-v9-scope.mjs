@@ -121,6 +121,11 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/FinalSubmissionListView\.vue$/,
     /^frontend\/tests\/graduation\.v9-form-state\.contract\.test\.mjs$/,
   ],
+  U10: [
+    /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^frontend\/tests\/graduation\.v9-student-dual-end\.contract\.test\.mjs$/,
+    /^backend\/tests\/test_graduation_v9_u10_student_dual_end\.py$/,
+  ],
 }
 
 const ALWAYS_DENY = [
