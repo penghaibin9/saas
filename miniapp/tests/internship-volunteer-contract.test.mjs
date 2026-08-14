@@ -103,3 +103,8 @@ test('A03-11 unavailable volunteer authority fails closed on mobile', () => {
   assert.match(pageSource, /系统不会用本地数据替代学校记录/)
   assert.match(pageSource, /!this\.consentConfirmed \|\| !this\.volunteerEditable \|\| this\.volunteerBusy/)
 })
+
+test('A03-11 unknown recruitment context is browse-only and never writable', () => {
+  assert.match(pageSource, /Boolean\(this\.context && this\.context\.canSelect\)/)
+  assert.doesNotMatch(pageSource, /&& \(!this\.context \|\| this\.context\.canSelect\)/)
+})
