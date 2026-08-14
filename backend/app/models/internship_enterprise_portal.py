@@ -12,6 +12,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 from app.modules.internship.enterprise_collaboration_contract import (
+    CAMPAIGN_ENTERPRISE_INVITE_SOURCES,
+    CAMPAIGN_ENTERPRISE_STATUSES,
     RECRUITMENT_CAMPAIGN_STATUSES,
 )
 
@@ -75,3 +77,58 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
         Boolean, nullable=False, default=False
     )
     remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipCampaignEnterprise(PKMixin, TenantMixin, CommonMixin, Base):
+    """招聘季企业参与事实；不复制 EmpCompany 资质/黑名单/合作状态/准入有效期。"""
+
+    __tablename__ = "t_internship_campaign_enterprise"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "campaign_id",
+            "company_id",
+            name="uk_intern_campaign_enterprise",
+        ),
+        Index(
+            "ix_intern_campaign_enterprise_campaign_status",
+            "tenant_id",
+            "campaign_id",
+            "status",
+            "is_deleted",
+        ),
+        Index(
+            "ix_intern_campaign_enterprise_company_status",
+            "tenant_id",
+            "company_id",
+            "status",
+            "is_deleted",
+        ),
+    )
+
+    campaign_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        comment="→ t_internship_recruitment_campaign.id",
+    )
+    company_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="→ t_emp_company.id"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="INVITED",
+        comment="/".join(sorted(CAMPAIGN_ENTERPRISE_STATUSES)),
+    )
+    invite_source: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="MANUAL",
+        comment="/".join(sorted(CAMPAIGN_ENTERPRISE_INVITE_SOURCES)),
+    )
+    invited_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    declined_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    revoke_reason: Mapped[str | None] = mapped_column(String(500))
