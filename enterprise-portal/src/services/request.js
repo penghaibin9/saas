@@ -27,6 +27,11 @@ export function setTenantCode(value){ sessionSet(TENANT_CODE_KEY,value) }
 export function getTenantCode(){ return sessionGet(TENANT_CODE_KEY) }
 
 async function readPayload(response){ try{return await response.json()}catch{return null} }
+function businessError(payload,response){
+  const error=new Error(payload?.message||`业务错误 ${payload?.code??response.status}`)
+  error.status=response.status;error.code=payload?.code;error.bizCode=payload?.bizCode;error.details=payload?.details
+  return error
+}
 async function refreshOnce(){
   if(refreshing)return refreshing
   if(!refreshToken)throw Object.assign(new Error('企业登录已失效，请重新登录'),{status:401})
@@ -67,8 +72,33 @@ export async function request(path,{method='GET',body,params,auth=true,_retried=
     clearAccessToken()
     const error=new Error(payload.message||'企业登录已失效，请重新登录');error.status=401;throw error
   }
-  if(payload.code!==0){
-    const error=new Error(payload.message||`业务错误 ${payload.code}`);error.status=response.status;error.code=payload.code;error.bizCode=payload.bizCode;error.details=payload.details;throw error
+  if(payload.code!==0)throw businessError(payload,response)
+  return payload.data
+}
+
+export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_PROFILE',_retried=false}={}){
+  if(!(file instanceof File))throw new Error('请选择要上传的文件')
+  const form=new FormData()
+  form.append('file',file,file.name)
+  form.append('bizType',bizType)
+  const headers={'X-Browser-Session':'enterprise'}
+  if(accessToken)headers.Authorization=`Bearer ${accessToken}`
+  let response
+  try{
+    response=await fetch(`${API_BASE}${API_PREFIX}/files`,{method:'POST',headers,credentials:'include',body:form})
+  }catch{
+    const error=new Error('文件上传失败：网络不可达');error.network=true;throw error
   }
+  const payload=await readPayload(response)
+  if(!payload||typeof payload.code!=='number'){
+    const error=new Error(`文件上传响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
+  }
+  if(response.status===401||payload.code===401001){
+    if(!_retried&&refreshToken){await refreshOnce();return uploadTemporaryFile(file,{bizType,_retried:true})}
+    clearAccessToken()
+    const error=new Error(payload.message||'企业登录已失效，请重新登录');error.status=401;throw error
+  }
+  if(payload.code!==0)throw businessError(payload,response)
+  if(!payload.data?.fileId)throw new Error('文件中心未返回 fileId')
   return payload.data
 }
