@@ -41,6 +41,14 @@ def _assert_permission_rows_exist(codes: set[str]) -> None:
         )
 
 
+def _assert_custom_role_catalog_policy(codes: set[str]) -> None:
+    from app.core.permission_catalog import assert_custom_role_assignable
+
+    # Exact enterprise/platform/non-assignable codes are denied immediately.
+    # Existing legacy TENANT families remain explicitly transitional until B8.
+    assert_custom_role_assignable(codes, allow_legacy_patterns=True)
+
+
 @_replacements.get("/system/context", summary="系统管理页上下文（品牌/角色/权限动作）")
 def get_system_context(user=Depends(require_any_permission(
         "systemAdmin.dashboard.view", "systemAdmin.user.view", "systemAdmin.role.view",
@@ -97,6 +105,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
     finally:
         db.close()
     codes = {c for c in codes if c and c != "*" and not c.endswith(".*") and not c.startswith("*.")}
+    _assert_custom_role_catalog_policy(codes)
     _assert_permission_rows_exist(codes)
     return _bundle.copy_system_role(role_id, user=user)
 
@@ -114,7 +123,8 @@ def save_system_role_permissions(
     if not isinstance(raw_codes, list):
         raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
     codes = set(expand_permission_patterns({str(code).strip() for code in raw_codes if str(code).strip()}))
-    codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.") and not c.startswith("platform.")}
+    codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.")}
+    _assert_custom_role_catalog_policy(codes)
     _assert_permission_rows_exist(codes)
     return _bundle.save_system_role_permissions(role_id, body=body, user=user)
 

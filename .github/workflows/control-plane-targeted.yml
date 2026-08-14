@@ -10,12 +10,34 @@ on:
       - 'backend/app/modules/system_admin/**'
       - 'backend/app/modules/platform/**'
       - 'backend/app/core/permissions.py'
+      - 'backend/app/core/permission_catalog.py'
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
       - 'shared/contracts/**'
       - 'scripts/check/check-control-plane-*.py'
+      - 'scripts/check/check-permission-catalog.py'
       - 'backend/tests/test_control_plane_*'
+      - 'backend/tests/test_permission_catalog_contract.py'
+      - '.github/workflows/control-plane-targeted.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/api/v1/system.py'
+      - 'backend/app/api/v1/platform.py'
+      - 'backend/app/modules/system_admin/**'
+      - 'backend/app/modules/platform/**'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/models/rbac.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/services/security_change_service.py'
+      - 'shared/contracts/**'
+      - 'scripts/check/check-control-plane-*.py'
+      - 'scripts/check/check-permission-catalog.py'
+      - 'backend/tests/test_control_plane_*'
+      - 'backend/tests/test_permission_catalog_contract.py'
       - '.github/workflows/control-plane-targeted.yml'
 
 permissions:
@@ -38,9 +60,11 @@ jobs:
         run: python scripts/check/check-control-plane-move.py
       - name: G0 inventory artifact
         run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
+      - name: Permission Catalog reconciliation
+        run: python scripts/check/check-permission-catalog.py --write artifacts/control-plane/permission-catalog.json
       - uses: actions/upload-artifact@v4
         with:
-          name: control-plane-g0-${{ github.sha }}
-          path: artifacts/control-plane/g0.json
+          name: control-plane-contracts-${{ github.sha }}
+          path: artifacts/control-plane/*.json
           if-no-files-found: error
           retention-days: 14
