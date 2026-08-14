@@ -48,6 +48,9 @@ class InternshipVolunteerGroup(PKMixin, TenantMixin, CommonMixin, Base):
         BigInteger, comment="→ t_internship_application_material_snapshot.id"
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    locked_application_id: Mapped[int | None] = mapped_column(
+        BigInteger, comment="触发当前 LOCKED 的 canonical InternshipApplication.id"
+    )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime)
     locked_by_decision_id: Mapped[int | None] = mapped_column(
         BigInteger, comment="最近触发 LOCKED 的 EnterpriseApplicationDecision；历史 Decision 不删除"
