@@ -35,12 +35,19 @@ def test_high_volume_stats_use_database_aggregates_not_python_full_column_counts
         assert "len(statuses)" not in source
 
 
-def test_registration_and_exam_term_filters_use_subqueries_not_materialized_id_lists():
+def test_registration_exam_and_teaching_task_term_filters_use_subqueries():
     registration = inspect.getsource(guard._i_registration)
     exam = inspect.getsource(guard._i_exam)
+    teaching_task = inspect.getsource(guard._i_teaching_task)
+
     assert "batch_ids = select(AaRegistrationBatch.id)" in registration
     assert "AaRegistration.batch_id.in_(batch_ids)" in registration
     assert "batch_ids = select(AaExamBatch.id)" in exam
     assert "AaExamCourse.batch_id.in_(batch_ids)" in exam
-    assert ").all()]" not in registration
-    assert ").all()]" not in exam
+    assert "batch_ids = select(AaTeachingTaskBatch.id)" in teaching_task
+    assert "AaTeachingTaskBatch.term_id == int(term_id)" in teaching_task
+    assert "AaTeachingTask.batch_id.in_(batch_ids)" in teaching_task
+    assert "AaTeachingTaskBatch.is_deleted.is_(False)" in teaching_task
+
+    for source in (registration, exam, teaching_task):
+        assert ").all()]" not in source
