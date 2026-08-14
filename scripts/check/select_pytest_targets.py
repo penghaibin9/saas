@@ -70,6 +70,11 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "tests/test_aa_selection_round_concurrency.py",
       "tests/test_aa_selection_lock_scaling.py",
       "tests/test_aa_teaching_roster_unification.py"]),
+    # D7-U：考务便利性 service 或 D7 canonical HTTP owner 发生变化时，必须同时跑
+    # 批量圈课 preview/confirm + readiness + roster snapshot 查询数合同，以及原考务 facade 回归。
+    (("exam_convenience_service.py", "exam_core_router.py"),
+     ["tests/test_aa_exam_convenience.py",
+      "tests/test_aa_exam_facade_contract_and_changes.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入。
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入。教务源码改动同时拉起已知 MySQL 并发回归。
