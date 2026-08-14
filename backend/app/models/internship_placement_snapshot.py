@@ -14,12 +14,13 @@ class InternshipPlacementSnapshot(PKMixin, TenantMixin, AuditTimeMixin, Base):
     __tablename__ = "t_internship_placement_snapshot"
     __table_args__ = (
         UniqueConstraint("tenant_id", "record_id", "placement_seq", name="uk_intern_placement_snapshot_seq"),
-        Index("ix_intern_placement_snapshot_record_time", "tenant_id", "record_id", "captured_at"),
-        Index("ix_intern_placement_snapshot_position_time", "tenant_id", "position_id", "captured_at"),
+        Index("ix_intern_placement_snapshot_record_time", "tenant_id", "record_id", "placement_at"),
+        Index("ix_intern_placement_snapshot_position_time", "tenant_id", "position_id", "placement_at"),
     )
 
     record_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     placement_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     application_id: Mapped[int | None] = mapped_column(BigInteger)
     enterprise_decision_id: Mapped[int | None] = mapped_column(BigInteger)
     campaign_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -60,13 +61,13 @@ class InternshipPlacementSnapshot(PKMixin, TenantMixin, AuditTimeMixin, Base):
     position_version: Mapped[int] = mapped_column(Integer, nullable=False)
     position_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     snapshot_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    placement_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     captured_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
-# SQLAlchemy declarative supports additive mapped columns after class declaration. Keeping this here
-# avoids duplicating InternshipRecord while still making ORM metadata match the additive M5 column.
 if not hasattr(InternshipRecord, "current_placement_snapshot_id"):
     InternshipRecord.current_placement_snapshot_id = mapped_column(
         BigInteger, nullable=True, comment="→ t_internship_placement_snapshot.id"
