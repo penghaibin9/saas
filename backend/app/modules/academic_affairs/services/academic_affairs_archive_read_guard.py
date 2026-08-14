@@ -25,7 +25,7 @@ def list_batches(user, status=None, page=1, page_size=20):
     from app.models import AaArchiveBatch
 
     try:
-        page_no = int(page or 1)
+        page_no = int(1 if page is None else page)
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "page 必须为整数") from None
     if page_no < 1:
