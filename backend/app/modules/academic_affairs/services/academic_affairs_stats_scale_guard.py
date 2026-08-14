@@ -46,13 +46,20 @@ def _i_registration(db, scope, sids, term_id) -> dict:
 
 
 def _i_teaching_task(db, scope, college_id, term_id) -> dict:
-    from app.models import AaTeachingTask
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     class_ids = stats._class_ids_scope(db, scope, college_id)
     conditions = [
         AaTeachingTask.tenant_id == stats._tid(),
         AaTeachingTask.is_deleted.is_(False),
     ]
+    if term_id:
+        batch_ids = select(AaTeachingTaskBatch.id).where(
+            AaTeachingTaskBatch.tenant_id == stats._tid(),
+            AaTeachingTaskBatch.term_id == int(term_id),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        )
+        conditions.append(AaTeachingTask.batch_id.in_(batch_ids))
     if class_ids is not None:
         if not class_ids:
             return stats._ind(
