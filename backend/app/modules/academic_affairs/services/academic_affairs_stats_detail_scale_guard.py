@@ -27,7 +27,7 @@ def _page_values(page, page_size) -> tuple[int, int]:
 
 
 def schedule_conflicts(user, college_id=None, term_id=None, page=1, page_size=20):
-    """课表冲突下钻：SQL 真分页 + 单次页面明细查询，判定口径保持原实现。"""
+    """课表冲突下钻：SQL 真分页 + 单次页面明细查询，判定口径保持总览正式冲突键。"""
     from app.models import AaScheduleBatch, AaScheduleItem
 
     page_no, size = _page_values(page, page_size)
@@ -48,10 +48,12 @@ def schedule_conflicts(user, college_id=None, term_id=None, page=1, page_size=20
             batch_conditions.append(AaScheduleBatch.college_id.in_(colleges))
         batch_ids = select(AaScheduleBatch.id).where(*batch_conditions)
 
+        # 冲突事实键必须与总览 _i_schedule 完全一致：class_id + weekday + slot + parity。
+        # class_name 只是可变展示快照，不能参与分组，否则同一班级历史名称差异会把一个真实冲突拆成两组。
         group_query = (
             select(
                 AaScheduleItem.class_id.label("class_id"),
-                AaScheduleItem.class_name.label("class_name"),
+                func.max(AaScheduleItem.class_name).label("class_name"),
                 AaScheduleItem.weekday.label("weekday"),
                 AaScheduleItem.slot_no.label("slot_no"),
                 AaScheduleItem.week_parity.label("week_parity"),
@@ -66,7 +68,6 @@ def schedule_conflicts(user, college_id=None, term_id=None, page=1, page_size=20
             )
             .group_by(
                 AaScheduleItem.class_id,
-                AaScheduleItem.class_name,
                 AaScheduleItem.weekday,
                 AaScheduleItem.slot_no,
                 AaScheduleItem.week_parity,
@@ -80,7 +81,6 @@ def schedule_conflicts(user, college_id=None, term_id=None, page=1, page_size=20
                 AaScheduleItem.weekday.asc(),
                 AaScheduleItem.slot_no.asc(),
                 AaScheduleItem.week_parity.asc(),
-                AaScheduleItem.class_name.asc(),
             )
             .offset((page_no - 1) * size)
             .limit(size)
