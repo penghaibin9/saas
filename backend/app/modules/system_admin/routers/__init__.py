@@ -1,4 +1,4 @@
 """System Administration routers."""
-from .system_bundle import router
+from .system_router import router
 
 __all__ = ["router"]
