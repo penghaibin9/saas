@@ -102,7 +102,9 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
       source: 'archive',
       tab: exactTab
     })
-    await expect(page.locator('body')).toContainText(fixture.studentNo)
+    // Student numbers are intentionally masked on the detail page; the exact route id plus
+    // the fixture's unique topic proves the intended student loaded without violating PII UI rules.
+    await expect(page.locator('body')).toContainText(fixture.topicTitle)
 
     const metaPath = testInfo.outputPath('gd-U7-archive-B-meta.json')
     await fs.writeFile(metaPath, JSON.stringify({
