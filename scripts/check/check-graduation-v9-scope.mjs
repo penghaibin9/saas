@@ -88,6 +88,7 @@ const CARD_ALLOW = {
     /^backend\/tests\/test_graduation_v9_u7_archive_dirty_data\.py$/,
     /^frontend\/src\/modules\/graduation\/views\/GraduationRiskArchiveView\.vue$/,
     /^frontend\/tests\/graduation\.v9-archive-workbench\.contract\.test\.mjs$/,
+    /^e2e\/specs\/graduation-v9-archive-visual\.spec\.mjs$/,
   ],
 }
 
