@@ -155,9 +155,10 @@ def stats_workload(termId: Optional[int] = None, collegeId: Optional[int] = None
 
 @router.get("/stats/workload/detail", summary="教师工作量统计下钻：单教师授课明细")
 def stats_workload_detail(teacherKey: str, collegeId: Optional[int] = None,
+                          termId: Optional[int] = None,
                           page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                           user=Depends(require_permission(_STATS_VIEW))):
-    items, total = stats_svc.workload_detail(user, teacherKey, collegeId, page, pageSize)
+    items, total = stats_svc.workload_detail(user, teacherKey, collegeId, page, pageSize, termId)
     return success(paginate(items, total, page, pageSize))
 
 
