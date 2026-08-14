@@ -105,9 +105,16 @@ def course_selection_stats(user, term_id=None, college_id=None) -> dict:
             AaSelectionRecord.selection_course_id.in_(selection_course_ids),
             AaSelectionRecord.is_deleted.is_(False),
         )) or 0)
+
+        grouped_conditions = list(batch_conditions)
+        if colleges is not None:
+            scoped_batch_ids = select(AaSelectionCourse.batch_id).where(
+                *course_conditions
+            ).distinct()
+            grouped_conditions.append(AaSelectionBatch.id.in_(scoped_batch_ids))
         grouped = db.execute(
             select(AaSelectionBatch.status, func.count(AaSelectionBatch.id))
-            .where(*batch_conditions)
+            .where(*grouped_conditions)
             .group_by(AaSelectionBatch.status)
         ).all()
         return {
