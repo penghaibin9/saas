@@ -82,18 +82,15 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
     ))
     if not position:
         return _ORIGINAL(db, record, position_id, expected_version, user=user)
-    campaign, application, group, decision = _source_for_campaign_in_tx(
+    _campaign, application, group, decision = _source_for_campaign_in_tx(
         db, record=record, position=position, now=now,
     )
     company = db.get(student_svc.EmpCompany, position.company_id)
     batch = db.get(student_svc.InternshipBatch, record.batch_id) if record.batch_id else None
     student = db.get(student_svc.StudentProfile, record.student_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
-    # Freeze the approval-time rights evidence BEFORE the canonical capacity claim. Re-evaluating
-    # after a last-slot claim would incorrectly report POSITION_FULL for the placement that won.
     rights = evaluate_position_publishability(position, company, batch, student, operation="ASSIGN", db=db)
     result = _ORIGINAL(db, record, position_id, expected_version, user=user)
-    # Refresh only the mutable position version after the existing Authority has claimed capacity.
     db.refresh(position)
     snap = snapshot_svc.capture_placement_snapshot_in_tx(
         db,
@@ -107,7 +104,10 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
     if decision:
         decision.effect_status = "CONSUMED"
         decision.version = int(decision.version or 0) + 1
-    if group:
+    # A school-side direct/manual placement to a different campaign position must not silently
+    # mark an unrelated submitted volunteer group APPROVED. Only the selected canonical application
+    # may close the group.
+    if group and application:
         group_svc.teacher_mark_approved_in_tx(db, group=group, user=user, now=now)
     student_svc._trail(db, record.id, "PLACEMENT_SNAPSHOT", {
         "snapshotId": str(snap.id), "snapshotSha256": snap.snapshot_sha256,
