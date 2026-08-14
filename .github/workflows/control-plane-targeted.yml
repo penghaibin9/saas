@@ -66,6 +66,14 @@ jobs:
         run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
       - name: Permission Catalog reconciliation
         run: python scripts/check/check-permission-catalog.py --write artifacts/control-plane/permission-catalog.json
+      - name: B0-B7 Python syntax gate
+        run: |
+          python -m compileall -q \
+            backend/app/modules/system_admin \
+            backend/app/modules/platform \
+            backend/app/core/permission_catalog.py \
+            backend/app/core/effective_access.py \
+            backend/app/services/security_change_service.py
       - name: B6/B7 frontend workspace contracts
         run: |
           python - <<'PY'

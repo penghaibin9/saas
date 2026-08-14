@@ -201,10 +201,12 @@ def impact(template_id: int) -> dict:
                 RoleTemplate.is_deleted.is_(False),
             ))
         before = set(_items(previous)) if previous is not None else set()
-        pinned = list(db.scalars(select(CustomRoleSource).where(
-            CustomRoleSource.source_template_code == item.template_code,
-            CustomRoleSource.is_deleted.is_(False),
-        )).order_by(CustomRoleSource.tenant_id, CustomRoleSource.role_code)).all())
+        pinned = list(db.scalars(
+            select(CustomRoleSource).where(
+                CustomRoleSource.source_template_code == item.template_code,
+                CustomRoleSource.is_deleted.is_(False),
+            ).order_by(CustomRoleSource.tenant_id, CustomRoleSource.role_code)
+        ).all())
         return {
             "templateId": str(item.id),
             "templateCode": item.template_code,
