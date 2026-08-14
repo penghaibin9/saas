@@ -15,7 +15,37 @@ from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseIns
 from app.services.db_service import _as_id, _tid, session
 
 def _op(user): return (user or {}).get("realName") or "系统"
-def _row(x): return {"id": str(x.id), "companyId": str(x.company_id), "batchId": str(x.batch_id or ""), "status": x.status, "validUntil": x.valid_until.isoformat() if x.valid_until else None, "conclusion": x.conclusion or ""}
+#: 学校用的界面不该出现 DRAFT/SUBMITTED 这种英文枚举
+STATUS_LABEL = {"DRAFT": "草稿", "SUBMITTED": "待审核", "APPROVED": "已通过",
+                "REJECTED": "已驳回", "EXPIRED": "已过期"}
+TYPE_LABEL = {"ONSITE": "实地考察", "REMOTE": "远程考察", "DOCUMENT": "书面审查"}
+
+
+def _iso(v):
+    return v.isoformat() if v else None
+
+
+def _row(x):
+    """考察台账行。
+
+    原实现只返回 6 个字段，页面要展示的考察方式/日期/考察人/审核人都没有——
+    列表只能显示一排「—」，状态还是英文枚举。这些值模型里本来就有。
+    """
+    return {
+        "id": str(x.id), "companyId": str(x.company_id), "batchId": str(x.batch_id or ""),
+        "inspectionType": x.inspection_type or "",
+        "inspectionTypeLabel": TYPE_LABEL.get(x.inspection_type, x.inspection_type or ""),
+        "inspectionDate": _iso(x.inspection_date),
+        "inspectors": x.inspectors or "",
+        "status": x.status,
+        "statusLabel": STATUS_LABEL.get(x.status, x.status),
+        "validUntil": _iso(x.valid_until),
+        "conclusion": x.conclusion or "",
+        "reviewComment": x.review_comment or "",
+        "reviewedByName": x.reviewed_by_name or "",
+        "reviewedAt": _iso(x.reviewed_at),
+        "version": int(x.version or 0),
+    }
 def _audit(db,x,a,u): db.add(InternshipAuditTrail(tenant_id=_tid(),target_id=x.id,target_type="ENTERPRISE_INSPECTION",action=a,operator_name=_op(u),occurred_at=datetime.utcnow()))
 
 def list_by_company(company_id):
