@@ -219,6 +219,18 @@ function _refreshOnce(expectedGeneration = currentSessionGeneration()) {
   return slot.promise
 }
 
+function refreshOrReuseCurrentSession(requestSnapshot) {
+  if (!requestSnapshot || currentSessionGeneration() !== requestSnapshot.generation) {
+    return Promise.reject(sessionChangedError())
+  }
+  // 同一逻辑 generation 内，别的 401 可能已经完成 token 轮换。此时旧 token 的迟到 401
+  // 不能被当作“换号登录”，也不需要再发第二次 refresh；直接让它使用当前 token 重试一次。
+  if (!isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
+    return Promise.resolve(getToken())
+  }
+  return _refreshOnce(requestSnapshot.generation)
+}
+
 function selectedInternshipBatchId(path) {
   if (!String(path || '').startsWith('/mobile/internship')) return ''
   try {
@@ -332,27 +344,27 @@ function executeRealRequest(path, effectivePath, {
       header,
       timeout: ENV.requestTimeout,
       success: (res) => {
+        const body = res.data
+        if (body && body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
+          refreshOrReuseCurrentSession(requestSnapshot)
+            .then(() => realRequest(path, {
+              method, data, auth, _retried: true, _rawPage,
+              _expectedGeneration: requestSnapshot.generation
+            }))
+            .then(resolve)
+            .catch(reject)
+          return
+        }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
           return
         }
-        const body = res.data
         if (!body || typeof body.code !== 'number') {
           markOffline()
           reject({ code: 'BAD_RESPONSE', message: '响应结构异常', httpStatus: res.statusCode })
           return
         }
         if (body.code !== 0) {
-          if (body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
-            _refreshOnce(requestSnapshot.generation)
-              .then(() => realRequest(path, {
-                method, data, auth, _retried: true, _rawPage,
-                _expectedGeneration: requestSnapshot.generation
-              }))
-              .then(resolve)
-              .catch(reject)
-            return
-          }
           reject({
             code: body.code,
             biz: true,
@@ -442,25 +454,25 @@ export function realUpload(path, filePath, {
       header,
       timeout: Math.max(ENV.requestTimeout || 10000, 30000),
       success: (res) => {
+        const body = parseUnifiedBody(res.data)
+        if (body && body.code === 401001 && auth && !_retried) {
+          refreshOrReuseCurrentSession(requestSnapshot)
+            .then(() => realUpload(path, filePath, {
+              name, formData, auth, _retried: true, _expectedGeneration: requestSnapshot.generation
+            }))
+            .then(resolve)
+            .catch(reject)
+          return
+        }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
           return
         }
-        const body = parseUnifiedBody(res.data)
         if (!body || typeof body.code !== 'number') {
           reject({ code: 'BAD_RESPONSE', message: '上传响应结构异常' })
           return
         }
         if (body.code !== 0) {
-          if (body.code === 401001 && auth && !_retried) {
-            _refreshOnce(requestSnapshot.generation)
-              .then(() => realUpload(path, filePath, {
-                name, formData, auth, _retried: true, _expectedGeneration: requestSnapshot.generation
-              }))
-              .then(resolve)
-              .catch(reject)
-            return
-          }
           reject({ code: body.code, biz: true, message: body.message || '上传失败', traceId: body.traceId })
           return
         }
@@ -493,21 +505,21 @@ export function realDownload(path, { auth = true, _retried = false, _expectedGen
       header,
       timeout: Math.max(ENV.requestTimeout || 10000, 30000),
       success: (res) => {
+        if (res.statusCode === 401 && auth && !_retried) {
+          refreshOrReuseCurrentSession(requestSnapshot)
+            .then(() => realDownload(path, {
+              auth, _retried: true, _expectedGeneration: requestSnapshot.generation
+            }))
+            .then(resolve)
+            .catch(reject)
+          return
+        }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
           return
         }
         if (res.statusCode === 200 && res.tempFilePath) {
           resolve({ tempFilePath: res.tempFilePath })
-          return
-        }
-        if (res.statusCode === 401 && auth && !_retried) {
-          _refreshOnce(requestSnapshot.generation)
-            .then(() => realDownload(path, {
-              auth, _retried: true, _expectedGeneration: requestSnapshot.generation
-            }))
-            .then(resolve)
-            .catch(reject)
           return
         }
         reject({ code: res.statusCode === 403 ? 403001 : 404001, biz: true, message: '文件不存在或无权下载' })
