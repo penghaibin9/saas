@@ -29,7 +29,8 @@ def _column_names(insp, table: str) -> set[str]:
 
 def upgrade() -> None:
     _require_mysql()
-    insp = inspect(op.get_bind())
+    bind = op.get_bind()
+    insp = inspect(bind)
 
     if not insp.has_table("t_internship_volunteer_group"):
         op.create_table(
@@ -44,6 +45,7 @@ def upgrade() -> None:
             sa.Column("submission_version", sa.Integer(), nullable=False),
             sa.Column("current_material_snapshot_id", sa.BigInteger()),
             sa.Column("submitted_at", sa.DateTime()),
+            sa.Column("locked_application_id", sa.BigInteger()),
             sa.Column("locked_at", sa.DateTime()),
             sa.Column("locked_by_decision_id", sa.BigInteger()),
             sa.Column("teacher_confirm_deadline", sa.DateTime()),
@@ -87,7 +89,16 @@ def upgrade() -> None:
     if "teacher_confirm_sla_hours" not in campaign_columns:
         op.add_column(
             "t_internship_recruitment_campaign",
-            sa.Column("teacher_confirm_sla_hours", sa.Integer(), nullable=True),
+            sa.Column("teacher_confirm_sla_hours", sa.Integer(), nullable=False, server_default="48"),
+        )
+    else:
+        op.execute(
+            "UPDATE t_internship_recruitment_campaign "
+            "SET teacher_confirm_sla_hours=48 WHERE teacher_confirm_sla_hours IS NULL"
+        )
+        op.alter_column(
+            "t_internship_recruitment_campaign", "teacher_confirm_sla_hours",
+            existing_type=sa.Integer(), nullable=False, server_default="48",
         )
 
 
