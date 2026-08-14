@@ -10,9 +10,8 @@ from app.core.exceptions import AppException, not_found
 from app.core.tenant_scoped import tenant_get
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationStudentEval
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, require_batch_id
-from app.modules.graduation.services.graduation_scope_service import (
-    accessible_student_ids, assert_student_access,
-)
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
 
 EVAL_LEVELS = ("优秀", "良好", "合格", "不合格")
@@ -63,15 +62,15 @@ def _row(e: GraduationStudentEval, stu=None) -> dict:
 def list_evals(page: int, page_size: int, gd_student_id=None, *, batch_id) -> tuple[list[dict], int]:
     expected_batch = require_batch_id(batch_id)
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
+        scope_select = student_scope_select(db, _tid(), batch_id=expected_batch)
         filters = (
             GraduationStudentEval.tenant_id == _tid(),
             GraduationStudentEval.is_deleted.is_(False),
-            GraduationStudentEval.gd_student_id.in_(scope_ids or [-1]),
             GraduationStudent.tenant_id == _tid(),
             GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
             GraduationStudent.batch_id == expected_batch,
+            GraduationStudent.id.in_(scope_select),
         )
         if gd_student_id:
             filters = (*filters, GraduationStudentEval.gd_student_id == int(gd_student_id))
@@ -133,8 +132,12 @@ def create_eval(gd_student_id, body: dict, *, batch_id) -> dict:
 
 def submit_eval(eval_id, *, batch_id) -> dict:
     with session() as db:
-        e = tenant_get(db, GraduationStudentEval, int(eval_id))
-        if not e or e.is_deleted:
+        e = db.scalars(select(GraduationStudentEval).where(
+            GraduationStudentEval.id == int(eval_id),
+            GraduationStudentEval.tenant_id == _tid(),
+            GraduationStudentEval.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not e:
             raise not_found("评价记录不存在")
         stu = _stu(db, e.gd_student_id, batch_id)
         if e.status == "SUBMITTED":

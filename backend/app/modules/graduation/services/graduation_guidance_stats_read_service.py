@@ -4,6 +4,10 @@
 LEFT JOIN + GROUP BY + HAVING 得出，0 次指导学生仍保留。dataScope 复用 U2/M9
 已封板的 SQL selector，不先 materialize 全批学生。正式写链仍由
 ``graduation_guidance_service`` 负责。
+
+生产规模约束：stats 只返回不足学生的有界 preview；``insufficientCount`` 始终是
+SQL 精确总数，``insufficientHasMore`` 明确告知 preview 是否被截断，避免 2 万人
+批次把整份不足名单塞进单个统计响应。
 """
 from __future__ import annotations
 
@@ -12,6 +16,8 @@ from sqlalchemy import and_, func, select
 from app.models import GraduationGuidance, GraduationStudent
 from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 from app.services.db_service import _tid, session
+
+INSUFFICIENT_PREVIEW_LIMIT = 200
 
 
 def _grouped_counts(scope_select):
@@ -58,13 +64,18 @@ def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
             )
         ).one()
 
-        # M12 hard contract: the insufficient ledger is selected by SQL HAVING,
-        # not by materializing every student's count and filtering in Python.
+        # M12 hard contract: insufficient truth comes from SQL HAVING, never from
+        # materializing every student's count and filtering in Python. The count is
+        # exact; only the response preview is bounded for school-scale payload safety.
         count_expr = func.count(GraduationGuidance.id)
+        insufficient_query = _grouped_counts(scope_select).having(count_expr < threshold)
+        insufficient_count = int(db.scalar(
+            select(func.count()).select_from(insufficient_query.subquery())
+        ) or 0)
         insufficient_rows = db.execute(
-            _grouped_counts(scope_select)
-            .having(count_expr < threshold)
+            insufficient_query
             .order_by(GraduationStudent.id)
+            .limit(INSUFFICIENT_PREVIEW_LIMIT)
         ).all()
         insufficient = [
             {
@@ -80,7 +91,9 @@ def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
             "threshold": threshold,
             "studentCount": int(student_count or 0),
             "avgCount": round(float(avg_count or 0), 1),
-            "insufficientCount": len(insufficient),
+            "insufficientCount": insufficient_count,
             "insufficientStudents": insufficient,
+            "insufficientPreviewLimit": INSUFFICIENT_PREVIEW_LIMIT,
+            "insufficientHasMore": insufficient_count > len(insufficient),
             "batchId": str(batch_id) if batch_id else None,
         }
