@@ -14,6 +14,12 @@ from app.db.session import get_sessionmaker
 from app.modules.system_admin.routers import system_bundle as _bundle
 
 _replacements = APIRouter()
+_EFFECTIVE_ACCESS_KEYS = (
+    "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
+    "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
+    "securityRevisionHealthy", "securityRevisionError", "ctxKey", "moduleEntitlements",
+    "moduleStates", "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary",
+)
 
 
 def _assert_permission_rows_exist(codes: set[str]) -> None:
@@ -60,13 +66,16 @@ def get_system_context(user=Depends(require_any_permission(
     if isinstance(payload, dict):
         data = payload.get("data")
         if isinstance(data, dict):
-            for key in (
-                "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
-                "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
-                "securityRevisionHealthy", "securityRevisionError", "ctxKey", "moduleEntitlements",
-                "moduleStates", "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary",
-            ):
+            for key in _EFFECTIVE_ACCESS_KEYS:
                 data[key] = access.get(key)
+            # Current System frontend deliberately preserves permissionActions verbatim.
+            # Nest the complete context here as a compatibility projection so B4 never
+            # loses None/error/revision semantics while the top-level UI DTO is migrated.
+            actions = data.get("permissionActions")
+            if not isinstance(actions, dict):
+                actions = {}
+                data["permissionActions"] = actions
+            actions["effectiveAccess"] = {key: access.get(key) for key in _EFFECTIVE_ACCESS_KEYS}
     return payload
 
 
