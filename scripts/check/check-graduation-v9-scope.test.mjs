@@ -142,6 +142,22 @@ test('U7 archive prework only registers the SQL read binding already present on 
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U7')[0], /shared foundation denied/)
 })
 
+test('U8 teacher mobile allows only scoped paging, mobile workbench, evidence and its scope self-test', () => {
+  assert.deepEqual(validateFiles([
+    'scripts/check/check-graduation-v9-scope.mjs',
+    'scripts/check/check-graduation-v9-scope.test.mjs',
+    'backend/app/api/v1/mobile_graduation_teacher_context.py',
+    'backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py',
+    'backend/tests/test_graduation_premerge_contracts.py',
+    'backend/tests/test_graduation_v9_u8_mobile_teacher_paging.py',
+    'miniapp/src/pages/teacher/workbench/index.vue',
+    'miniapp/tests/graduation.v9-teacher-workbench.contract.test.mjs',
+    'e2e/specs/graduation-v9-teacher-mobile-visual.spec.mjs',
+  ], 'U8'), [])
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U8')[0], /shared foundation denied/)
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U8')[0], /canonical write\/read mixed service denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
@@ -177,6 +193,9 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'backend/app/modules/graduation/services/graduation_student_read_service.py',
     'backend/tests/test_graduation_v9_u5_student_list_scale.py',
     'backend/app/modules/graduation/services/graduation_archive_read_service.py',
+    'backend/app/api/v1/mobile_graduation_teacher_context.py',
+    'backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py',
+    'backend/tests/test_graduation_premerge_contracts.py',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })

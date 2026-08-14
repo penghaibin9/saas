@@ -91,6 +91,16 @@ const CARD_ALLOW = {
     /^frontend\/tests\/graduation\.v9-archive-workbench\.contract\.test\.mjs$/,
     /^e2e\/specs\/graduation-v9-archive-visual\.spec\.mjs$/,
   ],
+  U8: [
+    /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^backend\/app\/api\/v1\/mobile_graduation_teacher_context\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_mobile_teacher_query_service\.py$/,
+    /^backend\/tests\/test_graduation_premerge_contracts\.py$/,
+    /^backend\/tests\/test_graduation_v9_u8_mobile_teacher_paging\.py$/,
+    /^miniapp\/src\/pages\/teacher\/workbench\/index\.vue$/,
+    /^miniapp\/tests\/graduation\.v9-teacher-workbench\.contract\.test\.mjs$/,
+    /^e2e\/specs\/graduation-v9-teacher-mobile-visual\.spec\.mjs$/,
+  ],
 }
 
 const ALWAYS_DENY = [
