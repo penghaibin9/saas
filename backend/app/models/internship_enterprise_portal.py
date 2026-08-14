@@ -52,6 +52,9 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
     enterprise_access_end_at: Mapped[datetime | None] = mapped_column(DateTime)
     enterprise_confirm_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     application_material_policy_json: Mapped[dict | None] = mapped_column(JSON)
+    teacher_confirm_sla_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="企业 ACCEPT_INTENT 后学校确认 SLA；NULL 按服务默认 72 小时"
+    )
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -127,8 +130,7 @@ class InternshipEnterpriseAccessGrant(PKMixin, TenantMixin, CommonMixin, Base):
     revoke_reason: Mapped[str | None] = mapped_column(String(500))
 
 
-# Register E5.5 additive models in Base.metadata whenever app.models imports this E-series module.
-# This keeps migrated-schema parity aware of them without creating duplicate authority aliases.
+# Register later E-series additive models in Base.metadata whenever app.models imports this module.
 from app.models.internship_student_profile import (  # noqa: E402,F401
     StudentInternshipProfile,
     StudentInternshipProfileItem,
@@ -136,3 +138,4 @@ from app.models.internship_student_profile import (  # noqa: E402,F401
 from app.models.internship_application_material_snapshot import (  # noqa: E402,F401
     InternshipApplicationMaterialSnapshot,
 )
+from app.models.internship_volunteer_group import InternshipVolunteerGroup  # noqa: E402,F401
