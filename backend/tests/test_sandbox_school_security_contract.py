@@ -64,10 +64,9 @@ def test_story_reset_is_tenant_scoped_and_transaction_owned_by_route():
 
 def test_20k_gate_tracks_effective_grade_policy_and_security_contract():
     workflow = _text(".github/workflows/sandbox-20k-data-gate.yml")
-    policy = "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py"
-    credentials = "backend/app/services/sandbox_school_credentials.py"
-    security_test = "backend/tests/test_sandbox_school_security_contract.py"
 
-    assert policy in workflow
-    assert credentials in workflow
-    assert security_test in workflow
+    assert "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py" in workflow
+    assert "backend/app/services/sandbox_school_*.py" in workflow
+    assert "app/services/sandbox_school_credentials.py" in workflow
+    assert "backend/tests/test_sandbox_school_security_contract.py" in workflow
+    assert "tests/test_sandbox_school_security_contract.py" in workflow
