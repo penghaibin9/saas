@@ -9,6 +9,7 @@ import pytest
 from app.core.exceptions import AppException
 from app.modules.academic_affairs.routers import course_selection_router
 from app.modules.academic_affairs.routers import grade_core_router
+from app.modules.academic_affairs.routers import roster_registration_router
 from app.modules.academic_affairs.routers import scheduling_operations_router
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as guard
 from app.modules.academic_affairs.services import academic_affairs_selection_read_service as selection_read
@@ -70,10 +71,13 @@ def test_conflict_route_keeps_d6_owner_and_adds_bounded_pagination():
 def test_xlsx_routes_keep_existing_owners_and_use_shared_safe_upload_guard():
     schedule_source = inspect.getsource(scheduling_operations_router.schedule_import_xlsx)
     grade_source = inspect.getsource(grade_core_router.grade_import_xlsx)
-    for source in (schedule_source, grade_source):
+    roster_source = inspect.getsource(roster_registration_router.roster_import_xlsx)
+    for source in (schedule_source, grade_source, roster_source):
         assert "read_safe_upload" in source
         assert "file.read(" not in source
     assert "sched_svc.import_items" in schedule_source
     assert "grade_svc.grade_import_dry_run" in grade_source
+    assert "svc.roster_import_read" in roster_source
     assert scheduling_operations_router.schedule_import_xlsx.__module__.endswith("scheduling_operations_router")
     assert grade_core_router.grade_import_xlsx.__module__.endswith("grade_core_router")
+    assert roster_registration_router.roster_import_xlsx.__module__.endswith("roster_registration_router")
