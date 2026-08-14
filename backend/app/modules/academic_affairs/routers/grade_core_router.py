@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.services import xlsx_util
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
@@ -36,7 +37,7 @@ def grade_tasks(
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
 ):
-    items, total = grade_svc.list_tasks(user, status, page, pageSize)
+    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 

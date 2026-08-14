@@ -76,17 +76,19 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
      ["tests/test_aa_exam_convenience.py",
       "tests/test_aa_exam_facade_contract_and_changes.py"]),
     # D8：成绩任务主链、读侧、更正/复查、认定 owner/read service 或结构/规模合同变化时，立即验证全部 D8 owner；
-    # 同时拉起成绩并发、认定证据/互斥、SQL 分页与服务入口合同，禁止大校规模回退成全量 materialize。
+    # 同时拉起成绩并发、认定证据/互斥、两类 SQL 分页与服务入口合同，禁止大校规模回退成全量 materialize。
     (("grade_core_router.py",
       "grade_read_router.py",
       "grade_change_recheck_router.py",
       "grade_recognition_router.py",
       "academic_affairs_recognition_read_service.py",
+      "academic_affairs_grade_task_read_service.py",
       "test_aa_grade_core_router_contract.py",
       "test_aa_grade_read_router_contract.py",
       "test_aa_grade_change_recheck_router_contract.py",
       "test_aa_grade_recognition_router_contract.py",
       "test_aa_recognition_pagination_scaling.py",
+      "test_aa_grade_task_pagination_scaling.py",
       "test_p1_ci_select_d8.py"),
      ["tests/test_aa_grade_core_router_contract.py",
       "tests/test_aa_grade_read_router_contract.py",
@@ -97,6 +99,7 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
       "tests/test_aa_recognition.py",
       "tests/test_aa_recognition_evidence_and_mutex.py",
       "tests/test_aa_recognition_pagination_scaling.py",
+      "tests/test_aa_grade_task_pagination_scaling.py",
       "tests/test_aa_service_entrypoint_integrity.py",
       "tests/test_aa_p0_authz.py",
       "tests/test_aa_route_registration_main_compat.py"]),
