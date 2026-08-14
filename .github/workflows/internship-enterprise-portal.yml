@@ -1,12 +1,6 @@
 name: Internship Enterprise Portal
 
 on:
-  push:
-    branches:
-      - agent/internship-e-a02-enterprise-portal
-    paths:
-      - "enterprise-portal/**"
-      - ".github/workflows/internship-enterprise-portal.yml"
   pull_request:
     paths:
       - "enterprise-portal/**"
@@ -16,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: enterprise-portal-${{ github.event.pull_request.number || github.ref }}
+  group: enterprise-portal-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
