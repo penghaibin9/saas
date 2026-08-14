@@ -172,3 +172,9 @@ academic_affairs_registration_read_guard.install()
 from . import academic_affairs_archive_term_guard
 
 academic_affairs_archive_term_guard.install()
+
+# PR #101 生产复审：归档批次列表保持原公开 DTO，只把全量 materialize 后切片改成
+# SQL COUNT + OFFSET/LIMIT，并统一 page/pageSize 边界；不接管任何归档写链。
+from . import academic_affairs_archive_read_guard
+
+academic_affairs_archive_read_guard.install()
