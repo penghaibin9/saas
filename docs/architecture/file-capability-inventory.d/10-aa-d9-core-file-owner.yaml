@@ -1,0 +1,45 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/evaluation-core-file-owner
+    page: backend/app/modules/academic_affairs/routers/evaluation_core_router.py
+    action: download+export
+    fileCategory: EVALUATION_XLSX_LEGACY_COMPAT
+    api: POST /evaluation/batches/{bid}/export
+    backendService: backend/app/modules/academic_affairs/routers/evaluation_core_router.py -> backend/app/modules/academic_affairs/services/academic_affairs_evaluation_service.py
+    storageMode: generated-synchronous-compatibility
+    authMode: authenticated+academicAffairs.evaluation.export
+    dataScope: tenant+evaluation-batch+canonical-evaluation-scope
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: legacy
+    risk: P0
+    targetPhase: '10'
+    notes: D9 Move Only ownership relocation; no new file capability and no second evaluation truth. The existing evaluation XLSX response moved from academic_affairs.py into the formal evaluation_core_router owner without semantic change; canonical evaluation facts and existing extension owner remain authoritative.
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/textbook-core-archive-owner
+    page: backend/app/modules/academic_affairs/routers/textbook_core_router.py
+    action: archive
+    fileCategory: TEXTBOOK_ORDER_ARCHIVE_COMPAT
+    api: POST /textbooks/order-batches/{bid}/archive
+    backendService: backend/app/modules/academic_affairs/routers/textbook_core_router.py -> backend/app/modules/academic_affairs/services/academic_affairs_textbook_service.py
+    storageMode: business-state-no-file-object
+    authMode: authenticated+academicAffairs.textbook.order
+    dataScope: tenant+textbook-order-batch+canonical-textbook-scope
+    versioned: false
+    scanGated: false
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: D9 Move Only ownership relocation; the scanner classifies the existing textbook order-batch archive route as a file capability because of the archive token. This registration records the moved formal owner only; it creates no file object, no alternate archive state machine, and no second textbook fact chain.
