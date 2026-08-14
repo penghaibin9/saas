@@ -23,23 +23,35 @@ test('D7-U 新建考试批次必须选择正式学期并提交 termId', async ()
   assert.ok(source.includes("termId: this.form.termId"))
 })
 
-test('D7-U 批量圈课先预览再确认，自动排考与发布继续复用既有动作', async () => {
+test('D7-U 批量圈课必须先 preview 后 confirm', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
-    'listCourseCandidates', 'previewCourses', 'confirmCourses', 'previewToken',
-    'api.autoArrange', "lc('publishBatch', '发布')"
+    'listCourseCandidates', 'previewCourses', 'confirmCourses', 'previewToken'
   ]) {
-    assert.ok(source.includes(token), `missing D7 convenience action: ${token}`)
+    assert.ok(source.includes(token), `missing D7 bulk course action: ${token}`)
   }
 })
 
-test('D7-U convenience API 只调用候选、预览、确认与 readiness 路径', async () => {
+test('D7-U 自动排考必须先 canonical auto-times 再复用既有 auto-arrange', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  for (const token of [
+    'openAutoPlan', 'runAutoArrange', 'convenienceApi.autoTimes',
+    'autoPlan.dates', 'autoPlan.sessions', 'maxPerDayPerClass',
+    'api.autoArrange', "lc('publishBatch', '发布')"
+  ]) {
+    assert.ok(source.includes(token), `missing D7 two-stage arrange token: ${token}`)
+  }
+})
+
+test('D7-U convenience API 只补业务便利层并显式复用 canonical auto-times', async () => {
   const source = await readFile(apiUrl, 'utf8')
   for (const path of [
-    '/readiness', '/course-candidates', '/course-candidates/preview', '/course-candidates/confirm'
+    '/readiness', '/course-candidates', '/course-candidates/preview',
+    '/course-candidates/confirm', '/auto-times'
   ]) {
     assert.ok(source.includes(path), `missing convenience API path: ${path}`)
   }
+  assert.ok(source.includes('maxPerDayPerClass') || source.includes('body'))
 })
 
 test('D7-U 考务控制台有桌面与窄屏响应式收口', async () => {
@@ -48,4 +60,5 @@ test('D7-U 考务控制台有桌面与窄屏响应式收口', async () => {
   assert.match(source, /@media \(max-width: 760px\)/)
   assert.match(source, /aaexam-readiness/)
   assert.match(source, /aaexam-candidate/)
+  assert.match(source, /aaexam-auto-row/)
 })
