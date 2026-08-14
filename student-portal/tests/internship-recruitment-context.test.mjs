@@ -40,3 +40,12 @@ test('A03-1 NEEDS_REVISION explicitly restores editing conclusion', () => {
   const context = normalizeRecruitmentContext({ campaignStatus: 'OPEN', volunteerStatus: 'NEEDS_REVISION', canSelect: true })
   assert.equal(selectionConclusion(context), '本轮可重新调整志愿')
 })
+
+test('A03-11 canonical APPROVED context is final even while campaign is still open', () => {
+  const context = normalizeRecruitmentContext({
+    campaignStatus: 'OPEN', volunteerStatus: 'APPROVED', selectedVolunteerCount: 3, canSelect: true
+  })
+  assert.equal(context.groupStatusLabel, '学校已确认')
+  assert.match(selectionConclusion(context), /学校已完成最终确认/)
+  assert.doesNotMatch(selectionConclusion(context), /可继续调整/)
+})

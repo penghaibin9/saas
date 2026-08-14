@@ -11,7 +11,8 @@ const GROUP_LABELS = Object.freeze({
   SUBMITTED: '志愿已提交',
   LOCKED: '等待学校最终确认',
   NEEDS_REVISION: '可重新调整',
-  CONFIRMED: '已完成落岗'
+  APPROVED: '学校已确认',
+  CONFIRMED: '学校已确认'
 })
 
 function numberOf(value, fallback = 0) {
@@ -62,6 +63,7 @@ export function selectionConclusion(context) {
       : '企业已拟接收，等待学校最终确认'
   }
   if (context.groupStatus === 'NEEDS_REVISION') return '本轮可重新调整志愿'
+  if (['APPROVED', 'CONFIRMED'].includes(context.groupStatus)) return '学校已完成最终确认，正式落岗结果以实习记录为准'
   if (!context.canSelect) return context.blockReason || '当前阶段暂不可新增或调整志愿'
   if (context.selectedVolunteers > 0) return `已选 ${context.selectedVolunteers}/3 个志愿，可继续调整后整组提交`
   return '当前可选岗，请从学校认可岗位中选择 1–3 个志愿'

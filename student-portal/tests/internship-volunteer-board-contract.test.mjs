@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   addVolunteer,
@@ -12,6 +13,7 @@ import {
   updateVolunteerStatement
 } from '../src/modules/internshipRecruitment/volunteerModel.js'
 
+const boardSource = readFileSync(new URL('../src/components/recruitment/VolunteerBoard.vue', import.meta.url), 'utf8')
 const group = normalizeVolunteerGroup({
   status: 'DRAFT',
   batchId: 8,
@@ -61,4 +63,10 @@ test('A03-7 builds exactly one atomic group PUT payload for all active slots', (
   assert.equal(payload.items[2].applicationStatement, '希望锻炼质量管理能力')
   assert.equal(payload.expectedRecordVersion, 7)
   assert.deepEqual(payload.expectedApplicationVersions, { '1': 2, '2': 1, '3': 0 })
+})
+
+test('A03-11 volunteer board labels canonical APPROVED as school-confirmed', () => {
+  assert.match(boardSource, /APPROVED: '学校已确认'/)
+  assert.match(boardSource, /CONFIRMED: '学校已确认'/)
+  assert.equal(canEditVolunteerGroup({ status: 'APPROVED' }), false)
 })
