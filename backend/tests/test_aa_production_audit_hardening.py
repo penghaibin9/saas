@@ -13,6 +13,7 @@ from app.modules.academic_affairs.routers import roster_registration_router
 from app.modules.academic_affairs.routers import scheduling_operations_router
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as guard
 from app.modules.academic_affairs.services import academic_affairs_registration_read_guard as registration_guard
+from app.modules.academic_affairs.services import academic_affairs_roster_correction_read_guard as correction_guard
 from app.modules.academic_affairs.services import academic_affairs_roster_export_guard as roster_export_guard
 from app.modules.academic_affairs.services import academic_affairs_selection_read_service as selection_read
 from app.modules.academic_affairs.services import academic_affairs_service as academic_read
@@ -69,6 +70,23 @@ def test_roster_full_export_is_independent_from_interactive_page_cap():
     assert "build_ledger_xlsx" in source
     assert "mask_id_card_encrypted" in source
     assert "legacy._audit" in source
+
+
+def test_roster_correction_ledger_is_sql_paged_and_exact_student_scoped():
+    assert academic_read.list_roster_corrections is correction_guard.list_roster_corrections
+    source = inspect.getsource(correction_guard.list_roster_corrections)
+    assert "func.count(AaStudentCorrection.id)" in source
+    assert ".offset(" in source
+    assert ".limit(" in source
+    assert "legacy._correction_row" in source
+    assert "legacy._correction_extras" in source
+
+    scope_source = inspect.getsource(correction_guard._scope_condition)
+    assert 'scope_type == "STUDENT"' in scope_source
+    assert "AaStudentCorrection.student_id.in_" in scope_source
+    assert 'scope_type == "SELF"' in scope_source
+    assert "allowed_class_ids" in scope_source
+    assert "exists(" in scope_source
 
 
 def test_registration_archive_is_school_scoped_and_never_truncated_at_10k():
