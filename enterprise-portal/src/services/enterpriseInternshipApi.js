@@ -26,7 +26,11 @@ export const enterpriseInternshipApi = {
     return request(`${ROOT}/applications/${id}/decision`, { method:'POST', body:{ status, ...payload } })
   },
   revealContact: (id) => request(`${ROOT}/applications/${id}/contact-view`, { method:'POST' }),
-  withdrawAccept: (id) => request(`${ROOT}/applications/${id}/withdraw-accept`, { method:'POST' }),
+  withdrawAccept: (id,reason) => {
+    const text=String(reason||'').trim()
+    if(text.length<2)throw new Error('撤回拟接收必须填写原因')
+    return request(`${ROOT}/applications/${id}/decision`, { method:'POST', body:{ status:'REJECTED', reason:text } })
+  },
   internshipStudents: (params) => request(`${ROOT}/students`, { params }),
   internshipStudent: (id) => request(`${ROOT}/students/${id}`),
   evaluationTasks: (params) => request(`${ROOT}/evaluation-tasks`, { params }),
