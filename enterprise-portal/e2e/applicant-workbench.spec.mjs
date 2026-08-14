@@ -29,6 +29,32 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
+    if (path.endsWith('/internship/enterprise-portal/applications/501')) {
+      if (url.searchParams.get('campaignId') !== '2027-spring') {
+        return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
+      }
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          applicationId:'501', positionId:'81', positionTitle:'机械装配技术实习生',
+          applicationStatement:'具备机械装配实训经验，希望从事智能制造方向。', submissionVersion:3,
+          profileSnapshot:{
+            profile:{headline:'智能制造方向实习生',selfIntro:'具备机械装配与数控综合实训经验',strengths:'CAD、数控、装配',expectedLocations:['长沙'],skillTags:['CAD','数控','装配']},
+            items:[
+              {id:'p1',itemType:'PROJECT',title:'数控加工综合实训',description:'完成工艺编制与加工验证',verificationStatus:'VERIFIED'},
+              {id:'x1',itemType:'PRACTICE',title:'智能制造产线实训',description:'完成装配与设备点检',verificationStatus:'UNVERIFIED'},
+              {id:'c1',itemType:'CERTIFICATE',title:'数控车工技能证书',verificationStatus:'VERIFIED'},
+              {id:'s1',itemType:'SKILL_EVIDENCE',title:'CAD 制图能力证明',verificationStatus:'VERIFIED'},
+              {id:'a1',itemType:'AWARD',title:'校级技能竞赛二等奖',verificationStatus:'VERIFIED'},
+            ],
+          },
+          schoolFactSnapshot:{realName:'张三',majorName:'机械制造及自动化',grade:'2025级'},
+          snapshotHash:'sha256-browser-evidence',
+          contactSharingPolicy:{mode:'NONE',sharePhone:false,shareEmail:false},
+        })),
+      })
+    }
+
     if (path.endsWith('/enterprise/internship/applications')) {
       return route.fulfill({
         contentType: 'application/json',
@@ -38,19 +64,6 @@ async function installEnterpriseApi(page, { released = false } = {}) {
             { applicationId: '501', name: '张三', major: '机械制造及自动化', grade: '2025级', positionName: '机械装配技术实习生', volunteerNo: 1, skillTags: ['CAD', '数控', '装配'], matchPercent: 95, appliedAt: '03-06 10:21' },
             { applicationId: '502', name: '李四', major: '机电一体化', grade: '2025级', positionName: '自动化维护实习生', volunteerNo: 2, skillTags: ['PLC'], matchPercent: 88, appliedAt: '03-06 11:15' },
           ],
-        })),
-      })
-    }
-
-    if (path.endsWith('/enterprise/internship/applications/501/material')) {
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(ok({
-          skillTags: ['CAD', '数控', '装配'],
-          projects: [{ id: 'p1', title: '数控加工综合实训', description: '完成工艺编制与加工验证', verificationStatus: 'VERIFIED' }],
-          practices: [{ id: 'x1', title: '智能制造产线实训', description: '完成装配与设备点检', verificationStatus: 'NOT_REQUIRED' }],
-          certificates: [{ id: 'c1', title: '数控车工技能证书', verificationStatus: 'VERIFIED' }],
-          portfolio: [],
         })),
       })
     }
@@ -100,13 +113,17 @@ async function loginAndEnterCampaign(page){
   await page.getByRole('link',{name:'报名学生'}).click()
 }
 
-test('A02-6 authenticated BOSS-style applicant workbench keeps snapshot privacy boundary', async ({ page }) => {
+test('A02-6 authenticated BOSS-style applicant workbench consumes A01 nested snapshot without privacy leakage', async ({ page }) => {
   await installEnterpriseApi(page)
   await loginAndEnterCampaign(page)
 
   await expect(page.getByRole('heading', { name: '报名学生' })).toBeVisible()
   await expect(page.getByText('张三', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('岗位申请说明')).toBeVisible()
+  await expect(page.getByText('智能制造方向实习生')).toBeVisible()
+  await expect(page.getByText('CAD 制图能力证明')).toBeVisible()
+  await expect(page.getByText('校级技能竞赛二等奖')).toBeVisible()
+  await expect(page.getByText('投递快照')).toBeVisible()
   await expect(page.getByText('学校已核验').first()).toBeVisible()
   await expect(page.getByText('138****5678')).toBeVisible()
   await expect(page.getByRole('button', { name: '联系方式未授权' })).toBeDisabled()
