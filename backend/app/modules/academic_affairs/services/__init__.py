@@ -154,3 +154,9 @@ academic_affairs_production_audit_guard.install()
 from . import academic_affairs_registration_read_guard
 
 academic_affairs_registration_read_guard.install()
+
+# PR #101 生产复审：正式归档批次必须绑定一个真实学期；历史 nullable 列只作兼容，
+# 任何新建 HTTP/脚本/内部 service 调用都不得生成不会冻结学期的孤儿归档批次。
+from . import academic_affairs_archive_term_guard
+
+academic_affairs_archive_term_guard.install()
