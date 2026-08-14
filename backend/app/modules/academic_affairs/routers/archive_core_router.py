@@ -23,6 +23,7 @@ _ARCHIVE_VIEW = "academicAffairs.archive.view"
 
 
 class ArchiveBatchBody(BaseModel):
+    # 保持 Optional 以确保权限依赖先于业务校验执行；真正必填语义由 Router + Service 双层 guard。
     termId: Optional[str] = None
     batchName: Optional[str] = None
 
@@ -37,6 +38,7 @@ class ArchiveUnfreezeBody(BaseModel):
 
 @router.post("/archive/batches", summary="建归档批次（按学期，一学期一批次）")
 def archive_batch_create(body: ArchiveBatchBody, user=Depends(require_permission(_ARCHIVE_MANAGE))):
+    archive_svc.validate_term_id(body.termId)
     return success(archive_svc.create_batch(user, body), message="已创建")
 
 
