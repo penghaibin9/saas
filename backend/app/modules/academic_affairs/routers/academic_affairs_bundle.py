@@ -88,6 +88,10 @@ def build_router() -> APIRouter:
     # 动态分项、移动录分、更正/复查与成绩读侧视图留在既有 owner/后续 D8 子批次。
     grade_core_module = importlib.import_module(f"{__package__}.grade_core_router")
     _mount_routes(router, grade_core_module.router)
+    # D8-S2：学生成绩单、挂科清单、成绩分析、异常清单与成绩审计只读入口 Move Only。
+    # 正式成绩导出仍由上方 ExportJob compat owner 持有；更正/复查/认定写链不在本批迁移。
+    grade_read_module = importlib.import_module(f"{__package__}.grade_read_router")
+    _mount_routes(router, grade_read_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
     # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
