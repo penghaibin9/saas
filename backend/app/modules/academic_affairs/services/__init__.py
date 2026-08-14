@@ -178,3 +178,9 @@ academic_affairs_archive_term_guard.install()
 from . import academic_affairs_archive_read_guard
 
 academic_affairs_archive_read_guard.install()
+
+# PR #101 生产复审：统计总览的纯 count/rate 指标由数据库聚合，禁止为求两个数字
+# materialize 全校注册、成绩、考务、毕业等明细；public/canonical/XLSX owner 均不改变。
+from . import academic_affairs_stats_scale_guard
+
+academic_affairs_stats_scale_guard.install()
