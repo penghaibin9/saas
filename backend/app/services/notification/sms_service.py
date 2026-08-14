@@ -154,21 +154,21 @@ def send_sms(tenant_id: int, phone: str | None, template_code: str,
                 stored_params, "SKIPPED", last_error="SMS_ENABLED=false")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="SMS 未开启（默认关闭）")
-            return {"status": "SKIPPED", "reason": "SMS_ENABLED=false"}
+            return {"status": "SKIPPED", "reason": "SMS_ENABLED=false", "reasonCode": "SMS_DISABLED", "retryable": False}
         if not phone or len(str(phone)) < 7:
             task_id = _task(
                 tenant_id, biz_type, template_code, receiver_name, masked,
                 stored_params, "SKIPPED", last_error="缺手机号")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="缺手机号")
-            return {"status": "SKIPPED", "reason": "缺手机号"}
+            return {"status": "SKIPPED", "reason": "缺手机号", "reasonCode": "PHONE_UNAVAILABLE", "retryable": False}
         if not _rate_ok(tenant_id):
             task_id = _task(
                 tenant_id, biz_type, template_code, receiver_name, masked,
                 stored_params, "SKIPPED", last_error="超出发送频率")
             _log(tenant_id, task_id, biz_type, "-", masked, "SKIPPED",
                  reason="超出每分钟发送上限")
-            return {"status": "SKIPPED", "reason": "超出发送频率"}
+            return {"status": "SKIPPED", "reason": "超出发送频率", "reasonCode": "RATE_LIMITED", "retryable": True, "retryAfter": 60}
         sms_provider = provider or get_provider()
         template = _template_id(template_code)
         attempts = int(settings.SMS_MAX_RETRY or 2) + 1
@@ -185,7 +185,7 @@ def send_sms(tenant_id: int, phone: str | None, template_code: str,
                     request_id=response.request_id)
                 return {
                     "status": "SENT", "requestId": response.request_id,
-                    "retries": attempt,
+                    "retries": attempt, "reasonCode": "SENT", "retryable": False,
                 }
             last_error = response.error
             if not response.retryable:
@@ -196,14 +196,17 @@ def send_sms(tenant_id: int, phone: str | None, template_code: str,
             last_error=last_error)
         _log(tenant_id, task_id, biz_type, sms_provider.name, masked, "FAIL",
              reason=last_error)
+        retryable = bool(getattr(response, "retryable", False)) if 'response' in locals() else True
         return {
             "status": "FAILED", "reason": last_error,
             "retries": attempt,
+            "reasonCode": "TRANSIENT_PROVIDER" if retryable else "PERMANENT_PROVIDER",
+            "retryable": retryable,
         }
     except Exception as error:
         _log(tenant_id, None, biz_type, "-", masked, "FAIL",
              reason="内部异常:" + str(error)[:200])
-        return {"status": "FAILED", "reason": "内部异常"}
+        return {"status": "FAILED", "reason": "内部异常", "reasonCode": "TRANSIENT_PROVIDER", "retryable": True}
 
 
 def notify_todo(tenant_id, phone, name, params=None, provider=None):

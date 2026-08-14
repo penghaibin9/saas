@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 log = logging.getLogger("app.message_delivery")
@@ -243,8 +244,10 @@ def claim_and_process_delivery_jobs(*, limit: int = 10, worker_id: str = "schedu
             rows = db.execute(text(
                 "SELECT id FROM t_message_delivery_job "
                 "WHERE tenant_id=:tid AND is_deleted=0 "
-                "AND status IN ('PENDING','RETRY_WAIT') "
-                "AND (next_retry_at IS NULL OR next_retry_at<=:now) "
+                "AND ((status IN ('PENDING','RETRY_WAIT') "
+                "AND (next_retry_at IS NULL OR next_retry_at<=:now)) "
+                "OR (status='PROCESSING' "
+                "AND (lease_expires_at IS NULL OR lease_expires_at<=:now))) "
                 "ORDER BY id ASC LIMIT :lim "
                 "FOR UPDATE SKIP LOCKED"
             ), {"tid": _tid(), "now": now, "lim": limit}).fetchall()
@@ -254,17 +257,28 @@ def claim_and_process_delivery_jobs(*, limit: int = 10, worker_id: str = "schedu
                 select(MessageDeliveryJob).where(
                     MessageDeliveryJob.tenant_id == _tid(),
                     MessageDeliveryJob.is_deleted.is_(False),
-                    MessageDeliveryJob.status.in_(("PENDING", "RETRY_WAIT")),
                     or_(
-                        MessageDeliveryJob.next_retry_at.is_(None),
-                        MessageDeliveryJob.next_retry_at <= now,
+                        and_(
+                            MessageDeliveryJob.status.in_(("PENDING", "RETRY_WAIT")),
+                            or_(
+                                MessageDeliveryJob.next_retry_at.is_(None),
+                                MessageDeliveryJob.next_retry_at <= now,
+                            ),
+                        ),
+                        and_(
+                            MessageDeliveryJob.status == "PROCESSING",
+                            or_(
+                                MessageDeliveryJob.lease_expires_at.is_(None),
+                                MessageDeliveryJob.lease_expires_at <= now,
+                            ),
+                        ),
                     ),
                 ).order_by(MessageDeliveryJob.id.asc()).limit(limit)
             ).all()
             ids = [int(r.id) for r in rows]
 
         for jid in ids:
-            job = db.get(MessageDeliveryJob, jid)
+            job = tenant_get(db, MessageDeliveryJob, jid, tenant_id=_tid())
             if not job:
                 continue
             if job.lease_expires_at and job.lease_expires_at > now and job.locked_by != worker_id:
@@ -280,8 +294,14 @@ def claim_and_process_delivery_jobs(*, limit: int = 10, worker_id: str = "schedu
 
     for jid in claimed_ids:
         with session() as db:
-            job = db.get(MessageDeliveryJob, jid)
-            if not job or job.status != "PROCESSING":
+            job = tenant_get(db, MessageDeliveryJob, jid, tenant_id=_tid())
+            if (
+                not job
+                or job.status != "PROCESSING"
+                or job.locked_by != worker_id
+                or not job.lease_expires_at
+                or job.lease_expires_at <= _utc_now()
+            ):
                 continue
             try:
                 slice_ids = list(job.recipient_slice_json or [])

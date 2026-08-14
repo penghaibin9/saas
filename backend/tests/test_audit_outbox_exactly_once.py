@@ -110,7 +110,7 @@ def test_external_scheduler_runs_audit_outbox_consumer(monkeypatch):
     from app.modules.internship.services import internship_audit_service as svc
 
     calls: list[dict] = []
-    monkeypatch.setattr(scheduler, "_schedulable_tenant_ids", lambda: [])
+    monkeypatch.setattr(scheduler, "_candidate_tenant_ids", lambda: [])
     monkeypatch.setattr(scheduler, "_refresh_delivery_metrics", lambda: None)
     monkeypatch.setattr(
         svc,

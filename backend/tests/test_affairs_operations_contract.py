@@ -170,7 +170,11 @@ def test_student_miniapp_has_authenticated_upload_versions_and_notice_focus():
 
     assert "export function realUpload" in request
     assert "export function realDownload" in request
-    assert "_refreshOnce()" in request
+    assert "function _refreshOnce(expectedGeneration = currentSessionGeneration())" in request
+    assert "_refreshOnce(requestSnapshot.generation)" in request
+    assert "guardSessionPromise(" in request
+    assert "captureSessionSnapshot(" in request
+    assert "sessionChangedError()" in request
     assert "getMyMaterialRequirements" in api
     assert "uploadMaterialFile" in api
     assert "submitMaterialVersion" in api
