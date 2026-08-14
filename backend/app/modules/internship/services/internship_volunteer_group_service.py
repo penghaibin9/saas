@@ -2,7 +2,7 @@
 
 Enterprise decisions are side facts and never deleted here. A timed-out ACCEPT_INTENT lock is
 released lazily to NEEDS_REVISION with an audit trail; students may then revise/resubmit through
-the later atomic volunteer service.
+the atomic volunteer service.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.modules.internship.services import internship_audit_service
 from app.services.db_service import _as_id
 
 _GROUP_STATUSES = frozenset({"DRAFT", "SUBMITTED", "LOCKED", "NEEDS_REVISION", "APPROVED"})
-_DEFAULT_TEACHER_CONFIRM_SLA_HOURS = 72
+_DEFAULT_TEACHER_CONFIRM_SLA_HOURS = 48
 
 
 def _get_group_in_tx(db, *, tenant_id: int, group_id: int, lock: bool = False) -> InternshipVolunteerGroup:
@@ -33,16 +33,8 @@ def _get_group_in_tx(db, *, tenant_id: int, group_id: int, lock: bool = False) -
     return group
 
 
-def get_or_create_group_in_tx(
-    db,
-    *,
-    tenant_id: int,
-    record_id: int,
-    student_id: int,
-    batch_id: int,
-    campaign_id: int,
-) -> InternshipVolunteerGroup:
-    """Called after InternshipRecord is locked by the A01-10 canonical lock order."""
+def get_or_create_group_in_tx(db, *, tenant_id: int, record_id: int, student_id: int, batch_id: int, campaign_id: int) -> InternshipVolunteerGroup:
+    """Called after InternshipRecord is locked by the canonical A01-10 lock order."""
     group = db.scalar(
         select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
@@ -69,21 +61,13 @@ def get_or_create_group_in_tx(
     return group
 
 
-def lazy_release_expired_lock_in_tx(
-    db,
-    *,
-    group: InternshipVolunteerGroup,
-    tenant_id: int,
-    now: datetime | None = None,
-    user=None,
-) -> bool:
+def lazy_release_expired_lock_in_tx(db, *, group: InternshipVolunteerGroup, tenant_id: int, now: datetime | None = None, user=None) -> bool:
     current = now or datetime.utcnow()
     if group.status != "LOCKED":
         return False
     deadline = group.teacher_confirm_deadline
     if deadline is None or deadline > current:
         return False
-
     before = group.status
     group.status = "NEEDS_REVISION"
     group.last_released_at = current
@@ -107,6 +91,7 @@ def lazy_release_expired_lock_in_tx(
         reason=group.last_release_reason,
         detail={
             "campaignId": str(group.campaign_id),
+            "lockedApplicationId": str(group.locked_application_id or ""),
             "lockedByDecisionId": str(group.locked_by_decision_id or ""),
             "deadlineExpiredAt": current.isoformat(),
         },
@@ -114,36 +99,20 @@ def lazy_release_expired_lock_in_tx(
     return True
 
 
-def assert_student_editable_in_tx(
-    db,
-    *,
-    group: InternshipVolunteerGroup,
-    tenant_id: int,
-    now: datetime | None = None,
-) -> None:
+def assert_student_editable_in_tx(db, *, group: InternshipVolunteerGroup, tenant_id: int, now: datetime | None = None) -> None:
     lazy_release_expired_lock_in_tx(db, group=group, tenant_id=tenant_id, now=now)
     if group.status == "LOCKED":
         raise AppException(
             "VOLUNTEER_GROUP_LOCKED",
             "企业已给出拟接收意向，志愿已锁定，需等待学校确认或解除锁定",
-            details={
-                "teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat()
-                if group.teacher_confirm_deadline else None
-            },
+            details={"teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat() if group.teacher_confirm_deadline else None},
             http_status=409,
         )
     if group.status == "APPROVED":
         raise AppException("DATA_CONFLICT", "志愿组已由学校批准，不能普通修改")
 
 
-def mark_submitted_in_tx(
-    db,
-    *,
-    group: InternshipVolunteerGroup,
-    material_snapshot_id: int,
-    submission_version: int,
-    now: datetime | None = None,
-) -> None:
+def mark_submitted_in_tx(db, *, group: InternshipVolunteerGroup, material_snapshot_id: int, submission_version: int, now: datetime | None = None) -> None:
     assert_student_editable_in_tx(db, group=group, tenant_id=group.tenant_id, now=now)
     if int(submission_version) != int(group.submission_version or 0) + 1:
         raise AppException("DATA_CONFLICT", "submissionVersion 必须严格递增")
@@ -151,6 +120,10 @@ def mark_submitted_in_tx(
     group.submission_version = int(submission_version)
     group.current_material_snapshot_id = _as_id(material_snapshot_id)
     group.submitted_at = now or datetime.utcnow()
+    group.locked_application_id = None
+    group.locked_by_decision_id = None
+    group.locked_at = None
+    group.teacher_confirm_deadline = None
     group.revision_reason = None
     group.revision_requested_at = None
     group.version = int(group.version or 0) + 1
@@ -160,6 +133,7 @@ def lock_for_accept_intent_in_tx(
     db,
     *,
     group: InternshipVolunteerGroup,
+    application_id: int,
     decision_id: int,
     teacher_confirm_sla_hours: int | None,
     now: datetime | None = None,
@@ -169,17 +143,17 @@ def lock_for_accept_intent_in_tx(
     lazy_release_expired_lock_in_tx(db, group=group, tenant_id=group.tenant_id, now=current, user=user)
     if group.status not in {"SUBMITTED", "LOCKED"}:
         raise AppException("DATA_CONFLICT", f"志愿组状态 {group.status} 不能接受企业拟接收锁")
-    # Idempotent same/another valid ACCEPT_INTENT refreshes neither deadline nor history silently.
     if group.status == "LOCKED":
-        if group.locked_by_decision_id == _as_id(decision_id):
+        if group.locked_by_decision_id == _as_id(decision_id) and group.locked_application_id == _as_id(application_id):
             return
         raise AppException("DATA_CONFLICT", "志愿组已被另一条企业拟接收决定锁定")
     hours = int(teacher_confirm_sla_hours or _DEFAULT_TEACHER_CONFIRM_SLA_HOURS)
-    if hours < 1 or hours > 24 * 30:
-        raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须在 1-720 小时")
+    if hours < 1 or hours > 168:
+        raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须在 1-168 小时")
     before = group.status
     group.status = "LOCKED"
     group.locked_at = current
+    group.locked_application_id = _as_id(application_id)
     group.locked_by_decision_id = _as_id(decision_id)
     group.teacher_confirm_deadline = current + timedelta(hours=hours)
     group.version = int(group.version or 0) + 1
@@ -196,20 +170,14 @@ def lock_for_accept_intent_in_tx(
         new_version=group.version,
         detail={
             "campaignId": str(group.campaign_id),
+            "applicationId": str(application_id),
             "decisionId": str(decision_id),
             "teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat(),
         },
     )
 
 
-def teacher_request_revision_in_tx(
-    db,
-    *,
-    group: InternshipVolunteerGroup,
-    reason: str,
-    user=None,
-    now: datetime | None = None,
-) -> None:
+def teacher_request_revision_in_tx(db, *, group: InternshipVolunteerGroup, reason: str, user=None, now: datetime | None = None) -> None:
     text = str(reason or "").strip()
     if len(text) < 2:
         raise AppException("VALIDATION_ERROR", "解除/退回志愿锁必须填写原因")
@@ -239,17 +207,14 @@ def teacher_request_revision_in_tx(
         after_status=group.status,
         new_version=group.version,
         reason=text,
-        detail={"lockedByDecisionId": str(group.locked_by_decision_id or "")},
+        detail={
+            "lockedApplicationId": str(group.locked_application_id or ""),
+            "lockedByDecisionId": str(group.locked_by_decision_id or ""),
+        },
     )
 
 
-def teacher_mark_approved_in_tx(
-    db,
-    *,
-    group: InternshipVolunteerGroup,
-    user=None,
-    now: datetime | None = None,
-) -> None:
+def teacher_mark_approved_in_tx(db, *, group: InternshipVolunteerGroup, user=None, now: datetime | None = None) -> None:
     current = now or datetime.utcnow()
     lazy_release_expired_lock_in_tx(db, group=group, tenant_id=group.tenant_id, now=current, user=user)
     if group.status not in {"SUBMITTED", "LOCKED"}:
@@ -270,5 +235,8 @@ def teacher_mark_approved_in_tx(
         before_status=before,
         after_status=group.status,
         new_version=group.version,
-        detail={"lockedByDecisionId": str(group.locked_by_decision_id or "")},
+        detail={
+            "lockedApplicationId": str(group.locked_application_id or ""),
+            "lockedByDecisionId": str(group.locked_by_decision_id or ""),
+        },
     )
