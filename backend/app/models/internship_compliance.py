@@ -196,6 +196,15 @@ class InternshipSpecialFiling(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="DRAFT",
         comment="NOT_REQUIRED/DRAFT/PENDING_COLLEGE/PENDING_SCHOOL/APPROVED/REJECTED/WITHDRAWN/EXPIRED/SUPERSEDED")
+    # 申请人/审核人：service 与合规工作台一直在读写这四个字段，但模型和真实表里都没有，
+    # 于是 create() 直接 TypeError（POST /internship/filings 100% 500）。因为创建永远失败、
+    # 表里永远 0 行，review() 里那条「申请人与审核人必须分离」的守卫（它读
+    # requested_by_user_id）也就一直没机会执行——这个 bug 一直在自我掩盖。
+    # 迁移见 20260814_ix_filing_actor_cols。
+    requested_by_name: Mapped[str | None] = mapped_column(String(100))
+    requested_by_user_id: Mapped[str | None] = mapped_column(String(64))
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     approved_by_name: Mapped[str | None] = mapped_column(String(100))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime)
