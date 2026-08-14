@@ -196,3 +196,9 @@ academic_affairs_stats_detail_scale_guard.install()
 from . import academic_affairs_workload_stats_guard
 
 academic_affairs_workload_stats_guard.install()
+
+# PR #101 生产复审：毕业资格统计聚合/异常下钻只替换只读实现，保持正式 evaluator、
+# immutable Run/Decision 与三态真值不变；大校规模下聚合走 SQL，明细保持有界分页/流式解析。
+from . import academic_affairs_graduation_stats_scale_guard
+
+academic_affairs_graduation_stats_scale_guard.install()
