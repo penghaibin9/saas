@@ -14,16 +14,30 @@
       <span>{{ error }}</span>
       <button type="button" @click="load">重新加载</button>
     </div>
-    <InternshipProfileEditor
-      v-else
-      :profile="profile"
-      :completeness="completeness"
-      :items="items"
-      :busy="busy"
-      @save="saveProfile"
-      @add-item="addItem"
-      @delete-item="deleteItem"
-    />
+    <div v-else class="profile-content">
+      <InternshipProfileEditor
+        :profile="profile"
+        :completeness="completeness"
+        :items="items"
+        :busy="busy"
+        @save="saveProfile"
+        @add-item="addItem"
+        @delete-item="deleteItem"
+      />
+      <MaterialSharePreview
+        :preview="preview"
+        :loading="previewLoading"
+        :error="previewError"
+        :contact-sharing-mode="contactSharingMode"
+        :confirmed="previewConfirmed"
+        :pdf-busy="pdfBusy"
+        :pdf-url="pdfUrl"
+        @refresh="loadPreview"
+        @pdf-preview="generatePdfPreview"
+        @update:contact-sharing-mode="contactSharingMode = $event"
+        @update:confirmed="previewConfirmed = $event"
+      />
+    </div>
   </div>
 </template>
 
@@ -31,11 +45,16 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import InternshipProfileEditor from '../../components/recruitment/InternshipProfileEditor.vue'
+import MaterialSharePreview from '../../components/recruitment/MaterialSharePreview.vue'
 import {
   normalizeInternshipProfile,
   normalizeProfileCompleteness,
   normalizeProfileItems
 } from '../../modules/internshipRecruitment/profileModel'
+import {
+  buildPdfPreviewRequest,
+  normalizeMaterialPreview
+} from '../../modules/internshipRecruitment/materialPreviewModel'
 import { internshipSelectionApi } from '../../services/internshipSelectionApi'
 
 const router = useRouter()
@@ -45,7 +64,15 @@ const error = ref('')
 const profile = ref(normalizeInternshipProfile())
 const completeness = ref(normalizeProfileCompleteness())
 const items = ref([])
+const preview = ref(normalizeMaterialPreview())
+const previewLoading = ref(false)
+const previewError = ref('')
+const contactSharingMode = ref('AFTER_INTERVIEW')
+const previewConfirmed = ref(false)
+const pdfBusy = ref(false)
+const pdfUrl = ref('')
 let requestSeq = 0
+let previewRequestSeq = 0
 
 async function load() {
   const requestId = ++requestSeq
@@ -67,6 +94,26 @@ async function load() {
   } finally {
     if (requestId === requestSeq) loading.value = false
   }
+  if (!error.value) await loadPreview()
+}
+
+async function loadPreview() {
+  const requestId = ++previewRequestSeq
+  previewLoading.value = true
+  previewError.value = ''
+  previewConfirmed.value = false
+  pdfUrl.value = ''
+  try {
+    const data = await internshipSelectionApi.profilePreview()
+    if (requestId !== previewRequestSeq) return
+    preview.value = normalizeMaterialPreview(data || {})
+  } catch (err) {
+    if (requestId !== previewRequestSeq) return
+    preview.value = normalizeMaterialPreview()
+    previewError.value = err?.message || '企业视角材料预览生成失败'
+  } finally {
+    if (requestId === previewRequestSeq) previewLoading.value = false
+  }
 }
 
 async function refreshAfterWrite() {
@@ -78,6 +125,7 @@ async function refreshAfterWrite() {
   profile.value = normalizeInternshipProfile(profileData || {})
   completeness.value = normalizeProfileCompleteness(completenessData || {})
   items.value = normalizeProfileItems(itemData || [])
+  await loadPreview()
 }
 
 async function saveProfile(payload) {
@@ -117,6 +165,22 @@ async function deleteItem(item) {
   }
 }
 
+async function generatePdfPreview() {
+  pdfBusy.value = true
+  try {
+    const data = await internshipSelectionApi.profilePdfPreview(buildPdfPreviewRequest({
+      previewHash: preview.value.previewHash,
+      contactSharingMode: contactSharingMode.value
+    }))
+    pdfUrl.value = String(data?.url || data?.fileUrl || data?.previewUrl || '')
+    if (!pdfUrl.value) previewError.value = 'PDF 已生成，但服务端未返回可预览地址'
+  } catch (err) {
+    previewError.value = err?.message || 'PDF 生成失败'
+  } finally {
+    pdfBusy.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -129,5 +193,6 @@ onMounted(load)
 .page-state { display:flex; align-items:center; justify-content:center; gap:10px; min-height:220px; padding:20px; border:1px solid #eef0f3; border-radius:12px; background:#fff; color:#8c8c8c; }
 .page-state--error { flex-direction:column; border-color:#ffccc7; background:#fff2f0; color:#a8071a; }
 .page-state button { border:0; border-radius:6px; padding:7px 12px; background:#2f6bff; color:#fff; cursor:pointer; }
+.profile-content { display:grid; gap:14px; }
 @media (max-width:899px) { .profile-page { padding:12px; } }
 </style>
