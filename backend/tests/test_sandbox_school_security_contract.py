@@ -33,6 +33,9 @@ def test_standard_20k_credentials_are_not_repository_known(monkeypatch):
     assert "public_account_password_hashes()" in master
     assert master.count("opaque_background_password_hash()") == 2
 
+    reset_script = _text("backend/scripts/reset_sandbox_school.py")
+    assert reset_script.index("public_account_password_hashes()") < reset_script.index("rebuild_school_master_20k(db)")
+
 
 def test_standard_20k_public_credentials_fail_closed(monkeypatch):
     from app.services import sandbox_school_credentials as credentials
