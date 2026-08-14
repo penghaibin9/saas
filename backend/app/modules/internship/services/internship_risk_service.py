@@ -325,6 +325,7 @@ def remind(user, risk_id, channel="站内消息") -> dict:
     """向风险责任人发送站内催办；无账号映射时明确失败，不伪造成功。"""
     from datetime import timedelta
 
+    from app.core.tenant_scoped import tenant_get
     from app.models import User
     from app.services.message_event_outbox_service import emit_message_event, process_pending_outbox
     with session() as db:
@@ -346,7 +347,7 @@ def remind(user, risk_id, channel="站内消息") -> dict:
                 User.user_type == "TEACHER", User.is_deleted.is_(False),
                 User.status == "ACTIVE")).first()
         if not account and rec and getattr(rec, "advisor_user_id", None):
-            account = db.get(User, rec.advisor_user_id)
+            account = tenant_get(db, User, rec.advisor_user_id)
         if not account:
             raise AppException("DATA_NOT_FOUND", "责任人账号未建立，无法发送催办")
         title = f"实习风险催办：{(r.risk_title or r.risk_code or '')[:40]}"
