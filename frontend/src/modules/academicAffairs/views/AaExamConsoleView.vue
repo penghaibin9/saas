@@ -147,6 +147,7 @@
 
     <AppDrawer :visible="createVisible" title="新建考试批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaexam-form">
+        <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="请选择正式学期" :disabled="saving" /></AppFormItem>
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024秋期末考试" :disabled="saving" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
@@ -256,7 +257,7 @@
 /** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 异常优先排考 + 发布就绪。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsExamConvenienceApi as convenienceApi } from '@/modules/academicAffairs/api/exam-convenience.api'
 import { toast } from '@/utils/toast'
@@ -268,14 +269,14 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert,
-    AppCheckboxGroup, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
+    AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
   },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       loading: true, error: '', rows: [], pagination: { page: 1, pageSize: 50, total: 0 },
       current: null, courses: [], stats: null, incidents: [], readiness: null, readinessError: '',
-      createVisible: false, form: { batchName: '' }, formError: '',
+      createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       courseVisible: false, candidateLoading: false, candidateKeyword: '', courseCandidates: [], selectedTaskIds: [], coursePreview: null, courseError: '',
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomId: '', classroomText: '', capacity: 50 },
@@ -343,11 +344,12 @@ export default {
       this.readiness = ready.code === 0 ? ready.data : null
       this.readinessError = ready.code === 0 ? '' : ready.message
     },
-    openCreate() { this.form = { batchName: '' }; this.formError = ''; this.createVisible = true },
+    openCreate() { this.form = { batchName: '', termId: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
+      if (!this.form.termId) { this.formError = '请选择正式学期'; return }
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
       this.saving = true
-      const res = await api.createBatch({ batchName: this.form.batchName })
+      const res = await api.createBatch({ batchName: this.form.batchName, termId: this.form.termId })
       this.saving = false
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.load() } else this.formError = res.message
     },
