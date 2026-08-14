@@ -63,6 +63,16 @@
             <AppButton size="sm" :disabled="groupLoading" @click="reloadActiveGroup">重试</AppButton>
           </template>
         </AppInlineAlert>
+        <AppInlineAlert
+          v-if="statsError && activeTab !== 'overview'"
+          type="warning"
+          title="学生选择暂不可用"
+          description="合规总览统计加载失败，依赖学生选择的新建操作已暂停；现有台账仍可查看和审核。请重试刷新。"
+        >
+          <template #actions>
+            <AppButton size="sm" :disabled="loading" @click="load">重试</AppButton>
+          </template>
+        </AppInlineAlert>
 
         <template v-if="activeTab === 'overview'">
           <AppInlineAlert
@@ -118,7 +128,7 @@
             </div>
             <div class="form-grid">
               <label>学生
-                <select v-model="forms.consent.internshipId">
+                <select v-model="forms.consent.internshipId" :disabled="!!statsError">
                   <option value="">请选择学生</option>
                   <option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option>
                 </select>
@@ -218,7 +228,7 @@
           <section v-if="can('internship.filing.review')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>新建特殊备案</strong><p class="mp-note">经办人创建并提交，申请人与审核人必须分离。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.filing.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.filing.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>备案类型<select v-model="forms.filing.filingType"><option v-for="item in filingTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>目的地区<input v-model.trim="forms.filing.destinationRegion" maxlength="200" placeholder="跨区域/境外时填写" /></label>
               <label class="span-3">触发原因<textarea v-model.trim="forms.filing.triggerReason" rows="3" maxlength="500" placeholder="不少于5字" /></label>
@@ -241,7 +251,7 @@
           <section v-if="can('internship.incident.report')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>上报事故</strong><p class="mp-note">HIGH/CRITICAL 自动联动高风险单；事故编号由服务端生成。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.incident.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.incident.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>严重程度<select v-model="forms.incident.severity"><option value="LOW">一般</option><option value="MEDIUM">较大</option><option value="HIGH">重大</option><option value="CRITICAL">特别重大</option></select></label>
               <label>事故类型<input v-model.trim="forms.incident.incidentType" maxlength="50" placeholder="例如 人身伤害/交通/设备" /></label>
               <label>发生时间<input v-model="forms.incident.occurredAt" type="datetime-local" :max="nowLocal" /></label>
@@ -281,7 +291,7 @@
           <section v-if="can('internship.compliance.exempt.request')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">只允许有期限、有依据的个案申请；不能豁免基础身份、租户隔离或数据权限。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.exemption.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.exemption.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>检查项<select v-model="forms.exemption.checkCode"><option value="">请选择检查项</option><option v-for="item in exemptionChecks" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>有效期至<input v-model="forms.exemption.validUntil" type="datetime-local" :min="nowLocal" /></label>
               <label class="span-3">申请原因<textarea v-model.trim="forms.exemption.reason" rows="4" maxlength="1000" placeholder="不少于10字，说明特殊事实、替代控制和责任人" /></label>
@@ -300,7 +310,7 @@
             <div class="mp-card__head"><div><strong>生成监管证据包</strong><p class="mp-note">包含真实附件、对象版本、逐文件SHA-256、缺失项和审计。</p></div></div>
             <div class="form-grid">
               <label>包类型<select v-model="forms.package.packageType"><option value="BATCH">批次包</option><option value="STUDENT">学生包</option></select></label>
-              <label v-if="forms.package.packageType === 'STUDENT'">学生<select v-model="forms.package.targetId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label v-if="forms.package.packageType === 'STUDENT'">学生<select v-model="forms.package.targetId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
             </div>
             <AppButton v-if="can('internship.evidence.export')" :disabled="acting || !packageFormValid" @click="generatePackage">生成版本化证据包</AppButton>
           </section>
@@ -392,7 +402,9 @@ export default {
     dialog: emptyDialog(), dialogError: '', conflict: emptyConflict(),
     // 首屏只拉 summary + 6 个统计数字；哪个 Tab 打开过、明细分组才会被拉过一次并缓存在这里。
     loadedGroups: new Set(), groupLoading: false, groupError: '',
-    // 合规总览 Tab 自己的统计接口独立失败时用；不拖累其余 6 个不依赖它的 Tab。
+    // 只允许当前 Tab 发起的最新分组请求控制 loading/error；旧 Tab 的请求可以回填缓存，但不能污染当前 UI。
+    groupRequestSeq: 0, activeGroupRequest: '',
+    // batchStats 还提供跨业务 Tab 共用的学生选择项；失败时台账仍可读，但依赖学生选择的新建动作必须显式停用。
     statsError: '',
     // 每次 load()（含切批次）自增；分组请求回来时比对，丢弃属于上一轮的响应，
     // 否则切批次时在途的旧请求会把上一个批次的台账并进当前视图。
@@ -410,7 +422,7 @@ export default {
     },
     consentFormValid() {
       const form = this.forms.consent
-      return !!form.internshipId && form.contentVersion.trim().length >= 2 && form.contentSnapshot.trim().length >= 20
+      return !this.statsError && !!form.internshipId && form.contentVersion.trim().length >= 2 && form.contentSnapshot.trim().length >= 20
     },
     safetyFormValid() {
       const form = this.forms.safety
@@ -419,11 +431,11 @@ export default {
     filingFormValid() {
       const form = this.forms.filing
       const riskRequired = ['HIGH_RISK', 'NIGHT_SHIFT', 'OVERSEAS', 'MINOR'].includes(form.filingType)
-      return !!form.internshipId && form.triggerReason.trim().length >= 5 && (!riskRequired || form.riskDescription.trim().length >= 5) && form.fileIds.length > 0
+      return !this.statsError && !!form.internshipId && form.triggerReason.trim().length >= 5 && (!riskRequired || form.riskDescription.trim().length >= 5) && form.fileIds.length > 0
     },
     incidentFormValid() {
       const form = this.forms.incident
-      return !!form.internshipId && !!form.occurredAt && form.occurredAt <= this.nowLocal && form.incidentType.trim().length >= 2 && form.location.trim().length >= 2 && form.summary.trim().length >= 5 && form.emergencyAction.trim().length >= 5
+      return !this.statsError && !!form.internshipId && !!form.occurredAt && form.occurredAt <= this.nowLocal && form.incidentType.trim().length >= 2 && form.location.trim().length >= 2 && form.summary.trim().length >= 5 && form.emergencyAction.trim().length >= 5
     },
     emergencyFormValid() {
       const form = this.forms.emergency
@@ -431,9 +443,11 @@ export default {
     },
     exemptionFormValid() {
       const form = this.forms.exemption
-      return !!form.internshipId && !!form.checkCode && form.reason.trim().length >= 10 && !!form.validUntil && form.validUntil > this.nowLocal && form.evidenceFileIds.length > 0
+      return !this.statsError && !!form.internshipId && !!form.checkCode && form.reason.trim().length >= 10 && !!form.validUntil && form.validUntil > this.nowLocal && form.evidenceFileIds.length > 0
     },
-    packageFormValid() { return this.forms.package.packageType === 'BATCH' || !!this.forms.package.targetId },
+    packageFormValid() {
+      return this.forms.package.packageType === 'BATCH' || (!this.statsError && !!this.forms.package.targetId)
+    },
     tabs() {
       const counts = this.workbench.counts || {}
       return [
@@ -469,20 +483,18 @@ export default {
     /** 首屏：只拉批次统计 + 工作台 summary（6 项数字走 SQL COUNT），不拉任何分组明细。
      * 明细列表改为按 Tab 懒加载，见 ensureGroupLoaded。
      *
-     * 三个并发请求不是同一个故障域：`batchStats` 只喂"合规总览" Tab 的指标卡片和
-     * 学生下钻表，其余 6 个 Tab（含本次改造的全部懒加载分组）完全不读 `this.stats`。
-     * 之前三个揉在一个 try 里，任何一个 4xx/5xx 都会把整页判死、拖着另外两个已经
-     * 成功、跟它毫无关系的数据一起消失——实测在合规豁免表迁移滞后的库上真实复现：
-     * `batchStats` 500 时，本次拆分出来的 summary/分组接口其实都是 200，但老师看到的
-     * 是一整页"加载失败"，一个 Tab 都点不开。现在分别处理：summary 拿不到才是真的
-     * 判页面死（6 个 Tab 都靠它拿计数）；stats 单独失败只影响总览 Tab 本身。 */
+     * 三个并发请求不是同一个故障域：summary 负责各业务 Tab 的计数，分组接口负责台账明细；
+     * `batchStats` 负责总览指标/下钻，并提供知情、备案、事故、豁免、学生证据包共用的学生选择项。
+     * 因此 stats 失败时不能把整页判死，也不能让其他 Tab 假装可正常新建：现有台账和审批继续可用，
+     * 依赖学生选择的新建动作会显示告警并停用，直到 stats 重试成功。 */
     async load() {
       // 先自增，让所有在途的分组请求立即作废（含"没选批次"这条早退路径）。
       this.loadSeq += 1
+      this.activeGroupRequest = ''; this.groupError = ''; this.groupLoading = false
       const batchId = this.batchStore.selectedBatchId
       if (!batchId) {
         this.stats = {}; this.workbench = {}; this.loadedGroups = new Set()
-        this.groupError = ''; this.groupLoading = false; this.statsError = ''
+        this.statsError = ''
         return
       }
       this.loading = true; this.error = ''; this.statsError = ''
@@ -516,26 +528,32 @@ export default {
     async ensureGroupLoaded(tab) {
       const group = TAB_GROUP[tab]
       const batchId = this.batchStore.selectedBatchId
-      // 切到总览、或该分组已加载：也要清掉上一个 Tab 遗留的错误横幅，
-      // 否则老师会在一个数据正常的 Tab 上看到别处的报错。
-      if (!group || !batchId || this.loadedGroups.has(group)) { this.groupError = ''; return }
+      // 切到总览、无批次、或已加载分组时，当前 Tab 没有在途请求；立即释放共享 UI 状态。
+      // 旧 Tab 的请求即使随后返回，也因为失去 activeGroupRequest 所有权，不能再改当前 loading/error。
+      if (!group || !batchId || this.loadedGroups.has(group)) {
+        this.activeGroupRequest = ''; this.groupError = ''; this.groupLoading = false
+        return
+      }
       const seq = this.loadSeq
-      const stale = () => seq !== this.loadSeq || batchId !== this.batchStore.selectedBatchId
+      const requestId = ++this.groupRequestSeq
+      const requestKey = `${seq}:${batchId}:${group}:${requestId}`
+      this.activeGroupRequest = requestKey
+      const staleData = () => seq !== this.loadSeq || batchId !== this.batchStore.selectedBatchId
+      const ownsUi = () => !staleData() && this.activeGroupRequest === requestKey && TAB_GROUP[this.activeTab] === group
       this.groupLoading = true; this.groupError = ''
       try {
         const res = await complianceApi.workbenchGroup(batchId, group)
-        // 期间切了批次或触发了新的 load()：这次响应属于上一轮，丢弃，
-        // 否则会把上一个批次的合规台账并进当前批次的视图里。
-        if (stale()) return
+        // 切批次/刷新后的响应属于上一轮，数据也必须丢弃；同批次旧 Tab 的响应可以回填该分组缓存，
+        // 但 loading/error 只允许当前 Tab 的最新请求通过 ownsUi() 控制。
+        if (staleData()) return
         if (res.code !== 0) throw new Error(res.message || '分组明细加载失败')
         this.workbench = { ...this.workbench, ...(res.data || {}) }
         this.loadedGroups.add(group)
       } catch (groupErrorObj) {
-        if (stale()) return
-        this.groupError = groupErrorObj.message || '分组明细加载失败'
+        if (staleData()) return
+        if (ownsUi()) this.groupError = groupErrorObj.message || '分组明细加载失败'
       } finally {
-        // 被顶替时不碰 groupLoading，交给接手的那一轮管理。
-        if (!stale()) this.groupLoading = false
+        if (ownsUi()) this.groupLoading = false
       }
     },
     /** 错误横幅上的「重试」：重新拉当前 Tab 的明细。 */
@@ -574,7 +592,7 @@ export default {
       if (fileId) this.forms[formKey][field] = [...new Set([...(this.forms[formKey][field] || []), String(fileId)])]
     },
     createConsent() {
-      if (!this.consentFormValid) return this.$message?.warning?.('请选择学生，正文版本不少于2字，完整正文不少于20字')
+      if (!this.consentFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择学生，正文版本不少于2字，完整正文不少于20字')
       const form = { ...this.forms.consent, deliveryChannel: this.forms.consent.consentType === 'GUARDIAN' ? 'SMS' : 'PORTAL' }
       this.run(complianceApi.createConsent(form), form.consentType === 'GUARDIAN' ? '监护人任务已创建，送达结果已写入台账' : '学生知情确认任务已下发', { resetForm: 'consent' })
     },
@@ -584,7 +602,7 @@ export default {
       this.run(complianceApi.createSafetyCourse({ ...this.forms.safety, batchId: this.batchStore.selectedBatchId, status: 'ACTIVE' }), '安全课程已创建', { resetForm: 'safety' })
     },
     async createFiling() {
-      if (!this.filingFormValid) return this.$message?.warning?.('请完整填写备案原因、必要风险说明并上传依据附件')
+      if (!this.filingFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请完整填写备案原因、必要风险说明并上传依据附件')
       if (this.acting) return
       this.acting = true
       try {
@@ -600,7 +618,7 @@ export default {
     },
     filingAction(row, level, action) { this.run(complianceApi.reviewFiling(row.id, level, action, { expectedVersion: row.version }), '备案状态已更新') },
     reportIncident() {
-      if (!this.incidentFormValid) return this.$message?.warning?.('请填写学生、事故类型、非未来发生时间、地点、摘要和应急措施')
+      if (!this.incidentFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请填写学生、事故类型、非未来发生时间、地点、摘要和应急措施')
       this.run(complianceApi.reportIncident({ ...this.forms.incident, idempotencyKey: `pc-${Date.now()}-${Math.random().toString(36).slice(2)}` }), '事故已上报', { resetForm: 'incident' })
     },
     incidentTargets(row) {
@@ -624,11 +642,11 @@ export default {
     },
     emergencyAction(row, action) { this.run(complianceApi.reviewEmergencyPlan(row.id, action, { expectedVersion: row.version }), '应急预案状态已更新') },
     requestExemption() {
-      if (!this.exemptionFormValid) return this.$message?.warning?.('请选择真实检查项，填写10字以上原因、未来有效期并上传依据附件')
+      if (!this.exemptionFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择真实检查项，填写10字以上原因、未来有效期并上传依据附件')
       this.run(complianceApi.grantExemption(this.forms.exemption), '豁免申请已提交学校审批', { resetForm: 'exemption' })
     },
     generatePackage() {
-      if (!this.packageFormValid) return this.$message?.warning?.('请选择证据包目标')
+      if (!this.packageFormValid) return this.$message?.warning?.(this.forms.package.packageType === 'STUDENT' && this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择证据包目标')
       const targetId = this.forms.package.packageType === 'BATCH' ? this.batchStore.selectedBatchId : this.forms.package.targetId
       this.run(complianceApi.generateEvidencePackage(this.forms.package.packageType, targetId), '证据包已生成')
     },
