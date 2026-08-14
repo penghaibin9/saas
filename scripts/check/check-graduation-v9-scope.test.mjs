@@ -12,6 +12,21 @@ test('S0.5 only allows its own scope gate files', () => {
   assert.match(validateFiles(['frontend/src/modules/graduation/views/ProposalListView.vue'], 'S0_5')[0], /out of S0_5 allowlist/)
 })
 
+test('production audit repair card is narrow and keeps shared foundations denied', () => {
+  assert.deepEqual(validateFiles([
+    'scripts/check/check-graduation-v9-scope.mjs',
+    'scripts/check/check-graduation-v9-scope.test.mjs',
+    'scripts/check/check-npm-production-audit.mjs',
+    '.github/security/npm-production-audit-waivers.json',
+    '.github/workflows/production-dependency-audit.yml',
+    'backend/app/modules/graduation/services/graduation_archive_batch_scale.py',
+    'backend/app/modules/graduation/services/graduation_archive_batch_consistency.py',
+    'backend/tests/test_graduation_v9_u7_batch_production.py',
+  ], 'AUDIT_REPAIR'), [])
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'AUDIT_REPAIR')[0], /shared foundation denied/)
+  assert.match(validateFiles(['.github/workflows/ci.yml'], 'AUDIT_REPAIR')[0], /out of AUDIT_REPAIR allowlist/)
+})
+
 test('M1 allows shared batch adapters and the migrated round5 contract, but denies shared HTTP foundation', () => {
   assert.deepEqual(validateFiles([
     'frontend/src/modules/graduation/api/graduation-batch-context.js',
@@ -133,10 +148,18 @@ test('U6 grade workbench allows only grade views and its targeted validation con
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U6')[0], /canonical write\/read mixed service denied/)
 })
 
-test('U7 archive prework only registers the SQL read binding already present on the branch', () => {
+test('U7 archive production repair includes scaled snapshot and dirty-file regressions', () => {
   assert.deepEqual(validateFiles([
     'backend/app/modules/graduation/services/__init__.py',
     'backend/app/modules/graduation/services/graduation_archive_read_service.py',
+    'backend/app/modules/graduation/services/graduation_archive_consistency.py',
+    'backend/app/modules/graduation/services/graduation_archive_data_quality.py',
+    'backend/app/modules/graduation/services/graduation_archive_batch_scale.py',
+    'backend/app/modules/graduation/services/graduation_archive_batch_consistency.py',
+    'backend/tests/test_graduation_v9_u7_archive_dirty_data.py',
+    'backend/tests/test_graduation_v9_u7_archive_export_paging.py',
+    'backend/tests/test_graduation_v9_u7_snapshot_dirty_guard.py',
+    'backend/tests/test_graduation_v9_u7_batch_production.py',
   ], 'U7'), [])
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'U7')[0], /canonical write\/read mixed service denied/)
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U7')[0], /shared foundation denied/)
@@ -166,6 +189,9 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
   assert.deepEqual(validateFiles([
     '.github/workflows/graduation-v9-scope.yml',
     '.github/workflows/graduation-targeted-repair.yml',
+    '.github/workflows/production-dependency-audit.yml',
+    '.github/security/npm-production-audit-waivers.json',
+    'scripts/check/check-npm-production-audit.mjs',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
     'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
@@ -196,6 +222,9 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'backend/app/modules/graduation/services/graduation_student_read_service.py',
     'backend/tests/test_graduation_v9_u5_student_list_scale.py',
     'backend/app/modules/graduation/services/graduation_archive_read_service.py',
+    'backend/app/modules/graduation/services/graduation_archive_batch_scale.py',
+    'backend/app/modules/graduation/services/graduation_archive_batch_consistency.py',
+    'backend/tests/test_graduation_v9_u7_batch_production.py',
     'backend/app/api/v1/mobile_graduation_teacher_context.py',
     'backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py',
     'backend/tests/test_graduation_premerge_contracts.py',
