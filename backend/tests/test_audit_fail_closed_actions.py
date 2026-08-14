@@ -17,6 +17,11 @@ from app.services.audit_log import CRITICAL_ACTIONS
     "RESET_PASSWORD",
     "SENSITIVE_VIEW",
     "EXPORT",
+    "ROLE_ASSIGNMENT_GRANT",
+    "ROLE_ASSIGNMENT_REVOKE",
+    "ROLE_ASSIGNMENT_TRANSFER",
+    "ROLE_ASSIGNMENT_REVIEW",
+    "ROLE_ASSIGNMENT_EXPIRE",
 ])
 def test_real_high_risk_audit_actions_are_fail_closed(action):
     assert action in CRITICAL_ACTIONS, f"真实高危动作 {action} 必须命中 fail-closed 审计集合"

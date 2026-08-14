@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import or_, select
 
 from app.core.permissions import has_permission
+from app.modules.internship.services.internship_identity import stable_user_id
 from app.services.file_access_service import (
     _FILE_VIEW_PERMISSION,
     _actor_id,
@@ -146,11 +147,12 @@ def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict
             InternshipRecord.is_deleted.is_(False),
             or_(*clauses),
         )).all()
-        actor_name = str(user.get("realName") or user.get("name") or "").strip()
-        actor_user_id = resolve_message_user_id(user)
+        actor_user_id = stable_user_id(user)
+        if actor_user_id is None:
+            return False
         return any(
-            (actor_user_id and int(row.advisor_user_id or 0) == actor_user_id)
-            or (actor_name and str(row.advisor_name or "").strip() == actor_name)
+            row.advisor_user_id is not None
+            and int(row.advisor_user_id) == actor_user_id
             for row in rows
         )
     except Exception:

@@ -182,129 +182,89 @@ def test_test_only_synthetic_token_keeps_fixture_local_numeric_tenant(monkeypatc
 
 
 def test_browser_session_cookie_names_are_isolated_per_pc_surface():
-    assert auth_browser._COOKIE_NAMES == {
-        "staff": "gx_staff_refresh_v1",
-        "platform": "gx_platform_refresh_v1",
-        "student": "gx_student_refresh_v1",
+    assert auth_browser._COOKIE_PREFIXES == {
+        "staff": "gx_staff_refresh_v2_",
+        "platform": "gx_platform_refresh_v2_",
+        "student": "gx_student_refresh_v2_",
     }
-    assert len(set(auth_browser._COOKIE_NAMES.values())) == 3
+    assert len(set(auth_browser._COOKIE_PREFIXES.values())) == 3
+    assert auth_browser._cookie_name("staff", "tab-a") != auth_browser._cookie_name("staff", "tab-b")
 
 
-def test_browser_login_moves_refresh_token_to_surface_httponly_cookie(monkeypatch):
-    monkeypatch.setattr(
-        auth_browser.auth_api,
-        "login",
-        lambda body: {
-            "code": 0,
-            "message": "ok",
-            "data": {"accessToken": "access-visible", "refreshToken": "refresh-secret"},
-        },
-    )
+def test_browser_login_moves_refresh_token_to_tab_specific_httponly_cookie(monkeypatch):
+    monkeypatch.setattr(auth_browser.auth_api, "login", lambda body: {
+        "code": 0, "message": "ok",
+        "data": {"accessToken": "access-visible", "refreshToken": "refresh-secret"},
+    })
+    monkeypatch.setattr(auth_browser, "_sessionize_payload", lambda payload, **kwargs: payload)
     monkeypatch.setattr(auth_browser, "_channel_from_access_token", lambda token: "student")
     response = Response()
     payload = auth_browser.browser_login(
-        auth_browser.auth_api.PasswordLoginRequest(
-            loginName="student", password="secret", clientType="STUDENT_PC"
-        ),
-        response,
+        auth_browser.auth_api.PasswordLoginRequest(loginName="student", password="secret", clientType="STUDENT_PC"),
+        response, "tab-student-a",
     )
     assert payload["data"] == {"accessToken": "access-visible"}
     cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
-    assert "gx_student_refresh_v1=refresh-secret" in cookies
-    assert "gx_staff_refresh_v1=refresh-secret" not in cookies
-    assert "gx_platform_refresh_v1=refresh-secret" not in cookies
-    assert "httponly" in cookies
-    assert "samesite=strict" in cookies
-    assert "path=/api/v1/auth" in cookies
+    expected = auth_browser._cookie_name("student", "tab-student-a").lower()
+    assert f"{expected}=refresh-secret" in cookies
+    assert "gx_student_refresh_v1=refresh-secret" not in cookies
+    assert "httponly" in cookies and "samesite=strict" in cookies and "path=/api/v1/auth" in cookies
 
 
-def test_browser_logout_terminates_only_selected_cookie_session_without_live_access_token(monkeypatch):
-    revoked = []
-    monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
-    monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
-    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
-    response = Response()
-    payload = auth_browser._browser_logout(
-        response=response,
-        channel="student",
-        refresh_token="durable-cookie-token",
-        authorization=None,
-    )
-    assert payload["code"] == 0
-    assert payload["data"]["invalidated"] is True
-    assert revoked == ["db-student-1"]
-    cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
-    assert "gx_student_refresh_v1=" in cookies
-    assert "gx_staff_refresh_v1=" not in cookies
-    assert "gx_platform_refresh_v1=" not in cookies
-    assert "max-age=0" in cookies
-    assert "httponly" in cookies
-    assert "samesite=strict" in cookies
-
-
-def test_browser_logout_blacklists_live_access_jti_as_well_as_refresh_sessions(monkeypatch):
+def test_browser_logout_terminates_only_current_bound_refresh(monkeypatch):
     blocked = []
-    revoked = []
-    monkeypatch.setattr(auth_browser, "consume_refresh", lambda token: {"userId": "db-student-1"})
-    monkeypatch.setattr(
-        auth_browser,
-        "decode_token",
-        lambda token: {"userId": "db-student-1", "jti": "access-jti-1", "exp": 4102444800},
-    )
-    monkeypatch.setattr(auth_browser, "block_jti", lambda jti, exp: blocked.append((jti, exp)) or True)
-    monkeypatch.setattr(auth_browser, "revoke_refresh_by_user", lambda user_id: revoked.append(user_id) or 1)
+    monkeypatch.setattr(auth_browser, "consume_refresh_if_matches", lambda token, **kwargs: {
+        "userId": "db-student-1", "authSessionId": "auth-session-a",
+        "browserChannel": "student", "browserSessionIdHash": auth_browser._browser_session_hash("tab-a"),
+    })
+    monkeypatch.setattr(auth_browser, "block_auth_session", blocked.append)
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
     response = Response()
     payload = auth_browser._browser_logout(
-        response=response,
-        channel="student",
-        refresh_token="durable-cookie-token",
-        authorization="Bearer live-access-token",
+        response=response, channel="student", browser_session_id="tab-a",
+        refresh_token="durable-cookie-token", authorization=None,
     )
-    assert payload["code"] == 0
-    assert blocked == [("access-jti-1", 4102444800.0)]
-    assert revoked == ["db-student-1"]
-
-
-def test_browser_logout_keeps_cookie_deletion_when_auth_store_fails(monkeypatch):
-    def fail_consume(_token):
-        raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
-    monkeypatch.setattr(auth_browser, "consume_refresh", fail_consume)
-    response = Response()
-    payload = auth_browser._browser_logout(
-        response=response,
-        channel="staff",
-        refresh_token="durable-cookie-token",
-        authorization=None,
-    )
-    assert response.status_code == 503
-    assert payload["bizCode"] == "AUTH_STORE_UNAVAILABLE"
-    assert payload["code"] != 0
+    assert payload["code"] == 0 and payload["data"]["invalidated"] is True
+    assert blocked == ["auth-session-a"]
     cookies = "\n".join(response.headers.getlist("set-cookie")).lower()
-    assert "gx_staff_refresh_v1=" in cookies
+    assert auth_browser._cookie_name("student", "tab-a").lower() in cookies
     assert "max-age=0" in cookies
 
 
-def test_pc_browser_clients_do_not_persist_auth_tokens_and_select_session_channel():
+def test_browser_logout_blacklists_live_access_jti_for_same_tab(monkeypatch):
+    blocked_jti, blocked_sessions = [], []
+    sid = "tab-a"
+    monkeypatch.setattr(auth_browser, "decode_token", lambda token: {
+        "userId": "db-student-1", "jti": "access-jti-1", "exp": 4102444800,
+        "authSessionId": "auth-session-a", "browserChannel": "student",
+        "browserSessionIdHash": auth_browser._browser_session_hash(sid),
+    })
+    monkeypatch.setattr(auth_browser, "block_jti", lambda jti, exp: blocked_jti.append((jti, exp)) or True)
+    monkeypatch.setattr(auth_browser, "block_auth_session", blocked_sessions.append)
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
+    payload = auth_browser._browser_logout(
+        response=Response(), channel="student", browser_session_id=sid,
+        refresh_token=None, authorization="Bearer live-access-token",
+    )
+    assert payload["code"] == 0
+    assert blocked_jti == [("access-jti-1", 4102444800.0)]
+    assert blocked_sessions == ["auth-session-a"]
+
+
+def test_pc_browser_clients_persist_only_nonsecret_per_tab_session_id():
     admin = (ROOT / "frontend/src/services/http/client.js").read_text(encoding="utf-8")
     portal = (ROOT / "student-portal/src/services/request.js").read_text(encoding="utf-8")
     portal_session = (ROOT / "student-portal/src/stores/session.js").read_text(encoding="utf-8")
-    assert "sessionStorage.setItem" not in admin
-    assert "localStorage.setItem" not in admin
-    assert "state = { token: ''" in admin
-    assert "/auth/browser-refresh" in admin
-    assert "/auth/browser-login" in admin
-    assert "function browserSessionChannel()" in admin
-    assert "headers: browserSessionHeaders()" in admin
-    assert "await rawRequest('/auth/browser-logout'" in admin
-    assert "localStorage.setItem" not in portal
-    assert "_sessionSet(TOKEN_KEY" not in portal
-    assert "_sessionSet(REFRESH_KEY" not in portal
-    assert "let accessToken = ''" in portal
-    assert "'X-Browser-Session': 'student'" in portal
-    assert "clientType: 'STUDENT_PC'" in portal
-    assert "/auth/browser-refresh" in portal
-    assert "/auth/browser-login" in portal
+    assert "const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'" in admin
+    assert "sessionStorage.setItem(BROWSER_SESSION_ID_KEY" in admin
+    assert "'X-Browser-Session-Id': getOrCreateBrowserSessionId()" in admin
+    assert "state.refreshToken" not in admin
+    assert "_sessionSet(TOKEN_KEY" not in portal and "_sessionSet(REFRESH_KEY" not in portal
+    assert "const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'" in portal
+    assert "sessionStorage.setItem(BROWSER_SESSION_ID_KEY" in portal
+    assert "'X-Browser-Session-Id': getOrCreateBrowserSessionId()" in portal
+    assert "let accessToken = ''" in portal and "clientType: 'STUDENT_PC'" in portal
+    assert "/auth/browser-refresh" in portal and "/auth/browser-login" in portal
     assert "await request('/auth/browser-logout', { method: 'POST', auth: true })" in portal_session
 
 

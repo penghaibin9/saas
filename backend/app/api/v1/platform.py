@@ -119,8 +119,8 @@ def tenant_enable(tenant_id: int, body: dict = Body(...), user=Depends(require_p
     out = apply_transition(
         tenant_id, "enable", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_ENABLE",
     )
-    _audit("PLATFORM_TENANT_ENABLE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已启用")
 
 @router.post("/tenants/{tenant_id}/disable", summary="停用租户（原因+版本锁）")
@@ -129,8 +129,8 @@ def tenant_disable(tenant_id: int, body: dict = Body(...), user=Depends(require_
     out = apply_transition(
         tenant_id, "disable", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_DISABLE",
     )
-    _audit("PLATFORM_TENANT_DISABLE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已停用，该校账号将无法登录")
 
 @router.post("/tenants/{tenant_id}/extend-trial", summary="延长试用（原因+版本锁）")
@@ -140,8 +140,8 @@ def tenant_extend_trial(tenant_id: int, body: dict = Body(...),
     out = apply_transition(
         tenant_id, "extend-trial", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户延期"), payload=body,
+        audit_action="PLATFORM_TENANT_EXTEND_TRIAL",
     )
-    _audit("PLATFORM_TENANT_EXTEND_TRIAL", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message=f"已延长 {int(body.get('days') or 7)} 天")
 
 
@@ -151,8 +151,8 @@ def tenant_convert(tenant_id: int, body: dict = Body(...), user=Depends(require_
     out = apply_transition(
         tenant_id, "convert-to-paid", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_CONVERT_PAID",
     )
-    _audit("PLATFORM_TENANT_CONVERT_PAID", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已转为正式授权")
 
 @router.post("/tenants/{tenant_id}/expire", summary="手动标记到期（原因+版本锁）")
@@ -161,8 +161,8 @@ def tenant_expire(tenant_id: int, body: dict = Body(...), user=Depends(require_p
     out = apply_transition(
         tenant_id, "expire", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_EXPIRE",
     )
-    _audit("PLATFORM_TENANT_EXPIRE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="已标记到期（租户进入只读）")
 
 @router.post("/tenants/{tenant_id}/change-package", summary="变更套餐（原因+版本锁）")
@@ -171,8 +171,8 @@ def tenant_change_package(tenant_id: int, body: dict = Body(...), user=Depends(r
     out = apply_transition(
         tenant_id, "change-package", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_CHANGE_PACKAGE",
     )
-    _audit("PLATFORM_TENANT_CHANGE_PACKAGE", str(tenant_id), out, tenant_id=tenant_id)
     return success(out, message="套餐已变更；超额数据不会被静默删除")
 
 @router.post("/tenants/{tenant_id}/quota", summary="租户商业容量覆盖（原因+版本锁）")
@@ -181,8 +181,8 @@ def tenant_quota(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
     out = apply_transition(
         tenant_id, "quota", reason=body.get("reason"),
         expected_version=_expected_version(body, operation="租户变更"), payload=body,
+        audit_action="PLATFORM_TENANT_QUOTA",
     )
-    _audit("PLATFORM_TENANT_QUOTA", str(tenant_id), out, tenant_id=tenant_id)
     return success(out)
 
 @router.post("/tenants/{tenant_id}/reset-demo-data", summary="重置演示数据（仅 demo-school）")

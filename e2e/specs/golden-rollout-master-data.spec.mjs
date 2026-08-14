@@ -2,6 +2,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 
@@ -43,17 +44,8 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
-}
-
-async function setStorage(page, key, value) {
-  await page.evaluate(({ storageKey, storageValue }) => {
-    window.localStorage.setItem(storageKey, String(storageValue))
-  }, { storageKey: key, storageValue: value })
+async function openWithApiSession(page, _api, path) {
+  await openGoldenStaffPage(page, path)
 }
 
 async function prepareClassFixture(admin) {
@@ -193,11 +185,10 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
 
   test('Graduation topic library · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/topic-lib?panel=list')
-    await setStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
-    await page.reload()
+    const topicPath = `/admin/graduation/topic-lib?panel=list&batchId=${encodeURIComponent(graduationFixture.batchId)}`
+    await openWithApiSession(page, adminApi, topicPath)
 
-    await expect(page).toHaveURL(/\/admin\/graduation\/topic-lib/)
+    await expect(page).toHaveURL(/\/admin\/graduation\/topic-lib\?panel=list&batchId=/)
     await expect(page.getByRole('heading', { name: '题目库', exact: true })).toBeVisible()
     await expect(page.locator('.mp-tabs')).toBeVisible()
     await expect(page.locator('.af')).toBeVisible()

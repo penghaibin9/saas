@@ -1430,7 +1430,7 @@ def get_system_context(user=Depends(require_any_permission(
 def assign_system_user_roles(user_id: int, body: dict = Body(...),
                              user=Depends(require_permission("systemAdmin.user.assign-role"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission, User, UserRole
     tenant_id = current_tenant_id()
     codes = sorted({str(code).strip().upper() for code in (body.get("roleCodes") or []) if str(code).strip()})
@@ -1452,6 +1452,8 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
                                               Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))).all()
         if len(roles) != len(codes): raise AppException("VALIDATION_ERROR", "包含不存在或已停用的角色")
         for role_obj in roles:
+            if str(role_obj.role_code or "").upper().startswith("PLATFORM_"):
+                raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")
             if str(role_obj.role_type or "").upper() == "SYSTEM":
                 patterns = ROLE_PERMISSIONS.get(role_obj.role_code, set())
             else:
@@ -1459,8 +1461,12 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
                     RolePermission.permission_id == Permission.id).where(RolePermission.tenant_id == tenant_id,
                     RolePermission.role_id == role_obj.id, RolePermission.status == "ACTIVE",
                     RolePermission.is_deleted.is_(False))).all())
-            if any(not has_permission(user, pattern) for pattern in patterns):
-                raise AppException("NO_PERMISSION", f"不能分配超出自身权限边界的角色：{role_obj.role_name}")
+            try:
+                assert_delegable_permission_codes(user, patterns)
+            except AppException as exc:
+                if exc.code == "NO_PERMISSION":
+                    raise AppException("NO_PERMISSION", f"不能分配超出自身基础权限边界的角色：{role_obj.role_name}") from None
+                raise
         existing = {link.role_id: link for link in db.scalars(select(UserRole).where(
             UserRole.tenant_id == tenant_id, UserRole.user_id == account.id)).all()}
         wanted = {role_obj.id for role_obj in roles}
@@ -1473,12 +1479,15 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
         for role_id in wanted - set(existing):
             db.add(UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role_id, status="ACTIVE"))
         account.version = int(account.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "USER_ROLE_ASSIGN", f"user:{account.id}",
+            detail={"loginName": account.login_name, "roleCodes": codes, "moduleCode": "systemAdmin"},
+            tenant_id=tenant_id, resource_id=str(account.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_subject_cache
         invalidate_subject_cache(f"db-{account.id}", tenant_id)
-        from app.services import audit_log
-        audit_log.record("USER_ROLE_ASSIGN", f"user:{account.id}", detail={"loginName": account.login_name,
-                         "roleCodes": codes})
         return success({"id": str(account.id), "roleCodes": codes}, message="角色已分配；该账号需重新登录")
     except Exception:
         db.rollback(); raise
@@ -1554,7 +1563,7 @@ def create_system_role(body: dict = Body(...), user=Depends(require_permission("
 @router.post("/system/roles/{role_id}/copy", summary="从预设或自定义角色复制学校自定义角色")
 def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.create"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission
     from app.services.system_admin_catalog_service import expand_permission_patterns
     tenant_id = current_tenant_id()
@@ -1564,6 +1573,8 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
                                                Role.is_deleted.is_(False))).first()
         if source is None:
             raise AppException("DATA_NOT_FOUND", "源角色不存在")
+        if str(source.role_code or "").upper().startswith("PLATFORM_"):
+            raise AppException("NO_PERMISSION", "学校角色治理不能复制平台角色")
         if str(source.role_type or "").upper() == "SYSTEM":
             source_codes = expand_permission_patterns(set(ROLE_PERMISSIONS.get(source.role_code, set())))
         else:
@@ -1574,9 +1585,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
             source_codes = expand_permission_patterns(source_codes)
         # 禁止落库通配或 *
         source_codes = {c for c in source_codes if c and c != "*" and not c.endswith(".*") and not c.startswith("*.")}
-        excess = sorted(code for code in source_codes if not has_permission(user, code))
-        if excess:
-            raise AppException("NO_PERMISSION", "当前操作者不能复制超出自身权限边界的角色", {"codes": excess[:10]})
+        assert_delegable_permission_codes(user, source_codes)
         base = re.sub(r"[^A-Z0-9_]", "_", f"{source.role_code}_CUSTOM")[:44].rstrip("_") or "CUSTOM"
         existing_codes = set(db.scalars(select(Role.role_code).where(Role.tenant_id == tenant_id)).all())
         code = next((f"{base}_{i}" for i in range(1, 1000) if f"{base}_{i}" not in existing_codes), None)
@@ -1612,7 +1621,7 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
 def save_system_role_permissions(role_id: int, body: dict = Body(...),
                                  user=Depends(require_permission("systemAdmin.role.config"))):
     from app.core.exceptions import AppException
-    from app.core.permissions import has_permission
+    from app.core.permissions import assert_delegable_permission_codes
     from app.models import Permission, Role, RolePermission
     from app.services.system_admin_catalog_service import build_permission_tree, expand_permission_patterns, visible_codes_from_tree
     tenant_id = current_tenant_id()
@@ -1623,9 +1632,7 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
     codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.") and not c.startswith("platform.")}
     if len(codes) > 500:
         raise AppException("VALIDATION_ERROR", "权限点超出学校角色可配置范围")
-    forbidden = [code for code in codes if not has_permission(user, code)]
-    if forbidden:
-        raise AppException("NO_PERMISSION", "不能向角色授予当前操作者没有的权限", {"codes": forbidden[:10]})
+    assert_delegable_permission_codes(user, codes)
     # 可见码集合：仅替换本页能展示的权限，页外已有权限保留，防止误伤实习/教务等码
     raw_visible = body.get("visiblePermissionCodes")
     if isinstance(raw_visible, list) and raw_visible:
@@ -1678,6 +1685,14 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         _set_role_scope(role, body.get("scopeCode") or _role_scope(role),
                         target_json=body.get("scopeTarget") or body.get("targetJson"), user=user)
         role.version = int(role.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "ROLE_PERMISSION_SAVE", f"role:{role.id}",
+            detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
+                    "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
+                    "moduleCode": "systemAdmin", "version": role.version},
+            tenant_id=tenant_id, resource_id=str(role.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_tenant_subject_caches
         try:
@@ -1687,12 +1702,6 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         except Exception as cache_exc:
             cache_ok = False
             cache_warn = str(cache_exc)[:200]
-        from app.services import audit_log
-        audit_log.record("ROLE_PERMISSION_SAVE", f"role:{role.id}",
-                         detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
-                                 "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
-                                 "moduleCode": "systemAdmin", "cacheInvalidated": cache_ok,
-                                 "cacheWarning": cache_warn, "version": role.version})
         payload = {"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
                    "permissionCodes": final_codes, "version": int(role.version or 0),
                    "cacheInvalidated": cache_ok}
@@ -2040,13 +2049,16 @@ def reset_system_user_password(user_id: int, body: dict | None = Body(default=No
         account.password_hash = hash_password(temp_password)
         account.must_change_password = True
         account.version = int(account.version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(
+            db, "RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",
+            detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密",
+                    "reason": "管理员重置", "userId": int(account.id), "moduleCode": "systemAdmin"},
+            result="SUCCESS", tenant_id=tenant_id, resource_id=str(account.id),
+        )
         db.commit()
         from app.services.auth_service_db import invalidate_subject_cache
         invalidate_subject_cache(f"db-{account.id}", tenant_id)
-        from app.services import audit_log
-        audit_log.record("RESET_PASSWORD", f"账号 {account.login_name}（{account.real_name}）",
-                         detail={"summary": "重置密码：已生成一次性临时密码，强制首登改密", "reason": "管理员重置"},
-                         result="SUCCESS")
         # 临时密码仅本次随响应返回给操作管理员转交，不入库明文、不重复展示。
         return success({"id": str(account.id), "tempPassword": temp_password, "mustChangePassword": True,
                         "notice": "临时密码仅本次显示，请立即转交本人；该账号首次登录须强制改密"},
