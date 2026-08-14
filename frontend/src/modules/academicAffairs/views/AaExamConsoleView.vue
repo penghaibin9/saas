@@ -36,7 +36,7 @@
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 批量圈课</AppButton>
               <AppButton v-if="current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
               <AppButton v-if="['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
-              <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="doAutoArrange">自动排考</AppButton>
+              <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="openAutoPlan">自动排考</AppButton>
               <AppButton
                 v-if="current.status === 'COURSE_CONFIRMED'"
                 size="small"
@@ -98,6 +98,11 @@
 
           <template v-if="autoResult && autoResult.batchId === String(current.batchId)">
             <AppInlineAlert
+              v-if="autoResult.timePlan && autoResult.timePlan.misses && autoResult.timePlan.misses.length"
+              type="warning"
+              :description="'自动定时未放下 ' + autoResult.timePlan.misses.length + ' 门：' + autoResult.timePlan.misses.map(m => `${m.courseName}（${m.reasonLabel}）`).join('；')"
+            />
+            <AppInlineAlert
               v-if="autoResult.misses && autoResult.misses.length"
               type="warning"
               :description="'自动排考漏排 ' + autoResult.misses.length + ' 门：' + autoResult.misses.map(m => `${m.courseName}（${m.reasonLabel}——${m.detail}）`).join('；')"
@@ -108,9 +113,9 @@
               :description="'监考缺口 ' + autoResult.invigilatorGaps.length + ' 处：' + autoResult.invigilatorGaps.map(g => `${g.courseName} 考场${g.roomSeq}（需 ${g.needed} 实配 ${g.assigned}）`).join('；') + '，请在考场编排中手工补指'"
             />
             <AppInlineAlert
-              v-if="(!autoResult.misses || !autoResult.misses.length) && (!autoResult.invigilatorGaps || !autoResult.invigilatorGaps.length)"
+              v-if="(!autoResult.misses || !autoResult.misses.length) && (!autoResult.invigilatorGaps || !autoResult.invigilatorGaps.length) && (!autoResult.timePlan || !autoResult.timePlan.misses || !autoResult.timePlan.misses.length)"
               type="success"
-              :description="'自动排考完成：编排 ' + autoResult.arrangedCourses + ' 门课程，无漏排、无监考缺口'"
+              :description="'自动排考完成：自动定时 ' + (autoResult.timePlan ? autoResult.timePlan.assigned : 0) + ' 门，编排 ' + autoResult.arrangedCourses + ' 门，无漏排、无监考缺口'"
             />
           </template>
 
@@ -202,6 +207,45 @@
       </template>
     </AppDrawer>
 
+    <AppDrawer :visible="autoPlanVisible" title="自动排考 · 日期与场次" mode="modal" size="large" @close="closeAutoPlan">
+      <div class="aaexam-form">
+        <AppInlineAlert type="info" description="系统先用所选日期×场次自动安排考试时间，再增量切考场、铺座位、配监考；已定时间和已有考场不会被覆盖。" />
+
+        <div class="aaexam-auto-block">
+          <div class="aaexam-auto-head">
+            <strong>考试日期</strong>
+            <AppButton size="small" variant="ghost" :disabled="autoArranging" @click="addAutoDate">+ 添加日期</AppButton>
+          </div>
+          <div v-for="(date, index) in autoPlan.dates" :key="'date-' + index" class="aaexam-auto-row">
+            <AppDatePicker v-model="autoPlan.dates[index]" :disabled="autoArranging" />
+            <AppButton v-if="autoPlan.dates.length > 1" size="small" variant="ghost" :disabled="autoArranging" @click="removeAutoDate(index)">移除</AppButton>
+          </div>
+        </div>
+
+        <div class="aaexam-auto-block">
+          <div class="aaexam-auto-head">
+            <strong>每日场次</strong>
+            <AppButton size="small" variant="ghost" :disabled="autoArranging" @click="addAutoSession">+ 添加场次</AppButton>
+          </div>
+          <div v-for="(session, index) in autoPlan.sessions" :key="'session-' + index" class="aaexam-auto-row is-session">
+            <AppTimePicker v-model="session.start" :disabled="autoArranging" />
+            <span class="aaexam-auto-sep">至</span>
+            <AppTimePicker v-model="session.end" :disabled="autoArranging" />
+            <AppButton v-if="autoPlan.sessions.length > 1" size="small" variant="ghost" :disabled="autoArranging" @click="removeAutoSession(index)">移除</AppButton>
+          </div>
+        </div>
+
+        <AppFormItem label="同班每日最多考试场次">
+          <AppNumberInput v-model="autoPlan.maxPerDayPerClass" :min="1" :max="4" :disabled="autoArranging" />
+        </AppFormItem>
+        <AppInlineAlert v-if="autoPlanError" type="danger" :description="autoPlanError" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="autoArranging" @click="closeAutoPlan">取消</AppButton>
+        <AppButton variant="primary" :loading="autoArranging" @click="runAutoArrange">开始自动排考</AppButton>
+      </template>
+    </AppDrawer>
+
     <AppDrawer :visible="schedVisible" title="设置考试时间" mode="modal" size="medium" @close="schedVisible = false">
       <div class="aaexam-form">
         <AppFormItem label="考试日期"><AppDatePicker v-model="sched.examDate" :disabled="saving" /></AppFormItem>
@@ -254,7 +298,7 @@
 </template>
 
 <script>
-/** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 异常优先排考 + 发布就绪。 */
+/** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 两段式自动排考 + 发布就绪。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
@@ -278,6 +322,7 @@ export default {
       current: null, courses: [], stats: null, incidents: [], readiness: null, readinessError: '',
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       courseVisible: false, candidateLoading: false, candidateKeyword: '', courseCandidates: [], selectedTaskIds: [], coursePreview: null, courseError: '',
+      autoPlanVisible: false, autoPlanError: '', autoPlan: { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 },
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomId: '', classroomText: '', capacity: 50 },
       patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
@@ -424,6 +469,66 @@ export default {
       this.courseVisible = false
       this.coursePreview = null
     },
+    openAutoPlan() {
+      this.autoPlan = { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 }
+      this.autoPlanError = ''
+      this.autoPlanVisible = true
+    },
+    closeAutoPlan() {
+      if (this.autoArranging) return
+      this.autoPlanVisible = false
+      this.autoPlanError = ''
+    },
+    addAutoDate() { this.autoPlan.dates.push('') },
+    removeAutoDate(index) { if (this.autoPlan.dates.length > 1) this.autoPlan.dates.splice(index, 1) },
+    addAutoSession() { this.autoPlan.sessions.push({ start: '', end: '' }) },
+    removeAutoSession(index) { if (this.autoPlan.sessions.length > 1) this.autoPlan.sessions.splice(index, 1) },
+    async runAutoArrange() {
+      if (!this.current) return
+      const dates = [...new Set(this.autoPlan.dates.map((value) => String(value || '').trim()).filter(Boolean))]
+      const sessions = []
+      const seenSessions = new Set()
+      for (const row of this.autoPlan.sessions) {
+        const start = String(row.start || '').trim()
+        const end = String(row.end || '').trim()
+        if (!start && !end) continue
+        if (!start || !end) { this.autoPlanError = '每个考试场次都必须同时填写开始与结束时间'; return }
+        if (start >= end) { this.autoPlanError = `场次 ${start}-${end} 的结束时间必须晚于开始时间`; return }
+        const key = `${start}-${end}`
+        if (!seenSessions.has(key)) {
+          seenSessions.add(key)
+          sessions.push({ start, end })
+        }
+      }
+      if (!dates.length) { this.autoPlanError = '请至少选择 1 个考试日期'; return }
+      if (!sessions.length) { this.autoPlanError = '请至少配置 1 个每日考试场次'; return }
+
+      this.autoPlanError = ''
+      this.autoArranging = true
+      const timeRes = await convenienceApi.autoTimes(this.current.batchId, {
+        dates,
+        sessions,
+        maxPerDayPerClass: Number(this.autoPlan.maxPerDayPerClass || 1)
+      })
+      if (timeRes.code !== 0) {
+        this.autoArranging = false
+        this.autoPlanError = timeRes.message
+        return
+      }
+
+      const arrangeRes = await api.autoArrange(this.current.batchId)
+      this.autoArranging = false
+      if (arrangeRes.code !== 0) {
+        this.autoPlanError = arrangeRes.message
+        await this.refresh()
+        return
+      }
+
+      this.autoResult = { ...arrangeRes.data, timePlan: timeRes.data }
+      this.autoPlanVisible = false
+      toast.success(`自动定时 ${timeRes.data.assigned} 门，编排 ${arrangeRes.data.arrangedCourses} 门，漏排 ${arrangeRes.data.missedCourses} 门`)
+      await this.refresh()
+    },
     async confirm(row, action) {
       const res = await api.confirmCourse(row.examCourseId, action)
       if (res.code === 0) { toast.success('已处理'); await this.refresh() } else toast.error(res.message)
@@ -471,22 +576,6 @@ export default {
         await this.refresh()
       } else this.patrolError = res.message
     },
-    doAutoArrange() {
-      if (!this.current) return
-      this.confirmTitle = '自动排考'
-      this.confirmMessage = `确认对批次「${this.current.batchName}」执行自动排考？将按考生数自动切考场、铺座位、配监考；已有考场的课程会跳过，人工编排不受影响。`
-      this.pendingAction = async () => {
-        this.autoArranging = true
-        const res = await api.autoArrange(this.current.batchId)
-        this.autoArranging = false
-        if (res.code === 0) {
-          this.autoResult = res.data
-          toast.success(`已编排 ${res.data.arrangedCourses} 门，跳过 ${res.data.skippedCourses} 门，漏排 ${res.data.missedCourses} 门`)
-          await this.refresh()
-        } else toast.error(res.message)
-      }
-      this.confirmVisible = true
-    },
     onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
   }
 }
@@ -519,6 +608,11 @@ export default {
 .aaexam-preview { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 8px; background: var(--fill-light, #f8fafc); }
 .aaexam-preview__summary { display: flex; gap: 6px; flex-wrap: wrap; }
 .aaexam-preview__blocked { margin: 0; padding-left: 20px; color: var(--warning-color, #d97706); }
+.aaexam-auto-block { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; }
+.aaexam-auto-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.aaexam-auto-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.aaexam-auto-row.is-session { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.aaexam-auto-sep { color: var(--text-secondary, #64748b); }
 .aaexam-rooms, .aaexam-incidents { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .aaexam-rooms li, .aaexam-incidents li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--fill-light, #f8fafc); border-radius: 6px; }
 
@@ -533,7 +627,8 @@ export default {
   .aaexam-head { flex-direction: column; }
   .aaexam-actions { justify-content: flex-start; width: 100%; }
   .aaexam-readiness { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .aaexam-candidate-toolbar { grid-template-columns: 1fr; }
+  .aaexam-candidate-toolbar, .aaexam-auto-row, .aaexam-auto-row.is-session { grid-template-columns: 1fr; }
+  .aaexam-auto-sep { display: none; }
   .aaexam-rooms li, .aaexam-incidents li { flex-direction: column; }
 }
 </style>
