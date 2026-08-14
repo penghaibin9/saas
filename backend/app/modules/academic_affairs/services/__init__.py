@@ -184,3 +184,9 @@ academic_affairs_archive_read_guard.install()
 from . import academic_affairs_stats_scale_guard
 
 academic_affairs_stats_scale_guard.install()
+
+# PR #101 生产复审：高频统计下钻必须 SQL 真分页并消除 N+1；当前先收课表冲突，
+# 返回 DTO/冲突判定口径不变，不接管排课事实或写链。
+from . import academic_affairs_stats_detail_scale_guard
+
+academic_affairs_stats_detail_scale_guard.install()
