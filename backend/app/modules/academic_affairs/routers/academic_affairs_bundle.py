@@ -92,6 +92,10 @@ def build_router() -> APIRouter:
     # 正式成绩导出仍由上方 ExportJob compat owner 持有；更正/复查/认定写链不在本批迁移。
     grade_read_module = importlib.import_module(f"{__package__}.grade_read_router")
     _mount_routes(router, grade_read_module.router)
+    # D8-S3：成绩更正三段写链 + 成绩复查台账/复审 Move Only。
+    # DTO、权限、canonical service 与并发保护全部复用 legacy；成绩认定/课程替代继续留给 S4。
+    grade_change_recheck_module = importlib.import_module(f"{__package__}.grade_change_recheck_router")
+    _mount_routes(router, grade_change_recheck_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
     # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
