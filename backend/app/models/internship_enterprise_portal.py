@@ -14,6 +14,8 @@ from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 from app.modules.internship.enterprise_collaboration_contract import (
     CAMPAIGN_ENTERPRISE_INVITE_SOURCES,
     CAMPAIGN_ENTERPRISE_STATUSES,
+    ENTERPRISE_MEMBER_ROLES,
+    ENTERPRISE_MEMBER_STATUSES,
     RECRUITMENT_CAMPAIGN_STATUSES,
 )
 
@@ -23,43 +25,17 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
 
     __tablename__ = "t_internship_recruitment_campaign"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "campaign_code", name="uk_intern_recruit_campaign_code"
-        ),
-        UniqueConstraint(
-            "tenant_id",
-            "batch_id",
-            "round_no",
-            name="uk_intern_recruit_campaign_round",
-        ),
-        Index(
-            "ix_intern_recruit_campaign_batch_status",
-            "tenant_id",
-            "batch_id",
-            "status",
-            "is_deleted",
-        ),
-        Index(
-            "ix_intern_recruit_campaign_select_window",
-            "tenant_id",
-            "status",
-            "student_select_start_at",
-            "student_select_end_at",
-        ),
+        UniqueConstraint("tenant_id", "campaign_code", name="uk_intern_recruit_campaign_code"),
+        UniqueConstraint("tenant_id", "batch_id", "round_no", name="uk_intern_recruit_campaign_round"),
+        Index("ix_intern_recruit_campaign_batch_status", "tenant_id", "batch_id", "status", "is_deleted"),
+        Index("ix_intern_recruit_campaign_select_window", "tenant_id", "status", "student_select_start_at", "student_select_end_at"),
     )
 
-    batch_id: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, comment="→ t_internship_batch.id"
-    )
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_internship_batch.id")
     campaign_code: Mapped[str] = mapped_column(String(100), nullable=False)
     campaign_name: Mapped[str] = mapped_column(String(200), nullable=False)
     round_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="DRAFT",
-        comment="/".join(RECRUITMENT_CAMPAIGN_STATUSES),
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", comment="/".join(RECRUITMENT_CAMPAIGN_STATUSES))
 
     invite_start_at: Mapped[datetime | None] = mapped_column(DateTime)
     invite_end_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -72,10 +48,7 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
     school_confirm_start_at: Mapped[datetime | None] = mapped_column(DateTime)
     school_confirm_end_at: Mapped[datetime | None] = mapped_column(DateTime)
     enterprise_access_end_at: Mapped[datetime | None] = mapped_column(DateTime)
-
-    enterprise_confirm_required: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    enterprise_confirm_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -84,51 +57,42 @@ class InternshipCampaignEnterprise(PKMixin, TenantMixin, CommonMixin, Base):
 
     __tablename__ = "t_internship_campaign_enterprise"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "campaign_id",
-            "company_id",
-            name="uk_intern_campaign_enterprise",
-        ),
-        Index(
-            "ix_intern_campaign_enterprise_campaign_status",
-            "tenant_id",
-            "campaign_id",
-            "status",
-            "is_deleted",
-        ),
-        Index(
-            "ix_intern_campaign_enterprise_company_status",
-            "tenant_id",
-            "company_id",
-            "status",
-            "is_deleted",
-        ),
+        UniqueConstraint("tenant_id", "campaign_id", "company_id", name="uk_intern_campaign_enterprise"),
+        Index("ix_intern_campaign_enterprise_campaign_status", "tenant_id", "campaign_id", "status", "is_deleted"),
+        Index("ix_intern_campaign_enterprise_company_status", "tenant_id", "company_id", "status", "is_deleted"),
     )
 
-    campaign_id: Mapped[int] = mapped_column(
-        BigInteger,
-        nullable=False,
-        comment="→ t_internship_recruitment_campaign.id",
-    )
-    company_id: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, comment="→ t_emp_company.id"
-    )
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="INVITED",
-        comment="/".join(sorted(CAMPAIGN_ENTERPRISE_STATUSES)),
-    )
-    invite_source: Mapped[str] = mapped_column(
-        String(30),
-        nullable=False,
-        default="MANUAL",
-        comment="/".join(sorted(CAMPAIGN_ENTERPRISE_INVITE_SOURCES)),
-    )
+    campaign_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_internship_recruitment_campaign.id")
+    company_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_emp_company.id")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="INVITED", comment="/".join(sorted(CAMPAIGN_ENTERPRISE_STATUSES)))
+    invite_source: Mapped[str] = mapped_column(String(30), nullable=False, default="MANUAL", comment="/".join(sorted(CAMPAIGN_ENTERPRISE_INVITE_SOURCES)))
     invited_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
     invited_at: Mapped[datetime | None] = mapped_column(DateTime)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
     declined_at: Mapped[datetime | None] = mapped_column(DateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
     revoke_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipEnterpriseMember(PKMixin, TenantMixin, CommonMixin, Base):
+    """tenant-scoped t_user 与 canonical EmpCompany 的永久成员关系。"""
+
+    __tablename__ = "t_internship_enterprise_member"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "company_id", "user_id", name="uk_intern_enterprise_member"),
+        Index("ix_intern_enterprise_member_user_status", "tenant_id", "user_id", "status", "is_deleted"),
+        Index("ix_intern_enterprise_member_company_status", "tenant_id", "company_id", "status", "is_deleted"),
+    )
+
+    company_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_emp_company.id")
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_user.id")
+    contact_id: Mapped[int | None] = mapped_column(BigInteger, comment="可对齐 t_internship_enterprise_contact.id")
+    member_role: Mapped[str] = mapped_column(String(30), nullable=False, comment="/".join(sorted(ENTERPRISE_MEMBER_ROLES)))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="INVITED", comment="/".join(sorted(ENTERPRISE_MEMBER_STATUSES)))
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    invited_phone_hash: Mapped[str | None] = mapped_column(String(128))
+    invite_token_hash: Mapped[str | None] = mapped_column(String(128))
+    invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime)
