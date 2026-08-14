@@ -74,6 +74,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import RecruitmentContextBar from '../../components/recruitment/RecruitmentContextBar.vue'
 import PositionSearchFilters from '../../components/recruitment/PositionSearchFilters.vue'
 import PositionCard from '../../components/recruitment/PositionCard.vue'
@@ -83,6 +84,7 @@ import { normalizePosition } from '../../modules/internshipRecruitment/positionM
 import { normalizeCatalogQuery } from '../../modules/internshipRecruitment/selectionContract'
 import { internshipSelectionApi } from '../../services/internshipSelectionApi'
 
+const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const context = ref(normalizeRecruitmentContext())
@@ -98,7 +100,6 @@ const selectedPosition = ref(null)
 const detailLoading = ref(false)
 const detailError = ref('')
 const pendingVolunteerPositionId = ref(null)
-const pendingCompanyId = ref(null)
 let catalogRequestSeq = 0
 let detailRequestSeq = 0
 
@@ -175,7 +176,8 @@ function prepareVolunteer(position) {
 }
 
 function viewCompany(companyId) {
-  pendingCompanyId.value = companyId || null
+  if (!companyId) return
+  router.push(`/internship/selection/company/${encodeURIComponent(companyId)}`)
 }
 
 onMounted(async () => {
