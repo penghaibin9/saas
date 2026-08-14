@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     # 演示登录（/auth/mock-login）。留空时按 is_prod 推断（production 关、其余开）。
     MOCK_LOGIN_ENABLED: str = ""
     DEMO_TENANT_READONLY: str = ""
-    SANDBOX_AUTO_RESET: str = "false"
     INTERNSHIP_OVERDUE_AUTO_SCAN: bool = True
     AFFAIRS_LEAVE_OVERDUE_AUTO_SCAN: bool = True
     AFFAIRS_RISK_TIMEOUT_AUTO_SCAN: bool = True
@@ -261,10 +260,6 @@ class Settings(BaseSettings):
     @property
     def demo_tenant_readonly(self) -> bool:
         return (self.DEMO_TENANT_READONLY or "").strip().lower() not in ("false", "0", "no", "off")
-
-    @property
-    def sandbox_auto_reset(self) -> bool:
-        return (self.SANDBOX_AUTO_RESET or "").strip().lower() not in ("false", "0", "no", "off")
 
     @property
     def field_encryption_key(self) -> str:
