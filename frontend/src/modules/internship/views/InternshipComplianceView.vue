@@ -15,9 +15,11 @@
         description="所有统计、台账、审核和证据包都严格使用当前批次。"
       />
       <template v-else>
+        <!-- type 只接受 info|success|warning|danger（见 AppInlineAlert 的 validator）；
+             原先写的 error 不在枚举内，会渲染成无样式的 is-error，让这条审计告警失去红色警示。 -->
         <AppInlineAlert
           v-if="auditHealth && auditHealth.healthy === false"
-          type="error"
+          type="danger"
           title="审计持久化异常"
           :description="auditHealth.message || '审计积压或消费异常，请先处理后再执行高风险操作。'"
         />
@@ -47,8 +49,32 @@
           </button>
         </nav>
 
+        <AppInlineAlert
+          v-if="groupLoading && activeTab !== 'overview'"
+          type="info" title="正在加载明细"
+          description="统计数字已是最新，明细列表加载中…"
+        />
+        <AppInlineAlert
+          v-else-if="groupError && activeTab !== 'overview'"
+          type="danger" title="明细加载失败"
+          :description="groupError"
+        >
+          <template #actions>
+            <AppButton size="sm" :disabled="groupLoading" @click="reloadActiveGroup">重试</AppButton>
+          </template>
+        </AppInlineAlert>
+
         <template v-if="activeTab === 'overview'">
-          <div class="sa-grid sa-grid--metrics">
+          <AppInlineAlert
+            v-if="statsError"
+            type="danger" title="合规总览统计加载失败"
+            :description="statsError"
+          >
+            <template #actions>
+              <AppButton size="sm" :disabled="loading" @click="load">重试</AppButton>
+            </template>
+          </AppInlineAlert>
+          <div v-else class="sa-grid sa-grid--metrics">
             <button
               v-for="metric in metrics"
               :key="metric.metricCode"
@@ -61,7 +87,7 @@
               <strong>{{ metric.count }}</strong>
             </button>
           </div>
-          <section class="mp-card">
+          <section v-if="!statsError" class="mp-card">
             <div class="mp-card__head">
               <div>
                 <strong>{{ selectedMetric?.metricLabel || '批次学生' }}</strong>
@@ -149,7 +175,7 @@
                       >作废</button>
                     </td>
                   </tr>
-                  <tr v-if="!(workbench.consents || []).length"><td colspan="8" class="empty-cell">暂无知情任务</td></tr>
+                  <tr v-if="showEmpty(workbench.consents)"><td colspan="8" class="empty-cell">暂无知情任务</td></tr>
                 </tbody>
               </table>
             </div>
@@ -174,7 +200,7 @@
             <div class="mp-card__head"><strong>课程配置</strong><span class="mp-note">{{ workbench.safetyCourses?.length || 0 }} 门</span></div>
             <div class="table-wrap"><table class="mp-table"><thead><tr><th>课程</th><th>版本</th><th>状态</th><th>时长</th><th>及格线</th><th>最大次数</th><th>承诺</th></tr></thead><tbody>
               <tr v-for="row in workbench.safetyCourses || []" :key="row.id"><td>{{ row.title }}</td><td>{{ row.courseVersion }}</td><td>{{ row.status }}</td><td>{{ row.requiredMinutes }}分钟</td><td>{{ row.passingScore }}</td><td>{{ row.maxAttempts }}</td><td>{{ row.requireCommitment ? '必需' : '否' }}</td></tr>
-              <tr v-if="!(workbench.safetyCourses || []).length"><td colspan="7" class="empty-cell">当前批次未配置课程；启用安全门禁时将被判为配置错误</td></tr>
+              <tr v-if="showEmpty(workbench.safetyCourses)"><td colspan="7" class="empty-cell">当前批次未配置课程；启用安全门禁时将被判为配置错误</td></tr>
             </tbody></table></div>
           </section>
           <section class="mp-card">
@@ -183,7 +209,7 @@
               <tr v-for="row in workbench.safetyCompletions || []" :key="row.id">
                 <td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.courseTitle }}</td><td>{{ row.courseVersion }} / {{ row.currentCourseVersion }}</td><td>{{ row.status }}</td><td>{{ row.studiedMinutes }}分钟</td><td>{{ row.score ?? '-' }}</td><td>{{ row.attemptCount }}</td><td>{{ row.version }}</td>
                 <td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.safety.manage')"><button type="button" class="mp-link" @click="openAction('safety-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('safety-review', row, 'REJECT')">退回</button></template></td>
-              </tr><tr v-if="!(workbench.safetyCompletions || []).length"><td colspan="9" class="empty-cell">暂无学生学习记录</td></tr>
+              </tr><tr v-if="showEmpty(workbench.safetyCompletions)"><td colspan="9" class="empty-cell">暂无学生学习记录</td></tr>
             </tbody></table></div>
           </section>
         </template>
@@ -207,7 +233,7 @@
               <button v-if="row.status === 'DRAFT' && can('internship.filing.review')" type="button" class="mp-link" @click="filingAction(row, 'COLLEGE', 'submit')">提交</button>
               <template v-if="row.status === 'PENDING_COLLEGE' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'COLLEGE')">学院通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'COLLEGE')">学院退回</button></template>
               <template v-if="row.status === 'PENDING_SCHOOL' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'SCHOOL')">学校通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'SCHOOL')">学校退回</button></template>
-            </td></tr><tr v-if="!(workbench.filings || []).length"><td colspan="8" class="empty-cell">暂无特殊备案</td></tr>
+            </td></tr><tr v-if="showEmpty(workbench.filings)"><td colspan="8" class="empty-cell">暂无特殊备案</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -229,7 +255,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>事故处置台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>编号</th><th>学生</th><th>等级</th><th>状态</th><th>摘要</th><th>附件</th><th>版本</th><th>合法下一步</th></tr></thead><tbody>
             <tr v-for="row in workbench.incidents || []" :key="row.id"><td>{{ row.incidentNo }}</td><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.severity }}</td><td>{{ row.status }}</td><td>{{ row.summary }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link" @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button></td></tr>
-            <tr v-if="!(workbench.incidents || []).length"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
+            <tr v-if="showEmpty(workbench.incidents)"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
           </tbody></table></div></section>
 
           <section v-if="can('internship.incident.handle')" class="mp-card action-panel">
@@ -247,7 +273,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>应急预案</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>名称</th><th>责任人</th><th>联系电话</th><th>状态</th><th>附件</th><th>版本</th><th>操作</th></tr></thead><tbody>
             <tr v-for="row in workbench.emergencyPlans || []" :key="row.id"><td>{{ row.planName }}</td><td>{{ row.responsiblePerson }}</td><td>{{ row.emergencyContact }}</td><td>{{ row.status }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-if="row.status === 'DRAFT' && can('internship.incident.handle')" type="button" class="mp-link" @click="emergencyAction(row, 'SUBMIT')">提交审核</button><template v-if="row.status === 'PENDING_REVIEW' && can('internship.incident.handle')"><button type="button" class="mp-link" @click="openAction('emergency-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('emergency-review', row, 'REJECT')">退回</button></template></td></tr>
-            <tr v-if="!(workbench.emergencyPlans || []).length"><td colspan="7" class="empty-cell">暂无应急预案</td></tr>
+            <tr v-if="showEmpty(workbench.emergencyPlans)"><td colspan="7" class="empty-cell">暂无应急预案</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -265,7 +291,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>豁免台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生</th><th>检查项</th><th>原因</th><th>有效期</th><th>状态</th><th>申请/审批人</th><th>版本</th><th>操作</th></tr></thead><tbody>
             <tr v-for="row in workbench.exemptions || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ exemptionCheckText(row.checkCode) }}</td><td>{{ row.reason }}</td><td>{{ fmt(row.validUntil) }}</td><td>{{ row.status }}</td><td>{{ row.requestedByName || '-' }} / {{ row.reviewedByName || '-' }}</td><td>{{ row.version }}</td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
-            <tr v-if="!(workbench.exemptions || []).length"><td colspan="8" class="empty-cell">暂无豁免记录</td></tr>
+            <tr v-if="showEmpty(workbench.exemptions)"><td colspan="8" class="empty-cell">暂无豁免记录</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -280,7 +306,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>证据包历史</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>类型</th><th>目标</th><th>版本</th><th>状态</th><th>文件/缺失</th><th>SHA-256</th><th>生成人</th><th>时间</th><th>下载</th></tr></thead><tbody>
             <tr v-for="row in workbench.evidencePackages || []" :key="row.id"><td>{{ row.packageType }}</td><td>{{ row.targetId }}</td><td>v{{ row.packageVersion }}</td><td>{{ row.status }}</td><td>{{ row.fileCount }} / {{ row.missingCount }}</td><td class="hash-cell">{{ row.packageSha256 || '-' }}</td><td>{{ row.generatedByName }}</td><td>{{ fmt(row.generatedAt) }}</td><td><button v-if="['READY','READY_WITH_MISSING'].includes(row.status) && can('internship.evidence.export')" type="button" class="mp-link" @click="downloadPackage(row)">下载ZIP</button></td></tr>
-            <tr v-if="!(workbench.evidencePackages || []).length"><td colspan="9" class="empty-cell">暂无证据包</td></tr>
+            <tr v-if="showEmpty(workbench.evidencePackages)"><td colspan="9" class="empty-cell">暂无证据包</td></tr>
           </tbody></table></div></section>
         </template>
       </template>
@@ -312,6 +338,12 @@ import ConflictNotice from './components/ConflictNotice.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { complianceApi } from '@/modules/internship/api/compliance.api'
 import { getPermissionPatterns } from '@/security/permissionGate'
+
+// Tab key → 懒加载分组 key；'overview' 不对应任何分组（用 batchStats 的 drilldowns）。
+const TAB_GROUP = {
+  consents: 'consents', safety: 'safety', filings: 'filings',
+  incidents: 'incidents', exemptions: 'exemptions', evidence: 'evidence'
+}
 
 const FILING_TYPES = [
   { value: 'CROSS_PROVINCE', label: '跨省实习' }, { value: 'CROSS_CITY', label: '跨市实习' },
@@ -357,7 +389,14 @@ export default {
     loading: false, acting: false, error: '', activeTab: 'overview',
     stats: {}, workbench: {}, auditHealth: null, selectedFilter: 'ALL', forms: freshForms(),
     filingTypes: FILING_TYPES, exemptionChecks: EXEMPTION_CHECKS,
-    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict()
+    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict(),
+    // 首屏只拉 summary + 6 个统计数字；哪个 Tab 打开过、明细分组才会被拉过一次并缓存在这里。
+    loadedGroups: new Set(), groupLoading: false, groupError: '',
+    // 合规总览 Tab 自己的统计接口独立失败时用；不拖累其余 6 个不依赖它的 Tab。
+    statsError: '',
+    // 每次 load()（含切批次）自增；分组请求回来时比对，丢弃属于上一轮的响应，
+    // 否则切批次时在途的旧请求会把上一个批次的台账并进当前视图。
+    loadSeq: 0
   }),
   computed: {
     batchStore() { return useInternshipBatchStore() },
@@ -409,7 +448,8 @@ export default {
     }
   },
   watch: {
-    'batchStore.selectedBatchId': { immediate: true, handler() { this.load() } }
+    'batchStore.selectedBatchId': { immediate: true, handler() { this.load() } },
+    activeTab(tab) { this.ensureGroupLoaded(tab) }
   },
   methods: {
     can(permission) {
@@ -426,22 +466,83 @@ export default {
     deliveryTone(value) { const status = String(value || '').toUpperCase(); return status === 'SENT' ? 'is-success' : ['SKIPPED', 'FAILED'].includes(status) ? 'is-danger' : 'is-muted' },
     stateTone(value) { return value === 'VALID' || value === 'APPROVED' ? 'is-success' : ['REJECTED', 'REVOKED', 'EXPIRED'].includes(value) ? 'is-danger' : value === 'PENDING' ? 'is-warn' : 'is-muted' },
     incidentTargetText(value) { return ({ EMERGENCY_HANDLING: '进入应急处置', INVESTIGATING: '进入调查', RECTIFYING: '进入整改', PENDING_REVIEW: '提交复核', CLOSED: '关闭事故' })[value] || value },
+    /** 首屏：只拉批次统计 + 工作台 summary（6 项数字走 SQL COUNT），不拉任何分组明细。
+     * 明细列表改为按 Tab 懒加载，见 ensureGroupLoaded。
+     *
+     * 三个并发请求不是同一个故障域：`batchStats` 只喂"合规总览" Tab 的指标卡片和
+     * 学生下钻表，其余 6 个 Tab（含本次改造的全部懒加载分组）完全不读 `this.stats`。
+     * 之前三个揉在一个 try 里，任何一个 4xx/5xx 都会把整页判死、拖着另外两个已经
+     * 成功、跟它毫无关系的数据一起消失——实测在合规豁免表迁移滞后的库上真实复现：
+     * `batchStats` 500 时，本次拆分出来的 summary/分组接口其实都是 200，但老师看到的
+     * 是一整页"加载失败"，一个 Tab 都点不开。现在分别处理：summary 拿不到才是真的
+     * 判页面死（6 个 Tab 都靠它拿计数）；stats 单独失败只影响总览 Tab 本身。 */
     async load() {
+      // 先自增，让所有在途的分组请求立即作废（含"没选批次"这条早退路径）。
+      this.loadSeq += 1
       const batchId = this.batchStore.selectedBatchId
-      if (!batchId) { this.stats = {}; this.workbench = {}; return }
-      this.loading = true; this.error = ''
+      if (!batchId) {
+        this.stats = {}; this.workbench = {}; this.loadedGroups = new Set()
+        this.groupError = ''; this.groupLoading = false; this.statsError = ''
+        return
+      }
+      this.loading = true; this.error = ''; this.statsError = ''
       try {
-        const [stats, workbench, health] = await Promise.all([
-          complianceApi.batchStats(batchId), complianceApi.workbench(batchId), complianceApi.auditHealth()
+        const [statsRes, summary, health] = await Promise.all([
+          complianceApi.batchStats(batchId), complianceApi.workbenchSummary(batchId), complianceApi.auditHealth()
         ])
-        if (stats.code !== 0) throw new Error(stats.message || '合规统计加载失败')
-        if (workbench.code !== 0) throw new Error(workbench.message || '合规办理台账加载失败')
-        this.stats = stats.data || {}; this.workbench = workbench.data || {}
+        if (summary.code !== 0) throw new Error(summary.message || '合规工作台加载失败')
+        if (statsRes.code !== 0) {
+          this.stats = {}
+          this.statsError = statsRes.message || '合规总览统计加载失败'
+        } else {
+          this.stats = statsRes.data || {}
+        }
+        // 旧分组明细一律作废重拉：批次切换或动作后台账可能已变，缓存的分组不可信。
+        this.workbench = summary.data || {}
+        this.loadedGroups = new Set()
         this.auditHealth = health.code === 0 ? health.data : { healthy: false, message: health.message }
         if (!this.stats.drilldowns?.[this.selectedFilter]) this.selectedFilter = 'ALL'
+        await this.ensureGroupLoaded(this.activeTab)
       } catch (loadError) {
         this.error = loadError.message || '合规工作台加载失败'
       } finally { this.loading = false }
+    },
+    /** 明细尚未到达（加载中）或加载失败时，不能显示「暂无 XX」——那等于告诉老师
+     * "这里没有数据"，而系统其实还不知道、或者根本没取到。合规台账尤其不能这样骗人。 */
+    showEmpty(list) {
+      return !this.groupLoading && !this.groupError && !(list || []).length
+    },
+    /** 点开哪个 Tab 才请求哪组明细；已加载过（且未被 load() 作废）的分组不重复请求。 */
+    async ensureGroupLoaded(tab) {
+      const group = TAB_GROUP[tab]
+      const batchId = this.batchStore.selectedBatchId
+      // 切到总览、或该分组已加载：也要清掉上一个 Tab 遗留的错误横幅，
+      // 否则老师会在一个数据正常的 Tab 上看到别处的报错。
+      if (!group || !batchId || this.loadedGroups.has(group)) { this.groupError = ''; return }
+      const seq = this.loadSeq
+      const stale = () => seq !== this.loadSeq || batchId !== this.batchStore.selectedBatchId
+      this.groupLoading = true; this.groupError = ''
+      try {
+        const res = await complianceApi.workbenchGroup(batchId, group)
+        // 期间切了批次或触发了新的 load()：这次响应属于上一轮，丢弃，
+        // 否则会把上一个批次的合规台账并进当前批次的视图里。
+        if (stale()) return
+        if (res.code !== 0) throw new Error(res.message || '分组明细加载失败')
+        this.workbench = { ...this.workbench, ...(res.data || {}) }
+        this.loadedGroups.add(group)
+      } catch (groupErrorObj) {
+        if (stale()) return
+        this.groupError = groupErrorObj.message || '分组明细加载失败'
+      } finally {
+        // 被顶替时不碰 groupLoading，交给接手的那一轮管理。
+        if (!stale()) this.groupLoading = false
+      }
+    },
+    /** 错误横幅上的「重试」：重新拉当前 Tab 的明细。 */
+    reloadActiveGroup() {
+      this.groupError = ''
+      this.loadedGroups.delete(TAB_GROUP[this.activeTab])
+      return this.ensureGroupLoaded(this.activeTab)
     },
     openStudent(row) { this.$router.push(row.route || `/admin/internship/students/${row.internshipId}`) },
     async run(resultPromise, successMessage, { resetForm = '', onConflict = null } = {}) {
