@@ -1,6 +1,7 @@
 export type CampaignStatus = 'DRAFT'|'OPEN'|'FROZEN'|'CLOSED'|'ARCHIVED'
 export type PositionStatus = 'DRAFT'|'PENDING'|'PUBLISHED'|'OFFLINE'|'SUSPENDED'|'FULL'|'RISK'|'ARCHIVED'
 export type EnterpriseDecisionStatus = 'INTERESTED'|'INTERVIEW'|'ACCEPT_INTENT'|'REJECTED'
+export type EnterpriseDecisionEffectStatus = 'ACTIVE'|'EXPIRED'|'SUPERSEDED'|'CONSUMED'
 export type VolunteerGroupStatus = 'DRAFT'|'SUBMITTED'|'LOCKED'|'NEEDS_REVISION'|'APPROVED'|'CLOSED'
 export type EnterpriseMemberRole = 'COMPANY_ADMIN'|'HR'|'MENTOR'
 export type ContactSharingMode = 'MASKED_ONLY'|'AFTER_INTERVIEW'|'AFTER_ACCEPT_INTENT'|'IMMEDIATE'
@@ -89,6 +90,10 @@ export interface ApplicantSummary {
   matchPercent?:number
   appliedAt?:string
   decisionStatus?:EnterpriseDecisionStatus
+  decisionEffectStatus?:EnterpriseDecisionEffectStatus
+  decisionReason?:string|null
+  decisionValidUntil?:string|null
+  acceptIntentReleased?:boolean
   volunteerGroupStatus?:VolunteerGroupStatus
 }
 
