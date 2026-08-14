@@ -81,6 +81,13 @@ def frontend_usage():
     return out
 
 
+def _emit_error(item: dict, message: str) -> None:
+    path = str(item.get("file") or "shared/contracts/permission-catalog.json")
+    line = int(item.get("line") or 1)
+    safe = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::error file={path},line={line}::{safe}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strict-legacy", action="store_true", help="B8: legacy-pattern usage becomes RED")
@@ -119,6 +126,19 @@ def main() -> int:
         target = ROOT / args.write
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(encoded, encoding="utf-8")
+
+    for item in undefined:
+        _emit_error(item, f"USED_UNDEFINED permissionCode={item['permissionCode']} source={item['source']}")
+    for code in missing_e:
+        _emit_error({}, f"MISSING_E_SERIES permissionCode={code}")
+    for code in bad_enterprise:
+        _emit_error({}, f"BAD_ENTERPRISE_ASSIGNMENT_POLICY permissionCode={code}")
+    for code in bad_e_module:
+        _emit_error({}, f"BAD_E_SERIES_MODULE_KEY permissionCode={code}")
+    if args.strict_legacy:
+        for item in legacy:
+            _emit_error(item, f"B8_USED_LEGACY_PATTERN permissionCode={item['permissionCode']}")
+
     if undefined or missing_e or bad_enterprise or bad_e_module or (args.strict_legacy and legacy):
         return 2
     return 0
