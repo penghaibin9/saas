@@ -31,6 +31,7 @@ DeferralApplyBody = legacy.DeferralApplyBody
 DeferralReviewBody = legacy.DeferralReviewBody
 ExceptionCreateBody = legacy.ExceptionCreateBody
 ExceptionResolveBody = legacy.ExceptionResolveBody
+xlsx_util = legacy.xlsx_util
 
 _ROSTER_VIEW = legacy._ROSTER_VIEW
 _ROSTER_IMPORT = legacy._ROSTER_IMPORT
@@ -83,7 +84,7 @@ def roster_import_dry_run(body: ExcelImportRows, user=Depends(require_permission
 
 @router.post("/roster/import/xlsx", summary="学籍导入·上传 Excel 解析+预校验（不写库）")
 async def roster_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_ROSTER_IMPORT))):
-    content = await file.read()
+    content = await xlsx_util.read_safe_upload(file)
     rows = svc.roster_import_read(content)
     dry = svc.roster_import_dry_run(rows)
     return success({"rows": rows, **dry})
