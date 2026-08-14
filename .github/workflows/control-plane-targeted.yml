@@ -14,6 +14,8 @@ on:
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
+      - 'frontend/src/modules/system/**'
+      - 'frontend/src/modules/platform/**'
       - 'shared/contracts/**'
       - 'scripts/check/check-control-plane-*.py'
       - 'scripts/check/check-permission-catalog.py'
@@ -33,6 +35,8 @@ on:
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
+      - 'frontend/src/modules/system/**'
+      - 'frontend/src/modules/platform/**'
       - 'shared/contracts/**'
       - 'scripts/check/check-control-plane-*.py'
       - 'scripts/check/check-permission-catalog.py'
@@ -62,6 +66,15 @@ jobs:
         run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
       - name: Permission Catalog reconciliation
         run: python scripts/check/check-permission-catalog.py --write artifacts/control-plane/permission-catalog.json
+      - name: B6/B7 frontend workspace contracts
+        run: |
+          python - <<'PY'
+          import runpy
+          ns = runpy.run_path('backend/tests/test_control_plane_frontend_workspaces.py')
+          for name, fn in sorted(ns.items()):
+              if name.startswith('test_') and callable(fn):
+                  fn()
+          PY
       - name: Upload Control Plane evidence
         if: always()
         uses: actions/upload-artifact@v4
