@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "card": "I4_PRE_I3_GREEN",
+  "schoolScaleTarget": 20000,
+  "gates": {
+    "roleMembers": {"paginationRequired": true, "maxPageSize": 200, "unboundedList": false},
+    "roleAudit": {"paginationRequired": true, "maxPageSize": 200, "unboundedList": false},
+    "effectiveAccess": {"cacheKeyIncludes": ["permissionDigest", "securityRevision", "permissionVersion", "tenantId", "subjectId"], "moduleFailureCacheable": false},
+    "permissionCatalog": {"usedUndefined": "RED", "enterpriseSchoolAssignment": "RED"},
+    "bulkMutation": {"expectedVersionOrIdempotency": true, "criticalAudit": true, "cacheInvalidation": true},
+    "identityImport": {"targetRows": 20000, "currentSingleJobGold": false, "blockedBy": "I3_NORMALIZED_STAGING_MIGRATION"}
+  },
+  "goldRule": "I4 cannot be marked GREEN until I3 staging exists and a real MySQL 20K single-job import gate passes"
+}
