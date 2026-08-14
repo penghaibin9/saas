@@ -9,6 +9,7 @@ on:
       - backend/app/services/sandbox_service.py
       - backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py
       - backend/app/modules/academic_affairs/services/academic_affairs_archive_term_scope.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py
       - backend/app/api/v1/sandbox_story_api.py
       - backend/app/api/v1/router.py
       - backend/scripts/reset_sandbox_school.py
@@ -25,6 +26,7 @@ on:
       - backend/tests/test_sandbox_school_rebuild_budget.py
       - backend/tests/test_sandbox_school_legacy_cleanup.py
       - backend/tests/test_sandbox_school_curriculum_closure.py
+      - backend/tests/test_sandbox_school_security_contract.py
       - backend/tests/test_academic_affairs_archive_term_scope.py
       - backend/tests/test_sandbox_story_reset_route.py
       - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md
@@ -45,6 +47,9 @@ env:
   DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/sandbox_20k_gate?charset=utf8mb4
   TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/sandbox_20k_gate?charset=utf8mb4
   SENSITIVE_SEARCH_HMAC_KEY: sandbox-20k-stable-search-hmac-key-for-test-only
+  SANDBOX_ADMIN2_PASSWORD: ci-only-admin2-strong-password-2026
+  SANDBOX_TEACHER2_PASSWORD: ci-only-teacher2-strong-password-2026
+  SANDBOX_STUDENT2_PASSWORD: ci-only-student2-strong-password-2026
   FAST_TEST_SCHEMA: "0"
 
 jobs:
@@ -93,6 +98,7 @@ jobs:
           mkdir -p test-results/sandbox-20k
           files=(
             app/services/sandbox_school_blueprint.py
+            app/services/sandbox_school_credentials.py
             app/services/sandbox_school_master_seed.py
             app/services/sandbox_school_profile.py
             app/services/sandbox_school_legacy_cleanup.py
@@ -123,6 +129,7 @@ jobs:
             app/services/sandbox_school_story_reset.py
             app/modules/academic_affairs/services/academic_affairs_archive_term_scope.py
             app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py
+            app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py
             app/api/v1/sandbox_story_api.py
             app/api/v1/router.py
             scripts/reset_sandbox_school.py
@@ -139,6 +146,7 @@ jobs:
             tests/test_sandbox_school_rebuild_budget.py
             tests/test_sandbox_school_legacy_cleanup.py
             tests/test_sandbox_school_curriculum_closure.py
+            tests/test_sandbox_school_security_contract.py
             tests/test_academic_affairs_archive_term_scope.py
             tests/test_sandbox_story_reset_route.py
           )
@@ -170,13 +178,14 @@ jobs:
             tests/test_sandbox_school_employment.py \
             tests/test_sandbox_school_rebuild_budget.py \
             tests/test_sandbox_school_curriculum_closure.py \
+            tests/test_sandbox_school_security_contract.py \
             tests/test_academic_affairs_archive_term_scope.py \
             -p no:warnings \
             2>&1 | tee test-results/sandbox-20k/blueprint-contract.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_curriculum_closure.py::20K blueprint/professional/role/mentor/employment/curriculum/archive-scope/budget contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_curriculum_closure.py::20K blueprint/professional/role/mentor/employment/curriculum/archive-scope/budget/security contract failed: ${summary}"
             exit "$status"
           fi
 
