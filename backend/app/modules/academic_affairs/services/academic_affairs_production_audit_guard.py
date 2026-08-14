@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timedelta
 from functools import wraps
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException
@@ -217,6 +217,141 @@ def _roster_status_summary_sql(user) -> dict:
         }
 
 
+def _registration_archive_list_sql(user, page=1, page_size=20):
+    """Archived registration batches are school-wide records: TENANT_ALL + true SQL paging."""
+    from app.models import AaRegistrationBatch
+    from . import academic_affairs_service as roster_read
+
+    try:
+        page_no = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "page 必须为整数") from None
+    size = _bounded_page_size(page_size, default=20)
+    with roster_read.session() as db:
+        ctx = build_affairs_context(user, db)
+        roster_read._require_school_scope(ctx)
+        conditions = [
+            AaRegistrationBatch.tenant_id == roster_read._tid(),
+            AaRegistrationBatch.is_deleted.is_(False),
+            AaRegistrationBatch.status == "ARCHIVED",
+        ]
+        total = int(db.scalar(select(func.count(AaRegistrationBatch.id)).where(*conditions)) or 0)
+        rows = db.scalars(
+            select(AaRegistrationBatch)
+            .where(*conditions)
+            .order_by(AaRegistrationBatch.id.desc())
+            .offset((page_no - 1) * size)
+            .limit(size)
+        ).all()
+        return [
+            {
+                "batchId": str(batch.id),
+                "batchName": batch.batch_name,
+                "registerType": batch.register_type,
+                "status": batch.status,
+            }
+            for batch in rows
+        ], total
+
+
+def _registration_archive_detail_sql(batch_id, user) -> dict:
+    """Never derive archive totals from an arbitrary 10k page; count the immutable ledger in SQL."""
+    from app.models import AaRegistration, AaRegistrationBatch
+    from . import academic_affairs_service as roster_read
+
+    with roster_read.session() as db:
+        ctx = build_affairs_context(user, db)
+        roster_read._require_school_scope(ctx)
+        batch = db.get(AaRegistrationBatch, int(batch_id))
+        if not batch or batch.is_deleted or batch.tenant_id != roster_read._tid():
+            raise roster_read.not_found("注册批次不存在")
+        if batch.status != "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "仅已归档批次可查看归档详情", http_status=409)
+        conditions = [
+            AaRegistration.tenant_id == roster_read._tid(),
+            AaRegistration.batch_id == batch.id,
+            AaRegistration.is_deleted.is_(False),
+        ]
+        total = int(db.scalar(select(func.count(AaRegistration.id)).where(*conditions)) or 0)
+        registered = int(db.scalar(
+            select(func.count(AaRegistration.id)).where(
+                *conditions,
+                AaRegistration.status == "REGISTERED",
+            )
+        ) or 0)
+        return {
+            "batchId": str(batch.id),
+            "batchName": batch.batch_name,
+            "registerType": batch.register_type,
+            "status": batch.status,
+            "termId": str(batch.term_id) if batch.term_id else None,
+            "windowStart": roster_read._iso(batch.window_start),
+            "windowEnd": roster_read._iso(batch.window_end),
+            "archivedAt": roster_read._iso(batch.updated_at),
+            "stats": {"total": total, "registered": registered},
+        }
+
+
+def _registration_archive_export_full(batch_id, user, purpose="") -> bytes:
+    """Export every archived registration row; never silently truncate at 10k."""
+    from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+    from app.services.xlsx_util import build_ledger_xlsx
+    from . import academic_affairs_service as roster_read
+
+    purpose = str(purpose or "").strip()
+    if len(purpose) < 5:
+        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+    with roster_read.session() as db:
+        ctx = build_affairs_context(user, db)
+        roster_read._require_school_scope(ctx)
+        batch = db.get(AaRegistrationBatch, int(batch_id))
+        if not batch or batch.is_deleted or batch.tenant_id != roster_read._tid():
+            raise roster_read.not_found("注册批次不存在")
+        if batch.status != "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "仅已归档批次可导出归档台账", http_status=409)
+        batch_name = batch.batch_name
+        register_type = batch.register_type
+        join = and_(
+            StudentProfile.id == AaRegistration.student_id,
+            StudentProfile.tenant_id == AaRegistration.tenant_id,
+        )
+        records = db.execute(
+            select(AaRegistration, StudentProfile)
+            .outerjoin(StudentProfile, join)
+            .where(
+                AaRegistration.tenant_id == roster_read._tid(),
+                AaRegistration.batch_id == batch.id,
+                AaRegistration.is_deleted.is_(False),
+            )
+            .order_by(AaRegistration.id.desc())
+        ).all()
+
+    operator_name, _role, _uid = roster_read._op()
+    watermark = (
+        f"导出人：{operator_name or '-'}  时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  "
+        f"用途：{purpose}"
+    )
+    headers = ["学号", "姓名", "状态", "注册时间"]
+    rows = [
+        [
+            student.student_no if student else "",
+            student.real_name if student else "",
+            "已注册" if record.status == "REGISTERED" else record.status,
+            roster_read._iso(record.register_at) or "",
+        ]
+        for record, student in records
+    ]
+    title = (
+        f"注册归档台账 · {batch_name}"
+        f"（{roster_read._REG_TYPE_LABEL.get(register_type, register_type)}）"
+    )
+    content = build_ledger_xlsx(title, headers, rows, watermark=watermark)
+    with roster_read.session() as db:
+        roster_read._audit(db, "AA_REG_BATCH", batch_id, "ARCHIVE_EXPORT", f"用途={purpose[:100]}")
+        db.commit()
+    return content
+
+
 def _escape_like(value: str) -> str:
     return str(value).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -344,6 +479,9 @@ def install() -> None:
 
     roster_read.roster = _roster_sql
     roster_read.roster_status_summary = _roster_status_summary_sql
+    roster_read.list_archived_registration_batches = _registration_archive_list_sql
+    roster_read.registration_archive_detail = _registration_archive_detail_sql
+    roster_read.export_registration_archive_xlsx = _registration_archive_export_full
 
     selection_read._scope_values = _selection_scope_values
     selection_read._scope_course_query = _selection_scope_course_query
