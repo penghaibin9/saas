@@ -65,7 +65,7 @@ def test_story_reset_is_tenant_scoped_and_transaction_owned_by_route():
     assert "except Exception:\n        db.rollback()\n        raise" in route
 
 
-def test_standard_profile_blocks_legacy_auto_reset(monkeypatch):
+def test_standard_profile_blocks_legacy_reset(monkeypatch):
     from app.core.exceptions import AppException
     from app.services import sandbox_school_profile as profile_svc
     from app.services import sandbox_service
@@ -92,6 +92,26 @@ def test_standard_profile_blocks_legacy_auto_reset(monkeypatch):
     assert exc.value.code == "DATA_CONFLICT"
     assert "standard-20k" in exc.value.message
     assert db.rolled_back is True
+
+
+def test_midnight_auto_reset_feature_is_removed():
+    files = {
+        "config": _text("backend/app/core/config.py"),
+        "web": _text("backend/app/main.py"),
+        "external": _text("backend/scripts/run_scheduled_jobs.py"),
+        "env": _text("backend/.env.example"),
+        "systemd_env": _text("deploy/env/backend.systemd.env.example"),
+        "portal_review": _text(".github/workflows/student-portal-v5-full-review.yml"),
+    }
+    forbidden = (
+        "SANDBOX_AUTO_RESET",
+        "sandbox_auto_reset",
+        "sandbox-midnight-reset",
+        "reset_sandbox_if_due",
+    )
+    for name, text in files.items():
+        for token in forbidden:
+            assert token not in text, f"{name} still contains removed midnight auto-reset token: {token}"
 
 
 def test_20k_gate_tracks_effective_grade_policy_and_security_contract():
