@@ -23,12 +23,13 @@ test('U12 miniapp count uses batch-aware server totals, not loaded queue length'
   assert.doesNotMatch(page, /pendingReviewCount\(\) \{ return this\.reviewQueue\.length \+ this\.finalQueue\.length \}/)
 })
 
-test('U12 miniapp re-reads authoritative count after review instead of local splice convergence', () => {
+test('U12 proposal and final re-read authoritative count while other queues keep local progression', () => {
   const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\n    \},\n    _confirm/)
   assert.ok(afterAction, 'afterAction block missing')
+  assert.match(afterAction[0], /if \(kind !== 'proposal' && kind !== 'final'\) \{[\s\S]*?this\.queue\.splice\(this\.queueIndex, 1\)/)
   assert.match(afterAction[0], /graduationTeacherCountTruth\(\)/)
   assert.match(afterAction[0], /this\.applyReviewTruth\(d\)/)
-  assert.doesNotMatch(afterAction[0], /\.splice\(/)
+  assert.match(afterAction[0], /this\.queue = kind === 'proposal' \? this\.reviewQueue : this\.finalQueue/)
   assert.match(page, /String\(e && e\.code\)\.startsWith\('409'\)[\s\S]*?this\.afterAction\(\)/)
 })
 
