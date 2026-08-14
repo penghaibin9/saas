@@ -1,5 +1,6 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
 
@@ -50,13 +51,6 @@ async function capture(page, testInfo, name) {
   await page.screenshot({ path: fullPath, fullPage: true, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-viewport`, { path: viewportPath, contentType: 'image/png' })
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
-}
-
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
 }
 
 async function setBatchStorage(page, key, value) {
@@ -148,7 +142,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test.beforeAll(async () => {
     // This suite is visual evidence, not an authentication load test. One real admin
-    // login is reused so the official login throttle remains fully enforced.
+    // API login prepares fixtures; each screenshot page uses the production browser session flow.
     adminApi = await loginApi(config.sandboxAdmin)
     counselorFixture = await prepareCounselorResponsibilityFixture(adminApi)
     internshipFixture = await loadInternshipFixture()
@@ -157,7 +151,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Student Affairs counselor responsibility · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-assignments')
+    await openGoldenStaffPage(page, '/admin/student-affairs/counselor-assignments')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-assignments/)
     await expect(page.locator('.sa-summary-strip')).toBeVisible()
@@ -191,7 +185,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Internship batch configuration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/internship/batches?panel=list')
+    await openGoldenStaffPage(page, '/admin/internship/batches?panel=list')
     await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
     await page.reload()
 
@@ -226,7 +220,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Graduation batch implementation · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/batches?panel=list')
+    await openGoldenStaffPage(page, '/admin/graduation/batches?panel=list')
 
     await expect(page).toHaveURL(/\/admin\/graduation\/batches/)
     await expect(page.locator('.dt')).toBeVisible()

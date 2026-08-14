@@ -52,13 +52,6 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
-}
-
 async function setBatchStorage(page, key, value) {
   await page.evaluate(({ storageKey, storageValue }) => {
     window.localStorage.setItem(storageKey, String(storageValue))
@@ -193,9 +186,8 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
   let graduationFixture
 
   test.beforeAll(async () => {
-    // Screenshot evidence is not a login test. Authenticate once through the real API and
-    // reuse that production-valid session for fixture setup, all three pages and cleanup.
-    // This deliberately respects the real login throttle instead of weakening or bypassing it.
+    // API auth owns fixture setup; screenshot navigation uses the production browser session
+    // so reloads exercise the HttpOnly browser-refresh contract instead of a sessionStorage shim.
     adminApi = await loginApi(config.sandboxAdmin)
     affairsFixture = await prepareStudentAffairsArchiveFixture(adminApi)
     internshipFixture = await prepareInternshipMaterialFixture(adminApi)
@@ -208,7 +200,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Student Affairs archive · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/student-affairs/archive')
+    await openGoldenStaffPage(page, '/admin/student-affairs/archive')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/archive/)
     await expect(page.locator('.av-workspace')).toBeVisible()
@@ -239,7 +231,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Graduation material center · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/material-center?tab=students')
+    await openGoldenStaffPage(page, '/admin/graduation/material-center?tab=students')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
     await page.reload()
 
