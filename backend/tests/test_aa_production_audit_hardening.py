@@ -80,6 +80,8 @@ def test_registration_review_ledgers_are_sql_paged_and_preserve_exact_student_sc
     assert academic_read.list_registration_eligibility is registration_guard.list_registration_eligibility
     assert academic_read.list_registration_exceptions is registration_guard.list_registration_exceptions
     assert academic_read.list_registration_deferrals is registration_guard.list_registration_deferrals
+    assert academic_read.list_unregistered_students is registration_guard.list_unregistered_students
+    assert academic_read.export_unregistered_xlsx is registration_guard.export_unregistered_xlsx
 
     scope_source = inspect.getsource(registration_guard._scope_condition)
     assert 'scope_type == "STUDENT"' in scope_source
@@ -90,11 +92,20 @@ def test_registration_review_ledgers_are_sql_paged_and_preserve_exact_student_sc
         registration_guard.list_registration_eligibility,
         registration_guard.list_registration_exceptions,
         registration_guard.list_registration_deferrals,
+        registration_guard.list_unregistered_students,
     ):
         source = inspect.getsource(fn)
         assert "func.count" in source
         assert ".offset(" in source
         assert ".limit(" in source
+
+    union_source = inspect.getsource(registration_guard._unregistered_union)
+    assert "union_all" in union_source
+    assert "active_deferral = exists" in union_source
+    assert 'AaRegistration.status.notin_(("REGISTERED", "UNREGISTERED"))' in union_source
+    export_source = inspect.getsource(registration_guard.export_unregistered_xlsx)
+    assert "10000" not in export_source
+    assert "select(ledger)" in export_source
 
 
 def test_page_size_guard_rejects_oversized_requests():
