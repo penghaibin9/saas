@@ -26,9 +26,9 @@ def _require_mysql() -> None:
 def _common_columns() -> list[sa.Column]:
     return [
         sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("created_by", sa.BigInteger(), nullable=True),
+        sa.Column("created_by", sa.BigInteger()),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_by", sa.BigInteger(), nullable=True),
+        sa.Column("updated_by", sa.BigInteger()),
         sa.Column("is_deleted", sa.Boolean(), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False),
     ]
@@ -36,8 +36,7 @@ def _common_columns() -> list[sa.Column]:
 
 def upgrade() -> None:
     _require_mysql()
-    bind = op.get_bind()
-    insp = inspect(bind)
+    insp = inspect(op.get_bind())
 
     if not insp.has_table("t_internship_recruitment_campaign"):
         op.create_table(
@@ -67,16 +66,9 @@ def upgrade() -> None:
             sa.UniqueConstraint("tenant_id", "batch_id", "round_no", name="uk_intern_recruit_campaign_round"),
             mysql_engine="InnoDB",
         )
-        op.create_index(
-            "ix_intern_recruit_campaign_batch_status",
-            "t_internship_recruitment_campaign",
-            ["tenant_id", "batch_id", "status", "is_deleted"],
-        )
-        op.create_index(
-            "ix_intern_recruit_campaign_select_window",
-            "t_internship_recruitment_campaign",
-            ["tenant_id", "status", "student_select_start_at", "student_select_end_at"],
-        )
+        op.create_index("ix_t_internship_recruitment_campaign_tenant_id", "t_internship_recruitment_campaign", ["tenant_id"])
+        op.create_index("ix_intern_recruit_campaign_batch_status", "t_internship_recruitment_campaign", ["tenant_id", "batch_id", "status", "is_deleted"])
+        op.create_index("ix_intern_recruit_campaign_select_window", "t_internship_recruitment_campaign", ["tenant_id", "status", "student_select_start_at", "student_select_end_at"])
 
     if not insp.has_table("t_internship_campaign_enterprise"):
         op.create_table(
@@ -97,16 +89,9 @@ def upgrade() -> None:
             sa.UniqueConstraint("tenant_id", "campaign_id", "company_id", name="uk_intern_campaign_enterprise"),
             mysql_engine="InnoDB",
         )
-        op.create_index(
-            "ix_intern_campaign_enterprise_campaign_status",
-            "t_internship_campaign_enterprise",
-            ["tenant_id", "campaign_id", "status", "is_deleted"],
-        )
-        op.create_index(
-            "ix_intern_campaign_enterprise_company_status",
-            "t_internship_campaign_enterprise",
-            ["tenant_id", "company_id", "status", "is_deleted"],
-        )
+        op.create_index("ix_t_internship_campaign_enterprise_tenant_id", "t_internship_campaign_enterprise", ["tenant_id"])
+        op.create_index("ix_intern_campaign_enterprise_campaign_status", "t_internship_campaign_enterprise", ["tenant_id", "campaign_id", "status", "is_deleted"])
+        op.create_index("ix_intern_campaign_enterprise_company_status", "t_internship_campaign_enterprise", ["tenant_id", "company_id", "status", "is_deleted"])
 
     if not insp.has_table("t_internship_enterprise_member"):
         op.create_table(
@@ -129,16 +114,9 @@ def upgrade() -> None:
             sa.UniqueConstraint("tenant_id", "company_id", "user_id", name="uk_intern_enterprise_member"),
             mysql_engine="InnoDB",
         )
-        op.create_index(
-            "ix_intern_enterprise_member_user_status",
-            "t_internship_enterprise_member",
-            ["tenant_id", "user_id", "status", "is_deleted"],
-        )
-        op.create_index(
-            "ix_intern_enterprise_member_company_status",
-            "t_internship_enterprise_member",
-            ["tenant_id", "company_id", "status", "is_deleted"],
-        )
+        op.create_index("ix_t_internship_enterprise_member_tenant_id", "t_internship_enterprise_member", ["tenant_id"])
+        op.create_index("ix_intern_enterprise_member_user_status", "t_internship_enterprise_member", ["tenant_id", "user_id", "status", "is_deleted"])
+        op.create_index("ix_intern_enterprise_member_company_status", "t_internship_enterprise_member", ["tenant_id", "company_id", "status", "is_deleted"])
 
     if not insp.has_table("t_internship_enterprise_access_grant"):
         op.create_table(
@@ -157,30 +135,15 @@ def upgrade() -> None:
             sa.Column("revoked_by_user_id", sa.BigInteger()),
             sa.Column("revoke_reason", sa.String(500)),
             *_common_columns(),
-            sa.UniqueConstraint(
-                "tenant_id",
-                "member_id",
-                "grant_type",
-                "campaign_id",
-                "batch_id",
-                name="uk_intern_enterprise_access_grant",
-            ),
+            sa.UniqueConstraint("tenant_id", "member_id", "grant_type", "campaign_id", "batch_id", name="uk_intern_enterprise_access_grant"),
             mysql_engine="InnoDB",
         )
-        op.create_index(
-            "ix_intern_enterprise_grant_member_validity",
-            "t_internship_enterprise_access_grant",
-            ["tenant_id", "member_id", "status", "valid_until"],
-        )
-        op.create_index(
-            "ix_intern_enterprise_grant_company_validity",
-            "t_internship_enterprise_access_grant",
-            ["tenant_id", "company_id", "status", "valid_until"],
-        )
+        op.create_index("ix_t_internship_enterprise_access_grant_tenant_id", "t_internship_enterprise_access_grant", ["tenant_id"])
+        op.create_index("ix_intern_enterprise_grant_member_validity", "t_internship_enterprise_access_grant", ["tenant_id", "member_id", "status", "valid_until"])
+        op.create_index("ix_intern_enterprise_grant_company_validity", "t_internship_enterprise_access_grant", ["tenant_id", "company_id", "status", "valid_until"])
 
 
 def downgrade() -> None:
-    _require_mysql()
     insp = inspect(op.get_bind())
     for table in (
         "t_internship_enterprise_access_grant",

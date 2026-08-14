@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -23,7 +23,7 @@ from app.modules.internship.enterprise_collaboration_contract import (
 
 
 class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
-    """学校招聘季 Authority；phase 永不持久化，只由 status + 时间窗派生。"""
+    """学校招聘季 Authority；phase/材料 READY 均不持久化，按 status/windows/policy 派生。"""
 
     __tablename__ = "t_internship_recruitment_campaign"
     __table_args__ = (
@@ -51,6 +51,7 @@ class InternshipRecruitmentCampaign(PKMixin, TenantMixin, CommonMixin, Base):
     school_confirm_end_at: Mapped[datetime | None] = mapped_column(DateTime)
     enterprise_access_end_at: Mapped[datetime | None] = mapped_column(DateTime)
     enterprise_confirm_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    application_material_policy_json: Mapped[dict | None] = mapped_column(JSON)
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -106,27 +107,11 @@ class InternshipEnterpriseAccessGrant(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_internship_enterprise_access_grant"
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id",
-            "member_id",
-            "grant_type",
-            "campaign_id",
-            "batch_id",
+            "tenant_id", "member_id", "grant_type", "campaign_id", "batch_id",
             name="uk_intern_enterprise_access_grant",
         ),
-        Index(
-            "ix_intern_enterprise_grant_member_validity",
-            "tenant_id",
-            "member_id",
-            "status",
-            "valid_until",
-        ),
-        Index(
-            "ix_intern_enterprise_grant_company_validity",
-            "tenant_id",
-            "company_id",
-            "status",
-            "valid_until",
-        ),
+        Index("ix_intern_enterprise_grant_member_validity", "tenant_id", "member_id", "status", "valid_until"),
+        Index("ix_intern_enterprise_grant_company_validity", "tenant_id", "company_id", "status", "valid_until"),
     )
 
     member_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_internship_enterprise_member.id")
@@ -140,3 +125,14 @@ class InternshipEnterpriseAccessGrant(PKMixin, TenantMixin, CommonMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
     revoked_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
     revoke_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+# Register E5.5 additive models in Base.metadata whenever app.models imports this E-series module.
+# This keeps migrated-schema parity aware of them without creating duplicate authority aliases.
+from app.models.internship_student_profile import (  # noqa: E402,F401
+    StudentInternshipProfile,
+    StudentInternshipProfileItem,
+)
+from app.models.internship_application_material_snapshot import (  # noqa: E402,F401
+    InternshipApplicationMaterialSnapshot,
+)
