@@ -217,7 +217,7 @@ function initBrowserSessionCollisionGuard() {
   // only the newcomer rotates. Reload/navigation of the same tab has no concurrent claimant and
   // therefore preserves the ID, so its HttpOnly refresh cookie remains usable.
   try {
-    if (typeof BroadcastChannel !== 'function') return
+    if (typeof window === 'undefined' || typeof BroadcastChannel !== 'function') return
     const channel = new BroadcastChannel(BROWSER_SESSION_COORDINATION_CHANNEL)
     browserSessionCoordinator = channel
     const probedSessionId = sessionId
