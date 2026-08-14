@@ -87,6 +87,32 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  e2e-development-inventory:
+    name: e2e development dependency inventory
+    needs: policy-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Resolve test-only graph without production classification
+        working-directory: e2e
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Capture non-blocking E2E development inventory
+        working-directory: e2e
+        run: npm audit --json > audit-full.json || true
+      - name: Upload E2E development audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-e2e-development
+          path: e2e/audit-full.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # BEGIN TEMP NPM REMEDIATION
   remediation-candidates:
     name: ${{ matrix.app }} safe lock candidate
     needs: policy-contract
@@ -161,27 +187,119 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-  e2e-development-inventory:
-    name: e2e development dependency inventory
+  finalize-remediation:
+    name: finalize npm production graph
     needs: policy-contract
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/graduation-v9-2-production-seal-20260813'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Resolve test-only graph without production classification
-        working-directory: e2e
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Capture non-blocking E2E development inventory
-        working-directory: e2e
-        run: npm audit --json > audit-full.json || true
-      - name: Upload E2E development audit evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-audit-e2e-development
-          path: e2e/audit-full.json
-          if-no-files-found: error
-          retention-days: 14
+      - name: Refuse stale or foreign branch writes
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/$PR_HEAD_REF" | awk '{print $1}')"
+          test "$remote_sha" = "$PR_HEAD_SHA"
+      - name: Generate and verify exact production-safe package graphs
+        run: |
+          set -euo pipefail
+          generate() {
+            app="$1"
+            directory="$2"
+            target="$GITHUB_WORKSPACE/.audit-final/$app"
+            mkdir -p "$target"
+            cp "$directory/package.json" "$target/package.json"
+            cp "$directory/package-lock.json" "$target/package-lock.json"
+            node --input-type=module - "$app" "$target/package.json" <<'NODE'
+          import fs from 'node:fs'
+          const [, , app, path] = process.argv
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'))
+          pkg.overrides = { ...(pkg.overrides || {}), nanoid: '3.3.18' }
+          if (app === 'miniapp') {
+            const buildOnly = [
+              ...Object.keys(pkg.dependencies || {}).filter((name) => name.startsWith('@dcloudio/')),
+              'sass',
+              'vite',
+            ]
+            pkg.devDependencies = { ...(pkg.devDependencies || {}) }
+            for (const name of buildOnly) {
+              if (pkg.dependencies?.[name]) {
+                pkg.devDependencies[name] = pkg.dependencies[name]
+                delete pkg.dependencies[name]
+              }
+            }
+            pkg.dependencies['vue-i18n'] = '^9.14.5'
+            pkg.overrides.postcss = '8.5.23'
+          }
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+            (
+              cd "$target"
+              npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+              npm audit --omit=dev --json > audit-production.json || true
+            )
+            node scripts/check/check-npm-production-audit.mjs \
+              "$target/audit-production.json" "$app" .github/security/npm-production-audit-waivers.json
+            cp "$target/package.json" "$directory/package.json"
+            cp "$target/package-lock.json" "$directory/package-lock.json"
+          }
+          generate frontend frontend
+          generate student-portal student-portal
+          generate miniapp miniapp
+      - name: Prove final locks install and production audits stay green
+        run: |
+          set -euo pipefail
+          for spec in 'frontend:frontend' 'student-portal:student-portal' 'miniapp:miniapp'; do
+            app="${spec%%:*}"
+            directory="${spec#*:}"
+            (
+              cd "$directory"
+              npm ci --ignore-scripts --no-audit --no-fund
+              npm audit --omit=dev --json > "/tmp/audit-$app.json" || true
+            )
+            node scripts/check/check-npm-production-audit.mjs \
+              "/tmp/audit-$app.json" "$app" .github/security/npm-production-audit-waivers.json
+          done
+      - name: Remove one-shot remediation jobs from permanent workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/production-dependency-audit.yml')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '  # BEGIN TEMP NPM REMEDIATION\n'
+          end_marker = '  # END TEMP NPM REMEDIATION\n'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start) + len(end_marker)
+          path.write_text(text[:start] + text[end:], encoding='utf-8')
+          PY
+      - name: Commit exact generated locks without force
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/$PR_HEAD_REF" | awk '{print $1}')"
+          test "$remote_sha" = "$PR_HEAD_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            frontend/package.json frontend/package-lock.json \
+            student-portal/package.json student-portal/package-lock.json \
+            miniapp/package.json miniapp/package-lock.json \
+            .github/workflows/production-dependency-audit.yml
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(security): seal production npm dependency graph"
+          git push origin "HEAD:refs/heads/$PR_HEAD_REF"
+  # END TEMP NPM REMEDIATION
