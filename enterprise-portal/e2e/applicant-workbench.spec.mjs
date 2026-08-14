@@ -41,6 +41,19 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
+    if (path.endsWith('/applications/501/material')) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          skillTags: ['CAD', '数控', '装配'],
+          projects: [{ id: 'p1', title: '数控加工综合实训', description: '完成工艺编制与加工验证', verificationStatus: 'VERIFIED' }],
+          practices: [{ id: 'x1', title: '智能制造产线实训', description: '完成装配与设备点检', verificationStatus: 'NOT_REQUIRED' }],
+          certificates: [{ id: 'c1', title: '数控车工技能证书', verificationStatus: 'VERIFIED' }],
+          portfolio: [],
+        })),
+      })
+    }
+
     if (path.endsWith('/applications/501')) {
       return route.fulfill({
         contentType: 'application/json',
@@ -54,17 +67,12 @@ async function installEnterpriseApi(page, { released = false } = {}) {
           appliedAt: '03-06 10:21',
           matchPercent: 95,
           studentVerified: true,
+          applicationStatement: '具备机械装配实训经验，希望从事智能制造方向。',
           volunteerGroupStatus: released ? 'NEEDS_REVISION' : 'SUBMITTED',
           releaseReason: released ? 'TEACHER_CONFIRM_TIMEOUT' : '',
           acceptIntentReleased: released,
           decisionStatus: released ? 'ACCEPT_INTENT' : 'INTERVIEW',
           contactPolicy: { allowed: false, maskedValue: '138****5678' },
-          materialSnapshot: {
-            applicationStatement: '具备机械装配实训经验，希望从事智能制造方向。',
-            skillTags: ['CAD', '数控', '装配'],
-            projects: [{ id: 'p1', title: '数控加工综合实训', description: '完成工艺编制与加工验证', verificationStatus: 'VERIFIED' }],
-            certificates: [{ id: 'c1', title: '数控车工技能证书', verificationStatus: 'VERIFIED' }],
-          },
           decisionHistory: [{ id: 'd1', status: 'INTERVIEW', effectStatus: 'ACTIVE', at: '03-08 14:00' }],
         })),
       })
