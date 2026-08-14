@@ -108,6 +108,7 @@ def test_midnight_auto_reset_feature_is_removed():
         "sandbox_auto_reset",
         "sandbox-midnight-reset",
         "reset_sandbox_if_due",
+        "seconds_until_next_midnight",
     )
     for name, text in files.items():
         for token in forbidden:
