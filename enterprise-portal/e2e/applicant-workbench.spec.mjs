@@ -3,12 +3,20 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page, { released = false } = {}) {
-  await page.addInitScript(() => sessionStorage.setItem('ep_campaign_id_v1', '2027-spring'))
-
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
+
+    if (path.endsWith('/internship/enterprise-portal/auth/login')) {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          accessToken: 'browser-evidence-access', refreshToken: 'browser-evidence-refresh', tokenType: 'Bearer', expiresIn: 1800,
+          context: { tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: 'HR', companyId: '21' },
+        })),
+      })
+    }
 
     if (path.endsWith('/internship/enterprise-portal/context')) {
       return route.fulfill({
@@ -69,6 +77,9 @@ async function installEnterpriseApi(page, { released = false } = {}) {
     if (path.endsWith('/enterprise/internship/company')) {
       return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({name:'中联重科股份有限公司'})) })
     }
+    if (path.endsWith('/enterprise/internship/dashboard')) {
+      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({metrics:{},tasks:[]})) })
+    }
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 404001, message: 'test route missing' }) })
   }
@@ -77,9 +88,21 @@ async function installEnterpriseApi(page, { released = false } = {}) {
   await page.route('**/api/v1/enterprise/internship/**', handler)
 }
 
-test('A02-6 BOSS-style applicant workbench keeps snapshot privacy boundary', async ({ page }) => {
+async function loginAndEnterCampaign(page){
+  await page.goto('login')
+  await page.getByLabel('学校编码').fill('CSZY')
+  await page.getByLabel('手机号或登录账号').fill('enterprise.hr')
+  await page.getByLabel('密码').fill('Evidence-Only-Password')
+  await page.getByRole('button',{name:'登录'}).click()
+  await expect(page.getByRole('heading',{name:'选择招聘季'})).toBeVisible()
+  await page.getByRole('button',{name:/2027届春季岗位实习双选季/}).click()
+  await expect(page.getByRole('link',{name:'报名学生'})).toBeVisible()
+  await page.getByRole('link',{name:'报名学生'}).click()
+}
+
+test('A02-6 authenticated BOSS-style applicant workbench keeps snapshot privacy boundary', async ({ page }) => {
   await installEnterpriseApi(page)
-  await page.goto('applications')
+  await loginAndEnterCampaign(page)
 
   await expect(page.getByRole('heading', { name: '报名学生' })).toBeVisible()
   await expect(page.getByText('张三', { exact: true }).first()).toBeVisible()
@@ -92,9 +115,9 @@ test('A02-6 BOSS-style applicant workbench keeps snapshot privacy boundary', asy
   await page.screenshot({ path: 'test-results/a02-applicant-workbench.png', fullPage: true })
 })
 
-test('A02-7 released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
+test('A02-7 authenticated released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
   await installEnterpriseApi(page, { released: true })
-  await page.goto('applications/501')
+  await loginAndEnterCampaign(page)
   await expect(page.getByText('学校未在确认期限内完成最终确认，本次拟接收已释放，申请状态可能发生变化。历史 Decision 仍保留在处理记录。')).toBeVisible()
   await expect(page.getByText('已录用')).toHaveCount(0)
 })
