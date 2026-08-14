@@ -13,6 +13,7 @@ from app.modules.academic_affairs.routers import roster_registration_router
 from app.modules.academic_affairs.routers import scheduling_operations_router
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as guard
 from app.modules.academic_affairs.services import academic_affairs_selection_read_service as selection_read
+from app.modules.academic_affairs.services import academic_affairs_service as academic_read
 
 
 def test_only_tenant_all_is_unscoped_and_teacher_is_own_course_scope():
@@ -41,6 +42,21 @@ def test_selection_scope_guard_is_installed_on_existing_owner_at_package_import(
     assert selection_read._scope_course_query is guard._selection_scope_course_query
     assert selection_read.get_conflict_report is guard._selection_conflict_report
     assert course_selection_router.selection_svc.get_conflict_report is guard._selection_conflict_report
+
+
+def test_roster_hot_reads_are_sql_paged_and_aggregated_on_existing_owner():
+    assert academic_read.roster is guard._roster_sql
+    assert academic_read.roster_status_summary is guard._roster_status_summary_sql
+
+    roster_source = inspect.getsource(guard._roster_sql)
+    assert "select(func.count(StudentProfile.id))" in roster_source
+    assert ".offset(" in roster_source
+    assert ".limit(" in roster_source
+    assert "contains(term, autoescape=True)" in roster_source
+
+    summary_source = inspect.getsource(guard._roster_status_summary_sql)
+    assert ".group_by(StudentProfile.student_status)" in summary_source
+    assert "select(func.count()).select_from(AaStatusChange)" in summary_source
 
 
 def test_page_size_guard_rejects_oversized_requests():
