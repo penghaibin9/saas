@@ -25,6 +25,12 @@ test('enterprise refresh follows A01 refresh route without persisting bearer tok
   assert.doesNotMatch(request,/localStorage/)
 })
 
+test('tenant switch clears stale campaign selection before new context is derived',()=>{
+  assert.match(auth,/previousTenant/)
+  assert.match(auth,/previousTenant!==tenantCode/)
+  assert.match(auth,/setSelectedCampaignId\(''\)/)
+})
+
 test('missing campaign or missing explicit capability stays fail closed',()=>{
   assert.match(select,/不允许选择 companyId/)
   assert.match(store,/recruitmentWrite:false/)
