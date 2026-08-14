@@ -1,12 +1,13 @@
 """Platform Control Plane adapters layered over the byte-frozen platform bundle."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.platform_assurance import assurance_state, assert_recent_platform_auth
 from app.core.platform_principal import require_platform_principal
 from app.core.response import paginate, success
 from app.modules.platform.routers import platform_bundle as _bundle
+from app.modules.platform.routers import product_iam_router as _product_iam
 
 _routes = APIRouter(prefix="/platform", tags=["16·平台控制面"])
 
@@ -153,6 +154,12 @@ def _compose_router() -> APIRouter:
         key = _route_key(route)
         routes.append(replacement.pop(key, route))
     routes.extend(replacement.values())
+    product_keys = {_route_key(route) for route in _product_iam.router.routes}
+    existing_keys = {_route_key(route) for route in routes}
+    collisions = sorted(product_keys & existing_keys)
+    if collisions:
+        raise RuntimeError(f"Product IAM route collision: {collisions}")
+    routes.extend(_product_iam.router.routes)
     composed.routes = routes
     return composed
 
