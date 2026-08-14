@@ -223,7 +223,7 @@ export const dashboardSummary = {
   todos: [
     { id: 'todo-1', label: '待批阅周报', count: 2, tone: 'danger', hint: '最早提交于 2 天前', route: '/admin/internship/reports' },
     { id: 'todo-2', label: '待核实打卡异常', count: 3, tone: 'warning', hint: '含模拟定位命中 1 条', route: '/admin/internship/exceptions' },
-    { id: 'todo-3', label: '风险学生待跟进', count: 2, tone: 'warning', hint: '1 人临近处理期限', route: '/admin/internship/risks' }
+    { id: 'todo-3', label: '开放风险待跟进', count: 2, tone: 'warning', hint: '1 条临近处理期限', route: '/admin/internship/risks' }
   ],
   riskAlerts: [
     { id: 'ra-1', code: 'INT-R07', level: 'HIGH', title: '连续 3 天打卡异常', detail: '赵一凡（软件2301）· 已自动生成风险单', time: '今天 08:00' },

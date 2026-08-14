@@ -258,9 +258,16 @@ def student_help_report(user, body=None) -> dict:
 
 
 def list_risks(page, page_size, level=None, status=None, keyword=None, user=None, batch_id=None,
-              require_batch: bool = True):
+              require_batch: bool = True, risk_code=None):
     """require_batch=False 供教师个人风险待办（跨批次汇总本人指导范围）使用；
-    台账列表/导出等按批次台账场景必须显式传批次，保持 require_batch 默认 True。"""
+    台账列表/导出等按批次台账场景必须显式传批次，保持 require_batch 默认 True。
+
+    U14：过滤条件必须与页面列表 ``internship_service.list_risk_students`` 逐项对齐——
+    这两个函数是同一批风险单的两种投影（本函数供导出，另一个供页面表格），
+    只要筛选口径不一致，老师就会「页面看到 N 条、导出拿到 M 条」。
+    ``risk_code`` 对应页面的「风险聚焦」标签（未落岗/打卡异常/报告逾期…）；
+    ``keyword`` 与页面同样按 姓名或学号 匹配，不能只匹配姓名。
+    """
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         rec_query = select(InternshipRecord.id).where(
@@ -280,11 +287,15 @@ def list_risks(page, page_size, level=None, status=None, keyword=None, user=None
             q = q.where(RiskRecord.risk_level == level)
         if status:
             q = q.where(RiskRecord.status == status)
+        if risk_code:
+            q = q.where(RiskRecord.risk_code == risk_code)
         rows = db.scalars(q.order_by(RiskRecord.id.desc())).all()
+        kw = (keyword or "").strip()
         items = []
         for r in rows:
             rec, stu = _ctx(db, r)
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
+            if kw and (not stu or (kw not in (stu.real_name or "")
+                                   and kw not in (stu.student_no or ""))):
                 continue
             if not in_scope(scope, db, rec, stu):
                 continue
@@ -364,12 +375,15 @@ def remind(user, risk_id, channel="站内消息") -> dict:
                 "receiverName": account.real_name or owner_name}
 
 
-def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None) -> dict:
+def export_risks(keyword=None, user=None, batch_id=None, level=None, status=None,
+                 risk_code=None) -> dict:
+    """U14：导出必须接住页面上全部生效的筛选条件（含「风险聚焦」标签的 risk_code），
+    否则老师在「打卡异常」标签下看到 1 条、导出却拿到整批 3 条，还没有任何提示。"""
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import load_export_rows
     items, total = load_export_rows(
         list_risks, keyword=keyword, user=user, batch_id=batch_id,
-        level=level, status=status)
+        level=level, status=status, risk_code=risk_code)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
     headers = ["学号", "姓名", "指导教师", "企业", "风险编码", "风险标题", "等级", "来源",

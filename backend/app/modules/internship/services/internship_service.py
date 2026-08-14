@@ -1535,7 +1535,12 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                           "tone": "warning",
                           "route": f"/admin/internship/exceptions?batchId={batch.id}"})
         if risk_cnt > 0 and _match("internship.risk.handle"):
-            todos.append({"id": "todo-risk", "label": "风险学生待跟进", "count": risk_cnt,
+            # 标签必须说明数的是「风险单张数」而不是「学生人数」：risk_cnt 是 RiskRecord
+            # 行数，同一学生可同时挂多张开放风险单（如系统预警升级单 + 学生求助单），
+            # 与统计页去重口径的「风险学生数」天然不等。这里跟随看板卡片已有的处理方式
+            # ——保持口径、改正标签（见 test_internship_scope.py「已从风险学生改为开放风险」），
+            # 且该待办点开的就是逐条列风险单的处置页，数字与落地页行数必须对得上。
+            todos.append({"id": "todo-risk", "label": "开放风险待跟进", "count": risk_cnt,
                           "tone": "warning",
                           "route": f"/admin/internship/risk-disposal?batchId={batch.id}"})
 
