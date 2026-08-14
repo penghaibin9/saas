@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 
 const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 
@@ -33,13 +34,16 @@ async function assertMobileFit(page) {
   expect(fit.bodyWidth, `body overflow at ${fit.width}px`).toBeLessThanOrEqual(fit.width + 1)
 }
 
-async function capture(page, testInfo, name, width, height) {
+async function capture(page, testInfo, name, width, height, goldMasks = []) {
   await page.setViewportSize({ width, height })
   await settle(page)
   await assertMobileFit(page)
   const path = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path, contentType: 'image/png' })
+  await captureGoldCandidate(page, testInfo, {
+    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+  })
 }
 
 function pagedGraduationResponse(page, suffix) {
@@ -80,8 +84,9 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await expect(page.getByText('成绩', { exact: false }).first()).toBeVisible()
     await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
 
-    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 390, 844)
-    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 375, 812)
+    const guideMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
+    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 390, 844, guideMasks)
+    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 375, 812, guideMasks)
 
     const taskbookRequest = pagedGraduationResponse(page, 'taskbooks')
     await page.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
@@ -92,14 +97,32 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await expect(page.getByText(/任务书列表/).first()).toBeVisible()
     await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
 
-    await capture(page, testInfo, 'gd-U8-taskbook-B', 390, 844)
-    await capture(page, testInfo, 'gd-U8-taskbook-B', 375, 812)
+    const taskbookMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
+    await capture(page, testInfo, 'gd-U8-taskbook-B', 390, 844, taskbookMasks)
+    await capture(page, testInfo, 'gd-U8-taskbook-B', 375, 812, taskbookMasks)
 
+    const environment = await goldEnvironment(page, testInfo)
     const metaPath = testInfo.outputPath('gd-U8-teacher-mobile-B-meta.json')
     await fs.writeFile(metaPath, JSON.stringify({
-      phase: 'B', card: 'U8', head: process.env.GITHUB_SHA || 'local',
-      fixtureBatchId: fixture.batchId, selectedBatchId: guideBatchId,
+      phase: 'B',
+      card: 'U8',
+      head: environment.goldHead,
+      goldHead: environment.goldHead,
+      tenant: config.mentor.tenant,
+      role: 'GD_MENTOR',
+      fixtureBatchId: fixture.batchId,
+      selectedBatchId: guideBatchId,
+      fixtureVersion: { runId: fixture.runId, gdStudentId: fixture.gdStudentId, studentNo: fixture.studentNo },
       mentor: config.mentor.username,
+      routes: [
+        '#/pages/teacher/graduation-guide/index',
+        '#/pages/teacher/graduation-taskbook/index'
+      ],
+      browserProject: environment.browserProject,
+      deviceScaleFactor: environment.deviceScaleFactor,
+      language: environment.language,
+      fontEnvironment: environment.fontEnvironment,
+      dynamicZones: ['run-scoped-batch-label', 'run-scoped-topic-title'],
       pages: ['graduation-guide', 'graduation-taskbook'],
       viewports: [{ width: 390, height: 844 }, { width: 375, height: 812 }]
     }, null, 2), 'utf8')
