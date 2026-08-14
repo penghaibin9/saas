@@ -20,5 +20,7 @@ test('A02-3 logo upload goes through canonical file center and keeps auth refres
 
 test('A02-3 school authority fields remain display-only',()=>{
   for(const field of ['qualificationStatus','coopStatus','accessValidUntil','blacklist','schoolReview'])assert.match(page,new RegExp(field))
-  for(const forbidden of [/qualificationStatus\s*:/,/coopStatus\s*:/,/blacklist\s*:/])assert.doesNotMatch(page.match(/function publicPatch\(\)[\s\S]*?\n}/)?.[0]||'',forbidden)
+  const patchFields=page.match(/function publicPatch\(\)\{return \{([^}]*)\}\}/)?.[1]||''
+  assert.ok(patchFields,'publicPatch editable payload must be discoverable')
+  for(const forbidden of [/qualificationStatus\s*:/,/coopStatus\s*:/,/blacklist\s*:/,/accessValidUntil\s*:/,/schoolReview\s*:/])assert.doesNotMatch(patchFields,forbidden)
 })
