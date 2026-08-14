@@ -25,6 +25,16 @@ export const schoolIamApi = {
     {},
     '角色模板影响分析失败'
   ),
+  roleMembers: (roleId, page = 1, pageSize = 50) => call(
+    `/system/roles/${encodeURIComponent(roleId)}/members`,
+    { params: { page, pageSize } },
+    '角色成员分页加载失败'
+  ),
+  roleAudit: (roleId, page = 1, pageSize = 50) => call(
+    `/system/roles/${encodeURIComponent(roleId)}/audit`,
+    { params: { page, pageSize } },
+    '角色审计分页加载失败'
+  ),
   accessExplain: (userId, { moduleKey = 'internship', permissionCode = 'internship.recruitment.manage' } = {}) => call(
     `/system/iam/access-explain/${encodeURIComponent(userId)}`,
     { params: { moduleKey, permissionCode } },

@@ -42,6 +42,8 @@ def test_b7_school_iam_workspace_consumes_canonical_endpoints():
     ):
         assert endpoint in api
     assert "/impact" in api
+    assert "/members" in api
+    assert "/audit" in api
     for surface in ("roles", "templates", "members", "permissions", "dataScopes", "delegations", "securityChanges", "accessExplain"):
         assert surface in view
     assert "enterprise.internship.*" in view
@@ -73,6 +75,22 @@ def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
     assert "driftText" in view
     assert "impactText" in view
     assert 'value="internship"' not in view
+
+
+def test_b7_reuses_20k_safe_member_and_security_audit_pagination():
+    i4 = _read("backend/app/modules/system_admin/routers/system_i4_router.py")
+    api = _read("frontend/src/modules/system/api/schoolIam.api.js")
+    view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    assert '/system/roles/{role_id}/members' in i4
+    assert '/system/roles/{role_id}/audit' in i4
+    assert 'pageSize: int = Query(50, ge=1, le=200)' in i4
+    assert 'SecurityAuditLog.tenant_id == tenant_id' in i4
+    assert 'Role.tenant_id == int(tenant_id)' in i4
+    assert "roleMembers" in api and "roleAudit" in api
+    assert "loadRoleEvidence" in view
+    assert "SecurityAuditLog" in view
+    assert "evidencePages" in view
+    assert "不会把前 50 条 preview 冒充完整结果" in view
 
 
 def test_b6_b7_do_not_create_second_permission_authority_in_frontend():

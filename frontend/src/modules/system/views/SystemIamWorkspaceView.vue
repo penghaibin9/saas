@@ -106,7 +106,7 @@
         </section>
 
         <section id="access-explain" class="card explain-card">
-          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能管理招聘季”，同时展示 RoleTemplate provenance、drift 与升级 impact。IAM 通过不等于业务最终允许；学院/批次/关系仍由 Internship Domain Guard 裁决。</p></div></header>
+          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能管理招聘季”，同时展示 RoleTemplate provenance、drift、升级 impact、真实成员分页与 SecurityAuditLog。IAM 通过不等于业务最终允许；学院/批次/关系仍由 Internship Domain Guard 裁决。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
             <label>学校成员 User ID<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
             <label>模块<input v-model.trim="explain.moduleKey" required /></label>
@@ -125,7 +125,7 @@
             <div v-if="explainResult.catalog" class="enterprise-warning">该权限不是学校可分配权限。企业成员授权必须回 EnterpriseMember / AccessGrant。</div>
             <div v-if="explainResult.roles?.length" class="table-wrap">
               <table class="explain-table">
-                <thead><tr><th>角色</th><th>IAM</th><th>模板来源</th><th>Drift</th><th>升级 Impact</th><th>原因 / Scope</th></tr></thead>
+                <thead><tr><th>角色</th><th>IAM</th><th>模板来源</th><th>Drift</th><th>升级 Impact</th><th>原因 / Scope</th><th>真值证据</th></tr></thead>
                 <tbody>
                   <tr v-for="role in explainResult.roles" :key="role.roleId">
                     <td><strong>{{ role.roleName }}</strong><small class="mono">{{ role.roleCode }} · {{ role.roleType }} · role v{{ role.roleVersion }}</small></td>
@@ -134,10 +134,33 @@
                     <td :class="{ 'danger-text': role.drift?.detected }">{{ driftText(role.drift) }}</td>
                     <td>{{ impactText(role.templateImpact) }}</td>
                     <td><span class="mono">{{ role.decision?.reasonCode || '—' }}</span><small>{{ scopeText(role.decision?.dataScope) }}</small></td>
+                    <td class="actions"><button class="link" @click="loadRoleEvidence(role, 'members', 1)">成员</button><button class="link" @click="loadRoleEvidence(role, 'audit', 1)">审计</button></td>
                   </tr>
                 </tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section v-if="roleEvidence" class="card evidence-card">
+          <header class="section-head">
+            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">接口真分页：pageSize={{ roleEvidence.pageSize }}，总数 {{ roleEvidence.total }}。不会把前 50 条 preview 冒充完整结果。</p></div>
+            <button class="link" @click="roleEvidence = null">关闭</button>
+          </header>
+          <div class="table-wrap">
+            <table v-if="roleEvidence.type === 'members'">
+              <thead><tr><th>User ID</th><th>姓名</th><th>登录名</th><th>状态</th></tr></thead>
+              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td class="mono">{{ item.id }}</td><td>{{ item.name }}</td><td class="mono">{{ item.loginName }}</td><td>{{ item.status }}</td></tr></tbody>
+            </table>
+            <table v-else>
+              <thead><tr><th>时间</th><th>操作</th><th>操作者</th><th>结果</th><th>traceId</th><th>detail</th></tr></thead>
+              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td>{{ item.createdAt || '—' }}</td><td>{{ item.action }}</td><td>{{ item.operatorName || item.operatorId || '—' }}</td><td>{{ item.result }}</td><td class="mono">{{ item.traceId || '—' }}</td><td class="mono detail">{{ compactJson(item.detail) }}</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <AppButton variant="secondary" :disabled="roleEvidence.page <= 1 || evidenceLoading" @click="changeEvidencePage(-1)">上一页</AppButton>
+            <span>第 {{ roleEvidence.page }} / {{ evidencePages }} 页</span>
+            <AppButton variant="secondary" :disabled="roleEvidence.page >= evidencePages || evidenceLoading" @click="changeEvidencePage(1)">下一页</AppButton>
           </div>
         </section>
       </template>
@@ -157,6 +180,7 @@ export default {
   data: () => ({
     summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
     explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
+    roleEvidence: null, evidenceLoading: false,
     explain: { userId: '', moduleKey: 'internship', permissionCode: 'internship.recruitment.manage' },
     surfaces: [
       { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/roles' },
@@ -166,7 +190,7 @@ export default {
       { key: 'dataScopes', label: '数据范围', description: '结构化 Scope，不用字符串角色猜范围', path: '/admin/system/scopes' },
       { key: 'delegations', label: '委托', description: '临时授权与工作移交', path: '/admin/system/delegations' },
       { key: 'securityChanges', label: '安全变更', description: '草稿、激活、回滚与审计', path: '/admin/system/security-changes' },
-      { key: 'accessExplain', label: 'Access Explain', description: '解释模块、权限、Scope、模板漂移与 Domain Guard 边界', path: '#access-explain' }
+      { key: 'accessExplain', label: 'Access Explain', description: '解释权限、Scope、模板漂移、成员与审计证据', path: '#access-explain' }
     ]
   }),
   computed: {
@@ -177,6 +201,10 @@ export default {
     explainPermissionOptions() {
       const items = this.catalog.assignablePermissions || []
       return items.length ? items : [{ permissionCode: 'internship.recruitment.manage' }]
+    },
+    evidencePages() {
+      if (!this.roleEvidence) return 1
+      return Math.max(1, Math.ceil(Number(this.roleEvidence.total || 0) / Number(this.roleEvidence.pageSize || 50)))
     },
     decisionClass() {
       if (this.explainResult?.allowed) return 'allow'
@@ -198,6 +226,9 @@ export default {
   created() { this.load() },
   methods: {
     listText(items) { return (items || []).length ? items.join('、') : '无' },
+    compactJson(value) {
+      try { return JSON.stringify(value || {}) } catch { return '{}' }
+    },
     deltaText(delta) {
       if (!delta) return '—'
       const added = delta.addedInRuntime || []
@@ -251,6 +282,30 @@ export default {
       if (res.code !== 0) return toast.error(res.message)
       this.templateImpact = res.data
     },
+    async loadRoleEvidence(role, type, page = 1) {
+      this.evidenceLoading = true
+      const pageSize = 50
+      const res = type === 'audit'
+        ? await schoolIamApi.roleAudit(role.roleId, page, pageSize)
+        : await schoolIamApi.roleMembers(role.roleId, page, pageSize)
+      this.evidenceLoading = false
+      if (res.code !== 0) return toast.error(res.message)
+      const data = res.data || {}
+      this.roleEvidence = {
+        role,
+        type,
+        title: `${role.roleName} · ${type === 'audit' ? 'SecurityAuditLog' : '角色成员'}`,
+        items: data.items || [],
+        total: Number(data.total || 0),
+        page: Number(data.page || page),
+        pageSize: Number(data.pageSize || pageSize)
+      }
+    },
+    changeEvidencePage(delta) {
+      if (!this.roleEvidence) return
+      const next = Math.max(1, Math.min(this.evidencePages, this.roleEvidence.page + delta))
+      if (next !== this.roleEvidence.page) this.loadRoleEvidence(this.roleEvidence.role, this.roleEvidence.type, next)
+    },
     async explainAccess() {
       const id = Number(this.explain.userId)
       if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员 User ID')
@@ -259,11 +314,12 @@ export default {
       this.explaining = false
       if (res.code !== 0) return toast.error(res.message)
       this.explainResult = res.data
+      this.roleEvidence = null
     }
   }
 }
 </script>
 
 <style scoped>
-.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1120px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.impact-summary{display:flex;gap:18px;flex-wrap:wrap;padding:10px 0}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
+.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1260px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.detail{max-width:420px;overflow-wrap:anywhere}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.actions{white-space:nowrap}.actions .link{margin-right:6px}.impact-summary,.pager{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:10px 0}.pager{justify-content:flex-end}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
 </style>
