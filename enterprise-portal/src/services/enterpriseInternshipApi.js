@@ -1,6 +1,6 @@
 import { request } from './request'
 
-// E-A02 只消费 A01 canonical facade。这里故意没有 companyId 参数、PUBLISH、APPROVED 或 assign API。
+// E-A02 只消费 A01 canonical facade；企业范围由服务端推导，学校特权动作不在此客户端暴露。
 const ROOT = '/enterprise/internship'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 
