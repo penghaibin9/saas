@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  VOLUNTEER_STATUS_META,
   buildVolunteerFinalSubmitRequest,
   canRequestVolunteerUnlock,
   canSubmitVolunteerGroup,
@@ -42,6 +43,15 @@ test('A03-8 action boundaries follow DRAFT/SUBMITTED/LOCKED/NEEDS_REVISION', () 
 test('A03-8 LOCKED and NEEDS_REVISION explain why editing changed', () => {
   assert.match(submissionStateMessage({ status: 'LOCKED', lockedCompanyName: '中联重科' }), /中联重科 已拟接收/)
   assert.match(submissionStateMessage({ status: 'NEEDS_REVISION' }), /旧拟接收处理仅保留在历史记录/)
+})
+
+test('A03-11 canonical APPROVED is a final school-confirmed state', () => {
+  assert.equal(VOLUNTEER_STATUS_META.APPROVED.label, '学校已确认')
+  assert.equal(VOLUNTEER_STATUS_META.CONFIRMED.label, '学校已确认')
+  assert.equal(canSubmitVolunteerGroup({ status: 'APPROVED' }), false)
+  assert.equal(canWithdrawVolunteerGroup({ status: 'APPROVED' }), false)
+  assert.equal(canRequestVolunteerUnlock({ status: 'APPROVED' }), false)
+  assert.match(submissionStateMessage({ status: 'APPROVED' }), /学校已完成最终确认/)
 })
 
 test('A03-8 invalid job response remains whole-group failure and exposes every item', () => {

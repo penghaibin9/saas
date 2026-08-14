@@ -83,3 +83,12 @@ test('A03-10 LOCKED UX explains school confirmation and only offers unlock reque
   assert.match(pageSource, /申请改志愿/)
   assert.match(pageSource, /requestUnlock/)
 })
+
+test('A03-11 canonical APPROVED is final and cannot reopen mobile submission', () => {
+  const group = normalizeMobileVolunteerGroup({ status: 'APPROVED' })
+  assert.equal(group.status, 'APPROVED')
+  assert.equal(canEditMobileVolunteers(group), false)
+  assert.match(pageSource, /APPROVED: '学校已确认'/)
+  assert.match(pageSource, /v-else-if="volunteerFinalized"[^>]*disabled>学校已确认<\/button>/)
+  assert.match(pageSource, /!volunteerEditable \|\| activeSlots\.length < 1/)
+})

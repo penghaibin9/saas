@@ -5,7 +5,8 @@ export const VOLUNTEER_STATUS_META = Object.freeze({
   SUBMITTED: { label: '志愿已提交', tone: 'info' },
   LOCKED: { label: '等待学校最终确认', tone: 'warning' },
   NEEDS_REVISION: { label: '可重新调整', tone: 'warning' },
-  CONFIRMED: { label: '已正式落岗', tone: 'success' }
+  APPROVED: { label: '学校已确认', tone: 'success' },
+  CONFIRMED: { label: '学校已确认', tone: 'success' }
 })
 
 export function canSubmitVolunteerGroup(group) {
@@ -66,6 +67,6 @@ export function submissionStateMessage(group = {}) {
   }
   if (status === 'NEEDS_REVISION') return '当前已恢复为可调整状态；旧拟接收处理仅保留在历史记录中。'
   if (status === 'SUBMITTED') return '志愿已整组投递，企业正在处理。尚未产生拟接收前可整组撤回修改。'
-  if (status === 'CONFIRMED') return '学校已完成最终确认，正式落岗结果以实习记录为准。'
+  if (['APPROVED', 'CONFIRMED'].includes(status)) return '学校已完成最终确认，正式落岗结果以实习记录为准。'
   return '确认志愿顺序、岗位申请说明和企业共享材料后，可整组投递。'
 }
