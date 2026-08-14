@@ -20,8 +20,12 @@ test('position payload is whitelist-only and follows V3 editable field names',()
   assert.match(form,/form\.remunerationAmount/)
 })
 
-test('typed frontend contract includes full canonical status surfaces without adding new authorities',()=>{
+test('typed frontend contract includes canonical decision status and independent effect state without adding placement authority',()=>{
   for(const status of ['DRAFT','PENDING','PUBLISHED','OFFLINE','SUSPENDED','FULL','RISK','ARCHIVED']) assert.match(types,new RegExp(`'${status}'`))
   for(const role of ['COMPANY_ADMIN','HR','MENTOR']) assert.match(types,new RegExp(`'${role}'`))
   for(const decision of ['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED']) assert.match(types,new RegExp(`'${decision}'`))
+  for(const effect of ['ACTIVE','EXPIRED','SUPERSEDED','CONSUMED']) assert.match(types,new RegExp(`'${effect}'`))
+  assert.match(types,/EnterpriseDecisionEffectStatus/)
+  assert.match(types,/decisionEffectStatus/)
+  assert.match(types,/acceptIntentReleased/)
 })
