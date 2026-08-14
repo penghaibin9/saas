@@ -25,6 +25,10 @@ export function setSelectedCampaignId(value){ sessionSet(CAMPAIGN_KEY,value) }
 export function getSelectedCampaignId(){ return sessionGet(CAMPAIGN_KEY) }
 export function setTenantCode(value){ sessionSet(TENANT_CODE_KEY,value) }
 export function getTenantCode(){ return sessionGet(TENANT_CODE_KEY) }
+export function clearEnterpriseSession(){
+  clearAccessToken()
+  setSelectedCampaignId('')
+}
 
 async function readPayload(response){ try{return await response.json()}catch{return null} }
 function businessError(payload,response){
@@ -32,15 +36,32 @@ function businessError(payload,response){
   error.status=response.status;error.code=payload?.code;error.bizCode=payload?.bizCode;error.details=payload?.details
   return error
 }
+function authExpired(payload,response){
+  return response.status===401||payload?.code===401001||payload?.bizCode==='UNAUTHORIZED'
+}
+function invalidateEnterpriseAuth(message='企业登录已失效，请重新登录'){
+  clearEnterpriseSession()
+  const error=new Error(message);error.status=401;return error
+}
 async function refreshOnce(){
   if(refreshing)return refreshing
-  if(!refreshToken)throw Object.assign(new Error('企业登录已失效，请重新登录'),{status:401})
+  if(!refreshToken)throw invalidateEnterpriseAuth()
   refreshing=(async()=>{
-    const response=await fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/refresh`,{
-      method:'POST',headers:{'Content-Type':'application/json','X-Browser-Session':'enterprise'},credentials:'include',body:JSON.stringify({refreshToken}),
-    })
+    let response
+    try{
+      response=await fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/refresh`,{
+        method:'POST',headers:{'Content-Type':'application/json','X-Browser-Session':'enterprise'},credentials:'include',body:JSON.stringify({refreshToken}),
+      })
+    }catch{
+      const error=new Error('网络不可达，暂时无法刷新企业登录状态');error.network=true;throw error
+    }
     const payload=await readPayload(response)
-    if(!payload||payload.code!==0||!payload.data?.accessToken)throw Object.assign(new Error(payload?.message||'企业登录已失效，请重新登录'),{status:401})
+    if(authExpired(payload,response))throw invalidateEnterpriseAuth(payload?.message)
+    if(!payload||typeof payload.code!=='number'){
+      const error=new Error(`刷新登录响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
+    }
+    if(payload.code!==0)throw businessError(payload,response)
+    if(!payload.data?.accessToken)throw invalidateEnterpriseAuth('刷新登录响应缺少 accessToken，请重新登录')
     setAuthTokens(payload.data)
     return accessToken
   })().finally(()=>{refreshing=null})
@@ -67,10 +88,9 @@ export async function request(path,{method='GET',body,params,auth=true,_retried=
   if(!payload||typeof payload.code!=='number'){
     const error=new Error(`响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
   }
-  if(response.status===401||payload.code===401001){
+  if(authExpired(payload,response)){
     if(auth&&!_retried&&refreshToken){await refreshOnce();return request(path,{method,body,params,auth,_retried:true})}
-    clearAccessToken()
-    const error=new Error(payload.message||'企业登录已失效，请重新登录');error.status=401;throw error
+    throw invalidateEnterpriseAuth(payload.message)
   }
   if(payload.code!==0)throw businessError(payload,response)
   return payload.data
@@ -93,10 +113,9 @@ export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_P
   if(!payload||typeof payload.code!=='number'){
     const error=new Error(`文件上传响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
   }
-  if(response.status===401||payload.code===401001){
+  if(authExpired(payload,response)){
     if(!_retried&&refreshToken){await refreshOnce();return uploadTemporaryFile(file,{bizType,_retried:true})}
-    clearAccessToken()
-    const error=new Error(payload.message||'企业登录已失效，请重新登录');error.status=401;throw error
+    throw invalidateEnterpriseAuth(payload.message)
   }
   if(payload.code!==0)throw businessError(payload,response)
   if(!payload.data?.fileId)throw new Error('文件中心未返回 fileId')
