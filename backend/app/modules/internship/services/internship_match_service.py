@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -19,6 +20,8 @@ from app.services import xlsx_util
 from app.services.db_service import _as_id, _iso, _tid, session
 
 INTENTION_LABEL = {"DRAFT": "草稿", "SUBMITTED": "已提交", "WITHDRAWN": "已撤回"}
+#: 串行查重与并发唯一索引兜底必须给出同一句提示
+_DUP_INTENTION_MSG = "该学生已有进行中的意向，请先撤回或编辑"
 MATCH_STATUS_LABEL = {
     "RECOMMENDED": "已推荐", "PENDING_CONFIRM": "待确认", "CONFIRMED": "已确认",
     "REJECTED": "已驳回", "CONFLICT": "冲突", "CANCELLED": "已取消",
@@ -237,7 +240,7 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
             InternshipIntention.record_id == rec.id,
             InternshipIntention.status.in_(("DRAFT", "SUBMITTED")))).first()
         if exists:
-            raise AppException("DATA_CONFLICT", "该学生已有进行中的意向，请先撤回或编辑")
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG)
         it = InternshipIntention(
             tenant_id=_tid(), record_id=rec.id, student_id=rec.student_id,
             batch_id=rec.batch_id,
@@ -249,9 +252,21 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
             status="DRAFT",
         )
         db.add(it)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
         _trail(db, it.id, "INTENTION_CREATE", {"recordId": str(rec.id)})
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            # 上面那次查重是无锁读，两个并发请求会同时看到「没有进行中意向」。真正的不变量由
+            # uk_ix_intention_active 兜底（迁移 20260814_ix_first_create）；输家在这里转成
+            # 业务冲突，提示与串行重复创建完全一致，而不是一个 500。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
         db.refresh(it)
         return _intention_row(db, it)
 

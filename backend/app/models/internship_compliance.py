@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, Integer, String, Text,
-                        Index, UniqueConstraint)
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Float, Integer,
+                        String, Text, Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -304,13 +304,30 @@ class InternshipIncident(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class InternshipComplianceExemption(PKMixin, TenantMixin, CommonMixin, Base):
-    """单项合规豁免（有权限/原因/依据/有效期）。"""
+    """单项合规豁免（有权限/原因/依据/有效期）。
+
+    并发不变量：同一实习记录 + 同一检查项，同时只能有一条**待审核**豁免申请。
+    `grant_exemption()` 原本连查重都没写，连点两下就会落两条。
+
+    为什么只锁 PENDING_REVIEW、不含 APPROVED：已批准的豁免会随 `valid_until` 过期
+    （见 evaluate 里的 apply_exemption），过期后学校应当能重新申请。而 MySQL 生成列必须
+    是确定性表达式、不能引用 NOW()，所以"是否过期"无法进约束。已生效豁免的重复申请由
+    service 层显式校验拦截（那不是竞态——已有行是可见的），数据完整性只由本约束兜底。
+    见迁移 20260814_ix_first_create。
+    """
     __tablename__ = "t_internship_compliance_exemption"
     __table_args__ = (
         Index("ix_ix_exempt_intern", "tenant_id", "internship_id", "check_code", "is_deleted"),
+        UniqueConstraint("tenant_id", "active_pending_internship_id", "check_code",
+                         name="uk_ix_exempt_active_pending"),
     )
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING_REVIEW' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="仅待审核时等于 internship_id，用于唯一索引；其余为 NULL")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     check_code: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)

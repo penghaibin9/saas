@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import enforce_permission, is_super_admin
@@ -179,6 +180,36 @@ def _record_student(db, internship_id, user, action):
     return record, student
 
 
+#: 串行查重与并发唯一索引兜底必须给出同一句提示，否则老师会以为遇到了两种不同的故障
+_DUP_EXEMPTION_MSG = "该检查项已有待审核的豁免申请，请等待审批或先撤回"
+
+
+def _assert_no_active_exemption(db, internship_id: int, check_code: str) -> None:
+    """同一实习记录 + 同一检查项，不允许重复申请豁免。
+
+    原实现连查重都没有——连点两下就会落两条待审核豁免，学校审批台账里出现重复条目。
+
+    两种「已存在」分开提示，因为老师该做的事不同：
+    - 已有待审核 → 等审批或撤回；
+    - 已有生效豁免（未过期）→ 本来就不必再申请。
+      过期的已批准豁免不拦（valid_until 已过），学校应当能重新申请——这也是唯一索引
+      只锁 PENDING_REVIEW 的原因：生成列不能引用 NOW()，过期判断只能放在这里。
+    """
+    rows = db.scalars(select(InternshipComplianceExemption).where(
+        InternshipComplianceExemption.tenant_id == _tid(),
+        InternshipComplianceExemption.internship_id == internship_id,
+        InternshipComplianceExemption.check_code == check_code,
+        InternshipComplianceExemption.status.in_(("PENDING_REVIEW", "APPROVED")),
+        InternshipComplianceExemption.is_deleted.is_(False),
+    )).all()
+    now = datetime.utcnow()
+    for row in rows:
+        if row.status == "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", _DUP_EXEMPTION_MSG)
+        if not row.valid_until or row.valid_until >= now:
+            raise AppException("DATA_CONFLICT", "该检查项已有生效中的豁免，无需重复申请")
+
+
 def grant_exemption(body, user=None):
     payload = body or {}
     reason = str(payload.get("reason") or "").strip()
@@ -201,6 +232,7 @@ def grant_exemption(body, user=None):
 
     with session() as db:
         record, student = _record_student(db, payload["internshipId"], user, "合规豁免申请")
+        _assert_no_active_exemption(db, record.id, str(payload["checkCode"]))
         exemption = InternshipComplianceExemption(
             tenant_id=_tid(),
             internship_id=record.id,
@@ -215,7 +247,12 @@ def grant_exemption(body, user=None):
             rule_version=payload.get("ruleVersion"),
         )
         db.add(exemption)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_EXEMPTION_MSG) from exc
         exemption.evidence_file_ids = bind_evidence(
             db,
             file_ids=ids,
@@ -231,7 +268,14 @@ def grant_exemption(body, user=None):
             "checkCode": exemption.check_code,
             "evidence": exemption.evidence_file_ids,
         })
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            # 上面那次查重是无锁读，两个并发请求会同时看到「没有」。真正的不变量由
+            # uk_ix_exempt_active_pending 兜底（迁移 20260814_ix_first_create）；输家在这里
+            # 转成业务冲突，提示与串行重复申请完全一致，而不是一个 500。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_EXEMPTION_MSG) from exc
         return {
             "id": str(exemption.id),
             "status": exemption.status,

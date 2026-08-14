@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (InternshipAgreement, InternshipAuditTrail, InternshipChangeRequest,
@@ -22,6 +23,8 @@ TYPE_LABEL = {
     "WITHDRAW_POST": "退岗",
 }
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
+#: 串行查重与并发唯一索引兜底必须给出同一句提示，否则老师会以为遇到了两种不同的故障
+_DUP_PENDING_MSG = "已有待审核的变更申请，请等待处理或撤回"
 
 
 def _op_name(user=None) -> str:
@@ -155,7 +158,7 @@ def student_apply(rec, stu, body) -> dict:
             InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.internship_id == rec.id,
             InternshipChangeRequest.status == "PENDING", InternshipChangeRequest.is_deleted.is_(False))).first()
         if pending:
-            raise AppException("DATA_CONFLICT", "已有待审核的变更申请，请等待处理或撤回")
+            raise AppException("DATA_CONFLICT", _DUP_PENDING_MSG)
         c = InternshipChangeRequest(
             tenant_id=_tid(), internship_id=rec.id, student_id=stu.id, change_type=ctype, reason=reason,
             target_enterprise_id=int(b["targetEnterpriseId"]) if b.get("targetEnterpriseId") else None,
@@ -165,9 +168,21 @@ def student_apply(rec, stu, body) -> dict:
             record_version_snapshot=int(rec.version or 0),
             status="PENDING")
         db.add(c)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_PENDING_MSG) from exc
         _trail(db, c.id, "APPLY", {"changeType": ctype})
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            # 上面那次查重是无锁读，两个并发请求会同时看到「没有待审核」。真正的不变量由
+            # uk_ix_change_active_pending 兜底（迁移 20260814_ix_first_create）；输家在这里
+            # 转成业务冲突，拿到的提示与串行重复申请完全一致，而不是一个 500。
+            db.rollback()
+            raise AppException("DATA_CONFLICT", _DUP_PENDING_MSG) from exc
         return _row(c, rec, stu)
 
 

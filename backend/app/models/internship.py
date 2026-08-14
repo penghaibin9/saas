@@ -554,10 +554,25 @@ class InternshipProcessReport(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class InternshipChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
-    """t_internship_change_request 实习变更申请（换单位/换岗位等，迁移 0037）。"""
+    """t_internship_change_request 实习变更申请（换单位/换岗位等，迁移 0037）。
+
+    并发不变量：同一实习记录同时只能有一条 PENDING 变更申请。`student_apply()` 原本是
+    「无锁 SELECT 查 PENDING → 没有就 INSERT」，两个并发请求会同时查到「没有」、各插一条，
+    教师队列里出现同一学生的两条申请，批了一条另一条还挂着（实测 5 轮里 4 轮复现）。
+    学生整个实习期可以陆续提交多次变更，冲突的只有「同时活动」的那些，普通唯一约束表达
+    不了；沿用请假/补卡同一套写法（生成列在非待审核时为 NULL + 唯一索引），
+    MySQL 视 NULL 互不相同，于是历史行不限、活动行至多一条。见迁移 20260814_ix_first_create。
+    """
     __tablename__ = "t_internship_change_request"
+    __table_args__ = (UniqueConstraint("tenant_id", "active_pending_internship_id",
+                                       name="uk_ix_change_active_pending"),)
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="仅待审核时等于 internship_id，用于唯一索引；其余为 NULL")
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     change_type: Mapped[str] = mapped_column(String(30), nullable=False, comment="变更类型")
     reason: Mapped[str] = mapped_column(String(500), nullable=False)
