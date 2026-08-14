@@ -2,7 +2,7 @@
  * 毕业设计中心 · 扩展事项 API：互查、专家、申诉、优秀成果、延期答辩。
  */
 import { request } from '@/services/http/client'
-import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { withGraduationBatch as withBatch } from '@/modules/graduation/api/graduation-batch-context'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -10,11 +10,6 @@ function toErr(e) { if (e?.biz) return fail(e.message, e.code || 1); return fail
 async function call(fn) { try { return ok(await fn()) } catch (e) { return toErr(e) } }
 async function callList(path, params = {}) {
   try { const d = await request(path, { params }); return ok({ list: d.items || [], total: d.total || 0 }) } catch (e) { return toErr(e) }
-}
-function withBatch(params = {}) {
-  const id = params.batchId || useGraduationBatchStore().selectedBatchId
-  if (!id) throw new Error('请先选择毕业设计批次')
-  return { ...params, batchId: String(id) }
 }
 
 const G = '/graduation'

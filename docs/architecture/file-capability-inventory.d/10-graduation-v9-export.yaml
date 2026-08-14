@@ -1,0 +1,23 @@
+entries:
+  - module: graduation
+    client: backend
+    route: /api/v1/graduation/proposals/export
+    page: frontend/src/modules/graduation/views/ProposalListView.vue
+    action: export-proposal-ledger
+    fileCategory: GRADUATION_PROPOSAL_XLSX
+    api: POST /api/v1/graduation/proposals/export
+    backendService: backend/app/modules/graduation/services/__init__.py; backend/app/modules/graduation/services/graduation_proposal_read_service.py
+    storageMode: generated-xlsx-inline-base64-response
+    authMode: authenticated+graduationDesign.proposal.export
+    dataScope: tenant+selected-batch+graduation-role-sql-scope
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: V9.2 U2/M9 开题材料台账。服务端按 200 行分块读取 SQL 真分页结果并生成 XLSX，禁止 pageSize=100000 全量 materialize；单元格经 sanitize_xlsx_export 防公式注入，导出写 Graduation audit trail 并绑定 batchId。

@@ -128,9 +128,12 @@ def test_pc_grade_api_never_sends_unbound_final_and_always_sends_batch():
     assert "reviewerMentorId" in api
 
 
-def test_pc_main_workflows_are_bound_to_batch():
+def test_pc_main_workflows_are_bound_to_shared_batch_context():
     api = text("frontend/src/modules/graduation/api/graduation.api.js")
-    assert "function withBatch" in api
+    assert "graduation-batch-context" in api
+    assert "withGraduationBatch as withBatch" in api
+    assert "function withBatch" not in api
+    assert "useGraduationBatchStore" not in api
     for fragment in (
         "getProposalReviewDetail", "reviewProposal", "holdProposalDefense",
         "getFinalDetail", "reviewFinal", "getDefenseGroupDetail",

@@ -9,12 +9,14 @@ from sqlalchemy import select
 from app.core.exceptions import not_found
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationStudent
 from app.modules.graduation.schemas.graduation_guidance import (
     GuidanceCreate, GuidancePlanCancel, GuidancePlanCheckin, GuidancePlanCreate, GuidanceVoidRequest,
 )
 from app.modules.graduation.schemas.graduation_midterm import MidtermCheckRequest, MidtermRectifyReview, MidtermRectifySubmit
 from app.modules.graduation.services import graduation_guidance_service as guidance
+from app.modules.graduation.services import graduation_guidance_stats_read_service as guidance_stats_read
 from app.modules.graduation.services import graduation_midterm_service as midterm
 from app.modules.graduation.services.graduation_batch_context import assert_student_batch, load_student_in_batch, require_batch_id
 from app.modules.graduation.services.graduation_p0_service import void_guidance_scoped
@@ -35,7 +37,7 @@ def _related_guard(model, record_id, batch_id) -> int:
         )).first()
         if not record:
             raise not_found("指导记录或计划不存在")
-        student = db.get(GraduationStudent, int(record.gd_student_id))
+        student = tenant_get(db, GraduationStudent, int(record.gd_student_id))
         assert_student_batch(student, batch_id)
         return int(student.id)
 
@@ -45,7 +47,7 @@ def guidance_stats(
     threshold: int = Query(3, ge=1, le=50), batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    return success(guidance.guidance_stats(threshold, batch_id=require_batch_id(batchId)))
+    return success(guidance_stats_read.guidance_stats(threshold, batch_id=require_batch_id(batchId)))
 
 
 @router.get("/gd-guidances")

@@ -31,6 +31,11 @@ import { LoadingState, ErrorState } from '@/components/business'
 import { AppTemplateChips } from '@/components/common'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import {
+  graduationActionErrorMessage,
+  graduationConflictMessage,
+  isGraduationConflictResponse
+} from '@/modules/graduation/utils/form-state'
 import { toast } from '@/utils/toast'
 
 const DEFENSE_COMMENT_CHIPS = [
@@ -45,6 +50,19 @@ const ADVISOR_SCORE_CHIPS = [
   { label: '中等 75', value: 75 },
   { label: '及格 65', value: 65 }
 ]
+const RETURN_PATHS = {
+  'graduation-plagiarism-ledger': '/admin/graduation/plagiarism-ledger',
+  'graduation-review-tasks': '/admin/graduation/review-tasks',
+  'graduation-defense-scoring': '/admin/graduation/defense-scoring',
+  'graduation-defense-confirmation': '/admin/graduation/defense-confirmation',
+  'graduation-grade-ledger': '/admin/graduation/grade-ledger'
+}
+const PANEL_PATHS = {
+  plagiarism: '/admin/graduation/plagiarism-ledger',
+  review: '/admin/graduation/review-tasks',
+  defense: '/admin/graduation/defense-scoring',
+  grade: '/admin/graduation/grade-ledger'
+}
 
 const FORM_PRESETS = {
   plagiarismResult: {
@@ -110,8 +128,14 @@ export default {
     studentId() { return this.$route.params.studentId || this.$route.query.studentId },
     backTo() {
       const panel = this.$route.query.panel || 'plagiarism'
-      const batch = this.$route.query.batchId ? `&batchId=${encodeURIComponent(this.$route.query.batchId)}` : ''
-      return `/admin/graduation/defense-grade?panel=${panel}${batch}`
+      const path = RETURN_PATHS[this.$route.query.returnRoute] || PANEL_PATHS[panel] || PANEL_PATHS.plagiarism
+      const query = new URLSearchParams()
+      for (const key of ['batchId', 'studentId', 'panel', 'view', 'queue', 'missingType', 'status', 'source']) {
+        const value = this.$route.query[key]
+        if (value != null && value !== '') query.set(key, String(value))
+      }
+      const suffix = query.toString()
+      return suffix ? `${path}?${suffix}` : path
     }
   },
   created() { this.init() },
@@ -120,6 +144,26 @@ export default {
       this.form[f.key] = f.type === 'textarea'
         ? (this.form[f.key] ? this.form[f.key] + '\n' + value : String(value))
         : value
+    },
+    captureEditableDraft() {
+      return Object.fromEntries(
+        this.formFields.filter((field) => !field.readonly).map((field) => [field.key, this.form[field.key]])
+      )
+    },
+    restoreEditableDraft(draft = {}) {
+      for (const field of this.formFields) {
+        if (!field.readonly && Object.prototype.hasOwnProperty.call(draft, field.key)) this.form[field.key] = draft[field.key]
+      }
+    },
+    async refreshConflictTruth() {
+      const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
+      if (grade.code === 0 && this.formKey === 'calculate') {
+        const source = grade.data.sourceScores || {}
+        this.form.reviewerScore = source.reviewerScore ?? ''
+        this.form.defenseScore = source.defenseScore ?? ''
+      }
+      const student = await gdStudentApi.getStudentDetail(this.studentId)
+      if (student.code === 0) this.student = student.data
     },
     async init() {
       this.loading = true
@@ -133,19 +177,20 @@ export default {
       this.formFields = preset.fields
       this.form = {}
       preset.fields.forEach((f) => { this.form[f.key] = f.type === 'checkbox' ? false : '' })
+
+      // 先走 batch-safe 成绩读口验证 WorkContext；错批次必须在学生身份展示前由服务端拒绝。
+      const contextCheck = await graduationDefenseGradeApi.getGrade(this.studentId)
+      if (contextCheck.code !== 0) { this.error = contextCheck.message || '当前批次与学生上下文不一致'; this.loading = false; return }
       const s = await gdStudentApi.getStudentDetail(this.studentId)
       if (s.code !== 0) { this.error = s.message; this.loading = false; return }
       this.student = s.data
       if (this.formKey === 'calculate') {
-        const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
-        if (grade.code !== 0) { this.error = grade.message; this.loading = false; return }
+        const grade = contextCheck
         const source = grade.data.sourceScores || {}
         this.form.advisorScore = grade.data.advisorScore ?? ''
         this.form.reviewerScore = source.reviewerScore ?? ''
         this.form.defenseScore = source.defenseScore ?? ''
-        if (source.reviewerScore == null || source.defenseScore == null) {
-          this.error = '请先完成教师评阅与答辩评分确认'
-        }
+        if (source.reviewerScore == null || source.defenseScore == null) this.error = '请先完成教师评阅与答辩评分确认'
       }
       this.loading = false
     },
@@ -165,14 +210,8 @@ export default {
         } else if (this.formKey === 'reviewReturn') {
           res = await graduationDefenseGradeApi.returnReview(this.recordId, f.reason)
         } else if (this.formKey === 'scoreEntry') {
-          if (f.absent && !String(f.absentReason || '').trim()) {
-            this.formError = '评委缺席时必须填写缺席原因'
-            return
-          }
-          if (!f.absent && (f.score === '' || f.score == null)) {
-            this.formError = '非缺席评委必须填写评分'
-            return
-          }
+          if (f.absent && !String(f.absentReason || '').trim()) { this.formError = '评委缺席时必须填写缺席原因'; return }
+          if (!f.absent && (f.score === '' || f.score == null)) { this.formError = '非缺席评委必须填写评分'; return }
           res = await graduationDefenseGradeApi.enterScore({
             gdStudentId: sid, judgeName: f.judgeName,
             score: f.absent ? undefined : Number(f.score), comment: f.comment,
@@ -194,7 +233,14 @@ export default {
         if (res && res.code === 0) {
           toast.success('已提交')
           this.$router.push(this.backTo)
-        } else if (res) this.formError = res.message
+        } else if (res && isGraduationConflictResponse(res)) {
+          const draft = this.captureEditableDraft()
+          await this.refreshConflictTruth()
+          this.restoreEditableDraft(draft)
+          this.formError = graduationConflictMessage(res)
+        } else if (res) {
+          this.formError = graduationActionErrorMessage(res)
+        }
       } finally { this.submitting = false }
     }
   }
