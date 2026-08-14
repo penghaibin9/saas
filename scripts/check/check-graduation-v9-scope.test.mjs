@@ -41,6 +41,18 @@ test('M4 allows only declared product-truth views and contracts', () => {
   assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M4')[0], /shared foundation denied/)
 })
 
+test('M7 grade flow allows its router, read/canonical services and regression contract only', () => {
+  assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/routers/graduation_sensitive_router.py',
+    'backend/app/modules/graduation/services/__init__.py',
+    'backend/app/modules/graduation/services/graduation_grade_read_service.py',
+    'backend/app/modules/graduation/services/graduation_grade_service.py',
+    'backend/tests/test_graduation_round7_pc_grade_contract.py',
+  ], 'M7'), [])
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'M7')[0], /out of M7 allowlist/)
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'M7')[0], /shared foundation denied/)
+})
+
 test('U1 Dashboard allows only its page, evidence, module-local route repair, and legacy Golden selector contract', () => {
   assert.deepEqual(validateFiles([
     'frontend/src/modules/graduation/views/GraduationDashboardView.vue',
@@ -111,14 +123,39 @@ test('U5 student list allows only SQL read binding and scale contract', () => {
   assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U5')[0], /canonical write\/read mixed service denied/)
 })
 
+test('U6 grade workbench allows only grade views and its targeted validation contract', () => {
+  assert.deepEqual(validateFiles([
+    '.github/workflows/graduation-targeted-repair.yml',
+    'frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue',
+    'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue',
+  ], 'U6'), [])
+  assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'U6')[0], /shared foundation denied/)
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_grade_service.py'], 'U6')[0], /canonical write\/read mixed service denied/)
+})
+
+test('U7 archive prework only registers the SQL read binding already present on the branch', () => {
+  assert.deepEqual(validateFiles([
+    'backend/app/modules/graduation/services/__init__.py',
+    'backend/app/modules/graduation/services/graduation_archive_read_service.py',
+  ], 'U7'), [])
+  assert.match(validateFiles(['backend/app/modules/graduation/services/graduation_archive_service.py'], 'U7')[0], /canonical write\/read mixed service denied/)
+  assert.match(validateFiles(['frontend/src/services/http/client.js'], 'U7')[0], /shared foundation denied/)
+})
+
 test('V9_PR is the union of declared V9.2 card files but keeps global denials', () => {
   assert.ok(patternsFor('V9_PR').length > patternsFor('M1').length)
   assert.deepEqual(validateFiles([
     '.github/workflows/graduation-v9-scope.yml',
+    '.github/workflows/graduation-targeted-repair.yml',
     'frontend/src/modules/graduation/api/graduation-taskbook.api.js',
     'backend/app/modules/graduation/routers/graduation_student_eval.py',
     'frontend/tests/graduation.v9-reminder-truth.contract.test.mjs',
     'backend/tests/test_graduation_round5_contracts.py',
+    'backend/app/modules/graduation/routers/graduation_sensitive_router.py',
+    'backend/app/modules/graduation/services/graduation_grade_read_service.py',
+    'backend/tests/test_graduation_round7_pc_grade_contract.py',
+    'frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue',
+    'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue',
     'frontend/src/modules/graduation/routes.js',
     'e2e/specs/graduation-v9-dashboard-visual.spec.mjs',
     'e2e/specs/golden-rollout-business-pages.spec.mjs',
@@ -139,6 +176,7 @@ test('V9_PR is the union of declared V9.2 card files but keeps global denials', 
     'e2e/specs/graduation-v9-process-visual.spec.mjs',
     'backend/app/modules/graduation/services/graduation_student_read_service.py',
     'backend/tests/test_graduation_v9_u5_student_list_scale.py',
+    'backend/app/modules/graduation/services/graduation_archive_read_service.py',
   ], 'V9_PR'), [])
   assert.match(validateFiles(['frontend/src/layouts/BasePortalLayout.vue'], 'V9_PR')[0], /shared foundation denied/)
 })

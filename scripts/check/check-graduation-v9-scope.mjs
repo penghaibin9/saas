@@ -24,6 +24,12 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/(AdminGraduationLayout|ProposalListView|FinalSubmissionListView|GraduationStudentListView)\.vue$/,
     /^frontend\/tests\/graduation\.v9-(?:product|reminder)-truth\.contract\.test\.mjs$/,
   ],
+  M7: [
+    /^backend\/app\/modules\/graduation\/routers\/graduation_sensitive_router\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_grade_(?:read_)?service\.py$/,
+    /^backend\/tests\/test_graduation_round7_pc_grade_contract\.py$/,
+  ],
   U1: [
     /^frontend\/src\/modules\/graduation\/views\/GraduationDashboardView\.vue$/,
     /^frontend\/src\/modules\/graduation\/routes\.js$/,
@@ -64,6 +70,14 @@ const CARD_ALLOW = {
     /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_student_read_service\.py$/,
     /^backend\/tests\/test_graduation_v9_u5_student_list_scale\.py$/,
+  ],
+  U6: [
+    /^\.github\/workflows\/graduation-targeted-repair\.yml$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationDefenseGrade(?:Form)?View\.vue$/,
+  ],
+  U7: [
+    /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_archive_read_service\.py$/,
   ],
 }
 
