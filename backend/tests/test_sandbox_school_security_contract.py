@@ -62,6 +62,35 @@ def test_story_reset_is_tenant_scoped_and_transaction_owned_by_route():
     assert "except Exception:\n        db.rollback()\n        raise" in route
 
 
+def test_standard_profile_blocks_legacy_auto_reset(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.services import sandbox_school_profile as profile_svc
+    from app.services import sandbox_service
+
+    class FakeDb:
+        rolled_back = False
+
+        def rollback(self):
+            self.rolled_back = True
+
+    db = FakeDb()
+    monkeypatch.setattr(sandbox_service, "sandbox_row_counts", lambda _db: {"t_student_profile": 20_000})
+    monkeypatch.setattr(profile_svc, "classify_sandbox_profile", lambda _db, _tid: {
+        "profile": profile_svc.PROFILE_STANDARD,
+        "students": 20_000,
+        "colleges": 8,
+        "majors": 32,
+        "classes": 384,
+        "backgroundStaffAccounts": 1_280,
+    })
+
+    with pytest.raises(AppException) as exc:
+        sandbox_service.reset_sandbox(db, dry_run=False)
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "standard-20k" in exc.value.message
+    assert db.rolled_back is True
+
+
 def test_20k_gate_tracks_effective_grade_policy_and_security_contract():
     workflow = _text(".github/workflows/sandbox-20k-data-gate.yml")
 
