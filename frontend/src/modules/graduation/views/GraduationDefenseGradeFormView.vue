@@ -31,6 +31,11 @@ import { LoadingState, ErrorState } from '@/components/business'
 import { AppTemplateChips } from '@/components/common'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import {
+  graduationActionErrorMessage,
+  graduationConflictMessage,
+  isGraduationConflictResponse
+} from '@/modules/graduation/utils/form-state'
 import { toast } from '@/utils/toast'
 
 const DEFENSE_COMMENT_CHIPS = [
@@ -140,6 +145,26 @@ export default {
         ? (this.form[f.key] ? this.form[f.key] + '\n' + value : String(value))
         : value
     },
+    captureEditableDraft() {
+      return Object.fromEntries(
+        this.formFields.filter((field) => !field.readonly).map((field) => [field.key, this.form[field.key]])
+      )
+    },
+    restoreEditableDraft(draft = {}) {
+      for (const field of this.formFields) {
+        if (!field.readonly && Object.prototype.hasOwnProperty.call(draft, field.key)) this.form[field.key] = draft[field.key]
+      }
+    },
+    async refreshConflictTruth() {
+      const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
+      if (grade.code === 0 && this.formKey === 'calculate') {
+        const source = grade.data.sourceScores || {}
+        this.form.reviewerScore = source.reviewerScore ?? ''
+        this.form.defenseScore = source.defenseScore ?? ''
+      }
+      const student = await gdStudentApi.getStudentDetail(this.studentId)
+      if (student.code === 0) this.student = student.data
+    },
     async init() {
       this.loading = true
       this.error = ''
@@ -205,8 +230,17 @@ export default {
         } else if (this.formKey === 'withdraw') {
           res = await graduationDefenseGradeApi.withdrawGrade(sid, f.reason)
         }
-        if (res && res.code === 0) { toast.success('已提交'); this.$router.push(this.backTo) }
-        else if (res) this.formError = res.message
+        if (res && res.code === 0) {
+          toast.success('已提交')
+          this.$router.push(this.backTo)
+        } else if (res && isGraduationConflictResponse(res)) {
+          const draft = this.captureEditableDraft()
+          await this.refreshConflictTruth()
+          this.restoreEditableDraft(draft)
+          this.formError = graduationConflictMessage(res)
+        } else if (res) {
+          this.formError = graduationActionErrorMessage(res)
+        }
       } finally { this.submitting = false }
     }
   }

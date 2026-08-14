@@ -92,6 +92,11 @@ import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
 import { AppSelect, AppTemplateChips } from '@/components/common'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import {
+  graduationActionErrorMessage,
+  graduationConflictMessage,
+  isGraduationConflictResponse
+} from '@/modules/graduation/utils/form-state'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, daysFromNowDeadline } from '@/utils/dateUtils'
 
@@ -175,6 +180,27 @@ export default {
   },
   created() { this.init() },
   methods: {
+    captureDraft() {
+      if (this.action === 'taskbook') return { tbForm: { ...this.tbForm } }
+      if (this.action === 'guidance') return { guidanceForm: { ...this.guidanceForm } }
+      if (this.action === 'plan') return { planForm: { ...this.planForm } }
+      if (this.action === 'eval') return { evalForm: { ...this.evalForm } }
+      if (this.action === 'midterm') return { mtForm: { ...this.mtForm } }
+      return { rectifyContent: this.rectifyContent }
+    },
+    restoreDraft(draft = {}) {
+      if (draft.tbForm) this.tbForm = { ...draft.tbForm }
+      if (draft.guidanceForm) this.guidanceForm = { ...draft.guidanceForm }
+      if (draft.planForm) this.planForm = { ...draft.planForm }
+      if (draft.evalForm) this.evalForm = { ...draft.evalForm }
+      if (draft.mtForm) this.mtForm = { ...draft.mtForm }
+      if (Object.prototype.hasOwnProperty.call(draft, 'rectifyContent')) this.rectifyContent = draft.rectifyContent
+    },
+    async refreshConflictTruth() {
+      const student = await gdStudentApi.getStudentDetail(this.studentId)
+      if (student.code === 0) this.student = student.data
+      if (this.action === 'taskbook') await graduationTaskbookApi.getTaskbook(this.studentId)
+    },
     async init() {
       this.loading = true
       this.error = ''
@@ -248,7 +274,14 @@ export default {
         if (res && res.code === 0) {
           toast.success('已保存')
           this.$router.push(this.backTo)
-        } else if (res) this.formError = res.message
+        } else if (res && isGraduationConflictResponse(res)) {
+          const draft = this.captureDraft()
+          await this.refreshConflictTruth()
+          this.restoreDraft(draft)
+          this.formError = graduationConflictMessage(res)
+        } else if (res) {
+          this.formError = graduationActionErrorMessage(res)
+        }
       } finally { this.submitting = false }
     }
   }

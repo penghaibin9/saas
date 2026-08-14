@@ -103,6 +103,14 @@ const CARD_ALLOW = {
     /^miniapp\/tests\/graduation\.v9-teacher-workbench\.contract\.test\.mjs$/,
     /^e2e\/specs\/graduation-v9-teacher-mobile-visual\.spec\.mjs$/,
   ],
+  U9: [
+    /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
+    /^frontend\/src\/modules\/graduation\/utils\/form-state\.js$/,
+    /^frontend\/src\/modules\/graduation\/views\/_shared\/ProposalReviewCard\.vue$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationDefenseGradeFormView\.vue$/,
+    /^frontend\/src\/modules\/graduation\/views\/GraduationProcessActionBaseView\.vue$/,
+    /^frontend\/tests\/graduation\.v9-form-state\.contract\.test\.mjs$/,
+  ],
 }
 
 const ALWAYS_DENY = [
