@@ -13,6 +13,15 @@ async function reloadAndWaitForRefresh(page) {
   await page.reload()
   const response = await refresh
   expect(response.status()).toBe(200)
+  const payload = await response.json()
+  const accessToken = String(payload?.data?.accessToken || '')
+  expect(accessToken, 'browser refresh must return an in-memory access token').toBeTruthy()
+  return decodeJwt(accessToken)
+}
+
+function expectSameSubject(actual, expected) {
+  expect(String(actual?.userId || '')).toBe(String(expected?.userId || ''))
+  expect(String(actual?.tenantId || '')).toBe(String(expected?.tenantId || ''))
 }
 
 test.describe.serial('same-context browser tab auth isolation', () => {
@@ -38,10 +47,8 @@ test.describe.serial('same-context browser tab auth isolation', () => {
       expect(sidA).toBeTruthy()
       expect(sidB).toBeTruthy()
       expect(sidA).not.toBe(sidB)
-      await reloadAndWaitForRefresh(pageA)
-      await expect(pageA.locator('body')).toContainText(/体验沙箱|sandbox-school/)
-      await reloadAndWaitForRefresh(pageB)
-      await expect(pageB.locator('body')).toContainText(/演示职业技术学校|demo-school/)
+      expectSameSubject(await reloadAndWaitForRefresh(pageA), claimsA)
+      expectSameSubject(await reloadAndWaitForRefresh(pageB), claimsB)
       const logout = await pageA.evaluate(async ({ apiBaseUrl, sid }) => {
         const response = await fetch(`${apiBaseUrl}/auth/browser-logout`, {
           method: 'POST', credentials: 'include',
@@ -51,8 +58,7 @@ test.describe.serial('same-context browser tab auth isolation', () => {
       }, { apiBaseUrl: config.apiBaseUrl, sid: sidA })
       expect(logout.status, JSON.stringify(logout.body)).toBe(200)
       expect(logout.body?.code, JSON.stringify(logout.body)).toBe(0)
-      await reloadAndWaitForRefresh(pageB)
-      await expect(pageB.locator('body')).toContainText(/演示职业技术学校|demo-school/)
+      expectSameSubject(await reloadAndWaitForRefresh(pageB), claimsB)
     } finally {
       await finalizeA(); await finalizeB(); await context.close()
     }
