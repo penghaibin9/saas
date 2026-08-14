@@ -431,9 +431,16 @@ export default {
     next() { if (this.queueIndex < this.queue.length - 1) { this.queueIndex++; this.loadDetail() } },
     afterAction() {
       const kind = this.reviewKind
+      if (kind !== 'proposal' && kind !== 'final') {
+        this.queue.splice(this.queueIndex, 1)
+        if (!this.queue.length) { this.exitReview(); return }
+        if (this.queueIndex > this.queue.length - 1) this.queueIndex = this.queue.length - 1
+        this.loadDetail()
+        return
+      }
       graduationTeacherCountTruth().then((d) => {
         this.applyReviewTruth(d)
-        this.queue = kind === 'proposal' ? this.reviewQueue : kind === 'final' ? this.finalQueue : this.queue
+        this.queue = kind === 'proposal' ? this.reviewQueue : this.finalQueue
         if (!this.queue.length) { this.exitReview(); return }
         if (this.queueIndex > this.queue.length - 1) this.queueIndex = this.queue.length - 1
         this.loadDetail()
