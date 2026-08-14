@@ -8,15 +8,18 @@ import pytest
 from app.core.exceptions import AppException
 from app.modules.academic_affairs.routers import stats_core_router
 from app.modules.academic_affairs.services import academic_affairs_stats_public_service as public
-from app.modules.academic_affairs.services import academic_affairs_stats_service as legacy
 from app.modules.academic_affairs.services import academic_affairs_workload_stats_guard as guard
 
+legacy = public._legacy
 
-def test_workload_guard_is_installed_at_package_import():
+
+def test_workload_guard_is_installed_behind_public_scope_owner():
     assert legacy.workload_stats is guard.workload_stats
     assert legacy.workload_detail is guard.workload_detail
+    assert public.workload_detail is guard.public_workload_detail
     assert getattr(legacy.workload_stats, "_workload_term_sql_guard", False) is True
     assert getattr(legacy.workload_detail, "_workload_term_sql_guard", False) is True
+    assert getattr(public.workload_detail, "_workload_public_scope_guard", False) is True
 
 
 def test_workload_stats_filter_tasks_by_batch_term_and_aggregate_in_sql():
@@ -58,3 +61,26 @@ def test_workload_detail_term_is_exposed_without_breaking_old_positionals():
     route_source = inspect.getsource(stats_core_router.stats_workload_detail)
     assert "termId: Optional[int] = None" in route_source
     assert "stats_svc.workload_detail(user, teacherKey, collegeId, page, pageSize, termId)" in route_source
+
+
+def test_public_workload_detail_keeps_teacher_self_only_and_five_arg_compat(monkeypatch):
+    monkeypatch.setattr(public, "_precheck", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        legacy,
+        "workload_detail",
+        lambda _user, teacher_key, _college_id, _page, _page_size: ([teacher_key], 1),
+    )
+    user = {
+        "currentRoleCode": "ACADEMIC_TEACHER",
+        "loginName": "T001",
+        "userId": "u_T001",
+        "activeContextId": "ctx_T001",
+    }
+
+    with pytest.raises(AppException) as exc:
+        public.workload_detail(user, "T002")
+    assert exc.value.http_status == 403
+
+    items, total = public.workload_detail(user, "T001")
+    assert items == ["T001"]
+    assert total == 1

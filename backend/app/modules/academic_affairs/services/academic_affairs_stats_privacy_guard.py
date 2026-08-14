@@ -1,8 +1,9 @@
-"""教务统计学生级下钻的统一脱敏与分页边界。
+"""教务统计学生级下钻的统一分页边界。
 
-保持原查询、dataScope 与审计 owner 不变，只在返回边界统一掩码 studentNo，并在内部 service
-调用层补 page/pageSize fail-closed。适用于当前仍由 legacy stats 持有的注册、预警、学籍异动、
-成绩挂科四条学生级下钻；考务由 canonical facade 自带脱敏，毕业由 graduation stats guard 持有。
+保持原查询、dataScope、审计 owner 与已冻结的授权展示口径不变：学号属于校内业务编码，
+授权教务下钻继续展示原 studentNo；本层只在内部 service 调用层补 page/pageSize fail-closed。
+适用于当前仍由公开 stats 持有的注册、预警、学籍异动、成绩挂科四条学生级下钻；
+考务与毕业继续由各自 canonical guard 持有。
 """
 from __future__ import annotations
 
@@ -36,32 +37,10 @@ def _page_values(page, page_size) -> tuple[int, int]:
     return page_no, _bounded_page_size(page_size, default=20)
 
 
-def _mask_student_no(value) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    if len(text) <= 4:
-        return "*" * len(text)
-    return f"{text[:2]}{'*' * (len(text) - 4)}{text[-2:]}"
-
-
-def _mask_rows(result):
-    items, total = result
-    masked = []
-    for raw in items:
-        row = dict(raw)
-        if "studentNo" in row:
-            row["studentNo"] = _mask_student_no(row.get("studentNo"))
-        masked.append(row)
-    return masked, total
-
-
 def registration_unregistered(user, term_id=None, college_id=None, major_id=None,
                               page=1, page_size=20):
     page_no, size = _page_values(page, page_size)
-    return _mask_rows(
-        _ORIGINAL_REGISTRATION(user, term_id, college_id, major_id, page_no, size)
-    )
+    return _ORIGINAL_REGISTRATION(user, term_id, college_id, major_id, page_no, size)
 
 
 registration_unregistered._stats_student_privacy_guard = True
@@ -69,7 +48,7 @@ registration_unregistered._stats_student_privacy_guard = True
 
 def warning_detail(user, level=None, source=None, college_id=None, page=1, page_size=20):
     page_no, size = _page_values(page, page_size)
-    return _mask_rows(_ORIGINAL_WARNING(user, level, source, college_id, page_no, size))
+    return _ORIGINAL_WARNING(user, level, source, college_id, page_no, size)
 
 
 warning_detail._stats_student_privacy_guard = True
@@ -78,9 +57,7 @@ warning_detail._stats_student_privacy_guard = True
 def status_change_detail(user, change_type=None, term_id=None, college_id=None,
                          page=1, page_size=20):
     page_no, size = _page_values(page, page_size)
-    return _mask_rows(
-        _ORIGINAL_STATUS_CHANGE(user, change_type, term_id, college_id, page_no, size)
-    )
+    return _ORIGINAL_STATUS_CHANGE(user, change_type, term_id, college_id, page_no, size)
 
 
 status_change_detail._stats_student_privacy_guard = True
@@ -89,9 +66,7 @@ status_change_detail._stats_student_privacy_guard = True
 def grade_detail(user, term_id=None, college_id=None, course_name=None,
                  page=1, page_size=20):
     page_no, size = _page_values(page, page_size)
-    return _mask_rows(
-        _ORIGINAL_GRADE(user, term_id, college_id, course_name, page_no, size)
-    )
+    return _ORIGINAL_GRADE(user, term_id, college_id, course_name, page_no, size)
 
 
 grade_detail._stats_student_privacy_guard = True

@@ -2,7 +2,8 @@
 
 只接管教务统计的 workload 聚合/下钻读取：教学任务通过 AaTeachingTaskBatch.term_id 过滤，
 审核通过的申报工时通过 AaTerm 对应 term_code 候选过滤；教师聚合在 SQL 完成。申报/审核写链、
-教学任务事实和人事正式核算均保持既有 owner。
+教学任务事实和人事正式核算均保持既有 owner。公开 service 继续持有 dataScope / 教师本人门禁，
+本层只替换 legacy SQL 实现并保持旧五参数 workload_detail 调用兼容。
 """
 from __future__ import annotations
 
@@ -10,10 +11,15 @@ import importlib
 
 from sqlalchemy import func, select
 
+from app.core.affairs_security import _derive_keys, no_data_scope
 from app.core.exceptions import AppException
 
 stats = importlib.import_module(
     ".academic_affairs_stats_service",
+    package=__package__,
+)
+public_stats = importlib.import_module(
+    ".academic_affairs_stats_public_service",
     package=__package__,
 )
 from .academic_affairs_production_audit_guard import _bounded_page_size
@@ -128,7 +134,7 @@ workload_stats._workload_term_sql_guard = True
 
 
 def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, term_id=None):
-    """单教师授课明细；term_id 新增为尾部可选参数，旧位置参数调用保持兼容。"""
+    """legacy SQL 实现；term_id 为尾部可选参数，旧位置参数保持兼容。"""
     if not str(teacher_key or "").strip():
         raise AppException("VALIDATION_ERROR", "teacherKey 必填")
     page_no, size = _page_values(page, page_size)
@@ -162,6 +168,22 @@ def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, te
 workload_detail._workload_term_sql_guard = True
 
 
+def public_workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, term_id=None):
+    """公开 workload detail：先做范围/本人裁决，再进入 SQL guard。"""
+    public_stats._precheck(user, college_id)
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role == "ACADEMIC_TEACHER":
+        keys = {str(value) for value in (_derive_keys(user) or set()) if str(value).strip()}
+        if not keys or str(teacher_key or "") not in keys:
+            raise no_data_scope("任课教师仅可查看本人的工作量明细")
+    if term_id is None:
+        return stats.workload_detail(user, teacher_key, college_id, page, page_size)
+    return stats.workload_detail(user, teacher_key, college_id, page, page_size, term_id)
+
+
+public_workload_detail._workload_public_scope_guard = True
+
+
 def install() -> None:
     if not hasattr(stats, "_workload_stats_guard_original_stats"):
         stats._workload_stats_guard_original_stats = stats.workload_stats
@@ -169,3 +191,7 @@ def install() -> None:
         stats._workload_stats_guard_original_detail = stats.workload_detail
     stats.workload_stats = workload_stats
     stats.workload_detail = workload_detail
+
+    if not hasattr(public_stats, "_workload_stats_guard_original_public_detail"):
+        public_stats._workload_stats_guard_original_public_detail = public_stats.workload_detail
+    public_stats.workload_detail = public_workload_detail
