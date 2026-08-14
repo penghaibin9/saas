@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.academic_affairs.services import academic_affairs_textbook_read_service as textbook_read
 from app.modules.academic_affairs.services import academic_affairs_textbook_service as textbook_svc
 
 
@@ -85,7 +86,7 @@ def textbook_create(body: TextbookBody, user=Depends(require_permission(_TB_CATA
 @router.get("/textbooks", summary="教材目录列表")
 def textbooks(keyword: Optional[str] = None, status: Optional[str] = None, page: int = 1, pageSize: int = 20,
               user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_textbooks(user, keyword, status, page, pageSize)
+    items, total = textbook_read.list_textbooks(user, keyword, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -124,7 +125,7 @@ def review_create(body: ReviewBatchBody, user=Depends(require_permission(_TB_REV
 @router.get("/textbooks/review-batches", summary="审核批次列表")
 def review_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
                    user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_review_batches(user, status, page, pageSize)
+    items, total = textbook_read.list_review_batches(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -141,7 +142,7 @@ def order_create(body: OrderBatchBody, user=Depends(require_permission(_TB_ORDER
 @router.get("/textbooks/order-batches", summary="征订批次列表")
 def order_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
                   user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_order_batches(user, status, page, pageSize)
+    items, total = textbook_read.list_order_batches(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -172,7 +173,7 @@ def dist_generate(body: DistGenerateBody, user=Depends(require_permission(_TB_DI
 
 @router.get("/textbooks/distribution-batches/{bid}/records", summary="发放明细")
 def dist_records(bid: int = Path(...), page: int = 1, pageSize: int = 100, user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_distribution_records(user, bid, page, pageSize)
+    items, total = textbook_read.list_distribution_records(user, bid, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -184,7 +185,7 @@ def dist_sign(rid: int = Path(...), user=Depends(require_permission(_TB_DIST))):
 @router.get("/textbooks/fee-ledger", summary="教材费用台账")
 def fee_ledger(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
                user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_fees(user, status, page, pageSize)
+    items, total = textbook_read.list_fees(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -195,9 +196,9 @@ def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permi
 
 @router.get("/textbooks/stock", summary="教材库存（到货量-已发放签收量）")
 def textbook_stock(user=Depends(require_permission(_TB_VIEW))):
-    return success({"items": textbook_svc.textbook_stock(user)})
+    return success({"items": textbook_read.textbook_stock(user)})
 
 
 @router.get("/textbooks/stats", summary="教材统计（征订/到货率/欠费）")
 def textbook_stats(user=Depends(require_permission(_TB_VIEW))):
-    return success(textbook_svc.stats(user))
+    return success(textbook_read.stats(user))
