@@ -37,6 +37,18 @@ async function capture(page, testInfo, name, width, height) {
   return path
 }
 
+function expectedTabForMissingItem(label) {
+  const text = String(label || '')
+  if (text.includes('任务书')) return 'taskbook'
+  if (text.includes('开题')) return 'proposals'
+  if (text.includes('中期')) return 'midterm'
+  if (text.includes('指导')) return 'guidance'
+  if (text.includes('查重')) return 'plagiarisms'
+  if (text.includes('评阅') || text.includes('答辩') || text.includes('成绩')) return 'review'
+  if (text.includes('成果') || text.includes('论文')) return 'finals'
+  return ''
+}
+
 test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
   let fixture
 
@@ -63,13 +75,19 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
     await page.getByText(fixture.studentNo, { exact: true }).first().click()
     await expect(page.getByText('归档核验', { exact: false }).first()).toBeVisible()
     await expect(page.getByText(/缺失 \d+ 项/).first()).toBeVisible()
-    await expect(page.getByRole('button', { name: '去补齐 →' }).first()).toBeVisible()
+
+    const missingRow = page.locator('.ar-missing__item').filter({ has: page.getByRole('button', { name: '去补齐 →' }) }).first()
+    const fixButton = missingRow.getByRole('button', { name: '去补齐 →' })
+    await expect(fixButton).toBeVisible()
+    const missingLabel = (await missingRow.locator('.ar-missing__name').textContent()) || ''
+    const exactTab = expectedTabForMissingItem(missingLabel)
+    expect(exactTab, `U7 missing item must have an exact deep-link mapping: ${missingLabel}`).not.toBe('')
 
     await capture(page, testInfo, 'gd-U7-archive-B', 1440, 900)
     await capture(page, testInfo, 'gd-U7-archive-B', 1280, 800)
 
-    // U7 exact deep-link: the selected student id, batch and source must survive the jump.
-    await page.getByRole('button', { name: '去补齐 →' }).first().click()
+    // U7 exact deep-link: exact student + batch + source + clicked missing-item destination.
+    await fixButton.click()
     await expect.poll(() => {
       const current = new URL(page.url())
       return {
@@ -82,7 +100,7 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
       path: `/admin/graduation/students/${fixture.gdStudentId}`,
       batchId: fixture.batchId,
       source: 'archive',
-      tab: 'taskbook'
+      tab: exactTab
     })
     await expect(page.locator('body')).toContainText(fixture.studentNo)
 
@@ -95,7 +113,8 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
       gdStudentId: fixture.gdStudentId,
       studentNo: fixture.studentNo,
       source: 'archive',
-      exactTab: 'taskbook',
+      missingItem: missingLabel,
+      exactTab,
       viewports: [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]
     }, null, 2), 'utf8')
     await testInfo.attach('gd-U7-archive-B-meta', { path: metaPath, contentType: 'application/json' })
