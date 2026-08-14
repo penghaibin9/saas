@@ -11,8 +11,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipMakeup,
                         InternshipRecord, StudentProfile)
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
@@ -39,8 +41,8 @@ def _trail(db, mid: int, action: str, detail: dict | None = None, operator: str 
 
 
 def _get(db, mid) -> InternshipMakeup:
-    m = db.get(InternshipMakeup, _as_id(mid))
-    if not m or m.is_deleted or m.tenant_id != _tid():
+    m = tenant_get(db, InternshipMakeup, _as_id(mid))
+    if not m or m.is_deleted:
         raise not_found("补卡申请不存在")
     return m
 
@@ -199,7 +201,12 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
                              checkin_date=checkin_date.strip(), makeup_type=makeup_type,
                              reason=reason.strip(), status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)))
-        db.add(m); db.flush()
+        db.add(m)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         if evidence_file_id:
             from app.services import file_service
             file_service.bind_file_biz(evidence_file_id, "INTERNSHIP", str(m.id), user=user, db=db)
@@ -208,7 +215,11 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
             "evidenceFileId": evidence_file_id or "",
             "evidenceRequired": _evidence_required(makeup_type),
         }, operator=m.apply_by_name or "学生")
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         return {"id": str(m.id), "status": "PENDING", "statusLabel": "待审核",
                 "version": int(m.version or 0), "hasEvidence": bool(evidence_file_id)}
 
@@ -336,8 +347,8 @@ def get_makeup(makeup_id, user=None) -> dict:
     from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该补卡申请不在你的数据范围内")
         evidence_file_id = _evidence_file_id(db, m)
@@ -356,8 +367,8 @@ def mark_evidence_viewed(user, makeup_id) -> dict:
     from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该补卡申请不在你的数据范围内")
         evidence_file_id = _evidence_file_id(db, m)
@@ -382,8 +393,8 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         m = _get(db, makeup_id)
-        rec = db.get(InternshipRecord, m.internship_id)
-        stu = db.get(StudentProfile, m.student_id)
+        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的补卡申请")
         from app.modules.internship.services.internship_batch_context import assert_record_batch

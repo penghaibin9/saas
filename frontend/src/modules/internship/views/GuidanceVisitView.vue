@@ -79,11 +79,16 @@
               <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无记录" />
             </div>
 
-            <div v-if="tab === 'guidance' || detail.data.rectifyStatus === 'PENDING'" class="gv-foot">
+            <div v-if="tab === 'guidance' || detail.data.rectifyStatus === 'PENDING' || planActions.length" class="gv-foot">
               <AppPermissionButton v-if="tab === 'guidance'" code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="ghost" :danger="true"
                 @click="openVoid(detail.data)">撤销</AppPermissionButton>
               <AppPermissionButton v-if="tab === 'visit' && detail.data.rectifyStatus === 'PENDING'" code="internship.visit.manage" :allowed="canBtn('internship.visit.manage')" variant="secondary"
                 @click="openRectify(detail.data)">整改跟进</AppPermissionButton>
+              <!-- 巡访计划状态迁移：后端 transition 早就做好了并发保护，但此前前端没有任何入口，
+                   计划建出来就只能停在草稿。 -->
+              <AppPermissionButton v-for="a in planActions" :key="a.action" code="internship.visit.plan.manage"
+                :allowed="canBtn('internship.visit.plan.manage')" :variant="a.variant" :danger="a.danger"
+                @click="openPlanAction(a)">{{ a.label }}</AppPermissionButton>
             </div>
           </template>
         </section>
@@ -91,8 +96,10 @@
     </div>
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
-      :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="true"
-      :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm" />
+      :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
+      :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm">
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
 
     <AppDrawer :visible="commDlg.visible" title="登记企业沟通" mode="modal" size="large" @update:visible="commDlg.visible = $event">
       <AppFormItem label="企业" required>
@@ -147,6 +154,8 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
@@ -186,6 +195,23 @@ const PANEL_PRESETS = {
   'visit-issue': () => ({ tab: 'visit', rectifyFilter: 'PENDING' }),
   rectify: () => ({ tab: 'visit', rectifyFilter: 'PENDING' })
 }
+//: 巡访计划状态迁移，与后端 internship_visit_plan_service._TRANSITIONS 逐条对齐。
+//: 取消是不可逆的，所以必填原因；发布/开始/完成是正常推进，不该逼老师编字。
+const PLAN_ACTIONS = {
+  DRAFT: [
+    { action: 'PUBLISH', label: '发布计划', variant: 'primary', danger: false, requireReason: false },
+    { action: 'CANCEL', label: '取消计划', variant: 'ghost', danger: true, requireReason: true }
+  ],
+  PUBLISHED: [
+    { action: 'START', label: '开始巡访', variant: 'primary', danger: false, requireReason: false },
+    { action: 'CANCEL', label: '取消计划', variant: 'ghost', danger: true, requireReason: true }
+  ],
+  IN_PROGRESS: [
+    { action: 'COMPLETE', label: '完成巡访', variant: 'primary', danger: false, requireReason: false },
+    { action: 'CANCEL', label: '取消计划', variant: 'ghost', danger: true, requireReason: true }
+  ]
+}
+
 const VIEW_TAB = { plan: 'visit-plan', record: 'visit', issue: 'visit', communication: 'communication' }
 const TAB_PANEL = { guidance: 'guidance', visit: 'visit', communication: 'communication', 'visit-plan': 'visit-plan' }
 
@@ -196,7 +222,7 @@ export default {
     AppDrawer, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
     AppFormItem, AppSelect, AppTextarea,
-    AppInternshipEnterprisePicker, AppInternshipStudentPicker },
+    AppInternshipEnterprisePicker, AppInternshipStudentPicker, ConflictNotice },
   data() {
     return {
       commDlg: { visible: false, submitting: false, error: '' },
@@ -218,7 +244,8 @@ export default {
       keyword: '', rectifyFilter: '', rectifyOptions: RECTIFY_OPTIONS,
       selectedId: '',
       detail: { loading: false, error: '', data: null },
-      cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', submitting: false },
+      cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
+      conflict: emptyConflict(),
       pending: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校',
       guidanceStats: null,
@@ -227,6 +254,12 @@ export default {
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
+    /** 当前选中的巡访计划还能做哪些状态迁移；非计划页签或终态时为空 */
+    planActions() {
+      if (this.tab !== 'visit-plan') return []
+      const status = this.detail.data && this.detail.data.status
+      return (status && PLAN_ACTIONS[status]) || []
+    },
     statsCards() {
       if (this.tab === 'guidance' && this.guidanceStats) {
         const g = this.guidanceStats
@@ -297,6 +330,22 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    /** 打开巡访计划的状态迁移确认框 */
+    openPlanAction(a) {
+      const d = this.detail.data || {}
+      this.pending = { kind: 'plan-transition', id: this.selectedId, action: a.action }
+      this.conflict = emptyConflict()
+      this.cd = {
+        visible: true,
+        title: `巡访计划 · ${a.label}`,
+        content: `将「${d.enterpriseName || '该企业'}」${d.planDate || ''}的巡访计划「${a.label}」。`,
+        danger: a.danger,
+        confirmText: a.label,
+        requireReason: a.requireReason,
+        reasonLabel: a.action === 'CANCEL' ? '取消原因' : '说明（选填）',
+        submitting: false
+      }
+    },
     syncPanelFromRoute() {
       const panel = (this.$route.query.panel || 'guidance').toString()
       const view = (this.$route.query.view || '').toString()
@@ -461,22 +510,48 @@ export default {
     openVoid(d) {
       this.pending = { kind: 'void', id: this.selectedId }
       this.cd = { visible: true, title: '撤销指导记录', content: `撤销「${d.studentName}」的指导记录，撤销原因将写入审计。`,
-        danger: true, confirmText: '撤销', reasonLabel: '撤销原因', submitting: false }
+        danger: true, confirmText: '撤销', reasonLabel: '撤销原因', requireReason: true, submitting: false }
     },
     openRectify(d) {
       this.pending = { kind: 'rectify', id: this.selectedId }
       this.cd = { visible: true, title: '巡访整改跟进', content: `将「${d.studentName}」的安全隐患整改标记为「已整改」，跟进说明将写入审计。`,
-        danger: false, confirmText: '标记已整改', reasonLabel: '整改跟进说明', submitting: false }
+        danger: false, confirmText: '标记已整改', reasonLabel: '整改跟进说明', requireReason: true, submitting: false }
     },
     async onConfirm({ reason }) {
       const p = this.pending
       this.cd.submitting = true
-      const res = p.kind === 'void'
-        ? await guidanceVisitApi.voidGuidance(p.id, { reason })
-        : await guidanceVisitApi.rectifyVisit(p.id, { status: 'DONE', note: reason })
+      let res
+      if (p.kind === 'plan-transition') {
+        res = await guidanceVisitApi.transitionVisitPlan(p.id, p.action, { reason: reason || '' })
+      } else if (p.kind === 'void') {
+        res = await guidanceVisitApi.voidGuidance(p.id, { reason })
+      } else {
+        res = await guidanceVisitApi.rectifyVisit(p.id, { status: 'DONE', note: reason })
+      }
       this.cd.submitting = false
+      if (isConflict(res)) {
+        // 两个教师同时推进同一条计划时，后端条件更新会让输家拿 409。
+        // 弹窗不关、填的内容不动，只把最新状态摆出来让他自己决定。
+        this.conflict = await captureConflict({
+          res,
+          kept: reason || '',
+          refresh: () => this.loadDetail(p.id),
+          latest: () => {
+            const d = this.detail.data
+            if (!d) throw new Error('最新详情未拉回')
+            return [
+              { label: '最新状态', value: d.statusLabel || d.status || '' },
+              { label: '负责人', value: d.ownerName || '' },
+              { label: '取消原因', value: d.cancelReason || '' }
+            ]
+          }
+        })
+        return
+      }
       if (res.code !== 0) return toast.error(res.message || '操作失败')
-      this.cd.visible = false; toast.success('操作成功，已写审计')
+      this.cd.visible = false
+      this.conflict = emptyConflict()
+      toast.success('操作成功，已写审计')
       this.loadStats(); this.load()
       if (p.kind === 'void') this.clearSelection()
       else this.loadDetail(p.id)

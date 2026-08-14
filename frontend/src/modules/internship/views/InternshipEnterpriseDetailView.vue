@@ -93,6 +93,51 @@
       </section>
 
       <!-- 审计 -->
+      <section v-show="tab === 'inspections'" class="mp-card">
+        <div class="mp-card__head">
+          <span class="mp-card__title">企业考察与准入（{{ inspections.length }}）</span>
+          <AppPermissionButton code="internship.enterprise.inspection.manage"
+            :allowed="canInspect"
+            variant="secondary" size="sm" @click="openInspectionCreate">＋ 登记考察</AppPermissionButton>
+        </div>
+        <div class="mp-card__body">
+          <div v-if="inspectionsError" class="ed-state is-err">{{ inspectionsError }}
+            <button type="button" class="mp-link" @click="loadInspections">重试</button>
+          </div>
+          <p v-else-if="!inspections.length" class="ed-state">
+            暂无考察记录。企业准入有效期由考察审核结论写入，通过后企业才可继续接收实习生。
+          </p>
+          <table v-else class="ed-tbl">
+            <thead><tr><th>考察方式</th><th>考察日期</th><th>考察人</th><th>结论</th><th>准入有效期</th><th>状态</th><th>审核人</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="x in inspections" :key="x.id">
+                <td>{{ x.inspectionTypeLabel || x.inspectionType }}</td>
+                <td>{{ x.inspectionDate || '—' }}</td>
+                <td>{{ x.inspectors || '—' }}</td>
+                <td class="ed-cell-wrap">{{ x.conclusion || '—' }}</td>
+                <td>{{ x.validUntil || '—' }}</td>
+                <td><AppStatusTag :status="x.status">{{ x.statusLabel || x.status }}</AppStatusTag></td>
+                <td>{{ x.reviewedByName || '—' }}</td>
+                <td class="ed-ops">
+                  <AppPermissionButton v-if="x.status === 'DRAFT'" code="internship.enterprise.inspection.manage"
+                    :allowed="canInspect" variant="ghost" size="sm"
+                    @click="openInspectionAction(x, 'submit')">提交审核</AppPermissionButton>
+                  <template v-if="x.status === 'SUBMITTED'">
+                    <AppPermissionButton code="internship.enterprise.inspection.manage"
+                      :allowed="canInspect" variant="secondary" size="sm"
+                      @click="openInspectionAction(x, 'approve')">通过</AppPermissionButton>
+                    <AppPermissionButton code="internship.enterprise.inspection.manage"
+                      :allowed="canInspect" variant="ghost" size="sm" :danger="true"
+                      @click="openInspectionAction(x, 'reject')">驳回</AppPermissionButton>
+                  </template>
+                  <span v-if="!['DRAFT', 'SUBMITTED'].includes(x.status)" class="ed-muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section v-show="tab === 'audit'" class="mp-card">
         <div class="mp-card__body">
           <AppAuditTrail :records="auditRecords" :show-ip="false" />
@@ -138,6 +183,24 @@
       :submitting="submitting"
       @confirm="onConfirm"
     />
+
+    <!-- 企业考察独立确认框：与上面的企业状态机动作互不干扰 -->
+    <AppConfirmDialog
+      v-if="inspectionDialog"
+      :visible="true"
+      :title="inspectionDialog.title"
+      :message="inspectionDialog.message"
+      :danger="inspectionDialog.danger"
+      :confirm-text="inspectionDialog.confirmText"
+      :require-reason="inspectionDialog.requireReason"
+      :reason-label="inspectionDialog.reasonLabel"
+      :submitting="inspectionActing"
+      @update:visible="inspectionDialog = null"
+      @cancel="inspectionDialog = null"
+      @confirm="onInspectionConfirm"
+    >
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -152,6 +215,10 @@ import { AppDrawer, AppButton } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
+import { complianceApi } from '@/modules/internship/api/compliance.api'
+import { canCode } from '@/modules/internship/composables/permission'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 
 const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone: '', email: '', isPrimary: false })
@@ -161,7 +228,8 @@ export default {
   name: 'InternshipEnterpriseDetailView',
   components: {
     ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppButton, AppConfirmDialog,
-    AppPermissionButton, AppAuditTrail, AppInlineAlert, AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect
+    AppPermissionButton, AppAuditTrail, AppInlineAlert, AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect,
+    ConflictNotice
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -172,15 +240,24 @@ export default {
         { key: 'contacts', label: '联系人与导师' },
         { key: 'coop', label: '合作与资质' },
         { key: 'positions', label: '企业岗位' },
+        { key: 'inspections', label: '考察与准入' },
         { key: 'audit', label: '审计记录' }
       ],
       positions: [], positionsLoaded: false,
+      // 企业考察：后端 create/submit/review 一直都在（含并发保护与跨租户守卫），
+      // 但此前前端没有任何入口，等于建好的准入链路没人能用。
+      inspections: [], inspectionsLoaded: false, inspectionsError: '',
+      inspectionActing: false, conflict: emptyConflict(),
+      inspectionDialog: null,
       contactDrawer: false, editingContact: null, cform: EMPTY_CFORM(), cformError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
   computed: {
     perms() { return this.ctx.permissionActions || {} },
+    /** 企业考察用的是后端权限码（require_permission 同一套），
+     *  与本页其它按钮走的 permissionActions 动作名不是一个体系，不能混用。 */
+    canInspect() { return canCode(this.ctx, 'internship.enterprise.inspection.manage') },
     contacts() { return this.detail ? this.detail.contacts : [] },
     basicFields() {
       const d = this.detail
@@ -214,8 +291,84 @@ export default {
     contactTypeOptions() { return CONTACT_TYPE_OPTIONS }
   },
   created() { this.load() },
+  watch: {
+    tab(next) {
+      // 考察记录按企业查，切到该页签时才拉，避免每次进详情都多打一个接口
+      if (next === 'inspections' && !this.inspectionsLoaded) this.loadInspections()
+    }
+  },
   methods: {
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
+    async loadInspections() {
+      this.inspectionsError = ''
+      const res = await complianceApi.listInspections(this.$route.params.id)
+      this.inspectionsLoaded = true
+      if (res.code !== 0) { this.inspectionsError = res.message || '考察记录加载失败'; return }
+      this.inspections = Array.isArray(res.data) ? res.data : (res.data && res.data.list) || []
+    },
+    openInspectionCreate() {
+      this.conflict = emptyConflict()
+      this.inspectionDialog = {
+        mode: 'create', id: '', title: '登记企业考察',
+        message: '登记一次企业考察；提交并通过后才会写入企业准入有效期。',
+        confirmText: '登记', requireReason: true, reasonLabel: '考察结论（≥5字）', danger: false
+      }
+    },
+    openInspectionAction(row, action) {
+      this.conflict = emptyConflict()
+      const map = {
+        submit: { title: '提交考察审核', message: '提交后进入审核环节，草稿不可再改。',
+                  confirmText: '提交', requireReason: false, reasonLabel: '', danger: false },
+        approve: { title: '通过企业考察', message: '通过后将写入企业准入有效期，企业方可继续接收实习生。',
+                   confirmText: '通过', requireReason: false, reasonLabel: '审核意见（选填）', danger: false },
+        reject: { title: '驳回企业考察', message: '驳回后企业准入不会更新，请写明原因。',
+                  confirmText: '驳回', requireReason: true, reasonLabel: '驳回原因（≥5字）', danger: true }
+      }[action]
+      this.inspectionDialog = { mode: action, id: row.id, ...map }
+    },
+    async onInspectionConfirm({ reason }) {
+      const d = this.inspectionDialog
+      if (!d) return
+      this.inspectionActing = true
+      let res
+      try {
+        if (d.mode === 'create') {
+          res = await complianceApi.createInspection({
+            companyId: this.$route.params.id, inspectionType: 'DOCUMENT', conclusion: reason
+          })
+        } else if (d.mode === 'submit') {
+          res = await complianceApi.submitInspection(d.id)
+        } else {
+          res = await complianceApi.reviewInspection(d.id, d.mode, { comment: reason || '' })
+        }
+      } finally {
+        this.inspectionActing = false
+      }
+      if (isConflict(res)) {
+        // 两个管理员同时审同一条考察时，后端条件更新让输家拿 409。
+        // 弹窗不关、填的意见不动，把最新状态摆出来让他自己决定。
+        this.conflict = await captureConflict({
+          res,
+          kept: reason || '',
+          refresh: () => this.loadInspections(),
+          latest: () => {
+            const fresh = this.inspections.find((x) => String(x.id) === String(d.id))
+            if (!fresh) throw new Error('这条考察记录已不在列表里')
+            return [
+              { label: '最新状态', value: fresh.statusLabel || fresh.status || '' },
+              { label: '审核人', value: fresh.reviewedByName || '' },
+              { label: '审核意见', value: fresh.reviewComment || '' }
+            ]
+          }
+        })
+        return
+      }
+      if (!res || res.code !== 0) return toast.error((res && res.message) || '操作失败')
+      this.inspectionDialog = null
+      this.conflict = emptyConflict()
+      toast.success('操作成功，已写审计')
+      await this.loadInspections()
+    },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
     async load() {
       this.loading = true; this.error = ''
@@ -300,6 +453,11 @@ export default {
 .ed-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .ed-head__spacer { flex: 1; }
 .ed-bl { font-size: 12px; color: var(--danger, #dc2626); }
+.ed-state { padding: var(--space-4, 16px); color: var(--t3, #64748b); font-size: 13px; }
+.ed-state.is-err { color: var(--danger-600, #dc2626); }
+.ed-cell-wrap { max-width: 260px; white-space: normal; word-break: break-all; }
+.ed-ops { display: flex; gap: 4px; flex-wrap: wrap; }
+.ed-muted { color: var(--text-disabled, #94a3b8); }
 .ed-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
 .ed-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .ed-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }

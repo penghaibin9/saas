@@ -8,18 +8,33 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import (BigInteger, Boolean, Computed, DateTime, Integer, String,
+                        UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
 
 class InternshipIntention(PKMixin, TenantMixin, CommonMixin, Base):
-    """t_internship_intention 学生实习意向。"""
+    """t_internship_intention 学生实习意向。
+
+    并发不变量：同一实习记录同时只能有一条进行中（DRAFT/SUBMITTED）意向。
+    `create_intention()` 原本是「无锁 SELECT 查进行中 → 没有就 INSERT」，两个并发请求
+    会同时查到「没有」、各插一条（实测 5 轮里 4 轮复现）。撤回（WITHDRAWN）之后应当允许
+    重新填，所以不变量只约束「同时活动」的行——沿用请假/补卡同一套写法（生成列在非活动时
+    为 NULL + 唯一索引）。见迁移 20260814_ix_first_create。
+    """
     __tablename__ = "t_internship_intention"
+    __table_args__ = (UniqueConstraint("tenant_id", "active_record_id",
+                                       name="uk_ix_intention_active"),)
 
     record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
                                            comment="→ t_internship_record.id")
+    active_record_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status IN ('DRAFT', 'SUBMITTED') "
+                 "THEN record_id ELSE NULL END", persisted=True),
+        comment="仅进行中（DRAFT/SUBMITTED）时等于 record_id，用于唯一索引；其余为 NULL")
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True,
                                             comment="→ t_student_profile.id")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

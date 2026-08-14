@@ -11,8 +11,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAuditTrail, InternshipCheckin, InternshipLeave,
                         InternshipRecord, RiskRecord, StudentProfile)
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -38,8 +40,8 @@ def _trail(db, lid, action, detail=None, operator="系统"):
 
 
 def _get(db, lid) -> InternshipLeave:
-    lv = db.get(InternshipLeave, _as_id(lid))
-    if not lv or lv.is_deleted or lv.tenant_id != _tid():
+    lv = tenant_get(db, InternshipLeave, _as_id(lid))
+    if not lv or lv.is_deleted:
         raise not_found("请假申请不存在")
     return lv
 
@@ -199,7 +201,13 @@ def apply(user, body) -> dict:
                              leave_type=leave_type, start_date=start,
                              end_date=end, days=days, reason=reason, status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)), file_id=file_id)
-        db.add(lv); db.flush()
+        db.add(lv)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT", "你有待审批的请假申请，请先等待处理或撤回") from exc
         if file_id:
             from app.services import file_service
             file_service.bind_file_biz(file_id, "INTERNSHIP", str(lv.id), user=user, db=db)
@@ -210,7 +218,12 @@ def apply(user, body) -> dict:
         }, operator=lv.apply_by_name or "学生")
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.push_leave_todo(db, lv, rec)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT", "你有待审批的请假申请，请先等待处理或撤回") from exc
         return {"id": str(lv.id), "status": "PENDING", "statusLabel": "待审批",
                 "days": days, "version": int(lv.version or 0), "hasEvidence": bool(file_id)}
 
@@ -373,8 +386,8 @@ def get_leave(leave_id, user=None) -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
-        rec = db.get(InternshipRecord, lv.internship_id)
-        stu = db.get(StudentProfile, lv.student_id)
+        rec = tenant_get(db, InternshipRecord, lv.internship_id)
+        stu = tenant_get(db, StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该请假申请不在你的数据范围内")
         trail = db.scalars(select(InternshipAuditTrail).where(
@@ -391,8 +404,8 @@ def mark_evidence_viewed(user, leave_id) -> dict:
     from app.services import file_service
     with session() as db:
         lv = _get(db, leave_id)
-        rec = db.get(InternshipRecord, lv.internship_id)
-        stu = db.get(StudentProfile, lv.student_id)
+        rec = tenant_get(db, InternshipRecord, lv.internship_id)
+        stu = tenant_get(db, StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该请假申请不在你的数据范围内")
         if not lv.file_id or not file_service.get_file_meta(lv.file_id, user=user):
@@ -420,8 +433,8 @@ def review(user, leave_id, action: str, comment: str = "", *, expected_version=N
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
-        rec = db.get(InternshipRecord, lv.internship_id)
-        stu = db.get(StudentProfile, lv.student_id)
+        rec = tenant_get(db, InternshipRecord, lv.internship_id)
+        stu = tenant_get(db, StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的请假申请")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
@@ -487,8 +500,8 @@ def ack_overdue_return(user, leave_id, note: str = "") -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         lv = _get(db, leave_id)
-        rec = db.get(InternshipRecord, lv.internship_id)
-        stu = db.get(StudentProfile, lv.student_id)
+        rec = tenant_get(db, InternshipRecord, lv.internship_id)
+        stu = tenant_get(db, StudentProfile, lv.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能办结本人指导学生的请假")
         if lv.status not in ("RETURNED", "OVERDUE"):

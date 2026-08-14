@@ -8,7 +8,7 @@ owner + 数据范围复用 internship_service。审计 target_type=SCORE。
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
@@ -452,7 +452,23 @@ def _row(s, rec, stu):
     }
 
 
-def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=None):
+#: 构成总评的五个分项。任一为空即算「缺项」，与前端逐行判定的口径一致。
+_SCORE_PARTS = ("checkin_score", "weekly_score", "monthly_score",
+                "enterprise_score", "school_score")
+
+
+def _incomplete_predicate():
+    """「还差分项没录」的 SQL 谓词。
+
+    原来只有前端在当前页上逐行看哪几项为空，于是老师在第 3 页勾「只看缺项」，筛的仍是
+    这 20 条——第 5 页的缺项根本进不了视野，翻完全部页才发现还有漏的。判定下推到 SQL
+    之后，COUNT 与翻页建立在同一个谓词上，「还差几个」是真数，「下一个缺项」也能跨页。
+    """
+    return or_(*[getattr(InternshipFinalScore, part).is_(None) for part in _SCORE_PARTS])
+
+
+def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=None,
+                incomplete_only=False):
     with session() as db:
         from app.modules.internship.services.internship_batch_context import resolve_batch
         from app.modules.internship.services.internship_scope import apply_internship_record_scope
@@ -473,6 +489,8 @@ def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=
             q = q.where(InternshipFinalScore.status == status)
         if keyword:
             q = q.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+        if incomplete_only:
+            q = q.where(_incomplete_predicate())
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.execute(q.order_by(InternshipFinalScore.id.desc()).offset(
             (max(1, page) - 1) * page_size).limit(page_size)).all()
@@ -504,18 +522,28 @@ def get_score(sid, user=None) -> dict:
                                for t in trail]}
 
 
-def export_scores(status=None, keyword=None, batch_id=None, user=None) -> dict:
+def export_scores(status=None, keyword=None, batch_id=None, user=None,
+                  incomplete_only=False) -> dict:
+    """导出必须与老师屏幕上的筛选口径一致。
+
+    `incomplete_only` 不透传的话，老师开着「仅看缺项」看到 3 条、点导出却拿到全部，
+    然后照着导出的表去核对——成绩是要报出去的，这种不一致比慢更危险。
+    """
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import require_exportable
-    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
     require_exportable(total)
-    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
     headers = ["学号", "姓名", "指导教师", "打卡", "周报", "月报总结", "企业评价", "学校评价",
                "总分", "及格线", "是否及格", "缺项", "状态"]
+    scope_note = "（仅缺项）" if incomplete_only else ""
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinScore"], it["weeklyScore"],
              it["monthlyScore"], it["enterpriseScore"], it["schoolScore"], it["totalScore"], it["passLine"],
              "是" if it["isPass"] else "否", it["incompleteReason"] or "无", it["statusLabel"]]
             for it in items]
-    wm = f"岗位实习中心·实习成绩台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
-    content = xlsx_util.build_ledger_xlsx("实习成绩台账", headers, rows, watermark=wm)
-    return xlsx_util.pack_xlsx_result(content, "实习成绩台账.xlsx", len(items))
+    wm = (f"岗位实习中心·实习成绩台账{scope_note} · 导出人：{_op_name(user)}"
+          f" · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx(f"实习成绩台账{scope_note}", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, f"实习成绩台账{scope_note}.xlsx", len(items))

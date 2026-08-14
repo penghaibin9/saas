@@ -54,6 +54,8 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">核实处理</span></div>
           <div class="mp-card__body">
+            <!-- 同上：这条被别人核实完之后整块表单会消失，提示条必须在外层 -->
+            <ConflictNotice :state="conflict" />
             <template v-if="detail.status !== 'COMPLETED'">
               <div
                 v-for="o in actionOptions"
@@ -101,11 +103,13 @@ import { AppStatusTag, AppAuditTrail } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import ConflictNotice from './components/ConflictNotice.vue'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AttendanceExceptionDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -116,6 +120,7 @@ export default {
       comment: '',
       formError: '',
       submitting: false,
+      conflict: emptyConflict(),
       actionOptions: [
         { value: 'REASONABLE', title: '标记合理', desc: '确认属正常外勤 / 客户现场，消除本条异常，不计入风险' },
         { value: 'ABNORMAL', title: '记为异常', desc: '核实不通过，计入异常统计，影响打卡率与考核' },
@@ -142,6 +147,7 @@ export default {
       this.action = 'REASONABLE'
       this.comment = ''
       this.formError = ''
+      this.conflict = emptyConflict()
       this.load()
     }
   },
@@ -176,6 +182,18 @@ export default {
         this.load()
         // 连续核实：有下一条自动跳转，无则提示队列完成
         this.$refs.queueBar && this.$refs.queueBar.advance()
+      } else if (isConflict(res)) {
+        // 撞车：处理意见原样留着，只拉最新真值（含 version）让老师自己决定要不要重新提交
+        this.conflict = await captureConflict({
+          res,
+          kept: this.comment,
+          refresh: () => this.load(),
+          latest: () => {
+            if (!this.detail) throw new Error('最新详情未拉回')
+            // 异常详情不下发处理意见字段，只摆状态；不编造页面上没有的真值。
+            return [{ label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' }]
+          }
+        })
       } else {
         this.formError = res.message
       }

@@ -52,13 +52,6 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
-}
-
 async function setBatchStorage(page, key, value) {
   await page.evaluate(({ storageKey, storageValue }) => {
     window.localStorage.setItem(storageKey, String(storageValue))
@@ -208,7 +201,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
 
   test('Student Affairs archive · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/student-affairs/archive')
+    await openGoldenStaffPage(page, '/admin/student-affairs/archive')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/archive/)
     await expect(page.locator('.av-workspace')).toBeVisible()

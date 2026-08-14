@@ -20,17 +20,17 @@
         <AppPermissionButton code="internship.score.config.manage" :allowed="canBtn('internship.score.config.manage')" variant="secondary" size="sm" :loading="savingCfg" @click="saveConfig">保存配置</AppPermissionButton>
       </div>
 
-      <!-- 快捷筛选行：状态（后端过滤）+ 仅看缺项（当前页内前端过滤） -->
+      <!-- 快捷筛选行：状态、仅看缺项都是后端过滤，跨页有效 -->
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
         <AppQuickFilterChips v-model="statusFilter" :options="statusOptions" allow-clear @change="reload" />
-        <AppQuickFilterChips v-model="missingOnly" :options="missingOptions" allow-clear />
-        <span v-if="missingOnly" class="bar__note">「仅看缺项」为当前页内筛选（接口暂不支持全量缺项过滤），本页命中 {{ displayRows.length }} 条</span>
+        <AppQuickFilterChips v-model="missingOnly" :options="missingOptions" allow-clear @change="reload" />
+        <span v-if="missingOnly" class="bar__note">「仅看缺项」由服务端按全批次筛选，跨页有效，共 {{ total }} 条待补齐</span>
       </div>
 
       <div v-if="error" class="state is-err">{{ error }} <button @click="load">重试</button></div>
       <template v-else>
-        <DataTable :columns="columns" :rows="displayRows" row-key="id" :loading="loading"
+        <DataTable :columns="columns" :rows="rows" row-key="id" :loading="loading"
           :pagination="pagination" row-clickable @row-click="openDetail" @page-change="onPageChange">
           <template #cell-studentName="{ row }">
             <span :class="{ 'is-current': row.id === panel.rowId }">{{ row.studentName }}</span>
@@ -71,7 +71,7 @@
             </div>
           </template>
         </DataTable>
-        <div v-if="missingOnly && !loading && rows.length && !displayRows.length" class="state">本页没有缺项记录，可翻页继续核对</div>
+        <div v-if="missingOnly && !loading && !rows.length && !error" class="state">该批次已没有缺项记录</div>
       </template>
 
       <!-- 选中行工作区：详情核对 / 行内核算（替代原居中弹窗） -->
@@ -133,6 +133,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { scoreApi } from '@/modules/internship/api/score.api'
 import { canCode } from '@/modules/internship/composables/permission'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
@@ -152,6 +153,9 @@ const COLUMNS = [
   { key: 'actions', title: '操作', width: '300px' }
 ]
 const STATUS_MAP = { PENDING_CALC: '待核算', PENDING_REVIEW: '待复核', PUBLISHED: '已发布', WITHDRAWN: '已撤回', ARCHIVED: '已归档' }
+// U8：只有 stage 在 URL 上，关键词/状态/仅看缺项/页码刷新即丢
+const WORK_FIELDS = ['keyword', 'statusFilter', 'missingOnly', 'page']
+
 const RECALC_STATUSES = ['PENDING_REVIEW', 'PENDING_CALC']
 const DETAIL = [
   { key: 'studentName', label: '学生' }, { key: 'statusLabel', label: '状态' },
@@ -186,10 +190,16 @@ export default {
     batchStore() { return useInternshipBatchStore() },
     weightSum() { return WEIGHTS.reduce((a, w) => a + (Number(this.cfg[w.key]) || 0), 0) },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
-    displayRows() { return this.missingOnly ? this.rows.filter((r) => r.incomplete) : this.rows },
+
     summaryMetrics() {
       if (this.loading || this.error) return []
       const cur = this.statusOptions.find((o) => o.value === this.statusFilter)
+      if (this.missingOnly) {
+        // 开了「仅看缺项」时 total 就是服务端按全批次数出来的缺项数，不再是本页估算
+        return [
+          { label: '缺项记录 · 全批次', value: this.total, tone: this.total ? 'warn' : 'good' }
+        ]
+      }
       const missOnPage = this.rows.filter((r) => r.incomplete).length
       return [
         { label: '成绩记录 · ' + (cur ? cur.label : '全部'), value: this.total },
@@ -214,6 +224,8 @@ export default {
   },
   created() {
     this.applyStageFromRoute()
+    // 带 ?stage= 的深链（待办卡片/菜单）说明用户要的就是那一屏，不能被上次筛选改写
+    restoreWorkContext(this, WORK_FIELDS, { skipWhenQuery: ['stage'] })
     this.loadConfig()
     this.load()
   },
@@ -233,7 +245,11 @@ export default {
     },
     exportFn() {
       if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
-      return scoreApi.exportScores({ keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId })
+      // 导出口径必须与屏幕上的筛选一致：开着「仅看缺项」看到 3 条、导出却拿到全部，
+      // 老师会照着导出的表去核对，成绩是要报出去的。
+      const params = { keyword: this.keyword, status: this.statusFilter, batchId: this.batchStore.selectedBatchId }
+      if (this.missingOnly) params.incompleteOnly = true
+      return scoreApi.exportScores(params)
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
     async loadConfig() { const res = await scoreApi.getConfig(); if (res.code === 0) this.cfg = { ...this.cfg, ...res.data } },
@@ -252,9 +268,13 @@ export default {
         this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
         return
       }
+      captureWorkContext(this, WORK_FIELDS)
       this.loading = true; this.error = ''
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.status = this.statusFilter
+      // 缺项判定放在服务端（五个分项任一为空），COUNT 与分页共用同一条件，
+      // 所以「还剩几条」是全批次真数，「下一条缺项」也能跨页。
+      if (this.missingOnly) params.incompleteOnly = true
       const res = await scoreApi.getScores(params)
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }

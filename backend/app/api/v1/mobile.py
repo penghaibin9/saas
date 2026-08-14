@@ -131,7 +131,8 @@ def campus_service_apply(body: dict = Body(...), user=Depends(get_current_user))
     return success(stu.campus_service_apply(user, body))
 
 
-@internship_mobile.post("/weekly", summary="提交实习周报（本人）")
+@internship_mobile.post("/weekly", summary="提交实习周报（本人）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/weekly-reports；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_weekly_submit(user, body))
 
@@ -156,12 +157,14 @@ def internship_exception_appeal(exception_id: str, body: dict = Body(...), user=
     return success(stu.internship_exception_appeal(user, exception_id, body), message="申诉已提交")
 
 
-@internship_mobile.get("/makeup", summary="本人补卡申请列表")
+@internship_mobile.get("/makeup", summary="本人补卡申请列表", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/makeups；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_makeup_list(user=Depends(get_current_user)):
     return success(mk.my_makeups(user))
 
 
-@internship_mobile.post("/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）")
+@internship_mobile.post("/makeup", summary="补卡申请（本人某日缺卡，待指导教师审批）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/makeups；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_user)):
     b = body or {}
     return success(mk.apply(user, checkin_date=b.get("checkinDate") or b.get("date") or "",
@@ -169,30 +172,35 @@ def internship_makeup_apply(body: dict = Body(...), user=Depends(get_current_use
                    message="补卡申请已提交")
 
 
-@internship_mobile.post("/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请")
+@internship_mobile.post("/makeup/{makeup_id}/withdraw", summary="撤回本人补卡申请", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/makeups/{id}/withdraw；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_makeup_withdraw(makeup_id: str, user=Depends(get_current_user)):
     return success(mk.withdraw(user, makeup_id), message="已撤回")
 
 
-@internship_mobile.get("/leaves", summary="本人实习请假列表")
+@internship_mobile.get("/leaves", summary="本人实习请假列表", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/leaves；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_leaves(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.my_leaves(user))
 
 
-@internship_mobile.post("/leave", summary="实习请假申请（本人，待指导教师审批）")
+@internship_mobile.post("/leave", summary="实习请假申请（本人，待指导教师审批）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/leaves；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_leave_apply(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.apply(user, body or {}), message="请假申请已提交")
 
 
-@internship_mobile.post("/leave/{leave_id}/withdraw", summary="撤回本人请假申请")
+@internship_mobile.post("/leave/{leave_id}/withdraw", summary="撤回本人请假申请", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/leaves/{id}/withdraw；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_leave_withdraw(leave_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.withdraw(user, leave_id), message="已撤回")
 
 
-@internship_mobile.post("/leave/{leave_id}/return", summary="本人实习请假销假")
+@internship_mobile.post("/leave/{leave_id}/return", summary="本人实习请假销假", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/leaves/{id}/return；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_leave_return(leave_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_leave_service as lv
     return success(lv.return_my(user, leave_id, body or {}), message="销假已登记")
@@ -203,13 +211,15 @@ def internship_help_report(body: dict = Body(...), user=Depends(get_current_user
     return success(stu.internship_help_report(user, body or {}), message="求助已提交")
 
 
-@internship_mobile.get("/agreements", summary="本人三方协议列表")
+@internship_mobile.get("/agreements", summary="本人三方协议列表", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/agreements；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_agreements(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.my_agreements(user))
 
 
-@internship_mobile.get("/consents", summary="本人知情确认任务")
+@internship_mobile.get("/consents", summary="本人知情确认任务", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/consents；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_consents(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_consent_service as consent
     return success(consent.list_my(user))
@@ -242,13 +252,15 @@ def internship_reject_consent(consent_id: str, body: dict = Body(...),
     return success(consent.reject(consent_id, body or {}, user))
 
 
-@internship_mobile.get("/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）")
+@internship_mobile.get("/agreements/{agreement_id}", summary="本人三方协议详情（含渲染正文）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/agreements/{id}；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_agreement_detail(agreement_id: str, user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     return success(agr.get_student_agreement(user, agreement_id))
 
 
-@internship_mobile.post("/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议")
+@internship_mobile.post("/agreements/{agreement_id}/confirm", summary="本人确认/驳回三方协议", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/agreements/{id}/confirm；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_agreement_service as agr
     b = body or {}
@@ -256,13 +268,15 @@ def internship_agreement_confirm(agreement_id: str, body: dict = Body(...), user
                                        b.get("reason") or ""), message="已提交")
 
 
-@internship_mobile.get("/self-eval", summary="本人实习自评/鉴定")
+@internship_mobile.get("/self-eval", summary="本人实习自评/鉴定", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/self-eval；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_self_eval(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_student_eval_service as se
     return success(se.my_eval(user))
 
 
-@internship_mobile.post("/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）")
+@internship_mobile.post("/self-eval", summary="提交/重交本人实习自评（总结/收获/问题）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/self-eval；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_submit_self_eval(body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_student_eval_service as se
     return success(se.student_submit(user, body or {}), message="自评已提交")
@@ -288,71 +302,84 @@ def internship_intention_withdraw(user=Depends(get_current_user)):
     return success(stu.internship_intention_withdraw(user), message="意向已撤回")
 
 
-@internship_mobile.get("/applications", summary="本人正式实习申请列表")
+@internship_mobile.get("/applications", summary="本人正式实习申请列表", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/applications；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_application_list(user=Depends(get_current_user)):
     return success(stu.internship_application_list(user))
 
 
-@internship_mobile.put("/applications", summary="保存本人正式实习申请草稿")
+@internship_mobile.put("/applications", summary="保存本人正式实习申请草稿", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/applications；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_application_save(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_application_save(user, body or {}), message="申请草稿已保存")
 
 
-@internship_mobile.post("/applications/{application_id}/submit", summary="提交本人正式实习申请")
+@internship_mobile.post("/applications/{application_id}/submit", summary="提交本人正式实习申请", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/applications/{id}/submit；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_application_submit(application_id: str, user=Depends(get_current_user)):
     return success(stu.internship_application_submit(user, application_id), message="申请已提交审核")
 
 
-@internship_mobile.post("/applications/{application_id}/withdraw", summary="撤回本人待审核实习申请")
+@internship_mobile.post("/applications/{application_id}/withdraw", summary="撤回本人待审核实习申请", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/applications/{id}/withdraw；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_application_withdraw(application_id: str, user=Depends(get_current_user)):
     return success(stu.internship_application_withdraw(user, application_id), message="申请已撤回")
 
 
-@internship_mobile.post("/process-report", summary="提交日报/月报/实习总结（本人）")
+@internship_mobile.post("/process-report", summary="提交日报/月报/实习总结（本人）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/reports；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_process_report(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_process_report_submit(user, body or {}))
 
 
-@internship_mobile.get("/process-reports", summary="本人日报/月报/实习总结列表（含批阅意见）")
+@internship_mobile.get("/process-reports", summary="本人日报/月报/实习总结列表（含批阅意见）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/reports；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_process_reports(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_process_report_service as pr
     return success(pr.my_reports(user))
 
 
-@internship_mobile.get("/change-requests", summary="本人实习变更申请列表")
+@internship_mobile.get("/change-requests", summary="本人实习变更申请列表", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/changes；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_change_requests(user=Depends(get_current_user)):
     return success(stu.internship_change_list(user))
 
 
-@internship_mobile.post("/change-request", summary="发起实习变更申请（换岗/换单位/自主实习）")
+@internship_mobile.post("/change-request", summary="发起实习变更申请（换岗/换单位/自主实习）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/changes；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_change_apply(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.internship_change_apply(user, body or {}), message="变更申请已提交")
 
 
-@internship_mobile.post("/change-request/{change_id}/withdraw", summary="撤回本人待审核变更申请")
+@internship_mobile.post("/change-request/{change_id}/withdraw", summary="撤回本人待审核变更申请", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/changes/{id}/withdraw；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_change_withdraw(change_id: str, user=Depends(get_current_user)):
     return success(stu.internship_change_withdraw(user, change_id), message="已撤回")
 
 
-@internship_mobile.get("/plan", summary="本人实习计划书（已发布）")
+@internship_mobile.get("/plan", summary="本人实习计划书（已发布）", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/plan；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_my_plan(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_my_plan(user))
 
 
-@internship_mobile.post("/plan/acknowledge", summary="确认本人实习计划书")
+@internship_mobile.post("/plan/acknowledge", summary="确认本人实习计划书", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/plan/acknowledge；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_plan_ack(body: dict = Body(default={}), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_service as plan
     return success(plan.student_acknowledge(user, body or {}), message="已确认实习计划")
 
 
-@internship_mobile.get("/plan/tasks", summary="本人实习计划任务及完成度")
+@internship_mobile.get("/plan/tasks", summary="本人实习计划任务及完成度", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/plan/tasks；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_plan_tasks(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_tasks(user))
 
 
-@internship_mobile.post("/plan/tasks/{sort_order}/submit", summary="提交任务完成")
+@internship_mobile.post("/plan/tasks/{sort_order}/submit", summary="提交任务完成", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/plan/tasks/{n}/submit；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_plan_task_submit(sort_order: int, body: dict = Body(...), user=Depends(get_current_user)):
     from app.modules.internship.services import internship_plan_task_service as pt
     return success(pt.student_submit_task(user, sort_order, body or {}), message="已提交，待指导教师确认")
@@ -370,13 +397,15 @@ def internship_insurance_submit(body: dict = Body(...), user=Depends(get_current
     return success(ins.student_submit(user, body or {}), message="保险信息已提交，待学校核验")
 
 
-@internship_mobile.get("/safety/courses", summary="本人当前批次安全教育课程")
+@internship_mobile.get("/safety/courses", summary="本人当前批次安全教育课程", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/safety/courses；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_safety_courses(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_safety_service as safety
     return success(safety.list_my_courses(user))
 
 
-@internship_mobile.get("/safety/completions", summary="本人安全教育完成记录")
+@internship_mobile.get("/safety/completions", summary="本人安全教育完成记录", deprecated=True,
+                          description="【已废弃】请改用 /mobile/internship/context/safety/completions；该入口保留仅为不打断在用客户端，不得用于新代码。")
 def internship_safety_completions(user=Depends(get_current_user)):
     from app.modules.internship.services import internship_safety_service as safety
     return success(safety.list_my_completions(user))

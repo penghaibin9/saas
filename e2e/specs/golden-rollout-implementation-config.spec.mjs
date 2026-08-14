@@ -53,13 +53,6 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
-}
-
 async function setBatchStorage(page, key, value) {
   await page.evaluate(({ storageKey, storageValue }) => {
     window.localStorage.setItem(storageKey, String(storageValue))
@@ -158,7 +151,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Student Affairs counselor responsibility · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-assignments')
+    await openGoldenStaffPage(page, '/admin/student-affairs/counselor-assignments')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-assignments/)
     await expect(page.locator('.sa-summary-strip')).toBeVisible()
@@ -227,7 +220,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Graduation batch implementation · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/batches?panel=list')
+    await openGoldenStaffPage(page, '/admin/graduation/batches?panel=list')
 
     await expect(page).toHaveURL(/\/admin\/graduation\/batches/)
     await expect(page.locator('.dt')).toBeVisible()
