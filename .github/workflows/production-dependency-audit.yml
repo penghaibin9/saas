@@ -14,6 +14,7 @@ on:
       - "e2e/package.json"
       - "e2e/package-lock.json"
       - "scripts/check/check-npm-production-audit.mjs"
+      - "scripts/check/check-npm-production-audit.test.mjs"
       - ".github/security/npm-production-audit-waivers.json"
       - ".github/workflows/production-dependency-audit.yml"
   workflow_dispatch:
@@ -26,8 +27,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  policy-contract:
+    name: production audit policy contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Prove fail-closed and expiring-waiver semantics
+        run: node --test scripts/check/check-npm-production-audit.test.mjs
+
   production-runtime-audit:
     name: ${{ matrix.app }} production runtime audit
+    needs: policy-contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

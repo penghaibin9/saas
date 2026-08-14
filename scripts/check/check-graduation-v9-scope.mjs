@@ -9,7 +9,7 @@ const CARD_ALLOW = {
   ],
   AUDIT_REPAIR: [
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
-    /^scripts\/check\/check-npm-production-audit\.mjs$/,
+    /^scripts\/check\/check-npm-production-audit(?:\.test)?\.mjs$/,
     /^\.github\/security\/npm-production-audit-waivers\.json$/,
     /^\.github\/workflows\/production-dependency-audit\.yml$/,
     /^backend\/app\/modules\/graduation\/services\/graduation_archive_batch_(?:scale|consistency)\.py$/,
