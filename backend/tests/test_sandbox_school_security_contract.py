@@ -1,0 +1,73 @@
+"""standard-20k 合并前安全合同：凭据、原子审计、tenant fail-closed 与门禁覆盖。"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _text(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_standard_20k_credentials_are_not_repository_known(monkeypatch):
+    from app.services import sandbox_school_credentials as credentials
+
+    monkeypatch.setattr(credentials, "hash_password", lambda value: f"HASH:{value}")
+    monkeypatch.setenv("SANDBOX_ADMIN2_PASSWORD", "Admin-Only-Strong-2026")
+    monkeypatch.setenv("SANDBOX_TEACHER2_PASSWORD", "Teacher-Only-Strong-2026")
+    monkeypatch.setenv("SANDBOX_STUDENT2_PASSWORD", "Student-Only-Strong-2026")
+
+    hashes = credentials.public_account_password_hashes()
+    assert hashes == {
+        "admin2": "HASH:Admin-Only-Strong-2026",
+        "teacher2": "HASH:Teacher-Only-Strong-2026",
+        "student2": "HASH:Student-Only-Strong-2026",
+    }
+
+    master = _text("backend/app/services/sandbox_school_master_seed.py")
+    assert "Sbx@2026!" not in master
+    assert 'hash_password("123456")' not in master
+    assert "public_account_password_hashes()" in master
+    assert master.count("opaque_background_password_hash()") == 2
+
+
+def test_standard_20k_public_credentials_fail_closed(monkeypatch):
+    from app.services import sandbox_school_credentials as credentials
+
+    for env_name in credentials.PUBLIC_PASSWORD_ENVS.values():
+        monkeypatch.delenv(env_name, raising=False)
+    with pytest.raises(RuntimeError, match="缺少环境凭据"):
+        credentials.public_account_password_hashes()
+
+    monkeypatch.setenv("SANDBOX_ADMIN2_PASSWORD", "same-password-2026")
+    monkeypatch.setenv("SANDBOX_TEACHER2_PASSWORD", "same-password-2026")
+    monkeypatch.setenv("SANDBOX_STUDENT2_PASSWORD", "other-password-2026")
+    with pytest.raises(RuntimeError, match="三份不同口令"):
+        credentials.public_account_password_hashes()
+
+
+def test_story_reset_is_tenant_scoped_and_transaction_owned_by_route():
+    service = _text("backend/app/services/sandbox_school_story_reset.py")
+    route = _text("backend/app/api/v1/sandbox_story_api.py")
+
+    assert "chen_class = db.get(SchoolClass, chen.class_id)" not in service
+    assert "SchoolClass.tenant_id == tenant_id" in service
+    assert "SchoolClass.is_deleted.is_(False)" in service
+    assert "db.commit()" not in service
+    assert "db_service.audit_insert_in_session(" in route
+    assert route.index("db_service.audit_insert_in_session(") < route.index("db.commit()")
+    assert "except Exception:\n        db.rollback()\n        raise" in route
+
+
+def test_20k_gate_tracks_effective_grade_policy_and_security_contract():
+    workflow = _text(".github/workflows/sandbox-20k-data-gate.yml")
+    policy = "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py"
+    credentials = "backend/app/services/sandbox_school_credentials.py"
+    security_test = "backend/tests/test_sandbox_school_security_contract.py"
+
+    assert policy in workflow
+    assert credentials in workflow
+    assert security_test in workflow
