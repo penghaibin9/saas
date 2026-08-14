@@ -25,6 +25,8 @@ export const enterpriseInternshipApi = {
   withdrawAccept: (id) => request(`${ROOT}/applications/${id}/withdraw-accept`, { method:'POST' }),
   internshipStudents: (params) => request(`${ROOT}/students`, { params }),
   evaluationTasks: (params) => request(`${ROOT}/evaluations`, { params }),
+  evaluationTask: (id) => request(`${ROOT}/evaluations/${id}`),
+  submitEvaluation: (id,payload) => request(`${ROOT}/evaluations/${id}/submit`, { method:'POST', body:payload }),
 }
 
 export const enterpriseDecisionStatuses = Object.freeze([...DECISIONS])

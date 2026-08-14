@@ -41,5 +41,5 @@
 - A02-6：已完成两栏报名学生工作台、Pipeline、筛选、CandidateCard、Snapshot detail；等待 A01。
 - A02-7：已完成四类 Decision、联系方式 reveal、LOCKED/released UX；等待 A01。
 - A02-8：已完成正式 InternshipRecord 企业学生列表与 HR/MENTOR scope UI；等待 A01。
-- A02-9：下一批。
-- A02-10：排在 A02-9 后自动进入。
+- A02-9：已完成企业评价任务、五维评分与 canonical facade 提交；等待 A01 企业 actor 适配。
+- A02-10：下一批。
