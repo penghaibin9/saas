@@ -178,6 +178,10 @@ def main() -> int:
                 reconcile_school_roles_20k,
                 validate_school_roles_20k,
             )
+            from app.services.sandbox_school_credentials import public_account_password_hashes
+
+            # 任何破坏性删除前先验证三份公开体验账号强口令；缺失/弱口令/复用必须 0 行写入失败。
+            public_account_password_hashes()
 
             master = rebuild_school_master_20k(db)
             legacy_identity_cleanup = clean_legacy_identity_residue(db, SANDBOX_TID)
