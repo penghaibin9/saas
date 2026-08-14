@@ -1,0 +1,46 @@
+name: Control Plane Targeted
+
+on:
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/api/v1/system.py'
+      - 'backend/app/api/v1/platform.py'
+      - 'backend/app/modules/system_admin/**'
+      - 'backend/app/modules/platform/**'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/models/rbac.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/services/security_change_service.py'
+      - 'shared/contracts/**'
+      - 'scripts/check/check-control-plane-*.py'
+      - 'backend/tests/test_control_plane_*'
+      - '.github/workflows/control-plane-targeted.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-targeted-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: S0 byte-identical move gate
+        run: python scripts/check/check-control-plane-move.py
+      - name: G0 inventory artifact
+        run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-g0-${{ github.sha }}
+          path: artifacts/control-plane/g0.json
+          if-no-files-found: error
+          retention-days: 14
