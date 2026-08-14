@@ -146,6 +146,19 @@ def test_single_archive_writes_use_batch_bound_dirty_data_guard():
     assert "with_for_update()" not in router
 
 
+def test_m5_canonical_writers_recheck_dirty_identity_after_for_update():
+    service = text("backend/app/modules/graduation/services/graduation_archive_service.py")
+    manifest = text("backend/app/modules/graduation/materials/manifest_service.py")
+
+    assert "assert_archive_identity_writable" in service
+    assert ".with_for_update()).first()" in service
+    assert "return assert_archive_identity_writable(s)" in service
+
+    assert "assert_archive_identity_writable" in manifest
+    assert ".with_for_update()).first()" in manifest
+    assert "return assert_archive_identity_writable(row)" in manifest
+
+
 def test_batch_archive_snapshot_keeps_dirty_rows_visible_but_non_executable():
     consistency = text("backend/app/modules/graduation/services/graduation_archive_consistency.py")
     assert '"dataAnomaly": bool(anomaly_reasons)' in consistency

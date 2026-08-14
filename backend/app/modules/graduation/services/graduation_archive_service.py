@@ -18,6 +18,7 @@ from app.models import (GraduationArchiveRecord, GraduationAuditTrail, Graduatio
                         GraduationFinal, GraduationGrade, GraduationMidterm, GraduationProposal,
                         GraduationRiskCase, GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
+from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
 from app.modules.graduation.services.graduation_export_security import sanitize_xlsx_export
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
@@ -58,7 +59,8 @@ def _stu_for_update(db, sid) -> GraduationStudent:
     ).with_for_update()).first()
     if not s:
         raise not_found("Graduation student does not exist in the current scope")
-    return assert_student_access(db, s, "archive.write")
+    s = assert_student_access(db, s, "archive.write")
+    return assert_archive_identity_writable(s)
 
 
 def _get_or_create(db, stu: GraduationStudent, *, for_update: bool = False) -> GraduationArchiveRecord:

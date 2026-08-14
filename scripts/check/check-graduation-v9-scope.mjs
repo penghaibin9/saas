@@ -24,6 +24,12 @@ const CARD_ALLOW = {
     /^frontend\/src\/modules\/graduation\/views\/(AdminGraduationLayout|ProposalListView|FinalSubmissionListView|GraduationStudentListView)\.vue$/,
     /^frontend\/tests\/graduation\.v9-(?:product|reminder)-truth\.contract\.test\.mjs$/,
   ],
+  M5: [
+    /^backend\/app\/modules\/graduation\/materials\/manifest_service\.py$/,
+    /^backend\/app\/modules\/graduation\/routers\/graduation_archive_sensitive_router\.py$/,
+    /^backend\/app\/modules\/graduation\/services\/graduation_archive_(?:service|consistency|data_quality)\.py$/,
+    /^backend\/tests\/test_graduation_v9_u7_archive_dirty_data\.py$/,
+  ],
   M7: [
     /^backend\/app\/modules\/graduation\/routers\/graduation_sensitive_router\.py$/,
     /^backend\/app\/modules\/graduation\/services\/__init__\.py$/,
