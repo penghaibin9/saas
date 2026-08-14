@@ -4,7 +4,8 @@ export type EnterpriseDecisionStatus = 'INTERESTED'|'INTERVIEW'|'ACCEPT_INTENT'|
 export type EnterpriseDecisionEffectStatus = 'ACTIVE'|'EXPIRED'|'SUPERSEDED'|'CONSUMED'
 export type VolunteerGroupStatus = 'DRAFT'|'SUBMITTED'|'LOCKED'|'NEEDS_REVISION'|'APPROVED'|'CLOSED'
 export type EnterpriseMemberRole = 'COMPANY_ADMIN'|'HR'|'MENTOR'
-export type ContactSharingMode = 'MASKED_ONLY'|'AFTER_INTERVIEW'|'AFTER_ACCEPT_INTENT'|'IMMEDIATE'
+export type ContactSharingMode = 'NONE'|'AFTER_ACCEPT_INTENT'|'AFTER_SCHOOL_APPROVAL'|'EXPLICIT'
+export type InternshipProfileItemType = 'SKILL_EVIDENCE'|'CERTIFICATE'|'PROJECT'|'PRACTICE'|'AWARD'|'PORTFOLIO'
 
 export interface EnterpriseCampaignContext {
   id:string|number
@@ -97,13 +98,50 @@ export interface ApplicantSummary {
   volunteerGroupStatus?:VolunteerGroupStatus
 }
 
-export interface ApplicationMaterialProjection {
-  applicationStatement?:string
+export interface ContactSharingPolicy {
+  mode:ContactSharingMode
+  sharePhone:boolean
+  shareEmail:boolean
+}
+
+export interface InternshipProfileSnapshotProfile {
+  headline?:string
+  selfIntro?:string
+  strengths?:string
+  availableFrom?:string
+  availableUntil?:string
+  expectedLocations?:string[]
   skillTags?:string[]
-  projects?:unknown[]
-  practices?:unknown[]
-  certificates?:unknown[]
-  portfolio?:unknown[]
+}
+
+export interface InternshipProfileSnapshotItem {
+  id:string|number
+  itemType:InternshipProfileItemType
+  title:string
+  organization?:string
+  description?:string
+  verificationStatus?:string
+  fileIds?:Array<string|number>
+}
+
+export interface ApplicationMaterialProjection {
+  applicationId?:string|number
+  positionId?:string|number
+  positionTitle?:string
+  applicationStatement?:string
+  submissionVersion?:number
+  profileSnapshot?:{profile?:InternshipProfileSnapshotProfile;items?:InternshipProfileSnapshotItem[]}
+  schoolFactSnapshot?:Record<string,unknown>
+  snapshotHash?:string
+  contactSharingPolicy?:ContactSharingPolicy
+  profile?:InternshipProfileSnapshotProfile
+  schoolFacts?:Record<string,unknown>
+  skillTags?:string[]
+  skillEvidence?:InternshipProfileSnapshotItem[]
+  projects?:InternshipProfileSnapshotItem[]
+  practices?:InternshipProfileSnapshotItem[]
+  certificates?:InternshipProfileSnapshotItem[]
+  awards?:InternshipProfileSnapshotItem[]
+  portfolio?:InternshipProfileSnapshotItem[]
   generatedProfilePdfFileId?:number|null
-  contactSharingMode?:ContactSharingMode
 }
