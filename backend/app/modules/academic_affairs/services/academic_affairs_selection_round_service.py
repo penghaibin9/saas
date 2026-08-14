@@ -2,7 +2,7 @@
 
 原只读 DTO 和列表能力保存在 ``academic_affairs_selection_round_core_service``；本文件显式收口：
 - 新建、开启、关闭、摇号均在同一事务校验所属学期未封存；
-- 同一批次同时只能开启一个轮次；
+- 新建/开启/关闭先锁所属选课批次，保证同一批次轮次号和唯一 OPEN 轮次并发互斥；
 - 摇号先原子抢占 CLOSED→DRAWN，再锁定课程和待抽签记录；
 - 排序使用 SHA-256(roundId:recordId)，跨进程、跨重试可复核；
 - 容量更新保持数据库原子条件，不允许超卖。
@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 
@@ -26,8 +26,24 @@ def __getattr__(name):
     return getattr(_core, name)
 
 
-def _writable_batch(db, batch_id):
-    batch = selection_service._core._get_batch(db, int(batch_id))
+def _writable_batch(db, batch_id, *, lock: bool = False):
+    """读取并校验正式选课批次；轮次元数据变更时可锁批次作为同批次互斥点。
+
+    不把该锁用于 ``draw_round``：摇号后续还会锁课程行，而学生选课的 canonical
+    顺序是 course -> batch；draw 保持原顺序可避免 batch -> course 与其形成反向锁序。
+    """
+    from app.models import AaSelectionBatch
+
+    query = db.query(AaSelectionBatch).filter(
+        AaSelectionBatch.id == int(batch_id),
+        AaSelectionBatch.tenant_id == _core._tid(),
+        AaSelectionBatch.is_deleted.is_(False),
+    )
+    if lock:
+        query = query.with_for_update()
+    batch = query.first()
+    if not batch:
+        raise not_found("选课批次不存在")
     selection_service._guard_batch_writable(db, batch)
     return batch
 
@@ -41,7 +57,7 @@ def create_round(user, batch_id, body) -> dict:
 
     with _core.session() as db:
         _core._require_manage_scope(_core._ctx(user, db))
-        batch = _writable_batch(db, batch_id)
+        batch = _writable_batch(db, batch_id, lock=True)
         if batch.status in {"LOCKED", "ARCHIVED"}:
             raise _core._invalid("批次已锁定/归档，不可新增轮次")
         mode = str(getattr(body, "mode", None) or "FCFS").upper()
@@ -50,11 +66,11 @@ def create_round(user, batch_id, body) -> dict:
         name = str(getattr(body, "roundName", None) or "").strip()
         if not name:
             raise _core._bad("轮次名称必填")
-        maximum = db.query(AaSelectionRound).filter(
+        maximum = db.query(func.max(AaSelectionRound.round_no)).filter(
             AaSelectionRound.tenant_id == _core._tid(),
             AaSelectionRound.batch_id == batch.id,
             AaSelectionRound.is_deleted.is_(False),
-        ).with_for_update().count()
+        ).scalar()
         row = AaSelectionRound(
             tenant_id=_core._tid(),
             batch_id=batch.id,
@@ -88,7 +104,7 @@ def open_round(user, round_id) -> dict:
         ).with_for_update().first()
         if not row:
             raise not_found("轮次不存在")
-        batch = _writable_batch(db, row.batch_id)
+        batch = _writable_batch(db, row.batch_id, lock=True)
         if row.status not in {"DRAFT", "CLOSED"}:
             raise _core._invalid("仅草稿/已关闭轮次可开启")
         if batch.status != "OPEN":
@@ -124,7 +140,7 @@ def close_round(user, round_id) -> dict:
         ).with_for_update().first()
         if not row:
             raise not_found("轮次不存在")
-        _writable_batch(db, row.batch_id)
+        _writable_batch(db, row.batch_id, lock=True)
         if row.status != "OPEN":
             raise _core._invalid("仅开启中的轮次可关闭")
         row.status = "CLOSED"

@@ -8,7 +8,7 @@ TID = 1000000000000000001
 
 
 def _seed(db):
-    from app.models import InternshipRecord, StudentProfile, Tenant
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile, Tenant
     from app.models.file import FileObject
 
     if db.get(Tenant, TID) is None:
@@ -21,6 +21,20 @@ def _seed(db):
             db_mode="SHARED",
             status="ACTIVE",
         ))
+        db.flush()
+    batch = db.scalar(select(InternshipBatch).where(
+        InternshipBatch.tenant_id == TID,
+        InternshipBatch.batch_no == "FILE-BIND-BATCH",
+        InternshipBatch.is_deleted.is_(False),
+    ))
+    if batch is None:
+        batch = InternshipBatch(
+            tenant_id=TID,
+            batch_name="文件绑定测试批次",
+            batch_no="FILE-BIND-BATCH",
+            status="RUNNING",
+        )
+        db.add(batch)
         db.flush()
     student = StudentProfile(
         tenant_id=TID,
@@ -35,6 +49,7 @@ def _seed(db):
     record = InternshipRecord(
         tenant_id=TID,
         student_id=student.id,
+        batch_id=batch.id,
         advisor_user_id=9001,
         advisor_name="文件绑定老师",
         status="PREPARING",

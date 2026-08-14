@@ -34,6 +34,14 @@
           <AppInlineAlert v-if="selectedTerm && isLocked" type="warning"
                           description="校历已发布，事件已锁定；如需调整请到「校历归档」页确认状态，或联系教务处走线下变更流程。" />
 
+          <AaCalendarCopyPanel
+            v-if="tab === 'events'"
+            :terms="terms"
+            :target-term-id="termId"
+            :disabled="isLocked"
+            @applied="loadEvents"
+          />
+
           <AppSectionCard :title="addFormTitle">
             <div class="aa-cal-form">
               <label v-if="tab === 'events'" class="aa-cal-form__item">
@@ -168,6 +176,7 @@
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppTermEntityPicker, AppConfirmDialog, AppInlineAlert } from '@/components/common'
+import AaCalendarCopyPanel from '@/modules/academicAffairs/components/AaCalendarCopyPanel.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 import { toast } from '@/utils/toast'
@@ -184,7 +193,7 @@ export default {
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppSectionCard, AppSelect, AppTextInput, AppFormItem, AppDatePicker, AppTermEntityPicker,
-    AppConfirmDialog, AppInlineAlert
+    AppConfirmDialog, AppInlineAlert, AaCalendarCopyPanel
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -331,7 +340,7 @@ export default {
     loadForTab() {
       if (!this.termId) return
       if (this.tab === 'weekCalendar') { this.loadWeekCalendar(); return }
-      if (this.tab === 'publish' || this.tab === 'archive') return // 仅用 selectedTerm，已含在 terms 列表
+      if (this.tab === 'publish' || this.tab === 'archive') return
       this.loadEvents()
     },
     async loadEvents() {

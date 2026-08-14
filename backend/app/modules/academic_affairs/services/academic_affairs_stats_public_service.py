@@ -179,14 +179,14 @@ def workload_stats(user, term_id=None, college_id=None):
     return _legacy.workload_stats(user, term_id, college_id)
 
 
-def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20):
+def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, term_id=None):
     _precheck(user, college_id)
     role = str((user or {}).get("currentRoleCode") or "").upper()
     if role == "ACADEMIC_TEACHER":
         keys = {str(value) for value in (_derive_keys(user) or set()) if str(value).strip()}
         if not keys or str(teacher_key or "") not in keys:
             raise no_data_scope("任课教师仅可查看本人的工作量明细")
-    return _legacy.workload_detail(user, teacher_key, college_id, page, page_size)
+    return _legacy.workload_detail(user, teacher_key, college_id, page, page_size, term_id)
 
 
 def course_selection_stats(user, term_id=None, college_id=None):

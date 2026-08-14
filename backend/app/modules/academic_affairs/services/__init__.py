@@ -36,6 +36,23 @@ from . import academic_affairs_major_split_public_service as academic_affairs_ma
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
 
+# D6：Selection Final 模块对象仍是唯一公开 owner；这里只安装等价只读优化/范围门禁。
+# AaSelectionRecord 写链、Selection Final 状态机和 TeachingRoster 投影均不在此模块实现。
+from . import academic_affairs_selection_read_service
+from . import academic_affairs_selection_round_read_guard
+
+for _selection_read_name in (
+    "list_batches", "get_batch", "list_courses", "course_roster", "student_courses",
+    "reselect_guide", "batch_stats", "get_conflict_report", "export_conflict_report_xlsx",
+    "list_archived_batches", "archive_detail", "export_archive_xlsx",
+):
+    setattr(
+        academic_affairs_selection_service,
+        _selection_read_name,
+        getattr(academic_affairs_selection_read_service, _selection_read_name),
+    )
+academic_affairs_selection_round_service.list_rounds = academic_affairs_selection_round_read_guard.list_rounds
+
 # 统计 08/09/14 历史曾存在同名重复定义，后定义的缩水实现会覆盖完整合同，连内部 xlsx 导出一起打坏。
 # 显式安装唯一 canonical contract；公开 wrapper 动态调用 legacy 时与 legacy 内部 export 使用同一函数对象。
 from . import academic_affairs_stats_contract_facade
@@ -125,3 +142,69 @@ academic_affairs_grade_correction_command.install()
 from . import academic_affairs_grade_audit_scope_guard
 
 academic_affairs_grade_audit_scope_guard.install()
+
+# PR #101 生产复审：只读便利性加固必须在真实包初始化时自动生效，不能依赖测试手动 install。
+# 该 guard 仅收紧 dataScope、pageSize 和冲突详情脱敏，不接管任何 canonical 写链。
+from . import academic_affairs_production_audit_guard
+
+academic_affairs_production_audit_guard.install()
+
+# 学籍名册页面保持 200 行 pageSize 上限；完整 XLSX 导出走独立 SQL 查询，
+# 禁止用 pageSize=10000 绕过公开列表边界或在 2 万学生学校静默截断。
+from . import academic_affairs_roster_export_guard
+
+academic_affairs_roster_export_guard.install()
+
+# 学籍更正高频台账只读收口：SQL count/page + STUDENT/SELF 精确到人，
+# 创建、材料、敏感字段加密和审核命令仍由既有 canonical service 持有。
+from . import academic_affairs_roster_correction_read_guard
+
+academic_affairs_roster_correction_read_guard.install()
+
+# 注册管理高频读侧继续复用原事实与写链，仅把资格/异常/暂缓改为 SQL 真分页，
+# 并保持 STUDENT/SELF 精确到人的 fail-closed dataScope，禁止扩大到整班。
+from . import academic_affairs_registration_read_guard
+
+academic_affairs_registration_read_guard.install()
+
+# PR #101 生产复审：正式归档批次必须绑定一个真实学期；历史 nullable 列只作兼容，
+# 任何新建 HTTP/脚本/内部 service 调用都不得生成不会冻结学期的孤儿归档批次。
+from . import academic_affairs_archive_term_guard
+
+academic_affairs_archive_term_guard.install()
+
+# PR #101 生产复审：归档批次列表保持原公开 DTO，只把全量 materialize 后切片改成
+# SQL COUNT + OFFSET/LIMIT，并统一 page/pageSize 边界；不接管任何归档写链。
+from . import academic_affairs_archive_read_guard
+
+academic_affairs_archive_read_guard.install()
+
+# PR #101 生产复审：统计总览的纯 count/rate 指标由数据库聚合，禁止为求两个数字
+# materialize 全校注册、成绩、考务、毕业等明细；public/canonical/XLSX owner 均不改变。
+from . import academic_affairs_stats_scale_guard
+
+academic_affairs_stats_scale_guard.install()
+
+# PR #101 生产复审：高频统计下钻必须 SQL 真分页并消除 N+1；当前先收课表冲突，
+# 返回 DTO/冲突判定口径不变，不接管排课事实或写链。
+from . import academic_affairs_stats_detail_scale_guard
+
+academic_affairs_stats_detail_scale_guard.install()
+
+# PR #101 生产复审：教师工作量统计必须真正按 termId 收敛，教学任务/申报工时不得跨学期串账；
+# 聚合改用 SQL GROUP BY，detail 保持旧位置参数兼容并增加可选 term_id。
+from . import academic_affairs_workload_stats_guard
+
+academic_affairs_workload_stats_guard.install()
+
+# PR #101 生产复审：毕业资格统计聚合/异常下钻只替换只读实现，保持正式 evaluator、
+# immutable Run/Decision 与三态真值不变；大校规模下聚合走 SQL，明细保持有界分页/流式解析。
+from . import academic_affairs_graduation_stats_scale_guard
+
+academic_affairs_graduation_stats_scale_guard.install()
+
+# PR #101 生产复审：学生级统计下钻统一在 service 边界掩码学号并约束 page/pageSize；
+# 原查询、dataScope 与审计 owner 不变，考务/毕业继续由各自 canonical guard 持有。
+from . import academic_affairs_stats_privacy_guard
+
+academic_affairs_stats_privacy_guard.install()

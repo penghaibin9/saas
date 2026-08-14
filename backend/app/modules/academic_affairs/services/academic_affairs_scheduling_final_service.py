@@ -9,6 +9,7 @@ from app.core.affairs_security import _derive_keys
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
+from . import academic_affairs_schedule_conflict_index as conflict_index
 from . import academic_affairs_schedule_policy as policy
 
 _base = importlib.import_module(
@@ -221,53 +222,50 @@ def conflict_report_in_session(db, batch) -> dict:
         AaScheduleItem.is_deleted.is_(False),
     ).all()
     hard = []
-    for left_index, left in enumerate(items):
-        for right in items[left_index + 1:]:
-            if left.weekday != right.weekday or left.slot_no != right.slot_no:
-                continue
-            if not _base._weeks_overlap(
-                left.start_week,
-                left.end_week,
-                left.week_parity,
-                right.start_week,
-                right.end_week,
-                right.week_parity,
-            ):
-                continue
-            dimension = None
-            if left.teacher_key and left.teacher_key == right.teacher_key:
-                dimension = "TEACHER"
-            elif left.class_id and right.class_id and int(left.class_id) == int(right.class_id):
-                dimension = "CLASS"
-            elif (
-                left.classroom_id and right.classroom_id
-                and int(left.classroom_id) == int(right.classroom_id)
-            ) or (
-                not left.classroom_id and not right.classroom_id
-                and left.classroom_text and left.classroom_text == right.classroom_text
-            ):
-                dimension = "CLASSROOM"
-            if dimension:
-                hard.append({
-                    "level": "HARD",
-                    "dimension": dimension,
-                    "weekday": left.weekday,
-                    "slotNo": left.slot_no,
-                    "itemA": {
-                        "id": str(left.id),
-                        "courseName": left.course_name,
-                        "className": left.class_name,
-                        "teacherName": left.teacher_name,
-                        "classroom": left.classroom_text,
-                    },
-                    "itemB": {
-                        "id": str(right.id),
-                        "courseName": right.course_name,
-                        "className": right.class_name,
-                        "teacherName": right.teacher_name,
-                        "classroom": right.classroom_text,
-                    },
-                })
+    for left, right in conflict_index.iter_same_slot_pairs(items):
+        if not _base._weeks_overlap(
+            left.start_week,
+            left.end_week,
+            left.week_parity,
+            right.start_week,
+            right.end_week,
+            right.week_parity,
+        ):
+            continue
+        dimension = None
+        if left.teacher_key and left.teacher_key == right.teacher_key:
+            dimension = "TEACHER"
+        elif left.class_id and right.class_id and int(left.class_id) == int(right.class_id):
+            dimension = "CLASS"
+        elif (
+            left.classroom_id and right.classroom_id
+            and int(left.classroom_id) == int(right.classroom_id)
+        ) or (
+            not left.classroom_id and not right.classroom_id
+            and left.classroom_text and left.classroom_text == right.classroom_text
+        ):
+            dimension = "CLASSROOM"
+        if dimension:
+            hard.append({
+                "level": "HARD",
+                "dimension": dimension,
+                "weekday": left.weekday,
+                "slotNo": left.slot_no,
+                "itemA": {
+                    "id": str(left.id),
+                    "courseName": left.course_name,
+                    "className": left.class_name,
+                    "teacherName": left.teacher_name,
+                    "classroom": left.classroom_text,
+                },
+                "itemB": {
+                    "id": str(right.id),
+                    "courseName": right.course_name,
+                    "className": right.class_name,
+                    "teacherName": right.teacher_name,
+                    "classroom": right.classroom_text,
+                },
+            })
 
     adopted = db.query(AaTeacherAvailability).filter(
         AaTeacherAvailability.tenant_id == _base._tid(),

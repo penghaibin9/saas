@@ -1,0 +1,23 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/grade-core-legacy-file-owner
+    page: backend/app/modules/academic_affairs/routers/grade_core_router.py
+    action: upload+preview+download+import
+    fileCategory: GRADE_XLSX_LEGACY_COMPAT
+    api: GET grade-tasks/{taskId}/import/template; POST grade-tasks/{taskId}/import/xlsx; POST grade-tasks/{taskId}/import/errors-xlsx; POST grade-tasks/{taskId}/import/confirm
+    backendService: backend/app/modules/academic_affairs/routers/grade_core_router.py -> backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py
+    storageMode: legacy-synchronous-compatibility
+    authMode: authenticated+academicAffairs.grade.input
+    dataScope: tenant+grade-task+canonical-grade-scope
+    versioned: false
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: false
+    archive: false
+    status: legacy
+    risk: P0
+    targetPhase: '10'
+    notes: D8-S1 Move Only ownership relocation; no new file capability. Historical synchronous grade template/xlsx/error-row/confirm handlers moved from academic_affairs.py without semantic change. Formal production grade import remains the FileObject + ImportJob chain under academic file exchange; transcript and grade-analysis exports remain owned by academic_export_compat_router.

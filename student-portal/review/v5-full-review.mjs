@@ -33,7 +33,7 @@ const report = {
   networkFailures: []
 }
 
-async function login(page) {
+async function login(page, { record = true } = {}) {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' })
   await page.fill('#student-account', loginName)
   await page.fill('#student-password', password)
@@ -45,7 +45,7 @@ async function login(page) {
   await page.waitForURL((url) => url.pathname.endsWith('/home'), { timeout: 20000 })
   await waitStable(page)
   await setTheme(page, 'blue')
-  report.authChecks.push({ name: 'student real password login', passed: true, url: page.url() })
+  if (record) report.authChecks.push({ name: 'student real password login', passed: true, url: page.url() })
 }
 
 async function unauthenticatedBoundary(browser) {
@@ -300,6 +300,7 @@ try {
   for (const route of config.routes) {
     scope.value = `route:${route.path}`
     report.routes.push(await inspectRoute(page, route, '1920x1080'))
+    if (route.kind === 'public') await login(page, { record: false })
   }
   scope.value = 'functional'
   await inspectFunctionalFlows(page)

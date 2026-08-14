@@ -71,10 +71,18 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
     """REVOKED 复核结论必须真正下线原处分：case→REMOVED，投影 record_status→REVOKED（回归修复前的 no-op bug）。"""
     hdr = _hdr(client, "school_admin01")
     cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import CsDiscipline, DisciplineCase
+    from app.services import affairs_discipline_integrity_guard as discipline_guard
     db = get_sessionmaker()()
-    proj = CsDiscipline(tenant_id=TID, cs_student_id=db_mode["student"], disc_type="DEMERIT",
+    set_tenant({"tenantId": str(TID), "tenantCode": "demo"})
+    try:
+        cs_student = discipline_guard._ensure_cs_student(db, int(db_mode["student"]))
+        db.flush()
+    finally:
+        set_tenant(None)
+    proj = CsDiscipline(tenant_id=TID, cs_student_id=cs_student.id, disc_type="DEMERIT",
                         reason="考试违纪记过一次", status="EFFECTIVE", record_status="ACTIVE",
                         source_case_id=cid)
     db.add(proj); db.commit()
