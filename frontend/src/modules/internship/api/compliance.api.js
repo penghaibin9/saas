@@ -58,6 +58,10 @@ async function uploadEvidence(file, bizType) {
 
 export const complianceApi = {
   workbench(batchId) { return call(() => request(`${B}/workbench/${batchId}`)) },
+  /** 首屏：批次信息 + 6 项统计数字（SQL COUNT，不拉任何分组的完整列表）。 */
+  workbenchSummary(batchId) { return call(() => request(`${B}/workbench/${batchId}/summary`)) },
+  /** 按 Tab 懒加载单个分组明细：group ∈ consents/safety/filings/incidents/exemptions/evidence。 */
+  workbenchGroup(batchId, group) { return call(() => request(`${B}/workbench/${batchId}/groups/${group}`)) },
   listTemplates() { return call(() => request(`${B}/templates`)) },
   createTemplate(body) { return call(() => request(`${B}/templates`, { method: 'POST', body })) },
   activateTemplate(id, body = {}) {

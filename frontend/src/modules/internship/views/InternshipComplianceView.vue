@@ -15,9 +15,11 @@
         description="所有统计、台账、审核和证据包都严格使用当前批次。"
       />
       <template v-else>
+        <!-- type 只接受 info|success|warning|danger（见 AppInlineAlert 的 validator）；
+             原先写的 error 不在枚举内，会渲染成无样式的 is-error，让这条审计告警失去红色警示。 -->
         <AppInlineAlert
           v-if="auditHealth && auditHealth.healthy === false"
-          type="error"
+          type="danger"
           title="审计持久化异常"
           :description="auditHealth.message || '审计积压或消费异常，请先处理后再执行高风险操作。'"
         />
@@ -47,8 +49,42 @@
           </button>
         </nav>
 
+        <AppInlineAlert
+          v-if="groupLoading && activeTab !== 'overview'"
+          type="info" title="正在加载明细"
+          description="统计数字已是最新，明细列表加载中…"
+        />
+        <AppInlineAlert
+          v-else-if="groupError && activeTab !== 'overview'"
+          type="danger" title="明细加载失败"
+          :description="groupError"
+        >
+          <template #actions>
+            <AppButton size="sm" :disabled="groupLoading" @click="reloadActiveGroup">重试</AppButton>
+          </template>
+        </AppInlineAlert>
+        <AppInlineAlert
+          v-if="statsError && activeTab !== 'overview'"
+          type="warning"
+          title="学生选择暂不可用"
+          description="合规总览统计加载失败，依赖学生选择的新建操作已暂停；现有台账仍可查看和审核。请重试刷新。"
+        >
+          <template #actions>
+            <AppButton size="sm" :disabled="loading" @click="load">重试</AppButton>
+          </template>
+        </AppInlineAlert>
+
         <template v-if="activeTab === 'overview'">
-          <div class="sa-grid sa-grid--metrics">
+          <AppInlineAlert
+            v-if="statsError"
+            type="danger" title="合规总览统计加载失败"
+            :description="statsError"
+          >
+            <template #actions>
+              <AppButton size="sm" :disabled="loading" @click="load">重试</AppButton>
+            </template>
+          </AppInlineAlert>
+          <div v-else class="sa-grid sa-grid--metrics">
             <button
               v-for="metric in metrics"
               :key="metric.metricCode"
@@ -61,7 +97,7 @@
               <strong>{{ metric.count }}</strong>
             </button>
           </div>
-          <section class="mp-card">
+          <section v-if="!statsError" class="mp-card">
             <div class="mp-card__head">
               <div>
                 <strong>{{ selectedMetric?.metricLabel || '批次学生' }}</strong>
@@ -92,7 +128,7 @@
             </div>
             <div class="form-grid">
               <label>学生
-                <select v-model="forms.consent.internshipId">
+                <select v-model="forms.consent.internshipId" :disabled="!!statsError">
                   <option value="">请选择学生</option>
                   <option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option>
                 </select>
@@ -149,7 +185,7 @@
                       >作废</button>
                     </td>
                   </tr>
-                  <tr v-if="!(workbench.consents || []).length"><td colspan="8" class="empty-cell">暂无知情任务</td></tr>
+                  <tr v-if="showEmpty(workbench.consents)"><td colspan="8" class="empty-cell">暂无知情任务</td></tr>
                 </tbody>
               </table>
             </div>
@@ -174,7 +210,7 @@
             <div class="mp-card__head"><strong>课程配置</strong><span class="mp-note">{{ workbench.safetyCourses?.length || 0 }} 门</span></div>
             <div class="table-wrap"><table class="mp-table"><thead><tr><th>课程</th><th>版本</th><th>状态</th><th>时长</th><th>及格线</th><th>最大次数</th><th>承诺</th></tr></thead><tbody>
               <tr v-for="row in workbench.safetyCourses || []" :key="row.id"><td>{{ row.title }}</td><td>{{ row.courseVersion }}</td><td>{{ row.status }}</td><td>{{ row.requiredMinutes }}分钟</td><td>{{ row.passingScore }}</td><td>{{ row.maxAttempts }}</td><td>{{ row.requireCommitment ? '必需' : '否' }}</td></tr>
-              <tr v-if="!(workbench.safetyCourses || []).length"><td colspan="7" class="empty-cell">当前批次未配置课程；启用安全门禁时将被判为配置错误</td></tr>
+              <tr v-if="showEmpty(workbench.safetyCourses)"><td colspan="7" class="empty-cell">当前批次未配置课程；启用安全门禁时将被判为配置错误</td></tr>
             </tbody></table></div>
           </section>
           <section class="mp-card">
@@ -183,7 +219,7 @@
               <tr v-for="row in workbench.safetyCompletions || []" :key="row.id">
                 <td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.courseTitle }}</td><td>{{ row.courseVersion }} / {{ row.currentCourseVersion }}</td><td>{{ row.status }}</td><td>{{ row.studiedMinutes }}分钟</td><td>{{ row.score ?? '-' }}</td><td>{{ row.attemptCount }}</td><td>{{ row.version }}</td>
                 <td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.safety.manage')"><button type="button" class="mp-link" @click="openAction('safety-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('safety-review', row, 'REJECT')">退回</button></template></td>
-              </tr><tr v-if="!(workbench.safetyCompletions || []).length"><td colspan="9" class="empty-cell">暂无学生学习记录</td></tr>
+              </tr><tr v-if="showEmpty(workbench.safetyCompletions)"><td colspan="9" class="empty-cell">暂无学生学习记录</td></tr>
             </tbody></table></div>
           </section>
         </template>
@@ -192,7 +228,7 @@
           <section v-if="can('internship.filing.review')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>新建特殊备案</strong><p class="mp-note">经办人创建并提交，申请人与审核人必须分离。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.filing.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.filing.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>备案类型<select v-model="forms.filing.filingType"><option v-for="item in filingTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>目的地区<input v-model.trim="forms.filing.destinationRegion" maxlength="200" placeholder="跨区域/境外时填写" /></label>
               <label class="span-3">触发原因<textarea v-model.trim="forms.filing.triggerReason" rows="3" maxlength="500" placeholder="不少于5字" /></label>
@@ -207,7 +243,7 @@
               <button v-if="row.status === 'DRAFT' && can('internship.filing.review')" type="button" class="mp-link" @click="filingAction(row, 'COLLEGE', 'submit')">提交</button>
               <template v-if="row.status === 'PENDING_COLLEGE' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'COLLEGE')">学院通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'COLLEGE')">学院退回</button></template>
               <template v-if="row.status === 'PENDING_SCHOOL' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'SCHOOL')">学校通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'SCHOOL')">学校退回</button></template>
-            </td></tr><tr v-if="!(workbench.filings || []).length"><td colspan="8" class="empty-cell">暂无特殊备案</td></tr>
+            </td></tr><tr v-if="showEmpty(workbench.filings)"><td colspan="8" class="empty-cell">暂无特殊备案</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -215,7 +251,7 @@
           <section v-if="can('internship.incident.report')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>上报事故</strong><p class="mp-note">HIGH/CRITICAL 自动联动高风险单；事故编号由服务端生成。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.incident.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.incident.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>严重程度<select v-model="forms.incident.severity"><option value="LOW">一般</option><option value="MEDIUM">较大</option><option value="HIGH">重大</option><option value="CRITICAL">特别重大</option></select></label>
               <label>事故类型<input v-model.trim="forms.incident.incidentType" maxlength="50" placeholder="例如 人身伤害/交通/设备" /></label>
               <label>发生时间<input v-model="forms.incident.occurredAt" type="datetime-local" :max="nowLocal" /></label>
@@ -229,7 +265,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>事故处置台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>编号</th><th>学生</th><th>等级</th><th>状态</th><th>摘要</th><th>附件</th><th>版本</th><th>合法下一步</th></tr></thead><tbody>
             <tr v-for="row in workbench.incidents || []" :key="row.id"><td>{{ row.incidentNo }}</td><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.severity }}</td><td>{{ row.status }}</td><td>{{ row.summary }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link" @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button></td></tr>
-            <tr v-if="!(workbench.incidents || []).length"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
+            <tr v-if="showEmpty(workbench.incidents)"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
           </tbody></table></div></section>
 
           <section v-if="can('internship.incident.handle')" class="mp-card action-panel">
@@ -247,7 +283,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>应急预案</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>名称</th><th>责任人</th><th>联系电话</th><th>状态</th><th>附件</th><th>版本</th><th>操作</th></tr></thead><tbody>
             <tr v-for="row in workbench.emergencyPlans || []" :key="row.id"><td>{{ row.planName }}</td><td>{{ row.responsiblePerson }}</td><td>{{ row.emergencyContact }}</td><td>{{ row.status }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-if="row.status === 'DRAFT' && can('internship.incident.handle')" type="button" class="mp-link" @click="emergencyAction(row, 'SUBMIT')">提交审核</button><template v-if="row.status === 'PENDING_REVIEW' && can('internship.incident.handle')"><button type="button" class="mp-link" @click="openAction('emergency-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('emergency-review', row, 'REJECT')">退回</button></template></td></tr>
-            <tr v-if="!(workbench.emergencyPlans || []).length"><td colspan="7" class="empty-cell">暂无应急预案</td></tr>
+            <tr v-if="showEmpty(workbench.emergencyPlans)"><td colspan="7" class="empty-cell">暂无应急预案</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -255,7 +291,7 @@
           <section v-if="can('internship.compliance.exempt.request')" class="mp-card action-panel">
             <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">只允许有期限、有依据的个案申请；不能豁免基础身份、租户隔离或数据权限。</p></div></div>
             <div class="form-grid">
-              <label>学生<select v-model="forms.exemption.internshipId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<select v-model="forms.exemption.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>检查项<select v-model="forms.exemption.checkCode"><option value="">请选择检查项</option><option v-for="item in exemptionChecks" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>有效期至<input v-model="forms.exemption.validUntil" type="datetime-local" :min="nowLocal" /></label>
               <label class="span-3">申请原因<textarea v-model.trim="forms.exemption.reason" rows="4" maxlength="1000" placeholder="不少于10字，说明特殊事实、替代控制和责任人" /></label>
@@ -265,7 +301,7 @@
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>豁免台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生</th><th>检查项</th><th>原因</th><th>有效期</th><th>状态</th><th>申请/审批人</th><th>版本</th><th>操作</th></tr></thead><tbody>
             <tr v-for="row in workbench.exemptions || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ exemptionCheckText(row.checkCode) }}</td><td>{{ row.reason }}</td><td>{{ fmt(row.validUntil) }}</td><td>{{ row.status }}</td><td>{{ row.requestedByName || '-' }} / {{ row.reviewedByName || '-' }}</td><td>{{ row.version }}</td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
-            <tr v-if="!(workbench.exemptions || []).length"><td colspan="8" class="empty-cell">暂无豁免记录</td></tr>
+            <tr v-if="showEmpty(workbench.exemptions)"><td colspan="8" class="empty-cell">暂无豁免记录</td></tr>
           </tbody></table></div></section>
         </template>
 
@@ -274,13 +310,13 @@
             <div class="mp-card__head"><div><strong>生成监管证据包</strong><p class="mp-note">包含真实附件、对象版本、逐文件SHA-256、缺失项和审计。</p></div></div>
             <div class="form-grid">
               <label>包类型<select v-model="forms.package.packageType"><option value="BATCH">批次包</option><option value="STUDENT">学生包</option></select></label>
-              <label v-if="forms.package.packageType === 'STUDENT'">学生<select v-model="forms.package.targetId"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label v-if="forms.package.packageType === 'STUDENT'">学生<select v-model="forms.package.targetId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
             </div>
             <AppButton v-if="can('internship.evidence.export')" :disabled="acting || !packageFormValid" @click="generatePackage">生成版本化证据包</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>证据包历史</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>类型</th><th>目标</th><th>版本</th><th>状态</th><th>文件/缺失</th><th>SHA-256</th><th>生成人</th><th>时间</th><th>下载</th></tr></thead><tbody>
             <tr v-for="row in workbench.evidencePackages || []" :key="row.id"><td>{{ row.packageType }}</td><td>{{ row.targetId }}</td><td>v{{ row.packageVersion }}</td><td>{{ row.status }}</td><td>{{ row.fileCount }} / {{ row.missingCount }}</td><td class="hash-cell">{{ row.packageSha256 || '-' }}</td><td>{{ row.generatedByName }}</td><td>{{ fmt(row.generatedAt) }}</td><td><button v-if="['READY','READY_WITH_MISSING'].includes(row.status) && can('internship.evidence.export')" type="button" class="mp-link" @click="downloadPackage(row)">下载ZIP</button></td></tr>
-            <tr v-if="!(workbench.evidencePackages || []).length"><td colspan="9" class="empty-cell">暂无证据包</td></tr>
+            <tr v-if="showEmpty(workbench.evidencePackages)"><td colspan="9" class="empty-cell">暂无证据包</td></tr>
           </tbody></table></div></section>
         </template>
       </template>
@@ -312,6 +348,12 @@ import ConflictNotice from './components/ConflictNotice.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { complianceApi } from '@/modules/internship/api/compliance.api'
 import { getPermissionPatterns } from '@/security/permissionGate'
+
+// Tab key → 懒加载分组 key；'overview' 不对应任何分组（用 batchStats 的 drilldowns）。
+const TAB_GROUP = {
+  consents: 'consents', safety: 'safety', filings: 'filings',
+  incidents: 'incidents', exemptions: 'exemptions', evidence: 'evidence'
+}
 
 const FILING_TYPES = [
   { value: 'CROSS_PROVINCE', label: '跨省实习' }, { value: 'CROSS_CITY', label: '跨市实习' },
@@ -357,7 +399,16 @@ export default {
     loading: false, acting: false, error: '', activeTab: 'overview',
     stats: {}, workbench: {}, auditHealth: null, selectedFilter: 'ALL', forms: freshForms(),
     filingTypes: FILING_TYPES, exemptionChecks: EXEMPTION_CHECKS,
-    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict()
+    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict(),
+    // 首屏只拉 summary + 6 个统计数字；哪个 Tab 打开过、明细分组才会被拉过一次并缓存在这里。
+    loadedGroups: new Set(), groupLoading: false, groupError: '',
+    // 只允许当前 Tab 发起的最新分组请求控制 loading/error；旧 Tab 的请求可以回填缓存，但不能污染当前 UI。
+    groupRequestSeq: 0, activeGroupRequest: '',
+    // batchStats 还提供跨业务 Tab 共用的学生选择项；失败时台账仍可读，但依赖学生选择的新建动作必须显式停用。
+    statsError: '',
+    // 每次 load()（含切批次）自增；分组请求回来时比对，丢弃属于上一轮的响应，
+    // 否则切批次时在途的旧请求会把上一个批次的台账并进当前视图。
+    loadSeq: 0
   }),
   computed: {
     batchStore() { return useInternshipBatchStore() },
@@ -371,7 +422,7 @@ export default {
     },
     consentFormValid() {
       const form = this.forms.consent
-      return !!form.internshipId && form.contentVersion.trim().length >= 2 && form.contentSnapshot.trim().length >= 20
+      return !this.statsError && !!form.internshipId && form.contentVersion.trim().length >= 2 && form.contentSnapshot.trim().length >= 20
     },
     safetyFormValid() {
       const form = this.forms.safety
@@ -380,11 +431,11 @@ export default {
     filingFormValid() {
       const form = this.forms.filing
       const riskRequired = ['HIGH_RISK', 'NIGHT_SHIFT', 'OVERSEAS', 'MINOR'].includes(form.filingType)
-      return !!form.internshipId && form.triggerReason.trim().length >= 5 && (!riskRequired || form.riskDescription.trim().length >= 5) && form.fileIds.length > 0
+      return !this.statsError && !!form.internshipId && form.triggerReason.trim().length >= 5 && (!riskRequired || form.riskDescription.trim().length >= 5) && form.fileIds.length > 0
     },
     incidentFormValid() {
       const form = this.forms.incident
-      return !!form.internshipId && !!form.occurredAt && form.occurredAt <= this.nowLocal && form.incidentType.trim().length >= 2 && form.location.trim().length >= 2 && form.summary.trim().length >= 5 && form.emergencyAction.trim().length >= 5
+      return !this.statsError && !!form.internshipId && !!form.occurredAt && form.occurredAt <= this.nowLocal && form.incidentType.trim().length >= 2 && form.location.trim().length >= 2 && form.summary.trim().length >= 5 && form.emergencyAction.trim().length >= 5
     },
     emergencyFormValid() {
       const form = this.forms.emergency
@@ -392,9 +443,11 @@ export default {
     },
     exemptionFormValid() {
       const form = this.forms.exemption
-      return !!form.internshipId && !!form.checkCode && form.reason.trim().length >= 10 && !!form.validUntil && form.validUntil > this.nowLocal && form.evidenceFileIds.length > 0
+      return !this.statsError && !!form.internshipId && !!form.checkCode && form.reason.trim().length >= 10 && !!form.validUntil && form.validUntil > this.nowLocal && form.evidenceFileIds.length > 0
     },
-    packageFormValid() { return this.forms.package.packageType === 'BATCH' || !!this.forms.package.targetId },
+    packageFormValid() {
+      return this.forms.package.packageType === 'BATCH' || (!this.statsError && !!this.forms.package.targetId)
+    },
     tabs() {
       const counts = this.workbench.counts || {}
       return [
@@ -409,7 +462,8 @@ export default {
     }
   },
   watch: {
-    'batchStore.selectedBatchId': { immediate: true, handler() { this.load() } }
+    'batchStore.selectedBatchId': { immediate: true, handler() { this.load() } },
+    activeTab(tab) { this.ensureGroupLoaded(tab) }
   },
   methods: {
     can(permission) {
@@ -426,22 +480,87 @@ export default {
     deliveryTone(value) { const status = String(value || '').toUpperCase(); return status === 'SENT' ? 'is-success' : ['SKIPPED', 'FAILED'].includes(status) ? 'is-danger' : 'is-muted' },
     stateTone(value) { return value === 'VALID' || value === 'APPROVED' ? 'is-success' : ['REJECTED', 'REVOKED', 'EXPIRED'].includes(value) ? 'is-danger' : value === 'PENDING' ? 'is-warn' : 'is-muted' },
     incidentTargetText(value) { return ({ EMERGENCY_HANDLING: '进入应急处置', INVESTIGATING: '进入调查', RECTIFYING: '进入整改', PENDING_REVIEW: '提交复核', CLOSED: '关闭事故' })[value] || value },
+    /** 首屏：只拉批次统计 + 工作台 summary（6 项数字走 SQL COUNT），不拉任何分组明细。
+     * 明细列表改为按 Tab 懒加载，见 ensureGroupLoaded。
+     *
+     * 三个并发请求不是同一个故障域：summary 负责各业务 Tab 的计数，分组接口负责台账明细；
+     * `batchStats` 负责总览指标/下钻，并提供知情、备案、事故、豁免、学生证据包共用的学生选择项。
+     * 因此 stats 失败时不能把整页判死，也不能让其他 Tab 假装可正常新建：现有台账和审批继续可用，
+     * 依赖学生选择的新建动作会显示告警并停用，直到 stats 重试成功。 */
     async load() {
+      // 先自增，让所有在途的分组请求立即作废（含"没选批次"这条早退路径）。
+      this.loadSeq += 1
+      this.activeGroupRequest = ''; this.groupError = ''; this.groupLoading = false
       const batchId = this.batchStore.selectedBatchId
-      if (!batchId) { this.stats = {}; this.workbench = {}; return }
-      this.loading = true; this.error = ''
+      if (!batchId) {
+        this.stats = {}; this.workbench = {}; this.loadedGroups = new Set()
+        this.statsError = ''
+        return
+      }
+      this.loading = true; this.error = ''; this.statsError = ''
       try {
-        const [stats, workbench, health] = await Promise.all([
-          complianceApi.batchStats(batchId), complianceApi.workbench(batchId), complianceApi.auditHealth()
+        const [statsRes, summary, health] = await Promise.all([
+          complianceApi.batchStats(batchId), complianceApi.workbenchSummary(batchId), complianceApi.auditHealth()
         ])
-        if (stats.code !== 0) throw new Error(stats.message || '合规统计加载失败')
-        if (workbench.code !== 0) throw new Error(workbench.message || '合规办理台账加载失败')
-        this.stats = stats.data || {}; this.workbench = workbench.data || {}
+        if (summary.code !== 0) throw new Error(summary.message || '合规工作台加载失败')
+        if (statsRes.code !== 0) {
+          this.stats = {}
+          this.statsError = statsRes.message || '合规总览统计加载失败'
+        } else {
+          this.stats = statsRes.data || {}
+        }
+        // 旧分组明细一律作废重拉：批次切换或动作后台账可能已变，缓存的分组不可信。
+        this.workbench = summary.data || {}
+        this.loadedGroups = new Set()
         this.auditHealth = health.code === 0 ? health.data : { healthy: false, message: health.message }
         if (!this.stats.drilldowns?.[this.selectedFilter]) this.selectedFilter = 'ALL'
+        await this.ensureGroupLoaded(this.activeTab)
       } catch (loadError) {
         this.error = loadError.message || '合规工作台加载失败'
       } finally { this.loading = false }
+    },
+    /** 明细尚未到达（加载中）或加载失败时，不能显示「暂无 XX」——那等于告诉老师
+     * "这里没有数据"，而系统其实还不知道、或者根本没取到。合规台账尤其不能这样骗人。 */
+    showEmpty(list) {
+      return !this.groupLoading && !this.groupError && !(list || []).length
+    },
+    /** 点开哪个 Tab 才请求哪组明细；已加载过（且未被 load() 作废）的分组不重复请求。 */
+    async ensureGroupLoaded(tab) {
+      const group = TAB_GROUP[tab]
+      const batchId = this.batchStore.selectedBatchId
+      // 切到总览、无批次、或已加载分组时，当前 Tab 没有在途请求；立即释放共享 UI 状态。
+      // 旧 Tab 的请求即使随后返回，也因为失去 activeGroupRequest 所有权，不能再改当前 loading/error。
+      if (!group || !batchId || this.loadedGroups.has(group)) {
+        this.activeGroupRequest = ''; this.groupError = ''; this.groupLoading = false
+        return
+      }
+      const seq = this.loadSeq
+      const requestId = ++this.groupRequestSeq
+      const requestKey = `${seq}:${batchId}:${group}:${requestId}`
+      this.activeGroupRequest = requestKey
+      const staleData = () => seq !== this.loadSeq || batchId !== this.batchStore.selectedBatchId
+      const ownsUi = () => !staleData() && this.activeGroupRequest === requestKey && TAB_GROUP[this.activeTab] === group
+      this.groupLoading = true; this.groupError = ''
+      try {
+        const res = await complianceApi.workbenchGroup(batchId, group)
+        // 切批次/刷新后的响应属于上一轮，数据也必须丢弃；同批次旧 Tab 的响应可以回填该分组缓存，
+        // 但 loading/error 只允许当前 Tab 的最新请求通过 ownsUi() 控制。
+        if (staleData()) return
+        if (res.code !== 0) throw new Error(res.message || '分组明细加载失败')
+        this.workbench = { ...this.workbench, ...(res.data || {}) }
+        this.loadedGroups.add(group)
+      } catch (groupErrorObj) {
+        if (staleData()) return
+        if (ownsUi()) this.groupError = groupErrorObj.message || '分组明细加载失败'
+      } finally {
+        if (ownsUi()) this.groupLoading = false
+      }
+    },
+    /** 错误横幅上的「重试」：重新拉当前 Tab 的明细。 */
+    reloadActiveGroup() {
+      this.groupError = ''
+      this.loadedGroups.delete(TAB_GROUP[this.activeTab])
+      return this.ensureGroupLoaded(this.activeTab)
     },
     openStudent(row) { this.$router.push(row.route || `/admin/internship/students/${row.internshipId}`) },
     async run(resultPromise, successMessage, { resetForm = '', onConflict = null } = {}) {
@@ -473,7 +592,7 @@ export default {
       if (fileId) this.forms[formKey][field] = [...new Set([...(this.forms[formKey][field] || []), String(fileId)])]
     },
     createConsent() {
-      if (!this.consentFormValid) return this.$message?.warning?.('请选择学生，正文版本不少于2字，完整正文不少于20字')
+      if (!this.consentFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择学生，正文版本不少于2字，完整正文不少于20字')
       const form = { ...this.forms.consent, deliveryChannel: this.forms.consent.consentType === 'GUARDIAN' ? 'SMS' : 'PORTAL' }
       this.run(complianceApi.createConsent(form), form.consentType === 'GUARDIAN' ? '监护人任务已创建，送达结果已写入台账' : '学生知情确认任务已下发', { resetForm: 'consent' })
     },
@@ -483,7 +602,7 @@ export default {
       this.run(complianceApi.createSafetyCourse({ ...this.forms.safety, batchId: this.batchStore.selectedBatchId, status: 'ACTIVE' }), '安全课程已创建', { resetForm: 'safety' })
     },
     async createFiling() {
-      if (!this.filingFormValid) return this.$message?.warning?.('请完整填写备案原因、必要风险说明并上传依据附件')
+      if (!this.filingFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请完整填写备案原因、必要风险说明并上传依据附件')
       if (this.acting) return
       this.acting = true
       try {
@@ -499,7 +618,7 @@ export default {
     },
     filingAction(row, level, action) { this.run(complianceApi.reviewFiling(row.id, level, action, { expectedVersion: row.version }), '备案状态已更新') },
     reportIncident() {
-      if (!this.incidentFormValid) return this.$message?.warning?.('请填写学生、事故类型、非未来发生时间、地点、摘要和应急措施')
+      if (!this.incidentFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请填写学生、事故类型、非未来发生时间、地点、摘要和应急措施')
       this.run(complianceApi.reportIncident({ ...this.forms.incident, idempotencyKey: `pc-${Date.now()}-${Math.random().toString(36).slice(2)}` }), '事故已上报', { resetForm: 'incident' })
     },
     incidentTargets(row) {
@@ -523,11 +642,11 @@ export default {
     },
     emergencyAction(row, action) { this.run(complianceApi.reviewEmergencyPlan(row.id, action, { expectedVersion: row.version }), '应急预案状态已更新') },
     requestExemption() {
-      if (!this.exemptionFormValid) return this.$message?.warning?.('请选择真实检查项，填写10字以上原因、未来有效期并上传依据附件')
+      if (!this.exemptionFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择真实检查项，填写10字以上原因、未来有效期并上传依据附件')
       this.run(complianceApi.grantExemption(this.forms.exemption), '豁免申请已提交学校审批', { resetForm: 'exemption' })
     },
     generatePackage() {
-      if (!this.packageFormValid) return this.$message?.warning?.('请选择证据包目标')
+      if (!this.packageFormValid) return this.$message?.warning?.(this.forms.package.packageType === 'STUDENT' && this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择证据包目标')
       const targetId = this.forms.package.packageType === 'BATCH' ? this.batchStore.selectedBatchId : this.forms.package.targetId
       this.run(complianceApi.generateEvidencePackage(this.forms.package.packageType, targetId), '证据包已生成')
     },
