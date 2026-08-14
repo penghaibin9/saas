@@ -42,7 +42,9 @@ def test_browser_sessionize_real_db_pair_keeps_one_session_id(monkeypatch):
         "code": 0,
         "data": {"accessToken": "old-access", "refreshToken": "old-refresh", "userId": "db-7"},
     }
-    result = auth_browser._sessionize_payload(payload)
+    result = auth_browser._sessionize_payload(
+        payload, browser_channel="staff", browser_session_id="tab-a"
+    )
 
     assert consumed == ["old-refresh"]
     assert result["data"]["accessToken"] == "session-access"
@@ -59,7 +61,9 @@ def test_browser_sessionize_keeps_non_db_test_or_mock_pair_compatible(monkeypatc
         lambda token: (_ for _ in ()).throw(AssertionError("mock pair must not be consumed")),
     )
     payload = {"code": 0, "data": {"accessToken": "stub-access", "refreshToken": "stub-refresh"}}
-    assert auth_browser._sessionize_payload(payload) is payload
+    assert auth_browser._sessionize_payload(
+        payload, browser_channel="staff", browser_session_id="tab-fixture"
+    ) is payload
 
 
 def test_browser_refresh_upgrades_legacy_cookie_to_session_scoped_pair(monkeypatch):
@@ -67,8 +71,8 @@ def test_browser_refresh_upgrades_legacy_cookie_to_session_scoped_pair(monkeypat
     refresh_claims = []
     monkeypatch.setattr(
         auth_browser,
-        "consume_refresh",
-        lambda token: {"userId": "db-7", "tenantId": "1001", "clientType": "PC"},
+        "consume_refresh_if_matches",
+        lambda token, **kwargs: {"userId": "db-7", "tenantId": "1001", "clientType": "PC"},
     )
     monkeypatch.setattr(auth_browser.auth_service_db, "validate_token_subject", lambda claims: claims)
     monkeypatch.setattr(
@@ -83,7 +87,9 @@ def test_browser_refresh_upgrades_legacy_cookie_to_session_scoped_pair(monkeypat
     )
     monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: None)
 
-    result = auth_browser._rotate_browser_refresh("legacy-cookie")
+    result = auth_browser._rotate_browser_refresh(
+        "legacy-cookie", channel="staff", browser_session_id="tab-a"
+    )
     assert result["data"]["accessToken"] == "new-access"
     assert result["data"]["refreshToken"] == "new-refresh"
     assert access_claims[0]["authSessionId"]
@@ -93,12 +99,14 @@ def test_browser_refresh_upgrades_legacy_cookie_to_session_scoped_pair(monkeypat
 def test_browser_refresh_rejects_tombstoned_session_even_if_refresh_row_survived_race(monkeypatch):
     monkeypatch.setattr(
         auth_browser,
-        "consume_refresh",
-        lambda token: {"userId": "db-7", "authSessionId": "dead-session"},
+        "consume_refresh_if_matches",
+        lambda token, **kwargs: {"userId": "db-7", "authSessionId": "dead-session"},
     )
     monkeypatch.setattr(auth_browser, "auth_session_blocked", lambda session_id: session_id == "dead-session")
     with pytest.raises(AppException):
-        auth_browser._rotate_browser_refresh("raced-refresh")
+        auth_browser._rotate_browser_refresh(
+            "raced-refresh", channel="staff", browser_session_id="tab-dead"
+        )
 
 
 def test_logout_revocation_can_locate_expired_but_signed_browser_session():

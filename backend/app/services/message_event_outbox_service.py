@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
@@ -61,12 +61,7 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "请假已关闭",
         "require_ack": False,
     },
-    # 学工材料补交事件。原本只在 affairs_operations_service._register_message_templates()
-    # 里用 setdefault 注册，而该函数只被 affairs_operations_service.install() 调用，
-    # install() 全仓无人调用 —— 结果是登记材料缺项必然抛
-    # VALIDATION_ERROR「未登记的消息事件码：MATERIAL.REQUIRED」(422)，功能完全不可用。
-    # 事件模板的真实来源就是本表（见 communication_registry.validate_registry 注释），
-    # 因此在此登记；_register_message_templates 的 setdefault 保持原样，自然成为 no-op。
+    # 学工材料补交事件。真实模板登记在本表，避免未执行 install() 导致事件码缺失。
     "MATERIAL.REQUIRED": {
         "source_module": "student-affairs",
         "category": "BUSINESS",
@@ -608,10 +603,21 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
             select(MessageEventOutbox).where(
                 MessageEventOutbox.tenant_id == _tid(),
                 MessageEventOutbox.is_deleted.is_(False),
-                MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),
                 or_(
-                    MessageEventOutbox.next_retry_at.is_(None),
-                    MessageEventOutbox.next_retry_at <= now,
+                    and_(
+                        MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),
+                        or_(
+                            MessageEventOutbox.next_retry_at.is_(None),
+                            MessageEventOutbox.next_retry_at <= now,
+                        ),
+                    ),
+                    and_(
+                        MessageEventOutbox.status == "PROCESSING",
+                        or_(
+                            MessageEventOutbox.lease_expires_at.is_(None),
+                            MessageEventOutbox.lease_expires_at <= now,
+                        ),
+                    ),
                 ),
             ).order_by(MessageEventOutbox.id.asc())
             .with_for_update(skip_locked=True)
@@ -633,7 +639,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
 
     for row_id in [r.id for r in claimed]:
         with session() as db:
-            row = tenant_get(db, MessageEventOutbox, row_id)
+            row = tenant_get(db, MessageEventOutbox, row_id, tenant_id=_tid())
             now = _utc_now()
             if (
                 not row
@@ -650,7 +656,7 @@ def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> 
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
                 with session() as db2:
-                    row2 = db2.get(MessageEventOutbox, row_id)
+                    row2 = tenant_get(db2, MessageEventOutbox, row_id, tenant_id=_tid())
                     if not row2 or row2.locked_by != worker_id:
                         continue
                     attempt = int(row2.attempt_count or 1)
@@ -733,14 +739,35 @@ def process_all_tenants(limit_per_tenant: int = 20) -> int:
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.models import Tenant
+    from app.services import tenant_effective_state_service as tenant_state
 
     total = 0
     db = get_sessionmaker()()
     try:
-        tids = list(db.scalars(select(Tenant.id).where(Tenant.status == "ACTIVE")))
+        tids = list(db.scalars(
+            select(Tenant.id)
+            .where(Tenant.is_deleted.is_(False))
+            .order_by(Tenant.id.asc())
+        ))
     finally:
         db.close()
     for tid in tids:
+        try:
+            policy = tenant_state.background_execution_policy(tid)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "scheduler_tenant_skipped tenantId=%s jobClass=%s effectiveStatus=unresolved reason=%s",
+                tid, tenant_state.BACKGROUND_BUSINESS_WRITE,
+                getattr(exc, "code", None) or type(exc).__name__,
+            )
+            continue
+        if not policy.get("businessWriteAllowed"):
+            log.info(
+                "scheduler_tenant_skipped tenantId=%s jobClass=%s effectiveStatus=%s reason=%s",
+                tid, tenant_state.BACKGROUND_BUSINESS_WRITE,
+                policy.get("effectiveStatus"), policy.get("reason"),
+            )
+            continue
         set_tenant({"tenantId": str(tid)})
         try:
             total += process_pending_outbox(limit=limit_per_tenant)

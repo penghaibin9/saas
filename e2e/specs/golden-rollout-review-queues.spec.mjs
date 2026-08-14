@@ -2,6 +2,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 import { StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
@@ -366,7 +367,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
 
   test('Internship change review queue · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, `/admin/internship/changes?panel=pending&id=${encodeURIComponent(internshipChangeFixture.id)}`)
+    await openGoldenStaffPage(page, `/admin/internship/changes?panel=pending&id=${encodeURIComponent(internshipChangeFixture.id)}`)
     await setStorage(page, 'internship.selectedBatchId', internshipChangeFixture.batchId)
     await page.reload()
 
