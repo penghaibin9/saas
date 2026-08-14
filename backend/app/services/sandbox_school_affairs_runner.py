@@ -24,6 +24,9 @@ from app.services.sandbox_school_affairs_seed import (
 from app.services.sandbox_school_affairs_counselor_reconcile import (
     reconcile_counselor_assessments,
 )
+from app.services.sandbox_school_discipline_decision_reconcile import (
+    reconcile_discipline_decision_links,
+)
 from app.services.sandbox_school_master_seed import _bulk_insert
 
 
@@ -317,7 +320,9 @@ def seed_school_affairs_20k(db, tenant_id: int) -> dict:
         "talkAndFamily": _seed_talks_and_family(db, tenant_id, roster),
         "aidAndFunding": _seed_aid_and_funding_via_canonical_transition(db, tenant_id, roster),
         "discipline": _seed_discipline(db, tenant_id, roster),
-        "riskHub": _seed_real_source_risks(db, tenant_id),
     })
+    # Alembic head 之后才生成的 EFFECTIVE 主案，必须同步进入 package-11 ORIGINAL 决定版本链。
+    result["disciplineDecisionReconciliation"] = reconcile_discipline_decision_links(db, tenant_id)
+    result["riskHub"] = _seed_real_source_risks(db, tenant_id)
     result["validation"] = validate_affairs_facts(db, tenant_id)
     return result
