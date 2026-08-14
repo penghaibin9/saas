@@ -149,6 +149,12 @@ from . import academic_affairs_production_audit_guard
 
 academic_affairs_production_audit_guard.install()
 
+# 学籍名册页面保持 200 行 pageSize 上限；完整 XLSX 导出走独立 SQL 查询，
+# 禁止用 pageSize=10000 绕过公开列表边界或在 2 万学生学校静默截断。
+from . import academic_affairs_roster_export_guard
+
+academic_affairs_roster_export_guard.install()
+
 # 注册管理高频读侧继续复用原事实与写链，仅把资格/异常/暂缓改为 SQL 真分页，
 # 并保持 STUDENT/SELF 精确到人的 fail-closed dataScope，禁止扩大到整班。
 from . import academic_affairs_registration_read_guard
