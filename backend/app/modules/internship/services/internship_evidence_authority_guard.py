@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import enforce_permission, is_super_admin
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipArchive,
     InternshipAuditTrail,
@@ -101,7 +102,7 @@ def bind_evidence(
             },
         )
         db.flush()
-        file_obj = db.get(FileObject, int(file_id))
+        file_obj = tenant_get(db, FileObject, int(file_id))
         if not file_obj or not binding.id:
             raise AppException("DATA_CONFLICT", "依据文件未形成有效业务绑定")
         snapshots.append({
@@ -250,7 +251,6 @@ def grant_exemption(body, user=None):
         try:
             db.flush()
         except IntegrityError as exc:
-            # 唯一索引在 flush 这一步就会拒绝（INSERT 此时已发出），不是等到 commit。
             db.rollback()
             raise AppException("DATA_CONFLICT", _DUP_EXEMPTION_MSG) from exc
         exemption.evidence_file_ids = bind_evidence(
@@ -271,9 +271,6 @@ def grant_exemption(body, user=None):
         try:
             db.commit()
         except IntegrityError as exc:
-            # 上面那次查重是无锁读，两个并发请求会同时看到「没有」。真正的不变量由
-            # uk_ix_exempt_active_pending 兜底（迁移 20260814_ix_first_create）；输家在这里
-            # 转成业务冲突，提示与串行重复申请完全一致，而不是一个 500。
             db.rollback()
             raise AppException("DATA_CONFLICT", _DUP_EXEMPTION_MSG) from exc
         return {
@@ -408,7 +405,7 @@ def capture_archive_snapshot(db, record, evaluation, user):
     if _is_snapshot_list(archive.force_evidence_file_ids):
         evidence = archive.force_evidence_file_ids
     else:
-        student = db.get(StudentProfile, record.student_id)
+        student = tenant_get(db, StudentProfile, record.student_id)
         evidence = bind_evidence(
             db,
             file_ids=archive.force_evidence_file_ids,
