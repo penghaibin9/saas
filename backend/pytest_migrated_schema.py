@@ -1,9 +1,10 @@
-"""Preserve Alembic-built schemas when db_mode runs inside migrated-schema gates.
+"""Preserve Alembic-built schemas only for explicit migrated-schema pytest gates.
 
-Normal MySQL test databases still use the repository's existing drop/create fixture.
-If the target database already carries ``alembic_version``, the gate is explicitly
-validating migration truth, so db_mode may clean rows but must not replace that
-schema with ``metadata.create_all()``.
+Normal MySQL test databases keep the repository's existing drop/create fixture even if a
+local database happens to contain an ``alembic_version`` table. The preservation path is
+reserved for the dedicated migrated-schema database (``student_lifecycle_migrated``) or
+an explicit ``PYTEST_PRESERVE_MIGRATED_SCHEMA=1`` override, and still requires a real
+Alembic version table before it may replace db_mode's schema-reset helpers.
 """
 from __future__ import annotations
 
@@ -16,11 +17,40 @@ import pytest
 
 _MIGRATED_DB_CACHE: dict[str, bool] = {}
 _ALEMBIC_TABLE: Final[str] = "alembic_version"
+_MIGRATED_SCHEMA_ENV: Final[str] = "PYTEST_PRESERVE_MIGRATED_SCHEMA"
+_KNOWN_MIGRATED_DB: Final[str] = "student_lifecycle_migrated"
+_TRUTHY: Final[set[str]] = {"1", "true", "yes", "on"}
+
+
+def _migrated_schema_requested(test_url: str) -> bool:
+    """Return whether this pytest process explicitly targets migration-built schema truth.
+
+    An explicit environment value wins, including false values. Without an override we only
+    auto-enable the repository's dedicated CI migrated-schema database. This prevents a
+    developer's ordinary test database from changing fixture semantics merely because it was
+    previously created by Alembic.
+    """
+    raw_flag = os.environ.get(_MIGRATED_SCHEMA_ENV)
+    if raw_flag is not None:
+        return str(raw_flag).strip().lower() in _TRUTHY
+
+    normalized = str(test_url or "").strip()
+    if not normalized or normalized.startswith("sqlite"):
+        return False
+    try:
+        from sqlalchemy.engine import make_url
+
+        database = str(make_url(normalized).database or "").strip()
+    except Exception:
+        return False
+    return database == _KNOWN_MIGRATED_DB
 
 
 def _is_migrated_mysql(test_url: str) -> bool:
-    """Return whether this test URL already points at an Alembic-managed schema."""
+    """Return whether the requested gate points at a real Alembic-managed MySQL schema."""
     normalized = str(test_url or "").strip()
+    if not _migrated_schema_requested(normalized):
+        return False
     if not normalized or normalized.startswith("sqlite"):
         return False
     cached = _MIGRATED_DB_CACHE.get(normalized)
