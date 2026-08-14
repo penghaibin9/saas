@@ -190,3 +190,9 @@ academic_affairs_stats_scale_guard.install()
 from . import academic_affairs_stats_detail_scale_guard
 
 academic_affairs_stats_detail_scale_guard.install()
+
+# PR #101 生产复审：教师工作量统计必须真正按 termId 收敛，教学任务/申报工时不得跨学期串账；
+# 聚合改用 SQL GROUP BY，detail 保持旧位置参数兼容并增加可选 term_id。
+from . import academic_affairs_workload_stats_guard
+
+academic_affairs_workload_stats_guard.install()
