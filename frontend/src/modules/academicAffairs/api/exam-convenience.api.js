@@ -39,7 +39,8 @@ async function callList(path, params = {}) {
 
 /**
  * D7-U 考务便利性 API。
- * 只调用正式后端 convenience/readiness 入口；最终圈课事实仍由后端逐项进入 canonical add_exam_course。
+ * 候选/preview/readiness 走便利层；自动定时直接复用既有 canonical auto-times，
+ * 后续考场/座位/监考仍由既有 auto-arrange 完成，不新增考试事实写入口。
  */
 export const academicAffairsExamConvenienceApi = {
   getReadiness(batchId) {
@@ -58,6 +59,13 @@ export const academicAffairsExamConvenienceApi = {
     return call(() => request(`${BASE}/exam/batches/${batchId}/course-candidates/confirm`, {
       method: 'POST',
       body: { previewToken }
+    }))
+  },
+  autoTimes(batchId, body, dryRun = false) {
+    return call(() => request(`${BASE}/exam/batches/${batchId}/auto-times`, {
+      method: 'POST',
+      params: { dryRun },
+      body
     }))
   }
 }
