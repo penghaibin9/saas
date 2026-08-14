@@ -3,12 +3,20 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const read=(p)=>fs.readFileSync(new URL(p,import.meta.url),'utf8')
+const layout=read('../src/layouts/EnterprisePortalLayout.vue')
 const positions=read('../src/views/PositionListView.vue')
 const applicants=read('../src/views/ApplicantListView.vue')
 const detail=read('../src/views/ApplicantDetailView.vue')
 const contact=read('../src/components/applicant/ContactRevealButton.vue')
 const decision=read('../src/components/applicant/DecisionActions.vue')
 const store=read('../src/stores/enterpriseContext.js')
+
+test('expired or invalid enterprise access blocks protected portal content',()=>{
+  assert.match(store,/contextReady/)
+  assert.match(layout,/访问授权不可用/)
+  assert.match(layout,/访问授权已过期/)
+  assert.match(layout,/RouterView v-else/)
+})
 
 test('campaign closed and unavailable context fail closed',()=>{
   assert.match(store,/contextReady/)
