@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { hasEnterpriseAuth } from '../services/request'
 
 const routes = [
   { path: '/login', name: 'enterprise-login', component: () => import('../views/EnterpriseLoginView.vue'), meta: { public: true } },
@@ -24,4 +25,10 @@ const routes = [
   { path: '/:pathMatch(.*)*', redirect: '/home' },
 ]
 
-export default createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
+const router=createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
+router.beforeEach(to=>{
+  if(to.meta.public||hasEnterpriseAuth())return true
+  return {path:'/login',query:{reason:'session-required'}}
+})
+
+export default router
