@@ -61,6 +61,15 @@ def test_selection_stats_aggregate_in_sql_and_keep_id_ranges_as_subqueries():
     assert "course_ids = set(" not in detail_source
 
 
+def test_selection_batch_status_respects_college_course_scope():
+    stats_source = inspect.getsource(canonical.course_selection_stats)
+    assert "grouped_conditions = list(batch_conditions)" in stats_source
+    assert "if colleges is not None:" in stats_source
+    assert "scoped_batch_ids = select(AaSelectionCourse.batch_id)" in stats_source
+    assert ").distinct()" in stats_source
+    assert "AaSelectionBatch.id.in_(scoped_batch_ids)" in stats_source
+
+
 def test_exam_stats_aggregate_in_sql_and_detail_uses_course_subquery():
     stats_source = inspect.getsource(canonical.exam_stats)
     detail_source = inspect.getsource(canonical.exam_detail)
