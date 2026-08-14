@@ -630,8 +630,12 @@ def scores_export(status: Optional[str] = None, keyword: Optional[str] = None,
 @router.get("/scores", summary="实习成绩列表（按数据范围）")
 def scores(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            status: Optional[str] = None, keyword: Optional[str] = None,
-           batchId: Optional[str] = None, user=Depends(require_permission("internship.score.view"))):
-    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
+           batchId: Optional[str] = None,
+           incompleteOnly: bool = Query(False, description="只看还有分项未录入的；服务端筛选，跨页有效"),
+           user=Depends(require_permission("internship.score.view"))):
+    items, total = score.list_scores(page, pageSize, status=status, keyword=keyword,
+                                     batch_id=batchId, user=user,
+                                     incomplete_only=incompleteOnly)
     return success(paginate(items, total, page, pageSize))
 
 
