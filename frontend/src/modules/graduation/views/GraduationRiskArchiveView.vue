@@ -141,7 +141,7 @@
                 <ul class="ar-missing">
                   <li v-for="m in selectedArchive.missingItems" :key="m" class="ar-missing__item">
                     <span class="ar-missing__name">✕ {{ m }}</span>
-                    <button class="mp-link" @click="goFix(m, selectedArchive)">去补齐 →</button>
+                    <button class="mp-link" @click="goFix(m, selectedArchive)">{{ selectedArchive.dataAnomaly ? '查看学生档案 →' : '去补齐 →' }}</button>
                   </li>
                 </ul>
               </template>
@@ -152,6 +152,7 @@
                 <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
                 <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
                 <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
+                <span v-if="selectedArchive.dataAnomaly" class="mp-note" style="color: var(--danger, #dc2626); font-weight: 600">历史主档异常，当前归档记录仅允许只读查看</span>
               </div>
               <p class="mp-note" style="margin-top: var(--space-2)">生成 / 提交 / 核验 / 驳回均写入审计留痕；完整性以后端清单核验为准。</p>
             </div>
@@ -443,21 +444,31 @@ export default {
         if (target) this.selectArchive(target)
       }
     },
-    /** 缺件补齐入口：按材料名称映射到真实业务工作区（带学生上下文） */
+    /** 缺件补齐入口：永远绑定 exact gdStudentId，并保留批次/source 上下文。 */
     goFix(item, row) {
       const sid = row.gdStudentId
+      if (!sid) {
+        this.$router.push('/admin/graduation/students')
+        return
+      }
       const name = (item || '').toString()
-      if (name.includes('任务书')) return this.$router.push('/admin/graduation/process?panel=taskbook')
-      if (name.includes('开题')) return this.$router.push('/admin/graduation/proposals')
-      if (name.includes('中期')) return this.$router.push('/admin/graduation/process?panel=midterm')
-      if (name.includes('指导')) return this.$router.push('/admin/graduation/process?panel=guidance')
-      if (name.includes('查重')) return this.$router.push('/admin/graduation/defense-grade?panel=plagiarism')
-      if (name.includes('评阅')) return this.$router.push('/admin/graduation/defense-grade?panel=review')
-      if (name.includes('答辩')) return this.$router.push('/admin/graduation/defense')
-      if (name.includes('成绩')) return this.$router.push('/admin/graduation/defense-grade?panel=grade')
-      if (name.includes('成果') || name.includes('论文')) return this.$router.push('/admin/graduation/finals')
-      if (sid) return this.$router.push('/admin/graduation/students/' + sid)
-      this.$router.push('/admin/graduation/students')
+      let tab = ''
+      if (name.includes('任务书')) tab = 'taskbook'
+      else if (name.includes('开题')) tab = 'proposals'
+      else if (name.includes('中期')) tab = 'midterm'
+      else if (name.includes('指导')) tab = 'guidance'
+      else if (name.includes('查重')) tab = 'plagiarisms'
+      else if (name.includes('评阅') || name.includes('答辩') || name.includes('成绩')) tab = 'review'
+      else if (name.includes('成果') || name.includes('论文')) tab = 'finals'
+      return this.$router.push({
+        name: 'graduation-student-detail',
+        params: { id: String(sid) },
+        query: {
+          ...(tab ? { tab } : {}),
+          source: 'archive',
+          ...(this.batchStore.selectedBatchId ? { batchId: String(this.batchStore.selectedBatchId) } : {})
+        }
+      })
     },
     async loadArchives() {
       if (!this.batchStore.selectedBatchId) {
@@ -512,6 +523,8 @@ export default {
       if (!rows.length) return '无'
       const map = {
         already_submitted_or_filed: '已提交/已备案',
+        already_submitted: '已提交/已备案',
+        dirty_data: '历史主档异常（只读）',
         missing_materials: '材料不齐',
         open_risks: '风险未关闭',
         out_of_scope: '不在当前范围'
