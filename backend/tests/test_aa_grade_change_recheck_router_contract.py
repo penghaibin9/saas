@@ -39,9 +39,9 @@ def test_d8_grade_change_and_recheck_routes_are_owned_by_s3_router():
     assert not wrong, f"D8-S3 public owner drift: {wrong}"
 
 
-def test_d8_s3_keeps_grade_recognition_on_existing_owner_for_s4():
+def test_d8_s3_does_not_steal_grade_recognition_owner():
     owners = _owners()
-    legacy = "app.modules.academic_affairs.routers.academic_affairs"
+    s3_owner = "app.modules.academic_affairs.routers.grade_change_recheck_router"
     for key in (
         ("/academic-affairs/grade-recognitions", ("GET",)),
         ("/academic-affairs/grade-recognitions", ("POST",)),
@@ -49,7 +49,7 @@ def test_d8_s3_keeps_grade_recognition_on_existing_owner_for_s4():
         ("/academic-affairs/grade-recognitions/student/submit", ("POST",)),
         ("/academic-affairs/grade-recognitions/my", ("GET",)),
     ):
-        assert owners[key] == legacy, f"D8-S3 must not steal recognition owner: {key} -> {owners[key]}"
+        assert owners[key] != s3_owner, f"D8-S3 must not steal recognition owner: {key} -> {owners[key]}"
 
 
 def test_d8_s3_preserves_existing_grade_core_read_and_export_owners():

@@ -75,14 +75,28 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
     (("exam_convenience_service.py", "exam_core_router.py"),
      ["tests/test_aa_exam_convenience.py",
       "tests/test_aa_exam_facade_contract_and_changes.py"]),
-    # D8：成绩任务主链、读侧或成绩更正/复查 owner 变化时，必须立即验证全部 D8 route owner；
-    # S3 还额外拉起既有更正/复查并发合同，防 Move Only 挂载改变写链时序或行锁语义。
-    (("grade_core_router.py", "grade_read_router.py", "grade_change_recheck_router.py"),
+    # D8：成绩任务主链、读侧、更正/复查、认定 owner 或结构合同变化时，立即验证全部 D8 owner；
+    # S4 同时拉起成绩并发、认定证据/互斥与服务入口合同，确保 Move Only 不改变 hardened canonical。
+    (("grade_core_router.py",
+      "grade_read_router.py",
+      "grade_change_recheck_router.py",
+      "grade_recognition_router.py",
+      "test_aa_grade_core_router_contract.py",
+      "test_aa_grade_read_router_contract.py",
+      "test_aa_grade_change_recheck_router_contract.py",
+      "test_aa_grade_recognition_router_contract.py",
+      "test_p1_ci_select_d8.py"),
      ["tests/test_aa_grade_core_router_contract.py",
       "tests/test_aa_grade_read_router_contract.py",
       "tests/test_aa_grade_change_recheck_router_contract.py",
+      "tests/test_aa_grade_recognition_router_contract.py",
       "tests/test_aa_grade_identity_head_concurrency.py",
-      "tests/test_aa_grade_recheck_concurrency.py"]),
+      "tests/test_aa_grade_recheck_concurrency.py",
+      "tests/test_aa_recognition.py",
+      "tests/test_aa_recognition_evidence_and_mutex.py",
+      "tests/test_aa_service_entrypoint_integrity.py",
+      "tests/test_aa_p0_authz.py",
+      "tests/test_aa_route_registration_main_compat.py"]),
     # 教务历史测试目录含尚未收口的旧契约，禁止用 test_aa_*.py 把它们全部带入。
     # 任意教务源码改动执行稳定权限闸门与路由兼容门禁；本次实际改动的 test_aa_* 文件由
     # _changed_backend_tests 精确加入。教务源码改动同时拉起已知 MySQL 并发回归。

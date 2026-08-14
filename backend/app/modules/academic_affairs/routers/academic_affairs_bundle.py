@@ -96,6 +96,10 @@ def build_router() -> APIRouter:
     # DTO、权限、canonical service 与并发保护全部复用 legacy；成绩认定/课程替代继续留给 S4。
     grade_change_recheck_module = importlib.import_module(f"{__package__}.grade_change_recheck_router")
     _mount_routes(router, grade_change_recheck_module.router)
+    # D8-S4：成绩认定/课程替代五入口 Move Only；佐证附件继续走既有 FileBinding/manifest canonical，
+    # DTO、权限、学生身份守卫、review/identity/并发语义全部复用 legacy hardened service。
+    grade_recognition_module = importlib.import_module(f"{__package__}.grade_recognition_router")
+    _mount_routes(router, grade_recognition_module.router)
     # 正式规则 Router 必须先于历史大 Router；相同 method/path 由上面的确定性去重保留新版。
     _mount_routes(router, live_rule_router.router)
     # D1-S：学期/校历/作息节次/time-bands 已从历史大 Router 纯结构迁出。
