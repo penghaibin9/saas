@@ -673,7 +673,8 @@ def message_read(message_id) -> dict:
 # ═══════════ 审计 ═══════════
 
 def audit_insert_in_session(db, action: str, resource: str, detail: dict | None, result: str,
-                            *, tenant_id: int | None = None, resource_id: str | None = None) -> None:
+                            *, tenant_id: int | None = None, resource_id: str | None = None,
+                            operator_name_override: str | None = None) -> None:
     """高危审计：写入调用方会话，随业务事务提交。"""
     user = get_current_user_ctx() or {}
     meta = get_request_meta()
@@ -681,7 +682,7 @@ def audit_insert_in_session(db, action: str, resource: str, detail: dict | None,
     operator_id = int(raw_uid[3:]) if raw_uid.startswith("db-") and raw_uid[3:].isdigit() else None
     db.add(SecurityAuditLog(
         tenant_id=tenant_id if tenant_id is not None else _tid(),
-        operator_id=operator_id, operator_name=user.get("realName"),
+        operator_id=operator_id, operator_name=operator_name_override or user.get("realName"),
         current_role=user.get("currentRoleCode"), action=action, resource=resource,
         resource_id=resource_id,
         ip=meta.get("ip"), user_agent=meta.get("userAgent"),

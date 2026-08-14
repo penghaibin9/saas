@@ -136,6 +136,96 @@ def consume_refresh(token: str) -> dict | None:
     return _consume_refresh_memory(token)
 
 
+
+def consume_refresh_if_matches(
+    token: str,
+    *,
+    expected_browser_channel: str,
+    expected_browser_session_hash: str,
+) -> dict | None:
+    """Consume only after browser-tab binding matches; mismatch leaves the credential untouched."""
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
+    channel = str(expected_browser_channel or "").strip().lower()
+    session_hash = str(expected_browser_session_hash or "").strip()
+    if not channel or not session_hash:
+        return None
+    must_persist = settings.is_prod or db_enabled()
+    db = _db(required=must_persist)
+    if db is not None:
+        try:
+            from sqlalchemy import delete, select
+            from app.models import AuthRefreshToken
+            h = _tok_hash(token or "")
+            row = db.scalars(
+                select(AuthRefreshToken).where(AuthRefreshToken.token_hash == h).with_for_update()
+            ).first()
+            if row is None:
+                if not must_persist:
+                    return _consume_refresh_memory_if_matches(
+                        token,
+                        expected_browser_channel=channel,
+                        expected_browser_session_hash=session_hash,
+                    )
+                return None
+            claims = dict(row.claims_json or {})
+            if (
+                str(claims.get("browserChannel") or "").strip().lower() != channel
+                or str(claims.get("browserSessionIdHash") or "") != session_hash
+            ):
+                db.rollback()
+                return None
+            expired = row.expires_at < datetime.utcnow()
+            res = db.execute(delete(AuthRefreshToken).where(AuthRefreshToken.token_hash == h))
+            db.commit()
+            if expired or (res.rowcount or 0) == 0:
+                return None
+            return claims
+        except AppException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if must_persist:
+                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503) from e
+            return _consume_refresh_memory_if_matches(
+                token,
+                expected_browser_channel=channel,
+                expected_browser_session_hash=session_hash,
+            )
+        finally:
+            db.close()
+    return _consume_refresh_memory_if_matches(
+        token,
+        expected_browser_channel=channel,
+        expected_browser_session_hash=session_hash,
+    )
+
+
+def _consume_refresh_memory_if_matches(
+    token: str,
+    *,
+    expected_browser_channel: str,
+    expected_browser_session_hash: str,
+) -> dict | None:
+    item = _refresh.get(token or "")
+    if not item:
+        return None
+    if item["exp"] < _now():
+        _refresh.pop(token or "", None)
+        return None
+    claims = dict(item["claims"] or {})
+    if (
+        str(claims.get("browserChannel") or "").strip().lower() != str(expected_browser_channel or "").strip().lower()
+        or str(claims.get("browserSessionIdHash") or "") != str(expected_browser_session_hash or "")
+    ):
+        return None
+    _refresh.pop(token or "", None)
+    return claims
+
 def _consume_refresh_memory(token: str) -> dict | None:
     item = _refresh.pop(token or "", None)
     if not item or item["exp"] < _now():

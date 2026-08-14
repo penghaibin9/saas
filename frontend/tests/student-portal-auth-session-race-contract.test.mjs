@@ -87,3 +87,15 @@ test('student portal browser session stays memory plus HttpOnly-cookie only', as
   assert.doesNotMatch(text, /sessionStorage\.setItem\(REFRESH_KEY/)
   assert.doesNotMatch(text, /localStorage\.setItem\(REFRESH_KEY/)
 })
+
+
+test('student portal browser auth binds HttpOnly refresh to this tab id only', async () => {
+  const text = await source()
+  assert.match(text, /const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'/)
+  assert.match(text, /sessionStorage\.getItem\(BROWSER_SESSION_ID_KEY\)/)
+  assert.match(text, /sessionStorage\.setItem\(BROWSER_SESSION_ID_KEY, generated\)/)
+  assert.doesNotMatch(text, /localStorage\.setItem\(BROWSER_SESSION_ID_KEY/)
+  assert.match(text, /'X-Browser-Session-Id': getOrCreateBrowserSessionId\(\)/)
+  assert.match(text, /value === '\/auth\/login' \|\| value\.startsWith\('\/auth\/browser-'\)/)
+  assert.match(text, /\.\.\.browserSessionHeaders\(\)/)
+})

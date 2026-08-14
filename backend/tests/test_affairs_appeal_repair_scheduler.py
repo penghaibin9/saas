@@ -27,7 +27,12 @@ def test_external_scheduler_calls_repair_and_async_export_explicitly():
     source = inspect.getsource(run_scheduled_jobs.job_student_affairs_background)
     assert "repair.repair_pending" in source
     assert "leave_export.run_pending" in source
-    assert "TRIAL" in inspect.getsource(run_scheduled_jobs._schedulable_tenant_ids)
+    candidate_source = inspect.getsource(run_scheduled_jobs._candidate_tenant_ids)
+    assert "Tenant.is_deleted.is_(False)" in candidate_source
+    assert "Tenant.status" not in candidate_source
+    runner_source = inspect.getsource(run_scheduled_jobs._run_for_tenants)
+    assert "background_execution_policy" in runner_source
+    assert "businessWriteAllowed" in runner_source
 
 
 def test_run_due_executes_persisted_repair_queue(monkeypatch):

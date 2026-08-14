@@ -2,6 +2,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 
@@ -43,11 +44,10 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function openWithApiSession(page, api, path) {
-  await page.addInitScript(({ token }) => {
-    window.sessionStorage.setItem('gx_pc_token_v1', token)
-  }, { token: api.token })
-  await page.goto(`${config.staffBaseUrl}${path}`)
+async function openWithApiSession(page, _api, path) {
+  // API login remains responsible only for isolated fixture writes. Browser evidence must use the
+  // real v2 staff session and wait for its one-time refresh to settle before any storage-driven reload.
+  await openGoldenStaffPage(page, path)
 }
 
 async function setStorage(page, key, value) {
@@ -228,11 +228,10 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
 
   test('Graduation result statistics · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/stats-report')
-    await setStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
-    await page.reload()
+    const batchPath = `/admin/graduation/stats-report?batchId=${encodeURIComponent(graduationFixture.batchId)}`
+    await openWithApiSession(page, adminApi, batchPath)
 
-    await expect(page).toHaveURL(/\/admin\/graduation\/stats-report/)
+    await expect(page).toHaveURL(/\/admin\/graduation\/stats-report\?batchId=/)
     await expect(page.getByRole('heading', { name: '毕设统计报表', exact: true })).toBeVisible()
     await expect(page.locator('.gs-grid').first()).toBeVisible()
     await expect(page.locator('.mp-card').filter({ hasText: '开题统计' }).first()).toBeVisible()
