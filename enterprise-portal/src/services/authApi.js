@@ -1,13 +1,13 @@
-import { getTenantCode, request, setAuthTokens, setSelectedCampaignId, setTenantCode } from './request'
+import { request, setAuthTokens, setSelectedCampaignId, setTenantCode } from './request'
 
 const ROOT='/internship/enterprise-portal'
 
 function captureAuth(data,tenantCode,campaignId=''){
-  const previousTenant=getTenantCode()
-  if(previousTenant&&previousTenant!==tenantCode)setSelectedCampaignId('')
   setAuthTokens(data||{})
   setTenantCode(tenantCode)
-  if(campaignId)setSelectedCampaignId(campaignId)
+  // 普通登录必须清掉上一次企业成员/招聘季选择；只有邀请激活携带的
+  // campaignId 可以在服务端已校验的邀请上下文下直接锁定。
+  setSelectedCampaignId(campaignId||'')
   return data
 }
 
