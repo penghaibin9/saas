@@ -54,7 +54,8 @@ def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
             InternshipEnterpriseApplicationDecision.is_deleted.is_(False),
         ).with_for_update())
     if campaign.enterprise_confirm_required:
-        group_svc.lazy_release_expired_lock_in_tx(db, group=group, tenant_id=record.tenant_id, now=now) if group else None
+        if group:
+            group_svc.lazy_release_expired_lock_in_tx(db, group=group, tenant_id=record.tenant_id, now=now)
         valid = bool(
             application and group and decision
             and group.status == "LOCKED"
@@ -84,14 +85,16 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
     campaign, application, group, decision = _source_for_campaign_in_tx(
         db, record=record, position=position, now=now,
     )
-    result = _ORIGINAL(db, record, position_id, expected_version, user=user)
-    # Re-read refreshed position state after capacity claim/version increment performed by Authority.
-    db.refresh(position)
     company = db.get(student_svc.EmpCompany, position.company_id)
     batch = db.get(student_svc.InternshipBatch, record.batch_id) if record.batch_id else None
     student = db.get(student_svc.StudentProfile, record.student_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
+    # Freeze the approval-time rights evidence BEFORE the canonical capacity claim. Re-evaluating
+    # after a last-slot claim would incorrectly report POSITION_FULL for the placement that won.
     rights = evaluate_position_publishability(position, company, batch, student, operation="ASSIGN", db=db)
+    result = _ORIGINAL(db, record, position_id, expected_version, user=user)
+    # Refresh only the mutable position version after the existing Authority has claimed capacity.
+    db.refresh(position)
     snap = snapshot_svc.capture_placement_snapshot_in_tx(
         db,
         record=record,
