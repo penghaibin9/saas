@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "card": "B4",
+  "authority": "CONTROL_PLANE_OUTER_IAM_ONLY",
+  "context": {
+    "requiredFields": [
+      "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
+      "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
+      "securityRevisionHealthy", "ctxKey", "moduleStates", "moduleEntitlements",
+      "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary"
+    ],
+    "moduleCalculationFailure": {
+      "moduleEntitlements": null,
+      "moduleAccessHealthy": false,
+      "cacheable": false
+    }
+  },
+  "schoolAccessOrder": [
+    "moduleEntitlement:internship",
+    "tenantPrincipal",
+    "permission",
+    "dataScope",
+    "campaignBatchRecordRelationship",
+    "internshipDomainGuard"
+  ],
+  "enterpriseAccessOrder": [
+    "enterprisePrincipal",
+    "moduleEntitlement:internship",
+    "enterprisePermission",
+    "EnterpriseMember:ACTIVE",
+    "AccessGrant:ACTIVE_AND_IN_WINDOW",
+    "CampaignEnterprise:ACCEPTED",
+    "companyOwnership",
+    "resourceOrMentorScope",
+    "domainStateMachine"
+  ],
+  "reasonCodes": [
+    "MODULE_ACCESS_UNAVAILABLE",
+    "MODULE_NOT_ENTITLED",
+    "PERMISSION_DENIED",
+    "DATA_SCOPE_DENIED",
+    "DOMAIN_GUARD_NOT_EVALUATED",
+    "DOMAIN_GUARD_DENIED",
+    "ENTERPRISE_PRINCIPAL_REQUIRED",
+    "ENTERPRISE_MEMBER_INACTIVE",
+    "GRANT_EXPIRED",
+    "CAMPAIGN_NOT_ACCEPTED",
+    "WRONG_COMPANY",
+    "RESOURCE_SCOPE_DENIED",
+    "STATE_NOT_ALLOWED"
+  ],
+  "eSeriesBoundary": {
+    "controlPlaneMay": ["consumeFacts", "explain", "enforceOuterModuleAndPermission"],
+    "controlPlaneMustNotOwn": [
+      "EnterpriseMember", "EnterpriseAccessGrant", "CampaignEnterprise",
+      "VolunteerGroup", "eligibilityGuard", "enterpriseResourceOwnership", "internshipStateMachine"
+    ]
+  }
+}

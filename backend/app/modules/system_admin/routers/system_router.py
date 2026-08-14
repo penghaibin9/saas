@@ -44,8 +44,6 @@ def _assert_permission_rows_exist(codes: set[str]) -> None:
 def _assert_custom_role_catalog_policy(codes: set[str]) -> None:
     from app.core.permission_catalog import assert_custom_role_assignable
 
-    # Exact enterprise/platform/non-assignable codes are denied immediately.
-    # Existing legacy TENANT families remain explicitly transitional until B8.
     assert_custom_role_assignable(codes, allow_legacy_patterns=True)
 
 
@@ -54,20 +52,21 @@ def get_system_context(user=Depends(require_any_permission(
         "systemAdmin.dashboard.view", "systemAdmin.user.view", "systemAdmin.role.view",
         "systemAdmin.org.view", "systemAdmin.audit.view", "systemAdmin.config.view",
         "systemAdmin.implementation.view", "systemAdmin.scope.view"))):
-    """Preserve entitlement-computation failure instead of coercing None to []."""
-    from app.core.permissions import get_effective_access_context
+    """Preserve failure state and expose the canonical EffectiveAccess cache contract."""
+    from app.core.effective_access import build_effective_access_context
 
     payload = _bundle.get_system_context(user=user)
-    access = get_effective_access_context(user or {})
+    access = build_effective_access_context(user or {})
     if isinstance(payload, dict):
         data = payload.get("data")
         if isinstance(data, dict):
-            data["principalPlane"] = "TENANT"
-            data["moduleEntitlements"] = access.get("moduleEntitlements")
-            data["moduleStates"] = access.get("moduleStates") or {}
-            data["moduleAccessHealthy"] = bool(access.get("moduleAccessHealthy"))
-            data["moduleAccessError"] = access.get("moduleAccessError") or ""
-            data["permissionVersion"] = access.get("permissionVersion")
+            for key in (
+                "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
+                "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
+                "securityRevisionHealthy", "securityRevisionError", "ctxKey", "moduleEntitlements",
+                "moduleStates", "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary",
+            ):
+                data[key] = access.get(key)
     return payload
 
 
