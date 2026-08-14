@@ -118,13 +118,14 @@ def issue_grant_in_tx(
     valid_until: datetime,
     campaign_id: int | None = None,
     batch_id: int | None = None,
+    tenant_id: int | None = None,
 ) -> InternshipEnterpriseAccessGrant:
     """Issue/reuse a grant without committing, so invite activation can share one transaction.
 
     The member row is locked first. This also serializes duplicate issue attempts for scopes whose
     nullable campaign/batch columns cannot be fully protected by a MySQL UNIQUE with NULL values.
     """
-    tenant_id = _tid()
+    scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()
     kind = (grant_type or "").upper()
     if kind not in ENTERPRISE_GRANT_TYPES:
         raise AppException("VALIDATION_ERROR", "grantType 必须是 RECRUITMENT/INTERNSHIP_COLLAB")
@@ -133,7 +134,7 @@ def issue_grant_in_tx(
     if valid_from >= valid_until:
         raise AppException("VALIDATION_ERROR", "validFrom 必须早于 validUntil")
 
-    member = _get_member(db, member_id, tenant_id=tenant_id, lock=True)
+    member = _get_member(db, member_id, tenant_id=scope_tenant_id, lock=True)
     if member.status != "ACTIVE":
         raise AppException("NO_PERMISSION", "只有 ACTIVE 企业成员可以获得访问授权")
 
@@ -147,7 +148,7 @@ def issue_grant_in_tx(
     )
     existing = db.scalar(
         select(InternshipEnterpriseAccessGrant).where(
-            InternshipEnterpriseAccessGrant.tenant_id == tenant_id,
+            InternshipEnterpriseAccessGrant.tenant_id == scope_tenant_id,
             InternshipEnterpriseAccessGrant.member_id == member.id,
             InternshipEnterpriseAccessGrant.is_deleted.is_(False),
             *_scope_predicates(
@@ -163,7 +164,7 @@ def issue_grant_in_tx(
         raise AppException("DATA_CONFLICT", "该授权范围已有历史 Grant，不可静默覆盖或复活")
 
     grant = InternshipEnterpriseAccessGrant(
-        tenant_id=tenant_id,
+        tenant_id=scope_tenant_id,
         member_id=member.id,
         company_id=member.company_id,
         grant_type=kind,
@@ -207,17 +208,18 @@ def resolve_active_grant_in_tx(
     campaign_id: int | None = None,
     batch_id: int | None = None,
     now: datetime | None = None,
+    tenant_id: int | None = None,
 ) -> InternshipEnterpriseAccessGrant:
-    tenant_id = _tid()
+    scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()
     kind = (grant_type or "").upper()
     if kind not in ENTERPRISE_GRANT_TYPES:
         raise AppException("VALIDATION_ERROR", "grantType 非法")
-    member = _get_member(db, member_id, tenant_id=tenant_id)
+    member = _get_member(db, member_id, tenant_id=scope_tenant_id)
     if member.status != "ACTIVE":
         raise AppException("NO_PERMISSION", "企业成员已停用")
     grant = db.scalar(
         select(InternshipEnterpriseAccessGrant).where(
-            InternshipEnterpriseAccessGrant.tenant_id == tenant_id,
+            InternshipEnterpriseAccessGrant.tenant_id == scope_tenant_id,
             InternshipEnterpriseAccessGrant.member_id == member.id,
             InternshipEnterpriseAccessGrant.company_id == member.company_id,
             InternshipEnterpriseAccessGrant.is_deleted.is_(False),

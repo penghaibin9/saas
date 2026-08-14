@@ -86,7 +86,8 @@ def test_effective_status_fails_closed_on_time_and_revocation():
 
 def test_issue_path_locks_member_first_and_serializes_nullable_scope_duplicates():
     source = inspect.getsource(service.issue_grant_in_tx)
-    assert "_get_member(db, member_id, tenant_id=tenant_id, lock=True)" in source
+    assert "scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()" in source
+    assert "_get_member(db, member_id, tenant_id=scope_tenant_id, lock=True)" in source
     assert "nullable campaign/batch" in source
     assert "_scope_predicates(" in source
     assert ".with_for_update()" in source
@@ -105,6 +106,7 @@ def test_recruitment_grant_requires_accepted_campaign_participation_and_access_d
 
 def test_active_grant_resolution_checks_member_company_status_and_effective_window():
     source = inspect.getsource(service.resolve_active_grant_in_tx)
+    assert "scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()" in source
     assert 'member.status != "ACTIVE"' in source
     assert "InternshipEnterpriseAccessGrant.company_id == member.company_id" in source
     assert "effective_grant_status(grant, now=now) != \"ACTIVE\"" in source

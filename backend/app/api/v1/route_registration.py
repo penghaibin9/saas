@@ -101,10 +101,10 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
         internship, internship_agreement_template, internship_application, internship_archive,
         internship_communication, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned, internship_insurance,
+        internship_enterprise_eval_versioned, internship_enterprise_portal, internship_insurance,
         internship_match, internship_material_center, internship_participant,
-        internship_plan, internship_position, internship_process, internship_stats,
-        internship_student, internship_visit_plan,
+        internship_plan, internship_position, internship_process, internship_recruitment_campaign,
+        internship_stats, internship_student, internship_visit_plan,
     )
     d = deps["intern"]
     # 安全优先路由必须先于旧协议/保险/报告/归档路由注册。
@@ -114,9 +114,13 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_match, internship_participant, internship_application, internship_archive,
         internship_stats, internship_plan, internship_insurance, internship_process,
         internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned,
+        internship_enterprise_eval_versioned, internship_recruitment_campaign,
     ):
         api_router.include_router(r.router, dependencies=d)
+
+    # 企业协同端绝不能继承 require_staff。它只使用 enterprise portal 自己的
+    # EnterpriseMember/Grant/Company/CampaignEnterprise fail-closed context guard。
+    api_router.include_router(internship_enterprise_portal.router)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:

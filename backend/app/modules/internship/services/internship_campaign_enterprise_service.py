@@ -24,7 +24,7 @@ from app.services.db_service import _as_id, _iso, _tid, session
 def _actor_user_id(user) -> int | None:
     raw = (user or {}).get("id") or (user or {}).get("userId")
     try:
-        return int(raw) if raw is not None else None
+        return int(str(raw).removeprefix("db-")) if raw is not None else None
     except (TypeError, ValueError):
         return None
 
@@ -40,6 +40,8 @@ def _get_company(db, company_id: int, *, tenant_id: int, require_admission: bool
     if not company:
         raise not_found("企业不存在或不在当前租户范围内")
     if require_admission:
+        if (company.status or "").upper() != "ACTIVE":
+            raise AppException("DATA_CONFLICT", "企业主档已停用")
         if company.blacklist or company.coop_status == "BLACKLIST":
             raise AppException("DATA_CONFLICT", "黑名单企业不能参加招聘季")
         if company.coop_status != "ACTIVE":
