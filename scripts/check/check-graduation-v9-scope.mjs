@@ -10,6 +10,9 @@ const CARD_ALLOW = {
   CI_PREREQ: [
     /^\.github\/workflows\/ci\.yml$/,
   ],
+  E2E_PREREQ: [
+    /^e2e\/specs\/golden-rollout-material-evidence\.spec\.mjs$/,
+  ],
   AUDIT_REPAIR: [
     /^scripts\/check\/check-graduation-v9-scope(?:\.test)?\.mjs$/,
     /^scripts\/check\/check-npm-production-audit(?:\.test)?\.mjs$/,
