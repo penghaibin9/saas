@@ -140,3 +140,7 @@ from app.models.internship_application_material_snapshot import (  # noqa: E402,
     InternshipApplicationMaterialSnapshot,
 )
 from app.models.internship_volunteer_group import InternshipVolunteerGroup  # noqa: E402,F401
+from app.models.internship_enterprise_application_decision import (  # noqa: E402,F401
+    InternshipEnterpriseApplicationDecision,
+)
+from app.models.internship_placement_snapshot import InternshipPlacementSnapshot  # noqa: E402,F401
