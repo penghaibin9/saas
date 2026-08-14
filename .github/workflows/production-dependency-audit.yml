@@ -12,7 +12,6 @@ on:
       - "miniapp/package.json"
       - "miniapp/package-lock.json"
       - "e2e/package.json"
-      - "e2e/package-lock.json"
       - "scripts/check/check-npm-production-audit.mjs"
       - "scripts/check/check-npm-production-audit.test.mjs"
       - ".github/security/npm-production-audit-waivers.json"
@@ -54,8 +53,6 @@ jobs:
             directory: student-portal
           - app: miniapp
             directory: miniapp
-          - app: e2e
-            directory: e2e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,5 +84,107 @@ jobs:
           path: |
             ${{ matrix.directory }}/audit-production.json
             ${{ matrix.directory }}/audit-full.json
+          if-no-files-found: error
+          retention-days: 14
+
+  remediation-candidates:
+    name: ${{ matrix.app }} safe lock candidate
+    needs: policy-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: frontend
+            directory: frontend
+          - app: student-portal
+            directory: student-portal
+          - app: miniapp
+            directory: miniapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Prepare isolated package graph candidate
+        env:
+          APP: ${{ matrix.app }}
+          DIRECTORY: ${{ matrix.directory }}
+        run: |
+          set -euo pipefail
+          target="$GITHUB_WORKSPACE/.audit-candidates/$APP"
+          mkdir -p "$target"
+          cp "$DIRECTORY/package.json" "$target/package.json"
+          cp "$DIRECTORY/package-lock.json" "$target/package-lock.json"
+          node --input-type=module - "$APP" "$target/package.json" <<'NODE'
+          import fs from 'node:fs'
+          const [, , app, path] = process.argv
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'))
+          pkg.overrides = { ...(pkg.overrides || {}), nanoid: '3.3.18' }
+          if (app === 'miniapp') {
+            const buildOnly = [
+              '@dcloudio/types',
+              '@dcloudio/uni-cli-shared',
+              '@dcloudio/uni-mp-weixin',
+              '@dcloudio/vite-plugin-uni',
+              'sass',
+              'vite',
+            ]
+            pkg.devDependencies = { ...(pkg.devDependencies || {}) }
+            for (const name of buildOnly) {
+              if (pkg.dependencies?.[name]) {
+                pkg.devDependencies[name] = pkg.dependencies[name]
+                delete pkg.dependencies[name]
+              }
+            }
+            pkg.dependencies['vue-i18n'] = '^9.14.5'
+            pkg.overrides.postcss = '8.5.23'
+          }
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+          cd "$target"
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --json > audit-production-candidate.json || true
+      - name: Require candidate production graph to clear high and critical
+        run: >-
+          node scripts/check/check-npm-production-audit.mjs
+          .audit-candidates/${{ matrix.app }}/audit-production-candidate.json
+          ${{ matrix.app }}
+          .github/security/npm-production-audit-waivers.json
+      - name: Upload exact npm-generated candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-remediation-${{ matrix.app }}
+          path: |
+            .audit-candidates/${{ matrix.app }}/package.json
+            .audit-candidates/${{ matrix.app }}/package-lock.json
+            .audit-candidates/${{ matrix.app }}/audit-production-candidate.json
+          if-no-files-found: error
+          retention-days: 2
+
+  e2e-development-inventory:
+    name: e2e development dependency inventory
+    needs: policy-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Resolve test-only graph without production classification
+        working-directory: e2e
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Capture non-blocking E2E development inventory
+        working-directory: e2e
+        run: npm audit --json > audit-full.json || true
+      - name: Upload E2E development audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-e2e-development
+          path: e2e/audit-full.json
           if-no-files-found: error
           retention-days: 14
