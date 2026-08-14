@@ -163,6 +163,8 @@ def build_router() -> APIRouter:
     _mount_routes(router, graduation_certificate_module.router)
     warning_core_module = importlib.import_module(f"{__package__}.warning_core_router")
     _mount_routes(router, warning_core_module.router)
+    evaluation_core_module = importlib.import_module(f"{__package__}.evaluation_core_router")
+    _mount_routes(router, evaluation_core_module.router)
     _mount_routes(
         router,
         base_router.router,
