@@ -1,4 +1,4 @@
-import { POSITION_MATCH_STATES } from './selectionContract'
+import { POSITION_MATCH_STATES } from './selectionContract.js'
 
 const MATCH_LABELS = Object.freeze({
   MATCHED: '专业匹配',

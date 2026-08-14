@@ -6,7 +6,10 @@
         <h1>实习选岗</h1>
         <p>浏览学校认可实习岗位，完善材料后选择 1–3 个志愿并整组投递。</p>
       </div>
-      <button type="button" class="profile-entry" @click="router.push('/internship/profile')">实习档案</button>
+      <div class="header-actions">
+        <button type="button" class="profile-entry" @click="router.push('/internship/profile')">实习档案</button>
+        <button type="button" class="volunteer-entry" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
+      </div>
     </header>
 
     <div v-if="loading" class="selection-state">正在加载当前招聘季…</div>
@@ -63,13 +66,38 @@
           <PositionDetail
             v-else
             :position="selectedPosition"
-            :disabled="!context.canSelect || selectedPosition.remaining <= 0"
+            :disabled="!context.canSelect || selectedPosition.remaining <= 0 || !volunteerEditable"
             @add-volunteer="prepareVolunteer"
             @view-company="viewCompany"
           />
         </section>
+
+        <div class="volunteer-pane" :class="{ 'is-open': volunteerOpen }">
+          <div class="volunteer-pane__mobile-head">
+            <strong>我的志愿</strong>
+            <button type="button" @click="volunteerOpen = false">关闭</button>
+          </div>
+          <div v-if="volunteerLoading" class="volunteer-state">正在加载我的志愿…</div>
+          <VolunteerBoard
+            v-else
+            :group="volunteerGroup"
+            :slots="volunteerSlots"
+            :candidate="candidatePosition"
+            :editable="volunteerEditable"
+            :busy="volunteerBusy"
+            :error="volunteerError"
+            @move="moveVolunteerSlot"
+            @remove="removeVolunteerSlot"
+            @replace="replaceVolunteerSlot"
+            @statement="changeVolunteerStatement"
+            @save="persistVolunteerSlots(volunteerSlots)"
+          />
+        </div>
       </div>
     </main>
+
+    <button type="button" class="volunteer-fab" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
+    <button v-if="volunteerOpen" type="button" class="volunteer-backdrop" aria-label="关闭我的志愿" @click="volunteerOpen = false" />
   </div>
 </template>
 
@@ -80,10 +108,21 @@ import RecruitmentContextBar from '../../components/recruitment/RecruitmentConte
 import PositionSearchFilters from '../../components/recruitment/PositionSearchFilters.vue'
 import PositionCard from '../../components/recruitment/PositionCard.vue'
 import PositionDetail from '../../components/recruitment/PositionDetail.vue'
-import { normalizeRecruitmentContext } from '../../modules/internshipRecruitment/contextModel'
-import { normalizePosition } from '../../modules/internshipRecruitment/positionModel'
-import { normalizeCatalogQuery } from '../../modules/internshipRecruitment/selectionContract'
-import { internshipSelectionApi } from '../../services/internshipSelectionApi'
+import VolunteerBoard from '../../components/recruitment/VolunteerBoard.vue'
+import { normalizeRecruitmentContext } from '../../modules/internshipRecruitment/contextModel.js'
+import { normalizePosition } from '../../modules/internshipRecruitment/positionModel.js'
+import { normalizeCatalogQuery } from '../../modules/internshipRecruitment/selectionContract.js'
+import {
+  addVolunteer,
+  buildVolunteerGroupSaveRequest,
+  canEditVolunteerGroup,
+  moveVolunteer,
+  normalizeVolunteerGroup,
+  removeVolunteer,
+  replaceVolunteer,
+  updateVolunteerStatement
+} from '../../modules/internshipRecruitment/volunteerModel.js'
+import { internshipSelectionApi } from '../../services/internshipSelectionApi.js'
 
 const router = useRouter()
 const loading = ref(true)
@@ -100,11 +139,20 @@ const selectedPositionId = ref(null)
 const selectedPosition = ref(null)
 const detailLoading = ref(false)
 const detailError = ref('')
-const pendingVolunteerPositionId = ref(null)
+const volunteerLoading = ref(true)
+const volunteerBusy = ref(false)
+const volunteerError = ref('')
+const volunteerGroup = ref(normalizeVolunteerGroup())
+const volunteerSlots = ref(volunteerGroup.value.slots)
+const candidatePosition = ref(null)
+const volunteerOpen = ref(false)
 let catalogRequestSeq = 0
 let detailRequestSeq = 0
+let volunteerRequestSeq = 0
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / query.value.pageSize)))
+const volunteerEditable = computed(() => canEditVolunteerGroup(volunteerGroup.value) && context.value.canSelect)
+const volunteerSelectedCount = computed(() => volunteerSlots.value.filter((slot) => slot.positionId).length)
 
 async function loadContext() {
   loading.value = true
@@ -168,26 +216,109 @@ async function selectPosition(positionId, force = false) {
   }
 }
 
+async function loadVolunteerGroup() {
+  const requestId = ++volunteerRequestSeq
+  volunteerLoading.value = true
+  volunteerError.value = ''
+  try {
+    const data = await internshipSelectionApi.volunteers()
+    if (requestId !== volunteerRequestSeq) return
+    const normalized = normalizeVolunteerGroup(data || {})
+    volunteerGroup.value = normalized
+    volunteerSlots.value = normalized.slots
+    candidatePosition.value = null
+  } catch (err) {
+    if (requestId !== volunteerRequestSeq) return
+    volunteerGroup.value = normalizeVolunteerGroup()
+    volunteerSlots.value = volunteerGroup.value.slots
+    volunteerError.value = err?.message || '志愿组加载失败；A01 接口就绪后将在此读取真实志愿。'
+  } finally {
+    if (requestId === volunteerRequestSeq) volunteerLoading.value = false
+  }
+}
+
+async function persistVolunteerSlots(nextSlots) {
+  if (!volunteerEditable.value) {
+    volunteerError.value = '当前志愿状态不可直接修改。'
+    return false
+  }
+  const previousSlots = volunteerSlots.value
+  const proposedSlots = nextSlots.map((slot) => ({ ...slot, position: slot.position ? { ...slot.position } : null }))
+  volunteerSlots.value = proposedSlots
+  volunteerBusy.value = true
+  volunteerError.value = ''
+  try {
+    const payload = buildVolunteerGroupSaveRequest(volunteerGroup.value, proposedSlots)
+    const data = await internshipSelectionApi.saveVolunteers(payload)
+    if (data) {
+      const normalized = normalizeVolunteerGroup(data)
+      volunteerGroup.value = normalized
+      volunteerSlots.value = normalized.slots
+    } else {
+      await loadVolunteerGroup()
+    }
+    candidatePosition.value = null
+    return true
+  } catch (err) {
+    volunteerSlots.value = previousSlots
+    volunteerError.value = err?.message || '志愿整组保存失败，未保留本地修改。'
+    return false
+  } finally {
+    volunteerBusy.value = false
+  }
+}
+
+async function prepareVolunteer(position) {
+  if (!volunteerEditable.value) {
+    volunteerOpen.value = true
+    volunteerError.value = '当前志愿组不可直接编辑，请查看当前状态说明。'
+    return
+  }
+  if (volunteerSlots.value.some((slot) => String(slot.positionId) === String(position?.id))) {
+    volunteerOpen.value = true
+    return
+  }
+  if (volunteerSelectedCount.value >= 3) {
+    candidatePosition.value = normalizePosition(position)
+    volunteerOpen.value = true
+    return
+  }
+  await persistVolunteerSlots(addVolunteer(volunteerSlots.value, position))
+  volunteerOpen.value = true
+}
+
+function moveVolunteerSlot(volunteerNo, direction) {
+  persistVolunteerSlots(moveVolunteer(volunteerSlots.value, volunteerNo, direction))
+}
+function removeVolunteerSlot(volunteerNo) {
+  if (volunteerSelectedCount.value <= 1) {
+    volunteerError.value = '至少保留 1 个岗位志愿；如需撤回已提交志愿，请使用整组撤回。'
+    return
+  }
+  persistVolunteerSlots(removeVolunteer(volunteerSlots.value, volunteerNo))
+}
+function replaceVolunteerSlot(volunteerNo, position) {
+  persistVolunteerSlots(replaceVolunteer(volunteerSlots.value, volunteerNo, position))
+}
+function changeVolunteerStatement(volunteerNo, statement) {
+  persistVolunteerSlots(updateVolunteerStatement(volunteerSlots.value, volunteerNo, statement))
+}
 function changePage(page) {
   loadPositions({ ...query.value, page })
 }
-
-function prepareVolunteer(position) {
-  pendingVolunteerPositionId.value = position?.id || null
-}
-
 function viewCompany(companyId) {
   if (!companyId) return
   router.push(`/internship/selection/company/${encodeURIComponent(companyId)}`)
 }
 
 onMounted(async () => {
-  await loadContext()
+  await Promise.all([loadContext(), loadVolunteerGroup()])
   await loadPositions(query.value)
 })
 onBeforeUnmount(() => {
   catalogRequestSeq += 1
   detailRequestSeq += 1
+  volunteerRequestSeq += 1
 })
 </script>
 
@@ -197,34 +328,55 @@ onBeforeUnmount(() => {
 .selection-kicker { margin:0 0 4px; color:#2f6bff; font-size:12px; font-weight:600; }
 h1 { margin:0; color:#1a1a1a; font-size:24px; line-height:1.35; }
 .selection-header p:last-child { margin:6px 0 0; color:#666; font-size:13px; }
-.profile-entry { flex-shrink:0; height:36px; padding:0 13px; border:1px solid #adc6ff; border-radius:7px; background:#fff; color:#2f6bff; cursor:pointer; font-weight:600; }
+.header-actions { display:flex; gap:8px; }
+.profile-entry,.volunteer-entry { flex-shrink:0; height:36px; padding:0 13px; border:1px solid #adc6ff; border-radius:7px; background:#fff; color:#2f6bff; cursor:pointer; font-weight:600; }
+.volunteer-entry { display:none; background:#2f6bff; color:#fff; border-color:#2f6bff; }
 .selection-state { display:flex; align-items:center; gap:12px; padding:18px 20px; border:1px solid #eef0f3; border-radius:12px; background:#fff; color:#595959; }
 .selection-state--error { align-items:flex-start; flex-direction:column; border-color:#ffccc7; background:#fff2f0; color:#a8071a; }
 .selection-state button,.catalog-state button,.catalog-pagination button { border:0; border-radius:6px; padding:7px 12px; background:#2f6bff; color:#fff; cursor:pointer; }
 .selection-shell { display:grid; gap:12px; margin-top:14px; }
-.catalog-workspace { display:grid; grid-template-columns:360px minmax(0,1fr); gap:12px; align-items:start; }
-.catalog-panel,.detail-panel { min-width:0; }
+.catalog-workspace { display:grid; grid-template-columns:360px minmax(0,1fr) 280px; gap:12px; align-items:start; }
+.catalog-panel,.detail-panel,.volunteer-pane { min-width:0; }
 .catalog-panel { border:1px solid #eef0f3; border-radius:10px; background:#fff; overflow:hidden; }
 .catalog-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 14px; border-bottom:1px solid #f0f0f0; }
 .catalog-summary div { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
 .catalog-summary strong { color:#1a1a1a; font-size:15px; }
 .catalog-summary span { color:#8c8c8c; font-size:12px; }
 .server-note { white-space:nowrap; }
-.catalog-state { display:flex; align-items:center; justify-content:center; gap:10px; min-height:160px; padding:20px; color:#8c8c8c; text-align:center; }
+.catalog-state,.volunteer-state { display:flex; align-items:center; justify-content:center; gap:10px; min-height:160px; padding:20px; color:#8c8c8c; text-align:center; }
 .catalog-state--error { color:#a8071a; }
 .position-list { display:flex; flex-direction:column; gap:8px; padding:10px; max-height:calc(100vh - 320px); overflow:auto; }
 .catalog-pagination { display:flex; align-items:center; justify-content:center; gap:12px; padding:12px; border-top:1px solid #f0f0f0; color:#666; font-size:13px; }
 .catalog-pagination button:disabled { background:#d9d9d9; cursor:not-allowed; }
-.detail-panel { position:sticky; top:12px; }
+.detail-panel,.volunteer-pane { position:sticky; top:12px; }
+.volunteer-pane__mobile-head { display:none; }
+.volunteer-fab,.volunteer-backdrop { display:none; }
+@media (max-width:1439px) {
+  .catalog-workspace { grid-template-columns:360px minmax(0,1fr); }
+  .volunteer-entry { display:inline-flex; align-items:center; }
+  .volunteer-pane { position:fixed; z-index:60; top:78px; right:18px; width:300px; max-height:calc(100vh - 96px); overflow:auto; transform:translateX(calc(100% + 32px)); transition:transform .18s ease; box-shadow:0 14px 40px rgba(25,49,83,.18); }
+  .volunteer-pane.is-open { transform:translateX(0); }
+  .volunteer-pane__mobile-head { display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid #dfe8f8; border-bottom:0; border-radius:10px 10px 0 0; background:#fff; }
+  .volunteer-pane__mobile-head strong { color:#333; font-size:13px; }
+  .volunteer-pane__mobile-head button { border:0; background:transparent; color:#2f6bff; cursor:pointer; }
+  .volunteer-pane .volunteer-board { border-radius:0 0 10px 10px; }
+  .volunteer-backdrop { display:block; position:fixed; z-index:50; inset:0; border:0; background:rgba(17,31,51,.18); }
+}
 @media (max-width:1099px) {
   .catalog-workspace { grid-template-columns:340px minmax(0,1fr); }
 }
 @media (max-width:899px) {
-  .selection-page { padding:12px; }
+  .selection-page { padding:12px 12px 70px; }
   .selection-header { align-items:flex-start; flex-direction:column; }
+  .header-actions { width:100%; }
+  .profile-entry { flex:1; }
+  .volunteer-entry { flex:1; justify-content:center; }
   .catalog-workspace { grid-template-columns:1fr; }
   .catalog-summary { align-items:flex-start; flex-direction:column; }
   .position-list { max-height:none; overflow:visible; }
   .detail-panel { position:static; }
+  .volunteer-pane { top:auto; left:10px; right:10px; bottom:10px; width:auto; max-height:82vh; transform:translateY(calc(100% + 24px)); }
+  .volunteer-pane.is-open { transform:translateY(0); }
+  .volunteer-fab { display:block; position:fixed; z-index:40; left:50%; bottom:12px; transform:translateX(-50%); min-width:180px; height:42px; border:0; border-radius:21px; background:#2f6bff; color:#fff; box-shadow:0 8px 24px rgba(47,107,255,.28); font-weight:700; }
 }
 </style>
