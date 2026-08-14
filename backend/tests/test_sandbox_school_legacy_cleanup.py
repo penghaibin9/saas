@@ -1,8 +1,6 @@
 """旧假身份清洗数据库合同：先识别历史残留、再造脏，证明只删高置信旧 seed 身份。"""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 
@@ -31,8 +29,6 @@ def test_legacy_identity_cleanup_removes_only_old_seed_account(db_mode):
         }
         assert set(fixed_before) == {"admin2", "teacher2", "student2"}
 
-        # legacy-100 自己就会经旧岗位实习种子产生 demo_intern_mentor；
-        # 这正是 standard-20k 重建时必须清掉的历史残留，不能在测试里假装基线为 0。
         baseline = legacy_identity_report(db, SANDBOX_TID)
         assert baseline["legacyUsers"] >= 1
         assert "demo_intern_mentor" in baseline["legacyLogins"]
@@ -152,34 +148,5 @@ def test_legacy_identity_cleanup_never_touches_pilot_tenant(db_mode):
             User.is_deleted.is_(False),
         )).one_or_none()
         assert pilot_user_after_reject is not None
-    finally:
-        db.close()
-
-
-def test_20k_gate_primes_demo_school_neighbor_sentinel(db_mode):
-    """专门门禁先落旁租户哨兵，让后续全量 reset 的 demo-school 前后对账真正执行。"""
-    if os.getenv("GITHUB_WORKFLOW") != "Sandbox 20K Real-School Data Gate":
-        pytest.skip("仅用于 20K 专门门禁的跨租户持久哨兵")
-
-    from sqlalchemy import func, select
-
-    from app.db.session import get_sessionmaker
-    from app.models import StudentProfile, Tenant
-    from scripts._seed_two_tenants import DEMO_CODE, DEMO_TID, seed_demo_tenant
-
-    db = get_sessionmaker()()
-    try:
-        seed_demo_tenant(db)
-        tenant = db.get(Tenant, DEMO_TID)
-        assert tenant is not None
-        assert tenant.tenant_code == DEMO_CODE
-        student_count = int(db.scalar(
-            select(func.count()).select_from(StudentProfile).where(
-                StudentProfile.tenant_id == DEMO_TID,
-                StudentProfile.is_deleted.is_(False),
-            )
-        ) or 0)
-        assert student_count >= 20
-        print(f"[20k-neighbor-sentinel] demo-school students={student_count}")
     finally:
         db.close()

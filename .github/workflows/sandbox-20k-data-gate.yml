@@ -12,6 +12,7 @@ on:
       - backend/app/api/v1/sandbox_story_api.py
       - backend/app/api/v1/router.py
       - backend/scripts/reset_sandbox_school.py
+      - backend/scripts/prime_sandbox_neighbor_sentinel.py
       - backend/scripts/clean_sandbox_legacy_data.py
       - backend/scripts/check_sandbox_20k_school.py
       - backend/scripts/check_sandbox_20k_rebuild_budget.py
@@ -124,6 +125,7 @@ jobs:
             app/api/v1/sandbox_story_api.py
             app/api/v1/router.py
             scripts/reset_sandbox_school.py
+            scripts/prime_sandbox_neighbor_sentinel.py
             scripts/clean_sandbox_legacy_data.py
             scripts/check_sandbox_20k_school.py
             scripts/check_sandbox_20k_rebuild_budget.py
@@ -152,18 +154,6 @@ jobs:
             fi
           done
           rm -f test-results/sandbox-20k/compile-error.txt
-
-      - name: Alembic单头与MySQL空库升级
-        working-directory: backend
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p test-results/sandbox-20k
-          {
-            test "$(alembic heads | wc -l)" -eq 1
-            alembic upgrade head
-            alembic current
-          } 2>&1 | tee test-results/sandbox-20k/alembic.log
 
       - name: 20K纯数据规格合同
         working-directory: backend
@@ -195,7 +185,7 @@ jobs:
         run: |
           set +e
           mkdir -p test-results/sandbox-20k
-          pytest -q \
+          FAST_TEST_SCHEMA=1 pytest -q \
             tests/test_sandbox_school_legacy_cleanup.py \
             tests/test_sandbox_story_reset_route.py \
             -p no:warnings \
@@ -207,14 +197,41 @@ jobs:
             exit "$status"
           fi
 
-      - name: 全量生成20K真实学校演示数据
+      - name: Alembic单头与MySQL空库升级
         working-directory: backend
         shell: bash
         run: |
           set -o pipefail
           mkdir -p test-results/sandbox-20k
+          {
+            mysql -h127.0.0.1 -uroot -proot -e '
+              DROP DATABASE IF EXISTS sandbox_20k_gate;
+              CREATE DATABASE sandbox_20k_gate CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+            '
+            test "$(alembic heads | wc -l)" -eq 1
+            alembic upgrade head
+            alembic current
+          } 2>&1 | tee test-results/sandbox-20k/alembic.log
+
+      - name: 预置demo-school旁租户保护哨兵
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/prime_sandbox_neighbor_sentinel.py --prime \
+            2>&1 | tee test-results/sandbox-20k/neighbor-sentinel.log
+
+      - name: 全量生成20K真实学校演示数据并复核旁租户
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/sandbox-20k
           /usr/bin/time -v python scripts/reset_sandbox_school.py --confirm --profile standard-20k \
             2>&1 | tee test-results/sandbox-20k/rebuild.log
+          grep -F '[reset] 复核 demo-school 学生数：20 → 20' test-results/sandbox-20k/rebuild.log
+          python scripts/prime_sandbox_neighbor_sentinel.py --verify \
+            2>&1 | tee -a test-results/sandbox-20k/neighbor-sentinel.log
 
       - name: 20K只读数据与关系验收
         working-directory: backend
@@ -233,6 +250,7 @@ jobs:
           mkdir -p test-results/sandbox-20k
           mysql -h127.0.0.1 -uroot -proot sandbox_20k_gate -N -e '
             SELECT "students", COUNT(*) FROM t_student_profile WHERE tenant_id=1000000000000000007;
+            SELECT "demo_school_students", COUNT(*) FROM t_student_profile WHERE tenant_id=1000000000000000012 AND is_deleted=0;
             SELECT "student_account_links", COUNT(*) FROM t_student_account_link WHERE tenant_id=1000000000000000007 AND link_status="ACTIVE";
             SELECT "background_staff", COUNT(*) FROM t_user WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND login_name LIKE "sbx_%";
             SELECT "legacy_seed_users", COUNT(*) FROM t_user WHERE tenant_id=1000000000000000007 AND is_deleted=0 AND (login_name LIKE "t\\_%" OR login_name LIKE "demo\\_%");
@@ -285,6 +303,7 @@ jobs:
             echo "mysql=8.0"
             echo "profile=standard-20k"
             echo "referenceDate=2026-08-13"
+            echo "neighborTenant=demo-school"
           } > test-results/sandbox-20k/gate-summary.txt
 
       - name: 上传20K验收证据
