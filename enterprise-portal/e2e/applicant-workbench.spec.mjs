@@ -3,32 +3,25 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page, { released = false } = {}) {
-  await page.route('**/api/v1/enterprise/internship/**', async (route) => {
+  await page.addInitScript(() => sessionStorage.setItem('ep_campaign_id_v1', '2027-spring'))
+
+  const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
 
-    if (path.endsWith('/context')) {
+    if (path.endsWith('/internship/enterprise-portal/context')) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
-          schoolName: '长沙职业技术学院',
-          companyName: '中联重科股份有限公司',
-          memberName: '企业HR',
-          memberRole: 'HR',
-          campaign: {
-            id: '2027-spring',
-            name: '2027届春季岗位实习双选季',
-            status: 'OPEN',
-            phaseLabel: '企业处理报名学生',
-            enterpriseDecisionDeadline: '2027-03-20 18:00',
-          },
+          tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: 'HR', companyId: '21',
+          campaignId: '2027-spring', batchId: '2027', grantId: '31', grantType: 'RECRUITMENT',
           capabilities: { recruitmentWrite: true },
         })),
       })
     }
 
-    if (path.endsWith('/applications')) {
+    if (path.endsWith('/enterprise/internship/applications')) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
@@ -41,7 +34,7 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
-    if (path.endsWith('/applications/501/material')) {
+    if (path.endsWith('/enterprise/internship/applications/501/material')) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
@@ -54,23 +47,15 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
-    if (path.endsWith('/applications/501')) {
+    if (path.endsWith('/enterprise/internship/applications/501')) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
-          id: '501',
-          name: '张三',
-          major: '机械制造及自动化',
-          grade: '2025级',
-          positionName: '机械装配技术实习生',
-          volunteerNo: 1,
-          appliedAt: '03-06 10:21',
-          matchPercent: 95,
-          studentVerified: true,
+          id: '501', name: '张三', major: '机械制造及自动化', grade: '2025级', positionName: '机械装配技术实习生',
+          volunteerNo: 1, appliedAt: '03-06 10:21', matchPercent: 95, studentVerified: true,
           applicationStatement: '具备机械装配实训经验，希望从事智能制造方向。',
           volunteerGroupStatus: released ? 'NEEDS_REVISION' : 'SUBMITTED',
-          releaseReason: released ? 'TEACHER_CONFIRM_TIMEOUT' : '',
-          acceptIntentReleased: released,
+          releaseReason: released ? 'TEACHER_CONFIRM_TIMEOUT' : '', acceptIntentReleased: released,
           decisionStatus: released ? 'ACCEPT_INTENT' : 'INTERVIEW',
           contactPolicy: { allowed: false, maskedValue: '138****5678' },
           decisionHistory: [{ id: 'd1', status: 'INTERVIEW', effectStatus: 'ACTIVE', at: '03-08 14:00' }],
@@ -78,8 +63,18 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
+    if (path.endsWith('/enterprise/internship/campaigns')) {
+      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({items:[{id:'2027-spring',campaignName:'2027届春季岗位实习双选季',status:'OPEN'}]})) })
+    }
+    if (path.endsWith('/enterprise/internship/company')) {
+      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({name:'中联重科股份有限公司'})) })
+    }
+
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 404001, message: 'test route missing' }) })
-  })
+  }
+
+  await page.route('**/api/v1/internship/enterprise-portal/**', handler)
+  await page.route('**/api/v1/enterprise/internship/**', handler)
 }
 
 test('A02-6 BOSS-style applicant workbench keeps snapshot privacy boundary', async ({ page }) => {
@@ -94,14 +89,12 @@ test('A02-6 BOSS-style applicant workbench keeps snapshot privacy boundary', asy
   await expect(page.getByRole('button', { name: '联系方式未授权' })).toBeDisabled()
   await expect(page.getByText('身份证')).toHaveCount(0)
   await expect(page.getByText('其他志愿')).toHaveCount(0)
-
   await page.screenshot({ path: 'test-results/a02-applicant-workbench.png', fullPage: true })
 })
 
 test('A02-7 released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
   await installEnterpriseApi(page, { released: true })
   await page.goto('applications/501')
-
   await expect(page.getByText('学校未在确认期限内完成最终确认，本次拟接收已释放，申请状态可能发生变化。历史 Decision 仍保留在处理记录。')).toBeVisible()
   await expect(page.getByText('已录用')).toHaveCount(0)
 })
