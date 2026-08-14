@@ -41,7 +41,10 @@ test('contact forbidden stays masked and disabled',()=>{
 })
 
 test('decision conflict and locked release keep server reason and release truth',()=>{
-  assert.match(decision,/decision_disabled_reason|decisionDisabledReason/)
+  assert.match(decision,/decisionDisabledReason/)
+  assert.match(decision,/volunteerGroupStatus==='LOCKED'/)
+  assert.match(decision,/撤回拟接收/)
+  assert.match(decision,/withdrawAccept/)
   assert.match(detail,/等待学校最终确认/)
   assert.match(detail,/本次拟接收已释放/)
   assert.match(detail,/TEACHER_CONFIRM_TIMEOUT/)
