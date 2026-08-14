@@ -22,7 +22,13 @@
           <article class="card"><strong>{{ summary.roleCount || 0 }}</strong><span>学校角色</span></article>
           <article class="card"><strong>{{ summary.memberCount || 0 }}</strong><span>学校成员</span></article>
           <article class="card"><strong>{{ catalog.customRoleAssignablePermissions?.length || 0 }}</strong><span>自定义角色可分配权限</span></article>
+          <article class="card"><strong>{{ summary.customRoleMissingProvenanceCount || 0 }}</strong><span>缺少模板来源的 CUSTOM Role</span></article>
           <article class="card"><strong>{{ catalog.enterprisePermissionCount || 0 }}</strong><span>企业权限（仅可见，不可学校分配）</span></article>
+        </section>
+
+        <section v-if="summary.customRoleMissingProvenanceCount" class="warning card">
+          <strong>存在 CUSTOM Role provenance 缺口</strong>
+          <span>这些角色仍以 RolePermission 为运行时真值，但无法证明来自哪个 RoleTemplate 版本；发布/回滚前必须先修复来源登记。</span>
         </section>
 
         <section class="surface-grid">
@@ -54,26 +60,56 @@
         </section>
 
         <section class="card">
-          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">只展示已发布学校模板；版本不可变，自定义角色升级策略固定为 DERIVED_PINNED。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
+          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板 immutable；CUSTOM Role 永远 pinned 到来源版本，升级前先看本校 impact。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>模板</th><th>版本</th><th>权限数</th><th>Permission Digest</th><th>升级策略</th></tr></thead>
+              <thead><tr><th>模板</th><th>当前版本</th><th>权限数</th><th>本校 pinned Role</th><th>来源版本分布</th><th>Permission Digest</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`">
                   <td><strong>{{ item.templateName || item.templateCode }}</strong><small class="mono">{{ item.templateCode }}</small></td>
-                  <td>v{{ item.templateVersion }}</td><td>{{ item.permissions?.length || 0 }}</td><td class="mono muted">{{ item.permissionDigest || '—' }}</td><td>{{ item.customRoleUpgradePolicy }}</td>
+                  <td>v{{ item.templateVersion }}</td>
+                  <td>{{ item.permissions?.length || 0 }}</td>
+                  <td>{{ item.schoolPinnedCustomRoleCount || 0 }}</td>
+                  <td class="mono">{{ (item.schoolPinnedSourceVersions || []).map((v) => `v${v}`).join('、') || '—' }}</td>
+                  <td class="mono muted">{{ item.permissionDigest || '—' }}</td>
+                  <td><button class="link" :disabled="impactLoading === item.id" @click="loadTemplateImpact(item)">影响</button></td>
                 </tr>
-                <tr v-if="!templates.length"><td colspan="5" class="muted">暂无已发布学校角色模板</td></tr>
+                <tr v-if="!templates.length"><td colspan="7" class="muted">暂无已发布学校角色模板</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section v-if="templateImpact" class="card impact-card">
+          <header class="section-head">
+            <div><h3>模板影响 · {{ templateImpact.templateCode }} v{{ templateImpact.templateVersion }}</h3><p class="muted">只计算当前学校租户；不会展示其他学校 pinned roles。自动升级固定为 false。</p></div>
+            <button class="link" @click="templateImpact = null">关闭</button>
+          </header>
+          <div class="impact-summary">
+            <span>受影响 pinned Role：<strong>{{ templateImpact.affectedPinnedCustomRoleCount || 0 }}</strong></span>
+            <span>当前发布版本：<strong>v{{ templateImpact.currentPublishedTemplateVersion || '—' }}</strong></span>
+            <span>自动升级：<strong>{{ templateImpact.automaticUpgrade ? '是' : '否' }}</strong></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>角色</th><th>来源模板版本</th><th>Role version</th><th>运行时漂移</th><th>若切到此版本将新增</th><th>将移除</th></tr></thead>
+              <tbody>
+                <tr v-for="role in templateImpact.roles || []" :key="role.roleCode">
+                  <td><strong>{{ role.roleCode }}</strong><small v-if="role.runtimeRoleMissing" class="danger-text">运行时 Role 缺失</small></td>
+                  <td>v{{ role.sourceTemplateVersion }}</td><td>v{{ role.roleVersion ?? '—' }}</td>
+                  <td>{{ deltaText(role.runtimeVsRecorded) }}</td><td>{{ listText(role.wouldAdd) }}</td><td>{{ listText(role.wouldRemove) }}</td>
+                </tr>
+                <tr v-if="!(templateImpact.roles || []).length"><td colspan="6" class="muted">本校没有 pinned 到该模板的 CUSTOM Role。</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
         <section id="access-explain" class="card explain-card">
-          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能管理招聘季”。IAM 通过不等于业务最终允许；学院/批次/关系仍由 Internship Domain Guard 裁决。</p></div></header>
+          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能管理招聘季”，同时展示 RoleTemplate provenance、drift 与升级 impact。IAM 通过不等于业务最终允许；学院/批次/关系仍由 Internship Domain Guard 裁决。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
             <label>学校成员 User ID<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
-            <label>模块<input v-model.trim="explain.moduleKey" required value="internship" /></label>
+            <label>模块<input v-model.trim="explain.moduleKey" required /></label>
             <label>权限
               <select v-model="explain.permissionCode" required>
                 <option v-for="item in explainPermissionOptions" :key="item.permissionCode" :value="item.permissionCode">{{ item.permissionCode }}</option>
@@ -83,20 +119,21 @@
           </form>
 
           <div v-if="explainResult" class="decision" :class="decisionClass">
-            <div class="decision-head">
-              <strong>{{ decisionTitle }}</strong>
-              <span class="mono">{{ explainResult.reasonCode || '—' }}</span>
-            </div>
+            <div class="decision-head"><strong>{{ decisionTitle }}</strong><span class="mono">{{ explainResult.reasonCode || '—' }}</span></div>
             <p>{{ explainResult.message || decisionMessage }}</p>
             <p v-if="explainResult.subject" class="muted">成员：{{ explainResult.subject.realName || explainResult.subject.loginName }} · {{ explainResult.subject.loginName }} · {{ explainResult.subject.status }}</p>
             <div v-if="explainResult.catalog" class="enterprise-warning">该权限不是学校可分配权限。企业成员授权必须回 EnterpriseMember / AccessGrant。</div>
             <div v-if="explainResult.roles?.length" class="table-wrap">
-              <table>
-                <thead><tr><th>角色</th><th>类型</th><th>IAM</th><th>拒绝/状态原因</th><th>数据范围</th></tr></thead>
+              <table class="explain-table">
+                <thead><tr><th>角色</th><th>IAM</th><th>模板来源</th><th>Drift</th><th>升级 Impact</th><th>原因 / Scope</th></tr></thead>
                 <tbody>
                   <tr v-for="role in explainResult.roles" :key="role.roleId">
-                    <td><strong>{{ role.roleName }}</strong><small class="mono">{{ role.roleCode }}</small></td><td>{{ role.roleType }}</td>
-                    <td>{{ role.decision?.iamAllowed ? '通过' : '未通过' }}</td><td class="mono">{{ role.decision?.reasonCode || '—' }}</td><td>{{ scopeText(role.decision?.dataScope) }}</td>
+                    <td><strong>{{ role.roleName }}</strong><small class="mono">{{ role.roleCode }} · {{ role.roleType }} · role v{{ role.roleVersion }}</small></td>
+                    <td>{{ role.decision?.iamAllowed ? '通过' : '未通过' }}</td>
+                    <td>{{ provenanceText(role.templateProvenance) }}</td>
+                    <td :class="{ 'danger-text': role.drift?.detected }">{{ driftText(role.drift) }}</td>
+                    <td>{{ impactText(role.templateImpact) }}</td>
+                    <td><span class="mono">{{ role.decision?.reasonCode || '—' }}</span><small>{{ scopeText(role.decision?.dataScope) }}</small></td>
                   </tr>
                 </tbody>
               </table>
@@ -118,17 +155,18 @@ export default {
   name: 'SystemIamWorkspaceView',
   components: { AppButton, ModulePageShell },
   data: () => ({
-    summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '', explaining: false, explainResult: null,
+    summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
+    explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
     explain: { userId: '', moduleKey: 'internship', permissionCode: 'internship.recruitment.manage' },
     surfaces: [
       { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/roles' },
-      { key: 'templates', label: '角色模板', description: '已发布 immutable version 与模板来源', path: '/admin/system/roles?tab=templates' },
+      { key: 'templates', label: '角色模板', description: 'immutable version、provenance、drift 与 impact', path: '/admin/system/roles?tab=templates' },
       { key: 'members', label: '成员与业务身份', description: '角色成员、来源与复核', path: '/admin/system/role-assignments' },
       { key: 'permissions', label: '菜单与操作权限', description: '只从权威 Permission Catalog 分配', path: '/admin/system/roles?tab=permissions' },
       { key: 'dataScopes', label: '数据范围', description: '结构化 Scope，不用字符串角色猜范围', path: '/admin/system/scopes' },
       { key: 'delegations', label: '委托', description: '临时授权与工作移交', path: '/admin/system/delegations' },
       { key: 'securityChanges', label: '安全变更', description: '草稿、激活、回滚与审计', path: '/admin/system/security-changes' },
-      { key: 'accessExplain', label: 'Access Explain', description: '解释模块、权限、Scope 与 Domain Guard 边界', path: '#access-explain' }
+      { key: 'accessExplain', label: 'Access Explain', description: '解释模块、权限、Scope、模板漂移与 Domain Guard 边界', path: '#access-explain' }
     ]
   }),
   computed: {
@@ -159,6 +197,35 @@ export default {
   },
   created() { this.load() },
   methods: {
+    listText(items) { return (items || []).length ? items.join('、') : '无' },
+    deltaText(delta) {
+      if (!delta) return '—'
+      const added = delta.addedInRuntime || []
+      const removed = delta.removedFromRuntime || []
+      if (!added.length && !removed.length) return '无运行时漂移'
+      return `运行时 +${added.length} / -${removed.length}`
+    },
+    provenanceText(value) {
+      if (!value) return '—'
+      if (value.provenanceStatus === 'LEGACY_SYSTEM_ROLE') return `SYSTEM legacy · ${value.upgradePolicy}`
+      if (value.provenanceStatus === 'MISSING_CUSTOM_ROLE_SOURCE') return 'CUSTOM · 来源登记缺失'
+      const current = value.currentTemplateVersion == null ? '当前模板缺失' : `当前 v${value.currentTemplateVersion}`
+      return `${value.sourceTemplateCode || '—'} v${value.sourceTemplateVersion ?? '—'} · ${current} · ${value.upgradePolicy || 'DERIVED_PINNED'}`
+    },
+    driftText(value) {
+      if (!value) return '—'
+      if (value.notApplicableReason) return value.b8RetirementPending ? `B8 待退 wildcard：${this.listText(value.wildcards)}` : value.notApplicableReason
+      if (value.provenanceMissing) return '来源缺失，无法证明模板链'
+      const runtime = value.runtimeVsRecorded || {}
+      const runtimeChanged = (runtime.addedInRuntime || []).length + (runtime.removedFromRuntime || []).length
+      if (!value.detected) return '无漂移'
+      return `模板版本漂移=${value.templateVersionDrift ? '是' : '否'}；运行时差异 ${runtimeChanged} 项`
+    },
+    impactText(value) {
+      if (!value) return '—'
+      if (value.status !== 'READY') return value.status || '—'
+      return `目标 v${value.targetTemplateVersion ?? '—'}：+${(value.wouldAdd || []).length} / -${(value.wouldRemove || []).length}；自动升级=否`
+    },
     scopeText(value) {
       if (!value) return '待业务 Scope 裁决'
       return typeof value === 'string' ? value : JSON.stringify(value)
@@ -177,6 +244,13 @@ export default {
       this.catalog = catalog.data || {}
       this.templates = templates.data?.items || []
     },
+    async loadTemplateImpact(item) {
+      this.impactLoading = item.id
+      const res = await schoolIamApi.templateImpact(item.id)
+      this.impactLoading = ''
+      if (res.code !== 0) return toast.error(res.message)
+      this.templateImpact = res.data
+    },
     async explainAccess() {
       const id = Number(this.explain.userId)
       if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员 User ID')
@@ -191,5 +265,5 @@ export default {
 </script>
 
 <style scoped>
-.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:720px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
+.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1120px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.impact-summary{display:flex;gap:18px;flex-wrap:wrap;padding:10px 0}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
 </style>

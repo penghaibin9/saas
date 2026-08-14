@@ -35,6 +35,15 @@ def iam_role_templates(user=Depends(require_permission("systemAdmin.role.view"))
     return success({"items": svc.template_catalog()})
 
 
+@router.get("/role-templates/{template_id}/impact", summary="角色模板对本校 pinned custom roles 的影响")
+def iam_role_template_impact(
+    template_id: int,
+    user=Depends(require_permission("systemAdmin.role.view")),
+):
+    _ = user
+    return success(svc.school_template_impact(template_id))
+
+
 @router.get("/access-explain/{user_id}", summary="解释学校成员为什么能/不能执行某权限")
 def iam_access_explain(
     user_id: int,

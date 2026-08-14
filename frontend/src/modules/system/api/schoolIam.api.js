@@ -20,6 +20,11 @@ export const schoolIamApi = {
   summary: () => call('/system/iam/summary', {}, '学校 IAM 总览加载失败'),
   permissionCatalog: () => call('/system/iam/permission-catalog', {}, '学校可分配权限目录加载失败'),
   roleTemplates: () => call('/system/iam/role-templates', {}, '学校角色模板加载失败'),
+  templateImpact: (templateId) => call(
+    `/system/iam/role-templates/${encodeURIComponent(templateId)}/impact`,
+    {},
+    '角色模板影响分析失败'
+  ),
   accessExplain: (userId, { moduleKey = 'internship', permissionCode = 'internship.recruitment.manage' } = {}) => call(
     `/system/iam/access-explain/${encodeURIComponent(userId)}`,
     { params: { moduleKey, permissionCode } },

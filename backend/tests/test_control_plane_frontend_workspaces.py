@@ -41,11 +41,38 @@ def test_b7_school_iam_workspace_consumes_canonical_endpoints():
         "/system/iam/access-explain/",
     ):
         assert endpoint in api
+    assert "/impact" in api
     for surface in ("roles", "templates", "members", "permissions", "dataScopes", "delegations", "securityChanges", "accessExplain"):
         assert surface in view
     assert "enterprise.internship.*" in view
     assert "EnterpriseMember / AccessGrant" in view
     assert "DOMAIN_GUARD" in view or "Domain Guard" in view
+
+
+def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
+    service = _read("backend/app/modules/system_admin/services/school_iam_workspace_service.py")
+    router = _read("backend/app/modules/system_admin/routers/school_iam_router.py")
+    view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    for term in (
+        "templateProvenance",
+        "sourceTemplateVersion",
+        "currentTemplateVersion",
+        "runtimeVsRecorded",
+        "templateVersionDrift",
+        "templateImpact",
+        "DERIVED_PINNED",
+        "school_template_impact",
+    ):
+        assert term in service
+    assert "CustomRoleSource.tenant_id == tid" in service
+    assert '"tenantId": str(tid)' in service
+    assert '"automaticUpgrade": False' in service
+    assert '/role-templates/{template_id}/impact' in router
+    assert "templateImpact" in view
+    assert "provenanceText" in view
+    assert "driftText" in view
+    assert "impactText" in view
+    assert 'value="internship"' not in view
 
 
 def test_b6_b7_do_not_create_second_permission_authority_in_frontend():
