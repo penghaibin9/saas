@@ -31,8 +31,9 @@ def load_catalog():
 
 
 def covered_by_pattern(code: str, pattern: str) -> bool:
+    # The literal RBAC wildcard is a B8 debt item, not a catch-all Catalog rule.
     if pattern == "*":
-        return True
+        return code == "*"
     if pattern.endswith(".*"):
         return code.startswith(pattern[:-1])
     return code == pattern
@@ -81,6 +82,16 @@ def frontend_usage():
     return out
 
 
+def _is_frontend_ui_action(item: dict) -> bool:
+    """Bare frontend keys are UI action locators, never RBAC permissionCode.
+
+    Canonical permissions are namespaced dotted codes. The literal '*' is
+    separately tracked as B8 wildcard debt and therefore excluded here.
+    """
+    code = str(item.get("permissionCode") or "")
+    return item.get("source") == "frontend.permissionKey" and code != "*" and "." not in code
+
+
 def _emit_error(item: dict, message: str) -> None:
     path = str(item.get("file") or "shared/contracts/permission-catalog.json")
     line = int(item.get("line") or 1)
@@ -99,7 +110,9 @@ def main() -> int:
     rows = []
     for item in used:
         code = item["permissionCode"]
-        if code in exact:
+        if _is_frontend_ui_action(item):
+            status = "UI_ACTION_NOT_PERMISSION"
+        elif code in exact:
             status = "DEFINED_AND_USED"
         elif any(covered_by_pattern(code, pattern) for pattern in patterns):
             status = "USED_LEGACY_PATTERN"
@@ -108,13 +121,22 @@ def main() -> int:
         rows.append({**item, "status": status})
     undefined = [item for item in rows if item["status"] == "USED_UNDEFINED"]
     legacy = [item for item in rows if item["status"] == "USED_LEGACY_PATTERN"]
+    ui_actions = [item for item in rows if item["status"] == "UI_ACTION_NOT_PERMISSION"]
     missing_e = sorted(E_REQUIRED - set(exact))
     bad_enterprise = sorted(code for code, meta in exact.items() if code.startswith("enterprise.internship.") and (meta.get("moduleKey") != "internship" or meta.get("plane") != "TENANT" or meta.get("tenantAssignable") or meta.get("customRoleAssignable")))
     bad_e_module = sorted(code for code in E_REQUIRED if code in exact and exact[code].get("moduleKey") != "internship")
     report = {
-        "summary": {"used": len(rows), "usedUndefined": len(undefined), "usedLegacyPattern": len(legacy), "catalogExact": len(exact), "permissionCreators": len(creators)},
+        "summary": {
+            "used": len(rows),
+            "usedUndefined": len(undefined),
+            "usedLegacyPattern": len(legacy),
+            "uiActionNotPermission": len(ui_actions),
+            "catalogExact": len(exact),
+            "permissionCreators": len(creators),
+        },
         "usedUndefined": undefined,
         "usedLegacyPattern": legacy,
+        "uiActionNotPermission": ui_actions,
         "permissionCreators": creators,
         "missingESeries": missing_e,
         "badEnterpriseAssignmentPolicy": bad_enterprise,
