@@ -1,0 +1,77 @@
+name: Production npm dependency audit
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
+      - "miniapp/package.json"
+      - "miniapp/package-lock.json"
+      - "e2e/package.json"
+      - "e2e/package-lock.json"
+      - "scripts/check/check-npm-production-audit.mjs"
+      - ".github/security/npm-production-audit-waivers.json"
+      - ".github/workflows/production-dependency-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-npm-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-runtime-audit:
+    name: ${{ matrix.app }} production runtime audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: frontend
+            directory: frontend
+          - app: student-portal
+            directory: student-portal
+          - app: miniapp
+            directory: miniapp
+          - app: e2e
+            directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+      - name: Install locked dependency graph without lifecycle scripts
+        working-directory: ${{ matrix.directory }}
+        run: npm ci --ignore-scripts
+      - name: Capture production-only npm audit truth
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --omit=dev --json > audit-production.json || true
+      - name: Enforce production high/critical policy and expiring waivers
+        run: >-
+          node scripts/check/check-npm-production-audit.mjs
+          ${{ matrix.directory }}/audit-production.json
+          ${{ matrix.app }}
+          .github/security/npm-production-audit-waivers.json
+      - name: Capture full dependency inventory for follow-up
+        if: always()
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --json > audit-full.json || true
+      - name: Upload npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-${{ matrix.app }}
+          path: |
+            ${{ matrix.directory }}/audit-production.json
+            ${{ matrix.directory }}/audit-full.json
+          if-no-files-found: error
+          retention-days: 14
