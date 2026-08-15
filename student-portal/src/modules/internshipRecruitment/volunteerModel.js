@@ -38,7 +38,7 @@ export function normalizeVolunteerGroup(raw = {}) {
       positionId: item.positionId ?? positionRaw.id ?? null,
       position: item.positionId || positionRaw.id ? normalizePosition(positionRaw) : null,
       applicationStatement: String(item.applicationStatement || item.statement || ''),
-      applicationVersion: Number(item.version || item.applicationVersion || 0)
+      applicationVersion: optionalVersion(item.version ?? item.applicationVersion)
     }
   })
   const status = String(raw.status || raw.groupStatus || 'UNAVAILABLE').toUpperCase()
@@ -121,6 +121,6 @@ export function buildVolunteerGroupSaveRequest(group, slots) {
     })),
     expectedGroupVersion: group.version,
     expectedRecordVersion: group.recordVersion,
-    expectedApplicationVersions: Object.fromEntries(cloneSlots(slots).map((slot) => [String(slot.volunteerNo), Number(slot.applicationVersion || 0)]))
+    expectedApplicationVersions: Object.fromEntries(cloneSlots(slots).map((slot) => [String(slot.volunteerNo), slot.applicationVersion]))
   })
 }

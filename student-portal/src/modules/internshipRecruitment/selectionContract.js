@@ -46,6 +46,14 @@ function requireNonNegativeVersion(value, label) {
   return parsed
 }
 
+function requireApplicationVersions(input) {
+  const source = input && typeof input === 'object' ? input : {}
+  return Object.fromEntries([1, 2, 3].map((volunteerNo) => [
+    String(volunteerNo),
+    requireNonNegativeVersion(source[String(volunteerNo)] ?? source[volunteerNo], `第${volunteerNo}志愿版本`)
+  ]))
+}
+
 export function normalizeCatalogQuery(input = {}) {
   const page = Math.max(1, Number(input.page || 1) || 1)
   const requestedPageSize = Number(input.pageSize || CATALOG_PAGE_SIZE) || CATALOG_PAGE_SIZE
@@ -82,8 +90,8 @@ export function buildVolunteerDraftPayload({ batchId, internshipId, items, expec
     internshipId,
     items: normalized,
     expectedGroupVersion: requireNonNegativeVersion(expectedGroupVersion, '志愿组版本'),
-    expectedRecordVersion,
-    expectedApplicationVersions: expectedApplicationVersions || {}
+    expectedRecordVersion: requireNonNegativeVersion(expectedRecordVersion, '实习记录版本'),
+    expectedApplicationVersions: requireApplicationVersions(expectedApplicationVersions)
   }
 }
 

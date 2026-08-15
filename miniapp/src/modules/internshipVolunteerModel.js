@@ -81,7 +81,7 @@ export function normalizeMobileVolunteerGroup(raw = {}) {
       companyName: item.companyName || p.companyName || p.company?.name || '',
       workLocation: item.workLocation || p.workLocation || '',
       applicationStatement: String(item.applicationStatement || item.statement || ''),
-      version: Number(item.version || item.applicationVersion || 0)
+      version: optionalVersion(item.version ?? item.applicationVersion)
     }
   })
   return {
@@ -143,7 +143,8 @@ export function updateMobileStatement(slots, volunteerNo, statement) {
 }
 
 export function buildMobileVolunteerSaveRequest(group, slots) {
-  const active = cloneSlots(slots).filter((slot) => slot.positionId)
+  const allSlots = cloneSlots(slots)
+  const active = allSlots.filter((slot) => slot.positionId)
   if (!active.length || active.length > 3) throw new Error('岗位志愿必须为 1–3 个')
   return {
     batchId: group.batchId,
@@ -154,8 +155,11 @@ export function buildMobileVolunteerSaveRequest(group, slots) {
       applicationStatement: slot.applicationStatement.trim()
     })),
     expectedGroupVersion: requireGroupVersion(group),
-    expectedRecordVersion: group.recordVersion,
-    expectedApplicationVersions: Object.fromEntries(cloneSlots(slots).map((slot) => [String(slot.volunteerNo), Number(slot.version || 0)]))
+    expectedRecordVersion: requireVersion(group.recordVersion, '实习记录版本'),
+    expectedApplicationVersions: Object.fromEntries(allSlots.map((slot) => [
+      String(slot.volunteerNo),
+      requireVersion(slot.version, `第${slot.volunteerNo}志愿版本`)
+    ]))
   }
 }
 

@@ -54,7 +54,7 @@ test('A03-7 keeps an independent application statement per volunteer', () => {
   assert.equal(updated[1].applicationStatement, '希望提升设备维护和故障诊断能力')
 })
 
-test('A03-7 builds exactly one atomic group PUT payload with canonical group concurrency token', () => {
+test('A03-7 builds exactly one atomic group PUT payload with three-layer CAS evidence', () => {
   const slots = addVolunteer(group.slots, { id: 218, title: '质量检测', companyName: '企业C' })
   const withStatement = updateVolunteerStatement(slots, 3, '希望锻炼质量管理能力')
   const payload = buildVolunteerGroupSaveRequest(group, withStatement)
@@ -67,9 +67,12 @@ test('A03-7 builds exactly one atomic group PUT payload with canonical group con
   assert.deepEqual(payload.expectedApplicationVersions, { '1': 2, '2': 1, '3': 0 })
 })
 
-test('A03 production seal fails closed when group version or position id is invalid', () => {
+test('A03 production seal fails closed when concurrency evidence or position id is invalid', () => {
   const slots = addVolunteer(group.slots, { id: 218, title: '质量检测', companyName: '企业C' })
   assert.throws(() => buildVolunteerGroupSaveRequest({ ...group, version: null }, slots), /志愿组版本缺失/)
+  assert.throws(() => buildVolunteerGroupSaveRequest({ ...group, recordVersion: null }, slots), /实习记录版本缺失/)
+  const missingApplicationVersion = slots.map((slot) => slot.volunteerNo === 1 ? { ...slot, applicationVersion: null } : slot)
+  assert.throws(() => buildVolunteerGroupSaveRequest(group, missingApplicationVersion), /第1志愿版本缺失/)
   const invalidSlots = slots.map((slot) => slot.volunteerNo === 3 ? { ...slot, positionId: 'not-a-position-id' } : slot)
   assert.throws(() => buildVolunteerGroupSaveRequest(group, invalidSlots), /无效岗位/)
 })

@@ -52,7 +52,7 @@ test('A03-10 mobile volunteers are fixed slots and use up/down, never drag', () 
   assert.doesNotMatch(pageSource, /drag|draggable/i)
 })
 
-test('A03-10 each volunteer keeps its own statement and all slots save in one PUT payload', () => {
+test('A03-10 each volunteer keeps its own statement and all slots save with three-layer CAS', () => {
   const group = normalizeMobileVolunteerGroup({ status:'DRAFT', version:12, batchId:8, internshipId:901, recordVersion:7,
     items:[{volunteerNo:1,positionId:201,version:2},{volunteerNo:2,positionId:203,version:1}] })
   const slots = updateMobileStatement(addMobileVolunteer(group.slots, { id:218,title:'岗位C' }), 3, '申请岗位C的独立说明')
@@ -60,8 +60,12 @@ test('A03-10 each volunteer keeps its own statement and all slots save in one PU
   assert.equal(payload.items.length, 3)
   assert.equal(payload.items[2].applicationStatement, '申请岗位C的独立说明')
   assert.equal(payload.expectedGroupVersion, 12)
+  assert.equal(payload.expectedRecordVersion, 7)
   assert.deepEqual(payload.expectedApplicationVersions, {'1':2,'2':1,'3':0})
   assert.throws(() => buildMobileVolunteerSaveRequest({ ...group, version: null }, slots), /志愿组版本缺失/)
+  assert.throws(() => buildMobileVolunteerSaveRequest({ ...group, recordVersion: null }, slots), /实习记录版本缺失/)
+  const missingApplicationVersion = slots.map((slot) => slot.volunteerNo === 1 ? { ...slot, version: null } : slot)
+  assert.throws(() => buildMobileVolunteerSaveRequest(group, missingApplicationVersion), /第1志愿版本缺失/)
 })
 
 test('A03-10 mobile submit uses one atomic snapshot-confirmed request and safe contact default', () => {

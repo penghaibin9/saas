@@ -46,7 +46,7 @@ test('A03-0 matching states stay backend-contract only', () => {
   assert.equal(POSITION_MATCH_STATES.some((value) => value.includes('%')), false)
 })
 
-test('A03-0 volunteer draft is one fixed-slot group payload with group version token', () => {
+test('A03-0 volunteer draft is one fixed-slot group payload with record/group/application CAS', () => {
   const payload = buildVolunteerDraftPayload({
     batchId: 8,
     internshipId: 901,
@@ -62,11 +62,14 @@ test('A03-0 volunteer draft is one fixed-slot group payload with group version t
   assert.equal(payload.items[0].volunteerNo, 1)
   assert.equal(payload.items[1].volunteerNo, 2)
   assert.equal(payload.expectedGroupVersion, 12)
-  assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, items: [
+  assert.equal(payload.expectedRecordVersion, 7)
+  assert.deepEqual(payload.expectedApplicationVersions, { '1': 2, '2': 1, '3': 0 })
+  assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedRecordVersion: 1, expectedApplicationVersions: {1:0,2:0,3:0}, items: [
     { volunteerNo: 1, positionId: 201 },
     { volunteerNo: 2, positionId: 201 }
   ] }), /不能重复/)
-  assert.throws(() => buildVolunteerDraftPayload({ items: [{ volunteerNo: 1, positionId: 201 }] }), /志愿组版本缺失/)
+  assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedApplicationVersions: {1:0,2:0,3:0}, items: [{ volunteerNo: 1, positionId: 201 }] }), /实习记录版本缺失/)
+  assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedRecordVersion: 1, expectedApplicationVersions: {1:0,3:0}, items: [{ volunteerNo: 1, positionId: 201 }] }), /第2志愿版本缺失/)
 })
 
 test('A03-0 submit requires preview hash, explicit contact policy and versions', () => {
