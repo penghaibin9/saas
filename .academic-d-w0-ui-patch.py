@@ -1,0 +1,105 @@
+from pathlib import Path
+
+view_path = Path('frontend/src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue')
+text = view_path.read_text(encoding='utf-8')
+
+replacements = [
+    (
+        '''          <template #cell-ops="{ row }"><button class="mp-btn mp-btn--primary" @click="openFinal(row)">教务终审</button></template>''',
+        '''          <template #cell-ops="{ row }">
+            <button v-if="canNormalFinal(row)" class="mp-btn mp-btn--primary" @click="openFinal(row)">教务终审</button>
+            <template v-else>
+              <span class="agc-final-blocked">系统异常 · 先治理阻断项</span>
+              <button class="mp-link" @click="openDetail(row)">查看阻断证据</button>
+            </template>
+          </template>''',
+    ),
+    (
+        '''        <div v-if="detail.row.status === 'ACADEMIC_REVIEW'" class="agc-actions">
+          <div class="agc-actions__title">毕业资格终审</div>
+          <AppRadioGroup v-model="finalConclusion" :options="conclusionOptions" variant="button" />
+          <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
+        </div>''',
+        '''        <div v-if="canNormalFinal(detail.row)" class="agc-actions">
+          <div class="agc-actions__title">毕业资格终审</div>
+          <AppRadioGroup v-model="finalConclusion" :options="conclusionOptions" variant="button" />
+          <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
+        </div>
+        <AppInlineAlert
+          v-else-if="detail.row.status === 'ACADEMIC_REVIEW' && detail.row.overall === 'SYSTEM_ABNORMAL'"
+          type="warning"
+          description="系统预审仍为异常：普通教务终审不可用审核备注覆盖评估结论。请先下钻阻断证据、完成治理并重新预审；正式例外必须走独立 Override 流程。"
+        />''',
+    ),
+    (
+        '''    canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },''',
+        '''    canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },''',
+    ),
+    (
+        '''    openFinal(row) { this.openDetail(row) },''',
+        '''    openFinal(row) {
+      if (!this.canNormalFinal(row)) {
+        toast.error('系统预审仍为异常，普通教务终审不可用；请先治理阻断项并重新预审')
+        this.openDetail(row)
+        return
+      }
+      this.openDetail(row)
+    },''',
+    ),
+    (
+        '''    confirmFinal() { this.finalDlg.visible = true },
+    async doFinal() {
+      this.finalDlg.submitting = true''',
+        '''    confirmFinal() {
+      if (!this.canNormalFinal(this.detail.row)) {
+        toast.error('系统预审仍为异常，禁止打开普通终审确认')
+        return
+      }
+      this.finalDlg.visible = true
+    },
+    async doFinal() {
+      if (!this.canNormalFinal(this.detail.row)) {
+        this.finalDlg.visible = false
+        toast.error('系统预审已变化或仍为异常，请重新加载并治理阻断项')
+        return
+      }
+      this.finalDlg.submitting = true''',
+    ),
+    (
+        '''.agc-conclusion { color: var(--success-600, #16a34a); font-weight: 600; }''',
+        '''.agc-conclusion { color: var(--success-600, #16a34a); font-weight: 600; }
+.agc-final-blocked {
+  display: inline-block;
+  margin-right: 8px;
+  color: #a85b0b;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+}''',
+    ),
+]
+
+for old, new in replacements:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'expected exactly one UI match, got {count}: {old[:100]!r}')
+    text = text.replace(old, new, 1)
+view_path.write_text(text, encoding='utf-8')
+
+test_path = Path('frontend/tests/stage-d-graduation-audit-console-contract.test.mjs')
+test_text = test_path.read_text(encoding='utf-8')
+marker = "test('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作'"
+if marker not in test_text:
+    test_text += '''\n\ntest('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  for (const token of [
+    'canNormalFinal(row)',
+    "r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED'",
+    '系统异常 · 先治理阻断项',
+    '普通教务终审不可用审核备注覆盖评估结论',
+    '正式例外必须走独立 Override 流程'
+  ]) assert.ok(source.includes(token), `missing D-W0 final guard token: ${token}`)
+  assert.doesNotMatch(source, /v-if="detail\\.row\\.status === 'ACADEMIC_REVIEW'" class="agc-actions"/)
+})\n'''
+    test_path.write_text(test_text, encoding='utf-8')
