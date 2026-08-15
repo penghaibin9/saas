@@ -81,14 +81,31 @@ def test_enterprise_context_revalidates_user_member_company_admission_grant_and_
     assert "principal.company_id" in recruitment_source
 
 
-def test_enterprise_router_is_mounted_outside_staff_bundle():
+def test_enterprise_router_is_mounted_outside_staff_bundle_with_explicit_auth_policy():
     register_source = inspect.getsource(route_registration.register_internship_routes)
     router_source = inspect.getsource(internship_enterprise_portal)
     assert "internship_enterprise_portal" in register_source
     assert "api_router.include_router(internship_enterprise_portal.router)" in register_source
     assert "api_router.include_router(internship_enterprise_portal.router, dependencies=d)" not in register_source
     assert "require_staff" not in router_source
-    assert "get_enterprise_principal" in router_source
+    assert "require_enterprise_permission as require_permission" in router_source
+    assert router_source.count('openapi_extra={"x-internship-auth": "public"}') == 4
+    assert 'Depends(require_permission("internship.enterprise.view"))' in router_source
+    assert 'Depends(require_permission("internship.application.view"))' in router_source
+    assert 'Depends(require_permission("internship.application.review"))' in router_source
+
+
+def test_enterprise_recruitment_permissions_are_role_scoped_and_fail_closed():
+    source = inspect.getsource(enterprise_context.require_enterprise_permission)
+    permissions = enterprise_context._ENTERPRISE_RECRUITMENT_PERMISSION_ROLES
+    assert "get_enterprise_principal" in source
+    assert "unregistered enterprise internship permission" in source
+    assert 'AppException("NO_PERMISSION"' in source
+    assert permissions["internship.enterprise.view"] == frozenset({"COMPANY_ADMIN", "HR", "MENTOR"})
+    assert permissions["internship.application.view"] == frozenset({"COMPANY_ADMIN", "HR"})
+    assert permissions["internship.application.review"] == frozenset({"COMPANY_ADMIN", "HR"})
+    assert "MENTOR" not in permissions["internship.application.view"]
+    assert "MENTOR" not in permissions["internship.application.review"]
 
 
 def test_enterprise_public_auth_schemas_do_not_accept_company_scope():
