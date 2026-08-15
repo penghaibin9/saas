@@ -81,7 +81,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
 
     const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/graduation-audit-batches', {
       batchName: `D-W0浏览器异常终审-${suffix}`,
-      gradeYear: '2026'
+      gradeYear: '2024'
     }), 'create D-W0 graduation batch')
 
     await expectApiOk(await browserApi(
