@@ -110,6 +110,63 @@ def test_same_school_cross_college_scope_is_denied(db_mode):
     assert sibling["reasonCode"] == "DEFAULT_DENY"
 
 
+def test_same_school_cross_major_scope_is_denied(db_mode):
+    """An ALLOW for one major must not bleed into a sibling major under the same college."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+    from app.services import scope_policy_service as scope_svc
+
+    tenant_id = 1000000000000000001
+    suffix = uuid4().hex[:8]
+    db = get_sessionmaker()()
+    try:
+        college = College(tenant_id=tenant_id, college_name=f"E-IAM-DEPT-{suffix}", status="ACTIVE")
+        db.add(college)
+        db.flush()
+        major_a = Major(tenant_id=tenant_id, college_id=college.id, major_name=f"Dept-A-{suffix}", status="ACTIVE")
+        major_b = Major(tenant_id=tenant_id, college_id=college.id, major_name=f"Dept-B-{suffix}", status="ACTIVE")
+        db.add_all([major_a, major_b])
+        db.flush()
+        class_a = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_a.id,
+            class_name=f"Dept-A班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        class_b = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_b.id,
+            class_name=f"Dept-B班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        db.add_all([class_a, class_b])
+        db.commit()
+        major_a_id = int(major_a.id)
+        class_a_id = int(class_a.id)
+        class_b_id = int(class_b.id)
+    finally:
+        db.close()
+
+    role = "E_IAM_JOINT_MAJOR_OPERATOR"
+    scope_svc.set_policy(
+        role,
+        effect="ALLOW",
+        target_type="MAJOR",
+        target_id=str(major_a_id),
+        include_children=True,
+        reason="仅允许本专业组织单元",
+        tenant_id=tenant_id,
+    )
+    mine = scope_svc.decide(role, target_type="CLASS", target_id=str(class_a_id), tenant_id=tenant_id)
+    sibling = scope_svc.decide(role, target_type="CLASS", target_id=str(class_b_id), tenant_id=tenant_id)
+    assert mine["decision"] == "ALLOW"
+    assert mine["reasonCode"] == "INHERITED_ALLOW"
+    assert sibling["decision"] == "DENY"
+    assert sibling["reasonCode"] == "DEFAULT_DENY"
+
+
 def test_school_admin_identity_cannot_be_used_as_enterprise_principal():
     """School RBAC is never an alternate root into enterprise APIs."""
     from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
