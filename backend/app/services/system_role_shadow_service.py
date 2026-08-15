@@ -2,12 +2,9 @@
 
 The four resolver planes deliberately remain separate:
 - OLD built-in ROLE_PERMISSIONS for delivered school roles;
-- NEW latest published TENANT RoleTemplate (normalized rows only);
+- NEW latest published school-assignable TENANT RoleTemplate (normalized rows only);
 - CUSTOM runtime RolePermission (never falls back to a template);
 - PLATFORM workforce ROLE_PERMISSIONS, guarded by the PLATFORM permission plane.
-
-B8 shadow compares only delivered TENANT system roles. PLATFORM and CUSTOM
-identities are verified by boundary probes, not folded into the school shadow.
 """
 from __future__ import annotations
 
@@ -48,20 +45,27 @@ def _digest(codes: Iterable[str]) -> str:
 
 
 def active_tenant_permission_codes() -> tuple[str, ...]:
-    """Authoritative B8 expansion universe: ACTIVE TENANT catalog entries only."""
+    """B8 school-template universe: ACTIVE + TENANT + tenantAssignable only.
+
+    Enterprise Portal permissions are TENANT-plane but explicitly
+    tenantAssignable=false; they must never enter a school RoleTemplate.
+    """
     entries = load_permission_catalog().get("entries") or []
     codes = {
         str(item.get("permissionCode") or "").strip()
         for item in entries
         if str(item.get("lifecycle") or "").upper() == "ACTIVE"
         and str(item.get("plane") or "").upper() == "TENANT"
+        and bool(item.get("tenantAssignable"))
         and str(item.get("permissionCode") or "").strip()
     }
-    if any(code.startswith("platform.") for code in codes):
+    forbidden = sorted(code for code in codes if code.startswith("platform.") or code.startswith("enterprise."))
+    if forbidden:
         raise AppException(
             "B8_PERMISSION_PLANE_DRIFT",
-            "TENANT 权限目录包含 platform.* 权限，拒绝展开学校角色",
+            "学校 RoleTemplate 权限 universe 混入平台或企业权限",
             http_status=409,
+            details={"permissionCodes": forbidden[:50]},
         )
     return tuple(sorted(codes))
 
@@ -79,12 +83,7 @@ def _match(code: str, patterns: Iterable[str]) -> bool:
 
 
 def delivered_system_role_codes() -> tuple[str, ...]:
-    """Only school-delivered built-ins participate in SYSTEM shadow."""
-    return tuple(sorted(
-        role_code
-        for role_code in ROLE_PERMISSIONS
-        if is_school_role_template_code(role_code)
-    ))
+    return tuple(sorted(role_code for role_code in ROLE_PERMISSIONS if is_school_role_template_code(role_code)))
 
 
 def old_builtin_allows(role_code: str, permission_code: str) -> bool:
@@ -126,17 +125,13 @@ def _normalized_template_permissions(db, template: RoleTemplate | None) -> tuple
 
 
 def published_template_allows(db, role_code: str, permission_code: str) -> bool:
-    """NEW resolver: normalized published template only; JSON is never authority."""
     template = _latest_published_template(db, role_code)
     allowed, denied = _normalized_template_permissions(db, template)
     code = str(permission_code or "").strip()
-    if code in denied:
-        return False
-    return code in allowed
+    return code in allowed and code not in denied
 
 
 def custom_role_permission_codes(db, *, tenant_id: int, role_id: int) -> tuple[str, ...]:
-    """CUSTOM resolver: direct RolePermission only, with stable source binding proof."""
     role = db.scalars(select(Role).where(
         Role.tenant_id == int(tenant_id),
         Role.id == int(role_id),
@@ -168,13 +163,10 @@ def custom_role_permission_codes(db, *, tenant_id: int, role_id: int) -> tuple[s
 
 
 def custom_role_allows(db, *, tenant_id: int, role_id: int, permission_code: str) -> bool:
-    return str(permission_code or "").strip() in set(custom_role_permission_codes(
-        db, tenant_id=tenant_id, role_id=role_id
-    ))
+    return str(permission_code or "").strip() in set(custom_role_permission_codes(db, tenant_id=tenant_id, role_id=role_id))
 
 
 def platform_workforce_allows(role_code: str, permission_code: str) -> bool:
-    """PLATFORM resolver: platform identity and platform.* permission plane are both mandatory."""
     role = str(role_code or "").strip().upper()
     code = str(permission_code or "").strip()
     if not role.startswith("PLATFORM_") or not code.startswith("platform."):
@@ -183,12 +175,7 @@ def platform_workforce_allows(role_code: str, permission_code: str) -> bool:
 
 
 def converge_published_system_templates(*, actor_user_id: int | None, source_commit_sha: str) -> dict:
-    """Publish immutable TENANT-only template versions without changing runtime ROLE_PERMISSIONS.
-
-    This is the B8 pre-shadow convergence step. Existing published versions are
-    never edited. A new version is published only when normalized permissions
-    differ from the expected ACTIVE TENANT catalog snapshot.
-    """
+    """Publish immutable school-assignable TENANT snapshots; never edit a published version."""
     from app.services import audit_log
 
     source_sha = str(source_commit_sha or "").strip()
@@ -202,12 +189,13 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
     try:
         for role_code in delivered_system_role_codes():
             expected = set(expected_system_role_permissions(role_code))
-            if any(code not in universe or code.startswith("platform.") for code in expected):
+            forbidden = sorted(code for code in expected if code not in universe or code.startswith("platform.") or code.startswith("enterprise."))
+            if forbidden:
                 raise AppException(
                     "B8_PERMISSION_PLANE_DRIFT",
-                    "学校 RoleTemplate 展开越过 TENANT permission plane",
+                    "学校 RoleTemplate 展开越过学校可分配 TENANT permission universe",
                     http_status=409,
-                    details={"roleCode": role_code},
+                    details={"roleCode": role_code, "permissionCodes": forbidden[:50]},
                 )
             latest = _latest_published_template(db, role_code)
             current_allow, current_deny = _normalized_template_permissions(db, latest)
@@ -236,23 +224,15 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 publish_status=TEMPLATE_PUBLISHED,
                 permission_digest=_digest(expected),
                 previous_template_id=int(latest_any.id) if latest_any is not None else None,
-                change_reason="B8 SYSTEM shadow: explicit ACTIVE TENANT permission snapshot",
+                change_reason="B8 SYSTEM shadow: explicit school-assignable TENANT permission snapshot",
                 source_commit_sha=source_sha,
                 effective_at=now,
                 published_at=now,
                 published_by=actor_user_id,
                 delivered=True,
                 bundle_codes_json={"items": []},
-                permission_ceiling_json={
-                    "items": sorted(expected),
-                    "permissionDigest": _digest(expected),
-                    "compatibilityOnly": True,
-                },
-                wildcard_json={
-                    "sourcePatterns": wildcard_patterns,
-                    "runtimeRetired": False,
-                    "b8ShadowOnly": True,
-                } if wildcard_patterns else None,
+                permission_ceiling_json={"items": sorted(expected), "permissionDigest": _digest(expected), "compatibilityOnly": True},
+                wildcard_json={"sourcePatterns": wildcard_patterns, "runtimeRetired": False, "b8ShadowOnly": True} if wildcard_patterns else None,
                 status="ACTIVE",
                 created_by=actor_user_id,
                 updated_by=actor_user_id,
@@ -304,7 +284,6 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
 
 
 def shadow_system_roles() -> dict:
-    """Compare OLD built-ins with NEW published TENANT templates on one catalog universe."""
     universe = active_tenant_permission_codes()
     universe_set = set(universe)
     db = get_sessionmaker()()
@@ -316,10 +295,7 @@ def shadow_system_roles() -> dict:
         for role_code in delivered_system_role_codes():
             template = _latest_published_template(db, role_code)
             allowed, denied = _normalized_template_permissions(db, template)
-            invalid = sorted(
-                code for code in allowed | denied
-                if code.startswith("platform.") or code not in universe_set
-            )
+            invalid = sorted(code for code in allowed | denied if code not in universe_set or code.startswith("platform.") or code.startswith("enterprise."))
             if invalid:
                 plane_violations.append({"roleCode": role_code, "permissionCodes": invalid})
             counts = {
@@ -342,13 +318,7 @@ def shadow_system_roles() -> dict:
                     classification = SHADOW_CLASS_DENY_ALLOW
                 counts[classification] += 1
                 if classification in (SHADOW_CLASS_ALLOW_DENY, SHADOW_CLASS_DENY_ALLOW):
-                    row = {
-                        "roleCode": role_code,
-                        "permissionCode": code,
-                        "classification": classification,
-                        "explained": False,
-                        "explanation": "",
-                    }
+                    row = {"roleCode": role_code, "permissionCode": code, "classification": classification, "explained": False, "explanation": ""}
                     comparisons.append(row)
                     unexplained.append(row)
                     role_mismatches += 1
@@ -372,13 +342,9 @@ def shadow_system_roles() -> dict:
                 "classifications": counts,
             })
         return {
-            "resolverSet": [
-                "OLD_BUILTIN_ROLE_PERMISSIONS",
-                "NEW_PUBLISHED_TENANT_ROLE_TEMPLATE",
-                "CUSTOM_ROLE_PERMISSION",
-                "PLATFORM_WORKFORCE",
-            ],
+            "resolverSet": ["OLD_BUILTIN_ROLE_PERMISSIONS", "NEW_PUBLISHED_TENANT_ROLE_TEMPLATE", "CUSTOM_ROLE_PERMISSION", "PLATFORM_WORKFORCE"],
             "shadowScope": "TENANT_SYSTEM_ROLES_ONLY",
+            "schoolAssignableTenantOnly": True,
             "tenantPermissionUniverseCount": len(universe),
             "roleCount": len(role_summaries),
             "roles": role_summaries,
@@ -389,6 +355,7 @@ def shadow_system_roles() -> dict:
             "zeroUnexplainedDrift": not unexplained and not plane_violations,
             "customFallsBackToTemplate": False,
             "platformEntersSchoolTemplate": False,
+            "enterpriseEntersSchoolTemplate": False,
         }
     finally:
         db.close()

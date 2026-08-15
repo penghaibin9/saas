@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B3 authoritative permission reconciliation gate (stdlib only)."""
+"""B3/B8 authoritative permission reconciliation gate (stdlib only)."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "shared/contracts/permission-catalog.json"
+B8_CONCRETE_PATH = ROOT / "shared/contracts/permission-catalog-b8-concrete.json"
 PY_ROOTS = [ROOT / "backend/app"]
 TEXT_ROOTS = [ROOT / "frontend", ROOT / "enterprise-portal", ROOT / "student-portal", ROOT / "miniapp"]
 GATE_CALLS = {"require_permission", "require_any_permission", "has_permission", "enforce_permission", "assert_platform_permission", "require_platform_permission"}
@@ -25,9 +26,18 @@ FRONT_RE = re.compile(r"(?:permissionKey|permissionCode)\s*[:=]\s*['\"]([A-Za-z0
 
 def load_catalog():
     payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    extension = json.loads(B8_CONCRETE_PATH.read_text(encoding="utf-8"))
     exact = {item["permissionCode"]: item for item in payload.get("entries") or []}
+    for code in extension.get("entries") or []:
+        code = str(code or "").strip()
+        if not code:
+            raise RuntimeError("B8 concrete catalog contains empty permissionCode")
+        if code in exact:
+            raise RuntimeError(f"B8 concrete catalog duplicates base permissionCode: {code}")
+        exact[code] = {"permissionCode": code, **dict(extension.get("defaults") or {}), "catalogSource": "B8_CONCRETE_CUTOVER"}
     patterns = [item["pattern"] for item in payload.get("legacyPatternCoverage") or []]
-    return payload, exact, patterns
+    probes = set(extension.get("temporaryRuntimeProbeCodes") or [])
+    return payload, exact, patterns, probes, extension
 
 
 def covered_by_pattern(code: str, pattern: str) -> bool:
@@ -83,11 +93,6 @@ def frontend_usage():
 
 
 def _is_frontend_ui_action(item: dict) -> bool:
-    """Bare frontend keys are UI action locators, never RBAC permissionCode.
-
-    Canonical permissions are namespaced dotted codes. The literal '*' is
-    separately tracked as B8 wildcard debt and therefore excluded here.
-    """
     code = str(item.get("permissionCode") or "")
     return item.get("source") == "frontend.permissionKey" and code != "*" and "." not in code
 
@@ -101,10 +106,10 @@ def _emit_error(item: dict, message: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--strict-legacy", action="store_true", help="B8: legacy-pattern usage becomes RED")
+    parser.add_argument("--strict-legacy", action="store_true", help="B8: every concrete legacy-pattern usage becomes RED")
     parser.add_argument("--write")
     args = parser.parse_args()
-    payload, exact, patterns = load_catalog()
+    payload, exact, patterns, probes, extension = load_catalog()
     used, creators = python_usage()
     used.extend(frontend_usage())
     rows = []
@@ -112,6 +117,8 @@ def main() -> int:
         code = item["permissionCode"]
         if _is_frontend_ui_action(item):
             status = "UI_ACTION_NOT_PERMISSION"
+        elif code in probes:
+            status = "RUNTIME_WILDCARD_PROBE"
         elif code in exact:
             status = "DEFINED_AND_USED"
         elif any(covered_by_pattern(code, pattern) for pattern in patterns):
@@ -121,21 +128,26 @@ def main() -> int:
         rows.append({**item, "status": status})
     undefined = [item for item in rows if item["status"] == "USED_UNDEFINED"]
     legacy = [item for item in rows if item["status"] == "USED_LEGACY_PATTERN"]
+    runtime_probes = [item for item in rows if item["status"] == "RUNTIME_WILDCARD_PROBE"]
     ui_actions = [item for item in rows if item["status"] == "UI_ACTION_NOT_PERMISSION"]
     missing_e = sorted(E_REQUIRED - set(exact))
     bad_enterprise = sorted(code for code, meta in exact.items() if code.startswith("enterprise.internship.") and (meta.get("moduleKey") != "internship" or meta.get("plane") != "TENANT" or meta.get("tenantAssignable") or meta.get("customRoleAssignable")))
     bad_e_module = sorted(code for code in E_REQUIRED if code in exact and exact[code].get("moduleKey") != "internship")
+    concrete_entries = [str(code) for code in extension.get("entries") or []]
     report = {
         "summary": {
             "used": len(rows),
             "usedUndefined": len(undefined),
             "usedLegacyPattern": len(legacy),
+            "runtimeWildcardProbe": len(runtime_probes),
             "uiActionNotPermission": len(ui_actions),
             "catalogExact": len(exact),
+            "b8ConcreteExact": len(concrete_entries),
             "permissionCreators": len(creators),
         },
         "usedUndefined": undefined,
         "usedLegacyPattern": legacy,
+        "runtimeWildcardProbe": runtime_probes,
         "uiActionNotPermission": ui_actions,
         "permissionCreators": creators,
         "missingESeries": missing_e,
