@@ -103,11 +103,12 @@ def test_request_replay_survives_adapter_ref_transition_without_duplicate_file_o
     )
     assert job["status"] == "SCANNING"
     assert job["result"]["workerRequired"] is True
-    assert job["sourceSnapshot"]["uploadSessionKey"] == first["sessionKey"]
 
     db = get_sessionmaker()()
     try:
         row = db.scalar(select(ImportJob).where(ImportJob.id == int(job["id"])).with_for_update())
+        assert row is not None
+        assert (row.source_snapshot_json or {}).get("uploadSessionKey") == first["sessionKey"]
         row.adapter_type = jobs.IMPORT_ADAPTER_IDENTITY
         row.adapter_ref = "BATCH-I1-IDEMPOTENT-94421"
         row.status = "VALIDATED"
