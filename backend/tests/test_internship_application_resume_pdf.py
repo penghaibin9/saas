@@ -70,7 +70,7 @@ def test_resume_pdf_renderer_emits_real_pdf_from_frozen_snapshot_only():
 def test_enterprise_resume_pdf_authorizes_application_then_locks_exact_snapshot_before_generation():
     source = inspect.getsource(pdf_svc.resolve_enterprise_resume_pdf_in_tx)
     ownership_at = source.index("decision_svc._owned_application_in_tx")
-    snapshot_at = source.index("InternshipApplicationMaterialSnapshot")
+    snapshot_at = source.index("select(InternshipApplicationMaterialSnapshot)")
     ensure_at = source.index("ensure_snapshot_profile_pdf_in_tx")
     assert ownership_at < snapshot_at < ensure_at
     assert "application.material_snapshot_id" in source

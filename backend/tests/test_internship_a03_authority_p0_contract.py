@@ -86,7 +86,7 @@ def test_final_submit_rehydrates_persisted_draft_and_preserves_all_row_versions_
     assert "volunteer_svc.save_or_submit_in_tx(" in source
 
 
-def test_a03_pc_and_mobile_facades_expose_the_same_p0_authority_paths():
+def test_a03_pc_and_mobile_facades_expose_the_same_current_authority_paths():
     portal = _route_contract(portal_facade.router)
     mobile = _route_contract(mobile_facade.router)
     suffixes = {
@@ -96,6 +96,11 @@ def test_a03_pc_and_mobile_facades_expose_the_same_p0_authority_paths():
         ("/context/volunteers", frozenset({"PUT"})),
         ("/context/volunteers/material-preview", frozenset({"GET"})),
         ("/context/volunteers/submit", frozenset({"POST"})),
+        ("/context/volunteers/withdraw", frozenset({"POST"})),
+        ("/context/volunteers/unlock-request", frozenset({"POST"})),
+        ("/context/volunteers/submissions", frozenset({"GET"})),
+        ("/context/volunteers/submissions/{submission_version}", frozenset({"GET"})),
+        ("/context/volunteers/contact-consent/revoke", frozenset({"POST"})),
     }
     assert {(path.removeprefix("/portal/internship"), methods) for path, methods in portal} == suffixes
     assert {(path.removeprefix("/mobile/internship"), methods) for path, methods in mobile} == suffixes
