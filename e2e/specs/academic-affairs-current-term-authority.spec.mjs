@@ -73,48 +73,32 @@ async function closeActiveGovernance(api, current, reason) {
   })
 }
 
-async function restoreSandboxState(api, {
-  originalCurrent,
-  originalGovernance,
-  originalGovernanceClosing,
-  testTerm
-}) {
+async function restoreSandboxState(api, { originalCurrent, testTerm }) {
   // Never leave the A-W1 governance term ACTIVE for later graduation/schedule/grade specs.
   const activeNow = await currentGovernance(api)
-  if (activeNow?.hasCurrent && String(activeNow.termId) !== String(originalGovernance?.termId || '')) {
+  if (activeNow?.hasCurrent) {
     await closeActiveGovernance(api, activeNow, 'A-W1 Playwright 清理测试激活学期')
   }
 
-  if (originalGovernance?.hasCurrent) {
-    const currentAfterCleanup = await currentGovernance(api)
-    if (!currentAfterCleanup?.hasCurrent || String(currentAfterCleanup.termId) !== String(originalGovernance.termId)) {
-      if (!originalGovernanceClosing) {
-        throw new Error('A-W1 cleanup lost the original governance version snapshot')
-      }
-      await api.post(`/system/academic-calendars/${originalGovernance.termId}/transition`, {
-        targetStatus: 'ACTIVE',
-        reason: 'A-W1 Playwright 恢复原全校当前学期',
-        expectedVersion: Number(originalGovernanceClosing.version || 0)
-      })
-    }
-  } else if (originalCurrent?.termId) {
+  if (originalCurrent?.termId) {
     await api.post(`/academic-affairs/terms/${originalCurrent.termId}/set-current`, {})
   }
 
-  // The fixture term is deliberately old and frozen after use so later default/current pickers
-  // neither select it nor treat it as another live semester.
+  // There is no formal Term delete command. Preserve audit semantics by freezing the one old
+  // fixture term after restoring the seeded current semester rather than deleting history by SQL.
   if (testTerm?.termId) {
     await api.post(`/academic-affairs/terms/${testTerm.termId}/freeze`, {})
   }
 
+  const restoredGovernance = await currentGovernance(api)
+  if (restoredGovernance?.hasCurrent) {
+    throw new Error(`A-W1 cleanup left an ACTIVE governance row: ${JSON.stringify(restoredGovernance)}`)
+  }
   const restored = await api.get('/academic-affairs/terms/current')
   if (String(restored?.termId || '') !== String(originalCurrent?.termId || '')) {
     throw new Error(`A-W1 cleanup did not restore original current term: ${JSON.stringify(restored)}`)
   }
-  if (originalGovernance?.hasCurrent && restored?.currentAuthority !== 'CALENDAR_GOVERNANCE') {
-    throw new Error(`A-W1 cleanup did not restore governance authority: ${JSON.stringify(restored)}`)
-  }
-  if (!originalGovernance?.hasCurrent && restored?.currentAuthority !== 'AA_TERM_COMPAT') {
+  if (restored?.currentAuthority !== 'AA_TERM_COMPAT') {
     throw new Error(`A-W1 cleanup did not restore legacy authority: ${JSON.stringify(restored)}`)
   }
 }
@@ -125,23 +109,14 @@ test('A-W1 current term: legacy real click persists, then governance removes the
   const governanceName = `A-W1 统一治理学期 ${suffix}`
   const originalCurrent = await api.get('/academic-affairs/terms/current')
   const originalGovernance = await currentGovernance(api)
-  let originalGovernanceClosing = null
   let testTerm = null
 
   expect(originalCurrent?.termId, `sandbox must start with a current academic term: ${JSON.stringify(originalCurrent)}`).toBeTruthy()
+  expect(originalCurrent?.currentAuthority).toBe('AA_TERM_COMPAT')
+  expect(originalGovernance?.hasCurrent, `sandbox Gold fixture must begin without SYS-12 ACTIVE governance: ${JSON.stringify(originalGovernance)}`).toBeFalsy()
   const originalName = originalCurrent.termName || `${originalCurrent.yearCode} 第 ${originalCurrent.termNo} 学期`
 
   try {
-    // If another spec/seed ever starts using SYS-12, temporarily leave ACTIVE so the compatibility
-    // click can still be proven, then restore that exact governance row in finally.
-    if (originalGovernance?.hasCurrent) {
-      originalGovernanceClosing = await closeActiveGovernance(
-        api,
-        originalGovernance,
-        'A-W1 Playwright 临时进入兼容切换验收'
-      )
-    }
-
     // Only one low-year fixture term is added. Publishing it makes the original seed term a real
     // non-current PUBLISHED candidate without manufacturing a second long-lived school timeline.
     testTerm = await createPublishedTerm(api, {
@@ -162,8 +137,11 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(setCurrent).toBeEnabled()
     await setCurrent.click()
 
-    const dialog = page.getByRole('dialog', { name: '切换当前学期' })
+    // AppConfirmDialog currently has role=dialog but no aria-label/aria-labelledby. Scope by its
+    // real DOM + visible title instead of pretending it has an accessible dialog name.
+    const dialog = page.locator('.app-confirm-dialog').filter({ hasText: '切换当前学期' }).first()
     await expect(dialog).toBeVisible()
+    await expect(dialog.locator('.app-confirm-dialog__title')).toHaveText('切换当前学期')
     const switchResponse = page.waitForResponse(
       (response) => response.url().includes(`/api/v1/academic-affairs/terms/${originalCurrent.termId}/set-current`) &&
         response.request().method() === 'POST',
@@ -204,11 +182,6 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(page).toHaveURL(/\/admin\/system\/academic-calendar(?:\?|$)/)
     await expect(page.getByText('学年学期与业务日历', { exact: false }).first()).toBeVisible()
   } finally {
-    await restoreSandboxState(api, {
-      originalCurrent,
-      originalGovernance,
-      originalGovernanceClosing,
-      testTerm
-    })
+    await restoreSandboxState(api, { originalCurrent, testTerm })
   }
 })
