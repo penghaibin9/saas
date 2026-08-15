@@ -1,0 +1,119 @@
+name: Academic B W1 phase2 exact retry once
+
+on:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths:
+      - '.github/workflows/academic-b-w1-phase2-retry-once.yml'
+
+permissions:
+  contents: write
+
+env:
+  APP_ENV: test
+  DB_ENABLED: 'true'
+  MOCK_LOGIN_ENABLED: 'true'
+  JWT_SECRET: academic-b-w1-phase2-retry-secret-at-least-32-bytes
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w1?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w1?charset=utf8mb4
+
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_b_w1
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-b-schedule-selection
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Reapply exact validated W1 phase2 patch and fix only test syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/academic-b-w1-batch-preflight-once.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if 'name: Apply W1 batch-preflight backend and admin UI slice' in line)
+          run_at = next(i for i in range(start + 1, len(source)) if source[i].strip() == 'run: |')
+          body = []
+          for line in source[run_at + 1:]:
+              if line.startswith('      - name:'):
+                  break
+              body.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/w1-phase2-apply.sh').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          bash /tmp/w1-phase2-apply.sh
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/tests/academic-b-selection-preflight-contract.test.mjs')
+          text = p.read_text(encoding='utf-8')
+          bad = "  const lifecycle = view.slice(view.indexOf('async lifecycle(fn, label)'), view.indexOf('openAddCourse()', view.indexOf('async lifecycle(fn, label)'))\n"
+          good = "  const start = view.indexOf('async lifecycle(fn, label)')\n  const lifecycle = view.slice(start, view.indexOf('openAddCourse()', start))\n"
+          assert text.count(bad) == 1, 'expected exact Phase2 test syntax typo'
+          p.write_text(text.replace(bad, good, 1), encoding='utf-8')
+          PY
+      - name: Install backend and migrate fresh MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Reprove W1 backend exact targeted contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_selection_preflight_w1.py \
+            tests/test_aa_selection_batch_preflight_w1.py \
+            tests/test_stage_d_selection_trace.py \
+            tests/test_aa_selection_student_guard.py \
+            --maxfail=1
+      - name: Reprove W1 frontend contracts and production build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          node --test tests/stage-d-selection-console-contract.test.mjs tests/academic-b-selection-preflight-contract.test.mjs
+          npm run build
+      - name: Commit validated W1 phase2 atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_preflight_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/app/modules/academic_affairs/routers/academic_selection_final_router.py \
+            backend/tests/test_aa_selection_batch_preflight_w1.py \
+            frontend/src/modules/academicAffairs/api/academic-affairs.api.js \
+            frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue \
+            frontend/tests/academic-b-selection-preflight-contract.test.mjs
+          git rm --ignore-unmatch -- \
+            .github/workflows/academic-b-w1-batch-preflight-once.yml \
+            .github/workflows/academic-b-w1-phase2-retry-once.yml
+          git commit -m 'feat(academic-b): unify selection lifecycle preflight'
+          git fetch origin agent/academic-b-schedule-selection
+          git rebase origin/agent/academic-b-schedule-selection
+          git push origin HEAD:agent/academic-b-schedule-selection
