@@ -49,6 +49,7 @@ jobs:
 
     env:
       CI: 'true'
+      PYTHONPATH: .
       APP_ENV: test
       DEPLOYMENT_MODE: local
       TRUSTED_PROXY_IPS: 127.0.0.1/32

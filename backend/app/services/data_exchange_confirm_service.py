@@ -38,6 +38,16 @@ def confirm_migration_import_job(*args, **kwargs):
     return _legacy.confirm_migration_import_job(*args, **kwargs)
 
 
+def confirm_academic_import_job(*args, **kwargs):
+    """显式 Academic canonical confirm 入口。
+
+    frozen legacy 层继续持有统一任务租约、FileObject READY gate、幂等完成投影；
+    其 Academic whitelist 唯一委托
+    ``academic_file_exchange_service.confirm_academic_import`` 重读同一文件并执行领域事务。
+    """
+    return _legacy.confirm_import_job(*args, **kwargs)
+
+
 def confirm_import_job(*args, **kwargs):
     job_id = str(args[0] if args else kwargs.get("job_id") or "")
     from app.services import data_exchange_job_service as jobs
@@ -52,7 +62,7 @@ def confirm_import_job(*args, **kwargs):
         "ACADEMIC_GRADE",
         "ACADEMIC_SCHEDULE",
     }:
-        return _legacy.confirm_import_job(*args, **kwargs)
+        return confirm_academic_import_job(*args, **kwargs)
     return _legacy.confirm_import_job(*args, **kwargs)
 
 
