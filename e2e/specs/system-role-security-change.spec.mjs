@@ -101,7 +101,7 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     expect(before.reasonCode).toBe('PERMISSION_DENIED')
 
     const revBefore = await browserApi(page, token, 'GET', '/system/security-revision')
-    const initialRevision = Number(revBefore.revision || 0)
+    const initialRevision = Number(revBefore.currentRevision || 0)
 
     let change = await browserApi(page, token, 'POST', '/system/security-changes', {
       title: `B8 学校 IAM 权限变更 ${suffix}`,
@@ -124,7 +124,7 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     })
     expect(change.status).toBe('PENDING_REVIEW')
     expect((await browserApi(page, token, 'GET', explainPath(target.id))).reasonCode).toBe('PERMISSION_DENIED')
-    expect(Number((await browserApi(page, token, 'GET', '/system/security-revision')).revision || 0)).toBe(initialRevision)
+    expect(Number((await browserApi(page, token, 'GET', '/system/security-revision')).currentRevision || 0)).toBe(initialRevision)
 
     change = await browserApi(page, token, 'POST', `/system/security-changes/${changeSetId}/transition`, {
       targetStatus: 'APPROVED',
@@ -134,7 +134,7 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     })
     expect(change.status).toBe('APPROVED')
     expect((await browserApi(page, token, 'GET', explainPath(target.id))).reasonCode).toBe('PERMISSION_DENIED')
-    expect(Number((await browserApi(page, token, 'GET', '/system/security-revision')).revision || 0)).toBe(initialRevision)
+    expect(Number((await browserApi(page, token, 'GET', '/system/security-revision')).currentRevision || 0)).toBe(initialRevision)
 
     change = await browserApi(page, token, 'POST', `/system/security-changes/${changeSetId}/transition`, {
       targetStatus: 'ACTIVATED',
@@ -150,7 +150,7 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     expect(after.allowed).toBe(false)
     expect(after.finalDecision).toBe('NOT_EVALUATED')
     expect(after.reasonCode).toBe('DOMAIN_GUARD_NOT_EVALUATED')
-    const revActivated = Number((await browserApi(page, token, 'GET', '/system/security-revision')).revision || 0)
+    const revActivated = Number((await browserApi(page, token, 'GET', '/system/security-revision')).currentRevision || 0)
     expect(revActivated).toBe(initialRevision + 1)
 
     const impact = await browserApi(page, token, 'GET', `/system/iam/role-templates/${schoolAdminTemplate.id}/impact`)
@@ -170,7 +170,7 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     const rolledBack = await browserApi(page, token, 'GET', explainPath(target.id))
     expect(rolledBack.iamAllowed).toBe(false)
     expect(rolledBack.reasonCode).toBe('PERMISSION_DENIED')
-    const revRolledBack = Number((await browserApi(page, token, 'GET', '/system/security-revision')).revision || 0)
+    const revRolledBack = Number((await browserApi(page, token, 'GET', '/system/security-revision')).currentRevision || 0)
     expect(revRolledBack).toBe(initialRevision + 2)
 
     await page.reload()
