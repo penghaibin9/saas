@@ -35,9 +35,25 @@ export const schoolIamApi = {
     { params: { page, pageSize } },
     '角色审计分页加载失败'
   ),
-  accessExplain: (userId, { moduleKey = 'internship', permissionCode = 'internship.recruitment.manage' } = {}) => call(
+  accessExplain: (userId, {
+    moduleKey = 'internship',
+    permissionCode = 'internship.recruitment.manage',
+    scopeTargetType = '',
+    scopeTargetId = '',
+    resourceType = '',
+    resourceId = ''
+  } = {}) => call(
     `/system/iam/access-explain/${encodeURIComponent(userId)}`,
-    { params: { moduleKey, permissionCode } },
+    {
+      params: {
+        moduleKey,
+        permissionCode,
+        ...(scopeTargetType ? { scopeTargetType } : {}),
+        ...(scopeTargetId ? { scopeTargetId } : {}),
+        ...(resourceType ? { resourceType } : {}),
+        ...(resourceId ? { resourceId } : {})
+      }
+    },
     '访问解释失败'
   )
 }
