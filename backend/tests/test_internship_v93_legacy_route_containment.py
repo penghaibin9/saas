@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import pytest
+from fastapi.routing import APIRoute
 
 # 冻结基线：当前有 canonical /context/* 替代、因而已标记 deprecated 的旧入口数量。
 # 收敛旧入口时把这个数字调小；调大意味着又新增了一个本可以走 canonical 的旧写入口。
@@ -35,26 +36,51 @@ KNOWN_WITHOUT_REPLACEMENT = {
 }
 
 PREFIX = "/api/v1/mobile/internship"
+LEGACY_ROUTER_PREFIX = "/internship"
+_HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+
+def _legacy_router_signatures() -> set[tuple[str, str]]:
+    """只冻结 `mobile.py::internship_mobile` 本身，不误伤同 URL 前缀下的新 canonical facade。"""
+    from app.api.v1 import mobile
+
+    found: set[tuple[str, str]] = set()
+    for route in mobile.internship_mobile.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        path = route.path
+        if not path.startswith(LEGACY_ROUTER_PREFIX):
+            continue
+        tail = path[len(LEGACY_ROUTER_PREFIX):]
+        for method in (route.methods or set()):
+            method = method.upper()
+            if method in _HTTP_METHODS:
+                found.add((method, tail))
+    return found
 
 
 def _legacy_routes():
-    """mobile.py 上的旧学生实习路由；canonical 的 /context/* 不算在内。
+    """读取 OpenAPI 上属于 `mobile.py::internship_mobile` 的旧学生实习路由。
 
-    读 OpenAPI schema 而不是 app.routes：本应用用懒加载 router 挂载，路由对象在
-    app.routes 上并未展开，直接遍历会一条都取不到（而且会静默取到空集，让守卫假绿）。
+    仍以最终 OpenAPI 读取 deprecated 真值，但先用 legacy router 自身的 method/path 签名限定范围。
+    这样 A03 后来新增的 `/catalog/*`、`/profile/*` 正式 facade 即使共享
+    `/api/v1/mobile/internship` 前缀，也不会被误判成 V9.3 旧入口。
     """
     from app.main import app
+
+    legacy_signatures = _legacy_router_signatures()
+    assert legacy_signatures, "mobile.py::internship_mobile 未暴露任何路由，legacy 守卫探测失效"
 
     found = []
     for path, ops in (app.openapi().get("paths") or {}).items():
         if not path.startswith(PREFIX):
             continue
         tail = path[len(PREFIX):]
-        if tail.startswith("/context/") or tail.startswith("/compliance/"):
-            continue
         for method, op in ops.items():
-            if method.upper() in ("GET", "POST", "PUT", "DELETE", "PATCH"):
-                found.append((method.upper(), tail, bool(op.get("deprecated"))))
+            method = method.upper()
+            if (method, tail) not in legacy_signatures:
+                continue
+            found.append((method, tail, bool(op.get("deprecated"))))
     return found
 
 
