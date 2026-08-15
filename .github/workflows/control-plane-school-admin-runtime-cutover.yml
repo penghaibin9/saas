@@ -1,0 +1,159 @@
+name: Control Plane SCHOOL_ADMIN Runtime Cutover
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'
+      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
+      - 'backend/tests/test_role_assignment_privilege_boundary.py'
+      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'
+      - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - '.github/workflows/control-plane-school-admin-runtime-cutover.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'
+      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
+      - 'backend/tests/test_role_assignment_privilege_boundary.py'
+      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'
+      - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - '.github/workflows/control-plane-school-admin-runtime-cutover.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-school-admin-runtime-cutover-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DB_ENABLED: 'true'
+  DB_DRIVER: mysql
+  MOCK_LOGIN_ENABLED: 'false'
+  JWT_SECRET: control-plane-school-admin-runtime-cutover-secret
+  SECRET_KEY: control-plane-school-admin-runtime-cutover-secret
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_school_admin_cutover?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_school_admin_cutover?charset=utf8mb4
+  SCHOOL_ADMIN_CUTOVER_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SCHOOL_ADMIN_CUTOVER_EVIDENCE_PATH: ../artifacts/control-plane/school-admin-runtime-cutover.json
+
+jobs:
+  mysql-runtime-cutover:
+    name: Exact-head MySQL SCHOOL_ADMIN runtime cutover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: control_plane_school_admin_cutover
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Strict concrete Permission Catalog reconciliation
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/control-plane
+          python scripts/check/check-permission-catalog.py --strict-legacy --write artifacts/control-plane/school-admin-runtime-cutover-permission-catalog.json
+
+      - name: Install backend and migrate exact schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current
+          python -m py_compile app/core/permissions.py
+          python -m py_compile app/core/school_admin_permission_resolver.py
+          python -m py_compile scripts/check_control_plane_school_admin_runtime_cutover.py
+
+      - name: Run runtime-cutover contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_control_plane_b8_shadow.py \
+            tests/test_control_plane_school_admin_runtime_cutover.py \
+            tests/test_role_assignment_privilege_boundary.py \
+            --disable-warnings
+
+      - name: Run exact-head runtime proof
+        working-directory: backend
+        run: PYTHONPATH=. python scripts/check_control_plane_school_admin_runtime_cutover.py
+
+      - name: Validate frozen runtime evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected = '${{ github.event.pull_request.head.sha || github.sha }}'
+          data = json.loads(Path('artifacts/control-plane/school-admin-runtime-cutover.json').read_text(encoding='utf-8'))
+          assert data['schemaVersion'] == 1
+          assert data['card'] == 'CTRL-B8-WILDCARD-RETIREMENT-RUNTIME'
+          assert data['headSha'] == expected
+          assert data['legacySchoolAdminWildcardShadowStillPresent'] is True
+          assert data['legacyWildcardRuntimeReachable'] is False
+          assert data['runtimeSchoolAdminWildcardStillPresent'] is False
+          assert data['runtimeSchoolAdminWildcardRetired'] is True
+          assert data['runtimeResolver'] == 'PUBLISHED_TENANT_ROLE_TEMPLATE'
+          assert data['runtimeExactSnapshot'] is True
+          assert data['runtimePermissionCount'] == data['tenantPermissionUniverseCount']
+          assert data['runtimePermissionCount'] > 400
+          assert data['platformPermissionCount'] == 0
+          assert data['enterprisePermissionCount'] == 0
+          assert data['dbFailurePolicy'] == 'FAIL_CLOSED'
+          assert data['shadow']['zeroUnexplainedDrift'] is True
+          assert data['cutoverComplete'] is True
+          print(json.dumps(data, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload runtime-cutover evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-school-admin-runtime-cutover-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/control-plane/school-admin-runtime-cutover.json
+            artifacts/control-plane/school-admin-runtime-cutover-permission-catalog.json
+          if-no-files-found: warn
+          retention-days: 14
