@@ -9,8 +9,7 @@ from app.modules.internship.services import internship_student_position_eligibil
 def test_campaign_position_eligibility_is_fail_closed_on_student_company_and_window_state():
     source = inspect.getsource(eligibility.evaluate_position_for_student_in_tx)
     window = inspect.getsource(eligibility.assert_student_selection_window)
-    assert 'campaign.status != "OPEN"' in window
-    assert "student_select_start_at" in window and "student_select_end_at" in window
+    assert 'assert_campaign_operation_window(campaign, "STUDENT_SELECT"' in window
     assert 'record.status not in {"PREPARING", "READY"}' in source
     assert 'record.eligibility_status != "QUALIFIED"' in source
     assert 'company.status or ""' in source and '!= "ACTIVE"' in source

@@ -14,6 +14,7 @@ from app.models.internship_enterprise_portal import InternshipRecruitmentCampaig
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_application_material_snapshot_service as material_svc
 from app.modules.internship.services import internship_audit_service
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 
 _ALLOWED = {
@@ -80,14 +81,7 @@ def _assert_decision_write_window(
         if campaign.status not in {"OPEN", "FROZEN"}:
             raise AppException("DATA_CONFLICT", "招聘季已关闭，企业不能再撤回拟接收")
         return
-    if campaign.status != "OPEN":
-        raise AppException("DATA_CONFLICT", "当前招聘季不允许企业写入招聘决定")
-    start = campaign.enterprise_decision_start_at
-    end = campaign.enterprise_decision_end_at
-    if start is None or end is None:
-        raise AppException("DATA_CONFLICT", "招聘季未配置完整企业处理时间窗")
-    if now < start or now > end:
-        raise AppException("DATA_CONFLICT", "当前不在企业处理时间窗内")
+    window_guard.assert_campaign_operation_window(campaign, "ENTERPRISE_DECISION", now=now)
 
 
 def list_owned_applications_in_tx(

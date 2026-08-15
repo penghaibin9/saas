@@ -17,6 +17,7 @@ from app.models.internship_enterprise_application_decision import InternshipEnte
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_placement_snapshot_service as snapshot_svc
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services import internship_student_service as student_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 
@@ -25,14 +26,7 @@ _ORIGINAL = None
 
 
 def _assert_school_confirm_window(campaign: InternshipRecruitmentCampaign, *, now: datetime) -> None:
-    if campaign.status != "OPEN":
-        raise AppException("DATA_CONFLICT", "当前招聘季不是 OPEN，不能审核正式志愿落岗")
-    start = campaign.school_confirm_start_at
-    end = campaign.school_confirm_end_at
-    if start is None or end is None:
-        raise AppException("DATA_CONFLICT", "招聘季未配置完整学校确认时间窗")
-    if now < start or now > end:
-        raise AppException("DATA_CONFLICT", "当前不在学校确认时间窗内，不能正式落岗")
+    window_guard.assert_campaign_operation_window(campaign, "SCHOOL_CONFIRM", now=now)
 
 
 def _source_for_campaign_in_tx(db, *, record, position, now: datetime):

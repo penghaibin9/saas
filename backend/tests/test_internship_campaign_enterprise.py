@@ -29,28 +29,11 @@ def test_campaign_enterprise_model_only_owns_participation_fact():
     columns = set(InternshipCampaignEnterprise.__table__.columns.keys())
     assert InternshipCampaignEnterprise.__tablename__ == "t_internship_campaign_enterprise"
     assert {
-        "tenant_id",
-        "campaign_id",
-        "company_id",
-        "status",
-        "invite_source",
-        "invited_by_user_id",
-        "invited_at",
-        "accepted_at",
-        "declined_at",
-        "revoked_at",
-        "revoke_reason",
-        "version",
-        "created_at",
-        "updated_at",
-        "is_deleted",
+        "tenant_id", "campaign_id", "company_id", "status", "invite_source",
+        "invited_by_user_id", "invited_at", "accepted_at", "declined_at",
+        "revoked_at", "revoke_reason", "version", "created_at", "updated_at", "is_deleted",
     } <= columns
-    assert not {
-        "qualification_status",
-        "blacklist",
-        "coop_status",
-        "access_valid_until",
-    } & columns
+    assert not {"qualification_status", "blacklist", "coop_status", "access_valid_until"} & columns
 
 
 def test_campaign_enterprise_unique_and_indexes_are_tenant_scoped():
@@ -68,22 +51,24 @@ def test_company_admission_reads_emp_company_instead_of_copying_statuses():
     assert "company.access_valid_until" in source
 
 
-def test_invite_is_campaign_locked_tenant_scoped_and_closed_fail_closed():
+def test_invite_is_campaign_locked_tenant_scoped_and_uses_shared_invite_window():
     source = inspect.getsource(service.invite_company)
     assert "lock=True" in source
-    assert 'campaign.status not in {"DRAFT", "OPEN"}' in source
+    assert 'assert_campaign_operation_window(campaign, "INVITE", now=now)' in source
     assert "require_admission=True" in source
     assert "InternshipCampaignEnterprise.tenant_id == tenant_id" in source
     assert ".with_for_update()" in source
     assert "终态参与记录" in source
 
 
-def test_participation_transition_requires_expected_version_and_revoke_reason():
+def test_participation_transition_requires_version_revoke_reason_and_invite_window_for_accept_decline():
     source = inspect.getsource(service.transition_participation)
     version_source = inspect.getsource(service._expected_version)
     assert "lock=True" in source
     assert "expectedVersion" in version_source
     assert 'campaign.status in {"CLOSED", "ARCHIVED"}' in source
+    assert 'target in {"ACCEPTED", "DECLINED"}' in source
+    assert 'assert_campaign_operation_window(campaign, "INVITE", now=now)' in source
     assert 'target == "REVOKED"' in source
     assert "撤销原因" in source
 

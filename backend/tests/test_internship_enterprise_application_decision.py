@@ -33,14 +33,12 @@ def test_enterprise_list_is_sql_paginated_and_never_exposes_sibling_preferences_
     assert "siblings" not in source.lower()
 
 
-def test_decision_writes_only_submitted_current_material_and_respects_campaign_window():
+def test_decision_writes_only_submitted_current_material_and_uses_shared_campaign_window():
     source = inspect.getsource(svc.set_decision_in_tx)
     guard = inspect.getsource(svc._assert_decision_write_window)
     assert 'application.status != "PENDING_REVIEW"' in source
     assert "group.current_material_snapshot_id != application.material_snapshot_id" in source
-    assert "enterprise_decision_start_at" in guard
-    assert "enterprise_decision_end_at" in guard
-    assert 'campaign.status != "OPEN"' in guard
+    assert 'assert_campaign_operation_window(campaign, "ENTERPRISE_DECISION", now=now)' in guard
     assert '{"OPEN", "FROZEN"}' in guard  # withdraw-accept safety path only
 
 

@@ -8,17 +8,12 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import EmpCompany, InternshipBatch, InternshipBatchParticipant, InternshipPosition, StudentProfile
 from app.models.internship_enterprise_portal import InternshipCampaignEnterprise, InternshipRecruitmentCampaign
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
 
 
 def assert_student_selection_window(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -> None:
-    current = now or datetime.utcnow()
-    if campaign.status != "OPEN":
-        raise AppException("DATA_CONFLICT", "当前招聘季未开放学生选岗")
-    if not campaign.student_select_start_at or not campaign.student_select_end_at:
-        raise AppException("DATA_CONFLICT", "招聘季未配置完整学生选岗时间窗")
-    if current < campaign.student_select_start_at or current > campaign.student_select_end_at:
-        raise AppException("DATA_CONFLICT", "当前不在学生选岗时间窗内")
+    window_guard.assert_campaign_operation_window(campaign, "STUDENT_SELECT", now=now)
 
 
 def evaluate_position_for_student_in_tx(
