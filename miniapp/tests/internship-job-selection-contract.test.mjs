@@ -9,6 +9,7 @@ import {
 } from '../src/modules/internshipSelectionModel.js'
 
 const pageSource = readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/services/internshipSelectionApi.js', import.meta.url), 'utf8')
 
 test('A03-9 preserves old enterprises route file but renames product surface to 实习选岗', () => {
   assert.match(pageSource, /:title="navTitle"/)
@@ -56,4 +57,16 @@ test('A03-9 mobile job card keeps only 2-3 compact tags and backend match state'
   const page = normalizeMobilePage({ items: [position], total: 25, page: 1, pageSize: 20 })
   assert.equal(page.total, 25)
   assert.equal(page.items.length, 1)
+})
+
+test('A03 production seal makes mobile authority reads latest-wins and context fail-closed', () => {
+  assert.match(apiSource, /function latestRead\(/)
+  assert.match(apiSource, /context\(\) \{ return latestRead\('context'/)
+  assert.match(apiSource, /position\(positionId\) \{ return latestRead\('position'/)
+  assert.match(apiSource, /company\(companyId\) \{ return latestRead\('company'/)
+  assert.match(apiSource, /profile\(\) \{ return latestRead\('profile'/)
+  assert.match(apiSource, /volunteers\(\) \{ return latestRead\('volunteers'/)
+  assert.match(apiSource, /canSelect: false/)
+  assert.match(apiSource, /selectionBlockReason/)
+  assert.match(apiSource, /availableFrom: profile\?\.availableFrom/)
 })

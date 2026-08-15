@@ -11,6 +11,31 @@ import { normalizeCatalogQuery } from '../modules/internshipRecruitment/selectio
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
+const latestReads = new Map()
+
+function latestRead(key, task, fallback = null) {
+  let exposed
+  const raw = Promise.resolve().then(task)
+  exposed = raw.then(
+    (value) => latestReads.get(key) === exposed ? value : latestReads.get(key),
+    (error) => {
+      if (latestReads.get(key) !== exposed) return latestReads.get(key)
+      if (fallback) return fallback(error)
+      throw error
+    }
+  )
+  latestReads.set(key, exposed)
+  return exposed
+}
+
+function unavailableContext() {
+  return {
+    campaignStatus: 'UNAVAILABLE',
+    phaseLabel: '招聘季信息暂不可用',
+    canSelect: false,
+    selectionBlockReason: '暂时无法读取学校招聘季信息，请重新加载后再调整志愿。'
+  }
+}
 
 function normalizeProfileWriteBody(body = {}) {
   const out = {}
@@ -47,29 +72,29 @@ function normalizeProfileItemWriteBody(body = {}) {
 }
 
 export const internshipSelectionApi = {
-  context() { return request('/portal/internship/catalog/context') },
+  context() { return latestRead('context', () => request('/portal/internship/catalog/context'), unavailableContext) },
   positions(query = {}) { return request('/portal/internship/catalog/positions', { params: normalizeCatalogQuery(query) }) },
-  position(positionId) { return request(`/portal/internship/catalog/positions/${enc(positionId)}`) },
-  company(companyId) { return request(`/portal/internship/catalog/companies/${enc(companyId)}`) },
+  position(positionId) { return latestRead('position', () => request(`/portal/internship/catalog/positions/${enc(positionId)}`)) },
+  company(companyId) { return latestRead('company', () => request(`/portal/internship/catalog/companies/${enc(companyId)}`)) },
 
-  profile() { return request('/portal/internship/profile') },
+  profile() { return latestRead('profile', () => request('/portal/internship/profile')) },
   updateProfile(body) { return request('/portal/internship/profile', { method: 'PUT', body: normalizeProfileWriteBody(body) }) },
-  profileCompleteness() { return request('/portal/internship/profile/completeness') },
-  profileItems() { return request('/portal/internship/profile/items') },
+  profileCompleteness() { return latestRead('profile-completeness', () => request('/portal/internship/profile/completeness')) },
+  profileItems() { return latestRead('profile-items', () => request('/portal/internship/profile/items')) },
   createProfileItem(body) { return request('/portal/internship/profile/items', { method: 'POST', body: normalizeProfileItemWriteBody(body) }) },
   updateProfileItem(itemId, body) { return request(`/portal/internship/profile/items/${enc(itemId)}`, { method: 'PUT', body: normalizeProfileItemWriteBody(body) }) },
   deleteProfileItem(itemId) { return request(`/portal/internship/profile/items/${enc(itemId)}`, { method: 'DELETE' }) },
-  profilePreview() { return request('/portal/internship/profile/preview') },
+  profilePreview() { return latestRead('profile-preview', () => request('/portal/internship/profile/preview')) },
   profilePdfPreview(body = {}) { return request('/portal/internship/profile/pdf-preview', { method: 'POST', body }) },
 
-  volunteers() { return request('/portal/internship/context/volunteers') },
+  volunteers() { return latestRead('volunteers', () => request('/portal/internship/context/volunteers')) },
   saveVolunteers(body) { return request('/portal/internship/context/volunteers', { method: 'PUT', body }) },
-  materialPreview() { return request('/portal/internship/context/volunteers/material-preview') },
+  materialPreview() { return latestRead('material-preview', () => request('/portal/internship/context/volunteers/material-preview')) },
   submitVolunteers(body) { return request('/portal/internship/context/volunteers/submit', { method: 'POST', body }) },
   withdrawVolunteers(body = {}) { return request('/portal/internship/context/volunteers/withdraw', { method: 'POST', body }) },
   requestUnlock(body = {}) { return request('/portal/internship/context/volunteers/unlock-request', { method: 'POST', body }) },
-  submissions() { return request('/portal/internship/context/volunteers/submissions') },
-  submission(version) { return request(`/portal/internship/context/volunteers/submissions/${enc(version)}`) },
+  submissions() { return latestRead('submissions', () => request('/portal/internship/context/volunteers/submissions')) },
+  submission(version) { return latestRead('submission', () => request(`/portal/internship/context/volunteers/submissions/${enc(version)}`)) },
   revokeContactConsent(body = {}) { return request('/portal/internship/context/volunteers/contact-consent/revoke', { method: 'POST', body }) }
 }
 

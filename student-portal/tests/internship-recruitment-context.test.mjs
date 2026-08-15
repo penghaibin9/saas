@@ -1,11 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   formatDeadline,
   normalizeRecruitmentContext,
   selectionConclusion
 } from '../src/modules/internshipRecruitment/contextModel.js'
+
+const apiSource = readFileSync(new URL('../src/services/internshipSelectionApi.js', import.meta.url), 'utf8')
 
 test('A03-1 maps recruitment context without inventing client truth', () => {
   const context = normalizeRecruitmentContext({
@@ -48,4 +51,19 @@ test('A03-11 canonical APPROVED context is final even while campaign is still op
   assert.equal(context.groupStatusLabel, '学校已确认')
   assert.match(selectionConclusion(context), /学校已完成最终确认/)
   assert.doesNotMatch(selectionConclusion(context), /可继续调整/)
+})
+
+test('A03 production seal makes context reads latest-wins and authority failures browse-only', () => {
+  const unavailable = normalizeRecruitmentContext({
+    campaignStatus: 'UNAVAILABLE',
+    phaseLabel: '招聘季信息暂不可用',
+    canSelect: false,
+    selectionBlockReason: '暂时无法读取学校招聘季信息，请重新加载后再调整志愿。'
+  })
+  assert.equal(unavailable.canSelect, false)
+  assert.match(selectionConclusion(unavailable), /暂时无法读取学校招聘季信息/)
+  assert.match(apiSource, /function latestRead\(/)
+  assert.match(apiSource, /context\(\) \{ return latestRead\('context'/)
+  assert.match(apiSource, /canSelect: false/)
+  assert.match(apiSource, /selectionBlockReason/)
 })
