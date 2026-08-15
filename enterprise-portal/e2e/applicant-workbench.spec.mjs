@@ -134,9 +134,9 @@ test('A02-7 ACCEPT_INTENT writes through A01 canonical portal route with campaig
   await installEnterpriseApi(page)
   await loginAndEnterCampaign(page)
   const decisionRequest=page.waitForRequest(request=>request.url().includes('/internship/enterprise-portal/applications/501/decision'))
-  await page.getByRole('button',{name:'拟接收'}).click()
+  await page.getByRole('button',{name:'拟接收',exact:true}).click()
   await expect(page.getByText('确认拟接收这名学生？')).toBeVisible()
-  await page.getByRole('button',{name:'确认拟接收'}).click()
+  await page.getByRole('button',{name:'确认拟接收',exact:true}).click()
   const request=await decisionRequest
   const url=new URL(request.url())
   expect(url.searchParams.get('campaignId')).toBe('2027-spring')
