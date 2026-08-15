@@ -99,7 +99,7 @@ export function buildVolunteerSubmitPayload({
   expectedGroupVersion,
   expectedProfileVersion,
   consentPolicyVersion,
-  contactSharingMode = 'AFTER_INTERVIEW',
+  contactSharingMode = 'MASKED_ONLY',
   confirmMaterialPreviewHash
 }) {
   if (!CONTACT_SHARING_MODES.includes(contactSharingMode)) throw new Error('联系方式共享策略无效')

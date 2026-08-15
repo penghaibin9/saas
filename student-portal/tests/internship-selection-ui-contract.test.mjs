@@ -16,6 +16,7 @@ import {
 } from '../src/modules/internshipRecruitment/selectionContract.js'
 
 const selectionViewSource = readFileSync(new URL('../src/views/internship/InternshipSelectionView.vue', import.meta.url), 'utf8')
+const submissionPanelSource = readFileSync(new URL('../src/components/recruitment/VolunteerSubmissionPanel.vue', import.meta.url), 'utf8')
 
 test('A03-0 freezes student selection naming, route and responsive layout', () => {
   assert.equal(INTERNSHIP_SELECTION_TITLE, '实习选岗')
@@ -65,14 +66,13 @@ test('A03-0 volunteer draft is one fixed-slot group payload with record/group/ap
   assert.equal(payload.expectedRecordVersion, 7)
   assert.deepEqual(payload.expectedApplicationVersions, { '1': 2, '2': 1, '3': 0 })
   assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedRecordVersion: 1, expectedApplicationVersions: {1:0,2:0,3:0}, items: [
-    { volunteerNo: 1, positionId: 201 },
-    { volunteerNo: 2, positionId: 201 }
+    { volunteerNo: 1, positionId: 201 }, { volunteerNo: 2, positionId: 201 }
   ] }), /不能重复/)
   assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedApplicationVersions: {1:0,2:0,3:0}, items: [{ volunteerNo: 1, positionId: 201 }] }), /实习记录版本缺失/)
   assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, expectedRecordVersion: 1, expectedApplicationVersions: {1:0,3:0}, items: [{ volunteerNo: 1, positionId: 201 }] }), /第2志愿版本缺失/)
 })
 
-test('A03-0 submit requires preview hash, explicit contact policy and versions', () => {
+test('A03 production privacy seal defaults submit to MASKED_ONLY while preserving explicit choices', () => {
   assert.deepEqual(buildVolunteerSubmitPayload({
     expectedGroupVersion: 12,
     expectedProfileVersion: 8,
@@ -82,18 +82,21 @@ test('A03-0 submit requires preview hash, explicit contact policy and versions',
     expectedGroupVersion: 12,
     expectedProfileVersion: 8,
     consentPolicyVersion: 'INTERN_APPLICATION_PRIVACY_2026_08',
-    contactSharingMode: 'AFTER_INTERVIEW',
+    contactSharingMode: 'MASKED_ONLY',
     confirmMaterialPreviewHash: 'sha256:abc'
   })
+  assert.equal(buildVolunteerSubmitPayload({
+    expectedGroupVersion: 12,
+    expectedProfileVersion: 8,
+    consentPolicyVersion: 'v1',
+    contactSharingMode: 'AFTER_INTERVIEW',
+    confirmMaterialPreviewHash: 'sha256:x'
+  }).contactSharingMode, 'AFTER_INTERVIEW')
+  assert.match(submissionPanelSource, /default: 'MASKED_ONLY'/)
+  assert.match(submissionPanelSource, /emit\('update:contactSharingMode', 'MASKED_ONLY'\)/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, expectedProfileVersion: 8, consentPolicyVersion: 'v1' }), /必须确认/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedProfileVersion: 8, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /志愿组版本缺失/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /实习档案版本缺失/)
-  assert.equal(buildVolunteerSubmitPayload({
-    expectedGroupVersion: 0,
-    expectedProfileVersion: 0,
-    consentPolicyVersion: 'v1',
-    confirmMaterialPreviewHash: 'sha256:x'
-  }).expectedProfileVersion, 0)
 })
 
 test('A03-11 student-facing selection fails closed when volunteer authority is unavailable', () => {

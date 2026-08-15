@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import {
   VOLUNTEER_STATUS_META,
   canRequestVolunteerUnlock,
@@ -78,13 +78,19 @@ const props = defineProps({
   group: { type: Object, required: true },
   slots: { type: Array, required: true },
   preview: { type: Object, required: true },
-  contactSharingMode: { type: String, default: 'AFTER_INTERVIEW' },
+  contactSharingMode: { type: String, default: 'MASKED_ONLY' },
   confirmed: { type: Boolean, default: false },
   confirmOpen: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
   submitError: { type: Object, default: () => ({ message: '', invalidItems: [] }) }
 })
-defineEmits(['prepare-submit', 'cancel-confirm', 'submit', 'withdraw', 'unlock', 'update:contactSharingMode', 'update:confirmed'])
+const emit = defineEmits(['prepare-submit', 'cancel-confirm', 'submit', 'withdraw', 'unlock', 'update:contactSharingMode', 'update:confirmed'])
+
+onMounted(() => {
+  // A03 production privacy seal: historical parent default was AFTER_INTERVIEW.
+  // Normalize only the initial mounted value; later explicit student choices are preserved.
+  if (props.contactSharingMode === 'AFTER_INTERVIEW') emit('update:contactSharingMode', 'MASKED_ONLY')
+})
 
 const status = computed(() => String(props.group.status || 'DRAFT').toUpperCase())
 const meta = computed(() => VOLUNTEER_STATUS_META[status.value] || { label: status.value, tone: 'neutral' })

@@ -172,8 +172,8 @@ export function normalizeMobileMaterialPreview(raw = {}) {
   }
 }
 
-export function buildMobileVolunteerSubmitRequest(group, preview, contactSharingMode = 'AFTER_INTERVIEW') {
-  const mode = CONTACT_MODES.includes(contactSharingMode) ? contactSharingMode : 'AFTER_INTERVIEW'
+export function buildMobileVolunteerSubmitRequest(group, preview, contactSharingMode = 'MASKED_ONLY') {
+  const mode = CONTACT_MODES.includes(contactSharingMode) ? contactSharingMode : 'MASKED_ONLY'
   if (!preview.previewHash || !preview.consentPolicyVersion) throw new Error('请先确认企业视角投递材料')
   return {
     expectedGroupVersion: requireGroupVersion(group),

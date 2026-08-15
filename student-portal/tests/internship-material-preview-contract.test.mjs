@@ -8,10 +8,11 @@ import {
   normalizeMaterialPreview
 } from '../src/modules/internshipRecruitment/materialPreviewModel.js'
 
-test('A03-6 contact sharing defaults to safe AFTER_INTERVIEW policy', () => {
-  assert.equal(normalizeContactSharingMode(), 'AFTER_INTERVIEW')
-  assert.equal(normalizeContactSharingMode('UNKNOWN_POLICY'), 'AFTER_INTERVIEW')
-  assert.equal(CONTACT_SHARING_OPTIONS.find((item) => item.value === 'AFTER_INTERVIEW')?.label, '面试后可查看')
+test('A03-6 contact sharing defaults to V3 MASKED_ONLY policy', () => {
+  assert.equal(normalizeContactSharingMode(), 'MASKED_ONLY')
+  assert.equal(normalizeContactSharingMode('UNKNOWN_POLICY'), 'MASKED_ONLY')
+  assert.match(CONTACT_SHARING_OPTIONS.find((item) => item.value === 'MASKED_ONLY')?.help || '', /推荐/)
+  assert.doesNotMatch(CONTACT_SHARING_OPTIONS.find((item) => item.value === 'AFTER_INTERVIEW')?.help || '', /推荐/)
 })
 
 test('A03-6 enterprise material preview only keeps server shared fields and policy evidence', () => {
@@ -41,13 +42,11 @@ test('A03 production seal distinguishes explicit v0 from missing preview concurr
 })
 
 test('A03-6 PDF preview is server-derived and explicitly excludes other volunteers', () => {
-  assert.deepEqual(buildPdfPreviewRequest({
-    previewHash: 'sha256:abc',
-    contactSharingMode: 'AFTER_INTERVIEW'
-  }), {
+  assert.deepEqual(buildPdfPreviewRequest({ previewHash: 'sha256:abc' }), {
     materialPreviewHash: 'sha256:abc',
-    contactSharingMode: 'AFTER_INTERVIEW',
+    contactSharingMode: 'MASKED_ONLY',
     includeVolunteerApplications: false
   })
+  assert.deepEqual(buildPdfPreviewRequest({ previewHash: 'sha256:abc', contactSharingMode: 'AFTER_INTERVIEW' }).contactSharingMode, 'AFTER_INTERVIEW')
   assert.throws(() => buildPdfPreviewRequest({ contactSharingMode: 'AFTER_INTERVIEW' }), /先获取企业视角材料预览/)
 })

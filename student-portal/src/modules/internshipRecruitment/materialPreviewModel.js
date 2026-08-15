@@ -1,8 +1,8 @@
 import { CONTACT_SHARING_MODES } from './selectionContract.js'
 
 export const CONTACT_SHARING_OPTIONS = Object.freeze([
-  { value: 'MASKED_ONLY', label: '仅脱敏联系方式', help: '企业始终只看到脱敏联系方式。' },
-  { value: 'AFTER_INTERVIEW', label: '面试后可查看', help: '推荐：企业进入面试阶段后才可查看完整联系方式。' },
+  { value: 'MASKED_ONLY', label: '仅脱敏联系方式', help: '推荐：企业始终只看到脱敏联系方式。' },
+  { value: 'AFTER_INTERVIEW', label: '面试后可查看', help: '企业进入面试阶段后才可查看完整联系方式。' },
   { value: 'AFTER_ACCEPT_INTENT', label: '拟接收后可查看', help: '企业明确拟接收后才可查看完整联系方式。' },
   { value: 'IMMEDIATE', label: '立即允许查看', help: '提交后企业即可查看完整联系方式。' }
 ])
@@ -49,8 +49,8 @@ export function normalizeMaterialPreview(raw = {}) {
 }
 
 export function normalizeContactSharingMode(value) {
-  const mode = String(value || 'AFTER_INTERVIEW').toUpperCase()
-  return CONTACT_SHARING_MODES.includes(mode) ? mode : 'AFTER_INTERVIEW'
+  const mode = String(value || 'MASKED_ONLY').toUpperCase()
+  return CONTACT_SHARING_MODES.includes(mode) ? mode : 'MASKED_ONLY'
 }
 
 export function buildPdfPreviewRequest({ previewHash, contactSharingMode }) {
