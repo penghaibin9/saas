@@ -44,11 +44,15 @@ def iam_role_template_impact(
     return success(svc.school_template_impact(template_id))
 
 
-@router.get("/access-explain/{user_id}", summary="解释学校成员为什么能/不能执行某权限")
+@router.get("/access-explain/{user_id}", summary="解释学校成员为什么能/不能访问具体业务资源")
 def iam_access_explain(
     user_id: int,
     moduleKey: str = Query(default="internship", min_length=1, max_length=64),
     permissionCode: str = Query(default="internship.recruitment.manage", min_length=3, max_length=200),
+    scopeTargetType: str | None = Query(default=None, min_length=3, max_length=32),
+    scopeTargetId: str | None = Query(default=None, min_length=1, max_length=128),
+    resourceType: str | None = Query(default=None, min_length=2, max_length=64),
+    resourceId: str | None = Query(default=None, min_length=1, max_length=128),
     user=Depends(require_permission("systemAdmin.role.view")),
 ):
     _ = user
@@ -56,4 +60,8 @@ def iam_access_explain(
         user_id,
         module_key=moduleKey,
         permission_code=permissionCode,
+        scope_target_type=scopeTargetType,
+        scope_target_id=scopeTargetId,
+        resource_type=resourceType,
+        resource_id=resourceId,
     ))
