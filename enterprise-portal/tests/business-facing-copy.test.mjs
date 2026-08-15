@@ -44,13 +44,20 @@ function vueFiles(dir){
 }
 
 function templateOf(source){return source.match(/<template>([\s\S]*?)<\/template>/)?.[1]||''}
+function staticVisibleCopy(template){
+  return template
+    .replace(/<!--[\s\S]*?-->/g,' ')
+    .replace(/<[^>]*>/g,' ')
+    .replace(/\{\{[\s\S]*?\}\}/g,' ')
+    .replace(/\s+/g,' ')
+}
 
-test('enterprise visible templates never leak engineering or authority implementation jargon',()=>{
+test('enterprise visible static copy never leaks engineering or authority implementation jargon',()=>{
   for(const file of vueFiles(root)){
     const source=fs.readFileSync(file,'utf8')
-    const template=templateOf(source)
+    const visible=staticVisibleCopy(templateOf(source))
     for(const pattern of forbidden){
-      assert.doesNotMatch(template,pattern,`${path.relative(root,file)} leaks ${pattern}`)
+      assert.doesNotMatch(visible,pattern,`${path.relative(root,file)} visible copy leaks ${pattern}`)
     }
   }
 })

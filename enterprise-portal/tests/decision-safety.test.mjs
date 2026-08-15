@@ -11,7 +11,7 @@ test('A02-7 server decisionDisabledReason actually disables enterprise actions',
 
 test('A02-7 ACCEPT_INTENT requires explicit confirmation and never claims placement',()=>{
   assert.match(page,/确认拟接收这名学生/)
-  assert.match(page,/学校最终确认链/)
+  assert.match(page,/学校最终确认流程/)
   assert.match(page,/不等于正式落岗/)
   assert.doesNotMatch(page,/已录用/)
 })

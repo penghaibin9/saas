@@ -16,18 +16,18 @@ test('campaign selector preserves closed and archived history instead of hiding 
   assert.match(select,/historyItems/)
   assert.match(select,/历史招聘季/)
   assert.match(select,/进入历史只读视图/)
-  assert.match(select,/岗位、申请与 Decision 作为历史记录保留/)
+  assert.match(select,/岗位、申请和企业处理记录仍保留查看/)
 })
 
 test('internship collaboration is never inferred from campaign history',()=>{
   assert.match(home,/context\.capabilities\?\.internshipCollab===true/)
-  assert.match(home,/服务端显式确认有效 INTERNSHIP_COLLAB Grant/)
-  assert.match(home,/不会根据历史招聘季状态自行推断权限/)
+  assert.match(home,/后续实习协同权限需要学校确认/)
+  assert.match(home,/不会仅根据招聘季已结束就自动开放相关功能/)
   assert.doesNotMatch(store,/internshipCollab\s*:\s*true/)
 })
 
 test('portal remains fail closed when enterprise context cannot be validated',()=>{
   assert.match(layout,/访问授权不可用/)
-  assert.match(layout,/不会降级到未校验 companyId 或本地权限/)
+  assert.match(layout,/不会在校验失败后自动放宽企业访问范围/)
   assert.match(layout,/campaignName/)
 })
