@@ -95,8 +95,8 @@ jobs:
           git config user.name 'control-plane-joint-gold'
           git config user.email 'control-plane-joint-gold@invalid.local'
 
-          # First attempt a normal two-parent merge.  We permit exactly one known integration
-          # seam: route_registration.py.  Any second conflict is a new collision and fails closed.
+          # First attempt a normal two-parent merge. We permit exactly one known integration
+          # seam: route_registration.py. Any second conflict is a new collision and fails closed.
           set +e
           git merge --no-ff --no-commit "$E_HEAD"
           MERGE_RC=$?
@@ -108,8 +108,8 @@ jobs:
             test "${UNMERGED[0]}" = 'backend/app/api/v1/route_registration.py'
 
             # Start from Control Plane ownership, then inject only PR #132's E-series route
-            # deltas.  This preserves platform_router/system_i4_router while adding the
-            # enterprise/recruitment/student-selection surfaces.  No whole-side ours/theirs
+            # deltas. This preserves platform_router/system_i4_router while adding the
+            # enterprise/recruitment/student-selection surfaces. No whole-side ours/theirs
             # strategy is allowed for the merge itself.
             git checkout --ours backend/app/api/v1/route_registration.py
             python - <<'PY'
@@ -185,7 +185,8 @@ jobs:
           printf '%s\n' "$INTEGRATION_HEAD" > artifacts/control-plane/e-iam-temporary-integration-head.txt
           printf '%s\n' "$PARENTS" > artifacts/control-plane/e-iam-temporary-integration-parents.txt
           git status --short
-          test -z "$(git status --porcelain)"
+          # Evidence files are intentionally untracked. Tracked files must remain clean.
+          test -z "$(git status --porcelain --untracked-files=no)"
 
       - uses: actions/setup-python@v5
         with:
