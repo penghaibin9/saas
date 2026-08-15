@@ -40,6 +40,7 @@ export const POSITION_CARD_LAYOUT = Object.freeze({
 })
 
 function requireNonNegativeVersion(value, label) {
+  if (value === undefined || value === null || value === '') throw new Error(`${label}缺失，请刷新后重试`)
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${label}缺失，请刷新后重试`)
   return parsed
