@@ -10,6 +10,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException
 from app.core.response import success
 from app.modules.internship.dependencies.enterprise_context import (
@@ -23,6 +24,7 @@ from app.modules.internship.schemas.internship_recruitment_campaign import (
     EnterpriseLogin,
     EnterpriseRefresh,
 )
+from app.modules.internship.services import internship_application_resume_pdf_service as resume_pdf_svc
 from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
 from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
 from app.modules.internship.services import internship_enterprise_position_service as portal_svc
@@ -226,6 +228,39 @@ def application_detail(application_id: int, campaignId: int = Query(..., ge=1), 
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
         return success(decision_svc.material_detail_in_tx(db, context=ctx, application_id=application_id))
+
+
+@router.get("/applications/{application_id}/resume-pdf", summary="企业按申请归属查看冻结实习档案 PDF")
+def application_resume_pdf(application_id: int, campaignId: int = Query(..., ge=1), principal: EnterprisePrincipal = Depends(require_permission("internship.application.view"))):
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    with session() as db:
+        file_row, snapshot = resume_pdf_svc.resolve_enterprise_resume_pdf_in_tx(
+            db, context=ctx, application_id=application_id,
+        )
+        path = resume_pdf_svc.materialize_pdf_for_delivery(file_row)
+        filename = file_row.file_name or f"internship-application-{application_id}.pdf"
+        file_id = str(file_row.id)
+        snapshot_id = str(snapshot.id)
+        snapshot_hash = str(snapshot.snapshot_hash or "")
+        submission_version = int(snapshot.submission_version or 0)
+        db.commit()
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        inline=True,
+        media_type="application/pdf",
+        audit_action="INTERNSHIP_ENTERPRISE_RESUME_PDF_VIEW",
+        audit_target=f"internship-application:{application_id}",
+        headers={"X-Internship-Snapshot-Hash": snapshot_hash},
+        audit_detail={
+            "applicationId": str(application_id),
+            "campaignId": str(ctx.campaign_id),
+            "companyId": str(ctx.company_id),
+            "snapshotId": snapshot_id,
+            "submissionVersion": submission_version,
+            "fileId": file_id,
+        },
+    )
 
 
 @router.post("/applications/{application_id}/contact-view")

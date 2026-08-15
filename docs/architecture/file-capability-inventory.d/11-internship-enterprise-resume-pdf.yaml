@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: shared
+    route: backend/app/modules/internship/routers/internship_enterprise_portal.py
+    page: enterprise-portal/src/components/applicant/ApplicationMaterialView.vue
+    action: enterprise-owned-application-resume-pdf
+    fileCategory: INTERNSHIP_APPLICATION_PROFILE_PDF
+    api: GET /api/v1/internship/enterprise-portal/applications/{applicationId}/resume-pdf
+    backendService: backend/app/modules/internship/services/internship_application_resume_pdf_service.py
+    storageMode: FILE_CENTER_SYSTEM_BYTES_BUSINESS_BINDING
+    authMode: enterprise-member+campaign+company-owned-application
+    dataScope: tenant+campaign+company+application+snapshot
+    versioned: true
+    scanGated: false
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: PDF is a one-time derived artifact from the immutable ApplicationMaterialSnapshot. The client never supplies fileId; enterprise ownership is checked before resolving the exact snapshot, the file is PRIVATE/HIGHLY_SENSITIVE, and bytes are returned only through the audited File Center proxy response. Legacy snapshots are backfilled lazily and idempotently on first authorized view.

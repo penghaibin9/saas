@@ -1,4 +1,4 @@
-import { getSelectedCampaignId, request } from './request.js'
+import { getSelectedCampaignId, request, requestBinary } from './request.js'
 import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
@@ -28,10 +28,6 @@ function collaborationParams(batchId){
   const value=Number(batchId||activeCollaborationBatchId)
   if(!Number.isInteger(value)||value<=0)throw new Error('当前实习协同批次不可用，请重新进入学校已开放的协同批次')
   return {batchId:value}
-}
-function unavailableFacade(name){
-  const error=new Error(`该企业协同能力尚未由学校端开放：${name}`)
-  error.code='ENTERPRISE_FACADE_UNFROZEN';error.facade=name;return Promise.reject(error)
 }
 function requireVersion(value,label='数据'){
   if(value===null||value===undefined||value===''||!Number.isInteger(Number(value))||Number(value)<0)throw new Error(`${label}版本缺失，请刷新后重试`)
@@ -71,7 +67,7 @@ export const enterpriseInternshipApi={
   withdrawPosition:(id,expectedVersion)=>request(`${AUTH_ROOT}/positions/${id}/withdraw`,{method:'POST',params:requireRecruitmentAccess(),body:{expectedVersion:requireVersion(expectedVersion,'岗位')}}),
   applications:async({page=1,pageSize=50,decisionStatus='',positionId=''}={})=>normalizeApplicantPage(await request(`${AUTH_ROOT}/applications`,{params:{...requireRecruitmentAccess(),page,pageSize,decisionStatus,positionId}})),
   applicationMaterial:fetchApplicationMaterial,
-  resumePdf:()=>unavailableFacade('简历 PDF'),
+  resumePdf:(id)=>requestBinary(`${AUTH_ROOT}/applications/${id}/resume-pdf`,{params:requireRecruitmentAccess()}),
   decideApplication:(id,status,payload={})=>{if(!DECISIONS.has(status))throw new Error(`不允许的企业 Decision: ${status}`);return request(`${AUTH_ROOT}/applications/${id}/decision`,{method:'POST',params:requireRecruitmentAccess(),body:{status,...payload}})},
   revealContact:(id)=>request(`${AUTH_ROOT}/applications/${id}/contact-view`,{method:'POST',params:requireRecruitmentAccess()}),
   withdrawAccept:(id,reason)=>{const text=String(reason||'').trim();if(text.length<2)throw new Error('撤回拟接收必须填写原因');return request(`${AUTH_ROOT}/applications/${id}/withdraw-accept`,{method:'POST',params:requireRecruitmentAccess(),body:{reason:text}})},

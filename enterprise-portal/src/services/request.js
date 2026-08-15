@@ -69,14 +69,18 @@ async function refreshOnce(){
   return refreshing
 }
 
-export async function request(path,{method='GET',body,params,auth=true,_retried=false}={}){
+function requestSuffix(path,params){
   const query=new URLSearchParams()
   Object.entries(params||{}).forEach(([key,value])=>{
     if(value===undefined||value===null||value==='')return
     if(Array.isArray(value))value.forEach(item=>query.append(key,String(item)))
     else query.set(key,String(value))
   })
-  const suffix=query.size?`${path.includes('?')?'&':'?'}${query.toString()}`:''
+  return query.size?`${path.includes('?')?'&':'?'}${query.toString()}`:''
+}
+
+export async function request(path,{method='GET',body,params,auth=true,_retried=false}={}){
+  const suffix=requestSuffix(path,params)
   const headers={'Content-Type':'application/json','X-Browser-Session':'enterprise'}
   if(auth&&accessToken)headers.Authorization=`Bearer ${accessToken}`
   let response
@@ -95,6 +99,46 @@ export async function request(path,{method='GET',body,params,auth=true,_retried=
   }
   if(payload.code!==0)throw businessError(payload,response)
   return payload.data
+}
+
+function responseHeader(response,name){
+  try{return String(response?.headers?.get?.(name)||'')}catch{return ''}
+}
+function downloadFilename(disposition){
+  const utf8=String(disposition||'').match(/filename\*=UTF-8''([^;]+)/i)
+  if(utf8){try{return decodeURIComponent(utf8[1])}catch{return utf8[1]}}
+  const plain=String(disposition||'').match(/filename="?([^";]+)"?/i)
+  return plain?plain[1]:''
+}
+
+export async function requestBinary(path,{params,auth=true,_retried=false}={}){
+  const suffix=requestSuffix(path,params)
+  const headers={'X-Browser-Session':'enterprise','Accept':'application/pdf,application/octet-stream'}
+  if(auth&&accessToken)headers.Authorization=`Bearer ${accessToken}`
+  let response
+  try{
+    response=await fetch(`${API_BASE}${API_PREFIX}${path}${suffix}`,{method:'GET',headers,credentials:'include'})
+  }catch{
+    const error=new Error('文件读取失败：网络不可达');error.network=true;throw error
+  }
+  const contentType=responseHeader(response,'content-type').toLowerCase()
+  if(contentType.includes('application/json')||response.status===401||response.status>=400){
+    const payload=await readPayload(response)
+    if(authExpired(payload,response)){
+      if(auth&&!_retried&&refreshToken){await refreshOnce();return requestBinary(path,{params,auth,_retried:true})}
+      throw invalidateEnterpriseAuth(payload?.message)
+    }
+    if(payload&&typeof payload.code==='number')throw businessError(payload,response)
+    const error=new Error(`文件读取失败（HTTP ${response.status}）`);error.status=response.status;throw error
+  }
+  const blob=await response.blob()
+  if(!blob||!blob.size)throw new Error('文件响应为空，请刷新后重试')
+  return {
+    blob,
+    contentType:contentType||blob.type||'application/octet-stream',
+    fileName:downloadFilename(responseHeader(response,'content-disposition')),
+    snapshotHash:responseHeader(response,'x-internship-snapshot-hash'),
+  }
 }
 
 export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_PROFILE',_retried=false}={}){
