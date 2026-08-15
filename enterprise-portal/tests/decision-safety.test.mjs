@@ -29,6 +29,6 @@ test('A02-7 withdrawing active ACCEPT_INTENT uses the dedicated A01 route and re
   assert.match(page,/withdrawReason\.value\.trim\(\)/)
   assert.match(page,/确认撤回并标记不合适/)
   assert.match(api,/applications\/\$\{id\}\/withdraw-accept/)
-  assert.match(api,/body:\{ reason:text \}/)
+  assert.match(api,/body:\{\s*reason:text\s*\}/)
   assert.doesNotMatch(api,/withdrawAccept:[\s\S]*status:'REJECTED'/)
 })
