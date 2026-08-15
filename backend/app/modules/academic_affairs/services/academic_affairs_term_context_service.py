@@ -1,8 +1,9 @@
 """A-C1 Term Context Resolver（学期上下文解析器）。
 
-唯一职责：把现有两个层次的事实解释成一个可消费的当前学期上下文：
+唯一职责：把现有两个层次的事实适配成一个可消费的当前学期上下文：
 
-1. ``AcademicCalendarGovernance ACTIVE`` 是全校统一切换结果，优先级最高；
+1. SYS-12 ``academic_calendar_service.resolve_current()`` 是全校 CalendarResolver，
+   A-C1 不重复解释 ``AcademicCalendarGovernance``；
 2. 尚未纳入 SYS-12 治理的历史学校，暂时兼容 ``AaTerm.is_current``；
 3. 兼容路径出现多个 current 时 fail-closed，绝不 ``first()`` 猜一个；
 4. 本模块只读，不创建第二 Term / Calendar truth，不修改治理状态机。
@@ -19,11 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppException
 from app.models import AaTerm
-from app.models.academic_calendar import (
-    ACTIVE_SENTINEL,
-    CALENDAR_TYPE_ACADEMIC,
-    AcademicCalendarGovernance,
-)
 from app.services.db_service import _tid
 
 GOVERNANCE_SWITCH_ROUTE = "/admin/system/academic-calendar"
@@ -51,27 +47,16 @@ def resolve_current_term(
     tenant_id: int | None = None,
     allow_legacy_compat: bool = True,
 ) -> TermContextResolution:
-    """Resolve one current ``AaTerm`` without inventing or repairing data."""
+    """Resolve one current ``AaTerm`` through SYS-12 first, then strict legacy compatibility."""
+    from app.services import academic_calendar_service as calendar
+
     tid = _tenant_id(tenant_id)
-    governance_rows = db.scalars(
-        select(AcademicCalendarGovernance).where(
-            AcademicCalendarGovernance.tenant_id == tid,
-            AcademicCalendarGovernance.calendar_type == CALENDAR_TYPE_ACADEMIC,
-            AcademicCalendarGovernance.active_key == ACTIVE_SENTINEL,
-            AcademicCalendarGovernance.is_deleted.is_(False),
-        )
-    ).all()
-    if len(governance_rows) > 1:
-        # MySQL unique key should make this impossible; if metadata-created/dirty DB violates it,
-        # never select a winner in application code.
-        raise AppException(
-            "DATA_CONFLICT",
-            "学校存在多个全校 ACTIVE 学期治理记录，禁止解析当前学期",
-            details={"termIds": [str(row.term_id) for row in governance_rows]},
-            http_status=409,
-        )
-    if governance_rows:
-        term_id = int(governance_rows[0].term_id)
+    governance = calendar.resolve_current(
+        module_code="ACADEMIC_AFFAIRS",
+        tenant_id=tid,
+    )
+    if governance.get("hasCurrent"):
+        term_id = int(governance["termId"])
         term = db.scalars(
             select(AaTerm).where(
                 AaTerm.tenant_id == tid,
