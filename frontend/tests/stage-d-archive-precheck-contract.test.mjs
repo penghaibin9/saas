@@ -45,7 +45,7 @@ test('Stage D 归档预检保留真实证据与责任模块跳转，不改正式
     'evidencePreview',
     'domain.route || FALLBACK_ROUTE[domain.domain]',
     "goBatch() { this.$router.push('/admin/academic-affairs/archive') }",
-    '本页展示系统当前检查结果，不写入归档事实'
+    '本页不写入归档事实'
   ]) assert.ok(source.includes(token), `missing archive truth token: ${token}`)
 })
 
