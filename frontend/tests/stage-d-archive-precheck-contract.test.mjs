@@ -72,6 +72,11 @@ test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', asy
     "UNKNOWN: 'warning'",
     "NOT_APPLICABLE: 'info'",
     'UNKNOWN 不会被当成 PASS',
-    'BLOCKED 与 UNKNOWN 均不得进入正式归档'
+    'BLOCKED 与 UNKNOWN 均不得进入正式归档',
+    "d.result === 'NOT_APPLICABLE' ? 'is-na' : 'is-ok'",
+    'data.blockedDomains ?? fallbackBlockedDomains',
+    "['BLOCKED', 'UNKNOWN'].includes(d.result)",
+    '.aapc-card.is-na'
   ]) assert.ok(source.includes(token), `missing D-W1 archive state token: ${token}`)
+  assert.ok(!source.includes('data.blockedDomains ||'), 'blockedDomains=0 must never fall through to legacy non-PASS counting')
 })

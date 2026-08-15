@@ -116,14 +116,14 @@
       <section v-if="passedDomainRows.length" class="aapc-section">
         <header class="aapc-section-head">
           <div>
-            <span class="aapc-eyebrow">完成证据</span>
+            <span class="aapc-eyebrow">非阻断证据</span>
             <h3>已满足门禁的业务域</h3>
             <p>PASS 表示已证明完成；NOT_APPLICABLE 表示本学期明确不适用。两者均非阻断，但不得混成同一个“通过”。</p>
           </div>
           <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
         </header>
         <div class="aapc-grid">
-          <article v-for="d in passedDomainRows" :key="d.domain" class="aapc-card is-ok">
+          <article v-for="d in passedDomainRows" :key="d.domain" :class="['aapc-card', d.result === 'NOT_APPLICABLE' ? 'is-na' : 'is-ok']">
             <header class="aapc-card-head">
               <div>
                 <span class="aapc-card-title">{{ d.domainLabel }}</span>
@@ -251,9 +251,11 @@ export default {
         this.domains = Array.isArray(data.domains) ? data.domains : []
         this.scopeNote = data.scopeNote || ''
         this.termCode = data.termCode || ''
-        this.overallResult = data.result || (this.domains.every((d) => d.result === 'PASS') ? 'PASS' : 'BLOCKED')
-        this.blockingCount = Number(data.blockingCount || 0)
-        this.blockedDomains = Number(data.blockedDomains || this.domains.filter((d) => d.result !== 'PASS').length)
+        const states = new Set(this.domains.map((d) => d.result))
+        this.overallResult = data.result || (states.has('BLOCKED') ? 'BLOCKED' : states.has('UNKNOWN') ? 'UNKNOWN' : 'PASS')
+        this.blockingCount = Number(data.blockingCount ?? 0)
+        const fallbackBlockedDomains = this.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result)).length
+        this.blockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
         if (!this.termId && data.termId) this.termId = data.termId
       } catch (err) {
         this.domains = []
@@ -375,6 +377,8 @@ export default {
 }
 .aapc-card.is-missing { border-color: #efcccc; background: #fffafa; }
 .aapc-card.is-ok { border-color: #d7e7dc; background: #fbfefc; }
+.aapc-card.is-na { border-color: #d8e2ef; background: #f8fbff; }
+.aapc-card.is-na .aapc-card-title { color: #405a78; }
 .aapc-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .aapc-card-title { display: block; color: #29364a; font-size: 13px; font-weight: 650; }
 .aapc-card-head small { color: #9aa4b2; font-size: 9px; }
