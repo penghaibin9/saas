@@ -18,6 +18,16 @@ test('A01 invite DTO uses tenantCode token phone password and never client compa
   assert.match(invite,/至少 8 位/)
 })
 
+test('invite activation can only lock the campaign returned by inspectInvite for the same tenant and token',()=>{
+  assert.match(auth,/let validatedInvite=null/)
+  assert.match(auth,/validatedInvite=\{tenantCode:inviteKey\(tenantCode\),token:inviteKey\(token\),campaignId\}/)
+  assert.match(auth,/validatedInvite\.tenantCode!==tenant/)
+  assert.match(auth,/validatedInvite\.token!==inviteToken/)
+  assert.match(auth,/const campaignId=validatedInvite\.campaignId/)
+  assert.doesNotMatch(invite,/campaignId:preview\.value/)
+  assert.match(invite,/不会再次提交 campaignId 或 companyId/)
+})
+
 test('enterprise refresh follows A01 refresh route without persisting bearer tokens to browser storage',()=>{
   assert.match(request,/auth\/refresh/)
   assert.match(request,/refreshToken/)
