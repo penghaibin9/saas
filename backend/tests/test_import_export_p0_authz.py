@@ -1,27 +1,8 @@
 """P0 · 导入导出权限收紧：精确权限、域白名单、任务归属、跨租户。"""
 from __future__ import annotations
 
-import pytest
-
 TID = 1000000000000000001
 OTHER_TID = 1000000000000000002
-
-
-@pytest.fixture(autouse=True)
-def _post_b8_school_iam_authority(db_mode):
-    """DB integration tests run against the same explicit Authority as production.
-
-    B8 retired the SCHOOL_ADMIN runtime wildcard.  A clean pytest schema therefore
-    must execute the canonical deployment convergence before exercising school-admin
-    routes; tests must not regain implicit ``*`` compatibility.
-    """
-    from app.services.school_iam_authority_service import converge_school_iam_authority
-
-    converge_school_iam_authority(
-        source="pytest-post-b8-import-export",
-        source_commit_sha="post-b8-import-export",
-        actor_user_id=None,
-    )
 
 
 def _hdr(client, login_name):
