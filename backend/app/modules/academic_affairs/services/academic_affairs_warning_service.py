@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
@@ -428,6 +428,18 @@ def scan_all(user) -> dict:
     }
 
 
+def _formal_attendance_session_condition(model):
+    """标准旷课预警只消费正式课堂；管理员特殊补录永不混入该口径。"""
+    from app.modules.academic_affairs.services.academic_affairs_attendance_public_service import (
+        _ADMIN_SPECIAL,
+    )
+
+    return or_(
+        model.session_type.is_(None),
+        model.session_type != _ADMIN_SPECIAL,
+    )
+
+
 def scan_attendance_warnings(user) -> dict:
     """旷课预警：汇总已提交课堂考勤场次中 ABSENT 次数，达阈值生成/更新预警（幂等）。"""
     thr = int(_rule_value("warning_absent_threshold"))
@@ -438,6 +450,7 @@ def scan_attendance_warnings(user) -> dict:
         sessions = db.scalars(select(AaAttendanceSession).where(
             AaAttendanceSession.tenant_id == _tid(),
             AaAttendanceSession.status == "SUBMITTED",
+            _formal_attendance_session_condition(AaAttendanceSession),
             AaAttendanceSession.is_deleted.is_(False),
         )).all()
         absent_counts: dict[int, int] = {}
@@ -477,9 +490,14 @@ def scan_attendance_warnings(user) -> dict:
             created += int(c)
             updated += int(u)
         _audit(db, "ACAD_WARNING_SCAN", 0, "SCAN_ATTENDANCE_ABSENT",
-               f"created={created} updated={updated} thr={thr}")
+               f"created={created} updated={updated} thr={thr} source=FORMAL_TEACHING")
         db.commit()
-        return {"threshold": thr, "created": created, "updated": updated}
+        return {
+            "threshold": thr,
+            "created": created,
+            "updated": updated,
+            "sourceScope": "FORMAL_TEACHING",
+        }
 
 
 # ═══════════ 列表 / 看板 / 统计 ═══════════
