@@ -198,6 +198,28 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
     assert "proof-1" in audits[-1][2]
 
 
+def test_default_stats_condition_excludes_admin_special():
+    from app.models import AaAttendanceSession
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
+
+    condition = service._stats_session_type_condition(AaAttendanceSession)
+    sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
+    assert "IS NULL" in sql
+    assert "ADMIN_SPECIAL" in sql
+    assert "!=" in sql
+
+
+def test_explicit_admin_special_stats_condition_is_exact_match():
+    from app.models import AaAttendanceSession
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
+
+    condition = service._stats_session_type_condition(AaAttendanceSession, "ADMIN_SPECIAL")
+    sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
+    assert "ADMIN_SPECIAL" in sql
+    assert " = " in sql
+    assert "IS NULL" not in sql
+
+
 def test_normal_teacher_contract_remains_task_first():
     from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
 
