@@ -65,16 +65,31 @@ def test_invite_reuses_t_user_and_never_creates_enterprise_user_authority():
     assert "EnterpriseUser" not in source
 
 
-def test_enterprise_login_requires_school_context_and_server_validated_member():
+def test_enterprise_login_requires_school_context_server_member_and_company_admission():
     fields = EnterpriseLogin.model_fields
     assert set(fields) == {"tenantCode", "loginName", "password", "memberId"}
     assert "companyId" not in fields
     source = inspect.getsource(auth_svc.login)
+    admission_source = inspect.getsource(auth_svc._require_company_admission_for_auth)
     assert "_tenant_by_code(" in source
     assert 'User.user_type == "ENTERPRISE_MENTOR"' in source
     assert 'User.status == "ACTIVE"' in source
     assert "_active_members(" in source
     assert "ENTERPRISE_CONTEXT_REQUIRED" in source
+    assert "_require_company_admission_for_auth(" in source
+    assert "company_id=member.company_id" in source
+    assert "_get_company(" in admission_source
+    assert "require_admission=True" in admission_source
+    assert 'AppException(\n            "NO_PERMISSION"' in admission_source
+
+
+def test_access_and_refresh_revalidate_company_admission_before_token_renewal():
+    validate_source = inspect.getsource(auth_svc.validate_enterprise_claims)
+    refresh_source = inspect.getsource(auth_svc.refresh)
+    assert "_require_company_admission_for_auth(" in validate_source
+    assert "company_id=member.company_id" in validate_source
+    assert "validate_enterprise_claims(claims)" in refresh_source
+    assert "_token_result(" in refresh_source
 
 
 def test_enterprise_context_revalidates_user_member_company_admission_grant_and_campaign():
