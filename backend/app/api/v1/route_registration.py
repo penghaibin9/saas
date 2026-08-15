@@ -63,8 +63,6 @@ def _prepare_academic_affairs_route_overrides():
         for route in child.routes
         if isinstance(route, APIRoute)
     }
-    # scheduling_rule_router 会在服务 Facade 循环导入期间短暂暴露空 Router；这三条是其
-    # 明确声明的同 URL 契约修正，必须无条件替换旧总路由，不能依赖导入时机。
     replacement_signatures.update({
         ("/academic-affairs/scheduling/rules", frozenset({"PUT"})),
         ("/academic-affairs/scheduling/rules", frozenset({"GET"})),
@@ -78,8 +76,6 @@ def _prepare_academic_affairs_route_overrides():
         for route in original_router.routes
         if not isinstance(route, APIRoute) or _aa_route_signature(route) not in replacement_signatures
     ]
-    # FastAPI 0.139+ 的 include_router 保存子 Router 引用而非立即扁平复制。必须临时替换
-    # 整个 Router 对象，不能修改后再恢复同一个对象的 routes，否则重复路由会重新出现。
     base_router.router = filtered_router
     return base_router, original_router
 
@@ -101,13 +97,13 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
         internship, internship_agreement_template, internship_application, internship_archive,
         internship_communication, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned, internship_enterprise_portal, internship_insurance,
-        internship_match, internship_material_center, internship_participant,
-        internship_plan, internship_position, internship_process, internship_recruitment_campaign,
+        internship_enterprise_collaboration, internship_enterprise_eval_versioned,
+        internship_enterprise_portal, internship_insurance, internship_match,
+        internship_material_center, internship_participant, internship_plan,
+        internship_position, internship_process, internship_recruitment_campaign,
         internship_stats, internship_student, internship_visit_plan,
     )
     d = deps["intern"]
-    # 安全优先路由必须先于旧协议/保险/报告/归档路由注册。
     api_router.include_router(internship_material_center.router, dependencies=d)
     for r in (
         internship, internship_position, internship_agreement_template, internship_student,
@@ -118,9 +114,9 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     ):
         api_router.include_router(r.router, dependencies=d)
 
-    # 企业协同端绝不能继承 require_staff。它只使用 enterprise portal 自己的
-    # EnterpriseMember/Grant/Company/CampaignEnterprise fail-closed context guard。
+    # 企业协同端绝不能继承 require_staff。它们只使用企业 token/member/grant/context 门禁。
     api_router.include_router(internship_enterprise_portal.router)
+    api_router.include_router(internship_enterprise_collaboration.router)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
@@ -157,16 +153,12 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
-    # Legacy fixed paths precede Stage-6 dynamic detail paths; legacy detail/review
-    # endpoints already delegate to the authoritative public-version service.
     api_router.include_router(graduation.router, dependencies=d)
     api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(
         graduation_extension.router,
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
     )
-    # Frozen semantic order marker used by production gates:
-    # graduation, graduation_batch, graduation_student
     for r in (
         graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -220,7 +212,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context.router,
         dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
     )
-    # 与旧移动端相同 URL，必须先于旧移动端聚合 Router 注册。
     api_router.include_router(
         mobile_graduation_material_center.router,
         dependencies=[Depends(require_mobile_graduation_request_permission)],
