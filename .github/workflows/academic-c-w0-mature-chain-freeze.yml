@@ -116,6 +116,7 @@ jobs:
           set -euo pipefail
           TESTS=(
             tests/test_aa_attendance_task_binding.py
+            tests/test_aa_attendance_admin_special_contract.py
             tests/test_aa_teaching_roster_unification.py
             tests/test_aa_roster_consumers_r9.py
             tests/test_aa_exam_facade_contract_and_changes.py
@@ -139,7 +140,8 @@ jobs:
 
           checks = {
               'app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py': [
-                  'resolve_versioned_roster', 'freeze_consumer_snapshot', 'ATTENDANCE_SESSION'
+                  'resolve_versioned_roster', 'freeze_consumer_snapshot', 'ATTENDANCE_SESSION',
+                  'ADMIN_SPECIAL', 'specialReason', 'evidence'
               ],
               'app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py': [
                   'ATTENDANCE_SESSION', 'EXAM_COURSE', 'GRADE_TASK', 'APPROVAL_VERSION_CONFLICT', 'SUPERSEDED'
