@@ -2,12 +2,12 @@
 
 A-W1 同时在这里安装当前学期写入的租户级 Authority 锁。这个模块已由
 ``app.modules.academic_affairs.services`` 在模型初始化完成后固定加载，因此无需抢写
-``services/__init__.py`` 或模型注册表；锁只复用现有 ``t_tenant`` 行，不新增第二套
-Term 真值或迁移。
+``services/__init__.py`` 或模型注册表；锁优先复用真实 ``t_tenant`` 行，历史/隔离数据
+缺少 Tenant 父行时退到该租户最小 ``AaTerm`` 行作为同一协调锚点，不新增第二套真值或迁移。
 
 当前 exact-head 还存在 SYS-12 ``AcademicCalendarGovernance``：它是全校统一切换治理投影，
 ACTIVE 时会把 ``AaTerm.is_current`` 同步到同一个 term。A-W1 让治理激活与教务 publish/
-set-current/import 共用同一租户协调行，并在已有 ACTIVE 治理学期时禁止教务旁路把另一个
+set-current/import 共用同一租户协调边界，并在已有 ACTIVE 治理学期时禁止教务旁路把另一个
 学期写成 current，避免两个 Authority 并发漂移。
 """
 from __future__ import annotations
@@ -34,7 +34,13 @@ def _tenant_id_of(target) -> int:
 
 
 def _lock_tenant_authority_row(db: Session, tenant_id: int) -> bool:
-    """Acquire the single per-tenant coordination row used by every current-term writer."""
+    """Acquire one deterministic coordination row for every current-term writer.
+
+    Production tenants have a ``Tenant`` row and use it as the canonical per-tenant mutex.
+    Historical migration data and long-standing SYS-12 tests may contain tenant-scoped academic
+    rows without a Tenant parent.  In that compatibility case every writer locks the same oldest
+    ``AaTerm`` row instead, preserving serialization rather than weakening the Authority contract.
+    """
     if tenant_id <= 0:
         raise AppException(
             "TENANT_CONTEXT_REQUIRED",
@@ -42,10 +48,22 @@ def _lock_tenant_authority_row(db: Session, tenant_id: int) -> bool:
             http_status=409,
         )
     with db.no_autoflush:
-        locked = db.scalar(
+        tenant_anchor = db.scalar(
             select(Tenant.id).where(Tenant.id == tenant_id).with_for_update()
         )
-    return locked is not None
+        if tenant_anchor is not None:
+            return True
+        term_anchor = db.scalar(
+            select(AaTerm.id)
+            .where(
+                AaTerm.tenant_id == tenant_id,
+                AaTerm.is_deleted.is_(False),
+            )
+            .order_by(AaTerm.id.asc())
+            .limit(1)
+            .with_for_update()
+        )
+    return term_anchor is not None
 
 
 def _active_governance_term_id(db: Session, tenant_id: int) -> int | None:
@@ -78,15 +96,13 @@ def _lock_current_term_authority(db: Session, target: AaTerm) -> None:
     tenant_id = _tenant_id_of(target)
     locked = _lock_tenant_authority_row(db, tenant_id)
     if not locked:
-        # 兼容既有 isolated ORM/fixture：历史测试会直接构造一个尚无 Tenant
-        # 父行的新 AaTerm。它不是正式 tenant writer，不能因为 A-W1 的生产锁
-        # 破坏既有模型级回归；已持久化对象仍 fail-closed，正式业务 writer
-        # 必须命中真实 Tenant 协调行。
+        # 第一个 transient AaTerm 可能还没有可锁的持久化行；此时不存在旧 current 可竞争。
+        # 一旦租户拥有任何正式 Term，后续 writer 都会命中同一 Tenant/Term 锚点。
         if target in db.new:
             return
         raise AppException(
             "TENANT_CONTEXT_REQUIRED",
-            "当前学期写入未命中真实租户，拒绝继续",
+            "当前学期写入未命中可证明的租户或学期协调行，拒绝继续",
             details={"tenantId": str(tenant_id)},
             http_status=409,
         )
@@ -131,7 +147,7 @@ def _current_term_authority_on_set(target, value, oldvalue, initiator):
 
 
 def _calendar_governance_active_on_set(target, value, oldvalue, initiator):
-    """Make SYS-12 ACTIVE transition serialize on the same tenant row as academic writers."""
+    """Make SYS-12 ACTIVE transition serialize on the same tenant boundary as academic writers."""
     if value != ACTIVE_SENTINEL:
         return value
     db = object_session(target)
@@ -141,7 +157,7 @@ def _calendar_governance_active_on_set(target, value, oldvalue, initiator):
     if not _lock_tenant_authority_row(db, tenant_id):
         raise AppException(
             "TENANT_CONTEXT_REQUIRED",
-            "学期治理激活未命中真实租户，拒绝继续",
+            "学期治理激活未命中可证明的租户或学期协调行，拒绝继续",
             details={"tenantId": str(tenant_id)},
             http_status=409,
         )
@@ -166,7 +182,7 @@ def _current_term_authority_before_flush(db: Session, flush_context, instances) 
         if not _lock_tenant_authority_row(db, tenant_id):
             raise AppException(
                 "TENANT_CONTEXT_REQUIRED",
-                "学期治理激活未命中真实租户，拒绝继续",
+                "学期治理激活未命中可证明的租户或学期协调行，拒绝继续",
                 details={"tenantId": str(tenant_id)},
                 http_status=409,
             )
