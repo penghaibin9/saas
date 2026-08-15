@@ -4,7 +4,8 @@ These tests intentionally exercise the canonical writers instead of adding a sec
 term truth.  The deterministic RED holds the tenant coordination row before starting
 a writer: a production-safe writer must wait for that row before it may mutate
 ``AaTerm.is_current``.  This proves all formal current-term writers share the same
-tenant-scoped authority boundary, including calendar publish and legacy migration.
+tenant-scoped authority boundary, including calendar publish, legacy migration and
+SYS-12 full-school calendar activation.
 """
 from __future__ import annotations
 
@@ -13,7 +14,8 @@ from datetime import datetime
 import importlib
 from threading import Event
 
-from sqlalchemy import func, select
+import pytest
+from sqlalchemy import func, select, update
 
 svc = importlib.import_module(
     "app.modules.academic_affairs.services.academic_affairs_service"
@@ -108,6 +110,34 @@ def _seed_terms():
         db.close()
 
 
+def _seed_governance(term_id: int, *, active: bool = False):
+    from app.db.session import get_sessionmaker
+    from app.models.academic_calendar import (
+        ACTIVE_SENTINEL,
+        CALENDAR_STATUS_ACTIVE,
+        CALENDAR_STATUS_VALIDATED,
+        CALENDAR_TYPE_ACADEMIC,
+        AcademicCalendarGovernance,
+    )
+
+    db = get_sessionmaker()()
+    try:
+        gov = AcademicCalendarGovernance(
+            tenant_id=TID,
+            term_id=int(term_id),
+            calendar_type=CALENDAR_TYPE_ACADEMIC,
+            timezone="Asia/Shanghai",
+            governance_status=CALENDAR_STATUS_ACTIVE if active else CALENDAR_STATUS_VALIDATED,
+            active_key=ACTIVE_SENTINEL if active else None,
+        )
+        db.add(gov)
+        db.commit()
+        db.refresh(gov)
+        return int(gov.version or 0)
+    finally:
+        db.close()
+
+
 def _hold_tenant_lock(tenant_id: int):
     """Return a live transaction holding the canonical tenant coordination row."""
     from app.db.session import get_sessionmaker
@@ -148,16 +178,14 @@ def _assert_writer_waits_for_tenant_lock(monkeypatch, action: str, invoke):
 
 
 def _assert_future_waits_for_tenant_lock(invoke):
+    from time import sleep
+
     blocker = _hold_tenant_lock(TID)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(invoke)
+            sleep(0.35)
             waited = not future.done()
-            if waited:
-                from time import sleep
-
-                sleep(0.35)
-                waited = not future.done()
             blocker.commit()
             result = future.result(timeout=8)
         assert waited, "current-term writer bypassed the tenant Authority lock"
@@ -251,6 +279,84 @@ def test_legacy_term_import_current_flag_uses_same_authority_row(db_mode, monkey
         assert imported.is_current is True
     finally:
         db.close()
+
+
+def test_calendar_governance_activation_uses_same_tenant_authority_row(db_mode):
+    ids = _seed_terms()
+    version = _seed_governance(ids["target"])
+    from app.services import academic_calendar_service as calendar
+
+    result = _assert_future_waits_for_tenant_lock(
+        lambda: calendar.transition(
+            ids["target"],
+            "ACTIVE",
+            reason="A-W1 统一当前学期并发验收",
+            expected_version=version,
+            tenant_id=TID,
+        )
+    )
+    assert int(result["termId"]) == ids["target"]
+    assert result["governanceStatus"] == "ACTIVE"
+
+
+def test_active_governance_blocks_direct_academic_switch_to_other_term(db_mode, monkeypatch):
+    ids = _seed_terms()
+    _seed_governance(ids["current"], active=True)
+    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    from app.core.exceptions import AppException
+
+    with pytest.raises(AppException) as exc:
+        svc.set_current_term(ids["target"], {})
+    assert exc.value.code == "TERM_CONTEXT_CONFLICT"
+    assert exc.value.details["activeTermId"] == str(ids["current"])
+
+
+def test_public_current_term_prefers_active_governance_over_dirty_legacy_flags(db_mode, monkeypatch):
+    ids = _seed_terms()
+    _seed_governance(ids["target"], active=True)
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_dashboard_scope_facade as facade
+
+    # Simulate pre-A-W1 dirty data with a raw SQL bypass: both AaTerm rows claim current.
+    db = get_sessionmaker()()
+    try:
+        db.execute(
+            update(AaTerm).where(AaTerm.id.in_([ids["current"], ids["target"]])).values(is_current=True),
+            execution_options={"synchronize_session": False},
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    row = facade.current_term({})
+    assert int(row["termId"]) == ids["target"]
+    assert row["isCurrent"] is True
+
+
+def test_public_current_term_fails_closed_on_legacy_double_current_without_governance(db_mode, monkeypatch):
+    ids = _seed_terms()
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_dashboard_scope_facade as facade
+
+    db = get_sessionmaker()()
+    try:
+        db.execute(
+            update(AaTerm).where(AaTerm.id.in_([ids["current"], ids["target"]])).values(is_current=True),
+            execution_options={"synchronize_session": False},
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    with pytest.raises(AppException) as exc:
+        facade.current_term({})
+    assert exc.value.code == "DATA_CONFLICT"
+    assert sorted(exc.value.details["termIds"]) == sorted([str(ids["current"]), str(ids["target"])])
 
 
 def test_two_current_term_writers_finish_with_one_current_and_keep_neighbor(db_mode, monkeypatch):
