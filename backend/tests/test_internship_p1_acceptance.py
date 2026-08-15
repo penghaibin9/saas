@@ -80,7 +80,7 @@ def test_agreement_issue_requires_and_conflicts_expected_version(client, auth_he
     assert rec["code"] == 0, rec
     gen = client.post(AGR, headers=auth_headers, json={"internshipId": rec["data"]["id"]}).json()
     if gen.get("code") != 0:
-        pytest.skip(f"agreement generate unavailable: {gen}")
+        pytest.fail(f"agreement generate failed: {gen}")
     aid = gen["data"]["id"]
     ver = int(gen["data"].get("version") or 0)
     missing = client.post(f"{AGR}/{aid}/issue", headers=auth_headers, json={}).json()
@@ -105,7 +105,7 @@ def test_score_publish_stale_version_conflict(client, auth_headers, db_mode):
         "enterpriseScore": 90, "schoolScore": 90,
     }).json()
     if computed.get("code") != 0:
-        pytest.skip(f"score compute unavailable: {computed}")
+        pytest.fail(f"score compute failed: {computed}")
     sid_score = computed["data"]["id"]
     detail = client.get(f"{SCORE}/{sid_score}", headers=auth_headers).json()
     ver = int((detail.get("data") or {}).get("version") or computed["data"].get("version") or 0)
