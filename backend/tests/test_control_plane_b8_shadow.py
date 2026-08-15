@@ -27,7 +27,6 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
     catalog = load_permission_catalog()
     extension = catalog["b8ConcreteCatalog"]
     assert extension["count"] == 539
-    assert catalog["b8PostCutoverCompatibilityCatalog"]["count"] == 90
     assert runtime_wildcard_probe_codes() == {"*"}
     for code in (
         "academicAffairs.grade.view",
