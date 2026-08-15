@@ -40,7 +40,7 @@ test('E9 collaboration facades use batch-scoped real routes while resume PDF alo
   assert.match(api,/internship-students/)
   assert.match(api,/evaluation-tasks/)
   assert.match(api,/evaluation-tasks\/\$\{id\}\/submit/)
-  assert.match(api,/resumePdf: \(\) => unavailableFacade\('简历 PDF'\)/)
+  assert.match(api,/resumePdf:\(\)=>unavailableFacade\('简历 PDF'\)/)
   for(const frozen of ['实习学生列表','实习学生详情','企业评价任务','企业评价提交'])assert.doesNotMatch(api,new RegExp(`unavailableFacade\\('${frozen}'\\)`))
 })
 
