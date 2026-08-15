@@ -4,8 +4,6 @@
   "card": "B8_POST_CUTOVER_COMPATIBILITY",
   "description": "Concrete TENANT permission codes discovered by exact-head post-wildcard compatibility regression. This file is merged into the same authoritative Permission Catalog and must never contain wildcard, PLATFORM, or enterprise permissions.",
   "entries": [
-    "academicAffairs.archive.manage",
-    "academicAffairs.archive.view",
     "academicAffairs.term.manage",
     "academicAffairs.term.view"
   ]
