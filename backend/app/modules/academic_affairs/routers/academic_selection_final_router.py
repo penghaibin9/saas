@@ -34,6 +34,14 @@ def sel_student_courses(
     return base.success({"items": selection_final.student_courses(user, batchId)})
 
 
+@router.post("/selection/student/preflight", summary="学生选课预检（纯读+DecisionTrace）")
+def sel_student_preflight(
+    body: base.EnrollBody,
+    user=Depends(base._require_student),
+):
+    return base.success(selection_final.student_preflight(user, body))
+
+
 @router.post("/selection/student/enroll", summary="学生选课（最终服务+DecisionTrace）")
 def sel_student_enroll(
     body: base.EnrollBody,

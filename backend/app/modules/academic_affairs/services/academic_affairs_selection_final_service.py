@@ -122,6 +122,81 @@ def publish_batch(user, batch_id) -> dict:
         return _base._core._batch_dto(batch)
 
 
+def student_preflight(user, body):
+    """SelectionPreflight：复用正式资格校验但绝不写记录、容量或审计。"""
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+
+    with _base._core.session() as db:
+        student = _base._load_student(db)
+        evaluated_at = datetime.utcnow()
+        academic_identity, academic_fact = _selection_academic_identity(
+            db, student, effective_at=evaluated_at
+        )
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == int(body.selectionCourseId),
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).first()
+        if not course:
+            raise not_found("可选课程供给项不存在")
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(course.batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("选课批次不存在")
+
+        try:
+            _base._guard_batch_writable(db, batch)
+            if course.status != _base._COURSE_OPEN:
+                raise _base._core._invalid("课程已取消或不可选")
+            my_records = db.query(AaSelectionRecord).filter(
+                AaSelectionRecord.tenant_id == _base._core._tid(),
+                AaSelectionRecord.student_id == student.id,
+                AaSelectionRecord.batch_id == batch.id,
+                AaSelectionRecord.is_deleted.is_(False),
+            ).all()
+            active_round = _base._active_round(db, batch.id)
+            if active_round and not active_round.allow_enroll:
+                raise _base._core._invalid("当前轮次不允许选课")
+            allow_reselect_closed = (
+                batch.status == _base._BATCH_CLOSED
+                and any(record.status == _base._REC_COURSE_CANCELLED for record in my_records)
+            )
+            _base._validate_enroll(
+                db, batch, course, academic_identity, my_records,
+                float(course.credit or 0),
+                allow_reselect_closed=allow_reselect_closed,
+            )
+        except AppException as exc:
+            traced = selection_trace.attach_selection_trace(
+                exc, db=db, student=student, course=course, evaluated_at=evaluated_at
+            )
+            return {
+                "allowed": False,
+                "selectionCourseId": str(course.id),
+                "courseName": course.course_name,
+                "code": str(getattr(exc, "code", "") or "DATA_CONFLICT"),
+                "message": str(getattr(exc, "message", "") or str(exc)),
+                "decisionTrace": getattr(traced, "decision_trace", None),
+            }
+
+        return {
+            "allowed": True,
+            "selectionCourseId": str(course.id),
+            "courseName": course.course_name,
+            "mode": (
+                "LOTTERY"
+                if active_round and active_round.mode == "LOTTERY"
+                else "FCFS"
+            ),
+            "academicFactId": str(academic_fact.id),
+            "academicFactVersion": academic_fact.version_no,
+            "evaluatedAt": evaluated_at.isoformat(),
+        }
+
+
 def student_enroll(user, body):
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
 

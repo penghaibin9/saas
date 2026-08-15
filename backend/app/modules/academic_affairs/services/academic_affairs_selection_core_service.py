@@ -66,14 +66,26 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 
 
 def _rule(db, batch, key, default):
-    """批次规则优先 rule_json，其次 ACAD_RULE 配置，最后显式默认值（不误判未注册开关为已启用）。"""
-    try:
-        if batch.rule_json:
+    """批次规则优先 rule_json；损坏配置必须 fail-closed，禁止回落默认值扩大资格。"""
+    if batch.rule_json:
+        try:
             j = json.loads(batch.rule_json)
-            if key in j and j[key] is not None:
-                return j[key]
-    except (ValueError, TypeError):
-        pass
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次规则JSON损坏，请联系教务管理员修复后再办理",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(j, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次规则格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
+        if key in j and j[key] is not None:
+            return j[key]
     from app.services.platform_service import get_config_json
     cfg = get_config_json(_tid(), "ACAD_RULE", "selection")
     if isinstance(cfg, dict) and cfg.get(key) is not None:
@@ -478,8 +490,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
     if batch.apply_scope_json:
         try:
             scope = json.loads(batch.apply_scope_json)
-        except ValueError:
-            scope = {}
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(scope, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
         if scope:
             ok_grade = (not scope.get("grades")) or (student.grade in scope["grades"])
             ok_major = (not scope.get("majorIds")) or (str(student.major_id) in [str(x) for x in scope["majorIds"]])
@@ -499,8 +523,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
     if tb and tb.prerequisite_codes_json:
         try:
             pre_codes = json.loads(tb.prerequisite_codes_json) or []
-        except ValueError:
-            pre_codes = []
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则JSON损坏，请联系教务管理员修复后再选课",
+                details={"courseId": str(getattr(tb, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(pre_codes, list):
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则格式错误，必须是课程代码数组",
+                details={"courseId": str(getattr(tb, "id", "") or "")},
+                http_status=409,
+            )
         if pre_codes:
             pre_names = {c.course_name for c in db.query(AaCourse).filter(
                 AaCourse.tenant_id == _tid(), AaCourse.course_code.in_([str(x) for x in pre_codes])).all()}
@@ -519,7 +555,6 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
                     for (w2, s2, sw2, ew2, p2) in target_slots:
                         if w1 == w2 and s1 == s2 and _weeks_overlap(sw1, ew1, p1, sw2, ew2, p2):
                             msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"
-                            _record_conflict_reject(db, batch, course, student, msg)
                             raise _conflict(msg)
     # ⑥ 学分上限
     max_credits = _rule(db, batch, "maxCredits", 0)
@@ -552,8 +587,14 @@ def student_enroll(user, body) -> dict:
         # 补选（06号卡）：CLOSED 批次且学生确有待补选(COURSE_CANCELLED)记录才放宽；资格后端独立核验，不信任请求体标志位
         allow_reselect = b.status == _BATCH_CLOSED and any(
             r.status == _REC_COURSE_CANCELLED for r in my)
-        _validate_enroll(db, b, c, student, my, float(c.credit or 0),
-                         allow_reselect_closed=allow_reselect)
+        try:
+            _validate_enroll(db, b, c, student, my, float(c.credit or 0),
+                             allow_reselect_closed=allow_reselect)
+        except AppException as exc:
+            message = str(getattr(exc, "message", "") or str(exc))
+            if "上课时间冲突" in message:
+                _record_conflict_reject(db, b, c, student, message)
+            raise
         rnd = _active_round(db, b.id)
         if rnd and not rnd.allow_enroll:
             raise _invalid("本轮次仅可退课，不可选课")

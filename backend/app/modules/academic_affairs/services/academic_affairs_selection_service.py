@@ -149,8 +149,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
     if batch.apply_scope_json:
         try:
             scope = json.loads(batch.apply_scope_json)
-        except (TypeError, ValueError):
-            scope = {}
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(scope, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
         college_ids = {int(x) for x in (scope.get("collegeIds") or []) if str(x).isdigit()}
         major_ids = {int(x) for x in (scope.get("majorIds") or []) if str(x).isdigit()}
         grade_years = {str(x) for x in (scope.get("gradeYears") or []) if str(x).strip()}
