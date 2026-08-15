@@ -17,13 +17,13 @@ test('A02 mirrors A01 applicant role permission contract for UX without replacin
   assert.match(layout,/仅企业管理员或 HR 可处理报名学生/)
 })
 
-test('MENTOR applicant UI fails closed before any applicant adapter call',()=>{
+test('MENTOR applicant UI fails closed before canonical applicant calls and no longer touches an unfrozen position facade',()=>{
   const guard=applicants.indexOf("if(!context.contextReady||!context.applicationViewAllowed)")
   const listCall=applicants.indexOf('enterpriseInternshipApi.applications')
-  const positionCall=applicants.indexOf('enterpriseInternshipApi.positions')
   assert.ok(guard>=0,'applicant role guard is required')
-  assert.ok(listCall>guard,'applicant list call must be behind the role guard')
-  assert.ok(positionCall>guard,'position filter call must be behind the role guard')
+  assert.ok(listCall>guard,'canonical applicant list call must be behind the role guard')
+  assert.doesNotMatch(applicants,/enterpriseInternshipApi\.positions/)
+  assert.match(applicants,/roleDenied=computed/)
   assert.match(applicants,/当前成员角色不能处理报名学生/)
   assert.match(applicants,/企业导师可参与后续实习协同，但不能查看学生投递材料/)
 })
