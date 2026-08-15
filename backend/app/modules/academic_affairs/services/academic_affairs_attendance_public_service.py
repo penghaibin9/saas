@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib
 import json
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.exceptions import AppException, not_found
 
@@ -95,6 +95,17 @@ def _with_source_type(result: dict) -> dict:
         else "FORMAL_TEACHING"
     )
     return result
+
+
+def _stats_session_type_condition(model, session_type=None):
+    """默认课堂统计排除 ADMIN_SPECIAL；只有显式筛选时才进入特殊补录统计。"""
+    requested = str(session_type or "").strip()
+    if requested:
+        return model.session_type == requested
+    return or_(
+        model.session_type.is_(None),
+        model.session_type != _ADMIN_SPECIAL,
+    )
 
 
 def create_session(user, body) -> dict:
@@ -253,6 +264,67 @@ def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, ses
     return [_with_source_type(item) for item in items], total
 
 
-attendance_stats = _canonical.attendance_stats
+def attendance_stats(user, class_id=None, term_code=None, session_type=None):
+    """默认只统计正式教学场次；ADMIN_SPECIAL 必须显式筛选，禁止污染课堂指标。"""
+    from app.models import AaAttendanceSession
+
+    role = _role(user)
+    with session() as db:
+        conds = [
+            AaAttendanceSession.tenant_id == _tid(),
+            AaAttendanceSession.is_deleted.is_(False),
+            AaAttendanceSession.status == "SUBMITTED",
+            _stats_session_type_condition(AaAttendanceSession, session_type),
+        ]
+        if role not in _ADMIN_ROLES:
+            keys = _teacher_keys(user)
+            if not keys:
+                return {"sessionCount": 0, "students": [], "sourceScope": "FORMAL_TEACHING"}
+            conds.append(AaAttendanceSession.teacher_key.in_(sorted(keys)))
+        if class_id:
+            conds.append(AaAttendanceSession.class_id == int(class_id))
+        if term_code:
+            conds.append(AaAttendanceSession.term_code == term_code)
+
+        rows = db.scalars(select(AaAttendanceSession).where(*conds)).all()
+        aggregate: dict[str, dict] = {}
+        for attendance_session in rows:
+            for roster_item in (json.loads(attendance_session.roster_json) if attendance_session.roster_json else []):
+                student_id = roster_item.get("studentId")
+                if not student_id:
+                    continue
+                row = aggregate.setdefault(student_id, {
+                    "studentId": student_id,
+                    "studentNo": roster_item.get("studentNo") or "",
+                    "realName": roster_item.get("realName") or "",
+                    "present": 0,
+                    "late": 0,
+                    "absent": 0,
+                    "leave": 0,
+                    "sessions": 0,
+                })
+                status = str(roster_item.get("status") or "PRESENT").upper()
+                key = {
+                    "PRESENT": "present",
+                    "LATE": "late",
+                    "ABSENT": "absent",
+                    "LEAVE": "leave",
+                }.get(status)
+                if key:
+                    row[key] += 1
+                    row["sessions"] += 1
+
+        students = []
+        for row in aggregate.values():
+            row["absentRate"] = round(row["absent"] / row["sessions"], 3) if row["sessions"] else 0.0
+            students.append(row)
+        students.sort(key=lambda row: (-row["absent"], -row["late"], row["studentNo"]))
+        return {
+            "sessionCount": len(rows),
+            "students": students,
+            "sourceScope": _ADMIN_SPECIAL if session_type == _ADMIN_SPECIAL else "FORMAL_TEACHING",
+        }
+
+
 mark_attendance = _canonical.mark_attendance
 submit_session = _canonical.submit_session
