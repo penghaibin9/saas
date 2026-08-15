@@ -1272,6 +1272,8 @@ export const teacherAcademicStatusChangeReview = (changeId, action, reason) =>
 
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
+export const acadSelectionPreflight = (selectionCourseId) =>
+  realRequest('/mobile/academic/selection/preflight', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionEnroll = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/enroll', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionDrop = (selectionCourseId) =>

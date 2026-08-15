@@ -457,10 +457,11 @@ def _task_slots(db, teaching_task_id):
 
 
 def _record_conflict_reject(db, batch, course, student, msg):
-    """⑤课表冲突被拒事件持久化（供「冲突检测」卡批次级报表聚合，见09号卡§8）。
-    独立 commit：即使随后 enroll() 整体因冲突异常回滚，该拒绝事件仍需留痕，
-    不能随请求失败一起丢失（否则报表无数据源）。biz_id=selection_course_id 供按课程聚合，
-    detail 内嵌 studentNo 供「按学号查询」过滤（不新建专属统计表，复用审计基座）。"""
+    """登记⑤课表冲突拒绝证据；只 add，不在 helper 内夺取事务所有权。
+
+    调用 Command 必须在异常出口显式 commit 一次，保证失败请求仍留证据；validator/preflight
+    只做判断，绝不写审计或提交事务。
+    """
     from app.models import AffairsAuditTrail
     db.add(AffairsAuditTrail(
         tenant_id=_tid(), biz_type="AA_SELECTION_CONFLICT", biz_id=course.id,
@@ -468,7 +469,6 @@ def _record_conflict_reject(db, batch, course, student, msg):
         detail=(f"studentNo={student.student_no or ''} studentName={student.real_name or ''} "
                f"courseName={course.course_name or ''} reason={msg}")[:990],
         occurred_at=datetime.utcnow()))
-    db.commit()
 
 
 def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_reselect_closed=False):
@@ -594,6 +594,7 @@ def student_enroll(user, body) -> dict:
             message = str(getattr(exc, "message", "") or str(exc))
             if "上课时间冲突" in message:
                 _record_conflict_reject(db, b, c, student, message)
+                db.commit()
             raise
         rnd = _active_round(db, b.id)
         if rnd and not rnd.allow_enroll:

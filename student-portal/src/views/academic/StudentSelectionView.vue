@@ -278,6 +278,15 @@ async function enroll(course) {
   actingId.value = String(id)
   decisionError.value = null
   try {
+    const preflight = await portalApi.academicSelectionPreflight({ selectionCourseId: id })
+    if (!preflight?.allowed) {
+      decisionError.value = {
+        message: preflight?.message || '当前课程未通过选课预检',
+        decisionTrace: preflight?.decisionTrace || null
+      }
+      ui.notify(decisionError.value.message)
+      return
+    }
     await portalApi.academicEnroll({ selectionCourseId: id })
     ui.notify('选课成功')
     await load()

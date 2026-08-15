@@ -172,7 +172,18 @@ export default {
       if (this.acting) return
       this.acting = c.selectionCourseId
       this.decisionError = null
-      studentApi.enrollSelection(c.selectionCourseId).then(() => {
+      studentApi.preflightSelection(c.selectionCourseId).then((preflight) => {
+        if (!preflight || !preflight.allowed) {
+          this.decisionError = {
+            message: (preflight && preflight.message) || '当前课程未通过选课预检',
+            decisionTrace: (preflight && preflight.decisionTrace) || null
+          }
+          toast(this.decisionError.message)
+          return null
+        }
+        return studentApi.enrollSelection(c.selectionCourseId)
+      }).then((result) => {
+        if (result == null) return
         uni.showToast({ title: '选课成功', icon: 'success' })
         this.load()
       }).catch((e) => {

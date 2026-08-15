@@ -351,6 +351,7 @@ def student_enroll(user, body):
             message = str(getattr(exc, "message", "") or str(exc))
             if "上课时间冲突" in message:
                 _base._core._record_conflict_reject(db, batch, course, student, message)
+                db.commit()
             raise selection_trace.attach_selection_trace(
                 exc,
                 db=db,
