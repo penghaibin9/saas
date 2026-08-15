@@ -1,0 +1,19 @@
+:root {
+  --pri: #2f6bff;
+  --pri-50: #f0f5ff;
+  --pri-100: #dce8ff;
+  --salary: #fa541c;
+  --t1: #1a1a1a;
+  --t2: #4b5563;
+  --t3: #7b8494;
+  --t4: #a6adba;
+  --line: #eef0f3;
+  --page: #f5f7fa;
+  --card: #ffffff;
+  --ok-bg: #edf9f0;
+  --ok-fg: #1f7a3d;
+  --warn-bg: #fff7e8;
+  --warn-fg: #ad6800;
+  --danger-bg: #fff1f0;
+  --danger-fg: #cf1322;
+}
