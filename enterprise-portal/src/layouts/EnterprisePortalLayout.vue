@@ -26,7 +26,7 @@ onMounted(() => context.load())
     <header class="topbar">
       <button class="mobile-menu" type="button" aria-label="打开企业协同导航" @click="mobileOpen=!mobileOpen">☰</button>
       <div class="brand"><strong>跃科</strong><span>企业协同中心</span></div>
-      <div class="context"><b>{{ context.schoolName || '学校企业协同' }}</b><span>{{ title }}</span><span v-if="context.historyMode" class="history-badge">历史招聘季 · 招聘写操作已关闭</span></div>
+      <div class="context"><b>{{ context.schoolName || '学校企业协同' }}</b><span>{{ title }}</span><span v-if="context.historyMode" class="history-badge">历史招聘季 · 招聘操作已关闭</span></div>
       <div class="account"><span>{{ context.companyName || '企业账号' }} · {{ context.memberName || context.memberRole || '成员' }}</span><button type="button" class="logout" @click="logout">退出</button></div>
     </header>
     <div class="body">
@@ -38,12 +38,12 @@ onMounted(() => context.load())
         </template>
       </aside>
       <main class="main">
-        <div v-if="context.loading && !context.contextReady" class="access-state ep-card ep-empty">正在校验企业成员、学校租户与访问授权…</div>
+        <div v-if="context.loading && !context.contextReady" class="access-state ep-card ep-empty">正在校验企业成员关系、学校授权与招聘季范围…</div>
         <section v-else-if="context.error || !context.contextReady" class="access-state access-denied ep-card" role="alert">
           <span class="ep-tag danger">访问授权不可用</span>
           <h1>暂时无法进入企业协同工作区</h1>
-          <p>{{ context.error || '企业上下文校验未通过。' }}</p>
-          <p class="ep-muted">可能原因包括：邀请尚未生效、成员已停用、学校租户不匹配、访问授权已过期，或当前招聘季尚未接受企业参与。客户端不会降级到未校验 companyId 或本地权限。</p>
+          <p>{{ context.error || '企业访问范围校验未通过。' }}</p>
+          <p class="ep-muted">可能原因包括：邀请尚未生效、成员已停用、学校账号范围不匹配、访问授权已过期，或当前招聘季尚未接受企业参与。系统不会在校验失败后自动放宽企业访问范围。</p>
           <RouterLink to="/login" class="ep-btn">返回企业登录</RouterLink>
         </section>
         <RouterView v-else />

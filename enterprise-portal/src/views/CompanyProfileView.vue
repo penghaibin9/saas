@@ -65,7 +65,7 @@ async function save(){
         <fieldset class="profile-fields" :disabled="!facadeReady">
           <div class="logo-row">
             <div class="logo-preview"><img v-if="logoDisplay" :src="logoDisplay" alt="企业 Logo 预览"><span v-else>企业 Logo</span></div>
-            <div><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label><p class="ep-muted">建议方形 PNG/JPG/WebP，≤5MB。仅在学校端开放企业资料编辑后，保存时才通过正式文件中心安全上传，不要求企业填写文件编号。</p></div>
+            <div><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label><p class="ep-muted">建议方形 PNG/JPG/WebP，≤5MB。学校开放企业资料编辑后，保存时会通过文件中心安全上传，不需要填写文件编号。</p></div>
           </div>
           <label>企业简称<input v-model.trim="form.shortName" class="ep-input" maxlength="100"></label>
           <label>官网<input v-model.trim="form.website" type="url" class="ep-input" placeholder="https://"></label>
@@ -75,7 +75,7 @@ async function save(){
           <label>办公地址<input v-model.trim="form.address" class="ep-input" maxlength="300"></label>
         </fieldset>
       </div>
-      <aside class="ep-card panel"><h2 class="ep-section-title">学校控制信息 · 只读</h2><dl><div><dt>资质状态</dt><dd>{{ school.qualificationStatus }}</dd></div><div><dt>合作状态</dt><dd>{{ school.coopStatus }}</dd></div><div><dt>准入有效期</dt><dd>{{ school.accessValidUntil }}</dd></div><div><dt>黑名单</dt><dd>{{ school.blacklist?'是':'否' }}</dd></div><div><dt>学校审核</dt><dd>{{ school.schoolReview }}</dd></div></dl><p class="ep-muted">资质、合作状态、准入有效期、黑名单与学校审核结论均由学校 Authority 控制，企业端没有修改入口。</p></aside>
+      <aside class="ep-card panel"><h2 class="ep-section-title">学校审核信息 · 只读</h2><dl><div><dt>资质状态</dt><dd>{{ school.qualificationStatus }}</dd></div><div><dt>合作状态</dt><dd>{{ school.coopStatus }}</dd></div><div><dt>准入有效期</dt><dd>{{ school.accessValidUntil }}</dd></div><div><dt>黑名单</dt><dd>{{ school.blacklist?'是':'否' }}</dd></div><div><dt>学校审核</dt><dd>{{ school.schoolReview }}</dd></div></dl><p class="ep-muted">以上信息由学校审核维护，企业端仅查看，不能修改。</p></aside>
     </div>
   </section>
 </template>

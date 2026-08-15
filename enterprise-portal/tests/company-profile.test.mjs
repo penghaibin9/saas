@@ -8,7 +8,7 @@ test('A02-3 company profile uses human file selection instead of raw file id edi
   assert.doesNotMatch(page,/Logo 文件 ID/)
   assert.match(page,/type="file"/)
   assert.match(page,/image\/png,image\/jpeg,image\/webp/)
-  assert.match(page,/不要求企业填写文件编号/)
+  assert.match(page,/不需要填写文件编号/)
 })
 
 test('A02-3 logo upload goes through canonical file center and keeps auth refresh semantics',()=>{
@@ -34,4 +34,5 @@ test('A02-3 school authority fields remain display-only',()=>{
   const patchFields=page.match(/function publicPatch\(\)\{return \{([^}]*)\}\}/)?.[1]||''
   assert.ok(patchFields,'publicPatch editable payload must be discoverable')
   for(const forbidden of [/qualificationStatus\s*:/,/coopStatus\s*:/,/blacklist\s*:/,/accessValidUntil\s*:/,/schoolReview\s*:/])assert.doesNotMatch(patchFields,forbidden)
+  assert.match(page,/以上信息由学校审核维护，企业端仅查看，不能修改/)
 })
