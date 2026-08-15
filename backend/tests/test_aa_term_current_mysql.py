@@ -10,14 +10,31 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import importlib
 from threading import Event
 
 from sqlalchemy import func, select
 
-from app.modules.academic_affairs.services import academic_affairs_service as svc
+svc = importlib.import_module(
+    "app.modules.academic_affairs.services.academic_affairs_service"
+)
 
 TID = 1000000000000000001
 NEIGHBOR_TID = 1000000000000000099
+
+
+def _tenant(tenant_id: int, code: str, name: str):
+    from app.models import Tenant
+
+    return Tenant(
+        id=tenant_id,
+        tenant_code=code,
+        school_name=name,
+        short_name=name[:20],
+        deploy_mode="SAAS",
+        db_mode="SHARED",
+        status="ACTIVE",
+    )
 
 
 def _seed_terms():
@@ -26,19 +43,11 @@ def _seed_terms():
 
     db = get_sessionmaker()()
     try:
+        if db.get(Tenant, TID) is None:
+            db.add(_tenant(TID, "aa-w1-primary", "A-W1 主租户学校"))
         if db.get(Tenant, NEIGHBOR_TID) is None:
-            db.add(
-                Tenant(
-                    id=NEIGHBOR_TID,
-                    tenant_code="aa-w1-neighbor",
-                    school_name="A-W1 邻租户学校",
-                    short_name="A-W1邻校",
-                    deploy_mode="SAAS",
-                    db_mode="SHARED",
-                    status="ACTIVE",
-                )
-            )
-            db.flush()
+            db.add(_tenant(NEIGHBOR_TID, "aa-w1-neighbor", "A-W1 邻租户学校"))
+        db.flush()
 
         current = AaTerm(
             tenant_id=TID,
@@ -145,8 +154,8 @@ def _assert_future_waits_for_tenant_lock(invoke):
             future = pool.submit(invoke)
             waited = not future.done()
             if waited:
-                # Give the worker a deterministic window to reach the current-term assignment.
                 from time import sleep
+
                 sleep(0.35)
                 waited = not future.done()
             blocker.commit()
@@ -237,6 +246,7 @@ def test_legacy_term_import_current_flag_uses_same_authority_row(db_mode, monkey
     db = get_sessionmaker()()
     try:
         from app.models import AaTerm
+
         imported = db.get(AaTerm, ids["publish_target"])
         assert imported.is_current is True
     finally:
