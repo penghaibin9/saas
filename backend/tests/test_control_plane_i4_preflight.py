@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 def test_role_member_and_audit_queries_are_page_bounded():
@@ -10,11 +11,34 @@ def test_role_member_and_audit_queries_are_page_bounded():
     assert '.limit(pageSize)' in source
 
 
-def test_i4_contract_does_not_fake_20k_import_gold():
+def test_i4_contract_records_real_20k_single_job_gold_evidence():
     root = Path(__file__).resolve().parents[2]
-    contract = (root / "shared/contracts/control-plane/i4-20k-preflight.json").read_text(encoding="utf-8")
-    assert '"currentSingleJobGold": false' in contract
-    assert 'I3_NORMALIZED_STAGING_MIGRATION' in contract
+    path = root / "shared/contracts/control-plane/i4-20k-preflight.json"
+    contract = json.loads(path.read_text(encoding="utf-8"))
+    identity = contract["gates"]["identityImport"]
+    evidence = contract["candidateEvidence"]
+
+    assert contract["card"] == "I4_GOLD"
+    assert contract["schoolScaleTarget"] == 20000
+    assert identity["targetRows"] == 20000
+    assert identity["currentSingleJobGold"] is True
+    assert identity["blockedBy"] is None
+    assert identity["normalizedStaging"] is True
+    assert identity["stageChunkSize"] == 500
+    assert identity["batchPayloadRowsMaterialized"] is False
+    assert identity["canonicalConfirm"] is True
+    assert identity["realPasswordHashing"] == "PBKDF2_SHA256_200000"
+    assert identity["idempotentReplay"] is True
+
+    assert evidence["rows"] == 20000
+    assert evidence["runtimeUsers"] == 20000
+    assert evidence["runtimeRoleLinks"] == 20000
+    assert evidence["stagingRows"] == 20000
+    assert evidence["rowErrors"] == 0
+    assert evidence["markerPayloadBytes"] < 4096
+    assert evidence["maxRssMb"] < 512
+    assert evidence["artifactDigest"].startswith("sha256:")
+    assert "final branch HEAD" in contract["goldRule"]
 
 
 def test_role_detail_advertises_paged_resources_instead_of_fake_complete_preview():
