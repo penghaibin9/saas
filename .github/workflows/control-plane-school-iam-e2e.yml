@@ -1,0 +1,288 @@
+name: Control Plane School IAM E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/core/effective_access.py'
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/modules/system_admin/**'
+      - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/scripts/e2e_seed_control_plane_school_iam.py'
+      - 'frontend/src/modules/system/**'
+      - 'e2e/specs/system-role-security-change.spec.mjs'
+      - 'e2e/specs/system-effective-access.spec.mjs'
+      - 'shared/contracts/permission-catalog.json'
+      - '.github/workflows/control-plane-school-iam-e2e.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/core/effective_access.py'
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/modules/system_admin/**'
+      - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/scripts/e2e_seed_control_plane_school_iam.py'
+      - 'frontend/src/modules/system/**'
+      - 'e2e/specs/system-role-security-change.spec.mjs'
+      - 'e2e/specs/system-effective-access.spec.mjs'
+      - 'shared/contracts/permission-catalog.json'
+      - '.github/workflows/control-plane-school-iam-e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-school-iam-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  APP_ENV: test
+  DEPLOYMENT_MODE: local
+  TRUSTED_PROXY_IPS: 127.0.0.1/32
+  DB_ENABLED: 'true'
+  DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/control_plane_school_iam_e2e?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/control_plane_school_iam_e2e?charset=utf8mb4
+  DB_HOST: 127.0.0.1
+  DB_PORT: '3306'
+  DB_USER: root
+  DB_PASSWORD: e2e_root
+  DB_NAME: control_plane_school_iam_e2e
+  REDIS_URL: redis://127.0.0.1:6379/14
+  REDIS_KEY_PREFIX: control-plane-school-iam-e2e
+  REDIS_CONNECT_TIMEOUT: '2'
+  REDIS_SOCKET_TIMEOUT: '2'
+  JWT_SECRET: control-plane-school-iam-e2e-only
+  JWT_SECRET_KEY: control-plane-school-iam-e2e-only
+  SECRET_KEY: control-plane-school-iam-e2e-only-secret-key
+  MOCK_LOGIN_ENABLED: 'false'
+  SMS_ENABLED: 'false'
+  SCHEDULER_MODE: external
+  E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+  E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+  E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+  E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+  E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  school-iam-e2e:
+    name: Exact-head school IAM browser + API E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: control_plane_school_iam_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Strict B8 permission/catalog reconciliation
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/control-plane
+          python scripts/check/check-permission-catalog.py --strict-legacy --write artifacts/control-plane/school-iam-permission-catalog.json
+
+      - name: Install backend and verify exact schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          python -m py_compile scripts/e2e_seed_control_plane_school_iam.py
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current
+          pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+
+      - name: Seed base school identities
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed school-IAM prerequisites only
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Verify wildcard retirement lock before school E2E
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.core.permissions import ROLE_PERMISSIONS
+          from app.services.system_role_shadow_service import active_tenant_permission_codes
+          assert '*' in ROLE_PERMISSIONS['SCHOOL_ADMIN']
+          codes = set(active_tenant_permission_codes())
+          assert len(codes) > 400
+          assert not any(c.startswith('platform.') or c.startswith('enterprise.') for c in codes)
+          print(f'school_assignable_universe={len(codes)} wildcard_retirement_pending=true')
+          PY
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Install and start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+
+      - name: Validate E2E syntax before browser install
+        working-directory: e2e
+        run: |
+          node --check specs/system-role-security-change.spec.mjs
+          node --check specs/system-effective-access.spec.mjs
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run authority-named school IAM E2E
+        working-directory: e2e
+        run: |
+          npx playwright test \
+            specs/system-role-security-change.spec.mjs \
+            specs/system-effective-access.spec.mjs \
+            --workers=1
+
+      - name: Validate and freeze school IAM evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ['E2E_EXPECTED_SHA']
+          role = json.loads(Path('e2e/test-results/system-role-security-change-evidence.json').read_text(encoding='utf-8'))
+          access = json.loads(Path('e2e/test-results/system-effective-access-evidence.json').read_text(encoding='utf-8'))
+          fixture = json.loads(Path('e2e/runtime-fixtures/control-plane-school-iam.json').read_text(encoding='utf-8'))
+          for item in (role, access, fixture):
+              assert item['headSha'] == expected, (item.get('headSha'), expected)
+
+          assert role['realBrowserLogin'] is True
+          assert role['canonicalCustomRoleClone'] is True
+          assert role['canonicalRoleAssignment'] is True
+          assert role['beforeReasonCode'] == 'PERMISSION_DENIED'
+          assert role['reviewRuntimeUnchanged'] is True
+          assert role['activationReasonCode'] == 'DOMAIN_GUARD_NOT_EVALUATED'
+          assert role['activationRuntimeMaterialized'] is True
+          assert role['activationRevisionDelta'] == 1
+          assert role['rollbackReasonCode'] == 'PERMISSION_DENIED'
+          assert role['rollbackRevisionDelta'] == 2
+          assert role['pinnedAutomaticUpgrade'] is False
+
+          assert access['realDemoSchoolLogin'] is True
+          assert access['realUnentitledSchoolLogin'] is True
+          assert access['demoSchoolAdminIamReason'] == 'DOMAIN_GUARD_NOT_EVALUATED'
+          assert access['ordinaryTeacherReason'] == 'PERMISSION_DENIED'
+          assert access['enterprisePermissionReason'] == 'PERMISSION_NOT_SCHOOL_ASSIGNABLE'
+          assert access['platformPermissionReason'] == 'PERMISSION_NOT_SCHOOL_ASSIGNABLE'
+          assert access['crossTenantHttpStatus'] in (403, 404)
+          assert access['unentitledSchoolAdminReason'] == 'MODULE_NOT_ENTITLED'
+          assert access['schoolAdminExplicitPermissionCount'] == fixture['tenantPermissionUniverseCount']
+          assert access['schoolAdminExplicitPermissionCount'] > 400
+
+          artifact = {
+              'schemaVersion': 1,
+              'card': 'CTRL-B8-SCHOOL-FULL-E2E',
+              'headSha': expected,
+              'runtimeSchoolAdminWildcardStillPresent': True,
+              'tenantPermissionUniverseCount': fixture['tenantPermissionUniverseCount'],
+              'roleSecurityChange': role,
+              'effectiveAccess': access,
+              'goldCandidate': True,
+          }
+          target = Path('artifacts/control-plane/school-iam-full-e2e.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')
+          print(json.dumps(artifact, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Re-check wildcard retirement lock after E2E
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.core.permissions import ROLE_PERMISSIONS
+          assert '*' in ROLE_PERMISSIONS['SCHOOL_ADMIN'], 'school full E2E must not retire wildcard in the same card'
+          PY
+
+      - name: Upload school IAM Gold candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-school-iam-e2e-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/control-plane/school-iam-full-e2e.json
+            artifacts/control-plane/school-iam-permission-catalog.json
+            e2e/test-results/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
