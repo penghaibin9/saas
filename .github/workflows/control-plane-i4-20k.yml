@@ -94,7 +94,7 @@ jobs:
           python -m py_compile scripts/check_control_plane_i4_20k_identity.py
       - name: Run real 20K single-job proof
         working-directory: backend
-        run: timeout 40m python scripts/check_control_plane_i4_20k_identity.py
+        run: PYTHONPATH=. timeout 40m python scripts/check_control_plane_i4_20k_identity.py
       - name: Validate evidence is non-Gold probe truth
         if: success()
         run: |
