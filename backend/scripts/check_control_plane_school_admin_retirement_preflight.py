@@ -1,4 +1,4 @@
-"""Exact-head SCHOOL_ADMIN wildcard-retirement cutover preflight."""
+"""Exact-head SCHOOL_ADMIN wildcard-retirement snapshot preflight."""
 from __future__ import annotations
 
 import json
@@ -16,10 +16,10 @@ def main() -> None:
     if len(head_sha) < 7:
         raise RuntimeError("SCHOOL_ADMIN_RETIREMENT_EXPECTED_SHA/GITHUB_SHA is required")
 
-    # Preflight must freeze the explicit snapshot while the existing runtime
-    # wildcard is still present. The next card performs the actual cutover.
+    # The static wildcard is retained only as the OLD resolver side of B8 shadow.
+    # This preflight never claims whether runtime currently consumes that token.
     if set(ROLE_PERMISSIONS.get("SCHOOL_ADMIN") or ()) != {"*"}:
-        raise RuntimeError("preflight requires the legacy SCHOOL_ADMIN runtime wildcard to remain untouched")
+        raise RuntimeError("preflight requires the legacy SCHOOL_ADMIN shadow baseline to remain frozen")
 
     convergence = shadow.converge_published_system_templates(
         actor_user_id=9911,
@@ -42,12 +42,12 @@ def main() -> None:
         raise RuntimeError(f"forbidden permission plane entered SCHOOL_ADMIN template: {proof}")
 
     evidence = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "card": "CTRL-B8-WILDCARD-RETIREMENT-PREFLIGHT",
         "headSha": head_sha,
         "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "runtimeSchoolAdminWildcardStillPresent": True,
-        "cutoverExecuted": False,
+        "legacySchoolAdminWildcardShadowBaselinePresent": True,
+        "runtimeCutoverState": "NOT_EVALUATED_BY_PREFLIGHT",
         "preflight": proof,
         "shadow": {
             "roleCount": report["roleCount"],
@@ -57,7 +57,7 @@ def main() -> None:
             "zeroUnexplainedDrift": report["zeroUnexplainedDrift"],
         },
         "templateConvergence": convergence,
-        "cutoverReady": True,
+        "snapshotReady": True,
     }
     target = Path(
         os.environ.get("SCHOOL_ADMIN_RETIREMENT_EVIDENCE_PATH")

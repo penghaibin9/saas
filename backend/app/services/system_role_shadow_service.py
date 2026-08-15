@@ -131,6 +131,46 @@ def published_template_allows(db, role_code: str, permission_code: str) -> bool:
     return code in allowed and code not in denied
 
 
+def published_system_role_permissions(db, role_code: str) -> tuple[str, ...]:
+    """Return the normalized published SYSTEM-role snapshot only when it exactly matches B8 Authority truth.
+
+    Role-assignment governance must consume this function rather than the legacy
+    ROLE_PERMISSIONS patterns. Missing templates, DENY rows, stale snapshots, or
+    cross-plane rows fail closed as Authority drift.
+    """
+    normalized_role = str(role_code or "").strip().upper()
+    if not is_school_role_template_code(normalized_role):
+        raise AppException(
+            "NO_PERMISSION",
+            "学校角色治理不能授予非学校 SYSTEM 角色",
+            http_status=403,
+            details={"roleCode": normalized_role},
+        )
+    expected = set(expected_system_role_permissions(normalized_role))
+    universe = set(active_tenant_permission_codes())
+    template = _latest_published_template(db, normalized_role)
+    allowed, denied = _normalized_template_permissions(db, template)
+    invalid = sorted(
+        code for code in allowed | denied
+        if code not in universe or code.startswith("platform.") or code.startswith("enterprise.")
+    )
+    if template is None or denied or invalid or allowed != expected:
+        raise AppException(
+            "B8_SYSTEM_TEMPLATE_DRIFT",
+            "SYSTEM 角色发布模板与 Control Plane Authority 不一致",
+            http_status=409,
+            details={
+                "roleCode": normalized_role,
+                "templateId": str(template.id) if template is not None else None,
+                "expectedCount": len(expected),
+                "actualCount": len(allowed),
+                "denyCount": len(denied),
+                "invalidPermissionCodes": invalid[:20],
+            },
+        )
+    return tuple(sorted(allowed))
+
+
 def custom_role_permission_codes(db, *, tenant_id: int, role_id: int) -> tuple[str, ...]:
     role = db.scalars(select(Role).where(
         Role.tenant_id == int(tenant_id),
@@ -197,9 +237,24 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                     http_status=409,
                     details={"roleCode": role_code, "permissionCodes": forbidden[:50]},
                 )
+            wildcard_patterns = sorted(
+                pattern for pattern in ROLE_PERMISSIONS.get(role_code, set())
+                if pattern == "*" or pattern.endswith(".*") or pattern.startswith("*.")
+            )
+            runtime_retired = role_code == "SCHOOL_ADMIN"
+            desired_wildcard_json = (
+                {"sourcePatterns": wildcard_patterns, "runtimeRetired": runtime_retired, "b8ShadowOnly": True}
+                if wildcard_patterns else None
+            )
             latest = _latest_published_template(db, role_code)
             current_allow, current_deny = _normalized_template_permissions(db, latest)
-            if latest is not None and current_allow == expected and not current_deny:
+            current_wildcard_json = getattr(latest, "wildcard_json", None) if latest is not None else None
+            if (
+                latest is not None
+                and current_allow == expected
+                and not current_deny
+                and current_wildcard_json == desired_wildcard_json
+            ):
                 unchanged.append(role_code)
                 continue
             latest_any = db.scalars(select(RoleTemplate).where(
@@ -210,10 +265,6 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 RoleTemplate.is_deleted.is_(False),
             ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)).first()
             next_version = int(latest_any.template_version or 0) + 1 if latest_any is not None else 1
-            wildcard_patterns = sorted(
-                pattern for pattern in ROLE_PERMISSIONS.get(role_code, set())
-                if pattern == "*" or pattern.endswith(".*") or pattern.startswith("*.")
-            )
             template = RoleTemplate(
                 tenant_id=PLATFORM_TENANT,
                 template_code=role_code,
@@ -232,7 +283,7 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 delivered=True,
                 bundle_codes_json={"items": []},
                 permission_ceiling_json={"items": sorted(expected), "permissionDigest": _digest(expected), "compatibilityOnly": True},
-                wildcard_json={"sourcePatterns": wildcard_patterns, "runtimeRetired": False, "b8ShadowOnly": True} if wildcard_patterns else None,
+                wildcard_json=desired_wildcard_json,
                 status="ACTIVE",
                 created_by=actor_user_id,
                 updated_by=actor_user_id,
@@ -259,7 +310,7 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                     "sourceCommitSha": source_sha,
                     "permissionDigest": template.permission_digest,
                     "permissionCount": len(expected),
-                    "wildcardRuntimeRetired": False,
+                    "wildcardRuntimeRetired": runtime_retired,
                 },
             )
             created.append({
@@ -268,6 +319,7 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 "templateVersion": next_version,
                 "permissionCount": len(expected),
                 "permissionDigest": template.permission_digest,
+                "wildcardRuntimeRetired": runtime_retired,
             })
         db.commit()
         return {

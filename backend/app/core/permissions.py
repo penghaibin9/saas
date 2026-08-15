@@ -454,6 +454,16 @@ def _match(code: str, patterns: Iterable[str]) -> bool:
     return False
 
 
+def _covers_school_permission_universe(patterns: Iterable[str]) -> bool:
+    """Full-school probes mean complete permanent TENANT coverage, not a literal runtime wildcard."""
+    normalized = set(patterns)
+    if "*" in normalized:
+        return True
+    from app.core.school_admin_permission_resolver import catalog_school_admin_permissions
+    universe = catalog_school_admin_permissions()
+    return bool(universe) and all(_match(code, normalized) for code in universe)
+
+
 def get_base_permission_patterns(user: dict) -> list[str]:
     """不含临时授权的基础权限。
 
@@ -475,6 +485,8 @@ def has_base_permission(user: dict, code: str) -> bool:
         return True
     role = _role_of(user)
     patterns = get_base_permission_patterns(user)
+    if code == "*":
+        return _covers_school_permission_universe(patterns)
     if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:
         from_db = _db_granted(user)
         if from_db is None:
@@ -542,6 +554,10 @@ def has_permission(user: dict, code: str) -> bool:
     """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。与 get_effective_permission_patterns 同源。"""
     if is_super_admin(user):
         return True
+    # 旧调用把 has_permission("*") 当作“本校全权”。退役后必须由永久基础权限是否
+    # 覆盖完整 TENANT universe 推导；temporary delegation 即使含 "*" 也不得开启此旁路。
+    if code == "*":
+        return has_base_permission(user, "*")
     role = _role_of(user)
     patterns = get_effective_permission_patterns(user)
     if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:

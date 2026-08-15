@@ -168,14 +168,18 @@ def _role_row(db, tenant_id: int, role_code: str):
 
 def _assert_role_delegation_allowed(db, *, actor: dict | None, role, tenant_id: int) -> None:
     """角色治理写链的最终授权边界：只允许固化 actor 的基础权限。"""
-    from app.core.permissions import ROLE_PERMISSIONS, assert_delegable_permission_codes
+    from app.core.permissions import assert_delegable_permission_codes
     from app.models import Permission, RolePermission
 
     role_code = str(role.role_code or "").strip().upper()
     if role_code.startswith("PLATFORM_"):
         raise AppException("NO_PERMISSION", "学校角色治理不能授予平台角色")
     if str(role.role_type or "").upper() == "SYSTEM":
-        permission_codes = set(ROLE_PERMISSIONS.get(role_code, set()))
+        # Runtime wildcard retirement means SYSTEM targets must be measured by
+        # the immutable normalized RoleTemplate Authority, never the legacy
+        # ROLE_PERMISSIONS patterns kept only for B8 shadow comparison.
+        from app.services.system_role_shadow_service import published_system_role_permissions
+        permission_codes = set(published_system_role_permissions(db, role_code))
     else:
         permission_codes = set(db.scalars(select(Permission.permission_code).join(
             RolePermission, RolePermission.permission_id == Permission.id

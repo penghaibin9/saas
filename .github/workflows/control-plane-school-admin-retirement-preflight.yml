@@ -125,12 +125,12 @@ jobs:
           expected = '${{ github.event.pull_request.head.sha || github.sha }}'
           data = json.loads(Path('artifacts/control-plane/school-admin-retirement-preflight.json').read_text(encoding='utf-8'))
           proof = data['preflight']
-          assert data['schemaVersion'] == 1
+          assert data['schemaVersion'] == 2
           assert data['card'] == 'CTRL-B8-WILDCARD-RETIREMENT-PREFLIGHT'
           assert data['headSha'] == expected
-          assert data['runtimeSchoolAdminWildcardStillPresent'] is True
-          assert data['cutoverExecuted'] is False
-          assert data['cutoverReady'] is True
+          assert data['legacySchoolAdminWildcardShadowBaselinePresent'] is True
+          assert data['runtimeCutoverState'] == 'NOT_EVALUATED_BY_PREFLIGHT'
+          assert data['snapshotReady'] is True
           assert proof['exactSnapshot'] is True
           assert proof['explicitPermissionCount'] == proof['tenantPermissionUniverseCount']
           assert proof['explicitPermissionCount'] > 400

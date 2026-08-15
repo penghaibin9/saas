@@ -99,7 +99,7 @@ def test_b8_publishes_immutable_explicit_tenant_templates_then_shadow_is_zero(db
         codes = {row.permission_code for row in rows}
         assert codes == set(shadow.active_tenant_permission_codes())
         assert not any(code.startswith("platform.") or code.startswith("enterprise.") for code in codes)
-        assert (school_admin.wildcard_json or {}).get("runtimeRetired") is False
+        assert (school_admin.wildcard_json or {}).get("runtimeRetired") is True
     finally:
         db.close()
 

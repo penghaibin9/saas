@@ -8,6 +8,10 @@ on:
     paths:
       - 'backend/app/core/permissions.py'
       - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/app/services/school_iam_authority_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/app/services/role_assignment_service.py'
+      - 'backend/scripts/bootstrap_control_plane_school_iam_authority.py'
       - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'
       - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
       - 'backend/tests/test_role_assignment_privilege_boundary.py'
@@ -21,6 +25,10 @@ on:
     paths:
       - 'backend/app/core/permissions.py'
       - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/app/services/school_iam_authority_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/app/services/role_assignment_service.py'
+      - 'backend/scripts/bootstrap_control_plane_school_iam_authority.py'
       - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'
       - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
       - 'backend/tests/test_role_assignment_privilege_boundary.py'
@@ -46,6 +54,7 @@ env:
   DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_school_admin_cutover?charset=utf8mb4
   TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_school_admin_cutover?charset=utf8mb4
   SCHOOL_ADMIN_CUTOVER_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   SCHOOL_ADMIN_CUTOVER_EVIDENCE_PATH: ../artifacts/control-plane/school-admin-runtime-cutover.json
 
 jobs:
@@ -104,7 +113,15 @@ jobs:
           alembic current
           python -m py_compile app/core/permissions.py
           python -m py_compile app/core/school_admin_permission_resolver.py
+          python -m py_compile app/services/school_iam_authority_service.py
+          python -m py_compile app/services/system_role_shadow_service.py
+          python -m py_compile app/services/role_assignment_service.py
+          python -m py_compile scripts/bootstrap_control_plane_school_iam_authority.py
           python -m py_compile scripts/check_control_plane_school_admin_runtime_cutover.py
+
+      - name: Replay production school-IAM Authority
+        working-directory: backend
+        run: PYTHONPATH=. python scripts/bootstrap_control_plane_school_iam_authority.py
 
       - name: Run runtime-cutover contracts
         working-directory: backend
@@ -128,13 +145,15 @@ jobs:
 
           expected = '${{ github.event.pull_request.head.sha || github.sha }}'
           data = json.loads(Path('artifacts/control-plane/school-admin-runtime-cutover.json').read_text(encoding='utf-8'))
-          assert data['schemaVersion'] == 1
+          assert data['schemaVersion'] == 2
           assert data['card'] == 'CTRL-B8-WILDCARD-RETIREMENT-RUNTIME'
           assert data['headSha'] == expected
           assert data['legacySchoolAdminWildcardShadowStillPresent'] is True
           assert data['legacyWildcardRuntimeReachable'] is False
           assert data['runtimeSchoolAdminWildcardStillPresent'] is False
           assert data['runtimeSchoolAdminWildcardRetired'] is True
+          assert data['semanticFullSchoolAuthority'] is True
+          assert data['fullSchoolAuthorityDerivedFrom'] == 'PERMANENT_EXPLICIT_TENANT_COVERAGE'
           assert data['runtimeResolver'] == 'PUBLISHED_TENANT_ROLE_TEMPLATE'
           assert data['runtimeExactSnapshot'] is True
           assert data['runtimePermissionCount'] == data['tenantPermissionUniverseCount']

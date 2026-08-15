@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.core.permissions import ROLE_PERMISSIONS, get_base_permission_patterns
+from app.core.permissions import ROLE_PERMISSIONS, get_base_permission_patterns, has_permission
 from app.core.school_admin_permission_resolver import catalog_school_admin_permissions
 from app.services import system_role_shadow_service as shadow
 
@@ -45,11 +45,13 @@ def main() -> None:
         )
     if "*" in runtime:
         raise RuntimeError("SCHOOL_ADMIN runtime still consumes wildcard")
+    if not has_permission(user, "*"):
+        raise RuntimeError("semantic full-school authority probe regressed after wildcard retirement")
     if any(code.startswith("platform.") or code.startswith("enterprise.") for code in runtime):
         raise RuntimeError("SCHOOL_ADMIN runtime crossed permission plane")
 
     evidence = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "card": "CTRL-B8-WILDCARD-RETIREMENT-RUNTIME",
         "headSha": head_sha,
         "completedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -57,6 +59,8 @@ def main() -> None:
         "legacyWildcardRuntimeReachable": False,
         "runtimeSchoolAdminWildcardStillPresent": False,
         "runtimeSchoolAdminWildcardRetired": True,
+        "semanticFullSchoolAuthority": True,
+        "fullSchoolAuthorityDerivedFrom": "PERMANENT_EXPLICIT_TENANT_COVERAGE",
         "runtimeResolver": "PUBLISHED_TENANT_ROLE_TEMPLATE",
         "runtimePermissionCount": len(runtime),
         "tenantPermissionUniverseCount": len(expected),
