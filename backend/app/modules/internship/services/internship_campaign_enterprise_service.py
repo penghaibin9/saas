@@ -17,6 +17,7 @@ from app.modules.internship.enterprise_collaboration_contract import (
     CAMPAIGN_ENTERPRISE_INVITE_SOURCES,
     CAMPAIGN_ENTERPRISE_TRANSITIONS,
 )
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services.internship_recruitment_campaign_service import _get_campaign
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -120,8 +121,8 @@ def invite_company(
     tenant_id = _tid()
     with session() as db:
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=True)
-        if campaign.status not in {"DRAFT", "OPEN"}:
-            raise AppException("DATA_CONFLICT", "当前招聘季已停止新增企业邀请")
+        now = datetime.utcnow()
+        window_guard.assert_campaign_operation_window(campaign, "INVITE", now=now)
         company = _get_company(db, company_id, tenant_id=tenant_id, require_admission=True)
         existing = db.scalar(
             select(InternshipCampaignEnterprise).where(
@@ -143,7 +144,7 @@ def invite_company(
             status="INVITED",
             invite_source=source,
             invited_by_user_id=_actor_user_id(user),
-            invited_at=datetime.utcnow(),
+            invited_at=now,
         )
         db.add(item)
         db.flush()
@@ -182,6 +183,8 @@ def transition_participation(
             require_admission=target == "ACCEPTED",
         )
         now = datetime.utcnow()
+        if target in {"ACCEPTED", "DECLINED"}:
+            window_guard.assert_campaign_operation_window(campaign, "INVITE", now=now)
         if target == "ACCEPTED":
             item.accepted_at = now
         elif target == "DECLINED":

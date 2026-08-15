@@ -4,7 +4,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+ContactSharingMode = Literal["MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT", "IMMEDIATE"]
+ProfileSection = Literal["SELF_INTRO", "SKILLS", "AVAILABILITY", "LOCATION_PREFERENCES"]
+ProfileItemType = Literal["SKILL_EVIDENCE", "CERTIFICATE", "PROJECT", "PRACTICE", "AWARD", "PORTFOLIO"]
+
+
+class ApplicationMaterialPolicy(BaseModel):
+    """Versioned/fail-closed material policy stored on RecruitmentCampaign."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schemaVersion: Literal["V1"] = "V1"
+    profileRequired: bool = False
+    requiredSections: list[ProfileSection] = Field(default_factory=list, max_length=10)
+    requiredItemTypes: list[ProfileItemType] = Field(default_factory=list, max_length=20)
+    applicationStatementRequired: bool = False
+    minStatementLength: int = Field(default=0, ge=0, le=5000)
+    resumePdfEnabled: bool = True
+    allowedContactSharingModes: list[ContactSharingMode] = Field(
+        default_factory=lambda: ["MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT"]
+    )
 
 
 class RecruitmentCampaignCreate(BaseModel):
@@ -24,6 +45,8 @@ class RecruitmentCampaignCreate(BaseModel):
     schoolConfirmEndAt: Optional[datetime] = None
     enterpriseAccessEndAt: Optional[datetime] = None
     enterpriseConfirmRequired: bool = False
+    teacherConfirmSlaHours: int = Field(default=48, ge=1, le=168)
+    applicationMaterialPolicy: Optional[ApplicationMaterialPolicy] = None
     remark: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -45,6 +68,8 @@ class RecruitmentCampaignUpdate(BaseModel):
     schoolConfirmEndAt: Optional[datetime] = None
     enterpriseAccessEndAt: Optional[datetime] = None
     enterpriseConfirmRequired: Optional[bool] = None
+    teacherConfirmSlaHours: Optional[int] = Field(default=None, ge=1, le=168)
+    applicationMaterialPolicy: Optional[ApplicationMaterialPolicy] = None
     remark: Optional[str] = Field(default=None, max_length=500)
 
 

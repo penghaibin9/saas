@@ -7,6 +7,7 @@ formal position change) gets immutable placement evidence in the same DB transac
 from __future__ import annotations
 
 from datetime import datetime
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
@@ -16,11 +17,16 @@ from app.models.internship_enterprise_application_decision import InternshipEnte
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_placement_snapshot_service as snapshot_svc
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services import internship_student_service as student_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 
 _INSTALLED = False
 _ORIGINAL = None
+
+
+def _assert_school_confirm_window(campaign: InternshipRecruitmentCampaign, *, now: datetime) -> None:
+    window_guard.assert_campaign_operation_window(campaign, "SCHOOL_CONFIRM", now=now)
 
 
 def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
@@ -33,6 +39,10 @@ def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
     ))
     if not campaign:
         raise AppException("DATA_CONFLICT", "岗位招聘季不存在，不能正式落岗")
+    # Every formal placement into a campaign-owned position is a SCHOOL_CONFIRM operation.
+    # Direct/manual assignment may omit an application, but it must never bypass the campaign
+    # confirmation window or reopen a closed/frozen recruitment season by side effect.
+    _assert_school_confirm_window(campaign, now=now)
     application = db.scalar(select(InternshipApplication).where(
         InternshipApplication.tenant_id == record.tenant_id,
         InternshipApplication.record_id == record.id,

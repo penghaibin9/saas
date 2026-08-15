@@ -41,7 +41,7 @@ class InternshipVolunteerGroup(PKMixin, TenantMixin, CommonMixin, Base):
     campaign_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="→ t_internship_recruitment_campaign.id")
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="DRAFT",
-        comment="DRAFT/SUBMITTED/LOCKED/NEEDS_REVISION/APPROVED",
+        comment="DRAFT/SUBMITTED/LOCKED/NEEDS_REVISION/APPROVED/CLOSED",
     )
     submission_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_material_snapshot_id: Mapped[int | None] = mapped_column(
@@ -59,7 +59,9 @@ class InternshipVolunteerGroup(PKMixin, TenantMixin, CommonMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     revision_requested_at: Mapped[datetime | None] = mapped_column(DateTime)
     revision_reason: Mapped[str | None] = mapped_column(String(500))
-    last_released_at: Mapped[datetime | None] = mapped_column(DateTime)
-    last_release_reason: Mapped[str | None] = mapped_column(String(500))
+    released_at: Mapped[datetime | None] = mapped_column(DateTime)
+    release_reason: Mapped[str | None] = mapped_column(String(500))
     released_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    unlock_requested_at: Mapped[datetime | None] = mapped_column(DateTime)
+    unlock_request_reason: Mapped[str | None] = mapped_column(String(500))
     contact_consent_revoked_at: Mapped[datetime | None] = mapped_column(DateTime)

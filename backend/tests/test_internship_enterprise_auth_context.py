@@ -20,9 +20,23 @@ def test_invite_token_uses_random_secret_platform_hmac_and_hash_only_persistence
     assert "secrets.token_urlsafe(32)" in issue_source
     assert 'hash_sensitive(token, "internship_enterprise_invite")' in hash_source
     assert "member.invite_token_hash = _invite_hash(raw)" in issue_source
-    assert "inviteToken" in issue_source  # one-time value returned only by authenticated school write
-    assert "member.invite_expires_at = _invite_expiry" in issue_source
+    assert "inviteToken" in issue_source
+    assert "expires_at = _invite_expiry(campaign, now)" in issue_source
+    assert "member.invite_expires_at = expires_at" in issue_source
     assert "md5" not in issue_source.lower()
+
+
+def test_invite_issue_and_accept_share_fail_closed_invite_window():
+    guard_source = inspect.getsource(auth_svc._assert_invite_window)
+    expiry_source = inspect.getsource(auth_svc._invite_expiry)
+    issue_source = inspect.getsource(auth_svc.issue_company_invite)
+    load_source = inspect.getsource(auth_svc._load_invite_in_tx)
+    assert 'assert_campaign_operation_window(campaign, "INVITE", now=now)' in guard_source
+    assert "campaign.enterprise_access_end_at" in guard_source
+    assert "min(now + _INVITE_TTL, campaign.invite_end_at, campaign.enterprise_access_end_at)" in expiry_source
+    assert "_invite_expiry(campaign, now)" in issue_source
+    assert "_assert_invite_window(campaign, current, public_token=True)" in load_source
+    assert "member.invite_expires_at <= current" in load_source
 
 
 def test_invite_accept_requires_phone_match_is_single_use_and_activates_one_transaction():
@@ -38,7 +52,7 @@ def test_invite_accept_requires_phone_match_is_single_use_and_activates_one_tran
     assert "access_svc.issue_grant_in_tx(" in source
     assert "db.commit()" in source
     assert 'member.status != "INVITED"' in load_source
-    assert "member.invite_expires_at < _now()" in load_source
+    assert "member.invite_expires_at <= current" in load_source
 
 
 def test_invite_reuses_t_user_and_never_creates_enterprise_user_authority():
@@ -111,4 +125,4 @@ def test_enterprise_recruitment_permissions_are_role_scoped_and_fail_closed():
 def test_enterprise_public_auth_schemas_do_not_accept_company_scope():
     assert "companyId" not in EnterpriseInviteAccept.model_fields
     assert "companyId" not in EnterpriseLogin.model_fields
-    assert "companyId" in CampaignEnterpriseInvite.model_fields  # school-authenticated invite only
+    assert "companyId" in CampaignEnterpriseInvite.model_fields
