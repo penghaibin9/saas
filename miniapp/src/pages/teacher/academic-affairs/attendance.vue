@@ -33,7 +33,10 @@
         <view class="list-group" v-else>
           <view v-for="session in sessions" :key="session.sessionId" class="list-row" @click="openSession(session)">
             <view class="flex-1">
-              <text class="t-md">{{ session.courseName || '（未命名课程）' }}</text>
+              <view class="at__title-row">
+                <text class="t-md">{{ session.courseName || '（未命名课程）' }}</text>
+                <text v-if="session.sourceType === 'ADMIN_SPECIAL'" class="at__source-tag">管理员特殊补录</text>
+              </view>
               <text class="at__sub">{{ session.sessionDate }}{{ session.slotNo ? ' 第' + session.slotNo + '节' : '' }} · 出勤 {{ session.presentCount }}/{{ session.totalCount }}</text>
             </view>
             <MobileStatusTag :status="session.status" />
@@ -44,7 +47,13 @@
       <view class="page-pad" v-if="active">
         <text class="at__back" @click="closeSession">‹ 返回场次列表</text>
         <view class="card row-between">
-          <text class="t-md t-bold">{{ active.courseName || '（未命名课程）' }}</text>
+          <view class="flex-1">
+            <view class="at__title-row">
+              <text class="t-md t-bold">{{ active.courseName || '（未命名课程）' }}</text>
+              <text v-if="active.sourceType === 'ADMIN_SPECIAL'" class="at__source-tag">管理员特殊补录</text>
+            </view>
+            <text v-if="active.sourceType === 'ADMIN_SPECIAL'" class="at__source-note">该场次来自管理员特殊补录，普通教师端不会提供此创建入口。</text>
+          </view>
           <MobileStatusTag :status="active.status" />
         </view>
 
@@ -239,6 +248,9 @@ export default {
 .at__ph { color: var(--text-tertiary); }
 .at__task-note { display: flex; flex-direction: column; gap: 3px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--teacher-50); color: var(--text-secondary); font-size: var(--font-size-xs); }
 .at__task-note text:first-child { color: var(--teacher-700); font-size: var(--font-size-sm); font-weight: 600; }
+.at__title-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.at__source-tag { display: inline-flex; align-items: center; min-height: 22px; padding: 0 var(--space-2); border-radius: 999px; background: var(--teacher-50); color: var(--teacher-700); font-size: var(--font-size-xs); font-weight: 600; }
+.at__source-note { display: block; margin-top: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
 .at__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .at__back { display: inline-block; font-size: var(--font-size-sm); color: var(--brand-primary); margin-bottom: var(--space-3); }
 .at__row { align-items: center; }
