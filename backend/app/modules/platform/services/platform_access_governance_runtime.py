@@ -15,6 +15,7 @@ must be checked against live authority data on every use:
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -166,13 +167,14 @@ def create_support_session(payload: dict, *, actor: dict | None = None) -> dict:
     if duration <= 0 or duration > 120:
         raise AppException("VALIDATION_ERROR", "受控协助必须在1-120分钟内")
     key = _base._idempotent_key("support", payload.get("requestId"))
+    incident_id = str(incident.get("incidentId")) if incident is not None else None
     expected = {
         "requestId": payload.get("requestId"),
         "tenantId": tenant_id,
         "durationMinutes": duration,
         "reason": reason,
         "ticketId": ticket["ticketId"],
-        "incidentId": str(incident.get("incidentId")) if incident is not None else "",
+        "incidentId": incident_id,
         "scopes": scopes,
     }
     replay = _same_or_conflict(
@@ -191,11 +193,11 @@ def create_support_session(payload: dict, *, actor: dict | None = None) -> dict:
         "ticketVersionAtGrant": ticket["version"],
         "ticketSeverity": ticket["severity"],
         "ticketAssigneeUserId": ticket["assigneeUserId"],
-        "incidentId": str(incident.get("incidentId")) if incident is not None else None,
+        "incidentId": incident_id,
         "scopes": scopes,
         "assurance": assurance,
         "startedAt": now.isoformat(timespec="seconds"),
-        "expiresAt": (now + _base.timedelta(minutes=duration)).isoformat(timespec="seconds"),
+        "expiresAt": (now + timedelta(minutes=duration)).isoformat(timespec="seconds"),
         "status": "ACTIVE",
         "bannerRequired": True,
     }
@@ -207,7 +209,7 @@ def create_support_session(payload: dict, *, actor: dict | None = None) -> dict:
         audit_detail={
             "operatorUserId": operator,
             "ticketId": ticket["ticketId"],
-            "incidentId": data["incidentId"],
+            "incidentId": incident_id,
             "scopes": scopes,
             "reason": reason,
         },
