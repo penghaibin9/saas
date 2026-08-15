@@ -1,0 +1,145 @@
+name: Control Plane SCHOOL_ADMIN Post-Cutover Compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration/control-plane-option-b-20260815]
+    paths:
+      - 'backend/conftest.py'
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/app/services/school_iam_authority_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/tests/test_import_export_p0_authz.py'
+      - 'backend/tests/test_aa_p0_authz.py'
+      - 'backend/tests/test_aa_archive.py'
+      - 'backend/tests/test_student_export_status_filter.py'
+      - 'backend/tests/test_academic_current_term.py'
+      - 'backend/tests/test_control_plane_b8_shadow.py'
+      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
+      - 'scripts/check/check-permission-catalog.py'
+      - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - 'shared/contracts/permission-catalog-b8-compatibility.json'
+      - '.github/workflows/control-plane-school-admin-post-cutover-compatibility.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/conftest.py'
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/core/school_admin_permission_resolver.py'
+      - 'backend/app/services/school_iam_authority_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/tests/test_import_export_p0_authz.py'
+      - 'backend/tests/test_aa_p0_authz.py'
+      - 'backend/tests/test_aa_archive.py'
+      - 'backend/tests/test_student_export_status_filter.py'
+      - 'backend/tests/test_academic_current_term.py'
+      - 'backend/tests/test_control_plane_b8_shadow.py'
+      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
+      - 'scripts/check/check-permission-catalog.py'
+      - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - 'shared/contracts/permission-catalog-b8-compatibility.json'
+      - '.github/workflows/control-plane-school-admin-post-cutover-compatibility.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-school-admin-post-cutover-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DB_ENABLED: 'true'
+  DB_DRIVER: mysql
+  MOCK_LOGIN_ENABLED: 'true'
+  SECRET_KEY: control-plane-post-cutover-compatibility-secret
+  JWT_SECRET: control-plane-post-cutover-compatibility-secret
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_post_cutover?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_post_cutover?charset=utf8mb4
+
+jobs:
+  compatibility:
+    name: Exact-head MySQL explicit SCHOOL_ADMIN compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: control_plane_post_cutover
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Strict full-domain concrete Permission Catalog
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/control-plane
+          python scripts/check/check-permission-catalog.py --strict-legacy --write artifacts/control-plane/post-cutover-permission-catalog.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('artifacts/control-plane/post-cutover-permission-catalog.json').read_text(encoding='utf-8'))
+          s = data['summary']
+          assert s['usedUndefined'] == 0
+          assert s['usedLegacyPattern'] == 0
+          assert s['b8BaseConcreteExact'] == 449
+          assert s['b8PostCutoverCompatibilityExact'] == 90
+          assert s['b8ConcreteExact'] == 539
+          assert s['catalogExact'] > 590
+          assert all(not c.startswith(('platform.', 'enterprise.')) and c != '*' for c in data['postCutoverCompatibilityCodes'])
+          print(json.dumps(s, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Install backend and migrate fresh MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current
+      - name: Replay production School-IAM Authority
+        working-directory: backend
+        run: PYTHONPATH=. python scripts/bootstrap_control_plane_school_iam_authority.py
+      - name: Run post-cutover compatibility regression
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_import_export_p0_authz.py \
+            tests/test_aa_p0_authz.py \
+            tests/test_aa_archive.py \
+            tests/test_student_export_status_filter.py \
+            tests/test_academic_current_term.py \
+            tests/test_control_plane_b8_shadow.py \
+            tests/test_control_plane_school_admin_runtime_cutover.py \
+            --disable-warnings
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-school-admin-post-cutover-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/control-plane/post-cutover-permission-catalog.json
+          if-no-files-found: warn
+          retention-days: 14
