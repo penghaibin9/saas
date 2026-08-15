@@ -5,6 +5,7 @@ on:
   push:
     branches: [integration/control-plane-option-b-20260815]
     paths:
+      - 'backend/app/core/permissions.py'
       - 'backend/app/modules/platform/services/platform_access_governance_*.py'
       - 'backend/app/services/audit_log*.py'
       - 'backend/app/services/db_service.py'
@@ -17,6 +18,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'backend/app/core/permissions.py'
       - 'backend/app/modules/platform/services/platform_access_governance_*.py'
       - 'backend/app/services/audit_log*.py'
       - 'backend/app/services/db_service.py'
