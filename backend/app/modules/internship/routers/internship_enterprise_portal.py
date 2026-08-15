@@ -5,9 +5,12 @@ derive company scope only from signed/revalidated EnterpriseMember context.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import AppException
 from app.core.response import success
 from app.modules.internship.dependencies.enterprise_context import (
     EnterprisePrincipal,
@@ -40,6 +43,19 @@ class EnterpriseDecisionBody(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
     interviewAt: str | None = None
     interviewNote: str | None = Field(default=None, max_length=1000)
+
+
+class EnterpriseWithdrawAcceptBody(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
+
+
+def _parse_datetime(value: str | None, field: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise AppException("VALIDATION_ERROR", f"{field} 必须是 ISO-8601 日期时间") from exc
 
 
 @router.post("/auth/invite/inspect", openapi_extra={"x-internship-auth": "public"})
@@ -105,6 +121,33 @@ def enterprise_context(
     })
 
 
+@router.get("/applications")
+def applications(
+    campaignId: int = Query(..., ge=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    positionId: int | None = Query(default=None, ge=1),
+    decisionStatus: str | None = Query(default=None),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.view")),
+):
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    with session() as db:
+        items, total = decision_svc.list_owned_applications_in_tx(
+            db,
+            context=ctx,
+            page=page,
+            page_size=pageSize,
+            position_id=positionId,
+            decision_status=decisionStatus,
+        )
+        return success({
+            "items": items,
+            "total": total,
+            "page": page,
+            "pageSize": pageSize,
+        })
+
+
 @router.get("/applications/{application_id}")
 def application_detail(
     application_id: int,
@@ -123,9 +166,8 @@ def application_decision(
     campaignId: int = Query(...),
     principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
 ):
-    from datetime import datetime
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
-    interview_at = datetime.fromisoformat(body.interviewAt) if body.interviewAt else None
+    interview_at = _parse_datetime(body.interviewAt, "interviewAt")
     with session() as db:
         row = decision_svc.set_decision_in_tx(
             db,
@@ -145,3 +187,28 @@ def application_decision(
             "validUntil": row.valid_until.isoformat() if row.valid_until else None,
             "version": int(row.version or 0),
         })
+
+
+@router.post("/applications/{application_id}/withdraw-accept")
+def withdraw_accept(
+    application_id: int,
+    body: EnterpriseWithdrawAcceptBody,
+    campaignId: int = Query(...),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
+):
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    with session() as db:
+        row = decision_svc.withdraw_accept_in_tx(
+            db,
+            context=ctx,
+            application_id=application_id,
+            reason=body.reason,
+        )
+        db.commit()
+        return success({
+            "id": str(row.id),
+            "applicationId": str(row.application_id),
+            "decisionStatus": row.decision_status,
+            "effectStatus": row.effect_status,
+            "version": int(row.version or 0),
+        }, message="拟接收已撤回")

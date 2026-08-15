@@ -6,6 +6,7 @@ registered separately and never inherit require_staff.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission
 from app.core.response import success
@@ -19,6 +20,7 @@ from app.modules.internship.schemas.internship_recruitment_campaign import (
 from app.modules.internship.services import internship_campaign_enterprise_service as enterprise_svc
 from app.modules.internship.services import internship_enterprise_auth_service as enterprise_auth_svc
 from app.modules.internship.services import internship_recruitment_campaign_service as campaign_svc
+from app.modules.internship.services import internship_volunteer_group_service as group_svc
 from app.services import audit_log
 
 router = APIRouter(prefix="/internship/recruitment-campaigns", tags=["岗位实习-招聘季"])
@@ -27,6 +29,11 @@ _VIEW = require_any_permission("internship.recruitment.view", "internship.enterp
 _MANAGE = require_any_permission("internship.recruitment.manage", "internship.enterprise.manage")
 _INVITE = require_any_permission("internship.recruitment.invite", "internship.enterprise.manage")
 _CLOSE = require_any_permission("internship.recruitment.close", "internship.enterprise.manage")
+_VOLUNTEER_REVIEW = require_any_permission("internship.application.review", "internship.recruitment.manage")
+
+
+class VolunteerLockRelease(BaseModel):
+    reason: str = Field(min_length=2, max_length=500)
 
 
 def _actor_id(user) -> int | None:
@@ -170,3 +177,24 @@ def revoke_company(
         detail={"reason": body.reason},
     )
     return success(result, message="企业招聘季参与资格已撤销")
+
+
+@router.post("/{campaign_id}/volunteer-groups/{group_id}/release")
+def release_volunteer_lock(
+    campaign_id: int,
+    group_id: int,
+    body: VolunteerLockRelease,
+    user=Depends(_VOLUNTEER_REVIEW),
+):
+    result = group_svc.teacher_release_group_lock(
+        group_id=group_id,
+        campaign_id=campaign_id,
+        reason=body.reason,
+        user=user,
+    )
+    audit_log.record(
+        "RELEASE_VOLUNTEER_ENTERPRISE_CONFIRM_LOCK",
+        f"internship-volunteer-group:{group_id}",
+        detail={"campaignId": str(campaign_id), "reason": body.reason},
+    )
+    return success(result, message="企业确认锁已解除，学生可修改志愿")

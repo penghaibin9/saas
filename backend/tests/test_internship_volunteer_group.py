@@ -34,8 +34,9 @@ def test_group_is_coordination_fact_not_second_volunteer_table():
         "tenant_id", "record_id", "student_id", "batch_id", "campaign_id", "status",
         "submission_version", "current_material_snapshot_id", "submitted_at", "locked_application_id",
         "locked_at", "locked_by_decision_id", "teacher_confirm_deadline", "approved_at",
-        "revision_requested_at", "revision_reason", "last_released_at", "last_release_reason",
-        "released_by_user_id", "contact_consent_revoked_at",
+        "revision_requested_at", "revision_reason", "released_at", "release_reason",
+        "released_by_user_id", "unlock_requested_at", "unlock_request_reason",
+        "contact_consent_revoked_at",
     } <= columns
     assert not {"volunteer_no", "position_id", "company_id"} & columns
     assert ("tenant_id", "record_id", "campaign_id") in _unique_sets()
@@ -62,15 +63,18 @@ def test_accept_intent_lock_records_application_decision_and_teacher_deadline():
         id=1, tenant_id=1, record_id=2, student_id=3, batch_id=4, campaign_id=5,
         status="SUBMITTED", submission_version=1, version=0,
     )
-    original = service.internship_audit_service.add_audit
+    original_audit = service.internship_audit_service.add_audit
+    original_notify = service._notify_lock_in_tx
     service.internship_audit_service.add_audit = lambda *args, **kwargs: None
+    service._notify_lock_in_tx = lambda *args, **kwargs: None
     try:
         service.lock_for_accept_intent_in_tx(
             None, group=group, application_id=77, decision_id=99,
             teacher_confirm_sla_hours=48, now=now,
         )
     finally:
-        service.internship_audit_service.add_audit = original
+        service.internship_audit_service.add_audit = original_audit
+        service._notify_lock_in_tx = original_notify
     assert group.status == "LOCKED"
     assert group.locked_application_id == 77
     assert group.locked_by_decision_id == 99
@@ -83,30 +87,46 @@ def test_sla_rejects_more_than_168_hours():
     assert "1-168" in source
 
 
-def test_expired_lock_lazily_releases_without_deleting_decision_history():
+def test_expired_lock_lazily_expires_decision_and_preserves_history():
     source = inspect.getsource(service.lazy_release_expired_lock_in_tx)
     assert 'group.status = "NEEDS_REVISION"' in source
-    assert 'group.last_release_reason = "TEACHER_CONFIRM_TIMEOUT"' in source
+    assert 'group.release_reason = "TEACHER_CONFIRM_TIMEOUT"' in source
+    assert 'effect_status="EXPIRED"' in source
     assert "group.locked_by_decision_id = None" not in source
     assert "group.locked_application_id = None" not in source
     assert "delete(" not in source.lower()
     assert "AUTO_RELEASE_ENTERPRISE_CONFIRM_LOCK" in source
 
 
-def test_locked_group_blocks_student_edit_until_timeout_release():
+def test_locked_group_blocks_student_edit_and_has_explicit_unlock_request():
     source = inspect.getsource(service.assert_student_editable_in_tx)
+    unlock = inspect.getsource(service.request_unlock_in_tx)
     assert "lazy_release_expired_lock_in_tx(" in source
     assert 'group.status == "LOCKED"' in source
     assert "VOLUNTEER_GROUP_LOCKED" in source
-    assert 'group.status == "APPROVED"' in source
+    assert 'group.status in {"APPROVED", "CLOSED"}' in source
+    assert "unlock_requested_at" in unlock
+    assert "unlock_request_reason" in unlock
+    assert "STUDENT_REQUEST_VOLUNTEER_UNLOCK" in unlock
 
 
-def test_teacher_revision_and_approval_are_audited_and_preserve_lock_history():
+def test_teacher_release_supersedes_active_accept_intent_and_is_audited():
     revision_source = inspect.getsource(service.teacher_request_revision_in_tx)
     approve_source = inspect.getsource(service.teacher_mark_approved_in_tx)
+    assert 'effect_status="SUPERSEDED"' in revision_source
     assert "REQUEST_VOLUNTEER_REVISION" in revision_source
     assert "APPROVE_VOLUNTEER_GROUP" in approve_source
+    assert "released_at" in revision_source
+    assert "release_reason" in revision_source
     assert "locked_by_decision_id" in revision_source
     assert "locked_application_id" in revision_source
     assert "delete(" not in revision_source.lower()
     assert "delete(" not in approve_source.lower()
+
+
+def test_student_change_supersedes_non_accept_enterprise_decisions():
+    source = inspect.getsource(service.supersede_group_active_decisions_in_tx)
+    assert 'effect_status="SUPERSEDED"' in source
+    assert "STUDENT_VOLUNTEERS_CHANGED" not in source  # caller supplies the reason contract
+    assert "ENTERPRISE_APPLICATION_ACCEPT_INTENT" not in source
+    assert "VOLUNTEER_GROUP_LOCKED" in source
