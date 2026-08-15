@@ -62,24 +62,35 @@ def test_school_position_approval_must_land_through_existing_assignment_authorit
 def test_position_publish_must_pass_existing_rights_gate():
     source = inspect.getsource(internship_position_service.set_status)
     assert 'elif action == "PUBLISH":' in source
-    assert "evaluate_position_publishability(" in source
-    assert 'p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"' in source
-    assert 'p.status = "PUBLISHED"' in source
+    publish_block = source.split('elif action == "PUBLISH":', 1)[1].split('elif action == "OFFLINE":', 1)[0]
+    assert "evaluate_position_publishability(" in publish_block
+    assert 'p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"' in publish_block
+    gate_at = publish_block.index('if not rights["passed"]:')
+    rejection_at = publish_block.index('raise AppException("DATA_CONFLICT"', gate_at)
+    publish_at = publish_block.index('p.status = "PUBLISHED"')
+    assert gate_at < rejection_at < publish_at, (
+        "failed rights evaluation must reject before the position can become PUBLISHED"
+    )
 
 
 def test_staff_internship_bundle_remains_staff_only_and_enterprise_portal_is_separately_guarded():
     deps_source = inspect.getsource(route_registration.build_deps)
     register_source = inspect.getsource(route_registration.register_internship_routes)
+    intern_line = next(line for line in deps_source.splitlines() if '"intern":' in line)
 
-    assert "Depends(require_staff)" in deps_source
-    assert 'Depends(require_module("internship"))' in deps_source
+    # Bind the security assertion to the internship dependency entry itself.  A require_staff
+    # occurrence on another module must never make this contract pass.
+    assert "Depends(require_staff)" in intern_line
+    assert 'Depends(require_module("internship"))' in intern_line
     assert 'd = deps["intern"]' in register_source
     assert "dependencies=d" in register_source
 
-    # Enterprise portal is now mounted, but never with the staff dependency bundle.
+    # Enterprise portal is mounted separately and never inherits the staff dependency bundle.
     assert "internship_enterprise_portal" in register_source
     assert "api_router.include_router(internship_enterprise_portal.router)" in register_source
     assert "api_router.include_router(internship_enterprise_portal.router, dependencies=d)" not in register_source
+    assert "api_router.include_router(internship_enterprise_collaboration.router)" in register_source
+    assert "api_router.include_router(internship_enterprise_collaboration.router, dependencies=d)" not in register_source
 
 
 def test_forbidden_duplicate_authority_model_names_do_not_exist():
