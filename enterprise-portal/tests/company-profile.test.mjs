@@ -18,6 +18,17 @@ test('A02-3 logo upload goes through canonical file center and keeps auth refres
   assert.match(page,/INTERNSHIP_ENTERPRISE_LOGO/)
 })
 
+test('A02-3 unfrozen Company facade blocks edits and orphan logo upload before any file network side effect',()=>{
+  assert.match(page,/facadeReady=ref\(false\)/)
+  assert.match(page,/:disabled="loading\|\|saving\|\|!facadeReady"/)
+  assert.match(page,/<fieldset class="profile-fields" :disabled="!facadeReady">/)
+  const saveAt=page.indexOf('async function save()')
+  const guardAt=page.indexOf('if(!facadeReady.value)',saveAt)
+  const uploadAt=page.indexOf('uploadTemporaryFile(',saveAt)
+  assert.ok(saveAt>=0&&guardAt>saveAt,'save must fail closed on Company facade readiness')
+  assert.ok(uploadAt>guardAt,'File Center upload must only occur after Company facade readiness guard')
+})
+
 test('A02-3 school authority fields remain display-only',()=>{
   for(const field of ['qualificationStatus','coopStatus','accessValidUntil','blacklist','schoolReview'])assert.match(page,new RegExp(field))
   const patchFields=page.match(/function publicPatch\(\)\{return \{([^}]*)\}\}/)?.[1]||''
