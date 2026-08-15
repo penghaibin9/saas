@@ -9,10 +9,12 @@ on:
       - 'backend/app/modules/platform/services/platform_access_governance_*.py'
       - 'backend/app/services/audit_log*.py'
       - 'backend/app/services/db_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/tenant_effective_state_service.py'
       - 'backend/app/modules/system_admin/routers/system_router.py'
       - 'backend/app/api/v1/system.py'
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
+      - 'backend/tests/test_control_plane_system_role_authority_runtime.py'
       - 'backend/tests/test_critical_audit_atomicity.py'
       - '.github/workflows/control-plane-critical-mutation-matrix.yml'
   pull_request:
@@ -22,10 +24,12 @@ on:
       - 'backend/app/modules/platform/services/platform_access_governance_*.py'
       - 'backend/app/services/audit_log*.py'
       - 'backend/app/services/db_service.py'
+      - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/tenant_effective_state_service.py'
       - 'backend/app/modules/system_admin/routers/system_router.py'
       - 'backend/app/api/v1/system.py'
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
+      - 'backend/tests/test_control_plane_system_role_authority_runtime.py'
       - 'backend/tests/test_critical_audit_atomicity.py'
       - '.github/workflows/control-plane-critical-mutation-matrix.yml'
 
@@ -102,6 +106,7 @@ jobs:
           mkdir -p ../artifacts/control-plane
           pytest -q \
             tests/test_control_plane_critical_mutation_matrix.py \
+            tests/test_control_plane_system_role_authority_runtime.py \
             tests/test_critical_audit_atomicity.py \
             --disable-warnings | tee ../artifacts/control-plane/critical-mutation-pytest.txt
 
@@ -127,7 +132,7 @@ jobs:
               'accessReviewMultiRowRollback': passed,
               'twoRealSessionsStaleVersionConflict': passed,
               'canonicalSystemRoleAuthorityCovered': passed,
-              'canonicalReplacementCovered': 'PLATFORM_PAM_RUNTIME_AND_SCHOOL_IAM_ROLE_ASSIGNMENT',
+              'canonicalReplacementCovered': 'PLATFORM_PAM_RUNTIME_AND_PUBLISHED_SYSTEM_ROLE_AUTHORITY',
               'gold': passed,
           }
           Path('artifacts/control-plane/critical-mutation-matrix.json').write_text(
