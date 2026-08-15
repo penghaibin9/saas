@@ -47,14 +47,36 @@ class InternshipIntention(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
-    """Formal internship application ledger, independent from matching intentions."""
+    """Formal internship application ledger, independent from matching intentions.
+
+    Recruitment-round POSITION slots are campaign-scoped so a later round never rewrites an older
+    round's application history. Legacy / SELF_ARRANGED rows keep campaign_id=NULL; the generated
+    legacy_record_id preserves the historical one-row-per-record/slot uniqueness for those writers.
+    """
     __tablename__ = "t_internship_application"
-    __table_args__ = (UniqueConstraint("tenant_id", "record_id", "volunteer_no",
-                                       name="uk_intern_application_record_volunteer"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "record_id", "campaign_id", "volunteer_no",
+            name="uk_intern_application_record_campaign_volunteer",
+        ),
+        UniqueConstraint(
+            "tenant_id", "legacy_record_id", "volunteer_no",
+            name="uk_intern_application_legacy_record_volunteer",
+        ),
+    )
 
     record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    campaign_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True,
+        comment="→ t_internship_recruitment_campaign.id；旧入口/自主实习为 NULL",
+    )
+    legacy_record_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN campaign_id IS NULL THEN record_id ELSE NULL END", persisted=True),
+        comment="campaign_id=NULL 时保持旧 record+volunteer 唯一约束；招聘季行返回 NULL",
+    )
     application_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     volunteer_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

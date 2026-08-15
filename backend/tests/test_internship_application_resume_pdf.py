@@ -4,8 +4,10 @@ from __future__ import annotations
 import inspect
 from datetime import datetime
 
+import pytest
 from fastapi.routing import APIRoute
 
+from app.core.exceptions import AppException
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.modules.internship.routers import internship_enterprise_portal as portal
 from app.modules.internship.services import internship_application_material_snapshot_service as snapshot_svc
@@ -151,3 +153,13 @@ def test_enterprise_router_exposes_only_owned_application_pdf_route_with_busines
     assert "inline=True" in source
     assert 'audit_action="INTERNSHIP_ENTERPRISE_RESUME_PDF_VIEW"' in source
     assert "file_id" not in inspect.signature(portal.application_resume_pdf).parameters
+
+
+def test_frozen_campaign_policy_can_disable_enterprise_resume_pdf_generation():
+    snapshot = _snapshot()
+    snapshot.material_policy_snapshot_json = {"resumePdfEnabled": False}
+    with pytest.raises(AppException) as exc:
+        pdf_svc._assert_resume_pdf_enabled(snapshot)
+    assert exc.value.code == "NO_PERMISSION"
+    source = inspect.getsource(pdf_svc.resolve_enterprise_resume_pdf_in_tx)
+    assert source.index("_assert_resume_pdf_enabled(snapshot)") < source.index("ensure_snapshot_profile_pdf_in_tx")

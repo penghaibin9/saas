@@ -64,10 +64,17 @@ def _resolve_and_lock_group_in_tx(db, *, tenant_id: int, student_id: int, payloa
     return campaign, record, group
 
 
-def _lock_applications_in_tx(db, *, tenant_id: int, record_id: int) -> list[InternshipApplication]:
+def _lock_applications_in_tx(
+    db,
+    *,
+    tenant_id: int,
+    record_id: int,
+    campaign_id: int,
+) -> list[InternshipApplication]:
     return list(db.scalars(select(InternshipApplication).where(
         InternshipApplication.tenant_id == tenant_id,
         InternshipApplication.record_id == record_id,
+        InternshipApplication.campaign_id == campaign_id,
         InternshipApplication.application_type == "POSITION",
         InternshipApplication.volunteer_no.in_((1, 2, 3)),
         InternshipApplication.is_deleted.is_(False),
@@ -105,7 +112,9 @@ def withdraw_my_submission(*, user: dict, body: dict) -> dict:
                     )
                 raise AppException("DATA_CONFLICT", f"志愿组状态 {group.status} 不能整组撤回", http_status=409)
 
-            rows = _lock_applications_in_tx(db, tenant_id=tenant_id, record_id=record.id)
+            rows = _lock_applications_in_tx(
+                db, tenant_id=tenant_id, record_id=record.id, campaign_id=campaign.id,
+            )
             active_rows = [row for row in rows if row.position_id is not None and row.status not in {"WITHDRAWN", "CANCELLED"}]
             invalid = [row for row in active_rows if row.status != "PENDING_REVIEW"]
             if invalid:
@@ -176,16 +185,20 @@ def request_my_unlock(*, user: dict, body: dict) -> dict:
 
     with session() as db:
         def _operation():
-            _campaign, record, group = _resolve_and_lock_group_in_tx(
+            campaign, record, group = _resolve_and_lock_group_in_tx(
                 db, tenant_id=tenant_id, student_id=student_id, payload=payload,
             )
             current_version = int(group.version or 0)
             if group.unlock_requested_at is not None and group.unlock_request_reason == reason and group.status == "LOCKED":
-                rows = _lock_applications_in_tx(db, tenant_id=tenant_id, record_id=record.id)
+                rows = _lock_applications_in_tx(
+                    db, tenant_id=tenant_id, record_id=record.id, campaign_id=campaign.id,
+                )
                 return group, record, rows
             if current_version != expected_group:
                 raise AppException("DATA_CONFLICT", "志愿组版本已变化，请刷新后重试", http_status=409)
-            rows = _lock_applications_in_tx(db, tenant_id=tenant_id, record_id=record.id)
+            rows = _lock_applications_in_tx(
+                db, tenant_id=tenant_id, record_id=record.id, campaign_id=campaign.id,
+            )
             group_svc.request_unlock_in_tx(db, group=group, reason=reason, user=user)
             return group, record, rows
 
@@ -288,7 +301,9 @@ def revoke_my_contact_consent(*, user: dict, body: dict) -> dict:
             campaign, record, group = _resolve_and_lock_group_in_tx(
                 db, tenant_id=tenant_id, student_id=student_id, payload=payload,
             )
-            rows = _lock_applications_in_tx(db, tenant_id=tenant_id, record_id=record.id)
+            rows = _lock_applications_in_tx(
+                db, tenant_id=tenant_id, record_id=record.id, campaign_id=campaign.id,
+            )
             if group.current_material_snapshot_id is None:
                 raise AppException("DATA_CONFLICT", "当前没有生效中的投递材料授权可撤销", http_status=409)
             if group.contact_consent_revoked_at is not None:

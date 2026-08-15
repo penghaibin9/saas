@@ -23,6 +23,10 @@ from app.services.db_service import _as_id, _tid, session
 
 _DEFAULT_CONSENT_POLICY_VERSION = "INTERNSHIP_APPLICATION_PRIVACY_V1"
 _ACTIVE_GROUP_STATUSES = ("DRAFT", "SUBMITTED", "LOCKED", "NEEDS_REVISION", "APPROVED")
+# Only lifecycle states that must continue against their original round may override discovery of a
+# newer OPEN campaign. Editable DRAFT/NEEDS_REVISION groups from a closed round must never trap the
+# student in stale catalog context after the school opens the next round.
+_CONTEXT_PINNING_GROUP_STATUSES = ("SUBMITTED", "LOCKED", "APPROVED")
 
 
 def _consent_policy_version(policy: dict | None) -> str:
@@ -76,7 +80,7 @@ def _resolve_context_in_tx(
     group = db.scalar(select(InternshipVolunteerGroup).where(
         InternshipVolunteerGroup.tenant_id == tenant_id,
         InternshipVolunteerGroup.student_id == student_id,
-        InternshipVolunteerGroup.status.in_(_ACTIVE_GROUP_STATUSES),
+        InternshipVolunteerGroup.status.in_(_CONTEXT_PINNING_GROUP_STATUSES),
         InternshipVolunteerGroup.is_deleted.is_(False),
     ).order_by(InternshipVolunteerGroup.id.desc()))
     if group:
@@ -212,6 +216,7 @@ def get_my_volunteers(*, user: dict) -> dict:
         rows = list(db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == tenant_id,
             InternshipApplication.record_id == record.id,
+            InternshipApplication.campaign_id == campaign.id,
             InternshipApplication.application_type == "POSITION",
             InternshipApplication.volunteer_no.in_((1, 2, 3)),
             InternshipApplication.is_deleted.is_(False),
@@ -339,6 +344,7 @@ def submit_my_saved_volunteers(*, user: dict, body: dict) -> dict:
             all_rows = list(db.scalars(select(InternshipApplication).where(
                 InternshipApplication.tenant_id == tenant_id,
                 InternshipApplication.record_id == record.id,
+                InternshipApplication.campaign_id == campaign.id,
                 InternshipApplication.application_type == "POSITION",
                 InternshipApplication.volunteer_no.in_((1, 2, 3)),
                 InternshipApplication.is_deleted.is_(False),

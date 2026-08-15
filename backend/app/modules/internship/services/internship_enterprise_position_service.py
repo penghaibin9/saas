@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import EmpCompany, InternshipAuditTrail, InternshipPosition
+from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact, InternshipPosition
 from app.models.internship_enterprise_portal import (
     InternshipCampaignEnterprise,
     InternshipEnterpriseAccessGrant,
@@ -400,12 +400,34 @@ def _normalized_position_values(payload: dict[str, Any], *, creating: bool) -> d
     return values
 
 
+def _validate_mentor_contact_in_tx(db, *, context, mentor_contact_id: int | None) -> int | None:
+    if mentor_contact_id is None:
+        return None
+    contact = db.scalar(select(InternshipEnterpriseContact).where(
+        InternshipEnterpriseContact.id == int(mentor_contact_id),
+        InternshipEnterpriseContact.tenant_id == context.tenant_id,
+        InternshipEnterpriseContact.company_id == context.company_id,
+        InternshipEnterpriseContact.is_deleted.is_(False),
+    ))
+    if not contact:
+        raise AppException("VALIDATION_ERROR", "企业导师不存在或不属于当前企业")
+    return int(contact.id)
+
+
+def _validate_position_relations_in_tx(db, *, context, values: dict[str, Any]) -> None:
+    if "mentor_contact_id" in values:
+        values["mentor_contact_id"] = _validate_mentor_contact_in_tx(
+            db, context=context, mentor_contact_id=values["mentor_contact_id"],
+        )
+
+
 def create_position_in_tx(db, *, context, payload: dict[str, Any]) -> dict:
     _assert_editor(context)
     campaign = _campaign(db, context)
     if str(campaign.status or "").upper() in {"CLOSED", "ARCHIVED"}:
         raise AppException("DATA_CONFLICT", "招聘季已关闭，不能新建岗位")
     values = _normalized_position_values(payload, creating=True)
+    _validate_position_relations_in_tx(db, context=context, values=values)
     company = _company(db, context)
     row = InternshipPosition(
         tenant_id=context.tenant_id,
@@ -440,6 +462,7 @@ def update_position_in_tx(db, *, context, position_id: int, payload: dict[str, A
     if int(row.version or 0) != int(payload["expectedVersion"]):
         raise AppException("DATA_CONFLICT", "岗位已更新，请刷新后重试")
     values = _normalized_position_values(payload, creating=False)
+    _validate_position_relations_in_tx(db, context=context, values=values)
     if "headcount" in values and int(values["headcount"]) < int(row.allocated_count or 0):
         raise AppException("VALIDATION_ERROR", "招聘人数不能小于已正式落岗人数")
     for column, value in values.items():

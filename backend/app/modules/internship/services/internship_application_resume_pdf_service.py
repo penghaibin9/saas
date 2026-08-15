@@ -222,8 +222,20 @@ def ensure_snapshot_profile_pdf_in_tx(db, snapshot: InternshipApplicationMateria
     return row
 
 
+def _assert_resume_pdf_enabled(snapshot: InternshipApplicationMaterialSnapshot) -> None:
+    """Honor the immutable campaign material policy captured with this submission."""
+    policy = dict(snapshot.material_policy_snapshot_json or {})
+    configured = policy.get("resumePdfEnabled")
+    if configured is False or str(configured).strip().lower() in {"0", "false", "no", "off"}:
+        raise AppException(
+            "NO_PERMISSION",
+            "当前招聘季未授权向企业提供实习档案 PDF",
+            http_status=403,
+        )
+
+
 def resolve_enterprise_resume_pdf_in_tx(db, *, context, application_id: int) -> tuple[FileObject, InternshipApplicationMaterialSnapshot]:
-    """Authorize enterprise ownership first, then lock the exact snapshot before idempotent generation."""
+    """Authorize ownership and frozen PDF policy before locking/generating the exact artifact."""
     application, _position = decision_svc._owned_application_in_tx(
         db, context=context, application_id=application_id, lock=False,
     )
@@ -235,6 +247,7 @@ def resolve_enterprise_resume_pdf_in_tx(db, *, context, application_id: int) -> 
     ).with_for_update())
     if not snapshot:
         raise not_found("投递材料快照不存在")
+    _assert_resume_pdf_enabled(snapshot)
     return ensure_snapshot_profile_pdf_in_tx(db, snapshot), snapshot
 
 

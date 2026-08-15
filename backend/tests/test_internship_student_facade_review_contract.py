@@ -129,3 +129,19 @@ def test_enterprise_position_keyword_is_server_side_literal_filter_before_count_
     assert "select(func.count()).select_from(q.subquery())" in source
     assert source.index("if text:") < source.index("total =") < source.index(".offset(")
     assert "position_svc._position_row(row)" in source
+
+
+def test_student_catalog_pages_sql_candidates_before_expensive_eligibility_evaluation():
+    source = inspect.getsource(catalog_svc.list_catalog_positions)
+    assert "select(func.count()).select_from(q.order_by(None).subquery())" in source
+    assert "page_q = q.offset((page - 1) * page_size).limit(page_size)" in source
+    assert "q=page_q" in source
+    assert "rows[start:start + page_size]" not in source
+    assert source.index("page_q = q.offset") < source.index("_eligible_rows(")
+
+    stats = inspect.getsource(catalog_svc._candidate_stats_in_tx)
+    assert "select(func.count()).select_from(candidate)" in stats
+    assert "func.count(func.distinct(candidate.c.company_id))" in stats
+    context = inspect.getsource(catalog_svc.get_catalog_context)
+    assert "_candidate_stats_in_tx(" in context
+    assert "_eligible_rows(" not in context

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
+from app.models import InternshipApplication
+from app.modules.internship.services import internship_student_selection_actions_service as actions_svc
+from app.modules.internship.services import internship_student_selection_service as selection_svc
 from app.modules.internship.services import internship_volunteer_retry as retry
 from app.modules.internship.services import internship_volunteer_service as svc
+
+ROOT = Path(__file__).resolve().parents[1]
+M8 = ROOT / "alembic/versions/20260816_internship_e_m8_application_campaign_scope.py"
 
 
 def test_fixed_slots_no_delete_or_temporary_swap():
@@ -77,3 +84,43 @@ def test_mysql_retry_is_bounded_to_1205_1213_and_whole_transaction():
     assert "db.rollback()" in source
     assert "db.commit()" in source
     assert "while True" not in source
+
+
+def test_recruitment_application_slots_are_campaign_scoped_end_to_end():
+    source = inspect.getsource(svc.save_or_submit_in_tx)
+    assert "InternshipApplication.campaign_id == campaign.id" in source
+    assert "campaign_id=campaign.id" in source
+    wrapper = inspect.getsource(svc.get_my_volunteers)
+    assert "InternshipApplication.campaign_id == _as_id(campaign_id)" in wrapper
+    facade = inspect.getsource(selection_svc.get_my_volunteers)
+    assert "InternshipApplication.campaign_id == campaign.id" in facade
+    submit = inspect.getsource(selection_svc.submit_my_saved_volunteers)
+    assert "InternshipApplication.campaign_id == campaign.id" in submit
+    action_lock = inspect.getsource(actions_svc._lock_applications_in_tx)
+    assert "InternshipApplication.campaign_id == campaign_id" in action_lock
+
+
+def test_application_model_and_m8_preserve_round_history_and_legacy_uniqueness():
+    constraints = {constraint.name for constraint in InternshipApplication.__table__.constraints if constraint.name}
+    assert "uk_intern_application_record_campaign_volunteer" in constraints
+    assert "uk_intern_application_legacy_record_volunteer" in constraints
+    assert "campaign_id" in InternshipApplication.__table__.columns
+    assert "legacy_record_id" in InternshipApplication.__table__.columns
+
+    migration = M8.read_text(encoding="utf-8")
+    assert 'revision = "20260816_internship_e_m8"' in migration
+    assert 'down_revision = "20260815_internship_e_m7"' in migration
+    assert "t_internship_application_material_snapshot" in migration
+    assert "t_internship_volunteer_group" in migration
+    assert "g.campaign_id = p.campaign_id" in migration
+    assert "uk_intern_application_record_volunteer" in migration
+    assert "cannot downgrade internship E M8" in migration
+
+
+def test_context_resolution_does_not_pin_closed_editable_drafts_over_new_open_round():
+    assert selection_svc._CONTEXT_PINNING_GROUP_STATUSES == ("SUBMITTED", "LOCKED", "APPROVED")
+    source = inspect.getsource(selection_svc._resolve_context_in_tx)
+    assert "status.in_(_CONTEXT_PINNING_GROUP_STATUSES)" in source
+    assert 'InternshipRecruitmentCampaign.status == "OPEN"' in source
+    assert "DRAFT" not in selection_svc._CONTEXT_PINNING_GROUP_STATUSES
+    assert "NEEDS_REVISION" not in selection_svc._CONTEXT_PINNING_GROUP_STATUSES

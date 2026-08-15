@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import EmpCompany, InternshipPosition, Major, StudentProfile
@@ -190,21 +190,23 @@ def _eligible_rows(db, *, tenant_id: int, campaign, record, q, major_name: str =
     return result
 
 
+def _candidate_stats_in_tx(db, *, tenant_id: int, campaign) -> tuple[int, int]:
+    """Use one SQL aggregate over publishable catalog candidates; never N+1 scan for context stats."""
+    candidate = _base_query(tenant_id=tenant_id, campaign=campaign).order_by(None).subquery()
+    published = int(db.scalar(select(func.count()).select_from(candidate)) or 0)
+    partners = int(db.scalar(select(func.count(func.distinct(candidate.c.company_id)))) or 0)
+    return published, partners
+
+
 def get_catalog_context(*, user: dict) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
         can_select, reason = _selection_state(campaign, record)
-        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
-        rows = _eligible_rows(
-            db,
-            tenant_id=tenant_id,
-            campaign=campaign,
-            record=record,
-            q=_base_query(tenant_id=tenant_id, campaign=campaign),
-            major_name=major_name,
-        ) if can_select else []
+        published, partners = _candidate_stats_in_tx(
+            db, tenant_id=tenant_id, campaign=campaign,
+        ) if can_select else (0, 0)
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
             InternshipVolunteerGroup.student_id == student_id,
@@ -217,7 +219,7 @@ def get_catalog_context(*, user: dict) -> dict:
             "campaignId": str(campaign.id), "campaignName": campaign.campaign_name, "campaignStatus": campaign.status,
             "campaign": {"id": str(campaign.id), "name": campaign.campaign_name, "status": campaign.status, "studentSelectionEndAt": _iso(campaign.student_select_end_at)},
             "studentSelectionEndAt": _iso(campaign.student_select_end_at), "canSelect": bool(can_select), "selectionBlockReason": reason,
-            "stats": {"publishedPositions": len(rows), "partnerCompanies": len({row["companyId"] for row in rows})},
+            "stats": {"publishedPositions": published, "partnerCompanies": partners},
             "volunteerGroup": {"status": group.status if group else "DRAFT", "selectedCount": 0},
         }
 
@@ -237,18 +239,23 @@ def list_catalog_positions(*, user: dict, params: dict) -> dict:
         elif sort == "REMUNERATION": q = q.order_by(InternshipPosition.remuneration_amount.desc(), InternshipPosition.id.desc())
         elif sort == "REMAINING": q = q.order_by((InternshipPosition.headcount - InternshipPosition.allocated_count).desc(), InternshipPosition.id.desc())
         else: q = q.order_by(InternshipPosition.id.desc())
+
+        # Count and page the SQL candidate set first. Canonical student eligibility remains a
+        # fail-closed per-row guard, but is now evaluated for at most pageSize candidates rather
+        # than materializing/evaluating the whole campaign on every page request.
+        total = int(db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0)
+        page_q = q.offset((page - 1) * page_size).limit(page_size)
         major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
         rows = _eligible_rows(
             db,
             tenant_id=tenant_id,
             campaign=campaign,
             record=record,
-            q=q,
+            q=page_q,
             major_name=major_name,
             only_major_matched=_true_filter(params.get("majorMatched")),
         )
-        start = (page - 1) * page_size
-        return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "pageSize": page_size}
+        return {"items": rows, "total": total, "page": page, "pageSize": page_size}
 
 
 def get_catalog_position(*, user: dict, position_id: int) -> dict:

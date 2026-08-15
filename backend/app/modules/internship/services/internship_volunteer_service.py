@@ -97,7 +97,7 @@ def save_or_submit_in_tx(
     contact_sharing_policy: dict | None = None,
     user=None,
 ):
-    """Lock order is frozen: Record -> VolunteerGroup -> Applications volunteer_no ASC."""
+    """Lock order is frozen: Record -> VolunteerGroup -> campaign-scoped Applications ASC."""
     if not 1 <= len(volunteers) <= 3:
         raise AppException("VALIDATION_ERROR", "志愿必须为 1-3 个")
     slots = [int(v.get("volunteerNo") or 0) for v in volunteers]
@@ -152,6 +152,7 @@ def save_or_submit_in_tx(
     existing = list(db.scalars(select(InternshipApplication).where(
         InternshipApplication.tenant_id == tenant_id,
         InternshipApplication.record_id == record.id,
+        InternshipApplication.campaign_id == campaign.id,
         InternshipApplication.application_type == "POSITION",
         InternshipApplication.volunteer_no.in_([1, 2, 3]),
         InternshipApplication.is_deleted.is_(False),
@@ -194,7 +195,8 @@ def save_or_submit_in_tx(
                 raise AppException("DATA_CONFLICT", f"第{slot}志愿尚未创建，expectedApplicationVersion 应为 0")
             row = InternshipApplication(
                 tenant_id=tenant_id, record_id=record.id, student_id=student_id,
-                batch_id=campaign.batch_id, application_type="POSITION", volunteer_no=slot,
+                batch_id=campaign.batch_id, campaign_id=campaign.id,
+                application_type="POSITION", volunteer_no=slot,
             )
             db.add(row)
             by_slot[slot] = row
@@ -316,6 +318,7 @@ def get_my_volunteers(*, user: dict, campaign_id: int) -> dict:
         rows = list(db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == tenant_id,
             InternshipApplication.record_id == record.id,
+            InternshipApplication.campaign_id == _as_id(campaign_id),
             InternshipApplication.application_type == "POSITION",
             InternshipApplication.volunteer_no.in_([1, 2, 3]),
             InternshipApplication.is_deleted.is_(False),

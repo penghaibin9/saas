@@ -63,3 +63,17 @@ def test_context_capability_is_explicit_and_fail_closed():
     assert '"recruitmentWrite": bool(recruitment_write)' in service
     assert '_role(context) in _EDITOR_ROLES' in service
     assert 'str(campaign.status or "").upper() == "OPEN"' in service
+
+
+def test_enterprise_position_mentor_is_validated_against_current_company_context():
+    service = SERVICE.read_text(encoding="utf-8")
+    assert "InternshipEnterpriseContact" in service
+    validator = service.split("def _validate_mentor_contact_in_tx", 1)[1].split("def _validate_position_relations_in_tx", 1)[0]
+    assert "InternshipEnterpriseContact.tenant_id == context.tenant_id" in validator
+    assert "InternshipEnterpriseContact.company_id == context.company_id" in validator
+    assert "InternshipEnterpriseContact.is_deleted.is_(False)" in validator
+    assert "企业导师不存在或不属于当前企业" in validator
+    create_block = service.split("def create_position_in_tx", 1)[1].split("def update_position_in_tx", 1)[0]
+    update_block = service.split("def update_position_in_tx", 1)[1].split("def _assert_submit_ready", 1)[0]
+    assert "_validate_position_relations_in_tx" in create_block
+    assert "_validate_position_relations_in_tx" in update_block
