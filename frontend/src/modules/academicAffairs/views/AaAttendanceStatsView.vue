@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="课堂考勤统计"
-    subtitle="按学生汇总各堂次 出勤/迟到/旷课/请假 次数与缺勤率（仅统计已提交场次）。产品口径：教师逐生点名仅在小程序；本页为 PC 统计查询，不提供补点名入口。"
+    subtitle="按学生汇总各堂次出勤/迟到/旷课/请假次数与缺勤率。默认汇总只统计正式课堂；管理员特殊补录必须显式选择后单独核对。教师逐生点名仍只在小程序完成。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -14,9 +14,14 @@
         <span class="aa-filter__label">学期</span>
         <AppTermCodePicker v-model="termCode" placeholder="全部学期" style="max-width:220px" />
         <span class="aa-filter__label">点名类别</span>
-        <AppSelect v-model="sessionType" :options="typeOptions" style="min-width:120px" @change="load" />
+        <AppSelect v-model="sessionType" :options="typeOptions" style="min-width:150px" @change="load" />
         <AppButton variant="ghost" @click="load">查询</AppButton>
         <AppButton variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
+      </div>
+
+      <div v-if="panel === 'stats'" class="aa-scope-note">
+        当前汇总口径：<strong>{{ data.sourceScopeLabel || (sessionType === 'ADMIN_SPECIAL' ? '管理员特殊补录' : '正式课堂') }}</strong>。
+        特殊补录不会混入默认课堂指标。
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -24,18 +29,18 @@
       <template v-else>
         <template v-if="panel === 'sessions'">
           <AppSectionCard title="考勤场次（已提交）">
-            <EmptyState v-if="!sessions.length" title="暂无考勤场次" description="教师在移动端完成并提交课堂点名后，场次出现在此" />
+            <EmptyState v-if="!sessions.length" title="暂无考勤场次" description="教师在移动端完成并提交课堂点名后，场次出现在此；特殊补录请切换类别单独查看" />
             <DataTable v-else :columns="sessionColumns" :rows="sessions" row-key="sessionId" />
           </AppSectionCard>
         </template>
         <template v-else>
           <div class="aa-metric-grid">
-            <AppMetricCard title="已统计场次" :value="data.sessionCount" unit="次" />
+            <AppMetricCard :title="`${data.sourceScopeLabel || '正式课堂'}场次`" :value="data.sessionCount" unit="次" />
             <AppMetricCard title="涉及学生" :value="data.students.length" unit="人" />
             <AppMetricCard title="有旷课学生" :value="absentStudentCount" unit="人" />
           </div>
 
-          <AppSectionCard title="学生考勤汇总（按旷课次数降序）">
+          <AppSectionCard :title="`${data.sourceScopeLabel || '正式课堂'}学生考勤汇总（按旷课次数降序）`">
             <EmptyState v-if="!data.students.length" title="暂无考勤统计" description="教师在移动端完成并提交课堂点名后，这里出现跨堂次汇总" />
             <DataTable v-else :columns="columns" :rows="data.students" row-key="studentId" :row-class="rowClass">
               <template #cell-absent="{ row }"><span :class="{ 'aa-cell-danger': row.absent > 0 }">{{ row.absent }}</span></template>
@@ -69,15 +74,19 @@ export default {
       loading: true, error: '', scanning: false,
       panel: q.panel === 'sessions' ? 'sessions' : 'stats',
       classId: '', termCode: '', sessionType: '',
-      data: { sessionCount: 0, students: [] },
+      data: { sessionCount: 0, students: [], sourceScopeLabel: '正式课堂' },
       sessions: [],
       panelOptions: [
         { label: '学生汇总', value: 'stats' },
         { label: '场次查询', value: 'sessions' }
       ],
       typeOptions: [
-        { label: '全部', value: '' }, { label: '常规', value: '常规' }, { label: '实训', value: '实训' },
-        { label: '晚自习', value: '晚自习' }, { label: '其他', value: '其他' }
+        { label: '全部场次', value: '' },
+        { label: '常规', value: '常规' },
+        { label: '实训', value: '实训' },
+        { label: '晚自习', value: '晚自习' },
+        { label: '其他', value: '其他' },
+        { label: '管理员特殊补录', value: 'ADMIN_SPECIAL' }
       ],
       columns: [
         { key: 'realName', title: '学生' }, { key: 'studentNo', title: '学号' },
@@ -88,8 +97,8 @@ export default {
       sessionColumns: [
         { key: 'sessionId', title: '场次ID' }, { key: 'classId', title: '班级ID' },
         { key: 'courseName', title: '课程' }, { key: 'sessionDate', title: '日期' },
-        { key: 'sessionType', title: '类别' }, { key: 'status', title: '状态' },
-        { key: 'absentCount', title: '旷课人数', align: 'center' }
+        { key: 'sessionTypeLabel', title: '类别' }, { key: 'sourceLabel', title: '来源' },
+        { key: 'status', title: '状态' }, { key: 'absentCount', title: '旷课人数', align: 'center' }
       ]
     }
   },
@@ -129,7 +138,7 @@ export default {
         else this.error = res.message
       } else {
         const res = await academicAffairsApi.getAttendanceStats(params)
-        if (res.code === 0) this.data = { sessionCount: 0, students: [], ...res.data }
+        if (res.code === 0) this.data = { sessionCount: 0, students: [], sourceScopeLabel: '正式课堂', ...res.data }
         else this.error = res.message
       }
       this.loading = false
@@ -153,6 +162,7 @@ export default {
 @import '@/styles/module-page.css';
 .aa-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }
+.aa-scope-note { padding: 10px 12px; border-radius: 8px; background: var(--fill-2, #f7f8fa); color: var(--text-700, #4e5969); font-size: 13px; line-height: 1.6; }
 .aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .aa-cell-danger { color: var(--danger-600, #f53f3f); font-weight: 600; }
 :deep(.aa-row-danger) { background: var(--danger-50, #fff1f0); }
