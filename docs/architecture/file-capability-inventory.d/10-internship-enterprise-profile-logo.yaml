@@ -1,6 +1,6 @@
 entries:
   - module: internship
-    client: enterprise-portal
+    client: shared
     route: backend/app/modules/internship/routers/internship_enterprise_portal.py
     page: enterprise-portal/src/views/CompanyProfileView.vue
     action: enterprise-public-profile-logo
