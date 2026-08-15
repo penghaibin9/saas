@@ -27,7 +27,7 @@
 
       <aside class="aapc-decision">
         <span>当前结论</span>
-        <strong>{{ overallResult === 'PASS' ? '可以进入归档批次' : '必须先处理阻断项' }}</strong>
+        <strong>{{ overallResult === 'PASS' ? '可以进入归档批次' : '必须先处理阻断 / 待治理项' }}</strong>
         <div class="aapc-next">
           <small>建议下一动作</small>
           <b>{{ nextActionText }}</b>
@@ -57,9 +57,9 @@
           <small>当前无需处理</small>
         </article>
         <article :class="{ 'is-risk': blockedDomains > 0 }">
-          <span>阻断域</span>
+          <span>阻断 / 待治理域</span>
           <strong>{{ blockedDomains }}</strong>
-          <small>{{ blockedDomains ? '按阻断数量优先处理' : '当前无阻断域' }}</small>
+          <small>{{ blockedDomains ? 'BLOCKED 与 UNKNOWN 均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
         </article>
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
@@ -72,10 +72,10 @@
         <header class="aapc-section-head">
           <div>
             <span class="aapc-eyebrow">优先处理</span>
-            <h3>归档阻断域</h3>
-            <p>按阻断项数量从高到低排列；先处理最影响归档闭环的业务域，再重新检查。</p>
+            <h3>归档阻断 / 待治理域</h3>
+            <p>BLOCKED 是已知业务阻断，UNKNOWN 是证据不足待治理；两者都不得绿色放行，处理后再重新检查。</p>
           </div>
-          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断域</span>
+          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待治理域</span>
         </header>
         <div class="aapc-grid">
           <article v-for="d in blockedDomainRows" :key="d.domain" class="aapc-card is-missing">
@@ -117,10 +117,10 @@
         <header class="aapc-section-head">
           <div>
             <span class="aapc-eyebrow">完成证据</span>
-            <h3>已通过业务域</h3>
-            <p>这些域已满足当前归档语义门禁，保留业务证据供复核，不与阻断项混排。</p>
+            <h3>已满足门禁的业务域</h3>
+            <p>PASS 表示已证明完成；NOT_APPLICABLE 表示本学期明确不适用。两者均非阻断，但不得混成同一个“通过”。</p>
           </div>
-          <span class="aapc-count">{{ passedDomainRows.length }} 个通过域</span>
+          <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
         </header>
         <div class="aapc-grid">
           <article v-for="d in passedDomainRows" :key="d.domain" class="aapc-card is-ok">
@@ -206,16 +206,16 @@ export default {
   },
   computed: {
     passedDomains() {
-      return Math.max(this.domains.length - this.blockedDomains, 0)
+      return this.domains.filter((domain) => domain.result === 'PASS').length
     },
     blockedDomainRows() {
       return this.domains
-        .filter((domain) => domain.result !== 'PASS')
+        .filter((domain) => ['BLOCKED', 'UNKNOWN'].includes(domain.result))
         .slice()
         .sort((a, b) => Number(b.blockingCount || 0) - Number(a.blockingCount || 0))
     },
     passedDomainRows() {
-      return this.domains.filter((domain) => domain.result === 'PASS')
+      return this.domains.filter((domain) => ['PASS', 'NOT_APPLICABLE'].includes(domain.result))
     },
     firstBlockingDomain() {
       return this.blockedDomainRows[0] || null
@@ -224,7 +224,7 @@ export default {
       if (this.overallResult === 'PASS') {
         return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
       }
-      return `仍有 ${this.blockedDomains} 个业务域、${this.blockingCount} 个阻断项需要处理；本页展示系统当前检查结果，不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；UNKNOWN 不会被当成 PASS，本页不写入归档事实。`
     },
     nextActionText() {
       if (!this.firstBlockingDomain) return '进入归档批次继续正式归档流程'
@@ -262,8 +262,12 @@ export default {
         this.loading = false
       }
     },
-    tagType(domain) { return domain.result === 'PASS' ? 'success' : 'danger' },
-    tagLabel(domain) { return domain.result === 'PASS' ? '通过' : '阻断' },
+    tagType(domain) {
+      return { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }[domain.result] || 'warning'
+    },
+    tagLabel(domain) {
+      return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }[domain.result] || '待确认'
+    },
     evidencePreview(evidence) {
       return (evidence || []).slice(0, 5).map((item) => {
         if (typeof item === 'string') return safeBusinessMessage(item, '已记录一条待复核证据')

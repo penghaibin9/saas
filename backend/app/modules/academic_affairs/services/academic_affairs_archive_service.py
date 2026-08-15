@@ -17,6 +17,9 @@ from . import academic_affairs_archive_operational_policy as _operational
 
 _DOMAINS = list(_policy.DOMAINS)
 _ROUTE = dict(_policy.ROUTES)
+_ARCHIVE_RESULT_STATES = {"PASS", "BLOCKED", "NOT_APPLICABLE", "UNKNOWN"}
+_BLOCKING_RESULTS = {"BLOCKED", "UNKNOWN"}
+_NON_BLOCKING_RESULTS = {"PASS", "NOT_APPLICABLE"}
 
 
 def __getattr__(name):
@@ -27,14 +30,14 @@ def __getattr__(name):
 def _merge_blocking_result(code: str, base: dict, extra: dict, *, rule_code: str) -> dict:
     left = _public_result(code, base)
     right = _public_result(code, extra)
-    if right["result"] == "PASS":
+    if right["result"] in _NON_BLOCKING_RESULTS:
         left["evidence"] = [
             *left["evidence"],
-            {"type": rule_code, "result": "PASS", "summary": right["summary"]},
+            {"type": rule_code, "result": right["result"], "summary": right["summary"]},
         ]
         return left
     left["present"] = False
-    left["result"] = "BLOCKED"
+    left["result"] = "BLOCKED" if "BLOCKED" in {left["result"], right["result"]} else "UNKNOWN"
     left["ruleCode"] = rule_code
     left["blockingCount"] = int(left["blockingCount"] or 0) + max(1, int(right["blockingCount"] or 0))
     left["summary"] = "；".join(value for value in (left["summary"], right["summary"]) if value)
@@ -42,13 +45,26 @@ def _merge_blocking_result(code: str, base: dict, extra: dict, *, rule_code: str
     left["route"] = right["route"] or left["route"]
     left["evidence"] = [
         *left["evidence"],
-        {"type": rule_code, "result": "BLOCKED", "summary": right["summary"]},
+        {"type": rule_code, "result": right["result"], "summary": right["summary"]},
         *right["evidence"],
     ]
     return left
 
 
 def _evaluate_domains(db, term_id, term_code, college_ids=None):
+    if not term_id:
+        return {
+            code: _public_result(code, {
+                "recordCount": 0,
+                "present": False,
+                "result": "UNKNOWN",
+                "ruleCode": "ARCHIVE_TERM_SCOPE_UNKNOWN",
+                "summary": "未解析到归档学期，禁止跨学期猜测业务完成状态",
+                "blockingCount": 1,
+                "route": _ROUTE.get(code),
+            })
+            for code, _label in _DOMAINS
+        }
     results = _policy.evaluate_domains(db, term_id, term_code, college_ids)
     schedule_operational = _operational.evaluate_schedule(db, term_id, college_ids)
     results["SCHEDULE"] = _merge_blocking_result(
@@ -68,12 +84,19 @@ def _public_result(code: str, result: dict) -> dict:
     row = dict(result or {})
     row["domain"] = code
     row["recordCount"] = int(row.get("recordCount") or 0)
-    row["present"] = bool(row.get("present"))
-    row["result"] = row.get("result") or ("PASS" if row["present"] else "BLOCKED")
+    state = str(row.get("result") or ("PASS" if row.get("present") else "BLOCKED")).upper()
+    if state not in _ARCHIVE_RESULT_STATES:
+        state = "UNKNOWN"
+    blocking = row.get("blockingCount")
+    if blocking is None:
+        blocking = 1 if state in _BLOCKING_RESULTS else 0
+    blocking = max(1, int(blocking or 0)) if state in _BLOCKING_RESULTS else 0
+    row["present"] = state == "PASS"
+    row["result"] = state
     row["ruleCode"] = row.get("ruleCode") or f"{code}_SEMANTIC_GATE"
     row["summary"] = str(row.get("summary") or row.get("remark") or "")
     row["remark"] = row["summary"]
-    row["blockingCount"] = int(row.get("blockingCount") or (0 if row["present"] else 1))
+    row["blockingCount"] = blocking
     row["route"] = row.get("route") or _ROUTE.get(code, "/admin/academic-affairs/archive/precheck")
     row["evidence"] = list(row.get("evidence") or [])
     return row
@@ -182,7 +205,7 @@ def run_check(user, batch_id):
         blocking_count = 0
         for code, label in _DOMAINS:
             result = _public_result(code, results[code])
-            if result["result"] != "PASS":
+            if result["result"] in _BLOCKING_RESULTS:
                 blocked_domains += 1
             blocking_count += int(result["blockingCount"] or 0)
             db.add(AaArchiveItem(
@@ -240,7 +263,12 @@ def precheck(user, term_id=None):
                 "domain": code,
                 "domainLabel": label,
                 "recordCount": result["recordCount"],
-                "status": "OK" if result["result"] == "PASS" else "MISSING",
+                "status": {
+                    "PASS": "OK",
+                    "NOT_APPLICABLE": "NOT_APPLICABLE",
+                    "UNKNOWN": "UNKNOWN",
+                    "BLOCKED": "MISSING",
+                }[result["result"]],
                 "result": result["result"],
                 "ruleCode": result["ruleCode"],
                 "summary": result["summary"],
@@ -250,11 +278,17 @@ def precheck(user, term_id=None):
                 "evidence": result["evidence"],
             })
         blocking_count = sum(int(row["blockingCount"] or 0) for row in domains)
-        blocked_domains = sum(1 for row in domains if row["result"] != "PASS")
+        blocked_domains = sum(1 for row in domains if row["result"] in _BLOCKING_RESULTS)
+        result_states = {row["result"] for row in domains}
+        overall_result = (
+            "BLOCKED" if "BLOCKED" in result_states
+            else "UNKNOWN" if "UNKNOWN" in result_states
+            else "PASS"
+        )
         return {
             "termId": str(term_id_value) if term_id_value else None,
             "termCode": term_code_value,
-            "result": "PASS" if blocked_domains == 0 else "BLOCKED",
+            "result": overall_result,
             "blockingCount": blocking_count,
             "blockedDomains": blocked_domains,
             "scopeNote": (

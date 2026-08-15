@@ -129,7 +129,7 @@ def test_graduation_gate_blocks_current_term_unfinished_batch():
     assert "1 个毕业审核批次未归档" in result["remark"]
 
 
-def test_graduation_gate_does_not_cross_term_when_dates_missing():
+def test_graduation_gate_missing_dates_is_unknown_and_fail_closed():
     from app.modules.academic_affairs.services import academic_affairs_archive_domain_policy as policy
 
     term = SimpleNamespace(id=9, tenant_id=1, start_date=None, end_date=None, is_deleted=False)
@@ -138,8 +138,10 @@ def test_graduation_gate_does_not_cross_term_when_dates_missing():
         9,
     )
 
-    assert result["present"] is True
-    assert "停止使用全校历史" in result["remark"]
+    assert result["present"] is False
+    assert result["result"] == "UNKNOWN"
+    assert result["blockingCount"] >= 1
+    assert "日期" in result["remark"]
 
 
 def test_force_cannot_bypass_missing_archive_gate(monkeypatch):

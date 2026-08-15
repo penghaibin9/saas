@@ -25,13 +25,14 @@ test('Stage D 归档预检必须把阻断域放在通过域之前并按阻断项
   const source = await readFile(viewUrl, 'utf8')
 
   assert.match(source, /blockedDomainRows\(\)/)
-  assert.match(source, /\.filter\(\(domain\) => domain\.result !== 'PASS'\)/)
+  assert.match(source, /\['BLOCKED', 'UNKNOWN'\]\.includes\(domain\.result\)/)
   assert.match(source, /\.sort\(\(a, b\) => Number\(b\.blockingCount \|\| 0\) - Number\(a\.blockingCount \|\| 0\)\)/)
   assert.match(source, /passedDomainRows\(\)/)
+  assert.match(source, /\['PASS', 'NOT_APPLICABLE'\]\.includes\(domain\.result\)/)
 
   assert.ok(
-    source.indexOf('归档阻断域') < source.indexOf('已通过业务域'),
-    'blocked domains must render before passed domains'
+    source.indexOf('归档阻断 / 待治理域') < source.indexOf('已满足门禁的业务域'),
+    'blocking and unknown domains must render before non-blocking domains'
   )
 })
 
@@ -56,4 +57,19 @@ test('Stage D 归档预检具备阻断优先与移动端响应式收口', async 
   assert.match(source, /grid-template-columns: repeat\(4, minmax\(0,1fr\)\)/)
   assert.match(source, /@media \(max-width: 900px\)/)
   assert.match(source, /@media \(max-width: 600px\)/)
+})
+
+
+test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  for (const token of [
+    "PASS: '通过'",
+    "BLOCKED: '阻断'",
+    "UNKNOWN: '待治理'",
+    "NOT_APPLICABLE: '不适用'",
+    "UNKNOWN: 'warning'",
+    "NOT_APPLICABLE: 'info'",
+    'UNKNOWN 不会被当成 PASS',
+    'BLOCKED 与 UNKNOWN 均不得进入正式归档'
+  ]) assert.ok(source.includes(token), `missing D-W1 archive state token: ${token}`)
 })
