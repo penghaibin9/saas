@@ -90,8 +90,8 @@ def test_a03_pc_and_mobile_facades_expose_the_same_p0_authority_paths():
     portal = _route_contract(portal_facade.router)
     mobile = _route_contract(mobile_facade.router)
     suffixes = {
-        ("/profile", frozenset({"GET"})),
-        ("/profile", frozenset({"PUT"})),
+        ("/context/profile", frozenset({"GET"})),
+        ("/context/profile", frozenset({"PUT"})),
         ("/context/volunteers", frozenset({"GET"})),
         ("/context/volunteers", frozenset({"PUT"})),
         ("/context/volunteers/material-preview", frozenset({"GET"})),
@@ -112,6 +112,12 @@ def test_student_facades_live_on_canonical_surfaces_and_do_not_evade_staff_route
     assert "internship_selection_router" in shim_source
     assert "enforce_student_portal_module_access" in inspect.getsource(portal_facade)
     assert 'require_module("internship")' in inspect.getsource(mobile_facade)
+
+
+def test_mobile_profile_uses_context_namespace_not_v93_legacy_surface():
+    mobile_paths = {path for path, _methods in _route_contract(mobile_facade.router)}
+    assert "/mobile/internship/context/profile" in mobile_paths
+    assert "/mobile/internship/profile" not in mobile_paths
 
 
 def test_facades_are_thin_and_reuse_profile_plus_selection_services():

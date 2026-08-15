@@ -35,12 +35,12 @@ def _volunteer_contract(result: dict) -> dict:
     }
 
 
-@router.get("/profile", summary="本人实习档案")
+@router.get("/context/profile", summary="本人实习档案")
 def get_my_profile(user=Depends(get_current_user)):
     return success(profile_svc.get_my_profile(user))
 
 
-@router.put("/profile", summary="按版本保存本人实习档案")
+@router.put("/context/profile", summary="按版本保存本人实习档案")
 def save_my_profile(body: dict = Body(...), user=Depends(get_current_user)):
     return success(profile_svc.save_my_profile(body or {}, user), message="实习档案已保存")
 
