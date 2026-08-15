@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
-async function installEnterpriseApi(page) {
-  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0}
+async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
+  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,pdfRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -28,8 +28,10 @@ async function installEnterpriseApi(page) {
       ]))})
     }
     if (path.endsWith('/internship/enterprise-portal/context')) {
-      state.contextCampaignIds.push(url.searchParams.get('campaignId'))
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:state.memberRole,companyId:'21',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',campaignStatus:'OPEN',batchId:'2027',grantId:'31',grantType:'RECRUITMENT',capabilities:{recruitmentWrite:state.memberRole==='HR',internshipCollab:false}}))})
+      const requestedCampaignId=url.searchParams.get('campaignId')
+      state.contextCampaignIds.push(requestedCampaignId)
+      if(requestedCampaignId!=='2027')return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:403001,message:'fixture rejects unauthorized recruitment campaign'})})
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:state.memberRole,companyId:'21',campaignId:requestedCampaignId,campaignName:'2027届春季岗位实习双选季',campaignStatus:'OPEN',batchId:'2027',grantId:'31',grantType:'RECRUITMENT',capabilities:{recruitmentWrite:recruitmentWrite&&state.memberRole==='HR',internshipCollab:false}}))})
     }
     if (path.endsWith('/internship/enterprise-portal/company') && request.method()==='GET') {
       state.companyRequests+=1
@@ -47,6 +49,11 @@ async function installEnterpriseApi(page) {
       state.snapshotRequests+=1
       if (url.searchParams.get('campaignId') !== '2027') return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:400001,message:'campaignId required'})})
       return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({applicationId:'501',positionId:'81',positionTitle:'机械装配技术实习生',profileSnapshot:{profile:{headline:'智能制造方向实习生'},items:[]},schoolFactSnapshot:{realName:'张三',majorName:'机械制造及自动化',grade:'2025级'},snapshotHash:'sha256-browser-evidence',contactSharingPolicy:{mode:'IMMEDIATE',sharePhone:true,shareEmail:false}}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/applications/501/resume-pdf') && request.method()==='GET') {
+      state.pdfRequests+=1
+      if(url.searchParams.get('campaignId')!=='2027')return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:400001,message:'campaignId required'})})
+      return route.fulfill({status:200,headers:{'content-type':'application/pdf','content-disposition':'inline; filename="internship-application-snapshot-991-v2.pdf"','x-internship-snapshot-hash':'sha256-browser-evidence'},body:'%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF'})
     }
     if (path.endsWith('/internship/enterprise-portal/applications/501/contact-view') && request.method()==='POST') {
       state.contactRequests+=1
@@ -121,6 +128,22 @@ test('A02 canonical list to Snapshot to contact-view never leaks identifiers bef
   expect(state.listRequests.length).toBe(1)
   expect(state.snapshotRequests).toBe(1)
   expect(state.contactRequests).toBe(1)
+  expect(state.contextCampaignIds).toEqual(['2027'])
+  expect(state.legacyRequests).toBe(0)
+})
+
+test('A02 applicant Snapshot and frozen PDF stay readable when recruitment writes are unavailable', async ({ page }) => {
+  const state=await installEnterpriseApi(page,{recruitmentWrite:false})
+  const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
+  await acceptInvite(page,token)
+  await page.getByRole('link',{name:'报名学生'}).click()
+  await page.locator('button.candidate').filter({hasText:'张三'}).click()
+  await expect(page.getByText(/当前招聘季未开放企业处理权限/)).toBeVisible()
+  await expect(page.locator('footer').getByRole('button',{name:'拟接收',exact:true})).toBeDisabled()
+  await page.getByRole('button',{name:'查看本次冻结档案 PDF'}).click()
+  await expect.poll(()=>state.pdfRequests).toBe(1)
+  expect(state.listRequests).toHaveLength(1)
+  expect(state.snapshotRequests).toBe(1)
   expect(state.contextCampaignIds).toEqual(['2027'])
   expect(state.legacyRequests).toBe(0)
 })
