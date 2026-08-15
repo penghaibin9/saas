@@ -83,6 +83,14 @@ def _teacher():
     }
 
 
+def test_attendance_package_entrypoints_resolve_to_public_service():
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
+
+    for name in ("create_session", "get_session", "list_sessions", "attendance_stats"):
+        fn = getattr(service, name)
+        assert fn.__module__.endswith("academic_affairs_attendance_public_service"), name
+
+
 def test_normal_teacher_can_never_request_admin_special():
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
@@ -190,6 +198,8 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
 
     assert result["sessionType"] == "ADMIN_SPECIAL"
     assert result["sourceType"] == "ADMIN_SPECIAL"
+    assert result["sourceLabel"] == "管理员特殊补录"
+    assert result["sessionTypeLabel"] == "管理员特殊补录"
     assert result["teachingTaskId"] is None
     assert result["rosterIdentity"] is None
     assert audits and audits[-1][1] == "CREATE"
