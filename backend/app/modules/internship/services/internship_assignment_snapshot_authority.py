@@ -7,6 +7,7 @@ formal position change) gets immutable placement evidence in the same DB transac
 from __future__ import annotations
 
 from datetime import datetime
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
@@ -21,6 +22,17 @@ from app.modules.internship.services import internship_volunteer_group_service a
 
 _INSTALLED = False
 _ORIGINAL = None
+
+
+def _assert_school_confirm_window(campaign: InternshipRecruitmentCampaign, *, now: datetime) -> None:
+    if campaign.status != "OPEN":
+        raise AppException("DATA_CONFLICT", "当前招聘季不是 OPEN，不能审核正式志愿落岗")
+    start = campaign.school_confirm_start_at
+    end = campaign.school_confirm_end_at
+    if start is None or end is None:
+        raise AppException("DATA_CONFLICT", "招聘季未配置完整学校确认时间窗")
+    if now < start or now > end:
+        raise AppException("DATA_CONFLICT", "当前不在学校确认时间窗内，不能正式落岗")
 
 
 def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
@@ -48,6 +60,8 @@ def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
         InternshipVolunteerGroup.is_deleted.is_(False),
     ).with_for_update())
     decision = None
+    if application:
+        _assert_school_confirm_window(campaign, now=now)
     if application and group and group.locked_by_decision_id:
         decision = db.scalar(select(InternshipEnterpriseApplicationDecision).where(
             InternshipEnterpriseApplicationDecision.id == group.locked_by_decision_id,
