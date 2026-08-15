@@ -10,6 +10,7 @@ from app.core.exceptions import AppException
 _ROOT = Path(__file__).resolve().parents[3] / "shared" / "contracts"
 _CATALOG = _ROOT / "permission-catalog.json"
 _B8_CONCRETE = _ROOT / "permission-catalog-b8-concrete.json"
+_B8_COMPATIBILITY = _ROOT / "permission-catalog-b8-compatibility.json"
 
 
 def _materialize_b8_entry(code: str, extension: dict) -> dict:
@@ -55,19 +56,39 @@ def _materialize_b8_entry(code: str, extension: dict) -> dict:
     }
 
 
+def _compatibility_codes(payload: dict) -> list[str]:
+    codes = [str(code or "").strip() for code in payload.get("entries") or []]
+    if any(not code for code in codes) or len(codes) != len(set(codes)):
+        raise RuntimeError("B8 compatibility catalog contains duplicate/empty permissionCode")
+    forbidden = [
+        code for code in codes
+        if code == "*" or code.startswith("platform.") or code.startswith("enterprise.")
+    ]
+    if forbidden:
+        raise RuntimeError(
+            "B8 compatibility catalog contains forbidden permission plane: "
+            + ",".join(sorted(forbidden)[:20])
+        )
+    return codes
+
+
 @lru_cache(maxsize=1)
 def load_permission_catalog() -> dict:
     payload = json.loads(_CATALOG.read_text(encoding="utf-8"))
     extension = json.loads(_B8_CONCRETE.read_text(encoding="utf-8"))
+    compatibility = json.loads(_B8_COMPATIBILITY.read_text(encoding="utf-8"))
     entries = list(payload.get("entries") or [])
     entries.extend(_materialize_b8_entry(str(code), extension) for code in extension.get("entries") or [])
+    entries.extend(_materialize_b8_entry(code, extension) for code in _compatibility_codes(compatibility))
     codes = [str(item.get("permissionCode") or "") for item in entries]
     if len(codes) != len(set(codes)) or any(not code for code in codes):
         raise RuntimeError("permission catalog contains duplicate/empty permissionCode")
     payload["entries"] = entries
     payload["b8ConcreteCatalog"] = {
         "card": extension.get("card"),
-        "count": len(extension.get("entries") or []),
+        "count": len(extension.get("entries") or []) + len(compatibility.get("entries") or []),
+        "baseConcreteCount": len(extension.get("entries") or []),
+        "postCutoverCompatibilityCount": len(compatibility.get("entries") or []),
         "temporaryRuntimeProbeCodes": list(extension.get("temporaryRuntimeProbeCodes") or []),
     }
     payload["_byCode"] = {item["permissionCode"]: item for item in entries}
