@@ -16,12 +16,13 @@
         <span class="aa-filter__label">点名类别</span>
         <AppSelect v-model="sessionType" :options="typeOptions" style="min-width:150px" @change="load" />
         <AppButton variant="ghost" @click="load">查询</AppButton>
-        <AppButton variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
+        <AppButton v-if="sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
       </div>
 
       <div v-if="panel === 'stats'" class="aa-scope-note">
         当前汇总口径：<strong>{{ data.sourceScopeLabel || (sessionType === 'ADMIN_SPECIAL' ? '管理员特殊补录' : '正式课堂') }}</strong>。
-        特殊补录不会混入默认课堂指标。
+        <template v-if="sessionType === 'ADMIN_SPECIAL'">特殊补录仅用于审计核对，不进入标准课堂旷课预警。</template>
+        <template v-else>特殊补录不会混入默认课堂指标。</template>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -144,6 +145,7 @@ export default {
       this.loading = false
     },
     async scanAbsent() {
+      if (this.sessionType === 'ADMIN_SPECIAL') return
       this.scanning = true
       const res = await academicAffairsWarningApi.scan('attendance')
       this.scanning = false
