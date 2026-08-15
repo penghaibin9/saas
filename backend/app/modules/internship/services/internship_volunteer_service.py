@@ -50,6 +50,36 @@ def _parse_consent_at(value) -> datetime | None:
     return parsed
 
 
+def _assert_application_statements(policy: dict | None, volunteers: list[dict], *, submit: bool) -> None:
+    if not submit:
+        return
+    config = dict(policy or {})
+    required = bool(config.get("applicationStatementRequired"))
+    try:
+        minimum = max(0, int(config.get("minStatementLength") or 0))
+    except (TypeError, ValueError) as exc:
+        raise AppException("DATA_CONFLICT", "招聘季申请说明最小长度配置无效") from exc
+    if required and minimum < 1:
+        minimum = 1
+    if not required and minimum == 0:
+        return
+    invalid = []
+    for item in volunteers:
+        statement = str(item.get("applicationStatement") or "").strip()
+        if len(statement) < minimum:
+            invalid.append({
+                "volunteerNo": int(item.get("volunteerNo") or 0),
+                "reason": f"申请说明不少于 {minimum} 字",
+            })
+    if invalid:
+        raise AppException(
+            "APPLICATION_MATERIAL_INCOMPLETE",
+            "岗位申请说明未满足当前招聘季要求",
+            details={"invalidItems": invalid},
+            http_status=409,
+        )
+
+
 def save_or_submit_in_tx(
     db,
     *,
@@ -105,6 +135,11 @@ def save_or_submit_in_tx(
         raise not_found("招聘季不存在")
     if record.batch_id != campaign.batch_id:
         raise AppException("DATA_CONFLICT", "学生实习记录与招聘季批次不一致")
+    _assert_application_statements(
+        campaign.application_material_policy_json,
+        volunteers,
+        submit=submit,
+    )
 
     group = group_svc.get_or_create_group_in_tx(
         db, tenant_id=tenant_id, record_id=record.id, student_id=student_id,

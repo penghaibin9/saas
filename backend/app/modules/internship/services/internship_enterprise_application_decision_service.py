@@ -6,11 +6,13 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import InternshipApplication, InternshipPosition
+from app.core.field_crypto import decrypt_field
+from app.models import InternshipApplication, InternshipPosition, StudentContact
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
+from app.modules.internship.services import internship_application_material_snapshot_service as material_svc
 from app.modules.internship.services import internship_audit_service
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 
@@ -217,6 +219,111 @@ def consume_accept_intent_in_tx(decision: InternshipEnterpriseApplicationDecisio
     decision.version = int(decision.version or 0) + 1
 
 
+def _current_decision_in_tx(db, *, context, application: InternshipApplication):
+    return db.scalar(select(InternshipEnterpriseApplicationDecision).where(
+        InternshipEnterpriseApplicationDecision.tenant_id == context.tenant_id,
+        InternshipEnterpriseApplicationDecision.application_id == application.id,
+        InternshipEnterpriseApplicationDecision.material_snapshot_id == application.material_snapshot_id,
+        InternshipEnterpriseApplicationDecision.is_deleted.is_(False),
+    ).with_for_update())
+
+
+def contact_view_in_tx(db, *, context, application_id: int) -> dict:
+    """Reveal current verified contact only after snapshot consent + stage gate; never snapshot PII."""
+    application, _position = _owned_application_in_tx(
+        db, context=context, application_id=application_id, lock=True,
+    )
+    if application.status not in {"PENDING_REVIEW", "APPROVED"}:
+        raise AppException("NO_PERMISSION", "当前申请状态不允许企业查看联系方式", http_status=403)
+    snapshot = db.scalar(select(InternshipApplicationMaterialSnapshot).where(
+        InternshipApplicationMaterialSnapshot.id == application.material_snapshot_id,
+        InternshipApplicationMaterialSnapshot.tenant_id == context.tenant_id,
+    ))
+    if not snapshot:
+        raise not_found("投递材料快照不存在")
+    policy = material_svc.normalize_contact_sharing_policy(snapshot.contact_sharing_policy)
+    mode = policy["mode"]
+    if mode == "MASKED_ONLY":
+        raise AppException("NO_PERMISSION", "学生仅授权脱敏联系方式，不能查看完整联系方式", http_status=403)
+
+    group = db.scalar(select(InternshipVolunteerGroup).where(
+        InternshipVolunteerGroup.tenant_id == context.tenant_id,
+        InternshipVolunteerGroup.id == snapshot.volunteer_group_id,
+        InternshipVolunteerGroup.record_id == application.record_id,
+        InternshipVolunteerGroup.campaign_id == context.campaign_id,
+        InternshipVolunteerGroup.is_deleted.is_(False),
+    ).with_for_update())
+    if not group:
+        raise AppException("DATA_CONFLICT", "投递材料对应志愿组不存在")
+    group_svc.lazy_release_expired_lock_in_tx(
+        db, group=group, tenant_id=context.tenant_id, user=_actor(context),
+    )
+    if group.contact_consent_revoked_at is not None:
+        raise AppException("NO_PERMISSION", "学生已撤销联系方式共享授权", http_status=403)
+
+    decision = _current_decision_in_tx(db, context=context, application=application)
+    if mode == "AFTER_INTERVIEW":
+        allowed = bool(
+            decision
+            and decision.decision_status in {"INTERVIEW", "ACCEPT_INTENT"}
+            and decision.effect_status in {"ACTIVE", "CONSUMED"}
+        )
+    elif mode == "AFTER_ACCEPT_INTENT":
+        allowed = bool(
+            decision
+            and decision.decision_status == "ACCEPT_INTENT"
+            and decision.effect_status in {"ACTIVE", "CONSUMED"}
+        )
+    elif mode == "IMMEDIATE":
+        allowed = True
+    else:
+        allowed = False
+    if not allowed:
+        raise AppException("NO_PERMISSION", "企业当前处理阶段尚未达到学生授权的联系方式查看条件", http_status=403)
+
+    contacts = list(db.scalars(select(StudentContact).where(
+        StudentContact.tenant_id == context.tenant_id,
+        StudentContact.student_id == application.student_id,
+        StudentContact.contact_type.in_(("PHONE", "EMAIL")),
+        StudentContact.verified_status == "VERIFIED",
+        StudentContact.is_deleted.is_(False),
+    ).order_by(StudentContact.is_primary.desc(), StudentContact.id.desc())).all())
+    values: dict[str, str] = {}
+    for contact in contacts:
+        key = "phone" if contact.contact_type == "PHONE" else "email"
+        if key in values or not contact.contact_value_encrypted:
+            continue
+        if key == "phone" and not policy.get("sharePhone", True):
+            continue
+        if key == "email" and not policy.get("shareEmail", True):
+            continue
+        plaintext = decrypt_field(contact.contact_value_encrypted)
+        if plaintext:
+            values[key] = plaintext
+
+    internship_audit_service.add_audit(
+        db,
+        target_type="INTERNSHIP_ENTERPRISE_APPLICATION_DECISION",
+        target_id=(decision.id if decision else application.id),
+        action="CONTACT_VIEW",
+        user=_actor(context),
+        batch_id=context.batch_id,
+        internship_id=group.record_id,
+        before_status=(decision.decision_status if decision else "PENDING"),
+        after_status=(decision.decision_status if decision else "PENDING"),
+        new_version=(int(decision.version or 0) if decision else int(application.version or 0)),
+        detail={
+            "applicationId": str(application.id),
+            "campaignId": str(context.campaign_id),
+            "companyId": str(context.company_id),
+            "contactMode": mode,
+            "revealedTypes": sorted(values),
+        },
+    )
+    db.flush()
+    return {"applicationId": str(application.id), "contactMode": mode, **values}
+
+
 def set_decision_in_tx(
     db,
     *,
@@ -250,12 +357,7 @@ def set_decision_in_tx(
         db, group=group, tenant_id=context.tenant_id, user=_actor(context),
     )
 
-    decision = db.scalar(select(InternshipEnterpriseApplicationDecision).where(
-        InternshipEnterpriseApplicationDecision.tenant_id == context.tenant_id,
-        InternshipEnterpriseApplicationDecision.application_id == application.id,
-        InternshipEnterpriseApplicationDecision.material_snapshot_id == application.material_snapshot_id,
-        InternshipEnterpriseApplicationDecision.is_deleted.is_(False),
-    ).with_for_update())
+    decision = _current_decision_in_tx(db, context=context, application=application)
     if decision is None:
         decision = InternshipEnterpriseApplicationDecision(
             tenant_id=context.tenant_id,
@@ -313,6 +415,8 @@ def set_decision_in_tx(
             if value is not None
         ]
         decision.valid_until = min(bounds) if bounds else None
+        if decision.valid_until is not None and decision.valid_until <= now:
+            raise AppException("DATA_CONFLICT", "学校确认/企业访问期限已结束，不能再拟接收")
         group_svc.lock_for_accept_intent_in_tx(
             db,
             group=group,

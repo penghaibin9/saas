@@ -43,6 +43,17 @@ def test_record_group_and_application_versions_are_all_required():
     assert "expectedApplicationVersion" in source
 
 
+def test_application_statement_policy_is_checked_before_any_slot_mutation():
+    source = inspect.getsource(svc.save_or_submit_in_tx)
+    policy_source = inspect.getsource(svc._assert_application_statements)
+    assert "applicationStatementRequired" in policy_source
+    assert "minStatementLength" in policy_source
+    assert "APPLICATION_MATERIAL_INCOMPLETE" in policy_source
+    policy_at = source.index("_assert_application_statements(")
+    mutation_at = source.index("row.position_id = p.id")
+    assert policy_at < mutation_at
+
+
 def test_one_snapshot_is_shared_across_submitted_slots():
     source = inspect.getsource(svc.save_or_submit_in_tx)
     assert source.count("create_material_snapshot_in_tx(") == 1

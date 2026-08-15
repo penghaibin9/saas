@@ -151,7 +151,7 @@ def applications(
 @router.get("/applications/{application_id}")
 def application_detail(
     application_id: int,
-    campaignId: int = Query(...),
+    campaignId: int = Query(..., ge=1),
     principal: EnterprisePrincipal = Depends(require_permission("internship.application.view")),
 ):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
@@ -159,11 +159,29 @@ def application_detail(
         return success(decision_svc.material_detail_in_tx(db, context=ctx, application_id=application_id))
 
 
+@router.post("/applications/{application_id}/contact-view")
+def application_contact_view(
+    application_id: int,
+    campaignId: int = Query(..., ge=1),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
+):
+    """Reveal current verified contact only after the snapshot consent/stage gate; writes CONTACT_VIEW audit."""
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    with session() as db:
+        result = decision_svc.contact_view_in_tx(
+            db,
+            context=ctx,
+            application_id=application_id,
+        )
+        db.commit()
+        return success(result)
+
+
 @router.post("/applications/{application_id}/decision")
 def application_decision(
     application_id: int,
     body: EnterpriseDecisionBody,
-    campaignId: int = Query(...),
+    campaignId: int = Query(..., ge=1),
     principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
 ):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
@@ -193,7 +211,7 @@ def application_decision(
 def withdraw_accept(
     application_id: int,
     body: EnterpriseWithdrawAcceptBody,
-    campaignId: int = Query(...),
+    campaignId: int = Query(..., ge=1),
     principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
 ):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)

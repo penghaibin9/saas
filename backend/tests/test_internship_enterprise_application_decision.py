@@ -51,6 +51,7 @@ def test_accept_intent_only_locks_group_and_never_assigns():
     assert "PUBLISH" not in source
     assert 'decision.effect_status = "SUPERSEDED"' in source
     assert "ENTERPRISE_APPLICATION_WITHDRAW_ACCEPT" in source
+    assert "decision.valid_until is not None and decision.valid_until <= now" in source
 
 
 def test_decision_transitions_are_audited_with_real_enterprise_actor():
@@ -67,3 +68,28 @@ def test_expired_superseded_or_consumed_decision_cannot_be_overwritten():
     consume = inspect.getsource(svc.consume_accept_intent_in_tx)
     assert 'decision.effect_status != "ACTIVE"' in consume
     assert 'decision.effect_status = "CONSUMED"' in consume
+
+
+def test_contact_view_reads_current_verified_contact_never_snapshot_pii_and_audits_reveal():
+    source = inspect.getsource(svc.contact_view_in_tx)
+    assert "StudentContact" in source
+    assert 'StudentContact.verified_status == "VERIFIED"' in source
+    assert 'StudentContact.contact_type.in_(("PHONE", "EMAIL"))' in source
+    assert "decrypt_field" in source
+    assert "group.contact_consent_revoked_at" in source
+    assert 'mode == "MASKED_ONLY"' in source
+    assert 'mode == "AFTER_INTERVIEW"' in source
+    assert 'mode == "AFTER_ACCEPT_INTENT"' in source
+    assert 'mode == "IMMEDIATE"' in source
+    assert 'action="CONTACT_VIEW"' in source
+    assert "revealedTypes" in source
+    assert 'snapshot.profile_snapshot_json' not in source
+    assert 'snapshot.school_fact_snapshot_json' not in source
+
+
+def test_contact_view_stage_gate_is_fail_closed():
+    source = inspect.getsource(svc.contact_view_in_tx)
+    assert 'decision.decision_status in {"INTERVIEW", "ACCEPT_INTENT"}' in source
+    assert 'decision.decision_status == "ACCEPT_INTENT"' in source
+    assert 'decision.effect_status in {"ACTIVE", "CONSUMED"}' in source
+    assert 'raise AppException("NO_PERMISSION"' in source

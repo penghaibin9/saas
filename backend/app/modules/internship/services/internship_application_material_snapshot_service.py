@@ -1,8 +1,9 @@
 """Immutable application material snapshot service.
 
 The snapshot freezes the common student material once per volunteer-group submission. It never
-contains volunteer/company choices or per-position application statements, so sharing one snapshot
-across slots 1/2/3 cannot leak preference order to enterprises.
+contains volunteer/company choices, current phone/email values or per-position application
+statements, so sharing one snapshot across slots 1/2/3 cannot leak preference order or mutable
+contact data to enterprises.
 """
 from __future__ import annotations
 
@@ -19,11 +20,24 @@ from app.models.internship_enterprise_portal import InternshipRecruitmentCampaig
 from app.modules.internship.services import internship_student_profile_service as profile_svc
 from app.services.db_service import _as_id
 
-
+_CONTACT_MODES = frozenset({
+    "MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT", "IMMEDIATE",
+})
+_LEGACY_CONTACT_MODE_ALIASES = {
+    "NONE": "MASKED_ONLY",
+    "EXPLICIT": "IMMEDIATE",
+    "AFTER_SCHOOL_APPROVAL": "AFTER_ACCEPT_INTENT",
+}
 _DEFAULT_CONTACT_POLICY = {
-    "mode": "NONE",
-    "sharePhone": False,
-    "shareEmail": False,
+    "mode": "MASKED_ONLY",
+    "sharePhone": True,
+    "shareEmail": True,
+}
+_SECTION_FIELDS = {
+    "SELF_INTRO": "selfIntro",
+    "SKILLS": "skillTags",
+    "AVAILABILITY": "availableFrom",
+    "LOCATION_PREFERENCES": "expectedLocations",
 }
 
 
@@ -39,13 +53,32 @@ def normalize_contact_sharing_policy(value: dict | None) -> dict:
     policy = dict(_DEFAULT_CONTACT_POLICY)
     if value:
         policy.update({key: value[key] for key in ("mode", "sharePhone", "shareEmail") if key in value})
-    mode = str(policy.get("mode") or "NONE").upper()
-    if mode not in {"NONE", "AFTER_ACCEPT_INTENT", "AFTER_SCHOOL_APPROVAL", "EXPLICIT"}:
+    raw_mode = str(policy.get("mode") or "MASKED_ONLY").upper()
+    mode = _LEGACY_CONTACT_MODE_ALIASES.get(raw_mode, raw_mode)
+    if mode not in _CONTACT_MODES:
         raise AppException("VALIDATION_ERROR", "contactSharingPolicy.mode 非法")
     policy["mode"] = mode
-    policy["sharePhone"] = bool(policy.get("sharePhone")) if mode != "NONE" else False
-    policy["shareEmail"] = bool(policy.get("shareEmail")) if mode != "NONE" else False
+    policy["sharePhone"] = bool(policy.get("sharePhone"))
+    policy["shareEmail"] = bool(policy.get("shareEmail"))
     return policy
+
+
+def _assert_contact_mode_allowed(policy: dict, campaign_policy: dict | None) -> None:
+    configured = list((campaign_policy or {}).get("allowedContactSharingModes") or [])
+    if not configured:
+        return
+    allowed = {
+        _LEGACY_CONTACT_MODE_ALIASES.get(str(item or "").upper(), str(item or "").upper())
+        for item in configured
+        if str(item or "").strip()
+    }
+    if policy["mode"] not in allowed:
+        raise AppException(
+            "CONTACT_MODE_NOT_ALLOWED",
+            "当前招聘季不允许所选联系方式共享模式",
+            details={"mode": policy["mode"], "allowedModes": sorted(allowed)},
+            http_status=409,
+        )
 
 
 def evaluate_material_readiness(profile_projection: dict, policy: dict | None) -> dict:
@@ -61,9 +94,14 @@ def evaluate_material_readiness(profile_projection: dict, policy: dict | None) -
         "expectedLocations": "expectedLocations",
         "skillTags": "skillTags",
     }
-    required_fields = list(policy.get("requiredProfileFields") or [])
-    for field in required_fields:
-        key = field_map.get(str(field), str(field))
+    required_fields = [field_map.get(str(field), str(field)) for field in policy.get("requiredProfileFields") or []]
+    for section in policy.get("requiredSections") or []:
+        mapped = _SECTION_FIELDS.get(str(section or "").upper())
+        if mapped and mapped not in required_fields:
+            required_fields.append(mapped)
+    if policy.get("profileRequired") and not profile:
+        missing.append("PROFILE_NOT_READY")
+    for key in required_fields:
         value = profile.get(key)
         if value in (None, "", []):
             missing.append(f"profile.{key}")
@@ -133,6 +171,7 @@ def create_material_snapshot_in_tx(
         "items": list(projection.get("items") or []),
     }
     policy = normalize_contact_sharing_policy(contact_sharing_policy)
+    _assert_contact_mode_allowed(policy, campaign.application_material_policy_json)
     payload = {
         "volunteerGroupId": str(volunteer_group_id),
         "studentId": str(student_id),
