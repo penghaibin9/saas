@@ -112,7 +112,7 @@ class CustomRoleSource(PKMixin, TenantMixin, CommonMixin, Base):
 
     __tablename__ = "t_custom_role_source"
 
-    role_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    role_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     role_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
