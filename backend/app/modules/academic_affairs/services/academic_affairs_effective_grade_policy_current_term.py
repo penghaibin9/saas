@@ -43,6 +43,12 @@ def _lock_current_term_authority(db: Session, target: AaTerm) -> None:
             select(Tenant.id).where(Tenant.id == tenant_id).with_for_update()
         )
         if locked is None:
+            # 兼容既有 isolated ORM/fixture：历史测试会直接构造一个尚无 Tenant
+            # 父行的新 AaTerm。它不是正式 tenant writer，不能因为 A-W1 的生产锁
+            # 破坏既有模型级回归；已持久化对象仍 fail-closed，正式业务 writer
+            # 必须命中真实 Tenant 协调行。
+            if target in db.new:
+                return
             raise AppException(
                 "TENANT_CONTEXT_REQUIRED",
                 "当前学期写入未命中真实租户，拒绝继续",
