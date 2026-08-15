@@ -4,9 +4,11 @@ import fs from 'node:fs'
 const page=fs.readFileSync(new URL('../src/views/InternshipStudentListView.vue',import.meta.url),'utf8')
 const template=page.match(/<template>([\s\S]*?)<\/template>/)?.[1]||''
 
-test('A02-8 formal internship students are server-paged for large enterprise cohorts',()=>{
+test('A02-8 formal internship students are collaboration-gated and server-paged for large enterprise cohorts',()=>{
   assert.match(page,/pageSize=50/)
-  assert.match(page,/internshipStudents\(\{status:status\.value,keyword:keyword\.value,page:page\.value,pageSize\}\)/)
+  assert.match(page,/collabReady/)
+  assert.match(page,/batchId:batchId\.value/)
+  assert.match(page,/internshipStudents\(\{batchId:batchId\.value,status:status\.value,keyword:keyword\.value,page:page\.value,pageSize\}\)/)
   assert.match(template,/上一页/)
   assert.match(template,/下一页/)
   assert.doesNotMatch(page,/items\.value\.filter/)

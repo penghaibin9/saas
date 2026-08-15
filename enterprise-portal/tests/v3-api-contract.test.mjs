@@ -35,10 +35,13 @@ test('E4 frozen enterprise facades use the canonical enterprise-portal root and 
   assert.doesNotMatch(api,/\/enterprise\/internship/)
 })
 
-test('only E9 and resume PDF remain explicit fail-closed facades',()=>{
-  assert.match(api,/ENTERPRISE_FACADE_UNFROZEN/)
-  for(const facade of ['简历 PDF','实习学生列表','实习学生详情','企业评价任务','企业评价提交'])assert.match(api,new RegExp(facade))
-  for(const frozen of ['招聘季列表','企业资料编辑','岗位列表','新建岗位','编辑岗位','提交岗位审核','撤回岗位审核'])assert.doesNotMatch(api,new RegExp(`unavailableFacade\\('${frozen}'\\)`))
+test('E9 collaboration facades use batch-scoped real routes while resume PDF alone remains fail closed',()=>{
+  assert.match(api,/function collaborationParams/)
+  assert.match(api,/internship-students/)
+  assert.match(api,/evaluation-tasks/)
+  assert.match(api,/evaluation-tasks\/\$\{id\}\/submit/)
+  assert.match(api,/resumePdf: \(\) => unavailableFacade\('简历 PDF'\)/)
+  for(const frozen of ['实习学生列表','实习学生详情','企业评价任务','企业评价提交'])assert.doesNotMatch(api,new RegExp(`unavailableFacade\\('${frozen}'\\)`))
 })
 
 test('canonical nested snapshot renders all public profile item families without exposing raw school identifiers',()=>{

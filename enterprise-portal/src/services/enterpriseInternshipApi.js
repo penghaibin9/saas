@@ -10,6 +10,12 @@ function recruitmentParams(){
   return {campaignId}
 }
 
+function collaborationParams(batchId){
+  const value=Number(batchId)
+  if(!Number.isInteger(value)||value<=0)throw new Error('当前实习协同批次不可用，请重新进入学校已开放的招聘季')
+  return {batchId:value}
+}
+
 function unavailableFacade(name){
   const error=new Error(`该企业协同能力尚未由学校端开放：${name}`)
   error.code='ENTERPRISE_FACADE_UNFROZEN'
@@ -65,6 +71,20 @@ function normalizeApplicantPage(data={}){
   }
 }
 
+function evaluationPayload(payload={}){
+  const result={
+    attendanceScore:Number(payload.attendanceScore),
+    skillScore:Number(payload.skillScore),
+    attitudeScore:Number(payload.attitudeScore),
+    collaborationScore:Number(payload.collaborationScore),
+    safetyScore:Number(payload.safetyScore),
+    overallComment:String(payload.overallComment||'').trim(),
+    recommendHire:Boolean(payload.recommendHire),
+  }
+  if(payload.expectedVersion!==null&&payload.expectedVersion!==undefined&&payload.expectedVersion!=='')result.expectedVersion=requireVersion(payload.expectedVersion,'企业评价')
+  return result
+}
+
 async function fetchApplicationMaterial(id){
   return normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`, { params:recruitmentParams() }))
 }
@@ -109,10 +129,18 @@ export const enterpriseInternshipApi = {
     if(text.length<2)throw new Error('撤回拟接收必须填写原因')
     return request(`${AUTH_ROOT}/applications/${id}/withdraw-accept`, { method:'POST', params:recruitmentParams(), body:{ reason:text } })
   },
-  internshipStudents: () => unavailableFacade('实习学生列表'),
-  internshipStudent: () => unavailableFacade('实习学生详情'),
-  evaluationTasks: () => unavailableFacade('企业评价任务'),
-  submitEvaluation: () => unavailableFacade('企业评价提交'),
+  internshipStudents: ({batchId,page=1,pageSize=50,status='',keyword=''}={}) => request(`${AUTH_ROOT}/internship-students`, {
+    params:{...collaborationParams(batchId),page,pageSize,status,keyword},
+  }),
+  internshipStudent: (id,batchId) => request(`${AUTH_ROOT}/internship-students/${id}`, {
+    params:collaborationParams(batchId),
+  }),
+  evaluationTasks: ({batchId,status='',page=1,pageSize=50}={}) => request(`${AUTH_ROOT}/evaluation-tasks`, {
+    params:{...collaborationParams(batchId),status,page,pageSize},
+  }),
+  submitEvaluation: (id,payload={},batchId) => request(`${AUTH_ROOT}/evaluation-tasks/${id}/submit`, {
+    method:'POST',params:collaborationParams(batchId),body:evaluationPayload(payload),
+  }),
 }
 
 export const enterpriseDecisionStatuses = Object.freeze([...DECISIONS])
