@@ -183,6 +183,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import message_center as message_center_api
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
+    from app.modules.internship.routers import internship_student_selection
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -229,10 +230,12 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(mobile_internship_context.router)
     api_router.include_router(mobile_internship_leave_context.router)
     api_router.include_router(mobile_internship_student.router)
+    api_router.include_router(internship_student_selection.mobile_router)
     api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
     portal_gate = [Depends(enforce_student_portal_module_access)]
     api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
+    api_router.include_router(internship_student_selection.portal_router)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)
