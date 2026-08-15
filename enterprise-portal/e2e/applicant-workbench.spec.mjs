@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
-  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,pdfRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0}
+  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,pdfRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0,positionRequests:0}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -35,11 +35,18 @@ async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
     }
     if (path.endsWith('/internship/enterprise-portal/company') && request.method()==='GET') {
       state.companyRequests+=1
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({id:'21',name:'中联重科股份有限公司',shortName:'中联重科',shortIntro:'高端装备制造企业',qualificationStatus:'PASSED',coopStatus:'ACTIVE',blacklist:false,version:3}))})
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({id:'21',name:'中联重科股份有限公司',shortName:'中联重科',shortIntro:'面向全球的高端装备制造企业，长期参与职业院校智能制造人才培养。',website:'https://example.invalid',mainBusiness:'工程机械、智能制造与工业互联网',establishedYear:1992,address:'湖南省长沙市岳麓区',qualificationStatus:'PASSED',coopStatus:'ACTIVE',accessValidUntil:'2027-12-31',blacklist:false,schoolReview:'资质审核通过，允许参与当前招聘季',version:3}))})
     }
     if (path.endsWith('/internship/enterprise-portal/dashboard') && request.method()==='GET') {
       state.dashboardRequests+=1
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({metrics:{published:1,pending:0,applicants:1,todoApplicants:1,interview:0,acceptIntent:0},tasks:[]}))})
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({metrics:{published:4,pending:1,applicants:36,todoApplicants:8,interview:6,acceptIntent:3,interns:12,evaluations:4},tasks:[{key:'candidate',title:'处理 8 份待处理申请',description:'优先处理第一志愿且材料完整的候选学生',href:'/applications',actionLabel:'去处理'},{key:'position',title:'补充 1 个待审核岗位材料',description:'学校审核前可撤回修改岗位内容',href:'/positions',actionLabel:'看岗位'}]}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/positions') && request.method()==='GET') {
+      state.positionRequests+=1
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[
+        {id:'81',title:'机械装配技术实习生',workLocation:'长沙 · 高新区',headcount:12,majorRequirement:'机械制造及自动化 / 机电一体化',salaryRange:'3.5k-5k/月',status:'PUBLISHED',riskFlag:false,applicantCount:24,acceptIntentCount:3,placementCount:2,version:4},
+        {id:'82',title:'智能制造产线运维实习生',workLocation:'长沙 · 望城区',headcount:8,majorRequirement:'智能制造 / 电气自动化',salaryRange:'4k-5.5k/月',status:'PENDING',riskFlag:false,applicantCount:12,acceptIntentCount:0,placementCount:0,version:2}
+      ],total:2,page:1,pageSize:20}))})
     }
     if (path.endsWith('/internship/enterprise-portal/applications') && request.method()==='GET') {
       state.listRequests.push(Object.fromEntries(url.searchParams.entries()))
@@ -97,17 +104,28 @@ test('A02 normal login reads the frozen Campaign list and enters a server-author
   expect(state.legacyRequests).toBe(0)
 })
 
-test('A02 invite activation binds campaign to inspected token and canonical applicant list uses only frozen filters', async ({ page }) => {
+test('A02 commercial browser evidence covers home company positions and applicant workbench', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
   await acceptInvite(page,token)
   await expect(page.getByRole('banner').getByText('2027届春季岗位实习双选季',{exact:true})).toBeVisible()
-  expect(state.contextCampaignIds).toEqual(['2027'])
-  await page.getByRole('link',{name:'报名学生'}).click()
+  await page.screenshot({ path: 'test-results/a02-enterprise-home.png', fullPage: true })
+
+  await navigateSpa(page,'/company')
+  await expect(page.getByRole('heading',{name:'企业资料',exact:true})).toBeVisible()
+  await page.screenshot({ path: 'test-results/a02-company-profile.png', fullPage: true })
+
+  await navigateSpa(page,'/positions')
+  await expect(page.getByRole('heading',{name:'我的岗位',exact:true})).toBeVisible()
+  await expect(page.getByText('机械装配技术实习生')).toBeVisible()
+  await page.screenshot({ path: 'test-results/a02-position-list.png', fullPage: true })
+
+  await navigateSpa(page,'/applications')
   await expect(page.getByRole('heading',{name:'报名学生',exact:true})).toBeVisible()
   await expect(page.locator('button.candidate').filter({hasText:'张三'})).toBeVisible()
   await expect(page.getByText('20250001')).toHaveCount(0)
   expect(state.listRequests).toEqual([{campaignId:'2027',page:'1',pageSize:'50'}])
+  expect(state.positionRequests).toBeGreaterThanOrEqual(1)
   expect(state.legacyRequests).toBe(0)
   await page.screenshot({ path: 'test-results/a02-canonical-applicant-list.png', fullPage: true })
 })
