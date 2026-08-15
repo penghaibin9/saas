@@ -4,9 +4,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import inspect
 
+from pydantic import ValidationError
 from sqlalchemy import Index, UniqueConstraint
 
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
+from app.modules.internship.schemas.internship_recruitment_campaign import ApplicationMaterialPolicy
 from app.modules.internship.services import internship_recruitment_campaign_service as service
 
 
@@ -48,6 +50,8 @@ def test_campaign_model_matches_v3_fields_and_does_not_persist_phase():
         "school_confirm_end_at",
         "enterprise_access_end_at",
         "enterprise_confirm_required",
+        "teacher_confirm_sla_hours",
+        "application_material_policy_json",
         "remark",
         "version",
         "created_at",
@@ -128,6 +132,83 @@ def test_window_validation_rejects_half_pairs_reverse_ranges_and_short_access():
         assert False, "enterprise access cannot end before recruitment windows"
     except Exception as exc:
         assert getattr(exc, "code", None) == "VALIDATION_ERROR"
+
+
+def test_material_policy_schema_is_strict_versioned_and_uses_final_contact_modes():
+    policy = ApplicationMaterialPolicy(
+        profileRequired=True,
+        requiredSections=["SELF_INTRO", "SKILLS"],
+        requiredItemTypes=["PROJECT", "CERTIFICATE"],
+        applicationStatementRequired=True,
+        minStatementLength=20,
+        allowedContactSharingModes=["MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT"],
+    )
+    data = policy.model_dump()
+    assert data["schemaVersion"] == "V1"
+    assert data["minStatementLength"] == 20
+    assert data["allowedContactSharingModes"] == ["MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT"]
+    try:
+        ApplicationMaterialPolicy(schemaVersion="V2")
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("unknown policy schema version must fail closed")
+    try:
+        ApplicationMaterialPolicy(unknownField=True)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError("unknown material policy fields must be rejected")
+
+
+def test_service_exposes_and_validates_material_policy_and_teacher_sla():
+    values = service._body_values({
+        "teacherConfirmSlaHours": 24,
+        "applicationMaterialPolicy": {
+            "schemaVersion": "V1",
+            "profileRequired": True,
+            "requiredSections": ["SELF_INTRO"],
+            "requiredItemTypes": ["PROJECT"],
+            "applicationStatementRequired": True,
+            "minStatementLength": 12,
+            "resumePdfEnabled": True,
+            "allowedContactSharingModes": ["MASKED_ONLY", "AFTER_INTERVIEW"],
+        },
+    })
+    assert values["teacher_confirm_sla_hours"] == 24
+    assert values["application_material_policy_json"]["schemaVersion"] == "V1"
+    assert values["application_material_policy_json"]["requiredSections"] == ["SELF_INTRO"]
+    service._validate_identity(values)
+    try:
+        service._validate_identity({"teacher_confirm_sla_hours": 169})
+    except Exception as exc:
+        assert getattr(exc, "code", None) == "VALIDATION_ERROR"
+    else:
+        raise AssertionError("teacher SLA above 168h must fail closed")
+    try:
+        service._normalize_material_policy({"schemaVersion": "V1", "unknown": True})
+    except Exception as exc:
+        assert getattr(exc, "code", None) == "VALIDATION_ERROR"
+    else:
+        raise AssertionError("unknown service policy fields must fail closed")
+
+
+def test_campaign_read_contract_returns_sla_and_material_policy():
+    campaign = InternshipRecruitmentCampaign(
+        id=8,
+        tenant_id=1,
+        batch_id=10,
+        campaign_code="2026-A-2",
+        campaign_name="2026 第二轮",
+        round_no=2,
+        status="DRAFT",
+        teacher_confirm_sla_hours=48,
+        application_material_policy_json={"schemaVersion": "V1", "profileRequired": True},
+    )
+    row = service._row(campaign)
+    assert row["teacherConfirmSlaHours"] == 48
+    assert row["applicationMaterialPolicy"]["schemaVersion"] == "V1"
+    assert row["applicationMaterialPolicy"]["profileRequired"] is True
 
 
 def test_mutations_lock_rows_and_require_expected_version():
