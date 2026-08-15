@@ -6,7 +6,7 @@ entries:
     action: upload+scan+import+validate
     fileCategory: IDENTITY_IMPORT_XLSX
     api: POST /api/v1/data-exchange/imports/identity/{kind}/validate-file; GET /api/v1/data-exchange/imports/{jobId}; POST /api/v1/data-exchange/imports/{jobId}/confirm
-    backendService: backend/app/services/identity_import_scan_orchestrator.py; backend/app/services/identity_import_path_parser.py
+    backendService: backend/app/services/identity_import_scan_orchestrator.py; backend/app/services/identity_import_path_parser.py; backend/app/services/identity_import_staging_service.py
     storageMode: QUARANTINE_TO_SCANNED_PATH_PARSER
     authMode: systemAdmin.user.import+tenant+operator-owned-job
     dataScope: tenant+operator+source-file
@@ -20,4 +20,4 @@ entries:
     status: active
     risk: P0
     targetPhase: '3'
-    notes: 上传请求只流式登记隔离文件；扫描通过后同一 ImportJob 才进入 PARSING，openpyxl 直接读取本地路径，确认只接受 jobId 和 expectedVersion。
+    notes: 上传请求只流式登记隔离文件；扫描通过后同一 ImportJob 才进入 PARSING，openpyxl 直接读取本地路径；normalized staging 会生成错误报告工作簿；确认只接受 jobId 和 expectedVersion。

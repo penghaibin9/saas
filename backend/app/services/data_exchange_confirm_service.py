@@ -43,8 +43,16 @@ def confirm_import_job(*args, **kwargs):
     from app.services import data_exchange_job_service as jobs
 
     item = jobs.get_import_job(job_id, user=kwargs.get("user") or {})
-    if str(item.get("adapterType") or "") in {jobs.IMPORT_ADAPTER_IDENTITY, jobs.PENDING_IDENTITY_ADAPTER}:
+    adapter_type = str(item.get("adapterType") or "")
+    import_type = str(item.get("importType") or "")
+    if adapter_type in {jobs.IMPORT_ADAPTER_IDENTITY, jobs.PENDING_IDENTITY_ADAPTER}:
         return confirm_identity_import_job(*args, **kwargs)
+    if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
+        "ACADEMIC_ROSTER",
+        "ACADEMIC_GRADE",
+        "ACADEMIC_SCHEDULE",
+    }:
+        return _legacy.confirm_import_job(*args, **kwargs)
     return _legacy.confirm_import_job(*args, **kwargs)
 
 
