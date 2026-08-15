@@ -146,41 +146,80 @@ def test_enterprise_mentor_cannot_review_recruitment_applications():
     _assert_code(exc, "NO_PERMISSION")
 
 
-def test_expired_enterprise_hr_grant_fails_closed_in_canonical_resolver(monkeypatch):
-    """Expiry is evaluated on every resolve; stored ACTIVE alone is never sufficient."""
-    from app.models.internship_enterprise_portal import InternshipEnterpriseAccessGrant
+def test_expired_enterprise_hr_grant_fails_closed_in_real_mysql(db_mode):
+    """An ACTIVE persisted HR grant is still denied once its validity window has expired."""
+    from app.db.session import get_sessionmaker
+    from app.models.internship_enterprise_portal import (
+        InternshipEnterpriseAccessGrant,
+        InternshipEnterpriseMember,
+    )
     from app.modules.internship.services import internship_enterprise_access_service as access_svc
 
-    now = datetime(2026, 8, 15, 12, 0, 0)
-    member = SimpleNamespace(id=11, company_id=22, tenant_id=991001, status="ACTIVE")
-    grant = InternshipEnterpriseAccessGrant(
-        tenant_id=991001,
-        member_id=11,
-        company_id=22,
-        grant_type="RECRUITMENT",
-        campaign_id=33,
-        batch_id=44,
-        valid_from=now - timedelta(days=2),
-        valid_until=now - timedelta(seconds=1),
-        status="ACTIVE",
-    )
+    now = datetime.utcnow()
+    tenant_id = 8_100_000_000 + (uuid4().int % 500_000_000)
+    company_id = 8_700_000_000 + (uuid4().int % 100_000_000)
+    user_id = 8_800_000_000 + (uuid4().int % 100_000_000)
+    campaign_id = 8_900_000_000 + (uuid4().int % 50_000_000)
+    batch_id = 8_950_000_000 + (uuid4().int % 40_000_000)
 
-    class _DB:
-        def scalar(self, _stmt):
-            return grant
-
-    monkeypatch.setattr(access_svc, "_get_member", lambda *_args, **_kwargs: member)
-    with pytest.raises(AppException) as exc:
-        access_svc.resolve_active_grant_in_tx(
-            _DB(),
-            tenant_id=991001,
-            member_id=11,
-            grant_type="RECRUITMENT",
-            campaign_id=33,
-            batch_id=44,
-            now=now,
+    db = get_sessionmaker()()
+    try:
+        member = InternshipEnterpriseMember(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            user_id=user_id,
+            member_role="HR",
+            status="ACTIVE",
+            is_primary=False,
+            accepted_at=now - timedelta(days=10),
+            created_at=now - timedelta(days=10),
+            updated_at=now - timedelta(days=10),
+            is_deleted=False,
+            version=0,
         )
-    _assert_code(exc, "NO_PERMISSION")
+        db.add(member)
+        db.flush()
+        grant = InternshipEnterpriseAccessGrant(
+            tenant_id=tenant_id,
+            member_id=member.id,
+            company_id=company_id,
+            grant_type="RECRUITMENT",
+            campaign_id=campaign_id,
+            batch_id=batch_id,
+            valid_from=now - timedelta(days=2),
+            valid_until=now - timedelta(seconds=1),
+            status="ACTIVE",
+            created_at=now - timedelta(days=2),
+            updated_at=now - timedelta(days=2),
+            is_deleted=False,
+            version=0,
+        )
+        db.add(grant)
+        db.commit()
+        member_id = int(member.id)
+        grant_id = int(grant.id)
+    finally:
+        db.close()
+
+    db = get_sessionmaker()()
+    try:
+        stored = db.get(InternshipEnterpriseAccessGrant, grant_id)
+        assert stored is not None
+        assert stored.status == "ACTIVE"
+        assert access_svc.effective_grant_status(stored, now=now) == "EXPIRED"
+        with pytest.raises(AppException) as exc:
+            access_svc.resolve_active_grant_in_tx(
+                db,
+                tenant_id=tenant_id,
+                member_id=member_id,
+                grant_type="RECRUITMENT",
+                campaign_id=campaign_id,
+                batch_id=batch_id,
+                now=now,
+            )
+        _assert_code(exc, "NO_PERMISSION")
+    finally:
+        db.close()
 
 
 def test_wrong_enterprise_resource_is_denied():
