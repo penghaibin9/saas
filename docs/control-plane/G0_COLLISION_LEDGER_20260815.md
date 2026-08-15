@@ -2,34 +2,36 @@
 
 Status: ACTIVE
 Generated: 2026-08-15
-Last live refresh: 2026-08-15 07:32 +08:00
+Last live refresh: after I1/I2 exact-head seal and I4 pre-I3 preflight
 
 ## Exact branch truth
 
 - main: `414216c4a79ff035aee87d70b35572572f5c0535`
-- E-A01 / PR #128: `6089e92377ae9bc374a4c5c67f31ee2581bc2005`
-- E-A02 / PR #131: `d64311b4d085d52f77aed5e4f2849e0ca78502d0`
-- E-A03 / PR #129: `8f10b2c4baa60e37ec0a5ead5a523c9e9f5b875e`
-- Control Plane / PR #133: `6852e4e3484097c7094e945856a9f0f6cd7965cc`
+- E-A01 / PR #128: `a02513cc275ed8ba156d6a52765f21e4a69c9d6d`
+- E-A02 / PR #131: `b967ed0cd91203f47856ce15e62c10412210f031`
+- E-A03 / PR #129: `3f11c7d7a612d465b0e39d752df5e4d4f3ade6ff`
+- Control Plane / PR #133: `b28c5ffa3c8ebcbf5a6cdd6d3ba9617f5c8cdd54`
 
-Live drift since the first G0 snapshot is expected and is re-read before every shared-writer decision. Current GitHub truth always wins over the handbook snapshot or an earlier ledger line.
-
-Latest A01 movement is still a shared-writer change: `6089e923` modifies `backend/alembic/versions/20260815_internship_e_position_campaign.py` to replace a placeholder with the canonical position/campaign migration. Therefore the Alembic writer is **not released**. A02's latest change is an enterprise-portal auth-session lifecycle test; A03's latest change is student-selection fail-closed campaign-context work. Neither changes the Control Plane ownership decision.
+Live drift is expected. GitHub current truth always wins over this ledger, the handbook snapshot, or an earlier SHA. Re-read the relevant PR HEAD before every shared-writer decision.
 
 ## Collision classification
 
 ### YELLOW_A01_LOCK
 
-Do not write until A01 releases the current writer batch:
+Do not write until A01 explicitly completes A01-13 and releases the current shared-writer batch:
+
 - `backend/app/api/v1/route_registration.py`
 - `backend/alembic/versions/**`
 - `backend/app/models/__init__.py`
 
-A01 has advanced from the original G0 head and is still actively writing Alembic at `6089e923`; S0-06, B1 schema migration, B5 normalized RoleTemplate relation migration, I3 staging migration and other Control Plane migrations remain blocked. A01 release is a writer-release condition, not a requirement to wait for the whole E series.
+A01 PR #128 remains Draft and its checklist still shows `A01-13 MySQL 并发 / 越权 / 状态机 targeted seal` unchecked. Its latest `a02513cc` is an enterprise route-auth policy test commit; that does **not** constitute a writer-release signal. Therefore S0-06, B1 schema completion, B5 normalized/published RoleTemplate schema, I3 normalized staging and other Control Plane migrations remain blocked.
+
+The release condition is explicit A01-13 seal / writer release, not elapsed time and not “latest commit did not happen to touch Alembic”.
 
 ### RED_E_DOMAIN
 
 Read/inspect/consume contracts only:
+
 - `backend/app/modules/internship/**`
 - `backend/app/models/internship_*`
 - `enterprise-portal/**`
@@ -38,7 +40,8 @@ Read/inspect/consume contracts only:
 
 ### GREEN / CONTROL_PLANE_OWNER
 
-Safe to progress independently:
+Safe to progress independently when construction order permits:
+
 - `backend/app/modules/system_admin/**`
 - `backend/app/modules/platform/**`
 - Control Plane adapters under `backend/app/core/**` that do not take over E domain guards
@@ -49,6 +52,16 @@ Safe to progress independently:
 - `frontend/src/modules/system/**`
 - `frontend/src/modules/platform/**`
 - system/platform route inventory and move-only compatibility work that does not touch `route_registration.py`
+
+## Locked construction order after I1/I2
+
+A01 writer release first, then:
+
+`S0-06 → B1/B5 schema migration → I3 → other Control Plane migrations → I4 full 20K Production Gate → B8 → E×IAM Gold → Final Gold`
+
+B8 must not be implemented early merely because its files are GREEN. Its frozen order is:
+
+`SYSTEM shadow → zero unexplained drift → PR #104 20K role topology → school full E2E → explicit SCHOOL_ADMIN TENANT permission snapshot → retire wildcard`
 
 ## G0 fact map
 
@@ -62,54 +75,77 @@ Safe to progress independently:
 ### RoleTemplate / CustomRoleSource
 
 - Governance tables exist in `backend/app/models/permission_governance.py`.
-- Control Plane B5 non-migration work now enforces DRAFT mutability, immutable PUBLISHED versions, diff/impact and rollback-as-new-version semantics on the existing table.
+- B5 non-migration work enforces DRAFT mutability, immutable PUBLISHED versions, diff/impact and rollback-as-new-version semantics on the current authority surface.
 - CUSTOM school roles remain pinned rather than silently following template upgrades.
-- Normalized RoleTemplate permission relations are still YELLOW because they require Alembic.
+- Normalized RoleTemplate permission relations / final published-template schema remain YELLOW because they require the shared Alembic writer.
+- B8 SYSTEM shadow therefore remains sequenced after B5 schema migration; do not invent a half-resolver against an unfinished publish schema.
 
 ### SecurityChange
 
-- B1 non-migration work now materializes ACTIVATE/ROLLBACK into `RolePermission` and keeps critical audit in the mutation transaction.
+- B1 non-migration work materializes ACTIVATE/ROLLBACK into `RolePermission` and keeps critical audit in the mutation transaction.
 - Runtime Role / Permission catalog drift fail-closes instead of creating global permissions from a school request.
 - Additional schema normalization remains YELLOW until A01 releases Alembic.
 
 ### Platform boundary / PAM
 
-- `/api/v1/platform/*` now has a shared Platform Principal outer gate before permission matching.
+- `/api/v1/platform/*` has a Platform Principal outer gate before permission matching.
 - School `SCHOOL_ADMIN="*"` cannot cross the principal plane into Platform APIs.
-- B2 adds runtime Platform context, recent-auth / ACR / AMR assurance, critical PAM audit, Support Scope catalog, scoped Support Session enforcement, explicit termination and Access Review close/revoke behavior without adding schema.
-- Normalized PAM schema, if required by the final design, remains a migration card after writer release.
+- B2 includes runtime Platform context, recent-auth / ACR / AMR assurance, critical PAM audit, Support Scope catalog, scoped Support Session enforcement, explicit termination and Access Review close/revoke behavior without adding schema.
 
 ### Permission Catalog
 
 - `shared/contracts/permission-catalog.json` is the Control Plane authority.
-- E-series recruitment and enterprise permissions are registered under `moduleKey=internship`.
+- E-series recruitment and enterprise permission language is registered under `moduleKey=internship`.
 - `USED_UNDEFINED=CI RED` remains enforced; UI action keys are not promoted into RBAC permissions.
-- Legacy wildcard/naming patterns are explicitly tracked as B8 debt instead of silently accepted as exact catalog truth.
-- Exact-head Control Plane Targeted reconciliation is green.
+- Legacy wildcard/naming patterns are B8 debt, not silently accepted as final catalog truth.
 
 ### EffectiveAccess
 
-- Shared EffectiveAccess contract now distinguishes principal plane, permission digest/version, security revision, module entitlement health and explainable denial reasons.
-- School context preserves `moduleEntitlements=None` when entitlement calculation is unhealthy; it is not coerced to an empty purchased-module list.
+- Shared EffectiveAccess distinguishes principal plane, permission digest/version, security revision, module entitlement health and explainable denial reasons.
+- Module-authority failure is now non-cacheable: `moduleAccessHealthy=false → cacheable=false + ctxKey=null`, even when security revision itself is healthy.
+- School context preserves `moduleEntitlements=None` when entitlement calculation is unhealthy.
 - E enterprise Domain Guard remains owned by A01; Control Plane consumes server facts and never re-implements EnterpriseMember / AccessGrant / CampaignEnterprise / company-resource/state-machine authority.
 
 ### Identity Import
 
-- I1/I2 runtime composition now makes Data Exchange upload register `SCANNING`, GET pure-read, and parsing an explicit process/retry command.
-- Legacy student/teacher URLs are thin adapters into canonical Data Exchange; obsolete mixed direct parser returns HTTP 410.
-- The S0 byte-frozen source still contains the historical direct-parser code for move-only evidence; file-capability inventory records it as `legacy` and `scanGated=false` rather than hiding the source risk.
-- Exact-head Data Exchange MySQL/Alembic/pytest/frontend/negative-contract gate is green.
-- 20K single-job import Gold remains `BLOCKED_BY_I3`; no staging migration means no false 20K claim.
+- I1/I2 canonical upload first reserves a durable `FileUploadSession` request identity, then stores the sensitive FileObject and registers one SCANNING ImportJob.
+- Same request key replays to the same FileObject/ImportJob, including after adapter ref changes to the final identity batch.
+- GET remains pure read; parsing is an explicit process/retry command.
+- Legacy student/teacher URLs are thin adapters; obsolete mixed direct parser remains HTTP 410.
+- Exact-head `367f2f72` Data Exchange MySQL gate is sealed: single Alembic head + upgrade, compile, 23 authoritative tests, PC lint/build and negative confirmation/RBAC contracts all success.
+- 20K single-job import Gold remains `BLOCKED_BY_I3`; no normalized staging migration means no false 20K claim.
+
+### I4 pre-I3
+
+- Role-member and role-audit resources are DB paged with bounded `pageSize`.
+- Control Plane Targeted at exact head `b28c5ffa` executes I4 preflight and is success.
+- The preflight explicitly freezes `currentSingleJobGold=false` and `I3_NORMALIZED_STAGING_MIGRATION` as the blocker.
+- Dynamic EffectiveAccess unit coverage is part of change-sensitive backend pytest; queued/running is not counted as success until GitHub reports success.
+
+### B8 readiness only — no runtime switch yet
+
+The authority handbook freezes four separate resolver planes:
+
+1. OLD built-in `ROLE_PERMISSIONS`
+2. NEW published TENANT RoleTemplate
+3. CUSTOM `RolePermission`
+4. PLATFORM Workforce resolver
+
+Shadow compares TENANT SYSTEM roles only. CUSTOM must not fall back to templates; PLATFORM must not enter school RoleTemplate. `ALLOW/DENY` disagreement in either direction must be explainable before any wildcard retirement.
+
+Current `permission_bundle_service` already inventories and expands wildcard debt and `WildcardRetirement` exists, but existing tests intentionally assert that governance writes do not yet alter real authz. Therefore runtime SYSTEM shadow is genuinely not implemented and must wait for the published RoleTemplate schema + full I4 sequence.
 
 ## E-series IAM inputs that Control Plane owns
 
 TENANT:
+
 - `internship.recruitment.view`
 - `internship.recruitment.manage`
 - `internship.recruitment.invite`
 - `internship.recruitment.close`
 
 ENTERPRISE permission language in the shared catalog:
+
 - `enterprise.internship.company.view`
 - `enterprise.internship.company.edit`
 - `enterprise.internship.position.view`
@@ -124,21 +160,15 @@ Enterprise allow = permission AND active EnterpriseMember AND active/unexpired A
 
 ## Current machine evidence
 
-At Control Plane exact head `6852e4e3`:
-- S0 byte-identical Move gate: GREEN
-- G0 inventory artifact: GREEN
-- Permission Catalog reconciliation: GREEN
-- File capability inventory schema: GREEN
-- File capability strict existing baseline: GREEN
-- Changed production file-capability registration: GREEN
+Sealed evidence already obtained:
 
-The branch carries targeted scanners/contracts for:
-- static Alembic inventory without writing the migration tree
-- system/platform route snapshots
-- `/platform` mutation inventory
-- permission usage / creator inventory
-- E permission catalog presence
-- critical mutation policy
-- I4 20K preflight state
+- I1/I2 exact-head `367f2f72`: Data Exchange MySQL Authority gate — GREEN
+- I4 pre-I3 exact-head `b28c5ffa`: Control Plane Targeted including I4 preflight — GREEN
+- S0 byte-identical Move gate — GREEN
+- G0 inventory — GREEN
+- Permission Catalog reconciliation — GREEN
+- File capability inventory strict baseline — previously GREEN on the Control Plane line
 
-G0 code-writing boundary remains respected: the Control Plane branch still touches none of A01's three locked writer classes.
+At `b28c5ffa`, queued/pending/in-progress GitHub jobs remain **not proven** until they complete. Do not promote pre-I3 I4 to full 20K Gold before I3 exists and the real XLSX + scan + worker + MySQL + receipt gate passes.
+
+G0 code-writing boundary remains respected: the Control Plane branch has not taken any of A01's three locked writer classes.
