@@ -1,4 +1,4 @@
-import { getSelectedCampaignId, request } from './request'
+import { getSelectedCampaignId, request } from './request.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
