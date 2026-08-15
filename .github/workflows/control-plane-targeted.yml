@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/app/api/v1/system.py'
       - 'backend/app/api/v1/platform.py'
+      - 'backend/app/api/v1/route_registration.py'
       - 'backend/app/modules/system_admin/**'
       - 'backend/app/modules/platform/**'
       - 'backend/app/core/permissions.py'
@@ -15,6 +16,8 @@ on:
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
+      - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
       - 'frontend/src/modules/platform/**'
       - 'shared/contracts/**'
@@ -29,6 +32,7 @@ on:
     paths:
       - 'backend/app/api/v1/system.py'
       - 'backend/app/api/v1/platform.py'
+      - 'backend/app/api/v1/route_registration.py'
       - 'backend/app/modules/system_admin/**'
       - 'backend/app/modules/platform/**'
       - 'backend/app/core/permissions.py'
@@ -37,6 +41,8 @@ on:
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
+      - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
       - 'frontend/src/modules/platform/**'
       - 'shared/contracts/**'
@@ -71,11 +77,38 @@ jobs:
       - name: B0-I4 Python syntax gate
         run: |
           python -m compileall -q \
+            backend/app/api/v1/route_registration.py \
             backend/app/modules/system_admin \
             backend/app/modules/platform \
             backend/app/core/permission_catalog.py \
             backend/app/core/effective_access.py \
-            backend/app/services/security_change_service.py
+            backend/app/services/security_change_service.py \
+            backend/app/services/permission_bundle_service.py \
+            backend/alembic/versions/20260815_control_plane_role_governance.py
+      - name: B1/B5 canonical schema source contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          migration = Path('backend/alembic/versions/20260815_control_plane_role_governance.py').read_text(encoding='utf-8')
+          model = Path('backend/app/models/permission_governance.py').read_text(encoding='utf-8')
+          route = Path('backend/app/api/v1/route_registration.py').read_text(encoding='utf-8')
+          required_migration = [
+              '20260815_ctrl_role_gov', 't_role_template_permission',
+              '_preaudit_custom_role_sources', 'uk_custom_role_source_role',
+          ]
+          required_model = [
+              'class RoleTemplatePermission', 'role_id: Mapped[int]',
+              'publish_status: Mapped[str]', 'previous_template_id: Mapped[int | None]',
+          ]
+          for token in required_migration:
+              assert token in migration, token
+          for token in required_model:
+              assert token in model, token
+          assert 'from app.modules.system_admin.routers import system_i4_router' in route
+          assert 'from app.modules.platform.routers import platform_router' in route
+          assert 't_role_template_v2' not in migration + model
+          print('S0-06/B1/B5 source contract OK')
+          PY
       - name: B6/B7 frontend workspace contracts
         run: |
           python - <<'PY'
