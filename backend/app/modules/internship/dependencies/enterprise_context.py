@@ -42,13 +42,14 @@ class EnterpriseContext(EnterprisePrincipal):
     batch_id: int | None = None
 
 
-# Recruitment permissions are deliberately role-level only. Tenant/company/campaign/grant scope is
-# still revalidated by get_enterprise_principal + resolve_recruitment_context on every request.
-# MENTOR belongs to the later internship-collaboration surface and must not process applicants.
+# Enterprise permission is role-level only. Resource/tenant/company/campaign/batch/grant scope is
+# always revalidated separately by the corresponding EnterpriseContext resolver.
 _ENTERPRISE_RECRUITMENT_PERMISSION_ROLES: dict[str, frozenset[str]] = {
     "internship.enterprise.view": frozenset({"COMPANY_ADMIN", "HR", "MENTOR"}),
     "internship.application.view": frozenset({"COMPANY_ADMIN", "HR"}),
     "internship.application.review": frozenset({"COMPANY_ADMIN", "HR"}),
+    "internship.student.view": frozenset({"COMPANY_ADMIN", "HR", "MENTOR"}),
+    "internship.eval.enterprise.manage": frozenset({"COMPANY_ADMIN", "HR", "MENTOR"}),
 }
 
 
@@ -94,8 +95,6 @@ def get_enterprise_principal(authorization: Optional[str] = Header(default=None)
         member_role=str(member.member_role),
         claims=dict(claims),
     )
-    # Downstream canonical internship services use the existing request context/_tid() path.
-    # Populate it from signed/revalidated claims, never from a client companyId/body field.
     set_tenant({
         "tenantId": str(principal.tenant_id),
         "tenantCode": principal.tenant_code,
@@ -116,12 +115,6 @@ def get_enterprise_principal(authorization: Optional[str] = Header(default=None)
 
 
 def require_enterprise_permission(code: str):
-    """Fail-closed enterprise-member action permission dependency.
-
-    The permission code namespace is shared with the canonical internship RBAC contract while the
-    principal is the enterprise token/member authority, not a school staff role. Resource scope is
-    intentionally enforced separately by EnterpriseContext.
-    """
     allowed_roles = _ENTERPRISE_RECRUITMENT_PERMISSION_ROLES.get(code)
     if allowed_roles is None or not code.startswith("internship."):
         raise RuntimeError(f"unregistered enterprise internship permission: {code}")
