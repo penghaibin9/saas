@@ -18,86 +18,90 @@
 10. A02-9 企业评价
 11. A02-10 Campaign 关闭后的权限/历史态
 
-每完成一批自动进入下一批，不重排、不跨 Authority。整线完成后进入 exact-head targeted 门禁；A01 新 facade/permission 冻结后仍按原顺序逐项校准，不在 A02 猜合同。
+每完成一批自动进入下一批，不重排、不跨 Authority。A01 或总集成线新增真合同后，仍按 `A02-1 → A02-10` 原顺序校准，不在 A02 自造后端路径、DTO 或权限真值。
 
-## Authority 边界
+## Authority / fail-closed 边界
 
-- 企业 API 不接受客户端 `companyId` 作为 Authority。
-- 企业岗位只能 `DRAFT → PENDING`；企业端不提供 `PUBLISH`。
-- 企业申请 Decision 仅允许 `INTERESTED / INTERVIEW / ACCEPT_INTENT / REJECTED`。
-- `ACCEPT_INTENT` 只表示企业拟接收并等待学校最终确认，不能调用正式落岗 Authority。
-- 企业撤回拟接收遵循 A01 canonical `ACCEPT_INTENT → REJECTED`，必须填写原因；历史 Decision 保留，effect 由后端置为 `SUPERSEDED`，A02 不造 `/withdraw-accept` 第二入口。
-- Decision `status` 与 `effect_status` 分离：effect 仅 `ACTIVE / EXPIRED / SUPERSEDED / CONSUMED`，均不等于正式 Placement。
-- Applicant 材料只消费 `ApplicationMaterialSnapshot` 投影，不读取完整 StudentProfile；学校实名标记只有 canonical school facts 或服务端显式 `studentVerified=true` 才显示。
-- 联系方式只有服务端显式 `allowed=true` 才允许 reveal；缺字段、false、旧枚举都 fail-closed。
-- 实习学生只读取正式 `InternshipRecord`。
-- 企业评价复用现有 canonical；actor/member/source/time/audit 由后端 facade 写入。
-- Campaign `CLOSED/ARCHIVED` 后 RECRUITMENT 写动作 fail-closed；历史申请/岗位/Decision 保留。
-- `INTERNSHIP_COLLAB` 不能由前端根据 Campaign 状态推断；只有服务端显式确认有效 Grant 后才开放正式实习协同能力。
-- A01 尚未冻结的接口**不再请求兼容/猜测路径**：adapter 在客户端本地返回 `ENTERPRISE_FACADE_UNFROZEN`，企业页面显示业务化“学校端尚未开放”提示，且运行时门禁要求网络请求数为 0。
-- 前端角色门禁只用于 UX fail-closed，不替代后端权限：A01 每个 Applicant 请求仍重新校验 member role + tenant/company/campaign/grant scope。
+- 企业 API 不接受客户端 `companyId` 作为 Authority；企业范围只由服务端 EnterpriseMember / Grant / Context 重校验。
+- 企业岗位只允许草稿与提交学校审核；企业端没有 `PUBLISH`、正式落岗或 `assign_position` Authority。
+- 企业 Decision 仅 `INTERESTED / INTERVIEW / ACCEPT_INTENT / REJECTED`；`ACCEPT_INTENT` 不是正式 Placement。
+- 撤回拟接收遵循 canonical `ACCEPT_INTENT → REJECTED` 且必须填写原因；不造 `/withdraw-accept` 第二入口。
+- Decision `status` 与 `effect_status` 分离；effect 仅 `ACTIVE / EXPIRED / SUPERSEDED / CONSUMED`。
+- Applicant 只消费 `ApplicationMaterialSnapshot` 企业投影；学校实名只认 canonical school facts / 显式 `studentVerified=true`；联系方式只在服务端显式 `allowed=true` 时 reveal。
+- A01 未冻结 facade 一律客户端本地 `ENTERPRISE_FACADE_UNFROZEN`，运行时门禁要求网络请求数严格为 0；不再请求 `/enterprise/internship/*` compatibility root。
+- A01 已冻结 Applicant 权限：`COMPANY_ADMIN / HR` 可 view/review；`MENTOR` 不能处理 Applicant。A02 只做 UX fail-closed，服务端仍是最终权限 Authority。
+- Campaign `CLOSED/ARCHIVED` 后 RECRUITMENT 写动作 fail-closed；`INTERNSHIP_COLLAB` 不从 Campaign/Grant 客户端推断。
+- 企业可见 Vue template 不允许泄漏 `A01 / Authority / canonical / facade / companyId / 状态机 / 真值` 等工程术语；技术合同留在 script/test/README，企业界面只使用业务语言。
 
 ## 当前施工状态
 
-- **A02-0 已完成**：独立工程壳、路由、六项固定导航、tokens/common styles；真实 `package-lock.json` 已提交，workflow 使用 Node 24、Actions v7、只读 `contents` 权限与 `npm ci` 可复现安装；targeted 只保留 PR 单触发，并显式 checkout PR HEAD + hard assertion。Playwright 仅安装 headless Chromium shell，浏览器安装步骤单独 8 分钟硬超时。
-- **A02-1 已完成**：接入 A01 正式 `/internship/enterprise-portal/auth/login`、`auth/invite/inspect`、`auth/invite/accept`、`context?campaignId=`；Bearer/refresh token 不落浏览器持久存储；普通登录清理旧 Campaign；邀请激活只能锁定**同一 tenantCode + token 刚刚 inspect 成功返回的 campaignId**，View 不再提交 `campaignId/companyId`；支持 A01 `ENTERPRISE_CONTEXT_REQUIRED` 多 EnterpriseMember 选择且只回传 `memberId`；refresh 明确失效时清会话、网络暂时失败不误登出；受保护路由无内存认证直接回登录；显式退出清 Pinia/Campaign 上下文。
-- **A02-2 已完成**：企业首页、当前招聘季/阶段/截止时间、八项运营指标、今日任务、历史招聘季 UI 已完成；Campaign list / dashboard facade 未冻结时本地 fail-closed，不伪造 `OPEN`、不把缺失指标显示成 0，也不请求旧 compatibility root。
-- **A02-3 已完成**：企业公开资料编辑、学校控制字段只读；Logo 使用正常文件选择并走 canonical `POST /api/v1/files`；Company GET/PUT facade 未冻结时本地 fail-closed。
-- **A02-4 已完成**：我的岗位高密度列表、八态中文业务标签、DRAFT/PENDING 业务 UI 已完成；Position facade 未冻结时本地 fail-closed，缺失报名/拟接收/已落实计数不伪造为 0。
-- **A02-5 已完成**：五区岗位表单、保存草稿、提交学校审核、PENDING 只读/撤回后修改 UI 与白名单 payload 合同已完成；未冻结前不向猜测路由发写请求，企业端始终没有直接发布 Authority。
-- **A02-6 已完成并接入已冻结 Snapshot + role permission**：BOSS 式两栏工作台、分页/筛选 UI 已完成；Application list/candidate summary 仍未冻结，因此列表本地 fail-closed；材料详情只在已有经服务端校验的 applicationId + campaign context 时调用 A01 canonical `GET /internship/enterprise-portal/applications/{id}?campaignId=`。A01 已冻结 Applicant view/review 仅 `COMPANY_ADMIN / HR`；`MENTOR` 的“报名学生”导航保持六模块结构但显示为禁用项，直接路由也在任何 Applicant API 前 fail-closed。
-- **A02-7 已完成并接真 Decision Authority**：`POST /internship/enterprise-portal/applications/{id}/decision?campaignId=` adapter 已接入；`ACCEPT_INTENT` 二次确认、撤回原因、effect-state、ContactSharing enum 均已对齐 A01。A01 已冻结 review permission 为 `COMPANY_ADMIN / HR`；由于当前 `/context` 尚未显式返回 `capabilities.recruitmentWrite=true`，真实生产 Decision 按钮继续 fail-closed；客户端不会从 Grant/Campaign 自行推断可写。
-- **A02-8 已完成 UI/合同**：正式 `InternshipRecord` 企业学生列表的分页/筛选/Authority 边界已完成；企业投影 facade 未冻结时本地 fail-closed，不把 `ACCEPT_INTENT` 提升为正式实习生。
-- **A02-9 已完成 UI/合同**：企业评价任务分页、五维 0–100 显式评分、禁止伪造 actor/source/time/audit 已完成；评价 task/submit facade 未冻结时本地 fail-closed，不保留猜测的 `evaluation-tasks/{id}/submit` 路由。
-- **A02-10 已完成**：CLOSED/ARCHIVED 招聘写权限 fail-closed；历史招聘季只读入口 UI 保留；正式实习协同仅在服务端显式 `internshipCollab=true` 时开放。
+- **A02-0 已完成**：独立 Vue Portal、六模块导航、真实 `package-lock.json`、Node 24、Actions v7、只读 `contents`、`npm ci`；targeted 仅 PR 触发，显式 checkout `pull_request.head.sha` + hard assertion；Playwright 仅安装 Chromium headless shell，并有独立安装超时。
+- **A02-1 已完成**：接入 A01 login / invite inspect / invite accept / refresh / context；token 只在内存；refresh single-flight；认证明确失效清会话、暂时网络失败不误登出；普通登录清旧 Campaign；邀请激活只能使用同一 `tenantCode + token` 刚刚 inspect 返回的 campaignId，View 不提交 campaignId/companyId；支持 `ENTERPRISE_CONTEXT_REQUIRED` 多 EnterpriseMember 选择且只回传 `memberId`；显式退出清会话/Pinia/Campaign。
+- **A02-2 已完成 UI/合同**：首页、招聘季上下文、八项运营指标、任务、历史招聘季；Campaign list/dashboard 未冻结时本地 fail-closed，不伪造 `OPEN` 或缺失指标 0。
+- **A02-3 已完成 UI/合同**：企业资料学校控制字段只读，Logo 使用文件选择；Company GET/PUT 未冻结时编辑区/保存/上传全部禁用，并保证 `facadeReady` guard 发生在 File Center 上传之前，防止孤儿临时文件。
+- **A02-4/A02-5 已完成 UI/合同**：岗位八态、草稿/待审、岗位表单、白名单 payload；Position facade 未冻结时 0-network fail-closed；企业没有直接发布入口。
+- **A02-6 已接已冻结 Snapshot + role permission**：BOSS Applicant 工作台、服务端分页合同完成；Application list/candidate summary 未冻结时 fail-closed；canonical Snapshot GET 已接；MENTOR 报名学生导航禁用，直接 URL 也在任何 Applicant 请求前 fail-closed。
+- **A02-7 已接真 Decision Authority**：canonical Decision POST 已接；ACCEPT_INTENT 二次确认、撤回原因、effect-state、ContactSharing enum 已对齐。当前 `/context` 未显式返回 `capabilities.recruitmentWrite=true`，所以真实生产写按钮继续 fail-closed。
+- **A02-8 已完成 UI/合同**：正式 `InternshipRecord` 企业学生分页/筛选边界；enterprise projection facade 未冻结时本地 fail-closed，不把 ACCEPT_INTENT 提升为正式实习生。
+- **A02-9 已完成 UI/合同**：五维 0–100 企业评价、服务端分页、防伪 actor/source/time/audit 合同；task/submit facade 未冻结时本地 fail-closed。
+- **A02-10 已完成**：历史招聘季只读、招聘写 fail-closed；正式实习协同只接受服务端显式 capability。
 
-## A01 联调依赖账本
+## 总集成同步状态
 
-最新读取 A01 HEAD：`10ab5d32a3548eedb5f9c5b863939ab89ddae961`。
+A02 已安全同步当前 E-series integration base `b1e417643790d0cbe42b1c2f104c3c9b52eb0c8b`：
 
-### 已冻结并已被 A02 消费
+- 先以二父 merge 同步 `deddb723913bf1d39140593efdeef9c0b8a1bdec`；
+- integration 随后合入最新 main 后前进到 `b1e41764`，A02 再以二父 merge 同步；
+- 两轮同步前都完成碰撞审计，base 增量均未触碰 `enterprise-portal/**` 或 A02 专属 workflow；
+- 全程 `force=false`，未 merge main 到 A02 自己的施工逻辑，也未覆盖其他智能体分支；
+- 最新 compare 必须继续满足 `behind_by=0` 才允许称为最终候选。
+
+## A01 联调账本
+
+最新已审计 A01 HEAD：`a02513cc275ed8ba156d6a52765f21e4a69c9d6d`。
+
+### 已冻结并被 A02 消费
 
 - 企业认证 / 邀请 / `RECRUITMENT` context。
 - `GET /internship/enterprise-portal/applications/{application_id}?campaignId=`：canonical ApplicationMaterialSnapshot 企业投影。
 - `POST /internship/enterprise-portal/applications/{application_id}/decision?campaignId=`：canonical 企业 Decision 写链。
-- Enterprise Portal role permission：
+- 企业角色权限：
   - `internship.enterprise.view` → `COMPANY_ADMIN / HR / MENTOR`
   - `internship.application.view` → `COMPANY_ADMIN / HR`
   - `internship.application.review` → `COMPANY_ADMIN / HR`
-  - `MENTOR` 属于后续实习协同面，不能处理 Applicant。
-- EnterpriseApplicationDecision side-fact：`ACCEPT_INTENT` 有 `valid_until`；撤回要求原因并转 `REJECTED + SUPERSEDED`；学校正式落岗消费后为 `CONSUMED`。
-- PlacementSnapshot / 正式落岗事务继续归 A01/学校 Authority，A02 不把企业 Decision 宣称为录用或正式落岗。
+- public auth 路由与受保护路由 auth policy 已由 A01 回归测试冻结。
+- EnterpriseApplicationDecision / PlacementSnapshot / 正式落岗事务继续归 A01/学校 Authority。
 
 ### 当前 P0 联调缺口
 
-A01 `/context` 当前仍只返回 tenant/member/company/campaign/batch/grant 等上下文，**尚未显式返回 `capabilities.recruitmentWrite` 或可供客户端判定的 Campaign 写状态**。A02 不从 `grantType=RECRUITMENT`、Campaign ID 或历史状态反推可写性，因此生产环境 Decision/岗位写动作会继续 fail-closed，直到 A01 明确冻结写 capability。这是当前最优先的 A01→A02 联调缺口，不在 A02 绕过。
+A01 `/context` 仍只返回 tenant/member/company/campaign/batch/grant 等上下文，**没有显式 `capabilities.recruitmentWrite` 或等价安全写能力**。A02 不从 `grantType=RECRUITMENT`、Campaign ID 或历史状态反推可写性，因此 Decision/岗位写动作继续 fail-closed。
 
-### 仍未冻结的企业 Portal facade
+### 仍未冻结 facade
 
-- Campaign 列表 / Dashboard 详情
+- Campaign list / dashboard
 - Company GET / PUT
 - Position list/detail/create/update/submit/withdraw
-- Application 列表 / candidate summary
+- Application list / candidate summary
 - Resume PDF / contact-view
 - InternshipRecord 企业投影
-- 企业评价任务 / 提交 actor facade
-- 对外可调用的 `INTERNSHIP_COLLAB` context 路由
+- 企业评价 task / submit actor facade
+- outward `INTERNSHIP_COLLAB` context
 
-A02 对上述缺口统一**本地 fail-closed + 0 network**。A01 路由/DTO 真正落地后，联调仍按 `A02-1 → A02-10` 原顺序逐项校准，不另造 Authority。
+上述全部保持本地 fail-closed + 0 network；A01 真路由/DTO 落地后继续按固定顺序校准。
 
-## 最终门禁
+## 生产门禁
 
-固定收：
+最终候选固定收：
 
-1. explicit exact-head checkout + hard assertion
+1. exact PR head checkout + `git rev-parse` hard assertion
 2. `package-lock.json` + `npm ci`
-3. authority / privacy / negative UI / auth lifecycle / A01 facade / role-permission / unfrozen-facade 0-network contract tests
-4. ESLint
-5. production build
-6. 固定演示凭据扫描
-7. Chromium headless-shell targeted Playwright：
-   - 普通企业登录后 Campaign list 未冻结时本地 fail-closed，legacy compatibility root 请求数必须为 0
-   - HR 邀请 inspect → accept 后，accept 响应不带 campaignId 仍只能使用同 tenantCode + token 已校验的 campaignId 请求 canonical `/context`；无写 capability 时保持只读
-   - HR 已校验 Campaign context 下 canonical Snapshot 可读取，敏感字段不泄露，Decision 因缺显式 capability 保持禁用
-   - MENTOR 的“报名学生”导航禁用；即使直接进入 Applicant URL，也在发出 canonical Snapshot 请求前本地拒绝
-8. 浏览器证据 artifact SHA-256
+3. production-only `npm audit --omit=dev`
+4. audit JSON acquisition 完整性：必须是 npm audit v2，必须显式包含 high/critical/total，metadata 必须与 vulnerability 明细一致；网络错误 JSON、非法 JSON、缺计数或计数隐瞒一律 RED
+5. 共享 high/critical production dependency policy + 14 天审计 artifact；不允许用 dev dependency 噪声冒充 runtime 阻断
+6. authority / privacy / auth lifecycle / role-permission / business-copy / A01 facade / unfrozen-facade 0-network contract tests
+7. ESLint
+8. production build
+9. 固定演示凭据扫描
+10. Chromium headless-shell targeted Playwright：普通登录未冻结 Campaign list fail-closed；HR invite campaign 绑定；HR canonical Snapshot 隐私边界；MENTOR 直链 0 Snapshot 请求
+11. browser evidence artifact SHA-256
+12. 同 HEAD 仓库级 synthetic merge-ref CI，单独验证与当前 integration base 的集成，不与 exact-head 证据混用
