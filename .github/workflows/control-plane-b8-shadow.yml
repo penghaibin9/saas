@@ -15,6 +15,7 @@ on:
       - 'scripts/check/check-permission-catalog.py'
       - 'shared/contracts/permission-catalog.json'
       - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - 'shared/contracts/permission-catalog-b8-compatibility.json'
       - 'shared/contracts/control-plane/b8-system-shadow.json'
       - '.github/workflows/control-plane-b8-shadow.yml'
   push:
@@ -31,6 +32,7 @@ on:
       - 'scripts/check/check-permission-catalog.py'
       - 'shared/contracts/permission-catalog.json'
       - 'shared/contracts/permission-catalog-b8-concrete.json'
+      - 'shared/contracts/permission-catalog-b8-compatibility.json'
       - 'shared/contracts/control-plane/b8-system-shadow.json'
       - '.github/workflows/control-plane-b8-shadow.yml'
   workflow_dispatch:
@@ -94,8 +96,9 @@ jobs:
           summary = data['summary']
           assert summary['usedUndefined'] == 0
           assert summary['usedLegacyPattern'] == 0
-          assert summary['b8ConcreteExact'] == 449
-          assert summary['catalogExact'] > 500
+          assert summary['b8ConcreteExact'] == 539
+          assert summary['b8PostCutoverCompatibilityExact'] == 90
+          assert summary['catalogExact'] > 590
           assert summary['runtimeWildcardProbe'] > 0
           assert data['runtimeWildcardProbe']
           print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
@@ -128,7 +131,7 @@ jobs:
           assert data['headSha'] == '${{ github.event.pull_request.head.sha || github.sha }}'
           assert shadow['shadowScope'] == 'TENANT_SYSTEM_ROLES_ONLY'
           assert shadow['schoolAssignableTenantOnly'] is True
-          assert shadow['tenantPermissionUniverseCount'] > 400
+          assert shadow['tenantPermissionUniverseCount'] > 500
           assert shadow['unexplainedDriftCount'] == 0
           assert shadow['planeViolationCount'] == 0
           assert shadow['zeroUnexplainedDrift'] is True
