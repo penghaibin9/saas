@@ -68,6 +68,55 @@ def covered_by_pattern(code: str, pattern: str) -> bool:
     return code == pattern
 
 
+def _literal_strings(node: ast.AST | None, constants: dict[str, tuple[str, ...]]) -> list[str]:
+    """Resolve only reviewable static permission literals.
+
+    B8 must see permission codes hidden behind simple module-level constants such
+    as ``_ARCHIVE_MANAGE = \"academicAffairs.archive.manage\"``.  Deliberately
+    do not evaluate calls, attributes, f-strings, imports or other runtime
+    expressions; unresolved dynamic gates remain visible to separate source
+    reviews instead of this checker pretending to know their value.
+    """
+    if node is None:
+        return []
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, ast.Name):
+        return list(constants.get(node.id, ()))
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        values: list[str] = []
+        for child in node.elts:
+            values.extend(_literal_strings(child, constants))
+        return values
+    return []
+
+
+def _module_string_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+    """Collect simple module-level literal aliases used by permission gates."""
+    constants: dict[str, tuple[str, ...]] = {}
+    # A few passes let one constant alias another without evaluating arbitrary code.
+    for _ in range(3):
+        changed = False
+        for node in tree.body:
+            target: ast.Name | None = None
+            value: ast.AST | None = None
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                target = node.targets[0]
+                value = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                target = node.target
+                value = node.value
+            if target is None:
+                continue
+            values = tuple(dict.fromkeys(_literal_strings(value, constants)))
+            if values and constants.get(target.id) != values:
+                constants[target.id] = values
+                changed = True
+        if not changed:
+            break
+    return constants
+
+
 def python_usage():
     used = []
     creators = []
@@ -78,16 +127,18 @@ def python_usage():
             except (SyntaxError, UnicodeDecodeError):
                 continue
             rel = path.relative_to(ROOT).as_posix()
+            constants = _module_string_constants(tree)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
                 fn = node.func.id if isinstance(node.func, ast.Name) else node.func.attr if isinstance(node.func, ast.Attribute) else ""
                 if fn in GATE_CALLS:
                     for arg in node.args:
-                        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                            used.append({"permissionCode": arg.value, "file": rel, "line": node.lineno, "source": fn})
-                elif fn in {"assert_platform_capability", "require_platform_capability"} and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                    used.append({"permissionCode": f"platform.{node.args[0].value}", "file": rel, "line": node.lineno, "source": fn})
+                        for code in _literal_strings(arg, constants):
+                            used.append({"permissionCode": code, "file": rel, "line": node.lineno, "source": fn})
+                elif fn in {"assert_platform_capability", "require_platform_capability"} and node.args:
+                    for capability in _literal_strings(node.args[0], constants):
+                        used.append({"permissionCode": f"platform.{capability}", "file": rel, "line": node.lineno, "source": fn})
                 if fn == "Permission":
                     creators.append({"file": rel, "line": node.lineno})
     return used, creators
