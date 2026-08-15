@@ -29,7 +29,7 @@ onMounted(async()=>{
     <CampaignContextBar :campaign="context.campaign" :loading="context.loading" />
     <div v-if="context.historyMode" class="history-mode"><strong>当前招聘季已关闭</strong><span>岗位提交和候选人处理等招聘操作已关闭；岗位、申请和处理记录仍可作为历史查看。</span><span v-if="internshipCollabAllowed" class="collab-ok">学校已确认后续实习协同权限，正式实习学生和企业评价仍可继续处理。</span><span v-else class="collab-pending">后续实习协同权限需要学校确认；当前页面不会仅根据招聘季已结束就自动开放相关功能。</span></div>
     <div v-if="error" class="ep-error">{{ error }}。未取得真实数据时指标保持“—”。</div>
-    <div class="section-head"><div><span>招聘总览</span><strong>当前招聘季关键数字</strong></div><small>所有指标以学校系统返回的实时 Authority 数据为准</small></div>
+    <div class="section-head"><div><span>招聘总览</span><strong>当前招聘季关键数字</strong></div><small>所有指标以学校系统返回的实时业务数据为准</small></div>
     <div class="metrics">
       <div v-for="item in metricItems" :key="item[0]" class="metric ep-card"><div class="metric-top"><span>{{ item[2] }}</span><i></i></div><strong>{{ metricValue(item[0]) }}</strong><span class="metric-label">{{ item[1] }}</span></div>
     </div>
