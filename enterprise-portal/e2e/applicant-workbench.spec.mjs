@@ -77,7 +77,7 @@ async function installEnterpriseApi(page) {
   return state
 }
 
-test('A02 normal login fails closed when A01 Campaign list facade is not frozen', async ({ page }) => {
+test('A02 normal login fails closed when the school has not exposed a Campaign list facade', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   await page.goto('login')
   await page.getByLabel('学校编码').fill('CSZY')
@@ -86,7 +86,7 @@ test('A02 normal login fails closed when A01 Campaign list facade is not frozen'
   await page.getByRole('button',{name:'登录'}).click()
 
   await expect(page.getByRole('heading',{name:'选择招聘季'})).toBeVisible()
-  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Campaign list/)).toBeVisible()
+  await expect(page.getByText(/该企业协同能力尚未由学校端开放：招聘季列表/)).toBeVisible()
   await expect(page.getByText('当前没有可进入的招聘季')).toBeVisible()
   expect(state.legacyRequests).toBe(0)
 })
@@ -103,18 +103,18 @@ test('A02 invite activation binds campaign to the inspected token and context st
 
   await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
   await expect(page.getByText('招聘季 #2027')).toBeVisible()
-  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Campaign dashboard/)).toBeVisible()
+  await expect(page.getByText(/该企业协同能力尚未由学校端开放：招聘工作台/)).toBeVisible()
   expect(state.contextCampaignIds).toEqual(['2027'])
   expect(state.legacyRequests).toBe(0)
 
   await page.getByRole('link',{name:'报名学生'}).click()
   await expect(page.getByRole('heading',{name:'报名学生'})).toBeVisible()
-  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Application list/)).toBeVisible()
+  await expect(page.getByText(/该企业协同能力尚未由学校端开放：报名学生列表/)).toBeVisible()
   expect(state.legacyRequests).toBe(0)
   await page.screenshot({ path: 'test-results/a02-fail-closed-facades.png', fullPage: true })
 })
 
-test('A02 canonical Snapshot remains reachable only with an already validated campaign context', async ({ page }) => {
+test('A02 canonical Snapshot stays readable only with an already validated campaign context', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
   await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
