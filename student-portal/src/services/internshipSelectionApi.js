@@ -77,8 +77,8 @@ export const internshipSelectionApi = {
   position(positionId) { return latestRead('position', () => request(`/portal/internship/catalog/positions/${enc(positionId)}`)) },
   company(companyId) { return latestRead('company', () => request(`/portal/internship/catalog/companies/${enc(companyId)}`)) },
 
-  profile() { return latestRead('profile', () => request('/portal/internship/profile')) },
-  updateProfile(body) { return request('/portal/internship/profile', { method: 'PUT', body: normalizeProfileWriteBody(body) }) },
+  profile() { return latestRead('profile', () => request('/portal/internship/context/profile')) },
+  updateProfile(body) { return request('/portal/internship/context/profile', { method: 'PUT', body: normalizeProfileWriteBody(body) }) },
   profileCompleteness() { return latestRead('profile-completeness', () => request('/portal/internship/profile/completeness')) },
   profileItems() { return latestRead('profile-items', () => request('/portal/internship/profile/items')) },
   createProfileItem(body) { return request('/portal/internship/profile/items', { method: 'POST', body: normalizeProfileItemWriteBody(body) }) },

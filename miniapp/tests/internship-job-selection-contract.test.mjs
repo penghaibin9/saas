@@ -70,3 +70,9 @@ test('A03 production seal makes mobile authority reads latest-wins and context f
   assert.match(apiSource, /selectionBlockReason/)
   assert.match(apiSource, /availableFrom: profile\?\.availableFrom/)
 })
+
+test('A03 mobile profile read switches only to the registered P0 context authority', () => {
+  assert.match(apiSource, /realRequest\('\/mobile\/internship\/context\/profile'\)/)
+  assert.doesNotMatch(apiSource, /realRequest\('\/mobile\/internship\/profile'\)/)
+  assert.match(apiSource, /\/mobile\/internship\/profile\/completeness/)
+})

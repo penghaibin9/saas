@@ -67,6 +67,13 @@ test('A03-5 profile item types and projection align A01 canonical values', () =>
   assert.match(apiSource, /expectedLocations/)
 })
 
+test('A03-5 profile read/write uses the canonical P0 context authority without inventing unregistered seams', () => {
+  assert.match(apiSource, /request\('\/portal\/internship\/context\/profile'\)/)
+  assert.match(apiSource, /request\('\/portal\/internship\/context\/profile', \{ method: 'PUT'/)
+  assert.doesNotMatch(apiSource, /request\('\/portal\/internship\/profile'\)/)
+  assert.match(apiSource, /\/portal\/internship\/profile\/completeness/)
+})
+
 test('A03-5 completeness keeps backend blockers and submit conclusion', () => {
   assert.deepEqual(normalizeProfileCompleteness({ percent: 80, blockers: [{ code: 'INTRO_REQUIRED', message: '请补充自我介绍' }], canSubmit: false }), {
     percent: 80,

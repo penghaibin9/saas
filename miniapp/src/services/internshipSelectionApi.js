@@ -64,7 +64,7 @@ export const internshipSelectionApi = {
   positions(query = {}) { return realRequest(withQuery('/mobile/internship/catalog/positions', normalizeMobileCatalogQuery(query))) },
   position(positionId) { return latestRead('position', () => realRequest(`/mobile/internship/catalog/positions/${enc(positionId)}`)) },
   company(companyId) { return latestRead('company', () => realRequest(`/mobile/internship/catalog/companies/${enc(companyId)}`)) },
-  profile() { return latestRead('profile', () => realRequest('/mobile/internship/profile')).then(mobileProfileProjection) },
+  profile() { return latestRead('profile', () => realRequest('/mobile/internship/context/profile')).then(mobileProfileProjection) },
   profileCompleteness() { return latestRead('profile-completeness', () => realRequest('/mobile/internship/profile/completeness')) },
   volunteers() { return latestRead('volunteers', () => realRequest('/mobile/internship/context/volunteers')) },
   saveVolunteers(data) { return realRequest('/mobile/internship/context/volunteers', { method: 'PUT', data: data || {} }) },
