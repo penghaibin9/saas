@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -49,6 +50,64 @@ def test_normal_teacher_cannot_manage_recruitment():
     with pytest.raises(AppException) as exc:
         permissions.enforce_permission(user, "internship.recruitment.manage")
     _assert_code(exc, "NO_PERMISSION")
+
+
+def test_same_school_cross_college_scope_is_denied(db_mode):
+    """An ALLOW for one college must never bleed into a sibling college in the same tenant."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+    from app.services import scope_policy_service as scope_svc
+
+    tenant_id = 1000000000000000001
+    suffix = uuid4().hex[:8]
+    db = get_sessionmaker()()
+    try:
+        college_a = College(tenant_id=tenant_id, college_name=f"E-IAM-A-{suffix}", status="ACTIVE")
+        college_b = College(tenant_id=tenant_id, college_name=f"E-IAM-B-{suffix}", status="ACTIVE")
+        db.add_all([college_a, college_b])
+        db.flush()
+        major_a = Major(tenant_id=tenant_id, college_id=college_a.id, major_name=f"A-{suffix}", status="ACTIVE")
+        major_b = Major(tenant_id=tenant_id, college_id=college_b.id, major_name=f"B-{suffix}", status="ACTIVE")
+        db.add_all([major_a, major_b])
+        db.flush()
+        class_a = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_a.id,
+            class_name=f"A班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        class_b = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_b.id,
+            class_name=f"B班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        db.add_all([class_a, class_b])
+        db.commit()
+        college_a_id = int(college_a.id)
+        class_a_id = int(class_a.id)
+        class_b_id = int(class_b.id)
+    finally:
+        db.close()
+
+    role = "E_IAM_JOINT_COLLEGE_OPERATOR"
+    scope_svc.set_policy(
+        role,
+        effect="ALLOW",
+        target_type="COLLEGE",
+        target_id=str(college_a_id),
+        include_children=True,
+        reason="仅允许本学院",
+        tenant_id=tenant_id,
+    )
+    mine = scope_svc.decide(role, target_type="CLASS", target_id=str(class_a_id), tenant_id=tenant_id)
+    sibling = scope_svc.decide(role, target_type="CLASS", target_id=str(class_b_id), tenant_id=tenant_id)
+    assert mine["decision"] == "ALLOW"
+    assert mine["reasonCode"] == "INHERITED_ALLOW"
+    assert sibling["decision"] == "DENY"
+    assert sibling["reasonCode"] == "DEFAULT_DENY"
 
 
 def test_school_admin_identity_cannot_be_used_as_enterprise_principal():
