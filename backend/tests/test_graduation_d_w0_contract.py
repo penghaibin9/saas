@@ -95,8 +95,8 @@ def _decision_rows(result_id: int):
         db.close()
 
 
-def test_d_w0_required_items_can_pass_with_nonblocking_unknowns(db_mode):
-    """EMPLOYMENT/ARCHIVE/FEE reminders cannot make SYSTEM_PASSED impossible."""
+def test_d_w0_only_advisory_unknowns_can_pass_but_archive_unknown_blocks(db_mode):
+    """EMPLOYMENT/FEE remain advisory; ARCHIVE UNKNOWN stays Stage C3 fail-closed."""
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
     from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
@@ -106,10 +106,10 @@ def test_d_w0_required_items_can_pass_with_nonblocking_unknowns(db_mode):
     ]
     items.extend([
         {"item": "EMPLOYMENT", "result": "UNKNOWN"},
-        {"item": "ARCHIVE", "result": "UNKNOWN"},
         {"item": "FEE", "result": "UNKNOWN"},
     ])
     assert immutable._strict_overall(items) == "SYSTEM_PASSED"
+    assert immutable._strict_overall(items + [{"item": "ARCHIVE", "result": "UNKNOWN"}]) == "SYSTEM_ABNORMAL"
     assert immutable._strict_overall(items + [{"item": "CREDIT", "result": "UNKNOWN"}]) == "SYSTEM_ABNORMAL"
     assert immutable._strict_overall(items + [{"item": "ARCHIVE", "result": "FAIL"}]) == "SYSTEM_ABNORMAL"
 
