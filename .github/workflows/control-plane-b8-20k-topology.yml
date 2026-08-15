@@ -1,0 +1,199 @@
+name: Control Plane B8 20K IAM Topology
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/app/services/sandbox_school_master_seed.py'
+      - 'backend/app/services/sandbox_school_role_reconcile.py'
+      - 'backend/scripts/check_control_plane_b8_topology.py'
+      - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
+      - 'backend/scripts/reset_sandbox_school.py'
+      - 'backend/scripts/check_sandbox_20k_school.py'
+      - 'shared/contracts/permission-catalog.json'
+      - '.github/workflows/control-plane-b8-20k-topology.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/app/services/sandbox_school_master_seed.py'
+      - 'backend/app/services/sandbox_school_role_reconcile.py'
+      - 'backend/scripts/check_control_plane_b8_topology.py'
+      - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
+      - 'backend/scripts/reset_sandbox_school.py'
+      - 'backend/scripts/check_sandbox_20k_school.py'
+      - 'shared/contracts/permission-catalog.json'
+      - '.github/workflows/control-plane-b8-20k-topology.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-b8-20k-topology-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DB_ENABLED: 'true'
+  DB_DRIVER: mysql
+  MOCK_LOGIN_ENABLED: 'false'
+  JWT_SECRET: control-plane-b8-20k-topology-secret-at-least-32-bytes
+  SECRET_KEY: control-plane-b8-20k-topology-secret-at-least-32-bytes
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_b8_20k?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/control_plane_b8_20k?charset=utf8mb4
+  SENSITIVE_SEARCH_HMAC_KEY: control-plane-b8-20k-stable-search-hmac-key
+  SANDBOX_ADMIN2_PASSWORD: ci-only-admin2-strong-password-2026
+  SANDBOX_TEACHER2_PASSWORD: ci-only-teacher2-strong-password-2026
+  SANDBOX_STUDENT2_PASSWORD: ci-only-student2-strong-password-2026
+  FAST_TEST_SCHEMA: '0'
+  B8_TOPOLOGY_EVIDENCE_PATH: ../artifacts/control-plane/b8-20k-topology.json
+  B8_TOPOLOGY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  mysql-b8-20k-topology:
+    name: Exact-head MySQL B8 20K IAM topology
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: control_plane_b8_20k
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Strict concrete Permission Catalog reconciliation
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/control-plane
+          python scripts/check/check-permission-catalog.py --strict-legacy --write artifacts/control-plane/b8-20k-permission-catalog.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Verify schema and source
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          python -m py_compile scripts/check_control_plane_b8_topology.py
+          python -m py_compile scripts/prime_sandbox_neighbor_sentinel.py
+          python -m py_compile app/services/system_role_shadow_service.py
+          mysql -h127.0.0.1 -uroot -proot -e '
+            DROP DATABASE IF EXISTS control_plane_b8_20k;
+            CREATE DATABASE control_plane_b8_20k CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+          '
+          alembic upgrade head
+          alembic current
+
+      - name: Prime canonical neighbor-tenant sentinel
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/prime_sandbox_neighbor_sentinel.py --prime
+
+      - name: Full canonical standard-20k rebuild
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p ../artifacts/control-plane
+          /usr/bin/time -v python scripts/reset_sandbox_school.py --confirm --profile standard-20k \
+            2>&1 | tee ../artifacts/control-plane/b8-20k-rebuild.log
+          grep -F '[reset] 复核 demo-school 学生数：20 → 20' ../artifacts/control-plane/b8-20k-rebuild.log
+          python scripts/prime_sandbox_neighbor_sentinel.py --verify
+
+      - name: Reuse canonical #104 20K acceptance
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/check_sandbox_20k_school.py \
+            2>&1 | tee ../artifacts/control-plane/b8-20k-school-acceptance.log
+
+      - name: Run B8-02 IAM topology proof
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python scripts/check_control_plane_b8_topology.py
+
+      - name: Validate exact-head topology evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected_sha = '${{ github.event.pull_request.head.sha || github.sha }}'
+          data = json.loads(Path('artifacts/control-plane/b8-20k-topology.json').read_text(encoding='utf-8'))
+          assert data['headSha'] == expected_sha
+          assert data['card'] == 'CTRL-B8-02'
+          assert data['master']['students'] == 20000
+          assert data['master']['activeStudentLinks'] == 20000
+          assert data['master']['studentAccounts'] == 20000
+          assert data['master']['backgroundStaffAccounts'] == 1280
+          assert data['roles']['requiredRoles'] >= 24
+          assert data['roles']['secondaryRoleBindings'] == 501
+          assert sum(data['roles']['orgScopes'].values()) == 368
+          assert data['neighborStudents'] == 20
+          assert data['tenantPermissionUniverseCount'] > 400
+          assert data['schoolAdminExplicitPermissionCount'] == data['tenantPermissionUniverseCount']
+          assert data['runtimeSchoolAdminWildcardStillPresent'] is True
+          assert data['shadow']['unexplainedDriftCount'] == 0
+          assert data['shadow']['planeViolationCount'] == 0
+          assert data['shadow']['zeroUnexplainedDrift'] is True
+          assert data['goldCandidate'] is True
+          print(json.dumps(data, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload B8-02 topology evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-b8-20k-topology-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/control-plane/b8-20k-topology.json
+            artifacts/control-plane/b8-20k-permission-catalog.json
+            artifacts/control-plane/b8-20k-school-acceptance.log
+            artifacts/control-plane/b8-20k-rebuild.log
+          if-no-files-found: warn
+          retention-days: 14
