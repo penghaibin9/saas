@@ -2,7 +2,8 @@
 
 修正兼容读模型的两个边界：
 - 同一教学任务同一学期存在多个选课批次时，只认最新关联批次；最新批次未锁定时不得回退旧名单；
-- OPEN课程零人或低于最低开班人数时不得锁定为“正式教学班”，应先取消开课或完成补选。
+- OPEN课程零人或低于最低开班人数时不得锁定为“正式教学班”，应先取消开课或完成补选；
+- 批次已经 LOCKED 后，后续人工调整形成的正式 0 人名单仍是有效 current truth，不得重新回退行政班。
 
 V2阶段02落独立教学班/名单版本后，以显式version和effective_at替代“最新批次ID”兼容规则。
 """
@@ -96,12 +97,12 @@ def resolve_teaching_task_roster(db, teaching_task_id: int) -> dict:
             student_ids = sorted({int(record.student_id) for record in records})
             if not student_ids:
                 return {
-                    "ready": False,
-                    "source": "SELECTION_EMPTY",
+                    "ready": True,
+                    "source": "SELECTION_LOCKED",
                     "studentIds": [],
                     "items": [],
                     "batchIds": [str(authoritative.id)],
-                    "note": "最新选课批次虽已锁定，但该教学任务正式名单为空",
+                    "note": "最新已锁定选课批次的当前正式名单为空",
                 }
             profiles = db.query(StudentProfile).filter(
                 StudentProfile.tenant_id == _tid(),
