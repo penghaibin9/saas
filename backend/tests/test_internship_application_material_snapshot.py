@@ -125,3 +125,30 @@ def test_campaign_allowed_contact_modes_are_enforced_fail_closed():
         assert exc.http_status == 409
     else:
         raise AssertionError("disallowed contact mode must fail closed")
+
+
+def test_unconfigured_campaign_does_not_fail_open_to_immediate_contact_reveal():
+    service._assert_contact_mode_allowed({"mode": "MASKED_ONLY"}, None)
+    service._assert_contact_mode_allowed({"mode": "AFTER_INTERVIEW"}, {})
+    service._assert_contact_mode_allowed({"mode": "AFTER_ACCEPT_INTENT"}, {})
+    try:
+        service._assert_contact_mode_allowed({"mode": "IMMEDIATE"}, None)
+    except AppException as exc:
+        assert exc.code == "CONTACT_MODE_NOT_ALLOWED"
+        assert exc.http_status == 409
+    else:
+        raise AssertionError("IMMEDIATE must require explicit school policy")
+
+
+def test_explicit_empty_or_invalid_allowed_modes_never_mean_allow_all():
+    for campaign_policy in (
+        {"allowedContactSharingModes": []},
+        {"allowedContactSharingModes": None},
+    ):
+        try:
+            service._assert_contact_mode_allowed({"mode": "MASKED_ONLY"}, campaign_policy)
+        except AppException as exc:
+            assert exc.code == "CONTACT_MODE_NOT_ALLOWED"
+            assert exc.http_status == 409
+        else:
+            raise AssertionError("empty/invalid allowed modes must fail closed")

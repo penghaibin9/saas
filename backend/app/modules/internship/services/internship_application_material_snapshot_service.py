@@ -23,6 +23,9 @@ from app.services.db_service import _as_id
 _CONTACT_MODES = frozenset({
     "MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT", "IMMEDIATE",
 })
+_DEFAULT_ALLOWED_CONTACT_MODES = (
+    "MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT",
+)
 _LEGACY_CONTACT_MODE_ALIASES = {
     "NONE": "MASKED_ONLY",
     "EXPLICIT": "IMMEDIATE",
@@ -64,15 +67,26 @@ def normalize_contact_sharing_policy(value: dict | None) -> dict:
 
 
 def _assert_contact_mode_allowed(policy: dict, campaign_policy: dict | None) -> None:
-    configured = list((campaign_policy or {}).get("allowedContactSharingModes") or [])
-    if not configured:
-        return
+    config = dict(campaign_policy or {})
+    # V3 privacy is fail-closed: an unconfigured campaign never means "all contact modes allowed".
+    # Default permits masked access and delayed reveal only; IMMEDIATE requires explicit school policy.
+    if "allowedContactSharingModes" in config:
+        configured = config.get("allowedContactSharingModes")
+        if not isinstance(configured, list):
+            raise AppException(
+                "CONTACT_MODE_NOT_ALLOWED",
+                "招聘季联系方式共享策略配置无效",
+                details={"mode": policy["mode"], "allowedModes": []},
+                http_status=409,
+            )
+    else:
+        configured = list(_DEFAULT_ALLOWED_CONTACT_MODES)
     allowed = {
         _LEGACY_CONTACT_MODE_ALIASES.get(str(item or "").upper(), str(item or "").upper())
         for item in configured
         if str(item or "").strip()
     }
-    if policy["mode"] not in allowed:
+    if not allowed or policy["mode"] not in allowed:
         raise AppException(
             "CONTACT_MODE_NOT_ALLOWED",
             "当前招聘季不允许所选联系方式共享模式",
