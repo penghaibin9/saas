@@ -11,7 +11,7 @@ test('A02 mirrors A01 applicant role permission contract for UX without replacin
   assert.match(store,/APPLICATION_ROLES = new Set\(\['COMPANY_ADMIN','HR'\]\)/)
   assert.match(store,/applicationViewAllowed/)
   assert.match(store,/applicationReviewAllowed/)
-  assert.match(store,/every backend request still revalidates/)
+  assert.match(store,/Every backend request still revalidates/i)
   assert.match(layout,/applicationPermission:true/)
   assert.match(layout,/aria-disabled="true"/)
   assert.match(layout,/仅企业管理员或 HR 可处理报名学生/)
