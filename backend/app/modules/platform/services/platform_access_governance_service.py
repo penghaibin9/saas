@@ -52,6 +52,11 @@ def _row_to_dict(row) -> dict:
     return _legacy._row_to_dict(row)
 
 
+def _version(value) -> int:
+    """Preserve the valid initial optimistic-lock version 0; only NULL maps to 0."""
+    return 0 if value is None else int(value)
+
+
 def list_records(config_type: str, *, tenant_id: int | None = None) -> list[dict]:
     return _legacy.list_records(config_type, tenant_id=tenant_id)
 
@@ -109,9 +114,9 @@ def _save_atomic(
                 return _row_to_dict(row)
             raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 已用于不同请求内容", http_status=409)
         if row is not None:
-            if expected_version is None or int(expected_version) != int(row.version or 1):
+            if expected_version is None or int(expected_version) != _version(row.version):
                 raise AppException("DATA_CONFLICT", "平台访问记录已更新，请刷新后重试", http_status=409)
-            row.version = int(row.version or 1) + 1
+            row.version = _version(row.version) + 1
         else:
             row = PlatformConfig(
                 tenant_id=int(tenant_id), config_type=config_type, config_key=record_key,
@@ -305,7 +310,7 @@ def create_access_review(payload: dict, *, actor: dict) -> dict:
                 "configType": config_type,
                 "tenantId": int(item.get("tenantId") or 0),
                 "recordId": str(item.get("id")),
-                "version": int(item.get("version") or 1),
+                "version": _version(item.get("version")),
                 "snapshot": {k: v for k, v in item.items() if k not in {"requestDigest"}},
                 "decision": "PENDING",
             })
@@ -344,7 +349,8 @@ def close_access_review(review_id: str, payload: dict, *, actor: dict) -> dict:
         ).with_for_update()).first()
         if campaign is None:
             raise AppException("DATA_NOT_FOUND", "访问复核不存在", http_status=404)
-        if int(payload.get("expectedVersion") or -1) != int(campaign.version or 1):
+        expected_version = payload.get("expectedVersion")
+        if expected_version is None or int(expected_version) != _version(campaign.version):
             raise AppException("DATA_CONFLICT", "访问复核已变化，请刷新后重试", http_status=409)
         data = dict(campaign.config_json or {})
         if str(data.get("status") or "").upper() != "OPEN":
@@ -361,13 +367,13 @@ def close_access_review(review_id: str, payload: dict, *, actor: dict) -> dict:
                     PlatformConfig.config_key == item.get("recordId"),
                     PlatformConfig.is_deleted.is_(False),
                 ).with_for_update()).first()
-                if target is not None and int(target.version or 1) == int(item.get("version") or 1):
+                if target is not None and _version(target.version) == _version(item.get("version")):
                     target_data = dict(target.config_json or {})
                     target_data["status"] = "REVOKED"
                     target_data["reviewRevokedBy"] = actor.get("userId")
                     target.config_json = target_data
                     target.enabled = False
-                    target.version = int(target.version or 1) + 1
+                    target.version = _version(target.version) + 1
                     resolved.append(key)
                 elif target is not None:
                     raise AppException("DATA_CONFLICT", f"复核项 {key} 在复核期间已变化", http_status=409)
@@ -376,7 +382,7 @@ def close_access_review(review_id: str, payload: dict, *, actor: dict) -> dict:
         data["closeReason"] = reason
         campaign.config_json = data
         campaign.enabled = False
-        campaign.version = int(campaign.version or 1) + 1
+        campaign.version = _version(campaign.version) + 1
         audit_log.record_critical_in_session(
             db, "PLATFORM_ACCESS_REVIEW_CHANGE", f"review:{review_id}",
             detail={"action": "CLOSE", "revokedItems": resolved, "reason": reason},
