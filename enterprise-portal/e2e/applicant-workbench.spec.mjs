@@ -90,6 +90,15 @@ async function acceptInvite(page,token){
   await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
 }
 
+async function navigateSpa(page,path){
+  await page.evaluate(async target=>{
+    const app=document.querySelector('#app')?.__vue_app__
+    const router=app?.config?.globalProperties?.$router
+    if(!router)throw new Error('Vue Router unavailable in mounted enterprise portal')
+    await router.push(target)
+  },path)
+}
+
 test('A02 normal login fails closed when the school has not exposed a Campaign list facade', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   await page.goto('login')
@@ -109,13 +118,13 @@ test('A02 invite activation binds campaign to the inspected token and context st
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
   await acceptInvite(page,token)
 
-  await expect(page.getByText('招聘季 #2027')).toBeVisible()
+  await expect(page.getByRole('banner').getByText('招聘季 #2027',{exact:true})).toBeVisible()
   await expect(page.getByText(/该企业协同能力尚未由学校端开放：招聘工作台/)).toBeVisible()
   expect(state.contextCampaignIds).toEqual(['2027'])
   expect(state.legacyRequests).toBe(0)
 
   await page.getByRole('link',{name:'报名学生'}).click()
-  await expect(page.getByRole('heading',{name:'报名学生'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'报名学生',exact:true})).toBeVisible()
   await expect(page.getByText(/该企业协同能力尚未由学校端开放：报名学生列表/)).toBeVisible()
   expect(state.legacyRequests).toBe(0)
   await page.screenshot({ path: 'test-results/a02-fail-closed-facades.png', fullPage: true })
@@ -127,10 +136,7 @@ test('A02 canonical Snapshot stays readable only with an already validated HR ca
   await acceptInvite(page,token)
 
   await page.getByRole('link',{name:'报名学生'}).click()
-  await page.evaluate(()=>{
-    window.history.pushState({},'',`${window.location.pathname.replace(/\/applications.*$/,'')}/applications/501`)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  })
+  await navigateSpa(page,'/applications/501')
   await expect(page.getByText('投递快照')).toBeVisible()
   await expect(page.getByText('张三',{exact:true})).toBeVisible()
   await expect(page.getByText('身份证')).toHaveCount(0)
@@ -148,11 +154,8 @@ test('A02 MENTOR cannot enter Applicant workbench or call canonical Applicant Sn
   await expect(page.getByRole('link',{name:'报名学生'})).toHaveCount(0)
   await expect(page.locator('.nav-disabled[aria-disabled="true"]').filter({hasText:'报名学生'})).toBeVisible()
 
-  await page.evaluate(()=>{
-    window.history.pushState({},'', '/enterprise/applications/501')
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  })
-  await expect(page.getByRole('heading',{name:'报名学生'})).toBeVisible()
+  await navigateSpa(page,'/applications/501')
+  await expect(page.getByRole('heading',{name:'报名学生',exact:true})).toBeVisible()
   await expect(page.getByText('当前成员角色不能处理报名学生')).toBeVisible()
   await expect(page.getByText(/企业导师可参与后续实习协同/)).toBeVisible()
   expect(state.snapshotRequests).toBe(0)
