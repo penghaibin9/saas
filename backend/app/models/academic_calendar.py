@@ -14,14 +14,18 @@
 ``t_aa_term.status``（DRAFT/PUBLISHED/FROZEN/ARCHIVED）和 ``is_current`` 继续由教务维护，
 是教务自己的发布状态；本表的 ``governance_status`` 是**全校统一切换**的治理状态，二者通过
 ``term_id`` 一一对应。教务侧发布与否不直接等于全校已切换——这正是 SYS-12 要收口的问题。
+
+A-C1 加固：任何把治理行写成 ACTIVE 的 ORM 正式路径，在属性赋值时先获得与
+``AaTerm.is_current`` writer 完全相同的租户协调锁。监听器在模型加载时安装，不依赖教务
+service package 的 import 顺序，因此系统 API、定时激活与独立 SYS-12 测试都不能绕过。
 """
 from __future__ import annotations
 
 from datetime import datetime
 
 from sqlalchemy import (JSON, BigInteger, DateTime, Index, String,
-                        UniqueConstraint)
-from sqlalchemy.orm import Mapped, mapped_column
+                        UniqueConstraint, event)
+from sqlalchemy.orm import Mapped, mapped_column, object_session
 
 from app.models.base import (AuditTimeMixin, Base, CommonMixin, PKMixin,
                              TenantMixin)
@@ -82,6 +86,42 @@ class AcademicCalendarGovernance(PKMixin, TenantMixin, CommonMixin, Base):
         UniqueConstraint("tenant_id", "term_id", name="uk_calendar_governance_term"),
         UniqueConstraint("tenant_id", "calendar_type", "active_key", name="uk_calendar_single_active"),
         Index("idx_calendar_governance_status", "tenant_id", "governance_status", "scheduled_at"),
+    )
+
+
+def _active_term_authority_on_set(target, value, oldvalue, initiator):
+    """Serialize SYS-12 ACTIVE with the same A-C1 anchor used by AaTerm writers."""
+    if value != ACTIVE_SENTINEL:
+        return value
+    db = object_session(target)
+    if db is None:
+        # Formal SYS-12 transitions always mutate a persistent governance row. A transient object
+        # is still protected by the DB single-ACTIVE key, but is not a supported activation writer.
+        return value
+    from app.core.academic_term_authority_lock import lock_term_authority
+    from app.core.exceptions import AppException
+
+    try:
+        tenant_id = int(target.tenant_id or 0)
+    except (TypeError, ValueError):
+        tenant_id = 0
+    if not lock_term_authority(db, tenant_id):
+        raise AppException(
+            "TENANT_CONTEXT_REQUIRED",
+            "学期治理激活未命中可证明的租户或学期协调行，拒绝继续",
+            details={"tenantId": str(tenant_id)},
+            http_status=409,
+        )
+    return value
+
+
+if not event.contains(AcademicCalendarGovernance.active_key, "set", _active_term_authority_on_set):
+    event.listen(
+        AcademicCalendarGovernance.active_key,
+        "set",
+        _active_term_authority_on_set,
+        retval=True,
+        active_history=True,
     )
 
 
