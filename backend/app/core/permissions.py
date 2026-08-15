@@ -414,7 +414,7 @@ def _granted(role: str) -> set[str]:
 
 
 def _db_granted(user: dict) -> set[str] | None:
-    """自定义角色仅从 t_role_permission 取权；内置模板仍由平台基线维护。"""
+    """DB 角色上下文：SYSTEM 只读发布版 RoleTemplate，CUSTOM 只读 t_role_permission。"""
     context_id = str(user.get("activeContextId") or "")
     tenant_id = str(user.get("tenantId") or "")
     if not (context_id.startswith("role:") and context_id[5:].isdigit() and tenant_id.isdigit()):
@@ -430,7 +430,13 @@ def _db_granted(user: dict) -> set[str] | None:
             role = db.scalars(select(Role).where(Role.id == int(context_id[5:]),
                                                  Role.tenant_id == int(tenant_id),
                                                  Role.is_deleted.is_(False))).first()
-            if role is None or str(role.role_type or "").upper() != "CUSTOM":
+            if role is None:
+                return set()
+            role_type = str(role.role_type or "").upper()
+            if role_type == "SYSTEM":
+                from app.services.system_role_shadow_service import published_system_role_permissions
+                return set(published_system_role_permissions(db, str(role.role_code or "").strip().upper()))
+            if role_type != "CUSTOM":
                 return None
             return set(db.scalars(select(Permission.permission_code).join(
                 RolePermission, RolePermission.permission_id == Permission.id).where(
@@ -439,7 +445,7 @@ def _db_granted(user: dict) -> set[str] | None:
         finally:
             db.close()
     except Exception:
-        # 鉴权读取异常默认拒绝自定义角色，绝不回落为更宽的内置授权。
+        # 鉴权 Authority 读取异常默认拒绝，绝不回落为更宽的静态内置授权。
         return set()
 
 
