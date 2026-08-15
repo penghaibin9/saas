@@ -42,12 +42,15 @@ test('resume PDF uses canonical owned-application binary route with enterprise b
   }
 })
 
-test('resume PDF remains fail-closed outside recruitment context without network access', async () => {
+test('resume PDF remains synchronously fail-closed outside recruitment context without network access', () => {
   installSessionStorage();setSelectedCampaignId('2027');setEnterpriseApiContext('NONE',0)
   const originalFetch=globalThis.fetch
   let calls=0;globalThis.fetch=async()=>{calls+=1;throw new Error('network must not be reached')}
   try{
-    await assert.rejects(()=>enterpriseInternshipApi.resumePdf('501'),error=>error.code==='ENTERPRISE_RECRUITMENT_CONTEXT_UNAVAILABLE')
+    assert.throws(
+      ()=>enterpriseInternshipApi.resumePdf('501'),
+      error=>error?.code==='ENTERPRISE_RECRUITMENT_CONTEXT_UNAVAILABLE',
+    )
     assert.equal(calls,0)
   }finally{globalThis.fetch=originalFetch;clearEnterpriseSession();setEnterpriseApiContext('NONE',0)}
 })

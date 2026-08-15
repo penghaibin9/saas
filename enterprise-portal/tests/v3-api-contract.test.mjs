@@ -35,12 +35,13 @@ test('E4 frozen enterprise facades use the canonical enterprise-portal root and 
   assert.doesNotMatch(api,/\/enterprise\/internship/)
 })
 
-test('E9 collaboration facades use batch-scoped real routes while resume PDF alone remains fail closed',()=>{
+test('E9 collaboration facades stay batch-scoped while resume PDF uses the recruitment-owned application route',()=>{
   assert.match(api,/function collaborationParams/)
   assert.match(api,/internship-students/)
   assert.match(api,/evaluation-tasks/)
   assert.match(api,/evaluation-tasks\/\$\{id\}\/submit/)
-  assert.match(api,/resumePdf:\(\)=>unavailableFacade\('简历 PDF'\)/)
+  assert.match(api,/resumePdf:\(id\)=>requestBinary\(`\$\{AUTH_ROOT\}\/applications\/\$\{id\}\/resume-pdf`,\{params:requireRecruitmentAccess\(\)\}\)/)
+  assert.doesNotMatch(api,/resumePdf:\(\)=>unavailableFacade\('简历 PDF'\)/)
   for(const frozen of ['实习学生列表','实习学生详情','企业评价任务','企业评价提交'])assert.doesNotMatch(api,new RegExp(`unavailableFacade\\('${frozen}'\\)`))
 })
 
