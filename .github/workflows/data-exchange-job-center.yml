@@ -8,6 +8,9 @@ on:
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
       - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/modules/system_admin/routers/data_exchange_*.py'
@@ -17,21 +20,27 @@ on:
       - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
+      - 'backend/alembic/versions/20260815_control_plane_identity_staging.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'backend/tests/test_control_plane_identity_import_contract.py'
       - 'backend/tests/test_control_plane_identity_import_idempotency.py'
+      - 'backend/tests/test_control_plane_identity_import_staging.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
   push:
     branches:
       - audit/file-capability-inventory
+      - integration/control-plane-option-b-20260815
     paths:
       - 'backend/app/core/rbac09_permission_bundles.py'
       - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/data_exchange_job_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
       - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/modules/system_admin/routers/data_exchange_*.py'
@@ -41,10 +50,12 @@ on:
       - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
+      - 'backend/alembic/versions/20260815_control_plane_identity_staging.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'backend/tests/test_control_plane_identity_import_contract.py'
       - 'backend/tests/test_control_plane_identity_import_idempotency.py'
+      - 'backend/tests/test_control_plane_identity_import_staging.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
 
@@ -79,6 +90,19 @@ jobs:
       FILE_SCAN_REQUIRED: 'false'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact branch HEAD assertion
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            EXPECTED="${{ github.event.pull_request.head.sha }}"
+          else
+            EXPECTED="${{ github.sha }}"
+          fi
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -106,6 +130,9 @@ jobs:
             app/services/data_exchange_job_service.py \
             app/services/data_exchange_confirm_service.py \
             app/services/data_exchange_cleanup_service.py \
+            app/services/identity_import_service.py \
+            app/services/identity_import_scan_orchestrator.py \
+            app/services/identity_import_staging_service.py \
             app/services/file_access_service.py \
             app/api/v1/data_exchange.py \
             app/modules/system_admin/routers/data_exchange_bundle.py \
@@ -115,7 +142,8 @@ jobs:
             app/modules/system_admin/services/identity_import_idempotency_service.py \
             app/api/v1/file_governance.py \
             app/api/v1/migration.py \
-            alembic/versions/0147_data_exchange_job_center.py
+            alembic/versions/0147_data_exchange_job_center.py \
+            alembic/versions/20260815_control_plane_identity_staging.py
       - name: Authoritative contract tests
         working-directory: backend
         run: |
@@ -124,6 +152,7 @@ jobs:
             tests/test_rbac09_file_data_exchange_permissions.py \
             tests/test_control_plane_identity_import_contract.py \
             tests/test_control_plane_identity_import_idempotency.py \
+            tests/test_control_plane_identity_import_staging.py \
             -q -p no:warnings
       - name: Frontend lint and build
         working-directory: frontend
@@ -144,6 +173,7 @@ jobs:
           grep -q "pendingJobId" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "ImportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "ExportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
+          grep -q "IdentityImportStagingRow.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "extra=\"forbid\"" backend/app/modules/system_admin/routers/data_exchange_bundle.py
           ! grep -q "systemAdmin.audit.sensitive.view" backend/app/modules/system_admin/routers/data_exchange_bundle.py
           ! grep -q "systemAdmin.audit.sensitive.view" backend/app/modules/system_admin/routers/data_exchange_router.py

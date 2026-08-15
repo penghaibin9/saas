@@ -1,23 +1,21 @@
-"""身份导入 FileObject 扫描后解析编排。
+"""身份导入 FileObject 扫描后 I3 staging 编排。
 
-上传请求只登记隔离文件和 ImportJob；任务创建者查询本人任务时，文件 CLEAN/AVAILABLE 后
-推进 PARSING → 预检。具备 MODULE/TENANT 查看权的管理员可以查看任务，但读取详情不会
-以管理员身份替任务创建者执行解析，避免查询动作改变任务责任人与业务结果。
+上传请求只登记隔离文件和 ImportJob；文件 CLEAN/AVAILABLE 后由任务创建者推进
+PARSING → normalized staging → canonical preview。详情读取本身不替他人执行解析。
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
-from app.models.data_exchange import ImportJob, ImportRowError
+from app.models.data_exchange import ImportJob
 from app.models.file import FileObject
 from app.services import data_exchange_job_service as jobs
 from app.services.file_content_security import is_downloadable_status
 from app.services.file_scan_constants import READY_SCAN_STATES
-from app.services.identity_import_path_parser import parse_identity_xlsx_path
 from app.services.storage import get_backend
 
 PARSING_STALE_SECONDS = 5 * 60
@@ -64,7 +62,7 @@ def create_identity_import_scan_job(
             source_snapshot_json={
                 "fileName": str(filename or "identity_import.xlsx"),
                 "kind": kind_up,
-                "parseMode": "SCANNED_FILE_PATH",
+                "parseMode": "NORMALIZED_STAGING_PENDING",
             },
             result_json={"scanRequired": True, "parseStartedAt": None},
             created_by=actor_id,
@@ -89,12 +87,7 @@ def _mark_failed(
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(  # noqa: SLF001
-            db,
-            job_id,
-            user,
-            lock=True,
-            visibility=visibility,
-            module_code=module_code,
+            db, job_id, user, lock=True, visibility=visibility, module_code=module_code,
         )
         row.status = "VALIDATION_FAILED"
         row.error_message = str(message or "身份导入预检失败")[:4000]
@@ -133,16 +126,10 @@ def refresh_identity_import_job(
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(  # noqa: SLF001
-            db,
-            job_id,
-            user,
-            lock=True,
-            visibility=visibility,
-            module_code=module_code,
+            db, job_id, user, lock=True, visibility=visibility, module_code=module_code,
         )
         if row.adapter_type != PENDING_ADAPTER:
             return jobs._import_row(row)  # noqa: SLF001
-        # MODULE/TENANT 管理员的详情读取只查看状态，不替创建者执行解析。
         if not jobs._row_is_owned(row, user):  # noqa: SLF001
             return jobs._import_row(row)  # noqa: SLF001
         if row.expires_at and row.expires_at <= datetime.utcnow():
@@ -178,13 +165,16 @@ def refresh_identity_import_job(
         row.error_message = None
         row.version = int(row.version or 0) + 1
         row.result_json = {**result, "parseStartedAt": datetime.utcnow().isoformat() + "Z"}
+        tenant_id = int(row.tenant_id)
+        actor_id = jobs._actor_id(user)  # noqa: SLF001
         source_file_id = int(file_obj.id)
+        file_key = str(file_obj.file_key)
         filename = str(
             (row.source_snapshot_json or {}).get("fileName")
             or file_obj.file_name
             or "identity_import.xlsx"
         )
-        kind_up = str(
+        kind_up = _kind(
             (row.source_snapshot_json or {}).get("kind")
             or row.import_type.replace("IDENTITY_", "")
         )
@@ -193,70 +183,84 @@ def refresh_identity_import_job(
         db.close()
 
     try:
-        path = get_backend().fetch_local(file_obj.file_key)
-        if not path or not path.exists():
-            raise AppException("FILE_NOT_FOUND", "身份导入源文件字节不存在")
-        parsed = parse_identity_xlsx_path(path, filename, kind_up)
         if kind_up == "STUDENT":
             from app.core.import_export_auth import enforce_student_import
 
             enforce_student_import(user)
-            payload = {"students": parsed["students"], "teachers": [], "atomic": True}
-        else:
-            payload = {"students": [], "teachers": parsed["teachers"], "atomic": True}
-        from app.services.identity_import_file_service import create_batch
-        from app.services.identity_import_service import preview_identity_import
+        path = get_backend().fetch_local(file_key)
+        if not path or not path.exists():
+            raise AppException("FILE_NOT_FOUND", "身份导入源文件字节不存在")
 
-        report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
-        batch_result = create_batch(user, parsed, report)
-        return _finalize_parsed_job(
+        from app.services.identity_import_staging_service import (
+            create_staging_batch,
+            stage_identity_xlsx,
+            validate_staging,
+        )
+
+        staged = stage_identity_xlsx(
+            path=path,
+            filename=filename,
+            kind=kind_up,
+            tenant_id=tenant_id,
+            job_id=int(job_id),
+            actor_id=actor_id,
+        )
+        report = validate_staging(
+            user=user,
+            tenant_id=tenant_id,
+            job_id=int(job_id),
+            parser_errors=list(staged.get("parserErrors") or []),
+        )
+        batch_result = create_staging_batch(
+            user=user,
+            tenant_id=tenant_id,
+            job_id=int(job_id),
+            filename=filename,
+            file_sha256=str(staged["fileSha256"]),
+            total_rows=int(staged["totalRows"]),
+            staging_digest=str(staged["stagingDigest"]),
+            report=report,
+        )
+        return _finalize_staged_job(
             job_id=int(job_id),
             source_file_id=source_file_id,
             kind=kind_up,
-            parsed=parsed,
+            staged=staged,
             batch_result=batch_result,
             user=user,
             visibility=visibility,
             module_code=module_code,
         )
-    except Exception as exc:  # noqa: BLE001 - 解析错误属于任务状态
+    except Exception as exc:  # noqa: BLE001 - parser/validation errors are job state
         return _mark_failed(
-            int(job_id),
-            str(exc),
-            user,
-            visibility=visibility,
-            module_code=module_code,
+            int(job_id), str(exc), user, visibility=visibility, module_code=module_code,
         )
 
 
-def _finalize_parsed_job(
+def _finalize_staged_job(
     *,
     job_id: int,
     source_file_id: int,
     kind: str,
-    parsed: dict,
+    staged: dict,
     batch_result: dict,
     user: dict,
     visibility: str | None = None,
     module_code: str | None = None,
 ) -> dict:
-    from app.services.identity_import_file_service import build_error_workbook, get_batch
+    from app.services.identity_import_staging_service import (
+        STAGING_CHUNK_SIZE,
+        build_staging_error_workbook,
+    )
 
     batch_no = str(batch_result.get("batchNo") or "").strip()
     if not batch_no:
-        raise AppException("SERVER_ERROR", "身份导入批次创建失败")
+        raise AppException("SERVER_ERROR", "身份导入 staging 批次创建失败")
     errors = list(batch_result.get("errors") or [])
-    relation_errors = list((batch_result.get("relations") or {}).get("errors") or [])
-    all_errors = errors + relation_errors
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(  # noqa: SLF001
-            db,
-            job_id,
-            user,
-            lock=True,
-            visibility=visibility,
-            module_code=module_code,
+            db, job_id, user, lock=True, visibility=visibility, module_code=module_code,
         )
         if row.adapter_type != PENDING_ADAPTER or row.status != "PARSING":
             return jobs._import_row(row)  # noqa: SLF001
@@ -272,58 +276,42 @@ def _finalize_parsed_job(
             row.error_message = f"批次已由任务 {duplicate.id} 接管"
             row.version = int(row.version or 0) + 1
             db.commit()
-            try:
-                jobs._assert_row_visible(duplicate, user)  # noqa: SLF001
-            except Exception:
-                return jobs._import_row(row)  # noqa: SLF001
-            return jobs._import_row(duplicate)  # noqa: SLF001
+            return jobs._import_row(row)  # noqa: SLF001
 
-        db.execute(delete(ImportRowError).where(
-            ImportRowError.tenant_id == row.tenant_id,
-            ImportRowError.import_job_id == row.id,
-        ))
         row.adapter_type = jobs.IMPORT_ADAPTER_IDENTITY
         row.adapter_ref = batch_no
-        row.status = "VALIDATED" if not all_errors else "VALIDATION_FAILED"
-        row.total_rows = int(batch_result.get("total") or parsed.get("totalRows") or 0)
+        row.status = "VALIDATED" if not errors else "VALIDATION_FAILED"
+        row.total_rows = int(batch_result.get("total") or staged.get("totalRows") or 0)
         row.valid_rows = int(batch_result.get("valid") or 0)
-        row.invalid_rows = int(batch_result.get("invalid") or len(all_errors))
+        row.invalid_rows = int(batch_result.get("invalid") or 0)
         row.source_file_id = source_file_id
         row.source_snapshot_json = {
-            "fileName": parsed.get("fileName"),
-            "fileSha256": parsed.get("fileSha256"),
+            "fileName": staged.get("fileName"),
+            "fileSha256": staged.get("fileSha256"),
             "kind": kind,
             "roleTemplateVersion": batch_result.get("roleTemplateVersion"),
-            "parseMode": "SCANNED_FILE_PATH",
+            "parseMode": "NORMALIZED_STAGING",
+            "stagingAuthority": True,
+            "stagingChunkSize": STAGING_CHUNK_SIZE,
+            "stagingRows": int(staged.get("totalRows") or 0),
+            "stagingDigest": staged.get("stagingDigest"),
         }
         row.result_json = {
             **dict(row.result_json or {}),
             "parseFinishedAt": datetime.utcnow().isoformat() + "Z",
             "batchNo": batch_no,
+            "stagingAuthority": True,
         }
-        row.error_message = "" if not all_errors else "服务端预检存在错误，请下载错误回执"
+        row.error_message = "" if not errors else "服务端预检存在错误，请下载错误回执"
         row.version = int(row.version or 0) + 1
-        for item in all_errors:
-            db.add(ImportRowError(
-                tenant_id=row.tenant_id,
-                import_job_id=row.id,
-                sheet_name="业务关系" if item in relation_errors else "导入模板",
-                row_no=int(item.get("row") or 0) or None,
-                field_code=str(item.get("field") or "")[:100] or None,
-                error_code=str(item.get("errorCode") or "VALIDATION_ERROR")[:80],
-                error_message=str(item.get("message") or item.get("error") or "校验失败")[:1000],
-                raw_snapshot_json={"entity": item.get("entity"), "row": item.get("row")},
-                created_by=jobs._actor_id(user),  # noqa: SLF001
-            ))
         db.commit()
         db.refresh(row)
         result = jobs._import_row(row)  # noqa: SLF001
     finally:
         db.close()
 
-    if all_errors:
-        entry = get_batch(user, jobs._tenant_id(), batch_no)  # noqa: SLF001
-        receipt_bytes = build_error_workbook(entry)
+    if errors:
+        receipt_bytes = build_staging_error_workbook(tenant_id=jobs._tenant_id(), job_id=job_id)  # noqa: SLF001
         file_id = jobs._write_generated_file(  # noqa: SLF001
             receipt_bytes,
             f"师生账号导入错误_{batch_no}.xlsx",
@@ -335,7 +323,7 @@ def _finalize_parsed_job(
             export_type="IMPORT_ERROR_RECEIPT",
             purpose="导入预检错误回执",
             file_object_id=file_id,
-            row_count=len(all_errors),
+            row_count=len(errors),
             user=user,
             adapter_type="IMPORT_JOB",
             adapter_ref=str(job_id),
@@ -343,12 +331,7 @@ def _finalize_parsed_job(
         db = get_sessionmaker()()
         try:
             current = jobs._owned_import(  # noqa: SLF001
-                db,
-                job_id,
-                user,
-                lock=True,
-                visibility=visibility,
-                module_code=module_code,
+                db, job_id, user, lock=True, visibility=visibility, module_code=module_code,
             )
             current.error_receipt_file_id = file_id
             current.version = int(current.version or 0) + 1

@@ -15,8 +15,13 @@ on:
       - 'backend/app/core/effective_access.py'
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
+      - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/security_change_service.py'
       - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
       - 'frontend/src/modules/platform/**'
@@ -40,8 +45,13 @@ on:
       - 'backend/app/core/effective_access.py'
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
+      - 'backend/app/models/data_exchange.py'
       - 'backend/app/services/security_change_service.py'
       - 'backend/app/services/permission_bundle_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
       - 'frontend/src/modules/platform/**'
@@ -95,9 +105,15 @@ jobs:
             backend/app/modules/platform \
             backend/app/core/permission_catalog.py \
             backend/app/core/effective_access.py \
+            backend/app/models/data_exchange.py \
             backend/app/services/security_change_service.py \
             backend/app/services/permission_bundle_service.py \
-            backend/alembic/versions/20260815_control_plane_role_governance.py
+            backend/app/services/identity_import_service.py \
+            backend/app/services/identity_import_scan_orchestrator.py \
+            backend/app/services/identity_import_staging_service.py \
+            backend/app/services/data_exchange_cleanup_service.py \
+            backend/alembic/versions/20260815_control_plane_role_governance.py \
+            backend/alembic/versions/20260815_control_plane_identity_staging.py
       - name: B1/B5 canonical schema source contract
         run: |
           python - <<'PY'
@@ -121,6 +137,25 @@ jobs:
           assert 'from app.modules.platform.routers import platform_router' in route
           assert 't_role_template_v2' not in migration + model
           print('S0-06/B1/B5 source contract OK')
+          PY
+      - name: I3 normalized staging source contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          model = Path('backend/app/models/data_exchange.py').read_text(encoding='utf-8')
+          staging = Path('backend/app/services/identity_import_staging_service.py').read_text(encoding='utf-8')
+          orchestrator = Path('backend/app/services/identity_import_scan_orchestrator.py').read_text(encoding='utf-8')
+          migration = Path('backend/alembic/versions/20260815_control_plane_identity_staging.py').read_text(encoding='utf-8')
+          assert 'class IdentityImportStagingRow' in model
+          assert 'MAX_STAGING_ROWS = 20_000' in staging
+          assert 'STAGING_CHUNK_SIZE = 500' in staging
+          assert 'class StagingRowSequence' in staging
+          assert '.limit(self.chunk_size)' in staging
+          assert 'parse_identity_xlsx_path' not in orchestrator
+          assert 'create_batch(' not in orchestrator
+          assert 'stage_identity_xlsx(' in orchestrator
+          assert 'down_revision = "20260815_ctrl_role_gov"' in migration
+          print('I3 normalized staging source contract OK')
           PY
       - name: B6/B7 frontend workspace contracts
         run: |
