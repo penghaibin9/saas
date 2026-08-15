@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
-async function installEnterpriseApi(page, { released = false } = {}) {
+async function installEnterpriseApi(page) {
+  const state={legacyRequests:0,contextCampaignIds:[]}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -18,134 +19,120 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
-    if (path.endsWith('/internship/enterprise-portal/context')) {
+    if (path.endsWith('/internship/enterprise-portal/auth/invite/inspect')) {
       return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(ok({
-          tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: 'HR', companyId: '21',
-          campaignId: '2027-spring', batchId: '2027', grantId: '31', grantType: 'RECRUITMENT',
-          capabilities: { recruitmentWrite: true },
+        contentType:'application/json',
+        body:JSON.stringify(ok({
+          tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',
+          companyId:'21',companyName:'中联重科股份有限公司',inviteeName:'企业HR',phoneMasked:'138****5678',memberRole:'HR',expiresAt:'2027-03-31T23:59:59',
         })),
       })
     }
 
-    if (path.endsWith('/internship/enterprise-portal/applications/501/decision')) {
-      if (url.searchParams.get('campaignId') !== '2027-spring') {
-        return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
-      }
-      const body=request.postDataJSON()
-      if (body?.status !== 'ACCEPT_INTENT') {
-        return route.fulfill({ status: 422, contentType:'application/json', body:JSON.stringify({code:422001,message:'unexpected decision'}) })
-      }
+    if (path.endsWith('/internship/enterprise-portal/auth/invite/accept')) {
       return route.fulfill({
         contentType:'application/json',
-        body:JSON.stringify(ok({id:'901',applicationId:'501',decisionStatus:'ACCEPT_INTENT',effectStatus:'ACTIVE',validUntil:'2027-04-30T23:59:59',version:2})),
+        body:JSON.stringify(ok({
+          accessToken:'invite-access',refreshToken:'invite-refresh',tokenType:'Bearer',expiresIn:1800,
+          user:{userId:'db-101',realName:'企业HR',userType:'ENTERPRISE_MENTOR'},
+          context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:'HR'},
+        })),
+      })
+    }
+
+    if (path.endsWith('/internship/enterprise-portal/context')) {
+      state.contextCampaignIds.push(url.searchParams.get('campaignId'))
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(ok({
+          tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: 'HR', companyId: '21',
+          campaignId: '2027', batchId: '2027', grantId: '31', grantType: 'RECRUITMENT',
+        })),
       })
     }
 
     if (path.endsWith('/internship/enterprise-portal/applications/501')) {
-      if (url.searchParams.get('campaignId') !== '2027-spring') {
+      if (url.searchParams.get('campaignId') !== '2027') {
         return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
       }
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
           applicationId:'501', positionId:'81', positionTitle:'机械装配技术实习生',
-          applicationStatement:'具备机械装配实训经验，希望从事智能制造方向。', submissionVersion:3,
-          profileSnapshot:{
-            profile:{headline:'智能制造方向实习生',selfIntro:'具备机械装配与数控综合实训经验',strengths:'CAD、数控、装配',expectedLocations:['长沙'],skillTags:['CAD','数控','装配']},
-            items:[
-              {id:'p1',itemType:'PROJECT',title:'数控加工综合实训',description:'完成工艺编制与加工验证',verificationStatus:'VERIFIED'},
-              {id:'x1',itemType:'PRACTICE',title:'智能制造产线实训',description:'完成装配与设备点检',verificationStatus:'UNVERIFIED'},
-              {id:'c1',itemType:'CERTIFICATE',title:'数控车工技能证书',verificationStatus:'VERIFIED'},
-              {id:'s1',itemType:'SKILL_EVIDENCE',title:'CAD 制图能力证明',verificationStatus:'VERIFIED'},
-              {id:'a1',itemType:'AWARD',title:'校级技能竞赛二等奖',verificationStatus:'VERIFIED'},
-            ],
-          },
+          profileSnapshot:{profile:{headline:'智能制造方向实习生'},items:[]},
           schoolFactSnapshot:{realName:'张三',majorName:'机械制造及自动化',grade:'2025级'},
-          snapshotHash:'sha256-browser-evidence',
-          contactSharingPolicy:{mode:'NONE',sharePhone:false,shareEmail:false},
+          snapshotHash:'sha256-browser-evidence',contactSharingPolicy:{mode:'NONE',sharePhone:false,shareEmail:false},
         })),
       })
-    }
-
-    if (path.endsWith('/enterprise/internship/applications')) {
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(ok({
-          counts: { ALL: 2, PENDING: 1, INTERESTED: 0, INTERVIEW: 1, ACCEPT_INTENT: 0, REJECTED: 0 },
-          items: [
-            { applicationId:'501', name:'张三', major:'机械制造及自动化', grade:'2025级', positionName:'机械装配技术实习生', volunteerNo:1, skillTags:['CAD','数控','装配'], matchPercent:95, appliedAt:'03-06 10:21', volunteerGroupStatus:released?'NEEDS_REVISION':'SUBMITTED', releaseReason:released?'TEACHER_CONFIRM_TIMEOUT':'', acceptIntentReleased:released, decisionStatus:released?'ACCEPT_INTENT':'INTERVIEW', contactPolicy:{allowed:false,maskedValue:'138****5678'}, decisionHistory:[{id:'d1',status:'INTERVIEW',effectStatus:'ACTIVE',at:'03-08 14:00'}] },
-            { applicationId:'502', name:'李四', major:'机电一体化', grade:'2025级', positionName:'自动化维护实习生', volunteerNo:2, skillTags:['PLC'], matchPercent:88, appliedAt:'03-06 11:15' },
-          ],
-        })),
-      })
-    }
-
-    if (path.endsWith('/enterprise/internship/campaigns')) {
-      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({items:[{id:'2027-spring',campaignName:'2027届春季岗位实习双选季',status:'OPEN'}]})) })
-    }
-    if (path.endsWith('/enterprise/internship/company')) {
-      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({name:'中联重科股份有限公司'})) })
-    }
-    if (path.endsWith('/enterprise/internship/dashboard')) {
-      return route.fulfill({ contentType:'application/json', body:JSON.stringify(ok({metrics:{},tasks:[]})) })
     }
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 404001, message: 'test route missing' }) })
   }
 
   await page.route('**/api/v1/internship/enterprise-portal/**', handler)
-  await page.route('**/api/v1/enterprise/internship/**', handler)
+  await page.route('**/api/v1/enterprise/internship/**', async route=>{
+    state.legacyRequests+=1
+    await route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({code:500001,message:'legacy route must never be called'})})
+  })
+  return state
 }
 
-async function loginAndEnterCampaign(page){
+test('A02 normal login fails closed when A01 Campaign list facade is not frozen', async ({ page }) => {
+  const state=await installEnterpriseApi(page)
   await page.goto('login')
   await page.getByLabel('学校编码').fill('CSZY')
   await page.getByLabel('手机号或登录账号').fill('enterprise.hr')
   await page.getByLabel('密码').fill('Evidence-Only-Password')
   await page.getByRole('button',{name:'登录'}).click()
+
   await expect(page.getByRole('heading',{name:'选择招聘季'})).toBeVisible()
-  await page.getByRole('button',{name:/2027届春季岗位实习双选季/}).click()
-  await expect(page.getByRole('link',{name:'报名学生'})).toBeVisible()
+  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Campaign list/)).toBeVisible()
+  await expect(page.getByText('当前没有可进入的招聘季')).toBeVisible()
+  expect(state.legacyRequests).toBe(0)
+})
+
+test('A02 invite activation binds campaign to the inspected token and context stays read-only without capability', async ({ page }) => {
+  const state=await installEnterpriseApi(page)
+  const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
+  await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
+
+  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
+  await page.getByLabel('验证受邀手机号').fill('13800125678')
+  await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
+  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
+
+  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
+  await expect(page.getByText('招聘季 #2027')).toBeVisible()
+  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Campaign dashboard/)).toBeVisible()
+  expect(state.contextCampaignIds).toEqual(['2027'])
+  expect(state.legacyRequests).toBe(0)
+
   await page.getByRole('link',{name:'报名学生'}).click()
-}
+  await expect(page.getByRole('heading',{name:'报名学生'})).toBeVisible()
+  await expect(page.getByText(/企业协同接口尚未由 A01 Authority 冻结：Application list/)).toBeVisible()
+  expect(state.legacyRequests).toBe(0)
+  await page.screenshot({ path: 'test-results/a02-fail-closed-facades.png', fullPage: true })
+})
 
-test('A02-6 authenticated workbench renders A01 snapshot with no unfrozen detail facade', async ({ page }) => {
-  await installEnterpriseApi(page)
-  await loginAndEnterCampaign(page)
+test('A02 canonical Snapshot remains reachable only with an already validated campaign context', async ({ page }) => {
+  const state=await installEnterpriseApi(page)
+  const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
+  await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
+  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
+  await page.getByLabel('验证受邀手机号').fill('13800125678')
+  await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
+  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
+  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
 
-  await expect(page.getByRole('heading', { name: '报名学生' })).toBeVisible()
-  await expect(page.getByText('张三', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('岗位申请说明')).toBeVisible()
-  await expect(page.getByText('智能制造方向实习生')).toBeVisible()
-  await expect(page.getByText('CAD 制图能力证明')).toBeVisible()
-  await expect(page.getByText('校级技能竞赛二等奖')).toBeVisible()
+  await page.getByRole('link',{name:'报名学生'}).click()
+  await page.evaluate(()=>{
+    window.history.pushState({},'',`${window.location.pathname.replace(/\/applications.*$/,'')}/applications/501`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
   await expect(page.getByText('投递快照')).toBeVisible()
-  await expect(page.getByText('学校已核验').first()).toBeVisible()
-  await expect(page.getByText('138****5678')).toBeVisible()
-  await expect(page.getByRole('button', { name: '联系方式未授权' })).toBeDisabled()
+  await expect(page.getByText('张三',{exact:true})).toBeVisible()
   await expect(page.getByText('身份证')).toHaveCount(0)
-  await expect(page.getByText('其他志愿')).toHaveCount(0)
-  await page.screenshot({ path: 'test-results/a02-applicant-workbench.png', fullPage: true })
-})
-
-test('A02-7 ACCEPT_INTENT writes through A01 canonical portal route with campaign context', async ({ page }) => {
-  await installEnterpriseApi(page)
-  await loginAndEnterCampaign(page)
-  const decisionRequest=page.waitForRequest(request=>request.url().includes('/internship/enterprise-portal/applications/501/decision'))
-  await page.getByRole('button',{name:'拟接收',exact:true}).click()
-  await expect(page.getByText('确认拟接收这名学生？')).toBeVisible()
-  await page.getByRole('button',{name:'确认拟接收',exact:true}).click()
-  const request=await decisionRequest
-  const url=new URL(request.url())
-  expect(url.searchParams.get('campaignId')).toBe('2027-spring')
-  expect(request.postDataJSON()).toEqual({status:'ACCEPT_INTENT'})
-})
-
-test('A02-7 authenticated released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
-  await installEnterpriseApi(page, { released: true })
-  await loginAndEnterCampaign(page)
-  await expect(page.getByText('学校未在确认期限内完成最终确认，本次拟接收已释放，申请状态可能发生变化。历史 Decision 仍保留在处理记录。')).toBeVisible()
-  await expect(page.getByText('已录用')).toHaveCount(0)
+  await expect(page.getByRole('button',{name:'拟接收',exact:true})).toBeDisabled()
+  expect(state.contextCampaignIds).toEqual(['2027'])
+  expect(state.legacyRequests).toBe(0)
 })
