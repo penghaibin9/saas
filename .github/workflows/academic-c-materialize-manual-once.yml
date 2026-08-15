@@ -1,0 +1,66 @@
+name: Academic C materialize V2.1 manual once
+
+on:
+  push:
+    branches:
+      - agent/academic-c-teaching-execution
+    paths:
+      - '.github/workflows/academic-c-materialize-manual-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-c-materialize-manual-once
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-c-teaching-execution
+          fetch-depth: 0
+
+      - name: Decode and verify exact uploaded C manual
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD='.tmp/academic-c-manual.md.gz.b64'
+          TARGET='C_教务Teaching_Execution_当前代码精确施工总册_V2.1_20260816.md'
+          TMP="${TARGET}.verified.tmp"
+
+          test -f "$PAYLOAD"
+          base64 --decode "$PAYLOAD" | gzip -dc > "$TMP"
+
+          ACTUAL_SIZE="$(wc -c < "$TMP" | tr -d ' ')"
+          ACTUAL_LINES="$(awk 'END{print NR}' "$TMP")"
+          ACTUAL_SHA="$(sha256sum "$TMP" | awk '{print $1}')"
+          EXPECTED_SIZE='333509'
+          EXPECTED_LINES='6170'
+          EXPECTED_SHA='388b3f78e55bc43ef82c3cd71973d47fc530e674e271d3234b18ee6456d2afe4'
+
+          echo "size=$ACTUAL_SIZE lines=$ACTUAL_LINES sha256=$ACTUAL_SHA"
+          test "$ACTUAL_SIZE" = "$EXPECTED_SIZE"
+          test "$ACTUAL_LINES" = "$EXPECTED_LINES"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          mv "$TMP" "$TARGET"
+
+      - name: Commit exact manual and self-clean helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='C_教务Teaching_Execution_当前代码精确施工总册_V2.1_20260816.md'
+          PAYLOAD='.tmp/academic-c-manual.md.gz.b64'
+          WORKFLOW='.github/workflows/academic-c-materialize-manual-once.yml'
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$TARGET"
+          git rm -- "$PAYLOAD" "$WORKFLOW"
+          git commit -m 'docs(academic-c): materialize exact V2.1 teaching-execution manual'
+          git push origin HEAD:agent/academic-c-teaching-execution
