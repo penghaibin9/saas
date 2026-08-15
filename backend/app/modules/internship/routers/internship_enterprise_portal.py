@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.response import success
 from app.modules.internship.dependencies.enterprise_context import (
     EnterprisePrincipal,
-    get_enterprise_principal,
+    require_enterprise_permission as require_permission,
     resolve_recruitment_context,
 )
 from app.modules.internship.schemas.internship_recruitment_campaign import (
@@ -42,12 +42,12 @@ class EnterpriseDecisionBody(BaseModel):
     interviewNote: str | None = Field(default=None, max_length=1000)
 
 
-@router.post("/auth/invite/inspect")
+@router.post("/auth/invite/inspect", openapi_extra={"x-internship-auth": "public"})
 def inspect_invite(body: EnterpriseInviteInspect):
     return success(auth_svc.inspect_invite(tenant_code=body.tenantCode, token=body.token))
 
 
-@router.post("/auth/invite/accept")
+@router.post("/auth/invite/accept", openapi_extra={"x-internship-auth": "public"})
 def accept_invite(body: EnterpriseInviteAccept):
     result = auth_svc.accept_invite(
         tenant_code=body.tenantCode,
@@ -64,7 +64,7 @@ def accept_invite(body: EnterpriseInviteAccept):
     return success(result, message="企业邀请已接受")
 
 
-@router.post("/auth/login")
+@router.post("/auth/login", openapi_extra={"x-internship-auth": "public"})
 def login(body: EnterpriseLogin):
     result = auth_svc.login(
         tenant_code=body.tenantCode,
@@ -81,7 +81,7 @@ def login(body: EnterpriseLogin):
     return success(result)
 
 
-@router.post("/auth/refresh")
+@router.post("/auth/refresh", openapi_extra={"x-internship-auth": "public"})
 def refresh(body: EnterpriseRefresh):
     return success(auth_svc.refresh(refresh_token=body.refreshToken))
 
@@ -89,7 +89,7 @@ def refresh(body: EnterpriseRefresh):
 @router.get("/context")
 def enterprise_context(
     campaignId: str = Query(..., description="当前招聘季；服务端据此校验 Grant/参与关系"),
-    principal: EnterprisePrincipal = Depends(get_enterprise_principal),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
 ):
     ctx = resolve_recruitment_context(principal, campaign_id=int(campaignId))
     return success({
@@ -109,7 +109,7 @@ def enterprise_context(
 def application_detail(
     application_id: int,
     campaignId: int = Query(...),
-    principal: EnterprisePrincipal = Depends(get_enterprise_principal),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.view")),
 ):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
@@ -121,7 +121,7 @@ def application_decision(
     application_id: int,
     body: EnterpriseDecisionBody,
     campaignId: int = Query(...),
-    principal: EnterprisePrincipal = Depends(get_enterprise_principal),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
 ):
     from datetime import datetime
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
