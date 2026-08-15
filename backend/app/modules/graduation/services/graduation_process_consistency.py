@@ -2,41 +2,68 @@
 
 中期 GET 只返回虚拟 PENDING，不因查看页面写库；首次检查才创建记录。
 列表、统计与计划均支持批次范围；检查、整改、签到和取消使用行锁。
+V9.2 U4：过程列表统一在 MySQL 侧完成 dataScope、关联、筛选、计数与分页，
+禁止 Python 全量物化和逐行 student N+1。
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationMidterm, GraduationStudent
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
+
+
+def _student_filters(scope_select):
+    return (
+        GraduationStudent.tenant_id == _tid(),
+        GraduationStudent.is_deleted.is_(False),
+        GraduationStudent.record_status == "ACTIVE",
+        GraduationStudent.id.in_(scope_select),
+    )
+
+
+def _keyword_filter(keyword):
+    value = str(keyword or "").strip()
+    if not value:
+        return None
+    return or_(GraduationStudent.name.contains(value), GraduationStudent.student_no.contains(value))
+
 
 def list_guidance(page, page_size, gd_student_id=None, keyword=None, batch_id=None):
     from app.modules.graduation.services import graduation_guidance_service as svc
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次")
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        query = select(GraduationGuidance).where(
-            GraduationGuidance.tenant_id == _tid(), GraduationGuidance.is_deleted.is_(False),
-            GraduationGuidance.gd_student_id.in_(scope_ids or [-1]),
-        )
+        scope_select = student_scope_select(db, _tid(), batch_id=batch_id)
+        filters = [
+            GraduationGuidance.tenant_id == _tid(),
+            GraduationGuidance.is_deleted.is_(False),
+            *_student_filters(scope_select),
+        ]
         if gd_student_id:
-            query = query.where(GraduationGuidance.gd_student_id == int(gd_student_id))
-        rows = db.scalars(query.order_by(GraduationGuidance.id.desc())).all()
-        items = []
-        for row in rows:
-            student = db.get(GraduationStudent, row.gd_student_id)
-            if keyword and (not student or keyword.strip() not in (student.name or "")):
-                continue
-            items.append(svc._row(row, student))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+            filters.append(GraduationGuidance.gd_student_id == int(gd_student_id))
+        keyword_clause = _keyword_filter(keyword)
+        if keyword_clause is not None:
+            filters.append(keyword_clause)
+        join_on = GraduationStudent.id == GraduationGuidance.gd_student_id
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationGuidance)
+            .join(GraduationStudent, join_on).where(*filters)
+        ) or 0)
+        rows = db.execute(
+            select(GraduationGuidance, GraduationStudent)
+            .join(GraduationStudent, join_on).where(*filters)
+            .order_by(GraduationGuidance.id.desc())
+            .offset((max(1, page) - 1) * page_size).limit(page_size)
+        ).all()
+        return [svc._row(row, student) for row, student in rows], total
 
 
 def list_plans(page, page_size, gd_student_id=None, batch_id=None):
@@ -44,17 +71,26 @@ def list_plans(page, page_size, gd_student_id=None, batch_id=None):
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次")
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        query = select(GraduationGuidancePlan).where(
-            GraduationGuidancePlan.tenant_id == _tid(), GraduationGuidancePlan.is_deleted.is_(False),
-            GraduationGuidancePlan.gd_student_id.in_(scope_ids or [-1]),
-        )
+        scope_select = student_scope_select(db, _tid(), batch_id=batch_id)
+        filters = [
+            GraduationGuidancePlan.tenant_id == _tid(),
+            GraduationGuidancePlan.is_deleted.is_(False),
+            *_student_filters(scope_select),
+        ]
         if gd_student_id:
-            query = query.where(GraduationGuidancePlan.gd_student_id == int(gd_student_id))
-        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
-        rows = db.scalars(query.order_by(GraduationGuidancePlan.id.desc())
-                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [svc._plan_row(row, db.get(GraduationStudent, row.gd_student_id)) for row in rows], total
+            filters.append(GraduationGuidancePlan.gd_student_id == int(gd_student_id))
+        join_on = GraduationStudent.id == GraduationGuidancePlan.gd_student_id
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationGuidancePlan)
+            .join(GraduationStudent, join_on).where(*filters)
+        ) or 0)
+        rows = db.execute(
+            select(GraduationGuidancePlan, GraduationStudent)
+            .join(GraduationStudent, join_on).where(*filters)
+            .order_by(GraduationGuidancePlan.id.desc())
+            .offset((max(1, page) - 1) * page_size).limit(page_size)
+        ).all()
+        return [svc._plan_row(row, student) for row, student in rows], total
 
 
 def list_midterms(page, page_size, keyword=None, status=None, batch_id=None):
@@ -62,23 +98,29 @@ def list_midterms(page, page_size, keyword=None, status=None, batch_id=None):
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次")
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        query = select(GraduationMidterm).where(
-            GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
-            GraduationMidterm.gd_student_id.in_(scope_ids or [-1]),
-        )
+        scope_select = student_scope_select(db, _tid(), batch_id=batch_id)
+        filters = [
+            GraduationMidterm.tenant_id == _tid(),
+            GraduationMidterm.is_deleted.is_(False),
+            *_student_filters(scope_select),
+        ]
         if status:
-            query = query.where(GraduationMidterm.status == status)
-        rows = db.scalars(query.order_by(GraduationMidterm.id.desc())).all()
-        items = []
-        for row in rows:
-            student = db.get(GraduationStudent, row.gd_student_id)
-            if keyword and (not student or keyword.strip() not in (student.name or "")):
-                continue
-            items.append(svc._row(row, student))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+            filters.append(GraduationMidterm.status == status)
+        keyword_clause = _keyword_filter(keyword)
+        if keyword_clause is not None:
+            filters.append(keyword_clause)
+        join_on = GraduationStudent.id == GraduationMidterm.gd_student_id
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationMidterm)
+            .join(GraduationStudent, join_on).where(*filters)
+        ) or 0)
+        rows = db.execute(
+            select(GraduationMidterm, GraduationStudent)
+            .join(GraduationStudent, join_on).where(*filters)
+            .order_by(GraduationMidterm.id.desc())
+            .offset((max(1, page) - 1) * page_size).limit(page_size)
+        ).all()
+        return [svc._row(row, student) for row, student in rows], total
 
 
 def get_midterm(gd_student_id) -> dict:
@@ -213,7 +255,7 @@ def checkin_plan(plan_id, body=None):
         ).with_for_update()).first()
         if not plan:
             raise not_found("指导计划不存在")
-        student = db.get(GraduationStudent, plan.gd_student_id)
+        student = tenant_get(db, GraduationStudent, plan.gd_student_id)
         assert_student_access(db, student, "guidance.checkin")
         if plan.status != "PLANNED":
             raise AppException("DATA_CONFLICT", "该计划已签到或已取消，请刷新")
@@ -247,7 +289,7 @@ def cancel_plan(plan_id, reason):
         ).with_for_update()).first()
         if not plan:
             raise not_found("指导计划不存在")
-        student = db.get(GraduationStudent, plan.gd_student_id)
+        student = tenant_get(db, GraduationStudent, plan.gd_student_id)
         assert_student_access(db, student, "guidance.update")
         if plan.status == "CHECKED_IN":
             raise AppException("DATA_CONFLICT", "已签到计划不可取消，请保留留痕")

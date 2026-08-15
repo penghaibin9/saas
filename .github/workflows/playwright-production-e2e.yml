@@ -7,6 +7,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'student-portal/**'
+      - 'miniapp/**'
       - 'e2e/**'
       - '.github/workflows/playwright-production-e2e.yml'
 
@@ -72,6 +73,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://localhost:5188
 
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +91,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             student-portal/package-lock.json
+            miniapp/package-lock.json
 
       - name: Install backend
         working-directory: backend
@@ -149,9 +152,19 @@ jobs:
           nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
           echo $! > ../e2e/runtime-logs/student-portal.pid
 
+      - name: Install and start teacher miniapp H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          cd miniapp
+          npm ci
+          nohup npm run dev:h5 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/miniapp.pid
+
       - name: Wait for browser applications
         run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
             ok=''
             for i in {1..60}; do
               if curl -fsS "$url" >/dev/null; then ok=1; break; fi

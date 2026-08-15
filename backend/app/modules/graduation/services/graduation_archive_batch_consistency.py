@@ -24,22 +24,22 @@ def _archive_no(value) -> str:
 def preview_batch_file(batch_id=None, archive_batch_no: str | None = None) -> dict:
     from app.modules.graduation.services import graduation_archive_consistency as consistency
     from app.modules.graduation.services import graduation_archive_service as service
+    from app.modules.graduation.services.graduation_archive_batch_scale import row_block_reasons
 
     archive_no = _archive_no(archive_batch_no)
     with session() as db:
         batch = service._require_batch(db, batch_id)
         snapshot = consistency._snapshot(db, batch, "FILE")
         snapshot["archiveBatchNo"] = archive_no
-        executable = sum(
-            1 for row in snapshot["rows"]
-            if not row["missing"] and row["openRisks"] == 0
-        )
         skip_reasons: dict[str, int] = {}
+        executable = 0
         for row in snapshot["rows"]:
-            if row["missing"]:
-                skip_reasons["missing_materials"] = skip_reasons.get("missing_materials", 0) + 1
-            if row["openRisks"] > 0:
-                skip_reasons["open_risks"] = skip_reasons.get("open_risks", 0) + 1
+            reasons = row_block_reasons(row, "FILE")
+            if reasons:
+                for reason in reasons:
+                    skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            else:
+                executable += 1
         payload = consistency._token_payload("FILE", batch, snapshot)
         return {
             "batchId": str(batch.id), "batchName": batch.batch_name,
@@ -88,8 +88,13 @@ def verify_batch_file_preview(batch_id, preview_token: str) -> dict:
 
 
 def _install_consistency_bridge() -> None:
-    """Keep V2 manifest execution on the same token contract as its preview."""
+    """Keep all batch preview/execute paths on one SQL-scaled snapshot contract."""
     from app.modules.graduation.services import graduation_archive_consistency as consistency
+    from app.modules.graduation.services.graduation_archive_batch_scale import (
+        batch_generate_submit as scaled_batch_generate_submit,
+        build_snapshot,
+        preview_batch_generate as scaled_preview_batch_generate,
+    )
 
     original = consistency._token_payload
     if not getattr(original, "_archive_batch_no_bound", False):
@@ -100,15 +105,25 @@ def _install_consistency_bridge() -> None:
 
         token_payload._archive_batch_no_bound = True
         consistency._token_payload = token_payload
+
+    consistency._snapshot = build_snapshot
+    consistency.preview_batch_generate = scaled_preview_batch_generate
+    consistency.batch_generate_submit = scaled_batch_generate_submit
     consistency.verify_batch_file_preview = verify_batch_file_preview
+
+    from app.modules.graduation.services import graduation_archive_service as service
+    service.preview_batch_generate = scaled_preview_batch_generate
+    service.batch_generate_submit = scaled_batch_generate_submit
 
 
 _install_consistency_bridge()
 
 
 def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token: str | None = None) -> dict:
+    """Compatibility writer; public V2 Router uses materials.manifest_service.batch_file."""
     from app.modules.graduation.services import graduation_archive_consistency as consistency
     from app.modules.graduation.services import graduation_archive_service as service
+    from app.modules.graduation.services.graduation_archive_batch_scale import row_block_reasons
 
     archive_no = _archive_no(archive_batch_no)
     with session() as db:
@@ -117,10 +132,16 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
         snapshot["archiveBatchNo"] = archive_no
         consistency._verify_token(preview_token, consistency._token_payload("FILE", batch, snapshot))
         operator, _ = service._op()
-        filed = skipped = 0
+        filed = skipped = dirty_skipped = 0
         for snap in snapshot["rows"]:
+            reasons = row_block_reasons(snap, "FILE")
+            if reasons:
+                skipped += 1
+                if "dirty_data" in reasons:
+                    dirty_skipped += 1
+                continue
             student = db.get(GraduationStudent, int(snap["studentId"]))
-            archive = db.get(GraduationArchiveRecord, int(snap["archiveId"]))
+            archive = db.get(GraduationArchiveRecord, int(snap["archiveId"] or 0))
             if (
                 not student or student.tenant_id != batch.tenant_id
                 or not archive or archive.tenant_id != batch.tenant_id
@@ -128,11 +149,8 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
             ):
                 skipped += 1
                 continue
-            checklist, missing = service._check_completeness(db, student)
-            if missing or service._count_open_risks(db, student) > 0:
-                skipped += 1
-                continue
-            archive.checklist_json, archive.missing_items = checklist, missing
+            archive.checklist_json = snap.get("checklist") or []
+            archive.missing_items = []
             archive.status = "FILED"
             archive.verified_by = operator
             archive.filed_at = datetime.now(timezone.utc)
@@ -150,12 +168,12 @@ def batch_file(archive_batch_no: str | None = None, batch_id=None, preview_token
         service._audit(
             db, f"batch-file-{batch.id}", "批量核验归档汇总",
             detail=(
-                f"filed={filed};skipped={skipped};archiveBatchNo={archive_no};"
-                f"preview={consistency._json_hash(snapshot)}"
+                f"filed={filed};skipped={skipped};dirtySkipped={dirty_skipped};"
+                f"archiveBatchNo={archive_no};preview={consistency._json_hash(snapshot)}"
             ),
         )
         db.commit()
         return {
-            "filed": filed, "skipped": skipped, "archiveBatchNo": archive_no,
-            "batchId": str(batch.id), "batchName": batch.batch_name,
+            "filed": filed, "skipped": skipped, "dirtySkipped": dirty_skipped,
+            "archiveBatchNo": archive_no, "batchId": str(batch.id), "batchName": batch.batch_name,
         }

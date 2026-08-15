@@ -277,7 +277,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [stage-c, archive, p0]
+        shard: [stage-c1, stage-c2, stage-c3, archive, p0]
     defaults:
       run:
         working-directory: backend
@@ -359,19 +359,27 @@ jobs:
           path: backend/test-results/stage-c1-reconciliation.json
           if-no-files-found: warn
           retention-days: 14
-      # 59 条真实迁移库测试当前总耗时已超过旧的 35m 包级预算。
-      # 三个 Runner 各自从 Alembic head 构建隔离 MySQL，再跑原测试子集；覆盖、断言和每测试 180s 超时不变。
+      # Stage C1/C2/C3 在同一 25m 外层 timeout 下已经稳定跑到 exit 124。
+      # 拆成三个独立 Runner 并行执行；测试集合、断言、真实迁移库与每测试 180s 超时全部保持不变。
       - name: 运行迁移库专项分片（不用 create_all）
         run: |
           case "${{ matrix.shard }}" in
-            stage-c)
+            stage-c1)
               timeout 25m pytest -vv -p no:warnings \
                 tests/test_stage_c1_academic_fact.py \
                 tests/test_stage_c1_future_effective.py \
                 tests/test_stage_c1_major_split_fact.py \
                 tests/test_stage_c1_program_transition.py \
+                --timeout=180 --timeout-method=signal --durations=30
+              ;;
+            stage-c2)
+              timeout 20m pytest -vv -p no:warnings \
                 tests/test_stage_c2_historical_consumers.py \
                 tests/test_stage_c2_transcript_identity.py \
+                --timeout=180 --timeout-method=signal --durations=30
+              ;;
+            stage-c3)
+              timeout 25m pytest -vv -p no:warnings \
                 tests/test_stage_c3_archive_immutability.py \
                 tests/test_stage_c3_history_contract.py \
                 tests/test_stage_c3_correction_router_contract.py \
