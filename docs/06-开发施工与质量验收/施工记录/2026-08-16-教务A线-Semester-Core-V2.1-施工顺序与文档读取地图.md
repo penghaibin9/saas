@@ -7,46 +7,48 @@
 
 ## 1. Exact-head 开工事实
 
-- `main` exact HEAD：`414216c4a79ff035aee87d70b35572572f5c0535`
+- `main` 开工 exact HEAD：`414216c4a79ff035aee87d70b35572572f5c0535`
 - A 分支创建基线：`414216c4a79ff035aee87d70b35572572f5c0535`
-- A 分支第一笔提交：本施工地图；提交后以 GitHub 返回的新 exact HEAD 继续记录。
-- 当前状态：`A-W0_IN_PROGRESS`
+- 本次地图刷新前 A exact HEAD：`eaa4b4660497322447714ab669ba232c7a957e64`
+- 唯一总册原文已完整提交到本分支：`docs/06-开发施工与质量验收/施工记录/A_教务Semester_Core_当前代码精确施工总册_V2.1_20260816.md`
+- 当前状态：`A-W1_IN_PROGRESS`；禁止在 MySQL + UI + E2E 未闭环前标 `COMPLETED`。
 
 ## 2. Open PR Collision Ledger
 
 ### PR #96 — `agent/academic-static-closure-20260811`
-- 状态：OPEN / DRAFT；当前 `mergeable=false`。
+- 状态：OPEN / DRAFT；开工时 `mergeable=false`。
 - 直接碰撞：教务服务注册、教务模型注册、教师小程序成绩录入等既有收口面。
 - A 线裁决：不覆盖其共享注册语义；A 独占 service 改动必须做语义级对账，不能整树覆盖。
 
-### PR #132 — `agent/internship-enterprise-collaboration-v3-20260814`
-- 状态：OPEN / DRAFT；base 为当前 `main@414216c4`。
-- 直接碰撞：公共 `route_registration.py`，并涉及大量横切模型/测试。
+### PR #132
+- 开工复核发现公共 `route_registration.py` / 横切模型测试存在碰撞风险。
 - A 线裁决：公共路由不由 A 修改；若 A 新 endpoint 需要公共注册，交 INT 回收。
 
-### PR #133 — `integration/control-plane-option-b-20260815`
-- 状态：OPEN / DRAFT；base 为当前 `main@414216c4`。
+### PR #133 — control-plane 集成线
 - 直接碰撞：Permission Catalog、Data Exchange、identity import、公共 route registration、Alembic 等共享面。
 - A 线裁决：A-W4 只实现 Academic File Exchange 业务适配器和本线合同；公共 Data Exchange / identity / migration / permission 变化全部交 INT。
 
-### 开工时其他相关开放 PR
-- #112 `refactor(platform): split platform control plane and implement Option B`：共享 Permission/Alembic/route-registration 风险，A 只监控，不抢 Owner。
-- #113 `refactor(system): split school system control plane and implement Option B`：共享 Permission/Alembic/route-registration 风险，A 只监控，不抢 Owner。
+### 其他共享风险
+- #112/#113 作为 control-plane 共享 Permission/Alembic/route-registration 风险持续监控。
+- 任一开放 PR 新增触碰 A 当前改动文件时重新做 collision audit。
 
 ## 3. File Owner Matrix
 
-### A 独占业务面
+### A 独占/本线可安全加固业务面
 - `backend/app/modules/academic_affairs/services/academic_affairs_term_workspace_service.py`
 - `backend/app/modules/academic_affairs/services/academic_affairs_program_governance_service.py`
 - `backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py`
 - `backend/app/modules/academic_affairs/services/academic_affairs_task_service.py`
-- A 线对应 PC / portal / miniapp 消费者和 targeted tests（实际路径开工时以 exact-head 为准）。
+- `backend/app/modules/academic_affairs/services/academic_affairs_dashboard_scope_facade.py`（只做公开读侧 facade，不接管共享注册）
+- `backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_current_term.py`（复用既有自动安装点做 A-C1 安全边界）
+- A 线对应 PC / portal / miniapp 消费者和 targeted tests。
 
 ### A 只读复用，不重写 Authority
 - `academic_affairs_teaching_roster_service.py`
 - `academic_affairs_schedule_truth_service.py`
 - `academic_affairs_effective_grade_policy_service.py`
 - `academic_affairs_graduation_immutable_service.py`
+- `backend/app/services/academic_calendar_service.py`：SYS-12 全校学期治理；A-W1 读取其 contract 并通过既有 SQLAlchemy 安全层串行，不在本线重写其状态机。
 
 ### INT 共享禁区
 - `backend/app/api/v1/route_registration.py`
@@ -58,7 +60,7 @@
 - `backend/app/modules/academic_affairs/services/__init__.py`
 - `backend/app/models/academic_affairs_registry.py`
 - `backend/alembic/versions/**`
-- `backend/app/modules/academic_affairs/models/academic_affairs_task.py` 或同语义 TeachingTask ORM 文件若 formationMode 需要持久化字段：A 提合同/业务实现，INT 持迁移/共享注册 Owner。
+- TeachingTask ORM 若 formationMode 需要新增持久化字段：A 提合同/业务实现，INT 持迁移/共享注册 Owner。
 
 ## 4. A-W0 → A-W5 固定施工顺序
 
@@ -69,63 +71,99 @@
 ## 5. Wave 读取地图与输出 Contract
 
 ### A-W0 — 基线与碰撞冻结
-必须读：
-1. 当前 `main` / A exact HEAD；
-2. PR #96/#132/#133 changed files；
-3. 教务历史总控设计；
-4. `academic_affairs_bundle.py` 或当前等价教务路由聚合；
-5. Alembic 当前 heads / 并行 lineage；
-6. exact-head A 独占服务与测试。
+必须读：当前 `main` / A exact HEAD；PR #96/#132/#133 changed files；历史教务总控；路由聚合；Alembic heads；A 独占服务与测试。
 
 输出：Collision Ledger、File Owner Matrix、dirty-data inventory、Frontend Impact Matrix 初版。
 
 ### A-W1 — Term Authority
-必须读：A-P0-01/A-P0-02、Term/Calendar/TimeSlot 附录；`AaTerm`、核心教务 service、term workspace、term calendar/detail router、Task generation、相关 tests。
+必须读：A-P0-01/A-P0-02、Term/Calendar/TimeSlot 附录；`AaTerm`、核心教务 service、term workspace、term calendar/detail router、Task generation、SYS-12 AcademicCalendarGovernance、相关 tests。
 
-先做：真实 MySQL 双管理员同时 set-current RED；随后修唯一 current；再做“无法确定教学周时正式 Task 禁止 18 周猜测”的 RED→GREEN。
+施工顺序：
+1. MySQL 双管理员 current-term RED；
+2. 所有正式 writer 同租户串行；
+3. SYS-12 ACTIVE 与 AaTerm current 统一边界；
+4. public current resolver dirty-data fail-closed；
+5. 18 周正式兜底 RED→GREEN；
+6. 17/20 周真实学校 Gold；
+7. UI 同步 + screenshot + real-click E2E。
 
 输出：`A-C1 Term Context Contract`。
 
 ### A-W2 — Course / Program
-必须读：A-P0-03、Course/Program 附录；`AaCourse/AaProgram/AaProgramCourse/AaProgramBinding`、Program Governance、Task Generation、Graduation 读取链及 tests。
+读取 A-P0-03、Course/Program 附录；`AaCourse/AaProgram/AaProgramCourse/AaProgramBinding`、Program Governance、Task Generation、Graduation 读取链及 tests。
 
 输出：`A-C2 Course Identity Contract`、`A-C3 Program Execution Contract`。
 
 ### A-W3 — TeachingTask Formation
-必须读：A-P0-04；TeachingTask model/service/generation、TeachingClass、TeachingRoster、Task Workbench、tests。
+读取 A-P0-04；TeachingTask model/service/generation、TeachingClass、TeachingRoster、Task Workbench、tests。
 
 冻结：`ADMIN_FIXED / SELECTABLE / MERGED / RETAKE / LAYERED`；禁止新建 OpeningPlan。
 
 输出：`A-C4 TeachingTask Formation Contract`。
 
 ### A-W4 — 新学校导入
-必须读：A-P0-05；Academic File Exchange service/router、公共 Data Exchange（只读理解）、migration import、Course/Program service、FileObject、XLSX tests。
+读取 A-P0-05；Academic File Exchange service/router、公共 Data Exchange（只读理解）、migration import、Course/Program service、FileObject、XLSX tests。
 
 只扩展现有 Academic File Exchange：Course Catalog Import + Program Import；共享 Data Exchange/Alembic 变化提交 INT。
 
 输出：`A-C5 School Setup Contract`。
 
 ### A-W5 — School Setup Readiness / Registration 前置
-必须读：A-P1-06；`AaRegistration/AaRegistrationBatch`、eligibility_status、canonical `register_student` writer、roster registration、Opening Differences、UnifiedTodo。
+读取 A-P1-06；`AaRegistration/AaRegistrationBatch`、eligibility_status、canonical `register_student` writer、roster registration、Opening Differences、UnifiedTodo。
 
-先画 writer 调用图，再确定学校级 policy；A-W5 只做 readiness/read projection，不复制 Selection 资格规则。
+先画 writer 调用图，再确定学校级 policy；只做 readiness/read projection，不复制 Selection 资格规则。
 
-输出：`身份 → 学期 → 课程 → 方案 → Task → blockers` 只读准备度投影，并移交 INT/B。
+## 6. A-W1 当前 exact-head CURRENT FACT
 
-## 6. 当前 exact-head CURRENT FACT（A-W0 首轮）
+### 6.1 Current-term 写侧
+已确认正式写入口至少五类：
+1. `academic_affairs_service.set_current_term()`；
+2. `academic_affairs_service.publish_term()`；
+3. `academic_affairs_service.publish_calendar()`；
+4. `migration_import_service._persist_term(isCurrent=true)`；
+5. `academic_calendar_service.transition(... ACTIVE)` → `_sync_academic_current_term()`。
 
-### Term current
-- `set_current_term()` 当前仍采用“读取目标 → 清理其他 `is_current=true` → 目标置 true → commit”的多行切换。
-- 当前模型已知唯一约束是租户+学年+学期序号；尚无“每租户只能一个 current”的数据库级证明。
-- 裁决：A-W1 必须以真实 MySQL 双连接并发 RED 开始，不能用 UI 防抖冒充 Authority 修复。
+其中第5类 exact-head 使用 bulk update，天然绕过 `AaTerm.is_current` attribute event，因此 A-W1 不能只封前三/四个页面 writer。
 
-### Teaching weeks
-- Task generation exact-head 仍存在 `_FALLBACK_WEEKS = 18`。
-- 正式 Task 生成无法可靠解析教学周时仍可能落到 18 周兜底。
-- 裁决：正式 writer 必须 fail-closed；17 周/20 周学校分别按真实学期结构生成，不能猜 18 周。
+当前实现：
+- 复用真实 `Tenant` 行作为每租户协调锁；
+- `AaTerm.is_current=True` 正式 ORM writer 在接受赋值前取同一租户 `FOR UPDATE`；
+- SYS-12 `AcademicCalendarGovernance.active_key=ACTIVE` 同样先取同一租户协调锁；
+- 已存在 ACTIVE governance term 时，教务 writer 不得把另一个 term 设 current，返回 `TERM_CONTEXT_CONFLICT`；
+- 同事务写多个 current fail-closed；
+- 邻租户不互相清 current。
 
-### Program activation
-- 开工检查项：Program Governance 与 Task Generation 的 active 状态解释存在需要统一的风险；A-W2 必须基于 exact-head 重新锁定唯一 resolver，不在 W0 先改。
+### 6.2 Current-term 读侧 / 双 Authority 发现
+exact-head 发现：
+- SYS-12 `academic_calendar_service.resolve_current()` 声明全系统当前学期唯一入口，并以 `(tenant_id, calendar_type, active_key)` 唯一约束保证至多一个 ACTIVE；
+- 教务 `/terms/current` 历史仍直接读 `AaTerm.is_current.first()`；
+- `CALENDAR_CONSUMERS` 虽把教务标为 `wired=True`，代码搜索只发现 system API 真正直接调用 `resolve_current()`，因此该 wired 标记不能当接线证据。
+
+A-W1 当前裁决：
+- 公开 `/terms/current` 优先消费 SYS-12 ACTIVE governance；
+- 尚未纳入 SYS-12 的历史学校保留 strict legacy fallback；
+- legacy fallback 多 current 必须 `DATA_CONFLICT`，禁止 `.first()` 随机选；
+- governance ACTIVE 指向的 term 缺失/跨租户时 fail-closed；
+- 这是兼容式 REWIRE，不新增第二学期真值。
+
+### 6.3 Teaching weeks
+- 历史正式 Task writer 的 `_FALLBACK_WEEKS = 18` 已删除；
+- 可证明来源保留：`term.teaching_weeks` → `exam_week_start-1` → TEACHING 校历事件 → 完整 term date range；
+- 都无法证明时正式生成返回 `DATA_CONFLICT + TEACHING_WEEKS_UNRESOLVED`；
+- 17周/20周已有明确 targeted contract；
+- 根据完整日期推导出恰好18周属于真实事实，不等于硬编码18周兜底。
+
+### 6.4 真实 CI 历史红灯
+早期 exact-head `ccd1b8bb...`：
+- CI backend targeted：`4 failed, 47 passed`；四条新 current 测试因 worker thread monkeypatch 错 facade `_tid`，属于 TEST_CONTEXT_RED；
+- Main full regression shard：`5 failed, 1113 passed, 3 skipped`；除上述四条外，另有 isolated ORM fixture 因无 Tenant 父行被新生产锁误伤，属于真实 regression。
+
+已修：
+- 测试改为 patch canonical `academic_affairs_service` module；
+- 正式 writer fixture 创建真实 Tenant；
+- transient orphan ORM fixture 保持兼容，但已持久化正式 writer 无 Tenant 仍 fail-closed。
+
+最新 A-W1 HEAD 在本地图刷新前为 `eaa4b466...`，对应 CI 尚 queued/in-progress，禁止写 GREEN。
 
 ## 7. 独立施工 / 等待关系
 
@@ -150,14 +188,19 @@
 
 | Backend Change | API/DTO | Consumer | UI Change | Screenshot | Real Click | Status |
 |---|---|---|---|---|---|---|
-| current term 唯一性 / A-C1 | term workspace/current-term consumers | 学期列表/详情/工作区；教师/学生 current-term 消费者 | 默认学期只能来自 A-C1，禁止本地另算 | W1 必须 | W1 必须 | OPEN |
-| teachingWeeks fail-closed | Task generation preflight | 学期/Task 工作台/开学准备度 | 不再默认18周；显示真实 blocker + howToResolve | W1 必须 | W1 必须 | OPEN |
+| A-C1 current resolver | `/terms/current` | 学期列表/详情/工作区；教师/学生 current-term 消费者 | governance ACTIVE 优先，legacy 双 current 不随机选 | W1 必须 | W1 必须 | BACKEND_IN_PROGRESS |
+| teachingWeeks fail-closed | Task generation preflight | 新建学期/教学周配置/Task 工作台/准备度 | 不默认18周；显示真实 blocker + howToResolve | W1 必须 | W1 必须 | UI_IMPLEMENTED_VISUAL_OPEN |
 | Program activation resolver | Program/Opening/Task/Graduation read | 培养方案治理/Task 预检/毕业只读提示 | PUBLISHED/ENABLED/FROZEN 解释统一 | W2 必须 | W2 必须 | OPEN |
 | formationMode | TeachingTask DTO | Task Workbench + B downstream | 中文人话：固定行政班/自主选课/合班/重修/分层 | W3 必须 | W3 必须 | OPEN |
 | Course/Program import | Academic File Exchange | 导入工作区 | 上传→扫描→预检→错误→确认→回读→重跑 | W4 必须 | W4 必须 | OPEN |
 | readiness/registration policy | readiness/registration projection | 开学准备度/注册资格/批次 | blocker 可下钻，只修源事实清零 | W5 必须 | W5 必须 | OPEN |
 
-所有后端合同变化后，管理 PC / 教师 PC / 学生 PC / 教师 miniapp / 学生 miniapp 若存在消费者必须逐端登记；无消费者写 N/A + 理由。
+A-W1 UI exact-head 审计：
+- `AaTeachingWeekConfigView.vue` 没有 18 周默认值；
+- `AaTaskBatchListView.vue` 已透传生成失败消息，并明确“不会猜测生成”；
+- `AaTermFormView.vue` 已把“如18”改成“按学校校历填写，如17或20”，并说明无法可靠推导时会阻断正式任务生成；
+- `AaTermDetailView.vue` 仍有“未配置教学周显示0”的展示欠账，待本 Wave 后续 UI 收口；
+- screenshot / real-click 尚未完成，所以 W1 不能标 COMPLETED。
 
 ## 9. UI / Screenshot / Real-click 硬门
 
@@ -173,16 +216,17 @@
 
 后端绿但 UI 未闭环时只能标 `BACKEND_GREEN_UI_OPEN`，不得标 COMPLETED。
 
-## 10. A-W0 Dirty-data / Runtime Evidence
+## 10. Dirty-data / Runtime Evidence
 
-当前 GitHub 代码审计连接没有生产/测试 MySQL 会话，因此不得伪造 dirty-data 统计。
+GitHub connector 本身不提供生产 MySQL 交互会话，因此不得伪造生产脏数据统计。
 
-- current-term 多 current 实际行数：`UNMEASURED_MYSQL_RUNTIME_REQUIRED`
-- Program 双 active 实际行数：`UNMEASURED_MYSQL_RUNTIME_REQUIRED`
-- TeachingTask 重复批次/异常周数实际行数：`UNMEASURED_MYSQL_RUNTIME_REQUIRED`
-- 跨租户异常引用：`UNMEASURED_MYSQL_RUNTIME_REQUIRED`
+- 生产 current-term 多 current 实际行数：`UNMEASURED_PRODUCTION_MYSQL_REQUIRED`
+- 生产 governance ACTIVE / AaTerm current mismatch：`UNMEASURED_PRODUCTION_MYSQL_REQUIRED`
+- Program 双 active 实际行数：`UNMEASURED_PRODUCTION_MYSQL_REQUIRED`
+- TeachingTask 重复批次/异常周数实际行数：`UNMEASURED_PRODUCTION_MYSQL_REQUIRED`
+- 跨租户异常引用：`UNMEASURED_PRODUCTION_MYSQL_REQUIRED`
 
-处理：A-W1 首个可执行 MySQL gate 必须先产出上述 inventory；在此之前 A-W0 的源码碰撞冻结可完成，但数据库事实不得写“0”。
+CI 的真实 MySQL fixture 只作为并发/合同证明，不能冒充生产数据 inventory。
 
 ## 11. 每批固定循环
 
@@ -190,14 +234,23 @@
 
 ## 12. Evidence Log
 
-### 2026-08-16 / 开工
-- main exact HEAD：`414216c4a79ff035aee87d70b35572572f5c0535`
-- A branch created from exact main：YES
-- PR #96/#132/#133：已复核 OPEN/DRAFT 与碰撞域
-- 新增相关 PR：#112/#113 作为共享 control-plane 风险持续监控
-- `set_current_term` 并发风险：CURRENT FACT CONFIRMED
+### 2026-08-16 / A-W0 开工
+- main 开工 HEAD：`414216c4...`
+- A branch from exact main：YES
+- PR #96/#132/#133 + #112/#113：完成首轮 collision freeze
 - `_FALLBACK_WEEKS = 18`：CURRENT FACT CONFIRMED
-- MySQL runtime dirty-data：未连接，禁止猜测
-- UI change：本批仅控制文档，N/A
-- Screenshot / real-click：本批无 UI 变化，N/A
-- 下一入口：完成 Draft PR 后继续 A-W0 余项 → A-W1 MySQL current-term RED
+
+### 2026-08-16 / A-W1 第一轮
+- `4f79b29a...`：current-term MySQL RED；
+- `ccd1b8bb...` 真实 CI 暴露 test-context + orphan fixture regression；
+- `acc48fd8...` / `a0a4553...`：修复上述两类问题；
+- `1f75a81c...`：A V2.1 总册原文完整入枝；
+- `5e964a98...`：18周正式兜底 RED；
+- `dfe92e09...`：正式 Task writer 删除硬编码18周 fallback；
+- `04fed2e0...`：新建学期 UI 改成真实周数语义；
+- `5d9d75c6...`：SYS-12 ACTIVE 与 AaTerm current 共用租户协调锁，禁止 active governance 下旁路切另一学期；
+- `f95f4595...`：公开 current-term resolver governance-first + strict legacy fallback；
+- `eaa4b466...`：补治理激活并发、治理优先、legacy 双 current fail-closed MySQL 合同；
+- `eaa4b466...` 对应最新 CI：queued/in-progress，尚无 GREEN 结论。
+
+下一施工入口：`收 eaa4b466 exact-head 真红灯 → 修真实失败 → 补 AaTerm详情“未配置≠0” → current-term 消费者对账 → A-C1 Contract Freeze → W1 screenshot/real-click → 再进入 A-W2`。
