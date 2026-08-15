@@ -1,0 +1,97 @@
+name: Academic C W1 warning source patch once
+
+on:
+  push:
+    branches:
+      - agent/academic-c-teaching-execution
+    paths:
+      - '.github/workflows/academic-c-w1-warning-source-patch-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-c-w1-warning-source-patch-once
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-c-teaching-execution
+          fetch-depth: 0
+
+      - name: Patch attendance warning scan to formal classroom only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_import = 'from sqlalchemy import and_, func, select'
+          new_import = 'from sqlalchemy import and_, func, or_, select'
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif new_import not in text:
+              raise SystemExit('unexpected sqlalchemy import shape')
+
+          marker = '''def scan_attendance_warnings(user) -> dict:\n'''
+          helper = '''def _formal_attendance_session_condition(model):\n    \"\"\"标准旷课预警只消费正式课堂；管理员特殊补录永不混入该口径。\"\"\"\n    from app.modules.academic_affairs.services.academic_affairs_attendance_public_service import (\n        _ADMIN_SPECIAL,\n    )\n\n    return or_(\n        model.session_type.is_(None),\n        model.session_type != _ADMIN_SPECIAL,\n    )\n\n\n'''
+          if '_formal_attendance_session_condition' not in text:
+              if marker not in text:
+                  raise SystemExit('scan_attendance_warnings marker missing')
+              text = text.replace(marker, helper + marker, 1)
+
+          old_query = '''            AaAttendanceSession.status == \"SUBMITTED\",\n            AaAttendanceSession.is_deleted.is_(False),\n'''
+          new_query = '''            AaAttendanceSession.status == \"SUBMITTED\",\n            _formal_attendance_session_condition(AaAttendanceSession),\n            AaAttendanceSession.is_deleted.is_(False),\n'''
+          if old_query in text:
+              text = text.replace(old_query, new_query, 1)
+          elif new_query not in text:
+              raise SystemExit('attendance warning query shape drifted')
+
+          old_audit = '''        _audit(db, \"ACAD_WARNING_SCAN\", 0, \"SCAN_ATTENDANCE_ABSENT\",\n               f\"created={created} updated={updated} thr={thr}\")\n        db.commit()\n        return {\"threshold\": thr, \"created\": created, \"updated\": updated}\n'''
+          new_audit = '''        _audit(db, \"ACAD_WARNING_SCAN\", 0, \"SCAN_ATTENDANCE_ABSENT\",\n               f\"created={created} updated={updated} thr={thr} source=FORMAL_TEACHING\")\n        db.commit()\n        return {\n            \"threshold\": thr,\n            \"created\": created,\n            \"updated\": updated,\n            \"sourceScope\": \"FORMAL_TEACHING\",\n        }\n'''
+          if old_audit in text:
+              text = text.replace(old_audit, new_audit, 1)
+          elif '"sourceScope": "FORMAL_TEACHING"' not in text:
+              raise SystemExit('attendance warning return shape drifted')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          grep -n "formal_attendance_session_condition\|sourceScope.*FORMAL_TEACHING" \
+            backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
+
+      - name: Run source contract without weakening assertions
+        working-directory: backend
+        run: |
+          python -m py_compile app/modules/academic_affairs/services/academic_affairs_warning_service.py
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('app/modules/academic_affairs/services/academic_affairs_warning_service.py').read_text(encoding='utf-8')
+          start = text.index('def scan_attendance_warnings')
+          end = text.index('# ═══════════ 列表 / 看板 / 统计', start)
+          body = text[start:end]
+          assert '_formal_attendance_session_condition(AaAttendanceSession)' in body
+          assert 'sourceScope": "FORMAL_TEACHING' in body
+          assert 'ADMIN_SPECIAL' in text
+          print('attendance warning source contract=FORMAL_TEACHING_ONLY')
+          PY
+
+      - name: Commit production patch and self-clean helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
+          git rm -- .github/workflows/academic-c-w1-warning-source-patch-once.yml
+          git commit -m 'fix(academic-c): exclude special attendance from absence warnings'
+          git push origin HEAD:agent/academic-c-teaching-execution
