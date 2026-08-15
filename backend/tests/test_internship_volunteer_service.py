@@ -149,7 +149,8 @@ def test_all_registered_legacy_application_authorities_are_null_campaign_scoped(
     save_source = inspect.getsource(legacy_app_svc.save_my)
     submit_source = inspect.getsource(legacy_app_svc.submit_my)
     withdraw_source = inspect.getsource(legacy_app_svc.withdraw_my)
-    loader_source = inspect.getsource(legacy_app_svc._get_legacy_student_application)
+    loader_source = inspect.getsource(legacy_app_svc._get_legacy_application)
+    student_loader_source = inspect.getsource(legacy_app_svc._get_legacy_student_application)
     legacy_position_source = inspect.getsource(legacy_app_svc._legacy_position)
 
     assert "InternshipApplication.campaign_id.is_(None)" in list_source
@@ -159,7 +160,22 @@ def test_all_registered_legacy_application_authorities_are_null_campaign_scoped(
     assert "_get_legacy_student_application" in submit_source
     assert "_get_legacy_student_application" in withdraw_source
     assert "InternshipApplication.campaign_id.is_(None)" in loader_source
+    assert "_get_legacy_application" in student_loader_source
     assert "_legacy_position" in save_source
     assert "_legacy_position" in submit_source
     assert "pos.campaign_id is not None" in legacy_position_source
     assert "招聘季岗位必须通过三志愿原子接口" in legacy_position_source
+
+
+def test_registered_legacy_staff_review_is_also_isolated_from_v3_campaign_rows():
+    list_source = inspect.getsource(legacy_app_svc.list_applications)
+    detail_source = inspect.getsource(legacy_app_svc.get_application)
+    review_source = inspect.getsource(legacy_app_svc.review_application)
+    rollback_source = inspect.getsource(legacy_app_svc._rollback_approved_application)
+
+    assert "InternshipApplication.campaign_id.is_(None)" in list_source
+    assert "_get_legacy_application" in detail_source
+    # Review target and sibling cancellation must both stay in the legacy NULL-campaign namespace.
+    assert review_source.count("InternshipApplication.campaign_id.is_(None)") >= 2
+    assert review_source.count("_get_legacy_application") >= 2
+    assert rollback_source.count("InternshipApplication.campaign_id.is_(None)") >= 2

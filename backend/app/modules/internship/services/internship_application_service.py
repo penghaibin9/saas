@@ -1,4 +1,8 @@
-"""Formal internship applications: student submission, staff review and auditable landing."""
+"""Formal internship applications: student submission, staff review and auditable landing.
+
+This module is the legacy single-application authority. Recruitment-campaign POSITION applications
+belong to VolunteerGroup + EnterpriseDecision V3 and are intentionally invisible here.
+"""
 from __future__ import annotations
 
 import re
@@ -33,18 +37,15 @@ def _trail(db, app_id: int, action: str, detail: dict | None = None, user: dict 
 
 
 def _get(db, app_id) -> InternshipApplication:
+    """Generic loader retained for non-legacy internal compatibility; caller owns Authority scope."""
     app = db.get(InternshipApplication, _as_id(app_id))
     if not app or app.is_deleted or app.tenant_id != _tid():
         raise not_found("实习申请不存在或不在当前数据范围内")
     return app
 
 
-def _get_legacy_student_application(db, app_id, *, lock: bool = False) -> InternshipApplication:
-    """Resolve only pre-V3/SELF_ARRANGED rows for still-registered legacy student routes.
-
-    Campaign-scoped POSITION rows belong exclusively to VolunteerGroup + campaign Authority and must
-    be indistinguishable from a missing row here, even when a legacy client guesses a valid id.
-    """
+def _get_legacy_application(db, app_id, *, lock: bool = False) -> InternshipApplication:
+    """Resolve only campaign_id=NULL rows for every registered legacy student/staff route."""
     q = select(InternshipApplication).where(
         InternshipApplication.id == _as_id(app_id),
         InternshipApplication.tenant_id == _tid(),
@@ -55,6 +56,11 @@ def _get_legacy_student_application(db, app_id, *, lock: bool = False) -> Intern
     if not app:
         raise not_found("实习申请不存在或不在当前数据范围内")
     return app
+
+
+def _get_legacy_student_application(db, app_id, *, lock: bool = False) -> InternshipApplication:
+    """Named student seam kept explicit for regression contracts and route intent."""
+    return _get_legacy_application(db, app_id, lock=lock)
 
 
 def _record_for_student(db, student_no: str | None, *, batch_id=None, for_write: bool = True):
@@ -320,6 +326,7 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
             EmpCompany, EmpCompany.id == InternshipPosition.company_id
         ).where(
             InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
             InternshipApplication.record_id.in_(select(scoped.c.id)),
             InternshipRecord.tenant_id == _tid(),
@@ -360,7 +367,7 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
 
 def get_application(app_id, user: dict | None = None) -> dict:
     with session() as db:
-        app = _get(db, app_id)
+        app = _get_legacy_application(db, app_id)
         rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
         _scope_check(db, rec, stu, user)
         item = _row(db, app, rec, stu)
@@ -384,12 +391,15 @@ def _exc_reason(exc: BaseException) -> str:
 
 def _rollback_approved_application(app_id, cancelled_siblings, user: dict | None = None,
                                    reason: str = "") -> None:
-    """落岗失败补偿：申请回到待审，并恢复本轮因通过而取消的同人申请。"""
+    """落岗失败补偿：仅补偿 legacy application，不得回写 campaign V3 行。"""
     with session() as db:
-        app = db.get(InternshipApplication, _as_id(app_id))
-        if not app or app.is_deleted or app.tenant_id != _tid():
-            return
-        if app.status != "APPROVED":
+        app = db.scalar(select(InternshipApplication).where(
+            InternshipApplication.id == _as_id(app_id),
+            InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
+            InternshipApplication.is_deleted.is_(False),
+        ).with_for_update())
+        if not app or app.status != "APPROVED":
             return
         app.status = "PENDING_REVIEW"
         app.review_comment = None
@@ -397,8 +407,13 @@ def _rollback_approved_application(app_id, cancelled_siblings, user: dict | None
         app.reviewed_at = None
         app.version = int(app.version or 0) + 1
         for snap in cancelled_siblings or []:
-            other = db.get(InternshipApplication, snap["id"])
-            if not other or other.is_deleted or other.tenant_id != _tid():
+            other = db.scalar(select(InternshipApplication).where(
+                InternshipApplication.id == _as_id(snap["id"]),
+                InternshipApplication.tenant_id == _tid(),
+                InternshipApplication.campaign_id.is_(None),
+                InternshipApplication.is_deleted.is_(False),
+            ).with_for_update())
+            if not other:
                 continue
             if other.status != "CANCELLED":
                 continue
@@ -430,6 +445,7 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
         app = db.scalar(select(InternshipApplication).where(
             InternshipApplication.id == _as_id(app_id),
             InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False)).with_for_update())
         if not app:
             raise not_found("实习申请不存在")
@@ -456,11 +472,11 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             )
             _trail(db, app.id, "REJECT", {"comment": comment}, user)
             db.commit()
-            app = _get(db, app_id)
+            app = _get_legacy_application(db, app_id)
             out = _row(db, app, rec, stu)
             out["version"] = new_ver
             return out
-        # 申请、学生记录、岗位名额、其他志愿、审计全部留在同一事务。
+        # Legacy application、学生记录、岗位名额、同一 legacy 志愿、审计全部留在同一事务。
         if app.application_type == "POSITION":
             student_svc.assign_position_in_tx(
                 db, rec, app.position_id, record_expected_version, user=user)
@@ -484,6 +500,7 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
         )
         others = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == app.record_id,
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.id != app.id, InternshipApplication.status.in_(_ACTIVE),
             InternshipApplication.is_deleted.is_(False))).all()
         for other in others:
@@ -493,7 +510,7 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             other.version = int(other.version or 0) + 1
         _trail(db, app.id, "APPROVE", {"applicationType": app.application_type}, user)
         db.commit()
-        app = _get(db, app_id)
+        app = _get_legacy_application(db, app_id)
         rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
         out = _row(db, app, rec, stu)
         out["version"] = new_ver
