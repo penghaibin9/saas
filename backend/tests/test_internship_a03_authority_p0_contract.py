@@ -90,8 +90,19 @@ def test_a03_pc_and_mobile_facades_expose_the_same_current_authority_paths():
     portal = _route_contract(portal_facade.router)
     mobile = _route_contract(mobile_facade.router)
     suffixes = {
+        ("/catalog/context", frozenset({"GET"})),
+        ("/catalog/positions", frozenset({"GET"})),
+        ("/catalog/positions/{position_id}", frozenset({"GET"})),
+        ("/catalog/companies/{company_id}", frozenset({"GET"})),
         ("/context/profile", frozenset({"GET"})),
         ("/context/profile", frozenset({"PUT"})),
+        ("/profile/completeness", frozenset({"GET"})),
+        ("/profile/items", frozenset({"GET"})),
+        ("/profile/items", frozenset({"POST"})),
+        ("/profile/items/{item_id}", frozenset({"PUT"})),
+        ("/profile/items/{item_id}", frozenset({"DELETE"})),
+        ("/profile/preview", frozenset({"GET"})),
+        ("/profile/pdf-preview", frozenset({"POST"})),
         ("/context/volunteers", frozenset({"GET"})),
         ("/context/volunteers", frozenset({"PUT"})),
         ("/context/volunteers/material-preview", frozenset({"GET"})),
@@ -130,6 +141,8 @@ def test_facades_are_thin_and_reuse_profile_plus_selection_services():
         source = inspect.getsource(facade)
         assert "profile_svc.get_my_profile" in source
         assert "profile_svc.save_my_profile" in source
+        assert "catalog_svc.list_catalog_positions" in source
+        assert "profile_facade_svc.get_profile_completeness" in source
         assert "selection_svc.save_my_draft" in source
         assert "selection_svc.submit_my_saved_volunteers" in source
         assert "StudentVolunteer" not in source

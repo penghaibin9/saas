@@ -27,6 +27,7 @@ from app.modules.internship.schemas.internship_recruitment_campaign import (
 from app.modules.internship.services import internship_application_resume_pdf_service as resume_pdf_svc
 from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
 from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
+from app.modules.internship.services import internship_enterprise_position_search_service as position_search_svc
 from app.modules.internship.services import internship_enterprise_position_service as portal_svc
 from app.modules.internship.services.internship_assignment_snapshot_authority import (
     install_assignment_snapshot_authority,
@@ -166,10 +167,24 @@ def update_company_profile(body: EnterpriseCompanyProfilePatch, principal: Enter
 
 
 @router.get("/positions")
-def enterprise_positions(campaignId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), status: str | None = Query(default=None), principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view"))):
+def enterprise_positions(
+    campaignId: int = Query(..., ge=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(default=None),
+    keyword: str | None = Query(default=None, max_length=100),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
-        return success(portal_svc.list_positions_in_tx(db, context=ctx, page=page, page_size=pageSize, status=status))
+        return success(position_search_svc.list_positions_in_tx(
+            db,
+            context=ctx,
+            page=page,
+            page_size=pageSize,
+            status=status,
+            keyword=keyword,
+        ))
 
 
 @router.post("/positions")
