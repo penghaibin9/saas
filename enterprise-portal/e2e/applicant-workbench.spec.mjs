@@ -61,25 +61,9 @@ async function installEnterpriseApi(page, { released = false } = {}) {
         body: JSON.stringify(ok({
           counts: { ALL: 2, PENDING: 1, INTERESTED: 0, INTERVIEW: 1, ACCEPT_INTENT: 0, REJECTED: 0 },
           items: [
-            { applicationId: '501', name: '张三', major: '机械制造及自动化', grade: '2025级', positionName: '机械装配技术实习生', volunteerNo: 1, skillTags: ['CAD', '数控', '装配'], matchPercent: 95, appliedAt: '03-06 10:21' },
-            { applicationId: '502', name: '李四', major: '机电一体化', grade: '2025级', positionName: '自动化维护实习生', volunteerNo: 2, skillTags: ['PLC'], matchPercent: 88, appliedAt: '03-06 11:15' },
+            { applicationId:'501', name:'张三', major:'机械制造及自动化', grade:'2025级', positionName:'机械装配技术实习生', volunteerNo:1, skillTags:['CAD','数控','装配'], matchPercent:95, appliedAt:'03-06 10:21', volunteerGroupStatus:released?'NEEDS_REVISION':'SUBMITTED', releaseReason:released?'TEACHER_CONFIRM_TIMEOUT':'', acceptIntentReleased:released, decisionStatus:released?'ACCEPT_INTENT':'INTERVIEW', contactPolicy:{allowed:false,maskedValue:'138****5678'}, decisionHistory:[{id:'d1',status:'INTERVIEW',effectStatus:'ACTIVE',at:'03-08 14:00'}] },
+            { applicationId:'502', name:'李四', major:'机电一体化', grade:'2025级', positionName:'自动化维护实习生', volunteerNo:2, skillTags:['PLC'], matchPercent:88, appliedAt:'03-06 11:15' },
           ],
-        })),
-      })
-    }
-
-    if (path.endsWith('/enterprise/internship/applications/501')) {
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify(ok({
-          id: '501', name: '张三', major: '机械制造及自动化', grade: '2025级', positionName: '机械装配技术实习生',
-          volunteerNo: 1, appliedAt: '03-06 10:21', matchPercent: 95, studentVerified: true,
-          applicationStatement: '具备机械装配实训经验，希望从事智能制造方向。',
-          volunteerGroupStatus: released ? 'NEEDS_REVISION' : 'SUBMITTED',
-          releaseReason: released ? 'TEACHER_CONFIRM_TIMEOUT' : '', acceptIntentReleased: released,
-          decisionStatus: released ? 'ACCEPT_INTENT' : 'INTERVIEW',
-          contactPolicy: { allowed: false, maskedValue: '138****5678' },
-          decisionHistory: [{ id: 'd1', status: 'INTERVIEW', effectStatus: 'ACTIVE', at: '03-08 14:00' }],
         })),
       })
     }
@@ -113,7 +97,7 @@ async function loginAndEnterCampaign(page){
   await page.getByRole('link',{name:'报名学生'}).click()
 }
 
-test('A02-6 authenticated BOSS-style applicant workbench consumes A01 nested snapshot without privacy leakage', async ({ page }) => {
+test('A02-6 authenticated workbench renders A01 snapshot with no unfrozen detail facade', async ({ page }) => {
   await installEnterpriseApi(page)
   await loginAndEnterCampaign(page)
 
