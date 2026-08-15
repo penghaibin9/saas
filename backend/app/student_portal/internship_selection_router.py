@@ -7,6 +7,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.core.student_portal_module_gate import enforce_student_portal_module_access
 from app.modules.internship.services import internship_student_profile_service as profile_svc
+from app.modules.internship.services import internship_student_selection_actions_service as action_svc
 from app.modules.internship.services import internship_student_selection_service as selection_svc
 
 router = APIRouter(
@@ -65,3 +66,31 @@ def get_my_material_preview(user=Depends(get_current_user)):
 def submit_my_volunteers(body: dict = Body(...), user=Depends(get_current_user)):
     result = selection_svc.submit_my_saved_volunteers(user=user, body=body or {})
     return success(_volunteer_contract(result), message="志愿已整组提交")
+
+
+@router.post("/context/volunteers/withdraw", summary="按版本整组撤回已提交志愿")
+def withdraw_my_volunteers(body: dict = Body(...), user=Depends(get_current_user)):
+    result = action_svc.withdraw_my_submission(user=user, body=body or {})
+    return success(_volunteer_contract(result), message="志愿已整组撤回，可重新修改")
+
+
+@router.post("/context/volunteers/unlock-request", summary="按版本申请修改企业拟接收锁定志愿")
+def request_my_volunteer_unlock(body: dict = Body(...), user=Depends(get_current_user)):
+    result = action_svc.request_my_unlock(user=user, body=body or {})
+    return success(_volunteer_contract(result), message="改志愿申请已提交")
+
+
+@router.get("/context/volunteers/submissions", summary="本人不可变投递版本历史")
+def list_my_submission_history(user=Depends(get_current_user)):
+    return success(action_svc.list_my_submissions(user=user))
+
+
+@router.get("/context/volunteers/submissions/{submission_version}", summary="本人指定不可变投递版本")
+def get_my_submission_version(submission_version: int, user=Depends(get_current_user)):
+    return success(action_svc.get_my_submission(user=user, submission_version=submission_version))
+
+
+@router.post("/context/volunteers/contact-consent/revoke", summary="撤销当前投递联系方式共享授权")
+def revoke_my_contact_consent(body: dict = Body(...), user=Depends(get_current_user)):
+    result = action_svc.revoke_my_contact_consent(user=user, body=body or {})
+    return success(_volunteer_contract(result), message="联系方式共享授权已撤销")
