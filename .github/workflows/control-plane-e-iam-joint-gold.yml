@@ -94,7 +94,89 @@ jobs:
           set -euo pipefail
           git config user.name 'control-plane-joint-gold'
           git config user.email 'control-plane-joint-gold@invalid.local'
-          git merge --no-ff --no-edit "$E_HEAD"
+
+          # First attempt a normal two-parent merge.  We permit exactly one known integration
+          # seam: route_registration.py.  Any second conflict is a new collision and fails closed.
+          set +e
+          git merge --no-ff --no-commit "$E_HEAD"
+          MERGE_RC=$?
+          set -e
+          if [ "$MERGE_RC" -ne 0 ]; then
+            mapfile -t UNMERGED < <(git diff --name-only --diff-filter=U)
+            printf 'unmerged: %s\n' "${UNMERGED[@]}"
+            test "${#UNMERGED[@]}" -eq 1
+            test "${UNMERGED[0]}" = 'backend/app/api/v1/route_registration.py'
+
+            # Start from Control Plane ownership, then inject only PR #132's E-series route
+            # deltas.  This preserves platform_router/system_i4_router while adding the
+            # enterprise/recruitment/student-selection surfaces.  No whole-side ours/theirs
+            # strategy is allowed for the merge itself.
+            git checkout --ours backend/app/api/v1/route_registration.py
+            python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/api/v1/route_registration.py')
+          source = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one anchor, found {count}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '''        internship_communication, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned, internship_insurance,\n        internship_match, internship_material_center, internship_participant,\n        internship_plan, internship_position, internship_process, internship_stats,\n        internship_student, internship_visit_plan,\n''',
+              '''        internship_communication, internship_complaint, internship_compliance,\n        internship_enterprise_collaboration, internship_enterprise_eval_versioned,\n        internship_enterprise_portal, internship_insurance, internship_match, internship_material_center,\n        internship_participant, internship_plan, internship_position, internship_process,\n        internship_recruitment_campaign, internship_stats, internship_student, internship_visit_plan,\n''',
+              'E-series internship router imports',
+          )
+          replace_once(
+              '''        internship_communication, internship_visit_plan, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned,\n    ):\n        api_router.include_router(r.router, dependencies=d)\n\n\ndef register_student_affairs_routes''',
+              '''        internship_communication, internship_visit_plan, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned, internship_recruitment_campaign,\n    ):\n        api_router.include_router(r.router, dependencies=d)\n\n    # Enterprise APIs intentionally stay outside the staff dependency bundle.\n    api_router.include_router(internship_enterprise_portal.router)\n    api_router.include_router(internship_enterprise_collaboration.router)\n\n\ndef register_student_affairs_routes''',
+              'E-series staff/enterprise route ownership',
+          )
+          replace_once(
+              '''    from app.api.v1.todos import make_router as make_todos_router\n    from app.modules.platform.routers import platform_router\n''',
+              '''    from app.api.v1.todos import make_router as make_todos_router\n    from app.modules.internship.routers import internship_student_selection\n    from app.modules.platform.routers import platform_router\n''',
+              'student selection import',
+          )
+          replace_once(
+              '''    api_router.include_router(mobile_internship_leave_context.router)\n    api_router.include_router(mobile_internship_student.router)\n    api_router.include_router(student_portal_graduation_guard.router)\n''',
+              '''    api_router.include_router(mobile_internship_leave_context.router)\n    api_router.include_router(mobile_internship_student.router)\n    api_router.include_router(internship_student_selection.mobile_router)\n    api_router.include_router(student_portal_graduation_guard.router)\n''',
+              'student selection mobile route',
+          )
+          replace_once(
+              '''    portal_gate = [Depends(enforce_student_portal_module_access)]\n    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)\n    from app.api.v1 import student_portal_admin\n''',
+              '''    portal_gate = [Depends(enforce_student_portal_module_access)]\n    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)\n    api_router.include_router(internship_student_selection.portal_router)\n    from app.api.v1 import student_portal_admin\n''',
+              'student selection portal route',
+          )
+
+          required = (
+              'from app.modules.platform.routers import platform_router',
+              'from app.modules.system_admin.routers import system_i4_router',
+              'api_router.include_router(platform_router.router)',
+              'api_router.include_router(system_i4_router.router, tags=["system"])',
+              'internship_enterprise_portal',
+              'internship_enterprise_collaboration',
+              'internship_recruitment_campaign',
+              'internship_student_selection.mobile_router',
+              'internship_student_selection.portal_router',
+          )
+          missing = [item for item in required if item not in source]
+          if missing:
+              raise SystemExit(f'integration route resolution lost required owners: {missing}')
+          if '<<<<<<<' in source or '=======' in source or '>>>>>>>' in source:
+              raise SystemExit('conflict markers remain after semantic resolution')
+          path.write_text(source, encoding='utf-8')
+          PY
+            git add backend/app/api/v1/route_registration.py
+          fi
+
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- backend/app/api/v1/route_registration.py
+          git commit -m 'CI-only E x IAM temporary integration'
+
           INTEGRATION_HEAD="$(git rev-parse HEAD)"
           PARENTS="$(git show -s --format=%P HEAD)"
           test "$(printf '%s\n' "$PARENTS" | awk '{print $1}')" = "$CONTROL_HEAD"
@@ -152,6 +234,14 @@ jobs:
           collab = Path('backend/app/modules/internship/services/internship_enterprise_collaboration_service.py').read_text(encoding='utf-8')
 
           assert '"intern": [Depends(require_staff), Depends(require_module("internship"))]' in routes
+          assert 'from app.modules.platform.routers import platform_router' in routes
+          assert 'from app.modules.system_admin.routers import system_i4_router' in routes
+          assert 'api_router.include_router(platform_router.router)' in routes
+          assert 'api_router.include_router(system_i4_router.router, tags=["system"])' in routes
+          assert 'api_router.include_router(internship_enterprise_portal.router)' in routes
+          assert 'api_router.include_router(internship_enterprise_collaboration.router)' in routes
+          assert 'api_router.include_router(internship_student_selection.mobile_router)' in routes
+          assert 'api_router.include_router(internship_student_selection.portal_router)' in routes
           assert '_MANAGE = require_any_permission("internship.recruitment.manage", "internship.enterprise.manage")' in recruitment
           assert 'resolve_active_grant_in_tx(' in enterprise_ctx
           assert 'InternshipCampaignEnterprise.status == "ACCEPTED"' in enterprise_ctx
