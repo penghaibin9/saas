@@ -1,0 +1,2336 @@
+4. 再补跨学期/跨学院错绑定、并发 confirm、rollback、错误 XLSX、超大文件等学校规模测试。
+
+### [SCALE-BLOCKER] 排课大导入
+
+必须用真实 MySQL + 文件解析跑：
+- 1 万行 Task-first schedule XLSX；
+- 错误率 5% 的 dry-run；
+- ATOMIC confirm 全成全败；
+- PARTIAL confirm 正确接受合法行并输出逐行错误；
+- classroom/teacher/class 冲突保持稳定 businessCode。
+
+---
+
+
+---
+
+## 来源文档：`06_Selection与正式名单_真实学校交付施工文档_V1.3.md`
+
+# 06 — Selection + Lottery + TeachingRoster 汇流：现有代码逐行审计 + 真实学校交付校正版 V1.3
+
+> 审计仓库：`penghaibin9/saas`  
+> 审计基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`  
+> 审计日期：2026-08-16  
+> 审计模式：**只读代码审计；未修改 main、未创建迁移、未提交代码。**  
+> PR #101 的 D1–D9 教务结构治理已经合入此基线；本总册按“保护现有成熟能力、焊接主链断点”编写。
+
+
+## 1. 当前成熟度
+
+**整体 🟠；并发基座强，但正式可用还有 P0。**
+
+## 2. 标记规则
+
+
+| 标记 | 含义 | 施工约束 |
+|---|---|---|
+| **[KEEP]** | 已经是正式 Authority / 生产级强基座 | 禁止重写；只能补测试、补展示、补索引或局部修 bug |
+| **[HARDEN]** | 当前可用，但存在边界、审计、性能或可解释性欠账 | 小步加固，保持 API/数据兼容 |
+| **[REWIRE]** | 已有能力，但主链连接方式不正确或仍走旁路 | 优先“改连接”而不是“重建模块” |
+| **[COMPAT]** | 兼容层 / facade / legacy 路由桥 | 等价替换与回归门禁完成前必须保留 |
+| **[RETIRE-LATER]** | 可在未来退役 | 必须先证明无调用、无历史数据依赖、无路由合同依赖 |
+| **[BLOCKER]** | 不修会让真实学校业务走不通或产生错误正式事实 | 上线前必须修；不得以 UI 隐藏、默认值或 mock 绕过 |
+
+
+## 3. 数据结构审计
+
+| 模型/事实 | 标记 | 当前代码结论 |
+|---|---|---|
+| AaSelectionBatch / Course / Round / Record | [KEEP/HARDEN] | 选课批次、供给、轮次、学生记录已存在 |
+| AaTeachingClass / RosterVersion / Member | [KEEP] | 统一正式名单结构已经成熟 |
+
+## 4. Router / Service / Guard 审计
+
+| 文件 | 标记 | 逐函数/关键分支结论 |
+|---|---|---|
+| backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py | [KEEP/HARDEN] | FCFS 行锁、cap 原子更新、LOCK→TeachingRoster 已存在 |
+| backend/app/modules/academic_affairs/services/academic_affairs_selection_round_service.py | [KEEP] | Lottery 用 SHA-256 确定性排序；CLOSED→DRAWN 行锁 claim |
+| backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py | [BLOCKER] | validator 内部存在 conflict reject commit；schedule conflict 仍读旧 EFFECTIVE items；坏 JSON 有 fail-open 风险 |
+| backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py | [KEEP] | Selection 存在时未 LOCK 就 fail-closed，不回退行政班 |
+
+## 5. 四端前端审计
+
+| 页面/客户端 | 标记 | 当前情况 |
+|---|---|---|
+| frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue | [HARDEN] | 新建批次字段偏少，TeachingTask 仍显示“选填” |
+| frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue | [BLOCKER] | 只识别 SELECTED/LOCKED/DROPPED/COURSE_CANCELLED；不识别 PENDING_LOTTERY/LOTTERY_LOST；按钮在前端自行判断 |
+| student-portal/src/views/academic/StudentCourseSelectionView.vue | [HARDEN] | 学生端合同需要与管理 PC 对齐 |
+| miniapp 学生选课 | [HARDEN] | 必须与 PC 共用后端 allowedActions |
+
+## 四端定义
+
+本总册中的“四端”固定指：
+
+1. **管理 / 教师 PC：`frontend/`**  
+   同一 PC 客户端，由 `RBAC + dataScope + navPlan` 决定教务处、学院教务、任课教师看到的工作区。
+2. **学生 PC：`student-portal/`**
+3. **教师小程序：`miniapp/` teacher side**
+4. **学生小程序：`miniapp/` student side**
+
+四端必须共享同一后端状态机、同一 TeachingTask、同一 Schedule Truth、同一 TeachingRoster、同一正式成绩事实。  
+**允许 UI 密度不同，不允许业务真值不同。**
+
+
+## 6. 真实学校使用前 BLOCKER
+
+1. `termId`、selection window、scope、TeachingTask 必须成为正式合同。
+2. JSON 配置损坏不得 fail-open。
+3. schedule conflict 必须读 current ScopeHead，不得扫旧 EFFECTIVE items。
+4. validator 不得 commit。
+5. 学生端必须消费后端 state machine + allowedActions；补齐 Lottery 状态。
+6. 20K 学生规模分页、锁批次效率、数据范围必须验证。
+
+## 7. HARDEN / REWIRE 清单
+
+- 先做 dirty-data inventory，再决定 NOT NULL / 索引收紧；不要直接 schema 变更把历史数据炸掉。
+- Lottery 保持现有确定性设计，不重写“随机算法”。
+- FCFS cap 更新保持原子 SQL；补充 100+ 并发超卖测试。
+- Selection LOCK 后生成 `SELECTION_LOCK` Roster，Roster count/hash 必须与 Selection records 对账。
+
+## 8. 最小安全施工方式
+
+优先建立 `SelectionPreflight` 与 Student Projection，修事务边界，再收紧 schema。
+
+## 本模块施工铁律
+
+1. 不因为存在 legacy/facade 就直接删除；先证明 route shape、response DTO、权限、历史数据、四端调用全部等价。
+2. 不新建第二套课程、计划、TeachingTask、Schedule、Roster、Grade、Graduation Truth。
+3. 正常链使用 stable ID；名称只做 snapshot / display。
+4. 数据损坏必须 fail-closed；不得用空 scope、默认规则、默认学期、默认名单假装成功。
+5. 对正式事实的写操作继续受 `tenant + RBAC + dataScope + archive guard + audit` 约束。
+6. 改 UI 优先让它消费现有强后端，而不是为了迁就旧 UI 放松后端。
+7. MySQL 并发验证只在涉及行锁/唯一约束/状态推进的模块执行。
+
+
+## 9. 必须补/保留的测试证据
+
+- 现有 targeted unit/service tests：不得删、不得改弱断言。
+- Router contract：method/path/permission/response envelope 不漂移。
+- 四端至少覆盖本模块真实入口；没有本端业务职责的端必须验证“无错误入口/无伪按钮”。
+- 若修改行锁、状态推进、唯一约束：真实 MySQL targeted concurrency。
+- 只有 targeted 全绿后，才进入跨模块 semester flow / Playwright Gold。
+
+---
+
+# V1.3 真实学校交付增强层
+
+> 本节是 V1.3 在 V1.2“保护成熟 Authority、修主链焊点”之上新增的**学校交付层**。  
+> 任何开发智能体不得把这里的“上线准入”误解为重建业务模型；优先复用现有 Authority、File Exchange、R11 Semester Pilot、RBAC/DataScope、Outbox/Audit。
+
+## 学校上线必须同时满足的 8 类证据
+
+1. **业务正确**：状态机、权限、名单、课表、考试、成绩的 Authority 无旁路。
+2. **可实施**：新学校可通过导入/配置而不是人工逐条录入完成基础数据建设。
+3. **可操作**：教务处、学院教务、任课教师、学生在各自端能完成真实任务。
+4. **可解释**：任何 BLOCKED 都有原因、责任角色、下一步、下钻入口。
+5. **可对账**：导入、名单、排课、考试、成绩、归档均有 before/after、数量、hash/版本或可复核摘要。
+6. **可承载**：真实 MySQL 下通过学校规模峰值测试，不能只跑单用户功能测试。
+7. **可运维**：异步任务、消息、导入任务、归档、后台调度有 lag/dead/pending 指标和故障处置。
+8. **可恢复**：数据库、文件对象、配置、迁移具备恢复演练证据；没有恢复演练不得签“可给学校正式上线”。
+
+## V1.3 新增标记
+
+| 标记 | 含义 |
+|---|---|
+| `[GO-LIVE-BLOCKER]` | 业务功能可能可跑，但不满足真实学校上线签字 |
+| `[IMPLEMENTATION-BLOCKER]` | 新学校初始化/数据迁移无法低风险完成 |
+| `[SCALE-BLOCKER]` | 小数据可用，但学校高峰/大数据量未经证明或有热点 |
+| `[OPS-BLOCKER]` | 故障、异步任务、备份恢复、告警没有可操作闭环 |
+| `[VERIFY-FIRST]` | 代码检索未能证明能力存在；先核 exact-head，确认缺失后才施工 |
+
+## 真实学校增强：Selection 与正式名单
+
+当前 final service 已具备很强的并发基座：
+- FCFS 行锁 + 原子容量；
+- Lottery CLOSED→DRAWN 行锁 claim + SHA-256 确定性顺序；
+- LOCK → TeachingRoster；
+- pending Selection 时 TeachingRoster fail-closed。
+
+真实学校还必须补：
+1. `SelectionPreflight` 在 PUBLISH/OPEN/LOCK 三阶段统一复用；
+2. 先做 dirty-data inventory，再决定 NOT NULL / index tighten；
+3. Student Projection 输出 `status/allowedActions/blockers/officialSchedule/window/round`；
+4. 学生 PC/小程序不再自己算 `canEnroll`；
+5. 20K 学生规模锁名单/名单生成/Projection 分页；
+6. 学院教务员的数据范围不得先查全校再 Python 过滤。
+
+### [SCALE-BLOCKER] Selection 真实 MySQL 并发协议
+
+- FCFS 最后一席 100+ 并发；
+- 同一学生 PC + miniapp 同时提交；
+- OPEN/CLOSE 与 enroll 并发；
+- LOCK 与 drop/reselect 并发；
+- Lottery 重复 draw / worker retry；
+- Roster 生成与 lock 失败 rollback；
+- 目标容量 200、申请 1k 的 burst 验证。
+
+验收不仅看 HTTP 200，而要对账：
+`SelectionRecord count / selectedCount / capacity / Roster memberCount / rosterHash`。
+
+---
+
+
+---
+
+## 来源文档：`07_TeachingClass与TeachingRoster_真实学校交付施工文档_V1.3.md`
+
+# 07 — TeachingClass / TeachingRoster 汇流：现有代码逐行审计 + 真实学校交付校正版 V1.3
+
+> 审计仓库：`penghaibin9/saas`  
+> 审计基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`  
+> 审计日期：2026-08-16  
+> 审计模式：**只读代码审计；未修改 main、未创建迁移、未提交代码。**  
+> PR #101 的 D1–D9 教务结构治理已经合入此基线；本总册按“保护现有成熟能力、焊接主链断点”编写。
+
+
+## 1. 当前成熟度
+
+**后端 🟢。这是当前最成熟的底座之一。**
+
+## 2. 标记规则
+
+
+| 标记 | 含义 | 施工约束 |
+|---|---|---|
+| **[KEEP]** | 已经是正式 Authority / 生产级强基座 | 禁止重写；只能补测试、补展示、补索引或局部修 bug |
+| **[HARDEN]** | 当前可用，但存在边界、审计、性能或可解释性欠账 | 小步加固，保持 API/数据兼容 |
+| **[REWIRE]** | 已有能力，但主链连接方式不正确或仍走旁路 | 优先“改连接”而不是“重建模块” |
+| **[COMPAT]** | 兼容层 / facade / legacy 路由桥 | 等价替换与回归门禁完成前必须保留 |
+| **[RETIRE-LATER]** | 可在未来退役 | 必须先证明无调用、无历史数据依赖、无路由合同依赖 |
+| **[BLOCKER]** | 不修会让真实学校业务走不通或产生错误正式事实 | 上线前必须修；不得以 UI 隐藏、默认值或 mock 绕过 |
+
+
+## 3. 数据结构审计
+
+| 模型/事实 | 标记 | 当前代码结论 |
+|---|---|---|
+| AaTeachingClass | [KEEP] | taskId 稳定关联；classType/formationMode 支持 ADMIN_FIXED / SELECTION / MANUAL / RETAKE 等场景 |
+| AaTeachingRosterVersion / Member | [KEEP] | current head + version history + rosterHash + sourceType；同一 TeachingClass 只有一版 current |
+
+## 4. Router / Service / Guard 审计
+
+| 文件 | 标记 | 逐函数/关键分支结论 |
+|---|---|---|
+| backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_core_service.py | [KEEP] | ensure class、set roster、version/hash、Selection-managed 防覆盖 |
+| backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py | [KEEP] | resolver 对 Selection 未 LOCK fail-closed；ADMIN_CLASS 只在无 Selection 关系时使用 |
+| Attendance/Exam/Grade consumer services | [KEEP] | 已通过 RosterConsumerSnapshot 读取正式名单 |
+
+## 5. 四端前端审计
+
+| 页面/客户端 | 标记 | 当前情况 |
+|---|---|---|
+| AaTeachingTaskDetailView | [KEEP/HARDEN] | 可显示任务/名单摘要；建议增加 rosterSource/version/hash/updatedAt |
+| 教师成绩/考勤页 | [KEEP] | 下游应只认 RosterConsumerSnapshot |
+| 学生端 | [KEEP/HARDEN] | 正式课表、考试资格、成绩资格最终都应以 current roster membership 解释 |
+
+## 四端定义
+
+本总册中的“四端”固定指：
+
+1. **管理 / 教师 PC：`frontend/`**  
+   同一 PC 客户端，由 `RBAC + dataScope + navPlan` 决定教务处、学院教务、任课教师看到的工作区。
+2. **学生 PC：`student-portal/`**
+3. **教师小程序：`miniapp/` teacher side**
+4. **学生小程序：`miniapp/` student side**
+
+四端必须共享同一后端状态机、同一 TeachingTask、同一 Schedule Truth、同一 TeachingRoster、同一正式成绩事实。  
+**允许 UI 密度不同，不允许业务真值不同。**
+
+
+## 6. 真实学校使用前 BLOCKER
+
+**当前没有新的数据结构级 BLOCKER。**  
+真正需要的是保护它不被其他模块绕开：
+- Attendance 不得从行政班直接猜名单；
+- Exam 不得自己查 SelectionRecord；
+- Grade 不得按课程名+学生号猜修读关系；
+- 学生课表不得永远依赖 student.class_id。
+
+## 7. HARDEN / REWIRE 清单
+
+- TeachingRoster 管理/诊断页面要清楚显示 source/version/hash/当前状态。
+- MANUAL 调整需要 before/after/reason/expectedVersion。
+- Selection LOCK / Retake / Manual refresh 后，下游 snapshot 必须读 current version。
+
+## 8. 最小安全施工方式
+
+**不要再建新 roster 模型。**  
+只补 read projection、版本并发、人工调整审计、下游回归。
+
+## 本模块施工铁律
+
+1. 不因为存在 legacy/facade 就直接删除；先证明 route shape、response DTO、权限、历史数据、四端调用全部等价。
+2. 不新建第二套课程、计划、TeachingTask、Schedule、Roster、Grade、Graduation Truth。
+3. 正常链使用 stable ID；名称只做 snapshot / display。
+4. 数据损坏必须 fail-closed；不得用空 scope、默认规则、默认学期、默认名单假装成功。
+5. 对正式事实的写操作继续受 `tenant + RBAC + dataScope + archive guard + audit` 约束。
+6. 改 UI 优先让它消费现有强后端，而不是为了迁就旧 UI 放松后端。
+7. MySQL 并发验证只在涉及行锁/唯一约束/状态推进的模块执行。
+
+
+## 9. 必须补/保留的测试证据
+
+- 现有 targeted unit/service tests：不得删、不得改弱断言。
+- Router contract：method/path/permission/response envelope 不漂移。
+- 四端至少覆盖本模块真实入口；没有本端业务职责的端必须验证“无错误入口/无伪按钮”。
+- 若修改行锁、状态推进、唯一约束：真实 MySQL targeted concurrency。
+- 只有 targeted 全绿后，才进入跨模块 semester flow / Playwright Gold。
+
+---
+
+# V1.3 真实学校交付增强层
+
+> 本节是 V1.3 在 V1.2“保护成熟 Authority、修主链焊点”之上新增的**学校交付层**。  
+> 任何开发智能体不得把这里的“上线准入”误解为重建业务模型；优先复用现有 Authority、File Exchange、R11 Semester Pilot、RBAC/DataScope、Outbox/Audit。
+
+## 学校上线必须同时满足的 8 类证据
+
+1. **业务正确**：状态机、权限、名单、课表、考试、成绩的 Authority 无旁路。
+2. **可实施**：新学校可通过导入/配置而不是人工逐条录入完成基础数据建设。
+3. **可操作**：教务处、学院教务、任课教师、学生在各自端能完成真实任务。
+4. **可解释**：任何 BLOCKED 都有原因、责任角色、下一步、下钻入口。
+5. **可对账**：导入、名单、排课、考试、成绩、归档均有 before/after、数量、hash/版本或可复核摘要。
+6. **可承载**：真实 MySQL 下通过学校规模峰值测试，不能只跑单用户功能测试。
+7. **可运维**：异步任务、消息、导入任务、归档、后台调度有 lag/dead/pending 指标和故障处置。
+8. **可恢复**：数据库、文件对象、配置、迁移具备恢复演练证据；没有恢复演练不得签“可给学校正式上线”。
+
+## V1.3 新增标记
+
+| 标记 | 含义 |
+|---|---|
+| `[GO-LIVE-BLOCKER]` | 业务功能可能可跑，但不满足真实学校上线签字 |
+| `[IMPLEMENTATION-BLOCKER]` | 新学校初始化/数据迁移无法低风险完成 |
+| `[SCALE-BLOCKER]` | 小数据可用，但学校高峰/大数据量未经证明或有热点 |
+| `[OPS-BLOCKER]` | 故障、异步任务、备份恢复、告警没有可操作闭环 |
+| `[VERIFY-FIRST]` | 代码检索未能证明能力存在；先核 exact-head，确认缺失后才施工 |
+
+## 真实学校增强：TeachingRoster Authority 守卫
+
+这是当前最成熟的底座之一，V1.3 的任务不是新造表，而是把它变成所有下游都无法绕过的协议。
+
+新增学期级 reconciliation：
+`TeachingTask → TeachingClass → current RosterVersion → member count/hash → Attendance/Exam/Grade snapshot`
+
+必须做到：
+- 0 个 ACTIVE TeachingTask 没有合法 class/roster readiness；
+- 0 个 current RosterVersion hash/count 不一致；
+- 0 个 Selection-managed Roster 被 ADMIN_CLASS refresh 覆盖；
+- MANUAL/RETAKE refresh 保留 version history；
+- 任意学生正式课表、考试、成绩资格能追溯到 current roster membership。
+
+---
+
+
+# 00D. 线内 API Contract：允许 B 内部直接耦合，禁止向外泄漏内部模型
+
+> 本节是 V1.3 深度补强稿在四线并行模式下的强制 Contract。  
+> B 线内部服务可以直接依赖同线内部 DTO/模型；但 A/C/D/INT 只能消费以下发布 Contract，不得直接查 B 内部表来“顺手得到结果”。
+
+## B-API-01 — PublishedScheduleDTO
+
+发布给：C/D/学生课表消费者。
+
+最小字段：
+
+```json
+{
+  "termId": 1,
+  "scopeKey": "SCHOOL|COLLEGE:10|CLASS:20",
+  "activeBatchId": 100,
+  "scopeHeadVersion": 3,
+  "publishedAt": "2026-09-01T08:00:00+08:00",
+  "items": [
+    {
+      "taskId": 2001,
+      "weekday": 1,
+      "slotId": "0102",
+      "startWeek": 1,
+      "endWeek": 16,
+      "parity": "ALL",
+      "classroomId": 301,
+      "teacherIds": [501],
+      "classIds": [601]
+    }
+  ]
+}
+```
+
+硬门：
+- C 线考勤/考试冲突只认此 DTO 或同义 public service；
+- D 线只读历史/Archive snapshot；
+- 禁止任何线直接拿 `AaScheduleItem.status == EFFECTIVE` 代替 current ScopeHead。
+
+## B-API-02 — SelectionStudentProjectionDTO
+
+发布给：学生 PC / 小程序 / 管理 PC 排障。
+
+最小字段：
+
+```json
+{
+  "batchId": 11,
+  "roundId": 21,
+  "termId": 1,
+  "window": {"open": true, "startAt": "...", "endAt": "..."},
+  "course": {
+    "selectionCourseId": 31,
+    "taskId": 41,
+    "courseId": 51,
+    "status": "OPEN",
+    "capacity": 80,
+    "selectedCount": 76
+  },
+  "eligibility": {
+    "eligible": false,
+    "businessCode": "PREREQUISITE_NOT_MET",
+    "blockers": ["PREREQUISITE_NOT_MET"],
+    "howToResolve": "完成先修或提交允许的人工 override"
+  },
+  "myRecord": {
+    "status": "PENDING_LOTTERY",
+    "recordId": 61
+  },
+  "allowedActions": ["VIEW", "DROP_PENDING_LOTTERY"],
+  "officialSchedule": {
+    "scopeHeadVersion": 3,
+    "conflict": false
+  }
+}
+```
+
+硬门：
+- 学生客户端不得用 `selectedCount < capacity` 自己推 `canEnroll`；
+- 不得用本地时间自行决定 OPEN/CLOSED；
+- `PENDING_LOTTERY / LOTTERY_LOST / COURSE_CANCELLED / LOCKED` 语义必须后端统一。
+
+## B-API-03 — TeachingRosterDTO
+
+发布给：C 线 Attendance / Exam / Grade 和 D 线 Archive。
+
+最小字段：
+
+```json
+{
+  "teachingClassId": 701,
+  "taskId": 41,
+  "termId": 1,
+  "classType": "SELECTION",
+  "sourceType": "SELECTION_LOCK",
+  "versionNo": 4,
+  "status": "LOCKED",
+  "memberCount": 78,
+  "rosterHash": "sha256:...",
+  "generatedAt": "...",
+  "reason": "SELECTION_LOCK",
+  "members": [
+    {"studentId": 9001, "studentNo": "20260001"}
+  ]
+}
+```
+
+硬门：
+- C 线不能直接读 `AaSelectionRecord` 判断谁能考勤/考试/录成绩；
+- D 线 Archive 必须保留 rosterVersion + hash；
+- B 内部更换 current version 后，消费者下次读取必须自动命中新 current。
+
+## B-API-04 — SelectionPreflightDTO
+
+发布给：B 内 PUBLISH/OPEN/CLOSE/LOCK + 管理排障页。
+
+```json
+{
+  "ready": false,
+  "stage": "OPEN",
+  "blockers": [
+    {
+      "code": "SCHEDULE_NOT_PUBLISHED",
+      "message": "正式课表尚未发布",
+      "ownerRole": "ACADEMIC_ADMIN",
+      "howToResolve": "先发布当前学期正式课表"
+    }
+  ],
+  "checkedAt": "...",
+  "evidence": {"termId": 1, "scopeHeadVersion": 0}
+}
+```
+
+要求：
+- 纯读，禁止 `commit()`；
+- PUBLISH/OPEN/CLOSE/LOCK 调用同一个 evaluator；
+- `unknown / corrupted / service unavailable` 一律 fail-closed，不能变 `ready=true`。
+
+
+# 00E. 线内 Frontend Page / Action Matrix
+
+> 四端：管理/教师 PC、学生 PC、教师小程序、学生小程序。  
+> B 线是学生选课 UX 与正式名单 Authority 的 Owner。
+
+| 页面 | 角色 | 主任务 | 核心读 Contract | 正式写动作 | 必要状态 | Empty/Error/Blocked |
+|---|---|---|---|---|---|---|
+| 排课工作台 | 教务处/学院教务 | READY Task-first 排课 | A TeachingTask Contract + B Schedule Draft | create/update item | DRAFT/PUBLISHED | 无READY Task时引导回教学任务 |
+| 排课导入 | 教务处/学院教务 | XLSX dry-run/confirm | Academic File Exchange | confirm job | READY/FAILED/CONFIRMED | 文件错误下载错误行 |
+| 课表发布 | 教务处 | 发布ScopeHead | B PublishedScheduleDTO | publish | DRAFT/PUBLISHED/SUPERSEDED | 冲突/漏排下钻 |
+| 选课批次 | 教务处 | 配置Batch/Round/Scope | B PreflightDTO | create/publish/open/close/lock | DRAFT/PUBLISHED/OPEN/CLOSED/LOCKED | blocker列表 |
+| 选课课程供给 | 教务处/学院教务 | Task供给/容量/算法 | A Task + B course policy | add/update | DRAFT/OPEN/CANCELLED | 缺Task/跨学期/坏policy阻断 |
+| 选课排障 | 教务处/学院教务 | 学生为什么不能选 | SelectionStudentProjectionDTO | override（若已验真） | any | 原因/证据/责任人 |
+| 学生选课 | 学生PC/小程序 | 选课/退课/查看结果 | SelectionStudentProjectionDTO | enroll/drop | OPEN/PENDING/SELECTED/LOCKED/LOST/CANCELLED | 中文原因 + 下一步 |
+| Lottery结果 | 学生/教务 | 查看抽签结果 | Lottery evidence | 无/受控admin action | DRAWN | candidateHash/resultHash |
+| 补选审批 | 学生/学院/教务 | 正式选课后的审批式补选 | Existing add-selection projection | submit/approve/reject | PENDING/APPROVED/REJECTED | 审批时重新preflight |
+| 正式名单 | 教师/教务 | 查看当前RosterVersion | TeachingRosterDTO | MANUAL refresh（受控） | LOCKED/SUPERSEDED | source/version/hash清晰 |
+| 学生正式课表 | 学生PC/小程序 | 查看我真实上的课 | PublishedScheduleDTO × TeachingRoster | 无 | PUBLISHED | 非member不显示 |
+
+## 按钮级强门
+
+### 排课页
+- “新增排课”：只有 READY Task；禁止自由拼课程+教师+班级。
+- “批量导入”：进入 File Exchange，不再走文本 CSV 旁路。
+- “发布”：先 Preflight；blocker=0 才允许。
+
+### 学生选课页
+- “选课”：只在后端 `allowedActions` 含 ENROLL 时显示。
+- “退课”：只在 allowedActions 含 DROP 时显示。
+- “换课”：若启用 B15-09，只能调用 atomic swap；禁止 UI 先 drop 再 enroll。
+- “候补”：只有学校启用 Waitlist 且 algorithm=FCFS 时显示；Lottery 落签不自动显示候补。
+- “补选申请”：仅正式选课结束后的学校政策窗口显示。
+
+### 正式名单页
+- “人工调整”：先 preview diff；Selection-managed class 默认禁止直接覆盖。
+- “导出名单”：带 roster version/hash/generatedAt。
+
+
+# 00F. 线内 Import / Export / Audit Contract
+
+## Schedule Import
+- 唯一通道：Academic File Exchange。
+- 模板：taskId canonical；weekday/slot/weeks/parity/classroom。
+- 禁止 teacherName 作为 teacherKey。
+- confirm 前同一 canonical schedule evaluator。
+
+## Selection / Roster Bulk Operations
+- 若需批量加供给/名单调整，先判断是否能表达为现有 Batch/Task/Roster API；不能就提交新 schema 七问。
+- 禁止 CSV 直接写 SelectionRecord / RosterMember。
+
+## Export
+正式文件至少带：
+- school/term/batch/round；
+- generatedAt/operator；
+- dataScope；
+- scheduleVersion 或 rosterVersion/hash；
+- watermark（涉学生名单时）。
+
+## Audit
+高风险动作：
+- Schedule publish/change；
+- Selection publish/open/close/lock/draw；
+- capacity change；
+- override；
+- course cancel；
+- manual roster refresh。
+
+必须记录：
+`operator + reason + before + after + businessRef + version/hash + traceId`。
+
+
+# 00G. 线内 Test / MySQL / Gold Matrix
+
+## 必跑 targeted
+- schedule final/gate/truth tests；
+- selection final/round/eligibility tests；
+- TeachingRoster core/service tests；
+- RosterConsumerSnapshot regressions。
+
+## 必跑 MySQL concurrency
+1. ScopeHead 双 publish；
+2. FCFS 最后一席 100+并发；
+3. 同学生 PC+miniapp 重复提交；
+4. OPEN/CLOSE vs enroll；
+5. LOCK vs drop/reselect；
+6. Lottery 重复 draw；
+7. LOCK→Roster rollback/retry；
+8. 1k burst selectedCount/capacity/memberCount/hash 对账。
+
+## 必跑四端 E2E
+- 管理 PC：Task-first排课→发布→选课批次→LOCK→名单；
+- 学生 PC：OPEN→选课→PENDING/SELECTED/LOST/CANCELLED；
+- 学生 miniapp：与 PC 同语义；
+- 教师 PC/miniapp：LOCK后正式名单/课表一致。
+
+## B 线 Gold
+
+```text
+PublishedScheduleDTO current head = DB ScopeHead current head
+Selection selectedCount <= capacity
+LOCKED Selection count = TeachingRoster memberCount
+TeachingRoster hash = recompute(member IDs)
+Student official schedule = Published Schedule ∩ current TeachingRoster membership
+0 stale managed roster
+0 client-side authoritative eligibility
+```
+
+B freeze 后，C 线才可把正式名单当稳定依赖。
+
+
+---
+
+# V1.2 详细任务附录
+
+> 本节保留 V1.2 详细任务，补充为**学校真实施工粒度**，施工 AI 不得只完成上文摘要后停止。
+
+---
+
+## 来源：`05_排课与正式课表_全量真实化施工文档.md`
+
+### BLOCKER / REWIRE 列表
+- **[REWIRE]** 管理端 `AaScheduleMaintainView.vue` 改为 TeachingTask-first。
+- **[HARDEN]** 批量导入改为 `taskId + weekday + slot + weeks + parity + classroomId` 的 XLSX 模板；课程名/教师名只做 snapshot/display。
+- **[HARDEN]** 学生/教师课表所有正式读取必须经 `ScopeHead.active_batch_id`，旧 `EFFECTIVE` item 只能做显式 COMPAT。
+- **[HARDEN]** 学生正式课表最终从 `Published Schedule × TeachingRoster membership` 推导。
+- **[HARDEN]** 所有 publish / change 使用 expectedVersion / scope version guard。
+
+### 服务施工卡
+1. **ScheduleCurrentTruth**：输入 `termId + scope`，只返回 current published batch/items；无 head 必须 `NOT_READY`，不能回退最新 batch 猜测。
+2. **ScheduleDraftWriter**：只接受 TeachingTask identity；UI 传 courseName/teacherName/classId 不能决定正式身份。
+3. **SchedulePublishPreflight**：漏排、超排、周次、教室类型/容量、教师/班级/教室冲突、任务周学时一次返回 blocker 列表。
+4. **SchedulePublishCommand**：lock ScopeHead→校验 expectedVersion→publish batch→supersede old→increment head version→审计。
+5. **ScheduleChangeCommand**：发布后变更必须写 `AaScheduleChange` 或现有 change fact，保留 before/after/reason，不直接覆盖历史。
+6. **StudentScheduleProjection**：只读服务，不新表；fixed + selectable 都通过 current Roster membership 解释。
+
+### API/DTO 强门
+- `GET /schedule/current?termId=&scope=`：返回 `activeBatchId/version/publishedAt/items`。
+- `POST /schedule/items`：正式 payload 必须 `taskId`。
+- `POST /schedule/publish`：必须 `expectedVersion`；409 返回 currentVersion。
+- `POST /schedule/import/dry-run`：错误行 xlsx；不能只回字符串数组。
+- `POST /schedule/import/confirm`：需要 idempotency key / jobId；重复确认不得重复建 item。
+
+### UI 施工卡
+- 排课页首屏：Term → Task completeness → draft conflict count → current published version → 下一动作。
+- 新增排课 Dialog：选 TeachingTask；Course/Teacher/Class 全只读；用户只填 weekday/slot/weeks/parity/classroom。
+- 冲突 UI：教师/班级/教室/周次/任务周学时分别有中文原因和下钻对象。
+- 发布确认：显示本次 batch item count、受影响教师/班级/教室、将 supersede 的旧版本。
+- 学生课表：显示数据来源 `正式课表 vN`；发生已发布调课时显示“已更新”而不是静默变化。
+
+### 并发 / MySQL
+- 同 scope 两个 publish：只能一个拿到新 version；另一个 409 stale。
+- 同一教师/班级/教室 overlap：并发创建不能绕过冲突。
+- Import confirm 与人工编辑同时发生：按固定锁顺序，不产生 duplicate item。
+
+### Dirty-data / migration
+- 统计所有 `schedule_item.task_id is null` / orphan task / old EFFECTIVE 无 head 行。
+- 先 backfill/标记 COMPAT，不先加 NOT NULL。
+- 证明 COMPAT 调用量归零后，才交 INT 做 schema tighten。
+
+---
+
+## 来源：`06_Selection与正式名单_全量真实化施工文档.md`
+
+### BLOCKER 列表
+1. SelectionBatch publish/open 前必须 `termId + valid window + non-empty scope + frozen rules`。
+2. SelectionCourse 正式供给必须 `teachingTaskId`；无 Task 的历史数据只 COMPAT，不能新建。
+3. `apply_scope_json / prerequisite_codes_json / rule_json` 解析失败全部 BLOCKED；绝不默认 `{}` / `[]`。
+4. prereq/repeat 只读 EffectiveGrade Provider，不读旧 `AcademicGrade.course_name`。
+5. schedule conflict 只读 PublishedSchedule Contract / ScopeHead current batch。
+6. `_validate_enroll` / Preflight 纯读，不 commit。
+7. 拒绝审计只在最外层 command 统一写一次；不得 validator + final service 双写。
+8. 学生投影必须覆盖 FCFS / LOTTERY / CANCELLED / RESELECT / LOCKED 全状态。
+
+### SelectionPreflightDTO
+```json
+{
+  "ready": false,
+  "stage": "OPEN",
+  "blockers": [
+    {
+      "code": "COURSE_TASK_MISSING",
+      "message": "可选课程未绑定正式教学任务",
+      "ownerRole": "ACADEMIC_ADMIN",
+      "howToResolve": "返回选课课程供给绑定 READY TeachingTask"
+    }
+  ],
+  "ruleVersion": 3,
+  "publishedRuleHash": "sha256:...",
+  "checkedAt": "..."
+}
+```
+
+### Eligibility DTO
+```json
+{
+  "eligible": false,
+  "codes": ["PREREQUISITE_NOT_MET", "SCHEDULE_CONFLICT"],
+  "evidence": {
+    "effectiveGradeAttempts": [],
+    "scopeHeadVersion": 4,
+    "conflictTaskIds": [101]
+  },
+  "allowedActions": ["VIEW"]
+}
+```
+
+### FCFS command
+固定顺序：
+`lock batch/course/student active records → re-evaluate window/scope/grade/schedule → conditional capacity update → create record → outer audit → commit`。
+
+### Lottery command
+固定顺序：
+`lock round → freeze candidate set/hash → deterministic ordering → conditional capacity claim → update records → resultHash/algorithmVersion → commit → outbox notify`。
+
+### LOCK command
+固定顺序：
+`lock batch → preflight → freeze course list → lock active records → set final statuses → generate/update TeachingRosterVersion → count/hash reconciliation → batch LOCKED → commit`。
+
+### Student Projection DTO
+```json
+{
+  "status": "PENDING_LOTTERY",
+  "statusLabel": "待抽签",
+  "phase": "LOTTERY_PENDING",
+  "allowedActions": ["VIEW", "DROP"],
+  "reason": "已进入抽签候选，尚未生成结果",
+  "howToResolve": "等待抽签结果",
+  "window": {"startAt": "...", "endAt": "...", "open": false},
+  "lottery": {"roundId": 1, "drawn": false},
+  "reselect": null
+}
+```
+
+### PC / miniapp 一致性
+- 任何端不得本地用 status 判断 allowedActions。
+- `PENDING_LOTTERY` 不显示“选课”；`LOTTERY_LOST` 不显示“退课”；`COURSE_CANCELLED` 优先显示补改选入口；`LOCKED` 只读。
+- 后端 DTO 改动时 PC + miniapp 同 PR 更新 contract tests。
+
+### 高峰 Gold
+- 200 capacity / 1000 concurrent FCFS：最终 selected = 200，0 duplicate，0 negative capacity。
+- 同学生多端重复提交：1 个 active record，其他返回 idem/already selected。
+- Lottery 双 worker：1 次 draw manifest，结果完全相同或第二个稳定返回 already drawn。
+- LOCK/drop race：最终要么 record dropped 且 roster无该生，要么 LOCKED 且 drop rejected；禁止状态/名单分裂。
+
+---
+
+## 来源：`07_TeachingClass与TeachingRoster_全量真实化施工文档.md`
+
+### KEEP
+- 现有 `AaTeachingClass / RosterVersion / Member` 保持唯一正式名单 Authority。
+- `ensure_teaching_class_for_task / set_roster / resolve_teaching_task_roster` 保持 canonical。
+- Selection 存在时 resolver 未 LOCK 必须 fail-closed。
+
+### HARDEN
+- 每次 `set_roster` 固定锁序：TeachingClass current row → current RosterVersion → member diff。
+- `expectedVersion` stale 返回 409；不覆盖。
+- `rosterHash = sha256(sorted stable studentIds))`；hash算法版本需冻结。
+- sourceType 只允许现有 canonical values；禁止 UI 自定义来源字符串。
+- MANUAL 调整必须 reason、operator、beforeHash/afterHash。
+
+### Reconciliation API
+`GET /teaching-rosters/reconcile?termId=` 返回：
+```json
+{
+  "taskCount": 1000,
+  "teachingClassCount": 1000,
+  "currentRosterCount": 1000,
+  "orphanTaskIds": [],
+  "orphanClassIds": [],
+  "countMismatch": [],
+  "hashMismatch": [],
+  "staleManagedRoster": []
+}
+```
+
+### 下游 consumer hard gate
+- Attendance：session/member snapshot source = roster version。
+- Exam：assignment/seat candidate source = roster version。
+- Grade：grade entry candidate source = roster version。
+- Student schedule：member check = roster version。
+
+任何 consumer 直接查行政班/SelectionRecord 猜名单，增加 structural RED test。
+
+### Roster 20K scale
+- 单 task 20K roster refresh：批量 delete/insert/upsert；禁止 O(N) commit。
+- 学期 1000 task reconciliation：禁止 per-task N+1 全量 member scan；先 batch aggregate count/hash。
+- export 20K roster xlsx 走后台任务/stream；不在 request thread 大内存 materialize。
+
+
+---
+
+# V1.1 风险卡附录
+
+> 本节保留 V1.1 跨模块风险卡，作为施工 AI 的额外 RED 输入；V1.2 已将其中结论吸收到主方案。
+
+---
+
+## 来源：`05_排课_风险卡.md`
+
+### 风险卡 05-01：旧 UI 能否绕过 Task-first
+- 旧 PC 仍自由选 Course / Teacher / Class；最终 service 存在名称 fallback。
+- **RED**：新业务请求缺 taskId；同名课程/教师歧义；跨学期错绑。
+- **PASS**：PC 强制 taskId；后端仅保留受控 COMPAT，并有 usage metric。
+
+### 风险卡 05-02：导入是否重新造引擎
+- 当前已有 Academic File Exchange + schedule xlsx parser + confirm。
+- **RED**：页面维护第二 CSV parser / UploadJob。
+- **PASS**：UI 跳/接统一 File Exchange；template/taskId canonical。
+
+### 风险卡 05-03：旧 EFFECTIVE 是否还能冒充 current
+- **RED**：ScopeHead v2 已发布，Selection/学生课表仍读 v1 EFFECTIVE。
+- **PASS**：所有正式读取 current head；历史必须显式 asOf/version。
+
+### 风险卡 05-04：Published Change 后四端是否一致
+- **RED**：管理端变更已发布，学生/教师某一端仍旧缓存。
+- **PASS**：版本变化触发刷新或读时 fresh；四端显示同一 vN。
+
+---
+
+## 来源：`06_Selection_风险卡.md`
+
+### 风险卡 06-01：坏 JSON fail-open
+- **RED**：scope/prerequisite/rule 损坏后学生仍可选。
+- **PASS**：corrupted config → SYSTEM_ABNORMAL/BLOCKED。
+
+### 风险卡 06-02：validator 偷 commit
+- **RED**：调用者外层还没完成，validate reject 已把 unrelated pending changes 提交。
+- **PASS**：纯读 validator 0 commit；失败审计独立事务或 outer command。
+
+### 风险卡 06-03：先修读旧成绩
+- **RED**：补考已 PASS，旧 AcademicGrade 仍 FAIL；Selection错误拒绝。
+- **PASS**：EffectiveGrade Provider 同D线复用。
+
+### 风险卡 06-04：Lottery / FCFS / Waitlist 混语义
+- **RED**：LOTTERY_LOST 被自动当 WAITLIST；FCFS course显示抽签文案。
+- **PASS**：algorithm-specific state machine；Waitlist若未启用则 N/A。
+
+### 风险卡 06-05：PENDING_LOTTERY 重复选
+- **RED**：学生端本地selectedIds未包含PENDING，继续显示“选课”。
+- **PASS**：allowedActions后端 authoritative。
+
+---
+
+## 来源：`07_Roster_风险卡.md`
+
+### 风险卡 07-01：Selection-managed 被 admin refresh 覆盖
+- **RED**：LOCK→Roster 后跑 admin refresh，source/hash变ADMIN_CLASS。
+- **PASS**：selection relation存在时 resolver/setter fail-closed。
+
+### 风险卡 07-02：Roster version race
+- **RED**：两个 manual refresh 同时以v3为base，最后静默覆盖。
+- **PASS**：expectedVersion/row lock，1成功1 stale。
+
+### 风险卡 07-03：下游直接猜名单
+- **RED**：Grade/Exam/Attendance任一 service 查询行政班或SelectionRecord作为正式候选。
+- **PASS**：只通过 roster consumer public service。
+
+
+---
+
+# V1.0 核心施工总册附录
+
+> 本节完整保留 V1.0 主任务、页面、门禁、测试与 DoD；V1.2/V1.3 只是在其上补充风险与学校交付层。
+
+---
+
+## 来源：`05_排课与正式课表_施工总册_V1.0.md`
+
+# 教务中心 05 — 排课与正式课表唯一施工总册 V1.0
+
+> 仓库：`penghaibin9/saas`  
+> 审计基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`  
+> 文档生成日期：2026-08-16  
+> 施工定位：**排课 Draft / Publish / Published Change / 四端正式课表**  
+> 原则：**Schedule 负责“什么时候/在哪里”，TeachingRoster 负责“谁正式参加”；不新造第二套正式课表。**
+
+---
+
+## 1. 当前成熟度
+
+**后端 🟢；管理 PC 🟠。**  
+后端已经建立强正式课表真值；真正的 P0 是旧 UI 仍在自由拼课程+教师+班级。
+
+---
+
+## 2. 唯一 Authority
+
+### 2.1 TeachingTask 是排课唯一业务身份
+正式排课项必须尽量稳定回链 `task_id`。  
+`course_name / teacher_name / class_name` 只做 snapshot/display，不作为新业务身份。
+
+### 2.2 Published Schedule Truth
+
+```text
+(term_id + scope_type + scope_id)
+        ↓
+AaScheduleScopeHead.active_batch_id
+        ↓
+AaScheduleBatch(PUBLISHED)
+        ↓
+AaScheduleItem(task_id + occurrence coordinates)
+```
+
+旧 `AaScheduleItem.status == EFFECTIVE` 只能做 `[COMPAT]`；不能再代表“当前正式”。
+
+### 2.3 学生正式课表
+最终解释必须是：
+
+```text
+current Published Schedule items
+∩
+current TeachingRoster membership
+```
+
+固定行政班课程与 Selection 课程最后都通过 TeachingRoster 汇流。
+
+---
+
+## 3. 当前数据模型审计
+
+| 模型 | 当前状态 | 裁决 |
+|---|---|---|
+| AaScheduleBatch | 已存在 | KEEP |
+| AaScheduleItem | 已存在 | KEEP |
+| AaScheduleScopeHead | 已存在，active head/version | KEEP，唯一 current truth |
+| AaSchedulePublish | 已存在 | KEEP |
+| AaScheduleChange | 已存在 | KEEP |
+
+不得新建 OfficialSchedule 表。
+
+---
+
+## 4. 核心服务审计
+
+### 4.1 `academic_affairs_schedule_final_service.py` — KEEP
+已完成：
+- Task-first；
+- READY task；
+- 同学期；
+- startWeek/endWeek；
+- term教学周；
+- Task teachingWeekStart/End；
+- classroom type/capacity；
+- teacher/class/classroom overlap；
+- weeklyHoursTotal；
+- DELETE/UPDATE 同样走 canonical validation。
+
+### 4.2 `academic_affairs_schedule_gate_service.py` — KEEP
+已完成发布前：
+- 漏排；
+- 超排；
+- task orphan；
+- slot/week 坐标；
+- 教师/班级/教室冲突。
+
+### 4.3 `academic_affairs_schedule_truth_service.py` — KEEP
+已完成：
+- ScopeHead；
+- 行锁；
+- activeBatch；
+- version；
+- supersede；
+- 跨 batch 资源冲突；
+- MySQL fresh read。
+
+---
+
+## 5. 当前页面审计
+
+### `AaScheduleMaintainView.vue` — P0 REWIRE
+当前旧链：
+
+```text
+选行政班
+→ 点网格
+→ 自由选 course
+→ 自由选 teacher
+→ 选 classroom
+→ 发送 courseName + teacherName + classId
+```
+
+问题：没有显式 `taskId`。
+
+此外：
+- 默认结束周 = 18；
+- 内置文本 CSV；
+- teacherName 直接作为 teacherKey。
+
+---
+
+# 6. 施工卡 05-01 — Task-first 排课 UI
+
+## 6.1 新链
+
+```text
+选择 term
+→ 选择 READY TeachingTask
+→ 只读显示：课程 / 教师 / 行政班/教学班 / 周学时 / 教学周
+→ 用户只填：weekday / slot / weeks / parity / classroom
+→ submit taskId
+```
+
+## 6.2 TeachingTask Picker
+必须支持：
+- search；
+- courseCode；
+- courseName；
+- teacherName；
+- className；
+- weeklyHours；
+- teachingWeeks；
+- status。
+
+只返回 READY。
+
+## 6.3 RED
+- 无 taskId 新 UI 提交失败；
+- 非 READY task；
+- task.term != batch.term；
+- 前端篡改 courseName 不影响身份；
+- 前端篡改 teacherName 不影响身份。
+
+---
+
+# 7. 施工卡 05-02 — 周次来源统一
+
+前端禁止默认 18 周。
+
+来源顺序：
+1. Task teachingWeekStart/End；
+2. Term teachingWeekCount；
+3. 如果都缺 → BLOCKED，不猜 18。
+
+RED：17周学期无法产生18周课表。
+
+---
+
+# 8. 施工卡 05-03 — 排课 XLSX 统一导入
+
+禁止继续使用页面文本 CSV 作为生产主入口。
+
+### 模板
+
+| 列 | 必填 |
+|---|---|
+| 教学任务ID | 是 |
+| 星期 | 是 |
+| 节次ID | 是 |
+| 起始周 | 是 |
+| 结束周 | 是 |
+| 单双周 | 是 |
+| 教室ID | 是 |
+| 备注 | 否 |
+
+### 流程
+`upload → scan → dry-run → error xlsx → confirm → reread`
+
+必须复用 Academic File Exchange。
+
+---
+
+# 9. 施工卡 05-04 — Published Schedule 单一读真值
+
+所有消费者：
+- Teacher Schedule；
+- Student Schedule；
+- Class Schedule；
+- Room Schedule；
+- Selection conflict；
+- Exam scheduling；
+
+统一走：
+`ScopeHead.active_batch_id`。
+
+### RED
+发布 v1 后有冲突；发布 v2 消除冲突后：
+- v1 仍可历史回放；
+- current conflict 只看 v2。
+
+---
+
+# 10. 施工卡 05-05 — Publish 乐观锁
+
+Publish 请求必须带：
+`expectedVersion`。
+
+冲突返回：
+`409 SCHEDULE_HEAD_STALE`。
+
+---
+
+# 11. 施工卡 05-06 — Published Change
+
+发布后不能直接改 item。
+
+流程：
+`preview impact → change reason → new change fact / version → publish → notify → history`
+
+至少记录：
+- before；
+- after；
+- operator；
+- reason；
+- sourceVersion；
+- targetVersion。
+
+---
+
+# 12. 施工卡 05-07 — 学生正式课表收敛
+
+当前 compat：行政班 + LOCKED Selection。  
+目标：统一按 TeachingRoster membership。
+
+### RED
+- 合班学生显示正式课；
+- 重修学生显示正式课；
+- MANUAL roster学生显示正式课；
+- 非Roster成员不得显示。
+
+---
+
+# 13. 施工卡 05-08 — 课表版本与打印
+
+管理/教师/学生课表显示：
+- 学期；
+- 数据来源；
+- version；
+- lastUpdatedAt；
+- publishedBy（管理端）；
+- change notice（如有）。
+
+打印/导出带：
+- schoolName；
+- termName；
+- generatedAt；
+- scheduleVersion。
+
+---
+
+# 14. 数据范围
+
+- 教务处：全校；
+- 学院教务：本学院对象；
+- 教师：本人 Task；
+- 学生：本人；
+- 教室管理员（如存在）：按授权范围。
+
+空 dataScope → 0 rows。
+
+---
+
+# 15. MySQL 并发门禁
+
+必须覆盖：
+1. 双 publish；
+2. 同教师同时间并发排课；
+3. 同教室并发占用；
+4. import confirm vs manual edit；
+5. stale expectedVersion。
+
+---
+
+# 16. 四端 Gold
+
+## 管理 PC
+Task-first 排课 → 发布 → 看到 version。
+
+## 教师 PC / 小程序
+读取同一 Published Schedule。
+
+## 学生 PC / 小程序
+读取 PublishedSchedule × TeachingRoster。
+
+四端时间/地点/version 一致。
+
+---
+
+# 17. 生产性能
+
+目标：
+- 1000 TeachingTasks；
+- 20000 students；
+- 10000 schedule items；
+- 课表查询 SQL 分页/索引；
+- 不允许 `.all()` 后大规模 Python 过滤。
+
+---
+
+# 18. 最终 DoD
+
+- 新建排课 100% taskId-first；
+- 0 新名称匹配正式写；
+- 0 新文本 CSV 正式入口；
+- 0 current read 直接依赖旧 EFFECTIVE；
+- ScopeHead 并发安全；
+- 学生正式课表以 Roster membership 解释；
+- 四端一致；
+- MySQL 并发绿。
+
+
+---
+
+## 来源：`06_Selection与正式名单_施工总册_V1.0.md`
+
+# 教务中心 06 — Selection / Lottery / TeachingRoster 唯一施工总册 V1.0
+
+> 仓库：`penghaibin9/saas`  
+> 审计基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`  
+> 文档生成日期：2026-08-16  
+> 原则：**不新造第二套选课、名单、抽签或学生课表真值。**
+
+---
+
+# 1. 当前成熟度
+
+**选课并发基座较强，但当前正式可用仍有 P0。**
+
+强能力：
+- FCFS 行锁 + 原子 capacity；
+- Lottery deterministic SHA-256；
+- CLOSED→DRAWN claim；
+- LOCK→TeachingRoster；
+- Selection 未锁时 TeachingRoster fail-closed。
+
+---
+
+# 2. 唯一 Authority
+
+```text
+SelectionBatch
+→ SelectionCourse(taskId)
+→ SelectionRound
+→ SelectionRecord
+→ LOCK
+→ TeachingRosterVersion(source=SELECTION_LOCK)
+```
+
+---
+
+# 3. P0-01 — Batch 正式合同
+
+DRAFT 可以不完整；PUBLISH 前必须：
+- termId；
+- selectStart/selectEnd；
+- scope；
+- frozen ruleJson；
+- ruleHash；
+- 至少一门合法 SelectionCourse。
+
+非法日期不允许解析成 None 后继续。
+
+---
+
+# 4. P0-02 — SelectionCourse 必须 Task-bound
+
+新正式供给：`teachingTaskId` 必填。
+
+Task 必须：
+- same term；
+- same course identity；
+- formationMode permits selection；
+- 合法状态。
+
+历史无 Task 行先 inventory/backfill，不先改 NOT NULL。
+
+---
+
+# 5. P0-03 — JSON fail-closed
+
+所有：
+- applyScopeJson；
+- prerequisiteCodesJson；
+- ruleJson；
+
+必须 strict parse。
+
+解析错误：
+`SYSTEM_ABNORMAL/BLOCKED`。
+
+不得 `{}` / `[]` fallback。
+
+---
+
+# 6. P0-04 — EffectiveGrade Provider
+
+禁止 `_passed_course_names()` 读旧 AcademicGrade + courseName。
+
+正式输入：
+- studentId；
+- courseId/courseCode/version；
+- asOf。
+
+输出：
+- effectiveResult；
+- attempts；
+- policySnapshot。
+
+---
+
+# 7. P0-05 — Schedule Conflict Provider
+
+冲突判断：
+- current ScopeHead；
+- active batch；
+- current task slots。
+
+旧 EFFECTIVE 仅 COMPAT。
+
+---
+
+# 8. P0-06 — SelectionPreflight
+
+统一阶段：
+- PUBLISH；
+- OPEN；
+- CLOSE；
+- LOCK。
+
+检查：
+- term；
+- window；
+- scope；
+- rule；
+- task；
+- schedule；
+- capacity；
+- prerequisite；
+- repeat；
+- credit；
+- low enrollment；
+- algorithm。
+
+纯读，不 commit。
+
+---
+
+# 9. P0-07 — 拒绝审计唯一
+
+validator 不写审计、不 commit。
+
+outer command：
+1. catch business reject；
+2. rollback business tx；
+3. 独立 audit tx 写一次；
+4. return businessCode。
+
+---
+
+# 10. FCFS
+
+保持 atomic capacity。
+
+Gold：最后1名额 100+ 并发：
+`selected <= capacity`。
+
+---
+
+# 11. Lottery
+
+保持 SHA-256 deterministic。
+
+追加 manifest：
+- candidateHash；
+- resultHash；
+- algorithmVersion；
+- drawnAt；
+- candidateCount；
+- winnerCount。
+
+禁止 redraw。
+
+---
+
+# 12. Student Projection
+
+后端返回：
+
+```json
+{
+  "status": "PENDING_LOTTERY",
+  "statusLabel": "待抽签",
+  "phase": "LOTTERY_PENDING",
+  "eligibility": {...},
+  "allowedActions": ["VIEW", "DROP"],
+  "reason": "已进入抽签候选",
+  "howToResolve": "等待抽签结果",
+  "window": {...},
+  "lottery": {...},
+  "reselect": null
+}
+```
+
+PC/小程序只渲染 allowedActions。
+
+---
+
+# 13. COURSE_CANCELLED / 补改选
+
+课程取消：
+- 原 record 保留；
+- status=COURSE_CANCELLED；
+- 发送通知；
+- 学生获得 RESELECT_ALLOWED；
+- 新选课仍重新 preflight。
+
+---
+
+# 14. LOCK → TeachingRoster
+
+LOCK 事务：
+1. lock batch；
+2. preflight；
+3. freeze courses；
+4. lock active records；
+5. finalize statuses；
+6. set RosterVersion；
+7. count/hash reconcile；
+8. batch LOCKED；
+9. commit。
+
+---
+
+# 15. Student PC / miniapp 状态
+
+至少支持：
+- OPEN；
+- PENDING_LOTTERY；
+- SELECTED；
+- LOTTERY_LOST；
+- COURSE_CANCELLED；
+- LOCKED；
+- DROPPED。
+
+禁止客户端通过 `selectedIds` 自己决定按钮。
+
+---
+
+# 16. dataScope
+
+- 教务处全校；
+- 学院教务本学院；
+- 学生本人；
+- 空 scope 0 rows。
+
+SQL 先过滤，不允许 `.all()` 后 Python 过滤。
+
+---
+
+# 17. MySQL 高峰
+
+必须：
+- FCFS 100 并发最后1名额；
+- 1k burst；
+- lottery double draw；
+- lock/drop race；
+- duplicate click；
+- selectedCount / capacity / Roster count/hash reconciliation。
+
+---
+
+# 18. 最终 DoD
+
+- 0 JSON fail-open；
+- 0 旧成绩正式资格读取；
+- 0 旧课表正式冲突读取；
+- 0 validator commit；
+- 0 双拒绝审计；
+- 新 SelectionCourse 100% Task-bound；
+- 新正式 Batch 100% term/window/scope/rule；
+- Student PC + miniapp 100% allowedActions；
+- MySQL 不超卖；
+- Lottery deterministic；
+- LOCK→Roster 对账绿。
+
+
+---
+
+## 来源：`07_TeachingClass与TeachingRoster_施工总册_V1.0.md`
+
+# 教务中心 07 — TeachingClass / TeachingRoster 唯一施工总册 V1.0
+
+> 仓库：`penghaibin9/saas`  
+> 审计基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`  
+> 文档生成日期：2026-08-16  
+> 原则：**TeachingRoster 是“谁正式修这门课”的唯一汇流，不新造第二名单。**
+
+---
+
+# 1. 当前成熟度
+
+**🟢。强底座，禁止重写。**
+
+---
+
+# 2. 唯一结构
+
+```text
+TeachingTask
+→ AaTeachingClass
+→ AaTeachingRosterVersion(current head)
+→ AaTeachingRosterMember
+```
+
+来源：
+- ADMIN_CLASS；
+- SELECTION_LOCK；
+- MANUAL；
+- RETAKE。
+
+---
+
+# 3. RosterVersion
+
+必须：
+- versionNo；
+- current；
+- sourceType；
+- rosterHash；
+- memberCount；
+- generatedAt；
+- reason。
+
+---
+
+# 4. Selection Guard
+
+若 Task 存在 Selection 关系：
+- 未 LOCK → fail-closed；
+- 不得 fallback ADMIN_CLASS；
+- LOCK → SELECTION_LOCK。
+
+---
+
+# 5. Fixed Course
+
+无 Selection 关系：
+ADMIN_FIXED 可使用 ADMIN_CLASS Roster。
+
+这不是绕过 Selection，而是本来就不需要选。
+
+---
+
+# 6. MANUAL 更新
+
+必须：
+- permission；
+- reason；
+- expectedVersion；
+- beforeHash；
+- afterHash；
+- audit。
+
+Selection-managed 默认禁止普通 admin refresh 覆盖。
+
+---
+
+# 7. RETAKE
+
+重修学生进入正式课程后：
+- source=RETAKE 或现有正式来源；
+- 必须形成 current RosterVersion；
+- 下游考勤/考试/成绩统一消费。
+
+---
+
+# 8. 下游 Consumer
+
+Attendance / Exam / Grade：
+只能通过正式 Roster Consumer Service。
+
+禁止：
+- 行政班猜名单；
+- SelectionRecord 猜名单；
+- 课程名+学生号猜名单。
+
+---
+
+# 9. 学生课表
+
+学生正式课表 =
+`current Published Schedule × current Roster membership`。
+
+---
+
+# 10. Reconciliation
+
+每学期检查：
+- taskCount；
+- teachingClassCount；
+- currentRosterCount；
+- orphanTaskIds；
+- orphanClassIds；
+- countMismatch；
+- hashMismatch；
+- staleManagedRoster。
+
+---
+
+# 11. 20K Scale
+
+- 单 Task 20K member bulk write；
+- 学期 1000 Task aggregate reconcile；
+- 避免 per-member ORM commit；
+- 避免 N+1 hash scan。
+
+---
+
+# 12. Export
+
+Roster export XLSX：
+- taskId；
+- course；
+- teacher；
+- version；
+- source；
+- memberCount；
+- rosterHash；
+- generatedAt；
+- studentNo/name；
+- watermark。
+
+20K 大导出走后台任务。
+
+---
+
+# 13. UI
+
+管理/教师页显示：
+- 正式名单；
+- source；
+- version；
+- count；
+- hash short；
+- updatedAt；
+- history。
+
+名单详情独立页面，不 Drawer。
+
+---
+
+# 14. MySQL 并发
+
+- 两个 manual refresh same base version；
+- Selection LOCK vs admin refresh；
+- Retake refresh vs Grade roster snapshot；
+- 失败 rollback。
+
+---
+
+# 15. Gold
+
+- fixed course ADMIN_CLASS；
+- selectable course SELECTION_LOCK；
+- 0 Selection-managed 覆盖；
+- 0 hash mismatch；
+- 0 orphan task/class；
+- Attendance/Exam/Grade同一名单；
+- 历史版本可回放。
+
+---
+
+# 16. 禁止
+
+- 新建第二 Roster 表；
+- UI 直接改 member；
+- 下游直接查 SelectionRecord；
+- 删除 superseded history；
+- 以名单名称代替 studentId。
+
+---
+
+# 17. 最终 DoD
+
+- TeachingRoster 唯一 Authority；
+- 所有 active Task 有合法 roster readiness；
+- 所有 current version count/hash 一致；
+- 下游 consumer 无绕行；
+- MySQL 并发绿；
+- 20K scale绿。
+
+
+
+---
+
+# 最终开发节奏
+
+固定顺序：
+
+```text
+审 exact-head
+→ 对齐 B-C1/B-C2/B-C3
+→ 选本模块最小安全施工面
+→ RED
+→ 改 canonical service / projection / page
+→ targeted
+→ MySQL
+→ 四端真实业务 Gold
+→ 更新本线 Contract / Evidence
+→ commit
+→ 自动进入下一施工卡
+```
+
+B 线目标不是把 Selection 做复杂，而是把：
+`正式课表 → 选课制度 → 锁名单 → TeachingRoster → 下游正式教学`
+做成一个学校可运行、可解释、可对账的强闭环。
+
+
+
+
+
+---
+
+
+# 四线共同硬门：后端变化必须同步前端 UI + 截图视觉复审 + 真实点击 E2E
+
+> 本节是 A / B / C / D 四条施工线的统一施工硬门。  
+> 任何一条线只要修改了后端正式 Contract、DTO、状态机、权限、dataScope、allowedActions、error code、read-only/archived behavior，必须在同一施工批次完成对应前端消费者同步；否则本批不得标记 COMPLETED。
+
+## 1. Backend → Frontend Impact Matrix
+
+每一刀后端变化后都必须建立影响矩阵：
+
+| Backend Change | API / DTO | Consumer | UI Change | Screenshot | Real Click | Status |
+|---|---|---|---|---|---|---|
+| model / schema / enum | response fields | 管理PC | required | required | required | OPEN |
+| Authority / lifecycle | status / allowedActions | 学生PC | required | required | required | OPEN |
+| permission / dataScope | permission / object scope | 教师PC | required | required | required | OPEN |
+| projection / error code | reason / howToResolve | 小程序 | required | required | required | OPEN |
+
+没有对应消费者时，必须明确写：`N/A — 当前仓库不存在该角色/页面消费者`，不能默认为完成。
+
+## 2. 前端禁止复制正式业务判断
+
+客户端不得自行计算：
+- 是否可选课；
+- 是否可退课；
+- 是否可锁名单；
+- 是否可发布；
+- 是否属于当前正式课表；
+- 是否属于正式教学名单；
+- 是否满足先修/重修；
+- 是否为当前有效成绩；
+- 是否允许归档/毕业。
+
+统一消费后端：
+`status / statusLabel / phase / allowedActions / blockers / reason / howToResolve / nextAction / readOnly`。
+
+## 3. 页面同步要求
+
+受影响页面至少复审：
+- 首屏结论；
+- 当前 blocker；
+- 下一动作；
+- 可执行按钮；
+- 禁用原因；
+- 空态；
+- 错误态；
+- 归档/只读态；
+- 筛选/统计/导出；
+- 小屏布局；
+- 是否仍显示旧字段/旧状态/旧入口。
+
+后端 writer 已升级为 TeachingTask-first 时，前端必须同步：
+`选择Task → 课程/教师/对象只读回显 → 只填可变参数 → 提交taskId`。
+
+## 4. Screenshot Before / After
+
+影响 UI 的批次必须：
+1. 修改前捕获 baseline screenshot，或记录无法进入原因；
+2. 修改后用真实前端 + 真实后端重新截图；
+3. PC 优先沿用仓库已有 visual Gold viewport；
+4. miniapp 使用真实 H5 / 小程序目标视口；
+5. 至少截图正常态 + 高价值阻断态 + 本批新增状态/只读态（如有）。
+
+## 5. 截图必须实际视觉识别
+
+施工 Agent 必须打开截图逐张检查：
+- 标题/副标题；
+- 首屏结论；
+- blocker；
+- allowedActions 按钮；
+- 旧字段/旧入口泄漏；
+- 截断/重叠/溢出；
+- 表格横向溢出；
+- 卡片密度；
+- 弹窗/抽屉 viewport；
+- sticky header；
+- 状态标签；
+- loading / empty / error / read-only；
+- 窄屏点击；
+- mock/placeholder 泄漏；
+- console error。
+
+发现问题必须：`修 → 重截图 → 再识别`。
+
+## 6. 真实点击 E2E
+
+UI 批次完成前必须真实点击：
+- 进入真实路由；
+- 选择学期/批次/TeachingTask；
+- 点击真实按钮；
+- 打开真实 modal/drawer；
+- 填表；
+- confirm；
+- 观察真实 network request；
+- 读取成功/失败反馈；
+- refresh；
+- reopen；
+- 确认持久状态；
+- 必要时换角色/换端。
+
+至少一个负向：
+`无权限 / 错误状态 / 409 / 校验失败 / archived read-only / duplicate click`。
+
+## 7. 禁止把以下当作 UI 完成
+
+- 只跑 pytest；
+- 只调 API；
+- 只跑 shallow component test；
+- 只检查 DOM 存在；
+- 只生成截图不点击；
+- mock service；
+- 因登录困难改假数据。
+
+CI 无浏览器环境时只能标：`UI_E2E_BLOCKED`。
+
+## 8. exact-head Evidence
+
+每轮视觉/E2E必须记录：
+- commit SHA；
+- route；
+- role；
+- tenant；
+- viewport；
+- fixture identity；
+- screenshot artifact；
+- E2E run/job；
+- console result；
+- network mock count。
+
+新 commit 后旧证据按影响范围失效。
+
+## 9. 完成状态分级
+
+- `BACKEND_GREEN_UI_OPEN`
+- `UI_IMPLEMENTED_VISUAL_OPEN`
+- `VISUAL_GREEN_E2E_OPEN`
+- `EVIDENCE_STALE`
+- `COMPLETED`
+
+只有 backend + MySQL + frontend + visual + real-click + persistence + cross-client + permission/dataScope negatives + console 0 error + network 0 fake mock + exact-head evidence 全绿，才能标 `COMPLETED`。
+
+
+---
+
+# V2.1 B线施工裁决补充：前后端、四端与碰撞边界
+
+## 1. B线 Frontend Impact Matrix 必须先建后改
+
+B 每个 Wave 动后端前，先列：
+- 哪个 DTO 字段变；
+- AaScheduleMaintainView / AaSchedulingConsoleView / AaSelectionConsoleView / AaSelectionStudentView 哪些页消费；
+- 学生 PC / 学生小程序是否同事实；
+- 教师课表/正式名单是否受 ScopeHead 或 Roster 变化影响；
+- 截图名、viewport、real-click scenario。
+
+## 2. B-W3 Task-first UI 不是可选项
+
+必须同步完成：
+- TeachingTask Picker 成为第一对象；
+- course / teacher / class 只读；
+- taskId 发给后端；
+- 教学周来自 Term/Task；
+- 文本 CSV writer 从正常 UI 消失；
+- 批量导入进入 Academic File Exchange。
+
+## 3. B-W5 学生两端必须同状态
+
+必须覆盖：
+- PENDING_LOTTERY；
+- LOTTERY_LOST；
+- COURSE_CANCELLED；
+- LOCKED；
+- reselect；
+- window closed；
+- blocked prerequisite；
+- schedule conflict。
+
+学生 PC 和 miniapp 都只消费 allowedActions。
+
+## 4. B线 Screenshot / Real-click 场景
+
+排课至少：
+- READY Task 正常排课；
+- 冲突阻断；
+- 17周学期；
+- 刷新后正式项存在。
+
+Selection 至少：
+- 创建/配置/发布/open；
+- FCFS 正常选课；
+- PENDING_LOTTERY；
+- LOTTERY_LOST；
+- COURSE_CANCELLED reselect；
+- LOCKED 只读；
+- PC→miniapp换端一致。
+
+## 5. PR碰撞安全
+
+PR #96/#132/#133若触碰：
+- route registration；
+- services registry；
+- model registry；
+- permissions；
+- Data Exchange；
+- Alembic；
+
+B 不直接抢写，写入INT request ledger。
+
+---
+
+
+# V1.5 深审附录补强：B线（Schedule / Selection）
+
+> 目标：补足 V1.5 仍不够明确的页面级、权限级、导入/导出、历史设计 reconciliation、复杂 Selector 与真实学校高峰场景。
+
+## Ⅰ-B. 当前仓库页面 / 路由 / API 再盘点
+
+### 1. 管理/教师 PC 页面
+
+#### AaScheduleMaintainView
+- 当前正式职责：周课表维护、冲突显示、发布前排课。
+- 当前风险：仍有 course/teacher/class 自由组合、18周默认、文本导入痕迹。
+- V1.5 最终：Task-first + 学期周次 + Academic File Exchange。
+
+#### AaSchedulingConsoleView
+- 当前正式职责：排课工作台/批次/规则/冲突。
+- V1.5 必须：区分‘草稿排课’和‘正式发布’，显示 ScopeHead activeBatch/version。
+
+#### AaSelectionConsoleView
+- 当前正式职责：批次、规则、课程供给、锁名单。
+- V1.5 必须：Batch 创建时收 term/window/scope，SelectionCourse 100% TeachingTask-first。
+
+#### AaSelectionStudentView
+- 当前正式职责：学生选课主交互。
+- V1.5 必须：状态、allowedActions、failure reason、lottery/reselect全部来自后端 projection。
+
+### 2. 学生 PC
+- 当前 StudentCourseSelection / StudentSchedule 页面需要同时读取：Selection projection + current Published Schedule。
+- 禁止学生 PC 自己拼 eligible/canEnroll。
+
+### 3. 学生 miniapp
+- 主交互应与 PC 同义；可以更简洁，但状态/动作必须相同。
+
+### 4. 教师端
+- 教师不负责学生选课制度配置；只需要正式课表、正式名单。
+- TeachingRoster 未 LOCK 时，教师端应看到“名单未冻结/不可点名”，而不是旧行政班 fallback。
+
+## Ⅱ-B. Selection Eligibility 详细矩阵
+
+| 规则 | 正式事实来源 | Fail-closed 条件 | 学生提示 |
+|---|---|---|---|
+| 学期 | A-C1 Term | 无正式 term | 当前选课批次未绑定正式学期 |
+| 时间窗 | SelectionBatch | 非法/空窗口 | 选课时间尚未开放或已结束 |
+| dataScope | Selection scope | JSON坏/范围空 | 当前课程不在你的适用范围 |
+| TeachingTask | A-C4 | 无Task/跨学期/状态错 | 课程供给配置异常，请联系教务 |
+| 正式课表 | B-C1 ScopeHead | 无active batch | 正式课表未发布，暂不能选课 |
+| 时间冲突 | B-C1 occurrences | current head未知 | 无法确认课表冲突，已阻断 |
+| 先修 | C EffectiveGrade | provider异常/策略缺失 | 无法确认先修完成情况 |
+| 重修 | C EffectiveGrade + policy | attempt policy异常 | 无法确认重修资格 |
+| 学分上限 | Selection policy | policy坏 | 选课规则异常 |
+| 容量 | SelectionCourse | row lock异常 | 当前系统繁忙，请重试，不得误报满额 |
+| Lottery | SelectionRound | draw未完成 | 已进入抽签，等待结果 |
+| CANCELLED | SelectionCourse/Record | 无reselect policy | 课程已停开，请按指引补改选 |
+
+## Ⅲ-B. Selector 复杂业务
+
+### 1. 公选课
+- 普通 FCFS/LOTTERY 规则。
+- 院系/年级/专业可限制 scope。
+
+### 2. 体育分项
+- 课程身份与 TeachingTask 绑定；可按场地/教师/项目过滤。
+- 不要用课程名称区分“篮球1/篮球2”身份。
+
+### 3. 英语板块
+- 若学校用分级考试/层级结果控制 eligibility，必须来自正式评测/成绩 Provider，不从页面输入。
+
+### 4. 重修跟班
+- 由 C EffectiveGrade / retake eligibility 决定；正式选上后进入 TeachingRoster。
+
+### 5. 单开重修班
+- TeachingTask formationMode=RETAKE；可进入独立 SelectionBatch 或 admin assign，但最终 Roster一致。
+
+### 6. 补修/提前修读/免修
+- 都是 eligibility/override policy；不能造第二 Enrollment 表。
+
+### 7. 必修课退选
+- 默认不允许；若学校允许，必须是显式政策/审批，前端不显示通用‘退课’。
+
+## Ⅳ-B. Batch / Round / Scope 版本化
+
+PUBLISH 时冻结：
+- termId；
+- scope snapshot/hash；
+- rule schemaVersion/hash；
+- course supply list hash；
+- round algorithm/version/window；
+- teachingTask identity。
+
+OPEN 后规则变化：
+- 不直接覆盖；
+- 新版本 + 变更理由 + 影响预览；
+- 已提交学生是否 grandfathered 必须学校政策明确。
+
+## Ⅴ-B. 详细 UI 状态
+
+### 教务控制台首屏
+应优先显示：
+1. 当前学期/选课批次；
+2. 状态；
+3. 窗口；
+4. blocker 数；
+5. 课程供给数；
+6. 无Task课程数；
+7. 当前人数/容量；
+8. Lottery未抽签轮次；
+9. 待补选/课程取消人数；
+10. 下一步主按钮。
+
+### 学生选课首屏
+应优先显示：
+1. 当前轮次；
+2. 剩余时间；
+3. 已选学分；
+4. 可选学分；
+5. 待抽签数；
+6. 需要补选数；
+7. 当前 blocker；
+8. 下一步。
+
+## Ⅵ-B. Import / Export / Print
+
+### 课程供给导入
+若需要批量供给：
+- 必须走 Academic File Exchange；
+- canonical列：batchId、teachingTaskId、capacity、minCapacity、algorithm、ruleProfileId；
+- name列只做辅助校验；
+- dry-run输出跨学期Task、重复Task、无READY Task、坏容量、坏algorithm。
+
+### Selection名单导出
+导出：
+- Selection阶段状态；
+- 教学任务ID；
+- 课程；
+- 学生；
+- recordStatus；
+- round；
+- submitAt；
+- selectedAt；
+- blocker/override（如有）；
+- batch ruleHash。
+
+### 正式名单打印
+必须使用 TeachingRosterVersion；文件标：rosterVersion/rosterHash/generatedAt。
+
+## Ⅶ-B. 通知
+
+事件：
+- SELECTION_OPENED；
+- ROUND_CLOSING_SOON；
+- LOTTERY_RESULT_READY；
+- COURSE_CANCELLED；
+- RESELECT_REQUIRED；
+- WAITLIST_OFFERED（若启用）；
+- WAITLIST_OFFER_EXPIRING（若启用）；
+- SELECTION_LOCKED。
+
+通知对象：
+- studentIds；
+- class/major/grade scope；
+- teacher（课程取消/名单锁定）；
+- academic admin（异常）。
+
+消息失败不回滚业务事实。
+
+## Ⅷ-B. High-load Runbook
+
+### 开选前
+- Preflight blockers=0；
+- ScopeHead ready；
+- DB连接池正常；
+- Redis若仅缓存，不影响正式选择正确性；
+- capacity count reconcile；
+- worker/Outbox健康；
+- 告警开启。
+
+### 高峰中
+监控：
+- enroll QPS；
+- p95/p99 latency；
+- lock wait；
+- deadlock retry；
+- capacity rejects；
+- schedule conflict rejects；
+- duplicate request count；
+- unexpected 5xx。
+
+### 高峰后
+- SelectionRecord count；
+- selectedCount reconcile；
+- round result hash；
+- no duplicate active records；
+- no cross-tenant rows。
+
+## Ⅸ-B. 真实学校场景补充
+
+50. 同一课程两个教学班同时最后1席；学生并发只成功一个，不得两边都占。
+51. 学生在PC选中，miniapp 100ms后重复提交，返回同一正式结果。
+52. CLOSE命令与enroll同时发生，边界以数据库锁内服务器时间为准。
+53. ScopeHead刚发布v2，学生已有浏览器缓存v1，提交时后端重新按v2判断冲突。
+54. 课程取消与LOCK同时发生，只能按一个明确锁序成功，Roster不可含已取消课程错误成员。
+55. Lottery结果已draw，管理员不能修改候选集/容量后重抽。
+56. Override过期前选中，后续LOCK时是否继续有效必须按policy snapshot而非当前override猜。
+57. 教学班MANUAL roster变更后，学生课表立即按新current roster刷新。
+58. 补选审批通过瞬间课程满额，审批必须失败并保留申请状态/失败原因。
+59. 1k burst后 selectedCount=实际active records，任何差异触发reconcile告警。
+
+
+---
+
+# V2.1 B线补丁：复杂状态视觉语义
+
+## 1. 学生端状态不得只靠颜色
+
+PENDING_LOTTERY：
+- 标签：待抽签；
+- 说明：已进入候选，尚未产生最终名额；
+- 主动作：查看规则/等待；
+- 不得显示“再次选课”。
+
+LOTTERY_LOST：
+- 标签：未中签；
+- 说明：本轮未获得名额；
+- 主动作：根据学校政策显示补选/候补/无动作；
+- 不得默认自动进入Waitlist。
+
+COURSE_CANCELLED：
+- 标签：课程停开；
+- 说明：该课程/教学班取消；
+- 主动作：补改选；
+- 原记录保留证据。
+
+LOCKED：
+- 标签：名单已锁定；
+- 说明：已进入正式教学名单；
+- 只读，不显示普通退课。
+
+## 2. 管理端 Preflight 阻断必须可下钻
+
+每个 blocker 显示：
+- code；
+- 中文说明；
+- owner role；
+- affected count；
+- evidence link；
+- howToResolve；
+- batch/rule/schedule version。
+
+禁止只显示“还有3个问题”。
+
+## 3. Screenshot Gold
+
+必须截图：
+- 教务控制台正常可OPEN；
+- 坏规则BLOCKED；
+- 学生FCFS可选；
+- PENDING_LOTTERY；
+- LOTTERY_LOST；
+- COURSE_CANCELLED；
+- LOCKED；
+- 17周学期排课；
+- Task-first排课冲突态；
+- 窄屏/小程序主要状态。
+
+## 4. Real-click Gold
+
+必须真实点击：
+- 管理员选Task排课；
+- 冲突提交失败；
+- 修正后成功；
+- 发布；
+- 创建Selection Batch；
+- 添加Task供给；
+- OPEN；
+- 学生PC选课；
+- 学生小程序读取同状态；
+- 管理员LOCK；
+- 教师打开正式名单确认。
+
+
+---
+
+# V2.1 B线补丁：完整学期前后端联动验收
+
+## 1. 排课后端变更后
+必须同步：
+- 排课Task Picker；
+- 周次选择；
+- 冲突说明；
+- 正式版本；
+- 学生/教师课表来源。
+
+## 2. Selection后端变更后
+必须同步：
+- 管理控制台；
+- 学生 PC；
+- 学生 miniapp；
+- TeachingRoster view；
+- 课程取消/补选引导。
+
+## 3. Roster变更后
+必须同步：
+- 教师名单；
+- 考勤资格；
+- 考试资格；
+- 成绩资格；
+- 学生正式课表。
+
+## 4. 端到端真实点击链
+`管理PC排课 → 发布 → 创建选课批次 → 添加Task课程 → OPEN → 学生PC选课 → 学生小程序复核 → LOCK → 教师PC名单 → 刷新 → 教师小程序名单/课表`
+
+链中任何端状态不一致，不得封板。
+
+
+---
+
+# V2.1 B线补丁：文件 / 导入 / 下载 UX
+
+## 1. 排课导入
+- 正常 UI 不再提供文本 CSV writer；
+- 提供“下载XLSX模板 / 上传 / 扫描 / 预检 / 下载错误行 / 确认”；
+- 页面显示 job status / accepted / rejected / conflict / task mismatch。
+
+## 2. 正式课表导出
+- 版本；
+- 学期；
+- scope；
+- generatedAt；
+- operator；
+- watermark（需要时）。
+
+## 3. 正式名单导出
+- TeachingRoster version/hash/source；
+- 学生编号/姓名；
+- 课程/教师/教学班；
+- generatedAt；
+- watermark。
+
+## 4. 前端不得伪造导出成功
+后台任务未完成时显示PROCESSING，失败显示FAILED与重试入口。
+
+
+---
+
+# V2.1 B线补丁：移动端真实性
+
+## 学生 miniapp
+高频优先：
+- 当前轮次；
+- 倒计时；
+- 我的选课状态；
+- 待抽签；
+- 未中签；
+- 停开补选；
+- 锁名单；
+- 正式课表。
+
+不是把管理控制台缩小。
+
+## 教师 miniapp
+B线只需：
+- 我的正式课表；
+- 我的正式名单；
+- 名单未锁阻断说明。
+
+教师不负责配置Batch/Rule。
+
+
+---
+
+# V2.1 B线补丁：权限与dataScope
+
+建议业务 permission（由INT注册）：
+- `academic.schedule.read`
+- `academic.schedule.write`
+- `academic.schedule.publish`
+- `academic.selection.read`
+- `academic.selection.manage`
+- `academic.selection.override`
+- `academic.selection.lock`
+- `academic.roster.read`
+- `academic.roster.adjust`
+
+范围：
+- 教务处：学校；
+- 学院教务：学院；
+- 教师：本人Task/Roster；
+- 学生：本人。
+
+空scope=0 rows。
+
+
+---
+
+# V2.1 B线补丁：数据对账
+
+## Schedule Reconciliation
+- ScopeHead active batch exists；
+- active batch PUBLISHED；
+- item count；
+- task orphan；
+- task term mismatch；
+- teacher/class/room conflicts；
+- version history。
+
+## Selection Reconciliation
+- course selectedCount；
+- active record count；
+- capacity；
+- duplicate active；
+- badTask；
+- badTerm；
+- badScope；
+- lottery manifest。
+
+## Roster Reconciliation
+- Selection LOCK records count = roster memberCount；
+- hash match；
+- source=SELECTION_LOCK；
+- current version唯一。
+
+
+---
+
+# V2.1 B线补丁：最终签字证据格式
+
+```json
+{
+  "line": "B",
+  "exactHead": "...",
+  "termId": "...",
+  "schedule": {"scopeHeadVersion": 4, "taskFirstRate": 1.0},
+  "selection": {"badJsonFailOpen": 0, "taskBoundRate": 1.0},
+  "roster": {"countMismatch": 0, "hashMismatch": 0},
+  "frontend": {"impactOpen": 0},
+  "visual": {"screenshotsReviewed": true},
+  "e2e": {"realClick": true, "fakeMockCount": 0},
+  "mysql": {"fcfsOversell": 0, "doubleLottery": 0},
+  "status": "COMPLETED"
+}
+```
+
+任何字段不满足不得把status写COMPLETED。
