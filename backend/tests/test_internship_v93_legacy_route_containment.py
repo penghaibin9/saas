@@ -30,9 +30,6 @@ KNOWN_WITHOUT_REPLACEMENT = {
     "/insurance", "/safety/courses/{course_id}/start",
     "/safety/courses/{course_id}/submit", "/safety/completions/{completion_id}/commit",
     "/agreements/{agreement_id}/esign/sign", "/my",
-    # 这条本身就长在 canonical 的 mobile_internship_student.py 上，只是没带 /context/ 前缀，
-    # 不是遗留入口；登记在此以免被误判成待收敛的旧路由。
-    "/safety/courses/{course_id}/detail",
 }
 
 PREFIX = "/api/v1/mobile/internship"
