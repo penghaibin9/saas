@@ -16,6 +16,7 @@ on:
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
       - 'backend/tests/test_control_plane_system_role_authority_runtime.py'
       - 'backend/tests/test_critical_audit_atomicity.py'
+      - '.github/workflows/control-plane-i4-identity-production-gold.yml'
       - '.github/workflows/control-plane-critical-mutation-matrix.yml'
   pull_request:
     branches: [main]
@@ -31,6 +32,7 @@ on:
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
       - 'backend/tests/test_control_plane_system_role_authority_runtime.py'
       - 'backend/tests/test_critical_audit_atomicity.py'
+      - '.github/workflows/control-plane-i4-identity-production-gold.yml'
       - '.github/workflows/control-plane-critical-mutation-matrix.yml'
 
 permissions:

@@ -110,12 +110,14 @@ jobs:
           set -euo pipefail
           test "$CLAMAV_ENABLED" = "true"
           test "$FILE_SCAN_REQUIRED" = "true"
-          if grep -q "FILE_SCAN_ENABLED: 'false'" .github/workflows/control-plane-i4-identity-production-gold.yml; then
-            echo 'production Gold must never disable file scanning' >&2
-            exit 1
-          fi
           python - <<'PY'
           from pathlib import Path
+          workflow_path = Path('.github/workflows/control-plane-i4-identity-production-gold.yml')
+          workflow_lines = workflow_path.read_text(encoding='utf-8').splitlines()
+          assert not any(
+              line.strip().lower().startswith('file_scan_enabled:') and 'false' in line.lower()
+              for line in workflow_lines
+          ), 'production Gold must never disable file scanning'
           router = Path('backend/app/modules/system_admin/routers/data_exchange_router.py').read_text(encoding='utf-8')
           worker = Path('backend/app/workers/identity_import_worker.py').read_text(encoding='utf-8')
           orchestrator = Path('backend/app/services/identity_import_scan_orchestrator.py').read_text(encoding='utf-8')
