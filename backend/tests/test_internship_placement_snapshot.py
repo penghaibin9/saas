@@ -33,11 +33,12 @@ def test_wrapper_preserves_existing_assignment_authority_and_same_transaction_sn
     assert "teacher_mark_approved_in_tx" in source
 
 
-def test_formal_campaign_application_uses_shared_school_confirm_window():
+def test_every_campaign_position_uses_shared_school_confirm_window():
     source = inspect.getsource(authority._source_for_campaign_in_tx)
     guard = inspect.getsource(authority._assert_school_confirm_window)
-    assert "if application:" in source
     assert "_assert_school_confirm_window(campaign, now=now)" in source
+    assert "if application:\n        _assert_school_confirm_window" not in source
+    assert source.index("_assert_school_confirm_window(campaign, now=now)") < source.index("application = db.scalar")
     assert 'assert_campaign_operation_window(campaign, "SCHOOL_CONFIRM", now=now)' in guard
 
 

@@ -32,13 +32,24 @@ def _columns() -> set[str]:
     return {column["name"] for column in insp.get_columns(_TABLE)} if insp.has_table(_TABLE) else set()
 
 
+def _coalesce_and_drop(*, canonical: str, legacy: str) -> None:
+    """Converge a dirty partial migration that contains both legacy and canonical columns."""
+    op.execute(sa.text(
+        f"UPDATE {_TABLE} SET {canonical} = COALESCE({canonical}, {legacy}) "
+        f"WHERE {legacy} IS NOT NULL"
+    ))
+    op.drop_column(_TABLE, legacy)
+
+
 def upgrade() -> None:
     _require_mysql()
     columns = _columns()
     if not columns:
         raise RuntimeError("t_internship_volunteer_group must exist before M6")
 
-    if "last_released_at" in columns and "released_at" not in columns:
+    if "last_released_at" in columns and "released_at" in columns:
+        _coalesce_and_drop(canonical="released_at", legacy="last_released_at")
+    elif "last_released_at" in columns:
         op.alter_column(
             _TABLE,
             "last_released_at",
@@ -50,7 +61,9 @@ def upgrade() -> None:
         op.add_column(_TABLE, sa.Column("released_at", sa.DateTime()))
 
     columns = _columns()
-    if "last_release_reason" in columns and "release_reason" not in columns:
+    if "last_release_reason" in columns and "release_reason" in columns:
+        _coalesce_and_drop(canonical="release_reason", legacy="last_release_reason")
+    elif "last_release_reason" in columns:
         op.alter_column(
             _TABLE,
             "last_release_reason",
@@ -77,7 +90,9 @@ def downgrade() -> None:
         op.drop_column(_TABLE, "unlock_requested_at")
 
     columns = _columns()
-    if "release_reason" in columns and "last_release_reason" not in columns:
+    if "release_reason" in columns and "last_release_reason" in columns:
+        _coalesce_and_drop(canonical="last_release_reason", legacy="release_reason")
+    elif "release_reason" in columns:
         op.alter_column(
             _TABLE,
             "release_reason",
@@ -85,7 +100,11 @@ def downgrade() -> None:
             existing_type=sa.String(500),
             existing_nullable=True,
         )
-    if "released_at" in _columns() and "last_released_at" not in _columns():
+
+    columns = _columns()
+    if "released_at" in columns and "last_released_at" in columns:
+        _coalesce_and_drop(canonical="last_released_at", legacy="released_at")
+    elif "released_at" in columns:
         op.alter_column(
             _TABLE,
             "released_at",

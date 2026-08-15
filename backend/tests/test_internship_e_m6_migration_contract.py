@@ -38,3 +38,13 @@ def test_m6_renames_candidate_release_fields_and_adds_unlock_request_evidence():
     assert '"t_internship_volunteer_group"' in source
     assert "t_student_volunteer" not in source
     assert "t_recruitment_application" not in source
+
+
+def test_m6_converges_dirty_dual_release_columns_in_both_directions():
+    source = M6.read_text(encoding="utf-8")
+    assert "COALESCE({canonical}, {legacy})" in source
+    assert "op.drop_column(_TABLE, legacy)" in source
+    assert '_coalesce_and_drop(canonical="released_at", legacy="last_released_at")' in source
+    assert '_coalesce_and_drop(canonical="release_reason", legacy="last_release_reason")' in source
+    assert '_coalesce_and_drop(canonical="last_released_at", legacy="released_at")' in source
+    assert '_coalesce_and_drop(canonical="last_release_reason", legacy="release_reason")' in source

@@ -39,6 +39,10 @@ def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
     ))
     if not campaign:
         raise AppException("DATA_CONFLICT", "岗位招聘季不存在，不能正式落岗")
+    # Every formal placement into a campaign-owned position is a SCHOOL_CONFIRM operation.
+    # Direct/manual assignment may omit an application, but it must never bypass the campaign
+    # confirmation window or reopen a closed/frozen recruitment season by side effect.
+    _assert_school_confirm_window(campaign, now=now)
     application = db.scalar(select(InternshipApplication).where(
         InternshipApplication.tenant_id == record.tenant_id,
         InternshipApplication.record_id == record.id,
@@ -54,8 +58,6 @@ def _source_for_campaign_in_tx(db, *, record, position, now: datetime):
         InternshipVolunteerGroup.is_deleted.is_(False),
     ).with_for_update())
     decision = None
-    if application:
-        _assert_school_confirm_window(campaign, now=now)
     if application and group and group.locked_by_decision_id:
         decision = db.scalar(select(InternshipEnterpriseApplicationDecision).where(
             InternshipEnterpriseApplicationDecision.id == group.locked_by_decision_id,
