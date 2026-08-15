@@ -93,7 +93,7 @@ test('A02 canonical list to Snapshot to contact-view never leaks identifiers bef
   await page.getByRole('link',{name:'报名学生'}).click()
   await page.locator('button.candidate').filter({hasText:'张三'}).click()
   await expect(page.getByRole('heading',{name:'本次投递材料',exact:true})).toBeVisible()
-  await expect(page.getByText('张三',{exact:true})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'张三',exact:true})).toBeVisible()
   await expect(page.getByText('20250001')).toHaveCount(0)
   await expect(page.getByText('13800138000')).toHaveCount(0)
   await page.getByRole('button',{name:'查看联系方式'}).click()
