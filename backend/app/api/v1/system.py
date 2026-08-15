@@ -14,6 +14,7 @@ from app.modules.system_admin.routers.system_bundle import *  # noqa: F401,F403
 
 router = _i4.router
 get_system_context = _router.get_system_context
+assign_system_user_roles = _router.assign_system_user_roles
 copy_system_role = _router.copy_system_role
 save_system_role_permissions = _router.save_system_role_permissions
 get_system_role = _i4.role_detail
