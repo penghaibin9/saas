@@ -32,9 +32,19 @@ def upgrade() -> None:
         op.add_column("t_internship_position", sa.Column("campaign_id", sa.BigInteger(), nullable=True))
         op.create_index("ix_t_internship_position_campaign_id", "t_internship_position", ["campaign_id"])
     if "source_type" not in columns:
-        op.add_column("t_internship_position", sa.Column("source_type", sa.String(30), nullable=True))
+        # N-1 application versions do not supply source_type. Keep the expand-stage
+        # database column nullable and provide a server default until a later contract migration.
+        op.add_column(
+            "t_internship_position",
+            sa.Column("source_type", sa.String(30), nullable=True, server_default="SCHOOL"),
+        )
         op.execute("UPDATE t_internship_position SET source_type='SCHOOL' WHERE source_type IS NULL")
-        op.alter_column("t_internship_position", "source_type", existing_type=sa.String(30), nullable=False)
+    else:
+        op.execute("UPDATE t_internship_position SET source_type='SCHOOL' WHERE source_type IS NULL")
+        op.alter_column(
+            "t_internship_position", "source_type",
+            existing_type=sa.String(30), server_default="SCHOOL",
+        )
     insp = inspect(bind)
     index_names = {index["name"] for index in insp.get_indexes("t_internship_position")}
     if "ix_intern_position_campaign_catalog" not in index_names:

@@ -1,4 +1,4 @@
-"""E-A01 M6 migration contract for final V3 volunteer lock/release field names."""
+"""E-A01 M6 migration contract for rolling-deploy-compatible V3 release fields."""
 from __future__ import annotations
 
 import ast
@@ -22,6 +22,15 @@ def _assignments(path: Path):
     return out
 
 
+def _upgrade_source() -> str:
+    source = M6.read_text(encoding="utf-8")
+    return source.split("def upgrade()", 1)[1].split("def downgrade()", 1)[0]
+
+
+def _downgrade_source() -> str:
+    return M6.read_text(encoding="utf-8").split("def downgrade()", 1)[1]
+
+
 def test_m6_is_linear_after_m5_and_keeps_single_migration_head():
     m5 = _assignments(M5)
     m6 = _assignments(M6)
@@ -29,22 +38,40 @@ def test_m6_is_linear_after_m5_and_keeps_single_migration_head():
     assert m6["down_revision"] == m5["revision"]
 
 
-def test_m6_renames_candidate_release_fields_and_adds_unlock_request_evidence():
+def test_m6_expands_release_fields_without_breaking_n_minus_one_and_adds_unlock_evidence():
     source = M6.read_text(encoding="utf-8")
-    assert '"last_released_at"' in source and 'new_column_name="released_at"' in source
-    assert '"last_release_reason"' in source and 'new_column_name="release_reason"' in source
+    upgrade = _upgrade_source()
+    assert '"released_at"' in source and '"last_released_at"' in source
+    assert '"release_reason"' in source and '"last_release_reason"' in source
     assert '"unlock_requested_at"' in source
     assert '"unlock_request_reason"' in source
     assert '"t_internship_volunteer_group"' in source
+    assert "new_column_name=" not in upgrade
+    assert 'op.drop_column(_TABLE, "last_released_at")' not in upgrade
+    assert 'op.drop_column(_TABLE, "last_release_reason")' not in upgrade
     assert "t_student_volunteer" not in source
     assert "t_recruitment_application" not in source
 
 
-def test_m6_converges_dirty_dual_release_columns_in_both_directions():
+def test_m6_backfills_and_keeps_legacy_and_canonical_release_fields_bidirectionally_compatible():
     source = M6.read_text(encoding="utf-8")
-    assert "COALESCE({canonical}, {legacy})" in source
-    assert "op.drop_column(_TABLE, legacy)" in source
-    assert '_coalesce_and_drop(canonical="released_at", legacy="last_released_at")' in source
-    assert '_coalesce_and_drop(canonical="release_reason", legacy="last_release_reason")' in source
-    assert '_coalesce_and_drop(canonical="last_released_at", legacy="released_at")' in source
-    assert '_coalesce_and_drop(canonical="last_release_reason", legacy="release_reason")' in source
+    assert "released_at = COALESCE(released_at, last_released_at)" in source
+    assert "last_released_at = COALESCE(last_released_at, released_at)" in source
+    assert "release_reason = COALESCE(release_reason, last_release_reason)" in source
+    assert "last_release_reason = COALESCE(last_release_reason, release_reason)" in source
+    assert "trg_intern_volunteer_release_compat_insert" in source
+    assert "trg_intern_volunteer_release_compat_update" in source
+    assert "SET NEW.last_released_at = NEW.released_at" in source
+    assert "SET NEW.released_at = NEW.last_released_at" in source
+    assert "SET NEW.last_release_reason = NEW.release_reason" in source
+    assert "SET NEW.release_reason = NEW.last_release_reason" in source
+
+
+def test_m6_downgrade_copies_canonical_back_to_legacy_before_contracting():
+    downgrade = _downgrade_source()
+    assert "last_released_at=COALESCE(released_at,last_released_at)" in downgrade
+    assert "last_release_reason=COALESCE(release_reason,last_release_reason)" in downgrade
+    assert 'op.drop_column(_TABLE, "released_at")' in downgrade
+    assert 'op.drop_column(_TABLE, "release_reason")' in downgrade
+    assert 'op.drop_column(_TABLE, "last_released_at")' not in downgrade
+    assert 'op.drop_column(_TABLE, "last_release_reason")' not in downgrade
