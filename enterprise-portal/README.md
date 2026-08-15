@@ -30,6 +30,7 @@
 - Decision `status` 与 `effectStatus` 分离；只有 `ACTIVE` 表示当前有效企业处理事实，`EXPIRED / SUPERSEDED / CONSUMED` 均不可被客户端当成当前有效拟接收。
 - Applicant 材料只消费冻结投递材料投影，不读取完整 StudentProfile；list adapter 只保留页面必需字段，主动丢弃 `studentId/studentNo/materialSnapshotId/submissionVersion/decisionVersion` 等内部标识。
 - 联系方式只通过 A01 已冻结 `POST /applications/{id}/contact-view` 请求；A02 只识别当前 canonical `MASKED_ONLY / AFTER_INTERVIEW / AFTER_ACCEPT_INTENT / IMMEDIATE`，页面不自行判断是否达到阶段，只有服务端成功返回 phone/email 后才显示，并由后端记录 CONTACT_VIEW 审计。
+- 未配置招聘季联系方式策略时，A01 默认只允许 `MASKED_ONLY / AFTER_INTERVIEW / AFTER_ACCEPT_INTENT`；`IMMEDIATE` 必须由学校招聘季策略显式允许，A02 不把缺配置解释为“全部允许”。
 - 实习学生只读取正式 `InternshipRecord` 企业投影；未冻结前本地 fail-closed。
 - 企业评价复用现有 canonical；actor/member/source/time/audit 由后端 facade 写入。
 - Campaign `CLOSED/ARCHIVED` 后 RECRUITMENT 写动作 fail-closed；历史申请/岗位/Decision 保留。
@@ -54,14 +55,14 @@
 
 ## A01 联调依赖账本
 
-最新已审计 A01 HEAD：`daa406aa89a57ca36c0623b6cf584be25cce195f`（`fix(internship): unify recruitment operation windows`）。
+最新已审计 A01 HEAD：`67c401df5746db6bad3802f2589202d292bacabe`（`fix(internship): fail closed default contact sharing`）。
 
 ### 已冻结并被 A02 消费
 
 - 企业认证 / 邀请 / `RECRUITMENT` context。
 - `GET /internship/enterprise-portal/applications`：企业 Applicant list，冻结参数 `campaignId/page/pageSize/positionId/decisionStatus`，服务端按当前 EnterpriseContext 约束企业范围。
 - `GET /internship/enterprise-portal/applications/{application_id}?campaignId=`：冻结投递材料投影。
-- `POST /internship/enterprise-portal/applications/{application_id}/contact-view?campaignId=`：按当前 verified contact + snapshot consent + stage + scope 服务端校验后 reveal，并写 CONTACT_VIEW 审计。
+- `POST /internship/enterprise-portal/applications/{application_id}/contact-view?campaignId=`：按 current verified contact + snapshot consent + stage + scope 服务端校验后 reveal，并写 CONTACT_VIEW 审计；默认招聘季策略不允许 `IMMEDIATE`，除非学校显式配置。
 - `POST /internship/enterprise-portal/applications/{application_id}/decision?campaignId=`：企业 Decision 写链；INTERVIEW 要求 `interviewAt`。
 - `POST /internship/enterprise-portal/applications/{application_id}/withdraw-accept?campaignId=`：active ACCEPT_INTENT 专用撤回链，reason 必填。
 - Enterprise Portal role permission：`internship.enterprise.view → COMPANY_ADMIN/HR/MENTOR`；`internship.application.view/review → COMPANY_ADMIN/HR`。
@@ -88,7 +89,7 @@ A02 对这些缺口继续本地 fail-closed + 0 network。A01 新合同落地后
 
 - 当前 E-series integration base：`b1e417643790d0cbe42b1c2f104c3c9b52eb0c8b`。
 - A02 已两次通过二父 merge commit 同步 Authority integration/main 前进，均 `force=false`；同步后 A02 自有 diff 仍只位于 `enterprise-portal/**` 与 `.github/workflows/internship-enterprise-portal.yml`。
-- A01 最新 `daa406aa` 目前领先 integration base；A02 已按其公开 router/service 真合同完成客户端校准，待总集成线回收 A01 后再做 merge-ref 联调复核，不把 A01 backend 文件复制进 A02 分支。
+- A01 最新 `67c401df` 目前领先 integration base；A02 已按其公开 router/service 真合同完成客户端校准，待总集成线回收 A01 后再做 merge-ref 联调复核，不把 A01 backend 文件复制进 A02 分支。
 
 ## 最终门禁
 
