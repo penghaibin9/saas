@@ -1,0 +1,626 @@
+- 任何 schema 变更先做 dirty-data inventory，再提交 INT migration 请求；不得先改 NOT NULL 再处理脏数据。
+- 新增 JSON policy 必须有 schemaVersion / validation / fail-closed；坏 JSON 不能降级成“无限制”。
+
+### 6. Service / API 契约
+- 先定位 formal/public/final owner；legacy/facade 只能作为兼容，不新增写 Authority。
+- 写 API 必须服务端重新校验 tenant、scope、状态机、版本、归档 guard。
+- 纯 Preflight / eligibility / readiness 方法不得 `commit()`。
+- 所有拒绝返回稳定 `businessCode + message + evidence + howToResolve`；不能只返回“操作失败”。
+- 列表必须 SQL 分页，禁止大数据全量 materialize 后 Python filter。
+- 更新正式事实使用 expectedVersion / CAS 或现有行锁协议。
+- 新接口若只是聚合，优先 read projection，不持久化“仪表盘状态”。
+
+### 7. 管理 / 教师 PC
+- 页面必须有唯一主任务，复杂规则、名单、编排、审核详情、影响分析使用独立页面而不是 Drawer。
+- 首屏固定回答：当前阶段、是否正常、阻断数量、责任人、截止/窗口、下一动作。
+- 对正式批次/名单/课表/成绩显示关键版本或 evidence identity。
+- 任何高风险动作先 preview impact，再二次确认。
+- 允许保留旧路由 redirect/alias；禁止一次重写整个 console。
+
+### 8. 学生 PC / 小程序 / 教师小程序
+- 只消费同一后端状态与 allowedActions，不在端侧重新计算正式资格。
+- 移动端优先：今日/本周 → 我的待办 → 风险/结果更新 → 常用服务 → 全部服务。
+- 失败必须给中文原因和下一步，不能用技术异常替代业务解释。
+- 刷新、重登、换端后正式事实必须一致。
+- 没有该角色业务职责时，不造“看起来完整”的伪入口。
+
+### 9. 状态机 / allowedActions
+- 先读取 current 枚举，禁止因为竞品状态名更好看就改现有状态机。
+- 状态推进只通过 canonical service。
+- UI 按后端 `allowedActions` 渲染，不使用本地 if/else 重建状态机。
+- 归档/冻结后的普通动作必须 fail-closed。
+- 退回、撤销、更正都保留历史原因，不 delete 正式事实。
+
+### 10. RBAC / dataScope / 审计
+- Permission Catalog 由 Control Plane / INT Authority 管理，本线只声明所需业务能力。
+- 教务处、学院教务、任课教师、学生、学校管理员按真实角色验收。
+- 学院范围必须 SQL/object scope fail-closed；空 scope 不能变全校。
+- 高风险 override / publish / correction / archive 必须审计 before/after/reason。
+- 敏感导出与页面查看使用相同 dataScope，不允许“页面看不到但Excel能导出”。
+
+### 11. 幂等 / 事务 / 并发
+- 所有创建/推进操作定义重复点击语义。
+- 涉及共享容量、唯一 current head、名单换版、正式发布时使用真实 MySQL 验证。
+- 固定锁顺序，避免不同入口互锁。
+- deadlock/retry 不能产生半写、双写或重复通知。
+- 事务成功与消息送达分离：业务事实先成功，通知 Outbox 异步补偿。
+
+### 12. 导入 / 导出 / 打印 / 对账
+- 新增批量导入一律优先扩展 Academic File Exchange：scan → dry-run → error xlsx → confirm → reread。
+- 禁止模块自己造第二 UploadJob / parser / download ticket。
+- 正式导出带生成时间、学期/批次、数据范围、必要版本/水印。
+- 导入后必须形成 imported/reused/rejected/conflict/count/hash/relationship reconciliation。
+- 纸面/电子打印件是正式事实的 projection，不成为第二数据库真值。
+
+### 13. Event / Outbox / 通知
+- 先定义 `business fact → event → audience resolver → delivery → retry/dead`。
+- 消息失败不得回滚已成功业务事实。
+- 同一业务事件使用 dedupe key 防重复轰炸。
+- 关键通知必须能在运维侧看 pending/dead/lag。
+- 是否通知家长、短信、邮件等由学校策略决定，不在 Domain 硬编码。
+
+### 14. 迁移 / 兼容 / 脏数据
+- 先 inventory：当前行数、空值、重复键、旧状态、孤儿引用、legacy caller。
+- 若迁移必须给 `backfill → dual-read/compat → cutover → reconciliation → retire` 顺序。
+- 旧历史无法证明的新语义不得反推伪造。
+- COMPAT 退役必须 repo search 零调用 + 四端 Gold + exact-head canonical 通过。
+- 任一 open PR 触碰同文件时重新做 collision audit。
+
+### 15. RED tests
+- Lottery落签自动进waitlist RED。
+- 一席多offer RED。
+- expired offer仍可accept RED。
+- 必须新增至少一个跨租户/跨学院越权负向。
+- 必须新增重复提交或错误状态负向。
+- 必须新增数据损坏 fail-closed 负向。
+- 不允许通过弱化现有断言让新功能变绿。
+
+### 16. Real MySQL / E2E / Gold
+- 涉及锁、唯一约束、容量、ScopeHead、RosterVersion、publish 的路径必须跑真实 MySQL。
+- E2E 不 mock 正式网络写链，不忽略 console error。
+- 写后必须 `reread → refresh → re-login/换端` 仍成立。
+- 对所有被修改的 KEEP 模块跑 no-regression。
+- 证据绑定 exact HEAD；新 commit 后重新判断旧 Gold 是否仍有效。
+
+### 17. Definition of Done
+- 真实角色能完成本专题主任务，不需要 SQL 或管理员手工改库。
+- 业务失败可解释，有责任人和下一步。
+- 没有新增第二 Authority / 第二状态机 / 第二名单 / 第二正式成绩。
+- 数据可导入、可对账、可追溯；需要打印/导出时有正式入口。
+- 至少一条 Happy Gold + 一条 Negative Gold + 必要并发证据。
+- 本专题 P0 blocker = 0，P1 若保留必须有明确学校策略或后续 owner。
+
+### 18. 明确禁止
+- 禁止“竞品有，所以直接建表”。
+- 禁止为了页面方便放松后端 gate。
+- 禁止名称匹配替代 stable ID。
+- 禁止 client-side 正式资格计算。
+- 禁止 shared file 被本线抢写。
+- 禁止本专题之外顺手重构成熟模块。
+- 禁止把 queued/pending 当成功。
+
+
+---
+
+## B15-09 — 原子 Swap 换课
+
+**优先级：** `P1`  
+**V1.5 裁决：** `VERIFY-FIRST / BENCHMARK-GAP`  
+**外部成熟度信号：** PeopleSoft/Workday把Swap作为独立原子注册动作。
+
+### 1. 学校业务问题
+- 学生先退旧课再选新课会出现新课失败、旧课也丢失。
+- 换教学班同样需要原子语义。
+
+### 2. 当前 exact-head 事实
+- current repo生产级swap证据弱；历史表单设计有换课字样但不足以证明Authority。
+
+### 3. 历史设计 Reconciliation
+- 历史UI设想不等于正式事务。
+
+### 4. 唯一 Authority 决策
+- Swap=canonical target preflight + reserve + drop old + create target同事务编排。
+- 不建第二Enrollment truth。
+
+### 5. 数据模型施工准则
+- 先按 model / migration / unique key / FK / effective dating / immutable history 逐项核现状。
+- 若现有表能表达，只允许扩字段、子表或 projection；不得平行造同语义主表。
+- 所有正式引用使用 stable ID；文本名称只用于展示快照。
+- 涉及历史事实必须保留 `version / effectiveAt / source / reason / createdBy` 或现有等价证据。
+- 任何 schema 变更先做 dirty-data inventory，再提交 INT migration 请求；不得先改 NOT NULL 再处理脏数据。
+- 新增 JSON policy 必须有 schemaVersion / validation / fail-closed；坏 JSON 不能降级成“无限制”。
+
+### 6. Service / API 契约
+- 先定位 formal/public/final owner；legacy/facade 只能作为兼容，不新增写 Authority。
+- 写 API 必须服务端重新校验 tenant、scope、状态机、版本、归档 guard。
+- 纯 Preflight / eligibility / readiness 方法不得 `commit()`。
+- 所有拒绝返回稳定 `businessCode + message + evidence + howToResolve`；不能只返回“操作失败”。
+- 列表必须 SQL 分页，禁止大数据全量 materialize 后 Python filter。
+- 更新正式事实使用 expectedVersion / CAS 或现有行锁协议。
+- 新接口若只是聚合，优先 read projection，不持久化“仪表盘状态”。
+
+### 7. 管理 / 教师 PC
+- 页面必须有唯一主任务，复杂规则、名单、编排、审核详情、影响分析使用独立页面而不是 Drawer。
+- 首屏固定回答：当前阶段、是否正常、阻断数量、责任人、截止/窗口、下一动作。
+- 对正式批次/名单/课表/成绩显示关键版本或 evidence identity。
+- 任何高风险动作先 preview impact，再二次确认。
+- 允许保留旧路由 redirect/alias；禁止一次重写整个 console。
+
+### 8. 学生 PC / 小程序 / 教师小程序
+- 只消费同一后端状态与 allowedActions，不在端侧重新计算正式资格。
+- 移动端优先：今日/本周 → 我的待办 → 风险/结果更新 → 常用服务 → 全部服务。
+- 失败必须给中文原因和下一步，不能用技术异常替代业务解释。
+- 刷新、重登、换端后正式事实必须一致。
+- 没有该角色业务职责时，不造“看起来完整”的伪入口。
+
+### 9. 状态机 / allowedActions
+- 先读取 current 枚举，禁止因为竞品状态名更好看就改现有状态机。
+- 状态推进只通过 canonical service。
+- UI 按后端 `allowedActions` 渲染，不使用本地 if/else 重建状态机。
+- 归档/冻结后的普通动作必须 fail-closed。
+- 退回、撤销、更正都保留历史原因，不 delete 正式事实。
+
+### 10. RBAC / dataScope / 审计
+- Permission Catalog 由 Control Plane / INT Authority 管理，本线只声明所需业务能力。
+- 教务处、学院教务、任课教师、学生、学校管理员按真实角色验收。
+- 学院范围必须 SQL/object scope fail-closed；空 scope 不能变全校。
+- 高风险 override / publish / correction / archive 必须审计 before/after/reason。
+- 敏感导出与页面查看使用相同 dataScope，不允许“页面看不到但Excel能导出”。
+
+### 11. 幂等 / 事务 / 并发
+- 所有创建/推进操作定义重复点击语义。
+- 涉及共享容量、唯一 current head、名单换版、正式发布时使用真实 MySQL 验证。
+- 固定锁顺序，避免不同入口互锁。
+- deadlock/retry 不能产生半写、双写或重复通知。
+- 事务成功与消息送达分离：业务事实先成功，通知 Outbox 异步补偿。
+
+### 12. 导入 / 导出 / 打印 / 对账
+- 新增批量导入一律优先扩展 Academic File Exchange：scan → dry-run → error xlsx → confirm → reread。
+- 禁止模块自己造第二 UploadJob / parser / download ticket。
+- 正式导出带生成时间、学期/批次、数据范围、必要版本/水印。
+- 导入后必须形成 imported/reused/rejected/conflict/count/hash/relationship reconciliation。
+- 纸面/电子打印件是正式事实的 projection，不成为第二数据库真值。
+
+### 13. Event / Outbox / 通知
+- 先定义 `business fact → event → audience resolver → delivery → retry/dead`。
+- 消息失败不得回滚已成功业务事实。
+- 同一业务事件使用 dedupe key 防重复轰炸。
+- 关键通知必须能在运维侧看 pending/dead/lag。
+- 是否通知家长、短信、邮件等由学校策略决定，不在 Domain 硬编码。
+
+### 14. 迁移 / 兼容 / 脏数据
+- 先 inventory：当前行数、空值、重复键、旧状态、孤儿引用、legacy caller。
+- 若迁移必须给 `backfill → dual-read/compat → cutover → reconciliation → retire` 顺序。
+- 旧历史无法证明的新语义不得反推伪造。
+- COMPAT 退役必须 repo search 零调用 + 四端 Gold + exact-head canonical 通过。
+- 任一 open PR 触碰同文件时重新做 collision audit。
+
+### 15. RED tests
+- target满额失败时old record必须仍在。
+- 两个交叉swap死锁/半写RED。
+- 重复请求RED。
+- 必须新增至少一个跨租户/跨学院越权负向。
+- 必须新增重复提交或错误状态负向。
+- 必须新增数据损坏 fail-closed 负向。
+- 不允许通过弱化现有断言让新功能变绿。
+
+### 16. Real MySQL / E2E / Gold
+- 涉及锁、唯一约束、容量、ScopeHead、RosterVersion、publish 的路径必须跑真实 MySQL。
+- E2E 不 mock 正式网络写链，不忽略 console error。
+- 写后必须 `reread → refresh → re-login/换端` 仍成立。
+- 对所有被修改的 KEEP 模块跑 no-regression。
+- 证据绑定 exact HEAD；新 commit 后重新判断旧 Gold 是否仍有效。
+
+### 17. Definition of Done
+- 真实角色能完成本专题主任务，不需要 SQL 或管理员手工改库。
+- 业务失败可解释，有责任人和下一步。
+- 没有新增第二 Authority / 第二状态机 / 第二名单 / 第二正式成绩。
+- 数据可导入、可对账、可追溯；需要打印/导出时有正式入口。
+- 至少一条 Happy Gold + 一条 Negative Gold + 必要并发证据。
+- 本专题 P0 blocker = 0，P1 若保留必须有明确学校策略或后续 owner。
+
+### 18. 明确禁止
+- 禁止“竞品有，所以直接建表”。
+- 禁止为了页面方便放松后端 gate。
+- 禁止名称匹配替代 stable ID。
+- 禁止 client-side 正式资格计算。
+- 禁止 shared file 被本线抢写。
+- 禁止本专题之外顺手重构成熟模块。
+- 禁止把 queued/pending 当成功。
+
+
+---
+
+## B15-10 — Saved Schedule / 预选方案 / A-B备选
+
+**优先级：** `P1`  
+**V1.5 裁决：** `VERIFY-FIRST / BENCHMARK-GAP`  
+**外部成熟度信号：** PeopleSoft有Shopping Cart/Planner，Workday有Saved Schedule；国内高校也要求学生提前根据课表准备备选。
+
+### 1. 学校业务问题
+- 正式开选前学生需要做冲突和学分规划。
+- 计划不能抢容量。
+
+### 2. 当前 exact-head 事实
+- current repo未检索到明确academic saved schedule生产能力。
+
+### 3. 历史设计 Reconciliation
+- 历史若有‘选课计划’只作为UX参考。
+
+### 4. 唯一 Authority 决策
+- Saved Schedule是学生私有草稿，只引用taskId，不生成SelectionRecord，不占容量。
+- 正式提交时重新preflight。
+
+### 5. 数据模型施工准则
+- 先按 model / migration / unique key / FK / effective dating / immutable history 逐项核现状。
+- 若现有表能表达，只允许扩字段、子表或 projection；不得平行造同语义主表。
+- 所有正式引用使用 stable ID；文本名称只用于展示快照。
+- 涉及历史事实必须保留 `version / effectiveAt / source / reason / createdBy` 或现有等价证据。
+- 任何 schema 变更先做 dirty-data inventory，再提交 INT migration 请求；不得先改 NOT NULL 再处理脏数据。
+- 新增 JSON policy 必须有 schemaVersion / validation / fail-closed；坏 JSON 不能降级成“无限制”。
+
+### 6. Service / API 契约
+- 先定位 formal/public/final owner；legacy/facade 只能作为兼容，不新增写 Authority。
+- 写 API 必须服务端重新校验 tenant、scope、状态机、版本、归档 guard。
+- 纯 Preflight / eligibility / readiness 方法不得 `commit()`。
+- 所有拒绝返回稳定 `businessCode + message + evidence + howToResolve`；不能只返回“操作失败”。
+- 列表必须 SQL 分页，禁止大数据全量 materialize 后 Python filter。
+- 更新正式事实使用 expectedVersion / CAS 或现有行锁协议。
+- 新接口若只是聚合，优先 read projection，不持久化“仪表盘状态”。
+
+### 7. 管理 / 教师 PC
+- 页面必须有唯一主任务，复杂规则、名单、编排、审核详情、影响分析使用独立页面而不是 Drawer。
+- 首屏固定回答：当前阶段、是否正常、阻断数量、责任人、截止/窗口、下一动作。
+- 对正式批次/名单/课表/成绩显示关键版本或 evidence identity。
+- 任何高风险动作先 preview impact，再二次确认。
+- 允许保留旧路由 redirect/alias；禁止一次重写整个 console。
+
+### 8. 学生 PC / 小程序 / 教师小程序
+- 只消费同一后端状态与 allowedActions，不在端侧重新计算正式资格。
+- 移动端优先：今日/本周 → 我的待办 → 风险/结果更新 → 常用服务 → 全部服务。
+- 失败必须给中文原因和下一步，不能用技术异常替代业务解释。
+- 刷新、重登、换端后正式事实必须一致。
+- 没有该角色业务职责时，不造“看起来完整”的伪入口。
+
+### 9. 状态机 / allowedActions
+- 先读取 current 枚举，禁止因为竞品状态名更好看就改现有状态机。
+- 状态推进只通过 canonical service。
+- UI 按后端 `allowedActions` 渲染，不使用本地 if/else 重建状态机。
+- 归档/冻结后的普通动作必须 fail-closed。
+- 退回、撤销、更正都保留历史原因，不 delete 正式事实。
+
+### 10. RBAC / dataScope / 审计
+- Permission Catalog 由 Control Plane / INT Authority 管理，本线只声明所需业务能力。
+- 教务处、学院教务、任课教师、学生、学校管理员按真实角色验收。
+- 学院范围必须 SQL/object scope fail-closed；空 scope 不能变全校。
+- 高风险 override / publish / correction / archive 必须审计 before/after/reason。
+- 敏感导出与页面查看使用相同 dataScope，不允许“页面看不到但Excel能导出”。
+
+### 11. 幂等 / 事务 / 并发
+- 所有创建/推进操作定义重复点击语义。
+- 涉及共享容量、唯一 current head、名单换版、正式发布时使用真实 MySQL 验证。
+- 固定锁顺序，避免不同入口互锁。
+- deadlock/retry 不能产生半写、双写或重复通知。
+- 事务成功与消息送达分离：业务事实先成功，通知 Outbox 异步补偿。
+
+### 12. 导入 / 导出 / 打印 / 对账
+- 新增批量导入一律优先扩展 Academic File Exchange：scan → dry-run → error xlsx → confirm → reread。
+- 禁止模块自己造第二 UploadJob / parser / download ticket。
+- 正式导出带生成时间、学期/批次、数据范围、必要版本/水印。
+- 导入后必须形成 imported/reused/rejected/conflict/count/hash/relationship reconciliation。
+- 纸面/电子打印件是正式事实的 projection，不成为第二数据库真值。
+
+### 13. Event / Outbox / 通知
+- 先定义 `business fact → event → audience resolver → delivery → retry/dead`。
+- 消息失败不得回滚已成功业务事实。
+- 同一业务事件使用 dedupe key 防重复轰炸。
+- 关键通知必须能在运维侧看 pending/dead/lag。
+- 是否通知家长、短信、邮件等由学校策略决定，不在 Domain 硬编码。
+
+### 14. 迁移 / 兼容 / 脏数据
+- 先 inventory：当前行数、空值、重复键、旧状态、孤儿引用、legacy caller。
+- 若迁移必须给 `backfill → dual-read/compat → cutover → reconciliation → retire` 顺序。
+- 旧历史无法证明的新语义不得反推伪造。
+- COMPAT 退役必须 repo search 零调用 + 四端 Gold + exact-head canonical 通过。
+- 任一 open PR 触碰同文件时重新做 collision audit。
+
+### 15. RED tests
+- 草稿占容量RED。
+- 窗口外一键变正式RED。
+- 旧Task失效未提示RED。
+- 必须新增至少一个跨租户/跨学院越权负向。
+- 必须新增重复提交或错误状态负向。
+- 必须新增数据损坏 fail-closed 负向。
+- 不允许通过弱化现有断言让新功能变绿。
+
+### 16. Real MySQL / E2E / Gold
+- 涉及锁、唯一约束、容量、ScopeHead、RosterVersion、publish 的路径必须跑真实 MySQL。
+- E2E 不 mock 正式网络写链，不忽略 console error。
+- 写后必须 `reread → refresh → re-login/换端` 仍成立。
+- 对所有被修改的 KEEP 模块跑 no-regression。
+- 证据绑定 exact HEAD；新 commit 后重新判断旧 Gold 是否仍有效。
+
+### 17. Definition of Done
+- 真实角色能完成本专题主任务，不需要 SQL 或管理员手工改库。
+- 业务失败可解释，有责任人和下一步。
+- 没有新增第二 Authority / 第二状态机 / 第二名单 / 第二正式成绩。
+- 数据可导入、可对账、可追溯；需要打印/导出时有正式入口。
+- 至少一条 Happy Gold + 一条 Negative Gold + 必要并发证据。
+- 本专题 P0 blocker = 0，P1 若保留必须有明确学校策略或后续 owner。
+
+### 18. 明确禁止
+- 禁止“竞品有，所以直接建表”。
+- 禁止为了页面方便放松后端 gate。
+- 禁止名称匹配替代 stable ID。
+- 禁止 client-side 正式资格计算。
+- 禁止 shared file 被本线抢写。
+- 禁止本专题之外顺手重构成熟模块。
+- 禁止把 queued/pending 当成功。
+
+
+---
+
+## B15-11 — Reserved Capacity / 定向名额
+
+**优先级：** `P1`  
+**V1.5 裁决：** `VERIFY-FIRST`  
+**外部成熟度信号：** PeopleSoft/Workday都支持reserve capacity；国内公共课程也常给特定年级/专业保留名额。
+
+### 1. 学校业务问题
+- 单一capacity无法表达定向座位。
+- 规则要公平且可解释。
+
+### 2. 当前 exact-head 事实
+- 当前Selection scope/rule有适用范围；保留容量正式实现需精审。
+
+### 3. 历史设计 Reconciliation
+- 旧rule_json可作为优先扩展点，不急建规则表。
+
+### 4. 唯一 Authority 决策
+- 总capacity仍属SelectionCourse；reserved groups只是policy子结构。
+- 总reserved不得超过capacity。
+
+### 5. 数据模型施工准则
+- 先按 model / migration / unique key / FK / effective dating / immutable history 逐项核现状。
+- 若现有表能表达，只允许扩字段、子表或 projection；不得平行造同语义主表。
+- 所有正式引用使用 stable ID；文本名称只用于展示快照。
+- 涉及历史事实必须保留 `version / effectiveAt / source / reason / createdBy` 或现有等价证据。
+- 任何 schema 变更先做 dirty-data inventory，再提交 INT migration 请求；不得先改 NOT NULL 再处理脏数据。
+- 新增 JSON policy 必须有 schemaVersion / validation / fail-closed；坏 JSON 不能降级成“无限制”。
+
+### 6. Service / API 契约
+- 先定位 formal/public/final owner；legacy/facade 只能作为兼容，不新增写 Authority。
+- 写 API 必须服务端重新校验 tenant、scope、状态机、版本、归档 guard。
+- 纯 Preflight / eligibility / readiness 方法不得 `commit()`。
+- 所有拒绝返回稳定 `businessCode + message + evidence + howToResolve`；不能只返回“操作失败”。
+- 列表必须 SQL 分页，禁止大数据全量 materialize 后 Python filter。
+- 更新正式事实使用 expectedVersion / CAS 或现有行锁协议。
+- 新接口若只是聚合，优先 read projection，不持久化“仪表盘状态”。
+
+### 7. 管理 / 教师 PC
+- 页面必须有唯一主任务，复杂规则、名单、编排、审核详情、影响分析使用独立页面而不是 Drawer。
+- 首屏固定回答：当前阶段、是否正常、阻断数量、责任人、截止/窗口、下一动作。
+- 对正式批次/名单/课表/成绩显示关键版本或 evidence identity。
+- 任何高风险动作先 preview impact，再二次确认。
+- 允许保留旧路由 redirect/alias；禁止一次重写整个 console。
+
+### 8. 学生 PC / 小程序 / 教师小程序
+- 只消费同一后端状态与 allowedActions，不在端侧重新计算正式资格。
+- 移动端优先：今日/本周 → 我的待办 → 风险/结果更新 → 常用服务 → 全部服务。
+- 失败必须给中文原因和下一步，不能用技术异常替代业务解释。
+- 刷新、重登、换端后正式事实必须一致。
+- 没有该角色业务职责时，不造“看起来完整”的伪入口。
+
+### 9. 状态机 / allowedActions
+- 先读取 current 枚举，禁止因为竞品状态名更好看就改现有状态机。
+- 状态推进只通过 canonical service。
+- UI 按后端 `allowedActions` 渲染，不使用本地 if/else 重建状态机。
+- 归档/冻结后的普通动作必须 fail-closed。
+- 退回、撤销、更正都保留历史原因，不 delete 正式事实。
+
+### 10. RBAC / dataScope / 审计
+- Permission Catalog 由 Control Plane / INT Authority 管理，本线只声明所需业务能力。
+- 教务处、学院教务、任课教师、学生、学校管理员按真实角色验收。
+- 学院范围必须 SQL/object scope fail-closed；空 scope 不能变全校。
+- 高风险 override / publish / correction / archive 必须审计 before/after/reason。
+- 敏感导出与页面查看使用相同 dataScope，不允许“页面看不到但Excel能导出”。
+
+### 11. 幂等 / 事务 / 并发
+- 所有创建/推进操作定义重复点击语义。
+- 涉及共享容量、唯一 current head、名单换版、正式发布时使用真实 MySQL 验证。
+- 固定锁顺序，避免不同入口互锁。
+- deadlock/retry 不能产生半写、双写或重复通知。
+- 事务成功与消息送达分离：业务事实先成功，通知 Outbox 异步补偿。
+
+### 12. 导入 / 导出 / 打印 / 对账
+- 新增批量导入一律优先扩展 Academic File Exchange：scan → dry-run → error xlsx → confirm → reread。
+- 禁止模块自己造第二 UploadJob / parser / download ticket。
+- 正式导出带生成时间、学期/批次、数据范围、必要版本/水印。
+- 导入后必须形成 imported/reused/rejected/conflict/count/hash/relationship reconciliation。
+- 纸面/电子打印件是正式事实的 projection，不成为第二数据库真值。
+
+### 13. Event / Outbox / 通知
+- 先定义 `business fact → event → audience resolver → delivery → retry/dead`。
+- 消息失败不得回滚已成功业务事实。
+- 同一业务事件使用 dedupe key 防重复轰炸。
+- 关键通知必须能在运维侧看 pending/dead/lag。
+- 是否通知家长、短信、邮件等由学校策略决定，不在 Domain 硬编码。
+
+### 14. 迁移 / 兼容 / 脏数据
+- 先 inventory：当前行数、空值、重复键、旧状态、孤儿引用、legacy caller。
+- 若迁移必须给 `backfill → dual-read/compat → cutover → reconciliation → retire` 顺序。
+- 旧历史无法证明的新语义不得反推伪造。
+- COMPAT 退役必须 repo search 零调用 + 四端 Gold + exact-head canonical 通过。
+- 任一 open PR 触碰同文件时重新做 collision audit。
+
+### 15. RED tests
+- general pool抢占保留席RED。
+- reserved>capacity RED。
+- 不同group并发计数漂移RED。
+- 必须新增至少一个跨租户/跨学院越权负向。
+- 必须新增重复提交或错误状态负向。
+- 必须新增数据损坏 fail-closed 负向。
+- 不允许通过弱化现有断言让新功能变绿。
+
+### 16. Real MySQL / E2E / Gold
+- 涉及锁、唯一约束、容量、ScopeHead、RosterVersion、publish 的路径必须跑真实 MySQL。
+- E2E 不 mock 正式网络写链，不忽略 console error。
+- 写后必须 `reread → refresh → re-login/换端` 仍成立。
+- 对所有被修改的 KEEP 模块跑 no-regression。
+- 证据绑定 exact HEAD；新 commit 后重新判断旧 Gold 是否仍有效。
+
+### 17. Definition of Done
+- 真实角色能完成本专题主任务，不需要 SQL 或管理员手工改库。
+- 业务失败可解释，有责任人和下一步。
+- 没有新增第二 Authority / 第二状态机 / 第二名单 / 第二正式成绩。
+- 数据可导入、可对账、可追溯；需要打印/导出时有正式入口。
+- 至少一条 Happy Gold + 一条 Negative Gold + 必要并发证据。
+- 本专题 P0 blocker = 0，P1 若保留必须有明确学校策略或后续 owner。
+
+### 18. 明确禁止
+- 禁止“竞品有，所以直接建表”。
+- 禁止为了页面方便放松后端 gate。
+- 禁止名称匹配替代 stable ID。
+- 禁止 client-side 正式资格计算。
+- 禁止 shared file 被本线抢写。
+- 禁止本专题之外顺手重构成熟模块。
+- 禁止把 queued/pending 当成功。
+
+
+---
+
+## B15-12 — 必修教学班取消后的批量重新分配
+
+**优先级：** `P0`  
+**V1.5 裁决：** `NEW ORCHESTRATION over existing truths`  
+**外部成熟度信号：** 国内高校公开选课通知明确：必修班取消时调入其他不冲突且有容量的教学班。
+
+### 1. 学校业务问题
+- 固定必修不能简单取消后让学生自行承担。
+- 批量移动要保护Roster/Schedule/容量。
+
+### 2. 当前 exact-head 事实
+- 低人数、Selection、TeachingRoster、Schedule已有基础；完整cancel→reassign闭环需verify。
+
+### 3. 历史设计 Reconciliation
+- 旧低人数设计可复用，实际成员事实使用当前Roster。
+
+### 4. 唯一 Authority 决策
+- preview target sections→冲突/容量校验→人工确认→生成新RosterVersion。
+- 无法分配者保留异常队列，禁止静默丢学生。
+
+### 5. 数据模型施工准则
+- 先按 model / migration / unique key / FK / effective dating / immutable history 逐项核现状。
+- 若现有表能表达，只允许扩字段、子表或 projection；不得平行造同语义主表。
+- 所有正式引用使用 stable ID；文本名称只用于展示快照。
+- 涉及历史事实必须保留 `version / effectiveAt / source / reason / createdBy` 或现有等价证据。
+- 任何 schema 变更先做 dirty-data inventory，再提交 INT migration 请求；不得先改 NOT NULL 再处理脏数据。
+- 新增 JSON policy 必须有 schemaVersion / validation / fail-closed；坏 JSON 不能降级成“无限制”。
+
+### 6. Service / API 契约
+- 先定位 formal/public/final owner；legacy/facade 只能作为兼容，不新增写 Authority。
+- 写 API 必须服务端重新校验 tenant、scope、状态机、版本、归档 guard。
+- 纯 Preflight / eligibility / readiness 方法不得 `commit()`。
+- 所有拒绝返回稳定 `businessCode + message + evidence + howToResolve`；不能只返回“操作失败”。
+- 列表必须 SQL 分页，禁止大数据全量 materialize 后 Python filter。
+- 更新正式事实使用 expectedVersion / CAS 或现有行锁协议。
+- 新接口若只是聚合，优先 read projection，不持久化“仪表盘状态”。
+
+### 7. 管理 / 教师 PC
+- 页面必须有唯一主任务，复杂规则、名单、编排、审核详情、影响分析使用独立页面而不是 Drawer。
+- 首屏固定回答：当前阶段、是否正常、阻断数量、责任人、截止/窗口、下一动作。
+- 对正式批次/名单/课表/成绩显示关键版本或 evidence identity。
+- 任何高风险动作先 preview impact，再二次确认。
+- 允许保留旧路由 redirect/alias；禁止一次重写整个 console。
+
+### 8. 学生 PC / 小程序 / 教师小程序
+- 只消费同一后端状态与 allowedActions，不在端侧重新计算正式资格。
+- 移动端优先：今日/本周 → 我的待办 → 风险/结果更新 → 常用服务 → 全部服务。
+- 失败必须给中文原因和下一步，不能用技术异常替代业务解释。
+- 刷新、重登、换端后正式事实必须一致。
+- 没有该角色业务职责时，不造“看起来完整”的伪入口。
+
+### 9. 状态机 / allowedActions
+- 先读取 current 枚举，禁止因为竞品状态名更好看就改现有状态机。
+- 状态推进只通过 canonical service。
+- UI 按后端 `allowedActions` 渲染，不使用本地 if/else 重建状态机。
+- 归档/冻结后的普通动作必须 fail-closed。
+- 退回、撤销、更正都保留历史原因，不 delete 正式事实。
+
+### 10. RBAC / dataScope / 审计
+- Permission Catalog 由 Control Plane / INT Authority 管理，本线只声明所需业务能力。
+- 教务处、学院教务、任课教师、学生、学校管理员按真实角色验收。
+- 学院范围必须 SQL/object scope fail-closed；空 scope 不能变全校。
+- 高风险 override / publish / correction / archive 必须审计 before/after/reason。
+- 敏感导出与页面查看使用相同 dataScope，不允许“页面看不到但Excel能导出”。
+
+### 11. 幂等 / 事务 / 并发
+- 所有创建/推进操作定义重复点击语义。
+- 涉及共享容量、唯一 current head、名单换版、正式发布时使用真实 MySQL 验证。
+- 固定锁顺序，避免不同入口互锁。
+- deadlock/retry 不能产生半写、双写或重复通知。
+- 事务成功与消息送达分离：业务事实先成功，通知 Outbox 异步补偿。
+
+### 12. 导入 / 导出 / 打印 / 对账
+- 新增批量导入一律优先扩展 Academic File Exchange：scan → dry-run → error xlsx → confirm → reread。
+- 禁止模块自己造第二 UploadJob / parser / download ticket。
+- 正式导出带生成时间、学期/批次、数据范围、必要版本/水印。
+- 导入后必须形成 imported/reused/rejected/conflict/count/hash/relationship reconciliation。
+- 纸面/电子打印件是正式事实的 projection，不成为第二数据库真值。
+
+### 13. Event / Outbox / 通知
+- 先定义 `business fact → event → audience resolver → delivery → retry/dead`。
+- 消息失败不得回滚已成功业务事实。
+- 同一业务事件使用 dedupe key 防重复轰炸。
+- 关键通知必须能在运维侧看 pending/dead/lag。
+- 是否通知家长、短信、邮件等由学校策略决定，不在 Domain 硬编码。
+
+### 14. 迁移 / 兼容 / 脏数据
+- 先 inventory：当前行数、空值、重复键、旧状态、孤儿引用、legacy caller。
+- 若迁移必须给 `backfill → dual-read/compat → cutover → reconciliation → retire` 顺序。
+- 旧历史无法证明的新语义不得反推伪造。
+- COMPAT 退役必须 repo search 零调用 + 四端 Gold + exact-head canonical 通过。
+- 任一 open PR 触碰同文件时重新做 collision audit。
+
+### 15. RED tests
+- target满额/冲突时学生从source消失RED。
+- 批量重复执行双移动RED。
+- 必须新增至少一个跨租户/跨学院越权负向。
+- 必须新增重复提交或错误状态负向。
+- 必须新增数据损坏 fail-closed 负向。
+- 不允许通过弱化现有断言让新功能变绿。
+
+### 16. Real MySQL / E2E / Gold
+- 涉及锁、唯一约束、容量、ScopeHead、RosterVersion、publish 的路径必须跑真实 MySQL。
+- E2E 不 mock 正式网络写链，不忽略 console error。
+- 写后必须 `reread → refresh → re-login/换端` 仍成立。
+- 对所有被修改的 KEEP 模块跑 no-regression。
+- 证据绑定 exact HEAD；新 commit 后重新判断旧 Gold 是否仍有效。
+
+### 17. Definition of Done
+- 真实角色能完成本专题主任务，不需要 SQL 或管理员手工改库。
+- 业务失败可解释，有责任人和下一步。
+- 没有新增第二 Authority / 第二状态机 / 第二名单 / 第二正式成绩。
+- 数据可导入、可对账、可追溯；需要打印/导出时有正式入口。
+- 至少一条 Happy Gold + 一条 Negative Gold + 必要并发证据。
+- 本专题 P0 blocker = 0，P1 若保留必须有明确学校策略或后续 owner。
+
+### 18. 明确禁止
+- 禁止“竞品有，所以直接建表”。
+- 禁止为了页面方便放松后端 gate。
+- 禁止名称匹配替代 stable ID。
+- 禁止 client-side 正式资格计算。
+- 禁止 shared file 被本线抢写。
+- 禁止本专题之外顺手重构成熟模块。
+- 禁止把 queued/pending 当成功。
+
+
+---
+
+## B15-13 — 选修教学班取消 → COURSE_CANCELLED → 补改选
+
+**优先级：** `P0`  
+**V1.5 裁决：** `CURRENT-HARDEN`  
+**外部成熟度信号：** 国内公开流程明确：选修教学班取消后通知学生改选其他课程/教学班。
+
+### 1. 学校业务问题
