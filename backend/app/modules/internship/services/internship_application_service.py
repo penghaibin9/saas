@@ -478,6 +478,10 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             return out
         # Legacy application、学生记录、岗位名额、同一 legacy 志愿、审计全部留在同一事务。
         if app.application_type == "POSITION":
+            # Historical NULL-campaign rows may have been created before the V3 boundary existed.
+            # Revalidate the position itself before the shared assignment path so a legacy approval
+            # can never consume/approve a recruitment-campaign volunteer group by association.
+            _legacy_position(db, app.position_id)
             student_svc.assign_position_in_tx(
                 db, rec, app.position_id, record_expected_version, user=user)
         else:

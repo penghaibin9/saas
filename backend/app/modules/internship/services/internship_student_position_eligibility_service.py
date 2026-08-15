@@ -25,17 +25,18 @@ def assert_student_selection_window(campaign: InternshipRecruitmentCampaign, now
 
 
 def _major_sql_predicate(major_name: str):
-    """MySQL SQL equivalent of `_major_hit`, including Python case/accent-sensitive semantics."""
+    """MySQL SQL equivalent of `_major_hit`, including trim/case/accent-sensitive semantics."""
     major = str(major_name or "").strip()
     requirement = InternshipPosition.major_requirement
-    unlimited = or_(requirement.is_(None), func.length(func.trim(requirement)) == 0)
+    trimmed_requirement = func.trim(requirement)
+    unlimited = or_(requirement.is_(None), func.length(trimmed_requirement) == 0)
     if not major:
         return unlimited
 
-    # Production columns use utf8mb4_unicode_ci, while Python's `in` comparison used by _major_hit
-    # is case- and accent-sensitive. Force binary collation on both operands so COUNT/page filtering
-    # cannot call e.g. "Software" and "software" a major match when the public row will not.
-    binary_requirement = requirement.collate("utf8mb4_bin")
+    # Production columns use utf8mb4_unicode_ci, while Python's `_major_hit` strips surrounding
+    # whitespace and then uses case/accent-sensitive `in`. Apply TRIM before binary collation so the
+    # SQL COUNT/page predicate and public-row Python classification are genuinely equivalent.
+    binary_requirement = trimmed_requirement.collate("utf8mb4_bin")
     binary_major = literal(major).collate("utf8mb4_bin")
     return or_(
         unlimited,
