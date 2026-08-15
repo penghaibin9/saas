@@ -1,14 +1,15 @@
 """I1/I2 canonical identity-import orchestration without new schema.
 
-Creation is side-effect free beyond durable job registration. GET/read paths
-never parse. Parsing is an explicit worker command, which delegates the frozen
-scanner/parser implementation after ownership and scan gates have been checked.
+Creation is side-effect free beyond durable SCANNING registration. GET/read
+paths never parse. Parsing is an explicit worker command which delegates the
+frozen scanner/parser after ownership and scan gates have been checked.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
@@ -23,22 +24,53 @@ def _kind(value: str) -> str:
     return legacy._kind(value)  # noqa: SLF001
 
 
-def create_identity_import_job(*, kind: str, source_file_id: int, filename: str, user: dict) -> dict:
-    """Register SCANNING job only; never parse in the upload request."""
+def _existing_by_source(
+    db,
+    *,
+    tenant_id: int,
+    source_file_id: int,
+    kind: str,
+    user: dict,
+) -> ImportJob | None:
+    row = db.scalar(
+        select(ImportJob)
+        .where(
+            ImportJob.tenant_id == tenant_id,
+            ImportJob.source_file_id == int(source_file_id),
+            ImportJob.import_type == f"IDENTITY_{kind}",
+            ImportJob.is_deleted.is_(False),
+        )
+        .order_by(ImportJob.id.desc())
+        .limit(1)
+    )
+    if row is not None:
+        jobs._assert_row_visible(row, user)  # noqa: SLF001
+    return row
+
+
+def create_identity_import_job(
+    *,
+    kind: str,
+    source_file_id: int,
+    filename: str,
+    user: dict,
+    upload_session_key: str | None = None,
+) -> dict:
+    """Register/reuse SCANNING job only; never call refresh/parser here."""
     kind_up = _kind(kind)
     tenant_id = jobs._tenant_id()  # noqa: SLF001
     actor_id = jobs._actor_id(user)  # noqa: SLF001
     adapter_ref = f"{kind_up}:{int(source_file_id)}"
     db = get_sessionmaker()()
     try:
-        existing = db.scalars(select(ImportJob).where(
-            ImportJob.tenant_id == tenant_id,
-            ImportJob.adapter_type == PENDING_ADAPTER,
-            ImportJob.adapter_ref == adapter_ref,
-            ImportJob.is_deleted.is_(False),
-        )).first()
-        if existing:
-            jobs._assert_row_visible(existing, user)  # noqa: SLF001
+        existing = _existing_by_source(
+            db,
+            tenant_id=tenant_id,
+            source_file_id=int(source_file_id),
+            kind=kind_up,
+            user=user,
+        )
+        if existing is not None:
             return jobs._import_row(existing)  # noqa: SLF001
         row = ImportJob(
             tenant_id=tenant_id,
@@ -56,6 +88,7 @@ def create_identity_import_job(*, kind: str, source_file_id: int, filename: str,
                 "fileName": str(filename or "identity_import.xlsx"),
                 "kind": kind_up,
                 "parseMode": "WORKER_AFTER_FILE_SCAN",
+                "uploadSessionKey": str(upload_session_key or "") or None,
             },
             result_json={
                 "scanRequired": True,
@@ -68,6 +101,18 @@ def create_identity_import_job(*, kind: str, source_file_id: int, filename: str,
         db.commit()
         db.refresh(row)
         return jobs._import_row(row)  # noqa: SLF001
+    except IntegrityError:
+        db.rollback()
+        existing = _existing_by_source(
+            db,
+            tenant_id=tenant_id,
+            source_file_id=int(source_file_id),
+            kind=kind_up,
+            user=user,
+        )
+        if existing is None:
+            raise
+        return jobs._import_row(existing)  # noqa: SLF001
     except Exception:
         db.rollback()
         raise
@@ -115,14 +160,15 @@ def find_identity_job_by_batch(batch_no: str, *, user: dict) -> dict:
     tenant_id = jobs._tenant_id()  # noqa: SLF001
     db = get_sessionmaker()()
     try:
-        row = db.scalars(select(ImportJob).where(
-            ImportJob.tenant_id == tenant_id,
-            ImportJob.adapter_type == jobs.IMPORT_ADAPTER_IDENTITY,
-            ImportJob.adapter_ref == batch,
-            ImportJob.is_deleted.is_(False),
-        )).first()
+        row = db.scalars(
+            select(ImportJob).where(
+                ImportJob.tenant_id == tenant_id,
+                ImportJob.adapter_type == jobs.IMPORT_ADAPTER_IDENTITY,
+                ImportJob.adapter_ref == batch,
+                ImportJob.is_deleted.is_(False),
+            )
+        ).first()
         if row is None:
-            # New clients may pass canonical jobId into the legacy-shaped method.
             if batch.isdigit():
                 row = jobs._owned_import(db, batch, user)  # noqa: SLF001
             else:
