@@ -24,3 +24,14 @@ def test_role_detail_advertises_paged_resources_instead_of_fake_complete_preview
     assert 'membersEndpoint' in source
     assert 'auditTrailComplete' in source
     assert 'auditEndpoint' in source
+
+
+def test_effective_access_module_failure_is_explicitly_non_cacheable():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "backend/app/core/effective_access.py").read_text(encoding="utf-8")
+    contract = (root / "shared/contracts/control-plane/effective-access-contract.json").read_text(encoding="utf-8")
+    assert 'module_access_healthy = bool(base.get("moduleAccessHealthy"))' in source
+    assert 'cacheable = bool(revision_healthy and module_access_healthy)' in source
+    assert '"cacheable": cacheable' in source
+    assert '"ctxKey": null' in contract
+    assert '"cacheable": false' in contract

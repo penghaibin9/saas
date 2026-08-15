@@ -11,6 +11,7 @@ on:
       - 'backend/app/modules/platform/**'
       - 'backend/app/core/permissions.py'
       - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/effective_access.py'
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
@@ -32,6 +33,7 @@ on:
       - 'backend/app/modules/platform/**'
       - 'backend/app/core/permissions.py'
       - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/effective_access.py'
       - 'backend/app/models/rbac.py'
       - 'backend/app/models/permission_governance.py'
       - 'backend/app/services/security_change_service.py'
@@ -66,7 +68,7 @@ jobs:
         run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
       - name: Permission Catalog reconciliation
         run: python scripts/check/check-permission-catalog.py --write artifacts/control-plane/permission-catalog.json
-      - name: B0-B7 Python syntax gate
+      - name: B0-I4 Python syntax gate
         run: |
           python -m compileall -q \
             backend/app/modules/system_admin \
@@ -79,6 +81,15 @@ jobs:
           python - <<'PY'
           import runpy
           ns = runpy.run_path('backend/tests/test_control_plane_frontend_workspaces.py')
+          for name, fn in sorted(ns.items()):
+              if name.startswith('test_') and callable(fn):
+                  fn()
+          PY
+      - name: I4 pre-I3 20K preflight contracts
+        run: |
+          python - <<'PY'
+          import runpy
+          ns = runpy.run_path('backend/tests/test_control_plane_i4_preflight.py')
           for name, fn in sorted(ns.items()):
               if name.startswith('test_') and callable(fn):
                   fn()
