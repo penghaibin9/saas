@@ -12,7 +12,7 @@ test('A02-4 position list exposes canonical eight-state labels without inventing
 
 test('A02-4 position list is server-paged and does not materialize/filter a fake local full dataset',()=>{
   assert.match(api,/pageSize=20/)
-  assert.match(api,/params:\{\.\.\.recruitmentParams\(\),page,pageSize,status,keyword\}/)
+  assert.match(api,/params:\{\.\.\.requireRecruitmentAccess\(\),page,pageSize,status,keyword\}/)
   assert.match(page,/pageSize=20,total=ref\(0\)/)
   assert.match(page,/keyword:keyword\.value\.trim\(\)/)
   assert.match(page,/上一页/)
