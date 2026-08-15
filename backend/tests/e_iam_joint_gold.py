@@ -288,19 +288,101 @@ def test_wrong_enterprise_resource_is_denied():
     _assert_code(exc, "NO_PERMISSION")
 
 
-def test_mentor_scope_is_company_batch_and_bound_contact():
-    """The mentor row filter must be narrower than company HR scope."""
-    from app.models import InternshipRecord
+def test_mentor_cannot_access_non_owned_student_in_real_mysql(db_mode):
+    """A mentor sees only rows bound to its contact, even inside the same company and batch."""
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+    from app.models.internship_enterprise_portal import InternshipEnterpriseMember
     from app.modules.internship.services import internship_enterprise_collaboration_service as collab_svc
 
-    context = SimpleNamespace(tenant_id=991001, company_id=2001, batch_id=3001)
-    predicates = collab_svc._record_conditions(context, mentor_contact_id=4001)
-    sql = " AND ".join(str(predicate) for predicate in predicates)
-    assert "tenant_id" in sql
-    assert "enterprise_id" in sql
-    assert "batch_id" in sql
-    assert "mentor_contact_id" in sql
-    assert str(InternshipRecord.mentor_contact_id) in sql or "mentor_contact_id" in sql
+    now = datetime.utcnow()
+    tenant_id = 7_100_000_000 + (uuid4().int % 500_000_000)
+    company_id = 7_700_000_000 + (uuid4().int % 100_000_000)
+    user_id = 7_800_000_000 + (uuid4().int % 100_000_000)
+    batch_id = 7_900_000_000 + (uuid4().int % 50_000_000)
+    owned_contact_id = 7_950_000_001 + (uuid4().int % 10_000_000)
+    other_contact_id = owned_contact_id + 20_000_000
+    suffix = uuid4().hex[:10]
+
+    db = get_sessionmaker()()
+    try:
+        member = InternshipEnterpriseMember(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            user_id=user_id,
+            contact_id=owned_contact_id,
+            member_role="MENTOR",
+            status="ACTIVE",
+            is_primary=False,
+            accepted_at=now,
+            created_at=now,
+            updated_at=now,
+            is_deleted=False,
+            version=0,
+        )
+        owned_student = StudentProfile(
+            tenant_id=tenant_id,
+            student_no=f"EIAM-OWN-{suffix}",
+            real_name="联合门禁本人学生",
+        )
+        other_student = StudentProfile(
+            tenant_id=tenant_id,
+            student_no=f"EIAM-OTHER-{suffix}",
+            real_name="联合门禁他人学生",
+        )
+        db.add_all([member, owned_student, other_student])
+        db.flush()
+        owned_record = InternshipRecord(
+            tenant_id=tenant_id,
+            student_id=owned_student.id,
+            batch_id=batch_id,
+            enterprise_id=company_id,
+            position_id=7_990_000_001,
+            mentor_contact_id=owned_contact_id,
+            position_name="本人导师岗位",
+            eligibility_status="QUALIFIED",
+            destination_type="ASSIGNED",
+            status="ONBOARD",
+        )
+        other_record = InternshipRecord(
+            tenant_id=tenant_id,
+            student_id=other_student.id,
+            batch_id=batch_id,
+            enterprise_id=company_id,
+            position_id=7_990_000_002,
+            mentor_contact_id=other_contact_id,
+            position_name="其他导师岗位",
+            eligibility_status="QUALIFIED",
+            destination_type="ASSIGNED",
+            status="ONBOARD",
+        )
+        db.add_all([owned_record, other_record])
+        db.commit()
+        member_id = int(member.id)
+        owned_record_id = int(owned_record.id)
+        other_record_id = int(other_record.id)
+    finally:
+        db.close()
+
+    context = SimpleNamespace(
+        tenant_id=tenant_id,
+        company_id=company_id,
+        batch_id=batch_id,
+        member_id=member_id,
+        member_role="MENTOR",
+    )
+    db = get_sessionmaker()()
+    try:
+        result = collab_svc.list_students_in_tx(db, context=context, page=1, page_size=20)
+        assert result["total"] == 1
+        assert [item["internshipId"] for item in result["items"]] == [str(owned_record_id)]
+        owned = collab_svc.get_student_in_tx(db, context=context, internship_id=owned_record_id)
+        assert owned["internshipId"] == str(owned_record_id)
+        with pytest.raises(AppException) as exc:
+            collab_svc.get_student_in_tx(db, context=context, internship_id=other_record_id)
+        _assert_code(exc, "NOT_FOUND")
+    finally:
+        db.close()
 
 
 def test_e_series_does_not_introduce_a_second_identity_or_school_iam_root():
