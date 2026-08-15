@@ -19,9 +19,20 @@ test('applicant UI reads canonical snapshot material and never depends on the un
   assert.match(material,/学校已核验/)
 })
 
-test('contact is reveal-on-demand and never reads raw student contact field directly',()=>{
-  assert.match(contact,/revealContact/)
-  assert.match(contact,/联系方式已脱敏/)
+test('school verification badge requires explicit canonical evidence and never treats missing as true',()=>{
+  assert.match(detail,/const schoolVerified=computed/)
+  assert.match(detail,/material\.value\?\.schoolFacts\?\.realName/)
+  assert.match(detail,/data\.value\?\.studentVerified===true/)
+  assert.match(detail,/v-if="schoolVerified"/)
+  assert.doesNotMatch(detail,/studentVerified!==false/)
+})
+
+test('contact reveal is fail-closed unless server explicitly returns allowed true',()=>{
+  assert.match(contact,/props\.contactPolicy\?\.allowed===true/)
+  assert.match(contact,/if\(!allowed\.value\)/)
+  assert.match(contact,/:disabled="loading \|\| !allowed"/)
+  assert.match(contact,/缺少 allowed=true 时保持禁用/)
+  assert.doesNotMatch(contact,/contactPolicy\.allowed===false/)
   assert.doesNotMatch(contact,/student\.phone/)
 })
 
