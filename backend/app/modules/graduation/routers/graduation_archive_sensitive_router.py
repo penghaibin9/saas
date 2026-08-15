@@ -12,6 +12,7 @@ from app.modules.graduation.schemas.graduation_archive import ArchiveFileRequest
 from app.modules.graduation.materials import manifest_service as manifests
 from app.modules.graduation.services import graduation_archive_service as svc
 material_center = manifests  # compatibility name; V2 manifest service is the only writer
+from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
 from app.modules.graduation.services.graduation_batch_context import load_student_in_batch, require_batch_id
 from app.services.db_service import session
 
@@ -22,9 +23,17 @@ from app.modules.graduation.routers import graduation_taskbook_sensitive_router
 router.include_router(graduation_taskbook_sensitive_router.router)
 
 
-def _guard(student_id, batch_id, *, lock=False):
+def _guard(student_id, batch_id, *, writable: bool = False):
+    """Bind the request to the selected batch and reject writes on dirty legacy identities.
+
+    This guard remains read-only. Canonical services still own their transaction locks;
+    the extra identity assertion is only a fail-closed precondition before write entry.
+    """
     with session() as db:
-        load_student_in_batch(db, student_id, batch_id, for_update=lock)
+        student = load_student_in_batch(db, student_id, batch_id)
+        if writable:
+            assert_archive_identity_writable(student)
+        return student
 
 
 def _preview_token(body: dict | None) -> str:
@@ -112,7 +121,7 @@ def generate(
     gd_student_id: str, batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    _guard(gd_student_id, batchId, lock=True)
+    _guard(gd_student_id, batchId, writable=True)
     return success(svc.generate_archive(gd_student_id), message="已生成")
 
 
@@ -121,7 +130,7 @@ def submit(
     gd_student_id: str, batchId: int = Query(..., ge=1),
     user=Depends(get_current_user),
 ):
-    _guard(gd_student_id, batchId, lock=True)
+    _guard(gd_student_id, batchId, writable=True)
     return success(svc.submit_archive(gd_student_id), message="已提交")
 
 
@@ -130,7 +139,7 @@ def file_record(
     gd_student_id: str, body: ArchiveFileRequest,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    _guard(gd_student_id, batchId, lock=True)
+    _guard(gd_student_id, batchId, writable=True)
     return success(material_center.file_archive(int(gd_student_id), body.archiveBatchNo, user), message="已归档并冻结真实版本清单")
 
 
@@ -139,5 +148,5 @@ def reject(
     gd_student_id: str, body: ArchiveRejectRequest,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    _guard(gd_student_id, batchId, lock=True)
+    _guard(gd_student_id, batchId, writable=True)
     return success(svc.reject_archive(gd_student_id, body.reason), message="已驳回")

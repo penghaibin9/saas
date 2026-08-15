@@ -254,9 +254,13 @@ export default {
         pageSize: this.pageSize
       })
       if (res.code === 0) {
-        this.rows = res.data.list
         this.total = res.data.total
-        if (this.page > this.totalPages) this.page = this.totalPages
+        if (this.page > this.totalPages) {
+          this.page = this.totalPages
+          await this.load()
+          return
+        }
+        this.rows = res.data.list
       } else {
         this.rows = []
         this.total = 0

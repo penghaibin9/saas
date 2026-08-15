@@ -288,20 +288,7 @@ export default {
     }
   },
   async created() { await this.loadContext() },
-  mounted() { this.normalizeReminderCopy() },
-  updated() { this.normalizeReminderCopy() },
   methods: {
-    normalizeReminderCopy() {
-      if (!this.isReminderWorkspace || typeof document === 'undefined') return
-      this.$nextTick(() => {
-        document.querySelectorAll('.gd-business-view .mp-note').forEach((node) => {
-          const text = String(node.textContent || '')
-          if (text.includes('当前仅记录线下催办留痕') || text.includes('不代表站内消息已送达')) {
-            node.textContent = '本操作会创建真实站内消息并写入催办留痕；学生提交后将进入对应待审队列。'
-          }
-        })
-      })
-    },
     async loadContext() {
       this.loading = true
       this.contextError = ''

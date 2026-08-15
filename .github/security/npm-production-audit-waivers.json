@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "policy": "High and critical vulnerabilities in production runtime dependencies fail closed. Any temporary exception must name the app/package, include a concrete reason, and expire.",
+  "waivers": []
+}

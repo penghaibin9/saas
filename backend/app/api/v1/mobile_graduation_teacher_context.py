@@ -24,6 +24,7 @@ from app.models import (
     GraduationTopicChangeRequest,
     GraduationTopicChoice,
 )
+from app.modules.graduation.services import graduation_mobile_teacher_query_service as mobile_queries
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services import mobile_teacher_service as tea
 from app.services.db_service import _iso, _tid, session
@@ -144,11 +145,15 @@ def _change_student(request_id: str, batch_id: int) -> GraduationStudent:
         return _student(db, row.gd_student_id, batch_id)
 
 
-def _paged_service(fn: Callable, user: dict, batch_id: int, page: int, page_size: int) -> dict:
+def _scoped_user(user: dict, batch_id: int) -> dict:
     scoped_user = dict(user or {})
-    scoped_user["graduationBatchId"] = str(batch_id)
-    scoped_user["batchId"] = str(batch_id)
-    return _filter_rows(fn(scoped_user), batch_id, page=page, page_size=page_size)
+    scoped_user["graduationBatchId"] = str(_require_batch(batch_id))
+    scoped_user["batchId"] = str(_require_batch(batch_id))
+    return scoped_user
+
+
+def _paged_service(fn: Callable, user: dict, batch_id: int, page: int, page_size: int) -> dict:
+    return _filter_rows(fn(_scoped_user(user, batch_id)), batch_id, page=page, page_size=page_size)
 
 
 @router.get("/batches", summary="教师·可处理的毕业设计批次")
@@ -269,7 +274,7 @@ def teacher_final_review(final_id: str, body: dict = Body(...), batchId: int = Q
 
 @router.get("/midterm/queue")
 def teacher_midterm_queue(batchId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
-    return success(_paged_service(tea.graduation_midterm_queue, user, batchId, page, pageSize))
+    return success(mobile_queries.midterms_page(_scoped_user(user, batchId), page, pageSize))
 
 
 @router.get("/midterm/{gd_student_id}")
@@ -311,7 +316,7 @@ def teacher_defense_arrangements(batchId: int = Query(..., ge=1), page: int = Qu
 
 @router.get("/grade/queue")
 def teacher_grade_queue(batchId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
-    return success(_paged_service(tea.graduation_grade_queue, user, batchId, page, pageSize))
+    return success(mobile_queries.grades_page(_scoped_user(user, batchId), page, pageSize))
 
 
 @router.get("/grade/{gd_student_id}")
@@ -359,7 +364,7 @@ def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...
 
 @router.get("/taskbooks")
 def teacher_graduation_taskbook_list(batchId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
-    return success(_paged_service(tea.graduation_taskbook_list, user, batchId, page, pageSize))
+    return success(mobile_queries.taskbooks_page(_scoped_user(user, batchId), page, pageSize))
 
 
 @router.post("/taskbooks/{gd_student_id}/issue")

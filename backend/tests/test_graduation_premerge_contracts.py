@@ -21,10 +21,11 @@ def test_extension_models_are_registered_in_alembic_metadata():
     assert "from app.models import graduation_extension as _graduation_extension" in source
 
 
-def test_teacher_mobile_lists_are_collected_before_batch_pagination():
+def test_teacher_mobile_lists_use_sql_current_page_instead_of_collect_all():
     source = read(
         "backend/app/modules/graduation/services/graduation_mobile_teacher_query_service.py"
     )
+    router = read("backend/app/api/v1/mobile_graduation_teacher_context.py")
     ast.parse(
         source,
         filename=(
@@ -32,12 +33,21 @@ def test_teacher_mobile_lists_are_collected_before_batch_pagination():
             "graduation_mobile_teacher_query_service.py"
         ),
     )
-    assert "def _collect" in source
-    assert "def taskbooks" in source
-    assert "def midterms" in source
-    assert "def grades" in source
+    ast.parse(router, filename="backend/app/api/v1/mobile_graduation_teacher_context.py")
+
+    assert "def _collect" not in source
+    assert "_MAX_PAGES" not in source
+    assert "def taskbooks_page" in source
+    assert "def midterms_page" in source
+    assert "def grades_page" in source
+    assert "select(func.count(" in source
+    assert ".offset(" in source and ".limit(" in source
+    assert "GraduationMidterm.status.in_(_ACTIONABLE_MIDTERM_STATUSES)" in source
+    assert '_ACTIONABLE_MIDTERM_STATUSES = ("PENDING", "RECTIFY_SUBMITTED")' in source
     assert 'status="CALCULATED"' in source
-    assert '{"PENDING", "RECTIFY_SUBMITTED"}' in source
+    assert "mobile_queries.taskbooks_page" in router
+    assert "mobile_queries.midterms_page" in router
+    assert "mobile_queries.grades_page" in router
 
 
 def test_targeted_workflow_covers_all_premerge_commands():

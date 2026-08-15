@@ -1,0 +1,9 @@
+/* V9.2 U11 Gold stability contract.
+ * Only the time-varying security watermark is removed here.
+ * Run-scoped batch/topic/guidance text is masked by explicit Playwright locators.
+ * Business layout, status, risk, KPI and action controls remain visible to visual diff.
+ */
+.security-watermark,
+.security-watermark__tile {
+  visibility: hidden !important;
+}
