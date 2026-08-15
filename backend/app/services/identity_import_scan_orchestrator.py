@@ -1,7 +1,8 @@
 """身份导入 FileObject 扫描后 I3 staging 编排。
 
-上传请求只登记隔离文件和 ImportJob；文件 CLEAN/AVAILABLE 后由任务创建者推进
-PARSING → normalized staging → canonical preview。详情读取本身不替他人执行解析。
+上传请求只登记隔离文件和 ImportJob；文件 CLEAN/AVAILABLE 后由任务创建者或
+canonical identity-import worker 显式推进 PARSING → normalized staging → preview。
+详情读取本身不替他人执行解析。
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from app.services.storage import get_backend
 
 PARSING_STALE_SECONDS = 5 * 60
 PENDING_ADAPTER = "IDENTITY_IMPORT_FILE"
+WORKER_CLAIMED = "WORKER_CLAIMED"
 
 
 def _kind(value: str) -> str:
@@ -122,7 +124,14 @@ def refresh_identity_import_job(
     user: dict,
     visibility: str | None = None,
     module_code: str | None = None,
+    worker_claimed: bool = False,
 ) -> dict:
+    """Advance one identity job only after the source file is business-ready.
+
+    ``worker_claimed`` is accepted only for the durable ``WORKER_CLAIMED`` state;
+    it does not bypass tenant/owner checks and therefore cannot turn arbitrary jobs
+    into worker-owned work.
+    """
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(  # noqa: SLF001
@@ -131,6 +140,12 @@ def refresh_identity_import_job(
         if row.adapter_type != PENDING_ADAPTER:
             return jobs._import_row(row)  # noqa: SLF001
         if not jobs._row_is_owned(row, user):  # noqa: SLF001
+            return jobs._import_row(row)  # noqa: SLF001
+        if worker_claimed and row.status != WORKER_CLAIMED:
+            raise AppException("DATA_CONFLICT", "身份导入 worker claim 已失效", http_status=409)
+        if not worker_claimed and row.status == WORKER_CLAIMED:
+            # A live/background worker owns this transition. Browser/manual retries
+            # must not race it; stale claims are recovered by the worker itself.
             return jobs._import_row(row)  # noqa: SLF001
         if row.expires_at and row.expires_at <= datetime.utcnow():
             row.status = "EXPIRED"
@@ -164,7 +179,11 @@ def refresh_identity_import_job(
         row.status = "PARSING"
         row.error_message = None
         row.version = int(row.version or 0) + 1
-        row.result_json = {**result, "parseStartedAt": datetime.utcnow().isoformat() + "Z"}
+        row.result_json = {
+            **result,
+            "parseStartedAt": datetime.utcnow().isoformat() + "Z",
+            "workerClaimConsumed": bool(worker_claimed),
+        }
         tenant_id = int(row.tenant_id)
         actor_id = jobs._actor_id(user)  # noqa: SLF001
         source_file_id = int(file_obj.id)
