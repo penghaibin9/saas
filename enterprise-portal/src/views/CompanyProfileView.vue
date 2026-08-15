@@ -4,16 +4,17 @@ import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { uploadTemporaryFile } from '../services/request'
 
 const MAX_LOGO_BYTES=5*1024*1024
-const loading=ref(true),saving=ref(false),facadeReady=ref(false),error=ref(''),message=ref('')
+const loading=ref(true),saving=ref(false),facadeReady=ref(false),error=ref(''),message=ref(''),profileVersion=ref(null)
 const form=reactive({logoFileId:null,shortName:'',shortIntro:'',website:'',mainBusiness:'',establishedYear:null,address:''})
 const school=reactive({qualificationStatus:'—',coopStatus:'—',accessValidUntil:'—',blacklist:false,schoolReview:'—'})
 const logoFile=ref(null),logoPreview=ref(''),serverLogoUrl=ref(''),uploadedLogoFileId=ref(null)
 const logoDisplay=computed(()=>logoPreview.value||serverLogoUrl.value||'')
 
+function hasVersion(value){return value!==null&&value!==undefined&&value!==''&&Number.isInteger(Number(value))&&Number(value)>=0}
 function clearPreview(){if(logoPreview.value){URL.revokeObjectURL(logoPreview.value);logoPreview.value=''}}
 function chooseLogo(event){
   error.value='';message.value=''
-  if(!facadeReady.value){event.target.value='';error.value='学校端尚未开放企业资料编辑，当前不能上传 Logo';return}
+  if(!facadeReady.value||!hasVersion(profileVersion.value)){event.target.value='';error.value='企业资料版本尚未加载完成，当前不能上传 Logo';return}
   const file=event.target.files?.[0]||null
   if(!file)return
   if(!['image/png','image/jpeg','image/webp'].includes(file.type)){event.target.value='';error.value='Logo 仅支持 PNG、JPG 或 WebP';return}
@@ -25,21 +26,21 @@ function publicPatch(){return {shortName:form.shortName,shortIntro:form.shortInt
 onMounted(async()=>{
   try{
     const data=await enterpriseInternshipApi.company()
-    facadeReady.value=true
+    if(!hasVersion(data?.version))throw new Error('学校端未返回企业资料版本，已停止编辑以避免覆盖他人修改')
+    profileVersion.value=Number(data.version);facadeReady.value=true
     Object.assign(form,{logoFileId:data?.logoFileId??null,shortName:data?.shortName||'',shortIntro:data?.shortIntro||'',website:data?.website||'',mainBusiness:data?.mainBusiness||'',establishedYear:data?.establishedYear??null,address:data?.address||''})
     serverLogoUrl.value=data?.logoUrl||data?.logoPreviewUrl||''
     Object.assign(school,{qualificationStatus:data?.qualificationStatus||'—',coopStatus:data?.coopStatus||'—',accessValidUntil:data?.accessValidUntil||'—',blacklist:Boolean(data?.blacklist),schoolReview:data?.schoolReview||data?.reviewComment||'—'})
-  }catch(e){facadeReady.value=false;error.value=e.message||'企业资料加载失败'}finally{loading.value=false}
+  }catch(e){facadeReady.value=false;profileVersion.value=null;error.value=e.message||'企业资料加载失败'}finally{loading.value=false}
 })
 onUnmounted(clearPreview)
 
 async function save(){
   error.value='';message.value=''
-  // Company GET/PUT 未冻结时必须在任何 File Center 上传之前 fail-closed，避免孤儿临时文件。
-  if(!facadeReady.value){error.value='学校端尚未开放企业资料编辑，当前不能保存或上传 Logo';return}
+  if(!facadeReady.value||!hasVersion(profileVersion.value)){error.value='企业资料版本尚未加载完成，当前不能保存或上传 Logo';return}
   saving.value=true
   try{
-    const patch=publicPatch()
+    const patch={...publicPatch(),expectedVersion:Number(profileVersion.value)}
     if(logoFile.value){
       if(!uploadedLogoFileId.value){
         const upload=await uploadTemporaryFile(logoFile.value,{bizType:'INTERNSHIP_ENTERPRISE_LOGO'})
@@ -48,6 +49,8 @@ async function save(){
       patch.logoFileId=uploadedLogoFileId.value
     }
     const saved=await enterpriseInternshipApi.updateCompany(patch)
+    if(!hasVersion(saved?.version))throw new Error('保存成功响应缺少最新版本，请刷新页面后继续编辑')
+    profileVersion.value=Number(saved.version)
     if(patch.logoFileId)form.logoFileId=patch.logoFileId
     if(saved?.logoUrl||saved?.logoPreviewUrl)serverLogoUrl.value=saved.logoUrl||saved.logoPreviewUrl
     clearPreview();logoFile.value=null;uploadedLogoFileId.value=null
@@ -65,7 +68,7 @@ async function save(){
         <fieldset class="profile-fields" :disabled="!facadeReady">
           <div class="logo-row">
             <div class="logo-preview"><img v-if="logoDisplay" :src="logoDisplay" alt="企业 Logo 预览"><span v-else>企业 Logo</span></div>
-            <div><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label><p class="ep-muted">建议方形 PNG/JPG/WebP，≤5MB。学校开放企业资料编辑后，保存时会通过文件中心安全上传，不需要填写文件编号。</p></div>
+            <div><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label><p class="ep-muted">建议方形 PNG/JPG/WebP，≤5MB。保存时通过文件中心安全绑定到当前企业公开资料，不需要填写文件编号。</p></div>
           </div>
           <label>企业简称<input v-model.trim="form.shortName" class="ep-input" maxlength="100"></label>
           <label>官网<input v-model.trim="form.website" type="url" class="ep-input" placeholder="https://"></label>

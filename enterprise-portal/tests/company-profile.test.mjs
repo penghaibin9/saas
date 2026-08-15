@@ -18,15 +18,16 @@ test('A02-3 logo upload goes through canonical file center and keeps auth refres
   assert.match(page,/INTERNSHIP_ENTERPRISE_LOGO/)
 })
 
-test('A02-3 unfrozen Company facade blocks edits and orphan logo upload before any file network side effect',()=>{
-  assert.match(page,/facadeReady=ref\(false\)/)
-  assert.match(page,/:disabled="loading\|\|saving\|\|!facadeReady"/)
-  assert.match(page,/<fieldset class="profile-fields" :disabled="!facadeReady">/)
+test('A02-3 company profile is CAS protected before save or logo upload',()=>{
+  assert.match(page,/profileVersion=ref\(null\)/)
+  assert.match(page,/function hasVersion/)
+  assert.match(page,/expectedVersion:Number\(profileVersion\.value\)/)
+  assert.match(page,/profileVersion\.value=Number\(saved\.version\)/)
   const saveAt=page.indexOf('async function save()')
-  const guardAt=page.indexOf('if(!facadeReady.value)',saveAt)
+  const guardAt=page.indexOf('!hasVersion(profileVersion.value)',saveAt)
   const uploadAt=page.indexOf('uploadTemporaryFile(',saveAt)
-  assert.ok(saveAt>=0&&guardAt>saveAt,'save must fail closed on Company facade readiness')
-  assert.ok(uploadAt>guardAt,'File Center upload must only occur after Company facade readiness guard')
+  assert.ok(saveAt>=0&&guardAt>saveAt,'save must fail closed until canonical profile version is known')
+  assert.ok(uploadAt>guardAt,'File Center upload must only occur after version guard')
 })
 
 test('A02-3 school authority fields remain display-only',()=>{

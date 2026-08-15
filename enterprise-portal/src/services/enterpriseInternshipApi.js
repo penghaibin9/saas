@@ -1,4 +1,5 @@
 import { getSelectedCampaignId, request } from './request.js'
+import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
@@ -14,6 +15,11 @@ function unavailableFacade(name){
   error.code='ENTERPRISE_FACADE_UNFROZEN'
   error.facade=name
   return Promise.reject(error)
+}
+
+function requireVersion(value,label='数据'){
+  if(value===null||value===undefined||value===''||!Number.isInteger(Number(value))||Number(value)<0)throw new Error(`${label}版本缺失，请刷新后重试`)
+  return Number(value)
 }
 
 function normalizeMaterial(data={}){
@@ -65,16 +71,29 @@ async function fetchApplicationMaterial(id){
 
 export const enterpriseInternshipApi = {
   context: (campaignId) => request(`${AUTH_ROOT}/context`, { params:{ campaignId } }),
-  dashboard: () => unavailableFacade('招聘工作台'),
-  campaigns: () => unavailableFacade('招聘季列表'),
-  company: () => unavailableFacade('企业资料'),
-  updateCompany: () => unavailableFacade('企业资料编辑'),
-  positions: () => unavailableFacade('岗位列表'),
-  position: () => unavailableFacade('岗位详情'),
-  createPosition: () => unavailableFacade('新建岗位'),
-  updatePosition: () => unavailableFacade('编辑岗位'),
-  submitPosition: () => unavailableFacade('提交岗位审核'),
-  withdrawPosition: () => unavailableFacade('撤回岗位审核'),
+  dashboard: () => request(`${AUTH_ROOT}/dashboard`, { params:recruitmentParams() }),
+  campaigns: () => request(`${AUTH_ROOT}/campaigns`),
+  company: () => request(`${AUTH_ROOT}/company`),
+  updateCompany: (payload={}) => request(`${AUTH_ROOT}/company`, {
+    method:'PUT',
+    body:{...sanitizeCompanyPatch(payload),expectedVersion:requireVersion(payload.expectedVersion,'企业资料')},
+  }),
+  positions: ({page=1,pageSize=20,status='',keyword=''}={}) => request(`${AUTH_ROOT}/positions`, {
+    params:{...recruitmentParams(),page,pageSize,status,keyword},
+  }),
+  position: (id) => request(`${AUTH_ROOT}/positions/${id}`, { params:recruitmentParams() }),
+  createPosition: (payload={}) => request(`${AUTH_ROOT}/positions`, {
+    method:'POST',params:recruitmentParams(),body:sanitizePositionPayload(payload),
+  }),
+  updatePosition: (id,payload={}) => request(`${AUTH_ROOT}/positions/${id}`, {
+    method:'PUT',params:recruitmentParams(),body:{...sanitizePositionPayload(payload),expectedVersion:requireVersion(payload.expectedVersion,'岗位')},
+  }),
+  submitPosition: (id,expectedVersion) => request(`${AUTH_ROOT}/positions/${id}/submit`, {
+    method:'POST',params:recruitmentParams(),body:{expectedVersion:requireVersion(expectedVersion,'岗位')},
+  }),
+  withdrawPosition: (id,expectedVersion) => request(`${AUTH_ROOT}/positions/${id}/withdraw`, {
+    method:'POST',params:recruitmentParams(),body:{expectedVersion:requireVersion(expectedVersion,'岗位')},
+  }),
   applications: async ({page=1,pageSize=50,decisionStatus='',positionId=''}={}) => normalizeApplicantPage(await request(`${AUTH_ROOT}/applications`, {
     params:{...recruitmentParams(),page,pageSize,decisionStatus,positionId},
   })),

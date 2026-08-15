@@ -23,12 +23,22 @@ test('A02 consumes frozen A01 applicant list, material, contact, decision and wi
   for(const type of ['SKILL_EVIDENCE','CERTIFICATE','PROJECT','PRACTICE','AWARD','PORTFOLIO'])assert.match(api,new RegExp(type))
 })
 
-test('remaining unfrozen enterprise facades fail closed locally and never call an invented compatibility root',()=>{
-  assert.match(api,/ENTERPRISE_FACADE_UNFROZEN/)
-  assert.match(api,/function unavailableFacade/)
-  assert.match(api,/该企业协同能力尚未由学校端开放/)
+test('E4 frozen enterprise facades use the canonical enterprise-portal root and explicit version CAS',()=>{
+  for(const path of ['dashboard','campaigns','company','positions'])assert.match(api,new RegExp(`AUTH_ROOT\\}\\/${path}`))
+  assert.match(api,/sanitizeCompanyPatch/)
+  assert.match(api,/sanitizePositionPayload/)
+  assert.match(api,/function requireVersion/)
+  assert.match(api,/expectedVersion:requireVersion\(payload\.expectedVersion,'企业资料'\)/)
+  assert.match(api,/expectedVersion:requireVersion\(payload\.expectedVersion,'岗位'\)/)
+  assert.match(api,/positions\/\$\{id\}\/submit/)
+  assert.match(api,/positions\/\$\{id\}\/withdraw/)
   assert.doesNotMatch(api,/\/enterprise\/internship/)
-  for(const facade of ['招聘季列表','企业资料','岗位列表','简历 PDF','实习学生列表','企业评价任务'])assert.match(api,new RegExp(facade))
+})
+
+test('only E9 and resume PDF remain explicit fail-closed facades',()=>{
+  assert.match(api,/ENTERPRISE_FACADE_UNFROZEN/)
+  for(const facade of ['简历 PDF','实习学生列表','实习学生详情','企业评价任务','企业评价提交'])assert.match(api,new RegExp(facade))
+  for(const frozen of ['招聘季列表','企业资料编辑','岗位列表','新建岗位','编辑岗位','提交岗位审核','撤回岗位审核'])assert.doesNotMatch(api,new RegExp(`unavailableFacade\\('${frozen}'\\)`))
 })
 
 test('canonical nested snapshot renders all public profile item families without exposing raw school identifiers',()=>{
@@ -51,6 +61,8 @@ test('position payload is whitelist-only and follows V3 editable field names',()
   for(const forbidden of ['companyId','allocatedCount','rightsStatus','rightsCheckedAt','rightsRuleVersion','riskFlag','riskNote']) assert.doesNotMatch(contract,new RegExp(`'${forbidden}'`))
   assert.match(form,/form\.title/)
   assert.match(form,/form\.remunerationAmount/)
+  assert.match(form,/positionVersion=ref/)
+  assert.match(form,/expectedVersion:version/)
 })
 
 test('typed frontend contract separates readable PENDING from enterprise write statuses and keeps effect state independent',()=>{

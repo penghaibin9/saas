@@ -2,22 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { enterpriseInternshipApi } from '../src/services/enterpriseInternshipApi.js'
 
-test('every still-unfrozen A01 facade rejects locally without issuing a network request', async () => {
+test('only still-unfrozen E9/PDF facades reject locally without issuing a network request', async () => {
   const originalFetch=globalThis.fetch
   let fetchCalls=0
   globalThis.fetch=async()=>{fetchCalls+=1;throw new Error('network must not be reached')}
   try{
     const calls=[
-      ['dashboard',()=>enterpriseInternshipApi.dashboard()],
-      ['campaigns',()=>enterpriseInternshipApi.campaigns()],
-      ['company',()=>enterpriseInternshipApi.company()],
-      ['updateCompany',()=>enterpriseInternshipApi.updateCompany({shortName:'x'})],
-      ['positions',()=>enterpriseInternshipApi.positions({page:1})],
-      ['position',()=>enterpriseInternshipApi.position('1')],
-      ['createPosition',()=>enterpriseInternshipApi.createPosition({title:'x'})],
-      ['updatePosition',()=>enterpriseInternshipApi.updatePosition('1',{title:'x'})],
-      ['submitPosition',()=>enterpriseInternshipApi.submitPosition('1')],
-      ['withdrawPosition',()=>enterpriseInternshipApi.withdrawPosition('1')],
       ['resumePdf',()=>enterpriseInternshipApi.resumePdf('1')],
       ['internshipStudents',()=>enterpriseInternshipApi.internshipStudents({page:1})],
       ['internshipStudent',()=>enterpriseInternshipApi.internshipStudent('1')],
