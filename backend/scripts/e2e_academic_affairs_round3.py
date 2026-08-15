@@ -268,53 +268,38 @@ def main():
     step("R3.warn_thr_set", put_thr.get("code") == 0, {"rulesCode": rules.get("code"), "put": put_thr})
 
     att_ok = False
-    # 点名创建：优先教师本人行政班；无则用教务管理员身份（服务层对 ACADEMIC_ADMIN 放行）
-    teach_class = None
-    for t in ((tasks.get("data") or {}).get("items") or []):
-        if str(t.get("teacherKey") or "") == "e2e_aa_teacher_a" and t.get("classId"):
-            teach_class = t.get("classId")
-            break
-    if not teach_class:
-        teach_class = class_a1
-    att_actor = teacher_mp
-    if teach_class and teacher_mp:
-        probe = req("POST", f"{MOB}/teacher/academic/attendance/sessions", teacher_mp, {
-            "classId": str(teach_class), "sessionDate": date.today().isoformat(),
-            "slotNo": 9, "sessionType": "常规", "courseName": "R3旷课联动-probe",
-            "termCode": term_code,
-        })
-        if probe.get("code") == 0:
-            # 探测成功则作废不提交，改用正式场次；若已创建则直接用
-            sid_probe = (probe.get("data") or {}).get("sessionId")
-            att_actor = teacher_mp
-            # 下面统一走创建逻辑时若已有 probe 会话可复用
-            CTX["_att_probe"] = sid_probe
-        else:
-            att_actor = tok("e2e_aa_admin", "MINI_PROGRAM") or tok("admin2", "MINI_PROGRAM") or teacher_mp
-            CTX["_att_probe"] = None
-            step("R3.att_teacher_scope_fallback", True, {"probe": probe.get("code"), "msg": probe.get("message")})
-    if att_actor and teach_class:
-        today = date.today().isoformat()
-        sid = CTX.get("_att_probe")
-        if not sid:
-            cre = req("POST", f"{MOB}/teacher/academic/attendance/sessions", att_actor, {
-                "classId": str(teach_class), "sessionDate": today,
-                "slotNo": 10, "sessionType": "常规", "courseName": "R3旷课联动",
-                "termCode": term_code,
+    # C-W1：普通课堂考勤必须 TeachingTask-first。优先教师本人任务；若无本人任务，
+    # 可由管理员使用一个正式 Task 做验收，但禁止再回退为“管理员无 Task + classId”旁路。
+    att_task = next((t for t in ((tasks.get("data") or {}).get("items") or [])
+                     if str(t.get("teacherKey") or "") == "e2e_aa_teacher_a"
+                     and t.get("taskId")), None)
+    att_actor = teacher_mp if att_task and teacher_mp else None
+    if not att_task:
+        att_task = next((t for t in ((tasks.get("data") or {}).get("items") or []) if t.get("taskId")), None)
+        if att_task:
+            att_actor = tok("e2e_aa_admin", "MINI_PROGRAM") or tok("admin2", "MINI_PROGRAM")
+            step("R3.att_teacher_task_fallback", bool(att_actor), {
+                "reason": "teacher formal task unavailable; use admin over formal TeachingTask",
+                "teachingTaskId": att_task.get("taskId"),
             })
-            sid = (cre.get("data") or {}).get("sessionId")
-            create_code = cre.get("code")
-        else:
-            create_code = 0
-            cre = {"code": 0, "data": {"sessionId": sid}}
+
+    if att_actor and att_task:
+        today = date.today().isoformat()
+        payload = {
+            "teachingTaskId": str(att_task.get("taskId")),
+            "sessionDate": today,
+            "slotNo": 10,
+            "sessionType": "常规",
+        }
+        if att_task.get("classId"):
+            payload["classId"] = str(att_task.get("classId"))
+        cre = req("POST", f"{MOB}/teacher/academic/attendance/sessions", att_actor, payload)
+        sid = (cre.get("data") or {}).get("sessionId")
+        create_code = cre.get("code")
         if sid:
             detail = req("GET", f"{MOB}/teacher/academic/attendance/sessions/{sid}", att_actor)
             roster = (detail.get("data") or {}).get("items") or []
-            target = None
-            for it in roster:
-                if str(it.get("studentNo") or "").startswith("E2EAA"):
-                    target = it
-                    break
+            target = next((it for it in roster if str(it.get("studentNo") or "").startswith("E2EAA")), None)
             if not target and roster:
                 target = roster[0]
             if target:
@@ -324,7 +309,9 @@ def main():
             sub = req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/submit", att_actor)
             step("R3.att_submit", sub.get("code") == 0, {
                 "create": create_code, "submit": sub.get("code"), "sid": sid,
-                "classId": teach_class, "actor": "teacher" if att_actor == teacher_mp else "admin",
+                "teachingTaskId": att_task.get("taskId"),
+                "classId": att_task.get("classId"),
+                "actor": "teacher" if att_actor == teacher_mp else "admin-formal-task",
             })
         else:
             step("R3.att_submit", False, cre)
@@ -335,7 +322,11 @@ def main():
             bug(module="旷课预警", severity="P1", result="OPEN",
                 expected="scan/attendance 成功", actual=str(scan)[:300])
     else:
-        step("R3.att_submit", False, {"actor": bool(att_actor), "classId": teach_class})
+        step("R3.att_submit", False, {
+            "actor": bool(att_actor),
+            "teachingTaskId": (att_task or {}).get("taskId"),
+            "reason": "no formal TeachingTask available; class-only compatibility fallback forbidden",
+        })
         step("R3.att_warn_scan", False, {"skipped": True})
 
     # 恢复阈值
