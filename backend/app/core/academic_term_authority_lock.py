@@ -8,7 +8,8 @@
   Authority，并清掉同租户其它 current。
 
 优先锁真实 ``Tenant``；历史迁移/SYS-12 fixture 缺 Tenant 父行时，退到该租户最早的
-持久化 ``AaTerm``。函数内部延迟 import ORM，避免模型初始化循环。
+持久化 ``AaTerm``。函数内部延迟 import ORM，避免模型初始化循环。所有用于拿锁/清理
+current 的 ORM SQL 都在 ``no_autoflush`` 内执行，避免属性 set listener 触发业务对象提前 flush。
 """
 from __future__ import annotations
 
@@ -120,7 +121,8 @@ def guard_current_term_target(db, target) -> None:
     ]
     if target_id:
         conds.append(AaTerm.id != target_id)
-    db.execute(
-        update(AaTerm).where(*conds).values(is_current=False),
-        execution_options={"synchronize_session": False},
-    )
+    with db.no_autoflush:
+        db.execute(
+            update(AaTerm).where(*conds).values(is_current=False),
+            execution_options={"synchronize_session": False},
+        )
