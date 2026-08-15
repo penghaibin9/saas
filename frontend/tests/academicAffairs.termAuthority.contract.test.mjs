@@ -9,7 +9,9 @@ test('A-C1 current-term UI follows the backend authority instead of exposing a g
   const resolver = read('backend/app/modules/academic_affairs/services/academic_affairs_term_context_service.py')
   const facade = read('backend/app/modules/academic_affairs/services/academic_affairs_dashboard_scope_facade.py')
   const page = read('frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue')
+  const detail = read('frontend/src/modules/academicAffairs/views/AaTermDetailView.vue')
 
+  assert.match(resolver, /calendar\.resolve_current\(/)
   assert.match(resolver, /authority="CALENDAR_GOVERNANCE"/)
   assert.match(resolver, /can_direct_switch=False/)
   assert.match(resolver, /GOVERNANCE_SWITCH_ROUTE = "\/admin\/system\/academic-calendar"/)
@@ -30,6 +32,15 @@ test('A-C1 current-term UI follows the backend authority instead of exposing a g
   assert.match(page, /\/admin\/system\/academic-calendar/)
   assert.match(page, /currentError/)
   assert.doesNotMatch(page, /this\.current = res\.code === 0 \? res\.data : null/)
+
+  assert.match(detail, /detail\.allowedActions\?\.publish && directCurrentSwitchAllowed/)
+  assert.match(detail, /detail\.allowedActions\?\.setCurrent && directCurrentSwitchAllowed/)
+  assert.match(detail, /v-if="isResolvedCurrent"/)
+  assert.match(detail, /detail\.teachingWeeks \?\? '未配置'/)
+  assert.match(detail, /academicAffairsApi\.getCurrentTerm\(\)/)
+  assert.match(detail, /currentContext\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
+  assert.match(detail, /当前学期 Authority 解析失败/)
+  assert.doesNotMatch(detail, /detail\.teachingWeeks \|\| 0/)
 })
 
 test('formal teaching-task setup never teaches an 18-week default', () => {
