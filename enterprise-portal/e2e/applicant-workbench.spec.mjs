@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page) {
-  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,contactRequests:0}
+  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -20,9 +20,24 @@ async function installEnterpriseApi(page) {
     if (path.endsWith('/internship/enterprise-portal/auth/invite/accept')) {
       return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:'invite-access',refreshToken:'invite-refresh',tokenType:'Bearer',expiresIn:1800,user:{userId:'db-101',realName:state.memberRole==='MENTOR'?'企业导师':'企业HR',userType:'ENTERPRISE_MENTOR'},context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:state.memberRole}}))})
     }
+    if (path.endsWith('/internship/enterprise-portal/campaigns') && request.method()==='GET') {
+      state.campaignRequests+=1
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok([
+        {id:'2027',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',status:'OPEN',batchId:'2027',participationStatus:'ACCEPTED'},
+        {id:'2026',campaignId:'2026',campaignName:'2026届岗位实习双选季',status:'CLOSED',batchId:'2026',participationStatus:'ACCEPTED'},
+      ]))})
+    }
     if (path.endsWith('/internship/enterprise-portal/context')) {
       state.contextCampaignIds.push(url.searchParams.get('campaignId'))
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:state.memberRole,companyId:'21',campaignId:'2027',batchId:'2027',grantId:'31',grantType:'RECRUITMENT'}))})
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:state.memberRole,companyId:'21',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',campaignStatus:'OPEN',batchId:'2027',grantId:'31',grantType:'RECRUITMENT',capabilities:{recruitmentWrite:state.memberRole==='HR',internshipCollab:false}}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/company') && request.method()==='GET') {
+      state.companyRequests+=1
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({id:'21',name:'中联重科股份有限公司',shortName:'中联重科',shortIntro:'高端装备制造企业',qualificationStatus:'PASSED',coopStatus:'ACTIVE',blacklist:false,version:3}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/dashboard') && request.method()==='GET') {
+      state.dashboardRequests+=1
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({metrics:{published:1,pending:0,applicants:1,todoApplicants:1,interview:0,acceptIntent:0},tasks:[]}))})
     }
     if (path.endsWith('/internship/enterprise-portal/applications') && request.method()==='GET') {
       state.listRequests.push(Object.fromEntries(url.searchParams.entries()))
@@ -58,7 +73,7 @@ async function navigateSpa(page,path){
   await page.evaluate(async target=>{const app=document.querySelector('#app')?.__vue_app__;const router=app?.config?.globalProperties?.$router;if(!router)throw new Error('Vue Router unavailable in mounted enterprise portal');await router.push(target)},path)
 }
 
-test('A02 normal login fails closed when the school has not exposed a Campaign list facade', async ({ page }) => {
+test('A02 normal login reads the frozen Campaign list and enters a server-authorized recruitment context', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   await page.goto('login')
   await page.getByLabel('学校编码').fill('CSZY')
@@ -66,8 +81,12 @@ test('A02 normal login fails closed when the school has not exposed a Campaign l
   await page.getByLabel('密码').fill('Evidence-Only-Password')
   await page.getByRole('button',{name:'登录'}).click()
   await expect(page.getByRole('heading',{name:'选择招聘季'})).toBeVisible()
-  await expect(page.getByText(/该企业协同能力尚未由学校端开放：招聘季列表/)).toBeVisible()
-  await expect(page.getByText('当前没有可进入的招聘季')).toBeVisible()
+  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
+  await expect(page.getByText('2026届岗位实习双选季')).toBeVisible()
+  await page.getByRole('button').filter({hasText:'2027届春季岗位实习双选季'}).click()
+  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
+  expect(state.campaignRequests).toBeGreaterThanOrEqual(1)
+  expect(state.contextCampaignIds).toEqual(['2027'])
   expect(state.legacyRequests).toBe(0)
 })
 
@@ -75,7 +94,7 @@ test('A02 invite activation binds campaign to inspected token and canonical appl
   const state=await installEnterpriseApi(page)
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
   await acceptInvite(page,token)
-  await expect(page.getByRole('banner').getByText('招聘季 #2027',{exact:true})).toBeVisible()
+  await expect(page.getByRole('banner').getByText('2027届春季岗位实习双选季',{exact:true})).toBeVisible()
   expect(state.contextCampaignIds).toEqual(['2027'])
   await page.getByRole('link',{name:'报名学生'}).click()
   await expect(page.getByRole('heading',{name:'报名学生',exact:true})).toBeVisible()
@@ -98,7 +117,7 @@ test('A02 canonical list to Snapshot to contact-view never leaks identifiers bef
   await expect(page.getByText('13800138000')).toHaveCount(0)
   await page.getByRole('button',{name:'查看联系方式'}).click()
   await expect(page.getByText('13800138000')).toBeVisible()
-  await expect(page.locator('footer').getByRole('button',{name:'拟接收',exact:true})).toBeDisabled()
+  await expect(page.locator('footer').getByRole('button',{name:'拟接收',exact:true})).toBeEnabled()
   expect(state.listRequests.length).toBe(1)
   expect(state.snapshotRequests).toBe(1)
   expect(state.contactRequests).toBe(1)
