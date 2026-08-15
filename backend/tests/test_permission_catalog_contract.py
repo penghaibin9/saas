@@ -26,3 +26,14 @@ def test_permission_catalog_codes_are_unique():
     catalog = load_permission_catalog()
     codes = [item["permissionCode"] for item in catalog["entries"]]
     assert len(codes) == len(set(codes))
+
+
+def test_post_b8_academic_term_permissions_are_explicit_tenant_authority():
+    catalog = load_permission_catalog()["_byCode"]
+    for code in ("academicAffairs.term.view", "academicAffairs.term.manage"):
+        meta = catalog[code]
+        assert meta["plane"] == "TENANT"
+        assert meta["tenantAssignable"] is True
+        assert meta["customRoleAssignable"] is True
+        assert meta["moduleKey"] == "academicAffairs"
+        assert meta["lifecycle"] == "ACTIVE"
