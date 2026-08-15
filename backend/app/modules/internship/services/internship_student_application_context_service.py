@@ -1,7 +1,8 @@
 """学生本人批次化正式实习申请。
 
-该服务是学生小程序和学生 PC 的权威写入口：显式实习记录、真实岗位/附件校验、
-行锁、乐观锁和同事务审计。旧无版本移动端写接口不得继续承载生产写操作。
+该服务是学生小程序和学生 PC 的旧单申请兼容写入口。招聘季 POSITION 已切换为
+InternshipVolunteerGroup + 1/2/3 原子事务，禁止再从这里逐条写入绕过窗口、材料快照和组锁。
+自主实习与历史 campaign_id=NULL 岗位继续兼容本服务。
 """
 from __future__ import annotations
 
@@ -42,6 +43,15 @@ def _student_record(db, user, *, for_write: bool, payload: dict):
         return record, student
     return legacy._record_for_student(
         db, (user or {}).get("studentNo"), for_write=for_write)
+
+
+def _reject_campaign_position(position) -> None:
+    if getattr(position, "campaign_id", None):
+        raise AppException(
+            "DATA_CONFLICT",
+            "招聘季岗位必须通过三志愿原子接口保存/提交，不能逐条写入正式申请",
+            http_status=409,
+        )
 
 
 def list_my(user: dict, *, batch_id=None, internship_id=None) -> list[dict]:
@@ -127,6 +137,7 @@ def save(user: dict, body: dict) -> dict:
         row.application_note = str(payload.get("applicationNote") or "").strip() or None
         if application_type == "POSITION":
             position, company = legacy._position(db, payload.get("positionId"))
+            _reject_campaign_position(position)
             duplicate = db.scalar(select(InternshipApplication.id).where(
                 InternshipApplication.tenant_id == _tid(),
                 InternshipApplication.record_id == record.id,
@@ -187,6 +198,7 @@ def submit(user: dict, app_id, body: dict) -> dict:
             raise AppException("VALIDATION_ERROR", "申请说明不少于5字")
         if row.application_type == "POSITION":
             position, company = legacy._position(db, row.position_id)
+            _reject_campaign_position(position)
             row.company_name = company.name
             row.position_name = position.title
             row.work_address = position.work_location
@@ -229,6 +241,9 @@ def withdraw(user: dict, app_id, body: dict) -> dict:
         _expected(payload, row.version, required=True)
         if row.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
+        if row.application_type == "POSITION" and row.position_id:
+            position, _company = legacy._position(db, row.position_id)
+            _reject_campaign_position(position)
         row.status = "WITHDRAWN"
         row.version = int(row.version or 0) + 1
         legacy._trail(db, row.id, "WITHDRAW_VERSIONED", {

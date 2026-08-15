@@ -28,6 +28,7 @@ from app.models.internship_enterprise_portal import (
     InternshipEnterpriseMember,
 )
 from app.modules.internship.services import internship_enterprise_access_service as access_svc
+from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services.internship_campaign_enterprise_service import _get_company
 from app.modules.internship.services.internship_recruitment_campaign_service import _get_campaign
 from app.services.db_service import _as_id, _tid
@@ -76,11 +77,20 @@ def _tenant_by_code(db, tenant_code: str):
     return tenant
 
 
+def _assert_invite_window(campaign, now: datetime, *, public_token: bool = False) -> None:
+    try:
+        window_guard.assert_campaign_operation_window(campaign, "INVITE", now=now)
+        if campaign.enterprise_access_end_at is None or campaign.enterprise_access_end_at <= now:
+            raise AppException("DATA_CONFLICT", "招聘季未配置有效企业访问截止时间")
+    except AppException as exc:
+        if public_token:
+            raise unauthorized("邀请链接当前不可用或已失效") from exc
+        raise
+
+
 def _invite_expiry(campaign, now: datetime) -> datetime:
-    expiry = now + _INVITE_TTL
-    for bound in (campaign.invite_end_at, campaign.enterprise_access_end_at):
-        if bound is not None:
-            expiry = min(expiry, bound)
+    _assert_invite_window(campaign, now)
+    expiry = min(now + _INVITE_TTL, campaign.invite_end_at, campaign.enterprise_access_end_at)
     if expiry <= now:
         raise AppException("DATA_CONFLICT", "招聘季邀请窗口或企业访问期已结束")
     return expiry
@@ -183,8 +193,8 @@ def issue_company_invite(
     db = get_sessionmaker()()
     try:
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=True)
-        if campaign.status not in {"DRAFT", "OPEN"}:
-            raise AppException("DATA_CONFLICT", "当前招聘季已停止企业邀请")
+        now = _now()
+        expires_at = _invite_expiry(campaign, now)
         company = _get_company(db, company_id, tenant_id=tenant_id, require_admission=True)
         _ensure_campaign_invitation_in_tx(
             db,
@@ -218,19 +228,18 @@ def issue_company_invite(
                 member_role=role,
                 status="INVITED",
                 is_primary=role == "COMPANY_ADMIN",
-                invited_at=_now(),
+                invited_at=now,
             )
             db.add(member)
             db.flush()
         elif member.status == "ACTIVE":
             raise AppException("DATA_CONFLICT", "该联系人已是 ACTIVE 企业成员，请使用企业登录处理新招聘季")
 
-        now = _now()
         raw = f"{_INVITE_PREFIX}.{campaign.id}.{member.id}.{secrets.token_urlsafe(32)}"
         member.member_role = role
         member.invited_phone_hash = hash_sensitive(str(phone or "").strip(), "phone")
         member.invite_token_hash = _invite_hash(raw)
-        member.invite_expires_at = _invite_expiry(campaign, now)
+        member.invite_expires_at = expires_at
         member.invited_at = now
         member.version = int(member.version or 0) + 1
         db.commit()
@@ -261,9 +270,11 @@ def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool):
     member = db.scalar(member_stmt)
     if not member or member.status != "INVITED":
         raise unauthorized("邀请链接无效、已使用或成员已停用")
-    if member.invite_expires_at is None or member.invite_expires_at < _now():
+    current = _now()
+    if member.invite_expires_at is None or member.invite_expires_at <= current:
         raise unauthorized("邀请链接已过期")
     campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=lock)
+    _assert_invite_window(campaign, current, public_token=True)
     participation_stmt = select(InternshipCampaignEnterprise).where(
         InternshipCampaignEnterprise.tenant_id == tenant_id,
         InternshipCampaignEnterprise.campaign_id == campaign.id,
@@ -275,8 +286,6 @@ def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool):
     participation = db.scalar(participation_stmt)
     if not participation or participation.status != "INVITED":
         raise unauthorized("企业邀请已撤销、已接受或状态已变化")
-    if campaign.status in {"CLOSED", "ARCHIVED"}:
-        raise unauthorized("招聘季已关闭，邀请失效")
     company = _get_company(db, member.company_id, tenant_id=tenant_id, require_admission=True)
     user = db.scalar(
         select(User).where(

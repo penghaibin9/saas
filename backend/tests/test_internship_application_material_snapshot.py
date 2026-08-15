@@ -1,11 +1,11 @@
 """E-A01 / A01-8 immutable application material snapshot contracts."""
 from __future__ import annotations
 
-from datetime import datetime
 import inspect
 
 from sqlalchemy import UniqueConstraint
 
+from app.core.exceptions import AppException
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.models.internship_match import InternshipApplication
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
@@ -30,20 +30,39 @@ def test_snapshot_is_append_only_and_contains_required_v3_evidence_fields():
     assert ("tenant_id", "volunteer_group_id", "submission_version") in uniques
 
 
-def test_campaign_material_policy_is_stored_but_readiness_is_derived():
+def test_campaign_material_policy_is_stored_but_readiness_is_derived_from_v3_sections():
     assert "application_material_policy_json" in InternshipRecruitmentCampaign.__table__.columns
     assert "material_ready" not in InternshipRecruitmentCampaign.__table__.columns
     projection = {
-        "profile": {"selfIntro": "", "skillTags": ["CAD"]},
+        "profile": {"id": "11", "profileVersion": 2, "selfIntro": "", "skillTags": ["CAD"]},
         "items": [{"itemType": "PROJECT"}],
     }
     result = service.evaluate_material_readiness(
         projection,
-        {"requiredProfileFields": ["selfIntro", "skillTags"], "requiredItemTypes": ["PROJECT", "CERTIFICATE"]},
+        {
+            "profileRequired": True,
+            "requiredSections": ["SELF_INTRO", "SKILLS"],
+            "requiredItemTypes": ["PROJECT", "CERTIFICATE"],
+        },
     )
     assert result["ready"] is False
     assert "profile.selfIntro" in result["missing"]
     assert "itemType.CERTIFICATE" in result["missing"]
+    assert "profile.skillTags" not in result["missing"]
+    assert "PROFILE_NOT_READY" not in result["missing"]
+
+
+def test_profile_required_checks_real_profile_identity_not_nonempty_projection_shape():
+    projection = {
+        "profile": {
+            "id": "", "profileVersion": 0, "headline": "", "selfIntro": "",
+            "expectedLocations": [], "skillTags": [],
+        },
+        "items": [],
+    }
+    result = service.evaluate_material_readiness(projection, {"profileRequired": True})
+    assert result["ready"] is False
+    assert "PROFILE_NOT_READY" in result["missing"]
 
 
 def test_snapshot_hash_is_stable_canonical_sha256():
@@ -53,13 +72,16 @@ def test_snapshot_hash_is_stable_canonical_sha256():
     assert len(service._snapshot_hash(payload_a)) == 64
 
 
-def test_common_snapshot_explicitly_excludes_volunteers_company_position_and_statement():
+def test_common_snapshot_explicitly_excludes_volunteers_company_position_statement_and_contact_values():
     source = inspect.getsource(service.create_material_snapshot_in_tx)
     assert '"profileSnapshot": profile_snapshot' in source
     assert '"schoolFactSnapshot": school_facts' in source
     assert '"consentVersion": consent_version' in source
     assert '"contactSharingPolicy": policy' in source
-    for forbidden in ("volunteers", "positionId", "companyId", "applicationStatement"):
+    for forbidden in (
+        "volunteers", "positionId", "companyId", "applicationStatement",
+        "phone", "email", "contactValue", "contact_value_encrypted",
+    ):
         assert f'"{forbidden}"' not in source
 
 
@@ -70,10 +92,63 @@ def test_application_keeps_position_statement_and_snapshot_reference_on_canonica
     assert InternshipApplication.__tablename__ == "t_internship_application"
 
 
-def test_contact_policy_defaults_to_no_contact_and_requires_explicit_mode():
-    assert service.normalize_contact_sharing_policy(None) == {
-        "mode": "NONE", "sharePhone": False, "shareEmail": False,
-    }
-    explicit = service.normalize_contact_sharing_policy({"mode": "AFTER_ACCEPT_INTENT", "sharePhone": True})
-    assert explicit["sharePhone"] is True
-    assert explicit["mode"] == "AFTER_ACCEPT_INTENT"
+def test_contact_policy_uses_final_v3_modes_and_legacy_inputs_normalize_forward():
+    default = service.normalize_contact_sharing_policy(None)
+    assert default["mode"] == "MASKED_ONLY"
+    assert default["sharePhone"] is True
+    assert default["shareEmail"] is True
+    for mode in ("MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT", "IMMEDIATE"):
+        assert service.normalize_contact_sharing_policy({"mode": mode})["mode"] == mode
+    assert service.normalize_contact_sharing_policy({"mode": "NONE"})["mode"] == "MASKED_ONLY"
+    assert service.normalize_contact_sharing_policy({"mode": "EXPLICIT"})["mode"] == "IMMEDIATE"
+    assert service.normalize_contact_sharing_policy({"mode": "AFTER_SCHOOL_APPROVAL"})["mode"] == "AFTER_ACCEPT_INTENT"
+    try:
+        service.normalize_contact_sharing_policy({"mode": "FULL_ALWAYS"})
+    except AppException as exc:
+        assert exc.code == "VALIDATION_ERROR"
+    else:
+        raise AssertionError("invalid contact mode must fail closed")
+
+
+def test_campaign_allowed_contact_modes_are_enforced_fail_closed():
+    service._assert_contact_mode_allowed(
+        {"mode": "AFTER_INTERVIEW"},
+        {"allowedContactSharingModes": ["MASKED_ONLY", "AFTER_INTERVIEW"]},
+    )
+    try:
+        service._assert_contact_mode_allowed(
+            {"mode": "IMMEDIATE"},
+            {"allowedContactSharingModes": ["MASKED_ONLY", "AFTER_INTERVIEW"]},
+        )
+    except AppException as exc:
+        assert exc.code == "CONTACT_MODE_NOT_ALLOWED"
+        assert exc.http_status == 409
+    else:
+        raise AssertionError("disallowed contact mode must fail closed")
+
+
+def test_unconfigured_campaign_does_not_fail_open_to_immediate_contact_reveal():
+    service._assert_contact_mode_allowed({"mode": "MASKED_ONLY"}, None)
+    service._assert_contact_mode_allowed({"mode": "AFTER_INTERVIEW"}, {})
+    service._assert_contact_mode_allowed({"mode": "AFTER_ACCEPT_INTENT"}, {})
+    try:
+        service._assert_contact_mode_allowed({"mode": "IMMEDIATE"}, None)
+    except AppException as exc:
+        assert exc.code == "CONTACT_MODE_NOT_ALLOWED"
+        assert exc.http_status == 409
+    else:
+        raise AssertionError("IMMEDIATE must require explicit school policy")
+
+
+def test_explicit_empty_or_invalid_allowed_modes_never_mean_allow_all():
+    for campaign_policy in (
+        {"allowedContactSharingModes": []},
+        {"allowedContactSharingModes": None},
+    ):
+        try:
+            service._assert_contact_mode_allowed({"mode": "MASKED_ONLY"}, campaign_policy)
+        except AppException as exc:
+            assert exc.code == "CONTACT_MODE_NOT_ALLOWED"
+            assert exc.http_status == 409
+        else:
+            raise AssertionError("empty/invalid allowed modes must fail closed")

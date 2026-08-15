@@ -1,7 +1,7 @@
 """RecruitmentCampaign canonical service for E-A01.
 
 All mutations are tenant-scoped. Existing rows are locked with SELECT ... FOR UPDATE and
-must match expectedVersion before mutation. `phase` is always derived at read time.
+must match expectedVersion before mutation. `phase` and material readiness are always derived.
 """
 from __future__ import annotations
 
@@ -27,6 +27,14 @@ _WINDOW_PHASES = (
     ("INVITING", "invite_start_at", "invite_end_at"),
 )
 _WINDOW_PAIRS = tuple((fields[1], fields[2]) for fields in _WINDOW_PHASES)
+_MATERIAL_POLICY_KEYS = frozenset({
+    "schemaVersion", "profileRequired", "requiredSections", "requiredItemTypes",
+    "applicationStatementRequired", "minStatementLength", "resumePdfEnabled",
+    "allowedContactSharingModes",
+})
+_MATERIAL_SECTIONS = frozenset({"SELF_INTRO", "SKILLS", "AVAILABILITY", "LOCATION_PREFERENCES"})
+_MATERIAL_ITEM_TYPES = frozenset({"SKILL_EVIDENCE", "CERTIFICATE", "PROJECT", "PRACTICE", "AWARD", "PORTFOLIO"})
+_CONTACT_MODES = frozenset({"MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT", "IMMEDIATE"})
 
 
 def derive_campaign_phase(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -> str:
@@ -68,6 +76,60 @@ def _validate_windows(values: dict[str, Any]) -> None:
                 "VALIDATION_ERROR",
                 "enterprise_access_end_at 不能早于已配置招聘窗口结束时间",
             )
+
+
+def _normalize_string_array(value, *, field: str, allowed: frozenset[str]) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AppException("VALIDATION_ERROR", f"applicationMaterialPolicy.{field} 必须是数组")
+    output: list[str] = []
+    for raw in value:
+        item = str(raw or "").upper().strip()
+        if item not in allowed:
+            raise AppException("VALIDATION_ERROR", f"applicationMaterialPolicy.{field} 含非法值 {item or '-'}")
+        if item not in output:
+            output.append(item)
+    return output
+
+
+def _normalize_material_policy(value) -> dict | None:
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if not isinstance(value, dict):
+        raise AppException("VALIDATION_ERROR", "applicationMaterialPolicy 必须是对象")
+    unknown = set(value) - _MATERIAL_POLICY_KEYS
+    if unknown:
+        raise AppException("VALIDATION_ERROR", f"applicationMaterialPolicy 含未知字段：{','.join(sorted(unknown))}")
+    schema_version = str(value.get("schemaVersion") or "V1").upper()
+    if schema_version != "V1":
+        raise AppException("VALIDATION_ERROR", "applicationMaterialPolicy.schemaVersion 仅支持 V1")
+    try:
+        min_statement = int(value.get("minStatementLength") or 0)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "applicationMaterialPolicy.minStatementLength 必须是整数") from exc
+    if min_statement < 0 or min_statement > 5000:
+        raise AppException("VALIDATION_ERROR", "applicationMaterialPolicy.minStatementLength 必须在 0-5000")
+    return {
+        "schemaVersion": "V1",
+        "profileRequired": bool(value.get("profileRequired", False)),
+        "requiredSections": _normalize_string_array(
+            value.get("requiredSections"), field="requiredSections", allowed=_MATERIAL_SECTIONS,
+        ),
+        "requiredItemTypes": _normalize_string_array(
+            value.get("requiredItemTypes"), field="requiredItemTypes", allowed=_MATERIAL_ITEM_TYPES,
+        ),
+        "applicationStatementRequired": bool(value.get("applicationStatementRequired", False)),
+        "minStatementLength": min_statement,
+        "resumePdfEnabled": bool(value.get("resumePdfEnabled", True)),
+        "allowedContactSharingModes": _normalize_string_array(
+            value.get("allowedContactSharingModes", ["MASKED_ONLY", "AFTER_INTERVIEW", "AFTER_ACCEPT_INTENT"]),
+            field="allowedContactSharingModes",
+            allowed=_CONTACT_MODES,
+        ),
+    }
 
 
 def _get_campaign(db, campaign_id: int, *, tenant_id: int, lock: bool = False):
@@ -119,6 +181,8 @@ def _row(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -
         "schoolConfirmEndAt": _iso(campaign.school_confirm_end_at),
         "enterpriseAccessEndAt": _iso(campaign.enterprise_access_end_at),
         "enterpriseConfirmRequired": bool(campaign.enterprise_confirm_required),
+        "teacherConfirmSlaHours": int(campaign.teacher_confirm_sla_hours or 48),
+        "applicationMaterialPolicy": dict(campaign.application_material_policy_json or {}),
         "remark": campaign.remark or "",
         "version": int(campaign.version or 0),
         "createdAt": _iso(campaign.created_at),
@@ -147,11 +211,14 @@ def _body_values(body: dict[str, Any]) -> dict[str, Any]:
         "schoolConfirmEndAt": "school_confirm_end_at",
         "enterpriseAccessEndAt": "enterprise_access_end_at",
         "enterpriseConfirmRequired": "enterprise_confirm_required",
+        "teacherConfirmSlaHours": "teacher_confirm_sla_hours",
         "remark": "remark",
     }
     for source, target in mapping.items():
         if source in body:
             values[target] = _clean(body[source])
+    if "applicationMaterialPolicy" in body:
+        values["application_material_policy_json"] = _normalize_material_policy(body.get("applicationMaterialPolicy"))
     return values
 
 
@@ -168,6 +235,14 @@ def _validate_identity(values: dict[str, Any]) -> None:
         if round_no < 1:
             raise AppException("VALIDATION_ERROR", "roundNo 必须从 1 开始")
         values["round_no"] = round_no
+    if "teacher_confirm_sla_hours" in values:
+        try:
+            hours = int(values["teacher_confirm_sla_hours"])
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须是整数") from exc
+        if hours < 1 or hours > 168:
+            raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须在 1-168 小时")
+        values["teacher_confirm_sla_hours"] = hours
 
 
 def create_campaign(body: dict[str, Any] | None, user=None):
@@ -180,6 +255,7 @@ def create_campaign(body: dict[str, Any] | None, user=None):
     if not values.get("campaign_code") or not values.get("campaign_name"):
         raise AppException("VALIDATION_ERROR", "campaignCode/campaignName 不能为空")
     values.setdefault("round_no", 1)
+    values.setdefault("teacher_confirm_sla_hours", 48)
     _validate_windows(values)
 
     with session() as db:
@@ -211,7 +287,7 @@ def update_campaign(campaign_id: int, body: dict[str, Any] | None, user=None):
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=True)
         current_version = _require_expected_version(campaign, body)
         if campaign.status != "DRAFT":
-            raise AppException("DATA_CONFLICT", "仅 DRAFT 招聘季允许修改名称、批次和关键时间窗")
+            raise AppException("DATA_CONFLICT", "仅 DRAFT 招聘季允许修改名称、批次、材料策略和关键时间窗")
 
         if "batchId" in body:
             batch = db.scalar(
