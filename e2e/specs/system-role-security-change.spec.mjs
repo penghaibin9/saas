@@ -52,7 +52,11 @@ function writeEvidence(payload) {
 test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermission', () => {
   test('draft/review do not change runtime; activation materializes; rollback removes it', async ({ page }) => {
     const login = new StaffLoginPage(page, config.staffBaseUrl)
-    await login.login(config.demoAdmin)
+    await login.login({
+      tenant: FIXTURE.iamTenantCode,
+      username: FIXTURE.iamAdminLogin,
+      password: '123456'
+    })
     const token = await login.token()
     expect(token).toBeTruthy()
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from e2e_seed_playwright_tenants import assert_safe_target
+from e2e_seed_playwright_tenants import assert_safe_target, ensure_tenant
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
@@ -21,6 +21,15 @@ from app.services import system_role_shadow_service as shadow
 
 DEMO_TID = 1000000000000000003
 SANDBOX_TID = 1000000000000000007
+IAM_E2E_TID = 1000000000000000011
+IAM_E2E_TENANT = {
+    "id": IAM_E2E_TID,
+    "code": "iam-e2e-school",
+    "name": "IAM E2E测试学校",
+    "short": "IAM E2E",
+    "login": "iam_admin",
+    "real_name": "E2E IAM管理员",
+}
 TARGET_LOGIN = "iam_teacher"
 TARGET_PERMISSION = "internship.recruitment.view"
 
@@ -55,8 +64,22 @@ def main() -> int:
     if len(head_sha) < 7:
         raise SystemExit("E2E_EXPECTED_SHA/GITHUB_SHA is required")
 
-    # Make entitlement state explicit. Demo owns Internship; sandbox does not.
-    for tid in (DEMO_TID, SANDBOX_TID):
+    # Preserve the product semantics of the two shared E2E schools:
+    # demo-school remains the formal read-only demo, sandbox-school remains the
+    # unentitled negative case.  Mutating IAM journeys use a dedicated writable school.
+    db = get_sessionmaker()()
+    try:
+        ensure_tenant(db, IAM_E2E_TENANT)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    # Make entitlement state explicit. Demo and the dedicated IAM school own
+    # Internship; sandbox remains the not-entitled negative case.
+    for tid in (DEMO_TID, SANDBOX_TID, IAM_E2E_TID):
         platform_service.put_config_json(tid, "TENANT_META", "-", {
             "packageCode": "professional",
             "status": "active",
@@ -64,6 +87,7 @@ def main() -> int:
         })
     platform_service.put_config_json(DEMO_TID, "FEATURES", "-", {"internship": True})
     platform_service.put_config_json(SANDBOX_TID, "FEATURES", "-", {"internship": False})
+    platform_service.put_config_json(IAM_E2E_TID, "FEATURES", "-", {"internship": True})
 
     convergence = shadow.converge_published_system_templates(
         actor_user_id=None,
@@ -77,15 +101,15 @@ def main() -> int:
 
     db = get_sessionmaker()()
     try:
-        role = _ensure_role(db, DEMO_TID, "ACADEMIC_TEACHER", "任课教师")
+        role = _ensure_role(db, IAM_E2E_TID, "ACADEMIC_TEACHER", "任课教师")
         target = db.scalars(select(User).where(
-            User.tenant_id == DEMO_TID,
+            User.tenant_id == IAM_E2E_TID,
             User.login_name == TARGET_LOGIN,
             User.is_deleted.is_(False),
         )).first()
         if target is None:
             target = User(
-                tenant_id=DEMO_TID,
+                tenant_id=IAM_E2E_TID,
                 login_name=TARGET_LOGIN,
                 real_name="IAM权限验证教师",
                 password_hash=hash_password("E2eIam@2026"),
@@ -104,14 +128,14 @@ def main() -> int:
             target.is_deleted = False
 
         link = db.scalars(select(UserRole).where(
-            UserRole.tenant_id == DEMO_TID,
+            UserRole.tenant_id == IAM_E2E_TID,
             UserRole.user_id == target.id,
             UserRole.role_id == role.id,
             UserRole.is_deleted.is_(False),
         )).first()
         if link is None:
             db.add(UserRole(
-                tenant_id=DEMO_TID,
+                tenant_id=IAM_E2E_TID,
                 user_id=target.id,
                 role_id=role.id,
                 status="ACTIVE",
@@ -130,12 +154,18 @@ def main() -> int:
             User.login_name == "admin2",
             User.is_deleted.is_(False),
         )).first()
-        if demo_admin is None or sandbox_admin is None:
-            raise SystemExit("base Playwright seed did not create both school admins")
+        iam_admin = db.scalars(select(User).where(
+            User.tenant_id == IAM_E2E_TID,
+            User.login_name == IAM_E2E_TENANT["login"],
+            User.is_deleted.is_(False),
+        )).first()
+        if demo_admin is None or sandbox_admin is None or iam_admin is None:
+            raise SystemExit("Playwright seed did not create all required school admins")
         db.commit()
         target_id = int(target.id)
         demo_admin_id = int(demo_admin.id)
         sandbox_admin_id = int(sandbox_admin.id)
+        iam_admin_id = int(iam_admin.id)
     except Exception:
         db.rollback()
         raise
@@ -146,13 +176,18 @@ def main() -> int:
         "headSha": head_sha,
         "demoTenantId": str(DEMO_TID),
         "sandboxTenantId": str(SANDBOX_TID),
+        "iamTenantId": str(IAM_E2E_TID),
+        "iamTenantCode": IAM_E2E_TENANT["code"],
+        "iamAdminLogin": IAM_E2E_TENANT["login"],
         "demoAdminUserId": str(demo_admin_id),
         "sandboxAdminUserId": str(sandbox_admin_id),
+        "iamAdminUserId": str(iam_admin_id),
         "targetUserId": str(target_id),
         "targetLogin": TARGET_LOGIN,
         "targetPermission": TARGET_PERMISSION,
         "demoInternshipEntitled": True,
         "sandboxInternshipEntitled": False,
+        "iamInternshipEntitled": True,
         "tenantPermissionUniverseCount": len(universe),
         "templateConvergence": convergence,
     }
