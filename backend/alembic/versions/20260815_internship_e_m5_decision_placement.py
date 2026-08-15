@@ -16,6 +16,12 @@ def _mysql():
 def _common():
     return [sa.Column("created_at",sa.DateTime(),nullable=False),sa.Column("created_by",sa.BigInteger()),sa.Column("updated_at",sa.DateTime(),nullable=False),sa.Column("updated_by",sa.BigInteger()),sa.Column("is_deleted",sa.Boolean(),nullable=False),sa.Column("version",sa.Integer(),nullable=False)]
 
+def _trigger_exists(name: str) -> bool:
+    bind=op.get_bind()
+    return bool(bind.execute(sa.text(
+        "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME=:name"
+    ),{"name":name}).scalar())
+
 def upgrade():
     _mysql(); bind=op.get_bind(); i=inspect(bind)
     if not i.has_table("t_internship_enterprise_application_decision"):
@@ -37,9 +43,11 @@ def upgrade():
         op.create_index("ix_intern_placement_snapshot_position_time","t_internship_placement_snapshot",["tenant_id","position_id","placement_at"])
     if "current_placement_snapshot_id" not in {c["name"] for c in i.get_columns("t_internship_record")}:
         op.add_column("t_internship_record",sa.Column("current_placement_snapshot_id",sa.BigInteger(),nullable=True))
-    op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_update"); op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_delete")
-    op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_update BEFORE UPDATE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
-    op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_delete BEFORE DELETE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
+    # Expand-only: never destroy an already-installed immutability trigger in upgrade.
+    if not _trigger_exists("trg_intern_placement_snapshot_no_update"):
+        op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_update BEFORE UPDATE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
+    if not _trigger_exists("trg_intern_placement_snapshot_no_delete"):
+        op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_delete BEFORE DELETE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
 
 def downgrade():
     _mysql(); i=inspect(op.get_bind()); op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_update"); op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_delete")

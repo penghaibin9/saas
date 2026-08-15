@@ -87,9 +87,11 @@ def upgrade() -> None:
 
     campaign_columns = _column_names(insp, "t_internship_recruitment_campaign")
     if "teacher_confirm_sla_hours" not in campaign_columns:
+        # Expand-only for N-1 compatibility: old application versions do not know this
+        # column, so keep it nullable at the database layer and give them a server default.
         op.add_column(
             "t_internship_recruitment_campaign",
-            sa.Column("teacher_confirm_sla_hours", sa.Integer(), nullable=False, server_default="48"),
+            sa.Column("teacher_confirm_sla_hours", sa.Integer(), nullable=True, server_default="48"),
         )
     else:
         op.execute(
@@ -98,7 +100,7 @@ def upgrade() -> None:
         )
         op.alter_column(
             "t_internship_recruitment_campaign", "teacher_confirm_sla_hours",
-            existing_type=sa.Integer(), nullable=False, server_default="48",
+            existing_type=sa.Integer(), server_default="48",
         )
 
 

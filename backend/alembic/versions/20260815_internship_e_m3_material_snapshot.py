@@ -38,6 +38,14 @@ def _column_names(insp, table: str) -> set[str]:
     return {column["name"] for column in insp.get_columns(table)} if insp.has_table(table) else set()
 
 
+def _trigger_exists(name: str) -> bool:
+    bind = op.get_bind()
+    return bool(bind.execute(sa.text(
+        "SELECT COUNT(*) FROM information_schema.TRIGGERS "
+        "WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = :name"
+    ), {"name": name}).scalar())
+
+
 def upgrade() -> None:
     _require_mysql()
     bind = op.get_bind()
@@ -132,24 +140,26 @@ def upgrade() -> None:
         op.add_column("t_internship_application", sa.Column("material_snapshot_id", sa.BigInteger(), nullable=True))
         op.create_index("ix_t_internship_application_material_snapshot_id", "t_internship_application", ["material_snapshot_id"])
 
-    op.execute("DROP TRIGGER IF EXISTS trg_intern_material_snapshot_no_update")
-    op.execute("DROP TRIGGER IF EXISTS trg_intern_material_snapshot_no_delete")
-    op.execute(
-        """
-        CREATE TRIGGER trg_intern_material_snapshot_no_update
-        BEFORE UPDATE ON t_internship_application_material_snapshot
-        FOR EACH ROW
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE'
-        """
-    )
-    op.execute(
-        """
-        CREATE TRIGGER trg_intern_material_snapshot_no_delete
-        BEFORE DELETE ON t_internship_application_material_snapshot
-        FOR EACH ROW
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE'
-        """
-    )
+    # N-1 expand phase: never drop/recreate an existing trigger in upgrade.  Older
+    # application processes may still be using the schema while this revision is applied.
+    if not _trigger_exists("trg_intern_material_snapshot_no_update"):
+        op.execute(
+            """
+            CREATE TRIGGER trg_intern_material_snapshot_no_update
+            BEFORE UPDATE ON t_internship_application_material_snapshot
+            FOR EACH ROW
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE'
+            """
+        )
+    if not _trigger_exists("trg_intern_material_snapshot_no_delete"):
+        op.execute(
+            """
+            CREATE TRIGGER trg_intern_material_snapshot_no_delete
+            BEFORE DELETE ON t_internship_application_material_snapshot
+            FOR EACH ROW
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE'
+            """
+        )
 
 
 def downgrade() -> None:
