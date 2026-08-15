@@ -36,17 +36,17 @@ def _hash(payload) -> str:
 
 
 def _strict_overall(items: list[dict]) -> str:
-    """Return PASS only when every *required* evidence item is satisfied.
+    """Return PASS only when every required graduation evidence item is satisfied.
 
-    ``EMPLOYMENT`` and ``FEE`` are currently advisory, and student-affairs ``ARCHIVE``
-    UNKNOWN is an explicit manual-review hint rather than an automatic graduation gate.
-    Requiring every one of the eleven rows to be literal PASS would therefore make a
-    normal SYSTEM_PASSED run impossible. Keep the canonical blocking-UNKNOWN policy from
-    the graduation service, while remaining fail-closed for FAIL, invalid result values,
-    and any UNKNOWN on a required item.
+    ``EMPLOYMENT`` and ``FEE`` remain advisory at the current exact head. ``ARCHIVE`` is
+    different: Stage C3 already freezes its UNKNOWN state as fail-closed historical truth,
+    so D-W0 must not downgrade it to an advisory hint even though the older mutable service
+    list still omits it. FAIL, invalid result values, ARCHIVE UNKNOWN, and UNKNOWN on every
+    other required item all remain SYSTEM_ABNORMAL.
     """
     rows = list(items or [])
     required_unknown_blockers = set(getattr(graduation_service, "_BLOCKING_UNKNOWN_ITEMS", ()) or ())
+    required_unknown_blockers.add("ARCHIVE")
     if not rows or not required_unknown_blockers:
         return "SYSTEM_ABNORMAL"
     for item in rows:
