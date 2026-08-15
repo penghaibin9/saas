@@ -36,16 +36,29 @@ def _hash(payload) -> str:
 
 
 def _strict_overall(items: list[dict]) -> str:
-    """Stage C3 decision is PASS only when every required evidence item is PASS.
+    """Return PASS only when every *required* evidence item is satisfied.
 
-    The legacy work-queue projection historically treated selected UNKNOWN domains as
-    non-blocking hints. Stage C3 no longer permits that divergence: preview, formal runs,
-    and any later compatibility-projection recomputation must use this same fail-closed
-    result so mutable UI state can never drift away from the immutable evaluation run.
+    ``EMPLOYMENT`` and ``FEE`` are currently advisory, and student-affairs ``ARCHIVE``
+    UNKNOWN is an explicit manual-review hint rather than an automatic graduation gate.
+    Requiring every one of the eleven rows to be literal PASS would therefore make a
+    normal SYSTEM_PASSED run impossible. Keep the canonical blocking-UNKNOWN policy from
+    the graduation service, while remaining fail-closed for FAIL, invalid result values,
+    and any UNKNOWN on a required item.
     """
-    if not items:
+    rows = list(items or [])
+    required_unknown_blockers = set(getattr(graduation_service, "_BLOCKING_UNKNOWN_ITEMS", ()) or ())
+    if not rows or not required_unknown_blockers:
         return "SYSTEM_ABNORMAL"
-    return "SYSTEM_PASSED" if all(str(item.get("result") or "").upper() == "PASS" for item in items) else "SYSTEM_ABNORMAL"
+    for item in rows:
+        code = str(item.get("item") or "").upper()
+        result = str(item.get("result") or "").upper()
+        if result not in {"PASS", "FAIL", "UNKNOWN"}:
+            return "SYSTEM_ABNORMAL"
+        if result == "FAIL":
+            return "SYSTEM_ABNORMAL"
+        if result == "UNKNOWN" and code in required_unknown_blockers:
+            return "SYSTEM_ABNORMAL"
+    return "SYSTEM_PASSED"
 
 
 def _actor_id() -> int | None:
@@ -215,7 +228,7 @@ def precheck(batch_id, user) -> dict:
 
 
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
-    """Final decision must reference the exact immutable evaluation run it used."""
+    """Final decision must reference the exact immutable SYSTEM_PASSED run it used."""
     graduation_service._require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in graduation_service._CONCLUSION:
@@ -236,9 +249,6 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise not_found("预审结果不存在")
         if result.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
-        if result.overall == "SYSTEM_ABNORMAL" and conclusion in ("GRADUATED", "COMPLETED"):
-            if not result.review_note or len(result.review_note.strip()) < 5:
-                raise AppException("DATA_CONFLICT", "存在异常或未知关键项，学院初审必须填写不少于5字的人工核验说明")
 
         run = db.scalars(select(GraduationEvaluationRun).where(
             GraduationEvaluationRun.tenant_id == _tid(),
@@ -254,6 +264,12 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise AppException(
                 "APPROVAL_VERSION_CONFLICT",
                 "毕业预审投影已偏离最新正式评估 Run，请重新预审后再终审",
+                http_status=409,
+            )
+        if str(run.overall or "").upper() != "SYSTEM_PASSED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "最新正式毕业评估仍为 SYSTEM_ABNORMAL；普通教务终审禁止用审核备注覆盖评估结论，请先治理阻断项并重新预审",
                 http_status=409,
             )
         existing = db.scalars(select(GraduationDecisionFact).where(
