@@ -4,7 +4,7 @@ Revision ID: 20260815_internship_e_m4
 Revises: 20260815_internship_e_m3
 
 This migration does not create a second volunteer/application table. Position choices remain
-canonical internship application rows with volunteer_no 1/2/3.
+canonical internship application rows with three fixed preference slots.
 """
 from __future__ import annotations
 
