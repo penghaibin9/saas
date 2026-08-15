@@ -137,7 +137,7 @@ test('A02 canonical Snapshot stays readable only with an already validated HR ca
 
   await page.getByRole('link',{name:'报名学生'}).click()
   await navigateSpa(page,'/applications/501')
-  await expect(page.getByText('投递快照')).toBeVisible()
+  await expect(page.getByRole('heading',{name:'本次投递材料',exact:true})).toBeVisible()
   await expect(page.getByText('张三',{exact:true})).toBeVisible()
   await expect(page.getByText('身份证')).toHaveCount(0)
   await expect(page.getByRole('button',{name:'拟接收',exact:true})).toBeDisabled()
