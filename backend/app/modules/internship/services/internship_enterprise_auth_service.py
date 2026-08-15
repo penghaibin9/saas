@@ -77,6 +77,28 @@ def _tenant_by_code(db, tenant_code: str):
     return tenant
 
 
+def _require_company_admission_for_auth(db, *, tenant_id: int, company_id: int):
+    """Fail closed before issuing or renewing enterprise auth credentials.
+
+    Business endpoints independently revalidate company admission as defense in depth. Auth
+    must also reject a disabled/blacklisted/unqualified/expired company so login/refresh never
+    succeeds only to fail on the first protected request.
+    """
+    try:
+        return _get_company(
+            db,
+            company_id,
+            tenant_id=tenant_id,
+            require_admission=True,
+        )
+    except AppException as exc:
+        raise AppException(
+            "NO_PERMISSION",
+            "企业准入状态已失效，请联系学校管理员",
+            http_status=403,
+        ) from exc
+
+
 def _assert_invite_window(campaign, now: datetime, *, public_token: bool = False) -> None:
     try:
         window_guard.assert_campaign_operation_window(campaign, "INVITE", now=now)
@@ -477,6 +499,11 @@ def login(*, tenant_code: str, login_name: str, password: str, member_id: int | 
                 },
                 http_status=409,
             )
+        _require_company_admission_for_auth(
+            db,
+            tenant_id=tenant.id,
+            company_id=member.company_id,
+        )
         member.last_active_at = _now()
         db.commit()
         return _token_result(tenant=tenant, user=user, member=member)
@@ -525,6 +552,11 @@ def validate_enterprise_claims(claims: dict) -> tuple[object, User, InternshipEn
             raise unauthorized("企业账号、学校或成员身份已失效")
         if str(member.company_id) != str(claims.get("companyId") or ""):
             raise unauthorized("企业上下文已变化，请重新登录")
+        _require_company_admission_for_auth(
+            db,
+            tenant_id=tenant.id,
+            company_id=member.company_id,
+        )
         expected_version = f"u{int(user.version or 0)}|m{int(member.version or 0)}"
         if claims.get("permissionVersion") != expected_version:
             raise unauthorized("企业成员权限已更新，请重新登录")
