@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.models import InternshipApplication, InternshipPosition
 from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
@@ -85,9 +86,9 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
     _campaign, application, group, decision = _source_for_campaign_in_tx(
         db, record=record, position=position, now=now,
     )
-    company = db.get(student_svc.EmpCompany, position.company_id)
-    batch = db.get(student_svc.InternshipBatch, record.batch_id) if record.batch_id else None
-    student = db.get(student_svc.StudentProfile, record.student_id)
+    company = tenant_get(db, student_svc.EmpCompany, position.company_id, tenant_id=record.tenant_id)
+    batch = tenant_get(db, student_svc.InternshipBatch, record.batch_id, tenant_id=record.tenant_id) if record.batch_id else None
+    student = tenant_get(db, student_svc.StudentProfile, record.student_id, tenant_id=record.tenant_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     rights = evaluate_position_publishability(position, company, batch, student, operation="ASSIGN", db=db)
     result = _ORIGINAL(db, record, position_id, expected_version, user=user)
