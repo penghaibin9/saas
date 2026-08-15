@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { enterpriseInternshipApi } from '../src/services/enterpriseInternshipApi.js'
 
-test('every unfrozen A01 facade rejects locally without issuing a network request', async () => {
+test('every still-unfrozen A01 facade rejects locally without issuing a network request', async () => {
   const originalFetch=globalThis.fetch
   let fetchCalls=0
   globalThis.fetch=async()=>{fetchCalls+=1;throw new Error('network must not be reached')}
@@ -18,10 +18,7 @@ test('every unfrozen A01 facade rejects locally without issuing a network reques
       ['updatePosition',()=>enterpriseInternshipApi.updatePosition('1',{title:'x'})],
       ['submitPosition',()=>enterpriseInternshipApi.submitPosition('1')],
       ['withdrawPosition',()=>enterpriseInternshipApi.withdrawPosition('1')],
-      ['applications',()=>enterpriseInternshipApi.applications({page:1})],
-      ['application',()=>enterpriseInternshipApi.application('1')],
       ['resumePdf',()=>enterpriseInternshipApi.resumePdf('1')],
-      ['revealContact',()=>enterpriseInternshipApi.revealContact('1')],
       ['internshipStudents',()=>enterpriseInternshipApi.internshipStudents({page:1})],
       ['internshipStudent',()=>enterpriseInternshipApi.internshipStudent('1')],
       ['evaluationTasks',()=>enterpriseInternshipApi.evaluationTasks({page:1})],

@@ -35,6 +35,34 @@ function normalizeMaterial(data={}){
   }
 }
 
+function normalizeApplicantSummary(row={}){
+  const student=row.student||{}
+  return {
+    applicationId:row.applicationId,
+    name:student.realName||'学生',
+    major:student.majorName||'',
+    grade:student.grade||'',
+    positionName:row.positionTitle||'',
+    volunteerNo:row.volunteerNo,
+    appliedAt:row.submittedAt||null,
+    decisionStatus:row.decisionStatus||'PENDING',
+    decisionEffectStatus:row.effectStatus||null,
+  }
+}
+
+function normalizeApplicantPage(data={}){
+  return {
+    items:(Array.isArray(data.items)?data.items:[]).map(normalizeApplicantSummary),
+    total:Number.isFinite(Number(data.total))?Number(data.total):0,
+    page:Number.isFinite(Number(data.page))?Number(data.page):1,
+    pageSize:Number.isFinite(Number(data.pageSize))?Number(data.pageSize):20,
+  }
+}
+
+async function fetchApplicationMaterial(id){
+  return normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`, { params:recruitmentParams() }))
+}
+
 export const enterpriseInternshipApi = {
   context: (campaignId) => request(`${AUTH_ROOT}/context`, { params:{ campaignId } }),
   dashboard: () => unavailableFacade('招聘工作台'),
@@ -47,19 +75,20 @@ export const enterpriseInternshipApi = {
   updatePosition: () => unavailableFacade('编辑岗位'),
   submitPosition: () => unavailableFacade('提交岗位审核'),
   withdrawPosition: () => unavailableFacade('撤回岗位审核'),
-  applications: () => unavailableFacade('报名学生列表'),
-  application: () => unavailableFacade('候选人概要'),
-  applicationMaterial: async (id) => normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`, { params:recruitmentParams() })),
+  applications: async ({page=1,pageSize=50,decisionStatus='',positionId=''}={}) => normalizeApplicantPage(await request(`${AUTH_ROOT}/applications`, {
+    params:{...recruitmentParams(),page,pageSize,decisionStatus,positionId},
+  })),
+  applicationMaterial: fetchApplicationMaterial,
   resumePdf: () => unavailableFacade('简历 PDF'),
   decideApplication: (id,status,payload={}) => {
     if (!DECISIONS.has(status)) throw new Error(`不允许的企业 Decision: ${status}`)
     return request(`${AUTH_ROOT}/applications/${id}/decision`, { method:'POST', params:recruitmentParams(), body:{ status, ...payload } })
   },
-  revealContact: () => unavailableFacade('联系方式查看'),
+  revealContact: (id) => request(`${AUTH_ROOT}/applications/${id}/contact-view`, { method:'POST', params:recruitmentParams() }),
   withdrawAccept: (id,reason) => {
     const text=String(reason||'').trim()
     if(text.length<2)throw new Error('撤回拟接收必须填写原因')
-    return request(`${AUTH_ROOT}/applications/${id}/decision`, { method:'POST', params:recruitmentParams(), body:{ status:'REJECTED', reason:text } })
+    return request(`${AUTH_ROOT}/applications/${id}/withdraw-accept`, { method:'POST', params:recruitmentParams(), body:{ reason:text } })
   },
   internshipStudents: () => unavailableFacade('实习学生列表'),
   internshipStudent: () => unavailableFacade('实习学生详情'),

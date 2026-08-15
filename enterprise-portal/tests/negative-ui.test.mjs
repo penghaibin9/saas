@@ -26,7 +26,7 @@ test('campaign closed and unavailable context fail closed',()=>{
   assert.match(positions,/招聘季已关闭/)
 })
 
-test('pending position is read-only until canonical withdraw action returns it to draft',()=>{
+test('pending position is read-only until the future canonical withdraw action returns it to draft',()=>{
   assert.match(positions,/撤回修改/)
   assert.match(positionForm,/positionStatus\.value==='PENDING'/)
   assert.match(positionForm,/撤回到草稿修改/)
@@ -34,22 +34,25 @@ test('pending position is read-only until canonical withdraw action returns it t
   assert.match(positionForm,/PENDING 必须先撤回再修改/)
 })
 
-test('contact stays masked and disabled unless server explicitly allows reveal',()=>{
-  assert.match(contact,/联系方式已脱敏/)
-  assert.match(contact,/联系方式未授权/)
-  assert.match(contact,/props\.contactPolicy\?\.allowed===true/)
-  assert.match(contact,/:disabled="loading \|\| !allowed"/)
-  assert.doesNotMatch(contact,/contactPolicy\.allowed===false/)
+test('contact stays hidden until the dedicated server contact-view request succeeds',()=>{
+  assert.match(contact,/MASKED_ONLY/)
+  assert.match(contact,/enterpriseInternshipApi\.revealContact/)
+  assert.match(contact,/data\?\.phone/)
+  assert.match(contact,/data\?\.email/)
+  assert.match(contact,/当前处理状态和企业范围再次校验/)
+  assert.doesNotMatch(contact,/contactPolicy\?\.allowed===true/)
+  assert.doesNotMatch(contact,/student\.phone|student\.email/)
 })
 
-test('decision conflict and locked release keep server reason and release truth',()=>{
+test('decision conflict and released intent follow independent effect state rather than inferred group fields',()=>{
   assert.match(decision,/decisionDisabledReason/)
-  assert.match(decision,/volunteerGroupStatus==='LOCKED'/)
+  assert.match(decision,/decisionEffectStatus==='ACTIVE'/)
+  assert.match(decision,/decisionEffectStatus!=='ACTIVE'/)
   assert.match(decision,/撤回拟接收/)
   assert.match(decision,/withdrawAccept/)
   assert.match(detail,/等待学校最终确认/)
-  assert.match(detail,/本次拟接收已释放/)
-  assert.match(detail,/TEACHER_CONFIRM_TIMEOUT/)
+  assert.match(detail,/拟接收已失效或进入后续处理/)
+  assert.doesNotMatch(decision,/volunteerGroupStatus==='LOCKED'/)
 })
 
 test('no applicant is an explicit empty state',()=>{

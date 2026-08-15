@@ -1,10 +1,11 @@
 export type CampaignStatus = 'DRAFT'|'OPEN'|'FROZEN'|'CLOSED'|'ARCHIVED'
 export type PositionStatus = 'DRAFT'|'PENDING'|'PUBLISHED'|'OFFLINE'|'SUSPENDED'|'FULL'|'RISK'|'ARCHIVED'
-export type EnterpriseDecisionStatus = 'INTERESTED'|'INTERVIEW'|'ACCEPT_INTENT'|'REJECTED'
+export type EnterpriseDecisionStatus = 'PENDING'|'INTERESTED'|'INTERVIEW'|'ACCEPT_INTENT'|'REJECTED'
+export type EnterpriseDecisionWriteStatus = Exclude<EnterpriseDecisionStatus,'PENDING'>
 export type EnterpriseDecisionEffectStatus = 'ACTIVE'|'EXPIRED'|'SUPERSEDED'|'CONSUMED'
 export type VolunteerGroupStatus = 'DRAFT'|'SUBMITTED'|'LOCKED'|'NEEDS_REVISION'|'APPROVED'|'CLOSED'
 export type EnterpriseMemberRole = 'COMPANY_ADMIN'|'HR'|'MENTOR'
-export type ContactSharingMode = 'NONE'|'AFTER_ACCEPT_INTENT'|'AFTER_SCHOOL_APPROVAL'|'EXPLICIT'
+export type ContactSharingMode = 'MASKED_ONLY'|'AFTER_INTERVIEW'|'AFTER_ACCEPT_INTENT'|'IMMEDIATE'
 export type InternshipProfileItemType = 'SKILL_EVIDENCE'|'CERTIFICATE'|'PROJECT'|'PRACTICE'|'AWARD'|'PORTFOLIO'
 
 export interface EnterpriseCampaignContext {
@@ -86,16 +87,9 @@ export interface ApplicantSummary {
   grade?:string
   positionName:string
   volunteerNo:1|2|3
-  skillTags?:string[]
-  matchHint?:string
-  matchPercent?:number
-  appliedAt?:string
+  appliedAt?:string|null
   decisionStatus?:EnterpriseDecisionStatus
-  decisionEffectStatus?:EnterpriseDecisionEffectStatus
-  decisionReason?:string|null
-  decisionValidUntil?:string|null
-  acceptIntentReleased?:boolean
-  volunteerGroupStatus?:VolunteerGroupStatus
+  decisionEffectStatus?:EnterpriseDecisionEffectStatus|null
 }
 
 export interface ContactSharingPolicy {
