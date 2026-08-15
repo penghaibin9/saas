@@ -26,7 +26,8 @@ def test_b8_contract_freezes_four_resolvers_and_tenant_only_shadow():
 def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes():
     catalog = load_permission_catalog()
     extension = catalog["b8ConcreteCatalog"]
-    assert extension["count"] == 449
+    assert extension["count"] == 539
+    assert catalog["b8PostCutoverCompatibilityCatalog"]["count"] == 90
     assert runtime_wildcard_probe_codes() == {"*"}
     for code in (
         "academicAffairs.grade.view",
@@ -42,6 +43,13 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
         assert meta["lifecycle"] == "ACTIVE"
         assert meta["tenantAssignable"] is True
         assert meta["catalogSource"] == "B8_CONCRETE_CUTOVER"
+    for code in ("academicAffairs.term.view", "academicAffairs.term.manage"):
+        meta = permission_meta(code)
+        assert meta is not None
+        assert meta["plane"] == "TENANT"
+        assert meta["lifecycle"] == "ACTIVE"
+        assert meta["tenantAssignable"] is True
+        assert meta["catalogSource"] == "B8_POST_CUTOVER_COMPATIBILITY"
 
 
 def test_active_tenant_universe_is_complete_school_assignable_only():
@@ -65,7 +73,7 @@ def test_b8_publishes_immutable_explicit_tenant_templates_then_shadow_is_zero(db
     )
     assert convergence["tenantPermissionUniverseCount"] == len(shadow.active_tenant_permission_codes())
     assert convergence["tenantPermissionUniverseCount"] > 400
-    assert convergence["createdCount"] > 0
+    assert set(convergence["unchangedRoleCodes"]) == set(shadow.delivered_system_role_codes())
 
     report = shadow.shadow_system_roles()
     assert report["resolverSet"] == [
@@ -105,11 +113,42 @@ def test_b8_publishes_immutable_explicit_tenant_templates_then_shadow_is_zero(db
 
 
 def test_b8_convergence_is_idempotent_and_never_rewrites_published_version(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.permission_governance import RoleTemplate
+
+    db = get_sessionmaker()()
+    try:
+        before = {
+            (row.template_code, int(row.template_version or 0), int(row.id))
+            for row in db.scalars(select(RoleTemplate).where(
+                RoleTemplate.tenant_id == 0,
+                RoleTemplate.publish_status == "PUBLISHED",
+                RoleTemplate.is_deleted.is_(False),
+            )).all()
+        }
+    finally:
+        db.close()
+
     first = shadow.converge_published_system_templates(actor_user_id=9802, source_commit_sha="b8-idempotent-head")
     second = shadow.converge_published_system_templates(actor_user_id=9802, source_commit_sha="b8-idempotent-head")
-    assert first["createdCount"] > 0
+    assert first["createdCount"] == 0
     assert second["createdCount"] == 0
+    assert set(first["unchangedRoleCodes"]) == set(shadow.delivered_system_role_codes())
     assert set(second["unchangedRoleCodes"]) == set(shadow.delivered_system_role_codes())
+
+    db = get_sessionmaker()()
+    try:
+        after = {
+            (row.template_code, int(row.template_version or 0), int(row.id))
+            for row in db.scalars(select(RoleTemplate).where(
+                RoleTemplate.tenant_id == 0,
+                RoleTemplate.publish_status == "PUBLISHED",
+                RoleTemplate.is_deleted.is_(False),
+            )).all()
+        }
+    finally:
+        db.close()
+    assert after == before
 
 
 def test_custom_resolver_uses_role_permission_only_and_never_falls_back_to_template(db_mode):
