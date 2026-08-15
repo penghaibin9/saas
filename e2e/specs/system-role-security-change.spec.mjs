@@ -73,10 +73,10 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     expect(schoolAdminTemplate.permissions.some((code) => code.startsWith('platform.'))).toBeFalsy()
     expect(schoolAdminTemplate.permissions.some((code) => code.startsWith('enterprise.'))).toBeFalsy()
 
-    const users = await browserApi(page, token, 'GET', `/system/users?keyword=${encodeURIComponent(FIXTURE.targetLogin)}&page=1&page_size=20`)
-    const target = (users.list || []).find((item) => item.loginName === FIXTURE.targetLogin)
+    const users = await browserApi(page, token, 'GET', `/system/users?keyword=${encodeURIComponent(FIXTURE.iamTargetLogin)}&page=1&page_size=20`)
+    const target = (users.list || []).find((item) => item.loginName === FIXTURE.iamTargetLogin)
     expect(target, JSON.stringify(users)).toBeTruthy()
-    expect(String(target.id)).toBe(String(FIXTURE.targetUserId))
+    expect(String(target.id)).toBe(String(FIXTURE.iamTargetUserId))
 
     const suffix = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/\D/g, '').slice(-12)
     const roleCode = `B8_IAM_E2E_${suffix}`

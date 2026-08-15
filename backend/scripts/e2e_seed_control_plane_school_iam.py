@@ -2,7 +2,8 @@
 
 This seed creates identities/tenant entitlement only. It deliberately does not
 create a Custom Role, SecurityChange, RolePermission, or security revision;
-those are browser E2E writes under test.
+those are browser E2E writes under test. Global Permission definitions are
+materialized through the production Permission Catalog reconciliation Authority.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
 from app.services import platform_service
 from app.services import system_role_shadow_service as shadow
+from app.services.permission_catalog_reconciliation_service import reconcile_permission_catalog
 
 DEMO_TID = 1000000000000000003
 SANDBOX_TID = 1000000000000000007
@@ -30,7 +32,8 @@ IAM_E2E_TENANT = {
     "login": "iam_admin",
     "real_name": "E2E IAM管理员",
 }
-TARGET_LOGIN = "iam_teacher"
+DEMO_TARGET_LOGIN = "iam_teacher_demo"
+IAM_TARGET_LOGIN = "iam_teacher"
 TARGET_PERMISSION = "internship.recruitment.view"
 
 
@@ -58,6 +61,52 @@ def _ensure_role(db, tenant_id: int, code: str, name: str) -> Role:
     return role
 
 
+def _ensure_teacher(db, *, tenant_id: int, login_name: str, real_name: str) -> User:
+    role = _ensure_role(db, tenant_id, "ACADEMIC_TEACHER", "任课教师")
+    target = db.scalars(select(User).where(
+        User.tenant_id == tenant_id,
+        User.login_name == login_name,
+        User.is_deleted.is_(False),
+    )).first()
+    if target is None:
+        target = User(
+            tenant_id=tenant_id,
+            login_name=login_name,
+            real_name=real_name,
+            password_hash=hash_password("E2eIam@2026"),
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+        )
+        db.add(target)
+        db.flush()
+    else:
+        target.real_name = real_name
+        target.password_hash = hash_password("E2eIam@2026")
+        target.user_type = "TEACHER"
+        target.status = "ACTIVE"
+        target.must_change_password = False
+        target.is_deleted = False
+
+    link = db.scalars(select(UserRole).where(
+        UserRole.tenant_id == tenant_id,
+        UserRole.user_id == target.id,
+        UserRole.role_id == role.id,
+        UserRole.is_deleted.is_(False),
+    )).first()
+    if link is None:
+        db.add(UserRole(
+            tenant_id=tenant_id,
+            user_id=target.id,
+            role_id=role.id,
+            status="ACTIVE",
+        ))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+    return target
+
+
 def main() -> int:
     assert_safe_target()
     head_sha = str(os.getenv("E2E_EXPECTED_SHA") or os.getenv("GITHUB_SHA") or "").strip()
@@ -66,7 +115,7 @@ def main() -> int:
 
     # Preserve the product semantics of the two shared E2E schools:
     # demo-school remains the formal read-only demo, sandbox-school remains the
-    # unentitled negative case.  Mutating IAM journeys use a dedicated writable school.
+    # unentitled negative case. Mutating IAM journeys use a dedicated writable school.
     db = get_sessionmaker()()
     try:
         ensure_tenant(db, IAM_E2E_TENANT)
@@ -76,6 +125,14 @@ def main() -> int:
         raise
     finally:
         db.close()
+
+    # Global Permission rows are reconciled by the production B3 Authority,
+    # never by tenant role copy/save/activation code and never by test-only inserts.
+    catalog_reconciliation = reconcile_permission_catalog(
+        source="CONTROL_PLANE_SCHOOL_IAM_E2E",
+    )
+    if catalog_reconciliation.get("missingAfterReconcile") != 0:
+        raise SystemExit("Permission Catalog reconciliation did not converge")
 
     # Make entitlement state explicit. Demo and the dedicated IAM school own
     # Internship; sandbox remains the not-entitled negative case.
@@ -101,48 +158,18 @@ def main() -> int:
 
     db = get_sessionmaker()()
     try:
-        role = _ensure_role(db, IAM_E2E_TID, "ACADEMIC_TEACHER", "任课教师")
-        target = db.scalars(select(User).where(
-            User.tenant_id == IAM_E2E_TID,
-            User.login_name == TARGET_LOGIN,
-            User.is_deleted.is_(False),
-        )).first()
-        if target is None:
-            target = User(
-                tenant_id=IAM_E2E_TID,
-                login_name=TARGET_LOGIN,
-                real_name="IAM权限验证教师",
-                password_hash=hash_password("E2eIam@2026"),
-                user_type="TEACHER",
-                status="ACTIVE",
-                must_change_password=False,
-            )
-            db.add(target)
-            db.flush()
-        else:
-            target.real_name = "IAM权限验证教师"
-            target.password_hash = hash_password("E2eIam@2026")
-            target.user_type = "TEACHER"
-            target.status = "ACTIVE"
-            target.must_change_password = False
-            target.is_deleted = False
-
-        link = db.scalars(select(UserRole).where(
-            UserRole.tenant_id == IAM_E2E_TID,
-            UserRole.user_id == target.id,
-            UserRole.role_id == role.id,
-            UserRole.is_deleted.is_(False),
-        )).first()
-        if link is None:
-            db.add(UserRole(
-                tenant_id=IAM_E2E_TID,
-                user_id=target.id,
-                role_id=role.id,
-                status="ACTIVE",
-            ))
-        else:
-            link.status = "ACTIVE"
-            link.is_deleted = False
+        demo_target = _ensure_teacher(
+            db,
+            tenant_id=DEMO_TID,
+            login_name=DEMO_TARGET_LOGIN,
+            real_name="Demo IAM只读验证教师",
+        )
+        iam_target = _ensure_teacher(
+            db,
+            tenant_id=IAM_E2E_TID,
+            login_name=IAM_TARGET_LOGIN,
+            real_name="IAM权限变更验证教师",
+        )
 
         demo_admin = db.scalars(select(User).where(
             User.tenant_id == DEMO_TID,
@@ -162,7 +189,9 @@ def main() -> int:
         if demo_admin is None or sandbox_admin is None or iam_admin is None:
             raise SystemExit("Playwright seed did not create all required school admins")
         db.commit()
-        target_id = int(target.id)
+
+        demo_target_id = int(demo_target.id)
+        iam_target_id = int(iam_target.id)
         demo_admin_id = int(demo_admin.id)
         sandbox_admin_id = int(sandbox_admin.id)
         iam_admin_id = int(iam_admin.id)
@@ -182,13 +211,18 @@ def main() -> int:
         "demoAdminUserId": str(demo_admin_id),
         "sandboxAdminUserId": str(sandbox_admin_id),
         "iamAdminUserId": str(iam_admin_id),
-        "targetUserId": str(target_id),
-        "targetLogin": TARGET_LOGIN,
+        "targetUserId": str(demo_target_id),
+        "targetLogin": DEMO_TARGET_LOGIN,
+        "demoTargetUserId": str(demo_target_id),
+        "demoTargetLogin": DEMO_TARGET_LOGIN,
+        "iamTargetUserId": str(iam_target_id),
+        "iamTargetLogin": IAM_TARGET_LOGIN,
         "targetPermission": TARGET_PERMISSION,
         "demoInternshipEntitled": True,
         "sandboxInternshipEntitled": False,
         "iamInternshipEntitled": True,
         "tenantPermissionUniverseCount": len(universe),
+        "permissionCatalogReconciliation": catalog_reconciliation,
         "templateConvergence": convergence,
     }
     path = Path(__file__).resolve().parents[2] / "e2e" / "runtime-fixtures" / "control-plane-school-iam.json"
