@@ -71,14 +71,14 @@ async function save(){
         <fieldset class="profile-fields" :disabled="!facadeReady">
           <div class="logo-row">
             <div class="logo-preview"><img v-if="logoDisplay" :src="logoDisplay" alt="企业 Logo 预览"><span v-else>企业 Logo</span></div>
-            <div class="logo-copy"><strong>企业品牌标识</strong><p class="ep-muted">建议使用清晰的方形 Logo，支持 PNG/JPG/WebP，≤5MB。保存时由文件中心安全绑定，无需填写文件编号。</p><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label></div>
+            <div class="logo-copy"><strong>企业品牌标识</strong><p class="ep-muted">建议使用清晰的方形 Logo，支持 PNG/JPG/WebP，≤5MB。保存时由文件中心安全绑定，不需要填写文件编号。</p><label class="ep-btn file-button">选择 Logo<input type="file" accept="image/png,image/jpeg,image/webp" @change="chooseLogo"></label></div>
           </div>
           <div class="field-grid three"><label>企业简称<input v-model.trim="form.shortName" class="ep-input" maxlength="100"></label><label>官网<input v-model.trim="form.website" type="url" class="ep-input" placeholder="https://"></label><label>成立年份<input v-model.number="form.establishedYear" type="number" min="1800" max="2100" class="ep-input"></label></div>
           <div class="field-grid two"><label>主营业务<textarea v-model.trim="form.mainBusiness" class="ep-textarea" rows="4" maxlength="1000" /></label><label>一句话介绍<textarea v-model.trim="form.shortIntro" class="ep-textarea" rows="4" maxlength="500" /></label></div>
           <label class="address-field">办公地址<input v-model.trim="form.address" class="ep-input" maxlength="300"></label>
         </fieldset>
       </div>
-      <aside class="ep-card panel review-panel"><div class="panel-head"><div><span class="section-kicker">学校维护</span><h2 class="ep-section-title">审核与准入 · 只读</h2></div><span class="ep-tag" :class="admissionTone">{{ admissionLabel }}</span></div><dl><div><dt>资质状态</dt><dd>{{ school.qualificationStatus }}</dd></div><div><dt>合作状态</dt><dd>{{ school.coopStatus }}</dd></div><div><dt>准入有效期</dt><dd>{{ school.accessValidUntil }}</dd></div><div><dt>黑名单</dt><dd>{{ school.blacklist?'是':'否' }}</dd></div></dl><div class="school-review"><span>学校审核意见</span><p>{{ school.schoolReview }}</p></div><p class="review-note">这些信息由学校审核维护。企业端只能查看，不能通过修改公开资料改变准入结论。</p></aside>
+      <aside class="ep-card panel review-panel"><div class="panel-head"><div><span class="section-kicker">学校维护</span><h2 class="ep-section-title">审核与准入 · 只读</h2></div><span class="ep-tag" :class="admissionTone">{{ admissionLabel }}</span></div><dl><div><dt>资质状态</dt><dd>{{ school.qualificationStatus }}</dd></div><div><dt>合作状态</dt><dd>{{ school.coopStatus }}</dd></div><div><dt>准入有效期</dt><dd>{{ school.accessValidUntil }}</dd></div><div><dt>黑名单</dt><dd>{{ school.blacklist?'是':'否' }}</dd></div></dl><div class="school-review"><span>学校审核意见</span><p>{{ school.schoolReview }}</p></div><p class="review-note">以上信息由学校审核维护，企业端仅查看，不能修改；公开资料的编辑不会改变学校准入结论。</p></aside>
     </div>
   </section>
 </template>
