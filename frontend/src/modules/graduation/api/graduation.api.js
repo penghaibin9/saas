@@ -5,7 +5,7 @@
 import { request, shouldTryReal, currentUserFromToken } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { setPermissionPatterns } from '@/security/permissionGate'
-import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { withGraduationBatch as withBatch } from '@/modules/graduation/api/graduation-batch-context'
 import {
   tenantBrandConfig,
   currentRole,
@@ -21,12 +21,6 @@ function toErr(e) {
 }
 async function callStrict(fn) {
   try { return { code: 0, data: await fn(), message: 'ok' } } catch (e) { return toErr(e) }
-}
-function withBatch(params = {}, required = true) {
-  const store = useGraduationBatchStore()
-  const batchId = params.batchId || store.selectedBatchId
-  if (required && !batchId) throw new Error('请先选择毕业设计批次')
-  return batchId ? { ...params, batchId: String(batchId) } : { ...params }
 }
 async function listStrict(path, params = {}, required = true) {
   try {

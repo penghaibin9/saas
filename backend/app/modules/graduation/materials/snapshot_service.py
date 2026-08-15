@@ -26,6 +26,7 @@ from app.models import (
 )
 from app.models.file import FileBinding, FileVersion
 from app.models.graduation_material import GraduationStudentMaterial
+from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services import file_service
 from app.services.db_service import _iso, _tid, session
@@ -81,6 +82,9 @@ def _collect(gd_student_id: int, user: dict) -> tuple[dict, list[SnapshotSpec]]:
         if not student:
             raise not_found("毕业设计学生不存在")
         assert_student_access(db, student, "structured.snapshot")
+        # U7/M5: structured snapshot generation is itself an archive-side write.
+        # Dirty historical identities stay readable but may not generate files/versions.
+        assert_archive_identity_writable(student)
         specs: list[SnapshotSpec] = []
         common = (("学生", student.name), ("学号", student.student_no or ""), ("题目", student.topic_title or ""))
 

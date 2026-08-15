@@ -311,9 +311,13 @@ def grade_stats(batchId: int = Query(..., ge=1), user=Depends(get_current_user))
 def grade_list(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     keyword: Optional[str] = None, status: Optional[str] = None,
+    missingType: Optional[str] = None,
     batchId: int = Query(..., ge=1), user=Depends(get_current_user),
 ):
-    items, total = grade.list_grades(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
+    items, total = grade.list_grades(
+        page, pageSize, keyword=keyword, status=status, batch_id=batchId,
+        missing_type=missingType,
+    )
     return success(paginate(items, total, page, pageSize))
 
 

@@ -3,6 +3,7 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="detail" class="mp-stack">
+      <p v-if="formError" class="mp-form-err prc-conflict">{{ formError }}</p>
       <AppSectionCard :title="'开题报告 · ' + detail.version">
         <template #header-extra>
           <StatusTag :status="detail.status" :label="detail.statusLabel" dot />
@@ -73,7 +74,6 @@
             <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（驳回时必填，≥5 字）</label>
             <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批注将随批阅结果同步学生端…"></textarea>
             <AppTemplateChips v-if="canReview" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
-            <p v-if="formError" class="mp-form-err">{{ formError }}</p>
             <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过当前版本</AppPermissionButton>
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submit('REJECT')">↩ 驳回当前版本</AppPermissionButton>
@@ -135,6 +135,11 @@ import SecureFileList from '@/components/file/SecureFileList.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
+import {
+  graduationActionErrorMessage,
+  graduationConflictMessage,
+  isGraduationConflictResponse
+} from '@/modules/graduation/utils/form-state'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 
@@ -197,15 +202,22 @@ export default {
       const text = String(value || '')
       return text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-8)}` : (text || '—')
     },
-    async load() {
+    async load({ preserveDraft = false } = {}) {
+      const draft = preserveDraft ? { comment: this.comment, defenseComment: this.defenseComment } : null
       this.loading = true
       this.error = ''
       this.formError = ''
-      this.comment = ''
-      this.defenseComment = ''
+      if (!preserveDraft) {
+        this.comment = ''
+        this.defenseComment = ''
+      }
       const res = await graduationApi.getProposalReviewDetail(this.proposalId)
       if (res.code === 0) this.detail = res.data
-      else this.error = res.message
+      else this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
+      if (draft) {
+        this.comment = draft.comment
+        this.defenseComment = draft.defenseComment
+      }
       this.loading = false
     },
     async previewVersion(item) {
@@ -234,12 +246,12 @@ export default {
         this.comment = ''
         this.$emit('reviewed', res.data)
         this.load()
-      } else if (res.message && (res.message.includes('已批阅') || res.message.includes('已被处理'))) {
-        this.formError = res.message
-        this.$emit('conflict')
-        this.load()
+      } else if (isGraduationConflictResponse(res)) {
+        const conflictMessage = graduationConflictMessage(res)
+        await this.load({ preserveDraft: true })
+        this.formError = conflictMessage
       } else {
-        this.formError = res.message
+        this.formError = graduationActionErrorMessage(res, '批阅未完成，请稍后重试')
       }
     },
     async submitDefense(result) {
@@ -249,8 +261,17 @@ export default {
       this.submitting = true
       const res = await graduationMoreApi.holdProposalDefense(this.detail.id, result, this.defenseComment)
       this.submitting = false
-      if (res.code === 0) { toast.success('开题答辩已录入'); this.defenseComment = ''; this.load() }
-      else toast.error(res.message || '录入失败')
+      if (res.code === 0) {
+        toast.success('开题答辩已录入')
+        this.defenseComment = ''
+        this.load()
+      } else if (isGraduationConflictResponse(res)) {
+        const conflictMessage = graduationConflictMessage(res)
+        await this.load({ preserveDraft: true })
+        this.formError = conflictMessage
+      } else {
+        this.formError = graduationActionErrorMessage(res, '开题答辩录入失败，请稍后重试')
+      }
     }
   }
 }
@@ -258,6 +279,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.prc-conflict { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); }
 .prc-content { margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; }
 .prc-content p { margin: 0 0 var(--space-2); }
 .prc-content b { color: var(--text-primary); }

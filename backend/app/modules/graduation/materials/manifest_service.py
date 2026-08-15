@@ -13,6 +13,7 @@ from app.models import GraduationArchiveRecord, GraduationRiskCase, GraduationSt
 from app.models.data_exchange import ExportJob
 from app.models.file import ArchiveManifest, ArchiveManifestItem, FileObject, FileVersion
 from app.models.graduation_material import GraduationStudentMaterial
+from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
 from app.services.file_access_service import require_file_access
@@ -81,7 +82,7 @@ def _student_for_update(db, gd_student_id: int) -> GraduationStudent:
     ).with_for_update()).first()
     if not row:
         raise not_found("毕业设计学生不存在")
-    return row
+    return assert_archive_identity_writable(row)
 
 
 def _assert_no_open_risk(db, student: GraduationStudent) -> None:
