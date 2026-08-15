@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const page=fs.readFileSync(new URL('../src/components/applicant/DecisionActions.vue',import.meta.url),'utf8')
 const api=fs.readFileSync(new URL('../src/services/enterpriseInternshipApi.js',import.meta.url),'utf8')
+const detail=fs.readFileSync(new URL('../src/views/ApplicantDetailView.vue',import.meta.url),'utf8')
+const list=fs.readFileSync(new URL('../src/views/ApplicantListView.vue',import.meta.url),'utf8')
 
 test('A02-7 decision-disabled and inactive effect state both block enterprise actions',()=>{
   assert.match(page,/Boolean\(props\.application\.decisionDisabledReason\)/)
@@ -31,4 +33,13 @@ test('A02-7 withdrawing active ACCEPT_INTENT uses the dedicated A01 route and re
   assert.match(api,/applications\/\$\{id\}\/withdraw-accept/)
   assert.match(api,/body:\{\s*reason:text\s*\}/)
   assert.doesNotMatch(api,/withdrawAccept:[\s\S]*status:'REJECTED'/)
+})
+
+test('A02-7 withdrawal confirmation remains reachable on short viewports without changing authority',()=>{
+  assert.match(page,/nextTick\(\(\)=>actionRegion\.value\?\.scrollIntoView\(\{block:'nearest'\}\)\)/)
+  assert.match(list,/height:calc\(100vh - 245px\);min-height:360px;overflow:hidden/)
+  assert.match(list,/\.detail-pane\{[^}]*height:100%;overflow:hidden/)
+  assert.match(detail,/\.detail\{height:100%;overflow:auto;/)
+  assert.match(detail,/\.sticky\{[^}]*max-height:min\(60vh,430px\);overflow:auto;/)
+  assert.match(page,/if\(!props\.campaignWritable\|\|!activeAcceptIntent\.value\)return/)
 })
