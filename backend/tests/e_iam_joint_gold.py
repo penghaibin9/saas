@@ -22,19 +22,46 @@ def _assert_code(exc_info, code: str) -> None:
     assert getattr(exc_info.value, "code", None) == code, repr(exc_info.value)
 
 
-def test_school_without_internship_entitlement_is_denied(monkeypatch):
-    """School-side staff authorization must stop before domain permission when module is absent."""
-    snapshot = {
-        "traceId": "joint-gold",
-        "tenantId": 991001,
-        "entitledFeatures": {},
-        "schoolGate": {},
-        "tenantStatus": "ACTIVE",
-        "tenantStateError": "",
-    }
-    monkeypatch.setattr(module_access_service, "_load_request_snapshot", lambda _tenant_id: snapshot)
+def test_school_without_internship_entitlement_is_denied_in_real_mysql(db_mode):
+    """A real tenant with internship explicitly unentitled must be rejected by the canonical gate."""
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+    from app.services import platform_service as platform
+
+    tenant_id = 6_100_000_000 + (uuid4().int % 500_000_000)
+    db = get_sessionmaker()()
+    try:
+        db.add(
+            Tenant(
+                id=tenant_id,
+                tenant_code=f"e-iam-no-intern-{tenant_id}",
+                school_name=f"E×IAM 未购实习学校 {tenant_id}",
+                status="ACTIVE",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    platform.put_config_json(
+        tenant_id,
+        "TENANT_META",
+        "-",
+        {
+            "status": "active",
+            "packageCode": "professional",
+            "expireAt": (datetime.now() + timedelta(days=365)).isoformat(timespec="seconds"),
+        },
+    )
+    platform.put_config_json(tenant_id, "FEATURES", "-", {"internship": False})
+
+    state = module_access_service.module_access_state(tenant_id, "internship")
+    assert state["entitled"] is False
+    assert state["enabled"] is False
+    assert state["allowed"] is False
+    assert state["reasonCode"] == module_access_service.REASON_NOT_ENTITLED
     with pytest.raises(AppException) as exc:
-        module_access_service.assert_module_access(991001, "internship", write=False)
+        module_access_service.assert_module_access(tenant_id, "internship", write=False)
     _assert_code(exc, "NO_PERMISSION")
 
 
