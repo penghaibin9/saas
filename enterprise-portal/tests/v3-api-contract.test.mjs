@@ -19,10 +19,11 @@ test('A02 consumes frozen A01 applicant material and decision routes with campai
   for(const type of ['SKILL_EVIDENCE','CERTIFICATE','PROJECT','PRACTICE','AWARD','PORTFOLIO'])assert.match(api,new RegExp(type))
 })
 
-test('unfrozen enterprise facades remain behind the compatibility root without inventing A01 routes',()=>{
-  for(const route of ['/campaigns','/applications/${id}/resume-pdf','/evaluation-tasks','/evaluation-tasks/${id}/submit']) assert.match(api,new RegExp(route.replace(/[${}()]/g,'\\$&')))
-  assert.doesNotMatch(api,/campaigns\/history/)
-  assert.doesNotMatch(api,/\/evaluations/)
+test('unfrozen enterprise facades fail closed locally and never call an invented compatibility root',()=>{
+  assert.match(api,/ENTERPRISE_FACADE_UNFROZEN/)
+  assert.match(api,/function unavailableFacade/)
+  assert.doesNotMatch(api,/\/enterprise\/internship/)
+  for(const facade of ['Campaign list','Company detail','Position list','Application list','Application contact reveal','InternshipRecord enterprise projection','Enterprise evaluation task list'])assert.match(api,new RegExp(facade))
 })
 
 test('canonical nested snapshot renders all public profile item families without exposing raw school identifiers',()=>{
