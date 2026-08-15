@@ -232,7 +232,7 @@ jobs:
           assert role['canonicalRoleAssignment'] is True
           assert role['beforeReasonCode'] == 'PERMISSION_DENIED'
           assert role['reviewRuntimeUnchanged'] is True
-          assert role['activationReasonCode'] == 'DOMAIN_GUARD_NOT_EVALUATED'
+          assert role['activationReasonCode'] == 'RESOURCE_CONTEXT_REQUIRED'
           assert role['activationRuntimeMaterialized'] is True
           assert role['activationRevisionDelta'] == 1
           assert role['rollbackReasonCode'] == 'PERMISSION_DENIED'
@@ -241,7 +241,7 @@ jobs:
 
           assert access['realDemoSchoolLogin'] is True
           assert access['realUnentitledSchoolLogin'] is True
-          assert access['demoSchoolAdminIamReason'] == 'DOMAIN_GUARD_NOT_EVALUATED'
+          assert access['demoSchoolAdminIamReason'] == 'RESOURCE_CONTEXT_REQUIRED'
           assert access['ordinaryTeacherReason'] == 'PERMISSION_DENIED'
           assert access['enterprisePermissionReason'] == 'PERMISSION_NOT_SCHOOL_ASSIGNABLE'
           assert access['platformPermissionReason'] == 'PERMISSION_NOT_SCHOOL_ASSIGNABLE'
