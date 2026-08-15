@@ -15,8 +15,8 @@ async function installApi(page){
     if(path.endsWith('/dashboard')){state.dashboard+=1;return route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({code:500001,message:'must not reach dashboard'})})}
     if(path.endsWith('/positions')){state.positions+=1;return route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({code:500001,message:'must not reach positions'})})}
     if(path.endsWith('/applications')){state.applications+=1;return route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({code:500001,message:'must not reach applications'})})}
-    if(path.endsWith('/internship-students')){state.students+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',internshipId:'900',name:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'ONBOARD',statusLabel:'在岗',startDate:'2026-07-01',endDate:'2026-12-31',evaluationTaskId:'900',evaluationStatus:'PENDING'}],total:1,page:1,pageSize:50,hasNext:false}))})}
-    if(path.endsWith('/evaluation-tasks')){state.evaluations+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',taskId:'900',internshipId:'900',studentName:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'PENDING',statusLabel:'待评价',deadline:'2026-12-31'}],total:1,page:1,pageSize:50,hasNext:false}))})}
+    if(path.endsWith('/internship-students')){state.students+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',internshipId:'900',name:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'ONBOARD',statusLabel:'在岗',startDate:'2026-07-01',endDate:'2026-12-31',evaluationTaskId:'900',evaluationStatus:'PENDING'},{id:'901',internshipId:'901',name:'李四',positionName:'智能制造产线运维实习生',mentorName:'王导师',status:'ONBOARD',statusLabel:'在岗',startDate:'2026-07-08',endDate:'2026-12-31',evaluationTaskId:'901',evaluationStatus:'COMPLETED'}],total:2,page:1,pageSize:50,hasNext:false}))})}
+    if(path.endsWith('/evaluation-tasks')){state.evaluations+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',taskId:'900',internshipId:'900',studentName:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'PENDING',statusLabel:'待评价',deadline:'2026-12-31'},{id:'901',taskId:'901',internshipId:'901',studentName:'李四',positionName:'智能制造产线运维实习生',mentorName:'王导师',status:'COMPLETED',statusLabel:'已完成',deadline:'2026-12-31'}],total:2,page:1,pageSize:50,hasNext:false}))})}
     return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({code:404001,message:`unhandled ${path}`})})
   })
   return state
@@ -56,9 +56,13 @@ test('expired recruitment falls back to active internship collaboration without 
   await navigateSpa(page,'/students')
   await expect(page.getByRole('heading',{name:'实习学生'})).toBeVisible()
   await expect(page.getByText('张三')).toBeVisible()
+  await page.screenshot({path:'test-results/a02-internship-students.png',fullPage:true})
+
   await navigateSpa(page,'/evaluations')
   await expect(page.getByRole('heading',{name:'评价任务'})).toBeVisible()
   await expect(page.getByText('张三 · 机械装配技术实习生')).toBeVisible()
+  await page.screenshot({path:'test-results/a02-evaluation-tasks.png',fullPage:true})
+
   expect(state.students).toBe(1)
   expect(state.evaluations).toBe(1)
   expect(state.dashboard).toBe(0)
