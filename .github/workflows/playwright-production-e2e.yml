@@ -105,6 +105,10 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
 
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
       - name: Seed minimal isolated E2E tenants
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
