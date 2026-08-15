@@ -2,13 +2,20 @@
 
 校级教务保留既有全校实时聚合；学院、课程、班级等范围不复用全校统计。
 本模块显式代理旧 Service，不再通过导入副作用替换其函数对象。
+
+A-W1：公开 ``/terms/current`` 先消费 SYS-12 CalendarResolver 的 ACTIVE 学期；尚未
+纳入治理的历史学校暂走严格 legacy ``AaTerm.is_current`` 兼容，但多 current 必须
+fail-closed，禁止 ``first()`` 随机挑选。
 """
 from __future__ import annotations
 
 import importlib
 from datetime import datetime
 
+from sqlalchemy import select
+
 from app.core.affairs_security import build_affairs_context
+from app.core.exceptions import AppException
 
 _legacy = importlib.import_module(
     ".academic_affairs_service",
@@ -18,6 +25,47 @@ _legacy = importlib.import_module(
 
 def __getattr__(name):
     return getattr(_legacy, name)
+
+
+def current_term(user) -> dict:
+    """A-C1 public current-term resolver: governance ACTIVE first, strict legacy fallback."""
+    from app.models import AaTerm
+    from app.services import academic_calendar_service as calendar
+
+    tenant_id = int(_legacy._tid())
+    resolved = calendar.resolve_current(module_code="ACADEMIC_AFFAIRS", tenant_id=tenant_id)
+    with _legacy.session() as db:
+        if resolved.get("hasCurrent"):
+            term_id = int(resolved["termId"])
+            term = db.get(AaTerm, term_id)
+            if not term or term.is_deleted or int(term.tenant_id) != tenant_id:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "全校当前学期治理记录未命中有效教务学期，禁止猜测当前学期",
+                    details={"termId": str(term_id), "authoritySource": "CALENDAR_GOVERNANCE"},
+                    http_status=409,
+                )
+            row = _legacy._term_row(term)
+            row["isCurrent"] = True
+            return row
+
+        rows = db.scalars(
+            select(AaTerm).where(
+                AaTerm.tenant_id == tenant_id,
+                AaTerm.is_current.is_(True),
+                AaTerm.is_deleted.is_(False),
+            )
+        ).all()
+        if len(rows) > 1:
+            raise AppException(
+                "DATA_CONFLICT",
+                "学校存在多个当前学期，且尚未完成全校学期治理切换，禁止随机选择",
+                details={"termIds": [str(term.id) for term in rows]},
+                http_status=409,
+            )
+        if not rows:
+            return {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"}
+        return _legacy._term_row(rows[0])
 
 
 def dashboard(user) -> dict:
