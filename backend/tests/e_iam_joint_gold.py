@@ -380,7 +380,7 @@ def test_mentor_cannot_access_non_owned_student_in_real_mysql(db_mode):
         assert owned["internshipId"] == str(owned_record_id)
         with pytest.raises(AppException) as exc:
             collab_svc.get_student_in_tx(db, context=context, internship_id=other_record_id)
-        _assert_code(exc, "NOT_FOUND")
+        _assert_code(exc, "DATA_NOT_FOUND")
     finally:
         db.close()
 
