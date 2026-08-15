@@ -12,6 +12,7 @@ on:
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/sandbox_school_master_seed.py'
       - 'backend/app/services/sandbox_school_role_reconcile.py'
+      - 'backend/app/services/sandbox_school_mentor_workload.py'
       - 'backend/scripts/check_control_plane_b8_topology.py'
       - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
       - 'backend/scripts/reset_sandbox_school.py'
@@ -28,6 +29,7 @@ on:
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/sandbox_school_master_seed.py'
       - 'backend/app/services/sandbox_school_role_reconcile.py'
+      - 'backend/app/services/sandbox_school_mentor_workload.py'
       - 'backend/scripts/check_control_plane_b8_topology.py'
       - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
       - 'backend/scripts/reset_sandbox_school.py'
@@ -165,15 +167,28 @@ jobs:
 
           expected_sha = '${{ github.event.pull_request.head.sha || github.sha }}'
           data = json.loads(Path('artifacts/control-plane/b8-20k-topology.json').read_text(encoding='utf-8'))
+          assert data['schemaVersion'] == 2
           assert data['headSha'] == expected_sha
           assert data['card'] == 'CTRL-B8-02'
           assert data['master']['students'] == 20000
           assert data['master']['activeStudentLinks'] == 20000
           assert data['master']['studentAccounts'] == 20000
           assert data['master']['backgroundStaffAccounts'] == 1280
-          assert data['roles']['requiredRoles'] >= 24
+          assert data['roles']['requiredRoles'] == 24
           assert data['roles']['secondaryRoleBindings'] == 501
-          assert sum(data['roles']['orgScopes'].values()) == 368
+          assert data['roles']['nonMentorOrgScopeCount'] == 176
+          assert data['roles']['mentorAdvisorScopes']['INTERN_MENTOR'] == 224
+          assert data['roles']['mentorAdvisorScopes']['GD_MENTOR'] == 384
+          assert data['roles']['mentorAdvisorScopeCount'] == 608
+          assert data['roles']['finalScopedRoleScopeCount'] == 784
+          assert data['mentorWorkload']['internshipMentors'] == 224
+          assert data['mentorWorkload']['internshipAdvisorScopes'] == 224
+          assert data['mentorWorkload']['graduationMentors'] == 384
+          assert data['mentorWorkload']['graduationAdvisorScopes'] == 384
+          assert data['mentorWorkload']['secondaryRoleMismatches'] == {}
+          assert data['mentorWorkload']['nonMentorScopeMismatches'] == {}
+          assert data['mentorWorkload']['passed'] is True
+          assert data['activeTeacherStudentScopeTotal'] >= data['roles']['finalScopedRoleScopeCount']
           assert data['neighborStudents'] == 20
           assert data['tenantPermissionUniverseCount'] > 400
           assert data['schoolAdminExplicitPermissionCount'] == data['tenantPermissionUniverseCount']
