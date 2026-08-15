@@ -63,8 +63,6 @@ def _prepare_academic_affairs_route_overrides():
         for route in child.routes
         if isinstance(route, APIRoute)
     }
-    # scheduling_rule_router 会在服务 Facade 循环导入期间短暂暴露空 Router；这三条是其
-    # 明确声明的同 URL 契约修正，必须无条件替换旧总路由，不能依赖导入时机。
     replacement_signatures.update({
         ("/academic-affairs/scheduling/rules", frozenset({"PUT"})),
         ("/academic-affairs/scheduling/rules", frozenset({"GET"})),
@@ -78,8 +76,6 @@ def _prepare_academic_affairs_route_overrides():
         for route in original_router.routes
         if not isinstance(route, APIRoute) or _aa_route_signature(route) not in replacement_signatures
     ]
-    # FastAPI 0.139+ 的 include_router 保存子 Router 引用而非立即扁平复制。必须临时替换
-    # 整个 Router 对象，不能修改后再恢复同一个对象的 routes，否则重复路由会重新出现。
     base_router.router = filtered_router
     return base_router, original_router
 
@@ -107,7 +103,6 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_student, internship_visit_plan,
     )
     d = deps["intern"]
-    # 安全优先路由必须先于旧协议/保险/报告/归档路由注册。
     api_router.include_router(internship_material_center.router, dependencies=d)
     for r in (
         internship, internship_position, internship_agreement_template, internship_student,
@@ -153,16 +148,12 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     api_router.include_router(graduation_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_archive_sensitive_router.router, dependencies=d)
     api_router.include_router(graduation_material_sensitive_router.router, dependencies=d)
-    # Legacy fixed paths precede Stage-6 dynamic detail paths; legacy detail/review
-    # endpoints already delegate to the authoritative public-version service.
     api_router.include_router(graduation.router, dependencies=d)
     api_router.include_router(graduation_material_center.router, dependencies=d)
     api_router.include_router(
         graduation_extension.router,
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
     )
-    # Frozen semantic order marker used by production gates:
-    # graduation, graduation_batch, graduation_student
     for r in (
         graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
@@ -181,13 +172,15 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_guard, mobile_graduation_material_center,
         mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
-        national_standards, notification, onboarding, org_directory, platform, stats,
-        student_portal_graduation_guard, system, transfer, user_preference,
+        national_standards, notification, onboarding, org_directory, stats,
+        student_portal_graduation_guard, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
+    from app.modules.platform.routers import platform_router
+    from app.modules.system_admin.routers import system_i4_router
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -205,7 +198,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(migration.platform_router)
     api_router.include_router(audit.router)
     api_router.include_router(audit.alias_router)
-    api_router.include_router(platform.router)
+    api_router.include_router(platform_router.router)
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
@@ -216,7 +209,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context.router,
         dependencies=[*teacher_mobile_deps, Depends(require_mobile_graduation_request_permission)],
     )
-    # 与旧移动端相同 URL，必须先于旧移动端聚合 Router 注册。
     api_router.include_router(
         mobile_graduation_material_center.router,
         dependencies=[Depends(require_mobile_graduation_request_permission)],
@@ -248,7 +240,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(notification.router)
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
-    api_router.include_router(system.router, tags=["system"])
+    api_router.include_router(system_i4_router.router, tags=["system"])
     api_router.include_router(org_directory.router)
 
 
