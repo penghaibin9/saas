@@ -78,3 +78,19 @@ def withdraw_my_volunteers(body: dict = Body(...), user=Depends(get_current_user
 def request_my_volunteer_unlock(body: dict = Body(...), user=Depends(get_current_user)):
     result = action_svc.request_my_unlock(user=user, body=body or {})
     return success(_volunteer_contract(result), message="改志愿申请已提交")
+
+
+@router.get("/context/volunteers/submissions", summary="本人不可变投递版本历史")
+def list_my_submission_history(user=Depends(get_current_user)):
+    return success(action_svc.list_my_submissions(user=user))
+
+
+@router.get("/context/volunteers/submissions/{submission_version}", summary="本人指定不可变投递版本")
+def get_my_submission_version(submission_version: int, user=Depends(get_current_user)):
+    return success(action_svc.get_my_submission(user=user, submission_version=submission_version))
+
+
+@router.post("/context/volunteers/contact-consent/revoke", summary="撤销当前投递联系方式共享授权")
+def revoke_my_contact_consent(body: dict = Body(...), user=Depends(get_current_user)):
+    result = action_svc.revoke_my_contact_consent(user=user, body=body or {})
+    return success(_volunteer_contract(result), message="联系方式共享授权已撤销")

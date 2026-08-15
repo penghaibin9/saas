@@ -378,6 +378,11 @@ def submit_my_saved_volunteers(*, user: dict, body: dict) -> dict:
                 for row in rows
             ]
             expected_apps = {int(row.volunteer_no): int(row.version or 0) for row in all_rows}
+            # A successful new explicit consent replaces only the current grant revocation marker.
+            # Historical consent remains immutable in prior material snapshots. This mutation is in
+            # the same locked transaction as snapshot creation/submission, so any downstream failure
+            # rolls it back together with the submission.
+            group.contact_consent_revoked_at = None
             return volunteer_svc.save_or_submit_in_tx(
                 db,
                 tenant_id=tenant_id,
