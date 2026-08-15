@@ -84,6 +84,13 @@ test('A03-0 submit requires preview hash, explicit contact policy and versions',
   })
   assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, expectedProfileVersion: 8, consentPolicyVersion: 'v1' }), /必须确认/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedProfileVersion: 8, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /志愿组版本缺失/)
+  assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /实习档案版本缺失/)
+  assert.equal(buildVolunteerSubmitPayload({
+    expectedGroupVersion: 0,
+    expectedProfileVersion: 0,
+    consentPolicyVersion: 'v1',
+    confirmMaterialPreviewHash: 'sha256:x'
+  }).expectedProfileVersion, 0)
 })
 
 test('A03-11 student-facing selection fails closed when volunteer authority is unavailable', () => {

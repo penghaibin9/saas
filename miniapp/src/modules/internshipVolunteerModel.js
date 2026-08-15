@@ -21,10 +21,14 @@ function optionalVersion(value) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
 }
 
-function requireGroupVersion(group) {
-  const version = optionalVersion(group?.version)
-  if (version === null) throw new Error('志愿组版本缺失，请刷新后重试')
+function requireVersion(value, label) {
+  const version = optionalVersion(value)
+  if (version === null) throw new Error(`${label}缺失，请刷新后重试`)
   return version
+}
+
+function requireGroupVersion(group) {
+  return requireVersion(group?.version, '志愿组版本')
 }
 
 export function normalizeMobilePositionDetail(raw = {}) {
@@ -159,7 +163,7 @@ export function normalizeMobileMaterialPreview(raw = {}) {
   return {
     previewHash: String(raw.previewHash || raw.materialPreviewHash || ''),
     consentPolicyVersion: String(raw.consentPolicyVersion || raw.policyVersion || ''),
-    profileVersion: Number(raw.profileVersion || 0),
+    profileVersion: optionalVersion(raw.profileVersion),
     maskedContact: String(raw.maskedContact || raw.contactPreview || '')
   }
 }
@@ -169,7 +173,7 @@ export function buildMobileVolunteerSubmitRequest(group, preview, contactSharing
   if (!preview.previewHash || !preview.consentPolicyVersion) throw new Error('请先确认企业视角投递材料')
   return {
     expectedGroupVersion: requireGroupVersion(group),
-    expectedProfileVersion: Number(preview.profileVersion || 0),
+    expectedProfileVersion: requireVersion(preview.profileVersion, '实习档案版本'),
     consentPolicyVersion: preview.consentPolicyVersion,
     contactSharingMode: mode,
     confirmMaterialPreviewHash: preview.previewHash

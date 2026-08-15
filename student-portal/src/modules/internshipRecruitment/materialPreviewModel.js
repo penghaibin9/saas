@@ -14,6 +14,12 @@ function list(raw, ...keys) {
   return []
 }
 
+function optionalVersion(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
 function normalizeField(item, index) {
   if (typeof item === 'string') return { key: `field-${index}`, label: item, value: '' }
   return {
@@ -31,8 +37,8 @@ export function normalizeMaterialPreview(raw = {}) {
   return {
     previewHash: String(raw.previewHash || raw.materialPreviewHash || ''),
     consentPolicyVersion: String(raw.consentPolicyVersion || raw.policyVersion || ''),
-    profileVersion: Number(raw.profileVersion || 0),
-    groupVersion: Number(raw.groupVersion || raw.volunteerGroupVersion || 0),
+    profileVersion: optionalVersion(raw.profileVersion),
+    groupVersion: optionalVersion(raw.groupVersion ?? raw.volunteerGroupVersion),
     sharedFields,
     schoolFields,
     studentFields,

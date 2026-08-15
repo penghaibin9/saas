@@ -77,6 +77,15 @@ test('A03-10 mobile submit uses one atomic snapshot-confirmed request and safe c
     confirmMaterialPreviewHash:'sha256:abc'
   })
   assert.throws(() => buildMobileVolunteerSubmitRequest({ ...group, version: null }, preview), /志愿组版本缺失/)
+  const missingProfileVersion = normalizeMobileMaterialPreview({
+    previewHash:'sha256:abc', consentPolicyVersion:'INTERN_APPLICATION_PRIVACY_2026_08'
+  })
+  assert.equal(missingProfileVersion.profileVersion, null)
+  assert.throws(() => buildMobileVolunteerSubmitRequest(group, missingProfileVersion), /实习档案版本缺失/)
+  const explicitZero = normalizeMobileMaterialPreview({
+    previewHash:'sha256:abc', consentPolicyVersion:'INTERN_APPLICATION_PRIVACY_2026_08', profileVersion:0
+  })
+  assert.equal(buildMobileVolunteerSubmitRequest(group, explicitZero).expectedProfileVersion, 0)
   assert.match(pageSource, /internshipSelectionApi\.submitVolunteers\(payload\)/)
 })
 

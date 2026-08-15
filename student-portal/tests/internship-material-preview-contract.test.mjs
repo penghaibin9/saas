@@ -26,9 +26,18 @@ test('A03-6 enterprise material preview only keeps server shared fields and poli
     volunteers: [{ companyName: '企业B' }]
   })
   assert.equal(preview.previewHash, 'sha256:abc')
+  assert.equal(preview.profileVersion, 8)
+  assert.equal(preview.groupVersion, 12)
   assert.equal(preview.schoolFields[0].value, '数控技术')
   assert.equal(preview.maskedContact, '138****0000')
   assert.equal(Object.hasOwn(preview, 'volunteers'), false)
+})
+
+test('A03 production seal distinguishes explicit v0 from missing preview concurrency evidence', () => {
+  assert.equal(normalizeMaterialPreview({ profileVersion: 0, groupVersion: 0 }).profileVersion, 0)
+  assert.equal(normalizeMaterialPreview({ profileVersion: 0, groupVersion: 0 }).groupVersion, 0)
+  assert.equal(normalizeMaterialPreview({}).profileVersion, null)
+  assert.equal(normalizeMaterialPreview({}).groupVersion, null)
 })
 
 test('A03-6 PDF preview is server-derived and explicitly excludes other volunteers', () => {
