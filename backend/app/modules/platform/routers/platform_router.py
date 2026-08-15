@@ -34,7 +34,7 @@ def platform_context(user=Depends(require_platform_principal)):
         "roleCode": user.get("currentRoleCode") or user.get("userType"),
         "duties": sorted(pam.effective_platform_duties(user)),
         "temporaryElevations": elevations,
-        "supportScopeSummary": [{"tenantId": item.get("tenantId"), "scopes": item.get("scopes"), "expiresAt": item.get("expiresAt")} for item in supports],
+        "supportScopeSummary": [{"tenantId": item.get("tenantId"), "ticketId": item.get("ticketId"), "scopes": item.get("scopes"), "expiresAt": item.get("expiresAt")} for item in supports],
         "recentAuthState": {"recent": state["recent"], "ageSeconds": state["ageSeconds"], "maxAgeSeconds": state["maxAgeSeconds"]},
         "mfaAssurance": {"satisfied": state["mfa"], "amr": state["amr"], "acr": state["acr"], "source": state["source"]},
     })
@@ -58,7 +58,7 @@ def elevation_sessions(user=Depends(require_platform_principal)):
     return success({"items": _pam().list_records(_pam().ELEVATION)})
 
 
-@_routes.post("/elevation-sessions", summary="创建自动到期的临时提升")
+@_routes.post("/elevation-sessions", summary="创建 MFA step-up 且自动到期的临时提升")
 def elevation_session_create(body: dict = Body(...), user=Depends(require_platform_principal)):
     _cap(user, "access.manage")
     return success(_pam().create_elevation(body, actor=user))
@@ -83,7 +83,7 @@ def support_sessions(tenantId: int | None = Query(default=None), user=Depends(re
     return success({"items": rows, "visibility": "REVIEW_ALL" if review_all else "OWN"})
 
 
-@_routes.post("/support-sessions", summary="创建绑定真实 Incident 的受控协助")
+@_routes.post("/support-sessions", summary="创建绑定真实 SupportTicket 的受控协助")
 def support_session_create(body: dict = Body(...), user=Depends(require_platform_principal)):
     _cap(user, "support.request")
     return success(_pam().create_support_session(body, actor=user))
