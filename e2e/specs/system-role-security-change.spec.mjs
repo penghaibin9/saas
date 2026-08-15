@@ -50,7 +50,7 @@ function writeEvidence(payload) {
 }
 
 test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermission', () => {
-  test('draft/review do not change runtime; activation materializes; rollback removes it', async ({ page }) => {
+  test('draft/review do not change runtime; activation materializes; rollback removes it', async ({ page }, testInfo) => {
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login({
       tenant: FIXTURE.iamTenantCode,
@@ -78,7 +78,8 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     expect(target, JSON.stringify(users)).toBeTruthy()
     expect(String(target.id)).toBe(String(FIXTURE.iamTargetUserId))
 
-    const suffix = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/\D/g, '').slice(-12)
+    const runId = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/\D/g, '').slice(-10)
+    const suffix = `${runId}_${testInfo.retry}`
     const roleCode = `B8_IAM_E2E_${suffix}`
     const cloned = await browserApi(page, token, 'POST', '/system/custom-roles/clone', {
       templateCode: 'SCHOOL_ADMIN',
@@ -148,8 +149,8 @@ test.describe.serial('School IAM · Custom Role → SecurityChange → RolePermi
     const after = await browserApi(page, token, 'GET', explainPath(target.id))
     expect(after.iamAllowed).toBe(true)
     expect(after.allowed).toBe(false)
-    expect(after.finalDecision).toBe('NOT_EVALUATED')
-    expect(after.reasonCode).toBe('DOMAIN_GUARD_NOT_EVALUATED')
+    expect(after.finalDecision).toBe('DENY')
+    expect(after.reasonCode).toBe('RESOURCE_CONTEXT_REQUIRED')
     const revActivated = Number((await browserApi(page, token, 'GET', '/system/security-revision')).currentRevision || 0)
     expect(revActivated).toBe(initialRevision + 1)
 

@@ -12,8 +12,8 @@
   ],
   "accessExplain": {
     "serverFacts": ["subject status","active roles","RolePermission/runtime patterns","module entitlement","dataScope projection"],
-    "eDomainGuard": "consume when E-A01 exposes canonical explain/guard; never duplicate rules",
-    "iamPassWithoutDomainGuard": "DOMAIN_GUARD_NOT_EVALUATED, finalAllowed=false"
+    "eDomainGuard": "compose canonical data-scope relation + scope-policy guard; never duplicate E business truth",
+    "iamPassWithoutDomainGuard": "RESOURCE_CONTEXT_REQUIRED, finalDecision=DENY, finalAllowed=false"
   },
   "enterpriseAdministration": "school administrator cannot grant enterprise.internship.*; enterprise access remains EnterpriseMember + AccessGrant authority"
 }

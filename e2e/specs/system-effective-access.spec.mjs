@@ -76,8 +76,8 @@ test('School IAM EffectiveAccess keeps module, permission, tenant and enterprise
     const demoAdmin = await browserApi(demoPage, demoToken, 'GET', explainPath(FIXTURE.demoAdminUserId))
     expect(demoAdmin.iamAllowed).toBe(true)
     expect(demoAdmin.allowed).toBe(false)
-    expect(demoAdmin.reasonCode).toBe('DOMAIN_GUARD_NOT_EVALUATED')
-    expect(demoAdmin.finalDecision).toBe('NOT_EVALUATED')
+    expect(demoAdmin.reasonCode).toBe('RESOURCE_CONTEXT_REQUIRED')
+    expect(demoAdmin.finalDecision).toBe('DENY')
 
     const ordinaryTeacher = await browserApi(demoPage, demoToken, 'GET', explainPath(FIXTURE.targetUserId))
     expect(ordinaryTeacher.iamAllowed).toBe(false)
