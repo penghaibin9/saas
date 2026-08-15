@@ -48,9 +48,10 @@ async function loginAcademicAdmin(page) {
   return { login, token: await login.token() }
 }
 
-async function captureViewport(page, testInfo, name, width, height) {
+async function captureViewport(page, testInfo, name, width, height, focusLocator = null) {
   await page.setViewportSize({ width, height })
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
+  if (focusLocator) await focusLocator.scrollIntoViewIfNeeded()
   await page.evaluate(async () => {
     if (document.fonts?.ready) await document.fonts.ready
   })
@@ -214,9 +215,9 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(unknownCard).toContainText('GRADUATION_TERM_DATES_UNKNOWN')
     await expect(page.getByText(/UNKNOWN 不会被当成 PASS/)).toBeVisible()
 
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1280, 720)
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1440, 900)
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1920, 1080)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1280, 720, unknownCard)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1440, 900, unknownCard)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1920, 1080, unknownCard)
 
     await unknownCard.getByRole('button', { name: '去处理' }).click()
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/graduation\/audit-console(?:\?|$)/)
@@ -229,8 +230,8 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(naCard).toContainText('GRADUATION_NOT_APPLICABLE')
     await expect(naCard).not.toContainText('待治理')
 
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1280, 720)
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1440, 900)
-    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1920, 1080)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1280, 720, naCard)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1440, 900, naCard)
+    await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1920, 1080, naCard)
   })
 })
