@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "card": "CTRL-B8-01",
+  "shadowScope": "TENANT_SYSTEM_ROLES_ONLY",
+  "resolvers": [
+    "OLD_BUILTIN_ROLE_PERMISSIONS",
+    "NEW_PUBLISHED_TENANT_ROLE_TEMPLATE",
+    "CUSTOM_ROLE_PERMISSION",
+    "PLATFORM_WORKFORCE"
+  ],
+  "permissionUniverse": {
+    "source": "permission-catalog.json",
+    "lifecycle": "ACTIVE",
+    "plane": "TENANT",
+    "platformPermissionsForbidden": true
+  },
+  "classification": [
+    "ALLOW_ALLOW",
+    "DENY_DENY",
+    "ALLOW_DENY",
+    "DENY_ALLOW"
+  ],
+  "mismatchPolicy": "ZERO_UNEXPLAINED_DRIFT",
+  "customTemplateFallback": false,
+  "platformMayEnterSchoolTemplate": false,
+  "runtimeWildcardRetiredByThisCard": false,
+  "nextGate": "CTRL-B8-02_PR104_STYLE_20K_ROLE_TOPOLOGY"
+}

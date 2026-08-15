@@ -1,0 +1,124 @@
+name: Control Plane B8 SYSTEM Shadow
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/modules/platform/services/platform_product_iam_service.py'
+      - 'backend/app/modules/system_admin/policies/role_template_plane.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/scripts/check_control_plane_b8_shadow.py'
+      - 'backend/tests/test_control_plane_b8_shadow.py'
+      - 'shared/contracts/control-plane/b8-system-shadow.json'
+      - '.github/workflows/control-plane-b8-shadow.yml'
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/core/permission_catalog.py'
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/models/permission_governance.py'
+      - 'backend/app/modules/platform/services/platform_product_iam_service.py'
+      - 'backend/app/modules/system_admin/policies/role_template_plane.py'
+      - 'backend/app/services/system_role_shadow_service.py'
+      - 'backend/scripts/check_control_plane_b8_shadow.py'
+      - 'backend/tests/test_control_plane_b8_shadow.py'
+      - 'shared/contracts/control-plane/b8-system-shadow.json'
+      - '.github/workflows/control-plane-b8-shadow.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-b8-shadow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-b8-shadow:
+    name: Exact-head MySQL B8 SYSTEM shadow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      APP_ENV: test
+      SECRET_KEY: control-plane-b8-shadow-production-gate-secret
+      B8_EVIDENCE_PATH: ../artifacts/control-plane/b8-shadow.json
+      B8_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact branch HEAD assertion
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Verify schema and source
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          python -m py_compile app/services/system_role_shadow_service.py
+          python -m py_compile app/modules/platform/services/platform_product_iam_service.py
+          python -m py_compile scripts/check_control_plane_b8_shadow.py
+      - name: Run B8 resolver contracts
+        working-directory: backend
+        run: pytest -q tests/test_control_plane_b8_shadow.py --disable-warnings
+      - name: Run zero-unexplained-drift gate
+        working-directory: backend
+        run: PYTHONPATH=. python scripts/check_control_plane_b8_shadow.py
+      - name: Validate B8 evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('artifacts/control-plane/b8-shadow.json').read_text(encoding='utf-8'))
+          assert data['headSha'] == '${{ github.event.pull_request.head.sha || github.sha }}'
+          assert data['shadow']['shadowScope'] == 'TENANT_SYSTEM_ROLES_ONLY'
+          assert data['shadow']['unexplainedDriftCount'] == 0
+          assert data['shadow']['planeViolationCount'] == 0
+          assert data['shadow']['zeroUnexplainedDrift'] is True
+          assert data['shadow']['customFallsBackToTemplate'] is False
+          assert data['shadow']['platformEntersSchoolTemplate'] is False
+          assert data['goldCandidate'] is True
+          print(json.dumps(data, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload sanitized B8 shadow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-b8-shadow-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/control-plane/b8-shadow.json
+          if-no-files-found: warn
+          retention-days: 14

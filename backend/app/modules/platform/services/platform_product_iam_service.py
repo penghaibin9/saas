@@ -21,7 +21,13 @@ from app.core.permission_catalog import load_permission_catalog
 from app.core.platform_assurance import assert_recent_platform_auth
 from app.db.session import get_sessionmaker
 from app.models import PlatformConfig
-from app.models.permission_governance import RoleTemplate
+from app.models.permission_governance import (
+    EFFECT_ALLOW,
+    TEMPLATE_PLANE_TENANT,
+    TEMPLATE_PUBLISHED,
+    RoleTemplate,
+    RoleTemplatePermission,
+)
 
 ROOT = Path(__file__).resolve().parents[5]
 MANIFEST_PATH = ROOT / "shared/contracts/module-manifest.json"
@@ -38,23 +44,40 @@ def _module_manifest() -> dict:
 
 
 def _published_templates(db) -> list[dict]:
+    """Read only normalized, published TENANT RoleTemplate truth."""
     rows = list(db.scalars(select(RoleTemplate).where(
         RoleTemplate.tenant_id == 0,
-        RoleTemplate.status.in_(("ACTIVE", "PUBLISHED")),
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.publish_status == TEMPLATE_PUBLISHED,
+        RoleTemplate.status == "ACTIVE",
         RoleTemplate.is_deleted.is_(False),
-    ).order_by(RoleTemplate.template_code, RoleTemplate.template_version.desc())).all())
+    ).order_by(RoleTemplate.template_code, RoleTemplate.template_version.desc(), RoleTemplate.id.desc())).all())
     latest = {}
     for item in rows:
         latest.setdefault(item.template_code, item)
-    return [
-        {
+    result: list[dict] = []
+    for item in latest.values():
+        permissions = sorted(set(db.scalars(select(RoleTemplatePermission.permission_code).where(
+            RoleTemplatePermission.tenant_id == 0,
+            RoleTemplatePermission.role_template_id == int(item.id),
+            RoleTemplatePermission.effect == EFFECT_ALLOW,
+            RoleTemplatePermission.is_deleted.is_(False),
+        )).all()))
+        legacy_items = sorted(set((item.permission_ceiling_json or {}).get("items") or []))
+        if legacy_items and not permissions:
+            raise AppException(
+                "PRODUCT_IAM_TEMPLATE_DRIFT",
+                "已发布 TENANT RoleTemplate 缺少规范化权限关系，拒绝从兼容 JSON 回退",
+                http_status=409,
+                details={"templateCode": item.template_code, "templateVersion": int(item.template_version or 0)},
+            )
+        result.append({
             "templateCode": item.template_code,
             "templateVersion": int(item.template_version or 0),
-            "permissionDigest": (item.permission_ceiling_json or {}).get("permissionDigest")
-                or _hash(sorted(set((item.permission_ceiling_json or {}).get("items") or []))),
-        }
-        for item in latest.values()
-    ]
+            "permissionCount": len(permissions),
+            "permissionDigest": item.permission_digest or _hash(permissions),
+        })
+    return result
 
 
 def source_snapshot() -> dict:
