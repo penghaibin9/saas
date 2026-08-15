@@ -1,0 +1,38 @@
+name: Academic B materialize V2.1 manual once
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - '.github/workflows/academic-b-materialize-manual-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-b-schedule-selection
+          fetch-depth: 0
+      - name: Materialize exact uploaded manual and self-clean helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD='.tmp/academic-b-manual.md.gz.b64'
+          TARGET='docs/06-开发施工与质量验收/施工总册/B_教务Schedule_Selection_当前代码精确施工总册_V2.1_20260816.md'
+          WORKFLOW='.github/workflows/academic-b-materialize-manual-once.yml'
+          mkdir -p "$(dirname "$TARGET")"
+          base64 -d "$PAYLOAD" | gzip -d > "$TARGET"
+          ACTUAL="$(sha256sum "$TARGET" | awk '{print $1}')"
+          EXPECTED='b78af9dbdc1da5067a7cd1fc05e32f1121d5662e9661bc6f46eb4d7dc0d02999'
+          test "$ACTUAL" = "$EXPECTED"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$TARGET"
+          git rm -- "$PAYLOAD" "$WORKFLOW"
+          git commit -m 'docs(academic-b): add V2.1 schedule-selection construction manual'
+          git push origin HEAD:agent/academic-b-schedule-selection
