@@ -5,7 +5,8 @@
 
 A-W1：公开 ``/terms/current`` 先消费 SYS-12 CalendarResolver 的 ACTIVE 学期；尚未
 纳入治理的历史学校暂走严格 legacy ``AaTerm.is_current`` 兼容，但多 current 必须
-fail-closed，禁止 ``first()`` 随机挑选。
+fail-closed，禁止 ``first()`` 随机挑选。返回值同时解释当前 Authority 与允许的切换入口，
+让管理 PC 不再展示一个必定被后端拒绝的旁路按钮。
 """
 from __future__ import annotations
 
@@ -25,6 +26,25 @@ _legacy = importlib.import_module(
 
 def __getattr__(name):
     return getattr(_legacy, name)
+
+
+def _with_current_authority(row: dict, *, governance: bool) -> dict:
+    data = dict(row or {})
+    if governance:
+        data.update({
+            "currentAuthority": "CALENDAR_GOVERNANCE",
+            "canDirectSwitch": False,
+            "switchRoute": "/admin/system/academic-calendar",
+            "switchHint": "当前学校已启用全校学期治理；教务侧只读当前结论，切换请到“学年学期与业务日历”统一执行。",
+        })
+    else:
+        data.update({
+            "currentAuthority": "AA_TERM_COMPAT",
+            "canDirectSwitch": True,
+            "switchRoute": None,
+            "switchHint": "当前学校尚未启用全校学期治理，暂保留教务当前学期兼容切换。",
+        })
+    return data
 
 
 def current_term(user) -> dict:
@@ -47,7 +67,7 @@ def current_term(user) -> dict:
                 )
             row = _legacy._term_row(term)
             row["isCurrent"] = True
-            return row
+            return _with_current_authority(row, governance=True)
 
         rows = db.scalars(
             select(AaTerm).where(
@@ -64,8 +84,11 @@ def current_term(user) -> dict:
                 http_status=409,
             )
         if not rows:
-            return {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"}
-        return _legacy._term_row(rows[0])
+            return _with_current_authority(
+                {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"},
+                governance=False,
+            )
+        return _with_current_authority(_legacy._term_row(rows[0]), governance=False)
 
 
 def dashboard(user) -> dict:
