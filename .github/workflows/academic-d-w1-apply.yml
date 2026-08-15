@@ -1,0 +1,80 @@
+name: Academic D W1 four-state apply
+
+on:
+  push:
+    branches:
+      - agent/academic-d-graduation-delivery
+    paths:
+      - '.github/workflows/academic-d-w1-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      PYTHONUNBUFFERED: '1'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-d-graduation-delivery
+          fetch-depth: 0
+      - name: Apply deterministic W1 patch
+        run: python .github/scripts/academic_d_w1_apply.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: W0 + W1 targeted backend contracts
+        working-directory: backend
+        run: |
+          pytest \
+            tests/test_graduation_d_w0_contract.py \
+            tests/test_stage_c3_history_contract.py::test_shared_graduation_evaluator_keeps_unknown_fail_closed \
+            tests/test_aa_archive_d_w1_contract.py \
+            tests/test_aa_archive_semantic_gates.py \
+            -q -p no:warnings
+      - name: W0 + W1 frontend contracts
+        run: |
+          node --test \
+            frontend/tests/stage-d-graduation-audit-console-contract.test.mjs \
+            frontend/tests/stage-d-archive-precheck-contract.test.mjs
+      - name: Diff integrity
+        run: git diff --check
+      - name: Commit W1 implementation and self-clean one-shot files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py \
+            backend/tests/test_aa_archive_semantic_gates.py \
+            frontend/src/modules/academicAffairs/views/ArchivePrecheckView.vue \
+            frontend/tests/stage-d-archive-precheck-contract.test.mjs
+          git rm .github/scripts/academic_d_w1_apply.py .github/workflows/academic-d-w1-apply.yml
+          git commit -m 'fix(academic-d): enforce archive four-state fail-closed gate'
+          git push origin HEAD:agent/academic-d-graduation-delivery
