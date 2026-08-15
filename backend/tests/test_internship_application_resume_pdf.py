@@ -10,6 +10,7 @@ from app.models.internship_application_material_snapshot import InternshipApplic
 from app.modules.internship.routers import internship_enterprise_portal as portal
 from app.modules.internship.services import internship_application_material_snapshot_service as snapshot_svc
 from app.modules.internship.services import internship_application_resume_pdf_service as pdf_svc
+from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
 
 
 def _snapshot() -> InternshipApplicationMaterialSnapshot:
@@ -77,6 +78,19 @@ def test_enterprise_resume_pdf_authorizes_application_then_locks_exact_snapshot_
     assert "context.campaign_id" in source
     assert "application.student_id" in source
     assert ".with_for_update()" in source
+
+
+def test_enterprise_applicant_snapshot_and_pdf_reads_are_not_enterprise_decision_window_gated():
+    read_sources = (
+        inspect.getsource(decision_svc.list_owned_applications_in_tx),
+        inspect.getsource(decision_svc.material_detail_in_tx),
+        inspect.getsource(pdf_svc.resolve_enterprise_resume_pdf_in_tx),
+    )
+    for source in read_sources:
+        assert "assert_campaign_operation_window" not in source
+        assert '"ENTERPRISE_DECISION"' not in source
+    write_source = inspect.getsource(decision_svc.set_decision_in_tx)
+    assert "_assert_decision_write_window" in write_source
 
 
 def test_generated_pdf_is_private_highly_sensitive_and_bound_to_exact_snapshot():
