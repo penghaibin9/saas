@@ -40,7 +40,7 @@ jobs:
           ACTUAL_LINES="$(awk 'END{print NR}' "$TMP")"
           ACTUAL_SHA="$(sha256sum "$TMP" | awk '{print $1}')"
           EXPECTED_SIZE='333509'
-          EXPECTED_LINES='6170'
+          EXPECTED_LINES='6169'
           EXPECTED_SHA='388b3f78e55bc43ef82c3cd71973d47fc530e674e271d3234b18ee6456d2afe4'
 
           echo "size=$ACTUAL_SIZE lines=$ACTUAL_LINES sha256=$ACTUAL_SHA"
