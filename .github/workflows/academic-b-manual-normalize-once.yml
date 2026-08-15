@@ -1,0 +1,96 @@
+name: Academic B normalize V2.1 manual once
+
+on:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths:
+      - '.github/workflows/academic-b-manual-normalize-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-b-schedule-selection
+          fetch-depth: 0
+      - name: Build normalized complete manual from readable source parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          src = Path('.tmp/academic-b-manual.text-parts')
+          parts = [p for p in sorted(src.iterdir()) if p.is_file()]
+          assert len(parts) == 9, [p.name for p in parts]
+
+          def norm(line: str) -> str:
+              return line.rstrip().replace('\ufeff', '')
+
+          merged = parts[0].read_text(encoding='utf-8').splitlines()
+          overlaps = []
+          for part in parts[1:]:
+              incoming = part.read_text(encoding='utf-8').splitlines()
+              left = [norm(x) for x in merged]
+              right = [norm(x) for x in incoming]
+              best = 0
+              max_k = min(220, len(left), len(right))
+              for k in range(max_k, 2, -1):
+                  if left[-k:] == right[:k]:
+                      best = k
+                      break
+              overlaps.append(best)
+              merged.extend(incoming[best:])
+
+          text = '\n'.join(merged).rstrip() + '\n'
+          required = [
+              '# 教务中心 ABCD（四线）当前代码精确审计最终施工总册 V2.1',
+              '# 0A-B. B线一键开工总控提示词',
+              '## B-P0-04',
+              '## B-P0-07',
+              '## B-W0',
+              '## B-W1',
+              '## B-W2',
+              '## B-W3',
+              '## B-W4',
+              '## B-W5',
+              '## B-W6',
+              'B-C1', 'B-C2', 'B-C3',
+              '最终签字',
+          ]
+          missing = [token for token in required if token not in text]
+          assert not missing, missing
+          assert len(text.encode('utf-8')) > 300_000, len(text.encode('utf-8'))
+
+          target = Path('docs/06-开发施工与质量验收/施工总册/B_教务Schedule_Selection_当前代码精确施工总册_V2.1_20260816.md')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          banner = '<!-- normalized repository copy; authoritative source is the user-provided V2.1 attachment -->\n'
+          target.write_text(banner + text, encoding='utf-8')
+          print('line_overlaps=', overlaps)
+          print('normalized_bytes=', target.stat().st_size)
+          PY
+      - name: Commit manual and remove transport residue
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET='docs/06-开发施工与质量验收/施工总册/B_教务Schedule_Selection_当前代码精确施工总册_V2.1_20260816.md'
+          grep -q 'B-P0-04' "$TARGET"
+          grep -q 'B-W6' "$TARGET"
+          grep -q '最终签字' "$TARGET"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$TARGET"
+          git rm -r --ignore-unmatch -- \
+            .tmp/academic-b-manual.md.gz.b64 \
+            .tmp/academic-b-manual.parts \
+            .tmp/academic-b-manual.text-parts \
+            .github/workflows/academic-b-materialize-manual-once.yml \
+            .github/workflows/academic-b-manual-dedupe-once.yml \
+            .github/workflows/academic-b-manual-normalize-once.yml
+          git commit -m 'docs(academic-b): add normalized V2.1 construction manual'
+          git push origin HEAD:agent/academic-b-schedule-selection
