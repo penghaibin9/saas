@@ -22,8 +22,9 @@ test('A02 consumes frozen A01 applicant material and decision routes with campai
 test('unfrozen enterprise facades fail closed locally and never call an invented compatibility root',()=>{
   assert.match(api,/ENTERPRISE_FACADE_UNFROZEN/)
   assert.match(api,/function unavailableFacade/)
+  assert.match(api,/该企业协同能力尚未由学校端开放/)
   assert.doesNotMatch(api,/\/enterprise\/internship/)
-  for(const facade of ['Campaign list','Company detail','Position list','Application list','Application contact reveal','InternshipRecord enterprise projection','Enterprise evaluation task list'])assert.match(api,new RegExp(facade))
+  for(const facade of ['招聘季列表','企业资料','岗位列表','报名学生列表','联系方式查看','实习学生列表','企业评价任务'])assert.match(api,new RegExp(facade))
 })
 
 test('canonical nested snapshot renders all public profile item families without exposing raw school identifiers',()=>{
