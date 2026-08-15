@@ -1,0 +1,147 @@
+"""Enterprise internship portal auth/context/applicant endpoints.
+
+This router is registered without the staff internship dependency bundle. Protected endpoints
+derive company scope only from signed/revalidated EnterpriseMember context.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+
+from app.core.response import success
+from app.modules.internship.dependencies.enterprise_context import (
+    EnterprisePrincipal,
+    require_enterprise_permission as require_permission,
+    resolve_recruitment_context,
+)
+from app.modules.internship.schemas.internship_recruitment_campaign import (
+    EnterpriseInviteAccept,
+    EnterpriseInviteInspect,
+    EnterpriseLogin,
+    EnterpriseRefresh,
+)
+from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
+from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
+from app.modules.internship.services.internship_assignment_snapshot_authority import (
+    install_assignment_snapshot_authority,
+)
+from app.services import audit_log
+from app.services.db_service import session
+
+# Explicit startup installation: the existing assign_position_in_tx remains the sole capacity/position
+# writer; this additive wrapper only freezes evidence inside the same transaction.
+install_assignment_snapshot_authority()
+
+router = APIRouter(prefix="/internship/enterprise-portal", tags=["岗位实习-企业协同端"])
+
+
+class EnterpriseDecisionBody(BaseModel):
+    status: str
+    reason: str | None = Field(default=None, max_length=1000)
+    interviewAt: str | None = None
+    interviewNote: str | None = Field(default=None, max_length=1000)
+
+
+@router.post("/auth/invite/inspect", openapi_extra={"x-internship-auth": "public"})
+def inspect_invite(body: EnterpriseInviteInspect):
+    return success(auth_svc.inspect_invite(tenant_code=body.tenantCode, token=body.token))
+
+
+@router.post("/auth/invite/accept", openapi_extra={"x-internship-auth": "public"})
+def accept_invite(body: EnterpriseInviteAccept):
+    result = auth_svc.accept_invite(
+        tenant_code=body.tenantCode,
+        token=body.token,
+        phone=body.phone,
+        password=body.password,
+    )
+    audit_log.record(
+        "ENTERPRISE_INVITE_ACCEPT",
+        f"enterprise-member:{result['context']['memberId']}",
+        detail={"companyId": result["context"]["companyId"]},
+        tenant_id=int(result["context"]["tenantId"]),
+    )
+    return success(result, message="企业邀请已接受")
+
+
+@router.post("/auth/login", openapi_extra={"x-internship-auth": "public"})
+def login(body: EnterpriseLogin):
+    result = auth_svc.login(
+        tenant_code=body.tenantCode,
+        login_name=body.loginName,
+        password=body.password,
+        member_id=body.memberId,
+    )
+    audit_log.record(
+        "ENTERPRISE_LOGIN",
+        f"enterprise-member:{result['context']['memberId']}",
+        detail={"companyId": result["context"]["companyId"]},
+        tenant_id=int(result["context"]["tenantId"]),
+    )
+    return success(result)
+
+
+@router.post("/auth/refresh", openapi_extra={"x-internship-auth": "public"})
+def refresh(body: EnterpriseRefresh):
+    return success(auth_svc.refresh(refresh_token=body.refreshToken))
+
+
+@router.get("/context")
+def enterprise_context(
+    campaignId: str = Query(..., description="当前招聘季；服务端据此校验 Grant/参与关系"),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    ctx = resolve_recruitment_context(principal, campaign_id=int(campaignId))
+    return success({
+        "tenantId": str(ctx.tenant_id),
+        "tenantCode": ctx.tenant_code,
+        "memberId": str(ctx.member_id),
+        "memberRole": ctx.member_role,
+        "companyId": str(ctx.company_id),
+        "campaignId": str(ctx.campaign_id),
+        "batchId": str(ctx.batch_id),
+        "grantId": str(ctx.grant_id),
+        "grantType": ctx.grant_type,
+    })
+
+
+@router.get("/applications/{application_id}")
+def application_detail(
+    application_id: int,
+    campaignId: int = Query(...),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.view")),
+):
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    with session() as db:
+        return success(decision_svc.material_detail_in_tx(db, context=ctx, application_id=application_id))
+
+
+@router.post("/applications/{application_id}/decision")
+def application_decision(
+    application_id: int,
+    body: EnterpriseDecisionBody,
+    campaignId: int = Query(...),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.application.review")),
+):
+    from datetime import datetime
+    ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
+    interview_at = datetime.fromisoformat(body.interviewAt) if body.interviewAt else None
+    with session() as db:
+        row = decision_svc.set_decision_in_tx(
+            db,
+            context=ctx,
+            application_id=application_id,
+            status=body.status,
+            reason=body.reason,
+            interview_at=interview_at,
+            interview_note=body.interviewNote,
+        )
+        db.commit()
+        return success({
+            "id": str(row.id),
+            "applicationId": str(row.application_id),
+            "decisionStatus": row.decision_status,
+            "effectStatus": row.effect_status,
+            "validUntil": row.valid_until.isoformat() if row.valid_until else None,
+            "version": int(row.version or 0),
+        })
