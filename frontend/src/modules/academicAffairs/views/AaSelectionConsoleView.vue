@@ -87,6 +87,13 @@
             </div>
           </section>
 
+          <AppInlineAlert
+            v-if="preflight && !preflight.allowed"
+            class="aasel-preflight-alert"
+            type="danger"
+            :description="preflightMessage(preflight)"
+          />
+
           <section class="aasel-metrics" aria-label="批次关键指标">
             <article>
               <span>课程供给</span>
@@ -297,6 +304,7 @@ export default {
       rosterVisible: false, rosterCourse: null, rosterRows: [],
       saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      preflight: null, preflightLoading: false,
       rounds: [], drawResult: null,
       roundVisible: false, roundForm: { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }, roundError: '',
       roundColumns: [
@@ -381,6 +389,21 @@ export default {
       return 'primary'
     },
     nextActionFor(status) { return _NEXT[status] || '查看批次详情' },
+    lifecycleAction(status) { return { DRAFT: 'PUBLISH', PUBLISHED: 'OPEN', OPEN: 'CLOSE', CLOSED: 'LOCK' }[status] || '' },
+    preflightMessage(result) {
+      const blockers = (result && result.blockers) || []
+      if (!blockers.length) return '当前动作预检未通过，请刷新后重试。'
+      return blockers.map((item) => `${item.message}${item.howToResolve ? `；处理：${item.howToResolve}` : ''}`).join('；')
+    },
+    async refreshPreflight() {
+      const action = this.lifecycleAction(this.current && this.current.status)
+      if (!this.current || !action) { this.preflight = null; return null }
+      this.preflightLoading = true
+      const res = await api.batchPreflight(this.current.batchId, action)
+      this.preflightLoading = false
+      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
+      return this.preflight
+    },
     formatDateTime(value, compact = false) {
       if (!value) return ''
       const date = new Date(value)
@@ -428,7 +451,9 @@ export default {
     async select(b) {
       this.current = b
       this.drawResult = null
+      this.preflight = null
       await this.refreshDetail()
+      await this.refreshPreflight()
     },
     async refreshDetail() {
       if (!this.current) return
@@ -485,12 +510,20 @@ export default {
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.load() }
       else this.formError = res.message
     },
-    lifecycle(fn, label) {
+    async lifecycle(fn, label) {
+      const action = { publishBatch: 'PUBLISH', openBatch: 'OPEN', closeBatch: 'CLOSE', lockBatch: 'LOCK' }[fn]
+      if (action) {
+        const checked = await this.refreshPreflight()
+        if (!checked || !checked.allowed) {
+          toast.error(this.preflightMessage(checked))
+          return
+        }
+      }
       this.confirmTitle = label
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
         const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail() }
+        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }
         else toast.error(res.message)
       }
       this.confirmVisible = true
@@ -553,6 +586,7 @@ export default {
 .aasel-batch-next b { color: #44546a; font-size: 10.5px; font-weight: 650; }
 
 .aasel-detail { min-width: 0; display: grid; gap: 14px; }
+.aasel-preflight-alert { margin: 0; }
 .aasel-placeholder { display: grid; justify-items: center; gap: 8px; min-height: 300px; align-content: center; padding: 28px; text-align: center; }
 .aasel-placeholder-icon { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 16px; background: #eef5ff; color: #2468d8; font-weight: 800; }
 .aasel-placeholder strong { color: #172033; font-size: 15px; }

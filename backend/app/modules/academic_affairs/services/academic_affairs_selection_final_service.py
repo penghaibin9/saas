@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_selection_decision_trace as selection_trace
+from . import academic_affairs_selection_preflight_service as batch_preflight_svc
 
 _base = importlib.import_module(
     ".academic_affairs_selection_service",
@@ -73,6 +74,72 @@ def student_courses(user, batch_id=None):
     }]
 
 
+def batch_preflight(user, batch_id, action: str) -> dict:
+    """Admin-visible pure lifecycle preflight; archived-term/config failures become blockers, not writes."""
+    from app.models import AaSelectionBatch
+
+    with _base._core.session() as db:
+        _base._core._ctx(user, db)
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("选课批次不存在")
+        result = batch_preflight_svc.evaluate_batch(db, batch, action)
+        try:
+            _base._guard_batch_writable(db, batch)
+        except AppException as exc:
+            result["blockers"].insert(0, {
+                "code": str(getattr(exc, "code", "") or "SELECTION_TERM_NOT_WRITABLE"),
+                "message": str(getattr(exc, "message", "") or str(exc)),
+                "ownerRole": "ACADEMIC_ADMIN",
+                "howToResolve": "处理学期归档/只读状态后重新预检",
+            })
+            result["allowed"] = False
+            result["allowedActions"] = ["VIEW"]
+        return batch_preflight_svc.public_result(result)
+
+
+def open_batch(user, batch_id) -> dict:
+    from app.models import AaSelectionBatch
+    with _base._core.session() as db:
+        _base._core._require_manage_scope(_base._core._ctx(user, db))
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("选课批次不存在")
+        _base._guard_batch_writable(db, batch)
+        batch_preflight_svc.require_batch_action(db, batch, "OPEN")
+        batch.status = _base._BATCH_OPEN
+        _base._core._audit(db, batch.id, "SELECTION_BATCH_OPEN", "开选；preflight=PASS")
+        db.commit()
+        return _base._core._batch_dto(batch)
+
+
+def close_batch(user, batch_id) -> dict:
+    from app.models import AaSelectionBatch
+    with _base._core.session() as db:
+        _base._core._require_manage_scope(_base._core._ctx(user, db))
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == int(batch_id),
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("选课批次不存在")
+        _base._guard_batch_writable(db, batch)
+        batch_preflight_svc.require_batch_action(db, batch, "CLOSE")
+        batch.status = _base._BATCH_CLOSED
+        _base._core._audit(db, batch.id, "SELECTION_BATCH_CLOSE", "截止选课；preflight=PASS")
+        db.commit()
+        return _base._core._batch_dto(batch)
+
+
 def publish_batch(user, batch_id) -> dict:
     from app.models import AaSelectionBatch, AaSelectionCourse
 
@@ -86,6 +153,7 @@ def publish_batch(user, batch_id) -> dict:
         if not batch:
             raise not_found("选课批次不存在")
         _base._guard_batch_writable(db, batch)
+        batch_preflight_svc.require_batch_action(db, batch, "PUBLISH")
         if batch.status != _base._BATCH_DRAFT:
             raise _base._core._invalid(f"仅 DRAFT 批次可发布，当前 {batch.status}")
 
@@ -457,7 +525,8 @@ def lock_batch(user, batch_id):
         _base._guard_batch_writable(db, batch)
         if batch.status != _base._BATCH_CLOSED:
             raise _base._core._invalid("仅已关闭选课批次可锁定名单")
-        validation = validate_selection_lock(db, batch)
+        preflight = batch_preflight_svc.require_batch_action(db, batch, "LOCK")
+        validation = preflight.get("_rosterValidation") or validate_selection_lock(db, batch)
         if not validation.get("valid"):
             raise AppException(
                 "DATA_CONFLICT",
