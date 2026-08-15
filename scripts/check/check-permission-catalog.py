@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "shared/contracts/permission-catalog.json"
 B8_CONCRETE_PATH = ROOT / "shared/contracts/permission-catalog-b8-concrete.json"
+B8_COMPATIBILITY_PATH = ROOT / "shared/contracts/permission-catalog-b8-compatibility.json"
 PY_ROOTS = [ROOT / "backend/app"]
 TEXT_ROOTS = [ROOT / "frontend", ROOT / "enterprise-portal", ROOT / "student-portal", ROOT / "miniapp"]
 GATE_CALLS = {"require_permission", "require_any_permission", "has_permission", "enforce_permission", "assert_platform_permission", "require_platform_permission"}
@@ -24,20 +25,38 @@ E_REQUIRED = {
 FRONT_RE = re.compile(r"(?:permissionKey|permissionCode)\s*[:=]\s*['\"]([A-Za-z0-9_.*-]+)['\"]")
 
 
+def _compatibility_codes(payload: dict) -> list[str]:
+    codes = [str(code or "").strip() for code in payload.get("entries") or []]
+    if any(not code for code in codes) or len(codes) != len(set(codes)):
+        raise RuntimeError("B8 compatibility catalog contains duplicate/empty permissionCode")
+    forbidden = [
+        code for code in codes
+        if code == "*" or code.startswith("platform.") or code.startswith("enterprise.")
+    ]
+    if forbidden:
+        raise RuntimeError(
+            "B8 compatibility catalog contains forbidden permission plane: "
+            + ",".join(sorted(forbidden)[:20])
+        )
+    return codes
+
+
 def load_catalog():
     payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     extension = json.loads(B8_CONCRETE_PATH.read_text(encoding="utf-8"))
+    compatibility = json.loads(B8_COMPATIBILITY_PATH.read_text(encoding="utf-8"))
     exact = {item["permissionCode"]: item for item in payload.get("entries") or []}
-    for code in extension.get("entries") or []:
-        code = str(code or "").strip()
+    base_concrete = [str(code or "").strip() for code in extension.get("entries") or []]
+    compatibility_codes = _compatibility_codes(compatibility)
+    for code in [*base_concrete, *compatibility_codes]:
         if not code:
             raise RuntimeError("B8 concrete catalog contains empty permissionCode")
         if code in exact:
-            raise RuntimeError(f"B8 concrete catalog duplicates base permissionCode: {code}")
+            raise RuntimeError(f"B8 concrete catalog duplicates permissionCode: {code}")
         exact[code] = {"permissionCode": code, **dict(extension.get("defaults") or {}), "catalogSource": "B8_CONCRETE_CUTOVER"}
     patterns = [item["pattern"] for item in payload.get("legacyPatternCoverage") or []]
     probes = set(extension.get("temporaryRuntimeProbeCodes") or [])
-    return payload, exact, patterns, probes, extension
+    return payload, exact, patterns, probes, extension, compatibility
 
 
 def covered_by_pattern(code: str, pattern: str) -> bool:
@@ -109,7 +128,7 @@ def main() -> int:
     parser.add_argument("--strict-legacy", action="store_true", help="B8: every concrete legacy-pattern usage becomes RED")
     parser.add_argument("--write")
     args = parser.parse_args()
-    payload, exact, patterns, probes, extension = load_catalog()
+    payload, exact, patterns, probes, extension, compatibility = load_catalog()
     used, creators = python_usage()
     used.extend(frontend_usage())
     rows = []
@@ -133,7 +152,8 @@ def main() -> int:
     missing_e = sorted(E_REQUIRED - set(exact))
     bad_enterprise = sorted(code for code, meta in exact.items() if code.startswith("enterprise.internship.") and (meta.get("moduleKey") != "internship" or meta.get("plane") != "TENANT" or meta.get("tenantAssignable") or meta.get("customRoleAssignable")))
     bad_e_module = sorted(code for code in E_REQUIRED if code in exact and exact[code].get("moduleKey") != "internship")
-    concrete_entries = [str(code) for code in extension.get("entries") or []]
+    base_concrete_entries = [str(code) for code in extension.get("entries") or []]
+    compatibility_entries = _compatibility_codes(compatibility)
     report = {
         "summary": {
             "used": len(rows),
@@ -142,7 +162,9 @@ def main() -> int:
             "runtimeWildcardProbe": len(runtime_probes),
             "uiActionNotPermission": len(ui_actions),
             "catalogExact": len(exact),
-            "b8ConcreteExact": len(concrete_entries),
+            "b8ConcreteExact": len(base_concrete_entries) + len(compatibility_entries),
+            "b8BaseConcreteExact": len(base_concrete_entries),
+            "b8PostCutoverCompatibilityExact": len(compatibility_entries),
             "permissionCreators": len(creators),
         },
         "usedUndefined": undefined,
@@ -150,6 +172,7 @@ def main() -> int:
         "runtimeWildcardProbe": runtime_probes,
         "uiActionNotPermission": ui_actions,
         "permissionCreators": creators,
+        "postCutoverCompatibilityCodes": compatibility_entries,
         "missingESeries": missing_e,
         "badEnterpriseAssignmentPolicy": bad_enterprise,
         "badESeriesModuleKey": bad_e_module,
