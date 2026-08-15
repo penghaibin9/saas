@@ -8,7 +8,10 @@ def _validated_codes(raw_codes) -> set[str]:
     from app.core.exceptions import AppException
 
     codes = {str(code or "").strip() for code in (raw_codes or []) if str(code or "").strip()}
-    invalid = sorted(c for c in codes if c == "*" or c.endswith(".*") or c.startswith("*.") or c.startswith("platform."))
+    invalid = sorted(
+        code for code in codes
+        if code == "*" or code.endswith(".*") or code.startswith("*.") or code.startswith("platform.")
+    )
     if invalid:
         raise AppException(
             "PERMISSION_CATALOG_DRIFT",
@@ -20,10 +23,7 @@ def _validated_codes(raw_codes) -> set[str]:
 
 
 def materialize_custom_role_source(db, tenant_id: int, role_code: str) -> dict:
-    """Make RolePermission equal CustomRoleSource in the caller's transaction.
-
-    This function never commits and never creates global Permission rows.
-    """
+    """Make RolePermission equal the role_id-bound CustomRoleSource in caller transaction."""
     from app.core.exceptions import AppException
     from app.models import Permission, Role, RolePermission
     from app.models.permission_governance import CustomRoleSource
@@ -38,15 +38,17 @@ def materialize_custom_role_source(db, tenant_id: int, role_code: str) -> dict:
 
     role = db.scalars(select(Role).where(
         Role.tenant_id == tenant_id,
-        Role.role_code == role_code,
+        Role.id == int(source.role_id),
+        Role.role_code == source.role_code,
         Role.role_type == "CUSTOM",
         Role.is_deleted.is_(False),
     ).with_for_update()).first()
     if role is None:
         raise AppException(
-            "CUSTOM_ROLE_RUNTIME_MISSING",
-            f"治理角色 {role_code} 尚未绑定 runtime Role，拒绝假激活",
+            "CUSTOM_ROLE_BINDING_DRIFT",
+            f"治理源 {role_code} 与 runtime Role 的稳定绑定已漂移，拒绝假激活",
             http_status=409,
+            details={"roleCode": source.role_code, "roleId": str(source.role_id)},
         )
 
     desired = _validated_codes((source.permission_codes_json or {}).get("items") or [])
