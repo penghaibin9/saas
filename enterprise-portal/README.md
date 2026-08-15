@@ -34,25 +34,27 @@
 - 企业评价复用现有 canonical；actor/member/source/time/audit 由后端 facade 写入。
 - Campaign `CLOSED/ARCHIVED` 后 RECRUITMENT 写动作 fail-closed；历史申请/岗位/Decision 保留。
 - `INTERNSHIP_COLLAB` 不能由前端根据 Campaign 状态推断；只有服务端显式确认有效 Grant 后才开放正式实习协同能力。
-- A01 尚未冻结的接口只保留 adapter / loading / error / empty UI，生产环境 fail-closed，不在 A02 自造第二套后端 schema。
+- A01 尚未冻结的接口**不再请求兼容/猜测路径**：adapter 在客户端本地返回 `ENTERPRISE_FACADE_UNFROZEN`，企业页面显示业务化“学校端尚未开放”提示，且运行时门禁要求网络请求数为 0。
 
 ## 当前施工状态
 
-- **A02-0 已完成**：独立工程壳、路由、六项固定导航、tokens/common styles；真实 `package-lock.json` 已提交，workflow 使用 Node 24、Actions v7、只读 `contents` 权限与 `npm ci` 可复现安装；targeted 只保留 PR 单触发，并显式 checkout PR HEAD + hard assertion。
-- **A02-1 已完成**：接入 A01 正式 `/internship/enterprise-portal/auth/login`、`auth/invite/inspect`、`auth/invite/accept`、`context?campaignId=`；Bearer/refresh token 不落浏览器持久存储；普通登录清理旧 Campaign；邀请激活才锁定已校验 Campaign；支持 A01 `ENTERPRISE_CONTEXT_REQUIRED` 多 EnterpriseMember 选择且只回传 `memberId`；refresh 明确失效时清会话、网络暂时失败不误登出；受保护路由无内存认证直接回登录；显式退出清 Pinia/Campaign 上下文。
-- **A02-2 已完成**：企业首页、当前招聘季/阶段/截止时间、八项运营指标、今日任务、历史招聘季；A01 未返回真值时不伪造 `OPEN`、不把缺失指标显示成 0。
-- **A02-3 已完成**：企业公开资料编辑、学校控制字段只读；Logo 使用正常文件选择并走 canonical `POST /api/v1/files`，不要求 HR 手填 fileId。
-- **A02-4 已完成**：我的岗位高密度列表、八态中文业务标签、DRAFT 编辑/PENDING 撤回修改；缺失报名/拟接收/已落实计数显示 `—`。
-- **A02-5 已完成**：五区岗位表单、保存草稿、提交学校审核、PENDING 只读/撤回后修改；客户端白名单过滤企业可编辑字段，不提供直接发布。
-- **A02-6 已完成并开始真接口校准**：BOSS 式两栏工作台、服务端分页 `pageSize=50`、业务筛选；材料详情已切到 A01 canonical `GET /internship/enterprise-portal/applications/{id}?campaignId=`，消费 `{profileSnapshot:{profile,items}, schoolFactSnapshot, snapshotHash, contactSharingPolicy}`；六类 `SKILL_EVIDENCE/CERTIFICATE/PROJECT/PRACTICE/AWARD/PORTFOLIO` 全覆盖；未冻结的旧 applicant detail facade 不再是必需依赖。
-- **A02-7 已完成并接真 Decision Authority**：`POST /internship/enterprise-portal/applications/{id}/decision?campaignId=` 已接入；`INTERESTED / INTERVIEW / ACCEPT_INTENT / REJECTED` 仍受服务端 reason/capability 控制；`ACCEPT_INTENT` 二次确认；撤回拟接收必须填原因并走 `REJECTED`；浏览器门禁实际点击并断言 canonical URL、campaignId 和 payload；ContactSharing enum 已对齐 A01 `NONE / AFTER_ACCEPT_INTENT / AFTER_SCHOOL_APPROVAL / EXPLICIT`。
-- **A02-8 已完成**：正式 `InternshipRecord` 企业学生列表，HR/Mentor scope 交给后端；状态/关键词/分页不一次性拉全量历史。
-- **A02-9 已完成**：评价任务服务端状态筛选/分页；五维 canonical 评分必须显式填写 0–100；提交 payload 不伪造 source/actor/member/time/audit。
-- **A02-10 已完成**：CLOSED/ARCHIVED 招聘写权限 fail-closed；历史招聘季只读入口保留；正式实习协同仅在服务端显式 `internshipCollab=true` 时开放。
+- **A02-0 已完成**：独立工程壳、路由、六项固定导航、tokens/common styles；真实 `package-lock.json` 已提交，workflow 使用 Node 24、Actions v7、只读 `contents` 权限与 `npm ci` 可复现安装；targeted 只保留 PR 单触发，并显式 checkout PR HEAD + hard assertion。Playwright 仅安装 headless Chromium shell，浏览器安装步骤单独 8 分钟硬超时。
+- **A02-1 已完成**：接入 A01 正式 `/internship/enterprise-portal/auth/login`、`auth/invite/inspect`、`auth/invite/accept`、`context?campaignId=`；Bearer/refresh token 不落浏览器持久存储；普通登录清理旧 Campaign；邀请激活只能锁定**同一 tenantCode + token 刚刚 inspect 成功返回的 campaignId**，View 不再提交 `campaignId/companyId`；支持 A01 `ENTERPRISE_CONTEXT_REQUIRED` 多 EnterpriseMember 选择且只回传 `memberId`；refresh 明确失效时清会话、网络暂时失败不误登出；受保护路由无内存认证直接回登录；显式退出清 Pinia/Campaign 上下文。
+- **A02-2 已完成**：企业首页、当前招聘季/阶段/截止时间、八项运营指标、今日任务、历史招聘季 UI 已完成；Campaign list / dashboard facade 未冻结时本地 fail-closed，不伪造 `OPEN`、不把缺失指标显示成 0，也不请求旧 compatibility root。
+- **A02-3 已完成**：企业公开资料编辑、学校控制字段只读；Logo 使用正常文件选择并走 canonical `POST /api/v1/files`；Company GET/PUT facade 未冻结时本地 fail-closed。
+- **A02-4 已完成**：我的岗位高密度列表、八态中文业务标签、DRAFT/PENDING 业务 UI 已完成；Position facade 未冻结时本地 fail-closed，缺失报名/拟接收/已落实计数不伪造为 0。
+- **A02-5 已完成**：五区岗位表单、保存草稿、提交学校审核、PENDING 只读/撤回后修改 UI 与白名单 payload 合同已完成；未冻结前不向猜测路由发写请求，企业端始终没有直接发布 Authority。
+- **A02-6 已完成并接入已冻结 Snapshot**：BOSS 式两栏工作台、分页/筛选 UI 已完成；Application list/candidate summary 仍未冻结，因此列表本地 fail-closed；材料详情只在已有经服务端校验的 applicationId + campaign context 时调用 A01 canonical `GET /internship/enterprise-portal/applications/{id}?campaignId=`，消费 nested Snapshot 六类材料。
+- **A02-7 已完成并接真 Decision Authority**：`POST /internship/enterprise-portal/applications/{id}/decision?campaignId=` adapter 已接入；`ACCEPT_INTENT` 二次确认、撤回原因、effect-state、ContactSharing enum 均已对齐 A01。由于当前 A01 `/context` 尚未显式返回 `capabilities.recruitmentWrite=true`，真实生产 Decision 按钮继续 fail-closed；客户端不会从 Grant/Campaign 自行推断可写。
+- **A02-8 已完成 UI/合同**：正式 `InternshipRecord` 企业学生列表的分页/筛选/Authority 边界已完成；企业投影 facade 未冻结时本地 fail-closed，不把 `ACCEPT_INTENT` 提升为正式实习生。
+- **A02-9 已完成 UI/合同**：企业评价任务分页、五维 0–100 显式评分、禁止伪造 actor/source/time/audit 已完成；评价 task/submit facade 未冻结时本地 fail-closed，不保留猜测的 `evaluation-tasks/{id}/submit` 路由。
+- **A02-10 已完成**：CLOSED/ARCHIVED 招聘写权限 fail-closed；历史招聘季只读入口 UI 保留；正式实习协同仅在服务端显式 `internshipCollab=true` 时开放。
 
 ## A01 联调依赖账本
 
-最新读取 A01 HEAD：`d75650dfd95808b4cb9dfc7a32372e32853b0bb6`。
+最新读取 A01 HEAD：`e953b7208df7e5424e82f223e0095f0d42b4ddb5`。
+
+`d75650df → e953b720` 的新增提交仅收 A01-13 tenant-scoped Placement 读取与 M4 migration 文案门禁，**没有新增或修改 Enterprise Portal facade/context 合同**。
 
 ### 已冻结并已被 A02 消费
 
@@ -77,7 +79,7 @@ A01 `/context` 当前仍只返回 tenant/member/company/campaign/batch/grant 等
 - 企业评价任务 / 提交 actor facade
 - 对外可调用的 `INTERNSHIP_COLLAB` context 路由
 
-A02 对上述缺口继续 fail-closed。A01 路由/DTO 真正落地后，联调仍按 `A02-1 → A02-10` 原顺序逐项校准，不另造 Authority。
+A02 对上述缺口统一**本地 fail-closed + 0 network**。A01 路由/DTO 真正落地后，联调仍按 `A02-1 → A02-10` 原顺序逐项校准，不另造 Authority。
 
 ## 最终门禁
 
@@ -85,9 +87,12 @@ A02 对上述缺口继续 fail-closed。A01 路由/DTO 真正落地后，联调�
 
 1. explicit exact-head checkout + hard assertion
 2. `package-lock.json` + `npm ci`
-3. authority / privacy / negative UI / auth lifecycle / A01 facade contract tests
+3. authority / privacy / negative UI / auth lifecycle / A01 facade / unfrozen-facade 0-network contract tests
 4. ESLint
 5. production build
 6. 固定演示凭据扫描
-7. Chromium targeted Playwright：真实登录 → 招聘季选择 → canonical Snapshot；canonical ACCEPT_INTENT POST；released ACCEPT_INTENT
+7. Chromium headless-shell targeted Playwright：
+   - 普通企业登录后 Campaign list 未冻结时本地 fail-closed，legacy compatibility root 请求数必须为 0
+   - 邀请 inspect → accept 后，accept 响应不带 campaignId 仍只能使用同 tenantCode + token 已校验的 campaignId 请求 canonical `/context`；无写 capability 时保持只读
+   - 已校验 Campaign context 下 canonical Snapshot 可读取，敏感字段不泄露，Decision 因缺显式 capability 保持禁用
 8. 浏览器证据 artifact SHA-256

@@ -43,8 +43,9 @@ jobs:
         run: npm run build
       - name: Scan fixed demo credentials
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium headless shell
+        timeout-minutes: 8
+        run: npx playwright install --with-deps --only-shell chromium
       - name: A02 targeted browser evidence
         run: npm run test:e2e
       - name: Upload browser evidence

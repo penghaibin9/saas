@@ -5,7 +5,7 @@ const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 
 function recruitmentParams(){
   const campaignId=getSelectedCampaignId()
-  if(!campaignId)throw new Error('尚未选择招聘季，无法调用企业招聘 Authority')
+  if(!campaignId)throw new Error('尚未选择经学校校验的招聘季，无法读取或处理招聘数据')
   return {campaignId}
 }
 
