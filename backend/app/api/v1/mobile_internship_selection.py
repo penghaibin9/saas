@@ -51,7 +51,7 @@ def list_catalog_positions(
     sort: str = Query("RECOMMENDED"),
     keyword: str | None = Query(default=None, max_length=100),
     city: str | None = Query(default=None, max_length=100),
-    companyId: int | None = Query(default=None, ge=1),
+    companyId: str | None = Query(default=None, max_length=100),
     accommodation: bool | None = Query(default=None),
     meal: bool | None = Query(default=None),
     industry: str | None = Query(default=None, max_length=100),

@@ -68,6 +68,36 @@ def test_catalog_reuses_canonical_eligibility_and_never_returns_failed_positions
     assert "eligibility_svc.evaluate_position_for_student_in_tx(" in detail
 
 
+def test_catalog_major_match_filter_and_company_name_filter_are_real_server_side_filters():
+    assert catalog_svc._major_hit("软件技术", "软件技术/计算机") is True
+    assert catalog_svc._major_hit("护理", "软件技术") is False
+    assert catalog_svc._major_hit("护理", "") is True
+    assert catalog_svc._true_filter(True) is True
+    assert catalog_svc._true_filter("true") is True
+    assert catalog_svc._true_filter("false") is False
+    assert catalog_svc._escape_like(r"跃科%_A\B") == r"跃科\%\_A\\B"
+
+    eligible_source = inspect.getsource(catalog_svc._eligible_rows)
+    assert "if only_major_matched and not major_matched:" in eligible_source
+    assert eligible_source.index("evaluate_position_for_student_in_tx") < eligible_source.index("if only_major_matched")
+    list_source = inspect.getsource(catalog_svc.list_catalog_positions)
+    assert 'only_major_matched=_true_filter(params.get("majorMatched"))' in list_source
+    row_source = inspect.getsource(catalog_svc._public_row)
+    assert '"POSSIBLE_MISMATCH"' in row_source
+    assert '"MATCHED" if major_matched' in row_source
+
+    filter_source = inspect.getsource(catalog_svc._filtered)
+    assert "company_filter.isdigit()" in filter_source
+    assert "InternshipPosition.company_id == _as_id(company_filter)" in filter_source
+    assert 'EmpCompany.name.like(pattern, escape="\\\\")' in filter_source
+    for facade in (portal_facade, mobile_facade):
+        route_source = inspect.getsource(facade.list_catalog_positions)
+        assert "companyId: str | None" in route_source
+        assert "majorMatched: bool | None" in route_source
+        assert '"companyId": companyId' in route_source
+        assert '"majorMatched": majorMatched' in route_source
+
+
 def test_profile_mutations_delegate_existing_profile_authorities_and_pdf_is_private_file_center_delivery():
     assert "profile_svc.add_my_item" in inspect.getsource(profile_facade_svc.add_profile_item)
     assert "item_svc.update_my_item" in inspect.getsource(profile_facade_svc.update_profile_item)

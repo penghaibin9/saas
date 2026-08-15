@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import EmpCompany, InternshipPosition
+from app.models import EmpCompany, InternshipPosition, Major, StudentProfile
 from app.models.internship_enterprise_portal import InternshipCampaignEnterprise
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_student_position_eligibility_service as eligibility_svc
@@ -19,6 +19,40 @@ _ACTIVE_GROUP_STATUSES = ("DRAFT", "SUBMITTED", "LOCKED", "NEEDS_REVISION", "APP
 
 def _escape_like(value: str) -> str:
     return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _true_filter(value) -> bool:
+    if value is True:
+        return True
+    if value in (None, "", False):
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _major_hit(major_name: str, requirement: str) -> bool:
+    major = str(major_name or "").strip()
+    required = str(requirement or "").strip()
+    if not required:
+        return True
+    if not major:
+        return False
+    return major in required or required in major
+
+
+def _student_major_name(db, *, tenant_id: int, student_id: int) -> str:
+    student = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == student_id,
+        StudentProfile.tenant_id == tenant_id,
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if not student or not student.major_id:
+        return ""
+    major = db.scalar(select(Major).where(
+        Major.id == student.major_id,
+        Major.tenant_id == tenant_id,
+        Major.is_deleted.is_(False),
+    ))
+    return str(major.major_name or "").strip() if major else ""
 
 
 def _selection_state(campaign, record) -> tuple[bool, str]:
@@ -85,8 +119,13 @@ def _filtered(q, params: dict):
     if city:
         pattern = f"%{_escape_like(city)}%"
         q = q.where(or_(EmpCompany.city.like(pattern, escape="\\"), InternshipPosition.work_location.like(pattern, escape="\\")))
-    if params.get("companyId") not in (None, ""):
-        q = q.where(InternshipPosition.company_id == _as_id(params["companyId"]))
+    company_filter = str(params.get("companyId") or "").strip()
+    if company_filter:
+        if company_filter.isdigit():
+            q = q.where(InternshipPosition.company_id == _as_id(company_filter))
+        else:
+            pattern = f"%{_escape_like(company_filter)}%"
+            q = q.where(EmpCompany.name.like(pattern, escape="\\"))
     for key, column in (("accommodation", InternshipPosition.accommodation_provided), ("meal", InternshipPosition.meal_provided), ("nightShift", InternshipPosition.night_shift)):
         if params.get(key) not in (None, ""):
             q = q.where(column.is_(bool(params[key])))
@@ -109,8 +148,10 @@ def _filtered(q, params: dict):
     return q
 
 
-def _public_row(position: InternshipPosition, company: EmpCompany, verdict: dict) -> dict:
+def _public_row(position: InternshipPosition, company: EmpCompany, verdict: dict, *, major_matched: bool) -> dict:
     remaining = max(0, int(position.headcount or 0) - int(position.allocated_count or 0))
+    requirement = str(position.major_requirement or "").strip()
+    match_state = "UNLIMITED" if not requirement else ("MATCHED" if major_matched else "POSSIBLE_MISMATCH")
     return {
         "id": str(position.id), "positionId": str(position.id), "campaignId": str(position.campaign_id or ""),
         "companyId": str(company.id), "companyName": company.name, "companyVerified": True, "schoolVerified": True,
@@ -127,13 +168,13 @@ def _public_row(position: InternshipPosition, company: EmpCompany, verdict: dict
         "accommodationProvided": position.accommodation_provided, "mealProvided": position.meal_provided,
         "hazardous": position.hazardous_flag, "equipment": position.special_equipment or "",
         "publishedAt": _iso(position.publish_at),
-        "matchState": "UNLIMITED" if not str(position.major_requirement or "").strip() else "MATCHED",
+        "matchState": match_state,
         "industry": company.industry or "", "companyNature": company.nature or "", "companyScale": company.scale or "",
         "companyIntro": company.short_intro or "", "rights": dict(verdict.get("rights") or {}),
     }
 
 
-def _eligible_rows(db, *, tenant_id: int, campaign, record, q) -> list[dict]:
+def _eligible_rows(db, *, tenant_id: int, campaign, record, q, major_name: str = "", only_major_matched: bool = False) -> list[dict]:
     result: list[dict] = []
     for position, company in db.execute(q).all():
         try:
@@ -142,7 +183,10 @@ def _eligible_rows(db, *, tenant_id: int, campaign, record, q) -> list[dict]:
             )
         except AppException:
             continue
-        result.append(_public_row(position, company, verdict))
+        major_matched = _major_hit(major_name, position.major_requirement or "")
+        if only_major_matched and not major_matched:
+            continue
+        result.append(_public_row(position, company, verdict, major_matched=major_matched))
     return result
 
 
@@ -152,7 +196,15 @@ def get_catalog_context(*, user: dict) -> dict:
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
         can_select, reason = _selection_state(campaign, record)
-        rows = _eligible_rows(db, tenant_id=tenant_id, campaign=campaign, record=record, q=_base_query(tenant_id=tenant_id, campaign=campaign)) if can_select else []
+        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
+        rows = _eligible_rows(
+            db,
+            tenant_id=tenant_id,
+            campaign=campaign,
+            record=record,
+            q=_base_query(tenant_id=tenant_id, campaign=campaign),
+            major_name=major_name,
+        ) if can_select else []
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
             InternshipVolunteerGroup.student_id == student_id,
@@ -185,7 +237,16 @@ def list_catalog_positions(*, user: dict, params: dict) -> dict:
         elif sort == "REMUNERATION": q = q.order_by(InternshipPosition.remuneration_amount.desc(), InternshipPosition.id.desc())
         elif sort == "REMAINING": q = q.order_by((InternshipPosition.headcount - InternshipPosition.allocated_count).desc(), InternshipPosition.id.desc())
         else: q = q.order_by(InternshipPosition.id.desc())
-        rows = _eligible_rows(db, tenant_id=tenant_id, campaign=campaign, record=record, q=q)
+        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
+        rows = _eligible_rows(
+            db,
+            tenant_id=tenant_id,
+            campaign=campaign,
+            record=record,
+            q=q,
+            major_name=major_name,
+            only_major_matched=_true_filter(params.get("majorMatched")),
+        )
         start = (page - 1) * page_size
         return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "pageSize": page_size}
 
@@ -198,14 +259,23 @@ def get_catalog_position(*, user: dict, position_id: int) -> dict:
         if not row: raise not_found("岗位不存在、未发布或不属于当前招聘季")
         position, company = row
         verdict = eligibility_svc.evaluate_position_for_student_in_tx(db, tenant_id=tenant_id, record=record, campaign=campaign, position=position)
-        return _public_row(position, company, verdict)
+        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
+        return _public_row(position, company, verdict, major_matched=_major_hit(major_name, position.major_requirement or ""))
 
 
 def get_catalog_company(*, user: dict, company_id: int) -> dict:
     tenant_id = _tid(); student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
-        rows = _eligible_rows(db, tenant_id=tenant_id, campaign=campaign, record=record, q=_base_query(tenant_id=tenant_id, campaign=campaign).where(InternshipPosition.company_id == _as_id(company_id)))
+        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
+        rows = _eligible_rows(
+            db,
+            tenant_id=tenant_id,
+            campaign=campaign,
+            record=record,
+            q=_base_query(tenant_id=tenant_id, campaign=campaign).where(InternshipPosition.company_id == _as_id(company_id)),
+            major_name=major_name,
+        )
         if not rows: raise not_found("企业当前没有学生可选的已发布岗位")
         company = db.scalar(select(EmpCompany).where(EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == tenant_id, EmpCompany.is_deleted.is_(False)))
         if not company: raise not_found("企业不存在或不在当前可选范围")
