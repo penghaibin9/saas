@@ -1,0 +1,85 @@
+name: Academic B W1 construction once
+
+on:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths:
+      - '.github/workflows/academic-b-w1-construction-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  construct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-b-schedule-selection
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply W1 fail-closed and pure-preflight patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one replacement, got {text.count(old)}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          service = 'backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py'
+          replace_once(service, '''    if batch.apply_scope_json:\n        try:\n            scope = json.loads(batch.apply_scope_json)\n        except (TypeError, ValueError):\n            scope = {}\n        college_ids = {int(x) for x in (scope.get("collegeIds") or []) if str(x).isdigit()}\n''', '''    if batch.apply_scope_json:\n        try:\n            scope = json.loads(batch.apply_scope_json)\n        except (TypeError, ValueError, json.JSONDecodeError) as exc:\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            ) from exc\n        if not isinstance(scope, dict):\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次适用范围格式错误，必须是对象",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            )\n        college_ids = {int(x) for x in (scope.get("collegeIds") or []) if str(x).isdigit()}\n''')
+
+          core = 'backend/app/modules/academic_affairs/services/academic_affairs_selection_core_service.py'
+          replace_once(core, '''def _rule(db, batch, key, default):\n    """批次规则优先 rule_json，其次 ACAD_RULE 配置，最后显式默认值（不误判未注册开关为已启用）。"""\n    try:\n        if batch.rule_json:\n            j = json.loads(batch.rule_json)\n            if key in j and j[key] is not None:\n                return j[key]\n    except (ValueError, TypeError):\n        pass\n    from app.services.platform_service import get_config_json\n''', '''def _rule(db, batch, key, default):\n    """批次规则优先 rule_json；损坏配置必须 fail-closed，禁止回落默认值扩大资格。"""\n    if batch.rule_json:\n        try:\n            j = json.loads(batch.rule_json)\n        except (ValueError, TypeError, json.JSONDecodeError) as exc:\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次规则JSON损坏，请联系教务管理员修复后再办理",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            ) from exc\n        if not isinstance(j, dict):\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次规则格式错误，必须是对象",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            )\n        if key in j and j[key] is not None:\n            return j[key]\n    from app.services.platform_service import get_config_json\n''')
+          replace_once(core, '''    if batch.apply_scope_json:\n        try:\n            scope = json.loads(batch.apply_scope_json)\n        except ValueError:\n            scope = {}\n        if scope:\n''', '''    if batch.apply_scope_json:\n        try:\n            scope = json.loads(batch.apply_scope_json)\n        except (ValueError, TypeError, json.JSONDecodeError) as exc:\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            ) from exc\n        if not isinstance(scope, dict):\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课批次适用范围格式错误，必须是对象",\n                details={"batchId": str(getattr(batch, "id", "") or "")},\n                http_status=409,\n            )\n        if scope:\n''')
+          replace_once(core, '''    if tb and tb.prerequisite_codes_json:\n        try:\n            pre_codes = json.loads(tb.prerequisite_codes_json) or []\n        except ValueError:\n            pre_codes = []\n        if pre_codes:\n''', '''    if tb and tb.prerequisite_codes_json:\n        try:\n            pre_codes = json.loads(tb.prerequisite_codes_json) or []\n        except (ValueError, TypeError, json.JSONDecodeError) as exc:\n            raise AppException(\n                "DATA_CONFLICT",\n                "课程先修规则JSON损坏，请联系教务管理员修复后再选课",\n                details={"courseId": str(getattr(tb, "id", "") or "")},\n                http_status=409,\n            ) from exc\n        if not isinstance(pre_codes, list):\n            raise AppException(\n                "DATA_CONFLICT",\n                "课程先修规则格式错误，必须是课程代码数组",\n                details={"courseId": str(getattr(tb, "id", "") or "")},\n                http_status=409,\n            )\n        if pre_codes:\n''')
+          replace_once(core, '''                            msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"\n                            _record_conflict_reject(db, batch, course, student, msg)\n                            raise _conflict(msg)\n''', '''                            msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"\n                            raise _conflict(msg)\n''')
+          replace_once(core, '''        _validate_enroll(db, b, c, student, my, float(c.credit or 0),\n                         allow_reselect_closed=allow_reselect)\n        rnd = _active_round(db, b.id)\n''', '''        try:\n            _validate_enroll(db, b, c, student, my, float(c.credit or 0),\n                             allow_reselect_closed=allow_reselect)\n        except AppException as exc:\n            message = str(getattr(exc, "message", "") or str(exc))\n            if "上课时间冲突" in message:\n                _record_conflict_reject(db, b, c, student, message)\n            raise\n        rnd = _active_round(db, b.id)\n''')
+
+          final = 'backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py'
+          insert = '''\n\ndef student_preflight(user, body):\n    """SelectionPreflight：复用正式资格校验但绝不写记录、容量或审计。"""\n    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord\n\n    with _base._core.session() as db:\n        student = _base._load_student(db)\n        evaluated_at = datetime.utcnow()\n        academic_identity, academic_fact = _selection_academic_identity(\n            db, student, effective_at=evaluated_at\n        )\n        course = db.query(AaSelectionCourse).filter(\n            AaSelectionCourse.id == int(body.selectionCourseId),\n            AaSelectionCourse.tenant_id == _base._core._tid(),\n            AaSelectionCourse.is_deleted.is_(False),\n        ).first()\n        if not course:\n            raise not_found("可选课程供给项不存在")\n        batch = db.query(AaSelectionBatch).filter(\n            AaSelectionBatch.id == int(course.batch_id),\n            AaSelectionBatch.tenant_id == _base._core._tid(),\n            AaSelectionBatch.is_deleted.is_(False),\n        ).first()\n        if not batch:\n            raise not_found("选课批次不存在")\n\n        try:\n            _base._guard_batch_writable(db, batch)\n            if course.status != _base._COURSE_OPEN:\n                raise _base._core._invalid("课程已取消或不可选")\n            my_records = db.query(AaSelectionRecord).filter(\n                AaSelectionRecord.tenant_id == _base._core._tid(),\n                AaSelectionRecord.student_id == student.id,\n                AaSelectionRecord.batch_id == batch.id,\n                AaSelectionRecord.is_deleted.is_(False),\n            ).all()\n            active_round = _base._active_round(db, batch.id)\n            if active_round and not active_round.allow_enroll:\n                raise _base._core._invalid("当前轮次不允许选课")\n            allow_reselect_closed = (\n                batch.status == _base._BATCH_CLOSED\n                and any(record.status == _base._REC_COURSE_CANCELLED for record in my_records)\n            )\n            _base._validate_enroll(\n                db, batch, course, academic_identity, my_records,\n                float(course.credit or 0),\n                allow_reselect_closed=allow_reselect_closed,\n            )\n        except AppException as exc:\n            traced = selection_trace.attach_selection_trace(\n                exc, db=db, student=student, course=course, evaluated_at=evaluated_at\n            )\n            return {\n                "allowed": False,\n                "selectionCourseId": str(course.id),\n                "courseName": course.course_name,\n                "code": str(getattr(exc, "code", "") or "DATA_CONFLICT"),\n                "message": str(getattr(exc, "message", "") or str(exc)),\n                "decisionTrace": getattr(traced, "decision_trace", None),\n            }\n\n        return {\n            "allowed": True,\n            "selectionCourseId": str(course.id),\n            "courseName": course.course_name,\n            "mode": (\n                "LOTTERY"\n                if active_round and active_round.mode == "LOTTERY"\n                else "FCFS"\n            ),\n            "academicFactId": str(academic_fact.id),\n            "academicFactVersion": academic_fact.version_no,\n            "evaluatedAt": evaluated_at.isoformat(),\n        }\n'''
+          replace_once(final, '\n\ndef student_enroll(user, body):\n', insert + '\n\ndef student_enroll(user, body):\n')
+
+          router = 'backend/app/modules/academic_affairs/routers/academic_selection_final_router.py'
+          replace_once(router, '''@router.post("/selection/student/enroll", summary="学生选课（最终服务+DecisionTrace）")\ndef sel_student_enroll(\n''', '''@router.post("/selection/student/preflight", summary="学生选课预检（纯读+DecisionTrace）")\ndef sel_student_preflight(\n    body: base.EnrollBody,\n    user=Depends(base._require_student),\n):\n    return base.success(selection_final.student_preflight(user, body))\n\n\n@router.post("/selection/student/enroll", summary="学生选课（最终服务+DecisionTrace）")\ndef sel_student_enroll(\n''')
+
+          test_path = Path('backend/tests/test_aa_selection_preflight_w1.py')
+          test_path.write_text(r'''from __future__ import annotations\n\nimport inspect\nfrom types import SimpleNamespace\n\nimport pytest\n\nfrom app.core.exceptions import AppException\nfrom app.modules.academic_affairs.services import academic_affairs_selection_core_service as core\nfrom app.modules.academic_affairs.services import academic_affairs_selection_service as service\n\n\ndef _student():\n    return SimpleNamespace(student_status="ENROLLED", college_id=1, major_id=2, class_id=3, grade="2025")\n\n\ndef test_w1_final_validator_rejects_broken_scope_json_before_any_db_query():\n    batch = SimpleNamespace(id=7, status="OPEN", apply_scope_json="{broken")\n    course = SimpleNamespace(id=9, credit=2, selected_count=0, capacity=30)\n    with pytest.raises(AppException) as exc:\n        service._validate_enroll(object(), batch, course, _student(), [], 2)\n    assert exc.value.code == "DATA_CONFLICT"\n    assert exc.value.http_status == 409\n    assert "适用范围JSON损坏" in exc.value.message\n\n\ndef test_w1_core_rule_rejects_broken_rule_json_instead_of_defaulting():\n    batch = SimpleNamespace(id=7, rule_json="{broken")\n    with pytest.raises(AppException) as exc:\n        core._rule(object(), batch, "maxCredits", 0)\n    assert exc.value.code == "DATA_CONFLICT"\n    assert exc.value.http_status == 409\n    assert "规则JSON损坏" in exc.value.message\n\n\ndef test_w1_validator_is_pure_and_conflict_reject_is_owned_by_command_exit():\n    validator = inspect.getsource(core._validate_enroll)\n    assert ".commit(" not in validator\n    assert "_record_conflict_reject" not in validator\n\n    final_source = inspect.getsource(__import__(\n        "app.modules.academic_affairs.services.academic_affairs_selection_final_service",\n        fromlist=["student_enroll"],\n    ).student_enroll)\n    assert final_source.count("_record_conflict_reject") == 1\n\n\ndef test_w1_preflight_source_has_no_mutation_audit_or_commit():\n    final = __import__(\n        "app.modules.academic_affairs.services.academic_affairs_selection_final_service",\n        fromlist=["student_preflight"],\n    )\n    source = inspect.getsource(final.student_preflight)\n    forbidden = ["db.commit(", "db.add(", ".update(", "_audit(", "_record_conflict_reject"]\n    for token in forbidden:\n        assert token not in source, token\n    assert "_validate_enroll(" in source\n    assert "decisionTrace" in source\n'''.replace('\\n', '\n'), encoding='utf-8')
+          PY
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: W1 targeted RED-to-GREEN contract
+        working-directory: backend
+        run: |
+          pytest -q -p no:warnings \
+            tests/test_aa_selection_preflight_w1.py \
+            tests/test_stage_d_selection_trace.py \
+            tests/test_aa_selection_student_guard.py \
+            --maxfail=1
+      - name: Commit W1 backend slice and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_core_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/app/modules/academic_affairs/routers/academic_selection_final_router.py \
+            backend/tests/test_aa_selection_preflight_w1.py
+          git rm -- '.github/workflows/academic-b-w1-construction-once.yml'
+          git commit -m 'fix(academic-b): make selection preflight fail closed'
+          git push origin HEAD:agent/academic-b-schedule-selection
