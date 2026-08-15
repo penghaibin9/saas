@@ -8,8 +8,11 @@ const material=fs.readFileSync(new URL('../src/components/applicant/ApplicationM
 const contact=fs.readFileSync(new URL('../src/components/applicant/ContactRevealButton.vue',import.meta.url),'utf8')
 const decision=fs.readFileSync(new URL('../src/components/applicant/DecisionActions.vue',import.meta.url),'utf8')
 
-test('applicant UI reads snapshot-oriented material and never renders forbidden student domains',()=>{
+test('applicant UI reads canonical snapshot material and never depends on the unfrozen detail facade',()=>{
   assert.match(detail,/applicationMaterial/)
+  assert.match(detail,/summary:\{type:Object,default:null\}/)
+  assert.match(list,/:summary="selectedApplicant"/)
+  assert.doesNotMatch(detail,/enterpriseInternshipApi\.application\(/)
   for(const forbidden of ['身份证','家庭联系人','处分','困难认定','心理']) assert.doesNotMatch(detail,new RegExp(forbidden))
   assert.doesNotMatch(detail,/other[_A-Za-z]*volunteer|other[_A-Za-z]*decision/i)
   assert.match(material,/学生自填/)
