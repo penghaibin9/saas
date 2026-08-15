@@ -14,6 +14,12 @@ function cloneSlots(slots = []) {
   })
 }
 
+function optionalVersion(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
 export function normalizeVolunteerGroup(raw = {}) {
   const sourceItems = Array.isArray(raw.items) ? raw.items : Array.isArray(raw.volunteers) ? raw.volunteers : []
   const byNo = new Map(sourceItems.map((item) => [Number(item.volunteerNo), item]))
@@ -39,8 +45,8 @@ export function normalizeVolunteerGroup(raw = {}) {
   return {
     id: raw.id || raw.groupId || null,
     status,
-    version: Number(raw.version || raw.groupVersion || 0),
-    recordVersion: Number(raw.recordVersion || raw.internshipRecordVersion || 0),
+    version: optionalVersion(raw.version ?? raw.groupVersion),
+    recordVersion: optionalVersion(raw.recordVersion ?? raw.internshipRecordVersion),
     batchId: raw.batchId || null,
     internshipId: raw.internshipId || raw.recordId || null,
     selectedCount: slots.filter((slot) => slot.positionId).length,
@@ -113,6 +119,7 @@ export function buildVolunteerGroupSaveRequest(group, slots) {
       positionId: slot.positionId,
       applicationStatement: slot.applicationStatement
     })),
+    expectedGroupVersion: group.version,
     expectedRecordVersion: group.recordVersion,
     expectedApplicationVersions: Object.fromEntries(cloneSlots(slots).map((slot) => [String(slot.volunteerNo), Number(slot.applicationVersion || 0)]))
   })

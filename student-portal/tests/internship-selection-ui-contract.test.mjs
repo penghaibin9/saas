@@ -46,10 +46,11 @@ test('A03-0 matching states stay backend-contract only', () => {
   assert.equal(POSITION_MATCH_STATES.some((value) => value.includes('%')), false)
 })
 
-test('A03-0 volunteer draft is one fixed-slot group payload', () => {
+test('A03-0 volunteer draft is one fixed-slot group payload with group version token', () => {
   const payload = buildVolunteerDraftPayload({
     batchId: 8,
     internshipId: 901,
+    expectedGroupVersion: 12,
     expectedRecordVersion: 7,
     expectedApplicationVersions: { 1: 2, 2: 1, 3: 0 },
     items: [
@@ -60,13 +61,15 @@ test('A03-0 volunteer draft is one fixed-slot group payload', () => {
   assert.equal(payload.items.length, 2)
   assert.equal(payload.items[0].volunteerNo, 1)
   assert.equal(payload.items[1].volunteerNo, 2)
-  assert.throws(() => buildVolunteerDraftPayload({ items: [
+  assert.equal(payload.expectedGroupVersion, 12)
+  assert.throws(() => buildVolunteerDraftPayload({ expectedGroupVersion: 1, items: [
     { volunteerNo: 1, positionId: 201 },
     { volunteerNo: 2, positionId: 201 }
   ] }), /不能重复/)
+  assert.throws(() => buildVolunteerDraftPayload({ items: [{ volunteerNo: 1, positionId: 201 }] }), /志愿组版本缺失/)
 })
 
-test('A03-0 submit requires preview hash and explicit contact policy', () => {
+test('A03-0 submit requires preview hash, explicit contact policy and versions', () => {
   assert.deepEqual(buildVolunteerSubmitPayload({
     expectedGroupVersion: 12,
     expectedProfileVersion: 8,
@@ -79,7 +82,8 @@ test('A03-0 submit requires preview hash and explicit contact policy', () => {
     contactSharingMode: 'AFTER_INTERVIEW',
     confirmMaterialPreviewHash: 'sha256:abc'
   })
-  assert.throws(() => buildVolunteerSubmitPayload({ consentPolicyVersion: 'v1' }), /必须确认/)
+  assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, expectedProfileVersion: 8, consentPolicyVersion: 'v1' }), /必须确认/)
+  assert.throws(() => buildVolunteerSubmitPayload({ expectedProfileVersion: 8, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /志愿组版本缺失/)
 })
 
 test('A03-11 student-facing selection fails closed when volunteer authority is unavailable', () => {

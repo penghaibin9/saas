@@ -35,7 +35,7 @@ test('A03-10 detail exposes all school internship labor conditions above fixed s
 
 test('A03-10 mobile volunteers are fixed slots and use up/down, never drag', () => {
   const group = normalizeMobileVolunteerGroup({
-    status: 'DRAFT', batchId: 8, internshipId: 901, recordVersion: 7,
+    status: 'DRAFT', version: 12, batchId: 8, internshipId: 901, recordVersion: 7,
     items: [
       { volunteerNo: 1, positionId: 201, positionName: '岗位A', version: 2 },
       { volunteerNo: 2, positionId: 203, positionName: '岗位B', version: 1 }
@@ -53,13 +53,15 @@ test('A03-10 mobile volunteers are fixed slots and use up/down, never drag', () 
 })
 
 test('A03-10 each volunteer keeps its own statement and all slots save in one PUT payload', () => {
-  const group = normalizeMobileVolunteerGroup({ status:'DRAFT', batchId:8, internshipId:901, recordVersion:7,
+  const group = normalizeMobileVolunteerGroup({ status:'DRAFT', version:12, batchId:8, internshipId:901, recordVersion:7,
     items:[{volunteerNo:1,positionId:201,version:2},{volunteerNo:2,positionId:203,version:1}] })
   const slots = updateMobileStatement(addMobileVolunteer(group.slots, { id:218,title:'岗位C' }), 3, '申请岗位C的独立说明')
   const payload = buildMobileVolunteerSaveRequest(group, slots)
   assert.equal(payload.items.length, 3)
   assert.equal(payload.items[2].applicationStatement, '申请岗位C的独立说明')
+  assert.equal(payload.expectedGroupVersion, 12)
   assert.deepEqual(payload.expectedApplicationVersions, {'1':2,'2':1,'3':0})
+  assert.throws(() => buildMobileVolunteerSaveRequest({ ...group, version: null }, slots), /志愿组版本缺失/)
 })
 
 test('A03-10 mobile submit uses one atomic snapshot-confirmed request and safe contact default', () => {
@@ -74,6 +76,7 @@ test('A03-10 mobile submit uses one atomic snapshot-confirmed request and safe c
     contactSharingMode:'AFTER_INTERVIEW',
     confirmMaterialPreviewHash:'sha256:abc'
   })
+  assert.throws(() => buildMobileVolunteerSubmitRequest({ ...group, version: null }, preview), /志愿组版本缺失/)
   assert.match(pageSource, /internshipSelectionApi\.submitVolunteers\(payload\)/)
 })
 
@@ -85,7 +88,7 @@ test('A03-10 LOCKED UX explains school confirmation and only offers unlock reque
 })
 
 test('A03-11 canonical APPROVED is final and cannot reopen mobile submission', () => {
-  const group = normalizeMobileVolunteerGroup({ status: 'APPROVED' })
+  const group = normalizeMobileVolunteerGroup({ status: 'APPROVED', version: 13 })
   assert.equal(group.status, 'APPROVED')
   assert.equal(canEditMobileVolunteers(group), false)
   assert.match(pageSource, /APPROVED: '学校已确认'/)
@@ -96,6 +99,7 @@ test('A03-11 canonical APPROVED is final and cannot reopen mobile submission', (
 test('A03-11 unavailable volunteer authority fails closed on mobile', () => {
   const group = normalizeMobileVolunteerGroup()
   assert.equal(group.status, 'UNAVAILABLE')
+  assert.equal(group.version, null)
   assert.equal(canEditMobileVolunteers(group), false)
   assert.match(pageSource, /volunteerState === 'ready' && canEditMobileVolunteers/)
   assert.match(pageSource, /normalizeMobileVolunteerGroup\(\{ status: 'UNAVAILABLE' \}\)/)

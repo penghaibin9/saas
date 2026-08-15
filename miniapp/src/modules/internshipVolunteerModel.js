@@ -15,6 +15,18 @@ function cloneSlots(slots = []) {
   return [1, 2, 3].map((volunteerNo) => ({ ...(slots.find((slot) => Number(slot.volunteerNo) === volunteerNo) || emptySlot(volunteerNo)), volunteerNo }))
 }
 
+function optionalVersion(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
+function requireGroupVersion(group) {
+  const version = optionalVersion(group?.version)
+  if (version === null) throw new Error('志愿组版本缺失，请刷新后重试')
+  return version
+}
+
 export function normalizeMobilePositionDetail(raw = {}) {
   const rights = raw.rights || raw.laborConditions || {}
   return {
@@ -70,8 +82,8 @@ export function normalizeMobileVolunteerGroup(raw = {}) {
   })
   return {
     status: String(raw.status || raw.groupStatus || 'UNAVAILABLE').toUpperCase(),
-    version: Number(raw.version || raw.groupVersion || 0),
-    recordVersion: Number(raw.recordVersion || raw.internshipRecordVersion || 0),
+    version: optionalVersion(raw.version ?? raw.groupVersion),
+    recordVersion: optionalVersion(raw.recordVersion ?? raw.internshipRecordVersion),
     batchId: raw.batchId || null,
     internshipId: raw.internshipId || raw.recordId || null,
     lockedCompanyName: raw.lockedCompanyName || '',
@@ -137,6 +149,7 @@ export function buildMobileVolunteerSaveRequest(group, slots) {
       positionId: slot.positionId,
       applicationStatement: slot.applicationStatement.trim()
     })),
+    expectedGroupVersion: requireGroupVersion(group),
     expectedRecordVersion: group.recordVersion,
     expectedApplicationVersions: Object.fromEntries(cloneSlots(slots).map((slot) => [String(slot.volunteerNo), Number(slot.version || 0)]))
   }
@@ -155,7 +168,7 @@ export function buildMobileVolunteerSubmitRequest(group, preview, contactSharing
   const mode = CONTACT_MODES.includes(contactSharingMode) ? contactSharingMode : 'AFTER_INTERVIEW'
   if (!preview.previewHash || !preview.consentPolicyVersion) throw new Error('请先确认企业视角投递材料')
   return {
-    expectedGroupVersion: Number(group.version || 0),
+    expectedGroupVersion: requireGroupVersion(group),
     expectedProfileVersion: Number(preview.profileVersion || 0),
     consentPolicyVersion: preview.consentPolicyVersion,
     contactSharingMode: mode,

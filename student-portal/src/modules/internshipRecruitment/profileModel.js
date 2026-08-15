@@ -11,7 +11,8 @@ export const PROFILE_ITEM_TYPES = Object.freeze([
   { value: 'PRACTICE', label: '实践经历' },
   { value: 'CERTIFICATE', label: '技能证书' },
   { value: 'AWARD', label: '获奖' },
-  { value: 'WORK', label: '作品' }
+  { value: 'PORTFOLIO', label: '作品' },
+  { value: 'SKILL_EVIDENCE', label: '技能证明' }
 ])
 
 function first(raw, ...keys) {
@@ -21,37 +22,44 @@ function first(raw, ...keys) {
   return null
 }
 
+function stringList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String)
+  return String(value || '').split(/[,，]/).map((item) => item.trim()).filter(Boolean)
+}
+
 export function normalizeInternshipProfile(raw = {}) {
   const school = raw.schoolFacts || raw.student || {}
+  const profile = raw.profile && typeof raw.profile === 'object' ? raw.profile : raw
+  const skillTags = first(profile, 'skillTags') ?? first(raw, 'skillTags')
+  const locations = first(profile, 'expectedLocations', 'locationPreferences', 'preferredLocations')
+    ?? first(raw, 'expectedLocations', 'locationPreferences', 'preferredLocations')
   return {
-    version: Number(first(raw, 'version', 'profileVersion') || 0),
+    version: Number(first(profile, 'profileVersion', 'version') ?? first(raw, 'profileVersion', 'version') ?? 0) || 0,
     school: {
-      name: first(school, 'name', 'studentName') || first(raw, 'name', 'studentName') || '',
+      name: first(school, 'realName', 'name', 'studentName') || first(raw, 'realName', 'name', 'studentName') || '',
       studentNo: first(school, 'studentNo', 'studentNumber') || first(raw, 'studentNo', 'studentNumber') || '',
-      college: first(school, 'college', 'collegeName') || first(raw, 'college', 'collegeName') || '',
-      major: first(school, 'major', 'majorName') || first(raw, 'major', 'majorName') || '',
+      college: first(school, 'collegeName', 'college') || first(raw, 'collegeName', 'college') || '',
+      major: first(school, 'majorName', 'major') || first(raw, 'majorName', 'major') || '',
       grade: first(school, 'grade', 'gradeName') || first(raw, 'grade', 'gradeName') || '',
       className: first(school, 'className', 'class') || first(raw, 'className', 'class') || ''
     },
-    selfIntroduction: first(raw, 'selfIntroduction', 'introduction') || '',
-    strengths: first(raw, 'strengths', 'advantages') || '',
-    skillTags: Array.isArray(raw.skillTags) ? raw.skillTags.filter(Boolean).map(String) : [],
-    availableFrom: first(raw, 'availableFrom', 'arrivalDate') || '',
-    locationPreferences: Array.isArray(raw.locationPreferences)
-      ? raw.locationPreferences.filter(Boolean).map(String)
-      : String(first(raw, 'locationPreferences', 'preferredLocations') || '').split(/[,，]/).map((v) => v.trim()).filter(Boolean)
+    selfIntroduction: String(first(profile, 'selfIntro', 'selfIntroduction', 'introduction') || ''),
+    strengths: String(first(profile, 'strengths', 'advantages') || ''),
+    skillTags: stringList(skillTags),
+    availableFrom: first(profile, 'availableFrom', 'arrivalDate') || '',
+    locationPreferences: stringList(locations)
   }
 }
 
 export function buildInternshipProfileUpdate(profile) {
   const value = normalizeInternshipProfile(profile)
   return {
-    expectedVersion: value.version,
-    selfIntroduction: value.selfIntroduction.trim(),
+    expectedProfileVersion: value.version,
+    selfIntro: value.selfIntroduction.trim(),
     strengths: value.strengths.trim(),
     skillTags: value.skillTags.map((item) => item.trim()).filter(Boolean),
     availableFrom: value.availableFrom || null,
-    locationPreferences: value.locationPreferences.map((item) => item.trim()).filter(Boolean)
+    expectedLocations: value.locationPreferences.map((item) => item.trim()).filter(Boolean)
   }
 }
 
@@ -64,13 +72,18 @@ export function normalizeProfileCompleteness(raw = {}) {
 
 export function normalizeProfileItems(raw = []) {
   const items = Array.isArray(raw) ? raw : raw?.items || raw?.list || []
-  return items.map((item) => ({
-    id: item.id,
-    type: String(item.type || item.itemType || '').toUpperCase(),
-    title: item.title || item.name || '',
-    description: item.description || item.content || '',
-    issuedBy: item.issuedBy || item.organization || '',
-    occurredAt: item.occurredAt || item.date || '',
-    fileName: item.fileName || item.attachmentName || ''
-  }))
+  return items.map((item) => {
+    const rawType = String(item.type || item.itemType || '').toUpperCase()
+    const type = rawType === 'WORK' ? 'PORTFOLIO' : rawType
+    const fileIds = Array.isArray(item.fileIds) ? item.fileIds : []
+    return {
+      id: item.id,
+      type,
+      title: item.title || item.name || '',
+      description: item.description || item.content || '',
+      issuedBy: item.issuedBy || item.organization || '',
+      occurredAt: item.occurredAt || item.date || item.endDate || item.startDate || '',
+      fileName: item.fileName || item.attachmentName || (fileIds.length ? `${fileIds.length} 个附件` : '')
+    }
+  })
 }

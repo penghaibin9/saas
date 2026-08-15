@@ -16,6 +16,7 @@ import {
 const boardSource = readFileSync(new URL('../src/components/recruitment/VolunteerBoard.vue', import.meta.url), 'utf8')
 const group = normalizeVolunteerGroup({
   status: 'DRAFT',
+  version: 12,
   batchId: 8,
   internshipId: 901,
   recordVersion: 7,
@@ -53,7 +54,7 @@ test('A03-7 keeps an independent application statement per volunteer', () => {
   assert.equal(updated[1].applicationStatement, '希望提升设备维护和故障诊断能力')
 })
 
-test('A03-7 builds exactly one atomic group PUT payload for all active slots', () => {
+test('A03-7 builds exactly one atomic group PUT payload with canonical group concurrency token', () => {
   const slots = addVolunteer(group.slots, { id: 218, title: '质量检测', companyName: '企业C' })
   const withStatement = updateVolunteerStatement(slots, 3, '希望锻炼质量管理能力')
   const payload = buildVolunteerGroupSaveRequest(group, withStatement)
@@ -61,8 +62,16 @@ test('A03-7 builds exactly one atomic group PUT payload for all active slots', (
   assert.deepEqual(payload.items.map((item) => item.volunteerNo), [1, 2, 3])
   assert.deepEqual(payload.items.map((item) => item.positionId), [201, 203, 218])
   assert.equal(payload.items[2].applicationStatement, '希望锻炼质量管理能力')
+  assert.equal(payload.expectedGroupVersion, 12)
   assert.equal(payload.expectedRecordVersion, 7)
   assert.deepEqual(payload.expectedApplicationVersions, { '1': 2, '2': 1, '3': 0 })
+})
+
+test('A03 production seal fails closed when group version or position id is invalid', () => {
+  const slots = addVolunteer(group.slots, { id: 218, title: '质量检测', companyName: '企业C' })
+  assert.throws(() => buildVolunteerGroupSaveRequest({ ...group, version: null }, slots), /志愿组版本缺失/)
+  const invalidSlots = slots.map((slot) => slot.volunteerNo === 3 ? { ...slot, positionId: 'not-a-position-id' } : slot)
+  assert.throws(() => buildVolunteerGroupSaveRequest(group, invalidSlots), /无效岗位/)
 })
 
 test('A03-11 volunteer board labels canonical APPROVED as school-confirmed', () => {
@@ -74,6 +83,7 @@ test('A03-11 volunteer board labels canonical APPROVED as school-confirmed', () 
 test('A03-11 missing volunteer authority state fails closed as UNAVAILABLE', () => {
   const unavailable = normalizeVolunteerGroup()
   assert.equal(unavailable.status, 'UNAVAILABLE')
+  assert.equal(unavailable.version, null)
   assert.equal(canEditVolunteerGroup(unavailable), false)
   assert.match(boardSource, /UNAVAILABLE: '暂不可用'/)
 })

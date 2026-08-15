@@ -39,6 +39,12 @@ export const POSITION_CARD_LAYOUT = Object.freeze({
   card: { background: '#ffffff', border: '#eef0f3', radius: 10 }
 })
 
+function requireNonNegativeVersion(value, label) {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${label}缺失，请刷新后重试`)
+  return parsed
+}
+
 export function normalizeCatalogQuery(input = {}) {
   const page = Math.max(1, Number(input.page || 1) || 1)
   const requestedPageSize = Number(input.pageSize || CATALOG_PAGE_SIZE) || CATALOG_PAGE_SIZE
@@ -55,7 +61,7 @@ export function normalizeCatalogQuery(input = {}) {
   return query
 }
 
-export function buildVolunteerDraftPayload({ batchId, internshipId, items, expectedRecordVersion, expectedApplicationVersions }) {
+export function buildVolunteerDraftPayload({ batchId, internshipId, items, expectedGroupVersion, expectedRecordVersion, expectedApplicationVersions }) {
   const normalized = (items || [])
     .filter((item) => item && item.positionId)
     .map((item, index) => ({
@@ -65,20 +71,16 @@ export function buildVolunteerDraftPayload({ batchId, internshipId, items, expec
     }))
     .sort((a, b) => a.volunteerNo - b.volunteerNo)
 
-  if (normalized.length < 1 || normalized.length > 3) {
-    throw new Error('岗位志愿必须为 1–3 个')
-  }
-  if (new Set(normalized.map((item) => item.positionId)).size !== normalized.length) {
-    throw new Error('同一岗位不能重复加入志愿')
-  }
-  if (normalized.some((item, index) => item.volunteerNo !== index + 1)) {
-    throw new Error('岗位志愿必须使用连续的第一/第二/第三固定槽位')
-  }
+  if (normalized.length < 1 || normalized.length > 3) throw new Error('岗位志愿必须为 1–3 个')
+  if (normalized.some((item) => !Number.isInteger(item.positionId) || item.positionId <= 0)) throw new Error('岗位志愿包含无效岗位')
+  if (new Set(normalized.map((item) => item.positionId)).size !== normalized.length) throw new Error('同一岗位不能重复加入志愿')
+  if (normalized.some((item, index) => item.volunteerNo !== index + 1)) throw new Error('岗位志愿必须使用连续的第一/第二/第三固定槽位')
 
   return {
     batchId,
     internshipId,
     items: normalized,
+    expectedGroupVersion: requireNonNegativeVersion(expectedGroupVersion, '志愿组版本'),
     expectedRecordVersion,
     expectedApplicationVersions: expectedApplicationVersions || {}
   }
@@ -94,8 +96,8 @@ export function buildVolunteerSubmitPayload({
   if (!CONTACT_SHARING_MODES.includes(contactSharingMode)) throw new Error('联系方式共享策略无效')
   if (!consentPolicyVersion || !confirmMaterialPreviewHash) throw new Error('提交前必须确认企业视角材料预览与隐私授权')
   return {
-    expectedGroupVersion,
-    expectedProfileVersion,
+    expectedGroupVersion: requireNonNegativeVersion(expectedGroupVersion, '志愿组版本'),
+    expectedProfileVersion: requireNonNegativeVersion(expectedProfileVersion, '实习档案版本'),
     consentPolicyVersion,
     contactSharingMode,
     confirmMaterialPreviewHash

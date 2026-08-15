@@ -33,8 +33,8 @@ export function formatSchoolConfirmDeadline(value) {
 
 export function buildVolunteerFinalSubmitRequest({ group, preview, contactSharingMode }) {
   return buildVolunteerSubmitPayload({
-    expectedGroupVersion: Number(group?.version || 0),
-    expectedProfileVersion: Number(preview?.profileVersion || 0),
+    expectedGroupVersion: group?.version,
+    expectedProfileVersion: preview?.profileVersion,
     consentPolicyVersion: String(preview?.consentPolicyVersion || ''),
     contactSharingMode,
     confirmMaterialPreviewHash: String(preview?.previewHash || '')
