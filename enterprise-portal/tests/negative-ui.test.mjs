@@ -34,10 +34,12 @@ test('pending position is read-only until canonical withdraw action returns it t
   assert.match(positionForm,/PENDING 必须先撤回再修改/)
 })
 
-test('contact forbidden stays masked and disabled',()=>{
+test('contact stays masked and disabled unless server explicitly allows reveal',()=>{
   assert.match(contact,/联系方式已脱敏/)
   assert.match(contact,/联系方式未授权/)
-  assert.match(contact,/contactPolicy\.allowed===false/)
+  assert.match(contact,/props\.contactPolicy\?\.allowed===true/)
+  assert.match(contact,/:disabled="loading \|\| !allowed"/)
+  assert.doesNotMatch(contact,/contactPolicy\.allowed===false/)
 })
 
 test('decision conflict and locked release keep server reason and release truth',()=>{
