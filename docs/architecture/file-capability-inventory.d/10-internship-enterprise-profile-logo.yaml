@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: enterprise-portal
+    route: backend/app/modules/internship/routers/internship_enterprise_portal.py
+    page: enterprise-portal/src/views/CompanyProfileView.vue
+    action: enterprise-public-profile-logo
+    fileCategory: INTERNSHIP_ENTERPRISE_PROFILE
+    api: PUT /api/v1/internship/enterprise-portal/company
+    backendService: backend/app/modules/internship/services/internship_enterprise_position_service.py
+    storageMode: FILE_CENTER_BUSINESS_BINDING
+    authMode: enterprise-member+tenant+company-scope
+    dataScope: tenant+company
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: Enterprise logo starts as TEMP_PRIVATE and is bound in the same DB transaction to the canonical EmpCompany profile. School-controlled qualification/cooperation/blacklist/access fields remain read-only.
