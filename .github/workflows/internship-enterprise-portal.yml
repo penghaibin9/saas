@@ -35,6 +35,28 @@ jobs:
           cache-dependency-path: enterprise-portal/package-lock.json
       - name: Install locked enterprise portal dependencies
         run: npm ci --no-audit --no-fund
+      - name: Capture production-only dependency audit truth
+        timeout-minutes: 3
+        run: npm audit --omit=dev --json > audit-production.json || true
+      - name: Enforce production high/critical dependency policy
+        run: >-
+          node ../scripts/check/check-npm-production-audit.mjs
+          audit-production.json
+          enterprise-portal
+          ../.github/security/npm-production-audit-waivers.json
+      - name: Capture full dependency inventory for follow-up
+        if: always()
+        run: npm audit --json > audit-full.json || true
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a02-enterprise-portal-npm-audit
+          path: |
+            enterprise-portal/audit-production.json
+            enterprise-portal/audit-full.json
+          if-no-files-found: error
+          retention-days: 14
       - name: A02 authority and UX contract tests
         run: npm test
       - name: Enterprise portal lint
