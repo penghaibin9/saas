@@ -34,7 +34,7 @@ def test_campaign_material_policy_is_stored_but_readiness_is_derived_from_v3_sec
     assert "application_material_policy_json" in InternshipRecruitmentCampaign.__table__.columns
     assert "material_ready" not in InternshipRecruitmentCampaign.__table__.columns
     projection = {
-        "profile": {"selfIntro": "", "skillTags": ["CAD"]},
+        "profile": {"id": "11", "profileVersion": 2, "selfIntro": "", "skillTags": ["CAD"]},
         "items": [{"itemType": "PROJECT"}],
     }
     result = service.evaluate_material_readiness(
@@ -49,6 +49,20 @@ def test_campaign_material_policy_is_stored_but_readiness_is_derived_from_v3_sec
     assert "profile.selfIntro" in result["missing"]
     assert "itemType.CERTIFICATE" in result["missing"]
     assert "profile.skillTags" not in result["missing"]
+    assert "PROFILE_NOT_READY" not in result["missing"]
+
+
+def test_profile_required_checks_real_profile_identity_not_nonempty_projection_shape():
+    projection = {
+        "profile": {
+            "id": "", "profileVersion": 0, "headline": "", "selfIntro": "",
+            "expectedLocations": [], "skillTags": [],
+        },
+        "items": [],
+    }
+    result = service.evaluate_material_readiness(projection, {"profileRequired": True})
+    assert result["ready"] is False
+    assert "PROFILE_NOT_READY" in result["missing"]
 
 
 def test_snapshot_hash_is_stable_canonical_sha256():

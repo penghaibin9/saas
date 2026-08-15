@@ -99,7 +99,8 @@ def evaluate_material_readiness(profile_projection: dict, policy: dict | None) -
         mapped = _SECTION_FIELDS.get(str(section or "").upper())
         if mapped and mapped not in required_fields:
             required_fields.append(mapped)
-    if policy.get("profileRequired") and not profile:
+    profile_exists = bool(str(profile.get("id") or "").strip()) or int(profile.get("profileVersion") or 0) > 0
+    if policy.get("profileRequired") and not profile_exists:
         missing.append("PROFILE_NOT_READY")
     for key in required_fields:
         value = profile.get(key)
