@@ -54,6 +54,19 @@ test('D2-U batch panel is human-readable and has an explicit preview review gate
   assert.match(panel, /系统没有把部分失败伪装成整批成功/)
 })
 
+test('D2-U shrinking the last page refetches the clamped valid page before committing rows', async () => {
+  const panel = await source(panelUrl)
+  const clampIndex = panel.indexOf('if (this.page > this.totalPages) {')
+  const refetchIndex = panel.indexOf('await this.load()', clampIndex)
+  const returnIndex = panel.indexOf('return', refetchIndex)
+  const rowsIndex = panel.indexOf('this.rows = res.data.list', clampIndex)
+
+  assert.ok(clampIndex >= 0, 'page shrink must be detected')
+  assert.ok(refetchIndex > clampIndex, 'clamped page must be refetched')
+  assert.ok(returnIndex > refetchIndex, 'stale response must stop after scheduling the valid-page refetch')
+  assert.ok(rowsIndex > returnIndex, 'rows must only be committed from the stable valid page response')
+})
+
 test('D2-U eligibility table displays readable class name instead of raw class id', async () => {
   const workbench = await source(workbenchUrl)
   assert.match(workbench, /\{ key: 'className', title: '班级' \}/)

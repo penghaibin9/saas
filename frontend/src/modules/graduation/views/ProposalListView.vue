@@ -83,7 +83,7 @@
                 <div style="margin-top: var(--space-3)">
                   <AppButton variant="primary" :loading="reminding" @click="remind(selectedRow)">发送开题催交提醒</AppButton>
                 </div>
-                <p class="mp-note" style="margin-top: var(--space-2)">当前仅记录线下催办留痕，不代表站内消息已送达；学生提交后将出现在「待审阅」页签。</p>
+                <p class="mp-note" style="margin-top: var(--space-2)">本操作会创建真实站内消息并写入催办留痕；学生提交后将进入「待审阅」页签。</p>
               </div>
             </section>
           </template>
@@ -287,12 +287,25 @@ export default {
         this.turnPage(this.page - 1)
       }
     },
-    /** 批阅成功：更新行状态 + 刷新计数 + 自动进入下一条待审 */
-    onReviewed(payload) {
+    /** 批阅成功：待审页签重新取同一服务端页，避免 offset 收缩后跳过学生。 */
+    async onReviewed(payload) {
+      const reviewedIndex = Math.max(0, this.rows.findIndex((r) => String(r.id) === String(payload.id)))
       const row = this.rows.find((r) => String(r.id) === String(payload.id))
+      const pendingQueue = this.filters.status === 'PENDING_REVIEW'
       if (row) { row.status = payload.status; row.statusLabel = payload.statusLabel }
-      this.loadStats()
-      if (this.autoNext) this.nextPending()
+      await this.loadStats()
+      if (!this.autoNext) return
+      if (!pendingQueue) { this.nextPending(); return }
+
+      this.selKey = ''
+      this._selectIndexAfterLoad = reviewedIndex
+      await this.load()
+      if (!this.rows.length && this.page > 1) {
+        this.page -= 1
+        this._selectIndexAfterLoad = this.pageSize - 1
+        await this.load()
+      }
+      if (!this.rows.length) toast.success('待审记录已全部处理完')
     },
     onConflict() {
       // 并发冲突：他人已批阅，刷新本页与计数
@@ -316,11 +329,18 @@ export default {
     },
     ensureSelection() {
       if (this.selectedRow) return
-      if (!this.rows.length) { this.selKey = ''; return }
+      if (!this.rows.length) {
+        this.selKey = ''
+        this._selectIndexAfterLoad = null
+        return
+      }
       let target = null
-      if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
+      if (Number.isInteger(this._selectIndexAfterLoad)) {
+        target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
+      } else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
       else if (this._selectPendingAfterLoad) target = this.rows.find((r) => r.status === 'PENDING_REVIEW') || this.rows[0]
       else target = this.rows.find((r) => r.status === 'PENDING_REVIEW') || this.rows[0]
+      this._selectIndexAfterLoad = null
       this._selectFirstAfterLoad = false
       this._selectLastAfterLoad = false
       this._selectPendingAfterLoad = false
@@ -340,7 +360,7 @@ export default {
       this.reminding = true
       const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
       this.reminding = false
-      if (res.code === 0) toast.success('已记录对 ' + row.studentName + ' 的线下开题催办（未发送站内消息）')
+      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交站内消息并记录催办留痕')
       else toast.error(res.message || '催交失败')
     },
     async load() {

@@ -7,10 +7,11 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationAuditTrail, GraduationStudent, GraduationStudentEval
-from app.modules.graduation.services.graduation_scope_service import (
-    accessible_student_ids, assert_student_access,
-)
+from app.modules.graduation.services.graduation_batch_context import assert_student_batch, require_batch_id
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
 
 EVAL_LEVELS = ("优秀", "良好", "合格", "不合格")
@@ -30,11 +31,13 @@ def _audit(db, bid, action, detail="", before="", after=""):
         occurred_at=datetime.now(timezone.utc)))
 
 
-def _stu(db, sid) -> GraduationStudent:
-    s = db.get(GraduationStudent, int(sid))
-    if not s or s.is_deleted or s.tenant_id != _tid():
+def _stu(db, sid, batch_id) -> GraduationStudent:
+    s = tenant_get(db, GraduationStudent, int(sid))
+    if not s or s.is_deleted:
         raise not_found("毕设学生不存在或不在当前数据范围内")
-    return assert_student_access(db, s, "student_eval")
+    s = assert_student_access(db, s, "student_eval")
+    assert_student_batch(s, require_batch_id(batch_id))
+    return s
 
 
 def _row(e: GraduationStudentEval, stu=None) -> dict:
@@ -56,28 +59,43 @@ def _row(e: GraduationStudentEval, stu=None) -> dict:
     }
 
 
-def list_evals(page: int, page_size: int, gd_student_id=None) -> tuple[list[dict], int]:
+def list_evals(page: int, page_size: int, gd_student_id=None, *, batch_id) -> tuple[list[dict], int]:
+    expected_batch = require_batch_id(batch_id)
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationStudentEval).where(
+        scope_select = student_scope_select(db, _tid(), batch_id=expected_batch)
+        filters = (
             GraduationStudentEval.tenant_id == _tid(),
             GraduationStudentEval.is_deleted.is_(False),
-            GraduationStudentEval.gd_student_id.in_(scope_ids or [-1]))
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.batch_id == expected_batch,
+            GraduationStudent.id.in_(scope_select),
+        )
         if gd_student_id:
-            q = q.where(GraduationStudentEval.gd_student_id == int(gd_student_id))
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(
-            q.order_by(GraduationStudentEval.id.desc())
-            .offset((max(1, page) - 1) * page_size).limit(page_size)
-        ).all()
-        items = []
-        for e in rows:
-            stu = db.get(GraduationStudent, e.gd_student_id)
-            items.append(_row(e, stu))
-        return items, total
+            filters = (*filters, GraduationStudentEval.gd_student_id == int(gd_student_id))
+
+        total_stmt = (
+            select(func.count())
+            .select_from(GraduationStudentEval)
+            .join(GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id)
+            .where(*filters)
+        )
+        total = int(db.scalar(total_stmt) or 0)
+
+        page_stmt = (
+            select(GraduationStudentEval, GraduationStudent)
+            .join(GraduationStudent, GraduationStudent.id == GraduationStudentEval.gd_student_id)
+            .where(*filters)
+            .order_by(GraduationStudentEval.id.desc())
+            .offset((max(1, page) - 1) * page_size)
+            .limit(page_size)
+        )
+        rows = db.execute(page_stmt).all()
+        return [_row(e, stu) for e, stu in rows], total
 
 
-def create_eval(gd_student_id, body: dict) -> dict:
+def create_eval(gd_student_id, body: dict, *, batch_id) -> dict:
     """导师创建并提交（或保留草稿）对学生的过程评价。"""
     try:
         score = int(body.get("score"))
@@ -92,7 +110,7 @@ def create_eval(gd_student_id, body: dict) -> dict:
     if status not in ("DRAFT", "SUBMITTED"):
         raise AppException("VALIDATION_ERROR", "状态仅支持 DRAFT/SUBMITTED")
     with session() as db:
-        stu = _stu(db, gd_student_id)
+        stu = _stu(db, gd_student_id, batch_id)
         n, _ = _op()
         now = datetime.now(timezone.utc)
         e = GraduationStudentEval(
@@ -112,12 +130,16 @@ def create_eval(gd_student_id, body: dict) -> dict:
         return _row(e, stu)
 
 
-def submit_eval(eval_id) -> dict:
+def submit_eval(eval_id, *, batch_id) -> dict:
     with session() as db:
-        e = db.get(GraduationStudentEval, int(eval_id))
-        if not e or e.is_deleted or e.tenant_id != _tid():
+        e = db.scalars(select(GraduationStudentEval).where(
+            GraduationStudentEval.id == int(eval_id),
+            GraduationStudentEval.tenant_id == _tid(),
+            GraduationStudentEval.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not e:
             raise not_found("评价记录不存在")
-        stu = _stu(db, e.gd_student_id)
+        stu = _stu(db, e.gd_student_id, batch_id)
         if e.status == "SUBMITTED":
             raise AppException("DATA_CONFLICT", "评价已提交，无需重复提交")
         n, _ = _op()
