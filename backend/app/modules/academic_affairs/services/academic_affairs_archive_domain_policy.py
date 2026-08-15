@@ -45,7 +45,7 @@ ROUTES = {
     "MAKEUP": "/admin/academic-affairs/makeup",
     "EVALUATION": "/admin/academic-affairs/evaluation",
     "TEXTBOOK": "/admin/academic-affairs/textbooks",
-    "GRADUATION": "/admin/academic-affairs/graduation-audit",
+    "GRADUATION": "/admin/academic-affairs/graduation/audit-console",
 }
 
 _ACTIVE_STATUS_CHANGE = {"DRAFT", "SUBMITTED", "IN_REVIEW"}
@@ -392,41 +392,37 @@ def evaluate_evaluation(db, term_id):
         if int(task.submitted_count or 0) > 0
         and (not task.teaching_task_id or (int(task.batch_id), int(task.teaching_task_id)) not in result_keys)
     )
-    result_ids = [int(row.id) for row in results]
     active_appeals = db.query(AaEvaluationAppeal).filter(
         AaEvaluationAppeal.tenant_id == _tid(),
-        AaEvaluationAppeal.result_id.in_(result_ids),
-        AaEvaluationAppeal.status.in_(["SUBMITTED", "COLLEGE_REVIEW"]),
+        AaEvaluationAppeal.batch_id.in_(batch_ids),
+        AaEvaluationAppeal.status.in_(["SUBMITTED", "IN_REVIEW"]),
         AaEvaluationAppeal.is_deleted.is_(False),
-    ).count() if result_ids else 0
+    ).count()
     blockers = []
     if unfinished:
-        blockers.append(f"未形成最终结果的评教批次 {len(unfinished)} 个")
+        blockers.append(f"未形成结果/未归档评教批次 {len(unfinished)} 个")
     if missing_results:
-        blockers.append(f"有提交但未生成结果的评教任务 {missing_results} 个")
+        blockers.append(f"已有提交但缺少汇总结果任务 {missing_results} 个")
     if active_appeals:
         blockers.append(f"仍有在途评教申诉 {int(active_appeals)} 条")
     return _legacy_result(
         len(batches), not blockers,
-        "评教窗口、结果和申诉均已收口" if not blockers else "；".join(blockers),
+        "学生评教结果与申诉均已收口" if not blockers else "；".join(blockers),
     )
 
 
 def evaluate_textbook(db, term_id):
-    from app.models import (
-        AaTextbookDistributionBatch, AaTextbookDistributionRecord,
-        AaTextbookFeeLedger, AaTextbookOrderBatch, AaTextbookOrderItem,
-    )
+    from app.models import AaTextbookFee, AaTextbookOrder
 
     if not term_id:
         return _state_result(
             "TEXTBOOK", "UNKNOWN", "未指定学期，无法核验教材业务",
             rule_code="TEXTBOOK_TERM_SCOPE_UNKNOWN",
         )
-    orders = db.query(AaTextbookOrderBatch).filter(
-        AaTextbookOrderBatch.tenant_id == _tid(),
-        AaTextbookOrderBatch.term_id == int(term_id),
-        AaTextbookOrderBatch.is_deleted.is_(False),
+    orders = db.query(AaTextbookOrder).filter(
+        AaTextbookOrder.tenant_id == _tid(),
+        AaTextbookOrder.term_id == int(term_id),
+        AaTextbookOrder.is_deleted.is_(False),
     ).all()
     if not orders:
         return _state_result(
@@ -435,123 +431,53 @@ def evaluate_textbook(db, term_id):
         )
     order_ids = [int(row.id) for row in orders]
     unfinished_orders = [
-        row for row in orders if str(row.status or "").upper() not in _ORDER_TERMINAL
+        row for row in orders
+        if str(row.status or "").upper() not in _ORDER_TERMINAL
     ]
-    items = db.query(AaTextbookOrderItem).filter(
-        AaTextbookOrderItem.tenant_id == _tid(),
-        AaTextbookOrderItem.order_batch_id.in_(order_ids),
-        AaTextbookOrderItem.is_deleted.is_(False),
+    fees = db.query(AaTextbookFee).filter(
+        AaTextbookFee.tenant_id == _tid(),
+        AaTextbookFee.order_id.in_(order_ids),
+        AaTextbookFee.is_deleted.is_(False),
     ).all()
-    ordered_qty = defaultdict(int)
-    for item in items:
-        ordered_qty[int(item.order_batch_id)] += int(item.order_qty or 0)
-    distributions = db.query(AaTextbookDistributionBatch).filter(
-        AaTextbookDistributionBatch.tenant_id == _tid(),
-        AaTextbookDistributionBatch.order_batch_id.in_(order_ids),
-        AaTextbookDistributionBatch.is_deleted.is_(False),
-    ).all()
-    distribution_order_ids = {int(row.order_batch_id) for row in distributions}
-    missing_distribution = sum(
-        1 for order in orders
-        if str(order.status or "").upper() in {"ARRIVED", "RECEIVED", "ARCHIVED"}
-        and ordered_qty.get(int(order.id), 0) > 0
-        and int(order.id) not in distribution_order_ids
-    )
-    unfinished_distributions = sum(
-        1 for row in distributions if str(row.status or "").upper() != "COMPLETED"
-    )
-    distribution_ids = [int(row.id) for row in distributions]
-    records = db.query(AaTextbookDistributionRecord).filter(
-        AaTextbookDistributionRecord.tenant_id == _tid(),
-        AaTextbookDistributionRecord.batch_id.in_(distribution_ids),
-        AaTextbookDistributionRecord.is_deleted.is_(False),
-    ).all() if distribution_ids else []
-    pending_records = sum(1 for row in records if str(row.status or "").upper() == "PENDING")
-    chargeable = [
-        row for row in records
-        if str(row.status or "").upper() in {"RECEIVED", "RETURNED", "EXCHANGED"}
+    unfinished_fees = [
+        row for row in fees
+        if str(row.status or "").upper() not in _FEE_TERMINAL
     ]
-    chargeable_ids = [int(row.id) for row in chargeable]
-    fees = db.query(AaTextbookFeeLedger).filter(
-        AaTextbookFeeLedger.tenant_id == _tid(),
-        AaTextbookFeeLedger.distribution_record_id.in_(chargeable_ids),
-        AaTextbookFeeLedger.is_deleted.is_(False),
-    ).all() if chargeable_ids else []
-    fee_record_ids = {int(row.distribution_record_id) for row in fees}
-    missing_fees = sum(1 for row in chargeable if int(row.id) not in fee_record_ids)
-    unsettled = sum(1 for row in fees if str(row.status or "").upper() not in _FEE_TERMINAL)
     blockers = []
     if unfinished_orders:
-        blockers.append(f"未到货/未取消征订批次 {len(unfinished_orders)} 个")
-    if missing_distribution:
-        blockers.append(f"已到货但未形成发放批次的征订 {missing_distribution} 个")
-    if unfinished_distributions:
-        blockers.append(f"未完成教材发放批次 {unfinished_distributions} 个")
-    if pending_records:
-        blockers.append(f"仍有待处理教材发放记录 {pending_records} 条")
-    if missing_fees:
-        blockers.append(f"已签收/退领但缺少费用台账 {missing_fees} 条")
-    if unsettled:
-        blockers.append(f"未结清教材费用 {unsettled} 条")
+        blockers.append(f"未终结教材订单 {len(unfinished_orders)} 条")
+    if unfinished_fees:
+        blockers.append(f"未结清/未豁免教材费用 {len(unfinished_fees)} 条")
     return _legacy_result(
-        len(orders) + unfinished_distributions + pending_records + missing_fees + unsettled,
-        not blockers,
-        "教材征订、发放和费用均已收口" if not blockers else "；".join(blockers),
+        len(orders), not blockers,
+        "教材征订、到书发放与费用均已收口" if not blockers else "；".join(blockers),
     )
 
 
-def apply_effective_grade_policy_debt(db, term_code, result):
-    debt = policy_snapshot_debt(db, term=term_code)
-    blockers = int(debt.get("missingPolicySnapshot") or 0) + int(debt.get("legacyNameKey") or 0)
-    evidence = list(result.get("evidence") or [])
-    evidence.append({
-        "type": "EFFECTIVE_GRADE_POLICY" if not blockers else "EFFECTIVE_GRADE_POLICY_DEBT",
-        "policyCode": "LATEST_FORMAL_SOURCE_V1",
-        "totalGrades": int(debt.get("total") or 0),
-        "missingPolicySnapshot": int(debt.get("missingPolicySnapshot") or 0),
-        "legacyNameKey": int(debt.get("legacyNameKey") or 0),
-        "sampleGradeIds": list(debt.get("sampleGradeIds") or []),
-    })
-    result["evidence"] = evidence
-    if not blockers:
-        return result
-    result.update({
-        "present": False,
-        "result": "BLOCKED",
-        "blockingCount": int(result.get("blockingCount") or 0) + blockers,
-        "ruleCode": "GRADE_EFFECTIVE_POLICY_DEBT",
-        "summary": (
-            f"有效成绩策略欠账{blockers}项：缺少策略快照{debt.get('missingPolicySnapshot', 0)}条，"
-            f"LEGACY_NAME_KEY {debt.get('legacyNameKey', 0)}条；禁止归档"
-        ),
-        "route": "/admin/academic-affairs/grade-identity-debt",
-    })
-    result["remark"] = result["summary"]
-    return result
+def evaluate_domains(db, term_id, term_code, college_ids=None):
+    """返回十三域结构化语义结果；失败即阻断，不吞异常。"""
+    from app.models import AaTerm
 
+    term = None
+    if term_id:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(term_id),
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
 
-def evaluate_domains(db, term_id, term_code, college_ids=None) -> dict[str, dict]:
-    """十三域唯一编排；任一规则异常都明确阻断，不伪装为无数据或成功。"""
-    base = _core._evaluate_domains(db, term_id, term_code, college_ids)
-    base["STATUS_CHANGE"] = _safe("STATUS_CHANGE", lambda: evaluate_status_change(db, term_id, term_code))
-    base["GRADUATION"] = _safe("GRADUATION", lambda: evaluate_graduation(db, term_id))
-    results = _semantic.evaluate_first_batch(
-        db, term_id, term_code, base, college_ids=college_ids,
-    )
-    results["GRADE"] = _safe(
-        "GRADE", lambda: apply_effective_grade_policy_debt(db, term_code, results["GRADE"]),
-    )
-    results["SELECTION"] = _safe("SELECTION", lambda: evaluate_selection(db, term_id))
-    results["MAKEUP"] = _safe("MAKEUP", lambda: evaluate_makeup(db, term_id, term_code))
-    results["EVALUATION"] = _safe("EVALUATION", lambda: evaluate_evaluation(db, term_id))
-    results["TEXTBOOK"] = _safe("TEXTBOOK", lambda: evaluate_textbook(db, term_id))
-
-    output = {}
-    for code, _label in DOMAINS:
-        normalized = _semantic.normalize_legacy_result(code, results.get(code) or _legacy_result(0, False, "规则未返回结果"))
-        normalized["route"] = normalized.get("route") or ROUTES[code]
-        normalized["summary"] = normalized.get("summary") or normalized.get("remark") or ""
-        normalized["remark"] = normalized["summary"]
-        normalized["evidence"] = list(normalized.get("evidence") or [])
-        output[code] = normalized
-    return output
+    return {
+        "STUDENT_STATUS": _safe("STUDENT_STATUS", lambda: _semantic.evaluate_student_status(db, term, college_ids=college_ids)),
+        "REGISTRATION": _safe("REGISTRATION", lambda: _semantic.evaluate_registration(db, term, college_ids=college_ids)),
+        "STATUS_CHANGE": _safe("STATUS_CHANGE", lambda: evaluate_status_change(db, term_id, term_code)),
+        "PROGRAM": _safe("PROGRAM", lambda: _semantic.evaluate_program(db, term, college_ids=college_ids)),
+        "TEACHING_TASK": _safe("TEACHING_TASK", lambda: _semantic.evaluate_teaching_task(db, term_id, college_ids)),
+        "SCHEDULE": _safe("SCHEDULE", lambda: _semantic.evaluate_schedule(db, term_id, college_ids)),
+        "SELECTION": _safe("SELECTION", lambda: evaluate_selection(db, term_id)),
+        "EXAM": _safe("EXAM", lambda: _semantic.evaluate_exam(db, term_id)),
+        "GRADE": _safe("GRADE", lambda: _semantic.evaluate_grade(db, term_code, college_ids)),
+        "MAKEUP": _safe("MAKEUP", lambda: evaluate_makeup(db, term_id, term_code)),
+        "EVALUATION": _safe("EVALUATION", lambda: evaluate_evaluation(db, term_id)),
+        "TEXTBOOK": _safe("TEXTBOOK", lambda: evaluate_textbook(db, term_id)),
+        "GRADUATION": _safe("GRADUATION", lambda: evaluate_graduation(db, term_id)),
+    }
