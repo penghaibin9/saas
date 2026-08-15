@@ -31,6 +31,30 @@ class EnterpriseOnlineEvaluationBody(BaseModel):
     expectedVersion: int | None = Field(default=None, ge=0)
 
 
+@router.get("/collaboration-context")
+def collaboration_context(
+    batchId: int = Query(..., ge=1),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    """Resolve ongoing internship collaboration independently of an expired recruitment Grant."""
+    context = resolve_internship_collab_context(principal, batch_id=batchId)
+    return success({
+        "tenantId": str(context.tenant_id),
+        "tenantCode": context.tenant_code,
+        "memberId": str(context.member_id),
+        "memberRole": context.member_role,
+        "companyId": str(context.company_id),
+        "campaignId": str(context.campaign_id) if context.campaign_id else None,
+        "batchId": str(context.batch_id) if context.batch_id else str(batchId),
+        "grantId": str(context.grant_id),
+        "grantType": context.grant_type,
+        "capabilities": {
+            "recruitmentWrite": False,
+            "internshipCollab": True,
+        },
+    })
+
+
 @router.get("/internship-students")
 def internship_students(
     batchId: int = Query(..., ge=1),
