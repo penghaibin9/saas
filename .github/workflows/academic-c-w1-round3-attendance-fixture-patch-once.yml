@@ -1,0 +1,77 @@
+name: Academic C W1 Round3 attendance fixture patch once
+
+on:
+  push:
+    branches:
+      - agent/academic-c-teaching-execution
+    paths:
+      - '.github/workflows/academic-c-w1-round3-attendance-fixture-patch-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-c-w1-round3-attendance-fixture-patch-once
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-c-teaching-execution
+          fetch-depth: 0
+
+      - name: Replace class-only attendance fixture with TeachingTask-first flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/scripts/e2e_academic_affairs_round3.py')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '    # ── 3) 考勤提交 → 旷课预警扫描 ──\n'
+          end_marker = '    # 恢复阈值\n'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+
+          replacement = '''    # ── 3) 考勤提交 → 旷课预警扫描 ──\n    teacher_mp = tok("e2e_aa_teacher_a", "MINI_PROGRAM")\n    # 阈值临时调为 1，便于单场次触发\n    rules = req("GET", f"{AA}/warnings/rules", admin)\n    put_thr = req("PUT", f"{AA}/warnings/rules/warning_absent_threshold", admin, {"value": 1})\n    step("R3.warn_thr_set", put_thr.get("code") == 0, {"rulesCode": rules.get("code"), "put": put_thr})\n\n    att_ok = False\n    # C-W1：普通课堂考勤必须 TeachingTask-first。优先教师本人任务；若无本人任务，\n    # 可由管理员使用一个正式 Task 做验收，但禁止再回退为“管理员无 Task + classId”旁路。\n    att_task = next((t for t in ((tasks.get("data") or {}).get("items") or [])\n                     if str(t.get("teacherKey") or "") == "e2e_aa_teacher_a"\n                     and t.get("taskId")), None)\n    att_actor = teacher_mp if att_task and teacher_mp else None\n    if not att_task:\n        att_task = next((t for t in ((tasks.get("data") or {}).get("items") or []) if t.get("taskId")), None)\n        if att_task:\n            att_actor = tok("e2e_aa_admin", "MINI_PROGRAM") or tok("admin2", "MINI_PROGRAM")\n            step("R3.att_teacher_task_fallback", bool(att_actor), {\n                "reason": "teacher formal task unavailable; use admin over formal TeachingTask",\n                "teachingTaskId": att_task.get("taskId"),\n            })\n\n    if att_actor and att_task:\n        today = date.today().isoformat()\n        payload = {\n            "teachingTaskId": str(att_task.get("taskId")),\n            "sessionDate": today,\n            "slotNo": 10,\n            "sessionType": "常规",\n        }\n        if att_task.get("classId"):\n            payload["classId"] = str(att_task.get("classId"))\n        cre = req("POST", f"{MOB}/teacher/academic/attendance/sessions", att_actor, payload)\n        sid = (cre.get("data") or {}).get("sessionId")\n        create_code = cre.get("code")\n        if sid:\n            detail = req("GET", f"{MOB}/teacher/academic/attendance/sessions/{sid}", att_actor)\n            roster = (detail.get("data") or {}).get("items") or []\n            target = next((it for it in roster if str(it.get("studentNo") or "").startswith("E2EAA")), None)\n            if not target and roster:\n                target = roster[0]\n            if target:\n                req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/mark", att_actor, {\n                    "studentId": target.get("studentId"), "status": "ABSENT",\n                })\n            sub = req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/submit", att_actor)\n            step("R3.att_submit", sub.get("code") == 0, {\n                "create": create_code, "submit": sub.get("code"), "sid": sid,\n                "teachingTaskId": att_task.get("taskId"),\n                "classId": att_task.get("classId"),\n                "actor": "teacher" if att_actor == teacher_mp else "admin-formal-task",\n            })\n        else:\n            step("R3.att_submit", False, cre)\n        scan = req("POST", f"{AA}/warnings/scan/attendance", admin)\n        step("R3.att_warn_scan", scan.get("code") == 0, scan)\n        att_ok = scan.get("code") == 0\n        if scan.get("code") != 0:\n            bug(module="旷课预警", severity="P1", result="OPEN",\n                expected="scan/attendance 成功", actual=str(scan)[:300])\n    else:\n        step("R3.att_submit", False, {\n            "actor": bool(att_actor),\n            "teachingTaskId": (att_task or {}).get("taskId"),\n            "reason": "no formal TeachingTask available; class-only compatibility fallback forbidden",\n        })\n        step("R3.att_warn_scan", False, {"skipped": True})\n\n'''
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          grep -n "TeachingTask-first\|teachingTaskId.*att_task\|class-only compatibility fallback forbidden" \
+            backend/scripts/e2e_academic_affairs_round3.py
+
+      - name: Assert fixture cannot reintroduce admin class-only fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile backend/scripts/e2e_academic_affairs_round3.py
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('backend/scripts/e2e_academic_affairs_round3.py').read_text(encoding='utf-8')
+          start = text.index('# ── 3) 考勤提交 → 旷课预警扫描 ──')
+          end = text.index('# 恢复阈值', start)
+          body = text[start:end]
+          assert '"teachingTaskId": str(att_task.get("taskId"))' in body
+          assert 'class-only compatibility fallback forbidden' in body
+          assert 'R3.att_teacher_scope_fallback' not in body
+          assert '"courseName": "R3旷课联动' not in body
+          print('Round3 attendance fixture=TEACHING_TASK_FIRST')
+          PY
+
+      - name: Commit fixture repair and self-clean helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- backend/scripts/e2e_academic_affairs_round3.py
+          git rm -- .github/workflows/academic-c-w1-round3-attendance-fixture-patch-once.yml
+          git commit -m 'test(academic-c): make Round3 attendance Task-first'
+          git push origin HEAD:agent/academic-c-teaching-execution
