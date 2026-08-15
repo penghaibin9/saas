@@ -171,7 +171,13 @@
         <EmptyState v-else-if="!rows.length" title="暂无待终审名单" description="需学院初审通过（ACADEMIC_REVIEW）后才进入本队列" />
         <DataTable v-else :columns="finalColumns" :rows="rows" row-key="resultId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-overall="{ row }"><AppStatusTag :type="overallColor(row.overall)" dot>{{ overallLabel(row.overall) }}</AppStatusTag></template>
-          <template #cell-ops="{ row }"><button class="mp-btn mp-btn--primary" @click="openFinal(row)">教务终审</button></template>
+          <template #cell-ops="{ row }">
+            <button v-if="canNormalFinal(row)" class="mp-btn mp-btn--primary" @click="openFinal(row)">教务终审</button>
+            <template v-else>
+              <span class="agc-final-blocked">系统异常 · 先治理阻断项</span>
+              <button class="mp-link" @click="openDetail(row)">查看阻断证据</button>
+            </template>
+          </template>
         </DataTable>
       </template>
 
@@ -258,11 +264,16 @@
           <AppButton :loading="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</AppButton>
         </div>
 
-        <div v-if="detail.row.status === 'ACADEMIC_REVIEW'" class="agc-actions">
+        <div v-if="canNormalFinal(detail.row)" class="agc-actions">
           <div class="agc-actions__title">毕业资格终审</div>
           <AppRadioGroup v-model="finalConclusion" :options="conclusionOptions" variant="button" />
           <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
         </div>
+        <AppInlineAlert
+          v-else-if="detail.row.status === 'ACADEMIC_REVIEW' && detail.row.overall === 'SYSTEM_ABNORMAL'"
+          type="warning"
+          description="系统预审仍为异常：普通教务终审不可用审核备注覆盖评估结论。请先下钻阻断证据、完成治理并重新预审；正式例外必须走独立 Override 流程。"
+        />
         <p v-if="detail.row.conclusion" class="mp-note">终审结论：{{ conclusionLabel(detail.row.conclusion) }}（涉学籍终态，不可在本页撤销）</p>
       </template>
     </AppDrawer>
@@ -476,6 +487,7 @@ export default {
       return LINK_ITEM[cfg.item](it.refId)
     },
     canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     async markFee(row, status) {
       if (!this.batchId || this.feeBusy) return
       const label = status === 'CLEARED' ? '已结清' : '仍欠费'
@@ -594,7 +606,14 @@ export default {
       this.detail = { visible: true, row }
       this.finalConclusion = 'GRADUATED'
     },
-    openFinal(row) { this.openDetail(row) },
+    openFinal(row) {
+      if (!this.canNormalFinal(row)) {
+        toast.error('系统预审仍为异常，普通教务终审不可用；请先治理阻断项并重新预审')
+        this.openDetail(row)
+        return
+      }
+      this.openDetail(row)
+    },
     openCollegeReject() { this.collegeRejectDlg.visible = true },
     async doCollegeReject({ reason }) {
       this.detailBusy = true
@@ -617,8 +636,19 @@ export default {
         this.loadTab()
       } else toast.error(res.message || '处理失败')
     },
-    confirmFinal() { this.finalDlg.visible = true },
+    confirmFinal() {
+      if (!this.canNormalFinal(this.detail.row)) {
+        toast.error('系统预审仍为异常，禁止打开普通终审确认')
+        return
+      }
+      this.finalDlg.visible = true
+    },
     async doFinal() {
+      if (!this.canNormalFinal(this.detail.row)) {
+        this.finalDlg.visible = false
+        toast.error('系统预审已变化或仍为异常，请重新加载并治理阻断项')
+        return
+      }
       this.finalDlg.submitting = true
       const res = await academicAffairsApi.finalGrad(this.detail.row.resultId, this.finalConclusion, true)
       this.finalDlg.submitting = false
@@ -781,6 +811,14 @@ export default {
 
 .agc-evidence { color: var(--text-500, #6b7789); font-size: 12px; line-height: 1.6; }
 .agc-conclusion { color: var(--success-600, #16a34a); font-weight: 600; }
+.agc-final-blocked {
+  display: inline-block;
+  margin-right: 8px;
+  color: #a85b0b;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+}
 .agc-detail-head {
   display: flex;
   align-items: flex-end;

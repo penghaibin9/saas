@@ -52,3 +52,16 @@ test('Stage D 毕业审核详情与首屏均有响应式商业化收口', async 
   assert.match(source, /@media \(max-width: 760px\)/)
   assert.match(source, /@media \(max-width: 520px\)/)
 })
+
+
+test('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  for (const token of [
+    'canNormalFinal(row)',
+    "r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED'",
+    '系统异常 · 先治理阻断项',
+    '普通教务终审不可用审核备注覆盖评估结论',
+    '正式例外必须走独立 Override 流程'
+  ]) assert.ok(source.includes(token), `missing D-W0 final guard token: ${token}`)
+  assert.doesNotMatch(source, /v-if="detail\.row\.status === 'ACADEMIC_REVIEW'" class="agc-actions"/)
+})
