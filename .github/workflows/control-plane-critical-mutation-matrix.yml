@@ -5,8 +5,10 @@ on:
   push:
     branches: [integration/control-plane-option-b-20260815]
     paths:
-      - 'backend/app/modules/platform/services/platform_access_governance_service.py'
-      - 'backend/app/modules/platform/services/platform_access_governance_runtime.py'
+      - 'backend/app/modules/platform/services/platform_access_governance_*.py'
+      - 'backend/app/services/audit_log*.py'
+      - 'backend/app/services/db_service.py'
+      - 'backend/app/services/tenant_effective_state_service.py'
       - 'backend/app/modules/system_admin/routers/system_router.py'
       - 'backend/app/api/v1/system.py'
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
@@ -15,8 +17,10 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'backend/app/modules/platform/services/platform_access_governance_service.py'
-      - 'backend/app/modules/platform/services/platform_access_governance_runtime.py'
+      - 'backend/app/modules/platform/services/platform_access_governance_*.py'
+      - 'backend/app/services/audit_log*.py'
+      - 'backend/app/services/db_service.py'
+      - 'backend/app/services/tenant_effective_state_service.py'
       - 'backend/app/modules/system_admin/routers/system_router.py'
       - 'backend/app/api/v1/system.py'
       - 'backend/tests/test_control_plane_critical_mutation_matrix.py'
