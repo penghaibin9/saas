@@ -14,6 +14,7 @@
         <nav class="pt-nav-actions" aria-label="门户导航">
           <a class="pt-nav-link" href="#pt-modules">业务系统</a>
           <a class="pt-nav-link" href="#pt-mobile">移动端</a>
+          <a v-if="enterpriseLoginUrl" class="pt-nav-link" :href="enterpriseLoginUrl">企业入口</a>
           <a v-if="statusPageUrl" class="pt-nav-link" :href="statusPageUrl"
              target="_blank" rel="noopener noreferrer">系统运行状态</a>
           <span v-if="supportContact" class="pt-nav-support">服务支持 {{ supportContact }}</span>
@@ -33,6 +34,7 @@
       <div v-show="menuOpen" id="pt-mobile-menu" class="pt-shell pt-mobile-menu">
         <a href="#pt-modules" @click="menuOpen = false">业务系统</a>
         <a href="#pt-mobile" @click="menuOpen = false">移动端</a>
+        <a v-if="enterpriseLoginUrl" :href="enterpriseLoginUrl" @click="menuOpen = false">企业注册 / 登录</a>
         <a v-if="statusPageUrl" :href="statusPageUrl" target="_blank"
            rel="noopener noreferrer" @click="menuOpen = false">系统运行状态</a>
         <a href="#pt-login" @click="menuOpen = false">登录</a>
@@ -47,7 +49,7 @@
             <p class="pt-eyebrow">高校学生全生命周期管理平台</p>
             <h1 class="pt-hero-title">一个入口，贯通学生培养全过程</h1>
             <p class="pt-hero-lead">
-              覆盖毕业设计、岗位实习、学工管理与教务运行，为教师和学生提供统一、清晰、可信的数字化工作入口。
+              覆盖毕业设计、岗位实习、学工管理与教务运行，为教师、学生与合作企业提供统一、清晰、可信的数字化工作入口。
             </p>
             <ul class="pt-hero-points">
               <li v-for="point in heroPoints" :key="point" class="pt-hero-point">
@@ -62,7 +64,7 @@
           <aside id="pt-login" class="pt-login-card" aria-labelledby="pt-login-title">
             <p class="pt-login-kicker">统一登录入口</p>
             <h2 id="pt-login-title" class="pt-login-title">请选择您的身份</h2>
-            <p class="pt-login-desc">登录后直接进入与岗位匹配的工作台，无需再次选择业务系统。</p>
+            <p class="pt-login-desc">登录后直接进入与身份匹配的工作台，无需再次选择业务系统。</p>
 
             <div class="pt-role-list">
               <a v-if="teacherLoginUrl" class="pt-role pt-role-primary" :href="teacherLoginUrl">
@@ -102,13 +104,32 @@
                   <span class="pt-role-sub">入口暂未配置，请联系学校管理员</span>
                 </span>
               </div>
+
+              <a v-if="enterpriseLoginUrl" class="pt-role pt-role-enterprise" :href="enterpriseLoginUrl">
+                <span class="pt-role-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 21V7l8-4 8 4v14" /><path d="M8 10h2M14 10h2M8 14h2M14 14h2M9 21v-3h6v3" />
+                  </svg>
+                </span>
+                <span class="pt-role-text">
+                  <span class="pt-role-title">企业注册 / 登录</span>
+                  <span class="pt-role-sub">合作企业账号登录；首次注册由学校邀请激活</span>
+                </span>
+                <span class="pt-role-arrow" aria-hidden="true">→</span>
+              </a>
+              <div v-else class="pt-role pt-role-disabled" aria-disabled="true">
+                <span class="pt-role-text">
+                  <span class="pt-role-title">企业注册 / 登录</span>
+                  <span class="pt-role-sub">企业入口暂未配置，请联系学校管理员</span>
+                </span>
+              </div>
             </div>
 
             <p class="pt-login-tip">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />
               </svg>
-              <span>请使用学校下发的账号登录；账号或权限异常请联系本校管理员。</span>
+              <span>师生请使用学校下发账号；企业账号由学校建立合作关系后开通，首次激活请使用学校邀请链接。</span>
             </p>
           </aside>
         </div>
@@ -244,6 +265,7 @@ import {
   COMPANY_NAME,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_PLATFORM_SUBTITLE,
+  ENTERPRISE_LOGIN_URL,
   ICP_NUMBER,
   ICP_QUERY_URL,
   PORTAL_MODULES,
@@ -277,6 +299,7 @@ export default {
       supportContact: SUPPORT_CONTACT,
       teacherLoginUrl: TEACHER_LOGIN_URL,
       studentLoginUrl: STUDENT_LOGIN_URL,
+      enterpriseLoginUrl: ENTERPRISE_LOGIN_URL,
       heroPoints: ['统一身份认证', '权限与数据范围自动识别', 'PC 与微信小程序协同']
     }
   },
@@ -516,6 +539,8 @@ export default {
 }
 .pt-role-primary { color: #fff; border-color: transparent; background: linear-gradient(135deg, #2f70ea, #1f56c9); }
 .pt-role-second { border-color: #bfd2f8; }
+.pt-role-enterprise { border-color: #b9dfd2; background: #f5fbf8; }
+.pt-role-enterprise .pt-role-icon { color: #047857; background: #e4f5ee; }
 .pt-role:not(.pt-role-disabled):hover { transform: translateY(-1px); box-shadow: var(--pt-shadow-soft); }
 .pt-role:not(.pt-role-disabled):active { transform: translateY(0); }
 .pt-role-disabled { background: #f7f9fc; color: #94a3b8; cursor: not-allowed; }
