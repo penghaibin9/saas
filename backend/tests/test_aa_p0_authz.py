@@ -1,22 +1,8 @@
 """P0 · 教务旧接口权限漏挂：精确 permissionCode + 模块门禁 + 反向角色。"""
 from __future__ import annotations
 
-import pytest
-
 BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
-
-
-@pytest.fixture(autouse=True)
-def _post_b8_school_iam_authority(db_mode):
-    """Exercise school-admin compatibility on the canonical post-B8 Authority."""
-    from app.services.school_iam_authority_service import converge_school_iam_authority
-
-    converge_school_iam_authority(
-        source="pytest-post-b8-academic-authz",
-        source_commit_sha="post-b8-academic-authz",
-        actor_user_id=None,
-    )
 
 
 def _hdr(client, login_name):
