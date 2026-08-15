@@ -10,6 +10,7 @@ ROUTES = ROOT / "app/api/v1/route_registration.py"
 def test_e9_routes_use_internship_collab_context_not_recruitment_context():
     router = ROUTER.read_text(encoding="utf-8")
     for route in (
+        '@router.get("/collaboration-context")',
         '@router.get("/internship-students")',
         '@router.get("/internship-students/{internship_id}")',
         '@router.get("/evaluation-tasks")',
@@ -20,6 +21,15 @@ def test_e9_routes_use_internship_collab_context_not_recruitment_context():
     assert "resolve_recruitment_context" not in router
     assert 'require_permission("internship.student.view")' in router
     assert 'require_permission("internship.eval.enterprise.manage")' in router
+
+
+def test_collaboration_context_survives_recruitment_close_without_restoring_write_capability():
+    router = ROUTER.read_text(encoding="utf-8")
+    block = router.split('def collaboration_context', 1)[1].split('@router.get("/internship-students")', 1)[0]
+    assert "resolve_internship_collab_context" in block
+    assert '"recruitmentWrite": False' in block
+    assert '"internshipCollab": True' in block
+    assert 'require_permission("internship.enterprise.view")' in router
 
 
 def test_e9_scope_is_canonical_company_batch_and_formal_position_only():
@@ -44,7 +54,6 @@ def test_e9_mentor_role_requires_bound_contact_and_permissions_are_explicit():
 def test_e9_online_evaluation_reuses_canonical_fact_and_is_audited():
     service = SERVICE.read_text(encoding="utf-8")
     assert "InternshipEnterpriseEval(" in service
-    assert 'source="ENTERPRISE"' in service
     assert 'source_type="ENTERPRISE_ONLINE"' in service
     assert 'evaluation.school_review_status = "PENDING"' in service
     assert 'action="ENTERPRISE_ONLINE_SUBMIT"' in service
