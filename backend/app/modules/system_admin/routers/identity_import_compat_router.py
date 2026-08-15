@@ -2,15 +2,14 @@
 
 Student/teacher uploads are redirected into the canonical Data Exchange
 FileObject→scan→ImportJob chain. The obsolete mixed parser endpoint is retired
-because the canonical worker has explicit STUDENT/TEACHER contracts. Confirm
-adapters resolve legacy batchNo to the canonical ImportJob and never invoke the
-old direct batch confirmation implementation.
+because the canonical worker has explicit STUDENT/TEACHER contracts.
 """
 from __future__ import annotations
 
 import hashlib
+import uuid
 
-from fastapi import APIRouter, Body, Depends, File, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, UploadFile
 
 from app.core.exceptions import AppException
 from app.core.permissions import require_permission
@@ -27,7 +26,9 @@ def _compat_preview(item: dict) -> dict:
     return {
         **item,
         "jobId": item.get("id"),
-        "batchNo": item.get("adapterRef") if str(item.get("adapterType") or "") == "IDENTITY_IMPORT_BATCH" else None,
+        "batchNo": item.get("adapterRef")
+        if str(item.get("adapterType") or "") == "IDENTITY_IMPORT_BATCH"
+        else None,
         "total": int(item.get("totalRows") or 0) if validated else None,
         "valid": int(item.get("validRows") or 0) if validated else None,
         "invalid": int(item.get("invalidRows") or 0) if validated else None,
@@ -35,6 +36,13 @@ def _compat_preview(item: dict) -> dict:
         "async": True,
         "canonicalEntry": "/data-exchange/imports/identity/{kind}/validate-file",
     }
+
+
+def _compat_idempotency_key(value: str | None) -> str:
+    key = str(value or "").strip()
+    if key:
+        return key
+    return f"legacy-identity-upload-{uuid.uuid4()}"
 
 
 @router.post("/system/identity-import/validate-file", summary="已停用：混合师生 direct parser")
@@ -57,9 +65,15 @@ async def legacy_mixed_validate_file(
 @router.post("/system/identity-import/students/validate-file", summary="兼容入口：学生文件转 Data Exchange")
 async def legacy_student_validate_file(
     file: UploadFile = File(...),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user=Depends(require_permission("systemAdmin.user.import")),
 ):
-    response = await data_exchange_router.validate_identity_import("students", file, user)
+    response = await data_exchange_router.run_identity_import_upload(
+        kind="students",
+        file=file,
+        user=user,
+        idempotency_key=_compat_idempotency_key(idempotency_key),
+    )
     item = dict((response or {}).get("data") or {}) if isinstance(response, dict) else {}
     return success(_compat_preview(item), message="学生文件已进入安全扫描与后台预检任务")
 
@@ -67,9 +81,15 @@ async def legacy_student_validate_file(
 @router.post("/system/identity-import/teachers/validate-file", summary="兼容入口：教师文件转 Data Exchange")
 async def legacy_teacher_validate_file(
     file: UploadFile = File(...),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user=Depends(require_permission("systemAdmin.user.import")),
 ):
-    response = await data_exchange_router.validate_identity_import("teachers", file, user)
+    response = await data_exchange_router.run_identity_import_upload(
+        kind="teachers",
+        file=file,
+        user=user,
+        idempotency_key=_compat_idempotency_key(idempotency_key),
+    )
     item = dict((response or {}).get("data") or {}) if isinstance(response, dict) else {}
     return success(_compat_preview(item), message="教师文件已进入安全扫描与后台预检任务")
 
@@ -80,11 +100,17 @@ def _legacy_confirm(body: dict, user: dict) -> dict:
     reference = str(body.get("jobId") or body.get("batchNo") or "").strip()
     item = identity.find_identity_job_by_batch(reference, user=user)
     job_id = str(item.get("id") or "")
-    expected = int(body.get("expectedVersion") if body.get("expectedVersion") is not None else item.get("version") or 0)
+    expected = int(
+        body.get("expectedVersion")
+        if body.get("expectedVersion") is not None
+        else item.get("version") or 0
+    )
     idem = str(body.get("idempotencyKey") or "").strip()
     if not idem:
         tenant_part = str((user or {}).get("tenantId") or "tenant")
-        idem = "legacy-confirm-" + hashlib.sha256(f"{tenant_part}:{job_id}:{reference}".encode()).hexdigest()
+        idem = "legacy-confirm-" + hashlib.sha256(
+            f"{tenant_part}:{job_id}:{reference}".encode()
+        ).hexdigest()
     result = confirm_identity_import_job(
         job_id,
         expected_version=expected,

@@ -11,13 +11,16 @@ on:
       - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/modules/system_admin/routers/data_exchange_*.py'
+      - 'backend/app/modules/system_admin/routers/identity_import_compat_router.py'
       - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/modules/system_admin/services/identity_import_idempotency_service.py'
       - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'backend/tests/test_control_plane_identity_import_contract.py'
+      - 'backend/tests/test_control_plane_identity_import_idempotency.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
   push:
@@ -32,13 +35,16 @@ on:
       - 'backend/app/services/file_access_service.py'
       - 'backend/app/api/v1/data_exchange.py'
       - 'backend/app/modules/system_admin/routers/data_exchange_*.py'
+      - 'backend/app/modules/system_admin/routers/identity_import_compat_router.py'
       - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/modules/system_admin/services/identity_import_idempotency_service.py'
       - 'backend/app/api/v1/file_governance.py'
       - 'backend/app/api/v1/migration.py'
       - 'backend/alembic/versions/0147_data_exchange_job_center.py'
       - 'backend/tests/test_data_exchange_job_center.py'
       - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'
       - 'backend/tests/test_control_plane_identity_import_contract.py'
+      - 'backend/tests/test_control_plane_identity_import_idempotency.py'
       - 'frontend/src/modules/system/**'
       - '.github/workflows/data-exchange-job-center.yml'
 
@@ -104,7 +110,9 @@ jobs:
             app/api/v1/data_exchange.py \
             app/modules/system_admin/routers/data_exchange_bundle.py \
             app/modules/system_admin/routers/data_exchange_router.py \
+            app/modules/system_admin/routers/identity_import_compat_router.py \
             app/modules/system_admin/services/identity_import_control_plane_service.py \
+            app/modules/system_admin/services/identity_import_idempotency_service.py \
             app/api/v1/file_governance.py \
             app/api/v1/migration.py \
             alembic/versions/0147_data_exchange_job_center.py
@@ -115,6 +123,7 @@ jobs:
             tests/test_data_exchange_job_center.py \
             tests/test_rbac09_file_data_exchange_permissions.py \
             tests/test_control_plane_identity_import_contract.py \
+            tests/test_control_plane_identity_import_idempotency.py \
             -q -p no:warnings
       - name: Frontend lint and build
         working-directory: frontend
