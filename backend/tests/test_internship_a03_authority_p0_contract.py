@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 from fastapi.routing import APIRoute
 
-from app.modules.internship.routers import internship_student_selection as facade
+from app.api.v1 import mobile_internship_selection as mobile_facade
+from app.modules.internship.routers import internship_student_selection as registration_shim
 from app.modules.internship.services import internship_student_selection_service as selection_svc
 from app.modules.internship.services import internship_volunteer_service as volunteer_svc
+from app.student_portal import internship_selection_router as portal_facade
 
 
 def _route_contract(router):
@@ -84,8 +87,8 @@ def test_final_submit_rehydrates_persisted_draft_and_preserves_all_row_versions_
 
 
 def test_a03_pc_and_mobile_facades_expose_the_same_p0_authority_paths():
-    portal = _route_contract(facade.portal_router)
-    mobile = _route_contract(facade.mobile_router)
+    portal = _route_contract(portal_facade.router)
+    mobile = _route_contract(mobile_facade.router)
     suffixes = {
         ("/profile", frozenset({"GET"})),
         ("/profile", frozenset({"PUT"})),
@@ -98,10 +101,24 @@ def test_a03_pc_and_mobile_facades_expose_the_same_p0_authority_paths():
     assert {(path.removeprefix("/mobile/internship"), methods) for path, methods in mobile} == suffixes
 
 
-def test_facade_is_thin_and_reuses_profile_plus_selection_services():
-    source = inspect.getsource(facade)
-    assert "profile_svc.get_my_profile" in source
-    assert "profile_svc.save_my_profile" in source
-    assert "selection_svc.save_my_draft" in source
-    assert "selection_svc.submit_my_saved_volunteers" in source
-    assert "StudentVolunteer" not in source
+def test_student_facades_live_on_canonical_surfaces_and_do_not_evade_staff_route_inventory():
+    portal_path = Path(inspect.getsourcefile(portal_facade) or "").as_posix()
+    mobile_path = Path(inspect.getsourcefile(mobile_facade) or "").as_posix()
+    assert "/app/student_portal/" in portal_path
+    assert "/app/api/v1/" in mobile_path
+    shim_source = inspect.getsource(registration_shim)
+    assert "@" not in shim_source
+    assert "mobile_internship_selection" in shim_source
+    assert "internship_selection_router" in shim_source
+    assert "enforce_student_portal_module_access" in inspect.getsource(portal_facade)
+    assert 'require_module("internship")' in inspect.getsource(mobile_facade)
+
+
+def test_facades_are_thin_and_reuse_profile_plus_selection_services():
+    for facade in (portal_facade, mobile_facade):
+        source = inspect.getsource(facade)
+        assert "profile_svc.get_my_profile" in source
+        assert "profile_svc.save_my_profile" in source
+        assert "selection_svc.save_my_draft" in source
+        assert "selection_svc.submit_my_saved_volunteers" in source
+        assert "StudentVolunteer" not in source
