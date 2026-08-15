@@ -19,24 +19,34 @@ from app.modules.internship.services import internship_recruitment_window_guard 
 from app.modules.internship.services.internship_compliance_rules import get_batch_compliance_rules
 from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
 
+# Python str.strip() uses Unicode whitespace semantics, while MySQL TRIM(expr) removes ordinary
+# spaces only. ICU regex (MySQL 8) supplies the portable SQL projection; the explicit code points
+# cover Python's additional C0 separators and Unicode White_Space edge cases as well.
+_PYTHON_STRIP_EDGE_WS_REGEX = (
+    r"^[[:space:]\x{001C}-\x{001F}\x{0085}\x{00A0}\x{1680}\x{2000}-\x{200A}"
+    r"\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+|"
+    r"[[:space:]\x{001C}-\x{001F}\x{0085}\x{00A0}\x{1680}\x{2000}-\x{200A}"
+    r"\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+$"
+)
+
 
 def assert_student_selection_window(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -> None:
     window_guard.assert_campaign_operation_window(campaign, "STUDENT_SELECT", now=now)
 
 
 def _major_sql_predicate(major_name: str):
-    """MySQL SQL equivalent of `_major_hit`, including trim/case/accent-sensitive semantics."""
+    """MySQL SQL equivalent of `_major_hit`, including Python strip/case/accent semantics."""
     major = str(major_name or "").strip()
     requirement = InternshipPosition.major_requirement
-    trimmed_requirement = func.trim(requirement)
-    unlimited = or_(requirement.is_(None), func.length(trimmed_requirement) == 0)
+    normalized_requirement = func.regexp_replace(requirement, _PYTHON_STRIP_EDGE_WS_REGEX, "")
+    unlimited = or_(requirement.is_(None), func.length(normalized_requirement) == 0)
     if not major:
         return unlimited
 
-    # Production columns use utf8mb4_unicode_ci, while Python's `_major_hit` strips surrounding
-    # whitespace and then uses case/accent-sensitive `in`. Apply TRIM before binary collation so the
-    # SQL COUNT/page predicate and public-row Python classification are genuinely equivalent.
-    binary_requirement = trimmed_requirement.collate("utf8mb4_bin")
+    # Production columns use utf8mb4_unicode_ci, while Python's `_major_hit` strips Unicode edge
+    # whitespace and then uses case/accent-sensitive `in`. Normalize first, then force binary
+    # collation so COUNT/page filtering and public-row classification stay equivalent.
+    binary_requirement = normalized_requirement.collate("utf8mb4_bin")
     binary_major = literal(major).collate("utf8mb4_bin")
     return or_(
         unlimited,
