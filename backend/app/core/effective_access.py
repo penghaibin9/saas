@@ -88,8 +88,10 @@ def build_effective_access_context(user: dict | None) -> dict:
         principal_type = "TENANT_USER"
     plane = principal_plane(actor).value
     subject_id = str(actor.get("userId") or "")
+    module_access_healthy = bool(base.get("moduleAccessHealthy"))
+    cacheable = bool(revision_healthy and module_access_healthy)
     ctx_key = None
-    if revision_healthy:
+    if cacheable:
         key_payload = "|".join([
             plane,
             principal_type,
@@ -112,6 +114,7 @@ def build_effective_access_context(user: dict | None) -> dict:
         "securityRevision": revision,
         "securityRevisionHealthy": revision_healthy,
         "securityRevisionError": revision_error,
+        "cacheable": cacheable,
         "ctxKey": ctx_key,
         "dataScopeSummary": base.get("dataScope"),
     }

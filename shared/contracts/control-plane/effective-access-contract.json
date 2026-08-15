@@ -6,13 +6,14 @@
     "requiredFields": [
       "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
       "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
-      "securityRevisionHealthy", "ctxKey", "moduleStates", "moduleEntitlements",
+      "securityRevisionHealthy", "cacheable", "ctxKey", "moduleStates", "moduleEntitlements",
       "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary"
     ],
     "moduleCalculationFailure": {
       "moduleEntitlements": null,
       "moduleAccessHealthy": false,
-      "cacheable": false
+      "cacheable": false,
+      "ctxKey": null
     }
   },
   "schoolAccessOrder": [
