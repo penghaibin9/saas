@@ -26,12 +26,13 @@ test('campaign closed and unavailable context fail closed',()=>{
   assert.match(positions,/招聘季已关闭/)
 })
 
-test('pending position is read-only until the future canonical withdraw action returns it to draft',()=>{
+test('pending position is read-only until the school-review position is withdrawn to draft',()=>{
   assert.match(positions,/撤回修改/)
   assert.match(positionForm,/positionStatus\.value==='PENDING'/)
   assert.match(positionForm,/撤回到草稿修改/)
   assert.match(positionForm,/withdrawPosition/)
-  assert.match(positionForm,/PENDING 必须先撤回再修改/)
+  assert.match(positionForm,/待学校审核的岗位需先撤回后再修改/)
+  assert.doesNotMatch(positionForm,/PENDING 必须先撤回再修改/)
 })
 
 test('contact stays hidden until the dedicated server contact-view request succeeds',()=>{
