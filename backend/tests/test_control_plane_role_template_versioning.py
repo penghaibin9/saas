@@ -9,6 +9,11 @@ from app.modules.system_admin.services import role_template_service as svc
 from app.services import audit_log
 
 
+CATALOG_VIEW = "internship.recruitment.view"
+CATALOG_MANAGE = "internship.recruitment.manage"
+CATALOG_INVITE = "internship.recruitment.invite"
+
+
 def test_published_template_status_and_audit_contract():
     assert svc.PUBLISHED == "PUBLISHED"
     assert "ROLE_TEMPLATE_PUBLISH" in audit_log.CRITICAL_ACTIONS
@@ -25,8 +30,8 @@ def test_enterprise_and_platform_roles_cannot_enter_school_role_templates():
 
 
 def test_role_template_digest_is_order_independent():
-    assert svc._digest(["internship.recruitment.view", "internship.recruitment.manage"]) == svc._digest([
-        "internship.recruitment.manage", "internship.recruitment.view"
+    assert svc._digest([CATALOG_VIEW, CATALOG_MANAGE]) == svc._digest([
+        CATALOG_MANAGE, CATALOG_VIEW
     ])
 
 
@@ -49,7 +54,7 @@ def test_b5_draft_publish_materializes_normalized_rows_and_freezes_version(db_mo
     draft = svc.create_draft(
         template_code="SYS_ADMIN",
         template_name="系统管理员",
-        permission_codes=["systemAdmin.role.view", "systemAdmin.user.view"],
+        permission_codes=[CATALOG_VIEW, CATALOG_MANAGE],
         change_reason="建立规范化发布测试",
         source_commit_sha="abc123",
         actor_user_id=9001,
@@ -57,7 +62,7 @@ def test_b5_draft_publish_materializes_normalized_rows_and_freezes_version(db_mo
     assert draft["publishStatus"] == "DRAFT"
     assert draft["storedStatus"] == "ACTIVE"
     assert draft["templatePlane"] == "TENANT"
-    assert draft["permissions"] == ["systemAdmin.role.view", "systemAdmin.user.view"]
+    assert draft["permissions"] == sorted([CATALOG_VIEW, CATALOG_MANAGE])
 
     db = get_sessionmaker()()
     try:
@@ -88,7 +93,7 @@ def test_b5_draft_publish_materializes_normalized_rows_and_freezes_version(db_mo
         svc.update_draft(
             int(draft["id"]),
             expected_version=int(published["version"]),
-            permission_codes=["systemAdmin.role.view"],
+            permission_codes=[CATALOG_VIEW],
             change_reason="不允许原地修改",
             actor_user_id=9003,
         )
@@ -99,7 +104,7 @@ def test_b5_new_version_uses_previous_template_id_not_json_pointer(db_mode):
     first = svc.create_draft(
         template_code="ACADEMIC_ADMIN",
         template_name="教务管理员",
-        permission_codes=["academicAffairs.dashboard.view"],
+        permission_codes=[CATALOG_VIEW],
         change_reason="建立第一版模板",
         actor_user_id=9010,
     )
@@ -109,7 +114,7 @@ def test_b5_new_version_uses_previous_template_id_not_json_pointer(db_mode):
     second = svc.create_draft(
         template_code="ACADEMIC_ADMIN",
         template_name="教务管理员",
-        permission_codes=["academicAffairs.dashboard.view", "academicAffairs.term.view"],
+        permission_codes=[CATALOG_VIEW, CATALOG_INVITE],
         change_reason="建立第二版模板",
         actor_user_id=9011,
     )
