@@ -35,6 +35,8 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
         "internship.archive.force",
         "systemAdmin.role.view",
         "workflow.task.view",
+        "academicAffairs.term.view",
+        "academicAffairs.term.manage",
     ):
         meta = permission_meta(code)
         assert meta is not None
@@ -42,13 +44,6 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
         assert meta["lifecycle"] == "ACTIVE"
         assert meta["tenantAssignable"] is True
         assert meta["catalogSource"] == "B8_CONCRETE_CUTOVER"
-    for code in ("academicAffairs.term.view", "academicAffairs.term.manage"):
-        meta = permission_meta(code)
-        assert meta is not None
-        assert meta["plane"] == "TENANT"
-        assert meta["lifecycle"] == "ACTIVE"
-        assert meta["tenantAssignable"] is True
-        assert meta["catalogSource"] == "B8_POST_CUTOVER_COMPATIBILITY"
 
 
 def test_active_tenant_universe_is_complete_school_assignable_only():
