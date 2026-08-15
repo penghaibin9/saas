@@ -174,7 +174,16 @@ def _public_row(position: InternshipPosition, company: EmpCompany, verdict: dict
     }
 
 
-def _eligible_rows(db, *, tenant_id: int, campaign, record, q, major_name: str = "", only_major_matched: bool = False) -> list[dict]:
+def _eligible_rows(
+    db,
+    *,
+    tenant_id: int,
+    campaign,
+    record,
+    q,
+    major_name: str = "",
+    strict: bool = False,
+) -> list[dict]:
     result: list[dict] = []
     for position, company in db.execute(q).all():
         try:
@@ -182,17 +191,27 @@ def _eligible_rows(db, *, tenant_id: int, campaign, record, q, major_name: str =
                 db, tenant_id=tenant_id, record=record, campaign=campaign, position=position,
             )
         except AppException:
+            if strict:
+                # SQL eligibility projection and canonical guard diverged or a concurrent fact moved.
+                # Fail closed instead of silently dropping a post-pagination row and corrupting page
+                # boundaries/total semantics.
+                raise
             continue
         major_matched = _major_hit(major_name, position.major_requirement or "")
-        if only_major_matched and not major_matched:
-            continue
         result.append(_public_row(position, company, verdict, major_matched=major_matched))
     return result
 
 
-def _candidate_stats_in_tx(db, *, tenant_id: int, campaign) -> tuple[int, int]:
-    """Use one SQL aggregate over publishable catalog candidates; never N+1 scan for context stats."""
-    candidate = _base_query(tenant_id=tenant_id, campaign=campaign).order_by(None).subquery()
+def _candidate_stats_in_tx(db, *, tenant_id: int, campaign, record) -> tuple[int, int]:
+    """Count the same SQL-projected eligible set used by catalog pagination."""
+    q = eligibility_svc.apply_catalog_query_eligibility_filters_in_tx(
+        db,
+        _base_query(tenant_id=tenant_id, campaign=campaign),
+        tenant_id=tenant_id,
+        record=record,
+        campaign=campaign,
+    )
+    candidate = q.order_by(None).subquery()
     published = int(db.scalar(select(func.count()).select_from(candidate)) or 0)
     partners = int(db.scalar(select(func.count(func.distinct(candidate.c.company_id)))) or 0)
     return published, partners
@@ -205,7 +224,7 @@ def get_catalog_context(*, user: dict) -> dict:
         campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
         can_select, reason = _selection_state(campaign, record)
         published, partners = _candidate_stats_in_tx(
-            db, tenant_id=tenant_id, campaign=campaign,
+            db, tenant_id=tenant_id, campaign=campaign, record=record,
         ) if can_select else (0, 0)
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
@@ -233,19 +252,29 @@ def list_catalog_positions(*, user: dict, params: dict) -> dict:
         can_select, reason = _selection_state(campaign, record)
         if not can_select:
             return {"items": [], "total": 0, "page": page, "pageSize": page_size, "blockReason": reason}
+
+        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
         q = _filtered(_base_query(tenant_id=tenant_id, campaign=campaign), params)
+        q = eligibility_svc.apply_catalog_query_eligibility_filters_in_tx(
+            db,
+            q,
+            tenant_id=tenant_id,
+            record=record,
+            campaign=campaign,
+            major_name=major_name,
+            only_major_matched=_true_filter(params.get("majorMatched")),
+        )
         sort = str(params.get("sort") or "RECOMMENDED").upper()
         if sort == "LATEST": q = q.order_by(InternshipPosition.publish_at.desc(), InternshipPosition.id.desc())
         elif sort == "REMUNERATION": q = q.order_by(InternshipPosition.remuneration_amount.desc(), InternshipPosition.id.desc())
         elif sort == "REMAINING": q = q.order_by((InternshipPosition.headcount - InternshipPosition.allocated_count).desc(), InternshipPosition.id.desc())
         else: q = q.order_by(InternshipPosition.id.desc())
 
-        # Count and page the SQL candidate set first. Canonical student eligibility remains a
-        # fail-closed per-row guard, but is now evaluated for at most pageSize candidates rather
-        # than materializing/evaluating the whole campaign on every page request.
+        # Pages and total are defined over the SQL projection of the canonical APPLY predicate.
+        # The expensive canonical evaluator is therefore bounded to the selected page and may only
+        # fail closed; it never silently discards rows after page boundaries have been fixed.
         total = int(db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0)
         page_q = q.offset((page - 1) * page_size).limit(page_size)
-        major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
         rows = _eligible_rows(
             db,
             tenant_id=tenant_id,
@@ -253,7 +282,7 @@ def list_catalog_positions(*, user: dict, params: dict) -> dict:
             record=record,
             q=page_q,
             major_name=major_name,
-            only_major_matched=_true_filter(params.get("majorMatched")),
+            strict=True,
         )
         return {"items": rows, "total": total, "page": page, "pageSize": page_size}
 

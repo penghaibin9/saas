@@ -65,6 +65,7 @@ def list_my(user: dict, *, batch_id=None, internship_id=None) -> list[dict]:
         rows = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(),
             InternshipApplication.record_id == record.id,
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
         ).order_by(
             InternshipApplication.volunteer_no.asc(),
@@ -93,9 +94,11 @@ def save(user: dict, body: dict) -> dict:
             row = db.scalar(select(InternshipApplication).where(
                 InternshipApplication.id == _as_id(app_id),
                 InternshipApplication.tenant_id == _tid(),
+                InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.is_deleted.is_(False),
             ).with_for_update())
             if not row:
+                # Do not reveal whether the supplied id belongs to a campaign-scoped V3 row.
                 raise AppException("NOT_FOUND", "实习申请不存在")
             if row.record_id != record.id or row.student_id != student.id:
                 raise no_permission("只能修改本人的实习申请")
@@ -114,6 +117,7 @@ def save(user: dict, body: dict) -> dict:
             row = db.scalar(select(InternshipApplication).where(
                 InternshipApplication.tenant_id == _tid(),
                 InternshipApplication.record_id == record.id,
+                InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.volunteer_no == volunteer,
                 InternshipApplication.is_deleted.is_(False),
             ).with_for_update())
@@ -124,7 +128,7 @@ def save(user: dict, body: dict) -> dict:
                     "DATA_CONFLICT", "检测到已有可编辑申请，请刷新页面后继续修改")
             row = InternshipApplication(
                 tenant_id=_tid(), record_id=record.id, student_id=student.id,
-                batch_id=record.batch_id, application_type=application_type,
+                batch_id=record.batch_id, campaign_id=None, application_type=application_type,
                 volunteer_no=volunteer, status="DRAFT")
             db.add(row)
             db.flush()
@@ -141,6 +145,7 @@ def save(user: dict, body: dict) -> dict:
             duplicate = db.scalar(select(InternshipApplication.id).where(
                 InternshipApplication.tenant_id == _tid(),
                 InternshipApplication.record_id == record.id,
+                InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.position_id == position.id,
                 InternshipApplication.status.in_(legacy._ACTIVE),
                 InternshipApplication.id != row.id,
@@ -185,6 +190,7 @@ def submit(user: dict, app_id, body: dict) -> dict:
         row = db.scalar(select(InternshipApplication).where(
             InternshipApplication.id == _as_id(app_id),
             InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
         ).with_for_update())
         if not row:
@@ -232,6 +238,7 @@ def withdraw(user: dict, app_id, body: dict) -> dict:
         row = db.scalar(select(InternshipApplication).where(
             InternshipApplication.id == _as_id(app_id),
             InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
         ).with_for_update())
         if not row:

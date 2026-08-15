@@ -9,6 +9,7 @@ from app.api.v1 import mobile_internship_selection as mobile_facade
 from app.modules.internship.routers import internship_enterprise_portal as enterprise_router
 from app.modules.internship.services import internship_enterprise_position_search_service as enterprise_search
 from app.modules.internship.services import internship_student_catalog_facade_service as catalog_svc
+from app.modules.internship.services import internship_student_position_eligibility_service as eligibility_svc
 from app.modules.internship.services import internship_student_profile_facade_service as profile_facade_svc
 from app.student_portal import internship_selection_router as portal_facade
 
@@ -56,14 +57,17 @@ def test_catalog_is_fail_closed_to_current_tenant_campaign_published_and_accepte
     assert 'InternshipCampaignEnterprise.status == "ACCEPTED"' in source
 
 
-def test_catalog_reuses_canonical_eligibility_and_never_returns_failed_positions():
+def test_catalog_reuses_canonical_eligibility_and_never_silently_drops_paged_rows():
     source = inspect.getsource(catalog_svc._eligible_rows)
     assert "eligibility_svc.evaluate_position_for_student_in_tx(" in source
     assert "except AppException:" in source
+    assert "if strict:" in source
+    assert "raise" in source
     assert "continue" in source
     assert source.index("evaluate_position_for_student_in_tx") < source.index("result.append")
     list_source = inspect.getsource(catalog_svc.list_catalog_positions)
     assert "_eligible_rows(" in list_source
+    assert "strict=True" in list_source
     detail = inspect.getsource(catalog_svc.get_catalog_position)
     assert "eligibility_svc.evaluate_position_for_student_in_tx(" in detail
 
@@ -77,11 +81,12 @@ def test_catalog_major_match_filter_and_company_name_filter_are_real_server_side
     assert catalog_svc._true_filter("false") is False
     assert catalog_svc._escape_like(r"跃科%_A\B") == r"跃科\%\_A\\B"
 
-    eligible_source = inspect.getsource(catalog_svc._eligible_rows)
-    assert "if only_major_matched and not major_matched:" in eligible_source
-    assert eligible_source.index("evaluate_position_for_student_in_tx") < eligible_source.index("if only_major_matched")
     list_source = inspect.getsource(catalog_svc.list_catalog_positions)
     assert 'only_major_matched=_true_filter(params.get("majorMatched"))' in list_source
+    major_sql = inspect.getsource(eligibility_svc._major_sql_predicate)
+    assert "func.locate(major, requirement) > 0" in major_sql
+    assert "func.locate(requirement, major) > 0" in major_sql
+    assert "func.length(func.trim(requirement)) == 0" in major_sql
     row_source = inspect.getsource(catalog_svc._public_row)
     assert '"POSSIBLE_MISMATCH"' in row_source
     assert '"MATCHED" if major_matched' in row_source
@@ -131,17 +136,37 @@ def test_enterprise_position_keyword_is_server_side_literal_filter_before_count_
     assert "position_svc._position_row(row)" in source
 
 
-def test_student_catalog_pages_sql_candidates_before_expensive_eligibility_evaluation():
+def test_student_catalog_applies_canonical_sql_predicates_before_count_and_page_boundaries():
     source = inspect.getsource(catalog_svc.list_catalog_positions)
-    assert "select(func.count()).select_from(q.order_by(None).subquery())" in source
-    assert "page_q = q.offset((page - 1) * page_size).limit(page_size)" in source
-    assert "q=page_q" in source
+    eligibility_at = source.index("apply_catalog_query_eligibility_filters_in_tx(")
+    count_at = source.index("select(func.count()).select_from(q.order_by(None).subquery())")
+    page_at = source.index("page_q = q.offset((page - 1) * page_size).limit(page_size)")
+    eval_at = source.index("_eligible_rows(")
+    assert eligibility_at < count_at < page_at < eval_at
+    assert "strict=True" in source
     assert "rows[start:start + page_size]" not in source
-    assert source.index("page_q = q.offset") < source.index("_eligible_rows(")
 
+    sql_guard = inspect.getsource(eligibility_svc.apply_catalog_query_eligibility_filters_in_tx)
+    for required in (
+        "InternshipBatchParticipant",
+        "func.length(func.trim(InternshipPosition.work_content)) > 0",
+        "InternshipPosition.daily_hours <= max_daily",
+        "InternshipPosition.weekly_hours <= max_weekly",
+        "InternshipPosition.hazardous_flag.is_(False)",
+        "_latest_approved_inspection_predicates",
+        "_major_sql_predicate(major_name)",
+    ):
+        assert required in sql_guard
+    assert 'rights_cfg.get("requireEnterpriseAccess", True)' in sql_guard
+    assert 'only_major_matched' in sql_guard
+
+
+def test_catalog_context_stats_use_same_sql_projected_eligibility_set():
     stats = inspect.getsource(catalog_svc._candidate_stats_in_tx)
+    assert "apply_catalog_query_eligibility_filters_in_tx(" in stats
     assert "select(func.count()).select_from(candidate)" in stats
     assert "func.count(func.distinct(candidate.c.company_id))" in stats
     context = inspect.getsource(catalog_svc.get_catalog_context)
     assert "_candidate_stats_in_tx(" in context
+    assert "record=record" in context
     assert "_eligible_rows(" not in context

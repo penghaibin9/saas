@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 
 from app.models import InternshipApplication
+from app.modules.internship.services import internship_student_application_context_service as legacy_context_svc
 from app.modules.internship.services import internship_student_selection_actions_service as actions_svc
 from app.modules.internship.services import internship_student_selection_service as selection_svc
 from app.modules.internship.services import internship_volunteer_retry as retry
@@ -124,3 +125,21 @@ def test_context_resolution_does_not_pin_closed_editable_drafts_over_new_open_ro
     assert 'InternshipRecruitmentCampaign.status == "OPEN"' in source
     assert "DRAFT" not in selection_svc._CONTEXT_PINNING_GROUP_STATUSES
     assert "NEEDS_REVISION" not in selection_svc._CONTEXT_PINNING_GROUP_STATUSES
+
+
+def test_legacy_single_application_writer_isolated_from_campaign_rows():
+    list_source = inspect.getsource(legacy_context_svc.list_my)
+    save_source = inspect.getsource(legacy_context_svc.save)
+    submit_source = inspect.getsource(legacy_context_svc.submit)
+    withdraw_source = inspect.getsource(legacy_context_svc.withdraw)
+
+    assert "InternshipApplication.campaign_id.is_(None)" in list_source
+    # save has three distinct legacy row lookups: explicit id, fixed slot, duplicate position.
+    assert save_source.count("InternshipApplication.campaign_id.is_(None)") >= 3
+    assert "campaign_id=None" in save_source
+    assert "InternshipApplication.campaign_id.is_(None)" in submit_source
+    assert "InternshipApplication.campaign_id.is_(None)" in withdraw_source
+    # Even a campaign-scoped id must be treated as absent rather than revealing/mutating V3 history.
+    assert "实习申请不存在" in save_source
+    assert "实习申请不存在" in submit_source
+    assert "实习申请不存在" in withdraw_source
