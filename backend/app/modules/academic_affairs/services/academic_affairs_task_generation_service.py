@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import logging
 import math
 import re
 from datetime import datetime
@@ -17,8 +16,6 @@ from app.services.db_service import _tid, session
 
 from . import academic_affairs_task_core_service as core
 
-_LOG = logging.getLogger(__name__)
-_FALLBACK_WEEKS = 18
 _MIN_WEEKS = 1
 _MAX_WEEKS = 30
 _MAX_PROGRAM_TERM = 20
@@ -51,7 +48,7 @@ def resolve_class_semester(term, school_class):
 
 
 def resolve_teaching_weeks(db, term_id):
-    """返回 ``(教学周数, 来源)``，18周仅作为有告警的历史兼容兜底。"""
+    """返回 ``(教学周数, 来源)``；正式 Task writer 无可靠事实时必须 fail-closed。"""
     from app.models import AaCalendarEvent, AaTerm
 
     term = db.query(AaTerm).filter(
@@ -83,8 +80,12 @@ def resolve_teaching_weeks(db, term_id):
         weeks = _bounded(math.ceil(((term.end_date - term.start_date).days + 1) / 7))
         if weeks:
             return weeks, "TERM_DATE_RANGE"
-    _LOG.warning("term %s has no reliable teaching-week configuration; fallback=%s", term_id, _FALLBACK_WEEKS)
-    return _FALLBACK_WEEKS, "LEGACY_FALLBACK_18"
+    raise AppException(
+        "DATA_CONFLICT",
+        "当前学期缺少可证明的教学周配置，禁止按18周猜测生成正式教学任务；请先补齐教学周数、考试周或校历日期",
+        details={"termId": str(term_id), "blocker": "TEACHING_WEEKS_UNRESOLVED"},
+        http_status=409,
+    )
 
 
 def generate_batch_tx(db, body, user) -> dict:
