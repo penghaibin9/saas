@@ -29,6 +29,20 @@ async function installEnterpriseApi(page, { released = false } = {}) {
       })
     }
 
+    if (path.endsWith('/internship/enterprise-portal/applications/501/decision')) {
+      if (url.searchParams.get('campaignId') !== '2027-spring') {
+        return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
+      }
+      const body=request.postDataJSON()
+      if (body?.status !== 'ACCEPT_INTENT') {
+        return route.fulfill({ status: 422, contentType:'application/json', body:JSON.stringify({code:422001,message:'unexpected decision'}) })
+      }
+      return route.fulfill({
+        contentType:'application/json',
+        body:JSON.stringify(ok({id:'901',applicationId:'501',decisionStatus:'ACCEPT_INTENT',effectStatus:'ACTIVE',validUntil:'2027-04-30T23:59:59',version:2})),
+      })
+    }
+
     if (path.endsWith('/internship/enterprise-portal/applications/501')) {
       if (url.searchParams.get('campaignId') !== '2027-spring') {
         return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
@@ -114,6 +128,19 @@ test('A02-6 authenticated workbench renders A01 snapshot with no unfrozen detail
   await expect(page.getByText('身份证')).toHaveCount(0)
   await expect(page.getByText('其他志愿')).toHaveCount(0)
   await page.screenshot({ path: 'test-results/a02-applicant-workbench.png', fullPage: true })
+})
+
+test('A02-7 ACCEPT_INTENT writes through A01 canonical portal route with campaign context', async ({ page }) => {
+  await installEnterpriseApi(page)
+  await loginAndEnterCampaign(page)
+  const decisionRequest=page.waitForRequest(request=>request.url().includes('/internship/enterprise-portal/applications/501/decision'))
+  await page.getByRole('button',{name:'拟接收'}).click()
+  await expect(page.getByText('确认拟接收这名学生？')).toBeVisible()
+  await page.getByRole('button',{name:'确认拟接收'}).click()
+  const request=await decisionRequest
+  const url=new URL(request.url())
+  expect(url.searchParams.get('campaignId')).toBe('2027-spring')
+  expect(request.postDataJSON()).toEqual({status:'ACCEPT_INTENT'})
 })
 
 test('A02-7 authenticated released ACCEPT_INTENT never stays visually effective', async ({ page }) => {
