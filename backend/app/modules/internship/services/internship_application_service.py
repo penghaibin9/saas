@@ -39,6 +39,24 @@ def _get(db, app_id) -> InternshipApplication:
     return app
 
 
+def _get_legacy_student_application(db, app_id, *, lock: bool = False) -> InternshipApplication:
+    """Resolve only pre-V3/SELF_ARRANGED rows for still-registered legacy student routes.
+
+    Campaign-scoped POSITION rows belong exclusively to VolunteerGroup + campaign Authority and must
+    be indistinguishable from a missing row here, even when a legacy client guesses a valid id.
+    """
+    q = select(InternshipApplication).where(
+        InternshipApplication.id == _as_id(app_id),
+        InternshipApplication.tenant_id == _tid(),
+        InternshipApplication.campaign_id.is_(None),
+        InternshipApplication.is_deleted.is_(False),
+    )
+    app = db.scalar(q.with_for_update() if lock else q)
+    if not app:
+        raise not_found("实习申请不存在或不在当前数据范围内")
+    return app
+
+
 def _record_for_student(db, student_no: str | None, *, batch_id=None, for_write: bool = True):
     """学生本人申请写路径：统一解析器。"""
     from app.modules.internship.services.internship_record_resolver import (
@@ -70,6 +88,18 @@ def _position(db, position_id) -> tuple[InternshipPosition, EmpCompany]:
         raise AppException("DATA_CONFLICT", "该岗位当前不可申请")
     if (pos.allocated_count or 0) >= (pos.headcount or 0):
         raise AppException("DATA_CONFLICT", "该岗位已满员")
+    return pos, company
+
+
+def _legacy_position(db, position_id) -> tuple[InternshipPosition, EmpCompany]:
+    """Legacy single-application routes may never write a V3 recruitment-campaign position."""
+    pos, company = _position(db, position_id)
+    if pos.campaign_id is not None:
+        raise AppException(
+            "DATA_CONFLICT",
+            "招聘季岗位必须通过三志愿原子接口保存/提交，不能逐条写入正式申请",
+            http_status=409,
+        )
     return pos, company
 
 
@@ -150,7 +180,7 @@ def save_my(user: dict, body: dict) -> dict:
         if rec.position_id or rec.destination_type == "SELF_ARRANGED":
             raise AppException("DATA_CONFLICT", "实习去向已落实，不可再新增或修改申请")
         if app_id:
-            app = _get(db, app_id)
+            app = _get_legacy_student_application(db, app_id, lock=True)
             if app.record_id != rec.id or app.student_id != stu.id:
                 raise no_permission("只能修改本人的实习申请")
             if app.status not in ("DRAFT", "REJECTED", "WITHDRAWN"):
@@ -165,22 +195,25 @@ def save_my(user: dict, body: dict) -> dict:
                 raise AppException("VALIDATION_ERROR", "校内岗位志愿顺序只能为 1 至 3")
             app = db.scalars(select(InternshipApplication).where(
                 InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == rec.id,
+                InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.volunteer_no == volunteer,
-                InternshipApplication.is_deleted.is_(False))).first()
+                InternshipApplication.is_deleted.is_(False)).with_for_update()).first()
             if app:
                 if app.status in ("APPROVED", "PENDING_REVIEW"):
                     raise AppException("DATA_CONFLICT", "该志愿已有进行中的申请，不可覆盖")
                 app.application_type = app_type
             else:
                 app = InternshipApplication(tenant_id=_tid(), record_id=rec.id, student_id=stu.id,
-                                             batch_id=rec.batch_id, application_type=app_type,
+                                             batch_id=rec.batch_id, campaign_id=None,
+                                             application_type=app_type,
                                              volunteer_no=volunteer, status="DRAFT")
                 db.add(app)
         app.application_note = (body.get("applicationNote") or "").strip() or None
         if app_type == "POSITION":
-            pos, company = _position(db, body.get("positionId"))
+            pos, company = _legacy_position(db, body.get("positionId"))
             duplicate_conditions = [
                 InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == rec.id,
+                InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.position_id == pos.id, InternshipApplication.status.in_(_ACTIVE),
                 InternshipApplication.is_deleted.is_(False),
             ]
@@ -213,13 +246,13 @@ def save_my(user: dict, body: dict) -> dict:
 def submit_my(user: dict, app_id) -> dict:
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))
-        app = _get(db, app_id)
+        app = _get_legacy_student_application(db, app_id, lock=True)
         if app.record_id != rec.id or app.student_id != stu.id:
             raise no_permission("只能提交本人的实习申请")
         if app.status not in ("DRAFT", "REJECTED", "WITHDRAWN"):
             raise AppException("DATA_CONFLICT", "当前申请不可提交")
         if app.application_type == "POSITION":
-            pos, company = _position(db, app.position_id)
+            pos, company = _legacy_position(db, app.position_id)
             app.company_name, app.position_name, app.work_address = company.name, pos.title, pos.work_location
         else:
             payload = _clean_self_arranged({"companyName": app.company_name, "positionName": app.position_name,
@@ -239,7 +272,7 @@ def submit_my(user: dict, app_id) -> dict:
 def withdraw_my(user: dict, app_id) -> dict:
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))
-        app = _get(db, app_id)
+        app = _get_legacy_student_application(db, app_id, lock=True)
         if app.record_id != rec.id or app.student_id != stu.id:
             raise no_permission("只能撤回本人的实习申请")
         if app.status != "PENDING_REVIEW":
@@ -256,6 +289,7 @@ def my_applications(user: dict) -> list[dict]:
         rec, stu = _record_for_student(db, user.get("studentNo"))
         rows = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == rec.id,
+            InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False)).order_by(
                 InternshipApplication.volunteer_no, InternshipApplication.id.desc())).all()
         return [_row(db, app, rec, stu) for app in rows]

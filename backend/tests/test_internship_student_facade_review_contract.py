@@ -84,8 +84,10 @@ def test_catalog_major_match_filter_and_company_name_filter_are_real_server_side
     list_source = inspect.getsource(catalog_svc.list_catalog_positions)
     assert 'only_major_matched=_true_filter(params.get("majorMatched"))' in list_source
     major_sql = inspect.getsource(eligibility_svc._major_sql_predicate)
-    assert "func.locate(major, requirement) > 0" in major_sql
-    assert "func.locate(requirement, major) > 0" in major_sql
+    assert 'requirement.collate("utf8mb4_bin")' in major_sql
+    assert 'literal(major).collate("utf8mb4_bin")' in major_sql
+    assert "func.locate(binary_major, binary_requirement) > 0" in major_sql
+    assert "func.locate(binary_requirement, binary_major) > 0" in major_sql
     assert "func.length(func.trim(requirement)) == 0" in major_sql
     row_source = inspect.getsource(catalog_svc._public_row)
     assert '"POSSIBLE_MISMATCH"' in row_source
@@ -159,6 +161,17 @@ def test_student_catalog_applies_canonical_sql_predicates_before_count_and_page_
         assert required in sql_guard
     assert 'rights_cfg.get("requireEnterpriseAccess", True)' in sql_guard
     assert 'only_major_matched' in sql_guard
+
+
+def test_catalog_sql_projection_keeps_company_expiry_unconditional():
+    sql_guard = inspect.getsource(eligibility_svc.apply_catalog_query_eligibility_filters_in_tx)
+    expiry = "EmpCompany.access_valid_until >= current"
+    option = 'if rights_cfg.get("requireEnterpriseAccess", True):'
+    assert expiry in sql_guard
+    assert option in sql_guard
+    assert sql_guard.index(expiry) < sql_guard.index(option)
+    canonical = inspect.getsource(eligibility_svc.evaluate_position_for_student_in_tx)
+    assert "company.access_valid_until and company.access_valid_until < current" in canonical
 
 
 def test_catalog_context_stats_use_same_sql_projected_eligibility_set():

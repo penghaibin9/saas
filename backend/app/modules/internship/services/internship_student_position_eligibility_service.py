@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, false, func, or_, select
+from sqlalchemy import and_, false, func, literal, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import (
@@ -25,16 +25,22 @@ def assert_student_selection_window(campaign: InternshipRecruitmentCampaign, now
 
 
 def _major_sql_predicate(major_name: str):
-    """SQL equivalent of catalog `_major_hit`: unlimited OR either string contains the other."""
+    """MySQL SQL equivalent of `_major_hit`, including Python case/accent-sensitive semantics."""
     major = str(major_name or "").strip()
     requirement = InternshipPosition.major_requirement
     unlimited = or_(requirement.is_(None), func.length(func.trim(requirement)) == 0)
     if not major:
         return unlimited
+
+    # Production columns use utf8mb4_unicode_ci, while Python's `in` comparison used by _major_hit
+    # is case- and accent-sensitive. Force binary collation on both operands so COUNT/page filtering
+    # cannot call e.g. "Software" and "software" a major match when the public row will not.
+    binary_requirement = requirement.collate("utf8mb4_bin")
+    binary_major = literal(major).collate("utf8mb4_bin")
     return or_(
         unlimited,
-        func.locate(major, requirement) > 0,
-        func.locate(requirement, major) > 0,
+        func.locate(binary_major, binary_requirement) > 0,
+        func.locate(binary_requirement, binary_major) > 0,
     )
 
 
@@ -77,7 +83,7 @@ def apply_catalog_query_eligibility_filters_in_tx(
     """Push the canonical APPLY hard predicates into SQL before COUNT/OFFSET/LIMIT.
 
     This is a query projection of `evaluate_position_for_student_in_tx`, not a replacement for it.
-    The paged rows are still re-evaluated by the canonical guard before being returned.  Keeping the
+    The paged rows are still re-evaluated by the canonical guard before being returned. Keeping the
     SQL projection here beside that guard prevents catalog pagination from defining pages over rows
     that are subsequently dropped, while bounding the expensive evaluator to at most `pageSize`.
     """
@@ -151,6 +157,13 @@ def apply_catalog_query_eligibility_filters_in_tx(
                 InternshipPosition.remuneration_cycle != "",
             ),
         ),
+        # Canonical evaluate_position_for_student_in_tx enforces the company master expiry before
+        # rights-layer options. Keep it unconditional here as well so exact total/page semantics do
+        # not depend on workRights.requireEnterpriseAccess.
+        or_(
+            EmpCompany.access_valid_until.is_(None),
+            EmpCompany.access_valid_until >= current,
+        ),
     )
 
     # Student-specific APPLY blockers that do not exist at school-side PUBLISH time.
@@ -170,17 +183,13 @@ def apply_catalog_query_eligibility_filters_in_tx(
     if not rights_cfg.get("overtimeAllowed", False):
         query = query.where(InternshipPosition.overtime_allowed.is_(False))
 
-    # evaluate_position_publishability defaults this guard to ON when the key is omitted.
+    # evaluate_position_publishability defaults this extra inspection/access guard to ON when the
+    # key is omitted. Company master expiry above remains unconditional regardless of this option.
     if rights_cfg.get("requireEnterpriseAccess", True):
         access_cfg = dict(rules.get("enterpriseAccess") or {})
         if access_cfg.get("required") or access_cfg.get("requireOnsiteInspection"):
             query = query.where(*_latest_approved_inspection_predicates(
                 tenant_id=tenant_id, current=current,
-            ))
-        else:
-            query = query.where(or_(
-                EmpCompany.access_valid_until.is_(None),
-                EmpCompany.access_valid_until >= current,
             ))
 
     if only_major_matched:

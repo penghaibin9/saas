@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 
 from app.models import InternshipApplication
+from app.modules.internship.services import internship_application_service as legacy_app_svc
 from app.modules.internship.services import internship_student_application_context_service as legacy_context_svc
 from app.modules.internship.services import internship_student_selection_actions_service as actions_svc
 from app.modules.internship.services import internship_student_selection_service as selection_svc
@@ -134,12 +135,31 @@ def test_legacy_single_application_writer_isolated_from_campaign_rows():
     withdraw_source = inspect.getsource(legacy_context_svc.withdraw)
 
     assert "InternshipApplication.campaign_id.is_(None)" in list_source
-    # save has three distinct legacy row lookups: explicit id, fixed slot, duplicate position.
     assert save_source.count("InternshipApplication.campaign_id.is_(None)") >= 3
     assert "campaign_id=None" in save_source
     assert "InternshipApplication.campaign_id.is_(None)" in submit_source
     assert "InternshipApplication.campaign_id.is_(None)" in withdraw_source
-    # Even a campaign-scoped id must be treated as absent rather than revealing/mutating V3 history.
     assert "实习申请不存在" in save_source
     assert "实习申请不存在" in submit_source
     assert "实习申请不存在" in withdraw_source
+
+
+def test_all_registered_legacy_application_authorities_are_null_campaign_scoped():
+    list_source = inspect.getsource(legacy_app_svc.my_applications)
+    save_source = inspect.getsource(legacy_app_svc.save_my)
+    submit_source = inspect.getsource(legacy_app_svc.submit_my)
+    withdraw_source = inspect.getsource(legacy_app_svc.withdraw_my)
+    loader_source = inspect.getsource(legacy_app_svc._get_legacy_student_application)
+    legacy_position_source = inspect.getsource(legacy_app_svc._legacy_position)
+
+    assert "InternshipApplication.campaign_id.is_(None)" in list_source
+    assert save_source.count("InternshipApplication.campaign_id.is_(None)") >= 2
+    assert "campaign_id=None" in save_source
+    assert "_get_legacy_student_application" in save_source
+    assert "_get_legacy_student_application" in submit_source
+    assert "_get_legacy_student_application" in withdraw_source
+    assert "InternshipApplication.campaign_id.is_(None)" in loader_source
+    assert "_legacy_position" in save_source
+    assert "_legacy_position" in submit_source
+    assert "pos.campaign_id is not None" in legacy_position_source
+    assert "招聘季岗位必须通过三志愿原子接口" in legacy_position_source
