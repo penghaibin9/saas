@@ -45,9 +45,11 @@ test('Stage D 归档预检保留真实证据与责任模块跳转，不改正式
     'd.evidence',
     'evidencePreview',
     'domain.route || FALLBACK_ROUTE[domain.domain]',
+    "GRADUATION: '/admin/academic-affairs/graduation/audit-console'",
     "goBatch() { this.$router.push('/admin/academic-affairs/archive') }",
     '本页不写入归档事实'
   ]) assert.ok(source.includes(token), `missing archive truth token: ${token}`)
+  assert.ok(!source.includes("GRADUATION: '/admin/academic-affairs/graduation-audit'"), 'legacy graduation route must not return')
 })
 
 test('Stage D 归档预检具备阻断优先与移动端响应式收口', async () => {
