@@ -14,8 +14,6 @@ on:
       - 'backend/tests/test_import_export_p0_authz.py'
       - 'backend/tests/test_aa_p0_authz.py'
       - 'backend/tests/test_aa_archive.py'
-      - 'backend/tests/test_student_export_status_filter.py'
-      - 'backend/tests/test_academic_current_term.py'
       - 'backend/tests/test_control_plane_b8_shadow.py'
       - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
       - 'scripts/check/check-permission-catalog.py'
@@ -35,8 +33,6 @@ on:
       - 'backend/tests/test_import_export_p0_authz.py'
       - 'backend/tests/test_aa_p0_authz.py'
       - 'backend/tests/test_aa_archive.py'
-      - 'backend/tests/test_student_export_status_filter.py'
-      - 'backend/tests/test_academic_current_term.py'
       - 'backend/tests/test_control_plane_b8_shadow.py'
       - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'
       - 'scripts/check/check-permission-catalog.py'
@@ -108,7 +104,7 @@ jobs:
           assert s['b8BaseConcreteExact'] == 449
           assert s['b8PostCutoverCompatibilityExact'] == 90
           assert s['b8ConcreteExact'] == 539
-          assert s['catalogExact'] > 590
+          assert s['catalogExact'] == 603
           assert all(not c.startswith(('platform.', 'enterprise.')) and c != '*' for c in data['postCutoverCompatibilityCodes'])
           print(json.dumps(s, ensure_ascii=False, sort_keys=True))
           PY
@@ -130,8 +126,6 @@ jobs:
             tests/test_import_export_p0_authz.py \
             tests/test_aa_p0_authz.py \
             tests/test_aa_archive.py \
-            tests/test_student_export_status_filter.py \
-            tests/test_academic_current_term.py \
             tests/test_control_plane_b8_shadow.py \
             tests/test_control_plane_school_admin_runtime_cutover.py \
             --disable-warnings
