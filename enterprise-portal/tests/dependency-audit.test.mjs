@@ -7,6 +7,8 @@ const workflow=fs.readFileSync(new URL('../../.github/workflows/internship-enter
 test('A02 targeted workflow enforces locked production dependency audit with evidence',()=>{
   assert.match(workflow,/npm ci --no-audit --no-fund/)
   assert.match(workflow,/npm audit --omit=dev --json > audit-production\.json \|\| true/)
+  assert.match(workflow,/Validate production audit report completeness/)
+  assert.match(workflow,/check-production-audit-report\.mjs audit-production\.json/)
   assert.match(workflow,/check-npm-production-audit\.mjs/)
   assert.match(workflow,/audit-production\.json/)
   assert.match(workflow,/enterprise-portal\n\s+\.\.\/\.github\/security\/npm-production-audit-waivers\.json/)
