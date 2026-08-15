@@ -1,14 +1,19 @@
 import { getSelectedCampaignId, request } from './request'
-import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
-const ROOT = '/enterprise/internship'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 
 function recruitmentParams(){
   const campaignId=getSelectedCampaignId()
   if(!campaignId)throw new Error('尚未选择招聘季，无法调用企业招聘 Authority')
   return {campaignId}
+}
+
+function unavailableFacade(name){
+  const error=new Error(`企业协同接口尚未由 A01 Authority 冻结：${name}`)
+  error.code='ENTERPRISE_FACADE_UNFROZEN'
+  error.facade=name
+  return Promise.reject(error)
 }
 
 function normalizeMaterial(data={}){
@@ -32,34 +37,34 @@ function normalizeMaterial(data={}){
 
 export const enterpriseInternshipApi = {
   context: (campaignId) => request(`${AUTH_ROOT}/context`, { params:{ campaignId } }),
-  dashboard: () => request(`${ROOT}/dashboard`),
-  campaigns: () => request(`${ROOT}/campaigns`),
-  company: () => request(`${ROOT}/company`),
-  updateCompany: (patch) => request(`${ROOT}/company`, { method:'PUT', body:sanitizeCompanyPatch(patch) }),
-  positions: (params) => request(`${ROOT}/positions`, { params }),
-  position: (id) => request(`${ROOT}/positions/${id}`),
-  createPosition: (payload) => request(`${ROOT}/positions`, { method:'POST', body:sanitizePositionPayload(payload) }),
-  updatePosition: (id,payload) => request(`${ROOT}/positions/${id}`, { method:'PUT', body:sanitizePositionPayload(payload) }),
-  submitPosition: (id) => request(`${ROOT}/positions/${id}/submit`, { method:'POST' }),
-  withdrawPosition: (id) => request(`${ROOT}/positions/${id}/withdraw`, { method:'POST' }),
-  applications: (params) => request(`${ROOT}/applications`, { params }),
-  application: (id) => request(`${ROOT}/applications/${id}`),
+  dashboard: () => unavailableFacade('Campaign dashboard'),
+  campaigns: () => unavailableFacade('Campaign list'),
+  company: () => unavailableFacade('Company detail'),
+  updateCompany: () => unavailableFacade('Company update'),
+  positions: () => unavailableFacade('Position list'),
+  position: () => unavailableFacade('Position detail'),
+  createPosition: () => unavailableFacade('Position create'),
+  updatePosition: () => unavailableFacade('Position update'),
+  submitPosition: () => unavailableFacade('Position submit'),
+  withdrawPosition: () => unavailableFacade('Position withdraw'),
+  applications: () => unavailableFacade('Application list'),
+  application: () => unavailableFacade('Application candidate summary'),
   applicationMaterial: async (id) => normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`, { params:recruitmentParams() })),
-  resumePdf: (id) => request(`${ROOT}/applications/${id}/resume-pdf`),
+  resumePdf: () => unavailableFacade('Application resume PDF'),
   decideApplication: (id,status,payload={}) => {
     if (!DECISIONS.has(status)) throw new Error(`不允许的企业 Decision: ${status}`)
     return request(`${AUTH_ROOT}/applications/${id}/decision`, { method:'POST', params:recruitmentParams(), body:{ status, ...payload } })
   },
-  revealContact: (id) => request(`${ROOT}/applications/${id}/contact-view`, { method:'POST' }),
+  revealContact: () => unavailableFacade('Application contact reveal'),
   withdrawAccept: (id,reason) => {
     const text=String(reason||'').trim()
     if(text.length<2)throw new Error('撤回拟接收必须填写原因')
     return request(`${AUTH_ROOT}/applications/${id}/decision`, { method:'POST', params:recruitmentParams(), body:{ status:'REJECTED', reason:text } })
   },
-  internshipStudents: (params) => request(`${ROOT}/students`, { params }),
-  internshipStudent: (id) => request(`${ROOT}/students/${id}`),
-  evaluationTasks: (params) => request(`${ROOT}/evaluation-tasks`, { params }),
-  submitEvaluation: (id,payload) => request(`${ROOT}/evaluation-tasks/${id}/submit`, { method:'POST', body:payload }),
+  internshipStudents: () => unavailableFacade('InternshipRecord enterprise projection'),
+  internshipStudent: () => unavailableFacade('InternshipRecord detail'),
+  evaluationTasks: () => unavailableFacade('Enterprise evaluation task list'),
+  submitEvaluation: () => unavailableFacade('Enterprise evaluation submit'),
 }
 
 export const enterpriseDecisionStatuses = Object.freeze([...DECISIONS])
