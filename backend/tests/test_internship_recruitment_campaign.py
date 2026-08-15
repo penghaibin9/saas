@@ -102,6 +102,36 @@ def test_phase_is_derived_from_status_and_windows_only():
     assert service.derive_campaign_phase(campaign, now=now) == "ARCHIVED"
 
 
+def test_overlapping_windows_use_canonical_most_advanced_phase_priority():
+    now = datetime(2026, 9, 10, 8, 0, 0)
+    campaign = InternshipRecruitmentCampaign(
+        tenant_id=1,
+        batch_id=10,
+        campaign_code="2026-A-PRIORITY",
+        campaign_name="2026 重叠窗口优先级",
+        round_no=1,
+        status="OPEN",
+    )
+    active = (now - timedelta(minutes=10), now + timedelta(minutes=10))
+    for _phase, start_field, end_field in service._WINDOW_PHASES:
+        setattr(campaign, start_field, active[0])
+        setattr(campaign, end_field, active[1])
+
+    expected = [
+        "SCHOOL_CONFIRMING",
+        "ENTERPRISE_DECIDING",
+        "STUDENT_SELECTING",
+        "POSITION_SUBMITTING",
+        "INVITING",
+    ]
+    for index, phase in enumerate(expected):
+        assert service.derive_campaign_phase(campaign, now=now) == phase
+        _current_phase, start_field, end_field = service._WINDOW_PHASES[index]
+        setattr(campaign, start_field, now + timedelta(hours=1))
+        setattr(campaign, end_field, now + timedelta(hours=2))
+    assert service.derive_campaign_phase(campaign, now=now) == "PREPARE"
+
+
 def test_window_validation_rejects_half_pairs_reverse_ranges_and_short_access():
     now = datetime(2026, 9, 10, 8, 0, 0)
     try:
