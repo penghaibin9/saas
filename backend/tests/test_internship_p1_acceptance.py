@@ -94,29 +94,28 @@ def test_agreement_issue_requires_and_conflicts_expected_version(client, auth_he
     assert int(ok["data"].get("version") or 0) == ver + 1
 
 
-def test_score_publish_stale_version_conflict(client, auth_headers, db_mode):
+def test_score_compute_rejects_legacy_direct_component_scores(client, auth_headers, db_mode):
     bid = _mk_running_batch(client, auth_headers)
     sid, _ = _mk_student(client, auth_headers)
-    rec = client.post(IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}).json()
-    assert rec["code"] == 0
-    iid = rec["data"]["id"]
-    computed = client.post(SCORE + "/compute", headers=auth_headers, json={
-        "internshipId": iid, "checkinScore": 90, "weeklyScore": 90, "monthlyScore": 90,
-        "enterpriseScore": 90, "schoolScore": 90,
+    rec = client.post(
+        IST, headers=auth_headers, json={"studentId": sid, "batchId": bid}
+    ).json()
+    assert rec["code"] == 0, rec
+    rejected = client.post(SCORE + "/compute", headers=auth_headers, json={
+        "internshipId": rec["data"]["id"],
+        "checkinScore": 90,
+        "weeklyScore": 90,
+        "monthlyScore": 90,
+        "enterpriseScore": 90,
+        "schoolScore": 90,
     }).json()
-    if computed.get("code") != 0:
-        pytest.fail(f"score compute failed: {computed}")
-    sid_score = computed["data"]["id"]
-    detail = client.get(f"{SCORE}/{sid_score}", headers=auth_headers).json()
-    ver = int((detail.get("data") or {}).get("version") or computed["data"].get("version") or 0)
-    missing = client.post(f"{SCORE}/{sid_score}/publish", headers=auth_headers, json={}).json()
-    assert missing["code"] != 0
-    stale = client.post(f"{SCORE}/{sid_score}/publish", headers=auth_headers,
-                        json={"expectedVersion": ver + 5}).json()
-    assert stale["code"] != 0
-    ok = client.post(f"{SCORE}/{sid_score}/publish", headers=auth_headers,
-                     json={"expectedVersion": ver}).json()
-    assert ok["code"] == 0, ok
+    assert rejected["code"] != 0, rejected
+    assert rejected.get("bizCode") == "VALIDATION_ERROR", rejected
+    rejected_fields = set(((rejected.get("details") or {}).get("rejectedFields") or []))
+    assert rejected_fields == {
+        "checkinScore", "weeklyScore", "monthlyScore", "enterpriseScore", "schoolScore",
+    }
+    # 发布 expectedVersion 已由 test_internship_score.py 的完整权威事实链覆盖。
 
 
 def test_old_students_list_requires_batch_id(client, auth_headers, db_mode):
