@@ -89,10 +89,11 @@ def _admin_special_contract(role: str, body: dict, *, task_id) -> tuple[bool, st
 
 
 def _with_source_type(result: dict) -> dict:
-    result["sourceType"] = (
-        _ADMIN_SPECIAL
-        if str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
-        else "FORMAL_TEACHING"
+    is_special = str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
+    result["sourceType"] = _ADMIN_SPECIAL if is_special else "FORMAL_TEACHING"
+    result["sourceLabel"] = "管理员特殊补录" if is_special else "正式课堂"
+    result["sessionTypeLabel"] = (
+        "管理员特殊补录" if is_special else str(result.get("sessionType") or "常规")
     )
     return result
 
@@ -279,7 +280,12 @@ def attendance_stats(user, class_id=None, term_code=None, session_type=None):
         if role not in _ADMIN_ROLES:
             keys = _teacher_keys(user)
             if not keys:
-                return {"sessionCount": 0, "students": [], "sourceScope": "FORMAL_TEACHING"}
+                return {
+                    "sessionCount": 0,
+                    "students": [],
+                    "sourceScope": "FORMAL_TEACHING",
+                    "sourceScopeLabel": "正式课堂",
+                }
             conds.append(AaAttendanceSession.teacher_key.in_(sorted(keys)))
         if class_id:
             conds.append(AaAttendanceSession.class_id == int(class_id))
@@ -319,10 +325,12 @@ def attendance_stats(user, class_id=None, term_code=None, session_type=None):
             row["absentRate"] = round(row["absent"] / row["sessions"], 3) if row["sessions"] else 0.0
             students.append(row)
         students.sort(key=lambda row: (-row["absent"], -row["late"], row["studentNo"]))
+        is_special_scope = str(session_type or "").strip().upper() == _ADMIN_SPECIAL
         return {
             "sessionCount": len(rows),
             "students": students,
-            "sourceScope": _ADMIN_SPECIAL if session_type == _ADMIN_SPECIAL else "FORMAL_TEACHING",
+            "sourceScope": _ADMIN_SPECIAL if is_special_scope else "FORMAL_TEACHING",
+            "sourceScopeLabel": "管理员特殊补录" if is_special_scope else "正式课堂",
         }
 
 
