@@ -52,7 +52,10 @@ def test_b7_school_iam_workspace_consumes_canonical_endpoints():
 
 
 def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
-    service = _read("backend/app/modules/system_admin/services/school_iam_workspace_service.py")
+    # The historical workspace module is now only a compatibility import shim.
+    # Contracts must follow the canonical B7 Authority implementation so the
+    # source gate cannot accidentally force logic back into the shim.
+    service = _read("backend/app/modules/system_admin/services/school_iam_authority_projection_service.py")
     router = _read("backend/app/modules/system_admin/routers/school_iam_router.py")
     view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
     for term in (
