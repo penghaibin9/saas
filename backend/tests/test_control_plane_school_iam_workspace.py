@@ -1,7 +1,8 @@
 from sqlalchemy import select
 
-from app.models import Role
+from app.models import Role, User
 from app.models.permission_governance import RoleTemplate, RoleTemplatePermission
+from app.modules.system_admin.services import school_iam_access_explain_service as access_svc
 from app.modules.system_admin.services import school_iam_authority_projection_service as svc
 from app.services.system_role_shadow_service import published_system_role_permissions
 
@@ -28,11 +29,89 @@ def test_school_iam_catalog_never_exposes_enterprise_permissions_as_assignable(m
     assert result["templatePermissionAuthority"] == "ROLE_TEMPLATE_PERMISSION_NORMALIZED"
 
 
-def test_school_iam_router_defaults_to_recruitment_manage_explain():
+def test_school_iam_router_requires_concrete_domain_context_for_final_explain():
     from app.modules.system_admin.routers import school_iam_router
     source = __import__("inspect").getsource(school_iam_router.iam_access_explain)
     assert "internship" in source
     assert "internship.recruitment.manage" in source
+    for field in ("scopeTargetType", "scopeTargetId", "resourceType", "resourceId"):
+        assert field in source
+    assert "scope_target_type=scopeTargetType" in source
+    assert "resource_id=resourceId" in source
+
+
+def test_school_iam_domain_explain_fails_closed_without_resource_context():
+    role = Role(tenant_id=TID, role_code="INTERN_MENTOR", role_name="实习指导教师", role_type="SYSTEM", status="ACTIVE")
+    subject = User(
+        id=101,
+        tenant_id=TID,
+        login_name="teacher-101",
+        real_name="指导教师",
+        password_hash="not-used",
+        user_type="TEACHER",
+        status="ACTIVE",
+    )
+    guard = access_svc._domain_guard_for_role(
+        tenant_id=TID,
+        subject=subject,
+        role=role,
+        actor={"userId": "db-101", "tenantId": str(TID), "currentRoleCode": "INTERN_MENTOR", "dataScope": "INTERN_STUDENTS"},
+        scope_target_type=None,
+        scope_target_id=None,
+        resource_type=None,
+        resource_id=None,
+    )
+    assert guard["allowed"] is False
+    assert guard["reasonCode"] == "RESOURCE_CONTEXT_REQUIRED"
+    assert guard["details"]["authority"] == "SCOPE_POLICY_SERVICE"
+
+
+def test_school_iam_domain_explain_reuses_relation_and_scope_policy_authorities(monkeypatch):
+    role = Role(tenant_id=TID, role_code="INTERN_MENTOR", role_name="实习指导教师", role_type="SYSTEM", status="ACTIVE")
+    subject = User(
+        id=102,
+        tenant_id=TID,
+        login_name="teacher-102",
+        real_name="指导教师",
+        password_hash="not-used",
+        user_type="TEACHER",
+        status="ACTIVE",
+    )
+    seen = {}
+
+    def fake_relation(actor, *, resource_type, resource):
+        seen["relation"] = (actor, resource_type, resource)
+        return {"allowed": True, "reason": "在真实实习指导关系内", "scope": "INTERN_STUDENTS"}
+
+    def fake_decide(role_code, *, target_type, target_id, business_relation_allows, tenant_id):
+        seen["policy"] = (role_code, target_type, target_id, business_relation_allows, tenant_id)
+        return {
+            "decision": "ALLOW",
+            "reasonCode": "BUSINESS_RELATION_ALLOW",
+            "chain": [{"step": "BUSINESS_RELATION", "hit": True}],
+            "traceId": "trace-test",
+        }
+
+    monkeypatch.setattr(access_svc.data_scope_service, "simulate_access", fake_relation)
+    monkeypatch.setattr(access_svc.scope_policy_service, "decide", fake_decide)
+    actor = {"userId": "db-102", "tenantId": str(TID), "currentRoleCode": "INTERN_MENTOR", "dataScope": "INTERN_STUDENTS"}
+    guard = access_svc._domain_guard_for_role(
+        tenant_id=TID,
+        subject=subject,
+        role=role,
+        actor=actor,
+        scope_target_type="DOMAIN",
+        scope_target_id="internship",
+        resource_type="STUDENT",
+        resource_id="9001",
+    )
+    assert guard["allowed"] is True
+    assert guard["reasonCode"] == "ALLOW"
+    assert guard["details"]["authority"] == "SCOPE_POLICY_SERVICE"
+    assert guard["details"]["businessRelationAuthority"] == "DATA_SCOPE_SERVICE"
+    assert seen["relation"][1] == "STUDENT"
+    assert seen["relation"][2]["studentId"] == "9001"
+    assert seen["policy"] == ("INTERN_MENTOR", "DOMAIN", "internship", True, TID)
 
 
 def test_school_iam_system_role_reads_published_template_not_static_wildcard(db_mode):
