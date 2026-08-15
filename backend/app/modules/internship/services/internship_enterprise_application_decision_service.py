@@ -153,13 +153,10 @@ def list_owned_applications_in_tx(
             "positionId": str(position.id),
             "positionTitle": position.title,
             "student": {
-                "studentId": str(application.student_id),
                 "realName": school.get("realName") or "",
-                "studentNo": school.get("studentNo") or "",
                 "collegeName": school.get("collegeName") or "",
                 "majorName": school.get("majorName") or "",
                 "grade": school.get("grade") or "",
-                "className": school.get("className") or "",
             },
             "submissionVersion": int(snapshot.submission_version or 0),
             "materialSnapshotId": str(snapshot.id),
