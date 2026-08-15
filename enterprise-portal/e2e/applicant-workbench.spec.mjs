@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page) {
-  const state={legacyRequests:0,contextCampaignIds:[]}
+  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',snapshotRequests:0}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -20,11 +20,14 @@ async function installEnterpriseApi(page) {
     }
 
     if (path.endsWith('/internship/enterprise-portal/auth/invite/inspect')) {
+      let body={}
+      try{body=request.postDataJSON()||{}}catch{}
+      state.memberRole=String(body.token||'').includes('.mentor.')?'MENTOR':'HR'
       return route.fulfill({
         contentType:'application/json',
         body:JSON.stringify(ok({
           tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',
-          companyId:'21',companyName:'中联重科股份有限公司',inviteeName:'企业HR',phoneMasked:'138****5678',memberRole:'HR',expiresAt:'2027-03-31T23:59:59',
+          companyId:'21',companyName:'中联重科股份有限公司',inviteeName:state.memberRole==='MENTOR'?'企业导师':'企业HR',phoneMasked:'138****5678',memberRole:state.memberRole,expiresAt:'2027-03-31T23:59:59',
         })),
       })
     }
@@ -34,8 +37,8 @@ async function installEnterpriseApi(page) {
         contentType:'application/json',
         body:JSON.stringify(ok({
           accessToken:'invite-access',refreshToken:'invite-refresh',tokenType:'Bearer',expiresIn:1800,
-          user:{userId:'db-101',realName:'企业HR',userType:'ENTERPRISE_MENTOR'},
-          context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:'HR'},
+          user:{userId:'db-101',realName:state.memberRole==='MENTOR'?'企业导师':'企业HR',userType:'ENTERPRISE_MENTOR'},
+          context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:state.memberRole},
         })),
       })
     }
@@ -45,13 +48,14 @@ async function installEnterpriseApi(page) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(ok({
-          tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: 'HR', companyId: '21',
+          tenantId: '1', tenantCode: 'CSZY', memberId: '11', memberRole: state.memberRole, companyId: '21',
           campaignId: '2027', batchId: '2027', grantId: '31', grantType: 'RECRUITMENT',
         })),
       })
     }
 
     if (path.endsWith('/internship/enterprise-portal/applications/501')) {
+      state.snapshotRequests+=1
       if (url.searchParams.get('campaignId') !== '2027') {
         return route.fulfill({ status: 400, contentType:'application/json', body:JSON.stringify({code:400001,message:'campaignId required'}) })
       }
@@ -77,6 +81,15 @@ async function installEnterpriseApi(page) {
   return state
 }
 
+async function acceptInvite(page,token){
+  await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
+  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
+  await page.getByLabel('验证受邀手机号').fill('13800125678')
+  await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
+  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
+  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
+}
+
 test('A02 normal login fails closed when the school has not exposed a Campaign list facade', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   await page.goto('login')
@@ -94,14 +107,8 @@ test('A02 normal login fails closed when the school has not exposed a Campaign l
 test('A02 invite activation binds campaign to the inspected token and context stays read-only without capability', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
-  await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
+  await acceptInvite(page,token)
 
-  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
-  await page.getByLabel('验证受邀手机号').fill('13800125678')
-  await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
-  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
-
-  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
   await expect(page.getByText('招聘季 #2027')).toBeVisible()
   await expect(page.getByText(/该企业协同能力尚未由学校端开放：招聘工作台/)).toBeVisible()
   expect(state.contextCampaignIds).toEqual(['2027'])
@@ -114,15 +121,10 @@ test('A02 invite activation binds campaign to the inspected token and context st
   await page.screenshot({ path: 'test-results/a02-fail-closed-facades.png', fullPage: true })
 })
 
-test('A02 canonical Snapshot stays readable only with an already validated campaign context', async ({ page }) => {
+test('A02 canonical Snapshot stays readable only with an already validated HR campaign context', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   const token='ei.2027.11.browser-evidence-secret-012345678901234567890123456789'
-  await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
-  await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
-  await page.getByLabel('验证受邀手机号').fill('13800125678')
-  await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
-  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
-  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
+  await acceptInvite(page,token)
 
   await page.getByRole('link',{name:'报名学生'}).click()
   await page.evaluate(()=>{
@@ -133,6 +135,26 @@ test('A02 canonical Snapshot stays readable only with an already validated campa
   await expect(page.getByText('张三',{exact:true})).toBeVisible()
   await expect(page.getByText('身份证')).toHaveCount(0)
   await expect(page.getByRole('button',{name:'拟接收',exact:true})).toBeDisabled()
+  expect(state.snapshotRequests).toBe(1)
   expect(state.contextCampaignIds).toEqual(['2027'])
+  expect(state.legacyRequests).toBe(0)
+})
+
+test('A02 MENTOR cannot enter Applicant workbench or call canonical Applicant Snapshot', async ({ page }) => {
+  const state=await installEnterpriseApi(page)
+  const token='ei.2027.11.mentor.browser-evidence-secret-012345678901234567890123'
+  await acceptInvite(page,token)
+
+  await expect(page.getByRole('link',{name:'报名学生'})).toHaveCount(0)
+  await expect(page.locator('.nav-disabled[aria-disabled="true"]').filter({hasText:'报名学生'})).toBeVisible()
+
+  await page.evaluate(()=>{
+    window.history.pushState({},'', '/enterprise/applications/501')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  await expect(page.getByRole('heading',{name:'报名学生'})).toBeVisible()
+  await expect(page.getByText('当前成员角色不能处理报名学生')).toBeVisible()
+  await expect(page.getByText(/企业导师可参与后续实习协同/)).toBeVisible()
+  expect(state.snapshotRequests).toBe(0)
   expect(state.legacyRequests).toBe(0)
 })

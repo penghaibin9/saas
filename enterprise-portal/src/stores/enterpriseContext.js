@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { getSelectedCampaignId } from '../services/request'
 
+const APPLICATION_ROLES = new Set(['COMPANY_ADMIN','HR'])
+
 function campaignFromAuthContext(authContext,campaignId){
   const campaign={ id:authContext?.campaignId||campaignId }
   if(authContext?.campaignName)campaign.campaignName=authContext.campaignName
@@ -17,6 +19,10 @@ export const useEnterpriseContextStore = defineStore('enterpriseContext', {
   getters:{
     historyMode:(state)=>['CLOSED','ARCHIVED'].includes(String(state.campaign?.status||'')),
     recruitmentWritable:(state)=>state.contextReady&&state.capabilities?.recruitmentWrite===true&&!['CLOSED','ARCHIVED'].includes(String(state.campaign?.status||'')),
+    // A01 freezes applicant view/review to COMPANY_ADMIN + HR. This is UX gating only;
+    // every backend request still revalidates the enterprise permission and resource context.
+    applicationViewAllowed:(state)=>state.contextReady&&APPLICATION_ROLES.has(String(state.memberRole||'').toUpperCase()),
+    applicationReviewAllowed:(state)=>state.contextReady&&APPLICATION_ROLES.has(String(state.memberRole||'').toUpperCase()),
   },
   actions: {
     async load(){
