@@ -219,7 +219,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1920, 1080)
 
     await unknownCard.getByRole('button', { name: '去处理' }).click()
-    await expect(page).toHaveURL(/\/admin\/academic-affairs\/graduation-audit/)
+    await expect(page).toHaveURL(/\/admin\/academic-affairs\/graduation\/audit-console(?:\?|$)/)
 
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/archive/precheck`)
     await dismissPageGuide(page)
