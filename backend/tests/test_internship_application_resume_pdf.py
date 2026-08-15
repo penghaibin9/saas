@@ -80,6 +80,16 @@ def test_enterprise_resume_pdf_authorizes_application_then_locks_exact_snapshot_
     assert ".with_for_update()" in source
 
 
+def test_enterprise_applicant_list_minimizes_student_identifiers_before_detail_access():
+    source = inspect.getsource(decision_svc.list_owned_applications_in_tx)
+    for forbidden in ('"studentId"', '"studentNo"', '"className"'):
+        assert forbidden not in source
+    for required in ('"realName"', '"collegeName"', '"majorName"', '"grade"'):
+        assert required in source
+    assert '"applicationId"' in source
+    assert '"materialSnapshotId"' in source
+
+
 def test_enterprise_applicant_snapshot_and_pdf_reads_are_not_enterprise_decision_window_gated():
     read_sources = (
         inspect.getsource(decision_svc.list_owned_applications_in_tx),
