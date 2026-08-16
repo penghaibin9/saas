@@ -1,10 +1,10 @@
 """A-W4 Course Catalog specification consumed by Academic File Exchange.
 
-This module does not own FileObject/ImportJob lifecycle and does not expose a
-route.  It freezes the server-generated workbook and adapts the existing secure
-XLSX reader to the fixed-query Course dry-run bridge.  The active Academic File
-Exchange service can therefore add one small dispatch branch later without
-copying parser or domain validation logic.
+This module does not own FileObject/ImportJob lifecycle. It freezes the
+server-generated workbook and adapts the existing secure XLSX reader to the
+fixed-query Course dry-run bridge. INT now exposes the public route through the
+mature Academic File Exchange authority without copying parser, lease, digest,
+or domain confirmation logic.
 """
 from __future__ import annotations
 
@@ -121,6 +121,6 @@ def course_catalog_file_exchange_contract() -> dict:
         "templateVersion": COURSE_TEMPLATE_VERSION,
         "headerMap": dict(COURSE_HEADER_MAP),
         "requiredFields": sorted(COURSE_REQUIRED_FIELDS),
-        "publicImportEnabled": False,
-        "confirmOwner": "INT_SHARED_DATA_EXCHANGE",
+        "publicImportEnabled": True,
+        "confirmOwner": "ACADEMIC_FILE_EXCHANGE",
     }
