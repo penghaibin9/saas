@@ -1,4 +1,5 @@
 name: Academic B W1 Final Seal
+# Exact-head retrigger only after the W1 dialog lifecycle fix; no workflow behavior change.
 
 on:
   workflow_dispatch:
