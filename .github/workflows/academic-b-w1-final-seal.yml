@@ -1,20 +1,8 @@
 name: Academic B W1 Final Seal
-# Exact-head retrigger only after the W1 dialog lifecycle fix; no workflow behavior change.
+# B-W1 is frozen at its recorded exact-head evidence. Later waves must not auto-rerun it.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/academic-b-schedule-selection]
-    paths:
-      - 'backend/scripts/e2e_seed_academic_b_selection.py'
-      - 'e2e/specs/academic-b-selection-w1-final.spec.mjs'
-      - '.github/workflows/academic-b-w1-final-seal.yml'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_schedule_*.py'
-      - 'frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue'
-      - 'student-portal/src/views/academic/StudentSelectionView.vue'
-      - 'miniapp/src/pages/student/academic-affairs/selection.vue'
 
 permissions:
   contents: read
