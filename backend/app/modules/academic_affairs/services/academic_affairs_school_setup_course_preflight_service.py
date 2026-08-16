@@ -3,7 +3,9 @@
 This is the bounded DB bridge between Academic File Exchange rows and the pure
 Course import classifier. It owns no file/job lifecycle and never commits.
 
-The public dry-run wrapper opens its own read session. Confirm writers must use
+The public dry-run wrapper opens its own read session only after source-only
+normalization/duplicate checks leave at least one row that needs domain queries.
+Confirm writers must use
 ``_course_catalog_dry_run_with_db(..., lock_rows=True)`` inside their *existing*
 transaction so the same parser/domain rules are re-evaluated after row locks,
 without a preflight/write TOCTOU window.
@@ -180,25 +182,10 @@ def _reject_duplicate_source_keys(
     return unique_rows
 
 
-def _maybe_lock(stmt, lock_rows: bool):
-    return stmt.with_for_update() if lock_rows else stmt
-
-
-def _course_catalog_dry_run_with_db(
+def _normalize_source_rows(
     rows: list[Mapping[str, object]],
-    user: dict,
-    db,
-    *,
-    lock_rows: bool = False,
-) -> dict:
-    """Run the exact Course preflight inside a caller-owned DB transaction.
-
-    ``lock_rows=True`` is reserved for confirm: Course version rows and the
-    referenced College/User rows are locked in deterministic query order before
-    classification, so deactivation/version changes cannot race the write.
-    New course codes naturally have no existing Course row to lock; the DB
-    stable-key unique constraint remains the final concurrent-create arbiter.
-    """
+) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """Run source-only validation before any DB session or reference query."""
     source_rows = [dict(row) for row in (rows or [])]
     normalized: list[dict] = []
     rejects: list[dict] = []
@@ -222,6 +209,29 @@ def _course_catalog_dry_run_with_db(
             errors.append(error)
 
     normalized = _reject_duplicate_source_keys(normalized, rejects, errors)
+    return source_rows, normalized, rejects, errors
+
+
+def _maybe_lock(stmt, lock_rows: bool):
+    return stmt.with_for_update() if lock_rows else stmt
+
+
+def _course_catalog_dry_run_with_db(
+    rows: list[Mapping[str, object]],
+    user: dict,
+    db,
+    *,
+    lock_rows: bool = False,
+) -> dict:
+    """Run the exact Course preflight inside a caller-owned DB transaction.
+
+    ``lock_rows=True`` is reserved for confirm: Course version rows and the
+    referenced College/User rows are locked in deterministic query order before
+    classification, so deactivation/version changes cannot race the write.
+    New course codes naturally have no existing Course row to lock; the DB
+    stable-key unique constraint remains the final concurrent-create arbiter.
+    """
+    source_rows, normalized, rejects, errors = _normalize_source_rows(rows)
     if not normalized:
         return _empty_result(len(source_rows), rejects, errors)
 
@@ -330,6 +340,9 @@ def _course_catalog_dry_run_with_db(
 
 
 def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict:
-    """Read-only File Exchange dry-run using the same transactional preflight core."""
+    """Read-only File Exchange dry-run; source-only rejects must not open the DB."""
+    source_rows, normalized, rejects, errors = _normalize_source_rows(rows)
+    if not normalized:
+        return _empty_result(len(source_rows), rejects, errors)
     with session() as db:
-        return _course_catalog_dry_run_with_db(rows, user, db, lock_rows=False)
+        return _course_catalog_dry_run_with_db(source_rows, user, db, lock_rows=False)
