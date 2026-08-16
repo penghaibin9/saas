@@ -273,7 +273,9 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
         if not task:
             raise not_found("应评任务不存在")
 
-        batch = _base._writable_batch(db, task.batch_id)
+        # Shared batch lock keeps submit-vs-submit concurrent while forcing close/score to wait
+        # until every in-flight submission has either committed or rolled back.
+        batch = _base._writable_batch(db, task.batch_id, lock="share")
         if batch.status != _legacy._B_OPEN:
             raise _legacy._invalid("评教窗口未开放")
 
