@@ -260,9 +260,14 @@
 
         <div v-if="canCollegeReview(detail.row)" class="agc-actions">
           <div class="agc-actions__title">学院初审</div>
-          <AppButton variant="primary" :loading="detailBusy" @click="doCollegeReview('APPROVE')">通过</AppButton>
-          <AppButton :loading="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</AppButton>
+          <AppButton v-if="canCollegeApprove(detail.row)" variant="primary" :loading="detailBusy" @click="doCollegeReview('APPROVE')">通过</AppButton>
+          <AppButton v-if="canCollegeReject(detail.row)" :loading="detailBusy" @click="openCollegeReject">退回学院（需≥5字原因）</AppButton>
         </div>
+        <AppInlineAlert
+          v-if="detail.row.status === 'SYSTEM_ABNORMAL'"
+          type="warning"
+          description="系统预审异常：学院通过已锁定；请先治理阻断项并重新预审，或退回学院重新核对。"
+        />
 
         <div v-if="canNormalFinal(detail.row)" class="agc-actions">
           <div class="agc-actions__title">毕业资格终审</div>
@@ -486,7 +491,11 @@ export default {
       if (!it.refId) return null
       return LINK_ITEM[cfg.item](it.refId)
     },
-    canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    canCollegeApprove(r) {
+      return Boolean(r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+    },
+    canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canCollegeReview(r) { return this.canCollegeApprove(r) || this.canCollegeReject(r) },
     canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     async markFee(row, status) {
       if (!this.batchId || this.feeBusy) return
