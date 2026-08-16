@@ -86,9 +86,46 @@ def _source_binding_scope_index(rows: Iterable[Mapping[str, object]]) -> dict[st
     result: dict[str, list[dict]] = defaultdict(list)
     for raw in rows:
         row = dict(raw)
+        if str(row.get("logicalGroup") or "").strip().upper() != PROGRAM_GROUP_BINDING:
+            continue
         scope_key = _scope_key(dict(row.get("payload") or {}))
         result[scope_key].append(row)
     return dict(result)
+
+
+def _source_binding_scope_conflicts(
+    rows: Iterable[Mapping[str, object]],
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    source_by_scope = _source_binding_scope_index(rows)
+    conflicting = {
+        scope_key: scope_rows
+        for scope_key, scope_rows in source_by_scope.items()
+        if len(scope_rows) > 1
+    }
+    errors: list[dict] = []
+    for scope_key, scope_rows in sorted(conflicting.items()):
+        errors.append({
+            "row": min(int(row.get("rowNo") or 0) for row in scope_rows),
+            "logicalGroup": PROGRAM_GROUP_BINDING,
+            "programKey": "",
+            "businessCode": "PROGRAM_BINDING_SOURCE_SCOPE_CONFLICT",
+            "message": "同一 BINDING 文件内多个 Program 同时声明同一绑定范围，禁止按行顺序决定 ACTIVE 归属",
+            "evidence": {
+                "scopeKey": scope_key,
+                "programKeys": sorted({str(row.get("programKey") or "") for row in scope_rows}),
+                "rows": sorted(int(row.get("rowNo") or 0) for row in scope_rows),
+            },
+            "howToResolve": "同一专业年级/班级范围仅保留一个目标 Program 后重新预检",
+        })
+    return conflicting, errors
+
+
+def program_binding_source_scope_errors(
+    normalized_rows: Iterable[Mapping[str, object]],
+) -> list[dict]:
+    """Return pure source-only exclusivity blockers for ProgramBinding scopes."""
+    _conflicting, errors = _source_binding_scope_conflicts(normalized_rows)
+    return errors
 
 
 def classify_program_binding_phase(
@@ -111,8 +148,6 @@ def classify_program_binding_phase(
     }
 
     if resolved_phase == PHASE_DEFINITION:
-        # Even fully valid BINDING worksheet rows are only retained as explainable
-        # intent. The writer for definition phase must ignore them completely.
         return {
             "phase": PHASE_DEFINITION,
             "bindingWriteAllowed": False,
@@ -131,28 +166,8 @@ def classify_program_binding_phase(
 
     statuses = {str(key): str(value or "").strip().upper() for key, value in (program_status_by_id or {}).items()}
     active_by_scope = _active_binding_index(active_binding_snapshots)
-    source_by_scope = _source_binding_scope_index(binding_rows)
-    conflicting_source_scopes = {
-        scope_key: rows
-        for scope_key, rows in source_by_scope.items()
-        if len(rows) > 1
-    }
+    conflicting_source_scopes, errors = _source_binding_scope_conflicts(binding_rows)
     intents: list[dict] = []
-    errors: list[dict] = []
-
-    for scope_key, rows in sorted(conflicting_source_scopes.items()):
-        errors.append({
-            "row": min(int(row.get("rowNo") or 0) for row in rows),
-            "programKey": "",
-            "businessCode": "PROGRAM_BINDING_SOURCE_SCOPE_CONFLICT",
-            "message": "同一 BINDING 文件内多个 Program 同时声明同一绑定范围，禁止按行顺序决定 ACTIVE 归属",
-            "evidence": {
-                "scopeKey": scope_key,
-                "programKeys": sorted({str(row.get("programKey") or "") for row in rows}),
-                "rows": sorted(int(row.get("rowNo") or 0) for row in rows),
-            },
-            "howToResolve": "同一专业年级/班级范围仅保留一个目标 Program 后重新预检",
-        })
 
     for row in sorted(binding_rows, key=lambda item: (str(item.get("programKey") or ""), int(item.get("rowNo") or 0))):
         scope_key = _scope_key(dict(row.get("payload") or {}))

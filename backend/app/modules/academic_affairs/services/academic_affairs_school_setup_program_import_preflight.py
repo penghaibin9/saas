@@ -21,6 +21,9 @@ from .academic_affairs_school_setup_import_contract import (
     PROGRAM_GROUP_PRACTICE,
     PROGRAM_LOGICAL_GROUPS,
 )
+from .academic_affairs_school_setup_program_binding_policy import (
+    program_binding_source_scope_errors,
+)
 
 
 def _error(
@@ -131,6 +134,12 @@ def program_import_source_preflight(normalized_rows: Iterable[Mapping[str, objec
             },
             how_to_resolve="同一 Program 版本的同一定义只保留一行后重新预检",
         ))
+
+    # Binding scope is a relationship authority, not Program identity. Two
+    # different Program versions claiming one exact scope are mutually exclusive
+    # source facts and must be rejected before any reference/status/ACTIVE-binding
+    # loader is allowed to run.
+    errors.extend(program_binding_source_scope_errors(rows))
 
     for program_key, program_rows in sorted(by_program.items()):
         mains = [row for row in program_rows if row["logicalGroup"] == PROGRAM_GROUP_MAIN]
