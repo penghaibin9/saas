@@ -11,8 +11,7 @@ import importlib
 
 from sqlalchemy import or_, select
 
-from app.core.affairs_security import _derive_keys
-from app.core.exceptions import no_data_scope
+from app.core.affairs_security import _derive_keys, no_data_scope
 from app.services.db_service import _iso, _tid
 
 _legacy = importlib.import_module(
