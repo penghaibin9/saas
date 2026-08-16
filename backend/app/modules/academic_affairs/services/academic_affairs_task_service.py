@@ -23,6 +23,7 @@ from app.core.exceptions import AppException, not_found
 from app.core.permissions import is_super_admin
 from app.services.db_service import _tid, session
 
+from . import academic_affairs_program_activation_service as program_activation
 from . import academic_affairs_program_governance_service as program_governance
 from . import academic_affairs_task_core_service as _core
 from . import academic_affairs_task_generation_service as generation
@@ -193,12 +194,22 @@ def _batch_next_action(batch, summary) -> dict:
 
 
 def _generation_programs(db, user, college_id=None):
-    from app.models import AaProgram, Major
+    from app.models import AaProgram, AaProgramBinding, Major
 
     scope = _scope(user, db)
+    active_program_ids = {
+        int(value) for (value,) in db.query(AaProgramBinding.program_id).filter(
+            AaProgramBinding.tenant_id == _tid(),
+            AaProgramBinding.status == "ACTIVE",
+            AaProgramBinding.is_deleted.is_(False),
+        ).all() if value
+    }
+    if not active_program_ids:
+        return []
     rows = db.query(AaProgram).filter(
         AaProgram.tenant_id == _tid(),
-        AaProgram.status == "ENABLED",
+        AaProgram.id.in_(sorted(active_program_ids)),
+        AaProgram.status.in_(sorted(program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES)),
         AaProgram.is_deleted.is_(False),
     ).all()
     if college_id:
@@ -219,7 +230,7 @@ def _generation_precheck(db, user, college_id=None) -> dict:
     programs = _generation_programs(db, user, college_id)
     if not programs:
         raise AppException(
-            "PROGRAM_NOT_READY", "当前学院或数据范围没有已启用培养方案，不能生成教学任务",
+            "PROGRAM_NOT_READY", "当前学院或数据范围没有已生效且已绑定培养方案，不能生成教学任务",
             http_status=409,
         )
     blocked, warning_count = [], 0
@@ -240,7 +251,7 @@ def _generation_precheck(db, user, college_id=None) -> dict:
         suffix = f"；另有 {len(blocked) - 3} 个方案" if len(blocked) > 3 else ""
         raise AppException(
             "PROGRAM_VALIDATION_BLOCKED",
-            f"有 {len(blocked)} 个已启用方案存在阻断项，不能生成教学任务：{preview}{suffix}",
+            f"有 {len(blocked)} 个当前生效且已绑定方案存在阻断项，不能生成教学任务：{preview}{suffix}",
             http_status=409,
         )
     return {"programCount": len(programs), "warningCount": warning_count}
@@ -314,7 +325,7 @@ def generate_batch(body, user) -> dict:
         result["programValidation"] = {
             "programCount": precheck["programCount"],
             "warningCount": precheck["warningCount"],
-            "conclusion": "已启用方案结构与绑定校验通过",
+            "conclusion": "当前生效且已绑定方案结构与绑定校验通过",
         }
         result["teachingClassProjection"] = projection
         return result
