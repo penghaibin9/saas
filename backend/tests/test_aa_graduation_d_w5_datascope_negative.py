@@ -2,8 +2,8 @@
 
 COLLEGE_ADMIN has academicAffairs.* permission, so this suite proves data scope is an
 independent authority: without an ACTIVE TeacherStudentScope row, a permission-authorized
-college administrator must see zero Graduation batches instead of silently falling back to
-tenant-wide data.
+college administrator must see zero Graduation data instead of silently falling back to
+tenant-wide visibility.
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def test_permission_authorized_college_admin_without_scope_cannot_see_tenant_gra
     assert int((payload.get("data") or {}).get("total") or 0) == 0, payload
 
 
-def test_permission_authorized_no_scope_context_cannot_resolve_graduation_detail(client, db_mode):
+def test_scope_empty_college_admin_cannot_infer_known_batch_from_results_endpoint(client, db_mode):
     del db_mode
     school_headers, _ = _login(client, "school_admin01", "ADMIN")
     created = client.post(
@@ -76,7 +76,10 @@ def test_permission_authorized_no_scope_context_cannot_resolve_graduation_detail
         f"{BASE}/graduation-audit-batches/{batch_id}/results?page=1&pageSize=20",
         headers=college_headers,
     )
-    # A scope-empty caller is not allowed to infer whether the batch has any students.
-    assert results.status_code in {403, 404}, results.text
-    body = results.json()
-    assert body.get("code") in {"NO_DATA_SCOPE", "NOT_FOUND"}, body
+    assert results.status_code == 200, results.text
+    payload = results.json()
+    assert payload.get("code") == 0, payload
+    # The service deliberately returns an empty page for a scope-empty authorized caller,
+    # preventing existence/row-count disclosure for a tenant-wide batch id the caller learned elsewhere.
+    assert _items(payload) == []
+    assert int((payload.get("data") or {}).get("total") or 0) == 0, payload
