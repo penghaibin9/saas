@@ -306,7 +306,24 @@ def student_courses(user, batch_id=None):
                     active_round=active_round,
                     evaluated_at=evaluated_at,
                 )
-                projected_courses.append({**_base._core._course_dto(course), **projection})
+                allowed_actions = list(projection.get("allowedActions") or [])
+                if "VIEW" not in allowed_actions:
+                    allowed_actions.insert(0, "VIEW")
+                projected_courses.append({
+                    **_base._core._course_dto(course),
+                    "status": projection["status"],
+                    "statusLabel": projection["statusLabel"],
+                    "phase": projection["phase"],
+                    "eligibility": projection["eligibility"],
+                    "allowedActions": allowed_actions,
+                    "reason": projection["reason"],
+                    "howToResolve": projection["howToResolve"],
+                    "window": projection["window"],
+                    "lottery": projection["lottery"],
+                    "reselect": projection["reselect"],
+                    "decisionTrace": projection.get("decisionTrace"),
+                    "evaluatedAt": projection["evaluatedAt"],
+                })
 
             out.append({
                 "batch": _base._core._batch_dto(batch),
