@@ -12,7 +12,7 @@ canonical_path.write_text(canonical, encoding="utf-8")
 public_path = Path("backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py")
 public = public_path.read_text(encoding="utf-8")
 old = '''_ATTENDANCE_TASK_STATUSES = _canonical._ATTENDANCE_TASK_STATUSES\n_ADMIN_SPECIAL = "ADMIN_SPECIAL"\n'''
-new = '''_ATTENDANCE_TASK_STATUSES = _canonical._ATTENDANCE_TASK_STATUSES\nattendance_task_executable = _canonical.attendance_task_executable\n_ADMIN_SPECIAL = "ADMIN_SPECIAL"\n'''
+new = '''attendance_task_executable = _canonical.attendance_task_executable\n_ADMIN_SPECIAL = "ADMIN_SPECIAL"\n'''
 if public.count(old) != 1:
     raise SystemExit(f"public helper import anchor count={public.count(old)}")
 public = public.replace(old, new, 1)
