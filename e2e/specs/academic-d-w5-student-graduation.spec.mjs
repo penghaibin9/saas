@@ -94,6 +94,7 @@ async function openStudentGraduationAudit(page) {
 
 async function assertAbnormalStudentSurface(page) {
   await expect(page.getByRole('heading', { name: '毕业条件还有待处理事项' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('正式预审存在阻断项', { exact: true })).toBeVisible()
   await expect(page.getByText('逐项核对真实业务事实', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '重新核验' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '当前毕业条件已通过实时核验' })).toHaveCount(0)
