@@ -222,15 +222,26 @@ def _course_catalog_dry_run_with_db(
     db,
     *,
     lock_rows: bool = False,
+    locked_course_rows_out: list | None = None,
 ) -> dict:
     """Run the exact Course preflight inside a caller-owned DB transaction.
 
     ``lock_rows=True`` is reserved for confirm: Course version rows and the
     referenced College/User rows are locked in deterministic query order before
     classification, so deactivation/version changes cannot race the write.
+    ``locked_course_rows_out`` is a private confirm-only side channel: when
+    supplied with ``lock_rows=True`` it receives the exact Course ORM rows
+    already locked by this preflight, allowing the writer to inherit hidden
+    predecessor facts without issuing a second Course SELECT. It is never
+    included in the public preview payload.
     New course codes naturally have no existing Course row to lock; the DB
     stable-key unique constraint remains the final concurrent-create arbiter.
     """
+    if locked_course_rows_out is not None:
+        if not lock_rows:
+            raise ValueError("locked_course_rows_out requires lock_rows=True")
+        locked_course_rows_out.clear()
+
     source_rows, normalized, rejects, errors = _normalize_source_rows(rows)
     if not normalized:
         return _empty_result(len(source_rows), rejects, errors)
@@ -256,6 +267,8 @@ def _course_catalog_dry_run_with_db(
         AaCourse.is_deleted.is_(False),
     ).order_by(AaCourse.course_code, AaCourse.version, AaCourse.id)
     existing_rows = db.scalars(_maybe_lock(course_stmt, lock_rows)).all()
+    if locked_course_rows_out is not None:
+        locked_course_rows_out.extend(existing_rows)
 
     college_rows = []
     if owner_college_ids:
