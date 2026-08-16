@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 
 def _preflight():
     from app.modules.academic_affairs.services import academic_affairs_school_setup_import_preflight as preflight
@@ -39,11 +41,31 @@ def _incoming(*, code="CS101", version=1, name="Python程序设计", college=17,
     }
 
 
-def _existing(*, code="CS101", version=1, status="ENABLED", name="Python程序设计", **payload_changes):
+def _default_course_id(code: str, version: int) -> int:
+    return (sum(ord(ch) for ch in code.upper()) * 100) + int(version)
+
+
+def _existing(
+    *,
+    code="CS101",
+    version=1,
+    status="ENABLED",
+    name="Python程序设计",
+    course_id=None,
+    prev_version_id="AUTO",
+    **payload_changes,
+):
     row = _incoming(code=code, version=version, name=name, **payload_changes)
+    resolved_id = int(course_id or _default_course_id(code, version))
+    if prev_version_id == "AUTO":
+        resolved_prev = None if int(version) == 1 else _default_course_id(code, int(version) - 1)
+    else:
+        resolved_prev = prev_version_id
     return {
+        "courseId": resolved_id,
         "courseCode": code,
         "version": version,
+        "prevVersionId": resolved_prev,
         "status": status,
         "payload": row["payload"],
     }
@@ -88,7 +110,7 @@ def test_same_name_different_course_code_does_not_become_identity_conflict():
     assert result["items"][0]["businessKey"] == "CS102@v1"
 
 
-def test_enabled_direct_successor_is_create_but_gap_is_reject():
+def test_enabled_direct_successor_is_create_but_requested_gap_is_reject():
     preflight = _preflight()
     existing = [_existing(version=1, status="ENABLED")]
     successor = preflight.course_catalog_preflight([_incoming(version=2)], existing)
@@ -177,10 +199,39 @@ def test_preflight_reconciliation_counts_and_errors_are_file_exchange_ready():
 
 
 def test_corrupt_existing_duplicate_stable_key_fails_closed():
-    import pytest
-
     with pytest.raises(ValueError, match="duplicate existing Course stable key"):
         _preflight().course_catalog_preflight(
             [_incoming()],
-            [_existing(), _existing()],
+            [_existing(), _existing(course_id=99999)],
         )
+
+
+def test_corrupt_existing_chain_gap_fails_closed_before_row_classification():
+    with pytest.raises(ValueError, match="version chain gap"):
+        _preflight().course_catalog_preflight(
+            [_incoming(version=4)],
+            [_existing(version=1), _existing(version=3)],
+        )
+
+
+def test_corrupt_existing_prev_pointer_fails_closed_before_row_classification():
+    with pytest.raises(ValueError, match="prevVersionId mismatch"):
+        _preflight().course_catalog_preflight(
+            [_incoming(version=3)],
+            [_existing(version=1), _existing(version=2, prev_version_id=999999)],
+        )
+
+
+def test_corrupt_existing_v1_with_predecessor_fails_closed():
+    with pytest.raises(ValueError, match="v1 prevVersionId"):
+        _preflight().course_catalog_preflight(
+            [_incoming(version=2)],
+            [_existing(version=1, prev_version_id=12345)],
+        )
+
+
+def test_corrupt_existing_snapshot_missing_course_id_fails_closed():
+    broken = _existing()
+    broken["courseId"] = None
+    with pytest.raises(ValueError, match="missing/invalid courseId"):
+        _preflight().course_catalog_preflight([_incoming()], [broken])
