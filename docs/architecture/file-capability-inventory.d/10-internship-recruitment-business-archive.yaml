@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: backend
+    route: backend/app/modules/internship/routers/internship_recruitment_campaign.py
+    page: backend/app/modules/internship/routers/internship_recruitment_campaign.py
+    action: recruitment-campaign-business-archive-state
+    fileCategory: BUSINESS_STATE_ARCHIVE_NO_FILE_IO
+    api: POST /api/v1/internship/recruitment-campaigns/{campaign_id}/archive
+    backendService: backend/app/modules/internship/services/internship_recruitment_campaign_service.py
+    storageMode: DATABASE_ONLY_NO_FILE_IO
+    authMode: internship.recruitment.manage+staff+tenant-scope
+    dataScope: tenant+recruitment-campaign
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: E-A01 招聘季 archive 仅表示数据库业务状态 DRAFT/OPEN/FROZEN/CLOSED -> ARCHIVED 的只读归档终态；不创建压缩包、不读写 FileObject、不产生下载文件。登记仅消除文件能力扫描器对路径 token archive 的语义误判，不豁免任何真实文件能力。

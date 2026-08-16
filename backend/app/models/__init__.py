@@ -42,6 +42,12 @@ from app.models.internship import (AttendanceException, InternshipAgreement,  # 
                                     InternshipStudentEval, InternshipVisit, InternshipVisitPlan,
                                     RiskRecord, WeeklyReport)
 from app.models.internship_position import InternshipPosition  # noqa: F401  (岗位库·独立文件)
+from app.models.internship_enterprise_portal import (  # noqa: F401
+    InternshipCampaignEnterprise,
+    InternshipEnterpriseAccessGrant,
+    InternshipEnterpriseMember,
+    InternshipRecruitmentCampaign,
+)
 from app.models.internship_compliance import (  # noqa: F401
     InternshipComplianceExemption, InternshipComplianceTemplate, InternshipConsent,
     InternshipEmergencyPlan, InternshipEnterpriseInspection, InternshipEvidencePackage,
