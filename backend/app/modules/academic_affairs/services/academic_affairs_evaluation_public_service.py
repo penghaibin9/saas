@@ -354,13 +354,17 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             _require_anonymous_student_batch(batch)
             profile, roster, token = _student_submission_context(db, user, task)
             _lock_student_roster_member(db, task, profile, roster)
+            # The per-student roster-member UPDATE lock serializes only duplicate attempts from
+            # the same student. Under MySQL REPEATABLE READ the follow-up token lookup must be a
+            # locking current read; a normal consistent read can reuse a snapshot from before the
+            # member-lock wait and miss the winning transaction's just-committed anonymous record.
             duplicate = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.tenant_id == _tid(),
                 AaEvaluationRecord.task_id == task.id,
                 AaEvaluationRecord.evaluator_type == "STUDENT",
                 AaEvaluationRecord.answers_json.like(_token_pattern(task.id, profile.id)),
                 AaEvaluationRecord.is_deleted.is_(False),
-            ).first()
+            ).with_for_update(read=True).first()
             if duplicate:
                 raise _legacy._invalid("该课程评教已提交，不可重复提交")
 
