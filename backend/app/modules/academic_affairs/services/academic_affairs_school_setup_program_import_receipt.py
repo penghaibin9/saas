@@ -241,6 +241,7 @@ def build_program_import_receipt(
 
         item_action_counts = {"CREATE": 0, "REUSE": 0}
         seen_scope_keys: set[str] = set()
+        active_relationship_facts = []
         for item in items:
             program_key = str(item.get("programKey") or "").strip()
             program_id = str(item.get("programId") or "").strip()
@@ -260,8 +261,18 @@ def build_program_import_receipt(
             ):
                 raise ValueError("Program binding receipt requires every relationship reread to match")
             item_action_counts[action] += 1
+            active_relationship_facts.append({
+                "scopeKey": scope_key,
+                "programId": program_id,
+            })
         if item_action_counts["CREATE"] != created or item_action_counts["REUSE"] != reused:
             raise ValueError("Program binding receipt item actions do not match created/reused counts")
+        recomputed_relationship_hash = _sha256(sorted(
+            active_relationship_facts,
+            key=lambda item: (item["scopeKey"], item["programId"]),
+        ))
+        if recomputed_relationship_hash != relationship_hash:
+            raise ValueError("Program binding reconciliation hash does not match relationship items")
 
         return {
             "contractVersion": "program-import-receipt-v1",
@@ -275,7 +286,7 @@ def build_program_import_receipt(
             "reusedBindings": reused,
             "bindingCount": binding_count,
             "domainMutationWriteCount": write_count,
-            "reconciliationHash": relationship_hash,
+            "reconciliationHash": recomputed_relationship_hash,
             "relationshipReconciled": True,
             "idempotency": {
                 "sourceDigestOwner": "ACADEMIC_FILE_EXCHANGE",
