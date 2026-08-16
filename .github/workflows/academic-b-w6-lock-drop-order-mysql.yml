@@ -1,4 +1,4 @@
-# exact-head evidence trigger after W6-2 bot-authored fix
+# exact-head evidence trigger after W6-3/W6-4 production changes
 name: Academic B W6 LOCK Drop Order MySQL
 
 on:
