@@ -157,6 +157,11 @@ def create_session(user, body) -> dict:
                 if not keys or not task.teacher_key or task.teacher_key not in keys:
                     raise AppException("NO_DATA_SCOPE", "该教学任务不属于当前教师", http_status=403)
 
+            requested_class_id = int(body.get("classId") or 0)
+            task_class_id = int(task.class_id or 0)
+            if requested_class_id and task_class_id and requested_class_id != task_class_id:
+                raise AppException("VALIDATION_ERROR", "教学任务与行政班不一致")
+
             official = resolve_versioned_roster(db, int(task.id))
             roster_source = _ADMIN_SPECIAL if is_admin_special else official["source"]
             roster = [{
@@ -171,8 +176,6 @@ def create_session(user, body) -> dict:
             roster = []
 
         class_id = int(task.class_id) if task and task.class_id else int(body.get("classId") or 0)
-        if task and body.get("classId") and int(body.get("classId")) != class_id:
-            raise AppException("VALIDATION_ERROR", "教学任务与行政班不一致")
 
         if task:
             if not class_id:
