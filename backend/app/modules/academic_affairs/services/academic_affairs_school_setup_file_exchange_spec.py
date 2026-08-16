@@ -72,6 +72,36 @@ def build_course_catalog_import_template() -> bytes:
     )
 
 
+def _empty_course_catalog_preview() -> dict:
+    message = "课程导入文件没有数据行，请至少填写一门课程后重新预检"
+    return {
+        "totalRows": 0,
+        "validRows": 0,
+        "invalidRows": 1,
+        "createRows": 0,
+        "reuseRows": 0,
+        "conflictRows": 0,
+        "rejectRows": 1,
+        "items": [{
+            "row": 0,
+            "businessKey": "",
+            "action": "REJECT",
+            "code": "COURSE_SOURCE_EMPTY",
+            "message": message,
+            "evidence": {"dataRows": 0},
+            "howToResolve": "保留模板表头并至少填写一门课程后重新上传",
+        }],
+        "errors": [{
+            "row": 0,
+            "field": "file",
+            "code": "COURSE_SOURCE_EMPTY",
+            "message": message,
+            "evidence": {"dataRows": 0},
+            "howToResolve": "保留模板表头并至少填写一门课程后重新上传",
+        }],
+    }
+
+
 def parse_and_validate_course_catalog(
     source_path: Path,
     *,
@@ -80,6 +110,8 @@ def parse_and_validate_course_catalog(
 ) -> tuple[list[dict], dict]:
     """Use the caller's already security-gated XLSX reader, then domain dry-run."""
     rows = reader(source_path, COURSE_HEADER_MAP)
+    if not rows:
+        return rows, _empty_course_catalog_preview()
     preview = course_catalog_dry_run(rows, user)
     return rows, preview
 
