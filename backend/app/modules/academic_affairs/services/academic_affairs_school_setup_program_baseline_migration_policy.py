@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Mapping
 
+from .academic_affairs_school_setup_import_contract import program_series_key
+
 SCHEMA_PREREQUISITES = (
     "AaProgram.series_key",
     "AaProgramCourse.formation_mode",
@@ -75,7 +77,9 @@ def build_program_baseline_migration_policy(evidence: Mapping[str, object]) -> d
     if not isinstance(evidence, Mapping):
         raise ValueError("baseline migration evidence must be an object")
 
-    series_key = _required_text(evidence.get("programSeriesKey"), field="programSeriesKey").upper()
+    # Privileged migration may bypass unavailable historical predecessors, never
+    # the immutable Program series identity grammar used by ordinary program-v2.
+    series_key = program_series_key(evidence.get("programSeriesKey"))
     baseline_version = _positive_int(evidence.get("baselineVersion"), field="baselineVersion")
     if baseline_version <= 1:
         raise ValueError("baselineVersion must be > 1; v1 belongs to ordinary Program import")
