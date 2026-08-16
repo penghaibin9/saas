@@ -40,7 +40,7 @@ def test_w3_legacy_admin_fixed_is_proven_without_selection_evidence():
     assert result.status == "PROVEN"
 
 
-def test_w3_selection_runtime_evidence_beats_legacy_admin_class_shape():
+def test_w3_selection_runtime_evidence_beats_legacy_admin_class_shape_before_roster_lock():
     result = policy.resolve_legacy_task_formation(
         is_merged=False,
         class_id=101,
@@ -51,6 +51,21 @@ def test_w3_selection_runtime_evidence_beats_legacy_admin_class_shape():
     assert result.proven is True
     assert result.mode == "SELECTABLE"
     assert result.source == "SELECTION_RUNTIME_EVIDENCE"
+
+
+def test_w3_selectable_with_current_admin_roster_is_a_migration_conflict():
+    result = policy.resolve_legacy_task_formation(
+        is_merged=False,
+        class_id=101,
+        selection_exists=True,
+        teaching_class_type="ADMIN",
+        roster_source_types=["ADMIN_CLASS"],
+    )
+    assert result.proven is False
+    assert result.mode is None
+    assert result.status == "CONFLICT"
+    assert result.source == "SELECTABLE_CURRENT_ADMIN_ROSTER"
+    assert result.blockers == ("SELECTABLE_CURRENT_ADMIN_ROSTER",)
 
 
 def test_w3_selection_lock_roster_is_also_proven_selection_evidence():
@@ -69,7 +84,7 @@ def test_w3_retake_roster_is_provenance_not_dedicated_retake_task():
         is_merged=False,
         class_id=101,
         teaching_class_type="ADMIN",
-        roster_source_types=["ADMIN_CLASS", "RETAKE"],
+        roster_source_types=["RETAKE"],
     )
     assert result.proven is True
     assert result.mode == "ADMIN_FIXED"

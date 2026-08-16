@@ -6,14 +6,16 @@ formation columns or attempting a historical backfill.
 
 Production constraints:
 - caller supplies an explicit positive tenant id; no ambient request context is used;
-- exactly four bounded-shape tenant queries collect relationship evidence;
+- exactly four tenant-scoped relationship queries collect evidence without N+1;
+- roster decisions use the TeachingClass current-roster pointer, not a bag of
+  superseded historical roster sources;
 - student/member rows and B's live roster resolver are never read;
 - course name/nature are never used as formation evidence;
-- unresolved/conflicting history remains a migration blocker instead of being guessed.
+- unresolved/conflicting history stays a migration blocker instead of being guessed.
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 
 from sqlalchemy import and_, select
 
@@ -21,7 +23,6 @@ from . import academic_affairs_task_formation_policy as policy
 
 _MAX_SAMPLE_LIMIT = 100
 _DEFAULT_SAMPLE_LIMIT = 20
-_RELEVANT_ROSTER_SOURCES = ("SELECTION_LOCK", "RETAKE")
 
 
 def _positive_tenant_id(value) -> int:
@@ -78,23 +79,31 @@ def _formation_inventory_statements(tenant_id: int):
             AaSelectionCourse.is_deleted.is_(False),
         )
     )
-    roster_sources = (
-        select(AaTeachingClass.teaching_task_id, AaTeachingClassRosterVersion.source_type)
-        .join(
-            AaTeachingClass,
+    current_rosters = (
+        select(
+            AaTeachingClass.teaching_task_id,
+            AaTeachingClass.current_roster_version_id,
+            AaTeachingClass.roster_status,
+            AaTeachingClassRosterVersion.id,
+            AaTeachingClassRosterVersion.source_type,
+            AaTeachingClassRosterVersion.status,
+        )
+        .outerjoin(
+            AaTeachingClassRosterVersion,
             and_(
-                AaTeachingClass.id == AaTeachingClassRosterVersion.teaching_class_id,
-                AaTeachingClass.tenant_id == tid,
-                AaTeachingClass.is_deleted.is_(False),
+                AaTeachingClassRosterVersion.id == AaTeachingClass.current_roster_version_id,
+                AaTeachingClassRosterVersion.teaching_class_id == AaTeachingClass.id,
+                AaTeachingClassRosterVersion.tenant_id == tid,
+                AaTeachingClassRosterVersion.is_deleted.is_(False),
             ),
         )
         .where(
-            AaTeachingClassRosterVersion.tenant_id == tid,
-            AaTeachingClassRosterVersion.is_deleted.is_(False),
-            AaTeachingClassRosterVersion.source_type.in_(_RELEVANT_ROSTER_SOURCES),
+            AaTeachingClass.tenant_id == tid,
+            AaTeachingClass.is_deleted.is_(False),
         )
+        .order_by(AaTeachingClass.teaching_task_id.asc(), AaTeachingClass.id.asc())
     )
-    return tasks, teaching_classes, selection_relations, roster_sources
+    return tasks, teaching_classes, selection_relations, current_rosters
 
 
 def _append_sample(samples: dict[str, list[str]], key: str, task_id: int, limit: int) -> None:
@@ -116,14 +125,16 @@ def _build_inventory(
     task_rows,
     teaching_class_rows,
     selection_rows,
-    roster_source_rows,
+    current_roster_rows,
     *,
     sample_limit: int = _DEFAULT_SAMPLE_LIMIT,
 ) -> dict:
     """Classify already-collected relationship facts without additional database I/O."""
     limit = _bounded_sample_limit(sample_limit)
-    tasks = [(int(task_id), bool(is_merged), int(class_id) if class_id else None)
-             for task_id, is_merged, class_id in task_rows]
+    tasks = [
+        (int(task_id), bool(is_merged), int(class_id) if class_id else None)
+        for task_id, is_merged, class_id in task_rows
+    ]
     task_ids = {task_id for task_id, _is_merged, _class_id in tasks}
 
     class_type_by_task: dict[int, str | None] = {}
@@ -155,16 +166,45 @@ def _build_inventory(
             continue
         selection_task_ids.add(tid)
 
-    roster_sources_by_task: dict[int, set[str]] = defaultdict(set)
-    for task_id, source_type in roster_source_rows:
+    current_roster_source_by_task: dict[int, str] = {}
+    for (
+        task_id,
+        current_roster_version_id,
+        roster_status,
+        resolved_roster_version_id,
+        source_type,
+        version_status,
+    ) in current_roster_rows:
         tid = int(task_id)
         if tid not in task_ids:
-            relationship_counts["ORPHAN_ROSTER_TASK"] += 1
-            _append_sample(relationship_samples, "ORPHAN_ROSTER_TASK", tid, limit)
+            # The TeachingClass query already reports the canonical orphan once.
             continue
-        source = str(source_type or "").strip().upper()
-        if source:
-            roster_sources_by_task[tid].add(source)
+        current_id = int(current_roster_version_id) if current_roster_version_id else None
+        resolved_id = int(resolved_roster_version_id) if resolved_roster_version_id else None
+        class_roster_status = str(roster_status or "").strip().upper()
+        current_version_status = str(version_status or "").strip().upper()
+        current_source = str(source_type or "").strip().upper()
+
+        if current_id and not resolved_id:
+            relationship_counts["CURRENT_ROSTER_POINTER_DANGLING"] += 1
+            _append_sample(relationship_samples, "CURRENT_ROSTER_POINTER_DANGLING", tid, limit)
+            continue
+        if not current_id and class_roster_status == "LOCKED":
+            relationship_counts["ROSTER_LOCKED_WITHOUT_CURRENT_VERSION"] += 1
+            _append_sample(relationship_samples, "ROSTER_LOCKED_WITHOUT_CURRENT_VERSION", tid, limit)
+            continue
+        if resolved_id:
+            if class_roster_status != "LOCKED":
+                relationship_counts["CURRENT_ROSTER_STATUS_MISMATCH"] += 1
+                _append_sample(relationship_samples, "CURRENT_ROSTER_STATUS_MISMATCH", tid, limit)
+            if current_version_status != "LOCKED":
+                relationship_counts["CURRENT_ROSTER_VERSION_NOT_LOCKED"] += 1
+                _append_sample(relationship_samples, "CURRENT_ROSTER_VERSION_NOT_LOCKED", tid, limit)
+            if not current_source:
+                relationship_counts["CURRENT_ROSTER_SOURCE_MISSING"] += 1
+                _append_sample(relationship_samples, "CURRENT_ROSTER_SOURCE_MISSING", tid, limit)
+            else:
+                current_roster_source_by_task[tid] = current_source
 
     status_counts: Counter[str] = Counter()
     mode_counts: Counter[str] = Counter()
@@ -182,12 +222,13 @@ def _build_inventory(
                 blockers=("MULTIPLE_TEACHING_CLASS_TYPES",),
             )
         else:
+            current_source = current_roster_source_by_task.get(task_id)
             evidence = policy.resolve_legacy_task_formation(
                 is_merged=is_merged,
                 class_id=class_id,
                 selection_exists=task_id in selection_task_ids,
                 teaching_class_type=class_type,
-                roster_source_types=roster_sources_by_task.get(task_id, ()),
+                roster_source_types=(current_source,) if current_source else (),
             )
         status_counts[evidence.status] += 1
         source_counts[evidence.source] += 1
@@ -240,11 +281,11 @@ def inventory_legacy_task_formation(
     task_rows = db.execute(statements[0]).all()
     teaching_class_rows = db.execute(statements[1]).all()
     selection_rows = db.execute(statements[2]).all()
-    roster_source_rows = db.execute(statements[3]).all()
+    current_roster_rows = db.execute(statements[3]).all()
     return _build_inventory(
         task_rows,
         teaching_class_rows,
         selection_rows,
-        roster_source_rows,
+        current_roster_rows,
         sample_limit=limit,
     )

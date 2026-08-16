@@ -116,6 +116,10 @@ def resolve_legacy_task_formation(
     permanent replacement for an explicit formation snapshot on TeachingTask.
     Contradictory history is returned as CONFLICT so callers can surface a
     blocker instead of silently choosing a winner.
+
+    Migration callers should pass the *current* roster source when making a
+    current-state decision.  Historical superseded sources are useful audit
+    evidence but must not overwrite the current roster pointer's meaning.
     """
     class_type = str(teaching_class_type or "").strip().upper()
     roster_sources = _upper_set(roster_source_types)
@@ -140,6 +144,16 @@ def resolve_legacy_task_formation(
         )
 
     if selection_evidence:
+        # A SELECTABLE task may legitimately have no current roster until B
+        # Selection LOCK.  It must never, however, keep a current ADMIN_CLASS
+        # roster: that is the exact legacy fake-admin condition A-C4 must seal.
+        if "ADMIN_CLASS" in roster_sources:
+            return FormationEvidence(
+                mode=None,
+                status=EVIDENCE_CONFLICT,
+                source="SELECTABLE_CURRENT_ADMIN_ROSTER",
+                blockers=("SELECTABLE_CURRENT_ADMIN_ROSTER",),
+            )
         if class_type in {"MERGED", "RETAKE", "LAYERED"}:
             return FormationEvidence(
                 mode=None,
