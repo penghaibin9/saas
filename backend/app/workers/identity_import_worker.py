@@ -26,6 +26,7 @@ from app.core.context import (
     set_current_user,
     set_tenant,
 )
+from app.core.tenant_scoped import tenant_get
 from app.db.session import get_sessionmaker
 from app.models.data_exchange import ImportJob
 from app.models.file import FileObject
@@ -154,7 +155,7 @@ def process_next_identity_import(worker_id: str | None = None) -> dict:
     except Exception as exc:  # noqa: BLE001 - persist recoverable worker state
         db = get_sessionmaker()()
         try:
-            job = db.get(ImportJob, int(claim["jobId"]))
+            job = tenant_get(db, ImportJob, int(claim["jobId"]))
             if job is not None and job.status == CLAIMED:
                 payload = dict(job.result_json or {})
                 job.status = "SCANNING"

@@ -232,5 +232,8 @@ def test_source_contract_freezes_scan_worker_before_parser():
     assert "WORKER_CLAIMED" in orchestrator
     assert "process_next_identity_import" in worker
     assert ".with_for_update(skip_locked=True)" in worker
+    assert "from app.core.tenant_scoped import tenant_get" in worker
+    assert 'tenant_get(db, ImportJob, int(claim["jobId"]))' in worker
+    assert "db.get(ImportJob" not in worker
     assert "process_next_scan_job" in file_worker
     assert "parse_identity_xlsx_path" not in orchestrator
