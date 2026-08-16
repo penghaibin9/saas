@@ -228,6 +228,7 @@ def teacher_schedule_my(user) -> dict:
 def teacher_attendance_class_options(user) -> dict:
     from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm, SchoolClass
     from .academic_affairs_attendance_occurrence_consumer import formal_schedule_patterns_for_tasks
+    from .academic_affairs_attendance_service import ATTENDANCE_TASK_STATUSES
 
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
@@ -259,7 +260,7 @@ def teacher_attendance_class_options(user) -> dict:
                 AaTeachingTask.tenant_id == _tid(),
                 AaTeachingTask.batch_id.in_(batch_ids),
                 AaTeachingTask.is_deleted.is_(False),
-                AaTeachingTask.status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"]),
+                AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES)),
                 AaTeachingTask.class_id.is_not(None),
             ]
             if role not in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}:

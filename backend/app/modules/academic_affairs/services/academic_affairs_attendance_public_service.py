@@ -34,7 +34,7 @@ _teacher_keys = _canonical._teacher_keys
 _primary_teacher_key = _canonical._primary_teacher_key
 _row = _canonical._row
 _ADMIN_ROLES = _canonical._ADMIN_ROLES
-_ATTENDANCE_TASK_STATUSES = _canonical._ATTENDANCE_TASK_STATUSES
+attendance_task_executable = _canonical.attendance_task_executable
 _ADMIN_SPECIAL = "ADMIN_SPECIAL"
 
 
@@ -188,7 +188,7 @@ def create_session(user, body) -> dict:
             task = db.get(AaTeachingTask, int(task_id))
             if not task or task.is_deleted or task.tenant_id != _tid():
                 raise not_found("教学任务不存在")
-            if str(task.status or "").upper() not in _ATTENDANCE_TASK_STATUSES:
+            if not attendance_task_executable(task.status):
                 raise AppException("DATA_CONFLICT", "教学任务须经教师确认并进入可执行状态后才能用于课堂考勤")
             batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
             if not batch or batch.is_deleted or batch.tenant_id != _tid():
