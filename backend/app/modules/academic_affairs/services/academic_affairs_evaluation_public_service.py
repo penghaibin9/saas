@@ -322,3 +322,34 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             _legacy._audit(db, task.id, "EVAL_SUBMIT", f"{task.evaluator_type} 提交")
         db.commit()
         return {"taskId": str(task.id), "submittedCount": task.submitted_count}
+
+
+# D-W3 scale projections: public owner stays this module; helpers only change execution shape.
+def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
+    from . import academic_affairs_evaluation_student_read_service as _student_read
+
+    return _student_read.my_student_tasks(user, batch_id=batch_id, include_closed=include_closed)
+
+
+def list_batches(user, status=None, page=1, page_size=20):
+    from . import academic_affairs_evaluation_scale_service as _scale
+
+    return _scale.list_batches(user, status=status, page=page, page_size=page_size)
+
+
+def list_results(user, bid, mine=False, page=1, page_size=50):
+    from . import academic_affairs_evaluation_scale_service as _scale
+
+    return _scale.list_results(user, bid, mine=mine, page=page, page_size=page_size)
+
+
+def stats(user, bid):
+    from . import academic_affairs_evaluation_scale_service as _scale
+
+    return _scale.stats(user, bid)
+
+
+def close_and_score(user, bid):
+    from . import academic_affairs_evaluation_scale_service as _scale
+
+    return _scale.close_and_score(user, bid)
