@@ -87,6 +87,9 @@ class _LockQuery:
     def order_by(self, *_args):
         return self
 
+    def populate_existing(self):
+        return self
+
     def with_for_update(self, *_args, **_kwargs):
         return self
 
@@ -217,6 +220,21 @@ def test_submit_roster_guard_accepts_matching_locked_selection_projection(monkey
     assert roster["batchIds"] == ["55"]
 
 
+def test_share_batch_hotpath_still_rejects_archived_term(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    batch = SimpleNamespace(id=91, term_id=7)
+    db = _LockDb([(batch, "ARCHIVED")])
+
+    with pytest.raises(AppException) as exc:
+        service._base._writable_batch(db, 91, lock="share")
+
+    assert exc.value.code == "TERM_ARCHIVED"
+    assert "已归档封存" in exc.value.message
+
+
 def test_student_submit_roster_guard_does_not_materialize_whole_roster():
     from pathlib import Path
 
@@ -231,6 +249,9 @@ def test_student_submit_roster_guard_does_not_materialize_whole_roster():
     assert "AaTeachingClassRosterVersion" in source
     assert "AaSelectionBatch.id.desc()" in source
     assert "SELECTION_LOCK" in source
+    assert "db.query(AaTeachingClass.id)" in source
+    assert "db.query(AaTeachingClassMember.id)" in source
+    assert 'term_status.label("_term_status")' in source
 
 
 def test_student_audit_and_lock_contract_remain_fail_closed():

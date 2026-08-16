@@ -1,19 +1,21 @@
-"""D-W3 evaluation submit-only roster guard.
+"""D-W3 evaluation submit-only roster/query guard.
 
-The public evaluation service keeps the canonical submit transaction, locks, anonymity token,
-and duplicate detection.  This guard only replaces the pre-submit roster context lookup:
+The public evaluation service keeps the canonical submit transaction, anonymity token,
+duplicate detection and state machine. This guard only tightens the hot read/lock shape:
 - trust the current immutable TeachingClass roster version instead of materializing every member;
 - preserve latest-selection-batch fail-closed semantics with a compact aggregate query;
-- leave the existing TeachingClass SHARE + current member UPDATE locks in the public service.
+- keep the existing TeachingClass SHARE + current member UPDATE lock order, but project only IDs;
+- collapse the submission SHARE batch read and archived-term check into one statement.
 
 Full roster materialization/hash verification remains in academic_affairs_roster_consumer_service
 for attendance/grade/exam snapshot consumers that actually freeze an entire roster.
 """
 from __future__ import annotations
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, no_permission, not_found
 
 _public = None
+_original_writable_batch = None
 
 
 def _status(value) -> str:
@@ -153,7 +155,101 @@ def _student_submission_context(db, user, task) -> tuple[object, dict, str]:
     return profile, roster, token
 
 
+def _lock_student_roster_member(db, task, profile, roster) -> None:
+    """Preserve the canonical lock order while selecting only lock-key columns."""
+    from app.models import AaTeachingClass, AaTeachingClassMember
+
+    teaching_class_id = int(roster.get("teachingClassId") or 0)
+    roster_version_id = int(roster.get("rosterVersionId") or 0)
+    if not teaching_class_id or not roster_version_id:
+        raise AppException(
+            "DATA_CONFLICT",
+            "正式教学班名单缺少版本标识，禁止提交评教",
+            http_status=409,
+        )
+
+    teaching_class_row = db.query(AaTeachingClass.id).filter(
+        AaTeachingClass.id == teaching_class_id,
+        AaTeachingClass.tenant_id == _public._tid(),
+        AaTeachingClass.teaching_task_id == int(task.teaching_task_id),
+        AaTeachingClass.current_roster_version_id == roster_version_id,
+        AaTeachingClass.roster_status == "LOCKED",
+        AaTeachingClass.status == "ACTIVE",
+        AaTeachingClass.is_deleted.is_(False),
+    ).with_for_update(read=True).first()
+    if not teaching_class_row:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "正式教学班名单已换版，请刷新后重试",
+            details={
+                "teachingTaskId": str(task.teaching_task_id),
+                "requestedRosterVersionId": str(roster_version_id),
+            },
+            http_status=409,
+        )
+
+    member_row = db.query(AaTeachingClassMember.id).filter(
+        AaTeachingClassMember.tenant_id == _public._tid(),
+        AaTeachingClassMember.teaching_class_id == teaching_class_id,
+        AaTeachingClassMember.roster_version_id == roster_version_id,
+        AaTeachingClassMember.student_id == int(profile.id),
+        AaTeachingClassMember.status == "ACTIVE",
+        AaTeachingClassMember.is_deleted.is_(False),
+    ).with_for_update().first()
+    if not member_row:
+        raise no_permission("当前学生不在该课程当前正式教学班名单中")
+
+
+def _share_writable_batch(db, batch_id, *, lock: str | None = None):
+    """Collapse SHARE batch + archived-term guard into one SQL statement.
+
+    UPDATE/no-lock callers keep the exact original implementation. The scalar term subquery is a
+    non-locking read, matching the old guard_term_writable semantics while avoiding one round trip
+    per high-frequency submission/appeal SHARE transaction.
+    """
+    if lock != "share":
+        return _original_writable_batch(db, batch_id, lock=lock)
+
+    from sqlalchemy import select
+    from app.models import AaEvaluationBatch, AaTerm
+
+    tenant_id = _public._tid()
+    term_status = select(AaTerm.status).where(
+        AaTerm.id == AaEvaluationBatch.term_id,
+        AaTerm.tenant_id == tenant_id,
+    ).scalar_subquery()
+    row = (
+        db.query(AaEvaluationBatch, term_status.label("_term_status"))
+        .filter(
+            AaEvaluationBatch.id == int(batch_id),
+            AaEvaluationBatch.tenant_id == tenant_id,
+            AaEvaluationBatch.is_deleted.is_(False),
+        )
+        .populate_existing()
+        .with_for_update(read=True)
+        .first()
+    )
+    if not row:
+        raise not_found("评教批次不存在")
+    batch, current_term_status = row
+    if not batch.term_id:
+        raise AppException("DATA_CONFLICT", "评教业务未绑定正式学期termId", http_status=409)
+    if _status(current_term_status) == "ARCHIVED":
+        raise AppException("TERM_ARCHIVED", "该学期已归档封存，禁止修改", http_status=409)
+    return batch
+
+
 def install(public_service) -> None:
-    global _public
+    global _public, _original_writable_batch
     _public = public_service
     public_service._student_submission_context = _student_submission_context
+    public_service._lock_student_roster_member = _lock_student_roster_member
+
+    term_facade = public_service._base
+    original = getattr(term_facade, "_d_w3_original_writable_batch", None)
+    if original is None:
+        original = term_facade._writable_batch
+        term_facade._d_w3_original_writable_batch = original
+    _original_writable_batch = original
+    term_facade._writable_batch = _share_writable_batch
+    term_facade._d_w3_share_batch_hotpath_installed = True
