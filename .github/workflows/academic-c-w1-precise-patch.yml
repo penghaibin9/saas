@@ -53,11 +53,8 @@ jobs:
           view.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
-      - name: Install only backend dependencies needed by targeted checks
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Install only SQLAlchemy needed by the static contract
+        run: python -m pip install 'sqlalchemy==2.0.52'
 
       - name: Tenant isolation ratchet only
         working-directory: backend
@@ -65,11 +62,48 @@ jobs:
 
       - name: Attendance warning source contract only
         working-directory: backend
-        env:
-          APP_ENV: test
-          JWT_SECRET: academic-c-w1-targeted-secret-at-least-32-bytes
-          DB_ENABLED: 'false'
-        run: pytest -q tests/test_aa_attendance_warning_source_contract.py -p no:warnings
+        run: |
+          python - <<'PY'
+          import ast
+          import sys
+          import types
+          from pathlib import Path
+          from sqlalchemy import column, or_
+
+          path = Path('app/modules/academic_affairs/services/academic_affairs_warning_service.py')
+          source = path.read_text(encoding='utf-8')
+          tree = ast.parse(source)
+          target = next(
+              node for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and node.name == '_formal_attendance_session_condition'
+          )
+
+          stub = types.ModuleType(
+              'app.modules.academic_affairs.services.academic_affairs_attendance_public_service'
+          )
+          stub._ADMIN_SPECIAL = 'ADMIN_SPECIAL'
+          sys.modules[stub.__name__] = stub
+
+          ns = {'or_': or_}
+          exec(compile(ast.Module(body=[target], type_ignores=[]), str(path), 'exec'), ns)
+
+          class Model:
+              session_type = column('session_type')
+
+          condition = ns['_formal_attendance_session_condition'](Model)
+          sql = str(condition.compile(compile_kwargs={'literal_binds': True}))
+          assert 'IS NULL' in sql, sql
+          assert 'ADMIN_SPECIAL' in sql, sql
+          assert '!=' in sql, sql
+
+          start = source.index('def scan_attendance_warnings')
+          end = source.index('# ═══════════ 列表 / 看板 / 统计', start)
+          body = source[start:end]
+          assert '_formal_attendance_session_condition(AaAttendanceSession)' in body
+          assert 'FORMAL_TEACHING' in body
+          print('attendance warning source contract OK')
+          PY
 
       - name: PC attendance source contract only
         working-directory: frontend
