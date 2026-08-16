@@ -105,3 +105,11 @@ test('D-W0 预审结果页学院通过与普通终审都必须绑定完整 SYSTE
   ]) assert.ok(source.includes(token), `missing result-view W0 guard token: ${token}`)
   assert.doesNotMatch(source, /v-if="r\.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal\(r\)"/)
 })
+
+test('D-W0 审核工作台必须与真实十一项毕业证据口径一致', async () => {
+  const source = await readFile(viewUrl, 'utf8')
+  assert.match(source, /十一项跨域供数三态判定/)
+  assert.match(source, /预审结果详情（十一项）/)
+  assert.match(source, /十一项证据/)
+  assert.doesNotMatch(source, /十项跨域供数三态判定|预审结果详情（十项）|十项详情|十项证据/)
+})

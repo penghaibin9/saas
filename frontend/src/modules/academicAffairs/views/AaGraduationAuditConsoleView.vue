@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="毕业资格审核 · 审核工作台"
-    subtitle="十项跨域供数三态判定 · 学分/课程/实践达成审核 · 毕设/实习/处分状态联动 · 教务终审 · 归档"
+    subtitle="十一项跨域供数三态判定 · 学分/课程/实践达成审核 · 毕设/实习/处分状态联动 · 教务终审 · 归档"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -125,7 +125,7 @@
               <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'OWED')">勾选仍欠费</button>
             </template>
             <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
-            <button class="mp-link" @click="openDetail(row)">十项详情</button>
+            <button class="mp-link" @click="openDetail(row)">十一项详情</button>
           </template>
         </DataTable>
       </template>
@@ -143,7 +143,7 @@
               <template #cell-evidence="{ row }">
                 <span class="agc-evidence">{{ itemOf(row, 'COURSE_REQUIRED').evidence || '—' }}</span>
               </template>
-              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
+              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
           </AppSectionCard>
           <AppSectionCard title="选修学分达标">
@@ -155,7 +155,7 @@
               <template #cell-evidence="{ row }">
                 <span class="agc-evidence">{{ itemOf(row, 'COURSE_ELECTIVE').evidence || '—' }}</span>
               </template>
-              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
+              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
           </AppSectionCard>
         </template>
@@ -164,7 +164,7 @@
       <template v-else-if="tab === 'final'">
         <AppInlineAlert
           type="warning"
-          description="教务终审会写入毕业/结业/延毕学籍终态，属于不可逆业务动作；请在十项证据和学院初审均核对完成后操作。"
+          description="教务终审会写入毕业/结业/延毕学籍终态，属于不可逆业务动作；请在十一项证据和学院初审均核对完成后操作。"
         />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -205,7 +205,7 @@
             <EmptyState v-if="!g.rows.length" :title="`暂无${g.title}学生`" description="批次内暂无该分类学生" />
             <DataTable v-else :columns="reasonColumns" :rows="g.rows" row-key="resultId">
               <template #cell-reason="{ row }"><span class="agc-evidence">{{ reasonText(row) }}</span></template>
-              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十项详情</button></template>
+              <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
           </AppSectionCard>
         </template>
@@ -237,7 +237,7 @@
       </template>
     </div>
 
-    <AppDrawer :visible="detail.visible" title="预审结果详情（十项）" mode="modal" size="xlarge" @close="detail.visible = false">
+    <AppDrawer :visible="detail.visible" title="预审结果详情（十一项）" mode="modal" size="xlarge" @close="detail.visible = false">
       <template v-if="detail.row">
         <div class="agc-detail-head">
           <div>
@@ -314,7 +314,7 @@
 <script>
 /**
  * 毕业资格审核 · 审核工作台（/admin/academic-affairs/graduation/audit-console?tab=）。
- * 十项跨域供数三态判定的下游叶子共享同一批次选择与详情抽屉。
+ * 十一项跨域供数三态判定的下游叶子共享同一批次选择与详情抽屉。
  * Stage D 只提升信息架构，不在前端重新计算毕业资格，也不制造 DecisionTrace。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
@@ -609,7 +609,7 @@ export default {
       const fails = (row.items || []).filter((it) => it.result === 'FAIL')
         .map((it) => `${this.itemLabel(it.item)}：${it.evidence || '未通过'}`)
       if (fails.length) parts.push(fails.join('；'))
-      return parts.join('；') || '暂无明细，请点右侧「十项详情」核对'
+      return parts.join('；') || '暂无明细，请点右侧「十一项详情」核对'
     },
     openDetail(row) {
       this.detail = { visible: true, row }

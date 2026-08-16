@@ -148,7 +148,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(abnormalRow).toBeVisible({ timeout: 10000 })
     await expect(abnormalRow).toContainText('系统异常')
     await abnormalRow.getByRole('button', { name: '详情 / 处理' }).click()
-    await expect(page.getByText('预审结果详情（十项）', { exact: true })).toBeVisible()
+    await expect(page.getByText('预审结果详情（十一项）', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '确认终审并写学籍' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '通过', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /退回学院/ })).toBeVisible()
