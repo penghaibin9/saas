@@ -159,7 +159,7 @@ jobs:
 
       - name: Run C-W2 exact browser seal
         working-directory: e2e
-        run: npx playwright test specs/academic-c-teacher-today.spec.mjs --workers=1
+        run: npx playwright test specs/academic-c-teacher-today.spec.mjs --workers=1 --retries=0
 
       - name: Upload C-W2 browser evidence
         if: always()
