@@ -29,11 +29,11 @@ async function dismissPageOperationGuide(page) {
   if (await skip.isVisible({ timeout: 1_000 }).catch(() => false)) await skip.click()
 }
 
-async function openDemoStaffPage(page, path) {
-  // A-W1 uses demo-school deliberately: the production E2E seed creates only tenant/admin facts,
-  // so this spec must build its own term facts without mutating sandbox-school, which is shared by
-  // graduation/schedule/grade/internship Gold suites later in the same serial run.
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.demoAdmin)
+async function openAcademicW1StaffPage(page, path) {
+  // The dedicated academic-w1-school exists only in the isolated Playwright database. Keeping the
+  // term mutations here prevents this Gold from changing demo-school (read-only) or sandbox-school,
+  // which later graduation/schedule/grade/internship Gold suites share in the same serial run.
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.academicW1Admin)
   await page.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
 
   const targetUrl = new URL(path, config.staffBaseUrl).toString()
@@ -98,7 +98,7 @@ async function closeActiveGovernance(api, current, reason) {
   })
 }
 
-async function restoreDemoState(api, { originalCurrent, legacyBaseTerm, governanceTerm }) {
+async function restoreAcademicW1State(api, { originalCurrent, legacyBaseTerm, governanceTerm }) {
   // Never leave SYS-12 ACTIVE after this spec. CLOSING is the formal state-machine exit and
   // force=true only bypasses closing blockers; it does not bypass the transition graph.
   const activeNow = await currentGovernance(api)
@@ -106,10 +106,10 @@ async function restoreDemoState(api, { originalCurrent, legacyBaseTerm, governan
     await closeActiveGovernance(api, activeNow, 'A-W1 Playwright 清理测试激活学期')
   }
 
-  // The isolated Playwright tenant seed intentionally creates no academic term. There is no formal
-  // "unset current" or Term delete command, so when this spec had to create its own legacy base we
-  // keep that low-year term as demo-school's sole PUBLISHED current. This is safer than raw SQL and
-  // is isolated from sandbox-school, which owns the later cross-domain Gold suites.
+  // The isolated A-W1 tenant deliberately starts without term facts. There is no formal
+  // "unset current" or Term delete command, so when this spec creates its own legacy base we keep
+  // that low-year term as this dedicated tenant's sole PUBLISHED current instead of deleting facts
+  // with raw SQL or contaminating sandbox-school.
   const restoreTargetId = originalCurrent?.termId || legacyBaseTerm?.termId
   if (restoreTargetId) {
     await api.post(`/academic-affairs/terms/${restoreTargetId}/set-current`, {})
@@ -128,7 +128,7 @@ async function restoreDemoState(api, { originalCurrent, legacyBaseTerm, governan
   }
   const restored = await api.get('/academic-affairs/terms/current')
   if (String(restored?.termId || '') !== String(restoreTargetId || '')) {
-    throw new Error(`A-W1 cleanup did not restore isolated demo current term: ${JSON.stringify(restored)}`)
+    throw new Error(`A-W1 cleanup did not restore isolated current term: ${JSON.stringify(restored)}`)
   }
   if (restored?.currentAuthority !== 'AA_TERM_COMPAT') {
     throw new Error(`A-W1 cleanup did not restore legacy authority: ${JSON.stringify(restored)}`)
@@ -136,7 +136,7 @@ async function restoreDemoState(api, { originalCurrent, legacyBaseTerm, governan
 }
 
 test('A-W1 current term: legacy real click persists, then governance removes the bypass', async ({ page }, testInfo) => {
-  const api = await loginApi(config.demoAdmin)
+  const api = await loginApi(config.academicW1Admin)
   const suffix = `${process.env.GITHUB_RUN_ID || 'local'}-r${testInfo.retry}`
   const originalCurrent = await api.get('/academic-affairs/terms/current')
   const originalGovernance = await currentGovernance(api)
@@ -146,12 +146,12 @@ test('A-W1 current term: legacy real click persists, then governance removes the
   expect(originalCurrent?.currentAuthority).toBe('AA_TERM_COMPAT')
   expect(
     originalGovernance?.hasCurrent,
-    `demo-school A-W1 fixture must begin without SYS-12 ACTIVE governance: ${JSON.stringify(originalGovernance)}`
+    `academic-w1-school must begin without SYS-12 ACTIVE governance: ${JSON.stringify(originalGovernance)}`
   ).toBeFalsy()
 
   try {
-    // The minimal Playwright tenant seed has no term by design. Build a low-year legacy current
-    // through the same formal APIs teachers use instead of depending on a rich demo seeder.
+    // The minimal dedicated tenant has no term by design. Build a low-year legacy current through
+    // the same formal APIs used in production instead of depending on a rich demo/sandbox seeder.
     let legacyCurrent = originalCurrent
     if (!legacyCurrent?.termId) {
       legacyBaseTerm = await createPublishedTerm(api, {
@@ -160,13 +160,13 @@ test('A-W1 current term: legacy real click persists, then governance removes the
         teachingWeeks: 17
       })
       legacyCurrent = await api.get('/academic-affairs/terms/current')
-      expect(legacyCurrent?.termId).toBe(String(legacyBaseTerm.termId))
+      expect(String(legacyCurrent?.termId || '')).toBe(String(legacyBaseTerm.termId))
       expect(legacyCurrent?.currentAuthority).toBe('AA_TERM_COMPAT')
     }
 
     const legacyName = legacyCurrent.termName || `${legacyCurrent.yearCode} 第 ${legacyCurrent.termNo} 学期`
 
-    // Publishing the second low-year term makes the legacy base a real non-current PUBLISHED row,
+    // Publishing a second low-year term makes the legacy base a real non-current PUBLISHED row,
     // giving the browser a visible "设为当前" action to exercise.
     governanceTerm = await createPublishedTerm(api, {
       year: 2010 + testInfo.retry * 4,
@@ -175,7 +175,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     })
     const governanceName = governanceTerm.termName
 
-    await openDemoStaffPage(page, '/admin/academic-affairs/terms/current')
+    await openAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await expect(page.getByRole('heading', { name: '当前学期' }).first()).toBeVisible()
     await expect(page.getByText('暂保留教务当前学期兼容切换', { exact: false })).toBeVisible()
     await expect(termRow(page, governanceName)).toBeVisible()
@@ -232,6 +232,6 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(page).toHaveURL(/\/admin\/system\/academic-calendar(?:\?|$)/)
     await expect(page.getByText('学年学期与业务日历', { exact: false }).first()).toBeVisible()
   } finally {
-    await restoreDemoState(api, { originalCurrent, legacyBaseTerm, governanceTerm })
+    await restoreAcademicW1State(api, { originalCurrent, legacyBaseTerm, governanceTerm })
   }
 })
