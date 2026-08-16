@@ -269,30 +269,68 @@ def test_binding_phase_reads_only_target_program_ids_and_exact_binding_scopes():
     }
 
 
-def test_class_lookup_is_conditional_bounded_and_occurs_before_course_lookup():
-    calls = []
-    result = _pipeline().run_program_import_preflight(
+def test_definition_phase_defers_class_lookup_but_binding_phase_revalidates_exact_class():
+    definition_calls = []
+    definition = _pipeline().run_program_import_preflight(
         _rows(include_binding=True, class_binding=True),
         phase="DEFINITION",
+        **_loaders(definition_calls),
+    )
+    assert definition["stage"] == "READY"
+    assert definition_calls == [
+        ("scope", ()),
+        ("major", (1,)),
+        ("course", ("CS101@v1",)),
+        ("program", ("SER-A",)),
+    ]
+    assert definition["binding"]["intents"][0]["decision"] == "DEFER_UNTIL_PUBLISHED"
+
+    binding_calls = []
+    binding = _pipeline().run_program_import_preflight(
+        _rows(include_binding=True, class_binding=True),
+        phase="BINDING",
         **_loaders(
-            calls,
+            binding_calls,
+            programs=_program_snapshots(),
+            definitions=_existing_definitions(),
             class_rows=[{
                 "classId": 77,
                 "majorId": 1,
                 "gradeYear": "2026",
                 "classStatus": "NORMAL",
             }],
+            status={"501": "PUBLISHED"},
         ),
     )
-    assert result["stage"] == "READY"
-    assert result["requestKeys"]["classIds"] == (77,)
-    assert calls == [
+    assert binding["stage"] == "READY"
+    assert binding_calls[:5] == [
         ("scope", ()),
         ("major", (1,)),
         ("class", (77,)),
         ("course", ("CS101@v1",)),
         ("program", ("SER-A",)),
     ]
+
+
+def test_binding_phase_without_binding_rows_is_zero_db_source_reject():
+    calls = []
+    result = _pipeline().run_program_import_preflight(
+        _rows(include_binding=False),
+        phase="BINDING",
+        **_loaders(calls),
+    )
+    assert result["stage"] == "SOURCE"
+    assert result["programPreflightSafe"] is False
+    assert calls == []
+    assert result["errors"] == [{
+        "row": 0,
+        "logicalGroup": "BINDING",
+        "programKey": "",
+        "businessCode": "PROGRAM_BINDING_SOURCE_EMPTY",
+        "message": "BINDING phase 没有任何适用范围定义，禁止执行空绑定确认",
+        "evidence": {},
+        "howToResolve": "在“适用范围”工作表填写至少一条 MAJOR_GRADE 或 CLASS 绑定后重新预检",
+    }]
 
 
 def test_pipeline_has_no_session_or_shared_dispatcher_owner():
