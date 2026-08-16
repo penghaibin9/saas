@@ -21,8 +21,10 @@ from app.services import audit_log
 from app.services import file_service
 from app.services import identity_import_file_service as batch_service
 from app.services import system_implementation_service as implementation
+from app.services.file_access_service import upsert_file_binding
 from app.services.file_scan_service import assert_file_ready_for_business
 from app.services.identity_import_path_parser import parse_mixed_identity_xlsx_path
+from app.services.message_identity import resolve_message_user_id
 from app.services.storage import get_backend
 
 BIZ_TYPE = "DATA_IMPORT_SOURCE"
@@ -53,9 +55,28 @@ async def upload(file, *, user: dict) -> dict:
         visibility="PRIVATE",
         security_level="SENSITIVE",
     )
+    file_id = str(meta.get("fileId") or "").strip()
+    actor_id = int(resolve_message_user_id(user) or 0)
+    if not file_id or not actor_id:
+        raise AppException(
+            "UPLOAD_FAILED",
+            "实施导入文件未建立可验证的上传者身份，请重新登录后上传",
+            http_status=500,
+        )
+    # store_upload 的通用兼容绑定仍保留 raw token subject；实施导入必须在进入
+    # FileObject 校验前收敛到 resolver 使用的 canonical USER id。这里不放宽权限，
+    # 只是让“上传者本人”写入与读取使用同一身份真值。
+    upsert_file_binding(
+        file_id,
+        biz_type=BIZ_TYPE,
+        biz_id=upload_ref,
+        subject_type="USER",
+        subject_id=str(actor_id),
+        user=user,
+    )
     audit_log.record(
         "IMPLEMENTATION_IDENTITY_FILE_UPLOAD",
-        f"file:{meta.get('fileId')}",
+        f"file:{file_id}",
         detail={
             "projectId": str(project.get("id") or ""),
             "fileName": meta.get("fileName"),
@@ -67,7 +88,7 @@ async def upload(file, *, user: dict) -> dict:
     return {
         **meta,
         "projectId": str(project.get("id") or ""),
-        "validationEntry": f"/api/v1/system/implementation/identity-import/files/{meta.get('fileId')}/validate",
+        "validationEntry": f"/api/v1/system/implementation/identity-import/files/{file_id}/validate",
     }
 
 
