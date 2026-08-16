@@ -16,6 +16,7 @@ catalog existence a create/update blocker.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Mapping
 
 from sqlalchemy import select
@@ -133,6 +134,33 @@ def _merge_result(total_rows: int, classified: dict, rejects: list[dict], errors
     return result
 
 
+def _reject_duplicate_source_keys(
+    normalized: list[dict],
+    rejects: list[dict],
+    errors: list[dict],
+) -> list[dict]:
+    """Reject every occurrence before any reference filtering can hide a duplicate."""
+    counts = Counter(str(item["businessKey"]) for item in normalized)
+    unique_rows: list[dict] = []
+    for item in normalized:
+        business_key = str(item["businessKey"])
+        if counts[business_key] <= 1:
+            unique_rows.append(item)
+            continue
+        reject, error = _reject(
+            row_no=item["rowNo"],
+            business_key=business_key,
+            field="courseCode/version",
+            code="DUPLICATE_SOURCE_KEY",
+            message="同一文件内课程稳定键重复，禁止按行顺序猜测覆盖关系",
+            evidence={"businessKey": business_key, "sourceOccurrences": counts[business_key]},
+            how_to_resolve="每个 courseCode + version 仅保留一行后重新预检",
+        )
+        rejects.append(reject)
+        errors.append(error)
+    return unique_rows
+
+
 def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict:
     """Dry-run Course Catalog rows with a fixed query count and zero writes."""
     source_rows = [dict(row) for row in (rows or [])]
@@ -155,6 +183,7 @@ def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict
             rejects.append(item)
             errors.append(error)
 
+    normalized = _reject_duplicate_source_keys(normalized, rejects, errors)
     if not normalized:
         return _empty_result(len(source_rows), rejects, errors)
 
