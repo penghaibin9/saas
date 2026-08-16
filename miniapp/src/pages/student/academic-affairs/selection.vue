@@ -7,10 +7,10 @@
         <view class="sl__hero">
           <view class="sl__hero-main">
             <text class="sl__eyebrow">教务学业 · 网上选课</text>
-            <text class="sl__hero-title">{{ groups.length ? '当前有开放选课批次' : '当前暂无开放选课批次' }}</text>
-            <text class="sl__hero-desc">余量用于快速判断，提交时仍会重新校验容量、冲突、选课窗口和培养方案。</text>
+            <text class="sl__hero-title">{{ groups.length ? '当前有可办理选课批次' : '当前暂无可办理选课批次' }}</text>
+            <text class="sl__hero-desc">实时余量只用于展示，正式选课/退课动作由服务器统一下发，提交时仍会重新校验。</text>
             <view class="sl__trust">
-              <text>实时余量</text><text>规则校验</text><text>办理后回读</text>
+              <text>服务器动作</text><text>规则校验</text><text>办理后回读</text>
             </view>
           </view>
           <view class="sl__hero-count">
@@ -19,7 +19,7 @@
         </view>
 
         <view class="sl__metrics">
-          <view class="sl__metric"><text>开放批次</text><text class="sl__metric-value">{{ groups.length }}</text></view>
+          <view class="sl__metric"><text>可办理批次</text><text class="sl__metric-value">{{ groups.length }}</text></view>
           <view class="sl__metric"><text>本人已选</text><text class="sl__metric-value">{{ mySelected.length }}</text></view>
           <view class="sl__metric"><text>已选学分</text><text class="sl__metric-value">{{ selectedCredits }}</text></view>
         </view>
@@ -34,7 +34,7 @@
 
         <view class="sl__tabs">
           <view class="sl__tab" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">
-            <text>可选课程</text><text class="sl__tab-count">{{ courseCount }}</text>
+            <text>可办理课程</text><text class="sl__tab-count">{{ courseCount }}</text>
           </view>
           <view class="sl__tab" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">
             <text>我的选课</text><text class="sl__tab-count">{{ mySelected.length }}</text>
@@ -42,11 +42,11 @@
         </view>
 
         <template v-if="tab === 'courses'">
-          <MobileGlobalState v-if="!groups.length" state="empty" title="暂无开放中的选课批次" description="教务处开放新的选课窗口后会显示在这里。" />
+          <MobileGlobalState v-if="!groups.length" state="empty" title="暂无可办理的选课批次" description="教务处开放选课或你进入补选资格后会显示在这里。" />
           <view v-for="g in groups" :key="g.batch.batchId" class="sl__group">
             <view class="sl__group-head">
               <view>
-                <text class="sl__group-kicker">开放批次</text>
+                <text class="sl__group-kicker">{{ batchKicker(g.batch) }}</text>
                 <text class="sl__group-title">{{ g.batch.batchName || '选课批次' }}</text>
               </view>
               <view class="sl__group-stats"><text>{{ g.courses.length }}门</text><text>{{ batchOpenCount(g) }}门可选</text></view>
@@ -57,30 +57,34 @@
                 <view class="sl__course-main">
                   <view class="sl__course-title-line">
                     <text class="sl__course-title">{{ c.courseName || '课程名称待补充' }}</text>
-                    <text v-if="isSelected(c)" class="sl__selected-chip">已选</text>
+                    <text v-if="c.statusLabel" class="sl__status-chip">{{ c.statusLabel }}</text>
                   </view>
                   <text class="sl__course-meta">{{ c.teacherName || '教师待定' }} · {{ c.credit ?? '—' }}学分</text>
                   <view class="sl__remain">
                     <text>余量 {{ remainText(c) }}</text>
                     <view class="sl__remain-bar"><view :style="{ width: availabilityPct(c) + '%' }" /></view>
                   </view>
+                  <view v-if="!hasAction(c, 'ENROLL') && !hasAction(c, 'DROP') && (c.reason || c.howToResolve)" class="sl__decision-hint">
+                    <text v-if="c.reason">{{ c.reason }}</text>
+                    <text v-if="c.howToResolve">下一步：{{ c.howToResolve }}</text>
+                  </view>
                 </view>
                 <button
                   class="btn sl__btn"
-                  :class="isSelected(c) ? 'btn-ghost' : 'btn-primary'"
-                  :disabled="acting === c.selectionCourseId || (!isSelected(c) && !canEnroll(c))"
-                  @click="isSelected(c) ? drop(c) : enroll(c)"
+                  :class="hasAction(c, 'DROP') ? 'btn-ghost' : 'btn-primary'"
+                  :disabled="acting === c.selectionCourseId || (!hasAction(c, 'ENROLL') && !hasAction(c, 'DROP'))"
+                  @click="hasAction(c, 'DROP') ? drop(c) : enroll(c)"
                 >
-                  {{ acting === c.selectionCourseId ? '处理中…' : isSelected(c) ? '退课' : canEnroll(c) ? '选课' : '不可选' }}
+                  {{ acting === c.selectionCourseId ? '处理中…' : hasAction(c, 'DROP') ? '退课' : hasAction(c, 'ENROLL') ? (c.reselect ? '补选' : '选课') : (c.statusLabel || '不可办理') }}
                 </button>
               </view>
             </view>
-            <view v-else class="sl__group-empty"><text>本批次暂无可选课程</text></view>
+            <view v-else class="sl__group-empty"><text>本批次暂无可办理课程</text></view>
           </view>
         </template>
 
         <template v-else>
-          <MobileGlobalState v-if="!mySelected.length" state="empty" title="暂无有效选课记录" description="在「可选课程」中选课后会显示在这里。" />
+          <MobileGlobalState v-if="!mySelected.length" state="empty" title="暂无有效选课记录" description="在「可办理课程」中选课后会显示在这里。" />
           <view v-else class="sl__mine-list">
             <view v-for="r in mySelected" :key="r.recordId || r.selectionCourseId" class="sl__mine-card">
               <view class="sl__mine-icon"><text>课</text></view>
@@ -96,8 +100,8 @@
         <view class="sl__rule-note">
           <view class="sl__rule-icon"><text>i</text></view>
           <view class="flex-1">
-            <text class="sl__rule-title">办理以服务器最终校验为准</text>
-            <text class="sl__rule-text">如果选课未通过，页面会显示真实规则原因和学校业务代码给出的下一步，不在前端自行编造补救方式。</text>
+            <text class="sl__rule-title">正式动作由服务器下发，提交时再次校验</text>
+            <text class="sl__rule-text">余量只帮助理解容量，不在小程序本地推导资格。页面只展示服务器 allowedActions 允许的动作；提交仍会重新校验容量、冲突、窗口与培养方案。</text>
           </view>
         </view>
       </view>
@@ -126,8 +130,16 @@ export default {
   },
   onLoad() { this.load() },
   methods: {
+    hasAction(c, action) {
+      const wanted = String(action || '').toUpperCase()
+      return Array.isArray(c && c.allowedActions)
+        && c.allowedActions.some((value) => String(value || '').toUpperCase() === wanted)
+    },
     isSelected(c) {
-      return this.selections.some((r) => r.selectionCourseId === c.selectionCourseId && r.status === 'SELECTED')
+      return String((c && c.status) || '').toUpperCase() === 'SELECTED'
+    },
+    batchKicker(batch) {
+      return String((batch && batch.status) || '').toUpperCase() === 'CLOSED' ? '补选批次' : '开放批次'
     },
     remain(c) {
       const explicit = Number(c && c.remain)
@@ -148,15 +160,8 @@ export default {
       if (value == null || !Number.isFinite(capacity) || capacity <= 0) return 0
       return Math.max(0, Math.min(100, Math.round(value / capacity * 100)))
     },
-    canEnroll(c) {
-      if (this.isSelected(c)) return false
-      const value = this.remain(c)
-      if (value != null && value <= 0) return false
-      const status = String((c && (c.status || c.courseStatus)) || 'OPEN').toUpperCase()
-      return !['CLOSED', 'DISABLED', 'FULL'].includes(status)
-    },
     batchOpenCount(group) {
-      return ((group && group.courses) || []).filter((course) => this.canEnroll(course)).length
+      return ((group && group.courses) || []).filter((course) => this.hasAction(course, 'ENROLL')).length
     },
     load() {
       this.state = 'loading'
@@ -169,7 +174,7 @@ export default {
       }).catch(() => { this.state = 'error' })
     },
     enroll(c) {
-      if (this.acting) return
+      if (this.acting || !this.hasAction(c, 'ENROLL')) return
       this.acting = c.selectionCourseId
       this.decisionError = null
       studentApi.preflightSelection(c.selectionCourseId).then((preflight) => {
@@ -184,7 +189,7 @@ export default {
         return studentApi.enrollSelection(c.selectionCourseId)
       }).then((result) => {
         if (result == null) return
-        uni.showToast({ title: '选课成功', icon: 'success' })
+        uni.showToast({ title: c.reselect ? '补选成功' : '选课成功', icon: 'success' })
         this.load()
       }).catch((e) => {
         if (e && e.decisionTrace) this.decisionError = e
@@ -192,7 +197,7 @@ export default {
       }).finally(() => { this.acting = null })
     },
     drop(c) {
-      if (this.acting) return
+      if (this.acting || !this.hasAction(c, 'DROP')) return
       this.acting = c.selectionCourseId
       this.decisionError = null
       studentApi.dropSelection(c.selectionCourseId).then(() => {
@@ -238,12 +243,14 @@ export default {
 .sl__course-main { flex: 1; min-width: 0; }
 .sl__course-title-line { display: flex; align-items: center; gap: 6px; }
 .sl__course-title { font-size: var(--font-size-base); font-weight: 600; line-height: 1.45; color: var(--text-primary); }
-.sl__selected-chip { flex-shrink: 0; font-size: 9px; line-height: 18px; padding: 0 6px; border-radius: var(--radius-full); color: #15803d; background: rgba(22,163,74,.10); }
+.sl__status-chip { flex-shrink: 0; font-size: 9px; line-height: 18px; padding: 0 6px; border-radius: var(--radius-full); color: var(--brand-primary); background: rgba(59,130,246,.08); }
 .sl__course-meta { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .sl__remain { display: flex; align-items: center; gap: var(--space-2); margin-top: 7px; }
 .sl__remain > text { flex-shrink: 0; font-size: 10px; color: var(--text-secondary); }
 .sl__remain-bar { width: 62px; height: 5px; overflow: hidden; border-radius: var(--radius-full); background: rgba(15,23,42,.06); }
 .sl__remain-bar view { height: 100%; border-radius: inherit; background: var(--brand-primary); }
+.sl__decision-hint { display: flex; flex-direction: column; gap: 2px; margin-top: 7px; padding: 6px 8px; border-radius: 9px; background: rgba(245,158,11,.08); }
+.sl__decision-hint text { font-size: 10px; line-height: 1.5; color: #92400e; }
 .sl__btn { flex-shrink: 0; min-height: 34px; padding: 0 var(--space-3); font-size: var(--font-size-sm); margin-left: var(--space-1); }
 .sl__group-empty { padding: var(--space-5); text-align: center; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .sl__mine-list { margin-top: var(--space-3); }
