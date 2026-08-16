@@ -28,30 +28,35 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent
 
           final_path = Path('backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py')
           source = final_path.read_text(encoding='utf-8')
 
-          old_imports = '''import importlib
+          old_imports = dedent('''\
+          import importlib
           from datetime import datetime
           from types import SimpleNamespace
-          '''.replace('          ', '')
-          new_imports = '''import importlib
+          ''')
+          new_imports = dedent('''\
+          import importlib
           from contextlib import contextmanager
           from datetime import datetime
           from threading import BoundedSemaphore, Lock
           from time import monotonic
           from types import SimpleNamespace
-          '''.replace('          ', '')
+          ''')
           assert source.count(old_imports) == 1, 'W6 admission import anchor drifted'
           source = source.replace(old_imports, new_imports, 1)
 
-          base_anchor = '''_base = importlib.import_module(
+          base_anchor = dedent('''\
+          _base = importlib.import_module(
               ".academic_affairs_selection_service",
               package=__package__,
           )
-          '''.replace('          ', '')
-          admission = '''_base = importlib.import_module(
+          ''')
+          admission = dedent('''\
+          _base = importlib.import_module(
               ".academic_affairs_selection_service",
               package=__package__,
           )
@@ -59,7 +64,7 @@ jobs:
           # W6 peak admission is process-local backpressure, never the business authority.
           # Each process owns its SQLAlchemy pool, so the process gate is sized from that
           # pool and intentionally leaves overflow headroom for EffectiveGrade/read sessions
-          # and unrelated requests.  Cross-process correctness remains MySQL row locking.
+          # and unrelated requests. Cross-process correctness remains MySQL row locking.
           from app.core.config import get_settings as _get_settings
 
           _db_settings = _get_settings()
@@ -111,14 +116,16 @@ jobs:
                   if process_acquired:
                       _SELECTION_ENROLL_PROCESS_GATE.release()
                   stripe.release()
-          '''.replace('          ', '')
+          ''')
           assert source.count(base_anchor) == 1, 'W6 admission base anchor drifted'
           source = source.replace(base_anchor, admission, 1)
 
-          enroll_anchor = '''def student_enroll(user, body):
+          enroll_anchor = dedent('''\
+          def student_enroll(user, body):
               from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
-          '''.replace('          ', '')
-          guarded = '''def student_enroll(user, body):
+          ''')
+          guarded = dedent('''\
+          def student_enroll(user, body):
               """Peak-safe public command; admission happens before any DB connection checkout."""
               selection_course_id = int(body.selectionCourseId)
               with _selection_course_admission(selection_course_id):
@@ -127,7 +134,7 @@ jobs:
 
           def _student_enroll_guarded(user, body):
               from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
-          '''.replace('          ', '')
+          ''')
           assert source.count(enroll_anchor) == 1, 'W6 student_enroll anchor drifted'
           source = source.replace(enroll_anchor, guarded, 1)
           final_path.write_text(source, encoding='utf-8')
@@ -145,6 +152,20 @@ jobs:
               end = text.index(marker, start)
               text = text[:start] + 'on:\n  workflow_dispatch:\n' + text[end:]
               path.write_text(text, encoding='utf-8')
+
+          w6_path = Path('.github/workflows/academic-b-w6-fcfs-peak-mysql.yml')
+          w6 = w6_path.read_text(encoding='utf-8')
+          old_paths = dedent('''\
+              - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py
+              - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
+          ''')
+          new_paths = dedent('''\
+              - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
+              - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py
+              - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
+          ''')
+          assert w6.count(old_paths) == 1, 'W6 peak workflow path anchor drifted'
+          w6_path.write_text(w6.replace(old_paths, new_paths, 1), encoding='utf-8')
           PY
           python -m py_compile backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
           git diff --check
@@ -153,11 +174,12 @@ jobs:
           set -euo pipefail
           mapfile -t changed < <(git diff --name-only | sort)
           printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 4
+          test "${#changed[@]}" -eq 5
           printf '%s\n' "${changed[@]}" | grep -qx 'backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py'
           printf '%s\n' "${changed[@]}" | grep -qx '.github/workflows/academic-b-w5-student-projection-contract.yml'
           printf '%s\n' "${changed[@]}" | grep -qx '.github/workflows/academic-b-w5-student-projection-mysql.yml'
           printf '%s\n' "${changed[@]}" | grep -qx '.github/workflows/academic-b-w5-student-projection-real-click.yml'
+          printf '%s\n' "${changed[@]}" | grep -qx '.github/workflows/academic-b-w6-fcfs-peak-mysql.yml'
       - name: Commit production patch and self-clean helper
         run: |
           set -euo pipefail
@@ -166,7 +188,8 @@ jobs:
           git add backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
             .github/workflows/academic-b-w5-student-projection-contract.yml \
             .github/workflows/academic-b-w5-student-projection-mysql.yml \
-            .github/workflows/academic-b-w5-student-projection-real-click.yml
+            .github/workflows/academic-b-w5-student-projection-real-click.yml \
+            .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
           git rm .github/workflows/academic-b-w6-admission-patch.yml
           git commit -m 'fix(academic-b): bound selection hot-key DB fan-in'
           git push origin HEAD:agent/academic-b-schedule-selection
