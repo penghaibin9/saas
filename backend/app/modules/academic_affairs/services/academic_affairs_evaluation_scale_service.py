@@ -154,7 +154,7 @@ def stats(user, bid):
 
 
 def _score_rows(db, batch_id: int):
-    """Return (teaching_task_id, evaluator_type, average, count) in one SQL aggregation."""
+    """Return (teaching_task_id, evaluator_type, average, count) for exactly one batch."""
     from app.models import AaEvaluationRecord, AaEvaluationTask
 
     return db.execute(
@@ -170,6 +170,7 @@ def _score_rows(db, batch_id: int):
             and_(
                 AaEvaluationRecord.task_id == AaEvaluationTask.id,
                 AaEvaluationRecord.tenant_id == AaEvaluationTask.tenant_id,
+                AaEvaluationRecord.batch_id == AaEvaluationTask.batch_id,
                 AaEvaluationRecord.is_deleted.is_(False),
             ),
         )
@@ -183,12 +184,13 @@ def _score_rows(db, batch_id: int):
 
 
 def close_and_score(user, bid):
-    """Close an OPEN batch and calculate results without per-task/per-result queries."""
+    """Close an OPEN batch and calculate results from a lock-stable submission snapshot."""
     from app.models import AaEvaluationResult, AaEvaluationTask
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _base._writable_batch(db, bid)
+        # Exclusive batch lock waits for all in-flight shared submission locks before scoring.
+        batch = _base._writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_OPEN:
             raise _legacy._invalid("仅 OPEN 批次可关闭核算")
 
