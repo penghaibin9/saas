@@ -98,6 +98,20 @@ def test_definition_child_reread_rejects_unrelated_program_rows():
         ], target_program_ids=("501",))
 
 
+def test_definition_child_reread_preserves_missing_program_evidence_but_rejects_orphan_children():
+    guard = _guard()
+    assert guard.guard_definition_child_reread([], target_program_ids=()) == []
+
+    with pytest.raises(
+        RuntimeError,
+        match="PROGRAM_REREAD_SCOPE_VIOLATION:DEFINITION:orphanChildren",
+    ):
+        guard.guard_definition_child_reread(
+            [{"programId": "501", "logicalGroup": "COURSE", "payload": {}}],
+            target_program_ids=(),
+        )
+
+
 def test_binding_reread_is_limited_to_requested_scope_and_target_or_superseded_programs():
     guard = _guard()
     allowed = [
