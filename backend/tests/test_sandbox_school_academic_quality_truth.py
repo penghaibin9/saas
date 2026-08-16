@@ -114,3 +114,71 @@ def test_quality_score_truth_detects_old_weight_and_level_drift():
     finally:
         db.close()
         set_tenant(None)
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_quality_score_truth_keeps_same_teaching_task_isolated_by_batch():
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AaEvaluationBatch, AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
+    from app.services import sandbox_school_academic_quality_seed as quality_seed
+
+    set_tenant({"tenantId": str(TID)})
+    db = get_sessionmaker()()
+    try:
+        teaching_task_id = 99887767
+        fixtures = (
+            ("20K评教批次A", 70.0, "PASS"),
+            ("20K评教批次B", 95.0, "EXCELLENT"),
+        )
+        for batch_name, score, level in fixtures:
+            batch = AaEvaluationBatch(
+                tenant_id=TID,
+                batch_name=batch_name,
+                anonymous=True,
+                status="ARCHIVED",
+            )
+            db.add(batch)
+            db.flush()
+            task = AaEvaluationTask(
+                tenant_id=TID,
+                batch_id=batch.id,
+                teaching_task_id=teaching_task_id,
+                teacher_key="quality_truth_teacher",
+                teacher_name="算法真值教师",
+                evaluator_type="STUDENT",
+                evaluator_key=None,
+                submitted_count=1,
+                status="SUBMITTED",
+            )
+            db.add(task)
+            db.flush()
+            db.add(AaEvaluationRecord(
+                tenant_id=TID,
+                batch_id=batch.id,
+                task_id=task.id,
+                teacher_key="quality_truth_teacher",
+                evaluator_type="STUDENT",
+                answers_json="{}",
+                objective_score=score,
+            ))
+            db.add(AaEvaluationResult(
+                tenant_id=TID,
+                batch_id=batch.id,
+                teaching_task_id=teaching_task_id,
+                teacher_key="quality_truth_teacher",
+                teacher_name="算法真值教师",
+                course_name="跨批次真值课程",
+                student_avg=score,
+                student_count=1,
+                composite_score=score,
+                level=level,
+                published=True,
+            ))
+        db.commit()
+
+        truth = quality_seed._evaluation_score_truth(db, TID)
+        assert truth == {"checked": 2, "mismatchCount": 0, "samples": []}
+    finally:
+        db.close()
+        set_tenant(None)
