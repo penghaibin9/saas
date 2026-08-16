@@ -227,6 +227,7 @@ def teacher_schedule_my(user) -> dict:
 
 def teacher_attendance_class_options(user) -> dict:
     from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm, SchoolClass
+    from .academic_affairs_attendance_occurrence_consumer import formal_schedule_patterns_for_tasks
 
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
@@ -244,26 +245,54 @@ def teacher_attendance_class_options(user) -> dict:
         if not current_term:
             return {"items": [], "hasData": False, "note": "当前学校尚未设置当前学期"}
 
-        conditions = [
-            AaTeachingTask.tenant_id == _tid(),
-            AaTeachingTask.is_deleted.is_(False),
-            AaTeachingTask.status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"]),
-            AaTeachingTask.class_id.is_not(None),
+        task_batches = db.scalars(select(AaTeachingTaskBatch).where(
+            AaTeachingTaskBatch.tenant_id == _tid(),
+            AaTeachingTaskBatch.term_id == int(current_term.id),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        )).all()
+        batch_by_id = {int(row.id): row for row in task_batches}
+        batch_ids = sorted(batch_by_id)
+
+        tasks = []
+        if batch_ids:
+            conditions = [
+                AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTask.batch_id.in_(batch_ids),
+                AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTask.status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"]),
+                AaTeachingTask.class_id.is_not(None),
+            ]
+            if role not in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}:
+                conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys)))
+            tasks = db.scalars(select(AaTeachingTask).where(*conditions)).all()
+
+        class_ids = sorted({int(task.class_id) for task in tasks if task.class_id})
+        classes = []
+        if class_ids:
+            classes = db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(),
+                SchoolClass.id.in_(class_ids),
+                SchoolClass.is_deleted.is_(False),
+            )).all()
+        class_by_id = {int(row.id): row for row in classes}
+
+        bindings = [
+            (task, batch_by_id[int(task.batch_id)])
+            for task in tasks
+            if int(task.batch_id) in batch_by_id
         ]
-        if role not in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}:
-            conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys)))
-        tasks = db.scalars(select(AaTeachingTask).where(*conditions)).all()
+        formal_by_task = formal_schedule_patterns_for_tasks(db, bindings, current_term)
 
         items = []
-        for task in tasks:
-            batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
-            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+        for task, batch in bindings:
+            school_class = class_by_id.get(int(task.class_id or 0))
+            if not school_class:
                 continue
-            if int(batch.term_id or 0) != int(current_term.id):
-                continue
-            school_class = db.get(SchoolClass, int(task.class_id))
-            if not school_class or school_class.is_deleted or school_class.tenant_id != _tid():
-                continue
+            formal = formal_by_task.get(int(task.id), {
+                "status": "CONFLICT",
+                "issue": "无法读取该教学任务的正式课次投影",
+                "patterns": [],
+            })
             items.append({
                 "teachingTaskId": str(task.id),
                 "classId": str(school_class.id),
@@ -275,18 +304,28 @@ def teacher_attendance_class_options(user) -> dict:
                 "termCode": f"{current_term.year_code}-{current_term.term_no}",
                 "taskStatus": task.status,
                 "source": "TEACHING_TASK",
+                "formalOccurrenceReady": formal["status"] == "READY",
+                "formalScheduleStatus": formal["status"],
+                "formalScheduleIssue": formal["issue"],
+                "formalSchedulePatterns": formal["patterns"],
             })
         items.sort(key=lambda item: (
+            0 if item["formalOccurrenceReady"] else 1,
             item["courseName"],
             item["className"],
             int(item["teachingTaskId"]),
         ))
+        term_start = current_term.start_date.date() if isinstance(current_term.start_date, datetime) else current_term.start_date
+        term_end = current_term.end_date.date() if isinstance(current_term.end_date, datetime) else current_term.end_date
         return {
             "items": items,
             "hasData": bool(items),
             "termId": str(current_term.id),
             "termCode": f"{current_term.year_code}-{current_term.term_no}",
-            "note": "仅展示当前学期本人真实教学任务",
+            "termStartDate": term_start.isoformat() if term_start else None,
+            "termEndDate": term_end.isoformat() if term_end else None,
+            "teachingWeeks": int(current_term.teaching_weeks or 0) or None,
+            "note": "仅展示当前学期本人真实教学任务；正式点名仍以 ScopeHead/校历实时门禁为准",
         }
 
 
