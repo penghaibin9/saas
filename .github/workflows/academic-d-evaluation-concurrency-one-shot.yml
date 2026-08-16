@@ -18,8 +18,10 @@ on:
       - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
       - "backend/scripts/academic_d_w5_final_gold_replay.sh"
       - "backend/scripts/academic_d_w5_same_head_matrix.py"
+      - "backend/scripts/academic_d_w5_upstream_freeze.py"
       - "backend/scripts/academic_d_w5_integrated_browser.sh"
       - "backend/tests/test_academic_d_w5_same_head_matrix.py"
+      - "backend/tests/test_academic_d_w5_upstream_freeze.py"
       - "backend/tests/test_aa_evaluation.py"
       - "backend/tests/test_aa_evaluation_student_anonymity.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
@@ -33,6 +35,7 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 
 concurrency:
   group: academic-d-evaluation-concurrency-${{ github.event.pull_request.number || github.ref }}
@@ -101,7 +104,9 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
-          python -m py_compile /tmp/academic_d_w5_same_head_matrix.py
+          python -m py_compile \
+            /tmp/academic_d_w5_same_head_matrix.py \
+            backend/scripts/academic_d_w5_upstream_freeze.py
           bash -n backend/scripts/academic_d_w5_final_gold_replay.sh
           bash -n backend/scripts/academic_d_w5_integrated_browser.sh
 
@@ -112,9 +117,24 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Test D-W5 same-head evidence aggregator
+      - name: Test D-W5 evidence and upstream-freeze guards
         working-directory: backend
-        run: pytest -q tests/test_academic_d_w5_same_head_matrix.py -p no:warnings
+        run: |
+          pytest -q \
+            tests/test_academic_d_w5_same_head_matrix.py \
+            tests/test_academic_d_w5_upstream_freeze.py \
+            -p no:warnings
+
+      - name: Snapshot owner-declared A/B/C contract freezes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/academic_d_w5_upstream_freeze.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --output /tmp/academic-d-w5-upstream-freeze.json
+          cat /tmp/academic-d-w5-upstream-freeze.json
 
       - name: Upgrade isolated MySQL 8 schema
         working-directory: backend
@@ -261,6 +281,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --sha "$EXACT_D_SHA" \
             --w5-evidence /tmp/academic-d-w5-evidence.txt \
+            --upstream-freeze /tmp/academic-d-w5-upstream-freeze.json \
             --output /tmp/academic-d-w5-same-head-matrix.json
           cat /tmp/academic-d-w5-same-head-matrix.json
 
@@ -277,6 +298,7 @@ jobs:
             /tmp/academic-d-w5-targeted.xml
             /tmp/academic-d-w5-migrated-tenant.txt
             /tmp/academic-d-w5-migrated-tenant.txt.sha256
+            /tmp/academic-d-w5-upstream-freeze.json
             /tmp/academic-d-w5-evidence.txt
             /tmp/academic-d-w5-evidence.txt.sha256
             /tmp/academic-d-w5-integrated-browser.txt

@@ -41,11 +41,19 @@ def _replay_evidence(**overrides):
         "main_alembic_version": "main-head",
         "integrated_alembic_version": "integrated-head",
         "migrated_probe_digest": "a" * 64,
-        "upstream_contract_heads_frozen": "false",
         "final_browser_gold_proven_on_w5_head": "false",
     }
     evidence.update({key: str(value).lower() if isinstance(value, bool) else str(value) for key, value in overrides.items()})
     return evidence
+
+
+def _upstream_frozen(value: bool = True):
+    return {
+        "schemaVersion": 1,
+        "allFrozen": value,
+        "lines": {},
+        "blockers": [] if value else ["A:contract_not_explicitly_frozen:A-C5"],
+    }
 
 
 def test_latest_runs_are_exact_sha_and_latest_attempt_only():
@@ -74,6 +82,7 @@ def test_pre_gold_can_be_ready_without_claiming_final_gold():
         sha="d-head",
         runs=_all_success_runs(),
         evidence=_replay_evidence(),
+        upstream_freeze=_upstream_frozen(False),
     )
     assert matrix["localReplayReady"] is True
     assert matrix["localRequirements"]["migratedTenantSchema"] is True
@@ -82,6 +91,7 @@ def test_pre_gold_can_be_ready_without_claiming_final_gold():
     assert matrix["finalGold"] is False
     assert matrix["migrationEvidence"]["mainAlembicVersion"] == "main-head"
     assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
+    assert "upstream:A:contract_not_explicitly_frozen:A-C5" in matrix["blockers"]
     assert "integrated_final_browser_gold_not_proven" in matrix["blockers"]
 
 
@@ -90,28 +100,47 @@ def test_migrated_tenant_schema_is_a_hard_pre_gold_requirement():
         sha="d-head",
         runs=_all_success_runs(),
         evidence=_replay_evidence(migrated_tenant_schema_proven=False),
+        upstream_freeze=_upstream_frozen(False),
     )
     assert matrix["localReplayReady"] is False
     assert matrix["preGoldReady"] is False
     assert "local_requirement:migratedTenantSchema:false" in matrix["blockers"]
 
 
-def test_final_gold_requires_every_explicit_final_condition():
+def test_final_gold_requires_external_owner_freeze_evidence_not_local_boolean():
     runs = _all_success_runs()
     runs.append(_run(MODULE.AUXILIARY_BROWSER_WORKFLOW, run_id=90, conclusion="failure"))
     matrix = MODULE.build_matrix(
         sha="d-head",
         runs=runs,
         evidence=_replay_evidence(
-            upstream_contract_heads_frozen=True,
+            upstream_contract_heads_frozen=True,  # legacy local claim must not be authoritative
             final_browser_gold_proven_on_w5_head=True,
         ),
+        upstream_freeze=_upstream_frozen(True),
     )
     # Raw-head global Playwright is auxiliary: integrated browser evidence is the final authority.
     assert matrix["auxiliaryRawHeadBrowser"]["state"] == "FAILURE"
     assert matrix["preGoldReady"] is True
+    assert matrix["upstreamContractHeadsFrozen"] is True
     assert matrix["finalGold"] is True
     assert matrix["blockers"] == []
+
+
+def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_claims_true():
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=_replay_evidence(
+            upstream_contract_heads_frozen=True,
+            final_browser_gold_proven_on_w5_head=True,
+        ),
+        upstream_freeze={},
+    )
+    assert matrix["preGoldReady"] is True
+    assert matrix["upstreamContractHeadsFrozen"] is False
+    assert matrix["finalGold"] is False
+    assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
 
 
 def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
@@ -123,7 +152,12 @@ def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
         w5_phase="MERGE_INT",
         failed_layer="INT",
     )
-    matrix = MODULE.build_matrix(sha="d-head", runs=_all_success_runs(), evidence=evidence)
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=evidence,
+        upstream_freeze=_upstream_frozen(False),
+    )
     assert matrix["localReplayReady"] is False
     assert matrix["preGoldReady"] is False
     assert matrix["finalGold"] is False
@@ -135,6 +169,7 @@ def test_actions_api_error_blocks_same_head_readiness_even_with_green_local_repl
         sha="d-head",
         runs=_all_success_runs(),
         evidence=_replay_evidence(),
+        upstream_freeze=_upstream_frozen(True),
         api_error="HTTPError:403",
     )
     assert matrix["externalSameHeadReady"] is False
@@ -151,3 +186,14 @@ def test_key_value_parser_ignores_comments_and_malformed_lines(tmp_path):
     )
     parsed = MODULE.parse_key_value_evidence(evidence)
     assert parsed == {"replay_success": "true", "failed_layer": "INT=overlay"}
+
+
+def test_json_evidence_parser_is_fail_closed_for_missing_or_non_object(tmp_path):
+    missing = tmp_path / "missing.json"
+    assert MODULE.parse_json_evidence(missing) == {}
+    bad = tmp_path / "bad.json"
+    bad.write_text("[]", encoding="utf-8")
+    assert MODULE.parse_json_evidence(bad) == {}
+    good = tmp_path / "good.json"
+    good.write_text('{"allFrozen": true}', encoding="utf-8")
+    assert MODULE.parse_json_evidence(good) == {"allFrozen": True}

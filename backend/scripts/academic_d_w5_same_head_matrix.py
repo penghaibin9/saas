@@ -46,6 +46,19 @@ def parse_key_value_evidence(path: str | Path) -> dict[str, str]:
     return result
 
 
+def parse_json_evidence(path: str | Path | None) -> dict[str, Any]:
+    if not path:
+        return {}
+    evidence_path = Path(path)
+    if not evidence_path.exists():
+        return {}
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def latest_runs_by_name(runs: Iterable[dict[str, Any]], exact_sha: str) -> dict[str, dict[str, Any]]:
     """Return the newest run for each workflow, restricted to the exact source SHA."""
     exact_sha = str(exact_sha).strip()
@@ -98,7 +111,14 @@ def classify_workflow(name: str, run: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str, str], api_error: str = "") -> dict[str, Any]:
+def build_matrix(
+    *,
+    sha: str,
+    runs: Iterable[dict[str, Any]],
+    evidence: dict[str, str],
+    upstream_freeze: dict[str, Any] | None = None,
+    api_error: str = "",
+) -> dict[str, Any]:
     selected = latest_runs_by_name(runs, sha)
     required = {
         name: classify_workflow(name, selected.get(name))
@@ -119,7 +139,9 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
     external_same_head_ready = not api_error and all(item["ready"] for item in required.values())
     pre_gold_ready = local_replay_ready and external_same_head_ready
 
-    upstream_frozen = _as_bool(evidence.get("upstream_contract_heads_frozen"))
+    freeze_payload = upstream_freeze or {}
+    upstream_frozen = freeze_payload.get("allFrozen") is True
+    freeze_blockers = [str(item) for item in (freeze_payload.get("blockers") or []) if str(item).strip()]
     final_browser_proven = _as_bool(evidence.get("final_browser_gold_proven_on_w5_head"))
     final_gold = pre_gold_ready and upstream_frozen and final_browser_proven
 
@@ -138,11 +160,12 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
             blockers.append(f"same_head_workflow:{name}:{item['state']}")
     if not upstream_frozen:
         blockers.append("upstream_contract_heads_not_frozen")
+        blockers.extend(f"upstream:{item}" for item in freeze_blockers)
     if not final_browser_proven:
         blockers.append("integrated_final_browser_gold_not_proven")
 
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "sourceSha": sha,
         "w5Phase": evidence.get("w5_phase") or "UNKNOWN",
         "failedLayer": evidence.get("failed_layer") or "",
@@ -153,6 +176,7 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
         "externalSameHeadReady": external_same_head_ready,
         "preGoldReady": pre_gold_ready,
         "upstreamContractHeadsFrozen": upstream_frozen,
+        "upstreamFreezeEvidence": freeze_payload,
         "integratedFinalBrowserGoldProven": final_browser_proven,
         "finalGold": final_gold,
         "blockers": blockers,
@@ -200,11 +224,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--w5-evidence", required=True)
+    parser.add_argument("--upstream-freeze")
     parser.add_argument("--output", required=True)
     parser.add_argument("--strict-final", action="store_true")
     args = parser.parse_args(argv)
 
     evidence = parse_key_value_evidence(args.w5_evidence)
+    upstream_freeze = parse_json_evidence(args.upstream_freeze)
     token = os.environ.get("GITHUB_TOKEN", "")
     api_url = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     api_error = ""
@@ -214,7 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
         api_error = f"{type(exc).__name__}:{exc}"
 
-    matrix = build_matrix(sha=args.sha, runs=runs, evidence=evidence, api_error=api_error)
+    matrix = build_matrix(
+        sha=args.sha,
+        runs=runs,
+        evidence=evidence,
+        upstream_freeze=upstream_freeze,
+        api_error=api_error,
+    )
     _write_json(args.output, matrix)
     print(json.dumps(matrix, ensure_ascii=False, sort_keys=True))
 
