@@ -488,6 +488,7 @@ def resolve_formal_occurrence(
     *,
     session_date: str,
     slot_no,
+    expected_schedule_item_id=None,
     lock: bool = False,
 ) -> dict:
     """Resolve exactly one current formal occurrence for an attendance write."""
@@ -497,6 +498,15 @@ def resolve_formal_occurrence(
         raise AppException("VALIDATION_ERROR", "普通课堂必须选择明确节次") from exc
     if requested_slot <= 0:
         raise AppException("VALIDATION_ERROR", "普通课堂必须选择明确节次")
+
+    expected_item_id = None
+    if expected_schedule_item_id not in (None, ""):
+        try:
+            expected_item_id = int(expected_schedule_item_id)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "scheduleItemId 须为有效数字") from exc
+        if expected_item_id <= 0:
+            raise AppException("VALIDATION_ERROR", "scheduleItemId 须为有效数字")
 
     requested = _parse_date(session_date)
     logical_date, calendar_source, calendar_event_id = _calendar_logical_date(
@@ -540,6 +550,17 @@ def resolve_formal_occurrence(
     item, change_evidence = _lock_and_validate_selected_item(
         db, item, task, lock=lock,
     )
+    if expected_item_id is not None and expected_item_id != int(item.id):
+        _conflict(
+            "正式课次已变化，请刷新后重新进入点名",
+            details={
+                "expectedScheduleItemId": str(expected_item_id),
+                "resolvedScheduleItemId": str(item.id),
+                "teachingTaskId": str(task.id),
+                "sessionDate": requested.isoformat(),
+                "slotNo": requested_slot,
+            },
+        )
     selected_head = next(
         (head for head in heads if int(head.active_batch_id or 0) == int(item.batch_id)),
         None,

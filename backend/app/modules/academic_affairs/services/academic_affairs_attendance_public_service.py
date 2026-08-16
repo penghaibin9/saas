@@ -213,6 +213,7 @@ def create_session(user, body) -> dict:
                     current_term,
                     session_date=session_date,
                     slot_no=slot_no,
+                    expected_schedule_item_id=body.get("scheduleItemId"),
                     lock=True,
                 )
 
