@@ -68,6 +68,7 @@ def test_attendance_candidate_payloads_use_only_executable_formal_patterns_and_p
     assert all(row["payload"]["teachingTaskId"] == "101" for row in candidates)
     assert all(row["payload"]["classId"] == "201" for row in candidates)
     assert all(row["payload"]["slotNo"] == 2 for row in candidates)
+    assert all(row["payload"]["scheduleItemId"] == "301" for row in candidates)
     assert all(row["scheduleItemId"] == "301" for row in candidates)
 
 
