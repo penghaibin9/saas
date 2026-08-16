@@ -1,8 +1,8 @@
 """B-W4 · SelectionCourse canonical write command.
 
 This command owns the formal ``POST /selection/batches/{batchId}/courses`` write.
-It deliberately does not invent formationMode truth before A-C4 freezes.  The
-independent invariants enforced here are already available from current code:
+It deliberately does not invent the upstream formation contract before A-C4 freezes.
+The independent invariants enforced here are already available from current code:
 
 - every formal SelectionCourse must bind an explicit TeachingTask;
 - the task must exist in the current tenant and be READY;
