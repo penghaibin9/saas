@@ -4,7 +4,8 @@
 - 只给已经结束并归档的 2025-2026-2 学期生成评教与质量事实；
 - 2026-2027-1 尚未开学，严禁提前生成学生评教/教学质量结果；
 - 学生评教保持架构级匿名：AaEvaluationRecord 不保存学生身份，STUDENT 任务 evaluator_key 必须为空；
-- 教学质量只生成督导听课/巡课/教学检查和整改，不替学校自动认定教学事故(INCIDENT)。
+- 教学质量只生成督导听课/巡课/教学检查和整改，不替学校自动认定教学事故(INCIDENT)；
+- 评教结果投影必须复用 production evaluation policy，20K 不得维护第二套权重/等级算法。
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.services.sandbox_school_academic_affairs_seed import EXPECTED_GRADE_RECORDS, EXPECTED_HISTORICAL_TASKS
 from app.services.sandbox_school_master_seed import _bulk_insert
@@ -40,15 +41,22 @@ def _count(db, model, tenant_id: int, *where) -> int:
     )) or 0)
 
 
-def _level(score: Decimal) -> str:
-    value = float(score)
-    if value >= 92:
-        return "EXCELLENT"
-    if value >= 85:
-        return "GOOD"
-    if value >= 75:
-        return "PASS"
-    return "NEED_IMPROVE"
+def _canonical_projection(student_avg, self_score, peer_avg, supervisor_avg) -> tuple[float | None, str | None]:
+    """Reuse the current production evaluation policy; sandbox owns no scoring constants."""
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as evaluation_policy
+
+    def _float(value):
+        return float(value) if value is not None else None
+
+    student_value = _float(student_avg)
+    composite = evaluation_policy._composite(
+        student_value,
+        _float(self_score),
+        _float(peer_avg),
+        _float(supervisor_avg),
+    )
+    level_basis = composite if composite is not None else student_value
+    return composite, evaluation_policy._level(level_basis)
 
 
 def _historical_context(db, tenant_id: int) -> dict:
@@ -267,12 +275,12 @@ def seed_school_academic_quality_20k(db, tenant_id: int) -> dict:
         self_score = non_student_scores["SELF"]
         peer_score = non_student_scores["PEER"]
         supervisor_score = non_student_scores["SUPERVISOR"]
-        composite = (
-            student_avg * Decimal("0.70")
-            + self_score * Decimal("0.10")
-            + peer_score * Decimal("0.10")
-            + supervisor_score * Decimal("0.10")
-        ).quantize(Decimal("0.01"))
+        composite, level = _canonical_projection(
+            student_avg,
+            self_score,
+            peer_score,
+            supervisor_score,
+        )
         result_rows.append({
             "tenant_id": tenant_id,
             "batch_id": int(batch.id),
@@ -288,8 +296,7 @@ def seed_school_academic_quality_20k(db, tenant_id: int) -> dict:
             "supervisor_avg": supervisor_score,
             "supervisor_count": 1,
             "composite_score": composite,
-            # 等级严格按学生评教均分，不拿多来源综合分偷偷改变教师等级语义。
-            "level": _level(student_avg),
+            "level": level,
             "published": True,
         })
 
@@ -398,6 +405,95 @@ def seed_school_academic_quality_20k(db, tenant_id: int) -> dict:
     return validate_school_academic_quality_20k(db, tenant_id)
 
 
+def _evaluation_score_truth(db, tenant_id: int) -> dict:
+    """Recompute all result projections from active answer facts using the production policy."""
+    from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
+
+    score_rows = db.execute(
+        select(
+            AaEvaluationTask.teaching_task_id,
+            AaEvaluationTask.evaluator_type,
+            func.avg(AaEvaluationRecord.objective_score).label("average_score"),
+            func.count(AaEvaluationRecord.objective_score).label("score_count"),
+        )
+        .select_from(AaEvaluationTask)
+        .outerjoin(
+            AaEvaluationRecord,
+            and_(
+                AaEvaluationRecord.task_id == AaEvaluationTask.id,
+                AaEvaluationRecord.tenant_id == AaEvaluationTask.tenant_id,
+                AaEvaluationRecord.is_deleted.is_(False),
+            ),
+        )
+        .where(
+            AaEvaluationTask.tenant_id == tenant_id,
+            AaEvaluationTask.is_deleted.is_(False),
+        )
+        .group_by(AaEvaluationTask.teaching_task_id, AaEvaluationTask.evaluator_type)
+    ).all()
+    by_teaching: dict[int, dict[str, tuple[float | None, int]]] = defaultdict(dict)
+    for teaching_task_id, evaluator_type, average_score, score_count in score_rows:
+        if teaching_task_id is None:
+            continue
+        by_teaching[int(teaching_task_id)][str(evaluator_type)] = (
+            round(float(average_score), 2) if average_score is not None else None,
+            int(score_count or 0),
+        )
+
+    results = list(db.scalars(select(AaEvaluationResult).where(
+        AaEvaluationResult.tenant_id == tenant_id,
+        AaEvaluationResult.is_deleted.is_(False),
+    ).order_by(AaEvaluationResult.id)).all())
+
+    def _same(actual, expected) -> bool:
+        if actual is None or expected is None:
+            return actual is None and expected is None
+        return round(float(actual), 2) == round(float(expected), 2)
+
+    mismatches = []
+    for result in results:
+        sources = by_teaching.get(int(result.teaching_task_id), {})
+        student_avg, student_count = sources.get("STUDENT", (None, 0))
+        self_score, _self_count = sources.get("SELF", (None, 0))
+        peer_avg, peer_count = sources.get("PEER", (None, 0))
+        supervisor_avg, supervisor_count = sources.get("SUPERVISOR", (None, 0))
+        composite, level = _canonical_projection(
+            student_avg,
+            self_score,
+            peer_avg,
+            supervisor_avg,
+        )
+        bad_fields = []
+        for field, actual, expected in (
+            ("studentAvg", result.student_avg, student_avg),
+            ("selfScore", result.self_score, self_score),
+            ("peerAvg", result.peer_avg, peer_avg),
+            ("supervisorAvg", result.supervisor_avg, supervisor_avg),
+            ("compositeScore", result.composite_score, composite),
+        ):
+            if not _same(actual, expected):
+                bad_fields.append(f"{field}:{actual}!={expected}")
+        for field, actual, expected in (
+            ("studentCount", int(result.student_count or 0), student_count),
+            ("peerCount", int(result.peer_count or 0), peer_count),
+            ("supervisorCount", int(result.supervisor_count or 0), supervisor_count),
+            ("level", result.level, level),
+        ):
+            if actual != expected:
+                bad_fields.append(f"{field}:{actual}!={expected}")
+        if bad_fields:
+            mismatches.append({
+                "resultId": str(result.id),
+                "teachingTaskId": str(result.teaching_task_id),
+                "fields": bad_fields,
+            })
+    return {
+        "checked": len(results),
+        "mismatchCount": len(mismatches),
+        "samples": mismatches[:20],
+    }
+
+
 def validate_school_academic_quality_20k(db, tenant_id: int) -> dict:
     from app.models import (
         AaEvaluationBatch,
@@ -435,6 +531,7 @@ def validate_school_academic_quality_20k(db, tenant_id: int) -> dict:
         AaEvaluationTask.evaluator_type == "STUDENT",
         AaEvaluationTask.evaluator_key.is_not(None),
     )
+    score_truth = _evaluation_score_truth(db, tenant_id)
 
     quality_types = {
         record_type: _count(db, AaQualityRecord, tenant_id, AaQualityRecord.record_type == record_type)
@@ -450,6 +547,8 @@ def validate_school_academic_quality_20k(db, tenant_id: int) -> dict:
         "nonStudentEvaluationRecords": non_student_records,
         "evaluationResults": _count(db, AaEvaluationResult, tenant_id),
         "studentTaskIdentityLeaks": anonymous_task_leaks,
+        "evaluationScoreTruthChecked": score_truth["checked"],
+        "evaluationScoreTruthMismatches": score_truth["mismatchCount"],
         "qualityRecords": _count(db, AaQualityRecord, tenant_id),
         "supervisionRecords": quality_types["SUPERVISION"],
         "patrolRecords": quality_types["PATROL"],
@@ -467,6 +566,8 @@ def validate_school_academic_quality_20k(db, tenant_id: int) -> dict:
         "nonStudentEvaluationRecords": EXPECTED_NON_STUDENT_EVALUATION_RECORDS,
         "evaluationResults": EXPECTED_EVALUATION_RESULTS,
         "studentTaskIdentityLeaks": 0,
+        "evaluationScoreTruthChecked": EXPECTED_EVALUATION_RESULTS,
+        "evaluationScoreTruthMismatches": 0,
         "qualityRecords": EXPECTED_QUALITY_RECORDS,
         "supervisionRecords": EXPECTED_SUPERVISION,
         "patrolRecords": EXPECTED_PATROL,
@@ -480,6 +581,9 @@ def validate_school_academic_quality_20k(db, tenant_id: int) -> dict:
         if report[key] != value
     }
     if mismatches:
-        raise RuntimeError(f"20K 历史评教/教学质量验收失败: {mismatches}")
+        raise RuntimeError(
+            f"20K 历史评教/教学质量验收失败: {mismatches}; "
+            f"scoreTruthSamples={score_truth['samples']}"
+        )
     report["passed"] = True
     return report
