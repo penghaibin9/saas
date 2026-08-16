@@ -104,13 +104,14 @@ def test_insufficient_total_is_blocker_and_overage_is_warning_matching_program_g
     assert exceeded["warnings"][0]["businessCode"] == "PROGRAM_ACTUAL_CREDIT_EXCEEDED"
 
 
-def test_sandbox_school_shaped_140_credit_program_is_rejected_before_write_when_only_28_course_credits_exist():
-    # Mirrors sandbox_school_academic_affairs_seed: four public courses total 8
-    # credits plus six major courses total 20 credits. A 140-credit Program must
-    # not be imported as a knowingly un-submittable DRAFT merely because its
-    # CREDIT_REQUIREMENT targets themselves add up to 140.
-    public = [("PUB001", 2), ("PUB002", 3), ("PUB003", 1), ("PUB004", 2)]
-    major = [("M-01", 2), ("M-02", 3), ("M-03", 4), ("M-04", 3), ("M-05", 4), ("M-06", 4)]
+def test_real_sandbox_school_140_credit_program_is_rejected_before_write_when_seed_definition_only_has_28_course_credits():
+    from app.services import sandbox_school_academic_affairs_seed as seed
+
+    public = [(row[0], row[4]) for row in seed.PUBLIC_COURSES]
+    major = [(f"M-{row[0]}", row[4]) for row in seed.MAJOR_COURSE_TEMPLATES]
+    assert sum((credit for _code, credit in public), Decimal("0")) == Decimal("8")
+    assert sum((credit for _code, credit in major), Decimal("0")) == Decimal("20")
+
     rows = [_row("MAIN", {"totalCredits": Decimal("140")})]
     snapshots = []
     row_no = 2
@@ -135,8 +136,8 @@ def test_sandbox_school_shaped_140_credit_program_is_rejected_before_write_when_
     assert codes.count("PROGRAM_ACTUAL_CREDIT_INSUFFICIENT") == 1
     assert codes.count("PROGRAM_MODULE_CREDIT_INSUFFICIENT") == 3
     metrics = result["programMetrics"][0]
-    assert metrics["courseCreditSum"] == "28"
-    assert metrics["actualCreditSum"] == "28"
+    assert metrics["courseCreditSum"] == "28.0"
+    assert metrics["actualCreditSum"] == "28.0"
     assert metrics["totalCredits"] == "140"
 
 
