@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="学年管理"
-    subtitle="按学年汇总学期 · 查看学期齐全度（是否已建满两学期）与学年整体进度状态"
+    subtitle="按学年汇总学期 · 当前学年结论由全校当前学期 A-C1 解析，不再信任历史 raw 标记"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,6 +10,7 @@
     </template>
 
     <div class="mp-stack">
+      <p v-if="currentError" class="mp-note">当前学期解析失败，本页不猜测“当前学年”；学年汇总仍可正常查看。{{ currentError }}</p>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState
@@ -34,7 +35,8 @@
           <div v-if="row.termCount < 2" class="mp-cell-sub">缺 {{ 2 - row.termCount }} 个学期未建</div>
         </template>
         <template #cell-current="{ row }">
-          <AppStatusTag v-if="row.isCurrentYear" type="success" dot>当前学年</AppStatusTag>
+          <AppStatusTag v-if="isResolvedCurrentYear(row)" type="success" dot>当前学年</AppStatusTag>
+          <span v-else-if="currentError" class="mp-cell-sub">待核对</span>
           <span v-else class="mp-cell-sub">—</span>
         </template>
         <template #cell-yearStatus="{ row }">
@@ -59,9 +61,7 @@
 </template>
 
 <script>
-/** 学年管理（/admin/academic-affairs/terms/years）：GET /academic-affairs/terms/years（只读聚合，按学年汇总学期）。
- * 设计来源：project_rule（表单字段文档「学年名称」随学期创建表单一并录入，无独立学年实体）+
- * existing_code（聚合字段全部来自既有 t_aa_term.year_code/status/is_current）；聚合展示本身为 ai_proposal。 */
+/** 学年管理（/admin/academic-affairs/terms/years）：学年聚合可独立读取；“当前学年”必须由 A-C1 resolved term 的 yearCode 决定。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
@@ -80,6 +80,8 @@ export default {
     return {
       loading: true,
       error: '',
+      currentContext: null,
+      currentError: '',
       rows: [],
       columns: [
         { key: 'yearCode', title: '学年' },
@@ -98,13 +100,29 @@ export default {
     yearStatusType(s) { return YEAR_STATUS_TYPE[s] || 'default' },
     termStatusLabel(s) { return TERM_STATUS_LABEL[s] || s || '' },
     termStatusType(s) { return TERM_STATUS_TYPE[s] || 'default' },
+    isResolvedCurrentYear(row) {
+      return Boolean(this.currentContext?.yearCode) && String(row.yearCode) === String(this.currentContext.yearCode)
+    },
     goCreate() {
       this.$router.push('/admin/academic-affairs/terms/new')
+    },
+    async loadCurrentContext() {
+      this.currentError = ''
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0) {
+        this.currentContext = res.data || null
+      } else {
+        this.currentContext = null
+        this.currentError = res.message || '当前学期解析失败'
+      }
     },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getAcademicYears()
+      const [res] = await Promise.all([
+        academicAffairsApi.getAcademicYears(),
+        this.loadCurrentContext()
+      ])
       if (res.code === 0) {
         this.rows = res.data || []
       } else {
