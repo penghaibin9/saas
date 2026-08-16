@@ -15,11 +15,21 @@
           <view v-if="selectedTask" class="at__task-note">
             <text>{{ selectedTask.courseName || '未命名课程' }}</text>
             <text>{{ selectedTask.className || '未关联班级' }} · {{ selectedTask.termCode || '当前学期' }}</text>
+            <text v-if="!selectedTask.formalOccurrenceReady" class="at__source-note">{{ selectedTask.formalScheduleIssue || '当前教学任务尚无可点名的正式课次' }}</text>
           </view>
+          <picker
+            mode="selector"
+            :range="formalPatternLabels"
+            :value="patternIndex < 0 ? 0 : patternIndex"
+            :disabled="!formalPatterns.length"
+            @change="onPatternPick"
+          >
+            <view class="at__input at__date">{{ selectedPatternLabel || '选择正式上课节次（必填）' }}</view>
+          </picker>
           <picker mode="date" :value="form.sessionDate" @change="onDateChange">
             <view class="at__input at__date">{{ form.sessionDate || '选择考勤日期（必填）' }}</view>
           </picker>
-          <input class="at__input" type="number" v-model="form.slotNo" placeholder="第几节（必填）" placeholder-class="at__ph" />
+          <text v-if="selectedPattern" class="at__source-note">所选节次来自当前正式课表；具体日期仍以校历、调课与补课实时校验为准。</text>
           <picker mode="selector" :range="sessionTypes" @change="onTypeChange">
             <view class="at__input at__date">点名类别：{{ form.sessionType || '常规' }}</view>
           </picker>
@@ -105,8 +115,8 @@ export default {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
-      taskOptions: [], taskIndex: 0, taskSelectionInvalid: false, routeSeed: null,
-      form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', sessionType: '' },
+      taskOptions: [], taskIndex: 0, patternIndex: -1, taskSelectionInvalid: false, routeSeed: null,
+      form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', scheduleItemId: '', sessionType: '' },
       active: null, items: [], detailLoading: false, marking: {}, submitting: false, STATUS_OPTS
     }
   },
@@ -118,9 +128,36 @@ export default {
       if (this.taskSelectionInvalid) return null
       return (this.taskOptions || [])[this.taskIndex] || null
     },
+    formalPatterns() {
+      return (this.selectedTask && this.selectedTask.formalSchedulePatterns) || []
+    },
+    formalPatternLabels() {
+      const weekdayLabels = ['', '一', '二', '三', '四', '五', '六', '日']
+      return this.formalPatterns.map((pattern) => {
+        const parity = pattern.weekParity === 'ODD' ? '单周' : pattern.weekParity === 'EVEN' ? '双周' : '每周'
+        const weekday = weekdayLabels[Number(pattern.weekday)] || String(pattern.weekday || '?')
+        return `周${weekday} · 第${pattern.slotNo}节 · ${pattern.startWeek}-${pattern.endWeek}周 ${parity}`
+      })
+    },
+    selectedPattern() {
+      if (this.patternIndex < 0) return null
+      return this.formalPatterns[this.patternIndex] || null
+    },
+    selectedPatternLabel() {
+      if (this.patternIndex < 0) return ''
+      return this.formalPatternLabels[this.patternIndex] || ''
+    },
     hasValidSlot() {
+      const pattern = this.selectedPattern
       const slot = Number(this.form.slotNo)
-      return Number.isInteger(slot) && slot > 0
+      const scheduleItemId = Number(this.form.scheduleItemId)
+      return !!pattern
+        && Number.isInteger(slot)
+        && slot > 0
+        && slot === Number(pattern.slotNo)
+        && Number.isInteger(scheduleItemId)
+        && scheduleItemId > 0
+        && String(pattern.scheduleItemId || '') === String(this.form.scheduleItemId || '')
     },
     hasPendingMarks() {
       return Object.values(this.marking).some(Boolean)
@@ -136,7 +173,8 @@ export default {
       const taskIdRaw = String(options.teachingTaskId || '').trim()
       const sessionDate = String(options.sessionDate || '').trim()
       const slotRaw = String(options.slotNo || '').trim()
-      const anySeed = Boolean(taskIdRaw || sessionDate || slotRaw)
+      const scheduleItemId = String(options.scheduleItemId || '').trim()
+      const anySeed = Boolean(taskIdRaw || sessionDate || slotRaw || scheduleItemId)
       if (!anySeed) return null
 
       const taskId = Number(taskIdRaw)
@@ -152,7 +190,8 @@ export default {
         invalid: false,
         teachingTaskId: String(taskId),
         sessionDate,
-        slotNo: String(slotNo)
+        slotNo: String(slotNo),
+        scheduleItemId
       }
     },
     applyOccurrenceSeed() {
@@ -187,20 +226,51 @@ export default {
       this.taskSelectionInvalid = false
       this.taskIndex = index
       this.applyTask(this.taskOptions[index])
+      const matchingPatternIndexes = []
+      this.formalPatterns.forEach((pattern, patternIndex) => {
+        if (Number(pattern.slotNo) === Number(seed.slotNo)) matchingPatternIndexes.push(patternIndex)
+      })
+      let patternIndex = -1
+      if (seed.scheduleItemId) {
+        patternIndex = matchingPatternIndexes.find((candidateIndex) =>
+          String(this.formalPatterns[candidateIndex].scheduleItemId || '') === seed.scheduleItemId)
+        if (patternIndex === undefined) patternIndex = -1
+      } else if (matchingPatternIndexes.length === 1) {
+        patternIndex = matchingPatternIndexes[0]
+      }
+      if (patternIndex < 0) {
+        const ambiguous = !seed.scheduleItemId && matchingPatternIndexes.length > 1
+        this.taskSelectionInvalid = true
+        this.applyTask(null)
+        this.form.sessionDate = ''
+        toast(ambiguous ? '该节次对应多个正式课表项，请从教师今日课次重新进入' : '该正式课次已不在当前发布课表中')
+        return
+      }
+      this.patternIndex = patternIndex
       this.form.sessionDate = seed.sessionDate
-      this.form.slotNo = seed.slotNo
+      this.form.slotNo = String(this.formalPatterns[patternIndex].slotNo)
+      this.form.scheduleItemId = String(this.formalPatterns[patternIndex].scheduleItemId || '')
     },
     onDateChange(event) { this.form.sessionDate = event.detail.value },
     onTypeChange(event) { this.form.sessionType = this.sessionTypes[Number(event.detail.value)] || '' },
     applyTask(task) {
       this.form.teachingTaskId = task ? task.teachingTaskId : ''
       this.form.classId = task ? task.classId : ''
+      this.patternIndex = -1
+      this.form.slotNo = ''
+      this.form.scheduleItemId = ''
     },
     onTaskPick(event) {
       this.routeSeed = null
       this.taskSelectionInvalid = false
       this.taskIndex = Number(event.detail.value)
       this.applyTask(this.taskOptions[this.taskIndex])
+    },
+    onPatternPick(event) {
+      this.patternIndex = Number(event.detail.value)
+      const pattern = this.formalPatterns[this.patternIndex]
+      this.form.slotNo = pattern ? String(pattern.slotNo) : ''
+      this.form.scheduleItemId = pattern ? String(pattern.scheduleItemId || '') : ''
     },
     confirmModal(title, content, confirmText = '确定') {
       return new Promise((resolve) => {
@@ -213,8 +283,9 @@ export default {
     },
     loadTasks() {
       teacherApi.getAttendanceClassOptions().then((data) => {
-        this.taskOptions = ((data && data.items) || []).filter((task) =>
-          ALLOWED_TASK_STATUSES.has(String(task.taskStatus || '').toUpperCase()))
+        this.taskOptions = ((data && data.items) || [])
+          .filter((task) => ALLOWED_TASK_STATUSES.has(String(task.taskStatus || '').toUpperCase()))
+          .sort((left, right) => Number(Boolean(right.formalOccurrenceReady)) - Number(Boolean(left.formalOccurrenceReady)))
         this.applyOccurrenceSeed()
       }).catch(() => {
         this.taskOptions = []
@@ -238,6 +309,7 @@ export default {
         classId: this.form.classId ? Number(this.form.classId) : undefined,
         sessionDate: this.form.sessionDate,
         slotNo: Number(this.form.slotNo),
+        scheduleItemId: this.form.scheduleItemId || undefined,
         sessionType: this.form.sessionType || undefined
       }).then(() => {
         uni.showToast({ title: '考勤场次已创建', icon: 'success' })
