@@ -149,6 +149,8 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const suffix = `${String(Date.now()).slice(-7)}r${testInfo.retry}`
     const unknownName = `D-W1待治理学期-${suffix}`
     const notApplicableName = `D-W1不适用学期-${suffix}`
+    const unknownBatchName = `D-W1待治理正式归档-${suffix}`
+    const notApplicableBatchName = `D-W1不适用正式归档-${suffix}`
 
     const unknownTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
       yearCode: `U${suffix}`,
@@ -186,7 +188,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
 
     const archiveBatch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/archive/batches', {
       termId: unknownTerm.termId,
-      batchName: `D-W1待治理正式归档-${suffix}`
+      batchName: unknownBatchName
     }), 'create W1 archive batch')
     const checked = await expectApiOk(await browserApi(
       page,
@@ -196,6 +198,10 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     ), 'run W1 formal archive check')
     expect(checked.status).toBe('MISSING_ITEMS')
     expect(Number(checked.missingCount || 0)).toBeGreaterThan(0)
+    const persistedUnknown = (checked.items || []).find((row) => row.domain === 'GRADUATION')
+    expect(persistedUnknown?.result, JSON.stringify(checked)).toBe('UNKNOWN')
+    expect(Number(persistedUnknown?.blockingCount || 0)).toBeGreaterThan(0)
+
     const forbiddenArchive = await browserApi(
       page,
       token,
@@ -204,6 +210,28 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
       { force: false }
     )
     expect(forbiddenArchive.status, JSON.stringify(forbiddenArchive.json)).toBe(409)
+    const forbiddenForcedArchive = await browserApi(
+      page,
+      token,
+      'POST',
+      `/academic-affairs/archive/batches/${archiveBatch.batchId}/confirm`,
+      { force: true }
+    )
+    expect(forbiddenForcedArchive.status, JSON.stringify(forbiddenForcedArchive.json)).toBe(409)
+
+    const naArchiveBatch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/archive/batches', {
+      termId: notApplicableTerm.termId,
+      batchName: notApplicableBatchName
+    }), 'create W1 N/A archive batch')
+    const naChecked = await expectApiOk(await browserApi(
+      page,
+      token,
+      'POST',
+      `/academic-affairs/archive/batches/${naArchiveBatch.batchId}/check`
+    ), 'run W1 N/A formal archive check')
+    const persistedNa = (naChecked.items || []).find((row) => row.domain === 'GRADUATION')
+    expect(persistedNa?.result, JSON.stringify(naChecked)).toBe('NOT_APPLICABLE')
+    expect(Number(persistedNa?.blockingCount || 0)).toBe(0)
 
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/archive/precheck`)
@@ -233,5 +261,24 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1280, 720, naCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1440, 900, naCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1920, 1080, naCard)
+
+    await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/archive`)
+    await dismissPageGuide(page)
+    const unknownBatchLink = page.getByText(unknownBatchName, { exact: true }).first()
+    await expect(unknownBatchLink).toBeVisible({ timeout: 10000 })
+    await unknownBatchLink.click()
+    const unknownFormalRow = page.locator('tr').filter({ hasText: '毕业资格' }).first()
+    await expect(unknownFormalRow).toContainText('待治理')
+    await expect(page.getByText(/整体强制归档已停用/)).toBeVisible()
+    await expect(page.getByRole('button', { name: '强制归档' })).toHaveCount(0)
+    await captureViewport(page, testInfo, 'academic-d-w1-formal-archive-unknown', 1440, 900, unknownFormalRow)
+
+    const naBatchLink = page.getByText(notApplicableBatchName, { exact: true }).first()
+    await expect(naBatchLink).toBeVisible({ timeout: 10000 })
+    await naBatchLink.click()
+    const naFormalRow = page.locator('tr').filter({ hasText: '毕业资格' }).first()
+    await expect(naFormalRow).toContainText('不适用')
+    await expect(naFormalRow).not.toContainText('待治理')
+    await captureViewport(page, testInfo, 'academic-d-w1-formal-archive-not-applicable', 1440, 900, naFormalRow)
   })
 })
