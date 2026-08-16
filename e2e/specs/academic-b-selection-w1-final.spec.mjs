@@ -80,6 +80,10 @@ async function expectBatchStatus(page, label) {
   await expect(page.locator('.aasel-hero-topline')).toContainText(label, { timeout: 20_000 })
 }
 
+async function expectNoStalePreflight(page) {
+  await expect(page.locator('.aasel-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
+}
+
 async function lifecycle(page, actionLabel, apiFragment) {
   const preflight = page.waitForResponse((response) =>
     response.url().includes('/selection/batches/') &&
@@ -155,12 +159,14 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expectBatchStatus(staff, '已发布')
     await lifecycle(staff, '开选', `/selection/batches/${fixture.ready.batchId}/open`)
     await expectBatchStatus(staff, '选课中')
+    await expectNoStalePreflight(staff)
     await screenshot(staff, testInfo, 'w1-admin-open-success-1440x900')
 
     await staff.reload()
     await dismissGuide(staff)
     await selectBatch(staff, fixture.ready.batchName)
     await expectBatchStatus(staff, '选课中')
+    await expectNoStalePreflight(staff)
     await staffContext.close()
 
     const reloginContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
@@ -170,6 +176,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await dismissGuide(relogin)
     await selectBatch(relogin, fixture.ready.batchName)
     await expectBatchStatus(relogin, '选课中')
+    await expectNoStalePreflight(relogin)
     await screenshot(relogin, testInfo, 'w1-admin-relogin-persisted-1280x720')
     await reloginContext.close()
 
