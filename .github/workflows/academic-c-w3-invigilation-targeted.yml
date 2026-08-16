@@ -6,7 +6,9 @@ on:
       - agent/academic-c-teaching-execution
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_invigilation_workbench_service.py'
+      - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/tests/test_aa_exam_invigilation_workbench_contract.py'
+      - 'backend/tests/test_aa_exam_invigilation_mobile_wiring_contract.py'
       - '.github/workflows/academic-c-w3-invigilation-targeted.yml'
   workflow_dispatch:
 
@@ -58,10 +60,19 @@ jobs:
           pip install cryptography
       - name: Compile C-W3 invigilation projection
         working-directory: backend
-        run: python -m py_compile app/modules/academic_affairs/services/academic_affairs_invigilation_workbench_service.py tests/test_aa_exam_invigilation_workbench_contract.py
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_invigilation_workbench_service.py \
+            app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py \
+            tests/test_aa_exam_invigilation_workbench_contract.py \
+            tests/test_aa_exam_invigilation_mobile_wiring_contract.py
       - name: C-W3 canonical invigilation exact contract on MySQL
         working-directory: backend
-        run: pytest -q tests/test_aa_exam_invigilation_workbench_contract.py -p no:warnings --durations=10
+        run: |
+          pytest -q \
+            tests/test_aa_exam_invigilation_workbench_contract.py \
+            tests/test_aa_exam_invigilation_mobile_wiring_contract.py \
+            -p no:warnings --durations=10
       - name: Prove invigilation workbench is read-only
         working-directory: backend
         run: |
