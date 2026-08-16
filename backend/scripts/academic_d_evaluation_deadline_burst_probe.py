@@ -13,9 +13,35 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from scripts import academic_d_evaluation_concurrency_probe as probe
+
+
+def _verify_task_from_answer_facts(eval_task_id: int) -> dict:
+    """OPEN-window submittedCount is the active answer-fact count, not the deferred task projection."""
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AaEvaluationRecord, AaEvaluationTask
+
+    db = get_sessionmaker()()
+    set_tenant({"tenantId": str(probe.TID), "tenantCode": "academic-d-eval-bench"})
+    try:
+        task = db.get(AaEvaluationTask, int(eval_task_id))
+        record_count = int(db.scalar(select(func.count()).select_from(AaEvaluationRecord).where(
+            AaEvaluationRecord.tenant_id == probe.TID,
+            AaEvaluationRecord.task_id == int(eval_task_id),
+            AaEvaluationRecord.evaluator_type == "STUDENT",
+            AaEvaluationRecord.is_deleted.is_(False),
+        )) or 0)
+        return {
+            "recordCount": record_count,
+            "submittedCount": record_count,
+            "storedProjectionCount": int(task.submitted_count or 0) if task else None,
+        }
+    finally:
+        db.close()
+        set_tenant(None)
 
 
 def _run_deadline_burst(term_id: int, teaching_task_ids: list[int], student_ids: list[int]) -> dict:
@@ -101,6 +127,9 @@ def main() -> int:
     finally:
         setup.close()
 
+    # Reuse the original timing scenarios but verify OPEN-window counts from answer facts.
+    probe._verify_task = _verify_task_from_answer_facts
+
     seeded = probe._seed_formal_teaching_context(student_count=200, task_count=20)
     term_id = seeded["termId"]
     students = seeded["studentIds"]
@@ -114,14 +143,15 @@ def main() -> int:
         probe._run_duplicate_race(term_id, tasks[0], students[0]),
     ]
     report = {
-        "schema": "academic-d-evaluation-concurrency/v2",
+        "schema": "academic-d-evaluation-concurrency/v3",
         "tenantId": str(probe.TID),
         "database": "mysql8",
         "setupAuthority": "public evaluation create/generate/publish/open + formal LOCKED TeachingRoster",
         "studentLockProtocol": (
-            "evaluation batch SHARE + current TeachingClass SHARE + current student member UPDATE "
-            "+ short atomic EvaluationTask submitted_count UPDATE"
+            "READ COMMITTED transaction + evaluation batch SHARE + current TeachingClass SHARE + "
+            "current student member UPDATE; answer facts are live submitted-count authority"
         ),
+        "closedBatchProjection": "AaEvaluationTask.submitted_count reconciled under close/score batch UPDATE lock",
         "roleTaskLockProtocol": "EvaluationTask UPDATE for SELF/PEER/SUPERVISOR",
         "anonymousTokenStorage": "answers_json HMAC token LIKE lookup",
         "scenarios": scenarios,

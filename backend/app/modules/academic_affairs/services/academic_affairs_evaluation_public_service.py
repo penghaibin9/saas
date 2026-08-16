@@ -16,6 +16,8 @@ import hmac
 import json
 from datetime import datetime
 
+from sqlalchemy import func
+
 from app.core.config import settings
 from app.core.exceptions import AppException, no_permission, not_found
 
@@ -224,34 +226,16 @@ def _lock_student_roster_member(db, task, profile, roster) -> None:
         raise no_permission("当前学生不在该课程当前正式教学班名单中")
 
 
-def _increment_student_submission_count(db, task_id: int, member_count: int) -> int:
-    """事务末尾用短临界区原子维护提交数；不把 Task 行锁覆盖整个匿名提交事务。"""
-    from sqlalchemy import func
-    from app.models import AaEvaluationTask
+def _active_student_submission_count(db, task_id: int) -> int:
+    """学生评教提交数以有效答卷事实为准；Task.submitted_count 只保留关闭后的历史投影。"""
+    from app.models import AaEvaluationRecord
 
-    query = db.query(AaEvaluationTask).filter(
-        AaEvaluationTask.id == int(task_id),
-        AaEvaluationTask.tenant_id == _tid(),
-        AaEvaluationTask.is_deleted.is_(False),
-    )
-    if member_count > 0:
-        query = query.filter(
-            func.coalesce(AaEvaluationTask.submitted_count, 0) < int(member_count)
-        )
-    updated = query.update(
-        {
-            AaEvaluationTask.submitted_count:
-                func.coalesce(AaEvaluationTask.submitted_count, 0) + 1
-        },
-        synchronize_session=False,
-    )
-    if updated != 1:
-        raise _legacy._invalid("该评教任务提交人数已达到正式教学班人数，请联系教务处核查")
-    value = db.query(AaEvaluationTask.submitted_count).filter(
-        AaEvaluationTask.id == int(task_id),
-        AaEvaluationTask.tenant_id == _tid(),
-    ).scalar()
-    return int(value or 0)
+    return int(db.query(func.count(AaEvaluationRecord.id)).filter(
+        AaEvaluationRecord.tenant_id == _tid(),
+        AaEvaluationRecord.task_id == int(task_id),
+        AaEvaluationRecord.evaluator_type == "STUDENT",
+        AaEvaluationRecord.is_deleted.is_(False),
+    ).scalar() or 0)
 
 
 def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
@@ -332,10 +316,13 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
 
 
 def submit_evaluation(user, task_id, answers, objective_score, comment=None):
-    """提交评价；学生只锁本人名单成员行，角色评价继续锁独占 Task 行。"""
+    """提交评价；学生用 READ COMMITTED + 本人名单成员锁去重，不再写共享 Task 计数热点。"""
     from app.models import AaEvaluationRecord, AaEvaluationTask
 
     with session() as db:
+        # 必须在任何 SQL/autobegin 之前设置。MySQL REPEATABLE READ 会让等待成员锁的重复请求
+        # 继续使用旧一致性快照，从而看不见前一请求刚提交的匿名答卷。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         _legacy._ctx(user, db)
         task = db.query(AaEvaluationTask).filter(
             AaEvaluationTask.id == int(task_id),
@@ -354,21 +341,16 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             _require_anonymous_student_batch(batch)
             profile, roster, token = _student_submission_context(db, user, task)
             _lock_student_roster_member(db, task, profile, roster)
-            # The per-student roster-member UPDATE lock serializes only duplicate attempts from
-            # the same student. Under MySQL REPEATABLE READ the follow-up token lookup must be a
-            # locking current read; a normal consistent read can reuse a snapshot from before the
-            # member-lock wait and miss the winning transaction's just-committed anonymous record.
             duplicate = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.tenant_id == _tid(),
                 AaEvaluationRecord.task_id == task.id,
                 AaEvaluationRecord.evaluator_type == "STUDENT",
                 AaEvaluationRecord.answers_json.like(_token_pattern(task.id, profile.id)),
                 AaEvaluationRecord.is_deleted.is_(False),
-            ).with_for_update(read=True).first()
+            ).first()
             if duplicate:
                 raise _legacy._invalid("该课程评教已提交，不可重复提交")
 
-            member_count = int(roster.get("memberCount") or len(roster.get("studentIds") or []))
             record = AaEvaluationRecord(
                 tenant_id=_tid(),
                 batch_id=batch.id,
@@ -381,9 +363,8 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             )
             db.add(record)
             _anonymous_audit(db, task.id)
-            # 先落答卷/匿名审计，再把共享 Task 计数更新压到事务最后的最短临界区。
             db.flush()
-            submitted_count = _increment_student_submission_count(db, task.id, member_count)
+            submitted_count = _active_student_submission_count(db, task.id)
             db.commit()
             return {"taskId": str(task.id), "submittedCount": submitted_count}
 

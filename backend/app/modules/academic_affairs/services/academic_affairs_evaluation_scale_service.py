@@ -5,7 +5,9 @@ used by ordinary teachers for self-service endpoints, so full management reads a
 here instead of widening every holder to tenant-wide visibility.
 
 No new evaluation truth is introduced. State machine, DTOs, anonymity, batch lock protocol
-and composite-score policy remain owned by the canonical evaluation service.
+and composite-score policy remain owned by the canonical evaluation service. During OPEN
+windows, submission counts are projected from active answer facts so student submissions do
+not serialize on a shared task counter row; close/score reconciles the legacy projection.
 """
 from __future__ import annotations
 
@@ -31,12 +33,7 @@ def _page(page, page_size, *, default_size: int, max_size: int = 100) -> tuple[i
 
 
 def _scope_spec(user, db) -> dict:
-    """Resolve evaluation visibility without inventing a new global COURSE scope type.
-
-    TENANT_ALL and COLLEGE come from the shared affairs security context. Other authorized
-    staff are restricted to teaching-task ownership through stable teacher keys. This keeps
-    ordinary teachers useful while remaining fail-closed for unrelated batches.
-    """
+    """Resolve evaluation visibility without inventing a new global COURSE scope type."""
     ctx = build_affairs_context(user or {}, db)
     if ctx.scope_type == "TENANT_ALL":
         return {"type": "TENANT_ALL", "collegeIds": [], "teacherKeys": []}
@@ -146,6 +143,24 @@ def _get_scoped_batch_model(db, user, batch_id: int, *, spec: dict | None = None
     raise no_data_scope("该评教批次不在当前数据范围内")
 
 
+def _record_counts_for_tasks(db, task_ids) -> dict[int, int]:
+    """Return active answer-fact counts in one GROUP BY query."""
+    from app.models import AaEvaluationRecord
+
+    ids = sorted({int(value) for value in (task_ids or []) if value is not None})
+    if not ids:
+        return {}
+    rows = db.query(
+        AaEvaluationRecord.task_id,
+        func.count(AaEvaluationRecord.id),
+    ).filter(
+        AaEvaluationRecord.tenant_id == _legacy._tid(),
+        AaEvaluationRecord.task_id.in_(ids),
+        AaEvaluationRecord.is_deleted.is_(False),
+    ).group_by(AaEvaluationRecord.task_id).all()
+    return {int(task_id): int(count or 0) for task_id, count in rows}
+
+
 def list_batches(user, status=None, page=1, page_size=20):
     """True DB pagination plus object visibility for college/teaching-owner scopes."""
     from app.models import AaEvaluationBatch
@@ -175,6 +190,7 @@ def get_batch(user, bid):
 
 
 def list_tasks(user, bid, evaluator_type=None):
+    """Management task counts come from answer facts, never an OPEN-window hot counter row."""
     from app.models import AaEvaluationTask
 
     with _legacy.session() as db:
@@ -189,12 +205,13 @@ def list_tasks(user, bid, evaluator_type=None):
         if evaluator_type:
             query = query.filter(AaEvaluationTask.evaluator_type == evaluator_type)
         rows = query.order_by(AaEvaluationTask.id).all()
+        counts = _record_counts_for_tasks(db, [task.id for task in rows])
         return [{
             "taskId": str(task.id),
             "courseName": task.course_name,
             "teacherName": task.teacher_name,
             "evaluatorType": task.evaluator_type,
-            "submittedCount": task.submitted_count,
+            "submittedCount": counts.get(int(task.id), 0),
             "status": task.status,
         } for task in rows]
 
@@ -208,8 +225,6 @@ def _result_query(db, bid: int, spec: dict):
         AaEvaluationResult.is_deleted.is_(False),
     )
     query = _apply_result_scope(query, spec)
-    # Ordinary teaching-task owners hold evaluation.view for self-service. They must never use
-    # management result/stat endpoints to bypass publish_results and observe RESULT_READY scores.
     if spec["type"] == "OWNER":
         query = query.filter(AaEvaluationResult.published.is_(True))
     return query
@@ -259,7 +274,7 @@ def list_results(user, bid, mine=False, page=1, page_size=50):
 
 
 def _stats_in_session(db, user, bid: int, spec: dict) -> dict:
-    from app.models import AaEvaluationResult, AaEvaluationTask
+    from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
 
     _get_scoped_batch_model(db, user, int(bid), spec=spec)
     result_query = _result_query(db, int(bid), spec)
@@ -271,17 +286,23 @@ def _stats_in_session(db, user, bid: int, spec: dict) -> dict:
     ).group_by(AaEvaluationResult.level).all()
     by_level = {(level or "N/A"): int(count or 0) for level, count in level_rows}
 
-    submitted_condition = or_(
-        AaEvaluationTask.status == "SUBMITTED",
-        and_(
-            AaEvaluationTask.evaluator_type == "STUDENT",
-            AaEvaluationTask.submitted_count > 0,
-        ),
-    )
+    record_counts = select(
+        AaEvaluationRecord.task_id.label("task_id"),
+        func.count(AaEvaluationRecord.id).label("record_count"),
+    ).where(
+        AaEvaluationRecord.tenant_id == _legacy._tid(),
+        AaEvaluationRecord.batch_id == int(bid),
+        AaEvaluationRecord.is_deleted.is_(False),
+    ).group_by(AaEvaluationRecord.task_id).subquery()
+
+    submitted_condition = func.coalesce(record_counts.c.record_count, 0) > 0
     task_query = db.query(
         AaEvaluationTask.evaluator_type,
         func.count(AaEvaluationTask.id).label("total"),
         func.sum(case((submitted_condition, 1), else_=0)).label("submitted"),
+    ).outerjoin(
+        record_counts,
+        record_counts.c.task_id == AaEvaluationTask.id,
     ).filter(
         AaEvaluationTask.batch_id == int(bid),
         AaEvaluationTask.tenant_id == _legacy._tid(),
@@ -387,7 +408,7 @@ def _score_rows(db, batch_id: int):
 
 
 def close_and_score(user, bid):
-    """Close OPEN batch only after all SHARE-locked in-flight submissions finish."""
+    """Close OPEN batch after submissions finish, then reconcile task-count projections."""
     from app.models import AaEvaluationResult, AaEvaluationTask
 
     with _legacy.session() as db:
@@ -401,9 +422,12 @@ def close_and_score(user, bid):
             AaEvaluationTask.tenant_id == _legacy._tid(),
             AaEvaluationTask.is_deleted.is_(False),
         ).all()
+        record_counts = _record_counts_for_tasks(db, [task.id for task in tasks])
         aggregate: dict[int, dict[str, tuple[float | None, int]]] = {}
         metadata: dict[int, tuple[str | None, str | None, str | None]] = {}
         for task in tasks:
+            # submitted_count remains a backward-compatible closed-batch projection only.
+            task.submitted_count = record_counts.get(int(task.id), 0)
             if task.teaching_task_id is None:
                 raise _legacy._invalid("评教任务未绑定正式教学任务，禁止核算")
             teaching_task_id = int(task.teaching_task_id)
