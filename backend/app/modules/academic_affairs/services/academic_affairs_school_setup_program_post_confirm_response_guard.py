@@ -100,10 +100,22 @@ def guard_definition_child_reread(
     *,
     target_program_ids: Iterable[object],
 ) -> list[dict]:
+    result = [dict(row) for row in rows]
     requested = {_text(value) for value in target_program_ids if _text(value)}
     if not requested:
-        raise ValueError("target_program_ids must not be empty")
-    result = [dict(row) for row in rows]
+        if not result:
+            # A missing Program reread is semantic evidence, not a scope violation.
+            # Let the reconciler emit PROGRAM_REREAD_NOT_FOUND for the requested
+            # stable key instead of converting the business failure into ValueError.
+            return []
+        returned_ids = sorted({
+            _text(row.get("programId")) or "<missing>"
+            for row in result
+        })
+        raise RuntimeError(
+            "PROGRAM_REREAD_SCOPE_VIOLATION:DEFINITION:"
+            f"orphanChildren={returned_ids}:requested=[]"
+        )
     for row in result:
         program_id = _text(row.get("programId"))
         if not program_id or program_id not in requested:
