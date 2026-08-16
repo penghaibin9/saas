@@ -24,9 +24,12 @@ consumer_path.write_text(consumer, encoding="utf-8")
 
 public_path = Path("backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py")
 public = public_path.read_text(encoding="utf-8")
-old = '''                session_date=session_date,\n                slot_no=slot_no,\n                lock=True,\n            )\n'''
-new = '''                session_date=session_date,\n                slot_no=slot_no,\n                expected_schedule_item_id=body.get("scheduleItemId"),\n                lock=True,\n            )\n'''
-if old not in public:
-    raise SystemExit("public resolver call anchor missing")
-public = public.replace(old, new, 1)
+public_anchor = '''                    slot_no=slot_no,\n                    lock=True,\n'''
+if public.count(public_anchor) != 1:
+    raise SystemExit(f"public resolver slot/lock anchor count={public.count(public_anchor)}")
+public = public.replace(
+    public_anchor,
+    '''                    slot_no=slot_no,\n                    expected_schedule_item_id=body.get("scheduleItemId"),\n                    lock=True,\n''',
+    1,
+)
 public_path.write_text(public, encoding="utf-8")
