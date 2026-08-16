@@ -5,7 +5,9 @@ Selection Final 的四条最终入口（批次发布、学生可选课程、选�
 唯一持有；本 Router 只迁 legacy base 中其余选课管理、课程供给、名单、补选、
 统计、归档与轮次入口。
 
-canonical service、权限、DTO、状态机、TeachingRoster 投影、schema 均保持不变。
+B-W4 起，新增可选课程写动作由 ``academic_affairs_selection_course_command_service``
+单一持有：TeachingTask 必填、READY、same-course、same-term 后才允许落 SelectionCourse。
+其余 canonical service、权限、DTO、状态机、TeachingRoster 投影保持不变。
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as production_guard
+from app.modules.academic_affairs.services import academic_affairs_selection_course_command_service as selection_course_command_svc
 
 # PR #101 production-audit hardening. Idempotent and read-side only: this tightens
 # D6-D8 scope/page-size contracts without changing any canonical write owner.
@@ -97,13 +100,13 @@ def sel_rule_save(
 
 
 # ── 课程供给 ──
-@router.post("/selection/batches/{batchId}/courses", summary="新增可选课程")
+@router.post("/selection/batches/{batchId}/courses", summary="新增可选课程（TeachingTask-bound）")
 def sel_course_add(
     body: SelectionCourseBody,
     batchId: int = Path(...),
     user=Depends(require_permission(_SEL_MANAGE)),
 ):
-    return success(selection_svc.add_course(user, batchId, body), message="已添加")
+    return success(selection_course_command_svc.add_course(user, batchId, body), message="已添加")
 
 
 @router.get("/selection/batches/{batchId}/courses", summary="批次课程供给列表")
