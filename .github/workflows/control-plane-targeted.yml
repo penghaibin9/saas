@@ -129,13 +129,15 @@ jobs:
               '_preaudit_custom_role_sources', 'uk_custom_role_source_role',
           ]
           required_model = [
-              'class RoleTemplatePermission', 'role_id: Mapped[int]',
+              'class RoleTemplatePermission', 'role_id: Mapped[int | None]',
+              'mapped_column(BigInteger, ForeignKey("t_role.id"), nullable=True, index=True)',
               'publish_status: Mapped[str]', 'previous_template_id: Mapped[int | None]',
           ]
           for token in required_migration:
               assert token in migration, token
           for token in required_model:
               assert token in model, token
+          assert 'op.alter_column(\n        "t_custom_role_source",\n        "role_id"' not in migration
           assert 'from app.modules.system_admin.routers import system_i4_router' in route
           assert 'from app.modules.platform.routers import platform_router' in route
           assert 't_role_template_v2' not in migration + model
