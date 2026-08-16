@@ -7,7 +7,9 @@ on:
     paths:
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py"
+      - "backend/app/services/sandbox_school_academic_quality_seed.py"
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
+      - "backend/tests/test_sandbox_school_academic_quality_truth.py"
       - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
 
 permissions:
@@ -86,7 +88,15 @@ jobs:
           python -m py_compile \
             scripts/academic_d_evaluation_concurrency_probe.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
-            app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py
+            app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py \
+            app/services/sandbox_school_academic_quality_seed.py \
+            tests/test_sandbox_school_academic_quality_truth.py
+
+      - name: Run D-W3 evaluation truth contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_sandbox_school_academic_quality_truth.py -p no:warnings
 
       - name: Run real MySQL evaluation contention evidence
         working-directory: backend
