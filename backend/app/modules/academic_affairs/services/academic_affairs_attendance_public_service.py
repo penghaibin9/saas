@@ -18,6 +18,7 @@ from .academic_affairs_roster_consumer_service import (
     get_consumer_snapshot,
     resolve_versioned_roster,
 )
+from .academic_affairs_attendance_occurrence_consumer import resolve_formal_occurrence
 
 _canonical = importlib.import_module(
     ".academic_affairs_attendance_service",
@@ -139,6 +140,7 @@ def create_session(user, body) -> dict:
 
         task = None
         official = None
+        occurrence = None
         roster_identity = None
         roster_source = _ADMIN_SPECIAL if is_admin_special else "ADMIN_MANUAL"
         if task_id:
@@ -161,6 +163,17 @@ def create_session(user, body) -> dict:
             task_class_id = int(task.class_id or 0)
             if requested_class_id and task_class_id and requested_class_id != task_class_id:
                 raise AppException("VALIDATION_ERROR", "教学任务与行政班不一致")
+
+            if not is_admin_special:
+                occurrence = resolve_formal_occurrence(
+                    db,
+                    task,
+                    batch,
+                    current_term,
+                    session_date=session_date,
+                    slot_no=slot_no,
+                    lock=True,
+                )
 
             official = resolve_versioned_roster(db, int(task.id))
             roster_source = _ADMIN_SPECIAL if is_admin_special else official["source"]
@@ -241,6 +254,12 @@ def create_session(user, body) -> dict:
             f"task={task.id if task else '-'};source={roster_source};course={item.course_name or ''};"
             f"date={session_date};rosterVersion={roster_identity['rosterVersionId'] if roster_identity else '-'}"
         )
+        if occurrence:
+            audit_detail += (
+                f";scheduleItem={occurrence['scheduleItemId']}"
+                f";activeBatch={occurrence['activeBatchId']}"
+                f";scope={occurrence['scopeType']}:{occurrence['scopeId']}"
+            )
         if is_admin_special:
             audit_detail += f";reason={special_reason};evidence={special_evidence}"
         _audit(db, item.id, "CREATE", audit_detail)
@@ -249,6 +268,7 @@ def create_session(user, body) -> dict:
         result = _with_source_type(_row(item))
         result["teachingTaskId"] = str(task.id) if task else None
         result["rosterIdentity"] = roster_identity
+        result["occurrenceEvidence"] = occurrence
         return result
 
 
