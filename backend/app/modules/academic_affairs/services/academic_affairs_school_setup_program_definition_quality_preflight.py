@@ -30,6 +30,13 @@ from .academic_affairs_school_setup_import_contract import (
     PROGRAM_GROUP_PRACTICE,
 )
 
+_GROUP_ORDER = {
+    PROGRAM_GROUP_MAIN: 0,
+    PROGRAM_GROUP_COURSE: 1,
+    PROGRAM_GROUP_CREDIT_REQUIREMENT: 2,
+    PROGRAM_GROUP_PRACTICE: 3,
+}
+
 
 def _decimal(value: object) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(str(value))
@@ -213,12 +220,18 @@ def program_definition_quality_preflight(
             },
         })
 
-    errors.sort(key=lambda item: (
-        item["programKey"], item["logicalGroup"], item["row"], item["businessCode"], repr(item["evidence"])
-    ))
-    warnings.sort(key=lambda item: (
-        item["programKey"], item["logicalGroup"], item["row"], item["businessCode"], repr(item["evidence"])
-    ))
+    def sort_key(item: Mapping[str, object]):
+        group = str(item.get("logicalGroup") or "")
+        return (
+            str(item.get("programKey") or ""),
+            _GROUP_ORDER.get(group, 99),
+            int(item.get("row") or 0),
+            str(item.get("businessCode") or ""),
+            repr(item.get("evidence") or {}),
+        )
+
+    errors.sort(key=sort_key)
+    warnings.sort(key=sort_key)
     return {
         "definitionQualitySafe": not errors,
         "programMetrics": metrics,
