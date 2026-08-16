@@ -1,4 +1,4 @@
-"""A-W2 canonical Program Activation resolver RED contracts.
+"""A-W2 canonical Program Activation resolver RED/GREEN contracts.
 
 The resolver is the single read authority for Opening Projection, TeachingTask generation,
 graduation and student academic progress.  It must not let each consumer reinterpret
@@ -284,16 +284,19 @@ def test_w2_historical_activation_ignores_future_active_and_replays_disabled_for
     assert future.program.id == current.id
 
 
-def test_w2_opening_task_and_student_resolution_must_share_the_canonical_activation_service():
-    root = Path(__file__).parents[1] / "app" / "modules" / "academic_affairs" / "services"
-    task_source = (root / "academic_affairs_task_generation_service.py").read_text(encoding="utf-8")
-    governance_source = (root / "academic_affairs_program_governance_service.py").read_text(encoding="utf-8")
-    student_source = (root / "student_program_resolution_service.py").read_text(encoding="utf-8")
+def test_w2_opening_task_and_student_resolution_share_canonical_activation_service():
+    service_root = Path(__file__).parents[1] / "app" / "modules" / "academic_affairs" / "services"
+    router_root = Path(__file__).parents[1] / "app" / "modules" / "academic_affairs" / "routers"
+    task_source = (service_root / "academic_affairs_task_generation_service.py").read_text(encoding="utf-8")
+    opening_source = (service_root / "academic_affairs_program_opening_projection_service.py").read_text(encoding="utf-8")
+    student_source = (service_root / "student_program_resolution_service.py").read_text(encoding="utf-8")
+    router_source = (router_root / "program_quality_router.py").read_text(encoding="utf-8")
 
     token = "academic_affairs_program_activation_service"
     resolver = "resolve_program_for_scope"
-    for source in (task_source, governance_source, student_source):
+    for source in (task_source, opening_source, student_source):
         assert token in source
         assert resolver in source
 
+    assert "academic_affairs_program_opening_projection_service" in router_source
     assert 'AaProgram.status == "ENABLED"' not in task_source

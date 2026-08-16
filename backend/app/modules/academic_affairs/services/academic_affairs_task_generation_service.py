@@ -1,6 +1,6 @@
 """教学任务批次生成器。
 
-只负责根据学期时间轴、已启用方案、方案绑定和行政班生成本学期应开任务；
+只负责根据学期时间轴、canonical Program activation、方案课程和行政班生成本学期应开任务；
 不覆盖公开 Service，不管理工作台状态机，也不建立第二套执行计划事实。
 """
 from __future__ import annotations
@@ -15,6 +15,7 @@ from app.core.exceptions import AppException
 from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
+from . import academic_affairs_program_activation_service as program_activation
 from . import academic_affairs_task_core_service as core
 
 _MIN_WEEKS = 1
@@ -89,6 +90,34 @@ def resolve_teaching_weeks(db, term_id):
     )
 
 
+def _resolve_binding_for_class(db, program, binding, school_class):
+    resolution = program_activation.resolve_program_for_scope(
+        db,
+        tenant_id=_tid(),
+        major_id=int(school_class.major_id) if school_class.major_id else binding.major_id,
+        grade_year=str(school_class.grade or binding.grade_year or program.grade_year or "").strip(),
+        class_id=int(school_class.id),
+    )
+    if resolution.status != "RESOLVED":
+        raise AppException(
+            "DATA_CONFLICT",
+            f"班级“{school_class.class_name}”适用培养方案无法唯一解析：{resolution.message}",
+            details={
+                "blocker": "PROGRAM_ACTIVATION_UNRESOLVED",
+                "classId": str(school_class.id),
+                "majorId": str(school_class.major_id or binding.major_id or ""),
+                "gradeYear": str(school_class.grade or binding.grade_year or program.grade_year or ""),
+                "resolutionStatus": resolution.status,
+                "resolutionRule": resolution.rule,
+            },
+            http_status=409,
+        )
+    return (
+        int(resolution.program.id) == int(program.id)
+        and int(resolution.binding.id) == int(binding.id)
+    )
+
+
 def generate_batch_tx(db, body, user) -> dict:
     term_id = int(body.termId)
     college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
@@ -137,7 +166,7 @@ def generate_batch_tx(db, body, user) -> dict:
     out_of_term_courses = 0
     programs = db.scalars(select(AaProgram).where(
         AaProgram.tenant_id == _tid(),
-        AaProgram.status == "ENABLED",
+        AaProgram.status.in_(sorted(program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES)),
         AaProgram.is_deleted.is_(False),
     )).all()
     for program in programs:
@@ -172,6 +201,8 @@ def generate_batch_tx(db, body, user) -> dict:
                     if not major or major.college_id != college_id:
                         continue
                 if not scope.all and scope.class_ids and school_class.id not in scope.class_ids:
+                    continue
+                if not _resolve_binding_for_class(db, program, binding, school_class):
                     continue
                 current_semester = resolve_class_semester(term, school_class)
                 if current_semester is None:
