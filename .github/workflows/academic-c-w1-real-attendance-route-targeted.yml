@@ -16,19 +16,19 @@ concurrency:
 
 jobs:
   route-preflight:
-    name: Real route test preflight / exact 1da9f7d2
+    name: Real route test preflight / exact 3288e109
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout exact C production head
         uses: actions/checkout@v4
         with:
-          ref: 1da9f7d2d626ac09660ddc048a06ae78089444a4
+          ref: 3288e10907106d17d9dec64dc2a185b90a503bd5
           fetch-depth: 0
 
       - name: Fetch pinned real-route staging
         run: |
-          test "$(git rev-parse HEAD)" = "1da9f7d2d626ac09660ddc048a06ae78089444a4"
+          test "$(git rev-parse HEAD)" = "3288e10907106d17d9dec64dc2a185b90a503bd5"
           git fetch origin tmp/academic-c-w1-real-write-staging
           test "$(git rev-parse FETCH_HEAD)" = "7975917d307b02e99f0abe9a17eaa9a72434635d"
           git show FETCH_HEAD:.tmp/academic-c-w1-real-write/test_aa_attendance_real_route_w1.py > /tmp/cw1-real-route.py
@@ -122,12 +122,12 @@ jobs:
       - name: Checkout exact C production head
         uses: actions/checkout@v4
         with:
-          ref: 1da9f7d2d626ac09660ddc048a06ae78089444a4
+          ref: 3288e10907106d17d9dec64dc2a185b90a503bd5
           fetch-depth: 0
 
       - name: Fetch identical pinned route contract
         run: |
-          test "$(git rev-parse HEAD)" = "1da9f7d2d626ac09660ddc048a06ae78089444a4"
+          test "$(git rev-parse HEAD)" = "3288e10907106d17d9dec64dc2a185b90a503bd5"
           git fetch origin tmp/academic-c-w1-real-write-staging
           test "$(git rev-parse FETCH_HEAD)" = "7975917d307b02e99f0abe9a17eaa9a72434635d"
           git show FETCH_HEAD:.tmp/academic-c-w1-real-write/test_aa_attendance_real_route_w1.py > /tmp/cw1-real-route.py
@@ -179,7 +179,7 @@ jobs:
           git diff --cached --check
           git commit -m "test(academic-c): prove real formal attendance route"
           git fetch origin agent/academic-c-teaching-execution
-          test "$(git rev-parse origin/agent/academic-c-teaching-execution)" = "1da9f7d2d626ac09660ddc048a06ae78089444a4"
+          test "$(git rev-parse origin/agent/academic-c-teaching-execution)" = "3288e10907106d17d9dec64dc2a185b90a503bd5"
           git push origin HEAD:agent/academic-c-teaching-execution
 
       - name: Stage focused evidence
@@ -189,7 +189,7 @@ jobs:
           test -f /tmp/cw1-real-route-junit.xml && cp /tmp/cw1-real-route-junit.xml artifacts/cw1-real-route/junit.xml || true
           printf '%s\n' \
             'No mock-login; real JWT create_access_token -> FastAPI mobile attendance routes.' \
-            'Fresh MySQL; formal ScopeHead/PUBLISHED/EFFECTIVE occurrence; versioned TeachingRoster.' \
+            'Fresh MySQL; real ACTIVE t_tenant authority; formal ScopeHead/PUBLISHED/EFFECTIVE occurrence; versioned TeachingRoster.' \
             'Route chain: class-options -> stale scheduleItemId 409 -> create -> detail -> mark -> submit -> DB roster snapshot.' \
             > artifacts/cw1-real-route/contract.txt
 
