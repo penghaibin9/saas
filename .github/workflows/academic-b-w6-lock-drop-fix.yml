@@ -1,0 +1,85 @@
+name: Academic B W6 LOCK Drop Fix
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - .github/workflows/academic-b-w6-lock-drop-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-b-w6-lock-drop-fix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact helper parent
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "5a003d92116604a244bf7771402311c5f53031f6"
+      - name: Apply exact W6-2 lock-order fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py")
+          test_path = Path("backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py")
+
+          source = source_path.read_text(encoding="utf-8")
+          start = source.index("\ndef student_drop(user, body):") + 1
+          end = source.index("\n\ndef lock_batch(user, batch_id):", start)
+          old_drop = source[start:end]
+          assert old_drop.index("record = db.query(AaSelectionRecord)") < old_drop.index("batch = db.query(AaSelectionBatch)")
+          assert old_drop.count(".with_for_update()") >= 2
+          new_drop = 'def student_drop(user, body):\n    """兼容既有 EnrollBody：按 selectionCourseId 定位本人记录；锁序统一 course→batch→record。"""\n    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord\n\n    with _base._core.session() as db:\n        student = _base._load_student(db)\n        course_id = int(body.selectionCourseId)\n\n        # Preserve the existing record-not-found rejection precedence without taking a row lock.\n        record_hint = db.query(\n            AaSelectionRecord.id,\n            AaSelectionRecord.batch_id,\n        ).filter(\n            AaSelectionRecord.selection_course_id == course_id,\n            AaSelectionRecord.tenant_id == _base._core._tid(),\n            AaSelectionRecord.student_id == student.id,\n            AaSelectionRecord.is_deleted.is_(False),\n        ).first()\n        if not record_hint:\n            raise not_found("选课记录不存在")\n\n        # Canonical Selection write lock order: course -> batch -> record.\n        # lock_batch owns batch -> record and never needs the course row, so a concurrent\n        # CLOSED->LOCKED transition can finish before DROP revalidates the batch state.\n        course = db.query(AaSelectionCourse).filter(\n            AaSelectionCourse.id == course_id,\n            AaSelectionCourse.tenant_id == _base._core._tid(),\n            AaSelectionCourse.is_deleted.is_(False),\n        ).with_for_update().first()\n        if not course:\n            raise AppException(\n                "DATA_CONFLICT",\n                "选课课程不存在，退课已取消，请联系教务处",\n                http_status=409,\n            )\n\n        batch = db.query(AaSelectionBatch).filter(\n            AaSelectionBatch.id == int(record_hint.batch_id),\n            AaSelectionBatch.tenant_id == _base._core._tid(),\n            AaSelectionBatch.is_deleted.is_(False),\n        ).with_for_update().first()\n        if not batch:\n            raise not_found("选课批次不存在")\n        _base._guard_batch_writable(db, batch)\n        if batch.status != _base._BATCH_OPEN:\n            raise _base._core._invalid("当前不在退课窗口")\n        active_round = _base._active_round(db, batch.id)\n        if active_round and not active_round.allow_drop:\n            raise _base._core._invalid("当前轮次不允许退课")\n\n        record = db.query(AaSelectionRecord).filter(\n            AaSelectionRecord.id == int(record_hint.id),\n            AaSelectionRecord.selection_course_id == course.id,\n            AaSelectionRecord.batch_id == batch.id,\n            AaSelectionRecord.tenant_id == _base._core._tid(),\n            AaSelectionRecord.student_id == student.id,\n            AaSelectionRecord.is_deleted.is_(False),\n        ).with_for_update().first()\n        if not record:\n            raise not_found("选课记录不存在")\n        if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:\n            raise _base._core._invalid("当前记录不可退课")\n\n        previous = record.status\n        record.status = _base._REC_DROPPED\n        record.dropped_at = datetime.utcnow()\n        if previous == _base._REC_SELECTED:\n            selected_count = int(course.selected_count or 0)\n            if selected_count <= 0:\n                raise AppException(\n                    "DATA_CONFLICT",\n                    "课程人数计数异常，退课已取消，请联系教务处",\n                    http_status=409,\n                )\n            course.selected_count = selected_count - 1\n\n        _base._core._audit(\n            db,\n            record.id,\n            "SELECTION_DROP",\n            f"studentNo={student.student_no};from={previous}",\n        )\n        db.commit()\n        return _base._core._record_dto(record)\n'
+          source = source[:start] + new_drop.rstrip() + source[end:]
+          source_path.write_text(source, encoding="utf-8")
+
+          test = test_path.read_text(encoding="utf-8")
+          coord_start = test.index("    batch_locked = Event()")
+          coord_end = test.index("\n    engine = get_engine()", coord_start)
+          new_coord = '    batch_locked = Event()\n    drop_lock_observed = Event()\n    first_drop_lock: Queue = Queue()\n    coordination_errors: Queue = Queue()\n\n    def _after_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):\n        normalized = " ".join(str(statement).lower().split())\n        name = current_thread().name\n        if (\n            name == "w6-locker"\n            and "aa_selection_batch" in normalized\n            and "for update" in normalized\n            and not batch_locked.is_set()\n        ):\n            batch_locked.set()\n            if not drop_lock_observed.wait(timeout=10):\n                coordination_errors.put("drop thread never acquired its first Selection FOR UPDATE")\n        elif (\n            name == "w6-dropper"\n            and "for update" in normalized\n            and not drop_lock_observed.is_set()\n        ):\n            if "aa_selection_course" in normalized:\n                first_drop_lock.put("course")\n                drop_lock_observed.set()\n            elif "aa_selection_record" in normalized:\n                first_drop_lock.put("record")\n                drop_lock_observed.set()\n'
+          test = test[:coord_start] + new_coord.rstrip() + test[coord_end:]
+          lock_marker = '\n    lock_state, lock_payload = result["lock"]'
+          assert lock_marker in test
+          insert = '\n    assert first_drop_lock.qsize() == 1\n    assert first_drop_lock.get_nowait() == "course"\n'
+          test = test.replace(lock_marker, insert + lock_marker, 1)
+          test_path.write_text(test, encoding="utf-8")
+          PY
+          python -m py_compile \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py | sort)"
+          test "$changed" = "$expected"
+      - name: Commit exact production fix and self-clean helper
+        run: |
+          set -euo pipefail
+          rm .github/workflows/academic-b-w6-lock-drop-fix.yml
+          git add \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py \
+            .github/workflows/academic-b-w6-lock-drop-fix.yml
+          staged="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/academic-b-w6-lock-drop-fix.yml \
+            backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py \
+            backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py | sort)"
+          test "$staged" = "$expected"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(academic-b): align W6 drop lock order"
+          git push origin HEAD:agent/academic-b-schedule-selection
