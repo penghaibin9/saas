@@ -21,8 +21,7 @@
           </view>
           <view class="oc__field">
             <text class="oc__label">生源地</text>
-            <input class="oc__input" v-model="origin" maxlength="100"
-              :placeholder="o.identity.origin || '如：广东省广州市'" placeholder-class="oc__ph" />
+            <MobileRegionPicker v-model="origin" :placeholder="o.identity.origin || '请选择省 / 市 / 区县'" />
           </view>
         </view>
 

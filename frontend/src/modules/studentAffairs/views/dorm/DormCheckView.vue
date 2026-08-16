@@ -25,7 +25,7 @@
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.taskName }}</span></template>
           <template #cell-type="{ row }">{{ typeLabel(row.checkType) }}</template>
           <template #cell-building="{ row }">{{ row.buildingName || '—' }}</template>
-          <template #cell-status="{ row }">{{ row.status }}</template>
+          <template #cell-status="{ row }">{{ statusLabel(row.status) }}</template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
               <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openTask(row)">记录</AppPermissionButton>
@@ -261,7 +261,10 @@ export default {
       catch (e) { this.errorMessage = e.message || '操作失败'; return false }
       finally { this.actioning = false }
     },
-    typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿' })[t] || t }
+    typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿' })[t] || t },
+    /** 检查任务状态：取值见 affairs_dorm_service.create（RUNNING）与模型默认值（DRAFT）；
+     *  未收录的取值原样显示，避免把后端新增状态误显示成空白 */
+    statusLabel(s) { return ({ DRAFT: '草稿', RUNNING: '进行中', DONE: '已完成', CLOSED: '已结束' })[s] || s || '—' }
   }
 }
 </script>

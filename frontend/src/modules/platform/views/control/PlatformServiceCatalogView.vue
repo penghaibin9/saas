@@ -54,8 +54,8 @@
             <option value="P2">P2</option><option value="P3">P3</option>
           </select>
           <select v-model="form.status" class="psc__input">
-            <option value="ACTIVE">ACTIVE</option><option value="DEGRADED">DEGRADED</option>
-            <option value="DEPRECATED">DEPRECATED</option>
+            <option value="ACTIVE">正常运行</option><option value="DEGRADED">降级运行</option>
+            <option value="DEPRECATED">已停用</option>
           </select>
           <input v-model.trim="form.ownerName" class="psc__input" placeholder="owner 姓名" />
           <input v-model.trim="form.runbookUrl" class="psc__input" placeholder="runbook URL" />
