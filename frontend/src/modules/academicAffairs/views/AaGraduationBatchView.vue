@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="审核批次"
-    subtitle="建批次 → 圈定应届生 → 十项供数三态预审 → 学院初审 → 教务终审 → 归档"
+    subtitle="建批次 → 圈定应届生 → 十一项供数三态预审 → 学院初审 → 教务终审 → 归档"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -20,13 +20,13 @@
           <div class="aa-batch-actions">
             <AppStatusTag type="primary">{{ batch.status }}</AppStatusTag>
             <AppButton :loading="busy" @click="generate">圈定应届生</AppButton>
-            <AppButton :loading="busy" @click="precheck">执行十项预审</AppButton>
+            <AppButton :loading="busy" @click="precheck">执行十一项预审</AppButton>
             <AppButton variant="primary" @click="$router.push(`/admin/academic-affairs/graduation/${batch.batchId}/results`)">查看结果 / 复核</AppButton>
             <AppButton @click="resetBatch">另建批次</AppButton>
           </div>
           <AppInlineAlert v-if="genInfo" type="success" :message="genInfo" />
           <AppInlineAlert v-if="preInfo" type="success" :message="preInfo" />
-          <p class="mp-note">圈定与预审均幂等（结果覆盖非追加）；十项含学籍/学分/必修/选修/实践/实习/毕设/处分/就业/归档，UNKNOWN 不阻断进人工复核。</p>
+          <p class="mp-note">十一项含学籍/学分/必修/选修/实践/实习/毕设/处分/就业/学工归档/费用。必需项 UNKNOWN 会形成系统异常，须先治理并重新预审；只有最新完整正式 Run 为 SYSTEM_PASSED 才能学院通过并进入教务终审。</p>
         </AppSectionCard>
       </template>
 

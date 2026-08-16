@@ -16,7 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.services.db_service import _tid
 
 from . import academic_affairs_graduation_service as graduation_service
@@ -81,6 +81,14 @@ def _program_id(items: list[dict]) -> int | None:
             except (TypeError, ValueError):
                 return None
     return None
+
+
+def _run_items(run) -> list[dict]:
+    try:
+        payload = json.loads(run.item_results_json or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return payload if isinstance(payload, list) else []
 
 
 def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> dict:
@@ -230,6 +238,65 @@ def precheck(batch_id, user) -> dict:
         }
 
 
+def college_review(result_id, user, action, note="") -> dict:
+    """Only a complete latest formal PASS may advance into academic final review."""
+    role = (user.get("currentRoleCode") or "").upper()
+    if role not in ({"COLLEGE_ADMIN"} | graduation_service._REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
+        raise no_permission("仅学院教务员/教务处可执行学院初审")
+
+    with graduation_service.session() as db:
+        from app.models import AaGraduationAuditResult, GraduationEvaluationRun
+
+        result = db.query(AaGraduationAuditResult).filter(
+            AaGraduationAuditResult.id == int(result_id),
+            AaGraduationAuditResult.tenant_id == _tid(),
+            AaGraduationAuditResult.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not result:
+            raise not_found("预审结果不存在")
+        graduation_service._assert_result_in_scope(db, user, result)
+        if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
+
+        action_code = (action or "").upper()
+        if action_code == "APPROVE":
+            run = db.scalars(select(GraduationEvaluationRun).where(
+                GraduationEvaluationRun.tenant_id == _tid(),
+                GraduationEvaluationRun.result_id == result.id,
+            ).order_by(GraduationEvaluationRun.run_no.desc()).limit(1)).first()
+            if not run:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该毕业结果没有可引用的正式 GraduationEvaluationRun；请先执行正式预审",
+                    http_status=409,
+                )
+            if str(run.overall or "") != str(result.overall or ""):
+                raise AppException(
+                    "APPROVAL_VERSION_CONFLICT",
+                    "毕业预审投影已偏离最新正式评估 Run，请重新预审后再执行学院通过",
+                    http_status=409,
+                )
+            if str(run.overall or "").upper() != "SYSTEM_PASSED" or _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "最新正式毕业评估仍异常或必需证据不完整；请先治理阻断项并重新预审。学院通过不能把异常结果推进教务终审",
+                    http_status=409,
+                )
+            result.status = "ACADEMIC_REVIEW"
+            result.review_note = note
+            graduation_service._audit(db, result.id, "COLLEGE_APPROVE")
+        else:
+            if not note or len(note.strip()) < 5:
+                raise AppException("BAD_REQUEST", "退回原因必填且不少于 5 字")
+            result.status = "REJECTED"
+            result.review_note = note.strip()
+            graduation_service._audit(db, result.id, "COLLEGE_REJECT", note.strip())
+
+        db.commit()
+        db.refresh(result)
+        return graduation_service._row(result)
+
+
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
     """Final decision must reference the exact immutable SYSTEM_PASSED run it used."""
     graduation_service._require_review_role(user)
@@ -275,11 +342,7 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
                 "最新正式毕业评估仍为 SYSTEM_ABNORMAL；普通教务终审禁止用审核备注覆盖评估结论，请先治理阻断项并重新预审",
                 http_status=409,
             )
-        try:
-            run_items = json.loads(run.item_results_json or "[]")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            run_items = []
-        if not isinstance(run_items, list) or _strict_overall(run_items) != "SYSTEM_PASSED":
+        if _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
             raise AppException(
                 "DATA_CONFLICT",
                 "最新正式毕业评估 Run 的必需证据集合不完整或不满足当前 fail-closed 合同，禁止终审；请重新预审生成完整正式 Run",
@@ -347,4 +410,5 @@ def install() -> None:
     graduation_service.evaluate_student = evaluate_student
     graduation_service.evaluate_preview = evaluate_preview
     graduation_service.precheck = precheck
+    graduation_service.college_review = college_review
     graduation_service.academic_final = academic_final

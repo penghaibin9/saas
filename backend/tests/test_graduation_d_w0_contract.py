@@ -31,7 +31,14 @@ def _complete_pass_items():
     return items
 
 
-def _seed_formal_result(*, suffix: str, overall: str, review_note: str, complete_evidence: bool = True):
+def _seed_formal_result(
+    *,
+    suffix: str,
+    overall: str,
+    review_note: str,
+    complete_evidence: bool = True,
+    result_status: str = "ACADEMIC_REVIEW",
+):
     from app.db.session import get_sessionmaker
     from app.models import (
         AaGraduationAuditBatch,
@@ -72,7 +79,7 @@ def _seed_formal_result(*, suffix: str, overall: str, review_note: str, complete
             overall=overall,
             review_note=review_note,
             rerun_count=1,
-            status="ACADEMIC_REVIEW",
+            status=result_status,
         )
         db.add(result)
         db.flush()
@@ -106,6 +113,17 @@ def _decision_rows(result_id: int):
             GraduationDecisionFact.tenant_id == TID,
             GraduationDecisionFact.result_id == result_id,
         ).all()
+    finally:
+        db.close()
+
+
+def _result_status(result_id: int):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditResult
+
+    db = get_sessionmaker()()
+    try:
+        return db.get(AaGraduationAuditResult, result_id).status
     finally:
         db.close()
 
@@ -145,6 +163,64 @@ def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
     for missing in sorted(required):
         partial = [row for row in complete if row["item"] != missing]
         assert immutable._strict_overall(partial) == "SYSTEM_ABNORMAL", missing
+
+
+def test_d_w0_abnormal_cannot_advance_to_academic_review(client, db_mode):
+    student_id, result_id, _ = _seed_formal_result(
+        suffix="E",
+        overall="SYSTEM_ABNORMAL",
+        review_note="",
+        result_status="SYSTEM_ABNORMAL",
+    )
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/college-review",
+        headers=_hdr(client),
+        json={"action": "APPROVE", "note": "学院已核验但系统阻断尚未治理"},
+    )
+    assert resp.status_code == 409, resp.text
+    assert _result_status(result_id) == "SYSTEM_ABNORMAL"
+
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    db = get_sessionmaker()()
+    try:
+        assert db.get(StudentProfile, student_id).student_status == "REGISTERED"
+    finally:
+        db.close()
+
+
+def test_d_w0_complete_pass_can_advance_to_academic_review(client, db_mode):
+    _, result_id, _ = _seed_formal_result(
+        suffix="F",
+        overall="SYSTEM_PASSED",
+        review_note="",
+        result_status="SYSTEM_PASSED",
+    )
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/college-review",
+        headers=_hdr(client),
+        json={"action": "APPROVE", "note": "学院初审确认通过"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["status"] == "ACADEMIC_REVIEW"
+    assert _result_status(result_id) == "ACADEMIC_REVIEW"
+
+
+def test_d_w0_incomplete_pass_cannot_advance_to_academic_review(client, db_mode):
+    _, result_id, _ = _seed_formal_result(
+        suffix="G",
+        overall="SYSTEM_PASSED",
+        review_note="",
+        complete_evidence=False,
+        result_status="SYSTEM_PASSED",
+    )
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/college-review",
+        headers=_hdr(client),
+        json={"action": "APPROVE", "note": "学院初审确认通过"},
+    )
+    assert resp.status_code == 409, resp.text
+    assert _result_status(result_id) == "SYSTEM_PASSED"
 
 
 def test_d_w0_abnormal_five_char_note_cannot_graduate(client, db_mode):

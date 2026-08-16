@@ -85,7 +85,7 @@ def _append_formal_pass_fixture(rid, sid):
         ]
         items.extend([
             {"item": "EMPLOYMENT", "result": "UNKNOWN", "evidence": "非毕业硬门提醒"},
-            {"item": "ARCHIVE", "result": "UNKNOWN", "evidence": "人工复核提醒"},
+            {"item": "ARCHIVE", "result": "PASS", "evidence": "D-W0 学工归档正式证据已满足"},
             {"item": "FEE", "result": "UNKNOWN", "evidence": "财务未对接，本项不阻断"},
         ])
         payload = json.dumps(items, ensure_ascii=False, sort_keys=True)
@@ -172,6 +172,7 @@ def test_gr4_final_needs_confirm(client, db_mode):
     bid = _batch(client, hdr)
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
+    _append_formal_pass_fixture(rid, ids["s"])
     _approve_for_final(client, hdr, rid)
     assert client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                        json={"conclusion": "GRADUATED", "confirm": False}).status_code == 409

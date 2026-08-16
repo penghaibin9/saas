@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises'
 
 const viewUrl = new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue', import.meta.url)
 const constantsUrl = new URL('../src/modules/academicAffairs/constants/grade-graduation.js', import.meta.url)
+const batchUrl = new URL('../src/modules/academicAffairs/views/AaGraduationBatchView.vue', import.meta.url)
+const termArchiveUrl = new URL('../src/modules/academicAffairs/views/AaTermArchiveView.vue', import.meta.url)
 
 test('Stage D 毕业审核首屏只使用现有五个批次事实给出办理优先级', async () => {
   const source = await readFile(viewUrl, 'utf8')
@@ -50,6 +52,21 @@ test('D-W0 ARCHIVE 展示必须指向学工归档语义而非迎新归档', asyn
   assert.match(source, /ARCHIVE:\s*'学工归档'/)
   assert.doesNotMatch(source, /ARCHIVE:\s*'迎新归档'/)
   assert.match(source, /十一项供数/)
+})
+
+test('D-W0/W1 可达入口必须显示十一项毕业预审与十三域教务归档', async () => {
+  const [batchSource, termArchiveSource] = await Promise.all([
+    readFile(batchUrl, 'utf8'),
+    readFile(termArchiveUrl, 'utf8')
+  ])
+  assert.match(batchSource, /十一项供数三态预审/)
+  assert.match(batchSource, /执行十一项预审/)
+  assert.match(batchSource, /学工归档\/费用/)
+  assert.doesNotMatch(batchSource, /十项供数|执行十项预审/)
+  assert.match(termArchiveSource, /13数据域完整性检查/)
+  assert.match(termArchiveSource, /13 数据域完整性检查/)
+  assert.match(termArchiveSource, /归档后发现错误必须走纠错版本链，不普通解冻/)
+  assert.doesNotMatch(termArchiveSource, /9数据域|9 数据域|特批解冻/)
 })
 
 test('Stage D 毕业审核详情与首屏均有响应式商业化收口', async () => {
