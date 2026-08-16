@@ -54,6 +54,9 @@ grep -Fqx 'replay_success=true' "$W5_EVIDENCE"
 grep -Fqx 'clean_tenant_schema_proven=true' "$W5_EVIDENCE"
 grep -Fqx 'migrated_tenant_schema_proven=true' "$W5_EVIDENCE"
 grep -Fqx 'migrated_tenant_contracts_proven=true' "$W5_EVIDENCE"
+grep -Fqx 'permission_negative_contract_proven=true' "$W5_EVIDENCE"
+grep -Fqx 'datascope_negative_contract_proven=true' "$W5_EVIDENCE"
+grep -Fqx 'cross_tenant_sentinel_proven=true' "$W5_EVIDENCE"
 grep -Fqx "d_source_commit=$EXACT_D_SHA" "$W5_EVIDENCE"
 git merge-base --is-ancestor "$EXACT_D_SHA" HEAD
 
@@ -147,7 +150,7 @@ BROWSER_PHASE="CLIENTS_START"
 (
   cd student-portal
   npm ci
-  VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+  VITE_BASE=/portal/ VITE_API_BASE_URL=/api/v1 VITE_PROXY_TARGET=http://127.0.0.1:8000 \
     nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
   echo $! > ../e2e/runtime-logs/student-portal.pid
 )
