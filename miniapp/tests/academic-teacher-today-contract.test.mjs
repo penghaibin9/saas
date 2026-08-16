@@ -36,6 +36,15 @@ test('blocked Teacher Today occurrence explains the server reason and never inve
   assert.match(page, /item\.attendanceActionLabel \|\| \(item\.attendanceRoute \? '去点名' : '暂不可操作'\)/)
 })
 
+test('APPLIED schedule change evidence is visible without inventing non-effective change states', () => {
+  assert.match(page, /item\.changeType === 'ADJUST'/)
+  assert.match(page, />已调课<\/text>/)
+  assert.match(page, /item\.changeType === 'MAKEUP'/)
+  assert.match(page, />补课<\/text>/)
+  assert.doesNotMatch(page, /SUBMITTED[^\n]*已调课/)
+  assert.doesNotMatch(page, /APPROVED[^\n]*已调课/)
+})
+
 test('calendar no-class states are explicit and never fall back to another course', () => {
   assert.match(page, /calendarSource === 'HOLIDAY'/)
   assert.match(page, /calendarSource === 'SWAP_SOURCE'/)
