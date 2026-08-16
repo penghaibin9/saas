@@ -70,7 +70,7 @@ async function loginAcademicAdmin(page) {
 }
 
 async function selectBatch(page, name) {
-  const item = page.locator('.aasel-batch-item').filter({ hasText: name }).first()
+  const item = page.locator('.aasel-batches > .aasel-batch').filter({ hasText: name }).first()
   await expect(item).toBeVisible({ timeout: 20_000 })
   await item.click()
   await expect(page.locator('.aasel-detail')).toContainText(name)
