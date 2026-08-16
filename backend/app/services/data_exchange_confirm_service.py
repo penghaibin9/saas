@@ -119,6 +119,7 @@ def confirm_import_job(*args, **kwargs):
         "ACADEMIC_ROSTER",
         "ACADEMIC_GRADE",
         "ACADEMIC_SCHEDULE",
+        "ACADEMIC_COURSE_CATALOG",
     }:
         return confirm_academic_import_job(*args, **kwargs)
     return _legacy.confirm_import_job(*args, **kwargs)
