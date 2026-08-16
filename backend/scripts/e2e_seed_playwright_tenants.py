@@ -2,7 +2,7 @@
 
 This script intentionally does not call the repository's rich demo/sandbox seeders. Those
 seeders create many cross-domain records and can lag behind newly tightened production
-constraints. Browser E2E prepares its own graduation prerequisites through real APIs.
+constraints. Browser E2E prepares its own domain prerequisites through real APIs.
 """
 from __future__ import annotations
 
@@ -32,6 +32,14 @@ TENANTS = (
         "short": "体验沙箱",
         "login": "admin2",
         "real_name": "E2E沙箱管理员",
+    },
+    {
+        "id": 1000000000000000911,
+        "code": "academic-w1-school",
+        "name": "A-W1学期权威验收学校",
+        "short": "A-W1验收校",
+        "login": "academic_w1_admin",
+        "real_name": "A-W1验收管理员",
     },
 )
 
