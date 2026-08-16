@@ -1,0 +1,144 @@
+name: Academic D Evaluation Concurrency One Shot
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py"
+      - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
+      - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-d-evaluation-concurrency-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-evaluation-contention:
+    name: MySQL 8 · Evaluation 50/100/200 same-task contention
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: development
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_POOL_SIZE: "220"
+      DB_MAX_OVERFLOW: "20"
+      DB_POOL_TIMEOUT: "30"
+      DB_CONNECT_TIMEOUT: "10"
+      DB_READ_TIMEOUT: "60"
+      DB_WRITE_TIMEOUT: "60"
+      FIELD_ENCRYPTION_KEY: academic-d-evaluation-concurrency-field-key-20260816
+      JWT_SECRET: academic-d-evaluation-concurrency-jwt-secret-20260816
+      MOCK_LOGIN_ENABLED: "true"
+      FAST_TEST_SCHEMA: "1"
+      PYTHONUNBUFFERED: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install frozen backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Upgrade isolated MySQL 8 schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic heads
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Compile D-W3 benchmark and touched runtime services
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            scripts/academic_d_evaluation_concurrency_probe.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py
+
+      - name: Run real MySQL evaluation contention evidence
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/academic_d_evaluation_concurrency_probe.py \
+            --output test-results/academic-d-evaluation-concurrency.json
+
+      - name: Summarize evaluation concurrency evidence
+        if: always()
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("test-results/academic-d-evaluation-concurrency.json")
+          with Path("/tmp/academic-d-evaluation-summary.md").open("w", encoding="utf-8") as out:
+              out.write("## Academic D-W3 Evaluation concurrency\n\n")
+              if not path.exists():
+                  out.write("Evidence JSON was not generated.\n")
+              else:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+                  out.write(f"correctnessPassed: **{data.get('correctnessPassed')}**\n\n")
+                  out.write("| scenario | concurrency | success | failure/rejected | p50 ms | p95 ms | p99 ms | row lock waits | deadlocks | records | submittedCount | correct |\n")
+                  out.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
+                  for row in data.get("scenarios", []):
+                      locks = row.get("mysqlLockDelta") or {}
+                      out.write(
+                          "| {scenario} | {concurrency} | {success} | {failure} | {p50} | {p95} | {p99} | {waits} | {deadlocks} | {records} | {submitted} | {correct} |\n".format(
+                              scenario=row.get("scenario"),
+                              concurrency=row.get("concurrency", row.get("attempts", "")),
+                              success=row.get("successCount", ""),
+                              failure=row.get("failureCount", row.get("rejectedCount", "")),
+                              p50=row.get("p50Ms", ""),
+                              p95=row.get("p95Ms", ""),
+                              p99=row.get("p99Ms", ""),
+                              waits=locks.get("Innodb_row_lock_waits", 0),
+                              deadlocks=locks.get("Innodb_deadlocks", 0),
+                              records=row.get("recordCount", ""),
+                              submitted=row.get("submittedCount", ""),
+                              correct=row.get("correct"),
+                          )
+                      )
+          PY
+          cat /tmp/academic-d-evaluation-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload D-W3 concurrency evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-evaluation-concurrency-${{ github.run_id }}
+          path: backend/test-results/academic-d-evaluation-concurrency.json
+          if-no-files-found: warn
+          retention-days: 14
