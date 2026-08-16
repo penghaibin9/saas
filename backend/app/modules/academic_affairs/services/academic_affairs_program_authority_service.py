@@ -329,10 +329,11 @@ def list_program_versions(program_id, user):
             seen.add(nxt.id)
             cursor = nxt
 
+        tip_id = chain[-1].id
         return [
             dict(
                 _core._row(program),
-                canNewVersion=program.status in _VERSIONABLE_STATUSES,
+                canNewVersion=(program.id == tip_id and program.status in _VERSIONABLE_STATUSES),
                 isCurrent=program.id == current.id,
             )
             for program in chain
