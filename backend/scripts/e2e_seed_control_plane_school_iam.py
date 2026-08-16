@@ -24,6 +24,7 @@ from app.services.permission_catalog_reconciliation_service import reconcile_per
 DEMO_TID = 1000000000000000003
 SANDBOX_TID = 1000000000000000007
 IAM_E2E_TID = 1000000000000000011
+IAM_DENIED_TID = 1000000000000000013
 IAM_E2E_TENANT = {
     "id": IAM_E2E_TID,
     "code": "iam-e2e-school",
@@ -31,6 +32,14 @@ IAM_E2E_TENANT = {
     "short": "IAM E2E",
     "login": "iam_admin",
     "real_name": "E2E IAM管理员",
+}
+IAM_DENIED_TENANT = {
+    "id": IAM_DENIED_TID,
+    "code": "iam-denied-school",
+    "name": "IAM 未授权测试学校",
+    "short": "IAM 未授权",
+    "login": "iam_denied_admin",
+    "real_name": "E2E IAM未授权管理员",
 }
 DEMO_TARGET_LOGIN = "iam_teacher_demo"
 IAM_TARGET_LOGIN = "iam_teacher"
@@ -113,12 +122,15 @@ def main() -> int:
     if len(head_sha) < 7:
         raise SystemExit("E2E_EXPECTED_SHA/GITHUB_SHA is required")
 
-    # Preserve the product semantics of the two shared E2E schools:
-    # demo-school remains the formal read-only demo, sandbox-school remains the
-    # unentitled negative case. Mutating IAM journeys use a dedicated writable school.
+    # Keep product semantics and browser journeys isolated from one another:
+    # demo-school and sandbox-school are entitled because the broad production
+    # interaction suite exercises real Internship pages/APIs on both. A dedicated
+    # IAM-only tenant carries the not-entitled negative case so that School IAM
+    # coverage cannot silently disable unrelated Internship acceptance journeys.
     db = get_sessionmaker()()
     try:
         ensure_tenant(db, IAM_E2E_TENANT)
+        ensure_tenant(db, IAM_DENIED_TENANT)
         db.commit()
     except Exception:
         db.rollback()
@@ -134,17 +146,18 @@ def main() -> int:
     if catalog_reconciliation.get("missingAfterReconcile") != 0:
         raise SystemExit("Permission Catalog reconciliation did not converge")
 
-    # Make entitlement state explicit. Demo and the dedicated IAM school own
-    # Internship; sandbox remains the not-entitled negative case.
-    for tid in (DEMO_TID, SANDBOX_TID, IAM_E2E_TID):
+    # Explicit entitlement state: demo/sandbox/dedicated IAM own Internship;
+    # only iam-denied-school is the not-entitled School IAM negative case.
+    for tid in (DEMO_TID, SANDBOX_TID, IAM_E2E_TID, IAM_DENIED_TID):
         platform_service.put_config_json(tid, "TENANT_META", "-", {
             "packageCode": "professional",
             "status": "active",
             "environment": "test",
         })
     platform_service.put_config_json(DEMO_TID, "FEATURES", "-", {"internship": True})
-    platform_service.put_config_json(SANDBOX_TID, "FEATURES", "-", {"internship": False})
+    platform_service.put_config_json(SANDBOX_TID, "FEATURES", "-", {"internship": True})
     platform_service.put_config_json(IAM_E2E_TID, "FEATURES", "-", {"internship": True})
+    platform_service.put_config_json(IAM_DENIED_TID, "FEATURES", "-", {"internship": False})
 
     convergence = shadow.converge_published_system_templates(
         actor_user_id=None,
@@ -186,7 +199,12 @@ def main() -> int:
             User.login_name == IAM_E2E_TENANT["login"],
             User.is_deleted.is_(False),
         )).first()
-        if demo_admin is None or sandbox_admin is None or iam_admin is None:
+        denied_admin = db.scalars(select(User).where(
+            User.tenant_id == IAM_DENIED_TID,
+            User.login_name == IAM_DENIED_TENANT["login"],
+            User.is_deleted.is_(False),
+        )).first()
+        if demo_admin is None or sandbox_admin is None or iam_admin is None or denied_admin is None:
             raise SystemExit("Playwright seed did not create all required school admins")
         db.commit()
 
@@ -195,6 +213,7 @@ def main() -> int:
         demo_admin_id = int(demo_admin.id)
         sandbox_admin_id = int(sandbox_admin.id)
         iam_admin_id = int(iam_admin.id)
+        denied_admin_id = int(denied_admin.id)
     except Exception:
         db.rollback()
         raise
@@ -208,6 +227,10 @@ def main() -> int:
         "iamTenantId": str(IAM_E2E_TID),
         "iamTenantCode": IAM_E2E_TENANT["code"],
         "iamAdminLogin": IAM_E2E_TENANT["login"],
+        "iamDeniedTenantId": str(IAM_DENIED_TID),
+        "iamDeniedTenantCode": IAM_DENIED_TENANT["code"],
+        "iamDeniedAdminLogin": IAM_DENIED_TENANT["login"],
+        "iamDeniedAdminUserId": str(denied_admin_id),
         "demoAdminUserId": str(demo_admin_id),
         "sandboxAdminUserId": str(sandbox_admin_id),
         "iamAdminUserId": str(iam_admin_id),
@@ -219,8 +242,9 @@ def main() -> int:
         "iamTargetLogin": IAM_TARGET_LOGIN,
         "targetPermission": TARGET_PERMISSION,
         "demoInternshipEntitled": True,
-        "sandboxInternshipEntitled": False,
+        "sandboxInternshipEntitled": True,
         "iamInternshipEntitled": True,
+        "iamDeniedInternshipEntitled": False,
         "tenantPermissionUniverseCount": len(universe),
         "permissionCatalogReconciliation": catalog_reconciliation,
         "templateConvergence": convergence,
