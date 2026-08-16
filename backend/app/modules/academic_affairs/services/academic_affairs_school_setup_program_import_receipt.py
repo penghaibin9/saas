@@ -127,6 +127,11 @@ def build_program_import_receipt(
             raise ValueError("Program reconciliation counts do not add up")
         if rejected or conflicts:
             raise ValueError("successful Program reconciliation cannot contain reject/conflict counts")
+        if write_count < imported:
+            raise ValueError("Program CREATE reconciliation cannot report fewer domain mutations than imported Programs")
+        all_reuse = bool(program_count > 0 and imported == 0 and reused == program_count)
+        if all_reuse and write_count != 0:
+            raise ValueError("REUSE-only Program reconciliation must have zero domain mutations")
 
         items = [dict(item) for item in (evidence.get("items") or ())]
         if len(items) != program_count:
@@ -147,7 +152,7 @@ def build_program_import_receipt(
             relationship_facts,
             key=lambda item: (item["programKey"], item["programId"]),
         ))
-        replay_noop = bool(program_count > 0 and imported == 0 and reused == program_count and write_count == 0)
+        replay_noop = all_reuse
         return {
             "contractVersion": "program-import-receipt-v1",
             "phase": PHASE_DEFINITION,
@@ -193,6 +198,11 @@ def build_program_import_receipt(
         )
         if created + reused != binding_count:
             raise ValueError("Program binding reconciliation counts do not add up")
+        if write_count < created:
+            raise ValueError("Program binding CREATE reconciliation cannot report fewer domain mutations than created bindings")
+        all_reuse = bool(binding_count > 0 and created == 0 and reused == binding_count)
+        if all_reuse and write_count != 0:
+            raise ValueError("REUSE-only Program binding reconciliation must have zero domain mutations")
         relationship_hash = str(evidence.get("activeRelationshipHash") or "").strip().lower()
         if not _SHA256_RE.fullmatch(relationship_hash):
             raise ValueError("BINDING reconciliation requires activeRelationshipHash")
@@ -206,7 +216,7 @@ def build_program_import_receipt(
             for item in items
         ):
             raise ValueError("Program binding receipt requires every relationship reread to match")
-        replay_noop = bool(binding_count > 0 and created == 0 and reused == binding_count and write_count == 0)
+        replay_noop = all_reuse
         return {
             "contractVersion": "program-import-receipt-v1",
             "phase": PHASE_BINDING,
