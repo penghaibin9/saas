@@ -22,6 +22,7 @@ _MIN_WEEKS = 1
 _MAX_WEEKS = 30
 _MAX_PROGRAM_TERM = 20
 _BATCH_SCOPE_SAMPLE_LIMIT = 20
+_EDITABLE_BATCH_STATUSES = ("DRAFT", "RETURNED")
 
 
 def _bounded(value):
@@ -119,18 +120,17 @@ def _resolve_binding_for_class(db, program, binding, school_class):
     )
 
 
-def _draft_batch_conditions(batch_model, term_id: int, college_id: int | None):
-    """Return the exact management scope for a reusable DRAFT task batch.
+def _editable_batch_conditions(batch_model, term_id: int, college_id: int | None):
+    """Return exact management scope for the one reusable editable task batch.
 
-    ``college_id`` is the generation/management scope, not the course owner.
-    School-wide generation must therefore reuse only a school-wide (NULL)
-    draft; otherwise it can accidentally attach new tasks to an arbitrary
-    college draft from the same term.
+    DRAFT and RETURNED are both editable by the canonical task workflow. Generation
+    must therefore resume either state instead of silently creating a second DRAFT
+    beside a RETURNED batch. ``college_id`` remains management scope, not course owner.
     """
     conditions = [
         batch_model.tenant_id == _tid(),
         batch_model.term_id == int(term_id),
-        batch_model.status == "DRAFT",
+        batch_model.status.in_(_EDITABLE_BATCH_STATUSES),
         batch_model.is_deleted.is_(False),
     ]
     conditions.append(
@@ -141,11 +141,31 @@ def _draft_batch_conditions(batch_model, term_id: int, college_id: int | None):
     return conditions
 
 
-def _college_draft_batch_integrity_statement(batch):
+def _choose_editable_batch(candidates, *, term_id: int, college_id: int | None):
+    """Choose one exact-scope editable batch; conflicting historical rows fail closed."""
+    rows = list(candidates or [])
+    if len(rows) > 1:
+        raise AppException(
+            "DATA_CONFLICT",
+            "同一学期和管理范围存在多条可编辑教学任务批次，禁止猜测继续生成；请先完成批次归并或归档",
+            details={
+                "blocker": "TASK_BATCH_EDITABLE_SCOPE_CONFLICT",
+                "termId": str(term_id),
+                "collegeId": str(college_id) if college_id is not None else "",
+                "scope": f"COLLEGE:{college_id}" if college_id is not None else "SCHOOL",
+                "batchIds": [str(row.id) for row in rows[:2]],
+                "batchStatuses": [str(row.status or "") for row in rows[:2]],
+            },
+            http_status=409,
+        )
+    return rows[0] if rows else None
+
+
+def _college_editable_batch_integrity_statement(batch):
     """Return one bounded query for legacy college-batch scope contamination.
 
     Before A-C4 introduces an explicit formation snapshot, every task already
-    present in a college-scoped DRAFT must still be provably tied to an
+    present in a college-scoped editable batch must still be provably tied to an
     administrative class whose major belongs to that same management college.
     Classless tasks are intentionally rejected here rather than guessed legal.
     """
@@ -187,19 +207,19 @@ def _college_draft_batch_integrity_statement(batch):
     )
 
 
-def _guard_college_draft_batch_integrity(db, batch) -> None:
-    """Fail closed before appending to a historically contaminated college draft."""
+def _guard_college_editable_batch_integrity(db, batch) -> None:
+    """Fail closed before appending to a historically contaminated college batch."""
     if getattr(batch, "college_id", None) is None:
         return
     invalid_ids = [int(value) for value in db.scalars(
-        _college_draft_batch_integrity_statement(batch)
+        _college_editable_batch_integrity_statement(batch)
     ).all()]
     if not invalid_ids:
         return
     sample_ids = invalid_ids[:_BATCH_SCOPE_SAMPLE_LIMIT]
     raise AppException(
         "DATA_CONFLICT",
-        "已有学院教学任务草稿批次包含无法证明属于该学院的历史任务，禁止继续追加；请先核对批次归属",
+        "已有学院教学任务可编辑批次包含无法证明属于该学院的历史任务，禁止继续追加；请先核对批次归属",
         details={
             "blocker": "TASK_BATCH_SCOPE_CONTAMINATED",
             "batchId": str(batch.id),
@@ -235,10 +255,16 @@ def generate_batch_tx(db, body, user) -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "请指定学院后再生成教学任务")
 
-    conditions = _draft_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
-    batch = db.scalars(select(AaTeachingTaskBatch).where(*conditions)).first()
+    conditions = _editable_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
+    candidates = db.scalars(
+        select(AaTeachingTaskBatch)
+        .where(*conditions)
+        .order_by(AaTeachingTaskBatch.id.asc())
+        .limit(2)
+    ).all()
+    batch = _choose_editable_batch(candidates, term_id=term_id, college_id=college_id)
     if batch and college_id is not None:
-        _guard_college_draft_batch_integrity(db, batch)
+        _guard_college_editable_batch_integrity(db, batch)
     if not batch:
         batch = AaTeachingTaskBatch(
             tenant_id=_tid(), term_id=term_id,
