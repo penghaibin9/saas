@@ -25,6 +25,7 @@ def test_attendance_class_options_excludes_non_executable_task_even_with_formal_
 
 def test_attendance_class_options_reuses_canonical_task_execution_guard():
     from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as public
     from app.modules.academic_affairs.services import mobile_academic_affairs_facade as facade
 
     assert attendance.ATTENDANCE_TASK_STATUSES == frozenset({
@@ -37,9 +38,13 @@ def test_attendance_class_options_reuses_canonical_task_execution_guard():
     assert attendance.attendance_task_executable("ASSIGNED") is False
     assert attendance.attendance_task_executable("PENDING_ASSIGN") is False
 
-    source = inspect.getsource(facade.teacher_attendance_class_options)
-    assert "ATTENDANCE_TASK_STATUSES" in source
-    assert "AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES))" in source
-    assert 'status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"])' not in source
+    read_source = inspect.getsource(facade.teacher_attendance_class_options)
+    assert "ATTENDANCE_TASK_STATUSES" in read_source
+    assert "AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES))" in read_source
+    assert 'status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"])' not in read_source
+
+    write_source = inspect.getsource(public.create_session)
+    assert "attendance_task_executable(task.status)" in write_source
+    assert "task.status or" not in write_source
 '''
 path.write_text(text, encoding="utf-8")
