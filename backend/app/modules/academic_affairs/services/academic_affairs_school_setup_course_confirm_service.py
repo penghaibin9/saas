@@ -74,7 +74,7 @@ def _is_course_unique_conflict(exc: IntegrityError) -> bool:
     return (
         code == 1062
         and "duplicate entry" in text
-        and ("uk_aa_course" in text or "t_aa_course" in text)
+        and "uk_aa_course" in text
     )
 
 
