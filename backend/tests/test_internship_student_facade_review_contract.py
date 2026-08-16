@@ -49,12 +49,14 @@ def test_catalog_is_fail_closed_to_current_tenant_campaign_published_and_accepte
     assert "InternshipPosition.tenant_id == tenant_id" in source
     assert "InternshipPosition.batch_id == campaign.batch_id" in source
     assert "InternshipPosition.campaign_id == campaign.id" in source
-    assert 'InternshipPosition.status == "PUBLISHED"' in source
+    assert '_exact_ascii_sql(InternshipPosition.status, "PUBLISHED")' in source
     assert "InternshipPosition.allocated_count < InternshipPosition.headcount" in source
     assert "EmpCompany.tenant_id == tenant_id" in source
-    assert 'EmpCompany.qualification_status == "PASSED"' in source
+    assert '_exact_ascii_sql(EmpCompany.status, "ACTIVE", case_insensitive=True)' in source
+    assert '_exact_ascii_sql(EmpCompany.coop_status, "ACTIVE")' in source
+    assert '_exact_ascii_sql(EmpCompany.qualification_status, "PASSED")' in source
     assert "EmpCompany.blacklist.is_(False)" in source
-    assert 'InternshipCampaignEnterprise.status == "ACCEPTED"' in source
+    assert '_exact_ascii_sql(InternshipCampaignEnterprise.status, "ACCEPTED")' in source
 
 
 def test_catalog_reuses_canonical_eligibility_and_never_silently_drops_paged_rows():
@@ -84,11 +86,13 @@ def test_catalog_major_match_filter_and_company_name_filter_are_real_server_side
     list_source = inspect.getsource(catalog_svc.list_catalog_positions)
     assert 'only_major_matched=_true_filter(params.get("majorMatched"))' in list_source
     major_sql = inspect.getsource(eligibility_svc._major_sql_predicate)
-    assert 'requirement.collate("utf8mb4_bin")' in major_sql
+    assert "_PYTHON_STRIP_EDGE_WS_REGEX" in inspect.getsource(eligibility_svc._python_strip_sql)
+    assert "normalized_requirement = _python_strip_sql(requirement)" in major_sql
+    assert 'normalized_requirement.collate("utf8mb4_bin")' in major_sql
     assert 'literal(major).collate("utf8mb4_bin")' in major_sql
     assert "func.locate(binary_major, binary_requirement) > 0" in major_sql
     assert "func.locate(binary_requirement, binary_major) > 0" in major_sql
-    assert "func.length(func.trim(requirement)) == 0" in major_sql
+    assert "func.length(normalized_requirement) == 0" in major_sql
     row_source = inspect.getsource(catalog_svc._public_row)
     assert '"POSSIBLE_MISMATCH"' in row_source
     assert '"MATCHED" if major_matched' in row_source
@@ -151,10 +155,13 @@ def test_student_catalog_applies_canonical_sql_predicates_before_count_and_page_
     sql_guard = inspect.getsource(eligibility_svc.apply_catalog_query_eligibility_filters_in_tx)
     for required in (
         "InternshipBatchParticipant",
-        "func.length(func.trim(InternshipPosition.work_content)) > 0",
+        "normalized_work_content = _python_strip_sql(InternshipPosition.work_content)",
+        "func.length(normalized_work_content) > 0",
         "InternshipPosition.daily_hours <= max_daily",
         "InternshipPosition.weekly_hours <= max_weekly",
         "InternshipPosition.hazardous_flag.is_(False)",
+        "normalized_remuneration_type = _python_strip_sql(InternshipPosition.remuneration_type)",
+        "func.length(normalized_remuneration_type) > 0",
         "_latest_approved_inspection_predicates",
         "_major_sql_predicate(major_name)",
     ):
