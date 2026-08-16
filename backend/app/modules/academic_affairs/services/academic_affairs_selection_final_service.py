@@ -746,22 +746,43 @@ def _student_enroll_guarded(user, body):
 
 
 def student_drop(user, body):
-    """兼容既有 EnrollBody：按 selectionCourseId 定位本人记录。"""
+    """兼容既有 EnrollBody：按 selectionCourseId 定位本人记录；锁序统一 course→batch→record。"""
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
 
     with _base._core.session() as db:
         student = _base._load_student(db)
         course_id = int(body.selectionCourseId)
-        record = db.query(AaSelectionRecord).filter(
+
+        # Preserve the existing record-not-found rejection precedence without taking a row lock.
+        record_hint = db.query(
+            AaSelectionRecord.id,
+            AaSelectionRecord.batch_id,
+        ).filter(
             AaSelectionRecord.selection_course_id == course_id,
             AaSelectionRecord.tenant_id == _base._core._tid(),
             AaSelectionRecord.student_id == student.id,
             AaSelectionRecord.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not record:
+        ).first()
+        if not record_hint:
             raise not_found("选课记录不存在")
+
+        # Canonical Selection write lock order: course -> batch -> record.
+        # lock_batch owns batch -> record and never needs the course row, so a concurrent
+        # CLOSED->LOCKED transition can finish before DROP revalidates the batch state.
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == course_id,
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not course:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课课程不存在，退课已取消，请联系教务处",
+                http_status=409,
+            )
+
         batch = db.query(AaSelectionBatch).filter(
-            AaSelectionBatch.id == int(record.batch_id),
+            AaSelectionBatch.id == int(record_hint.batch_id),
             AaSelectionBatch.tenant_id == _base._core._tid(),
             AaSelectionBatch.is_deleted.is_(False),
         ).with_for_update().first()
@@ -773,6 +794,17 @@ def student_drop(user, body):
         active_round = _base._active_round(db, batch.id)
         if active_round and not active_round.allow_drop:
             raise _base._core._invalid("当前轮次不允许退课")
+
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == int(record_hint.id),
+            AaSelectionRecord.selection_course_id == course.id,
+            AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not record:
+            raise not_found("选课记录不存在")
         if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:
             raise _base._core._invalid("当前记录不可退课")
 
@@ -780,19 +812,14 @@ def student_drop(user, body):
         record.status = _base._REC_DROPPED
         record.dropped_at = datetime.utcnow()
         if previous == _base._REC_SELECTED:
-            updated = db.query(AaSelectionCourse).filter(
-                AaSelectionCourse.id == record.selection_course_id,
-                AaSelectionCourse.tenant_id == _base._core._tid(),
-                AaSelectionCourse.selected_count > 0,
-            ).update({
-                AaSelectionCourse.selected_count: AaSelectionCourse.selected_count - 1,
-            }, synchronize_session=False)
-            if not updated:
+            selected_count = int(course.selected_count or 0)
+            if selected_count <= 0:
                 raise AppException(
                     "DATA_CONFLICT",
                     "课程人数计数异常，退课已取消，请联系教务处",
                     http_status=409,
                 )
+            course.selected_count = selected_count - 1
 
         _base._core._audit(
             db,
@@ -802,7 +829,6 @@ def student_drop(user, body):
         )
         db.commit()
         return _base._core._record_dto(record)
-
 
 def lock_batch(user, batch_id):
     """CLOSED→LOCKED 使用当前正式名单投影合同，并对批次行加锁。"""

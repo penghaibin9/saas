@@ -144,7 +144,8 @@ def test_w6_lock_and_student_drop_share_one_lock_order(client, db_mode):
     assert closed.json()["data"]["status"] == "CLOSED"
 
     batch_locked = Event()
-    record_locked = Event()
+    drop_lock_observed = Event()
+    first_drop_lock: Queue = Queue()
     coordination_errors: Queue = Queue()
 
     def _after_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -157,16 +158,19 @@ def test_w6_lock_and_student_drop_share_one_lock_order(client, db_mode):
             and not batch_locked.is_set()
         ):
             batch_locked.set()
-            if not record_locked.wait(timeout=10):
-                coordination_errors.put("drop thread never acquired SelectionRecord FOR UPDATE")
+            if not drop_lock_observed.wait(timeout=10):
+                coordination_errors.put("drop thread never acquired its first Selection FOR UPDATE")
         elif (
             name == "w6-dropper"
-            and "aa_selection_record" in normalized
             and "for update" in normalized
-            and not record_locked.is_set()
+            and not drop_lock_observed.is_set()
         ):
-            record_locked.set()
-
+            if "aa_selection_course" in normalized:
+                first_drop_lock.put("course")
+                drop_lock_observed.set()
+            elif "aa_selection_record" in normalized:
+                first_drop_lock.put("record")
+                drop_lock_observed.set()
     engine = get_engine()
     event.listen(engine, "after_cursor_execute", _after_cursor_execute)
     outcomes: Queue = Queue()
@@ -222,6 +226,9 @@ def test_w6_lock_and_student_drop_share_one_lock_order(client, db_mode):
     assert not deadlocks, {
         key: f"{type(exc).__name__}: {exc}" for key, exc in deadlocks.items()
     }
+
+    assert first_drop_lock.qsize() == 1
+    assert first_drop_lock.get_nowait() == "course"
 
     lock_state, lock_payload = result["lock"]
     assert lock_state == "ok", f"LOCK failed: {lock_payload!r}"
