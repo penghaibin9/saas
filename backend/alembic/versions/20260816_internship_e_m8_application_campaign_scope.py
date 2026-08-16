@@ -1,13 +1,15 @@
-"""E integration M8: scope formal POSITION applications to recruitment campaign.
+"""E integration M8: add rollback-compatible campaign scope to formal applications.
 
 Revision ID: 20260816_internship_e_m8
 Revises: 20260815_internship_e_m7
 
-The legacy application ledger historically allowed one row per record/volunteer slot. V3 can run
-multiple recruitment rounds against the same InternshipRecord, so canonical POSITION slots need an
-explicit campaign discriminator. Existing immutable snapshots are the primary backfill authority;
-remaining draft rows are backfilled only when their campaign-owned position and volunteer group
-agree. Legacy/self-arranged rows intentionally remain campaign_id=NULL.
+N-1 compatibility is deliberate:
+- historical / legacy writers keep using record_id and the existing unique constraint unchanged;
+- V3 campaign rows use campaign_record_id while physical record_id stays NULL;
+- the ORM exposes a logical record_id as COALESCE(record_id, campaign_record_id).
+
+This lets multiple recruitment rounds coexist without making the previous release understand
+campaign-scoped rows during an application rollback.
 """
 from __future__ import annotations
 
@@ -22,9 +24,9 @@ depends_on = None
 
 _TABLE = "t_internship_application"
 _OLD_UK = "uk_intern_application_record_volunteer"
-_CAMPAIGN_UK = "uk_intern_application_record_campaign_volunteer"
-_LEGACY_UK = "uk_intern_application_legacy_record_volunteer"
+_CAMPAIGN_UK = "uk_intern_application_campaign_record_volunteer"
 _CAMPAIGN_IX = "ix_t_internship_application_campaign_id"
+_CAMPAIGN_RECORD_IX = "ix_t_internship_application_campaign_record_id"
 
 
 def _require_mysql() -> None:
@@ -64,70 +66,43 @@ def upgrade() -> None:
                 comment="→ t_internship_recruitment_campaign.id; NULL for legacy/self-arranged",
             ),
         )
-
-    # Immutable submitted material is the strongest campaign authority.
-    op.execute(sa.text("""
-        UPDATE t_internship_application AS a
-        INNER JOIN t_internship_application_material_snapshot AS s
-          ON s.id = a.material_snapshot_id
-         AND s.tenant_id = a.tenant_id
-        SET a.campaign_id = s.campaign_id
-        WHERE a.campaign_id IS NULL
-          AND a.application_type = 'POSITION'
-          AND a.material_snapshot_id IS NOT NULL
-    """))
-
-    # Draft / withdrawn V3 rows have no snapshot yet. Backfill only when the position's campaign
-    # and the record's volunteer-group campaign are the same fact; otherwise leave NULL fail-safe.
-    op.execute(sa.text("""
-        UPDATE t_internship_application AS a
-        INNER JOIN t_internship_position AS p
-          ON p.id = a.position_id
-         AND p.tenant_id = a.tenant_id
-         AND p.is_deleted = 0
-        INNER JOIN t_internship_volunteer_group AS g
-          ON g.tenant_id = a.tenant_id
-         AND g.record_id = a.record_id
-         AND g.campaign_id = p.campaign_id
-         AND g.is_deleted = 0
-        SET a.campaign_id = p.campaign_id
-        WHERE a.campaign_id IS NULL
-          AND a.application_type = 'POSITION'
-          AND p.campaign_id IS NOT NULL
-    """))
-
-    columns = _columns()
-    if "legacy_record_id" not in columns:
+    if "campaign_record_id" not in columns:
         op.add_column(
             _TABLE,
             sa.Column(
-                "legacy_record_id",
+                "campaign_record_id",
                 sa.BigInteger(),
-                sa.Computed("CASE WHEN campaign_id IS NULL THEN record_id ELSE NULL END", persisted=True),
                 nullable=True,
-                comment="legacy NULL-campaign uniqueness key",
+                comment="→ t_internship_record.id; V3 campaign namespace only",
             ),
         )
 
+    # Expand only: old binaries continue to require/populate physical record_id. Relaxing
+    # NOT NULL is backward compatible; no existing row is rewritten into the V3 namespace.
+    record = next(column for column in inspect(bind).get_columns(_TABLE) if column["name"] == "record_id")
+    if not record.get("nullable"):
+        op.alter_column(
+            _TABLE,
+            "record_id",
+            existing_type=sa.BigInteger(),
+            nullable=True,
+        )
+
     unique_names = _unique_names()
-    if _OLD_UK in unique_names:
-        op.drop_constraint(_OLD_UK, _TABLE, type_="unique")
-        unique_names.discard(_OLD_UK)
+    if _OLD_UK not in unique_names:
+        raise RuntimeError(
+            "legacy application uniqueness must remain present during M8 expand phase"
+        )
     if _CAMPAIGN_UK not in unique_names:
         op.create_unique_constraint(
             _CAMPAIGN_UK,
             _TABLE,
-            ["tenant_id", "record_id", "campaign_id", "volunteer_no"],
-        )
-    unique_names = _unique_names()
-    if _LEGACY_UK not in unique_names:
-        op.create_unique_constraint(
-            _LEGACY_UK,
-            _TABLE,
-            ["tenant_id", "legacy_record_id", "volunteer_no"],
+            ["tenant_id", "campaign_record_id", "campaign_id", "volunteer_no"],
         )
     if _CAMPAIGN_IX not in _indexes():
         op.create_index(_CAMPAIGN_IX, _TABLE, ["campaign_id"])
+    if _CAMPAIGN_RECORD_IX not in _indexes():
+        op.create_index(_CAMPAIGN_RECORD_IX, _TABLE, ["campaign_record_id"])
 
 
 def downgrade() -> None:
@@ -136,38 +111,52 @@ def downgrade() -> None:
     if not inspect(bind).has_table(_TABLE):
         return
 
-    # The N-1 constraint cannot represent two rounds for the same record/slot. Refuse a destructive
-    # rollback instead of silently deleting or coalescing immutable application history.
-    duplicate = bind.execute(sa.text("""
-        SELECT tenant_id, record_id, volunteer_no, COUNT(*) AS row_count
-        FROM t_internship_application
-        GROUP BY tenant_id, record_id, volunteer_no
-        HAVING COUNT(*) > 1
-        LIMIT 1
-    """)).first()
-    if duplicate:
-        raise RuntimeError(
-            "cannot downgrade internship E M8 after multiple campaign rounds exist for one record/slot"
-        )
+    columns = _columns()
+    if "campaign_record_id" in columns:
+        # N-1 schema can represent only one row per record/slot. Refuse destructive rollback once
+        # multiple campaign rounds have used the same canonical record/slot.
+        duplicate = bind.execute(sa.text("""
+            SELECT tenant_id, campaign_record_id, volunteer_no, COUNT(*) AS row_count
+            FROM t_internship_application
+            WHERE campaign_record_id IS NOT NULL
+            GROUP BY tenant_id, campaign_record_id, volunteer_no
+            HAVING COUNT(*) > 1
+            LIMIT 1
+        """)).first()
+        if duplicate:
+            raise RuntimeError(
+                "cannot downgrade internship E M8 after multiple campaign rounds exist for one record/slot"
+            )
+
+        # For a safe downgrade, project the single campaign row back into the legacy physical key.
+        bind.execute(sa.text("""
+            UPDATE t_internship_application
+            SET record_id = campaign_record_id
+            WHERE record_id IS NULL
+              AND campaign_record_id IS NOT NULL
+        """))
 
     unique_names = _unique_names()
     if _CAMPAIGN_UK in unique_names:
         op.drop_constraint(_CAMPAIGN_UK, _TABLE, type_="unique")
-    unique_names = _unique_names()
-    if _LEGACY_UK in unique_names:
-        op.drop_constraint(_LEGACY_UK, _TABLE, type_="unique")
-    if _OLD_UK not in _unique_names():
-        op.create_unique_constraint(
-            _OLD_UK,
-            _TABLE,
-            ["tenant_id", "record_id", "volunteer_no"],
-        )
+    if _CAMPAIGN_RECORD_IX in _indexes():
+        op.drop_index(_CAMPAIGN_RECORD_IX, table_name=_TABLE)
     if _CAMPAIGN_IX in _indexes():
         op.drop_index(_CAMPAIGN_IX, table_name=_TABLE)
 
     columns = _columns()
-    if "legacy_record_id" in columns:
-        op.drop_column(_TABLE, "legacy_record_id")
+    if "campaign_record_id" in columns:
+        op.drop_column(_TABLE, "campaign_record_id")
     columns = _columns()
     if "campaign_id" in columns:
         op.drop_column(_TABLE, "campaign_id")
+
+    # All surviving rows now have the legacy key again.
+    record = next(column for column in inspect(bind).get_columns(_TABLE) if column["name"] == "record_id")
+    if record.get("nullable"):
+        op.alter_column(
+            _TABLE,
+            "record_id",
+            existing_type=sa.BigInteger(),
+            nullable=False,
+        )

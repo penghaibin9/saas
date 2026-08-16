@@ -102,20 +102,41 @@ def test_recruitment_application_slots_are_campaign_scoped_end_to_end():
     assert "InternshipApplication.campaign_id == campaign_id" in action_lock
 
 
-def test_application_model_and_m8_preserve_round_history_and_legacy_uniqueness():
+def test_application_model_and_m8_preserve_n_minus_one_and_round_history():
     constraints = {constraint.name for constraint in InternshipApplication.__table__.constraints if constraint.name}
-    assert "uk_intern_application_record_campaign_volunteer" in constraints
-    assert "uk_intern_application_legacy_record_volunteer" in constraints
+    assert "uk_intern_application_record_volunteer" in constraints
+    assert "uk_intern_application_campaign_record_volunteer" in constraints
+    assert "record_id" in InternshipApplication.__table__.columns
+    assert "campaign_record_id" in InternshipApplication.__table__.columns
     assert "campaign_id" in InternshipApplication.__table__.columns
-    assert "legacy_record_id" in InternshipApplication.__table__.columns
+    assert "legacy_record_id" not in InternshipApplication.__table__.columns
+
+    legacy = InternshipApplication(
+        tenant_id=1, record_id=101, student_id=201, campaign_id=None,
+        application_type="POSITION", volunteer_no=1,
+    )
+    assert legacy.record_id == 101
+    assert legacy._legacy_record_id == 101
+    assert legacy.campaign_record_id is None
+
+    campaign = InternshipApplication(
+        tenant_id=1, record_id=101, student_id=201, campaign_id=301,
+        application_type="POSITION", volunteer_no=1,
+    )
+    assert campaign.record_id == 101
+    assert campaign._legacy_record_id is None
+    assert campaign.campaign_record_id == 101
 
     migration = M8.read_text(encoding="utf-8")
+    upgrade = migration.split("def downgrade()", 1)[0]
     assert 'revision = "20260816_internship_e_m8"' in migration
     assert 'down_revision = "20260815_internship_e_m7"' in migration
-    assert "t_internship_application_material_snapshot" in migration
-    assert "t_internship_volunteer_group" in migration
-    assert "g.campaign_id = p.campaign_id" in migration
+    assert "campaign_record_id" in migration
     assert "uk_intern_application_record_volunteer" in migration
+    assert "uk_intern_application_campaign_record_volunteer" in migration
+    assert "op.drop_constraint(" not in upgrade
+    assert "op.drop_column(" not in upgrade
+    assert "nullable=True" in upgrade
     assert "cannot downgrade internship E M8" in migration
 
 
