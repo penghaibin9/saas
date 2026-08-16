@@ -133,6 +133,20 @@
     "internship.student.manage",
     "internship.visit.plan.manage",
     "internship.visit.plan.view",
-    "student.import"
+    "student.import",
+    "academicAffairs.process.export",
+    "academicAffairs.process.manage",
+    "academicAffairs.process.view",
+    "campusService.export",
+    "campusService.import",
+    "dataCenter.report.manage",
+    "employment.export",
+    "employment.import",
+    "orientation.export",
+    "orientation.import",
+    "studentAffairs.export",
+    "studentAffairs.orientation.export",
+    "studentAffairs.orientation.manage",
+    "studentAffairs.orientation.view"
   ]
 }
