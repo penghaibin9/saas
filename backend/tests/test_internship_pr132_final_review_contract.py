@@ -16,7 +16,9 @@ def test_legacy_staff_approval_revalidates_position_before_shared_assignment_aut
 
 def test_major_sql_projection_normalizes_python_strip_whitespace_before_binary_locate():
     source = inspect.getsource(eligibility_svc._major_sql_predicate)
-    assert "normalized_requirement = func.regexp_replace(requirement, _PYTHON_STRIP_EDGE_WS_REGEX, \"\")" in source
+    strip_source = inspect.getsource(eligibility_svc._python_strip_sql)
+    assert "normalized_requirement = _python_strip_sql(requirement)" in source
+    assert "func.regexp_replace(value, _PYTHON_STRIP_EDGE_WS_REGEX, \"\")" in strip_source
     assert 'binary_requirement = normalized_requirement.collate("utf8mb4_bin")' in source
     assert 'binary_major = literal(major).collate("utf8mb4_bin")' in source
     assert source.index("normalized_requirement =") < source.index("binary_requirement =")
@@ -27,3 +29,18 @@ def test_major_sql_projection_normalizes_python_strip_whitespace_before_binary_l
     # Python str.strip() includes C0 separators, NBSP, OGHAM, the U+2000 block and ideographic space.
     for token in (r"\x{001C}-\x{001F}", r"\x{0085}", r"\x{00A0}", r"\x{1680}", r"\x{2000}-\x{200A}", r"\x{3000}"):
         assert token in pattern
+
+
+def test_catalog_sql_projection_matches_python_string_truthiness_and_strip_semantics():
+    source = inspect.getsource(eligibility_svc.apply_catalog_query_eligibility_filters_in_tx)
+    assert "normalized_work_content = _python_strip_sql(InternshipPosition.work_content)" in source
+    assert "normalized_remuneration_type = _python_strip_sql(InternshipPosition.remuneration_type)" in source
+    assert "func.length(normalized_work_content) > 0" in source
+    assert "func.length(normalized_remuneration_type) > 0" in source
+    assert "func.char_length(InternshipPosition.prohibited_reason) == 0" in source
+    assert "func.char_length(InternshipPosition.remuneration_cycle) > 0" in source
+    assert "func.char_length(InternshipPosition.remuneration_type) == len(\"UNPAID\")" in source
+    assert 'literal("UNPAID").collate("utf8mb4_bin")' in source
+    assert "func.trim(InternshipPosition.work_content)" not in source
+    assert "InternshipPosition.prohibited_reason == \"\"" not in source
+    assert "InternshipPosition.remuneration_cycle != \"\"" not in source

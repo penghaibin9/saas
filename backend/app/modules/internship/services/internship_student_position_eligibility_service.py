@@ -30,6 +30,11 @@ _PYTHON_STRIP_EDGE_WS_REGEX = (
 )
 
 
+def _python_strip_sql(value):
+    """Project Python ``str.strip()`` edge-whitespace semantics into MySQL 8 SQL."""
+    return func.regexp_replace(value, _PYTHON_STRIP_EDGE_WS_REGEX, "")
+
+
 def assert_student_selection_window(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -> None:
     window_guard.assert_campaign_operation_window(campaign, "STUDENT_SELECT", now=now)
 
@@ -38,7 +43,7 @@ def _major_sql_predicate(major_name: str):
     """MySQL SQL equivalent of `_major_hit`, including Python strip/case/accent semantics."""
     major = str(major_name or "").strip()
     requirement = InternshipPosition.major_requirement
-    normalized_requirement = func.regexp_replace(requirement, _PYTHON_STRIP_EDGE_WS_REGEX, "")
+    normalized_requirement = _python_strip_sql(requirement)
     unlimited = or_(requirement.is_(None), func.length(normalized_requirement) == 0)
     if not major:
         return unlimited
@@ -145,8 +150,15 @@ def apply_catalog_query_eligibility_filters_in_tx(
         # Canonical evaluator would not be able to establish a safe limit either.
         return query.where(false())
 
+    normalized_work_content = _python_strip_sql(InternshipPosition.work_content)
+    normalized_remuneration_type = _python_strip_sql(InternshipPosition.remuneration_type)
+    unpaid_exact = and_(
+        func.char_length(InternshipPosition.remuneration_type) == len("UNPAID"),
+        InternshipPosition.remuneration_type.collate("utf8mb4_bin")
+        == literal("UNPAID").collate("utf8mb4_bin"),
+    )
     query = query.where(
-        func.length(func.trim(InternshipPosition.work_content)) > 0,
+        func.length(normalized_work_content) > 0,
         InternshipPosition.daily_hours.is_not(None),
         InternshipPosition.daily_hours <= max_daily,
         InternshipPosition.weekly_hours.is_not(None),
@@ -155,17 +167,25 @@ def apply_catalog_query_eligibility_filters_in_tx(
         InternshipPosition.overtime_allowed.is_not(None),
         InternshipPosition.rest_days_per_week.is_not(None),
         InternshipPosition.remuneration_type.is_not(None),
-        func.length(func.trim(InternshipPosition.remuneration_type)) > 0,
+        func.length(normalized_remuneration_type) > 0,
         InternshipPosition.accommodation_provided.is_not(None),
         InternshipPosition.meal_provided.is_not(None),
         InternshipPosition.hazardous_flag.is_(False),
-        or_(InternshipPosition.prohibited_reason.is_(None), InternshipPosition.prohibited_reason == ""),
+        # Python treats every non-empty string, including ordinary/Unicode whitespace, as truthy.
+        # Use character length instead of an equality under MySQL PAD SPACE collation.
         or_(
-            InternshipPosition.remuneration_type == "UNPAID",
+            InternshipPosition.prohibited_reason.is_(None),
+            func.char_length(InternshipPosition.prohibited_reason) == 0,
+        ),
+        or_(
+            unpaid_exact,
             and_(
                 InternshipPosition.remuneration_amount.is_not(None),
                 InternshipPosition.remuneration_cycle.is_not(None),
-                InternshipPosition.remuneration_cycle != "",
+                # Canonical Python uses truthiness here, so a whitespace-only but non-empty cycle is
+                # still truthy. char_length preserves that exact behavior; `!= ''` under PAD SPACE
+                # would incorrectly exclude ordinary spaces.
+                func.char_length(InternshipPosition.remuneration_cycle) > 0,
             ),
         ),
         # Canonical evaluate_position_for_student_in_tx enforces the company master expiry before
