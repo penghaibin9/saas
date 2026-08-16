@@ -5,11 +5,9 @@ import test from 'node:test'
 const urlFor = (path) => new URL(`../../${path}`, import.meta.url)
 const read = (path) => fs.readFileSync(urlFor(path), 'utf8')
 
-test('A-C1 current-term UI follows the backend authority instead of exposing a governance bypass', () => {
+test('A-C1 backend resolver and public current facade are the single current-term contract', () => {
   const resolver = read('backend/app/modules/academic_affairs/services/academic_affairs_term_context_service.py')
   const facade = read('backend/app/modules/academic_affairs/services/academic_affairs_dashboard_scope_facade.py')
-  const page = read('frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue')
-  const detail = read('frontend/src/modules/academicAffairs/views/AaTermDetailView.vue')
 
   assert.match(resolver, /calendar\.resolve_current\(/)
   assert.match(resolver, /authority="CALENDAR_GOVERNANCE"/)
@@ -25,22 +23,67 @@ test('A-C1 current-term UI follows the backend authority instead of exposing a g
   assert.match(facade, /"currentAuthority": resolved\.authority/)
   assert.match(facade, /"canDirectSwitch": resolved\.can_direct_switch/)
   assert.doesNotMatch(facade, /calendar\.resolve_current/)
+})
 
-  assert.match(page, /current\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
-  assert.match(page, /!isResolvedCurrent\(t\) && directSwitchAllowed/)
-  assert.match(page, /!isResolvedCurrent\(t\) && governanceManaged/)
-  assert.match(page, /\/admin\/system\/academic-calendar/)
-  assert.match(page, /currentError/)
-  assert.doesNotMatch(page, /this\.current = res\.code === 0 \? res\.data : null/)
+test('reachable current-changing A-W1 pages do not expose a SYS-12 bypass', () => {
+  const currentPage = read('frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue')
+  const listPage = read('frontend/src/modules/academicAffairs/views/AaTermListView.vue')
+  const calendarPage = read('frontend/src/modules/academicAffairs/views/AaCalendarView.vue')
 
-  assert.match(detail, /detail\.allowedActions\?\.publish && directCurrentSwitchAllowed/)
-  assert.match(detail, /detail\.allowedActions\?\.setCurrent && directCurrentSwitchAllowed/)
-  assert.match(detail, /v-if="isResolvedCurrent"/)
-  assert.match(detail, /detail\.teachingWeeks \?\? '未配置'/)
-  assert.match(detail, /academicAffairsApi\.getCurrentTerm\(\)/)
-  assert.match(detail, /currentContext\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
-  assert.match(detail, /当前学期 Authority 解析失败/)
-  assert.doesNotMatch(detail, /detail\.teachingWeeks \|\| 0/)
+  assert.match(currentPage, /current\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
+  assert.match(currentPage, /!isResolvedCurrent\(t\) && directSwitchAllowed/)
+  assert.match(currentPage, /!isResolvedCurrent\(t\) && governanceManaged/)
+  assert.match(currentPage, /\/admin\/system\/academic-calendar/)
+  assert.match(currentPage, /currentError/)
+
+  assert.match(listPage, /academicAffairsApi\.getCurrentTerm\(\)/)
+  assert.match(listPage, /isResolvedCurrent\(row\)/)
+  assert.match(listPage, /currentContext\?\.canDirectSwitch !== false/)
+  assert.match(listPage, /governanceManaged/)
+  assert.match(listPage, /统一治理切换/)
+  assert.match(listPage, /历史学期列表始终可读/)
+  assert.doesNotMatch(listPage, /v-if="row\.isCurrent"/)
+  assert.doesNotMatch(listPage, /v-else-if="!row\.isCurrent"/)
+
+  assert.match(calendarPage, /academicAffairsApi\.getCurrentTerm\(\)/)
+  assert.match(calendarPage, /currentContext\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
+  assert.match(calendarPage, /isSelectedResolvedCurrent/)
+  assert.match(calendarPage, /if \(this\.governanceManaged\) return this\.isSelectedResolvedCurrent/)
+  assert.match(calendarPage, /publishCalendar\(this\.termId\)/)
+  assert.match(calendarPage, /发布已 fail-closed/)
+  assert.doesNotMatch(calendarPage, /t\.isCurrent \? '（当前）'/)
+})
+
+test('reachable A-W1 readers resolve current separately while keeping history browsable', () => {
+  const weeks = read('frontend/src/modules/academicAffairs/views/AaTermWeeksView.vue')
+  const teachingWeeks = read('frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue')
+  const status = read('frontend/src/modules/academicAffairs/views/AaTermStatusView.vue')
+  const years = read('frontend/src/modules/academicAffairs/views/AaAcademicYearView.vue')
+
+  for (const source of [weeks, teachingWeeks, status, years]) {
+    assert.match(source, /academicAffairsApi\.getCurrentTerm\(\)/)
+    assert.match(source, /currentError/)
+  }
+
+  assert.match(weeks, /isResolvedCurrent\(t\)/)
+  assert.doesNotMatch(weeks, /find\(\(t\) => t\.isCurrent\)/)
+
+  assert.match(teachingWeeks, /isResolvedCurrent\(t\)/)
+  assert.doesNotMatch(teachingWeeks, /find\(\(t\) => t\.isCurrent\)/)
+
+  assert.match(status, /isResolvedCurrent\(row\)/)
+  assert.doesNotMatch(status, /v-if="row\.isCurrent"/)
+
+  assert.match(years, /isResolvedCurrentYear\(row\)/)
+  assert.match(years, /currentContext\?\.yearCode/)
+  assert.doesNotMatch(years, /v-if="row\.isCurrentYear"/)
+})
+
+test('the current-term real-click Gold matches rows by the label the page actually renders', () => {
+  const gold = read('e2e/specs/academic-affairs-current-term-authority.spec.mjs')
+  assert.match(gold, /function renderedTermLabel\(term\)/)
+  assert.match(gold, /hasText: renderedTermLabel\(term\)/)
+  assert.doesNotMatch(gold, /function termRow\(page, termName\)/)
 })
 
 test('formal teaching-task setup never teaches an 18-week default', () => {
