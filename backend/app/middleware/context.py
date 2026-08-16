@@ -22,8 +22,12 @@ class RequestContextMiddleware(_legacy.RequestContextMiddleware):
                 from app.core.platform_principal import is_platform_principal
                 from app.core.response import fail
 
-                actor = get_current_user_ctx() or {}
-                if not is_platform_principal(actor):
+                actor = get_current_user_ctx()
+                # Authentication owns the unauthenticated boundary.  When there is no
+                # resolved actor yet, continue into the route dependency so missing or
+                # invalid Bearer credentials retain the canonical 401 semantics.  This
+                # outer gate only rejects an already-authenticated school-plane actor.
+                if actor and not is_platform_principal(actor):
                     try:
                         from app.services import audit_log
                         audit_log.record(
