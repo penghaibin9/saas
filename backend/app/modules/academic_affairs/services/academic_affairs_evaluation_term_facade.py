@@ -29,15 +29,26 @@ def _guard_term(db, term_id):
     guard_term_writable(db, int(term_id))
 
 
-def _writable_batch(db, batch_id, *, lock: bool = False):
+def _writable_batch(db, batch_id, *, lock: str | None = None):
+    """Resolve a writable evaluation batch, optionally holding a transaction-scoped row lock.
+
+    ``lock='share'`` is used by submissions: concurrent evaluators may proceed together, while a
+    close/score transaction cannot pass them. ``lock='update'`` is used by close/score: it waits
+    for all in-flight shared locks and then freezes the OPEN state before calculating projections.
+    ``populate_existing`` is required so a waiter re-reads the post-lock status instead of reusing
+    an identity-map value observed before another transaction changed the batch.
+    """
     if lock:
         from app.models import AaEvaluationBatch
 
-        batch = db.query(AaEvaluationBatch).filter(
+        if lock not in {"share", "update"}:
+            raise ValueError(f"unsupported evaluation batch lock mode: {lock}")
+        query = db.query(AaEvaluationBatch).filter(
             AaEvaluationBatch.id == int(batch_id),
             AaEvaluationBatch.tenant_id == _legacy._tid(),
             AaEvaluationBatch.is_deleted.is_(False),
-        ).with_for_update().first()
+        ).populate_existing()
+        batch = query.with_for_update(read=(lock == "share")).first()
         if not batch:
             raise not_found("评教批次不存在")
     else:
