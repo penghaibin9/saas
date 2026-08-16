@@ -39,6 +39,7 @@ def _safe_task_snapshot(task, batch) -> str:
         "courseName": task.course_name or "",
         "administrativeClassId": str(task.class_id or ""),
         "administrativeClassName": str(getattr(task, "class_name", None) or ""),
+        "formationMode": _core._explicit_formation(task) or "",
         "merged": bool(task.is_merged),
         "mergedIntoId": str(task.merged_into_id or ""),
     }, ensure_ascii=False, sort_keys=True)
@@ -180,6 +181,7 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
 
     if (
         initialize_admin_roster
+        and _core._may_initialize_admin_roster(task, teaching_class)
         and not teaching_class.current_roster_version_id
         and teaching_class.status == "ACTIVE"
     ):

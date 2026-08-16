@@ -17,6 +17,12 @@ from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_teaching_roster_service as _roster_base
+from .academic_affairs_task_formation_policy import (
+    FORMATION_ADMIN_FIXED,
+    FORMATION_MERGED,
+    class_type_for_formation,
+    normalize_formation_mode,
+)
 
 _legacy_resolve_roster = _roster_base.resolve_teaching_task_roster
 _legacy_validate_selection_lock = _roster_base.validate_selection_lock
@@ -57,7 +63,20 @@ def _task_and_batch(db, task_id: int):
     return task, batch
 
 
+def _explicit_formation(task) -> str | None:
+    """Read only an explicit canonical formation snapshot when present.
+
+    Legacy TeachingTask rows do not have this shared INT-owned column yet, so
+    absence must preserve the existing compatibility behavior. Invalid future
+    persisted values fail closed through the canonical normalizer.
+    """
+    return normalize_formation_mode(getattr(task, "formation_mode", None))
+
+
 def _class_type(task) -> str:
+    formation = _explicit_formation(task)
+    if formation:
+        return class_type_for_formation(formation)
     if bool(getattr(task, "is_merged", False)):
         return "MERGED"
     return "ADMIN"
@@ -88,6 +107,7 @@ def _task_snapshot(task, batch) -> str:
         "courseName": str(getattr(task, "course_name", None) or ""),
         "administrativeClassId": str(getattr(task, "class_id", None) or ""),
         "administrativeClassName": str(getattr(task, "class_name", None) or ""),
+        "formationMode": _explicit_formation(task) or "",
         "merged": bool(getattr(task, "is_merged", False)),
         "mergedIntoId": str(getattr(task, "merged_into_id", None) or ""),
     }, ensure_ascii=False, sort_keys=True)
@@ -213,6 +233,20 @@ def _administrative_roster(db, task):
     ]
 
 
+def _may_initialize_admin_roster(task, teaching_class) -> bool:
+    """Return whether ADMIN_CLASS is a legal initial roster source.
+
+    Explicit formation is authoritative once INT adds the shared snapshot.
+    SELECTABLE/RETAKE/LAYERED must never be made schedule-ready by fabricating
+    an administrative roster. Legacy rows keep current ADMIN/MERGED behavior,
+    while an already selection-managed class is also protected immediately.
+    """
+    formation = _explicit_formation(task)
+    if formation:
+        return formation in {FORMATION_ADMIN_FIXED, FORMATION_MERGED}
+    return _status(getattr(teaching_class, "class_type", None)) in {"ADMIN", "MERGED"}
+
+
 def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=True):
     from app.models import AaTeachingClass
 
@@ -259,7 +293,12 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
         teaching_class.source_snapshot_json = _task_snapshot(task, batch)
     _sync_primary_teacher(db, teaching_class, task)
 
-    if initialize_admin_roster and not teaching_class.current_roster_version_id and teaching_class.status == "ACTIVE":
+    if (
+        initialize_admin_roster
+        and _may_initialize_admin_roster(task, teaching_class)
+        and not teaching_class.current_roster_version_id
+        and teaching_class.status == "ACTIVE"
+    ):
         student_ids = _administrative_roster(db, task)
         if student_ids:
             create_roster_version(
