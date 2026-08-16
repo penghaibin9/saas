@@ -6,7 +6,12 @@ on:
       - agent/academic-c-teaching-execution
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py'
+      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/tests/test_aa_exam_formal_print_contract.py'
+      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'
+      - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'
+      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'
       - '.github/workflows/academic-c-w3-exam-targeted.yml'
   workflow_dispatch:
 
@@ -19,7 +24,7 @@ concurrency:
 
 jobs:
   exam-formal-print:
-    name: formal print projection / MySQL
+    name: formal print projection / MySQL + frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -51,6 +56,9 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
@@ -58,10 +66,22 @@ jobs:
           pip install cryptography
       - name: Compile C-W3 formal print projection
         working-directory: backend
-        run: python -m py_compile app/modules/academic_affairs/services/academic_affairs_exam_print_service.py
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_exam_print_service.py \
+            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
+            tests/test_aa_exam_formal_print_contract.py \
+            tests/test_aa_exam_formal_print_wiring_contract.py
       - name: C-W3 formal print exact contract on MySQL
         working-directory: backend
-        run: pytest -q tests/test_aa_exam_formal_print_contract.py -p no:warnings --durations=10
+        run: |
+          pytest -q \
+            tests/test_aa_exam_formal_print_contract.py \
+            tests/test_aa_exam_formal_print_wiring_contract.py \
+            -p no:warnings --durations=10
+      - name: C-W3 formal print frontend source contract
+        working-directory: frontend
+        run: node --test tests/academic-exam-formal-print-source-contract.test.mjs
       - name: Prove formal print provider is read-only
         working-directory: backend
         run: |
