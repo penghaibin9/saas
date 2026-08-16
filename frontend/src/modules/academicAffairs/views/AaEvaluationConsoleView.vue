@@ -124,7 +124,7 @@
       <DataTable v-else :columns="appealColumns" :rows="appeals" row-key="appealId">
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'RESOLVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'primary'" :label="row.status" dot /></template>
         <template #cell-ops="{ row }">
-          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link" @click="reviewAppeal(row.appealId, 'RESOLVE')">受理</button>
+          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link" @click="approveAppeal(row)">{{ row.status === 'SUBMITTED' ? '学院初审通过' : '教务终审通过' }}</button>
           <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link is-danger" @click="rejectAppeal(row.appealId)">驳回</button>
         </template>
       </DataTable>
@@ -296,9 +296,20 @@ export default {
       }
       this.confirmVisible = true
     },
-    async reviewAppeal(id, action) {
-      const res = await api.reviewAppeal(id, action)
-      if (res.code === 0) { toast.success('已受理'); this.loadAppeals() } else toast.error(res.message)
+    approveAppeal(row) {
+      const isCollegeStage = row.status === 'SUBMITTED'
+      const stageLabel = isCollegeStage ? '学院初审' : '教务终审'
+      this.confirmRequireReason = true
+      this.confirmReasonLabel = `${stageLabel}意见（≥5 字）`
+      this.confirmTitle = `${stageLabel}通过`
+      this.confirmMessage = `请填写${stageLabel}意见。审核意见将记入审计，后端仍按当前账号数据范围校验本级审核权限。`
+      this.pendingAction = async (reason) => {
+        const note = (reason || '').trim()
+        if (note.length < 5) { toast.error('审核意见不少于 5 字'); return }
+        const res = await api.reviewAppeal(row.appealId, 'RESOLVE', note)
+        if (res.code === 0) { toast.success(`${stageLabel}已通过`); await this.loadAppeals() } else toast.error(res.message)
+      }
+      this.confirmVisible = true
     },
     rejectAppeal(id) {
       this.confirmRequireReason = true

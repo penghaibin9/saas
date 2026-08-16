@@ -34,7 +34,8 @@ def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import (
         AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
-        College, Major, Role, SchoolClass, StudentProfile, User, UserRole,
+        College, Major, Role, SchoolClass, StudentProfile, TeacherStudentScope,
+        User, UserRole,
     )
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as tc_service
     from app.services import student_account_link_service as link_service
@@ -48,6 +49,14 @@ def _seed(db_mode):
     db.add(term); db.flush()
     col = College(tenant_id=TID, college_name="软件学院", status="ACTIVE")
     db.add(col); db.flush()
+    db.add(TeacherStudentScope(
+        tenant_id=TID,
+        teacher_key="college_admin01",
+        role_code="COLLEGE_ADMIN",
+        scope_type="COLLEGE",
+        ref_value=col.college_name,
+        status="ACTIVE",
+    ))
     major = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
     db.add(major); db.flush()
     klass = SchoolClass(
@@ -116,7 +125,6 @@ def _seed(db_mode):
         )
         student_ids[student_no] = int(student.id)
 
-    # 正式 teaching-class service 必须依赖 request/tenant context；测试夹具也不得绕过租户隔离。
     set_tenant({"tenantId": str(TID)})
     try:
         teaching_class = tc_service.ensure_teaching_class_for_task(
@@ -340,17 +348,34 @@ def test_ev4_appeal_flow(client, db_mode):
     appeal = client.post(
         f"{BASE}/evaluation/appeals",
         headers=teacher,
-        json={"resultId": rid, "reason": "评分异常，学生恶意打分"},
+        json={"resultId": rid, "reason": "评分异常，申请按正式流程复核"},
     )
     assert appeal.status_code == 200, appeal.text
     aid = appeal.json()["data"]["appealId"]
-    reviewed = client.post(
+
+    mine = client.get(f"{BASE}/evaluation/appeals", headers=teacher)
+    assert mine.status_code == 200, mine.text
+    mine_rows = mine.json()["data"]["list"]
+    assert any(row["appealId"] == aid and row["teacherKey"] == _TEACHER_LOGIN for row in mine_rows)
+
+    college = _hdr(client, "college_admin01")
+    college_review = client.post(
+        f"{BASE}/evaluation/appeals/{aid}/review",
+        headers=college,
+        json={"action": "RESOLVE", "reason": "学院初审通过并转教务终审"},
+    )
+    assert college_review.status_code == 200, college_review.text
+    assert college_review.json()["data"]["status"] == "COLLEGE_REVIEW"
+    assert college_review.json()["data"]["currentNode"] == "ACADEMIC"
+
+    final_review = client.post(
         f"{BASE}/evaluation/appeals/{aid}/review",
         headers=admin,
-        json={"action": "RESOLVE"},
+        json={"action": "RESOLVE", "reason": "教务终审通过并完成申诉复核"},
     )
-    assert reviewed.status_code == 200
-    assert reviewed.json()["data"]["status"] == "RESOLVED"
+    assert final_review.status_code == 200, final_review.text
+    assert final_review.json()["data"]["status"] == "RESOLVED"
+    assert final_review.json()["data"]["currentNode"] is None
 
 
 def test_ev5_student_cannot_manage_403(client, db_mode):
