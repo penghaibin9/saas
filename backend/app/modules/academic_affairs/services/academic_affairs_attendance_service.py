@@ -97,6 +97,9 @@ def _row(item) -> dict:
         "sessionDate": item.session_date,
         "slotNo": item.slot_no,
         "sessionType": item.session_type or "常规",
+        # source_type is the new INT authority when present. Legacy rows remain NULL during
+        # expand/backfill and are interpreted by the public compatibility layer.
+        "sourceType": getattr(item, "source_type", None),
         "totalCount": item.total_count,
         "presentCount": item.present_count,
         "absentCount": item.absent_count,

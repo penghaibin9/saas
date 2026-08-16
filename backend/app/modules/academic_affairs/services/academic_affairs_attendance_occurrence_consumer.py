@@ -571,8 +571,15 @@ def resolve_formal_occurrence(
     item_teacher, item_class = _validate_task_item_identity(task, item)
 
     published_at = getattr(selected_head, "published_at", None)
+    # Canonical concrete occurrence identity stays stable when a republish preserves the same
+    # TeachingTask/date/slot. ScheduleItem/batch/ScopeHead versions remain immutable evidence;
+    # they must not manufacture a second classroom attendance fact for the same occurrence.
+    occurrence_identity = (
+        f"V1:TASK:{int(task.id)}:DATE:{requested.isoformat()}:SLOT:{requested_slot}"
+    )
     return {
         "sourceType": "FORMAL_TEACHING",
+        "occurrenceIdentity": occurrence_identity,
         "termId": str(term.id),
         "scopeType": selected_head.scope_type,
         "scopeId": str(selected_head.scope_id),

@@ -202,6 +202,12 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
     assert result["sessionTypeLabel"] == "管理员特殊补录"
     assert result["teachingTaskId"] is None
     assert result["rosterIdentity"] is None
+    stored = next(obj for obj in db.added if obj.__class__.__name__ == "AaAttendanceSession")
+    assert stored.teaching_task_id is None
+    assert stored.occurrence_identity is None
+    assert stored.source_type == "ADMIN_SPECIAL"
+    assert stored.source_reason == "历史迁移数据人工补录"
+    assert "proof-1" in stored.source_evidence
     assert audits and audits[-1][1] == "CREATE"
     assert "source=ADMIN_SPECIAL" in audits[-1][2]
     assert "reason=历史迁移数据人工补录" in audits[-1][2]
@@ -294,6 +300,12 @@ def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatc
     assert result["teachingTaskId"] == "30"
     assert result["sourceType"] == "ADMIN_SPECIAL"
     assert result["rosterIdentity"]["rosterVersionId"] == "rv-9"
+    stored = next(obj for obj in db.added if obj.__class__.__name__ == "AaAttendanceSession")
+    assert stored.teaching_task_id == 30
+    assert stored.occurrence_identity is None
+    assert stored.source_type == "ADMIN_SPECIAL"
+    assert stored.source_reason == "调课异常后的人工证据补录"
+    assert "AA-30" in stored.source_evidence
     assert audits and "source=ADMIN_SPECIAL" in audits[-1][2]
 
 
@@ -314,9 +326,10 @@ def test_explicit_admin_special_stats_condition_is_exact_match():
 
     condition = service._stats_session_type_condition(AaAttendanceSession, "ADMIN_SPECIAL")
     sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
+    assert "source_type" in sql
     assert "ADMIN_SPECIAL" in sql
     assert " = " in sql
-    assert "IS NULL" not in sql
+    assert "IS NULL" in sql
 
 
 def test_normal_teacher_contract_remains_task_first():
@@ -331,3 +344,19 @@ def test_normal_teacher_contract_remains_task_first():
     assert reason == ""
     assert evidence == ""
     assert _teacher()["currentRoleCode"] == "ACADEMIC_TEACHER"
+
+
+
+def test_persisted_source_authority_overrides_legacy_session_type_marker():
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
+
+    backfilled_special = service._with_source_type({
+        "sessionType": "常规",
+        "sourceType": "ADMIN_SPECIAL",
+    })
+    assert backfilled_special["sourceType"] == "ADMIN_SPECIAL"
+    assert backfilled_special["sourceLabel"] == "管理员特殊补录"
+
+    invalid = service._with_source_type({"sessionType": "常规", "sourceType": "BROKEN_SOURCE"})
+    assert invalid["sourceType"] == "UNKNOWN"
+    assert invalid["sourceLabel"] == "来源待治理"

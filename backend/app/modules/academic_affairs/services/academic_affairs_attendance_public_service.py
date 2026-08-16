@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib
 import json
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException, not_found
 
@@ -90,9 +90,27 @@ def _admin_special_contract(role: str, body: dict, *, task_id) -> tuple[bool, st
 
 
 def _with_source_type(result: dict) -> dict:
-    is_special = str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
-    result["sourceType"] = _ADMIN_SPECIAL if is_special else "FORMAL_TEACHING"
-    result["sourceLabel"] = "管理员特殊补录" if is_special else "正式课堂"
+    stored_source = str(result.get("sourceType") or "").strip().upper()
+    if stored_source in {"FORMAL_TEACHING", _ADMIN_SPECIAL}:
+        effective_source = stored_source
+    elif stored_source:
+        # A non-empty invalid source is governance debt; never silently reinterpret it as formal.
+        effective_source = "UNKNOWN"
+    else:
+        # Expand/backfill compatibility for historical rows that predate source_type.
+        effective_source = (
+            _ADMIN_SPECIAL
+            if str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
+            else "FORMAL_TEACHING"
+        )
+
+    is_special = effective_source == _ADMIN_SPECIAL
+    result["sourceType"] = effective_source
+    result["sourceLabel"] = (
+        "管理员特殊补录"
+        if is_special
+        else ("正式课堂" if effective_source == "FORMAL_TEACHING" else "来源待治理")
+    )
     result["sessionTypeLabel"] = (
         "管理员特殊补录" if is_special else str(result.get("sessionType") or "常规")
     )
@@ -100,13 +118,24 @@ def _with_source_type(result: dict) -> dict:
 
 
 def _stats_session_type_condition(model, session_type=None):
-    """默认课堂统计排除 ADMIN_SPECIAL；只有显式筛选时才进入特殊补录统计。"""
+    """source_type 优先；NULL 历史行才回退 session_type，避免回填后特殊补录污染课堂统计。"""
     requested = str(session_type or "").strip()
     if requested:
-        return model.session_type == requested
+        if requested.upper() == _ADMIN_SPECIAL:
+            return or_(
+                model.source_type == _ADMIN_SPECIAL,
+                and_(model.source_type.is_(None), model.session_type == _ADMIN_SPECIAL),
+            )
+        return and_(
+            or_(model.source_type == "FORMAL_TEACHING", model.source_type.is_(None)),
+            model.session_type == requested,
+        )
     return or_(
-        model.session_type.is_(None),
-        model.session_type != _ADMIN_SPECIAL,
+        model.source_type == "FORMAL_TEACHING",
+        and_(
+            model.source_type.is_(None),
+            or_(model.session_type.is_(None), model.session_type != _ADMIN_SPECIAL),
+        ),
     )
 
 
@@ -274,9 +303,27 @@ def create_session(user, body) -> dict:
                 occurrence=occurrence,
             )
 
+        source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"
+        occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None
+        source_evidence = (
+            special_evidence
+            if is_admin_special
+            else json.dumps(
+                occurrence,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
         item = AaAttendanceSession(
             tenant_id=_tid(),
             class_id=class_id,
+            teaching_task_id=int(task.id) if task else None,
+            occurrence_identity=occurrence_identity,
+            source_type=source_type,
+            source_reason=special_reason if is_admin_special else None,
+            source_evidence=source_evidence,
             course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
             term_code=f"{current_term.year_code}-{current_term.term_no}",
             teacher_key=teacher_key,
