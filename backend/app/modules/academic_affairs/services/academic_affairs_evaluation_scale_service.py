@@ -1,9 +1,11 @@
-"""D-W3 teaching-evaluation scale projection and close/score implementation.
+"""D-W3 teaching-evaluation scoped read projection and close/score implementation.
 
-No new evaluation truth is introduced here. The public evaluation service keeps the same
-state machine, DTOs, anonymity rules and composite formula; this module only replaces
-high-cardinality Python materialization/N+1 execution with bounded SQL pagination,
-aggregate queries and one result prefetch.
+Permission grants and data scope are independent authorities. ``evaluation.view`` is also
+used by ordinary teachers for self-service endpoints, so full management reads are narrowed
+here instead of widening every holder to tenant-wide visibility.
+
+No new evaluation truth is introduced. State machine, DTOs, anonymity, batch lock protocol
+and composite-score policy remain owned by the canonical evaluation service.
 """
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from datetime import datetime
 
 from sqlalchemy import and_, case, func, or_, select
 
-from app.core.affairs_security import _derive_keys
+from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import not_found
 
 from . import academic_affairs_evaluation_term_facade as _base
 
@@ -26,17 +30,135 @@ def _page(page, page_size, *, default_size: int, max_size: int = 100) -> tuple[i
     return page, page_size
 
 
+def _scope_spec(user, db) -> dict:
+    """Resolve evaluation visibility without inventing a new global COURSE scope type.
+
+    TENANT_ALL and COLLEGE come from the shared affairs security context. Other authorized
+    staff are restricted to teaching-task ownership through stable teacher keys. This keeps
+    ordinary teachers useful while remaining fail-closed for unrelated batches.
+    """
+    ctx = build_affairs_context(user or {}, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return {"type": "TENANT_ALL", "collegeIds": [], "teacherKeys": []}
+    if ctx.scope_type == "COLLEGE":
+        college_ids = sorted({int(value) for value in (ctx.college_ids or set())})
+        if not college_ids:
+            raise no_data_scope("当前学院身份未配置可管理学院范围")
+        return {"type": "COLLEGE", "collegeIds": college_ids, "teacherKeys": []}
+    teacher_keys = sorted({str(value) for value in _derive_keys(user or {}) if str(value).strip()})
+    if teacher_keys:
+        return {"type": "OWNER", "collegeIds": [], "teacherKeys": teacher_keys}
+    raise no_data_scope("当前身份无评教管理数据范围")
+
+
+def _visible_batch_ids(spec: dict):
+    from app.models import AaEvaluationTask, AaTeachingTask, AaTeachingTaskBatch
+
+    query = select(AaEvaluationTask.batch_id).where(
+        AaEvaluationTask.tenant_id == _legacy._tid(),
+        AaEvaluationTask.is_deleted.is_(False),
+    )
+    if spec["type"] == "TENANT_ALL":
+        return query.distinct()
+    if spec["type"] == "COLLEGE":
+        return query.join(
+            AaTeachingTask,
+            and_(
+                AaTeachingTask.id == AaEvaluationTask.teaching_task_id,
+                AaTeachingTask.tenant_id == AaEvaluationTask.tenant_id,
+                AaTeachingTask.is_deleted.is_(False),
+            ),
+        ).join(
+            AaTeachingTaskBatch,
+            and_(
+                AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+                AaTeachingTaskBatch.tenant_id == AaTeachingTask.tenant_id,
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            ),
+        ).where(AaTeachingTaskBatch.college_id.in_(spec["collegeIds"])).distinct()
+    return query.where(AaEvaluationTask.teacher_key.in_(spec["teacherKeys"])).distinct()
+
+
+def _apply_task_scope(query, spec: dict):
+    from app.models import AaEvaluationTask, AaTeachingTask, AaTeachingTaskBatch
+
+    if spec["type"] == "TENANT_ALL":
+        return query
+    if spec["type"] == "COLLEGE":
+        return query.join(
+            AaTeachingTask,
+            and_(
+                AaTeachingTask.id == AaEvaluationTask.teaching_task_id,
+                AaTeachingTask.tenant_id == AaEvaluationTask.tenant_id,
+                AaTeachingTask.is_deleted.is_(False),
+            ),
+        ).join(
+            AaTeachingTaskBatch,
+            and_(
+                AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+                AaTeachingTaskBatch.tenant_id == AaTeachingTask.tenant_id,
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            ),
+        ).filter(AaTeachingTaskBatch.college_id.in_(spec["collegeIds"]))
+    return query.filter(AaEvaluationTask.teacher_key.in_(spec["teacherKeys"]))
+
+
+def _apply_result_scope(query, spec: dict):
+    from app.models import AaEvaluationResult, AaTeachingTask, AaTeachingTaskBatch
+
+    if spec["type"] == "TENANT_ALL":
+        return query
+    if spec["type"] == "COLLEGE":
+        return query.join(
+            AaTeachingTask,
+            and_(
+                AaTeachingTask.id == AaEvaluationResult.teaching_task_id,
+                AaTeachingTask.tenant_id == AaEvaluationResult.tenant_id,
+                AaTeachingTask.is_deleted.is_(False),
+            ),
+        ).join(
+            AaTeachingTaskBatch,
+            and_(
+                AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+                AaTeachingTaskBatch.tenant_id == AaTeachingTask.tenant_id,
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            ),
+        ).filter(AaTeachingTaskBatch.college_id.in_(spec["collegeIds"]))
+    return query.filter(AaEvaluationResult.teacher_key.in_(spec["teacherKeys"]))
+
+
+def _get_scoped_batch_model(db, user, batch_id: int, *, spec: dict | None = None):
+    from app.models import AaEvaluationBatch
+
+    spec = spec or _scope_spec(user, db)
+    query = db.query(AaEvaluationBatch).filter(
+        AaEvaluationBatch.id == int(batch_id),
+        AaEvaluationBatch.tenant_id == _legacy._tid(),
+        AaEvaluationBatch.is_deleted.is_(False),
+    )
+    if spec["type"] != "TENANT_ALL":
+        query = query.filter(AaEvaluationBatch.id.in_(_visible_batch_ids(spec)))
+    batch = query.first()
+    if batch:
+        return batch
+    if spec["type"] == "TENANT_ALL":
+        raise not_found("评教批次不存在")
+    raise no_data_scope("该评教批次不在当前数据范围内")
+
+
 def list_batches(user, status=None, page=1, page_size=20):
-    """Evaluation batches use true COUNT/OFFSET/LIMIT instead of all()+Python slicing."""
+    """True DB pagination plus object visibility for college/teaching-owner scopes."""
     from app.models import AaEvaluationBatch
 
     page, page_size = _page(page, page_size, default_size=20)
     with _legacy.session() as db:
-        _legacy._ctx(user, db)
+        spec = _scope_spec(user, db)
         query = db.query(AaEvaluationBatch).filter(
             AaEvaluationBatch.tenant_id == _legacy._tid(),
             AaEvaluationBatch.is_deleted.is_(False),
         )
+        if spec["type"] != "TENANT_ALL":
+            query = query.filter(AaEvaluationBatch.id.in_(_visible_batch_ids(spec)))
         if status:
             query = query.filter(AaEvaluationBatch.status == status)
         total = query.count()
@@ -46,115 +168,191 @@ def list_batches(user, status=None, page=1, page_size=20):
         return [_legacy._batch_dto(batch) for batch in rows], int(total)
 
 
+def get_batch(user, bid):
+    with _legacy.session() as db:
+        spec = _scope_spec(user, db)
+        return _legacy._batch_dto(_get_scoped_batch_model(db, user, int(bid), spec=spec))
+
+
+def list_tasks(user, bid, evaluator_type=None):
+    from app.models import AaEvaluationTask
+
+    with _legacy.session() as db:
+        spec = _scope_spec(user, db)
+        _get_scoped_batch_model(db, user, int(bid), spec=spec)
+        query = db.query(AaEvaluationTask).filter(
+            AaEvaluationTask.batch_id == int(bid),
+            AaEvaluationTask.tenant_id == _legacy._tid(),
+            AaEvaluationTask.is_deleted.is_(False),
+        )
+        query = _apply_task_scope(query, spec)
+        if evaluator_type:
+            query = query.filter(AaEvaluationTask.evaluator_type == evaluator_type)
+        rows = query.order_by(AaEvaluationTask.id).all()
+        return [{
+            "taskId": str(task.id),
+            "courseName": task.course_name,
+            "teacherName": task.teacher_name,
+            "evaluatorType": task.evaluator_type,
+            "submittedCount": task.submitted_count,
+            "status": task.status,
+        } for task in rows]
+
+
+def _result_query(db, bid: int, spec: dict):
+    from app.models import AaEvaluationResult
+
+    query = db.query(AaEvaluationResult).filter(
+        AaEvaluationResult.batch_id == int(bid),
+        AaEvaluationResult.tenant_id == _legacy._tid(),
+        AaEvaluationResult.is_deleted.is_(False),
+    )
+    return _apply_result_scope(query, spec)
+
+
+def _result_dto(row) -> dict:
+    def _float(value):
+        return float(value) if value is not None else None
+
+    return {
+        "resultId": str(row.id),
+        "teacherName": row.teacher_name,
+        "courseName": row.course_name,
+        "studentAvg": _float(row.student_avg),
+        "studentCount": row.student_count,
+        "selfScore": _float(row.self_score),
+        "peerAvg": _float(row.peer_avg),
+        "peerCount": row.peer_count,
+        "supervisorAvg": _float(row.supervisor_avg),
+        "supervisorCount": row.supervisor_count,
+        "compositeScore": _float(row.composite_score),
+        "level": row.level,
+        "published": row.published,
+    }
+
+
 def list_results(user, bid, mine=False, page=1, page_size=50):
-    """Evaluation results use true pagination while preserving teacher self-scope semantics."""
+    """Results are always object-scoped; mine additionally requires published self rows."""
     from app.models import AaEvaluationResult
 
     page, page_size = _page(page, page_size, default_size=50)
     with _legacy.session() as db:
-        _legacy._ctx(user, db)
-        query = db.query(AaEvaluationResult).filter(
-            AaEvaluationResult.batch_id == int(bid),
-            AaEvaluationResult.tenant_id == _legacy._tid(),
-            AaEvaluationResult.is_deleted.is_(False),
-        )
+        spec = _scope_spec(user, db)
+        _get_scoped_batch_model(db, user, int(bid), spec=spec)
+        query = _result_query(db, int(bid), spec)
         if mine:
-            keys = _derive_keys(user)
+            keys = list(_derive_keys(user or {})) or [""]
             query = query.filter(
-                AaEvaluationResult.teacher_key.in_(list(keys) or [""]),
+                AaEvaluationResult.teacher_key.in_(keys),
                 AaEvaluationResult.published.is_(True),
             )
         total = query.count()
         rows = query.order_by(AaEvaluationResult.id).offset(
             (page - 1) * page_size
         ).limit(page_size).all()
+        return [_result_dto(row) for row in rows], int(total)
 
-        def _float(value):
-            return float(value) if value is not None else None
 
-        return [{
-            "resultId": str(row.id),
-            "teacherName": row.teacher_name,
-            "courseName": row.course_name,
-            "studentAvg": _float(row.student_avg),
-            "studentCount": row.student_count,
-            "selfScore": _float(row.self_score),
-            "peerAvg": _float(row.peer_avg),
-            "peerCount": row.peer_count,
-            "supervisorAvg": _float(row.supervisor_avg),
-            "supervisorCount": row.supervisor_count,
-            "compositeScore": _float(row.composite_score),
-            "level": row.level,
-            "published": row.published,
-        } for row in rows], int(total)
+def _stats_in_session(db, user, bid: int, spec: dict) -> dict:
+    from app.models import AaEvaluationResult, AaEvaluationTask
+
+    _get_scoped_batch_model(db, user, int(bid), spec=spec)
+    result_query = _result_query(db, int(bid), spec)
+    result_count = result_query.count()
+    overall_avg = result_query.with_entities(func.avg(AaEvaluationResult.student_avg)).scalar()
+    level_rows = result_query.with_entities(
+        AaEvaluationResult.level,
+        func.count(AaEvaluationResult.id),
+    ).group_by(AaEvaluationResult.level).all()
+    by_level = {(level or "N/A"): int(count or 0) for level, count in level_rows}
+
+    submitted_condition = or_(
+        AaEvaluationTask.status == "SUBMITTED",
+        and_(
+            AaEvaluationTask.evaluator_type == "STUDENT",
+            AaEvaluationTask.submitted_count > 0,
+        ),
+    )
+    task_query = db.query(
+        AaEvaluationTask.evaluator_type,
+        func.count(AaEvaluationTask.id).label("total"),
+        func.sum(case((submitted_condition, 1), else_=0)).label("submitted"),
+    ).filter(
+        AaEvaluationTask.batch_id == int(bid),
+        AaEvaluationTask.tenant_id == _legacy._tid(),
+        AaEvaluationTask.is_deleted.is_(False),
+    )
+    task_query = _apply_task_scope(task_query, spec)
+    participation_rows = task_query.group_by(AaEvaluationTask.evaluator_type).all()
+    participation = {}
+    for evaluator_type, total, submitted in participation_rows:
+        total = int(total or 0)
+        submitted = int(submitted or 0)
+        participation[evaluator_type] = {
+            "total": total,
+            "submitted": submitted,
+            "rate": round(submitted / total * 100, 1) if total else 0.0,
+        }
+    return {
+        "batchId": str(bid),
+        "resultCount": int(result_count or 0),
+        "overallAvg": round(float(overall_avg), 2) if overall_avg is not None else None,
+        "byLevel": by_level,
+        "participation": participation,
+    }
 
 
 def stats(user, bid):
-    """Evaluation summary is computed in SQL; soft-deleted projections never re-enter stats."""
-    from app.models import AaEvaluationResult, AaEvaluationTask
+    with _legacy.session() as db:
+        spec = _scope_spec(user, db)
+        return _stats_in_session(db, user, int(bid), spec)
+
+
+def export_evaluation_xlsx(user, bid, domain, purpose):
+    """Export exactly the same scoped projection; never bypass list scope with pageSize=10000."""
+    from app.models import AaEvaluationResult
+    from app.services.xlsx_util import build_ledger_xlsx
+
+    purpose = (purpose or "").strip()
+    if len(purpose) < 5:
+        raise _legacy._bad("导出用途必填（≥5字）")
 
     with _legacy.session() as db:
-        _legacy._ctx(user, db)
-        result_filter = (
-            AaEvaluationResult.batch_id == int(bid),
-            AaEvaluationResult.tenant_id == _legacy._tid(),
-            AaEvaluationResult.is_deleted.is_(False),
+        spec = _scope_spec(user, db)
+        batch = _get_scoped_batch_model(db, user, int(bid), spec=spec)
+        current = get_current_user_ctx() or {}
+        watermark = (
+            f"导出人：{current.get('realName') or current.get('loginName') or '-'}  "
+            f"时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M')}  用途：{purpose}"
         )
-        result_count, overall_avg = db.execute(
-            select(
-                func.count(AaEvaluationResult.id),
-                func.avg(AaEvaluationResult.student_avg),
-            ).where(*result_filter)
-        ).one()
-        level_rows = db.execute(
-            select(
-                AaEvaluationResult.level,
-                func.count(AaEvaluationResult.id),
-            ).where(*result_filter).group_by(AaEvaluationResult.level)
-        ).all()
-        by_level = {
-            (level or "N/A"): int(count or 0)
-            for level, count in level_rows
-        }
+        if domain == "stats":
+            summary = _stats_in_session(db, user, int(bid), spec)
+            headers = ["评价类型", "应评数", "已评数", "参评率(%)"]
+            rows = [
+                [key, value["total"], value["submitted"], value["rate"]]
+                for key, value in (summary.get("participation") or {}).items()
+            ]
+            content = build_ledger_xlsx(f"{batch.batch_name}-参评统计", headers, rows, watermark=watermark)
+        elif domain == "results":
+            headers = ["教师", "课程", "均分", "评价数", "等级", "已发布"]
+            rows = []
+            for result in _result_query(db, int(bid), spec).order_by(AaEvaluationResult.id).yield_per(500):
+                item = _result_dto(result)
+                rows.append([
+                    item["teacherName"], item["courseName"], item["studentAvg"],
+                    item["studentCount"], item["level"], "是" if item["published"] else "否",
+                ])
+            content = build_ledger_xlsx(f"{batch.batch_name}-评价结果", headers, rows, watermark=watermark)
+        else:
+            raise _legacy._bad("非法导出域，仅支持 results/stats")
 
-        submitted_condition = or_(
-            AaEvaluationTask.status == "SUBMITTED",
-            and_(
-                AaEvaluationTask.evaluator_type == "STUDENT",
-                AaEvaluationTask.submitted_count > 0,
-            ),
-        )
-        participation_rows = db.execute(
-            select(
-                AaEvaluationTask.evaluator_type,
-                func.count(AaEvaluationTask.id).label("total"),
-                func.sum(case((submitted_condition, 1), else_=0)).label("submitted"),
-            ).where(
-                AaEvaluationTask.batch_id == int(bid),
-                AaEvaluationTask.tenant_id == _legacy._tid(),
-                AaEvaluationTask.is_deleted.is_(False),
-            ).group_by(AaEvaluationTask.evaluator_type)
-        ).all()
-        participation = {}
-        for evaluator_type, total, submitted in participation_rows:
-            total = int(total or 0)
-            submitted = int(submitted or 0)
-            participation[evaluator_type] = {
-                "total": total,
-                "submitted": submitted,
-                "rate": round(submitted / total * 100, 1) if total else 0.0,
-            }
-        return {
-            "batchId": str(bid),
-            "resultCount": int(result_count or 0),
-            "overallAvg": round(float(overall_avg), 2) if overall_avg is not None else None,
-            "byLevel": by_level,
-            "participation": participation,
-        }
+        _legacy._audit(db, int(bid), "EVAL_EXPORT", f"{domain} 用途={purpose[:100]}")
+        db.commit()
+        return content
 
 
 def _score_rows(db, batch_id: int):
-    """Return (teaching_task_id, evaluator_type, average, count) for exactly one batch."""
+    """Return score aggregates for exactly one evaluation batch."""
     from app.models import AaEvaluationRecord, AaEvaluationTask
 
     return db.execute(
@@ -184,12 +382,11 @@ def _score_rows(db, batch_id: int):
 
 
 def close_and_score(user, bid):
-    """Close an OPEN batch and calculate results from a lock-stable submission snapshot."""
+    """Close OPEN batch only after all SHARE-locked in-flight submissions finish."""
     from app.models import AaEvaluationResult, AaEvaluationTask
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        # Exclusive batch lock waits for all in-flight shared submission locks before scoring.
         batch = _base._writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_OPEN:
             raise _legacy._invalid("仅 OPEN 批次可关闭核算")
@@ -199,7 +396,6 @@ def close_and_score(user, bid):
             AaEvaluationTask.tenant_id == _legacy._tid(),
             AaEvaluationTask.is_deleted.is_(False),
         ).all()
-
         aggregate: dict[int, dict[str, tuple[float | None, int]]] = {}
         metadata: dict[int, tuple[str | None, str | None, str | None]] = {}
         for task in tasks:
@@ -228,36 +424,21 @@ def close_and_score(user, bid):
             ).all()
             deleted_keys = [int(row.teaching_task_id) for row in rows if row.is_deleted]
             if deleted_keys:
-                raise _legacy._invalid(
-                    "评价结果唯一键被历史软删除记录占用，禁止静默复活；请先完成数据治理"
-                )
-            existing_results = {
-                int(result.teaching_task_id): result
-                for result in rows
-            }
+                raise _legacy._invalid("评价结果唯一键被历史软删除记录占用，禁止静默复活；请先完成数据治理")
+            existing_results = {int(result.teaching_task_id): result for result in rows}
 
         for teaching_task_id, by_type in aggregate.items():
             student_average, student_count = by_type.get("STUDENT", (None, 0))
             self_average, _self_count = by_type.get("SELF", (None, 0))
             peer_average, peer_count = by_type.get("PEER", (None, 0))
             supervisor_average, supervisor_count = by_type.get("SUPERVISOR", (None, 0))
-            composite = _legacy._composite(
-                student_average,
-                self_average,
-                peer_average,
-                supervisor_average,
-            )
+            composite = _legacy._composite(student_average, self_average, peer_average, supervisor_average)
             teacher_key, teacher_name, course_name = metadata[teaching_task_id]
             result = existing_results.get(teaching_task_id)
             if not result:
                 result = AaEvaluationResult(
-                    tenant_id=_legacy._tid(),
-                    batch_id=batch.id,
-                    teaching_task_id=teaching_task_id,
-                    teacher_key=teacher_key,
-                    teacher_name=teacher_name,
-                    course_name=course_name,
-                    published=False,
+                    tenant_id=_legacy._tid(), batch_id=batch.id, teaching_task_id=teaching_task_id,
+                    teacher_key=teacher_key, teacher_name=teacher_name, course_name=course_name, published=False,
                 )
                 db.add(result)
                 existing_results[teaching_task_id] = result
