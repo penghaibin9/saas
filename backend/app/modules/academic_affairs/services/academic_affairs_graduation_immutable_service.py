@@ -287,6 +287,10 @@ def college_review(result_id, user, action, note="") -> dict:
     if role not in ({"COLLEGE_ADMIN"} | graduation_service._REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
         raise no_permission("仅学院教务员/教务处可执行学院初审")
 
+    action_code = str(action or "").strip().upper()
+    if action_code not in {"APPROVE", "REJECT"}:
+        raise AppException("BAD_REQUEST", "初审动作非法（APPROVE/REJECT）")
+
     with graduation_service.session() as db:
         from app.models import AaGraduationAuditResult, GraduationEvaluationRun
 
@@ -301,7 +305,6 @@ def college_review(result_id, user, action, note="") -> dict:
         if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
 
-        action_code = (action or "").upper()
         if action_code == "APPROVE":
             run = db.scalars(select(GraduationEvaluationRun).where(
                 GraduationEvaluationRun.tenant_id == _tid(),
