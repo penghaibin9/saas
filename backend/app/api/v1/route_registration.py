@@ -176,8 +176,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_guard, mobile_graduation_material_center,
         mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
-        national_standards, notification, onboarding, org_directory, platform, stats,
-        student_portal_graduation_guard, system, transfer, user_preference,
+        national_standards, notification, onboarding, org_directory, stats,
+        student_portal_graduation_guard, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
     from app.api.v1 import message_center as message_center_api
@@ -201,7 +201,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(migration.platform_router)
     api_router.include_router(audit.router)
     api_router.include_router(audit.alias_router)
-    api_router.include_router(platform.router)
+    from app.modules.platform.routers import platform_router
+    api_router.include_router(platform_router.router)
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
@@ -245,7 +246,8 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(notification.router)
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
-    api_router.include_router(system.router, tags=["system"])
+    from app.modules.system_admin.routers import system_i4_router
+    api_router.include_router(system_i4_router.router, tags=["system"])
     api_router.include_router(org_directory.router)
 
 

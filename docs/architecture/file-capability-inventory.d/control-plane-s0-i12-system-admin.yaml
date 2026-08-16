@@ -1,0 +1,93 @@
+version: file-capability-inventory/v1
+entries:
+  - module: system-management
+    client: backend
+    route: /api/v1/data-exchange/imports
+    page: backend/app/modules/system_admin/routers/data_exchange_bundle.py
+    action: import-job-lifecycle
+    fileCategory: DATA_IMPORT_SOURCE
+    api: POST /api/v1/data-exchange/imports/identity/{kind}/validate-file; GET /api/v1/data-exchange/imports/{job_id}/errors; POST /api/v1/data-exchange/imports/{job_id}/cancel; POST /api/v1/data-exchange/imports/{job_id}/retry
+    backendService: backend/app/modules/system_admin/routers/data_exchange_bundle.py
+    storageMode: canonical-file-object+import-job
+    authMode: tenant-authenticated+data-exchange-permission
+    dataScope: tenant+job-visibility
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '0'
+    notes: S0 Move-Only frozen implementation owner. Runtime I1/I2 adapters replace identity creation/detail/retry semantics so GET is pure read and parsing is explicit; this source remains registered because the frozen bundle still contains file-capability signals and non-replaced lifecycle routes.
+
+  - module: system-management
+    client: backend
+    route: /api/v1/data-exchange/imports/identity/{kind}/validate-file
+    page: backend/app/modules/system_admin/routers/data_exchange_router.py
+    action: scan-register+explicit-worker-command
+    fileCategory: DATA_IMPORT_SOURCE
+    api: POST /api/v1/data-exchange/imports/identity/{kind}/validate-file; POST /api/v1/data-exchange/imports/{job_id}/process; POST /api/v1/data-exchange/imports/{job_id}/retry
+    backendService: backend/app/modules/system_admin/routers/data_exchange_router.py
+    storageMode: canonical-file-object+import-job
+    authMode: tenant-authenticated+systemAdmin.user.import+data-exchange-retry
+    dataScope: tenant+job-visibility
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '0'
+    notes: I1/I2 canonical adapter. Upload stores one private sensitive FileObject and only registers SCANNING; GET is pure read; parsing advances only through explicit process/retry command semantics.
+
+  - module: identity-import
+    client: backend
+    route: /api/v1/system/identity-import/*
+    page: backend/app/modules/system_admin/routers/identity_import_compat_router.py
+    action: legacy-thin-adapter
+    fileCategory: DATA_IMPORT_SOURCE
+    api: POST /api/v1/system/identity-import/validate-file; POST /api/v1/system/identity-import/students/validate-file; POST /api/v1/system/identity-import/teachers/validate-file
+    backendService: backend/app/modules/system_admin/routers/identity_import_compat_router.py
+    storageMode: canonical-file-object-via-data-exchange
+    authMode: tenant-authenticated+systemAdmin.user.import
+    dataScope: tenant+job-owner
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: legacy
+    risk: P0
+    targetPhase: '7'
+    notes: I1/I2 compatibility only. Student/teacher uploads delegate to canonical Data Exchange; obsolete mixed direct parser returns HTTP 410 and cannot parse bytes. Legacy confirm resolves batchNo to canonical ImportJob.
+
+  - module: identity-import
+    client: backend
+    route: /api/v1/system/identity-import/template
+    page: backend/app/modules/system_admin/routers/system_bundle.py
+    action: legacy-template+retired-direct-parser-source
+    fileCategory: IDENTITY_IMPORT_XLSX
+    api: GET /api/v1/system/identity-import/template; POST /api/v1/system/identity-import/validate-file
+    backendService: backend/app/modules/system_admin/routers/system_bundle.py
+    storageMode: in-memory-template+legacy-direct-parser-source
+    authMode: tenant-authenticated+systemAdmin.user.import
+    dataScope: tenant
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: true
+    export: false
+    archive: false
+    status: legacy
+    risk: P0
+    targetPhase: '7'
+    notes: S0 byte-frozen source remains for move-only evidence and template download. Its old mixed direct-parser APIRoute is replaced at runtime by identity_import_compat_router with HTTP 410; this entry deliberately records scanGated=false for the frozen source rather than hiding the retired bypass signal.

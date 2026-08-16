@@ -1,417 +1,61 @@
-"""
-请求上下文中间件
-────────────────────────────────────────────────────────────
-为每个请求分配/透传 traceId，解析当前租户写入上下文，回写 X-Trace-Id 响应头，
-并记录一行访问日志。学生岗位实习请求可通过 X-Internship-Batch-Id 显式绑定
-当前批次，后端所有本人业务共享同一事实源。
+"""Request context compatibility facade with the Control Plane platform outer gate.
+
+The pre-B0 middleware implementation is preserved byte-for-byte in
+``context_legacy``.  This wrapper inserts one fail-closed identity-plane check
+immediately before any route handler executes.
 """
 from __future__ import annotations
 
-import logging
-import time
-import uuid
-from functools import lru_cache
+from starlette.responses import JSONResponse
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-
-from app.core.context import (
-    set_current_internship_batch_id,
-    set_current_user,
-    set_request_meta,
-    set_trace_id,
-)
-from app.core.config import settings
-from app.core.tenant_context import resolve_tenant, tenant_code_was_explicit
-from app.core.tenant_identity import DEMO_SCHOOL
-
-logger = logging.getLogger("app.access")
+from app.middleware import context_legacy as _legacy
+from app.middleware.context_legacy import *  # noqa: F401,F403
 
 
-class RequestContextMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        incoming = request.headers.get("x-request-id") or request.headers.get("x-trace-id")
-        trace_id = (incoming or f"req-{uuid.uuid4().hex[:16]}")[:64]
-        set_trace_id(trace_id)
-        set_current_user(None)
-        set_current_internship_batch_id(_resolve_internship_batch_id(request))
-        resolved_tenant = resolve_tenant(request)
-        if resolved_tenant is None and (tenant_code_was_explicit(request) or settings.is_prod):
-            # production 必须始终 fail closed：显式 tenant 不存在、默认 tenant 不存在、
-            # DB 租户事实源不可用都不能回落 mock identity。
-            from starlette.responses import JSONResponse
-            from app.core.response import fail
-            explicit = tenant_code_was_explicit(request)
-            denied = JSONResponse(
-                status_code=400 if explicit else 503,
-                content=fail(
-                    "TENANT_NOT_FOUND" if explicit else "TENANT_RESOLVER_UNAVAILABLE",
-                    "指定的学校不存在" if explicit else "学校租户事实源暂时不可用，请稍后重试",
-                ),
-            )
-            denied.headers["X-Trace-Id"] = trace_id
-            return denied
+class RequestContextMiddleware(_legacy.RequestContextMiddleware):
+    async def dispatch(self, request, call_next):
+        async def _platform_gated_call_next(req):
+            path = req.url.path
+            is_platform_path = path == "/api/v1/platform" or path.startswith("/api/v1/platform/")
+            if is_platform_path:
+                from app.core.context import get_current_user_ctx
+                from app.core.platform_principal import is_platform_principal
+                from app.core.response import fail
 
-        # Signed tenant identity and the current DB tenant registry must agree before any middleware
-        # guard or route can consume tenant context. This is especially important when a historical
-        # tenant-code/tenant-id mapping is corrected: an old but still cryptographically valid JWT
-        # must not carry the previous numeric tenantId into another school's row-level scope.
-        token_tenant_denied = _token_tenant_identity_deny(request, resolved_tenant)
-        if token_tenant_denied is not None:
-            token_tenant_denied.headers["X-Trace-Id"] = trace_id
-            return token_tenant_denied
+                actor = get_current_user_ctx()
+                # Authentication owns the unauthenticated boundary.  When there is no
+                # resolved actor yet, continue into the route dependency so missing or
+                # invalid Bearer credentials retain the canonical 401 semantics.  This
+                # outer gate only rejects an already-authenticated school-plane actor.
+                if actor and not is_platform_principal(actor):
+                    try:
+                        from app.services import audit_log
+                        audit_log.record(
+                            "PERMISSION_DENIED",
+                            f"platform-plane:{path}",
+                            detail={
+                                "path": path,
+                                "method": req.method,
+                                "role": actor.get("currentRoleCode"),
+                                "userType": actor.get("userType"),
+                                "reason": "PLATFORM_PRINCIPAL_REQUIRED",
+                            },
+                            result="DENIED",
+                        )
+                    except Exception:  # deny is authoritative even if best-effort deny-audit fails
+                        pass
+                    return JSONResponse(
+                        status_code=403,
+                        content=fail("NO_PERMISSION", "学校身份禁止访问平台控制面"),
+                    )
+            return await call_next(req)
 
-        _bind_token_tenant(request)
-        set_request_meta({
-            "ip": _resolve_client_ip(request),
-            "userAgent": request.headers.get("user-agent", "")[:400],
-            "method": request.method,
-            "path": request.url.path,
-            "internshipBatchId": _resolve_internship_batch_id(request) or "",
-        })
-
-        # 移动教师端在 Router 之外再设一层统一身份闸门，防止新增路由漏挂依赖。
-        deny = _mobile_teacher_identity_deny(request)
-        if deny is None:
-            deny = _expired_tenant_readonly_deny(request)
-        if deny is None:
-            deny = _demo_tenant_readonly_deny(request)
-        if deny is not None:
-            deny.headers["X-Trace-Id"] = trace_id
-            return deny
-
-        start = time.perf_counter()
-        response = await call_next(request)
-        cost_ms = round((time.perf_counter() - start) * 1000, 1)
-
-        response.headers["X-Trace-Id"] = trace_id
-        logger.info(
-            "http_access",
-            extra={"trace_id": trace_id, "method": request.method,
-                   "path": request.url.path, "status": response.status_code, "ms": cost_ms},
-        )
-        from app.core.runtime_metrics import record_request
-        record_request(request.url.path, response.status_code, cost_ms, settings.HTTP_SLOW_REQUEST_MS)
-        if cost_ms >= settings.HTTP_SLOW_REQUEST_MS:
-            logger.warning("slow_http trace_id=%s method=%s path=%s status=%s ms=%s",
-                           trace_id, request.method, request.url.path, response.status_code, cost_ms)
-        return response
+        return await super().dispatch(request, _platform_gated_call_next)
 
 
-def _resolve_internship_batch_id(request: Request) -> str | None:
-    """只接受学生岗位实习域的显式批次头，避免其它域或教师接口误绑定。"""
-    path = request.url.path
-    if not (
-        path.startswith("/api/v1/mobile/internship") or
-        path.startswith("/api/v1/portal/internship")
-    ):
-        return None
-    raw = (request.headers.get("x-internship-batch-id") or "").strip()
-    if not raw:
-        return None
-    if len(raw) > 32 or not raw.isdigit():
-        return None
-    return raw
+def __getattr__(name: str):
+    return getattr(_legacy, name)
 
 
-@lru_cache(maxsize=8)
-def _trusted_networks(spec: str) -> tuple:
-    import ipaddress
-    nets = []
-    for part in (spec or "").split(","):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            nets.append(ipaddress.ip_network(part, strict=False))
-        except ValueError:
-            continue
-    return tuple(nets)
-
-
-def _is_trusted_proxy(direct: str, spec: str) -> bool:
-    import ipaddress
-    try:
-        addr = ipaddress.ip_address(direct)
-    except ValueError:
-        return False
-    return any(addr in net for net in _trusted_networks(spec))
-
-
-def _resolve_client_ip(request: Request) -> str:
-    direct = request.client.host if request.client else ""
-    try:
-        from app.core.config import settings
-        if direct and _is_trusted_proxy(direct, settings.TRUSTED_PROXY_IPS):
-            fwd = request.headers.get("x-forwarded-for", "")
-            if fwd:
-                first = fwd.split(",")[0].strip()
-                if first:
-                    return first[:64]
-            real = request.headers.get("x-real-ip", "").strip()
-            if real:
-                return real[:64]
-    except Exception:
-        pass
-    return direct
-
-
-def _strict_token_tenant_binding(claims: dict) -> bool:
-    """Whether this JWT must match the authoritative DB tenant identity exactly.
-
-    Production and staging always enforce this migration guard. Real DB subjects (``db-*``) also
-    enforce it in test/dev so integration tests exercise the production rule. Only synthetic
-    test/dev fixture JWTs keep their deliberately isolated numeric tenant IDs; they are not tokens
-    that can be issued by the real password-login path.
-    """
-    env = str(getattr(settings, "APP_ENV", "") or "").strip().lower()
-    return bool(
-        getattr(settings, "is_prod", False)
-        or env == "staging"
-        or str((claims or {}).get("userId") or "").startswith("db-")
-    )
-
-
-def _token_tenant_identity_deny(request: Request, resolved_tenant: dict | None):
-    """Reject an authoritative school JWT when its signed tenant identity drifts from DB truth.
-
-    Invalid/expired bearer tokens are intentionally left to the normal auth dependency so public
-    routes do not become globally bearer-mandatory. Platform super-admin identity is control-plane
-    scoped and is not forced through a school-tenant comparison here. Synthetic test/dev tokens are
-    excluded because their numeric tenant IDs are fixture-local and cannot be issued in production.
-    """
-    auth = (request.headers.get("authorization") or "").strip()
-    if not auth.lower().startswith("bearer "):
-        return None
-    try:
-        from app.core.security import decode_token
-        claims = decode_token(auth[7:].strip())
-    except Exception:
-        return None
-
-    if str(claims.get("userType") or "").strip().upper() == "PLATFORM_SUPER_ADMIN":
-        return None
-    if not _strict_token_tenant_binding(claims):
-        return None
-
-    claim_code = str(claims.get("tid") or "").strip()
-    claim_id = str(claims.get("tenantId") or "").strip()
-    real = resolved_tenant or {}
-    real_code = str(real.get("tenantCode") or "").strip()
-    real_id = str(real.get("tenantId") or "").strip()
-    real_status = str(real.get("status") or "").strip().upper()
-
-    mismatch = bool(
-        claim_code
-        and claim_id
-        and real_code
-        and real_id
-        and (claim_code != real_code or claim_id != real_id)
-    )
-    missing_strict_identity = bool(
-        not claim_code or not claim_id or not real_code or not real_id or real_status == "TENANT_NEUTRAL"
-    )
-    if not mismatch and not missing_strict_identity:
-        return None
-
-    from starlette.responses import JSONResponse
-    from app.core.response import fail
-    return JSONResponse(
-        status_code=401,
-        content=fail(
-            "TOKEN_TENANT_MISMATCH",
-            "学校身份已更新或登录会话无效，请重新登录",
-        ),
-    )
-
-
-def _bind_token_tenant(request: Request) -> None:
-    try:
-        auth = request.headers.get("authorization") or ""
-        if not auth.lower().startswith("bearer "):
-            return
-        from app.core.context import set_tenant
-        from app.core.security import decode_token
-        claims = decode_token(auth[7:].strip())
-        strict_binding = _strict_token_tenant_binding(claims)
-        set_current_user({
-            "userId": claims.get("userId"), "realName": claims.get("realName"),
-            "userType": claims.get("userType"), "tenantCode": claims.get("tid"),
-            "tenantId": claims.get("tenantId"),
-            "activeContextId": claims.get("activeContextId"),
-            "currentRoleCode": claims.get("currentRoleCode"),
-            "permissionVersion": claims.get("permissionVersion"),
-            "loginName": claims.get("loginName") or claims.get("username"),
-            "studentId": claims.get("studentId"),
-            "studentNo": claims.get("studentNo"),
-            "collegeId": claims.get("collegeId"),
-            "collegeIds": claims.get("collegeIds"),
-            "majorId": claims.get("majorId"),
-            "majorIds": claims.get("majorIds"),
-            "tokenJti": claims.get("jti"), "tokenExp": claims.get("exp"),
-        })
-        if claims.get("tenantId"):
-            # status 必须来自 t_tenant，不能因为"令牌里有 tenantId"就宣布该校 ACTIVE：
-            # 令牌签发之后学校可能已被停用/归档，只读闸门依赖的正是这个 status。
-            from app.core.tenant_context import lookup_tenant
-            real = lookup_tenant(str(claims.get("tid") or "").strip())
-            if real is not None and strict_binding:
-                # Authoritative sessions use the same DB row whose code/id were validated above.
-                set_tenant({"tenantId": str(real.get("tenantId") or ""),
-                            "tenantCode": real.get("tenantCode") or "",
-                            "tenantName": real.get("tenantName") or claims.get("tenantName") or "",
-                            "status": real.get("status") or "UNKNOWN"})
-            elif not strict_binding:
-                # Synthetic test/dev fixture tokens intentionally carry fixture-local tenant IDs.
-                set_tenant({"tenantId": str(claims["tenantId"]),
-                            "tenantCode": claims.get("tid") or "",
-                            "tenantName": claims.get("tenantName") or "",
-                            "status": (real or {}).get("status") or "UNKNOWN"})
-        elif claims.get("tid"):
-            # 无 tenantId 的 token 仅保留给非生产 synthetic/mock 兼容；严格会话不接受 mock 绑回。
-            if strict_binding:
-                return
-            from app.core.tenant_context import get_mock_tenant
-            t = get_mock_tenant(str(claims["tid"]).strip())
-            if t:
-                set_tenant(dict(t))
-    except Exception:
-        return
-
-
-def _mobile_teacher_identity_deny(request: Request):
-    """所有 /mobile/teacher 路由统一执行学校教职工白名单；缺令牌仍交给路由返回 401。"""
-    if not request.url.path.startswith("/api/v1/mobile/teacher"):
-        return None
-    try:
-        from app.core.context import get_current_user_ctx
-        from app.core.security import MOBILE_STAFF_USER_TYPES
-        user = get_current_user_ctx() or {}
-        if not user.get("userId"):
-            return None
-        user_type = (user.get("userType") or "").strip().upper()
-        if user_type in MOBILE_STAFF_USER_TYPES:
-            return None
-        from app.services import audit_log
-        try:
-            audit_log.record(
-                "MOBILE_TEACHER_IDENTITY_DENIED", request.url.path,
-                detail={"userType": user_type or "EMPTY", "userId": str(user.get("userId"))},
-                result="DENIED",
-            )
-        except Exception:
-            pass
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=403, content=fail(
-            "NO_PERMISSION", "该接口仅学校教职工移动端可用"))
-    except Exception:
-        # 身份守卫自身异常时必须 fail-closed，不能把教师端数据暴露出去。
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=503, content=fail(
-            "IDENTITY_GUARD_UNAVAILABLE", "教师端身份守卫暂时不可用，请稍后重试"))
-
-
-_READONLY_EXEMPT_PREFIXES = (
-    "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
-)
-_DEMO_READONLY_TENANT_ID = str(DEMO_SCHOOL.tenant_id)
-
-
-def is_readonly_tenant(tenant: dict | None = None) -> bool:
-    try:
-        from app.core.config import settings
-        if not settings.demo_tenant_readonly:
-            return False
-        if tenant is None:
-            from app.core.context import get_tenant
-            tenant = get_tenant() or {}
-        return str((tenant or {}).get("tenantId") or "") == _DEMO_READONLY_TENANT_ID
-    except Exception:
-        return False
-
-
-def _demo_tenant_readonly_deny(request: Request):
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return None
-    path = request.url.path
-    if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
-        return None
-    try:
-        from app.core.config import settings
-        if not settings.demo_tenant_readonly:
-            return None
-        from app.core.context import get_tenant
-        tenant = get_tenant() or {}
-        if str(tenant.get("tenantId") or "") != _DEMO_READONLY_TENANT_ID:
-            return None
-    except Exception:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=503, content=fail(
-            "TENANT_GUARD_UNAVAILABLE", "租户只读守卫暂时不可用，请稍后重试"))
-    try:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        from app.services import audit_log
-        try:
-            audit_log.record("DEMO_READONLY_DENY", path,
-                             detail={"method": request.method}, result="DENIED")
-        except Exception:
-            pass
-        return JSONResponse(status_code=403, content=fail(
-            "NO_PERMISSION",
-            "正式演示环境为只读，数据不可修改。想动手体验请使用沙箱环境"))
-    except Exception:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=503, content=fail(
-            "TENANT_GUARD_UNAVAILABLE", "租户只读守卫暂时不可用，请稍后重试"))
-
-
-def _expired_tenant_readonly_deny(request: Request):
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return None
-    path = request.url.path
-    if not path.startswith("/api/") or path.startswith(_READONLY_EXEMPT_PREFIXES):
-        return None
-    try:
-        from app.core.context import get_current_user_ctx, get_tenant
-        from app.core.permissions import is_super_admin
-        user = get_current_user_ctx() or {}
-        if is_super_admin(user) and user.get("userId"):
-            return None
-        tenant = get_tenant() or {}
-        tid = tenant.get("tenantId")
-        if not tid:
-            return None
-        from app.db.session import db_enabled
-        if not db_enabled():
-            return None
-        from app.services.platform_service import tenant_status
-        status = tenant_status(int(tid), strict=True)
-        if status != "expired":
-            return None
-    except Exception:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=503, content=fail(
-            "TENANT_GUARD_UNAVAILABLE", "租户状态守卫暂时不可用，请稍后重试"))
-    try:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        from app.services import audit_log
-        try:
-            audit_log.record("WRITE_DENIED_EXPIRED", path,
-                             detail={"method": request.method, "tenantId": str(tid)}, result="DENIED")
-        except Exception:
-            pass
-        return JSONResponse(status_code=403, content=fail(
-            "MODULE_EXPIRED_READONLY",
-            "服务已到期，当前为只读模式：可查看数据，无法新增或修改。请联系平台运营续费"))
-    except Exception:
-        from starlette.responses import JSONResponse
-        from app.core.response import fail
-        return JSONResponse(status_code=503, content=fail(
-            "TENANT_GUARD_UNAVAILABLE", "租户状态守卫暂时不可用，请稍后重试"))
+def __dir__():
+    return sorted(set(globals()) | set(dir(_legacy)))

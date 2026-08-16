@@ -5,10 +5,19 @@ import asyncio
 import io
 import os
 import shutil
+import sys
 import time
 import zipfile
 from dataclasses import replace
 from pathlib import Path
+
+# Direct ``python tests/file_scan_mysql_acceptance.py`` execution puts only
+# ``backend/tests`` on sys.path.  This acceptance is intentionally a standalone
+# Actions script, so make the backend package root explicit instead of relying
+# on workflow-specific PYTHONPATH state.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from sqlalchemy import delete, select
 

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "card": "B0-01/B0-02",
+  "outerGatePathPrefix": "/api/v1/platform/",
+  "principalPlaneRequired": "PLATFORM",
+  "permissionPlane": {
+    "platform.*": "PLATFORM",
+    "default": "TENANT"
+  },
+  "schoolWildcardCrossPlane": "DENY",
+  "rootRoles": ["PLATFORM_OWNER", "PLATFORM_SUPER_ADMIN"],
+  "order": ["identityPlane", "platformPermission", "targetTenantScope", "operationPolicy"]
+}

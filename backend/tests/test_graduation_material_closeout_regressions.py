@@ -36,10 +36,29 @@ def _admin() -> dict:
     }
 
 
+def _router_test_app(router, user_provider) -> FastAPI:
+    """Mount one production router while overriding both auth facade layers.
+
+    ``require_staff`` is re-exported from the frozen security legacy module and
+    therefore retains that module's ``get_current_user`` dependency, while newer
+    routes import the public facade dependency.  Router/DTO regression tests must
+    provide the same synthetic identity to both layers instead of exercising the
+    aggregate Control Plane auth bundle first.
+    """
+    from app.core import security_legacy
+    from app.core.exceptions import register_exception_handlers
+    from app.core.security import get_current_user
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = user_provider
+    app.dependency_overrides[security_legacy.get_current_user] = user_provider
+    return app
+
+
 def test_student_mobile_review_is_real_403_and_handler_never_runs(monkeypatch):
     from app.api.v1 import mobile_graduation_material_center as mobile
-    from app.core.security import get_current_user
-    from app.main import app as production_app
 
     called = {"value": False}
 
@@ -48,15 +67,12 @@ def test_student_mobile_review_is_real_403_and_handler_never_runs(monkeypatch):
         raise AssertionError("student request reached material review command")
 
     monkeypatch.setattr(mobile.commands, "review_material", forbidden_handler)
-    production_app.dependency_overrides[get_current_user] = _student
-    try:
-        with TestClient(production_app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/api/v1/mobile/graduation/material-center/materials/1/review",
-                json={"action": "APPROVE", "fileVersionId": 2, "expectedVersion": 3},
-            )
-    finally:
-        production_app.dependency_overrides.pop(get_current_user, None)
+    app = _router_test_app(mobile.router, _student)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/mobile/graduation/material-center/materials/1/review",
+            json={"action": "APPROVE", "fileVersionId": 2, "expectedVersion": 3},
+        )
     assert response.status_code == 403
     assert called["value"] is False
 
@@ -198,45 +214,35 @@ def test_material_mutation_routes_share_strict_request_dtos():
 
 
 def test_missing_expected_version_is_validation_error_before_service(monkeypatch):
-    from app.core.security import get_current_user
-    from app.main import app as production_app
     from app.modules.graduation.routers import graduation_material_center as staff
 
     monkeypatch.setattr(staff.commands, "submission_spec", lambda *_args, **_kwargs: (_ for _ in ()).throw(
         AssertionError("validation must run before service")
     ))
-    production_app.dependency_overrides[get_current_user] = _admin
-    try:
-        with TestClient(production_app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
-                json={"fileId": 1},
-            )
-    finally:
-        production_app.dependency_overrides.pop(get_current_user, None)
+    app = _router_test_app(staff.router, _admin)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
+            json={"fileId": 1},
+        )
     assert response.status_code == 400
     assert "expectedVersion" in response.text
 
 
 def test_stale_expected_version_keeps_one_409_error_contract(monkeypatch):
     from app.core.exceptions import AppException
-    from app.core.security import get_current_user
-    from app.main import app as production_app
     from app.modules.graduation.routers import graduation_material_center as staff
 
     monkeypatch.setattr(staff.commands, "submission_spec", lambda *_args, **_kwargs: {"ownerRole": "STUDENT"})
     monkeypatch.setattr(staff.commands, "submit_material", lambda *_args, **_kwargs: (_ for _ in ()).throw(
         AppException("APPROVAL_VERSION_CONFLICT", "材料状态已变化，请刷新后重试")
     ))
-    production_app.dependency_overrides[get_current_user] = _admin
-    try:
-        with TestClient(production_app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
-                json={"fileId": 1, "expectedVersion": 0},
-            )
-    finally:
-        production_app.dependency_overrides.pop(get_current_user, None)
+    app = _router_test_app(staff.router, _admin)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/graduation/material-center/materials/THESIS_FINAL/submit",
+            json={"fileId": 1, "expectedVersion": 0},
+        )
     assert response.status_code == 409
     payload = response.json()
     assert payload["message"] == "材料状态已变化，请刷新后重试"

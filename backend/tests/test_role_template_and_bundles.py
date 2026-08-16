@@ -121,9 +121,17 @@ def test_t02_delivered_templates_are_marked_and_shared(db_mode):
 
 
 def test_t02_bootstrap_is_idempotent(db_mode):
+    # 这个测试文件内更早的用例可能已经为同一 TENANT 完成 bootstrap；
+    # 幂等合同是“重复调用不再新增、最终状态不漂移”，不是“本用例第一次调用必须从空库创建”。
+    before = len(svc.list_templates(tenant_id=TENANT)["items"])
     first = svc.bootstrap_from_code(tenant_id=TENANT)
+    after_first = len(svc.list_templates(tenant_id=TENANT)["items"])
     second = svc.bootstrap_from_code(tenant_id=TENANT)
-    assert first["createdTemplates"] > 0
+    after_second = len(svc.list_templates(tenant_id=TENANT)["items"])
+
+    assert first["createdTemplates"] >= 0
+    assert after_first >= before
+    assert after_second == after_first
     assert second["createdTemplates"] == 0
     assert second["createdBundles"] == 0
     assert second["createdWildcards"] == 0

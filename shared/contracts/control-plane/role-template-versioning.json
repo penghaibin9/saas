@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "card": "B5_NON_MIGRATION",
+  "storage": "existing t_role_template + JSON metadata until normalized relation migration",
+  "templatePlane": "TENANT",
+  "publishedImmutable": true,
+  "draftEditable": true,
+  "versioning": "new row/template_version for every publish candidate",
+  "rollback": "create new DRAFT from historical published version, then publish as a new version",
+  "customRolePolicy": "DERIVED_PINNED",
+  "automaticCustomRoleUpgrade": false,
+  "enterpriseRolesExcluded": ["COMPANY_ADMIN", "HR", "MENTOR"],
+  "platformWorkforceExcluded": "PLATFORM_*",
+  "eSeriesSchoolPermissionsAllowed": [
+    "internship.recruitment.view",
+    "internship.recruitment.manage",
+    "internship.recruitment.invite",
+    "internship.recruitment.close"
+  ],
+  "enterprisePermissionsAssignable": false,
+  "deferredUntilA01WriterRelease": ["t_role_template_permission normalized relation", "new template metadata columns"]
+}

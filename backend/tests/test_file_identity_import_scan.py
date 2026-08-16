@@ -3,29 +3,29 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook
 from sqlalchemy import delete
 
 from app.core.config import settings
 from app.core.context import set_current_user, set_tenant
 from app.db.session import get_sessionmaker
-from app.models.data_exchange import ImportJob, ImportRowError
+from app.models.data_exchange import IdentityImportStagingRow, ImportJob, ImportRowError
 from app.models.file import FileObject
 from app.services import storage
-from app.services.identity_import_path_parser import parse_identity_xlsx_path
 from app.services.identity_import_scan_orchestrator import (
-    create_identity_import_scan_job,
+    PENDING_ADAPTER,
     refresh_identity_import_job,
 )
+from app.workers import identity_import_worker
 
 TENANT_ID = 93991
+USER_ID = 939
 USER = {
     "tenantId": str(TENANT_ID),
-    "userId": "939",
+    "userId": str(USER_ID),
     "realName": "身份导入扫描测试",
     "userType": "ADMIN",
     "currentRoleCode": "SCHOOL_ADMIN",
-    "permissions": ["*"],
+    "permissions": ["systemAdmin.user.import", "student.import"],
 }
 
 
@@ -39,6 +39,7 @@ def _context_and_cleanup(db_mode, tmp_path, monkeypatch):
     db = get_sessionmaker()()
     try:
         db.execute(delete(ImportRowError).where(ImportRowError.tenant_id == TENANT_ID))
+        db.execute(delete(IdentityImportStagingRow).where(IdentityImportStagingRow.tenant_id == TENANT_ID))
         db.execute(delete(ImportJob).where(ImportJob.tenant_id == TENANT_ID))
         db.execute(delete(FileObject).where(FileObject.tenant_id == TENANT_ID))
         db.commit()
@@ -48,6 +49,7 @@ def _context_and_cleanup(db_mode, tmp_path, monkeypatch):
     db = get_sessionmaker()()
     try:
         db.execute(delete(ImportRowError).where(ImportRowError.tenant_id == TENANT_ID))
+        db.execute(delete(IdentityImportStagingRow).where(IdentityImportStagingRow.tenant_id == TENANT_ID))
         db.execute(delete(ImportJob).where(ImportJob.tenant_id == TENANT_ID))
         db.execute(delete(FileObject).where(FileObject.tenant_id == TENANT_ID))
         db.commit()
@@ -60,7 +62,7 @@ def _context_and_cleanup(db_mode, tmp_path, monkeypatch):
 
 def _source_file(*, status: str, scan_status: str, body: bytes = b"fixture") -> int:
     backend = storage.get_backend()
-    key = f"identity-scan/{status}-{scan_status}.xlsx"
+    key = f"identity-scan/{status}-{scan_status}-{id(body)}.xlsx"
     staged = backend.staging_path(key)
     staged.parent.mkdir(parents=True, exist_ok=True)
     staged.write_bytes(body)
@@ -70,7 +72,7 @@ def _source_file(*, status: str, scan_status: str, body: bytes = b"fixture") -> 
         row = FileObject(
             tenant_id=TENANT_ID,
             file_key=key,
-            file_name="学生导入.xlsx",
+            file_name="教师导入.xlsx",
             ext="xlsx",
             mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             size_bytes=len(body),
@@ -79,8 +81,13 @@ def _source_file(*, status: str, scan_status: str, body: bytes = b"fixture") -> 
             status=status,
             storage_backend="local",
             storage_zone="QUARANTINE" if status == "QUARANTINED" else "ACTIVE",
-            scan_required=scan_status != "NOT_REQUIRED",
+            scan_required=True,
             scan_status=scan_status,
+            owner_user_id=USER_ID,
+            visibility="PRIVATE",
+            security_level="SENSITIVE",
+            created_by=USER_ID,
+            updated_by=USER_ID,
         )
         db.add(row)
         db.commit()
@@ -90,131 +97,143 @@ def _source_file(*, status: str, scan_status: str, body: bytes = b"fixture") -> 
         db.close()
 
 
-def test_scanning_file_never_calls_parser(monkeypatch):
+def _pending_job(file_id: int, *, kind: str = "TEACHER") -> int:
+    db = get_sessionmaker()()
+    try:
+        row = ImportJob(
+            tenant_id=TENANT_ID,
+            module_code="SYSTEM",
+            import_type=f"IDENTITY_{kind}",
+            source_file_id=file_id,
+            adapter_type=PENDING_ADAPTER,
+            adapter_ref=f"{kind}:{file_id}",
+            template_version="v1",
+            status="SCANNING",
+            operator_id=USER_ID,
+            operator_name=USER["realName"],
+            source_snapshot_json={"kind": kind, "fileName": "教师导入.xlsx"},
+            result_json={"scanRequired": True, "workerRequired": True},
+            created_by=USER_ID,
+            updated_by=USER_ID,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+    finally:
+        db.close()
+
+
+def test_scanning_file_never_enters_normalized_staging(monkeypatch):
     file_id = _source_file(status="QUARANTINED", scan_status="PENDING")
-    called = {"parse": 0}
+    job_id = _pending_job(file_id)
+    called = {"stage": 0}
 
-    def forbidden(*_args, **_kwargs):
-        called["parse"] += 1
-        raise AssertionError("scanner pending file must not be parsed")
+    def forbidden(*args, **kwargs):
+        called["stage"] += 1
+        raise AssertionError("scanner-pending file must not enter staging")
 
-    monkeypatch.setattr(
-        "app.services.identity_import_scan_orchestrator.parse_identity_xlsx_path",
-        forbidden,
-    )
-    job = create_identity_import_scan_job(
-        kind="STUDENT",
-        source_file_id=file_id,
-        filename="学生导入.xlsx",
-        user=USER,
-    )
-    assert job["status"] == "SCANNING"
-    assert called["parse"] == 0
-    refreshed = refresh_identity_import_job(job["id"], user=USER)
+    monkeypatch.setattr("app.services.identity_import_staging_service.stage_identity_xlsx", forbidden)
+    refreshed = refresh_identity_import_job(str(job_id), user=USER)
     assert refreshed["status"] == "SCANNING"
-    assert called["parse"] == 0
+    assert called["stage"] == 0
 
 
-def test_clean_file_parses_once_and_converts_same_job(monkeypatch):
+def test_clean_file_uses_normalized_staging_and_converts_same_job(monkeypatch):
     file_id = _source_file(status="AVAILABLE", scan_status="CLEAN")
-    calls = {"parse": 0, "preview": 0, "batch": 0}
+    job_id = _pending_job(file_id)
+    calls = {"stage": 0, "validate": 0, "batch": 0}
 
-    def parse_stub(path, filename, kind):
-        calls["parse"] += 1
-        assert Path(path).is_file()
-        assert filename == "学生导入.xlsx"
-        assert kind == "STUDENT"
+    def stage_stub(**kwargs):
+        calls["stage"] += 1
+        assert Path(kwargs["path"]).is_file()
+        assert kwargs["kind"] == "TEACHER"
         return {
-            "students": [{"_rowNo": 2, "studentNo": "20260001", "name": "测试学生", "className": "软件2601"}],
-            "teachers": [],
-            "rawRows": [{"row": 2, "accountType": "STUDENT", "accountNo": "20260001", "name": "测试学生"}],
-            "relationships": [],
-            "relationErrors": [],
-            "errors": [],
             "totalRows": 1,
-            "importKind": "STUDENT",
-            "fileName": filename,
+            "fileName": kwargs["filename"],
             "fileSha256": "b" * 64,
+            "kind": "TEACHER",
+            "parserErrors": [],
+            "stagingDigest": "c" * 64,
         }
 
-    def preview_stub(_user, payload, pre_errors=None):
-        calls["preview"] += 1
-        assert payload["students"][0]["studentNo"] == "20260001"
-        assert pre_errors == []
+    def validate_stub(**kwargs):
+        calls["validate"] += 1
+        assert kwargs["job_id"] == job_id
         return {"total": 1, "valid": 1, "invalid": 0, "errors": []}
 
-    def batch_stub(_user, parsed, report):
+    def batch_stub(**kwargs):
         calls["batch"] += 1
-        assert parsed["totalRows"] == 1
-        assert report["valid"] == 1
         return {
-            "batchNo": "IDENTITY-SCAN-93991",
+            "batchNo": f"IDENTITY-SCAN-{job_id}",
             "total": 1,
             "valid": 1,
             "invalid": 0,
             "errors": [],
-            "relations": {"errors": []},
             "roleTemplateVersion": "test",
         }
 
-    monkeypatch.setattr(
-        "app.services.identity_import_scan_orchestrator.parse_identity_xlsx_path",
-        parse_stub,
-    )
-    monkeypatch.setattr(
-        "app.services.identity_import_service.preview_identity_import",
-        preview_stub,
-    )
-    monkeypatch.setattr(
-        "app.services.identity_import_file_service.create_batch",
-        batch_stub,
-    )
-    job = create_identity_import_scan_job(
-        kind="STUDENT",
-        source_file_id=file_id,
-        filename="学生导入.xlsx",
-        user=USER,
-    )
-    assert job["status"] == "VALIDATED"
-    assert job["adapterType"] == "IDENTITY_IMPORT_BATCH"
-    assert job["adapterRef"] == "IDENTITY-SCAN-93991"
-    assert job["sourceFileId"] == str(file_id)
-    same = refresh_identity_import_job(job["id"], user=USER)
-    assert same["id"] == job["id"]
-    assert same["status"] == "VALIDATED"
-    assert calls == {"parse": 1, "preview": 1, "batch": 1}
+    monkeypatch.setattr("app.services.identity_import_staging_service.stage_identity_xlsx", stage_stub)
+    monkeypatch.setattr("app.services.identity_import_staging_service.validate_staging", validate_stub)
+    monkeypatch.setattr("app.services.identity_import_staging_service.create_staging_batch", batch_stub)
+    result = refresh_identity_import_job(str(job_id), user=USER)
+    assert result["id"] == str(job_id)
+    assert result["status"] == "VALIDATED"
+    assert result["adapterType"] == "IDENTITY_IMPORT_BATCH"
+    assert result["sourceFileId"] == str(file_id)
+    assert calls == {"stage": 1, "validate": 1, "batch": 1}
 
 
-def test_path_parser_reads_real_xlsx_without_whole_file_buffer(tmp_path):
-    path = tmp_path / "学生导入.xlsx"
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "导入模板"
-    sheet.append(["学号", "姓名", "所属学院", "所属专业", "班级名称", "年级", "性别", "身份证号"])
-    sheet.append(["20260001", "测试学生", "信息学院", "软件技术", "软件2601", "2026", "男", ""])
-    workbook.save(path)
-    workbook.close()
+def test_identity_worker_claims_only_clean_file_and_consumes_claim(monkeypatch):
+    pending_file = _source_file(status="QUARANTINED", scan_status="PENDING")
+    _pending_job(pending_file)
+    clean_file = _source_file(status="AVAILABLE", scan_status="CLEAN", body=b"clean")
+    clean_job = _pending_job(clean_file)
+    seen = {}
 
-    parsed = parse_identity_xlsx_path(path, path.name, "STUDENT")
-    assert parsed["totalRows"] == 1
-    assert parsed["students"][0]["studentNo"] == "20260001"
-    assert len(parsed["fileSha256"]) == 64
+    def advance(job_id, *, user, worker_claimed=False, **kwargs):
+        seen["jobId"] = job_id
+        seen["user"] = user
+        seen["workerClaimed"] = worker_claimed
+        return {"status": "VALIDATED", "totalRows": 1, "validRows": 1, "invalidRows": 0}
+
+    monkeypatch.setattr(identity_import_worker, "refresh_identity_import_job", advance)
+    result = identity_import_worker.process_next_identity_import("pytest-i4-worker")
+    assert result["processed"] is True
+    assert result["jobId"] == str(clean_job)
+    assert result["status"] == "VALIDATED"
+    assert seen["workerClaimed"] is True
+    assert seen["user"]["serviceActor"] == "IDENTITY_IMPORT_WORKER"
+
+    db = get_sessionmaker()()
+    try:
+        claimed = db.get(ImportJob, clean_job)
+        pending = db.scalars(ImportJob.__table__.select().where(ImportJob.source_file_id == pending_file)).first()
+        assert claimed.status == identity_import_worker.CLAIMED
+        assert dict(claimed.result_json or {})["workerId"] == "pytest-i4-worker"
+        assert pending is not None
+    finally:
+        db.close()
 
 
-def test_api_and_parser_freeze_scan_before_parse_and_no_whole_upload_join():
+def test_source_contract_freezes_scan_worker_before_parser():
     root = Path(__file__).resolve().parents[2]
-    api = (root / "backend/app/api/v1/data_exchange.py").read_text(encoding="utf-8")
-    parser = (root / "backend/app/services/identity_import_path_parser.py").read_text(encoding="utf-8")
+    router = (root / "backend/app/modules/system_admin/routers/data_exchange_router.py").read_text(encoding="utf-8")
     orchestrator = (root / "backend/app/services/identity_import_scan_orchestrator.py").read_text(encoding="utf-8")
-    assert "file_service.store_upload(" in api
-    assert "create_identity_import_scan_job(" in api
-    assert api.index("file_service.store_upload(") < api.index("create_identity_import_scan_job(")
-    assert "_read_identity_file" not in api
-    assert 'b"".join' not in api
-    assert "parse_student_xlsx(content" not in api
-    assert "parse_teacher_xlsx(content" not in api
-    assert "load_workbook(path" in parser
-    assert ".read_bytes(" not in parser
-    assert 'b"".join' not in parser
+    worker = (root / "backend/app/workers/identity_import_worker.py").read_text(encoding="utf-8")
+    file_worker = (root / "backend/app/workers/file_scan_worker.py").read_text(encoding="utf-8")
+    assert "file_service.store_upload(" in router
+    assert "identity.create_identity_import_job(" in router
+    assert router.index("file_service.store_upload(") < router.index("identity.create_identity_import_job(")
+    assert 'summary="导入任务详情（纯读）"' in router
+    assert "/imports/{job_id}/process" in router
     assert "READY_SCAN_STATES" in orchestrator
     assert 'row.status = "PARSING"' in orchestrator
+    assert "WORKER_CLAIMED" in orchestrator
+    assert "process_next_identity_import" in worker
+    assert ".with_for_update(skip_locked=True)" in worker
+    assert "from app.core.tenant_scoped import tenant_get" in worker
+    assert 'tenant_get(db, ImportJob, int(claim["jobId"]))' in worker
+    assert "db.get(ImportJob" not in worker
+    assert "process_next_scan_job" in file_worker
+    assert "parse_identity_xlsx_path" not in orchestrator

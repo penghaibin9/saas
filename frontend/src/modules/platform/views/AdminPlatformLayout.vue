@@ -25,8 +25,15 @@ import { ErrorState, LoadingState } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { PLATFORM_MANAGEMENT_CATALOG } from '@/modules/platform/platformManagementCatalog'
 
+const CONTROL_PLANE_LANDING = Object.freeze({
+  'plt-standards': '/admin/platform/product-iam'
+})
+
 const MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
-  key: group.key, label: group.label, icon: group.icon, path: group.items[0].path
+  key: group.key,
+  label: group.label,
+  icon: group.icon,
+  path: CONTROL_PLANE_LANDING[group.key] || group.items[0].path
 }))
 
 export default {
