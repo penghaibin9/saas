@@ -171,9 +171,12 @@ jobs:
           # Both PRs intentionally branch from the same main migration head. The temporary
           # integration must prove that the two lineages converge cleanly without mutating
           # either remote branch. Create a standard no-DDL Alembic merge revision inside the
-          # local two-parent merge commit only.
+          # local two-parent merge commit only. Head ownership is derived from each exact
+          # branch diff against their merge base; revision names/dates are not treated as truth.
           python - <<'PY'
           import ast
+          import os
+          import subprocess
           from pathlib import Path
 
           versions = Path('backend/alembic/versions')
@@ -183,6 +186,7 @@ jobs:
 
           revisions: set[str] = set()
           parents: set[str] = set()
+          revision_paths: dict[str, str] = {}
           for path in versions.glob('*.py'):
               tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
               values = {}
@@ -201,6 +205,7 @@ jobs:
               down = values.get('down_revision')
               if isinstance(revision, str):
                   revisions.add(revision)
+                  revision_paths[revision] = path.as_posix()
               if isinstance(down, str):
                   parents.add(down)
               elif isinstance(down, (tuple, list)):
@@ -210,13 +215,58 @@ jobs:
           print('pre-merge Alembic heads:', heads)
           if len(heads) != 2:
               raise SystemExit(f'expected exactly two branch heads before CI merge revision, got {heads}')
-          if not any(head.startswith('20260815_ctrl_') for head in heads):
-              raise SystemExit(f'Control Plane migration head missing: {heads}')
-          if not any(head.startswith('20260815_internship_e_') for head in heads):
-              raise SystemExit(f'E-series migration head missing: {heads}')
+
+          control_head = os.environ['CONTROL_HEAD']
+          e_head = os.environ['E_HEAD']
+          base = subprocess.check_output(
+              ['git', 'merge-base', control_head, e_head], text=True
+          ).strip()
+
+          def changed_migrations(head: str) -> set[str]:
+              output = subprocess.check_output(
+                  [
+                      'git', 'diff', '--name-only', f'{base}..{head}', '--',
+                      'backend/alembic/versions/*.py',
+                  ],
+                  text=True,
+              )
+              return {line.strip() for line in output.splitlines() if line.strip()}
+
+          control_changed = changed_migrations(control_head)
+          e_changed = changed_migrations(e_head)
+          control_owned = [
+              head for head in heads
+              if revision_paths.get(head) in control_changed
+              and revision_paths.get(head) not in e_changed
+          ]
+          e_owned = [
+              head for head in heads
+              if revision_paths.get(head) in e_changed
+              and revision_paths.get(head) not in control_changed
+          ]
+          if len(control_owned) != 1:
+              raise SystemExit(
+                  f'Control Plane migration head provenance is ambiguous: heads={heads}, '
+                  f'owned={control_owned}, base={base}'
+              )
+          if len(e_owned) != 1:
+              raise SystemExit(
+                  f'E-series migration head provenance is ambiguous: heads={heads}, '
+                  f'owned={e_owned}, base={base}'
+              )
+          if control_owned[0] == e_owned[0]:
+              raise SystemExit(f'branch migration heads unexpectedly collapse: {heads}')
+          print('Control Plane migration head:', control_owned[0], revision_paths[control_owned[0]])
+          print('E-series migration head:', e_owned[0], revision_paths[e_owned[0]])
 
           Path('artifacts/control-plane/e-iam-alembic-premerge-heads.txt').write_text(
               '\n'.join(heads) + '\n', encoding='utf-8'
+          )
+          Path('artifacts/control-plane/e-iam-alembic-provenance.txt').write_text(
+              f'mergeBase={base}\n'
+              f'controlHead={control_owned[0]} path={revision_paths[control_owned[0]]}\n'
+              f'eSeriesHead={e_owned[0]} path={revision_paths[e_owned[0]]}\n',
+              encoding='utf-8',
           )
           merge_path.write_text(
               '"""CI-only E x IAM Alembic lineage merge; no schema mutation.\n\n'
