@@ -49,6 +49,11 @@ def program_preflight_to_file_exchange_preview(
         if int(item.get("row") or 0) > 0
     }
     invalid_rows = len(invalid_locations)
+    if errors and invalid_rows == 0:
+        # Workbook-level blockers such as PROGRAM_SOURCE_EMPTY have row=0. File
+        # Exchange still needs invalidRows>0 so VALIDATION_FAILED cannot be
+        # misreported as an all-green zero-row preview.
+        invalid_rows = 1
 
     actions = [dict(item) for item in (preflight_result.get("actions") or ())]
     action_counts = Counter(str(item.get("action") or "").strip().upper() for item in actions)
