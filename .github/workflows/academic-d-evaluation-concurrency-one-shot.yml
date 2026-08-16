@@ -29,6 +29,8 @@ on:
       - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
       - "backend/tests/test_aa_evaluation_d_w3_scope_guard.py"
       - "backend/tests/test_sandbox_school_academic_quality_truth.py"
+      - "student-portal/src/views/academic/StudentGraduationAuditView.vue"
+      - "student-portal/tests/academic-d-w5-graduation-truth.test.mjs"
       - "e2e/specs/academic-d-w5-student-graduation.spec.mjs"
       - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
 
@@ -99,6 +101,15 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
       - name: Freeze and syntax-check D-W5 evidence tooling before replay tree switch
         run: |
           set -euo pipefail
@@ -124,6 +135,9 @@ jobs:
             tests/test_academic_d_w5_same_head_matrix.py \
             tests/test_academic_d_w5_upstream_freeze.py \
             -p no:warnings
+
+      - name: Test D-W5 student graduation truth source contract
+        run: node --test student-portal/tests/academic-d-w5-graduation-truth.test.mjs
 
       - name: Snapshot owner-declared A/B/C contract freezes
         env:
@@ -253,16 +267,6 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXACT_D_SHA"
           bash backend/scripts/academic_d_w5_final_gold_replay.sh
-
-      - uses: actions/setup-node@v4
-        if: success()
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            frontend/package-lock.json
-            student-portal/package-lock.json
-            miniapp/package-lock.json
 
       - name: Run D-W5 integrated management + student + teacher real browser Gold
         if: success()
