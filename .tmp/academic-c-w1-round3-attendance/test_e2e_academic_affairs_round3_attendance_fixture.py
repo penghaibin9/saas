@@ -59,6 +59,19 @@ def test_attendance_candidate_payloads_use_only_executable_formal_patterns_and_p
                 "endWeek": 5,
                 "weekParity": "ALL",
             }],
+        }, {
+            "teachingTaskId": "104",
+            "classId": "204",
+            "taskStatus": "APPROVED",
+            "formalOccurrenceReady": True,
+            "formalSchedulePatterns": [{
+                "scheduleItemId": "",
+                "weekday": 1,
+                "slotNo": 4,
+                "startWeek": 1,
+                "endWeek": 5,
+                "weekParity": "ALL",
+            }],
         }],
     }
     candidates = module._attendance_candidate_payloads(options, today=date(2026, 3, 10))
