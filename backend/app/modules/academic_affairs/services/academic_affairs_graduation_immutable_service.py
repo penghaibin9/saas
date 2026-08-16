@@ -275,6 +275,16 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
                 "最新正式毕业评估仍为 SYSTEM_ABNORMAL；普通教务终审禁止用审核备注覆盖评估结论，请先治理阻断项并重新预审",
                 http_status=409,
             )
+        try:
+            run_items = json.loads(run.item_results_json or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            run_items = []
+        if not isinstance(run_items, list) or _strict_overall(run_items) != "SYSTEM_PASSED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "最新正式毕业评估 Run 的必需证据集合不完整或不满足当前 fail-closed 合同，禁止终审；请重新预审生成完整正式 Run",
+                http_status=409,
+            )
         existing = db.scalars(select(GraduationDecisionFact).where(
             GraduationDecisionFact.tenant_id == _tid(),
             GraduationDecisionFact.result_id == result.id,
