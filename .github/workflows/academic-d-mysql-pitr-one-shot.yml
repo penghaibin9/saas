@@ -38,9 +38,15 @@ jobs:
       MOCK_LOGIN_ENABLED: "false"
       MAX_PITR_SECONDS: "900"
       PITR_EVIDENCE_FILE: /tmp/academic-d-pitr-evidence.txt
+      EXACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact D head checkout
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -182,6 +188,8 @@ jobs:
           test "$ACTUAL_DIGEST" = "$TARGET_DIGEST"
           test "$("${MYSQL[@]}" -Nse "SELECT COUNT(*) FROM ${DB_NAME}.t_d_w4_pitr_probe WHERE value_text='CORRUPTED_AFTER_TARGET' OR id=99")" = "0"
           test "$("${MYSQL[@]}" -Nse "SELECT COUNT(*) FROM ${DB_NAME}.t_d_w4_pitr_probe")" = "2"
+          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
+          test "$CHECKED_OUT_COMMIT" = "$EXACT_HEAD_SHA"
           {
             echo "target_time_utc=$TARGET_TIME"
             echo "final_position=$FINAL_POSITION"
@@ -189,7 +197,12 @@ jobs:
             echo "actual_digest=$ACTUAL_DIGEST"
             echo "alembic_version=$ACTUAL_ALEMBIC"
             echo "post_target_writes_excluded=true"
+            echo "source_commit=$EXACT_HEAD_SHA"
+            echo "checked_out_commit=$CHECKED_OUT_COMMIT"
+            echo "workflow_trigger_sha=${GITHUB_SHA:-unknown}"
           } >> "$PITR_EVIDENCE_FILE"
+          grep -Fqx "source_commit=$EXACT_HEAD_SHA" "$PITR_EVIDENCE_FILE"
+          grep -Fqx "checked_out_commit=$EXACT_HEAD_SHA" "$PITR_EVIDENCE_FILE"
           cd "$(dirname "$PITR_EVIDENCE_FILE")"
           sha256sum "$(basename "$PITR_EVIDENCE_FILE")" > "$(basename "$PITR_EVIDENCE_FILE").sha256"
           sha256sum -c "$(basename "$PITR_EVIDENCE_FILE").sha256"
@@ -212,9 +225,15 @@ jobs:
     env:
       CUTOVER_OWNER: academic-d
       CUTOVER_EVIDENCE_FILE: /tmp/academic-d-cutover-ledger-evidence.txt
+      EXACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact D head checkout
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
 
       - name: Install MySQL client
         run: |
@@ -381,6 +400,8 @@ jobs:
           test "$NEW_SYSTEM_POST_T0_ROWS" = "1"
           test "$ILLEGAL_SOURCE_ROWS" = "0"
           T_PLUS_1_UTC="$("${MYSQL[@]}" -e "SELECT DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')")"
+          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
+          test "$CHECKED_OUT_COMMIT" = "$EXACT_HEAD_SHA"
 
           cat > "$CUTOVER_EVIDENCE_FILE" <<EVIDENCE
           source=academic_d_cutover_source.t_d_w4_cutover_probe
@@ -406,7 +427,9 @@ jobs:
           new_system_only_writer=true
           owner=$CUTOVER_OWNER
           sign_off=true
-          source_commit=${GITHUB_SHA:-unknown}
+          source_commit=$EXACT_HEAD_SHA
+          checked_out_commit=$CHECKED_OUT_COMMIT
+          workflow_trigger_sha=${GITHUB_SHA:-unknown}
           workflow_run_id=${GITHUB_RUN_ID:-manual}
           EVIDENCE
 
@@ -424,6 +447,8 @@ jobs:
           grep -Fqx 'new_system_only_writer=true' "$CUTOVER_EVIDENCE_FILE"
           grep -Fqx 'owner=academic-d' "$CUTOVER_EVIDENCE_FILE"
           grep -Fqx 'sign_off=true' "$CUTOVER_EVIDENCE_FILE"
+          grep -Fqx "source_commit=$EXACT_HEAD_SHA" "$CUTOVER_EVIDENCE_FILE"
+          grep -Fqx "checked_out_commit=$EXACT_HEAD_SHA" "$CUTOVER_EVIDENCE_FILE"
 
           cd "$(dirname "$CUTOVER_EVIDENCE_FILE")"
           sha256sum "$(basename "$CUTOVER_EVIDENCE_FILE")" > "$(basename "$CUTOVER_EVIDENCE_FILE").sha256"
