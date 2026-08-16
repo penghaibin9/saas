@@ -104,11 +104,13 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          mkdir -p test-results
           pytest -q \
             tests/test_sandbox_school_academic_quality_truth.py \
             tests/test_aa_evaluation_d_w3_close_submit_lock.py \
             tests/test_aa_evaluation_d_w3_appeal_state.py \
-            -p no:warnings
+            -p no:warnings \
+            --junitxml=test-results/academic-d-evaluation-focused-junit.xml
 
       - name: Run real MySQL evaluation contention evidence
         working-directory: backend
@@ -161,6 +163,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: academic-d-evaluation-concurrency-${{ github.run_id }}
-          path: backend/test-results/academic-d-evaluation-concurrency.json
+          path: |
+            backend/test-results/academic-d-evaluation-focused-junit.xml
+            backend/test-results/academic-d-evaluation-concurrency.json
           if-no-files-found: warn
           retention-days: 14
