@@ -12,6 +12,7 @@ on:
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_appeal_service.py"
       - "backend/app/services/sandbox_school_academic_quality_seed.py"
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
+      - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
       - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
       - "backend/tests/test_aa_evaluation_d_w3_scope_guard.py"
@@ -27,7 +28,7 @@ concurrency:
 
 jobs:
   mysql-evaluation-contention:
-    name: MySQL 8 · Evaluation 50/100/200 same-task contention
+    name: MySQL 8 · Evaluation same-task + school-wide deadline burst
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -93,6 +94,7 @@ jobs:
         run: |
           python -m py_compile \
             scripts/academic_d_evaluation_concurrency_probe.py \
+            scripts/academic_d_evaluation_deadline_burst_probe.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py \
@@ -117,11 +119,11 @@ jobs:
             -p no:warnings \
             --junitxml=test-results/academic-d-evaluation-focused-junit.xml
 
-      - name: Run real MySQL evaluation contention evidence
+      - name: Run real MySQL evaluation contention and deadline-burst evidence
         working-directory: backend
         run: |
           set -euo pipefail
-          PYTHONPATH=. python scripts/academic_d_evaluation_concurrency_probe.py \
+          PYTHONPATH=. python scripts/academic_d_evaluation_deadline_burst_probe.py \
             --output test-results/academic-d-evaluation-concurrency.json
 
       - name: Summarize evaluation concurrency evidence
@@ -140,6 +142,7 @@ jobs:
               else:
                   data = json.loads(path.read_text(encoding="utf-8"))
                   out.write(f"correctnessPassed: **{data.get('correctnessPassed')}**\n\n")
+                  out.write(f"studentLockProtocol: `{data.get('studentLockProtocol', '')}`\n\n")
                   out.write("| scenario | concurrency | success | failure/rejected | p50 ms | p95 ms | p99 ms | row lock waits | deadlocks | records | submittedCount | correct |\n")
                   out.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
                   for row in data.get("scenarios", []):
