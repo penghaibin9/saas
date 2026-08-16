@@ -56,9 +56,9 @@ def _finish(job_id: str, lease: str, result: dict, user: dict) -> dict:
             raise AppException("DATA_CONFLICT", "导入任务确认租约已失效")
         row.status = "SUCCEEDED"
         row.confirmed_rows = int(
-            result.get("createdCount")
+            result.get("confirmedRows")
+            or result.get("createdCount")
             or result.get("insertedRows")
-            or result.get("confirmedRows")
             or row.valid_rows
             or 0
         )
