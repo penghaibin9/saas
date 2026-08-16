@@ -192,7 +192,7 @@ def test_w6_closed_lottery_waiting_draw_never_falls_back_to_fcfs(client, db_mode
     assert before == {
         "roundStatus": "CLOSED",
         "selectedCount": 0,
-        "statuses": ["PENDING"],
+        "statuses": ["PENDING_LOTTERY"],
     }, before
 
     late = _enroll(client, "SEL2402", "选乙", int(selection_course_id))
