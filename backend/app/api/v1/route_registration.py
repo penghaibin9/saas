@@ -97,10 +97,10 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
         internship, internship_agreement_template, internship_application, internship_archive,
         internship_communication, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned, internship_insurance,
-        internship_match, internship_material_center, internship_participant,
-        internship_plan, internship_position, internship_process, internship_stats,
-        internship_student, internship_visit_plan,
+        internship_enterprise_collaboration, internship_enterprise_eval_versioned,
+        internship_enterprise_portal, internship_insurance, internship_match, internship_material_center,
+        internship_participant, internship_plan, internship_position, internship_process,
+        internship_recruitment_campaign, internship_stats, internship_student, internship_visit_plan,
     )
     d = deps["intern"]
     api_router.include_router(internship_material_center.router, dependencies=d)
@@ -109,9 +109,13 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_match, internship_participant, internship_application, internship_archive,
         internship_stats, internship_plan, internship_insurance, internship_process,
         internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned,
+        internship_enterprise_eval_versioned, internship_recruitment_campaign,
     ):
         api_router.include_router(r.router, dependencies=d)
+
+    # 企业协同端绝不能继承 require_staff。它们只使用企业 token/member/grant/context 门禁。
+    api_router.include_router(internship_enterprise_portal.router)
+    api_router.include_router(internship_enterprise_collaboration.router)
 
 
 def register_student_affairs_routes(api_router: APIRouter, deps: dict) -> None:
@@ -179,6 +183,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import message_center as message_center_api
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
+    from app.modules.internship.routers import internship_student_selection
     from app.modules.platform.routers import platform_router
     from app.modules.system_admin.routers import system_i4_router
     from app.student_portal.router import router as student_portal_router
@@ -227,10 +232,12 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(mobile_internship_context.router)
     api_router.include_router(mobile_internship_leave_context.router)
     api_router.include_router(mobile_internship_student.router)
+    api_router.include_router(internship_student_selection.mobile_router)
     api_router.include_router(student_portal_graduation_guard.router)
     api_router.include_router(student_portal_router)
     portal_gate = [Depends(enforce_student_portal_module_access)]
     api_router.include_router(student_portal_internship_router, dependencies=portal_gate)
+    api_router.include_router(internship_student_selection.portal_router)
     from app.api.v1 import student_portal_admin
     api_router.include_router(student_portal_admin.router)
     api_router.include_router(onboarding.router)
