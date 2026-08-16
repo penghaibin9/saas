@@ -12,6 +12,7 @@ privileged migration policy with source approval evidence/effectiveAt/audit.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Iterable, Mapping
 
 from .academic_affairs_school_setup_import_contract import (
@@ -74,6 +75,22 @@ def _active_binding_index(rows: Iterable[Mapping[str, object]]) -> dict[str, dic
     return result
 
 
+def _source_binding_scope_index(rows: Iterable[Mapping[str, object]]) -> dict[str, list[dict]]:
+    """Index source binding intents by the relationship scope they want to own.
+
+    Program identity is intentionally absent from this key. Two different Program
+    versions targeting one exact MAJOR_GRADE/CLASS scope in the same BINDING phase
+    are mutually exclusive and must fail before any writer can use row order to
+    decide which one becomes ACTIVE.
+    """
+    result: dict[str, list[dict]] = defaultdict(list)
+    for raw in rows:
+        row = dict(raw)
+        scope_key = _scope_key(dict(row.get("payload") or {}))
+        result[scope_key].append(row)
+    return dict(result)
+
+
 def classify_program_binding_phase(
     normalized_rows: Iterable[Mapping[str, object]],
     definition_actions: Iterable[Mapping[str, object]],
@@ -114,10 +131,34 @@ def classify_program_binding_phase(
 
     statuses = {str(key): str(value or "").strip().upper() for key, value in (program_status_by_id or {}).items()}
     active_by_scope = _active_binding_index(active_binding_snapshots)
+    source_by_scope = _source_binding_scope_index(binding_rows)
+    conflicting_source_scopes = {
+        scope_key: rows
+        for scope_key, rows in source_by_scope.items()
+        if len(rows) > 1
+    }
     intents: list[dict] = []
     errors: list[dict] = []
 
+    for scope_key, rows in sorted(conflicting_source_scopes.items()):
+        errors.append({
+            "row": min(int(row.get("rowNo") or 0) for row in rows),
+            "programKey": "",
+            "businessCode": "PROGRAM_BINDING_SOURCE_SCOPE_CONFLICT",
+            "message": "同一 BINDING 文件内多个 Program 同时声明同一绑定范围，禁止按行顺序决定 ACTIVE 归属",
+            "evidence": {
+                "scopeKey": scope_key,
+                "programKeys": sorted({str(row.get("programKey") or "") for row in rows}),
+                "rows": sorted(int(row.get("rowNo") or 0) for row in rows),
+            },
+            "howToResolve": "同一专业年级/班级范围仅保留一个目标 Program 后重新预检",
+        })
+
     for row in sorted(binding_rows, key=lambda item: (str(item.get("programKey") or ""), int(item.get("rowNo") or 0))):
+        scope_key = _scope_key(dict(row.get("payload") or {}))
+        if scope_key in conflicting_source_scopes:
+            continue
+
         program_key = str(row.get("programKey") or "")
         definition = action_by_program.get(program_key)
         if not definition:
@@ -153,7 +194,6 @@ def classify_program_binding_phase(
             })
             continue
 
-        scope_key = _scope_key(dict(row.get("payload") or {}))
         current = active_by_scope.get(scope_key)
         if current and str(current["programId"]) == program_id:
             intents.append({
