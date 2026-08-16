@@ -11,6 +11,9 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Iterable, Mapping
 
+from .academic_affairs_program_credit_accounting_policy import (
+    normalize_practice_credit_accounting,
+)
 from .academic_affairs_school_setup_import_contract import (
     BINDING_SCOPE_CLASS,
     PROGRAM_GROUP_BINDING,
@@ -125,6 +128,12 @@ def normalize_program_import_row(
             "majorId": _positive_int(row.get("majorId"), field="majorId"),
             "gradeYear": grade_year,
             "totalCredits": _positive_decimal(row.get("totalCredits"), field="totalCredits"),
+            # New Program import must make practice-credit accounting explicit.
+            # Legacy Program rows without the JSON policy remain backward-compatible
+            # in runtime governance, but import may not create new ambiguity.
+            "practiceCreditAccounting": normalize_practice_credit_accounting(
+                row.get("practiceCreditAccounting"), required=True
+            ),
             # Optional source assertion only. Preflight compares it with Major.education_years;
             # confirm must never write organization master data from this field.
             "educationYearsAssertion": _optional_positive_int(
