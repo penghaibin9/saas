@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
@@ -131,6 +133,7 @@ def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
             major_id=int(program.major_id),
             grade_year=grade,
             class_id=class_value,
+            bound_at=datetime.utcnow(),
             status="ACTIVE",
         )
         db.add(binding)
