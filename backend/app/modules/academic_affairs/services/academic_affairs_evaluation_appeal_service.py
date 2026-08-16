@@ -4,6 +4,7 @@ This module keeps the existing evaluation models/routes/permission codes. It onl
 business-state and concurrency gaps of the appeal chain:
 - appeals are allowed only for the teacher's own published result while the batch is RESULT_READY;
 - one result may be appealed only once (the current product policy forbids re-appeal after reject);
+- teachers see only their own appeals, college reviewers only their college, TENANT_ALL sees all;
 - SUBMITTED must be reviewed by the owning college before TENANT_ALL academic final review;
 - batch archive is blocked while SUBMITTED/COLLEGE_REVIEW appeals exist;
 - batch/result/appeal locks serialize submit/review/archive races without introducing a migration.
@@ -94,6 +95,63 @@ def _require_college_review_scope(db, context, result) -> int:
 def _require_academic_final_scope(context) -> None:
     if context.scope_type != "TENANT_ALL":
         raise no_data_scope("学院初审通过后，仅教务处/学校级教务管理可完成终审")
+
+
+def list_appeals(user, status=None):
+    """List appeals by canonical scope: self teacher / owning college / tenant-wide academic."""
+    from app.models import AaEvaluationAppeal, AaEvaluationResult, AaTeachingTask, AaTeachingTaskBatch
+
+    with _legacy.session() as db:
+        context = _legacy._ctx(user, db)
+        query = db.query(AaEvaluationAppeal).join(
+            AaEvaluationResult,
+            AaEvaluationResult.id == AaEvaluationAppeal.result_id,
+        ).outerjoin(
+            AaTeachingTask,
+            AaTeachingTask.id == AaEvaluationResult.teaching_task_id,
+        ).outerjoin(
+            AaTeachingTaskBatch,
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+        ).filter(
+            AaEvaluationAppeal.tenant_id == _legacy._tid(),
+            AaEvaluationAppeal.is_deleted.is_(False),
+            AaEvaluationResult.tenant_id == _legacy._tid(),
+            AaEvaluationResult.is_deleted.is_(False),
+        )
+        if status:
+            query = query.filter(AaEvaluationAppeal.status == status)
+
+        if context.scope_type == "TENANT_ALL":
+            pass
+        elif context.scope_type == "COLLEGE":
+            allowed_colleges = {int(value) for value in (context.college_ids or set())}
+            if not allowed_colleges:
+                return []
+            query = query.filter(
+                AaTeachingTask.tenant_id == _legacy._tid(),
+                AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTaskBatch.tenant_id == _legacy._tid(),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+                AaTeachingTaskBatch.college_id.in_(allowed_colleges),
+            )
+        else:
+            keys = _derive_keys(user)
+            if not keys:
+                return []
+            query = query.filter(
+                AaEvaluationAppeal.teacher_key.in_(list(keys)),
+                AaEvaluationResult.teacher_key.in_(list(keys)),
+            )
+
+        rows = query.order_by(AaEvaluationAppeal.id.desc()).all()
+        return [{
+            "appealId": str(row.id),
+            "resultId": str(row.result_id),
+            "reason": row.reason,
+            "reviewReason": row.review_reason,
+            "currentNode": row.current_node,
+            "status": row.status,
+        } for row in rows]
 
 
 def archive_batch(user, bid):
