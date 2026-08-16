@@ -1837,14 +1837,14 @@ async def identity_import_validate_file(
         user=Depends(require_permission("systemAdmin.user.import"))):
     from app.services.identity_import_file_service import MAX_FILE_BYTES, create_batch, parse_xlsx
     from app.services.identity_import_service import preview_identity_import
-    from app.services.xlsx_util import read_safe_upload
-    content = await read_safe_upload(
-file,
-max_bytes=MAX_FILE_BYTES,
-too_large_code="FILE_TOO_LARGE",
-too_large_message="导入文件超过 20MB 上限，请拆分后重试",
-    )
-    parsed = parse_xlsx(content, file.filename or "")
+    chunks, size = [], 0
+    while chunk := await file.read(1024 * 1024):
+        size += len(chunk)
+        if size > MAX_FILE_BYTES:
+            from app.core.exceptions import AppException
+            raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
+        chunks.append(chunk)
+    parsed = parse_xlsx(b"".join(chunks), file.filename or "")
     payload = {"students": parsed["students"], "teachers": parsed["teachers"], "atomic": True}
     report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
     return success(create_batch(user, parsed, report), message="Excel 解析及预检完成")
@@ -1886,17 +1886,20 @@ def identity_import_confirm_batch(
 # 后续流程完全不同，故拆成两个独立入口：各自的模板、字段规则、接口语义与结果统计；
 # 共用批次租约、整批事务、错误回执、初始密码回执与审计（不复制第二套批次系统）。
 
-async def _identity_import_upload(file: UploadFile, parser):
-    """两个专用入口共用受限 XLSX 上传读取与业务解析。"""
+def _identity_import_upload(file: UploadFile, parser):
+    """两个专用入口共用的上传读取与大小限制。"""
     from app.services.identity_import_file_service import MAX_FILE_BYTES
-    from app.services.xlsx_util import read_safe_upload
-    content = await read_safe_upload(
-file,
-max_bytes=MAX_FILE_BYTES,
-too_large_code="FILE_TOO_LARGE",
-too_large_message="导入文件超过 20MB 上限，请拆分后重试",
-    )
-    return parser(content, file.filename or "")
+    chunks, size = [], 0
+    while True:
+        chunk = file.file.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_FILE_BYTES:
+            from app.core.exceptions import AppException
+            raise AppException("FILE_TOO_LARGE", "导入文件超过 20MB 上限，请拆分后重试")
+        chunks.append(chunk)
+    return parser(b"".join(chunks), file.filename or "")
 
 
 @router.get("/system/identity-import/students/template", summary="下载学生导入模板（仅 xlsx）")
@@ -1919,7 +1922,7 @@ async def student_import_validate_file(
     # 学生导入的租户特性闸门（原挂在已删除的 /import/students/*，随入口收敛迁到这里，
     # 否则学校「是否购买学生导入」将失去唯一执行点）
     enforce_student_import(user)
-    parsed = await _identity_import_upload(file, parse_student_xlsx)
+    parsed = _identity_import_upload(file, parse_student_xlsx)
     payload = {"students": parsed["students"], "teachers": [], "atomic": True}
     report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
     return success(create_batch(user, parsed, report), message="学生名单解析及预检完成")
@@ -1950,7 +1953,7 @@ async def teacher_import_validate_file(
         user=Depends(require_permission("systemAdmin.user.import"))):
     from app.services.identity_import_file_service import create_batch, parse_teacher_xlsx
     from app.services.identity_import_service import preview_identity_import
-    parsed = await _identity_import_upload(file, parse_teacher_xlsx)
+    parsed = _identity_import_upload(file, parse_teacher_xlsx)
     payload = {"students": [], "teachers": parsed["teachers"], "atomic": True}
     report = preview_identity_import(user, payload, pre_errors=parsed["errors"])
     return success(create_batch(user, parsed, report), message="教师名单解析及预检完成")
