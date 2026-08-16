@@ -29,19 +29,22 @@ async function dismissPageOperationGuide(page) {
   if (await skip.isVisible({ timeout: 1_000 }).catch(() => false)) await skip.click()
 }
 
-async function openAcademicW1StaffPage(page, path) {
-  // The dedicated academic-w1-school exists only in the isolated Playwright database. Keeping the
-  // term mutations here prevents this Gold from changing demo-school (read-only) or sandbox-school,
-  // which later graduation/schedule/grade/internship Gold suites share in the same serial run.
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.academicW1Admin)
-  await page.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
-
+async function gotoAcademicW1StaffPage(page, path) {
   const targetUrl = new URL(path, config.staffBaseUrl).toString()
   const refresh = waitForBrowserRefresh(page)
   await page.goto(targetUrl)
   await refresh
   await page.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
   await dismissPageOperationGuide(page)
+}
+
+async function openAcademicW1StaffPage(page, path) {
+  // The dedicated academic-w1-school exists only in the isolated Playwright database. Keeping the
+  // term mutations here prevents this Gold from changing demo-school (read-only) or sandbox-school,
+  // which later graduation/schedule/grade/internship Gold suites share in the same serial run.
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.academicW1Admin)
+  await page.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
+  await gotoAcademicW1StaffPage(page, path)
 }
 
 async function reloadWithBrowserSession(page) {
@@ -103,17 +106,11 @@ async function closeActiveGovernance(api, current, reason) {
 }
 
 async function restoreAcademicW1State(api, { originalCurrent, legacyBaseTerm, governanceTerm }) {
-  // Never leave SYS-12 ACTIVE after this spec. CLOSING is the formal state-machine exit and
-  // force=true only bypasses closing blockers; it does not bypass the transition graph.
   const activeNow = await currentGovernance(api)
   if (activeNow?.hasCurrent) {
     await closeActiveGovernance(api, activeNow, 'A-W1 Playwright 清理测试激活学期')
   }
 
-  // The isolated A-W1 tenant deliberately starts without term facts. There is no formal
-  // "unset current" or Term delete command, so when this spec creates its own legacy base we keep
-  // that low-year term as this dedicated tenant's sole PUBLISHED current instead of deleting facts
-  // with raw SQL or contaminating sandbox-school.
   const restoreTargetId = originalCurrent?.termId || legacyBaseTerm?.termId
   if (restoreTargetId) {
     await api.post(`/academic-affairs/terms/${restoreTargetId}/set-current`, {})
@@ -154,8 +151,6 @@ test('A-W1 current term: legacy real click persists, then governance removes the
   ).toBeFalsy()
 
   try {
-    // The minimal dedicated tenant has no term by design. Build a low-year legacy current through
-    // the same formal APIs used in production instead of depending on a rich demo/sandbox seeder.
     let legacyCurrent = originalCurrent
     if (!legacyCurrent?.termId) {
       legacyBaseTerm = await createPublishedTerm(api, {
@@ -170,8 +165,6 @@ test('A-W1 current term: legacy real click persists, then governance removes the
 
     const legacyName = legacyCurrent.termName || renderedTermLabel(legacyCurrent)
 
-    // Publishing a second low-year term makes the legacy base a real non-current PUBLISHED row,
-    // giving the browser a visible "设为当前" action to exercise.
     governanceTerm = await createPublishedTerm(api, {
       year: 2010 + testInfo.retry * 4,
       termName: `A-W1 统一治理学期 ${suffix}`,
@@ -184,15 +177,12 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(page.getByText('暂保留教务当前学期兼容切换', { exact: false })).toBeVisible()
     await expect(termRow(page, governanceTerm)).toBeVisible()
 
-    // Formal current switch under test: visible button -> shared confirmation component -> real POST.
     const legacyRow = termRow(page, legacyCurrent)
     await expect(legacyRow).toBeVisible()
     const setCurrent = legacyRow.getByRole('button', { name: '设为当前' })
     await expect(setCurrent).toBeEnabled()
     await setCurrent.click()
 
-    // AppConfirmDialog currently has role=dialog but no aria-label/aria-labelledby. Scope by its
-    // real DOM + visible title instead of pretending it has an accessible dialog name.
     const dialog = page.locator('.app-confirm-dialog').filter({ hasText: '切换当前学期' }).first()
     await expect(dialog).toBeVisible()
     await expect(dialog.locator('.app-confirm-dialog__title')).toHaveText('切换当前学期')
@@ -211,8 +201,6 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(termRow(page, legacyCurrent).getByText('当前学期', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'a-w1-current-term-legacy-after-visible-click')
 
-    // Full document refresh reconstructs auth from the real HttpOnly browser session and rereads
-    // the current term from MySQL; in-memory-only success cannot pass this assertion.
     await reloadWithBrowserSession(page)
     await expect(page.locator('.aa-current-card__sub')).toHaveText(legacyName)
     await expect(termRow(page, legacyCurrent).getByText('当前学期', { exact: true })).toBeVisible()
@@ -231,7 +219,24 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(oldRow.getByText('统一治理切换', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'a-w1-current-term-governance-no-bypass')
 
-    // The remaining visible action must lead to the existing SYS-12 owner, not write AaTerm here.
+    // Reachable term ledger must also remove direct publish/set-current bypass controls.
+    await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms')
+    await expect(page.getByRole('heading', { name: '学年学期' }).first()).toBeVisible()
+    await expect(page.getByText('全校统一学期治理已启用', { exact: false })).toBeVisible()
+    await expect(page.getByRole('button', { name: '发布并设为当前' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '设为当前学期' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '统一治理切换' }).first()).toBeVisible()
+    await capture(page, testInfo, 'a-w1-term-ledger-governance-no-bypass')
+
+    // The reachable create form must teach real school week counts, not silently normalize to 18.
+    await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/new')
+    await expect(page.getByRole('heading', { name: '新建学期' }).first()).toBeVisible()
+    await expect(page.getByText(/如 17 或 20/)).toBeVisible()
+    await expect(page.getByText(/正式教学任务不会默认18周/)).toBeVisible()
+    await capture(page, testInfo, 'a-w1-term-create-no-18-week-default')
+
+    // The canonical visible governance action remains reachable from the current-term workspace.
+    await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await page.getByRole('button', { name: '前往学年学期与业务日历' }).click()
     await expect(page).toHaveURL(/\/admin\/system\/academic-calendar(?:\?|$)/)
     await expect(page.getByText('学年学期与业务日历', { exact: false }).first()).toBeVisible()
