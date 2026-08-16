@@ -15,7 +15,7 @@ from app.core.exceptions import AppException, no_permission
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_attendance_occurrence_consumer as occurrence
-from .academic_affairs_attendance_service import ATTENDANCE_TASK_STATUSES
+from .academic_affairs_attendance_service import attendance_task_executable
 
 _NO_CLASS_CALENDAR_MESSAGES = {
     "该日期为校历调休停课日，不能创建普通课堂考勤": "SWAP_SOURCE",
@@ -90,11 +90,13 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
 
     tasks = []
     if batch_ids:
+        # Schedule visibility and attendance executability are deliberately separate contracts.
+        # A current PUBLISHED/EFFECTIVE occurrence stays visible even while the task is waiting
+        # for teacher confirmation; only the attendance action is disabled for that row.
         tasks = db.scalars(select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(),
             AaTeachingTask.batch_id.in_(batch_ids),
             AaTeachingTask.teacher_key.in_(sorted(keys)),
-            AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES)),
             AaTeachingTask.is_deleted.is_(False),
         )).all()
 
@@ -148,6 +150,7 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
             })
             continue
         school_class = class_by_id.get(int(task.class_id or 0))
+        executable = attendance_task_executable(task.status)
         for pattern in formal.get("patterns") or []:
             schedule_item_id = int(pattern["scheduleItemId"])
             schedule_row = schedule_item_by_id.get(schedule_item_id)
@@ -168,6 +171,8 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
                 "scopeHeadVersion": pattern["scopeHeadVersion"],
                 "teachingTaskId": str(task.id),
                 "taskStatus": task.status,
+                "attendanceExecutable": executable,
+                "attendanceBlockReason": "" if executable else "教学任务尚未进入可点名状态",
                 "courseName": task.course_name or schedule_row.course_name or "",
                 "classId": str(task.class_id or ""),
                 "className": (
@@ -317,13 +322,15 @@ def teacher_today_projection(user, *, on_date=None) -> dict:
         for row in schedule["items"]:
             if not _pattern_active(row, week_no=week_no, weekday=weekday):
                 continue
-            attendance_route = (
-                "/pages/teacher/academic-affairs/attendance"
-                f"?teachingTaskId={row['teachingTaskId']}"
-                f"&sessionDate={target.isoformat()}"
-                f"&slotNo={row['slotNo']}"
-                f"&scheduleItemId={row['scheduleItemId']}"
-            )
+            attendance_route = None
+            if row.get("attendanceExecutable"):
+                attendance_route = (
+                    "/pages/teacher/academic-affairs/attendance"
+                    f"?teachingTaskId={row['teachingTaskId']}"
+                    f"&sessionDate={target.isoformat()}"
+                    f"&slotNo={row['slotNo']}"
+                    f"&scheduleItemId={row['scheduleItemId']}"
+                )
             today_items.append({
                 **row,
                 "sessionDate": target.isoformat(),

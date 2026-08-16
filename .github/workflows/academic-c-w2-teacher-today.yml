@@ -9,6 +9,7 @@ on:
       - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/tests/test_aa_teacher_today_scopehead_contract.py'
       - 'backend/tests/test_aa_teacher_today_public_wiring_contract.py'
+      - 'backend/tests/test_aa_teacher_today_visibility_contract.py'
       - '.github/workflows/academic-c-w2-teacher-today.yml'
   push:
     branches:
@@ -77,6 +78,7 @@ jobs:
           pytest -q \
             tests/test_aa_teacher_today_scopehead_contract.py \
             tests/test_aa_teacher_today_public_wiring_contract.py \
+            tests/test_aa_teacher_today_visibility_contract.py \
             -p no:warnings --durations=20
 
       - name: Prove read projection reuses C-C1 truth
@@ -89,6 +91,7 @@ jobs:
           public = Path('app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py').read_text(encoding='utf-8')
           required = [
               'formal_schedule_patterns_for_tasks',
+              'attendanceExecutable',
               'attendanceRoute',
               'scheduleItemId',
               'calendarSource',
