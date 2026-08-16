@@ -13,7 +13,7 @@ const api = fs.readFileSync(path.join(root, 'src/services/portalApi.js'), 'utf8'
 test('D-W5 student graduation route remains a dedicated academic truth surface', () => {
   assert.match(routes, /path:\s*['"]graduation['"]/)
   assert.match(routes, /StudentGraduationAuditView\.vue/)
-  assert.match(api, /academicGraduationAudit\s*\(\)\s*\{[\s\S]*?\/portal\/academic\/graduation-audit/)
+  assert.match(api, /academicGraduationAudit:\s*\(\)\s*=>\s*request\(['"]\/portal\/academic\/graduation-audit['"]\)/)
 })
 
 test('SYSTEM_ABNORMAL is explicit and can never inherit a green or generic formal label', () => {
