@@ -191,7 +191,7 @@ def _seed_result(label: str, *, published: bool = True) -> dict:
 def _call(user: dict, fn, *args, **kwargs):
     _bind(user)
     try:
-        return fn(*args, **kwargs)
+        return fn(user, *args, **kwargs)
     finally:
         _unbind()
 
