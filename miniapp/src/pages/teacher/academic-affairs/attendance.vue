@@ -10,7 +10,7 @@
 
         <view class="card stack-sm" v-if="showForm">
           <picker mode="selector" :range="taskLabels" :value="taskIndex" @change="onTaskPick">
-            <view class="at__input at__date">{{ taskLabels[taskIndex] || '选择当前教学任务（必填）' }}</view>
+            <view class="at__input at__date">{{ selectedTask ? taskLabels[taskIndex] : '选择当前教学任务（必填）' }}</view>
           </picker>
           <view v-if="selectedTask" class="at__task-note">
             <text>{{ selectedTask.courseName || '未命名课程' }}</text>
@@ -19,11 +19,11 @@
           <picker mode="date" :value="form.sessionDate" @change="onDateChange">
             <view class="at__input at__date">{{ form.sessionDate || '选择考勤日期（必填）' }}</view>
           </picker>
-          <input class="at__input" type="number" v-model="form.slotNo" placeholder="第几节（选填）" placeholder-class="at__ph" />
+          <input class="at__input" type="number" v-model="form.slotNo" placeholder="第几节（必填）" placeholder-class="at__ph" />
           <picker mode="selector" :range="sessionTypes" @change="onTypeChange">
             <view class="at__input at__date">点名类别：{{ form.sessionType || '常规' }}</view>
           </picker>
-          <button class="btn btn-primary" :disabled="!form.teachingTaskId || !form.sessionDate || creating" @click="createSession">
+          <button class="btn btn-primary" :disabled="!form.teachingTaskId || !form.sessionDate || !hasValidSlot || creating" @click="createSession">
             {{ creating ? '创建中…' : '按教学任务圈定名单并新建' }}
           </button>
           <text v-if="!taskOptions.length" class="at__sub">暂无可用教学任务：请确认当前学期教学任务已分配到本人并完成教师确认。</text>
@@ -105,7 +105,7 @@ export default {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
-      taskOptions: [], taskIndex: 0,
+      taskOptions: [], taskIndex: 0, taskSelectionInvalid: false, routeSeed: null,
       form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', sessionType: '' },
       active: null, items: [], detailLoading: false, marking: {}, submitting: false, STATUS_OPTS
     }
@@ -115,14 +115,80 @@ export default {
       return (this.taskOptions || []).map((task) => `${task.courseName || '未命名课程'} · ${task.className || '未关联班级'}`)
     },
     selectedTask() {
+      if (this.taskSelectionInvalid) return null
       return (this.taskOptions || [])[this.taskIndex] || null
+    },
+    hasValidSlot() {
+      const slot = Number(this.form.slotNo)
+      return Number.isInteger(slot) && slot > 0
     },
     hasPendingMarks() {
       return Object.values(this.marking).some(Boolean)
     }
   },
-  onLoad() { this.load(); this.loadTasks() },
+  onLoad(options = {}) {
+    this.routeSeed = this.parseOccurrenceSeed(options)
+    this.load()
+    this.loadTasks()
+  },
   methods: {
+    parseOccurrenceSeed(options = {}) {
+      const taskIdRaw = String(options.teachingTaskId || '').trim()
+      const sessionDate = String(options.sessionDate || '').trim()
+      const slotRaw = String(options.slotNo || '').trim()
+      const anySeed = Boolean(taskIdRaw || sessionDate || slotRaw)
+      if (!anySeed) return null
+
+      const taskId = Number(taskIdRaw)
+      const slotNo = Number(slotRaw)
+      const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(sessionDate)
+      if (!Number.isInteger(taskId) || taskId <= 0 || !dateValid || !Number.isInteger(slotNo) || slotNo <= 0) {
+        return {
+          invalid: true,
+          message: '点名链接缺少有效的教学任务、日期或节次，请重新从正式课次进入'
+        }
+      }
+      return {
+        invalid: false,
+        teachingTaskId: String(taskId),
+        sessionDate,
+        slotNo: String(slotNo)
+      }
+    },
+    applyOccurrenceSeed() {
+      const seed = this.routeSeed
+      if (!seed) {
+        this.taskSelectionInvalid = false
+        this.applyOccurrenceSeed()
+        return
+      }
+
+      this.showForm = true
+      if (seed.invalid) {
+        this.taskSelectionInvalid = true
+        this.applyTask(null)
+        this.form.sessionDate = ''
+        this.form.slotNo = ''
+        toast(seed.message)
+        return
+      }
+
+      const index = this.taskOptions.findIndex((task) => String(task.teachingTaskId) === seed.teachingTaskId)
+      if (index < 0) {
+        this.taskSelectionInvalid = true
+        this.applyTask(null)
+        this.form.sessionDate = ''
+        this.form.slotNo = ''
+        toast('该正式课次不在本人当前可点名教学任务范围内')
+        return
+      }
+
+      this.taskSelectionInvalid = false
+      this.taskIndex = index
+      this.applyTask(this.taskOptions[index])
+      this.form.sessionDate = seed.sessionDate
+      this.form.slotNo = seed.slotNo
+    },
     onDateChange(event) { this.form.sessionDate = event.detail.value },
     onTypeChange(event) { this.form.sessionType = this.sessionTypes[Number(event.detail.value)] || '' },
     applyTask(task) {
@@ -130,6 +196,8 @@ export default {
       this.form.classId = task ? task.classId : ''
     },
     onTaskPick(event) {
+      this.routeSeed = null
+      this.taskSelectionInvalid = false
       this.taskIndex = Number(event.detail.value)
       this.applyTask(this.taskOptions[this.taskIndex])
     },
@@ -150,6 +218,7 @@ export default {
         this.applyTask(this.taskOptions[0])
       }).catch(() => {
         this.taskOptions = []
+        this.taskSelectionInvalid = Boolean(this.routeSeed)
         this.applyTask(null)
       })
     },
@@ -162,13 +231,13 @@ export default {
       }).catch(() => { this.state = 'error' })
     },
     createSession() {
-      if (this.creating || !this.form.teachingTaskId || !this.form.sessionDate) return
+      if (this.creating || !this.form.teachingTaskId || !this.form.sessionDate || !this.hasValidSlot) return
       this.creating = true
       teacherApi.createAttendanceSession({
         teachingTaskId: Number(this.form.teachingTaskId),
         classId: this.form.classId ? Number(this.form.classId) : undefined,
         sessionDate: this.form.sessionDate,
-        slotNo: this.form.slotNo ? Number(this.form.slotNo) : undefined,
+        slotNo: Number(this.form.slotNo),
         sessionType: this.form.sessionType || undefined
       }).then(() => {
         uni.showToast({ title: '考勤场次已创建', icon: 'success' })
