@@ -34,8 +34,8 @@
                 <text class="ta__course-name">{{ item.courseName }}</text>
                 <text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text>
               </view>
-              <text class="ta__course-action" :class="{ 'is-disabled': !item.attendanceExecutable }">
-                {{ item.attendanceExecutable ? '去点名 ›' : '待任务确认' }}
+              <text class="ta__course-action" :class="{ 'is-disabled': !item.attendanceRoute }">
+                {{ item.attendanceActionLabel || (item.attendanceRoute ? '去点名' : '暂不可操作') }}{{ item.attendanceRoute ? ' ›' : '' }}
               </text>
             </view>
           </view>

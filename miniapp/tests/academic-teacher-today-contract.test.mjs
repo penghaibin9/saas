@@ -18,19 +18,22 @@ test('Teacher Today consumes server-projected todayItems instead of recomputing 
   assert.doesNotMatch(page, /function activeInWeek\(/)
 })
 
-test('each executable Teacher Today occurrence opens its exact attendance deep-link while full schedule remains separate', () => {
+test('Teacher Today action label and route are server-projected and existing sessions open exactly', () => {
   assert.match(page, /@click="openTodayCourse\(item\)"/)
   assert.match(page, /item\.attendanceRoute/)
   assert.match(page, /return go\(item\.attendanceRoute\)/)
+  assert.match(page, /item\.attendanceActionLabel/)
+  assert.match(page, /item\.attendanceRoute \? ' ›' : ''/)
+  assert.match(page, /'is-disabled': !item\.attendanceRoute/)
+  assert.doesNotMatch(page, /item\.attendanceExecutable \? '去点名 ›' : '待任务确认'/)
   assert.match(page, /完整课表 ›/)
   assert.match(page, /@click="go\('\/pages\/teacher\/my-schedule\/index'\)"/)
-  assert.match(page, /attendanceExecutable \? '去点名 ›' : '待任务确认'/)
 })
 
-test('non-executable formal class remains visible but cannot silently fall through to attendance', () => {
+test('blocked Teacher Today occurrence explains the server reason and never invents a write route', () => {
   assert.match(page, /item\.attendanceBlockReason/)
   assert.match(page, /toast\(item\.attendanceBlockReason\)/)
-  assert.match(page, /'is-disabled': !item\.attendanceExecutable/)
+  assert.match(page, /item\.attendanceActionLabel \|\| \(item\.attendanceRoute \? '去点名' : '暂不可操作'\)/)
 })
 
 test('calendar no-class states are explicit and never fall back to another course', () => {
