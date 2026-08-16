@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py"
@@ -13,6 +14,7 @@ on:
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
       - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
+      - "backend/tests/test_aa_evaluation_d_w3_scope_guard.py"
       - "backend/tests/test_sandbox_school_academic_quality_truth.py"
       - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
 
@@ -91,6 +93,7 @@ jobs:
         run: |
           python -m py_compile \
             scripts/academic_d_evaluation_concurrency_probe.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py \
@@ -98,9 +101,10 @@ jobs:
             app/services/sandbox_school_academic_quality_seed.py \
             tests/test_aa_evaluation_d_w3_close_submit_lock.py \
             tests/test_aa_evaluation_d_w3_appeal_state.py \
+            tests/test_aa_evaluation_d_w3_scope_guard.py \
             tests/test_sandbox_school_academic_quality_truth.py
 
-      - name: Run D-W3 evaluation truth, state lock and appeal contracts
+      - name: Run D-W3 evaluation truth, state lock, appeal and scope contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -109,6 +113,7 @@ jobs:
             tests/test_sandbox_school_academic_quality_truth.py \
             tests/test_aa_evaluation_d_w3_close_submit_lock.py \
             tests/test_aa_evaluation_d_w3_appeal_state.py \
+            tests/test_aa_evaluation_d_w3_scope_guard.py \
             -p no:warnings \
             --junitxml=test-results/academic-d-evaluation-focused-junit.xml
 
