@@ -184,8 +184,6 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
     from app.modules.internship.routers import internship_student_selection
-    from app.modules.platform.routers import platform_router
-    from app.modules.system_admin.routers import system_i4_router
     from app.student_portal.router import router as student_portal_router
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -203,6 +201,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(migration.platform_router)
     api_router.include_router(audit.router)
     api_router.include_router(audit.alias_router)
+    from app.modules.platform.routers import platform_router
     api_router.include_router(platform_router.router)
     api_router.include_router(stats.router)
     api_router.include_router(mobile_export.router)
@@ -247,6 +246,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(notification.router)
     api_router.include_router(user_preference.router)
     api_router.include_router(feedback.router)
+    from app.modules.system_admin.routers import system_i4_router
     api_router.include_router(system_i4_router.router, tags=["system"])
     api_router.include_router(org_directory.router)
 
