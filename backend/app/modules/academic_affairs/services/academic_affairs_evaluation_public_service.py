@@ -355,3 +355,22 @@ def close_and_score(user, bid):
     from . import academic_affairs_evaluation_scale_service as _scale
 
     return _scale.close_and_score(user, bid)
+
+
+# D-W3 appeal state owner: existing routes/permissions stay unchanged; only write semantics tighten.
+def archive_batch(user, bid):
+    from . import academic_affairs_evaluation_appeal_service as _appeal
+
+    return _appeal.archive_batch(user, bid)
+
+
+def submit_appeal(user, result_id, reason):
+    from . import academic_affairs_evaluation_appeal_service as _appeal
+
+    return _appeal.submit_appeal(user, result_id, reason)
+
+
+def review_appeal(user, appeal_id, action, reason=""):
+    from . import academic_affairs_evaluation_appeal_service as _appeal
+
+    return _appeal.review_appeal(user, appeal_id, action, reason)
