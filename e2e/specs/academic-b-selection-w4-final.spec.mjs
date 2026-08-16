@@ -57,7 +57,9 @@ async function openAddCourse(page) {
   const drawer = page.getByRole('dialog', { name: '添加可选课程' })
   await expect(drawer).toBeVisible({ timeout: 10_000 })
   await expect(drawer.getByText('课程', { exact: true })).toHaveCount(0)
-  await expect(drawer.getByText('教学任务', { exact: true })).toBeVisible()
+  const taskPicker = drawer.getByRole('combobox').first()
+  await expect(taskPicker).toBeVisible()
+  await expect(taskPicker).toContainText('选择当前批次学期的 READY 教学任务')
   return drawer
 }
 
