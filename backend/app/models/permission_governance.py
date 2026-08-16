@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Index, Integer, String,
+from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String,
                         UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -114,7 +114,7 @@ class CustomRoleSource(PKMixin, TenantMixin, CommonMixin, Base):
 
     # N-1 rolling compatibility: previous-release writers do not know role_id yet.
     # New Control Plane writes still populate it; a later contract migration may tighten NOT NULL.
-    role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    role_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("t_role.id"), nullable=True, index=True)
     role_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
