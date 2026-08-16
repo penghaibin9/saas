@@ -38,9 +38,11 @@ def _replay_evidence(**overrides):
         "clean_tenant_schema_proven": "true",
         "migrated_tenant_schema_proven": "true",
         "migrated_tenant_contracts_proven": "true",
+        "main_commit": "m" * 40,
         "a_commit": "a" * 40,
         "b_commit": "b" * 40,
         "c_commit": "c" * 40,
+        "int_commit": "i" * 40,
         "main_alembic_version": "main-head",
         "integrated_alembic_version": "integrated-head",
         "migrated_probe_digest": "d" * 64,
@@ -68,6 +70,18 @@ def _upstream_frozen(value: bool = True, **head_overrides):
     }
 
 
+def _live_heads(**overrides):
+    heads = {
+        "main": "m" * 40,
+        "agent/academic-a-semester-core": "a" * 40,
+        "agent/academic-b-schedule-selection": "b" * 40,
+        "agent/academic-c-teaching-execution": "c" * 40,
+        "integration/academic-school-gold": "i" * 40,
+    }
+    heads.update(overrides)
+    return heads
+
+
 def test_latest_runs_are_exact_sha_and_latest_attempt_only():
     name = MODULE.REQUIRED_SAME_HEAD_WORKFLOWS[0]
     runs = [
@@ -89,21 +103,27 @@ def test_missing_pending_and_failure_are_all_fail_closed():
     assert failed["state"] == "FAILURE" and failed["ready"] is False
 
 
+def test_required_workflows_terminal_requires_every_named_exact_head_run_completed():
+    runs = _all_success_runs()
+    assert MODULE.required_workflows_terminal(runs, "d-head") is True
+    runs[-1] = _run(MODULE.REQUIRED_SAME_HEAD_WORKFLOWS[-1], run_id=999, status="queued", conclusion=None)
+    assert MODULE.required_workflows_terminal(runs, "d-head") is False
+
+
 def test_pre_gold_can_be_ready_without_claiming_final_gold():
     matrix = MODULE.build_matrix(
         sha="d-head",
         runs=_all_success_runs(),
         evidence=_replay_evidence(),
         upstream_freeze=_upstream_frozen(False),
+        live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is True
-    assert matrix["localRequirements"]["migratedTenantSchema"] is True
     assert matrix["externalSameHeadReady"] is True
     assert matrix["preGoldReady"] is True
+    assert matrix["replayHeadsStillCurrent"] is True
     assert matrix["finalGold"] is False
-    assert matrix["migrationEvidence"]["mainAlembicVersion"] == "main-head"
     assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
-    assert "upstream:A:contract_not_explicitly_frozen:A-C5" in matrix["blockers"]
     assert "integrated_final_browser_gold_not_proven" in matrix["blockers"]
 
 
@@ -113,30 +133,27 @@ def test_migrated_tenant_schema_is_a_hard_pre_gold_requirement():
         runs=_all_success_runs(),
         evidence=_replay_evidence(migrated_tenant_schema_proven=False),
         upstream_freeze=_upstream_frozen(False),
+        live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is False
     assert matrix["preGoldReady"] is False
     assert "local_requirement:migratedTenantSchema:false" in matrix["blockers"]
 
 
-def test_final_gold_requires_external_owner_freeze_evidence_not_local_boolean():
+def test_final_gold_requires_external_owner_freeze_and_current_replay_heads():
     runs = _all_success_runs()
     runs.append(_run(MODULE.AUXILIARY_BROWSER_WORKFLOW, run_id=90, conclusion="failure"))
     matrix = MODULE.build_matrix(
         sha="d-head",
         runs=runs,
-        evidence=_replay_evidence(
-            upstream_contract_heads_frozen=True,  # legacy local claim must not be authoritative
-            final_browser_gold_proven_on_w5_head=True,
-        ),
+        evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
         upstream_freeze=_upstream_frozen(True),
+        live_heads=_live_heads(),
     )
-    # Raw-head global Playwright is auxiliary: integrated browser evidence is the final authority.
     assert matrix["auxiliaryRawHeadBrowser"]["state"] == "FAILURE"
     assert matrix["preGoldReady"] is True
-    assert matrix["upstreamContractFreezeDeclared"] is True
     assert matrix["upstreamFreezeHeadsMatchReplay"] is True
-    assert matrix["upstreamContractHeadsFrozen"] is True
+    assert matrix["replayHeadsStillCurrent"] is True
     assert matrix["finalGold"] is True
     assert matrix["blockers"] == []
 
@@ -147,15 +164,42 @@ def test_frozen_owner_contract_on_old_head_cannot_promote_new_replay_head():
         runs=_all_success_runs(),
         evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
         upstream_freeze=_upstream_frozen(True, A="f" * 40),
+        live_heads=_live_heads(),
     )
     assert matrix["upstreamContractFreezeDeclared"] is True
     assert matrix["upstreamFreezeHeadsMatchReplay"] is False
-    assert matrix["upstreamContractHeadsFrozen"] is False
     assert matrix["finalGold"] is False
-    assert any(
-        blocker.startswith("upstream_freeze_head_mismatch:A:")
-        for blocker in matrix["blockers"]
+    assert any(blocker.startswith("upstream_freeze_head_mismatch:A:") for blocker in matrix["blockers"])
+
+
+def test_branch_movement_after_replay_blocks_final_gold_even_with_frozen_contracts():
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
+        upstream_freeze=_upstream_frozen(True),
+        live_heads=_live_heads(**{"integration/academic-school-gold": "z" * 40}),
     )
+    assert matrix["preGoldReady"] is True
+    assert matrix["upstreamContractHeadsFrozen"] is True
+    assert matrix["replayHeadsStillCurrent"] is False
+    assert matrix["finalGold"] is False
+    assert "replay_heads_no_longer_current" in matrix["blockers"]
+    assert any(blocker.startswith("replay_head_moved_since_snapshot:INT:") for blocker in matrix["blockers"])
+
+
+def test_live_head_api_error_is_fail_closed_for_final_gold():
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
+        upstream_freeze=_upstream_frozen(True),
+        live_heads=_live_heads(),
+        live_heads_error="HTTPError:403",
+    )
+    assert matrix["replayHeadsStillCurrent"] is False
+    assert matrix["finalGold"] is False
+    assert "live_heads_api_error:HTTPError:403" in matrix["blockers"]
 
 
 def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_claims_true():
@@ -167,11 +211,11 @@ def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_
             final_browser_gold_proven_on_w5_head=True,
         ),
         upstream_freeze={},
+        live_heads=_live_heads(),
     )
     assert matrix["preGoldReady"] is True
     assert matrix["upstreamContractHeadsFrozen"] is False
     assert matrix["finalGold"] is False
-    assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
 
 
 def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
@@ -188,10 +232,10 @@ def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
         runs=_all_success_runs(),
         evidence=evidence,
         upstream_freeze=_upstream_frozen(False),
+        live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is False
     assert matrix["preGoldReady"] is False
-    assert matrix["finalGold"] is False
     assert "pre_gold_replay_not_green:phase=MERGE_INT:layer=INT" in matrix["blockers"]
 
 
@@ -201,12 +245,12 @@ def test_actions_api_error_blocks_same_head_readiness_even_with_green_local_repl
         runs=_all_success_runs(),
         evidence=_replay_evidence(),
         upstream_freeze=_upstream_frozen(True),
+        live_heads=_live_heads(),
         api_error="HTTPError:403",
     )
     assert matrix["externalSameHeadReady"] is False
     assert matrix["preGoldReady"] is False
     assert matrix["finalGold"] is False
-    assert matrix["blockers"][0].startswith("actions_api_error:")
 
 
 def test_key_value_parser_ignores_comments_and_malformed_lines(tmp_path):

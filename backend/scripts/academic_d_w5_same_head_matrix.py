@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -25,6 +26,13 @@ REQUIRED_SAME_HEAD_WORKFLOWS = (
 )
 
 AUXILIARY_BROWSER_WORKFLOW = "Playwright production interaction E2E"
+REPLAY_BRANCHES = {
+    "main": ("main", "main_commit"),
+    "A": ("agent/academic-a-semester-core", "a_commit"),
+    "B": ("agent/academic-b-schedule-selection", "b_commit"),
+    "C": ("agent/academic-c-teaching-execution", "c_commit"),
+    "INT": ("integration/academic-school-gold", "int_commit"),
+}
 _TRUE = {"1", "true", "yes", "on"}
 
 
@@ -139,13 +147,38 @@ def compare_upstream_freeze_to_replay(
     return matches, comparisons
 
 
+def compare_live_heads_to_replay(
+    live_heads: dict[str, str], evidence: dict[str, str]
+) -> tuple[bool, list[dict[str, str]]]:
+    comparisons: list[dict[str, str]] = []
+    matches = True
+    for label, (branch, evidence_key) in REPLAY_BRANCHES.items():
+        replay_sha = str(evidence.get(evidence_key) or "")
+        live_sha = str(live_heads.get(branch) or "")
+        match = bool(replay_sha and live_sha and replay_sha == live_sha)
+        if not match:
+            matches = False
+        comparisons.append(
+            {
+                "label": label,
+                "branch": branch,
+                "replayHeadSha": replay_sha,
+                "liveHeadSha": live_sha,
+                "matches": "true" if match else "false",
+            }
+        )
+    return matches, comparisons
+
+
 def build_matrix(
     *,
     sha: str,
     runs: Iterable[dict[str, Any]],
     evidence: dict[str, str],
     upstream_freeze: dict[str, Any] | None = None,
+    live_heads: dict[str, str] | None = None,
     api_error: str = "",
+    live_heads_error: str = "",
 ) -> dict[str, Any]:
     selected = latest_runs_by_name(runs, sha)
     required = {
@@ -172,12 +205,24 @@ def build_matrix(
     freeze_heads_match, freeze_head_comparisons = compare_upstream_freeze_to_replay(freeze_payload, evidence)
     upstream_frozen = freeze_declared and freeze_heads_match
     freeze_blockers = [str(item) for item in (freeze_payload.get("blockers") or []) if str(item).strip()]
+
+    replay_heads_current, replay_head_comparisons = compare_live_heads_to_replay(live_heads or {}, evidence)
+    if live_heads_error:
+        replay_heads_current = False
+
     final_browser_proven = _as_bool(evidence.get("final_browser_gold_proven_on_w5_head"))
-    final_gold = pre_gold_ready and upstream_frozen and final_browser_proven
+    final_gold = (
+        pre_gold_ready
+        and upstream_frozen
+        and replay_heads_current
+        and final_browser_proven
+    )
 
     blockers: list[str] = []
     if api_error:
         blockers.append(f"actions_api_error:{api_error}")
+    if live_heads_error:
+        blockers.append(f"live_heads_api_error:{live_heads_error}")
     if not local_replay_ready:
         phase = evidence.get("w5_phase") or "UNKNOWN"
         layer = evidence.get("failed_layer") or ""
@@ -199,11 +244,20 @@ def build_matrix(
                         f"{row['line']}:freeze={row['freezeHeadSha'] or 'missing'}:"
                         f"replay={row['replayHeadSha'] or 'missing'}"
                     )
+    if not replay_heads_current:
+        blockers.append("replay_heads_no_longer_current")
+        for row in replay_head_comparisons:
+            if row["matches"] != "true":
+                blockers.append(
+                    "replay_head_moved_since_snapshot:"
+                    f"{row['label']}:branch={row['branch']}:"
+                    f"replay={row['replayHeadSha'] or 'missing'}:live={row['liveHeadSha'] or 'missing'}"
+                )
     if not final_browser_proven:
         blockers.append("integrated_final_browser_gold_not_proven")
 
     return {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "sourceSha": sha,
         "w5Phase": evidence.get("w5_phase") or "UNKNOWN",
         "failedLayer": evidence.get("failed_layer") or "",
@@ -218,10 +272,13 @@ def build_matrix(
         "upstreamFreezeHeadComparisons": freeze_head_comparisons,
         "upstreamContractHeadsFrozen": upstream_frozen,
         "upstreamFreezeEvidence": freeze_payload,
+        "replayHeadsStillCurrent": replay_heads_current,
+        "replayHeadComparisons": replay_head_comparisons,
         "integratedFinalBrowserGoldProven": final_browser_proven,
         "finalGold": final_gold,
         "blockers": blockers,
         "actionsApiError": api_error,
+        "liveHeadsApiError": live_heads_error,
         "migrationEvidence": {
             "mainAlembicVersion": evidence.get("main_alembic_version") or "",
             "integratedAlembicVersion": evidence.get("integrated_alembic_version") or "",
@@ -230,28 +287,52 @@ def build_matrix(
     }
 
 
-def fetch_actions_runs(repo: str, sha: str, token: str, api_url: str = "https://api.github.com") -> list[dict[str, Any]]:
+def _github_json(endpoint: str, token: str, *, user_agent: str) -> Any:
     if not token:
-        raise RuntimeError("GITHUB_TOKEN is required for exact-head Actions evidence")
-    endpoint = (
-        f"{api_url.rstrip('/')}/repos/{quote(repo, safe='/')}/actions/runs"
-        f"?head_sha={quote(sha)}&event=pull_request&per_page=100"
-    )
+        raise RuntimeError("GITHUB_TOKEN is required")
     request = Request(
         endpoint,
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "academic-d-w5-same-head-matrix",
+            "User-Agent": user_agent,
         },
     )
     with urlopen(request, timeout=20) as response:
-        payload = json.load(response)
-    runs = payload.get("workflow_runs")
+        return json.load(response)
+
+
+def fetch_actions_runs(repo: str, sha: str, token: str, api_url: str = "https://api.github.com") -> list[dict[str, Any]]:
+    endpoint = (
+        f"{api_url.rstrip('/')}/repos/{quote(repo, safe='/')}/actions/runs"
+        f"?head_sha={quote(sha)}&event=pull_request&per_page=100"
+    )
+    payload = _github_json(endpoint, token, user_agent="academic-d-w5-same-head-matrix")
+    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
     if not isinstance(runs, list):
         raise RuntimeError("GitHub Actions response did not contain workflow_runs")
     return runs
+
+
+def required_workflows_terminal(runs: Iterable[dict[str, Any]], sha: str) -> bool:
+    selected = latest_runs_by_name(runs, sha)
+    return all(
+        name in selected and str(selected[name].get("status") or "").lower() == "completed"
+        for name in REQUIRED_SAME_HEAD_WORKFLOWS
+    )
+
+
+def fetch_live_heads(repo: str, token: str, api_url: str = "https://api.github.com") -> dict[str, str]:
+    heads: dict[str, str] = {}
+    for branch, _evidence_key in REPLAY_BRANCHES.values():
+        endpoint = f"{api_url.rstrip('/')}/repos/{quote(repo, safe='/')}/branches/{quote(branch, safe='')}"
+        payload = _github_json(endpoint, token, user_agent="academic-d-w5-live-heads")
+        sha = str(((payload or {}).get("commit") or {}).get("sha") or "")
+        if not sha:
+            raise RuntimeError(f"branch {branch!r} did not return a commit sha")
+        heads[branch] = sha
+    return heads
 
 
 def _write_json(path: str | Path, payload: dict[str, Any]) -> None:
@@ -267,6 +348,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--w5-evidence", required=True)
     parser.add_argument("--upstream-freeze")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--wait-seconds", type=int, default=0)
+    parser.add_argument("--poll-seconds", type=int, default=15)
     parser.add_argument("--strict-final", action="store_true")
     args = parser.parse_args(argv)
 
@@ -275,18 +358,33 @@ def main(argv: list[str] | None = None) -> int:
     token = os.environ.get("GITHUB_TOKEN", "")
     api_url = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     api_error = ""
+    live_heads_error = ""
     runs: list[dict[str, Any]] = []
+    live_heads: dict[str, str] = {}
+
+    deadline = time.monotonic() + max(0, int(args.wait_seconds))
     try:
-        runs = fetch_actions_runs(args.repo, args.sha, token, api_url)
+        while True:
+            runs = fetch_actions_runs(args.repo, args.sha, token, api_url)
+            if required_workflows_terminal(runs, args.sha) or time.monotonic() >= deadline:
+                break
+            time.sleep(max(1, int(args.poll_seconds)))
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
         api_error = f"{type(exc).__name__}:{exc}"
+
+    try:
+        live_heads = fetch_live_heads(args.repo, token, api_url)
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        live_heads_error = f"{type(exc).__name__}:{exc}"
 
     matrix = build_matrix(
         sha=args.sha,
         runs=runs,
         evidence=evidence,
         upstream_freeze=upstream_freeze,
+        live_heads=live_heads,
         api_error=api_error,
+        live_heads_error=live_heads_error,
     )
     _write_json(args.output, matrix)
     print(json.dumps(matrix, ensure_ascii=False, sort_keys=True))
