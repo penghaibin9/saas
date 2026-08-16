@@ -1,0 +1,71 @@
+name: Academic D W1 restore archive authority
+
+on:
+  push:
+    branches:
+      - agent/academic-d-graduation-delivery
+    paths:
+      - '.github/scripts/academic_d_w1_restore_archive_authority.py'
+      - '.github/workflows/academic-d-w1-restore-archive-authority.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore-and-self-clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/academic-d-graduation-delivery
+          fetch-depth: 0
+      - name: Restore mature domain authorities
+        run: python .github/scripts/academic_d_w1_restore_archive_authority.py
+      - name: Verify W1 authority contract statically
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          policy = Path('backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py').read_text(encoding='utf-8')
+          tests = Path('backend/tests/test_aa_archive_d_w1_authority_regressions.py').read_text(encoding='utf-8')
+          ast.parse(policy)
+          for token in (
+              'base = _core._evaluate_domains(db, term_id, term_code, college_ids)',
+              'results = _semantic.evaluate_first_batch(',
+              'def apply_effective_grade_policy_debt',
+              'GRADE_EFFECTIVE_POLICY_DEBT',
+              'AaTextbookOrderBatch',
+              'AaTextbookDistributionBatch',
+              'AaTextbookDistributionRecord',
+              'AaTextbookFeeLedger',
+              'STATUS_CHANGE_SCOPE_UNKNOWN',
+              'EVALUATION_NOT_APPLICABLE',
+              'TEXTBOOK_NOT_APPLICABLE',
+          ):
+              assert token in policy, token
+          for forbidden in (
+              '_semantic.evaluate_student_status(',
+              '_semantic.evaluate_registration(',
+              '_semantic.evaluate_exam(',
+              '_semantic.evaluate_schedule(db, term_id, college_ids)',
+              '_semantic.evaluate_grade(db, term_code, college_ids)',
+              'from app.models import AaTextbookFee, AaTextbookOrder',
+          ):
+              assert forbidden not in policy, forbidden
+          assert 'test_d_w1_unscoped_status_change_is_unknown_not_pass' in tests
+          PY
+      - name: Compile policy
+        run: python -m py_compile backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py
+      - name: Diff integrity
+        run: git diff --check
+      - name: Commit restored authority and self-clean
+        run: |
+          rm .github/scripts/academic_d_w1_restore_archive_authority.py
+          rm .github/workflows/academic-d-w1-restore-archive-authority.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py
+          git add -u
+          git diff --cached --check
+          git commit -m 'fix(academic-d): restore W1 archive domain authorities'
+          git push origin HEAD:agent/academic-d-graduation-delivery
