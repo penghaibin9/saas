@@ -21,6 +21,7 @@ on:
       - 'backend/app/services/identity_import_service.py'
       - 'backend/app/services/identity_import_scan_orchestrator.py'
       - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
@@ -51,6 +52,7 @@ on:
       - 'backend/app/services/identity_import_service.py'
       - 'backend/app/services/identity_import_scan_orchestrator.py'
       - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/data_exchange_confirm_service.py'
       - 'backend/app/services/data_exchange_cleanup_service.py'
       - 'backend/alembic/versions/20260815_control_plane_*.py'
       - 'frontend/src/modules/system/**'
@@ -111,6 +113,7 @@ jobs:
             backend/app/services/identity_import_service.py \
             backend/app/services/identity_import_scan_orchestrator.py \
             backend/app/services/identity_import_staging_service.py \
+            backend/app/services/data_exchange_confirm_service.py \
             backend/app/services/data_exchange_cleanup_service.py \
             backend/alembic/versions/20260815_control_plane_role_governance.py \
             backend/alembic/versions/20260815_control_plane_identity_staging.py
@@ -156,6 +159,15 @@ jobs:
           assert 'stage_identity_xlsx(' in orchestrator
           assert 'down_revision = "20260815_ctrl_role_gov"' in migration
           print('I3 normalized staging source contract OK')
+          PY
+      - name: I4 identity confirm source contract
+        run: |
+          python - <<'PY'
+          import runpy
+          ns = runpy.run_path('backend/tests/test_control_plane_identity_import_contract.py')
+          for name, fn in sorted(ns.items()):
+              if name.startswith('test_') and callable(fn):
+                  fn()
           PY
       - name: B6/B7 frontend workspace contracts
         run: |
