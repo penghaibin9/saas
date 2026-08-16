@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, Numeric, String,
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Integer, Numeric, String,
                         Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -209,6 +209,17 @@ class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
     open_term_no: Mapped[int | None] = mapped_column(Integer, comment="第几学期开课")
     module: Mapped[str | None] = mapped_column(String(50), comment="课程模块 公共/专业/实践…")
     credit_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="方案课程学分快照(支持0.5步长)")
+    formation_mode: Mapped[str | None] = mapped_column(
+        String(20),
+        comment="INT A-C4: ADMIN_FIXED/SELECTABLE/MERGED/RETAKE/LAYERED; legacy unresolved stays NULL",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "formation_mode IS NULL OR formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
+            name="ck_aa_program_course_formation_mode",
+        ),
+    )
 
 
 class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
@@ -331,9 +342,17 @@ class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
     term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
     college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    editable_scope_key: Mapped[str | None] = mapped_column(
+        String(64),
+        comment="INT A-C4: live DRAFT/RETURNED scope key; non-editable/deleted rows must release to NULL",
+    )
     generate_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "editable_scope_key", name="uk_aa_task_batch_editable_scope"),
+    )
 
 
 class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
@@ -348,6 +367,10 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     course_code: Mapped[str | None] = mapped_column(String(50))
     course_name: Mapped[str | None] = mapped_column(String(200))
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    formation_mode: Mapped[str | None] = mapped_column(
+        String(20),
+        comment="INT A-C4: ADMIN_FIXED/SELECTABLE/MERGED/RETAKE/LAYERED; legacy unresolved stays NULL",
+    )
     teaching_class_code: Mapped[str | None] = mapped_column(String(50), comment="教学班代码")
     teaching_class_name: Mapped[str | None] = mapped_column(String(200), comment="教学班名(可合班)")
     is_merged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否合班(本行为合班后 survivor)")
@@ -368,6 +391,13 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_ASSIGN", index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "formation_mode IS NULL OR formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
+            name="ck_aa_teaching_task_formation_mode",
+        ),
+    )
 
 
 # ═══════════ 课表组（13B-P4；三重冲突检测 + 单双周，对齐正方/强智）═══════════
