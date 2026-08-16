@@ -17,6 +17,8 @@ on:
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
       - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
       - "backend/scripts/academic_d_w5_final_gold_replay.sh"
+      - "backend/scripts/academic_d_w5_same_head_matrix.py"
+      - "backend/tests/test_academic_d_w5_same_head_matrix.py"
       - "backend/tests/test_aa_evaluation.py"
       - "backend/tests/test_aa_evaluation_student_anonymity.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
@@ -28,6 +30,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: academic-d-evaluation-concurrency-${{ github.event.pull_request.number || github.ref }}
@@ -82,12 +85,23 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - name: Freeze D-W5 evidence tooling before replay tree switch
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
+          python -m py_compile /tmp/academic_d_w5_same_head_matrix.py
+
       - name: Install frozen backend dependencies
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
+
+      - name: Test D-W5 same-head evidence aggregator
+        working-directory: backend
+        run: pytest -q tests/test_academic_d_w5_same_head_matrix.py -p no:warnings
 
       - name: Upgrade isolated MySQL 8 schema
         working-directory: backend
@@ -207,6 +221,20 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXACT_D_SHA"
           bash backend/scripts/academic_d_w5_final_gold_replay.sh
 
+      - name: Aggregate D-W5 exact-head matrix
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python /tmp/academic_d_w5_same_head_matrix.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --sha "$EXACT_D_SHA" \
+            --w5-evidence /tmp/academic-d-w5-evidence.txt \
+            --output /tmp/academic-d-w5-same-head-matrix.json
+          cat /tmp/academic-d-w5-same-head-matrix.json
+
       - name: Upload D-W5 pre-Gold evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -220,5 +248,6 @@ jobs:
             /tmp/academic-d-w5-targeted.xml
             /tmp/academic-d-w5-evidence.txt
             /tmp/academic-d-w5-evidence.txt.sha256
+            /tmp/academic-d-w5-same-head-matrix.json
           if-no-files-found: warn
           retention-days: 30
