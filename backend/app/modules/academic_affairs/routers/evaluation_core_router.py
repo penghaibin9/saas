@@ -165,7 +165,10 @@ def eval_appeal_submit(body: EvalAppealBody, user=Depends(require_permission("ac
 @router.get("/evaluation/appeals", summary="申诉列表")
 def eval_appeals(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
                  user=Depends(require_permission(_EVAL_APPEAL))):
-    items, total = evaluation_svc.list_appeals(user, status, page, pageSize)
+    rows = evaluation_svc.list_appeals(user, status)
+    total = len(rows)
+    start = (max(1, page) - 1) * max(1, pageSize)
+    items = rows[start:start + max(1, pageSize)]
     return success(paginate(items, total, page, pageSize))
 
 
