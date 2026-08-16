@@ -28,6 +28,94 @@ def test_inventory_statement_is_single_tenant_scoped_editable_batch_read():
     assert "t_aa_teaching_class_member" not in sql
 
 
+def test_editable_scope_key_is_non_null_and_stable_for_school_and_college_scopes():
+    service = _service()
+    assert service.canonical_editable_scope_key(202601, None) == "V1:TERM:202601:SCHOOL"
+    assert service.canonical_editable_scope_key(202601, None) == service.canonical_editable_scope_key(202601, None)
+    assert service.canonical_editable_scope_key(202601, 17) == "V1:TERM:202601:COLLEGE:17"
+    assert service.canonical_editable_scope_key(202601, 17) != service.canonical_editable_scope_key(202601, 18)
+    assert service.canonical_editable_scope_key(202601, None) != service.canonical_editable_scope_key(202601, 17)
+
+
+def test_editable_scope_key_fits_exact_string64_contract_at_bigint_ceiling():
+    service = _service()
+    maximum = service._MAX_SIGNED_BIGINT
+    key = service.canonical_editable_scope_key(maximum, maximum)
+    assert key == f"V1:TERM:{maximum}:COLLEGE:{maximum}"
+    assert len(key) == 55
+    assert len(key) <= service._EDITABLE_SCOPE_KEY_MAX_LENGTH == 64
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("DRAFT", "V1:TERM:202601:SCHOOL"),
+        ("returned", "V1:TERM:202601:SCHOOL"),
+        ("COLLEGE_CONFIRMED", None),
+        ("APPROVED", None),
+        ("ARCHIVED", None),
+    ],
+)
+def test_writer_scope_key_semantics_reserve_only_live_editable_states(status, expected):
+    assert _service().editable_scope_key_for_status(202601, None, status) == expected
+
+
+def test_soft_deleted_editable_batch_releases_unique_scope_key():
+    service = _service()
+    assert service.editable_scope_key_for_status(202601, None, "DRAFT", is_deleted=True) is None
+    assert service.editable_scope_key_for_status(202601, 17, "RETURNED", is_deleted=True) is None
+    assert service.editable_scope_key_for_status(202601, 17, "RETURNED", is_deleted=False) == (
+        "V1:TERM:202601:COLLEGE:17"
+    )
+
+
+def test_writer_scope_key_semantics_fail_closed_for_unknown_status_even_when_deleted():
+    service = _service()
+    with pytest.raises(ValueError, match="unsupported teaching task batch status"):
+        service.editable_scope_key_for_status(202601, None, "READY")
+    with pytest.raises(ValueError, match="unsupported teaching task batch status"):
+        service.editable_scope_key_for_status(202601, None, "READY", is_deleted=True)
+
+
+@pytest.mark.parametrize(
+    ("term_id", "college_id", "status", "is_deleted", "message"),
+    [
+        (0, None, "DRAFT", False, "term_id"),
+        (-1, 17, "RETURNED", False, "term_id"),
+        (202601, 0, "DRAFT", False, "college_id"),
+        (202601, -2, "RETURNED", False, "college_id"),
+        (0, None, "APPROVED", False, "term_id"),
+        (202601, 0, "ARCHIVED", False, "college_id"),
+        (0, None, "DRAFT", True, "term_id"),
+        (202601, 0, "RETURNED", True, "college_id"),
+        (9223372036854775808, None, "DRAFT", False, "BIGINT"),
+        (202601, 9223372036854775808, "RETURNED", False, "BIGINT"),
+    ],
+)
+def test_writer_scope_key_semantics_reject_malformed_scope_even_when_key_would_be_null(
+    term_id, college_id, status, is_deleted, message
+):
+    with pytest.raises(ValueError, match=message):
+        _service().editable_scope_key_for_status(
+            term_id, college_id, status, is_deleted=is_deleted
+        )
+
+
+@pytest.mark.parametrize(
+    ("term_id", "college_id", "message"),
+    [
+        (0, None, "term_id"),
+        (-1, 17, "term_id"),
+        (202601, 0, "college_id"),
+        (202601, -2, "college_id"),
+        (9223372036854775808, None, "BIGINT"),
+    ],
+)
+def test_editable_scope_key_rejects_non_positive_or_out_of_range_identifiers(term_id, college_id, message):
+    with pytest.raises(ValueError, match=message):
+        _service().canonical_editable_scope_key(term_id, college_id)
+
+
 class _Result:
     def __init__(self, rows):
         self._rows = list(rows)
@@ -64,6 +152,8 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
 
     assert db.execute_calls == 1
     assert result["tenantId"] == "1000000000000000001"
+    assert result["scopeKeyVersion"] == "V1"
+    assert result["editableScopeKeyMaxLength"] == 64
     assert result["editableBatchCount"] == 6
     assert result["conflictScopeCount"] == 2
     assert result["conflictBatchCount"] == 5
@@ -74,6 +164,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
         "termId": "202601",
         "collegeId": "",
         "scope": "SCHOOL",
+        "editableScopeKey": "V1:TERM:202601:SCHOOL",
         "editableBatchCount": 2,
         "batchIds": ["1001", "1002"],
         "batchStatuses": ["DRAFT", "RETURNED"],
@@ -83,6 +174,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
         "termId": "202601",
         "collegeId": "17",
         "scope": "COLLEGE:17",
+        "editableScopeKey": "V1:TERM:202601:COLLEGE:17",
         "editableBatchCount": 3,
         "batchIds": ["1101", "1102"],
         "batchStatuses": ["DRAFT", "RETURNED"],
@@ -97,6 +189,8 @@ def test_inventory_clean_scope_is_migration_safe():
         (2201, 202602, 17, "DRAFT"),
     ])
     result = _service().inventory_editable_batch_scope_conflicts(db, 1000000000000000001)
+    assert result["scopeKeyVersion"] == "V1"
+    assert result["editableScopeKeyMaxLength"] == 64
     assert result["conflictScopeCount"] == 0
     assert result["conflictBatchCount"] == 0
     assert result["migrationPreflightSafe"] is True
@@ -106,6 +200,8 @@ def test_inventory_clean_scope_is_migration_safe():
 def test_inventory_requires_explicit_positive_tenant():
     with pytest.raises(ValueError, match="positive integer"):
         _service().editable_batch_inventory_statement(0)
+    with pytest.raises(ValueError, match="BIGINT"):
+        _service().editable_batch_inventory_statement(9223372036854775808)
 
 
 @pytest.mark.parametrize(("requested", "expected"), [(0, 20), (1, 1), (200, 100)])
