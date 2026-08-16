@@ -23,7 +23,7 @@ d_source_commit=$EXACT_D_SHA
 integrated_commit=$INTEGRATED_COMMIT
 integrated_tree=$INTEGRATED_TREE
 management_spec=academic-d-w0-w1-graduation-archive.spec.mjs
-student_teacher_admin_spec=graduation-lifecycle.spec.mjs
+student_spec=academic-d-w5-student-graduation.spec.mjs
 teacher_mobile_spec=graduation-v9-teacher-mobile-visual.spec.mjs
 management_surface_proven=$BROWSER_SUCCESS
 student_surface_proven=$BROWSER_SUCCESS
@@ -66,6 +66,13 @@ authority_scripts=(
   backend/scripts/e2e_verify_graduation_accounts.py
 )
 for path in "${authority_scripts[@]}"; do test -f "$path"; done
+
+browser_specs=(
+  e2e/specs/academic-d-w0-w1-graduation-archive.spec.mjs
+  e2e/specs/academic-d-w5-student-graduation.spec.mjs
+  e2e/specs/graduation-v9-teacher-mobile-visual.spec.mjs
+)
+for path in "${browser_specs[@]}"; do test -f "$path"; done
 
 export CI=true
 export PYTHONPATH=.
@@ -177,7 +184,7 @@ BROWSER_PHASE="VISIBLE_CLICK_E2E"
   cd e2e
   npx playwright test \
     specs/academic-d-w0-w1-graduation-archive.spec.mjs \
-    specs/graduation-lifecycle.spec.mjs \
+    specs/academic-d-w5-student-graduation.spec.mjs \
     specs/graduation-v9-teacher-mobile-visual.spec.mjs \
     --workers=1 \
     --retries=0

@@ -27,6 +27,7 @@ on:
       - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
       - "backend/tests/test_aa_evaluation_d_w3_scope_guard.py"
       - "backend/tests/test_sandbox_school_academic_quality_truth.py"
+      - "e2e/specs/academic-d-w5-student-graduation.spec.mjs"
       - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
 
 permissions:
@@ -95,14 +96,12 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Freeze D-W5 evidence tooling before replay tree switch
+      - name: Freeze and syntax-check D-W5 evidence tooling before replay tree switch
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
-          python -m py_compile \
-            /tmp/academic_d_w5_same_head_matrix.py \
-            backend/scripts/academic_d_w5_integrated_browser.sh 2>/dev/null || true
+          python -m py_compile /tmp/academic_d_w5_same_head_matrix.py
           bash -n backend/scripts/academic_d_w5_final_gold_replay.sh
           bash -n backend/scripts/academic_d_w5_integrated_browser.sh
 
