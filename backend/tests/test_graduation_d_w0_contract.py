@@ -114,6 +114,23 @@ def test_d_w0_only_advisory_unknowns_can_pass_but_archive_unknown_blocks(db_mode
     assert immutable._strict_overall(items + [{"item": "ARCHIVE", "result": "FAIL"}]) == "SYSTEM_ABNORMAL"
 
 
+def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
+    """A provider omission is UNKNOWN-equivalent; absence must never become SYSTEM_PASSED."""
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
+
+    required = set(legacy._BLOCKING_UNKNOWN_ITEMS) | {"ARCHIVE"}
+    complete = [{"item": code, "result": "PASS"} for code in sorted(required)]
+    complete.extend([
+        {"item": "EMPLOYMENT", "result": "UNKNOWN"},
+        {"item": "FEE", "result": "UNKNOWN"},
+    ])
+    assert immutable._strict_overall(complete) == "SYSTEM_PASSED"
+    for missing in sorted(required):
+        partial = [row for row in complete if row["item"] != missing]
+        assert immutable._strict_overall(partial) == "SYSTEM_ABNORMAL", missing
+
+
 def test_d_w0_abnormal_five_char_note_cannot_graduate(client, db_mode):
     student_id, result_id, _ = _seed_formal_result(
         suffix="A",
