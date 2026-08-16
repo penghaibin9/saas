@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 from app.modules.internship.services import internship_application_service as legacy_app_svc
+from app.modules.internship.services import internship_student_catalog_facade_service as catalog_svc
 from app.modules.internship.services import internship_student_position_eligibility_service as eligibility_svc
 
 
@@ -44,3 +45,18 @@ def test_catalog_sql_projection_matches_python_string_truthiness_and_strip_seman
     assert "func.trim(InternshipPosition.work_content)" not in source
     assert "InternshipPosition.prohibited_reason == \"\"" not in source
     assert "InternshipPosition.remuneration_cycle != \"\"" not in source
+
+
+def test_catalog_lifecycle_projection_is_pad_safe_and_matches_python_case_rules():
+    source = inspect.getsource(catalog_svc._base_query)
+    helper = inspect.getsource(catalog_svc._exact_ascii_sql)
+    assert "func.char_length(column) == len(value)" in helper
+    assert 'literal(expected_value).collate("utf8mb4_bin")' in helper
+    assert '_exact_ascii_sql(InternshipPosition.status, "PUBLISHED")' in source
+    assert '_exact_ascii_sql(EmpCompany.status, "ACTIVE", case_insensitive=True)' in source
+    assert '_exact_ascii_sql(EmpCompany.coop_status, "ACTIVE")' in source
+    assert '_exact_ascii_sql(EmpCompany.qualification_status, "PASSED")' in source
+    assert '_exact_ascii_sql(InternshipCampaignEnterprise.status, "ACCEPTED")' in source
+    assert 'InternshipPosition.status == "PUBLISHED"' not in source
+    assert 'EmpCompany.coop_status == "ACTIVE"' not in source
+    assert 'EmpCompany.qualification_status == "PASSED"' not in source

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, literal, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import EmpCompany, InternshipPosition, Major, StudentProfile
@@ -27,6 +27,23 @@ def _true_filter(value) -> bool:
     if value in (None, "", False):
         return False
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _exact_ascii_sql(column, expected: str, *, case_insensitive: bool = False):
+    """Match canonical Python lifecycle semantics without MySQL PAD SPACE surprises.
+
+    Production lifecycle values are ASCII enums. ``utf8mb4_unicode_ci`` treats trailing spaces as
+    insignificant, so a plain SQL equality can admit dirty values such as ``PUBLISHED `` that the
+    Python Authority rejects. Character length rejects padded variants; binary collation preserves
+    exact case where Python does, while the company master status deliberately mirrors `.upper()`.
+    """
+    value = str(expected)
+    expression = func.upper(column) if case_insensitive else column
+    expected_value = value.upper() if case_insensitive else value
+    return and_(
+        func.char_length(column) == len(value),
+        expression.collate("utf8mb4_bin") == literal(expected_value).collate("utf8mb4_bin"),
+    )
 
 
 def _major_hit(major_name: str, requirement: str) -> bool:
@@ -85,16 +102,16 @@ def _base_query(*, tenant_id: int, campaign):
             InternshipPosition.tenant_id == tenant_id,
             InternshipPosition.batch_id == campaign.batch_id,
             InternshipPosition.campaign_id == campaign.id,
-            InternshipPosition.status == "PUBLISHED",
+            _exact_ascii_sql(InternshipPosition.status, "PUBLISHED"),
             InternshipPosition.allocated_count < InternshipPosition.headcount,
             InternshipPosition.is_deleted.is_(False),
             EmpCompany.tenant_id == tenant_id,
-            EmpCompany.status == "ACTIVE",
-            EmpCompany.coop_status == "ACTIVE",
-            EmpCompany.qualification_status == "PASSED",
+            _exact_ascii_sql(EmpCompany.status, "ACTIVE", case_insensitive=True),
+            _exact_ascii_sql(EmpCompany.coop_status, "ACTIVE"),
+            _exact_ascii_sql(EmpCompany.qualification_status, "PASSED"),
             EmpCompany.blacklist.is_(False),
             EmpCompany.is_deleted.is_(False),
-            InternshipCampaignEnterprise.status == "ACCEPTED",
+            _exact_ascii_sql(InternshipCampaignEnterprise.status, "ACCEPTED"),
             InternshipCampaignEnterprise.is_deleted.is_(False),
         )
     )
