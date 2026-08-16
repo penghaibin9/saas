@@ -124,7 +124,7 @@ def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     assert profile.real_name not in token
 
 
-def test_student_audit_never_uses_current_account_operator():
+def test_student_audit_and_lock_contract_remain_fail_closed():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -134,7 +134,13 @@ def test_student_audit_never_uses_current_account_operator():
 
     assert 'operator="ANONYMOUS_STUDENT"' in source
     assert 'detail="学生匿名评教提交"' in source
-    assert "query.with_for_update()" in source
     assert "answers_json.like(_token_pattern(" in source
+    assert "_lock_student_roster_member" in source
+    assert "AaTeachingClassMember" in source
+    assert ".with_for_update(read=True)" in source
+    assert "_increment_student_submission_count" in source
+    assert "synchronize_session=False" in source
+    # 非学生 SELF/PEER/SUPERVISOR 仍保留独占 Task 行锁守本人+幂等。
+    assert ".populate_existing().with_for_update().first()" in source
     assert "settings.JWT_SECRET.encode" not in source
     assert "settings.FIELD_ENCRYPTION_KEY" in source
