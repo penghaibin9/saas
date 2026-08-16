@@ -150,6 +150,45 @@ def test_teacher_owner_scope_limits_full_management_reads(monkeypatch):
 
 
 @pytest.mark.usefixtures("db_mode")
+def test_teacher_owner_cannot_read_result_before_formal_publication(monkeypatch):
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AaEvaluationResult
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_scale_service as scale
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as public
+
+    ids = _seed_scope_fixture()
+    db = get_sessionmaker()()
+    try:
+        row = db.query(AaEvaluationResult).filter(
+            AaEvaluationResult.tenant_id == TID,
+            AaEvaluationResult.batch_id == ids["batch"],
+            AaEvaluationResult.teacher_key == "dw3_scope_teacher_a",
+            AaEvaluationResult.is_deleted.is_(False),
+        ).one()
+        row.published = False
+        db.commit()
+    finally:
+        db.close()
+
+    set_tenant({"tenantId": str(TID)})
+    monkeypatch.setattr(scale, "build_affairs_context", lambda _user, _db: _ctx("NONE"))
+    monkeypatch.setattr(scale, "_derive_keys", lambda _user: {"dw3_scope_teacher_a"})
+    user = {"currentRoleCode": "ACADEMIC_TEACHER", "loginName": "dw3_scope_teacher_a", "userType": "TEACHER"}
+    try:
+        results, total = public.list_results(user, ids["batch"], mine=False, page=1, page_size=50)
+        assert results == [] and total == 0
+        summary = public.stats(user, ids["batch"])
+        assert summary["resultCount"] == 0
+        assert summary["overallAvg"] is None
+        assert summary["byLevel"] == {}
+        # Participation may remain visible for the teacher's own task; score/result truth may not.
+        assert summary["participation"]["STUDENT"] == {"total": 1, "submitted": 1, "rate": 100.0}
+    finally:
+        set_tenant(None)
+
+
+@pytest.mark.usefixtures("db_mode")
 def test_college_scope_filters_tasks_results_stats_and_export(monkeypatch):
     from app.core.context import set_tenant
     from app.modules.academic_affairs.services import academic_affairs_evaluation_scale_service as scale

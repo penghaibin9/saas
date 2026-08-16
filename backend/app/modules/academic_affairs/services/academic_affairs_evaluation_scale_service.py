@@ -207,7 +207,12 @@ def _result_query(db, bid: int, spec: dict):
         AaEvaluationResult.tenant_id == _legacy._tid(),
         AaEvaluationResult.is_deleted.is_(False),
     )
-    return _apply_result_scope(query, spec)
+    query = _apply_result_scope(query, spec)
+    # Ordinary teaching-task owners hold evaluation.view for self-service. They must never use
+    # management result/stat endpoints to bypass publish_results and observe RESULT_READY scores.
+    if spec["type"] == "OWNER":
+        query = query.filter(AaEvaluationResult.published.is_(True))
+    return query
 
 
 def _result_dto(row) -> dict:
@@ -232,7 +237,7 @@ def _result_dto(row) -> dict:
 
 
 def list_results(user, bid, mine=False, page=1, page_size=50):
-    """Results are always object-scoped; mine additionally requires published self rows."""
+    """Results are object-scoped; OWNER visibility is publication-gated."""
     from app.models import AaEvaluationResult
 
     page, page_size = _page(page, page_size, default_size=50)
