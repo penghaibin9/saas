@@ -37,6 +37,15 @@ def test_editable_scope_key_is_non_null_and_stable_for_school_and_college_scopes
     assert service.canonical_editable_scope_key(202601, None) != service.canonical_editable_scope_key(202601, 17)
 
 
+def test_editable_scope_key_fits_exact_string64_contract_at_bigint_ceiling():
+    service = _service()
+    maximum = service._MAX_SIGNED_BIGINT
+    key = service.canonical_editable_scope_key(maximum, maximum)
+    assert key == f"V1:TERM:{maximum}:COLLEGE:{maximum}"
+    assert len(key) == 55
+    assert len(key) <= service._EDITABLE_SCOPE_KEY_MAX_LENGTH == 64
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
@@ -65,6 +74,8 @@ def test_writer_scope_key_semantics_fail_closed_for_unknown_status():
         (202601, -2, "RETURNED", "college_id"),
         (0, None, "APPROVED", "term_id"),
         (202601, 0, "ARCHIVED", "college_id"),
+        (9223372036854775808, None, "DRAFT", "BIGINT"),
+        (202601, 9223372036854775808, "RETURNED", "BIGINT"),
     ],
 )
 def test_writer_scope_key_semantics_reject_malformed_scope_even_when_key_would_be_null(
@@ -81,9 +92,10 @@ def test_writer_scope_key_semantics_reject_malformed_scope_even_when_key_would_b
         (-1, 17, "term_id"),
         (202601, 0, "college_id"),
         (202601, -2, "college_id"),
+        (9223372036854775808, None, "BIGINT"),
     ],
 )
-def test_editable_scope_key_rejects_non_positive_identifiers(term_id, college_id, message):
+def test_editable_scope_key_rejects_non_positive_or_out_of_range_identifiers(term_id, college_id, message):
     with pytest.raises(ValueError, match=message):
         _service().canonical_editable_scope_key(term_id, college_id)
 
@@ -125,6 +137,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
     assert db.execute_calls == 1
     assert result["tenantId"] == "1000000000000000001"
     assert result["scopeKeyVersion"] == "V1"
+    assert result["editableScopeKeyMaxLength"] == 64
     assert result["editableBatchCount"] == 6
     assert result["conflictScopeCount"] == 2
     assert result["conflictBatchCount"] == 5
@@ -161,6 +174,7 @@ def test_inventory_clean_scope_is_migration_safe():
     ])
     result = _service().inventory_editable_batch_scope_conflicts(db, 1000000000000000001)
     assert result["scopeKeyVersion"] == "V1"
+    assert result["editableScopeKeyMaxLength"] == 64
     assert result["conflictScopeCount"] == 0
     assert result["conflictBatchCount"] == 0
     assert result["migrationPreflightSafe"] is True
@@ -170,6 +184,8 @@ def test_inventory_clean_scope_is_migration_safe():
 def test_inventory_requires_explicit_positive_tenant():
     with pytest.raises(ValueError, match="positive integer"):
         _service().editable_batch_inventory_statement(0)
+    with pytest.raises(ValueError, match="BIGINT"):
+        _service().editable_batch_inventory_statement(9223372036854775808)
 
 
 @pytest.mark.parametrize(("requested", "expected"), [(0, 20), (1, 1), (200, 100)])
