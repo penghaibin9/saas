@@ -20,10 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  client-contracts:
-    name: PC + miniapp B-C3 action contracts
+  client-contracts-builds:
+    name: PC + miniapp B-C3 contracts and production builds
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +37,19 @@ jobs:
       - name: Run only Student PC W5 contract
         working-directory: student-portal
         run: node --test tests/academic-b-selection-preflight-client.test.mjs
+      - name: Install and production-build Student PC
+        working-directory: student-portal
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
       - name: Run only miniapp W5 contract
         working-directory: miniapp
         run: node --test tests/academic-b-selection-preflight-client.test.mjs
+      - name: Install and production-build miniapp H5 + mp-weixin
+        working-directory: miniapp
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:h5
+          npm run build:mp-weixin
