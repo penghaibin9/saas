@@ -122,14 +122,14 @@ def test_quality_failure_stops_before_definition_binding_and_status_reads():
         "logicalGroup": "MAIN",
         "programKey": "SERIES:SER-A:v1",
         "businessCode": "PROGRAM_ACTUAL_CREDIT_INSUFFICIENT",
-        "message": "课程与实践学分合计未达到培养方案毕业总学分，禁止写入明知无法提交的方案定义",
+        "message": "课程学分合计未达到培养方案毕业总学分，禁止写入明知无法提交的方案定义",
         "evidence": {
             "courseCreditSum": "3",
             "practiceCreditSum": "0",
             "actualCreditSum": "3",
             "totalCredits": "5",
         },
-        "howToResolve": "补齐 COURSE/PRACTICE 定义或修正 MAIN.totalCredits；课程学分以 exact Course version 为准",
+        "howToResolve": "补齐 COURSE 定义或修正 MAIN.totalCredits；PRACTICE 学分按实践环节独立治理，不能替代课程学分",
     }, {
         "row": 2,
         "logicalGroup": "CREDIT_REQUIREMENT",

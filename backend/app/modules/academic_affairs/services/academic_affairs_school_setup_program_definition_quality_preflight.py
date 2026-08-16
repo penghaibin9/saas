@@ -9,11 +9,13 @@ from knowingly creating a DRAFT that cannot pass submission quality checks.
 Rules:
 - exact Course-version credit is authoritative; imported creditSnapshot is only an
   assertion and is not a second truth;
-- ProgramCourse credit contributes to its declared module;
-- practice-segment credit contributes to total program credit, matching current
-  Program governance behavior, but does not silently satisfy a course module;
-- actual credit below total or below a configured module target is a blocker;
-- actual total above target is a warning, matching current governance semantics;
+- ProgramCourse credit contributes to its declared module and to the mature
+  Program total-credit governance check;
+- practice-segment credit is tracked separately for explainability and practice
+  governance, but does not satisfy ``AaProgram.total_credits`` because the mature
+  submission validator compares that target against ProgramCourse credit only;
+- Course credit below total or below a configured module target is a blocker;
+- Course credit above total is a warning, matching current governance semantics;
 - evidence is anchored to MAIN or CREDIT_REQUIREMENT workbook rows;
 - no database access or writes live here.
 """
@@ -157,21 +159,25 @@ def program_definition_quality_preflight(
                 raise ValueError(f"quality preflight practice credit cannot be negative: {program_key}")
             practice_credit_total += credit
 
-        actual_total = course_credit_total + practice_credit_total
+        # Keep the import gate identical to mature ``validate_program_db``:
+        # ``totalCredits`` is checked against ProgramCourse credit only. Practice
+        # credit remains separate evidence and cannot turn a submit-time blocker
+        # into an import-time false GREEN.
+        actual_total = course_credit_total
         if actual_total < total_target:
             errors.append(_issue(
                 program_key=program_key,
                 row=int(main_row.get("rowNo") or 0),
                 logical_group=PROGRAM_GROUP_MAIN,
                 code="PROGRAM_ACTUAL_CREDIT_INSUFFICIENT",
-                message="课程与实践学分合计未达到培养方案毕业总学分，禁止写入明知无法提交的方案定义",
+                message="课程学分合计未达到培养方案毕业总学分，禁止写入明知无法提交的方案定义",
                 evidence={
                     "courseCreditSum": str(course_credit_total),
                     "practiceCreditSum": str(practice_credit_total),
                     "actualCreditSum": str(actual_total),
                     "totalCredits": str(total_target),
                 },
-                how_to_resolve="补齐 COURSE/PRACTICE 定义或修正 MAIN.totalCredits；课程学分以 exact Course version 为准",
+                how_to_resolve="补齐 COURSE 定义或修正 MAIN.totalCredits；PRACTICE 学分按实践环节独立治理，不能替代课程学分",
             ))
         elif actual_total > total_target:
             warnings.append(_issue(
@@ -179,12 +185,14 @@ def program_definition_quality_preflight(
                 row=int(main_row.get("rowNo") or 0),
                 logical_group=PROGRAM_GROUP_MAIN,
                 code="PROGRAM_ACTUAL_CREDIT_EXCEEDED",
-                message="课程与实践学分合计超过培养方案毕业总学分，请确认是否存在选修冗余",
+                message="课程学分合计超过培养方案毕业总学分，请确认是否存在选修冗余",
                 evidence={
+                    "courseCreditSum": str(course_credit_total),
+                    "practiceCreditSum": str(practice_credit_total),
                     "actualCreditSum": str(actual_total),
                     "totalCredits": str(total_target),
                 },
-                how_to_resolve="确认超出部分是否为允许的选修冗余；如不是，请调整课程/实践或毕业总学分",
+                how_to_resolve="确认超出课程学分是否为允许的选修冗余；如不是，请调整 COURSE 或毕业总学分",
             ))
 
         for module, (target, target_row_no) in sorted(target_by_module.items()):
