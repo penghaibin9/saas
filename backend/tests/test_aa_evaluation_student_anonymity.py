@@ -105,17 +105,18 @@ class _LockDb:
         return _LockQuery(self.results.pop(0))
 
 
-def _class_and_version(*, source_type="SELECTION_LOCK", source_id=55):
-    teaching_class = SimpleNamespace(id=20, teaching_task_id=4, term_id=7)
-    version = SimpleNamespace(
-        id=10,
-        version_no=3,
-        source_type=source_type,
-        source_id=source_id,
+def _roster_projection_row(*, source_type="SELECTION_LOCK", source_id=55):
+    return SimpleNamespace(
+        teaching_class_id=20,
+        teaching_task_id=4,
+        term_id=7,
+        roster_version_id=10,
+        roster_version_no=3,
+        roster_source_type=source_type,
+        roster_source_id=source_id,
         roster_hash="hash-10",
         member_count=2,
     )
-    return teaching_class, version
 
 
 def test_student_must_belong_to_current_official_roster(monkeypatch):
@@ -175,13 +176,28 @@ def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     assert profile.real_name not in token
 
 
+def test_stable_student_id_uses_id_only_identity_projection(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([SimpleNamespace(id=7)])
+
+    profile = service._resolve_student(
+        db,
+        {"userType": "STUDENT", "currentRoleCode": "STUDENT", "studentId": "7"},
+    )
+
+    assert profile.id == 7
+    assert not hasattr(profile, "student_no")
+
+
 def test_submit_roster_guard_rejects_latest_selection_before_lock(monkeypatch):
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
     from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    db = _LockDb([_class_and_version(), (56, "OPEN", 1)])
+    db = _LockDb([_roster_projection_row(), (56, "OPEN", 1)])
 
     with pytest.raises(AppException) as exc:
         roster_guard.resolve_submit_roster(db, 4)
@@ -196,7 +212,7 @@ def test_submit_roster_guard_rejects_stale_selection_projection(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    db = _LockDb([_class_and_version(source_id=55), (56, "LOCKED", 1)])
+    db = _LockDb([_roster_projection_row(source_id=55), (56, "LOCKED", 1)])
 
     with pytest.raises(AppException) as exc:
         roster_guard.resolve_submit_roster(db, 4)
@@ -210,7 +226,7 @@ def test_submit_roster_guard_accepts_matching_locked_selection_projection(monkey
     from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    db = _LockDb([_class_and_version(source_id=55), (55, "LOCKED", 1)])
+    db = _LockDb([_roster_projection_row(source_id=55), (55, "LOCKED", 1)])
 
     roster = roster_guard.resolve_submit_roster(db, 4)
 
@@ -235,7 +251,28 @@ def test_share_batch_hotpath_still_rejects_archived_term(monkeypatch):
     assert "已归档封存" in exc.value.message
 
 
-def test_student_submit_roster_guard_does_not_materialize_whole_roster():
+def test_student_batch_projection_still_rejects_archived_term(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([SimpleNamespace(
+        batch_id=91,
+        term_id=7,
+        anonymous=True,
+        status="OPEN",
+        term_status="ARCHIVED",
+    )])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard._share_batch_projection(db, 91)
+
+    assert exc.value.code == "TERM_ARCHIVED"
+    assert "已归档封存" in exc.value.message
+
+
+def test_student_submit_guard_uses_minimal_projection_and_canonical_fallbacks():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -246,12 +283,17 @@ def test_student_submit_roster_guard_does_not_materialize_whole_roster():
     assert "resolve_versioned_roster" not in source
     assert "ensure_teaching_class_for_task" not in source
     assert "studentIds" not in source
-    assert "AaTeachingClassRosterVersion" in source
+    assert "AaTeachingClassRosterVersion.id.label" in source
     assert "AaSelectionBatch.id.desc()" in source
     assert "SELECTION_LOCK" in source
     assert "db.query(AaTeachingClass.id)" in source
     assert "db.query(AaTeachingClassMember.id)" in source
-    assert 'term_status.label("_term_status")' in source
+    assert "StudentProfile.id" in source
+    assert 'AaEvaluationTask.id.label("task_id")' in source
+    assert "db.query(AaEvaluationRecord.id)" in source
+    assert 'AaEvaluationBatch.id.label("batch_id")' in source
+    assert "_original_submit_evaluation" in source
+    assert "_canonical_resolve_student" in source
 
 
 def test_student_audit_and_lock_contract_remain_fail_closed():
