@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py'
       - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/tests/test_aa_teacher_today_scopehead_contract.py'
       - 'backend/tests/test_aa_teacher_today_public_wiring_contract.py'
       - 'backend/tests/test_aa_teacher_today_visibility_contract.py'
+      - 'backend/tests/test_aa_teacher_today_execution_state_contract.py'
       - 'miniapp/src/pages/teacher/academic-affairs/index.vue'
       - 'miniapp/tests/academic-teacher-today-contract.test.mjs'
       - '.github/workflows/academic-c-w2-teacher-today.yml'
@@ -76,6 +78,7 @@ jobs:
         run: |
           python -m py_compile \
             app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py \
+            app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py \
             app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py
 
       - name: Teacher Today exact contract on MySQL
@@ -85,6 +88,7 @@ jobs:
             tests/test_aa_teacher_today_scopehead_contract.py \
             tests/test_aa_teacher_today_public_wiring_contract.py \
             tests/test_aa_teacher_today_visibility_contract.py \
+            tests/test_aa_teacher_today_execution_state_contract.py \
             -p no:warnings --durations=20
 
       - name: Teacher Today miniapp source contract
@@ -99,6 +103,7 @@ jobs:
 
           text = Path('app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py').read_text(encoding='utf-8')
           public = Path('app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py').read_text(encoding='utf-8')
+          execution = Path('app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py').read_text(encoding='utf-8')
           required = [
               'formal_schedule_patterns_for_tasks',
               'attendanceExecutable',
@@ -120,6 +125,17 @@ jobs:
           found = [value for value in forbidden if value in text]
           if found:
               raise SystemExit('Teacher Today created/rewrote Authority: ' + ', '.join(found))
+          execution_forbidden = [
+              'ensure_teaching_class_for_task',
+              'resolve_versioned_roster',
+              'freeze_consumer_snapshot',
+              'db.add(',
+              'db.flush(',
+              'db.commit(',
+          ]
+          found_execution = [value for value in execution_forbidden if value in execution]
+          if found_execution:
+              raise SystemExit('Teacher Today execution-state projection is not read-only: ' + ', '.join(found_execution))
           if 'teacher_today.teacher_today_projection(user)' not in public:
               raise SystemExit('mobile public teacher schedule is not wired to Teacher Today')
           print('C-W2 Teacher Today read-only contract=OK')
