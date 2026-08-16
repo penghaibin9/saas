@@ -14,7 +14,7 @@ def _module():
     return module
 
 
-def test_attendance_candidate_payloads_use_formal_patterns_and_parity():
+def test_attendance_candidate_payloads_use_only_executable_formal_patterns_and_parity():
     module = _module()
     options = {
         "termStartDate": "2026-03-02",
@@ -22,6 +22,7 @@ def test_attendance_candidate_payloads_use_formal_patterns_and_parity():
         "items": [{
             "teachingTaskId": "101",
             "classId": "201",
+            "taskStatus": "APPROVED",
             "formalOccurrenceReady": True,
             "formalSchedulePatterns": [{
                 "scheduleItemId": "301",
@@ -35,6 +36,20 @@ def test_attendance_candidate_payloads_use_formal_patterns_and_parity():
         }, {
             "teachingTaskId": "102",
             "classId": "202",
+            "taskStatus": "ASSIGNED",
+            "formalOccurrenceReady": True,
+            "formalSchedulePatterns": [{
+                "scheduleItemId": "998",
+                "weekday": 1,
+                "slotNo": 9,
+                "startWeek": 1,
+                "endWeek": 5,
+                "weekParity": "ALL",
+            }],
+        }, {
+            "teachingTaskId": "103",
+            "classId": "203",
+            "taskStatus": "APPROVED",
             "formalOccurrenceReady": False,
             "formalSchedulePatterns": [{
                 "scheduleItemId": "999",
@@ -61,6 +76,7 @@ def test_round3_source_does_not_hardcode_arbitrary_attendance_coordinate():
     assert 'f"{MOB}/teacher/academic/attendance/class-options"' in source
     assert "formalOccurrenceReady" in source
     assert "formalSchedulePatterns" in source
+    assert "allowed_task_statuses" in source
     assert "_attendance_candidate_payloads" in source
     assert '"slotNo": 10' not in source
     assert "date.today().isoformat()" not in source[source.index("# ── 3) 考勤提交"):source.index("# ── 4) 门户")]
