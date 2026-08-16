@@ -139,7 +139,8 @@ def test_student_audit_and_lock_contract_remain_fail_closed():
     assert "AaTeachingClassMember" in source
     assert ".with_for_update(read=True)" in source
     assert '"isolation_level": "READ COMMITTED"' in source
-    assert "_active_student_submission_count" in source
+    assert "_active_student_submission_count" not in source
+    assert '"submittedCount": None' in source
     assert "_increment_student_submission_count" not in source
     # 非学生 SELF/PEER/SUPERVISOR 仍保留独占 Task 行锁守本人+幂等。
     assert ".populate_existing().with_for_update().first()" in source

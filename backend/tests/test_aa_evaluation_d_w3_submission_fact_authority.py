@@ -10,9 +10,20 @@ from sqlalchemy import func, select
 TID = 1000000000000000001
 
 
+def _student_user(student_id: int) -> dict:
+    return {
+        "userType": "STUDENT",
+        "currentRoleCode": "STUDENT",
+        "studentId": str(student_id),
+        "tenantId": str(TID),
+        "userId": f"dw3-focused-student-{student_id}",
+        "loginName": f"dw3_focused_student_{student_id}",
+    }
+
+
 @pytest.mark.usefixtures("db_mode")
-def test_same_student_race_writes_one_answer_and_close_reconciles_task_projection():
-    """Member-row serialization + READ COMMITTED must reject the second identical student submit."""
+def test_same_student_race_writes_one_answer_read_model_counts_and_close_reconciles_projection():
+    """Duplicate protection is write-side; class counts are read-model facts; close reconciles legacy projection."""
     from app.core.context import set_current_user, set_tenant
     from app.db.session import get_sessionmaker
     from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
@@ -38,6 +49,8 @@ def test_same_student_race_writes_one_answer_and_close_reconciles_task_projectio
     assert len(successes) == 1, results
     assert len(failures) == 1, results
     assert "已提交" in failures[0]["error"]
+    assert successes[0]["payload"]["submitted"] is True
+    assert successes[0]["payload"]["submittedCount"] is None
 
     set_tenant({"tenantId": str(TID), "tenantCode": "dw3-focused-duplicate"})
     verify = get_sessionmaker()()
@@ -57,6 +70,20 @@ def test_same_student_race_writes_one_answer_and_close_reconciles_task_projectio
         assert int(task.submitted_count or 0) == 0
     finally:
         verify.close()
+        set_tenant(None)
+
+    student = _student_user(student_id)
+    set_tenant({"tenantId": str(TID), "tenantCode": "dw3-focused-duplicate"})
+    set_current_user(student)
+    try:
+        items = service.my_student_tasks(student, batch_id=batch_id, include_closed=False)
+        assert len(items) == 1
+        assert items[0]["taskId"] == str(task_id)
+        assert items[0]["submitted"] is True
+        assert items[0]["submittedCount"] == 1
+        assert items[0]["canSubmit"] is False
+    finally:
+        set_current_user(None)
         set_tenant(None)
 
     admin = probe._admin_user()

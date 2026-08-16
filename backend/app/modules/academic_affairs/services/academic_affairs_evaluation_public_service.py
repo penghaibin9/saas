@@ -16,8 +16,6 @@ import hmac
 import json
 from datetime import datetime
 
-from sqlalchemy import func
-
 from app.core.config import settings
 from app.core.exceptions import AppException, no_permission, not_found
 
@@ -226,18 +224,6 @@ def _lock_student_roster_member(db, task, profile, roster) -> None:
         raise no_permission("当前学生不在该课程当前正式教学班名单中")
 
 
-def _active_student_submission_count(db, task_id: int) -> int:
-    """学生评教提交数以有效答卷事实为准；Task.submitted_count 只保留关闭后的历史投影。"""
-    from app.models import AaEvaluationRecord
-
-    return int(db.query(func.count(AaEvaluationRecord.id)).filter(
-        AaEvaluationRecord.tenant_id == _tid(),
-        AaEvaluationRecord.task_id == int(task_id),
-        AaEvaluationRecord.evaluator_type == "STUDENT",
-        AaEvaluationRecord.is_deleted.is_(False),
-    ).scalar() or 0)
-
-
 def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
     """返回当前学生正式教学班内已发布的匿名评教任务。"""
     from app.models import (
@@ -364,9 +350,9 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
             db.add(record)
             _anonymous_audit(db, task.id)
             db.flush()
-            submitted_count = _active_student_submission_count(db, task.id)
             db.commit()
-            return {"taskId": str(task.id), "submittedCount": submitted_count}
+            # 班级实时提交总数是 read-model 聚合，不在写热点事务里扫描整任务答卷。
+            return {"taskId": str(task.id), "submitted": True, "submittedCount": None}
 
         # SELF/PEER/SUPERVISOR 一任务一评价人：低扇入，继续用 Task 行锁守住本人校验和幂等。
         task = db.query(AaEvaluationTask).filter(
