@@ -101,7 +101,7 @@ def generate_batch_tx(db, body, user) -> dict:
     from app.modules.academic_affairs.services.academic_affairs_stats_service import _resolve_scope, _validate_college_param
 
     guard_term_writable(db, term_id)
-    term = db.get(AaTerm, term_id)
+    term = tenant_get(db, AaTerm, term_id, tenant_id=_tid())
     if not term or term.is_deleted or term.tenant_id != _tid():
         raise AppException("VALIDATION_ERROR", "学期不存在，无法生成教学任务")
     teaching_weeks, week_source = resolve_teaching_weeks(db, term_id)
@@ -168,7 +168,7 @@ def generate_batch_tx(db, body, user) -> dict:
                     continue
                 if college_id:
                     from app.models import Major
-                    major = db.get(Major, int(school_class.major_id)) if school_class.major_id else None
+                    major = tenant_get(db, Major, int(school_class.major_id), tenant_id=_tid()) if school_class.major_id else None
                     if not major or major.college_id != college_id:
                         continue
                 if not scope.all and scope.class_ids and school_class.id not in scope.class_ids:
@@ -198,7 +198,7 @@ def generate_batch_tx(db, body, user) -> dict:
                     )).first()
                     if existing:
                         continue
-                    course = db.get(AaCourse, int(program_course.course_id))
+                    course = tenant_get(db, AaCourse, int(program_course.course_id), tenant_id=_tid())
                     if not course or course.is_deleted or course.tenant_id != _tid():
                         unresolved_program_courses += 1
                         continue
