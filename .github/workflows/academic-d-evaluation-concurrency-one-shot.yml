@@ -18,6 +18,7 @@ on:
       - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
       - "backend/scripts/academic_d_w5_final_gold_replay.sh"
       - "backend/scripts/academic_d_w5_same_head_matrix.py"
+      - "backend/scripts/academic_d_w5_integrated_browser.sh"
       - "backend/tests/test_academic_d_w5_same_head_matrix.py"
       - "backend/tests/test_aa_evaluation.py"
       - "backend/tests/test_aa_evaluation_student_anonymity.py"
@@ -38,9 +39,9 @@ concurrency:
 
 jobs:
   mysql-evaluation-contention:
-    name: MySQL 8 · Evaluation same-task + school-wide deadline burst
+    name: MySQL 8 · Evaluation + W5 exact-head Gold replay
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       APP_ENV: test
       DEPLOYMENT_MODE: development
@@ -72,6 +73,15 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
 
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +100,11 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
-          python -m py_compile /tmp/academic_d_w5_same_head_matrix.py
+          python -m py_compile \
+            /tmp/academic_d_w5_same_head_matrix.py \
+            backend/scripts/academic_d_w5_integrated_browser.sh 2>/dev/null || true
+          bash -n backend/scripts/academic_d_w5_final_gold_replay.sh
+          bash -n backend/scripts/academic_d_w5_integrated_browser.sh
 
       - name: Install frozen backend dependencies
         working-directory: backend
@@ -221,6 +235,22 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXACT_D_SHA"
           bash backend/scripts/academic_d_w5_final_gold_replay.sh
 
+      - uses: actions/setup-node@v4
+        if: success()
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
+      - name: Run D-W5 integrated management + student + teacher real browser Gold
+        if: success()
+        env:
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash backend/scripts/academic_d_w5_integrated_browser.sh
+
       - name: Aggregate D-W5 exact-head matrix
         if: always()
         env:
@@ -246,8 +276,15 @@ jobs:
             /tmp/academic-d-w5-alembic-current.txt
             /tmp/academic-d-w5-contract-inventory.txt
             /tmp/academic-d-w5-targeted.xml
+            /tmp/academic-d-w5-migrated-tenant.txt
+            /tmp/academic-d-w5-migrated-tenant.txt.sha256
             /tmp/academic-d-w5-evidence.txt
             /tmp/academic-d-w5-evidence.txt.sha256
+            /tmp/academic-d-w5-integrated-browser.txt
+            /tmp/academic-d-w5-integrated-browser.txt.sha256
             /tmp/academic-d-w5-same-head-matrix.json
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/runtime-logs/
           if-no-files-found: warn
           retention-days: 30
