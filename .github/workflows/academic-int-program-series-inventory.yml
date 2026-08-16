@@ -1,0 +1,68 @@
+name: Academic INT Program Series Inventory
+
+on:
+  push:
+    branches:
+      - integration/academic-school-gold
+    paths:
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py'
+      - 'backend/tests/test_academic_int_program_series_inventory.py'
+      - '.github/workflows/academic-int-program-series-inventory.yml'
+
+concurrency:
+  group: academic-int-program-series-inventory
+  cancel-in-progress: false
+
+jobs:
+  program-series-inventory:
+    name: Program series dirty-data inventory contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact INT head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact head and read latest main without rebasing
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin main --no-tags
+          echo "INT_HEAD=$(git rev-parse HEAD)"
+          echo "MAIN_HEAD=$(git rev-parse origin/main)"
+          git merge-base --is-ancestor 457dc8821876b8e1b67e0fb5911a9eec33e37616 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Compile inventory only
+        working-directory: backend
+        run: python -m py_compile app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+
+      - name: Run focused Program series inventory contract
+        working-directory: backend
+        run: >-
+          pytest -q
+          tests/test_academic_int_program_series_inventory.py
+          -p no:warnings
+          --maxfail=1
+
+      - name: Freeze non-guessing source contract
+        run: |
+          set -euo pipefail
+          grep -F 'prev_version_id' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'migrationPreflightSafe' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'PROGRAM_VERSION_FORK' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'PROGRAM_VERSION_CYCLE' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'PROGRAM_PARENT_CROSS_TENANT' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'PROGRAM_SERIES_SCOPE_DRIFT' backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py
+          grep -F 'test_linear_versions_share_root_series_without_using_program_name' backend/tests/test_academic_int_program_series_inventory.py
+          grep -F 'test_same_major_grade_version_independent_programs_remain_distinct_series' backend/tests/test_academic_int_program_series_inventory.py
