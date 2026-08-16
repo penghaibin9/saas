@@ -84,6 +84,16 @@ async function expectNoStalePreflight(page) {
   await expect(page.locator('.aasel-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
 }
 
+async function acknowledgeExpectedBlockedToast(page) {
+  const toast = page.locator('.app-toast__item.is-error').filter({ hasText: '批次未配置有效可选课程' }).first()
+  await expect(toast).toBeVisible({ timeout: 5_000 })
+  await expect(toast.locator('.app-toast__text')).toContainText('批次未配置有效可选课程')
+  const close = toast.locator('.app-toast__close')
+  await expect(close).toBeVisible()
+  await close.click()
+  await expect(page.locator('.app-toast__item.is-error')).toHaveCount(0, { timeout: 5_000 })
+}
+
 async function installErrorToastAudit(page) {
   await page.evaluate(() => {
     if (window.__academicBW1ToastObserver) window.__academicBW1ToastObserver.disconnect()
@@ -181,6 +191,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expect(staff.locator('.aasel-preflight-alert')).toContainText('批次未配置有效可选课程')
     await expect(staff.locator('.app-confirm-dialog')).toHaveCount(0)
     await screenshot(staff, testInfo, 'w1-admin-preflight-blocked-1440x900')
+    await acknowledgeExpectedBlockedToast(staff)
 
     await installErrorToastAudit(staff)
     await selectBatch(staff, fixture.ready.batchName)
