@@ -1,22 +1,25 @@
-"""A-W4/A-C5 school setup import contract for Course/Program onboarding.
+"""A-W4/INT/A-C5 school-setup import contract for Course/Program onboarding.
 
-This module is deliberately *not* another import framework.  It owns no
+This module is deliberately *not* another import framework. It owns no
 FileObject/ImportJob/parser/confirm lifecycle and performs no database I/O.
-Academic File Exchange remains the only orchestration authority.  The purpose
-here is to freeze the domain-facing template vocabulary and stable business
-identities before the existing File Exchange is extended by later A-W4/INT
-steps.
+Academic File Exchange remains the orchestration authority; this file freezes
+only domain-facing workbook vocabulary and stable business identities.
 
 Hard boundaries:
-- course identity is ``courseCode + version``; courseName is display only;
-- program identity is a version within major/grade, while binding scope is a
-  separate relationship identity;
-- ProgramCourse references a versioned Course by code/version and carries an
-  explicit formationMode; course nature/name must never infer formation;
-- reconciliation actions are exactly CREATE/REUSE/CONFLICT/REJECT.
+- Course identity is ``courseCode + version``; courseName is display only.
+- Program identity is ``programSeriesKey + programVersion``. ``majorId`` and
+  ``gradeYear`` are assertions/scope facts, never Program identity.
+- Program binding identity is a relationship anchored to an exact Program
+  version; binding scope is not a substitute for Program identity.
+- ProgramCourse references an exact versioned Course and carries explicit
+  ``module`` + ``formationMode``. Course nature/name never infer formation.
+- Program import has six logical groups: MAIN / COURSE / CREDIT_REQUIREMENT /
+  PRACTICE / GRADUATION / BINDING.
+- Reconciliation actions are exactly CREATE/REUSE/CONFLICT/REJECT.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Mapping
@@ -27,7 +30,7 @@ ACADEMIC_COURSE_CATALOG_IMPORT = "ACADEMIC_COURSE_CATALOG"
 ACADEMIC_PROGRAM_IMPORT = "ACADEMIC_PROGRAM"
 
 COURSE_TEMPLATE_VERSION = "course-catalog-v1"
-PROGRAM_TEMPLATE_VERSION = "program-v1"
+PROGRAM_TEMPLATE_VERSION = "program-v2"
 
 RECONCILIATION_CREATE = "CREATE"
 RECONCILIATION_REUSE = "REUSE"
@@ -62,23 +65,58 @@ COURSE_REQUIRED_FIELDS = frozenset({
     "courseCode", "version", "courseName", "category", "nature", "credit", "examMode",
 })
 
-# Program import is relational rather than a flattened second Program truth.
-# Later File Exchange adapters may use separate workbook sheets, but every row
-# must resolve to these canonical logical field sets before any domain writer.
+PROGRAM_GROUP_MAIN = "MAIN"
+PROGRAM_GROUP_COURSE = "COURSE"
+PROGRAM_GROUP_CREDIT_REQUIREMENT = "CREDIT_REQUIREMENT"
+PROGRAM_GROUP_PRACTICE = "PRACTICE"
+PROGRAM_GROUP_GRADUATION = "GRADUATION"
+PROGRAM_GROUP_BINDING = "BINDING"
+PROGRAM_LOGICAL_GROUPS = frozenset({
+    PROGRAM_GROUP_MAIN,
+    PROGRAM_GROUP_COURSE,
+    PROGRAM_GROUP_CREDIT_REQUIREMENT,
+    PROGRAM_GROUP_PRACTICE,
+    PROGRAM_GROUP_GRADUATION,
+    PROGRAM_GROUP_BINDING,
+})
+
+# The stable series key is repeated on every logical child group so rows can be
+# grouped without guessing from major/grade/name. major/grade remain required on
+# MAIN and BINDING because they are authoritative assertions/scope facts there.
 PROGRAM_MAIN_REQUIRED_FIELDS = frozenset({
-    "programName", "programVersion", "majorId", "gradeYear", "totalCredits",
+    "programSeriesKey", "programName", "programVersion", "majorId", "gradeYear", "totalCredits",
 })
 PROGRAM_COURSE_REQUIRED_FIELDS = frozenset({
-    "programVersion", "majorId", "gradeYear", "courseCode", "courseVersion",
-    "openTermNo", "formationMode",
+    "programSeriesKey", "programVersion", "courseCode", "courseVersion",
+    "openTermNo", "module", "formationMode",
+})
+PROGRAM_CREDIT_REQUIREMENT_REQUIRED_FIELDS = frozenset({
+    "programSeriesKey", "programVersion", "module", "creditTarget",
+})
+PROGRAM_PRACTICE_REQUIRED_FIELDS = frozenset({
+    "programSeriesKey", "programVersion", "segmentName", "segmentType",
+    "openTermNo", "weeks", "credit", "orgMode", "assessmentMode",
+})
+PROGRAM_GRADUATION_REQUIRED_FIELDS = frozenset({
+    "programSeriesKey", "programVersion", "category", "content",
 })
 PROGRAM_BINDING_REQUIRED_FIELDS = frozenset({
-    "programVersion", "majorId", "gradeYear", "bindingScope",
+    "programSeriesKey", "programVersion", "majorId", "gradeYear", "bindingScope",
 })
+PROGRAM_REQUIRED_FIELDS_BY_GROUP = {
+    PROGRAM_GROUP_MAIN: PROGRAM_MAIN_REQUIRED_FIELDS,
+    PROGRAM_GROUP_COURSE: PROGRAM_COURSE_REQUIRED_FIELDS,
+    PROGRAM_GROUP_CREDIT_REQUIREMENT: PROGRAM_CREDIT_REQUIREMENT_REQUIRED_FIELDS,
+    PROGRAM_GROUP_PRACTICE: PROGRAM_PRACTICE_REQUIRED_FIELDS,
+    PROGRAM_GROUP_GRADUATION: PROGRAM_GRADUATION_REQUIRED_FIELDS,
+    PROGRAM_GROUP_BINDING: PROGRAM_BINDING_REQUIRED_FIELDS,
+}
 
 BINDING_SCOPE_MAJOR_GRADE = "MAJOR_GRADE"
 BINDING_SCOPE_CLASS = "CLASS"
 BINDING_SCOPES = frozenset({BINDING_SCOPE_MAJOR_GRADE, BINDING_SCOPE_CLASS})
+
+_SERIES_KEY_RE = re.compile(r"^[A-Z0-9][A-Z0-9._:-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -92,16 +130,16 @@ class CourseBusinessKey:
 
 @dataclass(frozen=True)
 class ProgramVersionKey:
-    major_id: int
-    grade_year: str
+    series_key: str
     version: int
 
     def text(self) -> str:
-        return f"MAJOR:{self.major_id}:GRADE:{self.grade_year}:v{self.version}"
+        return f"SERIES:{self.series_key}:v{self.version}"
 
 
 @dataclass(frozen=True)
 class ProgramBindingKey:
+    program: ProgramVersionKey
     major_id: int
     grade_year: str
     scope: str
@@ -109,7 +147,7 @@ class ProgramBindingKey:
 
     def text(self) -> str:
         suffix = f"CLASS:{self.class_id}" if self.class_id is not None else "MAJOR_GRADE"
-        return f"MAJOR:{self.major_id}:GRADE:{self.grade_year}:{suffix}"
+        return f"{self.program.text()}|MAJOR:{self.major_id}:GRADE:{self.grade_year}:{suffix}"
 
 
 def _text(value, *, field: str, uppercase: bool = False) -> str:
@@ -147,6 +185,20 @@ def missing_required_fields(row: Mapping[str, object], required_fields) -> tuple
     ))
 
 
+def program_series_key(value: object) -> str:
+    """Normalize a caller-supplied immutable Program series identity.
+
+    This is intentionally code-like rather than display-name-like. No hash of
+    major/grade/name is generated here: missing identity must fail closed.
+    """
+    key = _text(value, field="programSeriesKey", uppercase=True)
+    if not _SERIES_KEY_RE.fullmatch(key):
+        raise ValueError(
+            "programSeriesKey must be 1-64 ASCII letters/digits or . _ : - and start with a letter/digit"
+        )
+    return key
+
+
 def course_business_key(row: Mapping[str, object]) -> CourseBusinessKey:
     """Resolve the only Course import identity; courseName is never consulted."""
     return CourseBusinessKey(
@@ -156,14 +208,15 @@ def course_business_key(row: Mapping[str, object]) -> CourseBusinessKey:
 
 
 def program_version_key(row: Mapping[str, object]) -> ProgramVersionKey:
+    """Resolve Program identity without consulting major/grade/name."""
     return ProgramVersionKey(
-        major_id=_positive_int(row.get("majorId"), field="majorId"),
-        grade_year=_text(row.get("gradeYear"), field="gradeYear"),
+        series_key=program_series_key(row.get("programSeriesKey")),
         version=_positive_int(row.get("programVersion"), field="programVersion"),
     )
 
 
 def program_binding_key(row: Mapping[str, object]) -> ProgramBindingKey:
+    program = program_version_key(row)
     major_id = _positive_int(row.get("majorId"), field="majorId")
     grade_year = _text(row.get("gradeYear"), field="gradeYear")
     scope = _text(row.get("bindingScope"), field="bindingScope", uppercase=True)
@@ -176,6 +229,7 @@ def program_binding_key(row: Mapping[str, object]) -> ProgramBindingKey:
     elif str(raw_class_id or "").strip():
         raise ValueError("classId must be empty for MAJOR_GRADE binding")
     return ProgramBindingKey(
+        program=program,
         major_id=major_id,
         grade_year=grade_year,
         scope=scope,
@@ -184,13 +238,14 @@ def program_binding_key(row: Mapping[str, object]) -> ProgramBindingKey:
 
 
 def program_course_reference(row: Mapping[str, object]) -> dict:
-    """Normalize a ProgramCourse import row without inferring domain truth."""
+    """Normalize a ProgramCourse row without inventing plan or Course truth."""
     program = program_version_key(row)
     course = CourseBusinessKey(
         course_code=_text(row.get("courseCode"), field="courseCode", uppercase=True),
         version=_positive_int(row.get("courseVersion"), field="courseVersion"),
     )
     formation_mode = normalize_formation_mode(row.get("formationMode"), required=True)
+    module = _text(row.get("module"), field="module")
     open_term_no = _positive_int(row.get("openTermNo"), field="openTermNo")
     credit_snapshot = None
     if str(row.get("creditSnapshot") or "").strip():
@@ -198,9 +253,40 @@ def program_course_reference(row: Mapping[str, object]) -> dict:
     return {
         "programKey": program.text(),
         "courseKey": course.text(),
+        "module": module,
         "formationMode": formation_mode,
         "openTermNo": open_term_no,
         "creditSnapshot": credit_snapshot,
+    }
+
+
+def program_credit_requirement(row: Mapping[str, object]) -> dict:
+    return {
+        "programKey": program_version_key(row).text(),
+        "module": _text(row.get("module"), field="module"),
+        "creditTarget": _non_negative_decimal(row.get("creditTarget"), field="creditTarget"),
+    }
+
+
+def program_practice_segment(row: Mapping[str, object]) -> dict:
+    return {
+        "programKey": program_version_key(row).text(),
+        "segmentName": _text(row.get("segmentName"), field="segmentName"),
+        "segmentType": _text(row.get("segmentType"), field="segmentType", uppercase=True),
+        "openTermNo": _positive_int(row.get("openTermNo"), field="openTermNo"),
+        "weeks": _non_negative_decimal(row.get("weeks"), field="weeks"),
+        "credit": _non_negative_decimal(row.get("credit"), field="credit"),
+        "orgMode": _text(row.get("orgMode"), field="orgMode", uppercase=True),
+        "assessmentMode": _text(row.get("assessmentMode"), field="assessmentMode", uppercase=True),
+        "location": str(row.get("location") or "").strip() or None,
+    }
+
+
+def program_graduation_requirement(row: Mapping[str, object]) -> dict:
+    return {
+        "programKey": program_version_key(row).text(),
+        "category": _text(row.get("category"), field="category", uppercase=True),
+        "content": _text(row.get("content"), field="content"),
     }
 
 
