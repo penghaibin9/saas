@@ -38,6 +38,10 @@ def _normalized_rows(rows: list[Mapping[str, object]]) -> list[dict]:
     ]
 
 
+def _stable_pair(item: Mapping[str, object]) -> tuple[str, int]:
+    return str(item.get("courseCode") or "").strip().upper(), int(item.get("version") or 0)
+
+
 def _action_index(preview: Mapping[str, object]) -> dict[tuple[int, str], dict]:
     result: dict[tuple[int, str], dict] = {}
     for raw in preview.get("items") or []:
@@ -226,6 +230,70 @@ def _expected_facts(projection: Mapping[str, object]) -> dict:
     }
 
 
+def _reread_reconciliation(db, normalized: list[dict], preview: Mapping[str, object], created: list[tuple[object, dict, dict]]) -> tuple[list[dict], list[int]]:
+    """Re-read every source stable key inside the same transaction.
+
+    A bounded query covers CREATE and REUSE rows. CREATE rows additionally prove
+    every persisted field equals the write projection; all rows receive the
+    authoritative courseId for downstream reconciliation evidence.
+    """
+    from app.models import AaCourse
+
+    wanted = {_stable_pair(item) for item in normalized}
+    codes = sorted({code for code, _version in wanted})
+    versions = sorted({version for _code, version in wanted})
+    persisted = db.scalars(
+        select(AaCourse).execution_options(populate_existing=True).where(
+            AaCourse.tenant_id == _tid(),
+            AaCourse.course_code.in_(codes),
+            AaCourse.version.in_(versions),
+            AaCourse.is_deleted.is_(False),
+        ).order_by(AaCourse.course_code, AaCourse.version, AaCourse.id)
+    ).all()
+    persisted_by_key = {
+        (str(course.course_code or "").strip().upper(), int(course.version or 0)): course
+        for course in persisted
+        if (str(course.course_code or "").strip().upper(), int(course.version or 0)) in wanted
+    }
+    missing = sorted(wanted - set(persisted_by_key))
+    if missing:
+        raise AppException(
+            "DATA_CONFLICT",
+            "课程导入事务内对账缺少稳定键记录，拒绝提交",
+            details={"missingBusinessKeys": [f"{code}@v{version}" for code, version in missing]},
+            http_status=409,
+        )
+
+    for _course, projection, item in created:
+        actual = _projection_facts(persisted_by_key[_stable_pair(item)])
+        expected = _expected_facts(projection)
+        if actual != expected:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程导入事务内对账失败，拒绝提交",
+                details={"businessKey": item["businessKey"]},
+                http_status=409,
+            )
+
+    normalized_by_business_key = {str(item["businessKey"]): item for item in normalized}
+    reconciliation: list[dict] = []
+    for raw in preview.get("items") or []:
+        entry = dict(raw)
+        source = normalized_by_business_key.get(str(entry.get("businessKey") or ""))
+        if source is None:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程导入对账结果无法回链源行，拒绝提交",
+                details={"businessKey": str(entry.get("businessKey") or "")},
+                http_status=409,
+            )
+        entry["courseId"] = str(persisted_by_key[_stable_pair(source)].id)
+        reconciliation.append(entry)
+
+    created_ids = [int(persisted_by_key[_stable_pair(item)].id) for _course, _projection, item in created]
+    return reconciliation, created_ids
+
+
 def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) -> dict:
     """Atomically confirm one already security-gated Course Catalog source snapshot."""
     source_rows = [dict(row) for row in (rows or [])]
@@ -311,42 +379,15 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
                 )
                 _course_core._audit(db, course.id, action, detail)
 
-            if created:
-                created_ids = [int(course.id) for course, _projection, _item in created]
-                persisted = db.scalars(
-                    select(AaCourse).execution_options(populate_existing=True).where(
-                        AaCourse.tenant_id == _tid(),
-                        AaCourse.id.in_(created_ids),
-                        AaCourse.is_deleted.is_(False),
-                    ).order_by(AaCourse.id)
-                ).all()
-                persisted_by_id = {int(course.id): course for course in persisted}
-                if set(persisted_by_id) != set(created_ids):
-                    raise AppException(
-                        "DATA_CONFLICT",
-                        "课程导入事务内对账缺少新建记录，拒绝提交",
-                        details={"expectedIds": [str(value) for value in created_ids]},
-                        http_status=409,
-                    )
-                for course, projection, item in created:
-                    actual = _projection_facts(persisted_by_id[int(course.id)])
-                    expected = _expected_facts(projection)
-                    if actual != expected:
-                        raise AppException(
-                            "DATA_CONFLICT",
-                            "课程导入事务内对账失败，拒绝提交",
-                            details={"businessKey": item["businessKey"]},
-                            http_status=409,
-                        )
-
+            reconciliation, created_ids = _reread_reconciliation(db, normalized, preview, created)
             db.commit()
             return {
                 "confirmedRows": len(normalized),
-                "createdCount": len(created),
+                "createdCount": len(created_ids),
                 "reusedCount": int(action_counts.get(RECONCILIATION_REUSE, 0)),
                 "businessKeys": business_keys,
-                "createdCourseIds": [str(course.id) for course, _projection, _item in created],
-                "reconciliation": list(preview.get("items") or []),
+                "createdCourseIds": [str(value) for value in created_ids],
+                "reconciliation": reconciliation,
             }
         except ValueError as exc:
             db.rollback()
