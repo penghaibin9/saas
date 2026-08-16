@@ -5,6 +5,12 @@ transactional owner must execute after locked BINDING preflight is green. The
 current interactive ``bind_grade`` service is not called because File Exchange
 confirm must keep preflight revalidation, supersede, insert and audit inside one
 caller-owned transaction.
+
+For a multi-scope confirm, per-plan ``lockOrder`` is explanatory only. Executing
+it plan-by-plan can deadlock with concurrent single-scope ``bind_grade`` calls.
+The authoritative execution order is the top-level ``batchLockOrder``: acquire
+all target Program locks first, then every Major/Class scope anchor, then every
+ACTIVE ProgramBinding scope lock, and only then apply mutations.
 """
 from __future__ import annotations
 
@@ -40,6 +46,25 @@ def _scope(scope_key: object) -> dict:
     }
 
 
+def _program_lock_sort(value: str) -> int:
+    try:
+        return int(value.split(":", 1)[1])
+    except (IndexError, TypeError, ValueError) as exc:  # pragma: no cover - planner constructs these
+        raise ValueError(f"invalid Program lock token: {value}") from exc
+
+
+def _anchor_lock_sort(value: str) -> tuple[int, int]:
+    prefix, _, raw_id = value.partition(":")
+    order = {"MAJOR": 0, "CLASS": 1}
+    if prefix not in order:
+        raise ValueError(f"invalid Program binding anchor lock token: {value}")
+    try:
+        object_id = int(raw_id)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - planner constructs these
+        raise ValueError(f"invalid Program binding anchor lock token: {value}") from exc
+    return order[prefix], object_id
+
+
 def build_program_binding_write_plan(preflight_result: Mapping[str, object]) -> dict:
     """Build deterministic BINDING mutation intent; performs zero I/O."""
     if not bool(preflight_result.get("programPreflightSafe")):
@@ -55,6 +80,10 @@ def build_program_binding_write_plan(preflight_result: Mapping[str, object]) -> 
 
     plans = []
     seen_scopes: set[str] = set()
+    program_locks: set[str] = set()
+    anchor_locks: set[str] = set()
+    active_scope_locks: set[str] = set()
+
     for raw in sorted(binding.get("intents") or (), key=lambda item: str(item.get("scopeKey") or "")):
         intent = dict(raw)
         scope = _scope(intent.get("scopeKey"))
@@ -66,6 +95,21 @@ def build_program_binding_write_plan(preflight_result: Mapping[str, object]) -> 
         program_id = str(intent.get("programId") or "").strip()
         if not program_id:
             raise ValueError(f"Program binding intent missing programId: {scope_key}")
+        try:
+            if int(program_id) <= 0:
+                raise ValueError
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Program binding intent has invalid programId: {scope_key}") from exc
+
+        anchor_lock = (
+            f"CLASS:{scope['classId']}"
+            if scope["classId"] is not None
+            else f"MAJOR:{scope['majorId']}"
+        )
+        program_locks.add(f"PROGRAM:{program_id}")
+        anchor_locks.add(anchor_lock)
+        active_scope_locks.add(f"ACTIVE_BINDING_SCOPE:{scope_key}")
+
         action = str(intent.get("action") or "").strip().upper()
         if action == RECONCILIATION_REUSE:
             plans.append({
@@ -80,11 +124,6 @@ def build_program_binding_write_plan(preflight_result: Mapping[str, object]) -> 
         if action != RECONCILIATION_CREATE:
             raise ValueError(f"unsupported Program binding mutation action: {action}")
 
-        anchor_lock = (
-            f"CLASS:{scope['classId']}"
-            if scope["classId"] is not None
-            else f"MAJOR:{scope['majorId']}"
-        )
         previous_program_id = str(intent.get("supersedeProgramId") or "").strip()
         mutations = []
         if previous_program_id:
@@ -128,9 +167,17 @@ def build_program_binding_write_plan(preflight_result: Mapping[str, object]) -> 
             "writeCount": len(mutations),
         })
 
+    batch_lock_order = [
+        *sorted(program_locks, key=_program_lock_sort),
+        *sorted(anchor_locks, key=_anchor_lock_sort),
+        *sorted(active_scope_locks),
+    ]
     return {
         "phase": PHASE_BINDING,
         "sharedTransactionRequired": True,
         "rerunLockedPreflightRequired": True,
+        "batchLockOrder": batch_lock_order,
+        "mutationsRequireBatchLocks": True,
+        "perPlanLockOrderIsExplanatoryOnly": True,
         "plans": plans,
     }
