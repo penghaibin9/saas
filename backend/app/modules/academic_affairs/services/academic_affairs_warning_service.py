@@ -481,7 +481,11 @@ def scan_attendance_warnings(user) -> dict:
             if not acad:
                 # 旷课预警不依赖成绩行：无台账时按成绩服务同口径建一行投影，再生成预警
                 from app.modules.academic_affairs.services.academic_affairs_grade_service import _acad_student_id
-                sp = db.get(StudentProfile, profile_id)
+                sp = db.scalars(select(StudentProfile).where(
+                    StudentProfile.id == profile_id,
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.is_deleted.is_(False),
+                )).first()
                 acad = _acad_student_id(db, profile_id, name=(sp.real_name if sp else ""))
             level = "HIGH" if n >= thr * 2 else ("MEDIUM" if n >= thr else "LOW")
             c, u = _upsert_warning(

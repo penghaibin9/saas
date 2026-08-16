@@ -21,7 +21,7 @@
 
       <div v-if="panel === 'stats'" class="aa-scope-note">
         当前汇总口径：<strong>{{ data.sourceScopeLabel || (sessionType === 'ADMIN_SPECIAL' ? '管理员特殊补录' : '正式课堂') }}</strong>。
-        <template v-if="sessionType === 'ADMIN_SPECIAL'">特殊补录仅用于审计核对，不进入标准课堂旷课预警。</template>
+        <span v-if="sessionType === 'ADMIN_SPECIAL'">特殊补录仅用于审计核对，不进入标准课堂旷课预警。</span>
         <template v-else>特殊补录不会混入默认课堂指标。</template>
       </div>
 
