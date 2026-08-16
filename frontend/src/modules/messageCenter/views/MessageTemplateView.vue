@@ -13,9 +13,9 @@
         <label>标题 <input v-model="form.title" /></label>
         <label>渠道
           <select v-model="form.channel">
-            <option value="IN_APP">IN_APP</option>
-            <option value="SMS">SMS</option>
-            <option value="WECHAT">WECHAT</option>
+            <option value="IN_APP">站内消息</option>
+            <option value="SMS">短信</option>
+            <option value="WECHAT">微信</option>
           </select>
         </label>
         <label>正文 <textarea v-model="form.content" rows="3" /></label>

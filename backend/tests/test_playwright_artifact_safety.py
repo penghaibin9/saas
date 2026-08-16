@@ -7,7 +7,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "playwright-production-e2e.yml"
 RESET_SCRIPT = ROOT / "backend" / "scripts" / "e2e_reset_graduation_passwords.py"
 VERIFY_SCRIPT = ROOT / "backend" / "scripts" / "e2e_verify_graduation_accounts.py"
 BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_accounts_ci.py"
+COUNSELOR_BOOTSTRAP = ROOT / "backend" / "scripts" / "e2e_bootstrap_affairs_counselor_ci.py"
 INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
+SCHOOL_IAM_SEED = ROOT / "backend" / "scripts" / "e2e_seed_control_plane_school_iam.py"
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -20,7 +22,7 @@ def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
 def test_ci_account_chain_never_persists_plaintext_password_maps():
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (RESET_SCRIPT, VERIFY_SCRIPT, BOOTSTRAP_SCRIPT)
+        for path in (RESET_SCRIPT, VERIFY_SCRIPT, BOOTSTRAP_SCRIPT, COUNSELOR_BOOTSTRAP)
     )
     forbidden = (
         "CRED_PATH.write_text",
@@ -40,6 +42,22 @@ def test_workflow_keeps_mock_login_disabled_and_isolated_database_guarded():
     assert "APP_ENV: test" in text
 
 
+def test_playwright_runs_exact_head_and_real_school_iam_fixture_seed():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    seed = SCHOOL_IAM_SEED.read_text(encoding="utf-8")
+
+    assert "E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
+    assert "Exact branch HEAD assertion" in workflow
+    assert "python scripts/e2e_seed_control_plane_school_iam.py" in workflow
+    assert workflow.index("python scripts/e2e_seed_playwright_tenants.py") < workflow.index(
+        "python scripts/e2e_seed_control_plane_school_iam.py"
+    )
+    assert '"control-plane-school-iam.json"' in seed
+    assert "reconcile_permission_catalog(" in seed
+    assert "converge_published_system_templates(" in seed
+
+
 def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     seed = INTERNSHIP_SEED.read_text(encoding="utf-8")
@@ -57,3 +75,20 @@ def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
     assert "InternshipAuditTrail(" not in seed
     assert '"password"' not in seed
     assert "password_hash" not in seed
+
+
+def test_counselor_bootstrap_uses_canonical_teacher_identity_pipeline():
+    counselor = COUNSELOR_BOOTSTRAP.read_text(encoding="utf-8")
+    canonical = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8")
+
+    assert "build_teacher_template" in counselor
+    assert "_canonical_import(" in counselor
+    assert 'kind="teachers"' in counselor
+    assert 'idempotency_namespace="e2e-affairs-counselor"' in counselor
+    assert "/system/identity-import/template" not in counselor
+    assert "/system/identity-import/validate-file" not in counselor
+    assert "/system/identity-import/confirm-batch" not in counselor
+
+    assert 'idempotency_namespace: str = "e2e-graduation"' in canonical
+    assert 'upload_key = f"{namespace}-{kind}-canonical-v3"' in canonical
+    assert 'f"{namespace}-{kind}-confirm-v3"' in canonical

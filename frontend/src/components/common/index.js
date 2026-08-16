@@ -73,6 +73,7 @@ export {
 export {
   AppRemoteSelect,
   AppOrgCascader,
+  AppChinaRegionPicker,
   AppAcademicYearPicker,
   AppTermPicker,
   AppStudentPicker,

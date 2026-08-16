@@ -213,7 +213,7 @@ def _validate_rows(body: dict) -> list[dict]:
         if "COUNSELOR" in role_codes and scope_type not in ("CLASS", "ADVISOR"):
             errors.append({"row": row_no, "entity": "teacher", "field": "scopeType",
                            "error": "辅导员必须配置 CLASS 或 ADVISOR 数据范围"})
-        if scope_type in ("CLASS", "COLLEGE", "STUDENT") and scope_ref in (None, ""):
+        if scope_type in ("CLASS", "COLLEGE", "MAJOR", "STUDENT") and scope_ref in (None, ""):
             errors.append({"row": row_no, "entity": "teacher", "field": "scopeRef",
                            "error": f"{scope_type} 数据范围必须填写 scopeRef"})
     for value in sorted(seen_no & seen_login):
@@ -253,7 +253,7 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             len(body.get("students") or []) + sum(len(codes) for codes in valid_teacher_rows))
         report["entities"]["scopes"]["created"] = sum(
             1 for t in body.get("teachers") or []
-            if str(t.get("scopeType") or "").strip().upper() in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"))
+            if str(t.get("scopeType") or "").strip().upper() in ("CLASS", "COLLEGE", "MAJOR", "STUDENT", "ADVISOR"))
         report["note"] = "演示模式：仅校验不落库"
         return report
 
@@ -469,6 +469,8 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
                 scope_exists = cls(sref) is not None
             elif stype == "COLLEGE" and sref:
                 scope_exists = col(sref) is not None
+            elif stype == "MAJOR" and sref:
+                scope_exists = maj(sref) is not None
             elif stype == "STUDENT" and sref:
                 scope_exists = db.scalars(select(StudentProfile).where(
                     StudentProfile.tenant_id == tenant_id,
@@ -511,7 +513,7 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
             report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
             # 数据范围绑定（复用 t_teacher_student_scope）
-            if stype in ("CLASS", "COLLEGE", "STUDENT", "ADVISOR"):
+            if stype in ("CLASS", "COLLEGE", "MAJOR", "STUDENT", "ADVISOR"):
                 scope_role = role_codes[0]
                 existing_scope = db.scalars(select(TeacherStudentScope).where(
                     TeacherStudentScope.tenant_id == tenant_id,
@@ -635,6 +637,8 @@ def _count_preview(tenant_id: int, body: dict, report: dict) -> None:
                 scope_exists = exists(SchoolClass, SchoolClass.class_name, scope_ref)
             elif scope_type == "COLLEGE" and scope_ref:
                 scope_exists = exists(College, College.college_name, scope_ref)
+            elif scope_type == "MAJOR" and scope_ref:
+                scope_exists = exists(Major, Major.major_name, scope_ref)
             elif scope_type == "STUDENT" and scope_ref:
                 scope_exists = (scope_ref in incoming_student_nos
                                 or exists(StudentProfile, StudentProfile.student_no, scope_ref))

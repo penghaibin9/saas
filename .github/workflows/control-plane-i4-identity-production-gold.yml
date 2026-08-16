@@ -1,0 +1,223 @@
+name: Control Plane I4 Identity Production Gold
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration/control-plane-option-b-20260815]
+    paths:
+      - 'backend/app/modules/system_admin/routers/data_exchange_router.py'
+      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/services/identity_import_file_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/file_scan_*.py'
+      - 'backend/app/services/clamav_client.py'
+      - 'backend/app/workers/file_scan_worker.py'
+      - 'backend/app/workers/identity_import_worker.py'
+      - 'backend/tests/test_file_identity_import_scan.py'
+      - 'backend/tests/test_control_plane_i4_dual_template_staging.py'
+      - 'backend/tests/test_identity_import_major_scope.py'
+      - 'backend/tests/file_scan_mysql_acceptance.py'
+      - 'backend/scripts/check_control_plane_i4_20k_identity.py'
+      - '.github/workflows/control-plane-i4-identity-production-gold.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/app/modules/system_admin/routers/data_exchange_router.py'
+      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/services/identity_import_file_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
+      - 'backend/app/services/identity_import_scan_orchestrator.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/file_scan_*.py'
+      - 'backend/app/services/clamav_client.py'
+      - 'backend/app/workers/file_scan_worker.py'
+      - 'backend/app/workers/identity_import_worker.py'
+      - 'backend/tests/test_file_identity_import_scan.py'
+      - 'backend/tests/test_control_plane_i4_dual_template_staging.py'
+      - 'backend/tests/test_identity_import_major_scope.py'
+      - 'backend/tests/file_scan_mysql_acceptance.py'
+      - 'backend/scripts/check_control_plane_i4_20k_identity.py'
+      - '.github/workflows/control-plane-i4-identity-production-gold.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-i4-identity-production-gold-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DEPLOYMENT_MODE: local
+  DB_ENABLED: 'true'
+  DB_DRIVER: mysql
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/i4_identity_gold?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/i4_identity_gold?charset=utf8mb4
+  SECRET_KEY: control-plane-i4-production-gold-secret
+  JWT_SECRET: control-plane-i4-production-gold-secret
+  FILE_STORAGE_BACKEND: local
+  UPLOAD_DIR: /tmp/control-plane-i4-identity-gold
+  CLAMAV_ENABLED: 'true'
+  FILE_SCAN_REQUIRED: 'true'
+  CLAMAV_HOST: 127.0.0.1
+  CLAMAV_PORT: '3310'
+  CLAMAV_CONNECT_TIMEOUT: '2'
+  CLAMAV_READ_TIMEOUT: '60'
+  FILE_SCAN_MAX_ATTEMPTS: '3'
+  FILE_SCAN_RETRY_BASE_SECONDS: '1'
+  IDENTITY_IMPORT_POLL_SECONDS: '0.2'
+  I4_EVIDENCE_PATH: ../artifacts/control-plane/i4-20k-scale.json
+  I4_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  identity-production-gold:
+    name: Exact-head MySQL + ClamAV + worker + 20K evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: i4_identity_gold
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+      clamav:
+        image: clamav/clamav:stable
+        ports:
+          - 3310:3310
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Production scanner configuration must be enabled
+        run: |
+          set -euo pipefail
+          test "$CLAMAV_ENABLED" = "true"
+          test "$FILE_SCAN_REQUIRED" = "true"
+          python - <<'PY'
+          from pathlib import Path
+          workflow_path = Path('.github/workflows/control-plane-i4-identity-production-gold.yml')
+          workflow_lines = workflow_path.read_text(encoding='utf-8').splitlines()
+          assert not any(
+              line.strip().lower().startswith('file_scan_enabled:') and 'false' in line.lower()
+              for line in workflow_lines
+          ), 'production Gold must never disable file scanning'
+          router = Path('backend/app/modules/system_admin/routers/data_exchange_router.py').read_text(encoding='utf-8')
+          worker = Path('backend/app/workers/identity_import_worker.py').read_text(encoding='utf-8')
+          orchestrator = Path('backend/app/services/identity_import_scan_orchestrator.py').read_text(encoding='utf-8')
+          assert 'file_service.store_upload(' in router
+          assert 'identity.create_identity_import_job(' in router
+          assert '详情（纯读）' in router
+          assert 'process_next_identity_import' in worker
+          assert '.with_for_update(skip_locked=True)' in worker
+          assert 'WORKER_CLAIMED' in orchestrator
+          assert 'parse_identity_xlsx_path' not in orchestrator
+          print('I4 canonical source contract OK')
+          PY
+      - name: Wait for real ClamAV
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import time
+          from app.services.clamav_client import ClamAVClient
+          last = None
+          for _ in range(180):
+              try:
+                  client = ClamAVClient()
+                  if client.ping():
+                      print(client.version())
+                      raise SystemExit(0)
+              except Exception as exc:
+                  last = exc
+              time.sleep(2)
+          raise SystemExit(f'ClamAV did not become ready: {last}')
+          PY
+      - name: Fresh MySQL one-head migration
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current
+      - name: Real MySQL and real ClamAV file acceptance
+        working-directory: backend
+        run: python tests/file_scan_mysql_acceptance.py
+      - name: Identity scan-worker, templates and MAJOR scope contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_file_identity_import_scan.py \
+            tests/test_control_plane_i4_dual_template_staging.py \
+            tests/test_control_plane_i4_preflight.py \
+            tests/test_identity_import_major_scope.py \
+            --disable-warnings
+      - name: Real 20K canonical onboarding scale proof
+        working-directory: backend
+        run: PYTHONPATH=. timeout 40m python scripts/check_control_plane_i4_20k_identity.py
+      - name: Validate combined evidence
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/control-plane
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          scale_path = Path('artifacts/control-plane/i4-20k-scale.json')
+          data = json.loads(scale_path.read_text(encoding='utf-8'))
+          assert data['rows'] == 20000
+          assert data['runtimeTeachers'] == 20000
+          assert data['runtimeRoleLinks'] == 20000
+          assert data['stagingRows'] == 20000
+          assert data['validStagingRows'] == 20000
+          assert data['rowErrors'] == 0
+          assert data['idempotentReplay'] is True
+          assert data['headSha'] == '${{ github.event.pull_request.head.sha || github.sha }}'
+          combined = {
+              'head': '${{ github.event.pull_request.head.sha || github.sha }}',
+              'mysql': '8.0',
+              'clamavEnabled': True,
+              'scanRequired': True,
+              'fileWorker': 'app.workers.file_scan_worker',
+              'identityWorker': 'app.workers.identity_import_worker',
+              'browserDetailPureRead': True,
+              'studentAndTeacherTemplates': True,
+              'normalizedStagingAuthority': True,
+              'scaleRows': 20000,
+              'credentialReceipt': True,
+              'idempotentReplay': True,
+              'gold': True,
+          }
+          Path('artifacts/control-plane/i4-identity-production-gold.json').write_text(
+              json.dumps(combined, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(combined, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload I4 production evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-i4-identity-production-gold-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/control-plane/
+          if-no-files-found: warn
+          retention-days: 14

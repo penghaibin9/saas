@@ -56,6 +56,7 @@
         :page="pagination.page"
         :page-size="pagination.pageSize"
         :show-size-changer="showSizeChanger"
+        :show-total="showTotal"
         @change="onPagerChange"
       />
     </div>
@@ -77,6 +78,8 @@
  *  - pagination: { page, pageSize, total } | null
  *  - showSizeChanger: 是否显示「每页条数」下拉（默认关闭——现有消费页的 page-change 处理函数
  *    只接收页码，不处理 pageSize 变化；默认打开会出现「能点但不生效」的假控件，按页迁移时再开）
+ *  - showTotal: 是否显示「共 N 条」（默认显示）。后端为游标分页(只返回 hasMore、无 total)的页面
+ *    须显式传 false，否则会把用于驱动翻页的下界估值当成真实总数展示给用户。
  * Slots: cell-<key>（作用域 { row }）、batch-actions（作用域 { keys }）
  * Emits: update:selected / row-click / page-change（页码 number，向后兼容既有 onPageChange(page) 消费方）
  */
@@ -94,7 +97,8 @@ export default {
     rowClickable: { type: Boolean, default: false },
     rowClass: { type: [Function, String], default: '' },
     pagination: { type: Object, default: null },
-    showSizeChanger: { type: Boolean, default: false }
+    showSizeChanger: { type: Boolean, default: false },
+    showTotal: { type: Boolean, default: true }
   },
   emits: ['update:selected', 'row-click', 'page-change'],
   computed: {

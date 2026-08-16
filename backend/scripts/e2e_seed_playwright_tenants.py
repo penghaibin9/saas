@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
-from app.models import Role, Tenant, TenantBrandConfig, User, UserRole
+from app.models import PlatformConfig, Role, Tenant, TenantBrandConfig, User, UserRole
 
 TENANTS = (
     {
@@ -64,6 +64,42 @@ def assert_safe_target() -> None:
         raise SystemExit("Playwright tenant seed only accepts a local database")
 
 
+def ensure_internship_entitlement(db, tenant_id: int) -> None:
+    """Keep the isolated browser fixture explicit after production package/catalog cutovers.
+
+    Production remains fail-closed.  The Playwright sandbox is a disposable acceptance
+    tenant and must opt into internship before exercising the real module guard.
+    """
+    row = db.scalars(
+        select(PlatformConfig).where(
+            PlatformConfig.tenant_id == tenant_id,
+            PlatformConfig.config_type == "FEATURES",
+            PlatformConfig.config_key == "-",
+            PlatformConfig.is_deleted.is_(False),
+        )
+    ).first()
+    if row is None:
+        db.add(
+            PlatformConfig(
+                tenant_id=tenant_id,
+                config_type="FEATURES",
+                config_key="-",
+                config_json={"internship": True},
+                enabled=True,
+                status="ACTIVE",
+                remark="Isolated Playwright acceptance entitlement",
+            )
+        )
+        return
+
+    features = dict(row.config_json or {})
+    features["internship"] = True
+    row.config_json = features
+    row.enabled = True
+    row.status = "ACTIVE"
+    row.is_deleted = False
+
+
 def ensure_tenant(db, spec: dict) -> None:
     tenant = db.get(Tenant, spec["id"])
     if tenant is None:
@@ -99,6 +135,8 @@ def ensure_tenant(db, spec: dict) -> None:
                 watermark_text=f"{spec['name']} · Playwright E2E",
             )
         )
+
+    ensure_internship_entitlement(db, spec["id"])
 
     user = db.scalars(
         select(User).where(

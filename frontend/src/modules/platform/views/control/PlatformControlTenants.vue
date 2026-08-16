@@ -66,12 +66,15 @@
         <label class="pct__field"><span>环境</span>
           <AppSelect v-model="form.environment" :options="environmentOptions" />
         </label>
-        <label class="pct__field"><span>省 / 市</span>
-          <span class="pct__pair">
-            <AppTextInput v-model="form.province" placeholder="省" />
-            <AppTextInput v-model="form.city" placeholder="市" />
-          </span>
-        </label>
+        <!-- 选择器内含多个原生 select，不用 label 包裹：点击 label 会把焦点转发到第一个 select -->
+        <div class="pct__field"><span>省 / 市</span>
+          <AppChinaRegionPicker
+            :model-value="regionText"
+            level="city"
+            placeholder="请选择学校所在省 / 市"
+            @change="onRegionChange"
+          />
+        </div>
         <label class="pct__field"><span>联系人 / 电话</span>
           <span class="pct__pair">
             <AppTextInput v-model="form.contactName" placeholder="姓名" />
@@ -92,7 +95,7 @@
 <script>
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
-import { AppSelect, AppTextInput } from '@/components/common'
+import { AppSelect, AppTextInput, AppChinaRegionPicker } from '@/components/common'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
@@ -105,7 +108,7 @@ const STATUS = {
 
 export default {
   name: 'PlatformControlTenants',
-  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag, AppSelect, AppTextInput },
+  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag, AppSelect, AppTextInput, AppChinaRegionPicker },
   props: {
     targetTab: { type: String, default: '' }
   },
@@ -150,6 +153,10 @@ export default {
         users: '账号按学校管理'
       }
       return map[this.targetTab] || ''
+    },
+    /** 省、市在租户档案里是两列，这里合成一个文本喂给选择器做回显 */
+    regionText() {
+      return [this.form.province, this.form.city].filter(Boolean).join(' ')
     }
   },
   created() {
@@ -157,6 +164,11 @@ export default {
     if (this.$route.meta && this.$route.meta.openCreate) this.createVisible = true
   },
   methods: {
+    /** 选择器给的是区划名，按后端两列结构分别写回；清空时一并置空，避免残留半截地区 */
+    onRegionChange(payload) {
+      this.form.province = payload.provinceName || ''
+      this.form.city = payload.cityName || ''
+    },
     blankForm() {
       return { tenantCode: '', tenantName: '', packageCode: 'trial', environment: 'production', province: '', city: '', contactName: '', contactPhone: '', adminLoginName: 'admin', adminRealName: '' }
     },

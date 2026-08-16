@@ -24,9 +24,16 @@ import { LoadingState, ErrorState } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
 import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
 
+const CONTROL_PLANE_LANDING = Object.freeze({
+  'sys-access': '/admin/system/iam'
+})
+
 /* ctx 尚未加载时的兼容菜单；正常状态由 BasePortalLayout 读取同一份 navPlan 渲染 8 组 / 26 项。 */
 const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
-  key: group.key, label: group.label, icon: group.icon, path: group.items[0].path
+  key: group.key,
+  label: group.label,
+  icon: group.icon,
+  path: CONTROL_PLANE_LANDING[group.key] || group.items[0].path
 }))
 
 export default {

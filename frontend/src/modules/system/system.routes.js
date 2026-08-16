@@ -83,6 +83,12 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '角色权限管理', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
     },
     {
+      path: 'iam',
+      name: 'system-iam-workspace',
+      component: () => import('@/modules/system/views/SystemIamWorkspaceView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '学校 IAM 工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
+    },
+    {
       path: 'menus',
       name: 'system-menus',
       redirect: '/admin/system/roles?tab=permissions'
