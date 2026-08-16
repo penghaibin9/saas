@@ -19,7 +19,6 @@ from app.models.internship_enterprise_application_decision import InternshipEnte
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
-from app.modules.internship.services import internship_application_service as application_svc
 from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
 from app.modules.internship.services import internship_position_rights as rights_svc
 from app.modules.internship.services import internship_student_service as student_svc
@@ -45,7 +44,6 @@ def _tenant() -> int:
 
 def _allow_assignment(monkeypatch):
     monkeypatch.setattr(student_svc, "_assert_write_scope", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(application_svc, "_scope_check", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         rights_svc,
         "evaluate_position_publishability",
@@ -153,7 +151,7 @@ def test_mysql_hot_position_headcount_one_has_exactly_one_winner(monkeypatch, db
 
 
 def test_mysql_student_enterprise_school_chain_closes_one_canonical_placement(monkeypatch, db_mode):
-    """Student submission -> enterprise ACCEPT_INTENT -> school APPROVE closes all E-series facts atomically."""
+    """Student submission -> enterprise ACCEPT_INTENT -> canonical school assignment closes all facts."""
     tenant_id, base = _tenant(), _base()
     now = datetime.utcnow()
     _allow_assignment(monkeypatch)
@@ -246,6 +244,7 @@ def test_mysql_student_enterprise_school_chain_closes_one_canonical_placement(mo
             record_id=record.id,
             student_id=record.student_id,
             batch_id=campaign.batch_id,
+            campaign_id=campaign.id,
             application_type="POSITION",
             volunteer_no=1,
             position_id=position.id,
@@ -298,16 +297,13 @@ def test_mysql_student_enterprise_school_chain_closes_one_canonical_placement(mo
 
     set_tenant({"tenantId": str(tenant_id)})
     try:
-        result = application_svc.review_application(
-            ids["application"],
-            "APPROVE",
-            "学校最终确认通过",
-            user={"userId": "db-9901", "realName": "终审老师", "currentRoleCode": "SCHOOL_ADMIN"},
+        result = student_svc.assign_position(
+            ids["record"],
+            ids["position"],
             expected_version=0,
-            record_expected_version=0,
-            expected_batch_id=base + 200,
+            user={"userId": "db-9901", "realName": "终审老师", "currentRoleCode": "SCHOOL_ADMIN"},
         )
-        assert result["status"] == "APPROVED"
+        assert result["positionId"] == str(ids["position"])
     finally:
         set_tenant(None)
 
@@ -403,6 +399,7 @@ def test_mysql_enterprise_applicant_query_is_bounded_at_20k_rows(db_mode):
                     "record_id": base + 100_000 + offset,
                     "student_id": base + 200_000 + offset,
                     "batch_id": campaign.batch_id,
+                    "campaign_id": campaign.id,
                     "application_type": "POSITION",
                     "volunteer_no": 1,
                     "position_id": position.id,
