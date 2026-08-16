@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Build a fail-closed D-W5 exact-head evidence matrix from GitHub Actions.
-
-This is an evidence aggregator only. It never changes repository state and it never
-promotes PRE-GOLD evidence to Final Gold unless every explicit final condition is true.
-"""
+"""Fail-closed D-W5 exact-head Gold evidence matrix."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +20,6 @@ REQUIRED_SAME_HEAD_WORKFLOWS = (
     "Graduation Targeted Validation",
     "File center final acceptance",
 )
-
 AUXILIARY_BROWSER_WORKFLOW = "Playwright production interaction E2E"
 REPLAY_BRANCHES = {
     "main": ("main", "main_commit"),
@@ -68,11 +63,9 @@ def parse_json_evidence(path: str | Path | None) -> dict[str, Any]:
 
 
 def latest_runs_by_name(runs: Iterable[dict[str, Any]], exact_sha: str) -> dict[str, dict[str, Any]]:
-    """Return the newest run for each workflow, restricted to the exact source SHA."""
-    exact_sha = str(exact_sha).strip()
     selected: dict[str, dict[str, Any]] = {}
     for run in runs:
-        if str(run.get("head_sha") or "") != exact_sha:
+        if str(run.get("head_sha") or "") != str(exact_sha).strip():
             continue
         name = str(run.get("name") or "").strip()
         if not name:
@@ -90,23 +83,11 @@ def latest_runs_by_name(runs: Iterable[dict[str, Any]], exact_sha: str) -> dict[
 
 def classify_workflow(name: str, run: dict[str, Any] | None) -> dict[str, Any]:
     if run is None:
-        return {
-            "name": name,
-            "state": "MISSING",
-            "ready": False,
-            "runId": None,
-            "status": None,
-            "conclusion": None,
-        }
+        return {"name": name, "state": "MISSING", "ready": False, "runId": None, "status": None, "conclusion": None}
     status = str(run.get("status") or "").lower()
     conclusion = str(run.get("conclusion") or "").lower()
     ready = status == "completed" and conclusion == "success"
-    if ready:
-        state = "SUCCESS"
-    elif status != "completed":
-        state = "PENDING"
-    else:
-        state = "FAILURE"
+    state = "SUCCESS" if ready else "PENDING" if status != "completed" else "FAILURE"
     return {
         "name": name,
         "state": state,
@@ -122,7 +103,6 @@ def classify_workflow(name: str, run: dict[str, Any] | None) -> dict[str, Any]:
 def compare_upstream_freeze_to_replay(
     freeze_payload: dict[str, Any], evidence: dict[str, str]
 ) -> tuple[bool, list[dict[str, str]]]:
-    """Final freeze evidence must refer to the exact A/B/C heads consumed by replay."""
     lines = freeze_payload.get("lines") or {}
     expected = {
         "A": str(evidence.get("a_commit") or ""),
@@ -134,16 +114,13 @@ def compare_upstream_freeze_to_replay(
     for line, replay_sha in expected.items():
         freeze_sha = str((lines.get(line) or {}).get("headSha") or "")
         match = bool(replay_sha and freeze_sha and replay_sha == freeze_sha)
-        if not match:
-            matches = False
-        comparisons.append(
-            {
-                "line": line,
-                "freezeHeadSha": freeze_sha,
-                "replayHeadSha": replay_sha,
-                "matches": "true" if match else "false",
-            }
-        )
+        matches = matches and match
+        comparisons.append({
+            "line": line,
+            "freezeHeadSha": freeze_sha,
+            "replayHeadSha": replay_sha,
+            "matches": "true" if match else "false",
+        })
     return matches, comparisons
 
 
@@ -156,17 +133,14 @@ def compare_live_heads_to_replay(
         replay_sha = str(evidence.get(evidence_key) or "")
         live_sha = str(live_heads.get(branch) or "")
         match = bool(replay_sha and live_sha and replay_sha == live_sha)
-        if not match:
-            matches = False
-        comparisons.append(
-            {
-                "label": label,
-                "branch": branch,
-                "replayHeadSha": replay_sha,
-                "liveHeadSha": live_sha,
-                "matches": "true" if match else "false",
-            }
-        )
+        matches = matches and match
+        comparisons.append({
+            "label": label,
+            "branch": branch,
+            "replayHeadSha": replay_sha,
+            "liveHeadSha": live_sha,
+            "matches": "true" if match else "false",
+        })
     return matches, comparisons
 
 
@@ -181,20 +155,17 @@ def build_matrix(
     live_heads_error: str = "",
 ) -> dict[str, Any]:
     selected = latest_runs_by_name(runs, sha)
-    required = {
-        name: classify_workflow(name, selected.get(name))
-        for name in REQUIRED_SAME_HEAD_WORKFLOWS
-    }
-    browser = classify_workflow(
-        AUXILIARY_BROWSER_WORKFLOW,
-        selected.get(AUXILIARY_BROWSER_WORKFLOW),
-    )
+    required = {name: classify_workflow(name, selected.get(name)) for name in REQUIRED_SAME_HEAD_WORKFLOWS}
+    browser = classify_workflow(AUXILIARY_BROWSER_WORKFLOW, selected.get(AUXILIARY_BROWSER_WORKFLOW))
 
     local_requirements = {
         "replaySuccess": _as_bool(evidence.get("replay_success")),
         "cleanTenantSchema": _as_bool(evidence.get("clean_tenant_schema_proven")),
         "migratedTenantSchema": _as_bool(evidence.get("migrated_tenant_schema_proven")),
         "migratedTenantContracts": _as_bool(evidence.get("migrated_tenant_contracts_proven")),
+        "permissionNegative": _as_bool(evidence.get("permission_negative_contract_proven")),
+        "dataScopeNegative": _as_bool(evidence.get("datascope_negative_contract_proven")),
+        "crossTenantSentinel": _as_bool(evidence.get("cross_tenant_sentinel_proven")),
     }
     local_replay_ready = all(local_requirements.values())
     external_same_head_ready = not api_error and all(item["ready"] for item in required.values())
@@ -211,12 +182,7 @@ def build_matrix(
         replay_heads_current = False
 
     final_browser_proven = _as_bool(evidence.get("final_browser_gold_proven_on_w5_head"))
-    final_gold = (
-        pre_gold_ready
-        and upstream_frozen
-        and replay_heads_current
-        and final_browser_proven
-    )
+    final_gold = pre_gold_ready and upstream_frozen and replay_heads_current and final_browser_proven
 
     blockers: list[str] = []
     if api_error:
@@ -224,12 +190,11 @@ def build_matrix(
     if live_heads_error:
         blockers.append(f"live_heads_api_error:{live_heads_error}")
     if not local_replay_ready:
-        phase = evidence.get("w5_phase") or "UNKNOWN"
-        layer = evidence.get("failed_layer") or ""
-        blockers.append(f"pre_gold_replay_not_green:phase={phase}:layer={layer}")
-        for key, ready in local_requirements.items():
-            if not ready:
-                blockers.append(f"local_requirement:{key}:false")
+        blockers.append(
+            "pre_gold_replay_not_green:"
+            f"phase={evidence.get('w5_phase') or 'UNKNOWN'}:layer={evidence.get('failed_layer') or ''}"
+        )
+        blockers.extend(f"local_requirement:{key}:false" for key, ready in local_requirements.items() if not ready)
     for name, item in required.items():
         if not item["ready"]:
             blockers.append(f"same_head_workflow:{name}:{item['state']}")
@@ -241,8 +206,7 @@ def build_matrix(
                 if row["matches"] != "true":
                     blockers.append(
                         "upstream_freeze_head_mismatch:"
-                        f"{row['line']}:freeze={row['freezeHeadSha'] or 'missing'}:"
-                        f"replay={row['replayHeadSha'] or 'missing'}"
+                        f"{row['line']}:freeze={row['freezeHeadSha'] or 'missing'}:replay={row['replayHeadSha'] or 'missing'}"
                     )
     if not replay_heads_current:
         blockers.append("replay_heads_no_longer_current")
@@ -250,14 +214,13 @@ def build_matrix(
             if row["matches"] != "true":
                 blockers.append(
                     "replay_head_moved_since_snapshot:"
-                    f"{row['label']}:branch={row['branch']}:"
-                    f"replay={row['replayHeadSha'] or 'missing'}:live={row['liveHeadSha'] or 'missing'}"
+                    f"{row['label']}:branch={row['branch']}:replay={row['replayHeadSha'] or 'missing'}:live={row['liveHeadSha'] or 'missing'}"
                 )
     if not final_browser_proven:
         blockers.append("integrated_final_browser_gold_not_proven")
 
     return {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "sourceSha": sha,
         "w5Phase": evidence.get("w5_phase") or "UNKNOWN",
         "failedLayer": evidence.get("failed_layer") or "",
@@ -290,15 +253,12 @@ def build_matrix(
 def _github_json(endpoint: str, token: str, *, user_agent: str) -> Any:
     if not token:
         raise RuntimeError("GITHUB_TOKEN is required")
-    request = Request(
-        endpoint,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": user_agent,
-        },
-    )
+    request = Request(endpoint, headers={
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": user_agent,
+    })
     with urlopen(request, timeout=20) as response:
         return json.load(response)
 
@@ -388,7 +348,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     _write_json(args.output, matrix)
     print(json.dumps(matrix, ensure_ascii=False, sort_keys=True))
-
     if args.strict_final and not matrix["finalGold"]:
         return 1
     return 0

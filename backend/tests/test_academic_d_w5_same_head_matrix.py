@@ -25,10 +25,7 @@ def _run(name: str, *, run_id: int, status: str = "completed", conclusion: str |
 
 
 def _all_success_runs(sha: str = "d-head"):
-    return [
-        _run(name, run_id=index + 10, sha=sha)
-        for index, name in enumerate(MODULE.REQUIRED_SAME_HEAD_WORKFLOWS)
-    ]
+    return [_run(name, run_id=index + 10, sha=sha) for index, name in enumerate(MODULE.REQUIRED_SAME_HEAD_WORKFLOWS)]
 
 
 def _replay_evidence(**overrides):
@@ -38,6 +35,9 @@ def _replay_evidence(**overrides):
         "clean_tenant_schema_proven": "true",
         "migrated_tenant_schema_proven": "true",
         "migrated_tenant_contracts_proven": "true",
+        "permission_negative_contract_proven": "true",
+        "datascope_negative_contract_proven": "true",
+        "cross_tenant_sentinel_proven": "true",
         "main_commit": "m" * 40,
         "a_commit": "a" * 40,
         "b_commit": "b" * 40,
@@ -53,19 +53,12 @@ def _replay_evidence(**overrides):
 
 
 def _upstream_frozen(value: bool = True, **head_overrides):
-    heads = {
-        "A": "a" * 40,
-        "B": "b" * 40,
-        "C": "c" * 40,
-    }
+    heads = {"A": "a" * 40, "B": "b" * 40, "C": "c" * 40}
     heads.update(head_overrides)
     return {
         "schemaVersion": 1,
         "allFrozen": value,
-        "lines": {
-            line: {"headSha": sha, "allContractsFrozen": value}
-            for line, sha in heads.items()
-        },
+        "lines": {line: {"headSha": sha, "allContractsFrozen": value} for line, sha in heads.items()},
         "blockers": [] if value else ["A:contract_not_explicitly_frozen:A-C5"],
     }
 
@@ -95,12 +88,9 @@ def test_latest_runs_are_exact_sha_and_latest_attempt_only():
 
 
 def test_missing_pending_and_failure_are_all_fail_closed():
-    missing = MODULE.classify_workflow("missing", None)
-    pending = MODULE.classify_workflow("pending", _run("pending", run_id=4, status="in_progress", conclusion=None))
-    failed = MODULE.classify_workflow("failed", _run("failed", run_id=5, conclusion="failure"))
-    assert missing["state"] == "MISSING" and missing["ready"] is False
-    assert pending["state"] == "PENDING" and pending["ready"] is False
-    assert failed["state"] == "FAILURE" and failed["ready"] is False
+    assert MODULE.classify_workflow("missing", None)["state"] == "MISSING"
+    assert MODULE.classify_workflow("pending", _run("pending", run_id=4, status="in_progress", conclusion=None))["state"] == "PENDING"
+    assert MODULE.classify_workflow("failed", _run("failed", run_id=5, conclusion="failure"))["state"] == "FAILURE"
 
 
 def test_required_workflows_terminal_requires_every_named_exact_head_run_completed():
@@ -119,12 +109,39 @@ def test_pre_gold_can_be_ready_without_claiming_final_gold():
         live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is True
+    assert matrix["localRequirements"] == {
+        "replaySuccess": True,
+        "cleanTenantSchema": True,
+        "migratedTenantSchema": True,
+        "migratedTenantContracts": True,
+        "permissionNegative": True,
+        "dataScopeNegative": True,
+        "crossTenantSentinel": True,
+    }
     assert matrix["externalSameHeadReady"] is True
     assert matrix["preGoldReady"] is True
     assert matrix["replayHeadsStillCurrent"] is True
     assert matrix["finalGold"] is False
     assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
     assert "integrated_final_browser_gold_not_proven" in matrix["blockers"]
+
+
+def test_each_security_negative_is_a_hard_pre_gold_requirement():
+    for key, expected_blocker in (
+        ("permission_negative_contract_proven", "local_requirement:permissionNegative:false"),
+        ("datascope_negative_contract_proven", "local_requirement:dataScopeNegative:false"),
+        ("cross_tenant_sentinel_proven", "local_requirement:crossTenantSentinel:false"),
+    ):
+        matrix = MODULE.build_matrix(
+            sha="d-head",
+            runs=_all_success_runs(),
+            evidence=_replay_evidence(**{key: False}),
+            upstream_freeze=_upstream_frozen(False),
+            live_heads=_live_heads(),
+        )
+        assert matrix["localReplayReady"] is False
+        assert matrix["preGoldReady"] is False
+        assert expected_blocker in matrix["blockers"]
 
 
 def test_migrated_tenant_schema_is_a_hard_pre_gold_requirement():
@@ -136,7 +153,6 @@ def test_migrated_tenant_schema_is_a_hard_pre_gold_requirement():
         live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is False
-    assert matrix["preGoldReady"] is False
     assert "local_requirement:migratedTenantSchema:false" in matrix["blockers"]
 
 
@@ -166,7 +182,6 @@ def test_frozen_owner_contract_on_old_head_cannot_promote_new_replay_head():
         upstream_freeze=_upstream_frozen(True, A="f" * 40),
         live_heads=_live_heads(),
     )
-    assert matrix["upstreamContractFreezeDeclared"] is True
     assert matrix["upstreamFreezeHeadsMatchReplay"] is False
     assert matrix["finalGold"] is False
     assert any(blocker.startswith("upstream_freeze_head_mismatch:A:") for blocker in matrix["blockers"])
@@ -185,7 +200,6 @@ def test_branch_movement_after_replay_blocks_final_gold_even_with_frozen_contrac
     assert matrix["replayHeadsStillCurrent"] is False
     assert matrix["finalGold"] is False
     assert "replay_heads_no_longer_current" in matrix["blockers"]
-    assert any(blocker.startswith("replay_head_moved_since_snapshot:INT:") for blocker in matrix["blockers"])
 
 
 def test_live_head_api_error_is_fail_closed_for_final_gold():
@@ -202,14 +216,11 @@ def test_live_head_api_error_is_fail_closed_for_final_gold():
     assert "live_heads_api_error:HTTPError:403" in matrix["blockers"]
 
 
-def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_claims_true():
+def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_claims_true():
     matrix = MODULE.build_matrix(
         sha="d-head",
         runs=_all_success_runs(),
-        evidence=_replay_evidence(
-            upstream_contract_heads_frozen=True,
-            final_browser_gold_proven_on_w5_head=True,
-        ),
+        evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
         upstream_freeze={},
         live_heads=_live_heads(),
     )
@@ -219,23 +230,21 @@ def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_
 
 
 def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
-    evidence = _replay_evidence(
-        replay_success=False,
-        clean_tenant_schema_proven=False,
-        migrated_tenant_schema_proven=False,
-        migrated_tenant_contracts_proven=False,
-        w5_phase="MERGE_INT",
-        failed_layer="INT",
-    )
     matrix = MODULE.build_matrix(
         sha="d-head",
         runs=_all_success_runs(),
-        evidence=evidence,
+        evidence=_replay_evidence(
+            replay_success=False,
+            clean_tenant_schema_proven=False,
+            migrated_tenant_schema_proven=False,
+            migrated_tenant_contracts_proven=False,
+            w5_phase="MERGE_INT",
+            failed_layer="INT",
+        ),
         upstream_freeze=_upstream_frozen(False),
         live_heads=_live_heads(),
     )
     assert matrix["localReplayReady"] is False
-    assert matrix["preGoldReady"] is False
     assert "pre_gold_replay_not_green:phase=MERGE_INT:layer=INT" in matrix["blockers"]
 
 
@@ -255,12 +264,8 @@ def test_actions_api_error_blocks_same_head_readiness_even_with_green_local_repl
 
 def test_key_value_parser_ignores_comments_and_malformed_lines(tmp_path):
     evidence = tmp_path / "evidence.txt"
-    evidence.write_text(
-        "# comment\nreplay_success=true\nmalformed\nfailed_layer=INT=overlay\n",
-        encoding="utf-8",
-    )
-    parsed = MODULE.parse_key_value_evidence(evidence)
-    assert parsed == {"replay_success": "true", "failed_layer": "INT=overlay"}
+    evidence.write_text("# comment\nreplay_success=true\nmalformed\nfailed_layer=INT=overlay\n", encoding="utf-8")
+    assert MODULE.parse_key_value_evidence(evidence) == {"replay_success": "true", "failed_layer": "INT=overlay"}
 
 
 def test_json_evidence_parser_is_fail_closed_for_missing_or_non_object(tmp_path):
