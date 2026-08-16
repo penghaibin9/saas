@@ -13,6 +13,12 @@
         </label>
       </div>
 
+      <AppInlineAlert
+        v-if="currentError"
+        type="warning"
+        :description="`当前学期解析失败，未自动猜测“当前”；仍可显式选择草稿学期维护教学周。${currentError}`"
+      />
+
       <EmptyState
         v-if="!termsLoading && !terms.length"
         title="还没有学年学期"
@@ -47,7 +53,7 @@
 </template>
 
 <script>
-/** 教学周配置（/admin/academic-affairs/terms/teaching-weeks）：PUT /terms/{id}/teaching-weeks（仅 DRAFT 可写，SM-01）。 */
+/** 教学周配置（/admin/academic-affairs/terms/teaching-weeks）：显式 term 可编辑；默认 term 由 A-C1 /terms/current 决定。 */
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { AppButton } from '@/components/ui'
@@ -66,6 +72,8 @@ export default {
       termsLoading: true,
       terms: [],
       termId: '',
+      currentContext: null,
+      currentError: '',
       form: { teachingWeeks: null, examWeekStart: null },
       formError: '',
       saving: false
@@ -73,10 +81,14 @@ export default {
   },
   computed: {
     termOptions() {
-      return this.terms.map((t) => ({ value: t.termId, label: `${t.yearCode} 第 ${t.termNo} 学期（${this.statusLabel(t.status)}）`, raw: t }))
+      return this.terms.map((t) => ({
+        value: t.termId,
+        label: `${t.yearCode} 第 ${t.termNo} 学期${this.isResolvedCurrent(t) ? '（全校当前）' : ''}（${this.statusLabel(t.status)}）`,
+        raw: t
+      }))
     },
     current() {
-      return this.terms.find((t) => t.termId === this.termId) || null
+      return this.terms.find((t) => String(t.termId) === String(this.termId)) || null
     },
     editable() {
       return !!this.current && this.current.status === 'DRAFT'
@@ -87,13 +99,28 @@ export default {
   },
   methods: {
     statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    isResolvedCurrent(term) {
+      return Boolean(term && this.currentContext?.termId) && String(term.termId) === String(this.currentContext.termId)
+    },
+    async loadCurrentContext() {
+      this.currentError = ''
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0) {
+        this.currentContext = res.data || null
+      } else {
+        this.currentContext = null
+        this.currentError = res.message || '当前学期解析失败'
+      }
+    },
     async refreshTermCatalog() {
       this.termsLoading = true
       try {
         this.terms = await loadAcademicTermCatalog()
-        const cur = this.terms.find((t) => t.isCurrent) || this.terms[0]
-        if (cur) {
-          this.termId = cur.termId
+        await this.loadCurrentContext()
+        const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
+        const selected = resolved || this.terms[0]
+        if (selected) {
+          this.termId = selected.termId
           this.onTermChange()
         }
       } catch (error) {
