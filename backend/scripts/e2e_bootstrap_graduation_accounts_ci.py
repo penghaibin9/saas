@@ -82,13 +82,22 @@ def _student_workbook() -> bytes:
     )
 
 
-def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
+def _canonical_import(
+    token: str,
+    *,
+    kind: str,
+    content: bytes,
+    idempotency_namespace: str = "e2e-graduation",
+) -> dict:
     """Run upload -> explicit worker process -> canonical job confirmation."""
     if kind not in {"teachers", "students"}:
         raise ValueError(f"unsupported canonical identity kind: {kind}")
+    namespace = str(idempotency_namespace or "").strip()
+    if not namespace:
+        raise ValueError("idempotency_namespace is required")
     filename = f"e2e_interaction_{kind}.xlsx"
     body, boundary = multipart(content, filename)
-    upload_key = f"e2e-graduation-{kind}-canonical-v3"
+    upload_key = f"{namespace}-{kind}-canonical-v3"
     created = _req(
         "POST",
         f"/data-exchange/imports/identity/{kind}/validate-file",
@@ -146,7 +155,7 @@ def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
         f"/data-exchange/imports/{job_id}/confirm",
         token=token,
         body={"expectedVersion": expected_version},
-        headers={"Idempotency-Key": f"e2e-graduation-{kind}-confirm-v3"},
+        headers={"Idempotency-Key": f"{namespace}-{kind}-confirm-v3"},
     )
     if confirmed.get("code") != 0:
         raise SystemExit(
