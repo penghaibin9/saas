@@ -2,7 +2,8 @@
 
 This module does not run Alembic or mutate ORM models. It requires three
 independent inventories before shared backfill is permitted:
-1. Program prev_version series proof;
+1. canonical Program prev_version series proof with an explicit Program->series
+   ``proposedBackfill`` mapping;
 2. TeachingTask runtime formation integrity;
 3. explicit ProgramCourse formation provenance.
 
@@ -14,7 +15,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-SERIES_BACKFILL_POLICY = "PROVABLE_PREV_VERSION_ROOT_ONLY"
 PROGRAM_COURSE_PROVENANCE_PROVEN = "EXPLICIT_PROVENANCE_PROVEN"
 
 
@@ -30,6 +30,13 @@ def _required_bool(report: Mapping[str, object], field: str, *, owner: str) -> b
     return bool(report[field])
 
 
+def _required_list(report: Mapping[str, object], field: str, *, owner: str) -> list:
+    value = report.get(field)
+    if not isinstance(value, list):
+        raise ValueError(f"{owner}.{field} must be a list")
+    return list(value)
+
+
 def _required_text(report: Mapping[str, object], field: str, *, owner: str) -> str:
     text = str(report.get(field) or "").strip().upper()
     if not text:
@@ -38,13 +45,57 @@ def _required_text(report: Mapping[str, object], field: str, *, owner: str) -> s
 
 
 def _non_negative_count(report: Mapping[str, object], field: str, *, owner: str) -> int:
+    if field not in report:
+        raise ValueError(f"{owner}.{field} is required")
     try:
-        value = int(report.get(field) or 0)
+        value = int(report[field])
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{owner}.{field} must be a non-negative integer") from exc
     if value < 0:
         raise ValueError(f"{owner}.{field} must be a non-negative integer")
     return value
+
+
+def _canonical_series_evidence(series: Mapping[str, object]) -> tuple[bool, int, list[dict], list[dict]]:
+    safe = _required_bool(series, "migrationPreflightSafe", owner="program_series_inventory")
+    total_rows = _non_negative_count(series, "totalRows", owner="program_series_inventory")
+    blockers = [dict(item) for item in _required_list(
+        series, "blockers", owner="program_series_inventory"
+    )]
+    proposed = [dict(item) for item in _required_list(
+        series, "proposedBackfill", owner="program_series_inventory"
+    )]
+
+    if safe and blockers:
+        raise ValueError("program_series_inventory safe report cannot contain blockers")
+    if not safe and proposed:
+        raise ValueError("program_series_inventory dirty report must not contain partial proposedBackfill")
+
+    seen_program_ids: set[int] = set()
+    seen_identity: set[tuple[int, str, int]] = set()
+    for item in proposed:
+        try:
+            program_id = int(item.get("programId"))
+            tenant_id = int(item.get("tenantId"))
+            version = int(item.get("version"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("program_series_inventory proposedBackfill has invalid identifiers") from exc
+        series_key = str(item.get("seriesKey") or "").strip()
+        if program_id <= 0 or tenant_id <= 0 or version <= 0 or not series_key:
+            raise ValueError("program_series_inventory proposedBackfill has invalid identifiers")
+        if program_id in seen_program_ids:
+            raise ValueError("program_series_inventory proposedBackfill duplicates programId")
+        identity = (tenant_id, series_key, version)
+        if identity in seen_identity:
+            raise ValueError("program_series_inventory proposedBackfill collides on tenant+seriesKey+version")
+        seen_program_ids.add(program_id)
+        seen_identity.add(identity)
+
+    if safe and len(proposed) != total_rows:
+        raise ValueError(
+            "program_series_inventory safe report must provide proposedBackfill for every Program row"
+        )
+    return safe, total_rows, blockers, proposed
 
 
 def evaluate_shared_program_schema_gate(
@@ -61,9 +112,7 @@ def evaluate_shared_program_schema_gate(
         field="program_course_formation_inventory",
     )
 
-    series_safe = _required_bool(
-        series, "migrationPreflightSafe", owner="program_series_inventory"
-    )
+    series_safe, total_programs, series_blockers, proposed_backfill = _canonical_series_evidence(series)
     task_safe = _required_bool(
         task_formation, "migrationPreflightSafe", owner="task_formation_inventory"
     )
@@ -72,18 +121,12 @@ def evaluate_shared_program_schema_gate(
         "migrationPreflightSafe",
         owner="program_course_formation_inventory",
     )
-    series_policy = _required_text(
-        series, "seriesKeyBackfill", owner="program_series_inventory"
-    )
     program_course_policy = _required_text(
         program_course,
         "programCourseFormationBackfill",
         owner="program_course_formation_inventory",
     )
 
-    unresolved_programs = _non_negative_count(
-        series, "unresolvedProgramCount", owner="program_series_inventory"
-    )
     unresolved_tasks = _non_negative_count(
         task_formation, "unresolvedTaskCount", owner="task_formation_inventory"
     )
@@ -93,7 +136,6 @@ def evaluate_shared_program_schema_gate(
         owner="program_course_formation_inventory",
     )
 
-    series_blockers = dict(series.get("blockerCounts") or {})
     task_blockers = dict(task_formation.get("blockerCounts") or {})
     task_relationship_blockers = dict(
         task_formation.get("relationshipBlockerCounts") or {}
@@ -102,9 +144,8 @@ def evaluate_shared_program_schema_gate(
 
     series_backfill_allowed = bool(
         series_safe
-        and unresolved_programs == 0
         and not series_blockers
-        and series_policy == SERIES_BACKFILL_POLICY
+        and len(proposed_backfill) == total_programs
     )
     task_formation_evidence_clean = bool(
         task_safe
@@ -125,11 +166,12 @@ def evaluate_shared_program_schema_gate(
             "code": "PROGRAM_SERIES_BACKFILL_NOT_PROVEN",
             "evidence": {
                 "migrationPreflightSafe": series_safe,
-                "unresolvedProgramCount": unresolved_programs,
-                "blockerCounts": series_blockers,
-                "seriesKeyBackfill": series_policy,
+                "totalPrograms": total_programs,
+                "blockerCount": len(series_blockers),
+                "blockerCodes": sorted({str(item.get("code") or "") for item in series_blockers}),
+                "proposedBackfillCount": len(proposed_backfill),
             },
-            "howToResolve": "修复 Program prev_version 根链 blocker；vN-only 历史走 privileged baseline migration policy，不得伪造前代",
+            "howToResolve": "修复 canonical Program prev_version blocker；vN-only 历史走 privileged baseline migration policy，不得伪造前代或由 migration 重算 series",
         })
     if not task_formation_evidence_clean:
         blockers.append({
@@ -177,6 +219,7 @@ def evaluate_shared_program_schema_gate(
             },
         ],
         "programSeriesBackfillAllowed": series_backfill_allowed,
+        "programSeriesBackfillProposal": proposed_backfill if series_backfill_allowed else [],
         "taskFormationEvidenceClean": task_formation_evidence_clean,
         "programCourseFormationBackfillAllowed": program_course_backfill_allowed,
         "sharedBackfillAllowed": shared_backfill_allowed,

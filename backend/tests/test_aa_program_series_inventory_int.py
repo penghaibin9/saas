@@ -1,4 +1,4 @@
-"""INT Program stable-series dirty-data inventory contracts."""
+"""INT Program stable-series adapter/canonical-classifier contracts."""
 from __future__ import annotations
 
 import inspect
@@ -26,13 +26,13 @@ def test_program_series_inventory_query_is_single_tenant_scoped_and_binding_free
     assert "t_aa_program_course" not in sql
 
 
-def test_linear_series_are_proven_without_treating_major_grade_version_as_identity():
+def test_linear_series_delegate_to_canonical_classifier_and_keep_natural_identity_non_authoritative():
     service = _service()
     report = service._build_inventory([
-        (1, 10, "2026", 1, None, "ENABLED"),
-        (2, 10, "2026", 2, 1, "DRAFT"),
-        (3, 10, "2026", 1, None, "ENABLED"),
-        (4, 10, "2026", 2, 3, "DRAFT"),
+        (1, 1, 10, "2026", 1, None, "ENABLED"),
+        (2, 1, 10, "2026", 2, 1, "DRAFT"),
+        (3, 1, 10, "2026", 1, None, "ENABLED"),
+        (4, 1, 10, "2026", 2, 3, "DRAFT"),
     ])
 
     assert report["totalPrograms"] == 4
@@ -44,39 +44,46 @@ def test_linear_series_are_proven_without_treating_major_grade_version_as_identi
     assert report["ambiguousNaturalIdentityGroupCount"] == 2
     assert report["naturalIdentityPolicy"] == "MAJOR_GRADE_VERSION_NOT_IDENTITY"
     assert report["bindingIdentityPolicy"] == "FORBIDDEN"
-    assert report["seriesKeyBackfill"] == "PROVABLE_PREV_VERSION_ROOT_ONLY"
+    assert report["seriesKeyBackfill"] == "CANONICAL_PROPOSED_BACKFILL"
+    assert report["canonicalClassifier"] == "inventory_program_series"
     assert report["migrationPreflightSafe"] is True
+    assert report["proposedBackfill"] == [
+        {"programId": 1, "tenantId": 1, "version": 1, "rootProgramId": 1, "seriesKey": "LEGACY-1"},
+        {"programId": 2, "tenantId": 1, "version": 2, "rootProgramId": 1, "seriesKey": "LEGACY-1"},
+        {"programId": 3, "tenantId": 1, "version": 1, "rootProgramId": 3, "seriesKey": "LEGACY-3"},
+        {"programId": 4, "tenantId": 1, "version": 2, "rootProgramId": 3, "seriesKey": "LEGACY-3"},
+    ]
 
 
-def test_inventory_fail_closed_on_missing_fork_cycle_drift_gap_and_unproven_baseline():
+def test_inventory_fail_closed_via_canonical_blockers_and_never_returns_partial_backfill():
     service = _service()
     report = service._build_inventory([
-        (10, 10, "2026", 2, 999, "ENABLED"),  # missing predecessor
-        (20, 20, "2026", 1, None, "ENABLED"),
-        (21, 20, "2026", 2, 20, "ENABLED"),
-        (22, 20, "2026", 2, 20, "DRAFT"),     # fork
-        (30, 30, "2026", 1, 31, "ENABLED"),
-        (31, 30, "2026", 2, 30, "ENABLED"),   # cycle
-        (40, 40, "2026", 1, None, "ENABLED"),
-        (41, 41, "2026", 2, 40, "DRAFT"),     # major drift
-        (50, 50, "2026", 1, None, "ENABLED"),
-        (51, 50, "2027", 2, 50, "DRAFT"),     # grade drift
-        (60, 60, "2026", 1, None, "ENABLED"),
-        (61, 60, "2026", 3, 60, "DRAFT"),     # version gap
-        (70, 70, "2026", 3, None, "ENABLED"), # v3-only baseline
+        (10, 1, 10, "2026", 2, 999, "ENABLED"),  # missing predecessor
+        (20, 1, 20, "2026", 1, None, "ENABLED"),
+        (21, 1, 20, "2026", 2, 20, "ENABLED"),
+        (22, 1, 20, "2026", 2, 20, "DRAFT"),     # fork
+        (30, 1, 30, "2026", 1, 31, "ENABLED"),
+        (31, 1, 30, "2026", 2, 30, "ENABLED"),   # cycle
+        (40, 1, 40, "2026", 1, None, "ENABLED"),
+        (41, 1, 41, "2026", 2, 40, "DRAFT"),     # major drift
+        (50, 1, 50, "2026", 1, None, "ENABLED"),
+        (51, 1, 50, "2027", 2, 50, "DRAFT"),     # grade drift
+        (60, 1, 60, "2026", 1, None, "ENABLED"),
+        (61, 1, 60, "2026", 3, 60, "DRAFT"),     # version gap
+        (70, 1, 70, "2026", 3, None, "ENABLED"), # v3-only baseline
     ], sample_limit=3)
 
     blockers = report["blockerCounts"]
-    assert blockers["PREDECESSOR_MISSING"] == 1
-    assert blockers["PREDECESSOR_FORK"] == 1
-    assert blockers["VERSION_CYCLE"] >= 1
-    assert blockers["MAJOR_ID_DRIFT"] == 1
-    assert blockers["GRADE_YEAR_DRIFT"] == 1
-    assert blockers["VERSION_SEQUENCE_INVALID"] >= 1
-    assert blockers["BASELINE_VERSION_WITHOUT_HISTORY"] == 1
+    assert blockers["PROGRAM_PARENT_MISSING"] == 1
+    assert blockers["PROGRAM_VERSION_FORK"] == 1
+    assert blockers["PROGRAM_VERSION_CYCLE"] >= 1
+    assert blockers["PROGRAM_SERIES_SCOPE_DRIFT"] == 2
+    assert blockers["PROGRAM_VERSION_NOT_DIRECT_SUCCESSOR"] >= 2
+    assert blockers["PROGRAM_ROOT_NOT_V1"] == 1
     assert report["unresolvedProgramCount"] > 0
     assert report["migrationPreflightSafe"] is False
-    assert len(report["blockerProgramSamples"]["PREDECESSOR_FORK"]) <= 3
+    assert report["proposedBackfill"] == []
+    assert len(report["blockerProgramSamples"]["PROGRAM_VERSION_FORK"]) <= 3
 
 
 class _Rows:
@@ -97,11 +104,11 @@ class _Db:
         return _Rows(self.rows)
 
 
-def test_inventory_executes_exactly_one_read_query_and_never_writes():
+def test_inventory_executes_exactly_one_read_query_and_delegates_graph_truth():
     service = _service()
     db = _Db([
-        (1, 10, "2026", 1, None, "ENABLED"),
-        (2, 10, "2026", 2, 1, "DRAFT"),
+        (1, 1000000000000000001, 10, "2026", 1, None, "ENABLED"),
+        (2, 1000000000000000001, 10, "2026", 2, 1, "DRAFT"),
     ])
 
     report = service.inventory_legacy_program_series(
@@ -110,8 +117,13 @@ def test_inventory_executes_exactly_one_read_query_and_never_writes():
     )
     assert len(db.calls) == 1
     assert report["migrationPreflightSafe"] is True
+    assert [item["seriesKey"] for item in report["proposedBackfill"]] == ["LEGACY-1", "LEGACY-1"]
 
     source = inspect.getsource(service)
+    assert "inventory_program_series(rows)" in source
+    assert "VERSION_CYCLE" not in source
+    assert "PREDECESSOR_FORK" not in source
+    assert "successors" not in source
     assert "AaProgramBinding" not in source
     assert ".commit(" not in source
     assert "db.add(" not in source
