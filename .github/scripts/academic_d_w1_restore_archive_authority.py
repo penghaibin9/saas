@@ -190,6 +190,7 @@ for forbidden in (
     if forbidden in current:
         raise SystemExit(f"invalid W1 policy wiring remains: {forbidden}")
 
+current = current.rstrip() + "\n"
 ast.parse(current)
 PATH.write_text(current, encoding="utf-8")
 print("D-W1 mature archive authority restored with four-state wrappers")
