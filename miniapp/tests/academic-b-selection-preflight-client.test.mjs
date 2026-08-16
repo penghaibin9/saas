@@ -16,3 +16,19 @@ test('miniapp preflights before enroll and reuses backend decision trace', () =>
   assert.match(block, /preflight\.decisionTrace/)
   assert.match(page, /MobileAcademicDecisionCard/)
 })
+
+test('miniapp consumes B-C3 server actions instead of deriving eligibility from remain/status', () => {
+  assert.match(page, /allowedActions/)
+  assert.match(page, /statusLabel/)
+  assert.match(page, /howToResolve/)
+  assert.match(page, /hasAction\(c, action\)/)
+  assert.doesNotMatch(page, /canEnroll\(c\)/)
+
+  const enrollStart = page.indexOf('enroll(c)')
+  const enrollBlock = page.slice(enrollStart, page.indexOf('drop(c)', enrollStart))
+  assert.match(enrollBlock, /hasAction\(c, ['"]ENROLL['"]\)/)
+
+  const dropStart = page.indexOf('drop(c)')
+  const dropBlock = page.slice(dropStart, page.indexOf('\n    }', dropStart) + 6)
+  assert.match(dropBlock, /hasAction\(c, ['"]DROP['"]\)/)
+})

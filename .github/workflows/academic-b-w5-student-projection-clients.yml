@@ -1,0 +1,42 @@
+name: Academic B W5 Student Projection Clients
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - student-portal/src/views/academic/StudentSelectionView.vue
+      - student-portal/tests/academic-b-selection-preflight-client.test.mjs
+      - miniapp/src/pages/student/academic-affairs/selection.vue
+      - miniapp/tests/academic-b-selection-preflight-client.test.mjs
+      - .github/workflows/academic-b-w5-student-projection-clients.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w5-clients-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-contracts:
+    name: PC + miniapp B-C3 action contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W5 client head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run only Student PC W5 contract
+        working-directory: student-portal
+        run: node --test tests/academic-b-selection-preflight-client.test.mjs
+      - name: Run only miniapp W5 contract
+        working-directory: miniapp
+        run: node --test tests/academic-b-selection-preflight-client.test.mjs
