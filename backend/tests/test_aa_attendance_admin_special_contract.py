@@ -208,6 +208,95 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
     assert "proof-1" in audits[-1][2]
 
 
+def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as archive
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
+
+    task = SimpleNamespace(
+        id=30,
+        tenant_id=1,
+        is_deleted=False,
+        status="TEACHER_CONFIRMED",
+        batch_id=20,
+        teacher_key="T001",
+        class_id=10,
+        course_name="数据库原理",
+    )
+    batch = SimpleNamespace(id=20, tenant_id=1, is_deleted=False, term_id=9)
+
+    class _TaskDb(_Db):
+        def get(self, model, identity):
+            name = getattr(model, "__name__", "")
+            if name == "AaTeachingTask" and int(identity) == 30:
+                return task
+            if name == "AaTeachingTaskBatch" and int(identity) == 20:
+                return batch
+            return None
+
+    db = _TaskDb(term=_term())
+    official = {
+        "source": "SELECTION_LOCKED",
+        "sourceRefId": "selection-9",
+        "rosterVersionId": "rv-9",
+        "rosterVersionNo": 3,
+        "items": [
+            {
+                "studentId": "101",
+                "studentNo": "S001",
+                "realName": "学生甲",
+                "classId": "10",
+            }
+        ],
+    }
+    calls = {"resolve": [], "freeze": []}
+    audits = []
+
+    monkeypatch.setattr(service, "session", lambda: _session(db))
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    monkeypatch.setattr(archive, "guard_term_writable", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service, "resolve_versioned_roster", lambda _db, task_id: (
+        calls["resolve"].append(int(task_id)) or official
+    ))
+
+    def _freeze(_db, consumer_type, consumer_id, task_id, *, roster):
+        calls["freeze"].append((consumer_type, int(consumer_id), int(task_id), roster))
+        return {
+            "rosterVersionId": "rv-9",
+            "rosterVersionNo": 3,
+            "rosterSource": "SELECTION_LOCKED",
+        }
+
+    monkeypatch.setattr(service, "freeze_consumer_snapshot", _freeze)
+    monkeypatch.setattr(service, "_audit", lambda _db, biz_id, action, detail="": audits.append(
+        (biz_id, action, detail)
+    ))
+
+    result = service.create_session(
+        _admin(),
+        {
+            "teachingTaskId": 30,
+            "classId": 10,
+            "sessionDate": "2026-03-02",
+            "slotNo": 3,
+            "sessionType": "ADMIN_SPECIAL",
+            "specialReason": "调课异常后的人工证据补录",
+            "evidence": {"ticket": "AA-30"},
+        },
+    )
+
+    assert calls["resolve"] == [30]
+    assert len(calls["freeze"]) == 1
+    consumer_type, consumer_id, task_id, frozen_roster = calls["freeze"][0]
+    assert consumer_type == "ATTENDANCE_SESSION"
+    assert consumer_id == int(result["sessionId"])
+    assert task_id == 30
+    assert frozen_roster is official
+    assert result["teachingTaskId"] == "30"
+    assert result["sourceType"] == "ADMIN_SPECIAL"
+    assert result["rosterIdentity"]["rosterVersionId"] == "rv-9"
+    assert audits and "source=ADMIN_SPECIAL" in audits[-1][2]
+
+
 def test_default_stats_condition_excludes_admin_special():
     from app.models import AaAttendanceSession
     from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
