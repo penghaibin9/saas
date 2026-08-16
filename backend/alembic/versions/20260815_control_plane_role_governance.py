@@ -106,7 +106,10 @@ def upgrade() -> None:
     if insp.has_table("t_custom_role_source"):
         cols = {c["name"] for c in insp.get_columns("t_custom_role_source")}
         if "role_id" not in cols:
-            op.add_column("t_custom_role_source", sa.Column("role_id", sa.BigInteger(), nullable=True))
+            op.add_column(
+                "t_custom_role_source",
+                sa.Column("role_id", sa.BigInteger(), sa.ForeignKey("t_role.id"), nullable=True),
+            )
             for source_id, role_id in role_bindings:
                 bind.execute(sa.text(
                     "UPDATE t_custom_role_source SET role_id=:role_id WHERE id=:source_id"
