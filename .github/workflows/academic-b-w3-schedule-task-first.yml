@@ -1,0 +1,44 @@
+name: Academic B W3 Schedule Task First
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths:
+      - 'frontend/src/modules/academicAffairs/views/AaScheduleMaintainView.vue'
+      - 'frontend/tests/academic-schedule-task-first-contract.test.mjs'
+      - '.github/workflows/academic-b-w3-schedule-task-first.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-build:
+    name: Task-first contract + staff production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W3 head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install staff PC dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run only W3 Task-first contract
+        working-directory: frontend
+        run: node --test tests/academic-schedule-task-first-contract.test.mjs
+      - name: Production build staff PC
+        working-directory: frontend
+        run: npm run build
