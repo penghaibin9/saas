@@ -27,8 +27,14 @@ graduation_college_scope_ids._graduation_scope_guard = True
 
 
 def graduation_list_batches(user, status=None, page=1, page_size=50):
-    """Return only batches and aggregates visible to the caller's graduation data scope."""
-    from sqlalchemy import and_, func, select
+    """Return scope-safe batch counters with one grouped aggregate query per page.
+
+    The legacy implementation loaded every result row once per batch. Graduation season
+    can put thousands of students behind each row, so a 100-batch page became an N+1 query
+    plus full ORM materialization. This projection keeps the same DTO while doing only:
+    count visible batches -> fetch one batch page -> aggregate that page in SQL.
+    """
+    from sqlalchemy import and_, case, func, select
 
     from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
@@ -40,12 +46,13 @@ def graduation_list_batches(user, status=None, page=1, page_size=50):
         if scope is not None and not scope:
             return [], 0
 
-        conds = [
-            AaGraduationAuditBatch.tenant_id == service._tid(),
+        tenant_id = service._tid()
+        batch_conds = [
+            AaGraduationAuditBatch.tenant_id == tenant_id,
             AaGraduationAuditBatch.is_deleted.is_(False),
         ]
         if status:
-            conds.append(AaGraduationAuditBatch.status == status)
+            batch_conds.append(AaGraduationAuditBatch.status == status)
 
         student_join = and_(
             StudentProfile.id == AaGraduationAuditResult.student_id,
@@ -57,47 +64,65 @@ def graduation_list_batches(user, status=None, page=1, page_size=50):
                 select(AaGraduationAuditResult.batch_id)
                 .join(StudentProfile, student_join)
                 .where(
-                    AaGraduationAuditResult.tenant_id == service._tid(),
+                    AaGraduationAuditResult.tenant_id == tenant_id,
                     AaGraduationAuditResult.is_deleted.is_(False),
                     StudentProfile.college_id.in_(scope),
                 )
                 .distinct()
             )
-            conds.append(AaGraduationAuditBatch.id.in_(visible_batch_ids))
+            batch_conds.append(AaGraduationAuditBatch.id.in_(visible_batch_ids))
 
-        total = db.scalar(select(func.count()).select_from(AaGraduationAuditBatch).where(*conds)) or 0
+        total = db.scalar(
+            select(func.count()).select_from(AaGraduationAuditBatch).where(*batch_conds)
+        ) or 0
         offset = (page - 1) * page_size
         batches = db.scalars(
             select(AaGraduationAuditBatch)
-            .where(*conds)
+            .where(*batch_conds)
             .order_by(AaGraduationAuditBatch.id.desc())
             .offset(offset)
             .limit(page_size)
         ).all()
+        if not batches:
+            return [], int(total)
+
+        batch_ids = [int(batch.id) for batch in batches]
+        result_conds = [
+            AaGraduationAuditResult.tenant_id == tenant_id,
+            AaGraduationAuditResult.batch_id.in_(batch_ids),
+            AaGraduationAuditResult.is_deleted.is_(False),
+        ]
+        aggregate_query = select(
+            AaGraduationAuditResult.batch_id.label("batch_id"),
+            func.count(AaGraduationAuditResult.id).label("total"),
+            func.sum(case((AaGraduationAuditResult.overall == "SYSTEM_PASSED", 1), else_=0)).label("passed"),
+            func.sum(case((AaGraduationAuditResult.overall == "SYSTEM_ABNORMAL", 1), else_=0)).label("abnormal"),
+            func.sum(case((AaGraduationAuditResult.conclusion.is_not(None), 1), else_=0)).label("concluded"),
+            func.sum(case((AaGraduationAuditResult.status == "ARCHIVED", 1), else_=0)).label("archived"),
+        )
+        if scope is not None:
+            aggregate_query = aggregate_query.join(StudentProfile, student_join)
+            result_conds.append(StudentProfile.college_id.in_(scope))
+        aggregate_query = aggregate_query.where(*result_conds).group_by(AaGraduationAuditResult.batch_id)
+        aggregates = {
+            int(row.batch_id): row
+            for row in db.execute(aggregate_query).all()
+        }
 
         out = []
         for batch in batches:
-            result_query = select(AaGraduationAuditResult).where(
-                AaGraduationAuditResult.tenant_id == service._tid(),
-                AaGraduationAuditResult.batch_id == batch.id,
-                AaGraduationAuditResult.is_deleted.is_(False),
-            )
-            if scope is not None:
-                result_query = result_query.join(StudentProfile, student_join).where(
-                    StudentProfile.college_id.in_(scope)
-                )
-            results = db.scalars(result_query).all()
+            stats = aggregates.get(int(batch.id))
             out.append({
                 "batchId": str(batch.id),
                 "batchName": batch.batch_name,
                 "gradeYear": batch.grade_year,
                 "majorId": str(batch.major_id) if batch.major_id else None,
                 "status": batch.status,
-                "total": len(results),
-                "passed": sum(1 for row in results if row.overall == "SYSTEM_PASSED"),
-                "abnormal": sum(1 for row in results if row.overall == "SYSTEM_ABNORMAL"),
-                "concluded": sum(1 for row in results if row.conclusion),
-                "archived": sum(1 for row in results if row.status == "ARCHIVED"),
+                "total": int(stats.total or 0) if stats else 0,
+                "passed": int(stats.passed or 0) if stats else 0,
+                "abnormal": int(stats.abnormal or 0) if stats else 0,
+                "concluded": int(stats.concluded or 0) if stats else 0,
+                "archived": int(stats.archived or 0) if stats else 0,
             })
         return out, int(total)
 
