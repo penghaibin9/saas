@@ -9,6 +9,12 @@ if old not in text:
     raise SystemExit("form scheduleItemId anchor missing")
 text = text.replace(old, new, 1)
 
+old = '''    hasValidSlot() {\n      const pattern = this.selectedPattern\n      const slot = Number(this.form.slotNo)\n      return !!pattern && Number.isInteger(slot) && slot > 0 && slot === Number(pattern.slotNo)\n    },\n'''
+new = '''    hasValidSlot() {\n      const pattern = this.selectedPattern\n      const slot = Number(this.form.slotNo)\n      const scheduleItemId = Number(this.form.scheduleItemId)\n      return !!pattern\n        && Number.isInteger(slot)\n        && slot > 0\n        && slot === Number(pattern.slotNo)\n        && Number.isInteger(scheduleItemId)\n        && scheduleItemId > 0\n        && String(pattern.scheduleItemId || '') === String(this.form.scheduleItemId || '')\n    },\n'''
+if old not in text:
+    raise SystemExit("hasValidSlot occurrence identity anchor missing")
+text = text.replace(old, new, 1)
+
 old = '''      this.form.teachingTaskId = task ? task.teachingTaskId : ''\n      this.form.classId = task ? task.classId : ''\n      this.patternIndex = -1\n      this.form.slotNo = ''\n'''
 new = '''      this.form.teachingTaskId = task ? task.teachingTaskId : ''\n      this.form.classId = task ? task.classId : ''\n      this.patternIndex = -1\n      this.form.slotNo = ''\n      this.form.scheduleItemId = ''\n'''
 if old not in text:
