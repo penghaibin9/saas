@@ -62,7 +62,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "7c38eddf7c13bbf6469ab0548b552fe7f0adce2b"
           grep -F 'formation_mode: Mapped[str | None]' backend/app/models/academic_affairs.py
           grep -F 'editable_scope_key: Mapped[str | None]' backend/app/models/academic_affairs.py
-          grep -F 'revision = "20260816_acad_int_ac4"' backend/alembic/versions/20260816_academic_int_ac4.py
+          grep -F 'revision = "20260816_acad_int_ac4"' backend/alembic/versions/20260816_academic_int_ac4_schema.py
 
       - name: Fetch pinned A-W3 frozen source
         run: |
