@@ -1,9 +1,9 @@
 """INT adapter from Program preflight result to Academic File Exchange preview shape.
 
-The shared File Exchange persists preview/error summaries. Program preflight has
-six worksheets and Program-level actions, so this adapter keeps row metrics and
-Program action metrics separate while preserving explainable error evidence.
-No file, database, parser, or dispatcher ownership lives here.
+Program import spans six worksheets and Program-level actions. This adapter keeps
+row metrics separate from Program action metrics, preserves blocker evidence, and
+also carries non-blocking quality warnings/metrics so governance evidence is not
+lost before the shared File Exchange owner persists the preview.
 """
 from __future__ import annotations
 
@@ -18,12 +18,14 @@ from .academic_affairs_school_setup_import_contract import (
 )
 
 
-def _error_item(error: Mapping[str, object]) -> dict:
-    row = int(error.get("row") or error.get("rowNo") or 0)
-    logical_group = str(error.get("logicalGroup") or "").strip().upper()
-    program_key = str(error.get("programKey") or "").strip()
-    business_code = str(error.get("businessCode") or error.get("code") or "PROGRAM_PRECHECK_FAILED").strip()
-    evidence = dict(error.get("evidence") or {})
+def _evidence_item(item: Mapping[str, object], *, default_message: str) -> dict:
+    row = int(item.get("row") or item.get("rowNo") or 0)
+    logical_group = str(item.get("logicalGroup") or "").strip().upper()
+    program_key = str(item.get("programKey") or "").strip()
+    business_code = str(
+        item.get("businessCode") or item.get("code") or "PROGRAM_PRECHECK_FAILED"
+    ).strip()
+    evidence = dict(item.get("evidence") or {})
     if program_key and "programKey" not in evidence:
         evidence["programKey"] = program_key
     return {
@@ -31,9 +33,9 @@ def _error_item(error: Mapping[str, object]) -> dict:
         "logicalGroup": logical_group,
         "field": f"{logical_group or 'WORKBOOK'}:{business_code}",
         "code": business_code,
-        "message": str(error.get("message") or "培养方案导入预检失败"),
+        "message": str(item.get("message") or default_message),
         "evidence": evidence,
-        "howToResolve": str(error.get("howToResolve") or "").strip(),
+        "howToResolve": str(item.get("howToResolve") or "").strip(),
     }
 
 
@@ -42,7 +44,15 @@ def program_preflight_to_file_exchange_preview(
     preflight_result: Mapping[str, object],
 ) -> dict:
     rows = [dict(row) for row in normalized_rows]
-    errors = [_error_item(item) for item in (preflight_result.get("errors") or ())]
+    errors = [
+        _evidence_item(item, default_message="培养方案导入预检失败")
+        for item in (preflight_result.get("errors") or ())
+    ]
+    quality = dict(preflight_result.get("quality") or {})
+    warnings = [
+        _evidence_item(item, default_message="培养方案导入存在治理提示")
+        for item in (quality.get("warnings") or ())
+    ]
     invalid_locations = {
         (str(item.get("logicalGroup") or ""), int(item.get("row") or 0))
         for item in errors
@@ -50,9 +60,8 @@ def program_preflight_to_file_exchange_preview(
     }
     invalid_rows = len(invalid_locations)
     if errors and invalid_rows == 0:
-        # Workbook-level blockers such as PROGRAM_SOURCE_EMPTY have row=0. File
-        # Exchange still needs invalidRows>0 so VALIDATION_FAILED cannot be
-        # misreported as an all-green zero-row preview.
+        # Workbook/program-level blockers have row=0. They still must make the
+        # preview invalid instead of looking like an all-green zero-row import.
         invalid_rows = 1
 
     actions = [dict(item) for item in (preflight_result.get("actions") or ())]
@@ -80,5 +89,8 @@ def program_preflight_to_file_exchange_preview(
         "phase": str((preflight_result.get("binding") or {}).get("phase") or ""),
         "stage": str(preflight_result.get("stage") or ""),
         "programPreflightSafe": bool(preflight_result.get("programPreflightSafe")),
+        "warningCount": len(warnings),
+        "warnings": warnings,
+        "qualityMetrics": [dict(item) for item in (quality.get("programMetrics") or ())],
         "errors": errors,
     }
