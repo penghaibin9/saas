@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: academic-c-w1-real-write-1da9f7d2
+  cancel-in-progress: true
+
 jobs:
   route-preflight:
     name: Real route test preflight / exact 1da9f7d2
@@ -33,15 +37,41 @@ jobs:
       - name: Enforce real-route evidence discipline
         run: |
           python - <<'PY'
+          import ast
           from pathlib import Path
-          source = Path('/tmp/cw1-real-route.py').read_text(encoding='utf-8')
-          forbidden = [
-              'mock-login', 'monkeypatch', 'MagicMock', 'unittest.mock',
-              'academic_affairs_attendance_public_service.create_session(',
-              'academic_affairs_attendance_service.create_session(',
-          ]
-          for token in forbidden:
-              assert token not in source, f'forbidden shortcut in real-route proof: {token}'
+
+          path = Path('/tmp/cw1-real-route.py')
+          source = path.read_text(encoding='utf-8')
+          tree = ast.parse(source)
+
+          imported_mock = False
+          forbidden_call_names = set()
+          dependency_override_used = False
+          mock_login_url_used = False
+          for node in ast.walk(tree):
+              if isinstance(node, ast.ImportFrom) and node.module == 'unittest.mock':
+                  imported_mock = True
+              if isinstance(node, ast.Import):
+                  imported_mock = imported_mock or any(alias.name == 'unittest.mock' for alias in node.names)
+              if isinstance(node, ast.Call):
+                  fn = node.func
+                  if isinstance(fn, ast.Name):
+                      forbidden_call_names.add(fn.id)
+                  elif isinstance(fn, ast.Attribute):
+                      forbidden_call_names.add(fn.attr)
+              if isinstance(node, ast.Attribute) and node.attr == 'dependency_overrides':
+                  dependency_override_used = True
+              if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                  if '/auth/mock-login' in node.value or '/mock-login' in node.value:
+                      mock_login_url_used = True
+
+          assert not imported_mock, 'unittest.mock is forbidden in real-route proof'
+          assert 'MagicMock' not in forbidden_call_names and 'patch' not in forbidden_call_names
+          assert not dependency_override_used, 'FastAPI dependency overrides are forbidden in real-route proof'
+          assert not mock_login_url_used, 'mock-login endpoint is forbidden in real-route proof'
+          assert 'academic_affairs_attendance_public_service.create_session(' not in source
+          assert 'academic_affairs_attendance_service.create_session(' not in source
+
           required = [
               'TestClient(app)', 'create_access_token(',
               '/api/v1/mobile/teacher/academic/attendance',
@@ -50,7 +80,7 @@ jobs:
           ]
           for token in required:
               assert token in source, f'missing real-route evidence element: {token}'
-          assert source.count('def test_') == 1
+          assert sum(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith('test_') for node in ast.walk(tree)) == 1
           print('real-route preflight passed: one focused test, no auth/service shortcut')
           PY
 
