@@ -38,20 +38,32 @@ def _replay_evidence(**overrides):
         "clean_tenant_schema_proven": "true",
         "migrated_tenant_schema_proven": "true",
         "migrated_tenant_contracts_proven": "true",
+        "a_commit": "a" * 40,
+        "b_commit": "b" * 40,
+        "c_commit": "c" * 40,
         "main_alembic_version": "main-head",
         "integrated_alembic_version": "integrated-head",
-        "migrated_probe_digest": "a" * 64,
+        "migrated_probe_digest": "d" * 64,
         "final_browser_gold_proven_on_w5_head": "false",
     }
     evidence.update({key: str(value).lower() if isinstance(value, bool) else str(value) for key, value in overrides.items()})
     return evidence
 
 
-def _upstream_frozen(value: bool = True):
+def _upstream_frozen(value: bool = True, **head_overrides):
+    heads = {
+        "A": "a" * 40,
+        "B": "b" * 40,
+        "C": "c" * 40,
+    }
+    heads.update(head_overrides)
     return {
         "schemaVersion": 1,
         "allFrozen": value,
-        "lines": {},
+        "lines": {
+            line: {"headSha": sha, "allContractsFrozen": value}
+            for line, sha in heads.items()
+        },
         "blockers": [] if value else ["A:contract_not_explicitly_frozen:A-C5"],
     }
 
@@ -122,9 +134,28 @@ def test_final_gold_requires_external_owner_freeze_evidence_not_local_boolean():
     # Raw-head global Playwright is auxiliary: integrated browser evidence is the final authority.
     assert matrix["auxiliaryRawHeadBrowser"]["state"] == "FAILURE"
     assert matrix["preGoldReady"] is True
+    assert matrix["upstreamContractFreezeDeclared"] is True
+    assert matrix["upstreamFreezeHeadsMatchReplay"] is True
     assert matrix["upstreamContractHeadsFrozen"] is True
     assert matrix["finalGold"] is True
     assert matrix["blockers"] == []
+
+
+def test_frozen_owner_contract_on_old_head_cannot_promote_new_replay_head():
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=_replay_evidence(final_browser_gold_proven_on_w5_head=True),
+        upstream_freeze=_upstream_frozen(True, A="f" * 40),
+    )
+    assert matrix["upstreamContractFreezeDeclared"] is True
+    assert matrix["upstreamFreezeHeadsMatchReplay"] is False
+    assert matrix["upstreamContractHeadsFrozen"] is False
+    assert matrix["finalGold"] is False
+    assert any(
+        blocker.startswith("upstream_freeze_head_mismatch:A:")
+        for blocker in matrix["blockers"]
+    )
 
 
 def test_missing_upstream_freeze_evidence_is_fail_closed_even_if_local_evidence_claims_true():

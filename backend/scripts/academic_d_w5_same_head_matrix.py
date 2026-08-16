@@ -111,6 +111,34 @@ def classify_workflow(name: str, run: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def compare_upstream_freeze_to_replay(
+    freeze_payload: dict[str, Any], evidence: dict[str, str]
+) -> tuple[bool, list[dict[str, str]]]:
+    """Final freeze evidence must refer to the exact A/B/C heads consumed by replay."""
+    lines = freeze_payload.get("lines") or {}
+    expected = {
+        "A": str(evidence.get("a_commit") or ""),
+        "B": str(evidence.get("b_commit") or ""),
+        "C": str(evidence.get("c_commit") or ""),
+    }
+    comparisons: list[dict[str, str]] = []
+    matches = True
+    for line, replay_sha in expected.items():
+        freeze_sha = str((lines.get(line) or {}).get("headSha") or "")
+        match = bool(replay_sha and freeze_sha and replay_sha == freeze_sha)
+        if not match:
+            matches = False
+        comparisons.append(
+            {
+                "line": line,
+                "freezeHeadSha": freeze_sha,
+                "replayHeadSha": replay_sha,
+                "matches": "true" if match else "false",
+            }
+        )
+    return matches, comparisons
+
+
 def build_matrix(
     *,
     sha: str,
@@ -140,7 +168,9 @@ def build_matrix(
     pre_gold_ready = local_replay_ready and external_same_head_ready
 
     freeze_payload = upstream_freeze or {}
-    upstream_frozen = freeze_payload.get("allFrozen") is True
+    freeze_declared = freeze_payload.get("allFrozen") is True
+    freeze_heads_match, freeze_head_comparisons = compare_upstream_freeze_to_replay(freeze_payload, evidence)
+    upstream_frozen = freeze_declared and freeze_heads_match
     freeze_blockers = [str(item) for item in (freeze_payload.get("blockers") or []) if str(item).strip()]
     final_browser_proven = _as_bool(evidence.get("final_browser_gold_proven_on_w5_head"))
     final_gold = pre_gold_ready and upstream_frozen and final_browser_proven
@@ -161,11 +191,19 @@ def build_matrix(
     if not upstream_frozen:
         blockers.append("upstream_contract_heads_not_frozen")
         blockers.extend(f"upstream:{item}" for item in freeze_blockers)
+        if freeze_declared and not freeze_heads_match:
+            for row in freeze_head_comparisons:
+                if row["matches"] != "true":
+                    blockers.append(
+                        "upstream_freeze_head_mismatch:"
+                        f"{row['line']}:freeze={row['freezeHeadSha'] or 'missing'}:"
+                        f"replay={row['replayHeadSha'] or 'missing'}"
+                    )
     if not final_browser_proven:
         blockers.append("integrated_final_browser_gold_not_proven")
 
     return {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "sourceSha": sha,
         "w5Phase": evidence.get("w5_phase") or "UNKNOWN",
         "failedLayer": evidence.get("failed_layer") or "",
@@ -175,6 +213,9 @@ def build_matrix(
         "auxiliaryRawHeadBrowser": browser,
         "externalSameHeadReady": external_same_head_ready,
         "preGoldReady": pre_gold_ready,
+        "upstreamContractFreezeDeclared": freeze_declared,
+        "upstreamFreezeHeadsMatchReplay": freeze_heads_match,
+        "upstreamFreezeHeadComparisons": freeze_head_comparisons,
         "upstreamContractHeadsFrozen": upstream_frozen,
         "upstreamFreezeEvidence": freeze_payload,
         "integratedFinalBrowserGoldProven": final_browser_proven,
