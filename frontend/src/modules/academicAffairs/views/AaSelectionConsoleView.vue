@@ -463,10 +463,16 @@ export default {
       this.loading = false
     },
     async select(b) {
+      const passiveEpoch = ++this.preflightRequestSeq
       this.current = b
       this.drawResult = null
       this.preflight = null
       await this.refreshDetail()
+      if (
+        passiveEpoch !== this.preflightRequestSeq ||
+        !this.current ||
+        this.current.batchId !== b.batchId
+      ) return
       await this.refreshPreflight()
     },
     async refreshDetail() {
@@ -527,7 +533,10 @@ export default {
     async lifecycle(fn, label) {
       const action = { publishBatch: 'PUBLISH', openBatch: 'OPEN', closeBatch: 'CLOSE', lockBatch: 'LOCK' }[fn]
       if (action) {
-        const checked = await this.refreshPreflight()
+        let checked = await this.refreshPreflight()
+        if (!checked && action === this.lifecycleAction(this.current && this.current.status)) {
+          checked = await this.refreshPreflight()
+        }
         if (!checked || !checked.allowed) {
           toast.error(this.preflightMessage(checked))
           return
@@ -537,7 +546,15 @@ export default {
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
         const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); this.preflightRequestSeq += 1; this.preflight = null; this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }
+        if (res.code === 0) {
+          toast.success(label + '成功')
+          const passiveEpoch = ++this.preflightRequestSeq
+          this.preflight = null
+          this.current = res.data
+          await this.load()
+          await this.refreshDetail()
+          if (passiveEpoch === this.preflightRequestSeq) await this.refreshPreflight()
+        }
         else toast.error(res.message)
       }
       this.confirmVisible = true
