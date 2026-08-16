@@ -54,7 +54,7 @@ test.describe.serial('Academic C attendance source visual contract', () => {
     await captureViewport(page, testInfo, 'academic-c-attendance-admin-special', 1440, 900)
     await captureViewport(page, testInfo, 'academic-c-attendance-admin-special', 1920, 1080)
 
-    await sourceSelect.selectOption('')
+    await sourceSelect.selectOption({ label: '全部场次' })
     await expect(page.getByText('当前汇总口径：', { exact: false })).toContainText('正式课堂')
     await expect(page.getByRole('button', { name: '旷课预警扫描' })).toBeVisible()
   })
