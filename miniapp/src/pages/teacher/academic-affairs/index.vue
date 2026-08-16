@@ -46,6 +46,33 @@
           <text v-else class="ta__empty">{{ todayEmptyText }}</text>
         </view>
 
+        <view class="ta__invigilation card">
+          <view class="ta__section-head">
+            <text>我的监考</text>
+            <text class="ta__section-sub">{{ invigilationSummary }}</text>
+          </view>
+          <view v-if="invigilationItems.length" class="ta__invig-list">
+            <view v-for="item in visibleInvigilations" :key="item.inviglatorId || item.invigilatorId" class="ta__invig-row">
+              <view class="ta__invig-time">
+                <text class="ta__invig-date">{{ item.examDate || '日期待定' }}</text>
+                <text class="ta__invig-clock">{{ item.startTime || '--:--' }}-{{ item.endTime || '--:--' }}</text>
+              </view>
+              <view class="flex-1 ta__invig-main">
+                <text class="ta__invig-course">{{ item.courseName || '考试课程' }}</text>
+                <text class="ta__invig-sub">{{ item.className || '教学班' }} · {{ item.classroom || '考场待定' }}</text>
+                <text class="ta__invig-meta">{{ invigilationRoleLabel(item.role) }} · {{ item.confirmStatus === 'CONFIRMED' ? '已确认' : '待确认' }}</text>
+              </view>
+              <text class="ta__invig-status" :class="{ 'is-finished': item.workStatus === 'FINISHED' }">
+                {{ item.workStatus === 'FINISHED' ? '已结束' : '待监考' }}
+              </text>
+            </view>
+            <view v-if="invigilationItems.length > 3" class="ta__invig-toggle" @click="showAllInvigilations = !showAllInvigilations">
+              <text>{{ invigilationToggleText }}</text>
+            </view>
+          </view>
+          <text v-else class="ta__empty">近期暂无正式监考任务</text>
+        </view>
+
         <view v-if="taskCues.length" class="ta__tasks card">
           <view class="ta__section-head"><text>待处理</text><text class="ta__section-sub">点击直达第一条具体任务</text></view>
           <view class="ta__task-grid">
@@ -137,6 +164,8 @@ export default {
     return {
       statusBarHeight: 20, state: 'loading', partialError: false,
       scheduleItems: [], todayItems: [], currentWeek: null, calendarSource: '',
+      invigilationWorkbench: { items: [], total: 0, upcomingCount: 0, finishedCount: 0 },
+      showAllInvigilations: false,
       available: { schedule: true }, counts: {}, entries: ENTRIES,
       taskTargets: {}, taskDetails: {}
     }
@@ -144,6 +173,24 @@ export default {
   computed: {
     todayCourses() {
       return (this.todayItems || []).slice().sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+    },
+    invigilationItems() {
+      return Array.isArray(this.invigilationWorkbench && this.invigilationWorkbench.items)
+        ? this.invigilationWorkbench.items : []
+    },
+    visibleInvigilations() {
+      return this.showAllInvigilations ? this.invigilationItems : this.invigilationItems.slice(0, 3)
+    },
+    invigilationSummary() {
+      const upcoming = Number(this.invigilationWorkbench && this.invigilationWorkbench.upcomingCount || 0)
+      const finished = Number(this.invigilationWorkbench && this.invigilationWorkbench.finishedCount || 0)
+      if (upcoming && finished) return `${upcoming} 场待监考 · ${finished} 场已结束`
+      if (upcoming) return `${upcoming} 场待监考`
+      if (finished) return `${finished} 场已结束`
+      return '近期无正式安排'
+    },
+    invigilationToggleText() {
+      return this.showAllInvigilations ? '收起' : `查看全部 ${this.invigilationItems.length} 场`
     },
     todaySummary() {
       if (this.calendarSource === 'HOLIDAY') return '今日节假日'
@@ -174,6 +221,9 @@ export default {
     headline() {
       if (this.partialError) return '部分待办未完全加载，请点击页面提示重试'
       const total = this.taskCues.reduce((sum, x) => sum + Number(x.count || 0), 0)
+      const invigilation = Number(this.invigilationWorkbench && this.invigilationWorkbench.upcomingCount || 0)
+      if (total && invigilation) return `还有 ${total} 项教务任务 · ${invigilation} 场待监考`
+      if (invigilation) return `还有 ${invigilation} 场正式监考安排`
       return total ? `还有 ${total} 项教务任务需要处理` : '当前没有紧急教务待办'
     }
   },
@@ -188,6 +238,7 @@ export default {
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/teacher/workbench/index') }) },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     countOf(key) { return this.counts[key] || '' },
+    invigilationRoleLabel(role) { return String(role || '').toUpperCase() === 'CHIEF' ? '主监考' : '副监考' },
     openTodayCourse(item) {
       if (item && item.attendanceRoute) return go(item.attendanceRoute)
       if (item && item.attendanceBlockReason) {
@@ -236,11 +287,14 @@ export default {
         this.calendarSource = String((results[0].value && results[0].value.calendarSource) || '')
         this.currentWeek = results[0].value && results[0].value.currentWeek != null
           ? Number(results[0].value.currentWeek) : null
+        this.invigilationWorkbench = (results[0].value && results[0].value.invigilationWorkbench) ||
+          { items: [], total: 0, upcomingCount: 0, finishedCount: 0 }
       } else {
         this.scheduleItems = []
         this.todayItems = []
         this.calendarSource = ''
         this.currentWeek = null
+        this.invigilationWorkbench = { items: [], total: 0, upcomingCount: 0, finishedCount: 0 }
       }
       this.available = { schedule: true }
       this.counts = {}
@@ -274,7 +328,7 @@ export default {
 .ta__summary-sub { display: block; margin-top: 4px; color: rgba(255,255,255,.88); font-size: var(--font-size-xs); }
 .ta__body { padding-top: var(--space-3); }
 .ta__partial { display: flex; justify-content: space-between; margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--warning-50); color: var(--warning-700); font-size: var(--font-size-xs); }
-.ta__today, .ta__tasks, .ta__services { margin-bottom: var(--space-3); }
+.ta__today, .ta__invigilation, .ta__tasks, .ta__services { margin-bottom: var(--space-3); }
 .ta__section-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .ta__link { color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 400; }
 .ta__section-sub { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
@@ -289,6 +343,18 @@ export default {
 .ta__course-action { flex-shrink: 0; color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 600; }
 .ta__course-action.is-disabled { color: var(--text-tertiary); }
 .ta__empty { padding: var(--space-4) 0 var(--space-2); text-align: center; }
+.ta__invig-list { margin-top: var(--space-2); }
+.ta__invig-row { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }
+.ta__invig-row:last-child { border-bottom: 0; }
+.ta__invig-time { width: 86px; flex-shrink: 0; }
+.ta__invig-date { display: block; color: var(--teacher-700); font-size: var(--font-size-sm); font-weight: 700; }
+.ta__invig-clock { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+.ta__invig-main { min-width: 0; }
+.ta__invig-course { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ta__invig-sub, .ta__invig-meta { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+.ta__invig-status { flex-shrink: 0; padding: 3px 7px; border-radius: 999px; background: var(--teacher-50); color: var(--teacher-700); font-size: 10px; font-weight: 600; }
+.ta__invig-status.is-finished { background: var(--gray-100, #f1f5f9); color: var(--text-tertiary); }
+.ta__invig-toggle { padding: var(--space-2) 0 0; color: var(--teacher-600); font-size: var(--font-size-xs); text-align: center; }
 .ta__task-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin-top: var(--space-3); }
 .ta__task { padding: var(--space-3) var(--space-2); border-radius: var(--radius-md); background: var(--teacher-50); text-align: center; }
 .ta__task-value { display: block; color: var(--teacher-600); font-size: 22px; font-weight: 700; }
