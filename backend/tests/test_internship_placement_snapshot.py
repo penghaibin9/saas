@@ -29,8 +29,20 @@ def test_wrapper_preserves_existing_assignment_authority_and_same_transaction_sn
     assert "result = _ORIGINAL(" in source
     assert "capture_placement_snapshot_in_tx(" in source
     assert "db.commit" not in source
-    assert 'decision.effect_status = "CONSUMED"' in source
+    assert "decision_svc.consume_accept_intent_in_tx(decision)" in source
+    assert "_approve_source_application_in_tx(" in source
     assert "teacher_mark_approved_in_tx" in source
+
+
+def test_campaign_source_is_scoped_to_exact_round_and_application_closeout_is_audited():
+    source = inspect.getsource(authority._source_for_campaign_in_tx)
+    closeout = inspect.getsource(authority._approve_source_application_in_tx)
+    assert "InternshipApplication.batch_id == campaign.batch_id" in source
+    assert "InternshipApplication.campaign_id == campaign.id" in source
+    assert "group.current_material_snapshot_id == application.material_snapshot_id" in source
+    assert "decision.campaign_id == campaign.id" in source
+    assert 'application.status = "APPROVED"' in closeout
+    assert 'action="SCHOOL_CONFIRM_APPLICATION"' in closeout
 
 
 def test_every_campaign_position_uses_shared_school_confirm_window():
