@@ -28,8 +28,7 @@
             <div><div class="aaar-title">{{ current.batchName }}</div><StatusTag :type="sType(current.status)" :label="sLabel(current.status)" dot /></div>
             <div class="aaar-actions">
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" @click="doCheck">完整性检查</AppButton>
-              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" @click="doConfirm(false)">确认归档</AppButton>
-              <AppButton v-if="current.status === 'MISSING_ITEMS'" size="small" variant="warning" @click="doConfirm(true)">强制归档</AppButton>
+              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" @click="doConfirm">确认归档</AppButton>
               <AppButton v-if="!['ARCHIVED','CANCELLED'].includes(current.status)" size="small" variant="ghost" @click="doCancel">取消</AppButton>
             </div>
           </div>
@@ -37,6 +36,11 @@
             <span :class="{ 'is-bad': current.missingCount }">阻断数据域 {{ current.missingCount }}</span>
             <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（历史事实已封存）</span>
           </div>
+          <AppInlineAlert
+            v-if="current.status === 'MISSING_ITEMS'"
+            type="warning"
+            description="当前仍有 BLOCKED / UNKNOWN 数据域，整体强制归档已停用。请处理阻断 / 待治理域后重新执行完整性检查。"
+          />
           <AppInlineAlert
             v-if="current.status === 'ARCHIVED'"
             type="info"
@@ -46,7 +50,7 @@
           <EmptyState v-if="!items.length" title="未检查" description="点击「完整性检查」聚合各数据域" />
           <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
             <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
-            <template #cell-present="{ row }"><StatusTag :type="row.present ? 'success' : 'danger'" :label="row.present ? '通过' : '阻断'" dot /></template>
+            <template #cell-result="{ row }"><StatusTag :type="itemType(row)" :label="itemLabel(row)" dot /></template>
           </DataTable>
         </template>
       </div>
@@ -69,7 +73,7 @@
 </template>
 
 <script>
-/** 教务归档 · 控制台（/admin/academic-affairs/archive）：批次+数据域完整性检查+不可逆归档封存。 */
+/** 教务归档 · 控制台（/admin/academic-affairs/archive）：批次+数据域四态检查+不可逆归档封存。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
@@ -77,6 +81,8 @@ import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/
 import { toast } from '@/utils/toast'
 
 const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', MISSING_ITEMS: '有阻断', ARCHIVED: '已归档', CANCELLED: '已取消' }
+const _IL = { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }
+const _IT = { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }
 
 export default {
   name: 'AaArchiveConsoleView',
@@ -85,7 +91,7 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       loading: true, rows: [], current: null, items: [],
-      itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'present', title: '完整性' }, { key: 'remark', title: '备注' }],
+      itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'result', title: '归档状态' }, { key: 'remark', title: '备注' }],
       createVisible: false, form: { termId: '' }, formError: '', saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null
     }
@@ -98,6 +104,9 @@ export default {
   methods: {
     sLabel(s) { return _SL[s] || s },
     sType(s) { return s === 'ARCHIVED' ? 'success' : s === 'MISSING_ITEMS' ? 'danger' : s === 'READY' ? 'primary' : 'default' },
+    itemState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
+    itemLabel(row) { const state = this.itemState(row); return _IL[state] || '待确认' },
+    itemType(row) { const state = this.itemState(row); return _IT[state] || 'warning' },
     fmt(s) { return s ? s.replace('T', ' ').slice(0, 16) : '' },
     async load() {
       this.loading = true
@@ -121,11 +130,11 @@ export default {
       const res = await api.check(this.current.batchId)
       if (res.code === 0) { toast.success('已检查'); this.current = res.data; this.items = res.data.items || []; this.load() } else toast.error(res.message)
     },
-    doConfirm(force) {
-      this.confirmTitle = force ? '强制归档' : '确认归档'
-      this.confirmMessage = `确认归档「${this.current.batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。` + (force ? '（当前存在阻断数据域，请再次确认是否符合强制归档政策）' : '')
+    doConfirm() {
+      this.confirmTitle = '确认归档'
+      this.confirmMessage = `确认归档「${this.current.batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。`
       this.pendingAction = async () => {
-        const res = await api.confirm(this.current.batchId, force)
+        const res = await api.confirm(this.current.batchId, false)
         if (res.code === 0) { toast.success('已归档'); await this.load(); const b = this.rows.find(x => x.batchId === this.current.batchId); if (b) await this.select(b) }
         else toast.error(res.message)
       }
