@@ -383,33 +383,34 @@ jobs:
           T_PLUS_1_UTC="$("${MYSQL[@]}" -e "SELECT DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')")"
 
           cat > "$CUTOVER_EVIDENCE_FILE" <<EVIDENCE
-source=academic_d_cutover_source.t_d_w4_cutover_probe
-source_digest=$T0_SOURCE_DIGEST
-initial_digest=$INITIAL_SOURCE_DIGEST
-initial_rows=$INITIAL_ROWS
-initial_target_digest=$INITIAL_TARGET_DIGEST
-conflicts=$CONFLICTS
-final_delta_rows=$FINAL_DELTA_ROWS
-t0_utc=$T0_UTC
-t0_source_digest=$T0_SOURCE_DIGEST
-t0_target_digest=$T0_TARGET_DIGEST
-t0_diff_rows=$T0_DIFF_ROWS
-legacy_writer=academic_d_legacy
-legacy_post_t0_write_rejected=true
-legacy_source_read_only=true
-t_plus_1_utc=$T_PLUS_1_UTC
-source_digest_t_plus_1=$T_PLUS_1_SOURCE_DIGEST
-source_rows_t_plus_1=$T_PLUS_1_SOURCE_ROWS
-target_rows_t_plus_1=$T_PLUS_1_TARGET_ROWS
-source_unchanged_t_plus_1=true
-new_system_post_t0_rows=$NEW_SYSTEM_POST_T0_ROWS
-new_system_only_writer=true
-owner=$CUTOVER_OWNER
-sign_off=true
-source_commit=${GITHUB_SHA:-unknown}
-workflow_run_id=${GITHUB_RUN_ID:-manual}
-EVIDENCE
+          source=academic_d_cutover_source.t_d_w4_cutover_probe
+          source_digest=$T0_SOURCE_DIGEST
+          initial_digest=$INITIAL_SOURCE_DIGEST
+          initial_rows=$INITIAL_ROWS
+          initial_target_digest=$INITIAL_TARGET_DIGEST
+          conflicts=$CONFLICTS
+          final_delta_rows=$FINAL_DELTA_ROWS
+          t0_utc=$T0_UTC
+          t0_source_digest=$T0_SOURCE_DIGEST
+          t0_target_digest=$T0_TARGET_DIGEST
+          t0_diff_rows=$T0_DIFF_ROWS
+          legacy_writer=academic_d_legacy
+          legacy_post_t0_write_rejected=true
+          legacy_source_read_only=true
+          t_plus_1_utc=$T_PLUS_1_UTC
+          source_digest_t_plus_1=$T_PLUS_1_SOURCE_DIGEST
+          source_rows_t_plus_1=$T_PLUS_1_SOURCE_ROWS
+          target_rows_t_plus_1=$T_PLUS_1_TARGET_ROWS
+          source_unchanged_t_plus_1=true
+          new_system_post_t0_rows=$NEW_SYSTEM_POST_T0_ROWS
+          new_system_only_writer=true
+          owner=$CUTOVER_OWNER
+          sign_off=true
+          source_commit=${GITHUB_SHA:-unknown}
+          workflow_run_id=${GITHUB_RUN_ID:-manual}
+          EVIDENCE
 
+          sed -i 's/^          //' "$CUTOVER_EVIDENCE_FILE"
           grep -Fqx 'source=academic_d_cutover_source.t_d_w4_cutover_probe' "$CUTOVER_EVIDENCE_FILE"
           grep -Eq '^source_digest=[0-9a-f]{64}$' "$CUTOVER_EVIDENCE_FILE"
           grep -Eq '^initial_digest=[0-9a-f]{64}$' "$CUTOVER_EVIDENCE_FILE"
