@@ -13,14 +13,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import success
+from app.modules.academic_affairs.services import academic_affairs_exam_incident_workbench_service as incident_workbench
 from app.modules.academic_affairs.services import academic_affairs_exam_service as service
 from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
 from app.modules.academic_affairs.services import academic_affairs_exam_publish_delivery_guard as publish_delivery_guard
+from app.services.db_service import session
 
 publish_delivery_guard.install()
 
@@ -39,6 +41,27 @@ def formal_exam_room_print(
     user=Depends(require_permission("academicAffairs.exam.view")),
 ):
     return success(print_service.formal_room_print(user, roomId))
+
+
+@router.get("/exam/incidents/workbench", summary="考场异常全生命周期工作台（含闭环/作废历史）")
+def exam_incident_workbench(
+    batchId: Optional[int] = Query(None),
+    view: str = Query("ALL", pattern="^(ALL|OPEN|CLOSED|VOIDED)$"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=100),
+    user=Depends(require_permission("academicAffairs.exam.view")),
+):
+    with session() as db:
+        return success(
+            incident_workbench.project_incident_workbench(
+                db,
+                user,
+                batch_id=batchId,
+                view=view,
+                page=page,
+                page_size=pageSize,
+            )
+        )
 
 
 @router.post("/exam/incidents/{incidentId}/resolve", summary="考场异常闭环（移交线索/确认缺考联动/作废误登记）")
