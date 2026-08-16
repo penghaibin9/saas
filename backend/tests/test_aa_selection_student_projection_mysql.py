@@ -3,15 +3,23 @@
 Only exercises the new B-C3 read projection against existing production-grade selection
 fixtures. It deliberately does not rerun the full Selection state-machine suite.
 """
-from tests.test_aa_selection import (
-    BASE,
-    _hdr,
-    _make_open_batch,
-    _new_batch,
-    _ready_tasks,
-    _seed,
-    _stu_token,
-)
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+
+
+_FIXTURE_PATH = Path(__file__).with_name("test_aa_selection.py")
+_SPEC = spec_from_file_location("academic_b_w5_existing_selection_fixtures", _FIXTURE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+_FIXTURES = module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_FIXTURES)
+
+BASE = _FIXTURES.BASE
+_hdr = _FIXTURES._hdr
+_make_open_batch = _FIXTURES._make_open_batch
+_new_batch = _FIXTURES._new_batch
+_ready_tasks = _FIXTURES._ready_tasks
+_seed = _FIXTURES._seed
+_stu_token = _FIXTURES._stu_token
 
 
 def _course_projection(payload, selection_course_id):
