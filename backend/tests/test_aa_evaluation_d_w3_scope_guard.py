@@ -13,6 +13,7 @@ def _seed_scope_fixture():
     from app.models import (
         AaCourse,
         AaEvaluationBatch,
+        AaEvaluationRecord,
         AaEvaluationResult,
         AaEvaluationTask,
         AaTeachingTask,
@@ -85,6 +86,26 @@ def _seed_scope_fixture():
             evaluator_type="STUDENT", submitted_count=5, status="PENDING",
         )
         db.add_all([eval_task_a, eval_task_b, foreign_task]); db.flush()
+
+        # OPEN-window participation now comes from active answer facts. Keep this scope fixture
+        # internally consistent with the result/student-count projections instead of relying on
+        # the legacy AaEvaluationTask.submitted_count field as a second live authority.
+        for task, count, score in (
+            (eval_task_a, 10, 91),
+            (eval_task_b, 20, 72),
+            (foreign_task, 5, 66),
+        ):
+            for index in range(count):
+                db.add(AaEvaluationRecord(
+                    tenant_id=TID,
+                    batch_id=task.batch_id,
+                    task_id=task.id,
+                    teacher_key=task.teacher_key,
+                    evaluator_type="STUDENT",
+                    answers_json=f'{{"scopeFixture":{index}}}',
+                    objective_score=score,
+                ))
+
         db.add_all([
             AaEvaluationResult(
                 tenant_id=TID, batch_id=evaluation_batch.id, teaching_task_id=teaching_a.id,
