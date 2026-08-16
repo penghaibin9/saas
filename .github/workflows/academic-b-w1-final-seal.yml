@@ -76,7 +76,16 @@ jobs:
             tests/test_aa_selection_lock_scaling.py \
             tests/test_aa_selection_rounds.py \
             tests/test_aa_d6_selection_truth_contract.py \
-            --maxfail=1
+            --maxfail=1 \
+            --junitxml=w0-junit.xml
+      - name: Upload W0 JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w1-final-w0-junit-${{ github.sha }}
+          path: backend/w0-junit.xml
+          if-no-files-found: error
+          retention-days: 14
 
   browser-cross-end:
     name: admin + student PC + miniapp real-click evidence
