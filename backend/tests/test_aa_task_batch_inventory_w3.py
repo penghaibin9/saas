@@ -56,33 +56,49 @@ def test_editable_scope_key_fits_exact_string64_contract_at_bigint_ceiling():
         ("ARCHIVED", None),
     ],
 )
-def test_writer_scope_key_semantics_reserve_only_editable_states(status, expected):
+def test_writer_scope_key_semantics_reserve_only_live_editable_states(status, expected):
     assert _service().editable_scope_key_for_status(202601, None, status) == expected
 
 
-def test_writer_scope_key_semantics_fail_closed_for_unknown_status():
+def test_soft_deleted_editable_batch_releases_unique_scope_key():
+    service = _service()
+    assert service.editable_scope_key_for_status(202601, None, "DRAFT", is_deleted=True) is None
+    assert service.editable_scope_key_for_status(202601, 17, "RETURNED", is_deleted=True) is None
+    assert service.editable_scope_key_for_status(202601, 17, "RETURNED", is_deleted=False) == (
+        "V1:TERM:202601:COLLEGE:17"
+    )
+
+
+def test_writer_scope_key_semantics_fail_closed_for_unknown_status_even_when_deleted():
+    service = _service()
     with pytest.raises(ValueError, match="unsupported teaching task batch status"):
-        _service().editable_scope_key_for_status(202601, None, "READY")
+        service.editable_scope_key_for_status(202601, None, "READY")
+    with pytest.raises(ValueError, match="unsupported teaching task batch status"):
+        service.editable_scope_key_for_status(202601, None, "READY", is_deleted=True)
 
 
 @pytest.mark.parametrize(
-    ("term_id", "college_id", "status", "message"),
+    ("term_id", "college_id", "status", "is_deleted", "message"),
     [
-        (0, None, "DRAFT", "term_id"),
-        (-1, 17, "RETURNED", "term_id"),
-        (202601, 0, "DRAFT", "college_id"),
-        (202601, -2, "RETURNED", "college_id"),
-        (0, None, "APPROVED", "term_id"),
-        (202601, 0, "ARCHIVED", "college_id"),
-        (9223372036854775808, None, "DRAFT", "BIGINT"),
-        (202601, 9223372036854775808, "RETURNED", "BIGINT"),
+        (0, None, "DRAFT", False, "term_id"),
+        (-1, 17, "RETURNED", False, "term_id"),
+        (202601, 0, "DRAFT", False, "college_id"),
+        (202601, -2, "RETURNED", False, "college_id"),
+        (0, None, "APPROVED", False, "term_id"),
+        (202601, 0, "ARCHIVED", False, "college_id"),
+        (0, None, "DRAFT", True, "term_id"),
+        (202601, 0, "RETURNED", True, "college_id"),
+        (9223372036854775808, None, "DRAFT", False, "BIGINT"),
+        (202601, 9223372036854775808, "RETURNED", False, "BIGINT"),
     ],
 )
 def test_writer_scope_key_semantics_reject_malformed_scope_even_when_key_would_be_null(
-    term_id, college_id, status, message
+    term_id, college_id, status, is_deleted, message
 ):
     with pytest.raises(ValueError, match=message):
-        _service().editable_scope_key_for_status(term_id, college_id, status)
+        _service().editable_scope_key_for_status(
+            term_id, college_id, status, is_deleted=is_deleted
+        )
 
 
 @pytest.mark.parametrize(
