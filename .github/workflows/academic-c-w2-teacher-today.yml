@@ -6,7 +6,9 @@ on:
       - main
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py'
+      - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/tests/test_aa_teacher_today_scopehead_contract.py'
+      - 'backend/tests/test_aa_teacher_today_public_wiring_contract.py'
       - '.github/workflows/academic-c-w2-teacher-today.yml'
   push:
     branches:
@@ -64,11 +66,18 @@ jobs:
 
       - name: Compile Teacher Today projection
         working-directory: backend
-        run: python -m py_compile app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py \
+            app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py
 
       - name: Teacher Today exact contract on MySQL
         working-directory: backend
-        run: pytest -q tests/test_aa_teacher_today_scopehead_contract.py -p no:warnings --durations=20
+        run: |
+          pytest -q \
+            tests/test_aa_teacher_today_scopehead_contract.py \
+            tests/test_aa_teacher_today_public_wiring_contract.py \
+            -p no:warnings --durations=20
 
       - name: Prove read projection reuses C-C1 truth
         working-directory: backend
@@ -77,6 +86,7 @@ jobs:
           from pathlib import Path
 
           text = Path('app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py').read_text(encoding='utf-8')
+          public = Path('app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py').read_text(encoding='utf-8')
           required = [
               'formal_schedule_patterns_for_tasks',
               'attendanceRoute',
@@ -97,5 +107,7 @@ jobs:
           found = [value for value in forbidden if value in text]
           if found:
               raise SystemExit('Teacher Today created/rewrote Authority: ' + ', '.join(found))
+          if 'teacher_today.teacher_today_projection(user)' not in public:
+              raise SystemExit('mobile public teacher schedule is not wired to Teacher Today')
           print('C-W2 Teacher Today read-only contract=OK')
           PY

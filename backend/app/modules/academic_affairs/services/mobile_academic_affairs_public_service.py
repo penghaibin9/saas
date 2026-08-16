@@ -182,3 +182,10 @@ def evaluation_submit_my(user, body) -> dict:
         score_value,
         data.get("comment"),
     )
+
+
+def teacher_schedule_my(user) -> dict:
+    """教师移动课表只读当前 ScopeHead truth，并附带 Teacher Today 精确课次。"""
+    from . import academic_affairs_teacher_today_service as teacher_today
+
+    return teacher_today.teacher_today_projection(user)

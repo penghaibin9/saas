@@ -248,6 +248,19 @@ def _pattern_active(row: dict, *, week_no: int, weekday: int) -> bool:
     return True
 
 
+def _legacy_mobile_meta(db, term) -> dict:
+    """Preserve existing mobile timetable metadata without using its batch-selection logic."""
+    if not term:
+        return {"timezone": None, "timeBands": []}
+    from . import mobile_academic_affairs_facade as mobile_facade
+
+    _ignored_week, timezone_name = mobile_facade._current_teaching_week(db, term)
+    return {
+        "timezone": timezone_name,
+        "timeBands": mobile_facade._schedule_time_bands(db),
+    }
+
+
 def teacher_today_projection(user, *, on_date=None) -> dict:
     """Today's formal occurrences with an exact attendance deep-link.
 
@@ -258,8 +271,10 @@ def teacher_today_projection(user, *, on_date=None) -> dict:
     with session() as db:
         schedule, term = _teacher_schedule_in_session(db, user)
         target = _today_value(db, on_date)
+        mobile_meta = _legacy_mobile_meta(db, term)
         base = {
             **schedule,
+            **mobile_meta,
             "todayDate": target.isoformat(),
             "logicalDate": target.isoformat(),
             "calendarSource": "NORMAL",
@@ -281,6 +296,8 @@ def teacher_today_projection(user, *, on_date=None) -> dict:
             base["calendarSource"] = "OUT_OF_TERM"
             return base
 
+        wall_week_no, _wall_weekday = occurrence._week_and_weekday(term, target)
+        base["currentWeek"] = wall_week_no
         try:
             logical_date, calendar_source, calendar_event_id = occurrence._calendar_logical_date(
                 db,
