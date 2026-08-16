@@ -18,6 +18,12 @@ test('Teacher Today consumes server-projected todayItems instead of recomputing 
   assert.doesNotMatch(page, /function activeInWeek\(/)
 })
 
+test('Teacher Today refreshes server truth every time the cached page becomes visible again', () => {
+  assert.match(page, /onLoad\(\)\s*\{[\s\S]*statusBarHeight[\s\S]*\}\s*,\s*onShow\(\)\s*\{\s*this\.load\(\)\s*\}/)
+  const onLoad = page.match(/onLoad\(\)\s*\{([\s\S]*?)\n\s*\},\n\s*onShow\(\)/)?.[1] || ''
+  assert.doesNotMatch(onLoad, /this\.load\(\)/)
+})
+
 test('Teacher Today action label and route are server-projected and existing sessions open exactly', () => {
   assert.match(page, /@click="openTodayCourse\(item\)"/)
   assert.match(page, /item\.attendanceRoute/)
