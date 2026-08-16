@@ -59,7 +59,8 @@
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">岗位名称 <i>*</i></span><AppTextInput v-model="form.title" /></label>
         <label class="ie-fld"><span class="ie-lbl">专业要求</span><AppTextInput v-model="form.majorRequirement" /></label>
         <label class="ie-fld"><span class="ie-lbl">年级要求</span><AppTextInput v-model="form.gradeRequirement" /></label>
-        <label class="ie-fld"><span class="ie-lbl">工作地点</span><AppTextInput v-model="form.workLocation" /></label>
+        <!-- Picker 不包裸 label：label 激活会把点击转发给选择器内部控件 -->
+        <div class="ie-fld ie-fld--full"><span class="ie-lbl">工作地点</span><AppChinaRegionPicker v-model="form.workLocation" placeholder="请选择工作省 / 市 / 区县" /></div>
         <label class="ie-fld"><span class="ie-lbl">薪资</span><AppTextInput v-model="form.salaryRange" /></label>
         <label class="ie-fld"><span class="ie-lbl">容量</span><AppNumberInput v-model="form.headcount" :min="1" /></label>
         <label class="ie-fld ie-fld--full"><span class="ie-lbl">备注</span><AppTextarea v-model="form.remark" :rows="2" /></label>
@@ -82,7 +83,7 @@
 <script>
 /** 岗位详情（/admin/internship/positions/:id）：主档 + 企业导师 + 审计 + 状态机 + 编辑（已归档不可编辑）。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
-import { AppStatusTag, AppAuditTrail, AppDescriptionList, AppTextInput, AppNumberInput, AppTextarea } from '@/components/common'
+import { AppStatusTag, AppAuditTrail, AppDescriptionList, AppTextInput, AppNumberInput, AppTextarea, AppChinaRegionPicker } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { positionApi } from '@/modules/internship/api/position.api'
@@ -90,7 +91,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipPositionDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppDescriptionList, AppTextInput, AppNumberInput, AppTextarea, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppDescriptionList, AppTextInput, AppNumberInput, AppTextarea, AppChinaRegionPicker, LoadingState, ErrorState, AppDrawer, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

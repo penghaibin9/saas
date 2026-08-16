@@ -49,6 +49,13 @@
       "runtimeArgs": ["--prefix", "student-portal", "run", "dev", "--", "--port", "5200"],
       "port": 5200,
       "autoPort": false
+    },
+    {
+      "name": "enterprise-portal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "enterprise-portal", "run", "dev", "--", "--port", "5202"],
+      "port": 5202,
+      "autoPort": false
     }
   ]
 }

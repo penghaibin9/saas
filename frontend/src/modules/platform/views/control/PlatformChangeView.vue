@@ -22,9 +22,9 @@
         <div class="pch__form">
           <input v-model.trim="form.title" class="pch__input" placeholder="变更标题" />
           <select v-model="form.changeType" class="pch__input">
-            <option value="CODE">CODE</option><option value="MIGRATION">MIGRATION</option>
-            <option value="PLATFORM_CONFIG">PLATFORM_CONFIG</option><option value="PACKAGE">PACKAGE</option>
-            <option value="COMMON_FOUNDATION">COMMON_FOUNDATION</option><option value="HOTFIX">HOTFIX</option>
+            <option value="CODE">代码发布</option><option value="MIGRATION">数据库迁移</option>
+            <option value="PLATFORM_CONFIG">平台配置</option><option value="PACKAGE">套餐调整</option>
+            <option value="COMMON_FOUNDATION">公共底座</option><option value="HOTFIX">紧急修复</option>
           </select>
           <input v-model.trim="form.affectedServiceCodesText" class="pch__input" placeholder="受影响服务码，逗号分隔" />
           <label class="pch__checkbox"><input type="checkbox" v-model="form.isIrreversible" /> 不可逆迁移</label>
@@ -49,7 +49,7 @@
         <DataTable :columns="listColumns" :rows="changes" row-key="changeId" row-clickable @row-click="selectChange">
           <template #cell-scope="{ row }">
             <div class="pch__cell-main">{{ row.title }}</div>
-            <div class="pch__cell-sub">{{ row.changeType }} · {{ row.affectedServiceCodes.join('、') }}</div>
+            <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ row.affectedServiceCodes.join('、') }}</div>
           </template>
           <template #cell-status="{ row }">
             <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
@@ -118,6 +118,13 @@ export default {
   },
   created() { this.load() },
   methods: {
+    /** 变更类型中文名；与上方下拉选项同一口径，未收录取值原样显示 */
+    changeTypeLabel(t) {
+      return ({
+        CODE: '代码发布', MIGRATION: '数据库迁移', PLATFORM_CONFIG: '平台配置',
+        PACKAGE: '套餐调整', COMMON_FOUNDATION: '公共底座', HOTFIX: '紧急修复'
+      })[t] || t || '—'
+    },
     statusTone(s) {
       return { DRAFT: 'default', ASSESSED: 'default', APPROVED: 'warning', SCHEDULED: 'warning', IMPLEMENTING: 'warning', VERIFIED: 'success', FAILED: 'danger', ROLLED_BACK: 'danger' }[s] || 'default'
     },

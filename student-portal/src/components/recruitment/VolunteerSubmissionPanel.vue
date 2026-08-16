@@ -5,7 +5,7 @@
         <strong>{{ meta.label }}</strong>
         <p>{{ stateMessage }}</p>
       </div>
-      <span v-if="status === 'LOCKED'" class="locked-mark">LOCKED</span>
+      <span v-if="status === 'LOCKED'" class="locked-mark">已锁定</span>
     </div>
 
     <div v-if="status === 'LOCKED' && group.teacherConfirmDeadline" class="deadline">

@@ -22,6 +22,7 @@ export const INTERNSHIP_MODULE = {
 export const INTERNSHIP_PAGE = {
   DASHBOARD: '今日工作',
   ENTERPRISE_LIST: '企业管理',
+  RECRUITMENT_CAMPAIGN: '招聘季与企业邀请',
   POSITION_LIST: '岗位管理',
   RISK_BOARD: '风险看板',
   AGREEMENT: '申请与协议办理',

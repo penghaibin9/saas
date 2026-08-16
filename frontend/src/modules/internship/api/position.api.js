@@ -112,7 +112,18 @@ export const positionApi = {
   getEnterpriseOptions(keyword, pageSize = 200) {
     return call(() =>
       request('/internship/enterprises', { params: { page: 1, pageSize, keyword: keyword || '' } }).then((d) =>
-        (d.items || []).map((e) => ({ id: e.id, name: e.name, industry: e.industry, coopStatus: e.coopStatus, blacklist: e.blacklist }))
+        (d.items || []).map((e) => ({
+          id: e.id,
+          name: e.name,
+          industry: e.industry,
+          coopStatus: e.coopStatus,
+          coopStatusLabel: e.coopStatusLabel,
+          // 招聘季邀请等场景需按后端准入口径（合作状态/资质/黑名单）判断可选性，
+          // 见 services/internship_campaign_enterprise_service.py::_get_company(require_admission=True)
+          qualificationStatus: e.qualificationStatus,
+          qualificationLabel: e.qualificationLabel,
+          blacklist: e.blacklist
+        }))
       )
     )
   },
