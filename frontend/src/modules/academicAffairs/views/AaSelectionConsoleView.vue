@@ -304,7 +304,7 @@ export default {
       rosterVisible: false, rosterCourse: null, rosterRows: [],
       saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
-      preflight: null, preflightLoading: false,
+      preflight: null, preflightLoading: false, preflightRequestSeq: 0,
       rounds: [], drawResult: null,
       roundVisible: false, roundForm: { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }, roundError: '',
       roundColumns: [
@@ -396,10 +396,24 @@ export default {
       return blockers.map((item) => `${item.message}${item.howToResolve ? `；处理：${item.howToResolve}` : ''}`).join('；')
     },
     async refreshPreflight() {
-      const action = this.lifecycleAction(this.current && this.current.status)
-      if (!this.current || !action) { this.preflight = null; return null }
+      const batchId = this.current && this.current.batchId
+      const status = this.current && this.current.status
+      const action = this.lifecycleAction(status)
+      if (!batchId || !action) {
+        this.preflightRequestSeq += 1
+        this.preflight = null
+        this.preflightLoading = false
+        return null
+      }
+      const requestSeq = ++this.preflightRequestSeq
       this.preflightLoading = true
-      const res = await api.batchPreflight(this.current.batchId, action)
+      const res = await api.batchPreflight(batchId, action)
+      if (
+        requestSeq !== this.preflightRequestSeq ||
+        !this.current ||
+        this.current.batchId !== batchId ||
+        this.current.status !== status
+      ) return null
       this.preflightLoading = false
       this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
       return this.preflight
@@ -523,7 +537,7 @@ export default {
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
         const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }
+        if (res.code === 0) { toast.success(label + '成功'); this.preflightRequestSeq += 1; this.preflight = null; this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }
         else toast.error(res.message)
       }
       this.confirmVisible = true
