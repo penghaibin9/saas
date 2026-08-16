@@ -356,7 +356,7 @@ def test_ev4_appeal_flow(client, db_mode):
 
     mine = client.get(f"{BASE}/evaluation/appeals", headers=teacher)
     assert mine.status_code == 200, mine.text
-    mine_rows = mine.json()["data"]["list"]
+    mine_rows = mine.json()["data"]["items"]
     assert any(row["appealId"] == aid and row["teacherKey"] == _TEACHER_LOGIN for row in mine_rows)
 
     college = _hdr(client, "college_admin01")
