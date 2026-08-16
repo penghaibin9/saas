@@ -68,9 +68,22 @@ def _explicit_formation(task) -> str | None:
 
     Legacy TeachingTask rows do not have this shared INT-owned column yet, so
     absence must preserve the existing compatibility behavior. Invalid future
-    persisted values fail closed through the canonical normalizer.
+    persisted values are data conflicts, not unhandled programmer exceptions.
     """
-    return normalize_formation_mode(getattr(task, "formation_mode", None))
+    raw = getattr(task, "formation_mode", None)
+    try:
+        return normalize_formation_mode(raw)
+    except ValueError as exc:
+        raise AppException(
+            "DATA_CONFLICT",
+            "教学任务形成方式非法，禁止投影教学班；请先修复 formationMode 数据",
+            details={
+                "blocker": "TEACHING_TASK_FORMATION_INVALID",
+                "teachingTaskId": str(getattr(task, "id", None) or ""),
+                "formationMode": str(raw or ""),
+            },
+            http_status=409,
+        ) from exc
 
 
 def _class_type(task) -> str:

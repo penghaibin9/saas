@@ -34,9 +34,19 @@ def test_legacy_task_without_formation_keeps_existing_admin_and_merged_behavior(
     assert core._class_type(SimpleNamespace(is_merged=True)) == "MERGED"
 
 
-def test_invalid_explicit_formation_fails_closed_instead_of_guessing_admin():
-    with pytest.raises(ValueError, match="unsupported formationMode"):
-        _core()._class_type(SimpleNamespace(formation_mode="ELECTIVE", is_merged=False))
+def test_invalid_explicit_formation_is_business_data_conflict_not_raw_500():
+    from app.core.exceptions import AppException
+
+    task = SimpleNamespace(id=811, formation_mode="ELECTIVE", is_merged=False)
+    with pytest.raises(AppException) as exc:
+        _core()._class_type(task)
+
+    assert exc.value.code == "DATA_CONFLICT"
+    assert exc.value.http_status == 409
+    details = exc.value.details or {}
+    assert details["blocker"] == "TEACHING_TASK_FORMATION_INVALID"
+    assert details["teachingTaskId"] == "811"
+    assert details["formationMode"] == "ELECTIVE"
 
 
 @pytest.mark.parametrize(
