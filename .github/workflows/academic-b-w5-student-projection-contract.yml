@@ -25,5 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install targeted test dependency
+        run: python -m pip install -q pytest
       - name: Run only B-W5 projection contract
         run: python -m pytest backend/tests/test_aa_selection_student_projection_contract.py -q
