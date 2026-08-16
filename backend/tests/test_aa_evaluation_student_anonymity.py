@@ -75,7 +75,16 @@ class _LockQuery:
     def __init__(self, result):
         self.result = result
 
+    def join(self, *_args, **_kwargs):
+        return self
+
     def filter(self, *_args):
+        return self
+
+    def group_by(self, *_args):
+        return self
+
+    def order_by(self, *_args):
         return self
 
     def with_for_update(self, *_args, **_kwargs):
@@ -91,6 +100,19 @@ class _LockDb:
 
     def query(self, *_args):
         return _LockQuery(self.results.pop(0))
+
+
+def _class_and_version(*, source_type="SELECTION_LOCK", source_id=55):
+    teaching_class = SimpleNamespace(id=20, teaching_task_id=4, term_id=7)
+    version = SimpleNamespace(
+        id=10,
+        version_no=3,
+        source_type=source_type,
+        source_id=source_id,
+        roster_hash="hash-10",
+        member_count=2,
+    )
+    return teaching_class, version
 
 
 def test_student_must_belong_to_current_official_roster(monkeypatch):
@@ -148,6 +170,51 @@ def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     assert len(token) == 64
     assert profile.student_no not in token
     assert profile.real_name not in token
+
+
+def test_submit_roster_guard_rejects_latest_selection_before_lock(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_class_and_version(), (56, "OPEN", 1)])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard.resolve_submit_roster(db, 4)
+
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "尚未锁定正式名单" in exc.value.message
+
+
+def test_submit_roster_guard_rejects_stale_selection_projection(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_class_and_version(source_id=55), (56, "LOCKED", 1)])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard.resolve_submit_roster(db, 4)
+
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "名单版本与最新已锁定选课批次不一致" in exc.value.message
+
+
+def test_submit_roster_guard_accepts_matching_locked_selection_projection(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_class_and_version(source_id=55), (55, "LOCKED", 1)])
+
+    roster = roster_guard.resolve_submit_roster(db, 4)
+
+    assert roster["teachingClassId"] == "20"
+    assert roster["rosterVersionId"] == "10"
+    assert roster["memberCount"] == 2
+    assert roster["batchIds"] == ["55"]
 
 
 def test_student_submit_roster_guard_does_not_materialize_whole_roster():
