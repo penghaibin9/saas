@@ -41,6 +41,26 @@ def test_confirm_gate_requires_validated_nonempty_zero_error_rows():
     assert "invalidRows" in source
 
 
+def test_identity_confirm_repairs_only_same_owner_source_binding_before_file_gate():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "backend/app/services/data_exchange_confirm_service.py").read_text(encoding="utf-8")
+    helper = source.split("def _normalize_identity_source_user_binding", 1)[1].split(
+        "def confirm_identity_import_job", 1
+    )[0]
+    identity_body = source.split("def confirm_identity_import_job", 1)[1].split(
+        "def confirm_migration_import_job", 1
+    )[0]
+    assert 'FileObject.owner_user_id == int(actor_id)' in helper
+    assert 'FileObject.biz_type == "DATA_IMPORT_SOURCE"' in helper
+    assert 'FileBinding.subject_type == "USER"' in helper
+    assert 'aliases = {str(actor_id), f"db-{actor_id}", f"u_{actor_id}"}' in helper
+    assert "binding.subject_id = str(actor_id)" in helper
+    assert "_normalize_identity_source_user_binding(" in identity_body
+    assert identity_body.index("_normalize_identity_source_user_binding(") < identity_body.index(
+        "return _legacy.confirm_import_job("
+    )
+
+
 def test_identity_confirm_delegates_to_frozen_unified_dispatcher():
     root = Path(__file__).resolve().parents[2]
     source = (root / "backend/app/services/data_exchange_confirm_service.py").read_text(encoding="utf-8")
