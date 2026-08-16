@@ -31,7 +31,11 @@
             >
               <text class="ta__course-slot">第{{ item.slotNo }}节</text>
               <view class="flex-1">
-                <text class="ta__course-name">{{ item.courseName }}</text>
+                <view class="ta__course-title-row">
+                  <text class="ta__course-name">{{ item.courseName }}</text>
+                  <text v-if="item.changeType === 'ADJUST'" class="ta__change-tag">已调课</text>
+                  <text v-else-if="item.changeType === 'MAKEUP'" class="ta__change-tag">补课</text>
+                </view>
                 <text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text>
               </view>
               <text class="ta__course-action" :class="{ 'is-disabled': !item.attendanceRoute }">
@@ -276,7 +280,9 @@ export default {
 .ta__course { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
 .ta__course:last-child { border-bottom: 0; }
 .ta__course-slot { width: 54px; color: var(--teacher-600); font-size: var(--font-size-sm); font-weight: 600; }
-.ta__course-name { display: block; font-weight: 600; }
+.ta__course-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ta__course-name { display: block; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ta__change-tag { flex-shrink: 0; padding: 1px 5px; border-radius: 4px; background: var(--teacher-50); color: var(--teacher-600); font-size: 10px; font-weight: 600; }
 .ta__course-sub, .ta__empty { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .ta__course-action { flex-shrink: 0; color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 600; }
 .ta__course-action.is-disabled { color: var(--text-tertiary); }
