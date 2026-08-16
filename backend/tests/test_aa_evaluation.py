@@ -125,6 +125,7 @@ def _seed(db_mode):
         )
         student_ids[student_no] = int(student.id)
 
+    # 正式 teaching-class service 必须依赖 request/tenant context；测试夹具也不得绕过租户隔离。
     set_tenant({"tenantId": str(TID)})
     try:
         teaching_class = tc_service.ensure_teaching_class_for_task(

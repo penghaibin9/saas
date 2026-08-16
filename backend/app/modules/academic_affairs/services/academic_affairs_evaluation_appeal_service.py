@@ -167,6 +167,8 @@ def archive_batch(user, bid):
         if batch.status != _legacy._B_RESULT:
             raise _legacy._invalid("仅 RESULT_READY 批次可归档")
 
+        # Locking/current read is deliberate under MySQL REPEATABLE READ: after waiting for any
+        # in-flight appeal shared lock, archive must observe the just-committed appeal state.
         active = db.query(AaEvaluationAppeal.id).join(
             AaEvaluationResult,
             AaEvaluationResult.id == AaEvaluationAppeal.result_id,
@@ -198,11 +200,14 @@ def submit_appeal(user, result_id, reason):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         hint = _published_result_hint(db, int(result_id))
+        # Shared batch lock prevents publish/archive state from changing while the appeal commits.
         batch = _base._writable_batch(db, hint.batch_id, lock="share")
         result = _result_for_update(db, int(result_id))
         _require_result_open_for_appeal(batch, result)
         _require_teacher_owner(user, result)
 
+        # Result row lock serializes same-result submissions. The appeal lookup is also a locking
+        # current read so a waiter cannot miss the winner's committed row under REPEATABLE READ.
         existing = db.query(AaEvaluationAppeal).filter(
             AaEvaluationAppeal.tenant_id == _legacy._tid(),
             AaEvaluationAppeal.result_id == result.id,

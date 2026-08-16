@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "backend/app/modules/academic_affairs/routers/evaluation_core_router.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py"
@@ -13,6 +14,7 @@ on:
       - "backend/app/services/sandbox_school_academic_quality_seed.py"
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
       - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
+      - "backend/tests/test_aa_evaluation.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
       - "backend/tests/test_aa_evaluation_d_w3_submission_fact_authority.py"
       - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
@@ -96,24 +98,27 @@ jobs:
           python -m py_compile \
             scripts/academic_d_evaluation_concurrency_probe.py \
             scripts/academic_d_evaluation_deadline_burst_probe.py \
+            app/modules/academic_affairs/routers/evaluation_core_router.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py \
             app/modules/academic_affairs/services/academic_affairs_evaluation_appeal_service.py \
             app/services/sandbox_school_academic_quality_seed.py \
+            tests/test_aa_evaluation.py \
             tests/test_aa_evaluation_d_w3_close_submit_lock.py \
             tests/test_aa_evaluation_d_w3_submission_fact_authority.py \
             tests/test_aa_evaluation_d_w3_appeal_state.py \
             tests/test_aa_evaluation_d_w3_scope_guard.py \
             tests/test_sandbox_school_academic_quality_truth.py
 
-      - name: Run D-W3 evaluation truth, lock, submission authority, appeal and scope contracts
+      - name: Run D-W3 evaluation endpoint, truth, lock, submission authority, appeal and scope contracts
         working-directory: backend
         run: |
           set -euo pipefail
           mkdir -p test-results
           pytest -q \
+            tests/test_aa_evaluation.py \
             tests/test_sandbox_school_academic_quality_truth.py \
             tests/test_aa_evaluation_d_w3_close_submit_lock.py \
             tests/test_aa_evaluation_d_w3_submission_fact_authority.py \
