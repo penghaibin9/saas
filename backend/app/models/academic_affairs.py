@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Integer, Numeric, String,
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Index, Integer, Numeric, String,
                         Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -1655,6 +1655,22 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_attendance_session"
 
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")
+    teaching_task_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        comment="INT C-C1 expand: formal TeachingTask; ADMIN_SPECIAL / unresolved legacy may be NULL",
+    )
+    occurrence_identity: Mapped[str | None] = mapped_column(
+        String(255),
+        comment="INT C-C1 expand: canonical formal occurrence identity; unresolved legacy stays NULL",
+    )
+    source_type: Mapped[str | None] = mapped_column(
+        String(30),
+        comment="INT C-C1 expand: FORMAL_TEACHING / ADMIN_SPECIAL; unresolved legacy stays NULL",
+    )
+    source_reason: Mapped[str | None] = mapped_column(
+        String(500), comment="ADMIN_SPECIAL reason; unresolved legacy stays NULL")
+    source_evidence: Mapped[str | None] = mapped_column(
+        Text, comment="auditable source evidence snapshot; unresolved legacy stays NULL")
     course_name: Mapped[str | None] = mapped_column(String(200))
     term_code: Mapped[str | None] = mapped_column(String(50))
     teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师归属")
@@ -1667,6 +1683,15 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     absent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/SUBMITTED")
+
+    # Expand phase only: no CHECK/UNIQUE yet. C-W1 app guards stay authoritative until
+    # writer dual-write + repeatable dirty-data inventory are reconciled and INT lands
+    # the later contract migration.
+    __table_args__ = (
+        Index("ix_aa_attendance_task", "tenant_id", "teaching_task_id"),
+        Index("ix_aa_attendance_source", "tenant_id", "source_type"),
+        Index("ix_aa_attendance_occurrence", "tenant_id", "occurrence_identity"),
+    )
 
 
 # ═══════════ 学院专业班级 Tier1 R2（06 专业方向 / 08 班级调整申请单）═══════════
