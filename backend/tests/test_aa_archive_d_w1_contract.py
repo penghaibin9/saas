@@ -143,6 +143,44 @@ def test_d_w1_public_result_preserves_unknown_and_not_applicable_semantics():
     assert not_applicable["result"] == "NOT_APPLICABLE" and not_applicable["blockingCount"] == 0
 
 
+@pytest.mark.parametrize(
+    ("state", "present", "blocking_count"),
+    [
+        ("PASS", True, 0),
+        ("BLOCKED", False, 2),
+        ("NOT_APPLICABLE", False, 0),
+        ("UNKNOWN", False, 3),
+    ],
+)
+def test_d_w1_persisted_remark_round_trip_preserves_four_states(state, present, blocking_count):
+    """Compatibility present=false must not collapse N/A or UNKNOWN after batch refresh."""
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
+
+    persisted = service._persisted_remark("GRADUATION", {
+        "recordCount": 7,
+        "present": present,
+        "result": state,
+        "blockingCount": blocking_count,
+        "ruleCode": f"GRADUATION_{state}_ROUNDTRIP",
+        "summary": f"round-trip:{state}",
+    })
+    restored = service.parse_persisted_remark(
+        "GRADUATION",
+        persisted,
+        present=present,
+        record_count=7,
+    )
+
+    assert restored["result"] == state
+    assert restored["present"] is (state == "PASS")
+    assert restored["recordCount"] == 7
+    assert restored["ruleCode"] == f"GRADUATION_{state}_ROUNDTRIP"
+    assert restored["blockingCount"] == blocking_count
+    if state in {"BLOCKED", "UNKNOWN"}:
+        assert restored["blockingCount"] >= 1
+    else:
+        assert restored["blockingCount"] == 0
+
 
 def _manifest_domains(*, graduation_state: str):
     from app.modules.academic_affairs.services import academic_affairs_archive_service as service
