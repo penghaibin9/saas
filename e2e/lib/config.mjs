@@ -20,6 +20,9 @@ export const config = {
   demoAdmin: account('E2E_DEMO_ADMIN', {
     tenant: 'demo-school', username: 'admin', password: '123456'
   }),
+  academicW1Admin: account('E2E_ACADEMIC_W1_ADMIN', {
+    tenant: 'academic-w1-school', username: 'academic_w1_admin', password: '123456'
+  }),
   multiRole: account('E2E_MULTI_ROLE', {
     tenant: 'sandbox-school', username: 'e2e_academic_admin', password: 'E2eTest@2026'
   }),
