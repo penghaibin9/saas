@@ -52,16 +52,20 @@ function writeEvidence(payload) {
 
 test('School IAM EffectiveAccess keeps module, permission, tenant and enterprise planes separate', async ({ browser }) => {
   const demoContext = await browser.newContext({ extraHTTPHeaders: { 'X-Forwarded-For': '10.254.0.61' } })
-  const sandboxContext = await browser.newContext({ extraHTTPHeaders: { 'X-Forwarded-For': '10.254.0.62' } })
+  const deniedContext = await browser.newContext({ extraHTTPHeaders: { 'X-Forwarded-For': '10.254.0.62' } })
   const demoPage = await demoContext.newPage()
-  const sandboxPage = await sandboxContext.newPage()
+  const deniedPage = await deniedContext.newPage()
   try {
     const demoLogin = new StaffLoginPage(demoPage, config.staffBaseUrl)
-    const sandboxLogin = new StaffLoginPage(sandboxPage, config.staffBaseUrl)
+    const deniedLogin = new StaffLoginPage(deniedPage, config.staffBaseUrl)
     await demoLogin.login(config.demoAdmin)
-    await sandboxLogin.login(config.sandboxAdmin)
+    await deniedLogin.login({
+      tenant: FIXTURE.iamDeniedTenantCode,
+      username: FIXTURE.iamDeniedAdminLogin,
+      password: '123456'
+    })
     const demoToken = await demoLogin.token()
-    const sandboxToken = await sandboxLogin.token()
+    const deniedToken = await deniedLogin.token()
 
     await demoPage.goto(`${config.staffBaseUrl}/admin/system/access-governance`)
     await expect(demoPage.locator('body')).toContainText('访问治理')
@@ -111,10 +115,10 @@ test('School IAM EffectiveAccess keeps module, permission, tenant and enterprise
     expect(crossTenant.json?.code).not.toBe(0)
 
     const unentitledWildcardAdmin = await browserApi(
-      sandboxPage,
-      sandboxToken,
+      deniedPage,
+      deniedToken,
       'GET',
-      explainPath(FIXTURE.sandboxAdminUserId)
+      explainPath(FIXTURE.iamDeniedAdminUserId)
     )
     expect(unentitledWildcardAdmin.iamAllowed).toBe(false)
     expect(unentitledWildcardAdmin.reasonCode).toBe('MODULE_NOT_ENTITLED')
@@ -144,6 +148,6 @@ test('School IAM EffectiveAccess keeps module, permission, tenant and enterprise
     })
   } finally {
     await demoContext.close()
-    await sandboxContext.close()
+    await deniedContext.close()
   }
 })
