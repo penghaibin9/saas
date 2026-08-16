@@ -1,10 +1,11 @@
 """sandbox-school · 20K 历史教务归档事实。
 
 不复制第二套归档判断：先补齐完整三年制培养方案、历史教学闭环和历史结账前置事实，
-再直接复用正式 13 域归档策略评估 2025-2026-2。只有全部域 PASS 才生成 ARCHIVED 批次；
-参考日 2026-08-13 的 2026-2027-1 尚未开学，严禁提前归档。
+再直接复用正式 13 域归档策略评估 2025-2026-2。只有不存在 BLOCKED / UNKNOWN 域才生成
+ARCHIVED 批次；NOT_APPLICABLE 保留为正式四态事实且不构成阻断。参考日 2026-08-13 的
+2026-2027-1 尚未开学，严禁提前归档。
 
-每次正式预检都会把完整 PASS/BLOCKED 结果和耗时写入
+每次正式预检都会把完整 PASS/BLOCKED/NOT_APPLICABLE/UNKNOWN 结果和耗时写入
 ``test-results/sandbox-20k/archive-precheck.json``，供 20K gate artifact 留证。
 """
 from __future__ import annotations
@@ -121,7 +122,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
             "evidence": list(public.get("evidence") or []),
         }
         domains[code] = summary
-        if summary["result"] != "PASS":
+        if summary["result"] in archive_service._BLOCKING_RESULTS:
             blocked[code] = summary
 
     precheck = {
@@ -131,6 +132,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "evaluatedAt": "2026-08-13T09:00:00",
         "elapsedMs": elapsed_ms,
         "domainCount": len(domains),
+        # 兼容历史 artifact 字段名；语义是“归档门禁无阻断”，不是十三域字面全部 PASS。
         "allPass": not blocked and len(domains) == EXPECTED_ARCHIVE_DOMAINS,
         "blockedDomains": list(blocked),
         "curriculum": curriculum.get("validation") or curriculum,
@@ -180,7 +182,9 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
             domain=code,
             domain_label=labels[code],
             record_count=int(row.get("recordCount") or 0),
-            present=True,
+            # 与正式 run_check 完全一致：N/A/UNKNOWN/BLOCKED 的兼容位均为 false，
+            # 四态真值由 remark 持久化并在读取时恢复。
+            present=row["result"] == "PASS",
             remark=archive_service._persisted_remark(code, row),
         ))
     db.commit()
@@ -199,6 +203,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
 
 def validate_school_academic_archive_20k(db, tenant_id: int) -> dict:
     from app.models import AaArchiveBatch, AaArchiveItem, AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_service
 
     historical_term = db.scalars(select(AaTerm).where(
         AaTerm.tenant_id == tenant_id,
@@ -230,23 +235,44 @@ def validate_school_academic_archive_20k(db, tenant_id: int) -> dict:
         AaArchiveItem.batch_id == int(batch.id),
         AaArchiveItem.is_deleted.is_(False),
     )).all())
-    failed_items = [row.domain for row in items if not row.present]
+
+    blocking_items = []
+    invalid_present_items = []
+    not_applicable_items = []
+    for row in items:
+        restored = archive_service.parse_persisted_remark(
+            row.domain,
+            row.remark,
+            present=bool(row.present),
+            record_count=int(row.record_count or 0),
+        )
+        state = restored["result"]
+        if state in archive_service._BLOCKING_RESULTS:
+            blocking_items.append(row.domain)
+        if state == "NOT_APPLICABLE":
+            not_applicable_items.append(row.domain)
+        if bool(row.present) != (state == "PASS"):
+            invalid_present_items.append(f"{row.domain}:{state}:present={bool(row.present)}")
+
     if (
         batch.status != "ARCHIVED"
         or int(batch.missing_count or 0) != 0
         or len(items) != EXPECTED_ARCHIVE_DOMAINS
-        or failed_items
+        or blocking_items
+        or invalid_present_items
         or current_batches != 0
     ):
         raise RuntimeError(
             "20K 教务归档验收失败: "
             f"status={batch.status} missing={batch.missing_count} items={len(items)} "
-            f"failed={failed_items} currentAutumn={current_batches}"
+            f"blocking={blocking_items} invalidPresent={invalid_present_items} "
+            f"currentAutumn={current_batches}"
         )
     return {
         "historicalArchiveBatches": 1,
         "historicalArchiveItems": len(items),
         "missingDomains": 0,
+        "notApplicableDomains": not_applicable_items,
         "currentAutumnArchiveBatches": current_batches,
         "status": batch.status,
         "passed": True,
