@@ -30,7 +30,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "1da9f7d2d626ac09660ddc048a06ae78089444a4"
           git fetch origin tmp/academic-c-w1-real-write-staging
-          test "$(git rev-parse FETCH_HEAD)" = "457b23c4de41d3e1a5269fdd06e32245bacac746"
+          test "$(git rev-parse FETCH_HEAD)" = "7975917d307b02e99f0abe9a17eaa9a72434635d"
           git show FETCH_HEAD:.tmp/academic-c-w1-real-write/test_aa_attendance_real_route_w1.py > /tmp/cw1-real-route.py
           python -m py_compile /tmp/cw1-real-route.py
 
@@ -129,7 +129,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "1da9f7d2d626ac09660ddc048a06ae78089444a4"
           git fetch origin tmp/academic-c-w1-real-write-staging
-          test "$(git rev-parse FETCH_HEAD)" = "457b23c4de41d3e1a5269fdd06e32245bacac746"
+          test "$(git rev-parse FETCH_HEAD)" = "7975917d307b02e99f0abe9a17eaa9a72434635d"
           git show FETCH_HEAD:.tmp/academic-c-w1-real-write/test_aa_attendance_real_route_w1.py > /tmp/cw1-real-route.py
           python -m py_compile /tmp/cw1-real-route.py
 
