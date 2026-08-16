@@ -93,8 +93,8 @@ def _current_choice(db, rows, *, tenant_id: int, current_rule: str,
 
 
 def _historical_choice(db, rows, *, tenant_id: int, as_of: datetime,
-                       history_rule: str, conflict_rule: str, invalid_rule: str,
-                       scope_label: str):
+                       current_rule: str, history_rule: str, conflict_rule: str,
+                       invalid_rule: str, scope_label: str):
     eligible = [
         row for row in rows
         if str(row.status or "").upper() in {"ACTIVE", "SUPERSEDED"}
@@ -109,8 +109,14 @@ def _historical_choice(db, rows, *, tenant_id: int, as_of: datetime,
     valid = [(row, program) for row, program in valid if program is not None]
     if len(valid) == 1 and len(latest) == 1:
         row, program = valid[0]
-        return ProgramActivationResolution(program, row, "RESOLVED", history_rule,
-                                           f"按{scope_label}生效日期内历史绑定解析")
+        active_at_read = str(row.status or "").upper() == "ACTIVE"
+        rule = current_rule if active_at_read else history_rule
+        message = (
+            f"按{scope_label}当前有效绑定解析（as_of 时点已生效）"
+            if active_at_read
+            else f"按{scope_label}生效日期内历史绑定解析"
+        )
+        return ProgramActivationResolution(program, row, "RESOLVED", rule, message)
     if len(latest) > 1:
         return ProgramActivationResolution(
             None, None, "AMBIGUOUS", conflict_rule,
@@ -160,8 +166,9 @@ def resolve_program_for_scope(
         if historical:
             return _historical_choice(
                 db, scope_rows, tenant_id=int(tenant_id), as_of=historical_at,
-                history_rule=history_rule, conflict_rule=conflict_rule,
-                invalid_rule=invalid_rule, scope_label=scope_label,
+                current_rule=current_rule, history_rule=history_rule,
+                conflict_rule=conflict_rule, invalid_rule=invalid_rule,
+                scope_label=scope_label,
             )
         return _current_choice(
             db, scope_rows, tenant_id=int(tenant_id), current_rule=current_rule,
