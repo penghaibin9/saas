@@ -2,17 +2,6 @@ name: Academic B W5 Student Projection Real Click
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/academic-b-schedule-selection]
-    paths:
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py'
-      - 'student-portal/src/views/academic/StudentSelectionView.vue'
-      - 'miniapp/src/pages/student/academic-affairs/selection.vue'
-      - 'backend/scripts/e2e_seed_academic_b_w5_selection.py'
-      - 'e2e/specs/academic-b-selection-w5-final.spec.mjs'
-      - '.github/workflows/academic-b-w5-student-projection-real-click.yml'
 
 permissions:
   contents: read

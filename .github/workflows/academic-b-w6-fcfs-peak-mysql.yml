@@ -5,6 +5,7 @@ on:
     branches:
       - agent/academic-b-schedule-selection
     paths:
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
       - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py
       - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
   workflow_dispatch:
