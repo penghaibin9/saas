@@ -44,6 +44,13 @@ def _positive_scope_id(value, *, name: str) -> int:
     return identifier
 
 
+def _validated_scope_ids(term_id: int, college_id: int | None) -> tuple[int, int | None]:
+    term_id = _positive_scope_id(term_id, name="term_id")
+    if college_id is None:
+        return term_id, None
+    return term_id, _positive_scope_id(college_id, name="college_id")
+
+
 def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
     """Return the exact non-null key reserved for an editable management scope.
 
@@ -51,10 +58,9 @@ def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
     constraint is ``UNIQUE(tenant_id, editable_scope_key)``. School scope uses
     an explicit token instead of SQL NULL so MySQL cannot admit duplicates.
     """
-    term_id = _positive_scope_id(term_id, name="term_id")
+    term_id, college_id = _validated_scope_ids(term_id, college_id)
     if college_id is None:
         return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:SCHOOL"
-    college_id = _positive_scope_id(college_id, name="college_id")
     return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:COLLEGE:{college_id}"
 
 
@@ -63,11 +69,13 @@ def editable_scope_key_for_status(term_id: int, college_id: int | None, status: 
 
     Only DRAFT/RETURNED reserve the management scope. Non-editable states use
     SQL NULL so multiple historical/terminal batches remain legal. Unknown
-    states fail closed instead of silently escaping the uniqueness invariant.
+    states or malformed scope identifiers fail closed instead of silently
+    escaping the uniqueness invariant.
     """
     normalized = str(status or "").strip().upper()
     if normalized not in _BATCH_STATUSES:
         raise ValueError(f"unsupported teaching task batch status: {normalized or '<empty>'}")
+    term_id, college_id = _validated_scope_ids(term_id, college_id)
     if normalized in _EDITABLE_BATCH_STATUSES:
         return canonical_editable_scope_key(term_id, college_id)
     return None
