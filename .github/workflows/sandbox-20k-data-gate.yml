@@ -18,6 +18,8 @@ on:
       - backend/scripts/check_sandbox_20k_school.py
       - backend/scripts/check_sandbox_20k_rebuild_budget.py
       - backend/scripts/_seed_sandbox_coverage.py
+      - backend/scripts/academic_d_w5_r11_real_school.py
+      - backend/tests/test_academic_d_w5_r11_real_school_script.py
       - backend/tests/test_sandbox_school_blueprint.py
       - backend/tests/test_sandbox_school_professional_catalog.py
       - backend/tests/test_sandbox_school_role_topology.py
@@ -51,6 +53,7 @@ env:
   SANDBOX_TEACHER2_PASSWORD: ci-only-teacher2-strong-password-2026
   SANDBOX_STUDENT2_PASSWORD: ci-only-student2-strong-password-2026
   FAST_TEST_SCHEMA: "0"
+  EXACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   mysql-20k-real-school:
@@ -74,7 +77,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: 验证 exact PR head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -138,6 +147,8 @@ jobs:
             scripts/check_sandbox_20k_school.py
             scripts/check_sandbox_20k_rebuild_budget.py
             scripts/_seed_sandbox_coverage.py
+            scripts/academic_d_w5_r11_real_school.py
+            tests/test_academic_d_w5_r11_real_school_script.py
             tests/test_sandbox_school_blueprint.py
             tests/test_sandbox_school_professional_catalog.py
             tests/test_sandbox_school_role_topology.py
@@ -164,13 +175,14 @@ jobs:
           done
           rm -f test-results/sandbox-20k/compile-error.txt
 
-      - name: 20K纯数据规格合同
+      - name: 20K纯数据规格合同 + R11 runner边界
         working-directory: backend
         shell: bash
         run: |
           set +e
           mkdir -p test-results/sandbox-20k
           pytest -q \
+            tests/test_academic_d_w5_r11_real_school_script.py \
             tests/test_sandbox_school_blueprint.py \
             tests/test_sandbox_school_professional_catalog.py \
             tests/test_sandbox_school_role_topology.py \
@@ -185,7 +197,7 @@ jobs:
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             summary=$(grep -E '^FAILED |^ERROR |^E +|AssertionError|RuntimeError' test-results/sandbox-20k/blueprint-contract.log | tail -n 20 | tr '\n' ' ' | head -c 6000 | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::error file=backend/tests/test_sandbox_school_curriculum_closure.py::20K blueprint/professional/role/mentor/employment/curriculum/archive-scope/budget/security contract failed: ${summary}"
+            echo "::error file=backend/tests/test_sandbox_school_curriculum_closure.py::20K blueprint/R11 runner/professional/role/mentor/employment/curriculum/archive-scope/budget/security contract failed: ${summary}"
             exit "$status"
           fi
 
@@ -251,6 +263,30 @@ jobs:
           python scripts/check_sandbox_20k_school.py \
             2>&1 | tee test-results/sandbox-20k/acceptance.log
 
+      - name: D-W5 R11真实学校完整学期六阶段完成签字
+        working-directory: backend
+        shell: bash
+        env:
+          APP_ENV: production
+          DEPLOYMENT_MODE: production
+          MOCK_LOGIN_ENABLED: "false"
+          ACADEMIC_D_W5_R11_ALLOW: "true"
+        run: |
+          set -euo pipefail
+          python scripts/academic_d_w5_r11_real_school.py \
+            --output test-results/sandbox-20k/r11-real-semester-completed.json \
+            2>&1 | tee test-results/sandbox-20k/r11-real-semester.log
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('test-results/sandbox-20k/r11-real-semester-completed.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data['r11RealDataCompleted'] is True
+          assert data['persisted']['pilotStatus'] == 'COMPLETED'
+          assert data['persisted']['checkpointCount'] == 6
+          assert data['persisted']['allCheckpointsPassed'] is True
+          PY
+
       - name: 固化MySQL规模摘要
         if: always()
         working-directory: backend
@@ -308,19 +344,27 @@ jobs:
             SELECT "quality_rectifications", COUNT(*) FROM t_aa_quality_rectification WHERE tenant_id=1000000000000000007 AND is_deleted=0;
           ' > test-results/sandbox-20k/mysql-row-counts.txt 2>&1
           {
-            echo "commitSha=${GITHUB_SHA}"
+            echo "sourceCommit=$EXACT_HEAD_SHA"
+            echo "checkedOutCommit=$(git rev-parse HEAD)"
+            echo "workflowTriggerSha=${GITHUB_SHA}"
             echo "workflowRun=${GITHUB_RUN_ID}"
             echo "mysql=8.0"
             echo "profile=standard-20k"
             echo "referenceDate=2026-08-13"
             echo "neighborTenant=demo-school"
+            if [[ -f test-results/sandbox-20k/r11-real-semester-completed.json ]]; then
+              echo "r11RealDataCompleted=true"
+            else
+              echo "r11RealDataCompleted=false"
+            fi
           } > test-results/sandbox-20k/gate-summary.txt
+          test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
 
       - name: 上传20K验收证据
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sandbox-20k-real-school-${{ github.sha }}
+          name: sandbox-20k-real-school-${{ github.event.pull_request.head.sha || github.sha }}
           path: backend/test-results/sandbox-20k
           if-no-files-found: error
           retention-days: 14
