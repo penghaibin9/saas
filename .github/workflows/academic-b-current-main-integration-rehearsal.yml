@@ -52,9 +52,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "ca3b485b32ab53461d74b6b48b6dcdf400480ca7"
+          test "$(git rev-parse HEAD^)" = "101517c434c67b824153df732af3eedfb81fa639"
           git fetch origin main --no-tags
-          test "$(git rev-parse origin/main)" = "e91c4aabd99b1b328b6be5f2d8d0b127fe193140"
+          test "$(git rev-parse origin/main)" = "4b706f392bd4213edcf4fbf81e4c292f90028c12"
           python - <<'PY'
           import subprocess
           def names(base, head):
@@ -63,7 +63,7 @@ jobs:
                   text=True,
               ).splitlines())
           b = names('414216c4a79ff035aee87d70b35572572f5c0535', 'HEAD')
-          main_delta = names('457dc8821876b8e1b67e0fb5911a9eec33e37616', 'origin/main')
+          main_delta = names('e91c4aabd99b1b328b6be5f2d8d0b127fe193140', 'origin/main')
           overlap = sorted(b & main_delta)
           print('B changed paths=', len(b))
           print('new-main paths=', len(main_delta))
@@ -77,7 +77,7 @@ jobs:
           git config user.name "academic-b-integration-rehearsal"
           git config user.email "academic-b-integration-rehearsal@invalid.local"
           git merge --no-commit --no-ff origin/main
-          test "$(git rev-parse MERGE_HEAD)" = "e91c4aabd99b1b328b6be5f2d8d0b127fe193140"
+          test "$(git rev-parse MERGE_HEAD)" = "4b706f392bd4213edcf4fbf81e4c292f90028c12"
           git diff --check
 
       - uses: actions/setup-python@v5
@@ -94,7 +94,7 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
-      - name: Run only critical B MySQL contracts on current-main merge
+      - name: Run critical B MySQL and current-main compatibility contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -103,6 +103,12 @@ jobs:
             tests/test_aa_selection_w6_lottery_concurrency_mysql.py \
             tests/test_aa_selection_w6_roster_reconcile_mysql.py \
             tests/test_aa_selection_student_projection_states_mysql.py \
+            tests/test_aa_selection.py \
+            tests/test_aa_selection_batch_preflight_w1.py \
+            tests/test_aa_selection_canonical_service.py \
+            tests/test_aa_selection_w1_closeout.py \
+            tests/test_aa_main_permission_middleware_compat.py \
+            tests/test_aa_route_registration_main_compat.py \
             --maxfail=1 \
             --junitxml=/tmp/academic-b-current-main-junit.xml
 
