@@ -108,7 +108,7 @@ binlog_format=$binlog_format
 pitr_seconds=$pitr_seconds
 max_pitr_seconds=$MAX_PITR_SECONDS
 production_binlog_archival_proven=false
-source_commit=${GITHUB_SHA:-unknown}
+drill_trigger_sha=${GITHUB_SHA:-unknown}
 workflow_run_id=${GITHUB_RUN_ID:-manual}
 completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EVIDENCE
