@@ -110,6 +110,47 @@ def _stats_session_type_condition(model, session_type=None):
     )
 
 
+def _guard_no_duplicate_formal_session(
+    db,
+    model,
+    *,
+    class_id: int,
+    teacher_key: str,
+    session_date: str,
+    slot_no: int,
+    occurrence: dict,
+):
+    """Application-level duplicate guard while INT still owns the DB occurrence identity.
+
+    ``resolve_formal_occurrence(..., lock=True)`` already holds the current schedule authority
+    locks. This locking read is deliberately performed after that authority check so MySQL
+    REPEATABLE READ observes a concurrent winner that committed while this request waited.
+    ADMIN_SPECIAL remains a separate audit source and never blocks a formal classroom fact.
+    """
+    existing = db.query(model).filter(
+        model.tenant_id == _tid(),
+        model.class_id == int(class_id or 0),
+        model.teacher_key == str(teacher_key or ""),
+        model.session_date == str(session_date),
+        model.slot_no == int(slot_no),
+        model.is_deleted.is_(False),
+        _stats_session_type_condition(model),
+    ).with_for_update().first()
+    if existing:
+        raise AppException(
+            "DATA_CONFLICT",
+            "该正式课次已创建课堂考勤场次，请勿重复点名",
+            details={
+                "existingSessionId": str(existing.id),
+                "teachingTaskId": str(occurrence.get("teachingTaskId") or ""),
+                "scheduleItemId": str(occurrence.get("scheduleItemId") or ""),
+                "sessionDate": str(session_date),
+                "slotNo": int(slot_no),
+            },
+            http_status=409,
+        )
+
+
 def create_session(user, body) -> dict:
     """按当前学期教学任务创建场次，并在同一事务冻结正式名单版本。"""
     from app.models import AaAttendanceSession, AaTeachingTask, AaTeachingTaskBatch, AaTerm, StudentProfile
@@ -220,6 +261,17 @@ def create_session(user, body) -> dict:
         )
         if not teacher_key:
             raise AppException("VALIDATION_ERROR", "无法确定考勤场次教师工号")
+
+        if occurrence:
+            _guard_no_duplicate_formal_session(
+                db,
+                AaAttendanceSession,
+                class_id=class_id,
+                teacher_key=teacher_key,
+                session_date=occurrence["sessionDate"],
+                slot_no=int(occurrence["slotNo"]),
+                occurrence=occurrence,
+            )
 
         item = AaAttendanceSession(
             tenant_id=_tid(),
