@@ -36,55 +36,57 @@ jobs:
           path = Path('frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue')
           text = path.read_text(encoding='utf-8')
 
-          replacements = [
-              (
-                  "      preflight: null, preflightLoading: false,",
-                  "      preflight: null, preflightLoading: false, preflightRequestSeq: 0,",
-              ),
-              (
-                  '''    async refreshPreflight() {
-      const action = this.lifecycleAction(this.current && this.current.status)
-      if (!this.current || !action) { this.preflight = null; return null }
-      this.preflightLoading = true
-      const res = await api.batchPreflight(this.current.batchId, action)
-      this.preflightLoading = false
-      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
-      return this.preflight
-    },''',
-                  '''    async refreshPreflight() {
-      const batchId = this.current && this.current.batchId
-      const status = this.current && this.current.status
-      const action = this.lifecycleAction(status)
-      if (!batchId || !action) {
-        this.preflightRequestSeq += 1
-        this.preflight = null
-        this.preflightLoading = false
-        return null
-      }
-      const requestSeq = ++this.preflightRequestSeq
-      this.preflightLoading = true
-      const res = await api.batchPreflight(batchId, action)
-      if (
-        requestSeq !== this.preflightRequestSeq ||
-        !this.current ||
-        this.current.batchId !== batchId ||
-        this.current.status !== status
-      ) return null
-      this.preflightLoading = false
-      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
-      return this.preflight
-    },''',
-              ),
-              (
-                  "        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }",
-                  "        if (res.code === 0) { toast.success(label + '成功'); this.preflightRequestSeq += 1; this.preflight = null; this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }",
-              ),
-          ]
+          old_data = "      preflight: null, preflightLoading: false,"
+          new_data = "      preflight: null, preflightLoading: false, preflightRequestSeq: 0,"
 
-          for old, new in replacements:
+          old_refresh = "\n".join([
+              "    async refreshPreflight() {",
+              "      const action = this.lifecycleAction(this.current && this.current.status)",
+              "      if (!this.current || !action) { this.preflight = null; return null }",
+              "      this.preflightLoading = true",
+              "      const res = await api.batchPreflight(this.current.batchId, action)",
+              "      this.preflightLoading = false",
+              "      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }",
+              "      return this.preflight",
+              "    },",
+          ])
+          new_refresh = "\n".join([
+              "    async refreshPreflight() {",
+              "      const batchId = this.current && this.current.batchId",
+              "      const status = this.current && this.current.status",
+              "      const action = this.lifecycleAction(status)",
+              "      if (!batchId || !action) {",
+              "        this.preflightRequestSeq += 1",
+              "        this.preflight = null",
+              "        this.preflightLoading = false",
+              "        return null",
+              "      }",
+              "      const requestSeq = ++this.preflightRequestSeq",
+              "      this.preflightLoading = true",
+              "      const res = await api.batchPreflight(batchId, action)",
+              "      if (",
+              "        requestSeq !== this.preflightRequestSeq ||",
+              "        !this.current ||",
+              "        this.current.batchId !== batchId ||",
+              "        this.current.status !== status",
+              "      ) return null",
+              "      this.preflightLoading = false",
+              "      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }",
+              "      return this.preflight",
+              "    },",
+          ])
+
+          old_success = "        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }"
+          new_success = "        if (res.code === 0) { toast.success(label + '成功'); this.preflightRequestSeq += 1; this.preflight = null; this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }"
+
+          for old, new, label in [
+              (old_data, new_data, 'data'),
+              (old_refresh, new_refresh, 'refreshPreflight'),
+              (old_success, new_success, 'lifecycle-success'),
+          ]:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'expected exactly one patch target, got {count}: {old[:80]!r}')
+                  raise SystemExit(f'expected exactly one {label} target, got {count}')
               text = text.replace(old, new)
 
           path.write_text(text, encoding='utf-8')
