@@ -11,8 +11,9 @@ rewrite the meaning of an already-published exam.
 from __future__ import annotations
 
 from app.core.exceptions import AppException, not_found
+from app.services.db_service import _tid, session
 
-from . import academic_affairs_exam_service as _legacy
+from .academic_affairs_exam_service import _check_college_scope, _ctx, _get_batch, _get_course
 from .academic_affairs_roster_consumer_service import get_consumer_snapshot
 
 _FORMAL_BATCH_STATES = {"PUBLISHED", "FINISHED", "ARCHIVED"}
@@ -31,19 +32,19 @@ def formal_room_print(user, room_id: int) -> dict:
     """
     from app.models import AaExamRoom, AaExamRoomStudent
 
-    with _legacy.session() as db:
-        context = _legacy._ctx(user, db)
+    with session() as db:
+        context = _ctx(user, db)
         room = db.query(AaExamRoom).filter(
             AaExamRoom.id == int(room_id),
-            AaExamRoom.tenant_id == _legacy._tid(),
+            AaExamRoom.tenant_id == _tid(),
             AaExamRoom.is_deleted.is_(False),
         ).first()
         if not room:
             raise not_found("考场不存在")
 
-        course = _legacy._get_course(db, int(room.exam_course_id))
-        _legacy._check_college_scope(context, course.college_id)
-        batch = _legacy._get_batch(db, int(course.batch_id))
+        course = _get_course(db, int(room.exam_course_id))
+        _check_college_scope(context, course.college_id)
+        batch = _get_batch(db, int(course.batch_id))
 
         if str(batch.status or "").upper() not in _FORMAL_BATCH_STATES:
             _conflict("考试批次尚未发布，禁止生成正式座位表/门贴/准考证", batchStatus=batch.status)
@@ -59,7 +60,7 @@ def formal_room_print(user, room_id: int) -> dict:
             _conflict("考试课程缺少冻结名单证据，禁止生成正式打印件", examCourseId=str(course.id))
 
         seats = db.query(AaExamRoomStudent).filter(
-            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.tenant_id == _tid(),
             AaExamRoomStudent.exam_room_id == room.id,
             AaExamRoomStudent.is_deleted.is_(False),
         ).order_by(AaExamRoomStudent.seat_no, AaExamRoomStudent.id).all()
