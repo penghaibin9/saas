@@ -20,9 +20,23 @@ from sqlalchemy import func, select, update
 svc = importlib.import_module(
     "app.modules.academic_affairs.services.academic_affairs_service"
 )
+archive_core = importlib.import_module(
+    "app.modules.academic_affairs.services.academic_affairs_archive_core_service"
+)
 
 TID = 1000000000000000001
 NEIGHBOR_TID = 1000000000000000099
+
+
+def _patch_writer_tenant(monkeypatch) -> None:
+    """Bind tenant resolution for the full canonical writer call chain.
+
+    Request ContextVars intentionally do not propagate into ThreadPoolExecutor workers.  These
+    MySQL tests therefore pin the same tenant on every production module reached by a term writer,
+    rather than patching only the public service facade and accidentally testing an empty context.
+    """
+    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    monkeypatch.setattr(archive_core, "_tid", lambda: TID)
 
 
 def _tenant(tenant_id: int, code: str, name: str):
@@ -198,7 +212,7 @@ def _assert_future_waits_for_tenant_lock(invoke):
 
 def test_set_current_term_serializes_on_tenant_authority_row(db_mode, monkeypatch):
     ids = _seed_terms()
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    _patch_writer_tenant(monkeypatch)
 
     result = _assert_writer_waits_for_tenant_lock(
         monkeypatch,
@@ -211,7 +225,7 @@ def test_set_current_term_serializes_on_tenant_authority_row(db_mode, monkeypatc
 
 def test_publish_term_uses_same_tenant_authority_row(db_mode, monkeypatch):
     ids = _seed_terms()
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    _patch_writer_tenant(monkeypatch)
 
     result = _assert_writer_waits_for_tenant_lock(
         monkeypatch,
@@ -225,7 +239,7 @@ def test_publish_term_uses_same_tenant_authority_row(db_mode, monkeypatch):
 
 def test_publish_calendar_uses_same_tenant_authority_row(db_mode, monkeypatch):
     ids = _seed_terms()
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    _patch_writer_tenant(monkeypatch)
 
     result = _assert_writer_waits_for_tenant_lock(
         monkeypatch,
@@ -302,7 +316,7 @@ def test_calendar_governance_activation_uses_same_tenant_authority_row(db_mode):
 def test_active_governance_blocks_direct_academic_switch_to_other_term(db_mode, monkeypatch):
     ids = _seed_terms()
     _seed_governance(ids["current"], active=True)
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    _patch_writer_tenant(monkeypatch)
     from app.core.exceptions import AppException
 
     with pytest.raises(AppException) as exc:
@@ -361,7 +375,7 @@ def test_public_current_term_fails_closed_on_legacy_double_current_without_gover
 
 def test_two_current_term_writers_finish_with_one_current_and_keep_neighbor(db_mode, monkeypatch):
     ids = _seed_terms()
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
+    _patch_writer_tenant(monkeypatch)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(svc.set_current_term, ids["target"], {})
