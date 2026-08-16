@@ -1,3 +1,4 @@
+# exact-head evidence trigger after W6-3 round-window fix
 name: Academic B W6 Lottery Concurrency MySQL
 
 on:
