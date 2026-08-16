@@ -216,7 +216,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
 
     await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/new')
     await expect(page.getByRole('heading', { name: '新建学年学期' }).first()).toBeVisible()
-    await expect(page.getByText(/如 17 或 20/)).toBeVisible()
+    await expect(page.getByPlaceholder(/如 17 或 20/)).toBeVisible()
     await expect(page.getByText(/正式教学任务不会默认18周/)).toBeVisible()
     await capture(page, testInfo, 'a-w1-term-create-no-18-week-default')
 
