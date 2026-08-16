@@ -89,10 +89,14 @@ def test_student_selection_uses_dedicated_server_authoritative_workspace():
     assert "academicSection('selection'" not in router
     assert "portalApi.academicCourseSelection()" in view
     assert "portalApi.academicSelectionRecords()" in view
+    assert "portalApi.academicSelectionPreflight" in view
     assert "portalApi.academicEnroll" in view
     assert "portalApi.academicDrop" in view
+    assert "allowedActions" in view
     assert "await load()" in view
-    assert "所有资格、冲突、容量和时间窗口都由服务器最终校验" in view
+    assert "正式动作由服务器下发，提交时再次校验" in view
+    for boundary in ("时间冲突", "容量", "选退课窗口"):
+        assert boundary in view
     assert "window.prompt" not in view
 
 

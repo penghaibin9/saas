@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "101517c434c67b824153df732af3eedfb81fa639"
+          test "$(git rev-parse HEAD^)" = "fd66bd0548a4d0d4e7d9e9d1341546578823bdd1"
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "4b706f392bd4213edcf4fbf81e4c292f90028c12"
           python - <<'PY'
@@ -109,6 +109,13 @@ jobs:
             tests/test_aa_selection_w1_closeout.py \
             tests/test_aa_main_permission_middleware_compat.py \
             tests/test_aa_route_registration_main_compat.py \
+            tests/test_aa_prerequisite_api_real.py \
+            tests/test_aa_prerequisite_old_version_api.py \
+            tests/test_aa_selection_rounds.py \
+            tests/test_stage_d_selection_trace.py \
+            tests/test_aa_student_identity_legacy_entry_guards.py \
+            tests/test_stage_d_integration_contract.py \
+            tests/test_aa_frontend_p0_contracts.py \
             --maxfail=1 \
             --junitxml=/tmp/academic-b-current-main-junit.xml
 

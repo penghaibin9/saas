@@ -91,7 +91,49 @@ def _seed(db_mode, *, student_count=2):
         db.close()
 
 
+def _ready_teaching_task(term_id, course_id):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    db = get_sessionmaker()()
+    try:
+        course = db.query(AaCourse).filter(
+            AaCourse.tenant_id == TID,
+            AaCourse.id == int(course_id),
+            AaCourse.is_deleted.is_(False),
+        ).one()
+        task_batch = AaTeachingTaskBatch(
+            tenant_id=TID,
+            term_id=int(term_id),
+            college_id=None,
+            batch_name=f"Stage D教学任务-{course.id}",
+            status="APPROVED",
+        )
+        db.add(task_batch); db.flush()
+        task = AaTeachingTask(
+            tenant_id=TID,
+            batch_id=task_batch.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_name=course.course_name,
+            teacher_key=f"DTRACE-T-{course.id}",
+            teacher_name="DecisionTrace测试教师",
+            status="READY",
+            weekly_hours=2,
+            total_hours=36,
+            start_week=1,
+            end_week=18,
+        )
+        db.add(task); db.flush()
+        task_id = task.id
+        db.commit()
+        return task_id
+    finally:
+        db.close()
+
+
 def _open_batch(client, admin, ids, *, capacity):
+    teaching_task_id = _ready_teaching_task(ids["termId"], ids["courseId"])
     created = client.post(
         f"{BASE}/selection/batches",
         headers=admin,
@@ -102,7 +144,12 @@ def _open_batch(client, admin, ids, *, capacity):
     added = client.post(
         f"{BASE}/selection/batches/{bid}/courses",
         headers=admin,
-        json={"courseId": str(ids["courseId"]), "capacity": capacity, "minCapacity": 0},
+        json={
+            "courseId": str(ids["courseId"]),
+            "teachingTaskId": str(teaching_task_id),
+            "capacity": capacity,
+            "minCapacity": 0,
+        },
     )
     assert added.status_code == 200, added.text
     scid = added.json()["data"]["selectionCourseId"]
