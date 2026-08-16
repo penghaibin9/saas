@@ -19,7 +19,19 @@ def _hdr(client):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed_formal_result(*, suffix: str, overall: str, review_note: str):
+def _complete_pass_items():
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
+
+    required = set(legacy._BLOCKING_UNKNOWN_ITEMS) | {"ARCHIVE"}
+    items = [{"item": code, "result": "PASS"} for code in sorted(required)]
+    items.extend([
+        {"item": "EMPLOYMENT", "result": "UNKNOWN"},
+        {"item": "FEE", "result": "UNKNOWN"},
+    ])
+    return items
+
+
+def _seed_formal_result(*, suffix: str, overall: str, review_note: str, complete_evidence: bool = True):
     from app.db.session import get_sessionmaker
     from app.models import (
         AaGraduationAuditBatch,
@@ -48,7 +60,10 @@ def _seed_formal_result(*, suffix: str, overall: str, review_note: str):
         )
         db.add(batch)
         db.flush()
-        items = [{"item": "STATUS", "result": "PASS" if overall == "SYSTEM_PASSED" else "UNKNOWN"}]
+        if overall == "SYSTEM_PASSED" and complete_evidence:
+            items = _complete_pass_items()
+        else:
+            items = [{"item": "STATUS", "result": "PASS" if overall == "SYSTEM_PASSED" else "UNKNOWN"}]
         result = AaGraduationAuditResult(
             tenant_id=TID,
             batch_id=batch.id,
@@ -97,21 +112,26 @@ def _decision_rows(result_id: int):
 
 def test_d_w0_only_advisory_unknowns_can_pass_but_archive_unknown_blocks(db_mode):
     """EMPLOYMENT/FEE remain advisory; ARCHIVE UNKNOWN stays Stage C3 fail-closed."""
-    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
     from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
-    items = [
-        {"item": code, "result": "PASS"}
-        for code in sorted(legacy._BLOCKING_UNKNOWN_ITEMS)
-    ]
-    items.extend([
-        {"item": "EMPLOYMENT", "result": "UNKNOWN"},
-        {"item": "FEE", "result": "UNKNOWN"},
-    ])
+    items = _complete_pass_items()
     assert immutable._strict_overall(items) == "SYSTEM_PASSED"
-    assert immutable._strict_overall(items + [{"item": "ARCHIVE", "result": "UNKNOWN"}]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall(items + [{"item": "CREDIT", "result": "UNKNOWN"}]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall(items + [{"item": "ARCHIVE", "result": "FAIL"}]) == "SYSTEM_ABNORMAL"
+
+    archive_unknown = [
+        {**row, "result": "UNKNOWN"} if row["item"] == "ARCHIVE" else row
+        for row in items
+    ]
+    credit_unknown = [
+        {**row, "result": "UNKNOWN"} if row["item"] == "CREDIT" else row
+        for row in items
+    ]
+    archive_fail = [
+        {**row, "result": "FAIL"} if row["item"] == "ARCHIVE" else row
+        for row in items
+    ]
+    assert immutable._strict_overall(archive_unknown) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(credit_unknown) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(archive_fail) == "SYSTEM_ABNORMAL"
 
 
 def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
@@ -119,12 +139,8 @@ def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
     from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
+    complete = _complete_pass_items()
     required = set(legacy._BLOCKING_UNKNOWN_ITEMS) | {"ARCHIVE"}
-    complete = [{"item": code, "result": "PASS"} for code in sorted(required)]
-    complete.extend([
-        {"item": "EMPLOYMENT", "result": "UNKNOWN"},
-        {"item": "FEE", "result": "UNKNOWN"},
-    ])
     assert immutable._strict_overall(complete) == "SYSTEM_PASSED"
     for missing in sorted(required):
         partial = [row for row in complete if row["item"] != missing]
@@ -167,6 +183,31 @@ def test_d_w0_abnormal_500_char_note_still_cannot_graduate(client, db_mode):
     )
     assert resp.status_code == 409, resp.text
     assert _decision_rows(result_id) == []
+
+
+def test_d_w0_system_passed_run_with_missing_required_evidence_cannot_graduate(client, db_mode):
+    student_id, result_id, _ = _seed_formal_result(
+        suffix="D",
+        overall="SYSTEM_PASSED",
+        review_note="旧正式Run投影为通过但证据集合不完整",
+        complete_evidence=False,
+    )
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/final",
+        headers=_hdr(client),
+        json={"conclusion": "GRADUATED", "confirm": True},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "证据" in str(resp.json().get("message") or "")
+    assert _decision_rows(result_id) == []
+
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    db = get_sessionmaker()()
+    try:
+        assert db.get(StudentProfile, student_id).student_status == "REGISTERED"
+    finally:
+        db.close()
 
 
 def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode):
