@@ -1,0 +1,212 @@
+name: Academic INT A-C4 Runtime Overlay V2 Targeted
+
+on:
+  push:
+    branches:
+      - tmp/academic-int-ac4-runtime-overlay-v2-20260817
+    paths:
+      - .github/workflows/academic-int-ac4-runtime-overlay-v2-targeted.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-int-ac4-runtime-overlay-v2
+  cancel-in-progress: false
+
+jobs:
+  ac4-runtime-overlay-v2:
+    name: A-W2/W3 canonical runtime overlay / fresh MySQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ac4_runtime_root
+          MYSQL_DATABASE: academic_int_ac4_runtime_v2
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pac4_runtime_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:ac4_runtime_root@127.0.0.1:3306/academic_int_ac4_runtime_v2?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:ac4_runtime_root@127.0.0.1:3306/academic_int_ac4_runtime_v2?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: ac4_runtime_root
+      DB_NAME: academic_int_ac4_runtime_v2
+      JWT_SECRET: academic-int-ac4-runtime-v2-not-production-secret
+      JWT_SECRET_KEY: academic-int-ac4-runtime-v2-not-production-secret
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+
+    steps:
+      - name: Checkout exact INT base, not trigger branch
+        uses: actions/checkout@v4
+        with:
+          ref: integration/academic-school-gold
+          fetch-depth: 0
+
+      - name: Assert exact INT base and converged shared schema
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c2bc328e51f337629655156b96a6e8fe5130637a"
+          grep -F 'formation_mode: Mapped[str | None]' backend/app/models/academic_affairs.py
+          grep -F 'editable_scope_key: Mapped[str | None]' backend/app/models/academic_affairs.py
+          grep -F 'revision = "20260816_acad_int_ac4"' backend/alembic/versions/20260816_academic_int_ac4_schema.py
+          grep -F 'revision = "20260817_acad_cp_merge"' backend/alembic/versions/20260817_academic_int_control_plane_merge.py
+
+      - name: Fetch pinned A-W3 frozen source
+        run: |
+          set -euo pipefail
+          git fetch origin agent/academic-a-semester-core --no-tags
+          git cat-file -e 29370fe9acc20ae180eeefc39db34e6832a9ea88^{commit}
+          git merge-base --is-ancestor 29370fe9acc20ae180eeefc39db34e6832a9ea88 FETCH_HEAD
+
+      - name: Materialize exact A-W2/W3 canonical runtime dependency closure
+        run: |
+          set -euo pipefail
+          git checkout 29370fe9acc20ae180eeefc39db34e6832a9ea88 -- \
+            backend/app/modules/academic_affairs/routers/program_quality_router.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_opening_projection_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_batch_inventory_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_formation_inventory_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_core_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_service.py \
+            backend/app/modules/academic_affairs/services/student_program_resolution_service.py \
+            backend/tests/test_aa_program_activation_w2.py \
+            backend/tests/test_aa_program_generation_gate_v2.py \
+            backend/tests/test_aa_task_batch_editable_reuse_w3.py \
+            backend/tests/test_aa_task_batch_inventory_w3.py \
+            backend/tests/test_aa_task_batch_scope_w3.py \
+            backend/tests/test_aa_task_formation_inventory_w3.py \
+            backend/tests/test_aa_task_formation_policy_w3.py \
+            backend/tests/test_aa_task_teaching_weeks.py \
+            backend/tests/test_aa_teaching_class_formation_projection_w3.py \
+            backend/tests/test_aa_teaching_class_public_formation_projection_w3.py
+          python -m py_compile \
+            backend/app/modules/academic_affairs/routers/program_quality_router.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_opening_projection_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_batch_inventory_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_formation_inventory_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_core_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_service.py \
+            backend/app/modules/academic_affairs/services/student_program_resolution_service.py
+
+      - name: Audit exact 20-file overlay scope
+        run: |
+          set -euo pipefail
+          git diff --check
+          cat > /tmp/expected.txt <<'EOF'
+          backend/app/modules/academic_affairs/routers/program_quality_router.py
+          backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_program_opening_projection_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_task_batch_inventory_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_task_formation_inventory_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+          backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_core_service.py
+          backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_service.py
+          backend/app/modules/academic_affairs/services/student_program_resolution_service.py
+          backend/tests/test_aa_program_activation_w2.py
+          backend/tests/test_aa_program_generation_gate_v2.py
+          backend/tests/test_aa_task_batch_editable_reuse_w3.py
+          backend/tests/test_aa_task_batch_inventory_w3.py
+          backend/tests/test_aa_task_batch_scope_w3.py
+          backend/tests/test_aa_task_formation_inventory_w3.py
+          backend/tests/test_aa_task_formation_policy_w3.py
+          backend/tests/test_aa_task_teaching_weeks.py
+          backend/tests/test_aa_teaching_class_formation_projection_w3.py
+          backend/tests/test_aa_teaching_class_public_formation_projection_w3.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          git status --porcelain=v1 | sed 's/^...//' | sort > /tmp/actual.txt
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+      - name: Prove canonical resolver wiring before runtime
+        run: |
+          set -euo pipefail
+          grep -F 'academic_affairs_program_opening_projection_service as opening_svc' backend/app/modules/academic_affairs/routers/program_quality_router.py
+          grep -F 'academic_affairs_program_activation_service' backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py
+          grep -F 'academic_affairs_program_activation_service' backend/app/modules/academic_affairs/services/academic_affairs_program_opening_projection_service.py
+          grep -F 'academic_affairs_program_activation_service import' backend/app/modules/academic_affairs/services/student_program_resolution_service.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend and migrate fresh MySQL on converged INT
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Run only A-W2/W3 runtime contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_program_activation_w2.py \
+            tests/test_aa_task_teaching_weeks.py \
+            tests/test_aa_program_generation_gate_v2.py \
+            tests/test_aa_task_batch_editable_reuse_w3.py \
+            tests/test_aa_task_batch_inventory_w3.py \
+            tests/test_aa_task_batch_scope_w3.py \
+            tests/test_aa_task_formation_inventory_w3.py \
+            tests/test_aa_task_formation_policy_w3.py \
+            tests/test_aa_teaching_class_formation_projection_w3.py \
+            tests/test_aa_teaching_class_public_formation_projection_w3.py \
+            --maxfail=1 \
+            --junitxml=/tmp/ac4-runtime-overlay-v2-junit.xml
+
+      - name: Prove this sub-seal does not invent an explicit formation writer
+        run: |
+          set -euo pipefail
+          ! grep -R "formation_mode=.*program_course" -n backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py
+          grep -F 'REQUIRES_EXPLICIT_PROVENANCE' backend/app/modules/academic_affairs/services/academic_affairs_task_formation_inventory_service.py
+
+      - name: Atomic fast-forward canonical runtime overlay into INT
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- $(cat /tmp/expected.txt)
+          git diff --cached --check
+          git commit -m "feat(academic-int): overlay canonical A-C4 runtime contracts"
+          git fetch origin integration/academic-school-gold --no-tags
+          test "$(git rev-parse origin/integration/academic-school-gold)" = "c2bc328e51f337629655156b96a6e8fe5130637a"
+          git merge-base --is-ancestor origin/integration/academic-school-gold HEAD
+          git push origin HEAD:integration/academic-school-gold
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-int-ac4-runtime-overlay-v2-${{ github.run_id }}
+          path: /tmp/ac4-runtime-overlay-v2-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove temporary trigger branch
+        if: success()
+        continue-on-error: true
+        run: git push origin --delete tmp/academic-int-ac4-runtime-overlay-v2-20260817
