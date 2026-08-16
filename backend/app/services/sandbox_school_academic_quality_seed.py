@@ -406,11 +406,12 @@ def seed_school_academic_quality_20k(db, tenant_id: int) -> dict:
 
 
 def _evaluation_score_truth(db, tenant_id: int) -> dict:
-    """Recompute all result projections from active answer facts using the production policy."""
+    """Recompute each batch/task result projection from active answers using production policy."""
     from app.models import AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
 
     score_rows = db.execute(
         select(
+            AaEvaluationTask.batch_id,
             AaEvaluationTask.teaching_task_id,
             AaEvaluationTask.evaluator_type,
             func.avg(AaEvaluationRecord.objective_score).label("average_score"),
@@ -422,6 +423,7 @@ def _evaluation_score_truth(db, tenant_id: int) -> dict:
             and_(
                 AaEvaluationRecord.task_id == AaEvaluationTask.id,
                 AaEvaluationRecord.tenant_id == AaEvaluationTask.tenant_id,
+                AaEvaluationRecord.batch_id == AaEvaluationTask.batch_id,
                 AaEvaluationRecord.is_deleted.is_(False),
             ),
         )
@@ -429,13 +431,17 @@ def _evaluation_score_truth(db, tenant_id: int) -> dict:
             AaEvaluationTask.tenant_id == tenant_id,
             AaEvaluationTask.is_deleted.is_(False),
         )
-        .group_by(AaEvaluationTask.teaching_task_id, AaEvaluationTask.evaluator_type)
+        .group_by(
+            AaEvaluationTask.batch_id,
+            AaEvaluationTask.teaching_task_id,
+            AaEvaluationTask.evaluator_type,
+        )
     ).all()
-    by_teaching: dict[int, dict[str, tuple[float | None, int]]] = defaultdict(dict)
-    for teaching_task_id, evaluator_type, average_score, score_count in score_rows:
-        if teaching_task_id is None:
+    by_projection: dict[tuple[int, int], dict[str, tuple[float | None, int]]] = defaultdict(dict)
+    for batch_id, teaching_task_id, evaluator_type, average_score, score_count in score_rows:
+        if batch_id is None or teaching_task_id is None:
             continue
-        by_teaching[int(teaching_task_id)][str(evaluator_type)] = (
+        by_projection[(int(batch_id), int(teaching_task_id))][str(evaluator_type)] = (
             round(float(average_score), 2) if average_score is not None else None,
             int(score_count or 0),
         )
@@ -452,7 +458,7 @@ def _evaluation_score_truth(db, tenant_id: int) -> dict:
 
     mismatches = []
     for result in results:
-        sources = by_teaching.get(int(result.teaching_task_id), {})
+        sources = by_projection.get((int(result.batch_id), int(result.teaching_task_id)), {})
         student_avg, student_count = sources.get("STUDENT", (None, 0))
         self_score, _self_count = sources.get("SELF", (None, 0))
         peer_avg, peer_count = sources.get("PEER", (None, 0))
@@ -484,6 +490,7 @@ def _evaluation_score_truth(db, tenant_id: int) -> dict:
         if bad_fields:
             mismatches.append({
                 "resultId": str(result.id),
+                "batchId": str(result.batch_id),
                 "teachingTaskId": str(result.teaching_task_id),
                 "fields": bad_fields,
             })
