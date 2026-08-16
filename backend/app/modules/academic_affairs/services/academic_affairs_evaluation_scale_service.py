@@ -278,13 +278,17 @@ def _stats_in_session(db, user, bid: int, spec: dict) -> dict:
 
     _get_scoped_batch_model(db, user, int(bid), spec=spec)
     result_query = _result_query(db, int(bid), spec)
-    result_count = result_query.count()
-    overall_avg = result_query.with_entities(func.avg(AaEvaluationResult.student_avg)).scalar()
     level_rows = result_query.with_entities(
         AaEvaluationResult.level,
-        func.count(AaEvaluationResult.id),
+        func.count(AaEvaluationResult.id).label("result_count"),
+        func.sum(AaEvaluationResult.student_avg).label("score_sum"),
+        func.count(AaEvaluationResult.student_avg).label("scored_count"),
     ).group_by(AaEvaluationResult.level).all()
-    by_level = {(level or "N/A"): int(count or 0) for level, count in level_rows}
+    result_count = sum(int(count or 0) for _level, count, _score_sum, _scored_count in level_rows)
+    score_sum = sum(float(value or 0) for _level, _count, value, _scored_count in level_rows)
+    scored_count = sum(int(count or 0) for _level, _count, _score_sum, count in level_rows)
+    overall_avg = score_sum / scored_count if scored_count else None
+    by_level = {(level or "N/A"): int(count or 0) for level, count, _score_sum, _scored_count in level_rows}
 
     record_counts = select(
         AaEvaluationRecord.task_id.label("task_id"),
