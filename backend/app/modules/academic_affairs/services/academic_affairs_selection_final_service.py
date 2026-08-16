@@ -148,6 +148,21 @@ def _first_resolution(trace) -> str:
     return str(first.get("label") or first.get("message") or "")
 
 
+def _configured_round_batch_ids(db, batch_ids) -> set[int]:
+    """Return tenant-scoped batches that have any persisted Selection round."""
+    from app.models import AaSelectionRound
+
+    normalized = sorted({int(value) for value in (batch_ids or [])})
+    if not normalized:
+        return set()
+    rows = db.query(AaSelectionRound.batch_id).filter(
+        AaSelectionRound.tenant_id == _base._core._tid(),
+        AaSelectionRound.batch_id.in_(normalized),
+        AaSelectionRound.is_deleted.is_(False),
+    ).distinct().all()
+    return {int(row[0]) for row in rows}
+
+
 def _evaluate_student_course(
     db,
     *,
@@ -159,6 +174,7 @@ def _evaluate_student_course(
     my_records,
     active_round,
     evaluated_at,
+    round_configured=False,
 ) -> dict:
     """单一纯读学生课程决策器；preflight/list 共用，绝不 commit/写审计。"""
     record = next(
@@ -200,6 +216,12 @@ def _evaluate_student_course(
                 "LOCKED": "当前课程名单已锁定",
             }[record_status]
         else:
+            if (
+                str(batch.status or "").upper() == _base._BATCH_OPEN
+                and round_configured
+                and active_round is None
+            ):
+                raise _base._core._invalid("当前没有开放选课轮次")
             if active_round and not active_round.allow_enroll:
                 raise _base._core._invalid("当前轮次不允许选课")
             _base._validate_enroll(
@@ -288,7 +310,14 @@ def _evaluate_student_course(
         "lottery": {
             "mode": "LOTTERY" if lottery_mode else "FCFS",
             "roundNo": getattr(active_round, "round_no", None) if active_round else None,
-            "allowEnroll": bool(getattr(active_round, "allow_enroll", True)) if active_round else True,
+            "allowEnroll": (
+                bool(getattr(active_round, "allow_enroll", True))
+                if active_round
+                else not (
+                    str(batch.status or "").upper() == _base._BATCH_OPEN
+                    and round_configured
+                )
+            ),
             "allowDrop": bool(getattr(active_round, "allow_drop", True)) if active_round else True,
         },
         "reselect": allow_reselect_closed,
@@ -322,6 +351,7 @@ def student_courses(user, batch_id=None):
             return []
 
         batch_ids = [int(batch.id) for batch in batches]
+        configured_round_batch_ids = _configured_round_batch_ids(db, batch_ids)
         course_rows = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.tenant_id == _base._core._tid(),
             AaSelectionCourse.batch_id.in_(batch_ids),
@@ -363,6 +393,7 @@ def student_courses(user, batch_id=None):
                     my_records=batch_records,
                     active_round=active_round,
                     evaluated_at=evaluated_at,
+                    round_configured=bid in configured_round_batch_ids,
                 )
                 allowed_actions = list(projection.get("allowedActions") or [])
                 if "VIEW" not in allowed_actions:
@@ -543,6 +574,7 @@ def student_preflight(user, body):
             AaSelectionRecord.is_deleted.is_(False),
         ).all()
         active_round = _base._active_round(db, batch.id)
+        round_configured = bool(_configured_round_batch_ids(db, [batch.id]))
         return _evaluate_student_course(
             db,
             student=student,
@@ -553,6 +585,7 @@ def student_preflight(user, body):
             my_records=my_records,
             active_round=active_round,
             evaluated_at=evaluated_at,
+            round_configured=round_configured,
         )
 
 
@@ -616,6 +649,21 @@ def _student_enroll_guarded(user, body):
             AaSelectionRecord.is_deleted.is_(False),
         ).all()
         active_round = _base._active_round(db, batch.id)
+        round_configured = bool(_configured_round_batch_ids(db, [batch.id]))
+        if (
+            batch.status == _base._BATCH_OPEN
+            and round_configured
+            and active_round is None
+        ):
+            exc = _base._core._invalid("当前没有开放选课轮次")
+            raise selection_trace.attach_selection_trace(
+                exc,
+                db=db,
+                student=student,
+                course=course,
+                evaluated_at=selection_effective_at,
+                rule_code="SELECTION_LOCKED",
+            )
         if active_round and not active_round.allow_enroll:
             exc = _base._core._invalid("当前轮次不允许选课")
             raise selection_trace.attach_selection_trace(

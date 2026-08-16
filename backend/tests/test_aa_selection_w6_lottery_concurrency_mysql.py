@@ -72,6 +72,14 @@ def _enroll(client, student_no: str, real_name: str, selection_course_id: int):
     )
 
 
+
+def _course_projection(payload, selection_course_id: int):
+    for group in payload["data"]["items"]:
+        for course in group.get("courses") or []:
+            if str(course.get("selectionCourseId")) == str(selection_course_id):
+                return course
+    raise AssertionError(f"projection missing selectionCourseId={selection_course_id}")
+
 def _run_draw(barrier: Barrier, round_id: int, outcomes: Queue) -> None:
     user = _activate_admin()
     try:
@@ -195,8 +203,31 @@ def test_w6_closed_lottery_waiting_draw_never_falls_back_to_fcfs(client, db_mode
         "statuses": ["PENDING_LOTTERY"],
     }, before
 
+    stu2 = _suite._stu_token("选乙", "SEL2402")
+    courses_resp = client.get(f"{BASE}/selection/student/courses", headers=stu2)
+    assert courses_resp.status_code == 200, courses_resp.text
+    blocked = _course_projection(courses_resp.json(), int(selection_course_id))
+    assert blocked["status"] == "BLOCKED"
+    assert blocked["allowedActions"] == ["VIEW"]
+    assert blocked["eligibility"] == "INELIGIBLE"
+    assert "当前没有开放选课轮次" in blocked["reason"]
+    assert blocked["lottery"]["allowEnroll"] is False
+
+    preflight = client.post(
+        f"{BASE}/selection/student/preflight",
+        headers=stu2,
+        json={"selectionCourseId": str(selection_course_id)},
+    )
+    assert preflight.status_code == 200, preflight.text
+    pf = preflight.json()["data"]
+    assert pf["allowed"] is False
+    assert pf["status"] == "BLOCKED"
+    assert pf["allowedActions"] == ["VIEW"]
+    assert pf["reason"] == blocked["reason"]
+
     late = _enroll(client, "SEL2402", "选乙", int(selection_course_id))
     assert late.status_code == 409, late.text
+    assert "当前没有开放选课轮次" in late.json()["message"]
 
     after = _lottery_state(round_id, int(selection_course_id))
     assert after == before, {"before": before, "after": after, "response": late.text}
