@@ -17,12 +17,26 @@
           <text>部分教学数据暂未更新</text><text>点击重试</text>
         </view>
 
-        <view class="ta__today card" @click="go('/pages/teacher/my-schedule/index')">
-          <view class="ta__section-head"><text>今日课表</text><text class="ta__link">完整课表 ›</text></view>
+        <view class="ta__today card">
+          <view class="ta__section-head">
+            <text>今日课表</text>
+            <text class="ta__link" @click="go('/pages/teacher/my-schedule/index')">完整课表 ›</text>
+          </view>
           <view v-if="todayCourses.length" class="ta__course-list">
-            <view v-for="item in todayCourses.slice(0, 3)" :key="item.itemId || item.courseName + item.slotNo" class="ta__course">
+            <view
+              v-for="item in todayCourses.slice(0, 3)"
+              :key="item.scheduleItemId || item.itemId || item.courseName + item.slotNo"
+              class="ta__course"
+              @click="openTodayCourse(item)"
+            >
               <text class="ta__course-slot">第{{ item.slotNo }}节</text>
-              <view class="flex-1"><text class="ta__course-name">{{ item.courseName }}</text><text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text></view>
+              <view class="flex-1">
+                <text class="ta__course-name">{{ item.courseName }}</text>
+                <text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text>
+              </view>
+              <text class="ta__course-action" :class="{ 'is-disabled': !item.attendanceExecutable }">
+                {{ item.attendanceExecutable ? '去点名 ›' : '待任务确认' }}
+              </text>
             </view>
           </view>
           <text v-else class="ta__empty">{{ todayEmptyText }}</text>
@@ -58,7 +72,7 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
-import { go } from '@/utils/nav'
+import { go, toast } from '@/utils/nav'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
 const ENTRIES = [
@@ -80,17 +94,6 @@ function listOf(data) {
 }
 function isExpectedForbidden(result) {
   return result.status === 'rejected' && normalizeError(result.reason).kind === 'forbidden'
-}
-function activeInWeek(item, week) {
-  const current = Number(week)
-  if (!Number.isFinite(current) || current < 1) return false
-  const start = Number(item.startWeek || 1)
-  const end = Number(item.endWeek || start)
-  if (current < start || current > end) return false
-  const parity = String(item.weekParity || 'ALL').toUpperCase()
-  if (parity === 'ODD') return current % 2 === 1
-  if (parity === 'EVEN') return current % 2 === 0
-  return true
 }
 function pendingRows(rows) {
   const pending = new Set(['PENDING', 'NOT_STARTED', 'INPUTTING', 'RETURNED', 'PENDING_CONFIRM', 'PROCESSING', 'ESCALATED'])
@@ -129,26 +132,30 @@ export default {
   data() {
     return {
       statusBarHeight: 20, state: 'loading', partialError: false,
-      scheduleItems: [], currentWeek: null, available: { schedule: true }, counts: {}, entries: ENTRIES,
+      scheduleItems: [], todayItems: [], currentWeek: null, calendarSource: '',
+      available: { schedule: true }, counts: {}, entries: ENTRIES,
       taskTargets: {}, taskDetails: {}
     }
   },
   computed: {
     todayCourses() {
-      const day = new Date().getDay() || 7
-      return this.scheduleItems
-        .filter((item) => Number(item.weekday) === day && activeInWeek(item, this.currentWeek))
-        .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+      return (this.todayItems || []).slice().sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
     },
     todaySummary() {
+      if (this.calendarSource === 'HOLIDAY') return '今日节假日'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今日调休停课'
+      if (this.calendarSource === 'OUT_OF_TERM') return '当前非教学期'
       if (this.currentWeek == null) return '周次待确认'
       if (Number(this.currentWeek) === 0) return '学期未开始'
       return this.todayCourses.length ? `${this.todayCourses.length} 门课程` : '今日无课'
     },
     todayEmptyText() {
-      if (this.currentWeek == null) return '学校校历缺少学期开始日期，暂不判断今日课程。'
+      if (this.calendarSource === 'HOLIDAY') return '今天是学校校历节假日，没有正式课堂点名任务。'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今天是校历调休停课日，正式课程已按调休安排迁移。'
+      if (this.calendarSource === 'OUT_OF_TERM') return '当前日期不在本学期教学范围内，可查看完整课表。'
+      if (this.currentWeek == null) return '学校校历缺少可用时间轴，暂不判断今日课程。'
       if (Number(this.currentWeek) === 0) return '当前学期尚未开始。'
-      return `第${this.currentWeek}周今天暂无课程，可查看完整课表安排。`
+      return `第${this.currentWeek}周今天暂无正式课程，可查看完整课表安排。`
     },
     visibleEntries() { return this.entries.filter((x) => x.always || this.available[x.source]) },
     taskCues() {
@@ -175,6 +182,14 @@ export default {
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/teacher/workbench/index') }) },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     countOf(key) { return this.counts[key] || '' },
+    openTodayCourse(item) {
+      if (item && item.attendanceRoute) return go(item.attendanceRoute)
+      if (item && item.attendanceBlockReason) {
+        toast(item.attendanceBlockReason)
+        return
+      }
+      return go('/pages/teacher/my-schedule/index')
+    },
     setResult(key, result, pendingOnly = false) {
       if (result.status !== 'fulfilled') return false
       this.available[key] = true
@@ -211,10 +226,14 @@ export default {
       }
       if (results[0].status === 'fulfilled') {
         this.scheduleItems = listOf(results[0].value)
+        this.todayItems = (results[0].value && results[0].value.todayItems) || []
+        this.calendarSource = String((results[0].value && results[0].value.calendarSource) || '')
         this.currentWeek = results[0].value && results[0].value.currentWeek != null
           ? Number(results[0].value.currentWeek) : null
       } else {
         this.scheduleItems = []
+        this.todayItems = []
+        this.calendarSource = ''
         this.currentWeek = null
       }
       this.available = { schedule: true }
@@ -230,7 +249,8 @@ export default {
       this.setResult('defer', results[7], true)
       this.setResult('warning', results[8], true)
       this.setResult('workload', results[9], true)
-      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r)) || this.currentWeek == null
+      const scheduleTimeUnknown = this.currentWeek == null && this.calendarSource !== 'OUT_OF_TERM'
+      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r)) || scheduleTimeUnknown
       this.state = 'ready'
     }
   }
@@ -253,11 +273,13 @@ export default {
 .ta__link { color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 400; }
 .ta__section-sub { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
 .ta__course-list { margin-top: var(--space-2); }
-.ta__course { display: flex; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
+.ta__course { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
 .ta__course:last-child { border-bottom: 0; }
 .ta__course-slot { width: 54px; color: var(--teacher-600); font-size: var(--font-size-sm); font-weight: 600; }
 .ta__course-name { display: block; font-weight: 600; }
 .ta__course-sub, .ta__empty { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.ta__course-action { flex-shrink: 0; color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 600; }
+.ta__course-action.is-disabled { color: var(--text-tertiary); }
 .ta__empty { padding: var(--space-4) 0 var(--space-2); text-align: center; }
 .ta__task-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin-top: var(--space-3); }
 .ta__task { padding: var(--space-3) var(--space-2); border-radius: var(--radius-md); background: var(--teacher-50); text-align: center; }
