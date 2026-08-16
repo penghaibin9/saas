@@ -1,10 +1,8 @@
 <template>
   <picker
-    mode="multiSelector"
-    :range="range"
-    :value="indexes"
+    mode="region"
+    :value="pickerValue"
     :disabled="disabled"
-    @columnchange="onColumnChange"
     @change="onConfirm"
   >
     <view class="mrp" :class="{ 'is-disabled': disabled, 'is-empty': !modelValue }">
@@ -18,22 +16,13 @@
 /**
  * MobileRegionPicker —— 省 / 市 / 区县三级联动选择（小程序端）。
  *
- * v-model 为区划文本（如「浙江省 杭州市 西湖区」），与 PC 各端保持同一取值口径：
- * 后端相关字段都是自由文本列，本组件只是把「手打」换成「选择」，不改数据库结构；
- * 历史自由文本会尽力反解析定位，解析不到也原样保留展示，不清空用户既有数据。
+ * v-model 保持区划文本（如「浙江省 杭州市 西湖区」），与 PC 各端取值口径一致。
+ * 小程序直接使用宿主原生 region picker，不再把完整全国区划数据打入主包；
+ * 这样既保留原生滚动/无障碍体验，也避免地区数据挤占微信 2 MiB 主包预算。
  *
- * 用 uni-app 原生 multiSelector 而非自绘浮层：原生选择器在各家小程序宿主里
- * 滚动手感、无障碍与键盘避让都是宿主保证的，自绘容易在真机上出问题。
+ * 历史自由文本仍原样展示。只有能可靠拆成省/市/区县三段时才回填给原生 picker，
+ * 无法反解析的旧值不会被清空，用户重新选择后再写入规范化文本。
  */
-import {
-  CHINA_PROVINCES,
-  citiesForProvince,
-  countiesForCity,
-  labelFromIndex,
-  rangeFromIndex,
-  resolveRegionIndex
-} from '@/utils/chinaRegions'
-
 export default {
   name: 'MobileRegionPicker',
   props: {
@@ -42,58 +31,33 @@ export default {
     disabled: { type: Boolean, default: false }
   },
   emits: ['update:modelValue', 'change'],
-  data() {
-    const indexes = resolveRegionIndex(this.modelValue)
-    return { indexes, range: rangeFromIndex(indexes) }
-  },
-  watch: {
-    modelValue(value) {
-      // 只在外部值与当前选中不一致时重算，避免用户滚动过程中被回填打断
-      if (value === labelFromIndex(this.indexes)) return
-      this.indexes = resolveRegionIndex(value)
-      this.range = rangeFromIndex(this.indexes)
+  computed: {
+    pickerValue() {
+      const parts = String(this.modelValue || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+      return parts.length >= 2 ? parts.slice(0, 3) : []
     }
   },
   methods: {
-    /** 滚动某一列时联动刷新右侧列，并把右侧下标归零 */
-    onColumnChange(e) {
-      const column = e.detail.column
-      const value = e.detail.value
-      const next = [...this.indexes]
-      next[column] = value
-      if (column === 0) {
-        next[1] = 0
-        next[2] = 0
-      } else if (column === 1) {
-        next[2] = 0
-      }
-      this.indexes = next
-      this.range = rangeFromIndex(next)
-    },
     onConfirm(e) {
-      const next = e.detail.value
-      this.indexes = next
-      this.range = rangeFromIndex(next)
-      const label = labelFromIndex(next)
+      const names = Array.isArray(e && e.detail && e.detail.value) ? e.detail.value : []
+      const codes = Array.isArray(e && e.detail && e.detail.code) ? e.detail.code : []
+      const normalizedNames = names.filter((name, index) => name && name !== names[index - 1])
+      const label = normalizedNames.join(' ')
+      if (!label) return
+
       this.$emit('update:modelValue', label)
-      this.$emit('change', { label, ...this.codesOf(next) })
-    },
-    /** 供需要分列存省/市的调用方取区划码与名称 */
-    codesOf(indexes) {
-      const [pi = 0, ci = 0, di = 0] = indexes || []
-      const province = CHINA_PROVINCES[pi]
-      const cities = province ? citiesForProvince(province.code) : []
-      const city = cities[ci]
-      const counties = city ? countiesForCity(city.code) : []
-      const county = counties[di]
-      return {
-        provinceCode: province ? province.code : '',
-        provinceName: province ? province.name : '',
-        cityCode: city ? city.code : '',
-        cityName: city ? city.name : '',
-        countyCode: county ? county.code : '',
-        countyName: county ? county.name : ''
-      }
+      this.$emit('change', {
+        label,
+        provinceCode: codes[0] || '',
+        provinceName: names[0] || '',
+        cityCode: codes[1] || '',
+        cityName: names[1] || '',
+        countyCode: codes[2] || '',
+        countyName: names[2] || ''
+      })
     }
   }
 }
