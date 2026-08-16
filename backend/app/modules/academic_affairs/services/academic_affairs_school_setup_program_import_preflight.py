@@ -88,15 +88,30 @@ def _sorted_rows(rows: Iterable[Mapping[str, object]]) -> list[dict]:
 def program_import_source_preflight(normalized_rows: Iterable[Mapping[str, object]]) -> dict:
     """Validate workbook-internal Program structure without database access."""
     rows = _sorted_rows(normalized_rows)
+    if not rows:
+        message = "培养方案导入文件没有任何数据行，禁止以空工作簿进入数据库预检"
+        error = _error(
+            None,
+            "PROGRAM_SOURCE_EMPTY",
+            message,
+            evidence={"dataRows": 0},
+            how_to_resolve="按 program-v2 六工作表模板至少填写一套 MAIN/COURSE/CREDIT_REQUIREMENT/GRADUATION 定义后重新预检",
+        )
+        return {
+            "totalRows": 0,
+            "programCount": 0,
+            "invalidRows": 1,
+            "blockerCount": 1,
+            "sourcePreflightSafe": False,
+            "errors": [error],
+        }
+
     errors: list[dict] = []
 
     by_program: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
         by_program[str(row["programKey"])].append(row)
 
-    # Duplicate definition keys are never resolved by source order. This covers
-    # duplicate MAIN, same Course twice, duplicate module target, practice item,
-    # graduation requirement and exact binding relationship.
     definition_counts = Counter(
         (str(row["logicalGroup"]), str(row["definitionKey"])) for row in rows
     )
@@ -131,8 +146,6 @@ def program_import_source_preflight(normalized_rows: Iterable[Mapping[str, objec
             ))
             continue
         if len(mains) > 1:
-            # Per-row duplicate errors already carry exact locations; keep one
-            # aggregate blocker because MAIN cardinality is independently fatal.
             errors.append(_error(
                 mains[0],
                 "PROGRAM_MAIN_NOT_UNIQUE",
@@ -177,9 +190,6 @@ def program_import_source_preflight(normalized_rows: Iterable[Mapping[str, objec
                 how_to_resolve="至少增加一条知识/能力/素质/证书类毕业要求",
             ))
 
-        # When the source carries an educationYears assertion, use it only to
-        # catch impossible term numbers early. The DB preflight must still compare
-        # this assertion with Major.education_years and use Major as authority.
         education_years = main_payload.get("educationYearsAssertion")
         if education_years is not None:
             max_term = int(education_years) * 2
@@ -198,8 +208,6 @@ def program_import_source_preflight(normalized_rows: Iterable[Mapping[str, objec
                         how_to_resolve="修正开课学期或源文件学制断言；数据库学制不会被导入修改",
                     ))
 
-        # Mirror the existing Program validator's creditStructure invariant using
-        # source facts only. Duplicate module targets remain blocked separately.
         if credit_requirements:
             target_rows = [
                 row for row in credit_requirements
