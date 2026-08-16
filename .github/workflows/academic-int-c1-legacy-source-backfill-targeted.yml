@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin tmp/academic-int-c1-backfill-staging --no-tags
-          test "$(git rev-parse FETCH_HEAD)" = "6f5f7ee47901a5c182165cdf418318b6121c7625"
+          test "$(git rev-parse FETCH_HEAD)" = "ee44dbf26635f439027d4e540a10dfa2ab7535b2"
 
       - name: Materialize exact three-file candidate
         run: |
