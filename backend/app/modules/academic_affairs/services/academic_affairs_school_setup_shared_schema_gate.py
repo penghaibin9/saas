@@ -1,25 +1,21 @@
 """INT evidence gate for the future shared Program schema migration.
 
-This module does not run Alembic or mutate ORM models. It converts the already
-frozen Program-series and formation inventories into explicit expand/backfill/
-tighten decisions so a migration cannot treat "DDL succeeded" as proof that
-legacy data was safe to rewrite.
+This module does not run Alembic or mutate ORM models. It requires three
+independent inventories before shared backfill is permitted:
+1. Program prev_version series proof;
+2. TeachingTask runtime formation integrity;
+3. explicit ProgramCourse formation provenance.
 
-Key distinction:
-- nullable expand can be prepared after both inventories are present;
-- Program.series_key historical backfill is allowed only for fully proven
-  prev_version root chains;
-- AaProgramCourse.formation_mode is NOT authorized by TeachingTask formation
-  evidence alone. The W3 inventory explicitly says REQUIRES_EXPLICIT_PROVENANCE;
-- NOT NULL/tighten is always a separate post-backfill gate and is never approved
-  by these pre-migration reports.
+TeachingTask evidence is deliberately not accepted as ProgramCourse plan truth.
+Nullable expand remains separate from historical backfill, while NOT NULL and
+uniqueness tightening always require a later post-backfill evidence gate.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
 
 SERIES_BACKFILL_POLICY = "PROVABLE_PREV_VERSION_ROOT_ONLY"
-FORMATION_PROVENANCE_REQUIRED = "REQUIRES_EXPLICIT_PROVENANCE"
+PROGRAM_COURSE_PROVENANCE_PROVEN = "EXPLICIT_PROVENANCE_PROVEN"
 
 
 def _mapping(value: object, *, field: str) -> Mapping[str, object]:
@@ -41,36 +37,68 @@ def _required_text(report: Mapping[str, object], field: str, *, owner: str) -> s
     return text
 
 
+def _non_negative_count(report: Mapping[str, object], field: str, *, owner: str) -> int:
+    try:
+        value = int(report.get(field) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{owner}.{field} must be a non-negative integer") from exc
+    if value < 0:
+        raise ValueError(f"{owner}.{field} must be a non-negative integer")
+    return value
+
+
 def evaluate_shared_program_schema_gate(
     *,
     program_series_inventory: Mapping[str, object],
-    formation_inventory: Mapping[str, object],
+    task_formation_inventory: Mapping[str, object],
+    program_course_formation_inventory: Mapping[str, object],
 ) -> dict:
-    """Return fail-closed migration phase permissions from inventory evidence."""
+    """Return fail-closed migration phase permissions from independent evidence."""
     series = _mapping(program_series_inventory, field="program_series_inventory")
-    formation = _mapping(formation_inventory, field="formation_inventory")
+    task_formation = _mapping(task_formation_inventory, field="task_formation_inventory")
+    program_course = _mapping(
+        program_course_formation_inventory,
+        field="program_course_formation_inventory",
+    )
 
     series_safe = _required_bool(
         series, "migrationPreflightSafe", owner="program_series_inventory"
     )
-    formation_task_safe = _required_bool(
-        formation, "migrationPreflightSafe", owner="formation_inventory"
+    task_safe = _required_bool(
+        task_formation, "migrationPreflightSafe", owner="task_formation_inventory"
+    )
+    program_course_safe = _required_bool(
+        program_course,
+        "migrationPreflightSafe",
+        owner="program_course_formation_inventory",
     )
     series_policy = _required_text(
         series, "seriesKeyBackfill", owner="program_series_inventory"
     )
-    program_course_backfill = _required_text(
-        formation, "programCourseFormationBackfill", owner="formation_inventory"
+    program_course_policy = _required_text(
+        program_course,
+        "programCourseFormationBackfill",
+        owner="program_course_formation_inventory",
     )
 
-    unresolved_programs = int(series.get("unresolvedProgramCount") or 0)
-    unresolved_tasks = int(formation.get("unresolvedTaskCount") or 0)
-    if unresolved_programs < 0 or unresolved_tasks < 0:
-        raise ValueError("inventory unresolved counts cannot be negative")
+    unresolved_programs = _non_negative_count(
+        series, "unresolvedProgramCount", owner="program_series_inventory"
+    )
+    unresolved_tasks = _non_negative_count(
+        task_formation, "unresolvedTaskCount", owner="task_formation_inventory"
+    )
+    unresolved_program_courses = _non_negative_count(
+        program_course,
+        "unresolvedProgramCourseCount",
+        owner="program_course_formation_inventory",
+    )
 
     series_blockers = dict(series.get("blockerCounts") or {})
-    formation_blockers = dict(formation.get("blockerCounts") or {})
-    relationship_blockers = dict(formation.get("relationshipBlockerCounts") or {})
+    task_blockers = dict(task_formation.get("blockerCounts") or {})
+    task_relationship_blockers = dict(
+        task_formation.get("relationshipBlockerCounts") or {}
+    )
+    program_course_blockers = dict(program_course.get("blockerCounts") or {})
 
     series_backfill_allowed = bool(
         series_safe
@@ -78,20 +106,17 @@ def evaluate_shared_program_schema_gate(
         and not series_blockers
         and series_policy == SERIES_BACKFILL_POLICY
     )
-
-    # TeachingTask formation can be entirely proven while ProgramCourse still has
-    # no explicit provenance edge to those tasks. Never convert task majority or
-    # class labels into ProgramCourse plan truth.
-    formation_task_evidence_clean = bool(
-        formation_task_safe
+    task_formation_evidence_clean = bool(
+        task_safe
         and unresolved_tasks == 0
-        and not formation_blockers
-        and not relationship_blockers
+        and not task_blockers
+        and not task_relationship_blockers
     )
-    formation_backfill_allowed = bool(
-        formation_task_evidence_clean
-        and program_course_backfill != FORMATION_PROVENANCE_REQUIRED
-        and program_course_backfill == "EXPLICIT_PROVENANCE_PROVEN"
+    program_course_backfill_allowed = bool(
+        program_course_safe
+        and unresolved_program_courses == 0
+        and not program_course_blockers
+        and program_course_policy == PROGRAM_COURSE_PROVENANCE_PROVEN
     )
 
     blockers: list[dict] = []
@@ -106,19 +131,34 @@ def evaluate_shared_program_schema_gate(
             },
             "howToResolve": "修复 Program prev_version 根链 blocker；vN-only 历史走 privileged baseline migration policy，不得伪造前代",
         })
-    if not formation_backfill_allowed:
+    if not task_formation_evidence_clean:
+        blockers.append({
+            "code": "TASK_FORMATION_EVIDENCE_NOT_CLEAN",
+            "evidence": {
+                "migrationPreflightSafe": task_safe,
+                "unresolvedTaskCount": unresolved_tasks,
+                "blockerCounts": task_blockers,
+                "relationshipBlockerCounts": task_relationship_blockers,
+            },
+            "howToResolve": "先修复当前 TeachingTask/TeachingClass/roster 关系 blocker；禁止把冲突运行态带入共享 formation 迁移",
+        })
+    if not program_course_backfill_allowed:
         blockers.append({
             "code": "PROGRAM_COURSE_FORMATION_BACKFILL_NOT_PROVEN",
             "evidence": {
-                "taskFormationInventorySafe": formation_task_evidence_clean,
-                "unresolvedTaskCount": unresolved_tasks,
-                "blockerCounts": formation_blockers,
-                "relationshipBlockerCounts": relationship_blockers,
-                "programCourseFormationBackfill": program_course_backfill,
+                "migrationPreflightSafe": program_course_safe,
+                "unresolvedProgramCourseCount": unresolved_program_courses,
+                "blockerCounts": program_course_blockers,
+                "programCourseFormationBackfill": program_course_policy,
             },
-            "howToResolve": "补充 ProgramCourse→历史编班来源的显式 provenance inventory；禁止用课程名称/性质、TeachingTask 多数票或 ADMIN_FIXED 默认值回填",
+            "howToResolve": "为每条历史 ProgramCourse 提供显式 formation provenance；禁止用课程名称/性质、TeachingTask 多数票或 ADMIN_FIXED 默认值回填",
         })
 
+    shared_backfill_allowed = bool(
+        series_backfill_allowed
+        and task_formation_evidence_clean
+        and program_course_backfill_allowed
+    )
     return {
         "inventoryEvidenceComplete": True,
         "nullableExpandAllowed": True,
@@ -137,8 +177,9 @@ def evaluate_shared_program_schema_gate(
             },
         ],
         "programSeriesBackfillAllowed": series_backfill_allowed,
-        "programCourseFormationBackfillAllowed": formation_backfill_allowed,
-        "sharedBackfillAllowed": series_backfill_allowed and formation_backfill_allowed,
+        "taskFormationEvidenceClean": task_formation_evidence_clean,
+        "programCourseFormationBackfillAllowed": program_course_backfill_allowed,
+        "sharedBackfillAllowed": shared_backfill_allowed,
         "notNullTightenAllowed": False,
         "uniqueSeriesConstraintTightenAllowed": False,
         "postBackfillEvidenceRequired": [
