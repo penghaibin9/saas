@@ -16,13 +16,23 @@ TENANT = 1000000000000000001
 
 
 def _mk_role_and_permission(db, code="systemAdmin.audit.view", role_type="CUSTOM"):
+    from sqlalchemy import select
     from app.models import Permission, Role, RolePermission
+
     role = Role(tenant_id=TENANT, role_code=f"TEST_{role_type}", role_name="测试角色",
                 role_type=role_type)
-    perm = Permission(permission_code=code, permission_name=code,
-                      module_code=code.split(".")[0], action=code.split(".")[-1])
-    db.add_all([role, perm])
+    db.add(role)
     db.flush()
+
+    # Permission Catalog is global authority and may already have reconciled this code.
+    # Reuse that canonical fact instead of manufacturing a duplicate unique permission row.
+    perm = db.scalars(select(Permission).where(Permission.permission_code == code)).first()
+    if perm is None:
+        perm = Permission(permission_code=code, permission_name=code,
+                          module_code=code.split(".")[0], action=code.split(".")[-1])
+        db.add(perm)
+        db.flush()
+
     link = RolePermission(tenant_id=TENANT, role_id=role.id, permission_id=perm.id,
                           status="ACTIVE")
     db.add(link)
