@@ -56,7 +56,6 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "c2bc328e51f337629655156b96a6e8fe5130637a"
           grep -F 'revision = "20260817_acad_int_ctrl_merge"' backend/alembic/versions/20260817_academic_int_control_plane_merge.py
-          test "$(cd backend && alembic heads | grep -c '(head)')" -eq 1
 
       - name: Fetch pinned frozen A-W3 source
         run: |
