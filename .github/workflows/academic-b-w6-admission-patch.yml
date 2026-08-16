@@ -155,15 +155,8 @@ jobs:
 
           w6_path = Path('.github/workflows/academic-b-w6-fcfs-peak-mysql.yml')
           w6 = w6_path.read_text(encoding='utf-8')
-          old_paths = dedent('''\
-              - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py
-              - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
-          ''')
-          new_paths = dedent('''\
-              - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
-              - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py
-              - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml
-          ''')
+          old_paths = "      - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py\n      - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml\n"
+          new_paths = "      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py\n      - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml\n"
           assert w6.count(old_paths) == 1, 'W6 peak workflow path anchor drifted'
           w6_path.write_text(w6.replace(old_paths, new_paths, 1), encoding='utf-8')
           PY
