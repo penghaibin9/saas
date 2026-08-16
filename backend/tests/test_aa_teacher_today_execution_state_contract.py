@@ -125,3 +125,218 @@ def test_execution_state_projection_is_strictly_read_only_and_batched():
     assert "AaTeachingClassRosterVersion.id.in_" in source
     assert "AaTeachingClassMember.roster_version_id.in_" in source
     assert "AaAttendanceSession.session_date.in_" in source
+
+
+def _work_ctx(tid):
+    from app.core.context import set_current_user, set_tenant
+
+    set_tenant({"tenantId": str(tid)})
+    set_current_user({
+        "userId": "u_CW2-WORK",
+        "tenantId": str(tid),
+        "realName": "C-W2工作台教师",
+        "currentRoleCode": "ACADEMIC_TEACHER",
+        "activeContextId": "ctx_CW2-WORK",
+        "loginName": "CW2-WORK",
+        "userType": "STAFF",
+    })
+
+
+def _db_session():
+    from app.db.session import get_sessionmaker
+
+    return get_sessionmaker()()
+
+
+def test_teacher_work_cues_read_existing_invigilation_and_grade_todo(db_mode):
+    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, UnifiedTodo, User
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
+
+    tid = 1000000000000007320
+    _work_ctx(tid)
+    db = _db_session()
+    user_row = User(
+        tenant_id=tid,
+        login_name="CW2-WORK",
+        real_name="C-W2工作台教师",
+        password_hash="test-only-password-hash",
+        user_type="TEACHER",
+        status="ACTIVE",
+    )
+    db.add(user_row)
+    db.flush()
+    batch = AaExamBatch(tenant_id=tid, batch_name="C-W2监考批次", exam_type="FINAL", status="PUBLISHED")
+    db.add(batch)
+    db.flush()
+    course = AaExamCourse(
+        tenant_id=tid,
+        batch_id=batch.id,
+        teaching_task_id=501,
+        course_name="数据库原理",
+        class_name="软件2401",
+        teacher_key="OTHER-TEACHER",
+        exam_date="2026-08-16",
+        start_time="09:00",
+        end_time="11:00",
+        status="CONFIRMED",
+    )
+    db.add(course)
+    db.flush()
+    room = AaExamRoom(
+        tenant_id=tid,
+        exam_course_id=course.id,
+        room_seq=1,
+        classroom_text="教学楼A301",
+        capacity=40,
+        planned_count=35,
+        status="ACTIVE",
+    )
+    db.add(room)
+    db.flush()
+    invigilator = AaExamInvigilator(
+        tenant_id=tid,
+        exam_room_id=room.id,
+        teacher_key="CW2-WORK",
+        teacher_name="C-W2工作台教师",
+        role="CHIEF",
+        confirm_status="CONFIRMED",
+    )
+    db.add(invigilator)
+    todo = UnifiedTodo(
+        tenant_id=tid,
+        source_module="academic-affairs",
+        source_biz_type="AA_GRADE_TASK",
+        source_biz_id=601,
+        todo_type="AA_GRADE_ENTRY",
+        assignee_id=user_row.id,
+        title="数据库原理成绩录入",
+        status="PENDING",
+    )
+    db.add(todo)
+    db.flush()
+    user_id = int(user_row.id)
+    invigilator_id = int(invigilator.id)
+    room_id = int(room.id)
+    course_id = int(course.id)
+    db.commit()
+    db.close()
+
+    db = _db_session()
+    result = work.teacher_work_cues(
+        db,
+        {"userId": f"db-{user_id}", "loginName": "CW2-WORK", "userType": "STAFF"},
+        exam_date="2026-08-16",
+    )
+    db.close()
+
+    assert result["invigilations"] == [{
+        "invigilatorId": str(invigilator_id),
+        "examRoomId": str(room_id),
+        "examCourseId": str(course_id),
+        "courseName": "数据库原理",
+        "className": "软件2401",
+        "examDate": "2026-08-16",
+        "startTime": "09:00",
+        "endTime": "11:00",
+        "classroom": "教学楼A301",
+        "role": "CHIEF",
+        "confirmStatus": "CONFIRMED",
+    }]
+    assert len(result["gradeTodos"]) == 1
+    assert result["gradeTodos"][0]["todoType"] == "AA_GRADE_ENTRY"
+    assert result["gradeTodos"][0]["gradeTaskId"] == "601"
+    assert result["gradeTodos"][0]["route"] == "/pages/teacher/academic-affairs/grade-entry?id=601"
+
+
+def test_teacher_work_cues_reject_unpublished_exam_and_done_grade_todo(db_mode):
+    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, UnifiedTodo, User
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
+
+    tid = 1000000000000007321
+    _work_ctx(tid)
+    db = _db_session()
+    user_row = User(
+        tenant_id=tid,
+        login_name="CW2-WORK",
+        real_name="C-W2工作台教师",
+        password_hash="test-only-password-hash",
+        user_type="TEACHER",
+        status="ACTIVE",
+    )
+    db.add(user_row)
+    db.flush()
+    batch = AaExamBatch(tenant_id=tid, batch_name="未发布监考批次", exam_type="FINAL", status="ARRANGED")
+    db.add(batch)
+    db.flush()
+    course = AaExamCourse(
+        tenant_id=tid,
+        batch_id=batch.id,
+        course_name="离散数学",
+        exam_date="2026-08-16",
+        start_time="14:00",
+        end_time="16:00",
+        status="CONFIRMED",
+    )
+    db.add(course)
+    db.flush()
+    room = AaExamRoom(
+        tenant_id=tid,
+        exam_course_id=course.id,
+        room_seq=1,
+        classroom_text="B201",
+        capacity=30,
+        planned_count=28,
+        status="ACTIVE",
+    )
+    db.add(room)
+    db.flush()
+    db.add(AaExamInvigilator(
+        tenant_id=tid,
+        exam_room_id=room.id,
+        teacher_key="CW2-WORK",
+        teacher_name="C-W2工作台教师",
+        role="ASSISTANT",
+        confirm_status="ASSIGNED",
+    ))
+    db.add(UnifiedTodo(
+        tenant_id=tid,
+        source_module="academic-affairs",
+        source_biz_type="AA_GRADE_TASK",
+        source_biz_id=602,
+        todo_type="AA_GRADE_ENTRY",
+        assignee_id=user_row.id,
+        title="已完成成绩录入",
+        status="DONE",
+    ))
+    db.flush()
+    user_id = int(user_row.id)
+    db.commit()
+    db.close()
+
+    db = _db_session()
+    result = work.teacher_work_cues(
+        db,
+        {"userId": f"db-{user_id}", "loginName": "CW2-WORK", "userType": "STAFF"},
+        exam_date="2026-08-16",
+    )
+    db.close()
+    assert result == {"invigilations": [], "gradeTodos": []}
+
+
+def test_teacher_work_cues_are_read_only_and_do_not_create_second_authority():
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
+
+    source = inspect.getsource(work)
+    for forbidden in (
+        "_push_grade_entry_todo",
+        "_todo_done_grade_entry",
+        "AaExamInvigilator(",
+        "UnifiedTodo(",
+        "db.add(",
+        "db.flush(",
+        "db.commit(",
+    ):
+        assert forbidden not in source
+    assert 'AaExamBatch.status == "PUBLISHED"' in source
+    assert 'UnifiedTodo.todo_type == _GRADE_TODO' in source
+    assert 'UnifiedTodo.status == "PENDING"' in source
