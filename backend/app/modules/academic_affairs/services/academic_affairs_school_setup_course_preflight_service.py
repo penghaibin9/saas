@@ -1,9 +1,15 @@
-"""A-W4 fixed-query Course Catalog dry-run bridge.
+"""A-W4 fixed-query Course Catalog preflight bridge.
 
 This is the bounded DB bridge between Academic File Exchange rows and the pure
 Course import classifier. It owns no file/job lifecycle and never commits.
 
-Query budget for one workbook (up to the existing 5000-row File Exchange cap):
+The public dry-run wrapper opens its own read session. Confirm writers must use
+``_course_catalog_dry_run_with_db(..., lock_rows=True)`` inside their *existing*
+transaction so the same parser/domain rules are re-evaluated after row locks,
+without a preflight/write TOCTOU window.
+
+Bridge-owned query budget for one workbook (up to the existing 5000-row File
+Exchange cap):
 - build the canonical affairs security context once using the same session;
 - one tenant-scoped query for all existing Course versions of incoming codes;
 - one tenant-scoped query for referenced owner colleges;
@@ -174,8 +180,25 @@ def _reject_duplicate_source_keys(
     return unique_rows
 
 
-def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict:
-    """Dry-run Course Catalog rows with a fixed query count and zero writes."""
+def _maybe_lock(stmt, lock_rows: bool):
+    return stmt.with_for_update() if lock_rows else stmt
+
+
+def _course_catalog_dry_run_with_db(
+    rows: list[Mapping[str, object]],
+    user: dict,
+    db,
+    *,
+    lock_rows: bool = False,
+) -> dict:
+    """Run the exact Course preflight inside a caller-owned DB transaction.
+
+    ``lock_rows=True`` is reserved for confirm: Course version rows and the
+    referenced College/User rows are locked in deterministic query order before
+    classification, so deactivation/version changes cannot race the write.
+    New course codes naturally have no existing Course row to lock; the DB
+    stable-key unique constraint remains the final concurrent-create arbiter.
+    """
     source_rows = [dict(row) for row in (rows or [])]
     normalized: list[dict] = []
     rejects: list[dict] = []
@@ -216,27 +239,31 @@ def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict
 
     from app.models import AaCourse, College, User
 
-    with session() as db:
-        security = build_affairs_context(user, db)
-        existing_rows = db.scalars(select(AaCourse).where(
-            AaCourse.tenant_id == _tid(),
-            AaCourse.course_code.in_(sorted(course_codes)),
-            AaCourse.is_deleted.is_(False),
-        ).order_by(AaCourse.course_code, AaCourse.version, AaCourse.id)).all()
-        college_rows = []
-        if owner_college_ids:
-            college_rows = db.scalars(select(College).where(
-                College.tenant_id == _tid(),
-                College.id.in_(sorted(owner_college_ids)),
-                College.is_deleted.is_(False),
-            )).all()
-        teacher_rows = []
-        if owner_teacher_ids:
-            teacher_rows = db.scalars(select(User).where(
-                User.tenant_id == _tid(),
-                User.id.in_(sorted(owner_teacher_ids)),
-                User.is_deleted.is_(False),
-            )).all()
+    security = build_affairs_context(user, db)
+    course_stmt = select(AaCourse).where(
+        AaCourse.tenant_id == _tid(),
+        AaCourse.course_code.in_(sorted(course_codes)),
+        AaCourse.is_deleted.is_(False),
+    ).order_by(AaCourse.course_code, AaCourse.version, AaCourse.id)
+    existing_rows = db.scalars(_maybe_lock(course_stmt, lock_rows)).all()
+
+    college_rows = []
+    if owner_college_ids:
+        college_stmt = select(College).where(
+            College.tenant_id == _tid(),
+            College.id.in_(sorted(owner_college_ids)),
+            College.is_deleted.is_(False),
+        ).order_by(College.id)
+        college_rows = db.scalars(_maybe_lock(college_stmt, lock_rows)).all()
+
+    teacher_rows = []
+    if owner_teacher_ids:
+        teacher_stmt = select(User).where(
+            User.tenant_id == _tid(),
+            User.id.in_(sorted(owner_teacher_ids)),
+            User.is_deleted.is_(False),
+        ).order_by(User.id)
+        teacher_rows = db.scalars(_maybe_lock(teacher_stmt, lock_rows)).all()
 
     existing_snapshots = [_existing_course_snapshot(course) for course in existing_rows]
     valid_college_ids = {
@@ -300,3 +327,9 @@ def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict
         allowed_college_ids=allowed_college_ids,
     )
     return _merge_result(len(source_rows), classified, rejects, errors)
+
+
+def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict:
+    """Read-only File Exchange dry-run using the same transactional preflight core."""
+    with session() as db:
+        return _course_catalog_dry_run_with_db(rows, user, db, lock_rows=False)
