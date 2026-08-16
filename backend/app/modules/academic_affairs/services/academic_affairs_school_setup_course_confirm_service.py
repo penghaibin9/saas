@@ -1,8 +1,8 @@
 """A-W4 Course Catalog atomic confirm writer.
 
-This service owns only the Course domain transaction.  FileObject/ImportJob
+This service owns only the Course domain transaction. FileObject/ImportJob
 lease/version state remains in the shared Data Exchange authority and is wired by
-INT later.  A confirm therefore receives rows re-read from the authoritative
+INT later. A confirm therefore receives rows re-read from the authoritative
 source file and applies them in exactly one Course transaction.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections import Counter
 from typing import Mapping
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
@@ -52,6 +52,30 @@ def _action_index(preview: Mapping[str, object]) -> dict[tuple[int, str], dict]:
             )
         result[key] = item
     return result
+
+
+def _db_error_code(exc: Exception) -> int | None:
+    args = getattr(getattr(exc, "orig", None), "args", ()) or ()
+    if not args:
+        return None
+    try:
+        return int(args[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_course_unique_conflict(exc: IntegrityError) -> bool:
+    text = str(getattr(exc, "orig", exc)).lower()
+    code = _db_error_code(exc)
+    return (
+        code == 1062
+        and "duplicate entry" in text
+        and ("uk_aa_course" in text or "t_aa_course" in text)
+    )
+
+
+def _is_mysql_lock_conflict(exc: OperationalError) -> bool:
+    return _db_error_code(exc) in {1205, 1213}
 
 
 def _predecessor_snapshot(course) -> dict:
@@ -207,8 +231,14 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
     source_rows = [dict(row) for row in (rows or [])]
     if not source_rows:
         raise AppException("VALIDATION_ERROR", "课程导入文件没有数据行，拒绝确认")
-
-    normalized = _normalized_rows(source_rows)
+    try:
+        normalized = _normalized_rows(source_rows)
+    except (TypeError, ValueError) as exc:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "课程导入源数据格式非法，拒绝确认",
+            details={"reason": str(exc)},
+        ) from exc
     business_keys = sorted(str(item["businessKey"]) for item in normalized)
 
     with session() as db:
@@ -272,7 +302,7 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
                 created.append((course, projection, item))
 
             db.flush()
-            for course, projection, item in created:
+            for course, projection, _item in created:
                 action = "CREATE" if int(projection["version"]) == 1 else "NEW_VERSION"
                 detail = (
                     f"IMPORT {projection['courseCode']}@v1"
@@ -284,7 +314,7 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
             if created:
                 created_ids = [int(course.id) for course, _projection, _item in created]
                 persisted = db.scalars(
-                    select(AaCourse).where(
+                    select(AaCourse).execution_options(populate_existing=True).where(
                         AaCourse.tenant_id == _tid(),
                         AaCourse.id.in_(created_ids),
                         AaCourse.is_deleted.is_(False),
@@ -318,12 +348,32 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
                 "createdCourseIds": [str(course.id) for course, _projection, _item in created],
                 "reconciliation": list(preview.get("items") or []),
             }
+        except ValueError as exc:
+            db.rollback()
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程导入确认前发现损坏或不可解释的课程数据，拒绝确认",
+                details={"reason": str(exc)},
+                http_status=409,
+            ) from exc
         except IntegrityError as exc:
             db.rollback()
+            if not _is_course_unique_conflict(exc):
+                raise
             raise AppException(
                 "DATA_CONFLICT",
                 "课程导入发生并发版本冲突，请重新预检后确认",
                 details={"businessKeys": business_keys},
+                http_status=409,
+            ) from exc
+        except OperationalError as exc:
+            db.rollback()
+            if not _is_mysql_lock_conflict(exc):
+                raise
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程导入遇到并发锁冲突，请重新预检后确认",
+                details={"businessKeys": business_keys, "databaseErrorCode": _db_error_code(exc)},
                 http_status=409,
             ) from exc
         except Exception:
