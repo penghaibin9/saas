@@ -13,6 +13,18 @@ def test_mobile_public_teacher_schedule_rewires_to_teacher_today_projection():
     assert "teacher_view" not in source
 
 
+def test_mobile_public_teacher_schedule_pure_reads_execution_state_after_formal_projection():
+    from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as public
+
+    source = inspect.getsource(public.teacher_schedule_my)
+    assert "academic_affairs_teacher_today_execution_state_service" in source
+    assert "enrich_today_execution_state" in source
+    assert 'result.get("todayItems") or []' in source
+    assert "db.add(" not in source
+    assert "db.flush(" not in source
+    assert "db.commit(" not in source
+
+
 def test_teacher_today_preserves_existing_mobile_schedule_metadata_contract():
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
 

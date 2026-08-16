@@ -185,7 +185,15 @@ def evaluation_submit_my(user, body) -> dict:
 
 
 def teacher_schedule_my(user) -> dict:
-    """教师移动课表只读当前 ScopeHead truth，并附带 Teacher Today 精确课次。"""
+    """教师移动课表消费正式课次，并纯读补齐 Teacher Today 执行状态。"""
+    from . import academic_affairs_teacher_today_execution_state_service as execution_state
     from . import academic_affairs_teacher_today_service as teacher_today
 
-    return teacher_today.teacher_today_projection(user)
+    result = teacher_today.teacher_today_projection(user)
+    with session() as db:
+        enriched = dict(result)
+        enriched["todayItems"] = execution_state.enrich_today_execution_state(
+            db,
+            result.get("todayItems") or [],
+        )
+        return enriched
