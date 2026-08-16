@@ -115,10 +115,10 @@ class Settings(BaseSettings):
     SCHEDULER_MODE: str = "web"
 
     # ── CORS（逗号分隔白名单；留空开发放开）──
-    # 5173=管理端 Vite；5188=小程序 H5；5200=学生 PC 门户（5199 保留兼容）
+    # 5173=管理端 Vite；5188=小程序 H5；5200=学生 PC 门户（5199 保留兼容）；5202=企业协同 Portal
     CORS_ORIGINS: str = (
-        "http://localhost:5173,http://localhost:5174,http://localhost:5188,http://localhost:5189,http://localhost:5190,http://localhost:5199,http://localhost:5200,"
-        "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5188,http://127.0.0.1:5189,http://127.0.0.1:5190,http://127.0.0.1:5199,http://127.0.0.1:5200"
+        "http://localhost:5173,http://localhost:5174,http://localhost:5188,http://localhost:5189,http://localhost:5190,http://localhost:5199,http://localhost:5200,http://localhost:5202,"
+        "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5188,http://127.0.0.1:5189,http://127.0.0.1:5190,http://127.0.0.1:5199,http://127.0.0.1:5200,http://127.0.0.1:5202"
     )
 
     # ── 任务 BACKEND-OVERNIGHT 追加（与旧键并存，旧键继续生效）──

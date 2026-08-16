@@ -693,6 +693,9 @@ export const NAV_PLAN = [
       I('企业导师', '/admin/internship/enterprises?panel=mentor', 'internship.enterprise.mentor.view', 'WORKBENCH'),
       I('企业资质审核', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.review', 'TASK_QUEUE'),
       I('企业黑名单', '/admin/internship/enterprises?panel=blacklist', 'internship.enterprise.blacklist.manage', 'TASK_QUEUE'),
+      // 招聘季详情为独立子路由 /recruitment-campaigns/:id，由 findActiveInPlan 的前缀规则
+      // 回落高亮到本叶子，不再补一条 ?panel=detail 的假 URL。
+      I('招聘季与企业邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view', 'WORKBENCH'),
       I('岗位列表', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH'),
       H('岗位详情', '/admin/internship/positions?panel=detail', 'internship.position.view', 'DETAIL'),
       I('岗位发布', '/admin/internship/positions?panel=publish', 'internship.position.publish', 'TASK_QUEUE'),
