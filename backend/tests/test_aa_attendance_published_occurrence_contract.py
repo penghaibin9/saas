@@ -240,3 +240,147 @@ def test_wrong_slot_and_even_week_are_rejected(db_mode):
             session_date="2026-03-09", slot_no=2,
         )
     db.close()
+
+
+
+def _calendar_event(db, term_id, *, event_type, start_date, end_date=None, swap_to_date=None, remark=""):
+    from app.models import AaCalendarEvent
+
+    row = AaCalendarEvent(
+        tenant_id=TID,
+        term_id=int(term_id),
+        event_type=event_type,
+        start_date=datetime.fromisoformat(start_date),
+        end_date=datetime.fromisoformat(end_date or start_date),
+        swap_to_date=datetime.fromisoformat(swap_to_date) if swap_to_date else None,
+        remark=remark or event_type,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_holiday_rejects_formal_occurrence(db_mode):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_attendance_occurrence_consumer as consumer
+
+    _ctx()
+    db = _session()
+    term, task_batch, task, _batch, _item = _seed(db, activate=True)
+    _calendar_event(
+        db,
+        term.id,
+        event_type="HOLIDAY",
+        start_date="2026-03-02",
+        remark="教学周一节假日",
+    )
+    db.commit()
+
+    with pytest.raises(AppException) as exc:
+        consumer.resolve_formal_occurrence(
+            db, task, task_batch, term,
+            session_date="2026-03-02", slot_no=2,
+        )
+    assert exc.value.http_status == 409
+    assert "节假日" in exc.value.message
+    db.close()
+
+
+def test_swap_source_rejects_and_target_uses_source_teaching_day(db_mode):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_attendance_occurrence_consumer as consumer
+
+    _ctx()
+    db = _session()
+    term, task_batch, task, _batch, _item = _seed(db, activate=True)
+    swap = _calendar_event(
+        db,
+        term.id,
+        event_type="SWAP",
+        start_date="2026-03-16",
+        swap_to_date="2026-03-21",
+        remark="周一课程调至周六",
+    )
+    db.commit()
+
+    with pytest.raises(AppException) as exc:
+        consumer.resolve_formal_occurrence(
+            db, task, task_batch, term,
+            session_date="2026-03-16", slot_no=2,
+        )
+    assert "停课" in exc.value.message
+
+    result = consumer.resolve_formal_occurrence(
+        db, task, task_batch, term,
+        session_date="2026-03-21", slot_no=2,
+    )
+    assert result["sessionDate"] == "2026-03-21"
+    assert result["logicalDate"] == "2026-03-16"
+    assert result["calendarSource"] == "SWAP"
+    assert result["calendarEventId"] == str(swap.id)
+    assert result["weekNo"] == 3
+    assert result["weekday"] == 1
+    db.close()
+
+
+def test_multiple_swap_targets_fail_closed(db_mode):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_attendance_occurrence_consumer as consumer
+
+    _ctx()
+    db = _session()
+    term, task_batch, task, _batch, _item = _seed(db, activate=True)
+    _calendar_event(
+        db, term.id,
+        event_type="SWAP",
+        start_date="2026-03-16",
+        swap_to_date="2026-03-21",
+        remark="映射一",
+    )
+    _calendar_event(
+        db, term.id,
+        event_type="SWAP",
+        start_date="2026-03-17",
+        swap_to_date="2026-03-21",
+        remark="映射二",
+    )
+    db.commit()
+
+    with pytest.raises(AppException) as exc:
+        consumer.resolve_formal_occurrence(
+            db, task, task_batch, term,
+            session_date="2026-03-21", slot_no=2,
+        )
+    assert "多个 SWAP" in exc.value.message
+    db.close()
+
+
+def test_holiday_and_swap_target_conflict_fails_closed(db_mode):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_attendance_occurrence_consumer as consumer
+
+    _ctx()
+    db = _session()
+    term, task_batch, task, _batch, _item = _seed(db, activate=True)
+    _calendar_event(
+        db, term.id,
+        event_type="SWAP",
+        start_date="2026-03-16",
+        swap_to_date="2026-03-21",
+        remark="周一补到周六",
+    )
+    _calendar_event(
+        db, term.id,
+        event_type="HOLIDAY",
+        start_date="2026-03-21",
+        remark="周六同时标记节假日",
+    )
+    db.commit()
+
+    with pytest.raises(AppException) as exc:
+        consumer.resolve_formal_occurrence(
+            db, task, task_batch, term,
+            session_date="2026-03-21", slot_no=2,
+        )
+    assert "冲突" in exc.value.message
+    db.close()

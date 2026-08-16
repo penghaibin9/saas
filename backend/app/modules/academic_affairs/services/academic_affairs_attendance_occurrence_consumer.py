@@ -28,6 +28,60 @@ def _parse_date(value: str) -> date:
         raise AppException("VALIDATION_ERROR", "考勤日期格式必须为 YYYY-MM-DD") from exc
 
 
+def _calendar_logical_date(db, term, requested: date, *, lock: bool) -> tuple[date, str, int | None]:
+    from app.models import AaCalendarEvent
+
+    term_start = _date_value(getattr(term, "start_date", None))
+    term_end = _date_value(getattr(term, "end_date", None))
+    if not term_start or not term_end:
+        _conflict("当前学期缺少起止日期，不能解析校历课次")
+    if requested < term_start or requested > term_end:
+        _conflict("考勤日期不在当前学期范围内")
+
+    query = db.query(AaCalendarEvent).filter(
+        AaCalendarEvent.tenant_id == _tid(),
+        AaCalendarEvent.term_id == int(term.id),
+        AaCalendarEvent.event_type.in_(("HOLIDAY", "SWAP")),
+        AaCalendarEvent.is_deleted.is_(False),
+    )
+    if lock:
+        query = query.with_for_update(read=True)
+    rows = query.all()
+
+    holidays = []
+    swap_sources = []
+    swap_targets = []
+    for row in rows:
+        event_type = str(getattr(row, "event_type", "") or "").upper()
+        start = _date_value(getattr(row, "start_date", None))
+        end = _date_value(getattr(row, "end_date", None)) or start
+        target = _date_value(getattr(row, "swap_to_date", None))
+        if event_type == "HOLIDAY" and start and end and start <= requested <= end:
+            holidays.append(row)
+        elif event_type == "SWAP":
+            if start and end and start <= requested <= end:
+                swap_sources.append(row)
+            if target and target == requested:
+                swap_targets.append(row)
+
+    if swap_sources and swap_targets:
+        _conflict("同一日期同时是 SWAP 原停课日和补课日，校历数据冲突")
+    if len(swap_targets) > 1:
+        _conflict("同一补课日存在多个 SWAP 映射，无法确定正式课次")
+    if holidays and swap_targets:
+        _conflict("补课日同时被标记为节假日，校历事实冲突")
+    if swap_sources:
+        _conflict("该日期为校历调休停课日，不能创建普通课堂考勤")
+    if holidays:
+        _conflict("该日期为节假日，不能创建普通课堂考勤")
+    if swap_targets:
+        source = _date_value(getattr(swap_targets[0], "start_date", None))
+        if not source:
+            _conflict("SWAP 缺少原停课日期，无法解析正式课次")
+        return source, "SWAP", int(swap_targets[0].id)
+    return requested, "NORMAL", None
+
+
 def _week_and_weekday(term, requested: date) -> tuple[int, int]:
     start = _date_value(getattr(term, "start_date", None))
     end = _date_value(getattr(term, "end_date", None))
@@ -98,7 +152,13 @@ def resolve_formal_occurrence(
         raise AppException("VALIDATION_ERROR", "普通课堂必须选择明确节次")
 
     requested = _parse_date(session_date)
-    week_no, weekday = _week_and_weekday(term, requested)
+    logical_date, calendar_source, calendar_event_id = _calendar_logical_date(
+        db,
+        term,
+        requested,
+        lock=lock,
+    )
+    week_no, weekday = _week_and_weekday(term, logical_date)
     college_id = int(getattr(task_batch, "college_id", 0) or 0) or None
     heads = _active_heads(
         db,
@@ -203,6 +263,9 @@ def resolve_formal_occurrence(
         "scheduleItemId": str(item.id),
         "teachingTaskId": str(task.id),
         "sessionDate": requested.isoformat(),
+        "logicalDate": logical_date.isoformat(),
+        "calendarSource": calendar_source,
+        "calendarEventId": str(calendar_event_id) if calendar_event_id else None,
         "weekNo": week_no,
         "weekday": weekday,
         "slotNo": requested_slot,
