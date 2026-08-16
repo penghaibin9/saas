@@ -150,6 +150,27 @@ def test_definition_entrypoint_rejects_overfetch_before_semantic_reconciliation(
         )
 
 
+def test_definition_entrypoint_preserves_program_reread_not_found_business_evidence():
+    result = _pipeline().reconcile_program_confirm_reread(
+        _definition_preflight(),
+        normalized_rows=_definition_source(),
+        authoritative_program_snapshots=[],
+        authoritative_definition_rows=[],
+        course_snapshots=[{"courseCode": "CS101", "version": 1, "credit": Decimal("3")}],
+    )
+
+    assert result["phase"] == "DEFINITION"
+    assert result["reconciliationSafe"] is False
+    assert result["items"] == []
+    assert result["errors"] == [{
+        "programKey": "SERIES:SER-A:v1",
+        "businessCode": "PROGRAM_REREAD_NOT_FOUND",
+        "message": "确认后按稳定键回读不到培养方案，禁止把写入计为成功",
+        "evidence": {"programKey": "SERIES:SER-A:v1"},
+        "howToResolve": "回滚/标记确认失败并检查事务提交与 tenant scope；不得仅依据 INSERT 行数出成功回执",
+    }]
+
+
 def _binding_preflight():
     return {
         "stage": "READY",
