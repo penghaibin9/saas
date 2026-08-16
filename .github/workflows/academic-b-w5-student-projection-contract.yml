@@ -1,6 +1,15 @@
 name: Academic B W5 Student Projection Contract
 
 on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py
+      - backend/tests/test_aa_selection_student_projection_contract.py
+      - .github/workflows/academic-b-w5-student-projection-contract.yml
   workflow_dispatch:
 
 concurrency:
