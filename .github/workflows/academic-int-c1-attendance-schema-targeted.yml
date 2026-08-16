@@ -57,7 +57,16 @@ jobs:
       - name: Assert C-C1 migration starts only after A-C4 green head
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "4ef175502a756e322b2957f2048fa87cc71a71c3"
+          git merge-base --is-ancestor 4ef175502a756e322b2957f2048fa87cc71a71c3 HEAD
+          python - <<'PY'
+          import subprocess
+          files = subprocess.check_output([
+              'git', 'diff', '--name-only',
+              '4ef175502a756e322b2957f2048fa87cc71a71c3..HEAD',
+          ], text=True).splitlines()
+          print('C-C1 pre-code delta=', files)
+          assert files == ['.github/workflows/academic-int-c1-attendance-schema-targeted.yml']
+          PY
           grep -F 'revision = "20260816_acad_int_ac4"' backend/alembic/versions/20260816_academic_int_ac4_schema.py
           matches="$(grep -R --include='*.py' -F 'down_revision = "20260816_acad_int_ac4"' backend/alembic/versions || true)"
           test -z "$matches"
@@ -68,7 +77,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Materialize C-C1 expand schema inventory and contracts
+      - name: Materialize C-C1 expand schema
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -80,27 +89,318 @@ jobs:
           assert text.count(old_import) == 1
           text = text.replace(old_import, new_import, 1)
 
-          attendance_anchor = '''    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")\n    course_name: Mapped[str | None] = mapped_column(String(200))\n    term_code: Mapped[str | None] = mapped_column(String(50))'''
-          attendance_replacement = '''    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")\n    teaching_task_id: Mapped[int | None] = mapped_column(\n        BigInteger,\n        comment="INT C-C1: formal TeachingTask authority; ADMIN_SPECIAL / unresolved legacy may be NULL",\n    )\n    occurrence_identity: Mapped[str | None] = mapped_column(\n        String(255),\n        comment="INT C-C1: canonical formal occurrence identity; ADMIN_SPECIAL / unresolved legacy NULL",\n    )\n    source_type: Mapped[str | None] = mapped_column(\n        String(30),\n        comment="INT C-C1: FORMAL_TEACHING / ADMIN_SPECIAL; unresolved legacy remains NULL during expand",\n    )\n    source_reason: Mapped[str | None] = mapped_column(String(500), comment="ADMIN_SPECIAL reason; legacy unresolved NULL")\n    source_evidence: Mapped[str | None] = mapped_column(Text, comment="ADMIN_SPECIAL or formal occurrence auditable evidence snapshot")\n    course_name: Mapped[str | None] = mapped_column(String(200))\n    term_code: Mapped[str | None] = mapped_column(String(50))'''
-          assert text.count(attendance_anchor) == 1
-          text = text.replace(attendance_anchor, attendance_replacement, 1)
+          anchor = '''    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    term_code: Mapped[str | None] = mapped_column(String(50))'''
+          replacement = '''    class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")
+    teaching_task_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        comment="INT C-C1: formal TeachingTask authority; ADMIN_SPECIAL / unresolved legacy may be NULL",
+    )
+    occurrence_identity: Mapped[str | None] = mapped_column(
+        String(255),
+        comment="INT C-C1: canonical formal occurrence identity; ADMIN_SPECIAL / unresolved legacy NULL",
+    )
+    source_type: Mapped[str | None] = mapped_column(
+        String(30),
+        comment="INT C-C1: FORMAL_TEACHING / ADMIN_SPECIAL; unresolved legacy remains NULL during expand",
+    )
+    source_reason: Mapped[str | None] = mapped_column(String(500), comment="ADMIN_SPECIAL reason; legacy unresolved NULL")
+    source_evidence: Mapped[str | None] = mapped_column(Text, comment="ADMIN_SPECIAL or formal occurrence auditable evidence snapshot")
+    course_name: Mapped[str | None] = mapped_column(String(200))
+    term_code: Mapped[str | None] = mapped_column(String(50))'''
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, replacement, 1)
 
-          attendance_tail = '''    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,\n                                        comment="DRAFT/SUBMITTED")\n\n\n# ═══════════ 学院专业班级 Tier1 R2'''
-          attendance_tail_replacement = '''    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,\n                                        comment="DRAFT/SUBMITTED")\n\n    __table_args__ = (\n        UniqueConstraint("tenant_id", "occurrence_identity", name="uk_aa_attendance_occurrence"),\n        CheckConstraint(\n            "source_type IS NULL OR source_type IN ('FORMAL_TEACHING','ADMIN_SPECIAL')",\n            name="ck_aa_attendance_source_type",\n        ),\n        Index("ix_aa_attendance_task", "tenant_id", "teaching_task_id"),\n        Index("ix_aa_attendance_source", "tenant_id", "source_type"),\n    )\n\n\n# ═══════════ 学院专业班级 Tier1 R2'''
-          assert text.count(attendance_tail) == 1
-          text = text.replace(attendance_tail, attendance_tail_replacement, 1)
+          tail = '''    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/SUBMITTED")
+
+
+# ═══════════ 学院专业班级 Tier1 R2'''
+          tail_replacement = '''    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
+                                        comment="DRAFT/SUBMITTED")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "occurrence_identity", name="uk_aa_attendance_occurrence"),
+        CheckConstraint(
+            "source_type IS NULL OR source_type IN ('FORMAL_TEACHING','ADMIN_SPECIAL')",
+            name="ck_aa_attendance_source_type",
+        ),
+        Index("ix_aa_attendance_task", "tenant_id", "teaching_task_id"),
+        Index("ix_aa_attendance_source", "tenant_id", "source_type"),
+    )
+
+
+# ═══════════ 学院专业班级 Tier1 R2'''
+          assert text.count(tail) == 1
+          text = text.replace(tail, tail_replacement, 1)
           model.write_text(text, encoding='utf-8')
+          PY
 
-          migration = Path('backend/alembic/versions/20260816_academic_int_c1_attendance.py')
-          migration.write_text('''"""Academic INT C-C1 attendance source and occurrence expand schema.\n\nRevision ID: 20260816_acad_int_c1_att\nRevises: 20260816_acad_int_ac4\n\nExpand only: all new columns remain nullable so unresolved legacy facts are never guessed.\nThe occurrence unique constraint intentionally spans soft-deleted history as well, preventing\ndelete-and-recreate from manufacturing a second formal attendance fact.\n"""\nfrom __future__ import annotations\n\nimport sqlalchemy as sa\nfrom alembic import op\n\nrevision = "20260816_acad_int_c1_att"\ndown_revision = "20260816_acad_int_ac4"\nbranch_labels = None\ndepends_on = None\n\nTABLE = "t_aa_attendance_session"\n\n\ndef _require_mysql() -> None:\n    if op.get_bind().dialect.name != "mysql":\n        raise RuntimeError("20260816_acad_int_c1_att requires MySQL")\n\n\ndef upgrade() -> None:\n    _require_mysql()\n    op.add_column(TABLE, sa.Column("teaching_task_id", sa.BigInteger(), nullable=True, comment="formal TeachingTask; special/legacy may be NULL"))\n    op.add_column(TABLE, sa.Column("occurrence_identity", sa.String(length=255), nullable=True, comment="canonical formal occurrence identity"))\n    op.add_column(TABLE, sa.Column("source_type", sa.String(length=30), nullable=True, comment="FORMAL_TEACHING/ADMIN_SPECIAL; legacy unresolved NULL"))\n    op.add_column(TABLE, sa.Column("source_reason", sa.String(length=500), nullable=True, comment="ADMIN_SPECIAL reason"))\n    op.add_column(TABLE, sa.Column("source_evidence", sa.Text(), nullable=True, comment="auditable source evidence snapshot"))\n    op.create_unique_constraint("uk_aa_attendance_occurrence", TABLE, ["tenant_id", "occurrence_identity"])
-    op.create_check_constraint("ck_aa_attendance_source_type", TABLE, "source_type IS NULL OR source_type IN ('FORMAL_TEACHING','ADMIN_SPECIAL')")\n    op.create_index("ix_aa_attendance_task", TABLE, ["tenant_id", "teaching_task_id"], unique=False)\n    op.create_index("ix_aa_attendance_source", TABLE, ["tenant_id", "source_type"], unique=False)\n\n\ndef downgrade() -> None:\n    _require_mysql()\n    op.drop_index("ix_aa_attendance_source", table_name=TABLE)\n    op.drop_index("ix_aa_attendance_task", table_name=TABLE)\n    op.drop_constraint("ck_aa_attendance_source_type", TABLE, type_="check")\n    op.drop_constraint("uk_aa_attendance_occurrence", TABLE, type_="unique")\n    op.drop_column(TABLE, "source_evidence")\n    op.drop_column(TABLE, "source_reason")\n    op.drop_column(TABLE, "source_type")\n    op.drop_column(TABLE, "occurrence_identity")\n    op.drop_column(TABLE, "teaching_task_id")\n''', encoding='utf-8')
+          cat > backend/alembic/versions/20260816_academic_int_c1_attendance.py <<'PY'
+          """Academic INT C-C1 attendance source and occurrence expand schema.
 
-          inventory = Path('backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py')
-          inventory.write_text('''"""Read-only INT inventory for legacy Attendance source governance.\n\nThis module never backfills or commits. It only reports which legacy rows have a same-tenant\nAA_ATTENDANCE/CREATE audit proving the historical ADMIN_MANUAL source and which remain\nunresolved. A later contract migration may act only after this inventory is reconciled.\n"""\nfrom __future__ import annotations\n\nfrom sqlalchemy import func\n\n\ndef inventory_legacy_attendance_sources(db, tenant_id: int, *, sample_limit: int = 50) -> dict:\n    from app.models import AaAttendanceSession, AffairsAuditTrail\n\n    tid = int(tenant_id)\n    limit = max(1, min(int(sample_limit or 50), 200))\n    legacy = [\n        AaAttendanceSession.tenant_id == tid,\n        AaAttendanceSession.source_type.is_(None),\n    ]\n    manual_audit = [\n        AffairsAuditTrail.tenant_id == tid,\n        AffairsAuditTrail.biz_type == "AA_ATTENDANCE",\n        AffairsAuditTrail.action == "CREATE",\n        AffairsAuditTrail.biz_id.isnot(None),\n        AffairsAuditTrail.detail.contains("source=ADMIN_MANUAL"),\n    ]\n\n    manual_ids = db.query(AffairsAuditTrail.biz_id).filter(*manual_audit).distinct().subquery()\n    total = int(db.query(func.count(AaAttendanceSession.id)).filter(*legacy).scalar() or 0)\n    active = int(db.query(func.count(AaAttendanceSession.id)).filter(*legacy, AaAttendanceSession.is_deleted.is_(False)).scalar() or 0)\n    matched = int(db.query(func.count(AaAttendanceSession.id)).filter(\n        *legacy, AaAttendanceSession.id.in_(manual_ids),\n    ).scalar() or 0)\n\n    term_totals = dict(db.query(\n        AaAttendanceSession.term_code, func.count(AaAttendanceSession.id),\n    ).filter(*legacy).group_by(AaAttendanceSession.term_code).all())\n    term_matched = dict(db.query(\n        AaAttendanceSession.term_code, func.count(AaAttendanceSession.id),\n    ).filter(*legacy, AaAttendanceSession.id.in_(manual_ids)).group_by(AaAttendanceSession.term_code).all())\n    terms = []\n    for term_code in sorted(term_totals, key=lambda value: str(value or "")):\n        count = int(term_totals[term_code] or 0)\n        proven = int(term_matched.get(term_code, 0) or 0)\n        terms.append({\n            "termCode": term_code,\n            "legacyRows": count,\n            "manualAuditMatchedRows": proven,\n            "unresolvedRows": count - proven,\n        })\n\n    unresolved_ids = [int(row[0]) for row in db.query(AaAttendanceSession.id).filter(\n        *legacy, ~AaAttendanceSession.id.in_(manual_ids),\n    ).order_by(AaAttendanceSession.id.asc()).limit(limit).all()]\n\n    orphan_audit_ids = [int(row[0]) for row in db.query(AffairsAuditTrail.biz_id).filter(\n        *manual_audit,\n        ~AffairsAuditTrail.biz_id.in_(\n            db.query(AaAttendanceSession.id).filter(AaAttendanceSession.tenant_id == tid)\n        ),\n    ).distinct().order_by(AffairsAuditTrail.biz_id.asc()).limit(limit).all()]\n\n    return {\n        "tenantId": str(tid),\n        "legacyRows": total,\n        "activeLegacyRows": active,\n        "deletedLegacyRows": total - active,\n        "manualAuditMatchedRows": matched,\n        "unresolvedRows": total - matched,\n        "orphanManualAuditRows": len(orphan_audit_ids),\n        "unresolvedSampleSessionIds": unresolved_ids,\n        "orphanManualAuditSampleBizIds": orphan_audit_ids,\n        "terms": terms,\n        "mutationPerformed": False,\n    }\n''', encoding='utf-8')
+          Revision ID: 20260816_acad_int_c1_att
+          Revises: 20260816_acad_int_ac4
 
-          test = Path('backend/tests/test_academic_int_c1_attendance_schema_mysql.py')
-          test.write_text('''"""INT C-C1 Attendance expand schema, uniqueness, source vocabulary and legacy inventory."""\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\nimport pytest\nfrom sqlalchemy import inspect\nfrom sqlalchemy.exc import IntegrityError, OperationalError\n\nfrom app.db.session import get_sessionmaker\nfrom app.models import AaAttendanceSession, AffairsAuditTrail\nfrom app.modules.academic_affairs.services.academic_affairs_attendance_migration_inventory import (\n    inventory_legacy_attendance_sources,\n)\n\n\ndef _mysql_code(exc: Exception) -> int | None:\n    original = getattr(exc, "orig", None)\n    args = getattr(original, "args", ())\n    return int(args[0]) if args and isinstance(args[0], int) else None\n\n\ndef _attendance(*, tenant_id: int, date: str, slot: int, source_type=None, occurrence=None, deleted=False):\n    return AaAttendanceSession(\n        tenant_id=tenant_id,\n        class_id=7001,\n        teaching_task_id=8001 if source_type == "FORMAL_TEACHING" else None,\n        occurrence_identity=occurrence,\n        source_type=source_type,\n        source_reason="管理员补录证据齐全" if source_type == "ADMIN_SPECIAL" else None,\n        source_evidence="ticket:INT-C1" if source_type == "ADMIN_SPECIAL" else None,\n        course_name="INT C-C1",
-        term_code="2026-1",\n        teacher_key="INT-T1",\n        session_date=date,\n        slot_no=slot,\n        roster_json="[]",\n        total_count=0,\n        present_count=0,\n        absent_count=0,\n        status="DRAFT",\n        is_deleted=deleted,\n    )\n\n\ndef test_int_c1_schema_contract_is_expand_only_and_matches_frozen_handoff():\n    columns = AaAttendanceSession.__table__.c\n    for name in ("teaching_task_id", "occurrence_identity", "source_type", "source_reason", "source_evidence"):\n        assert columns[name].nullable is True\n    assert columns["occurrence_identity"].type.length == 255\n    assert columns["source_type"].type.length == 30\n\n    constraints = {c.name: c for c in AaAttendanceSession.__table__.constraints if c.name}\n    assert tuple(constraints["uk_aa_attendance_occurrence"].columns.keys()) == ("tenant_id", "occurrence_identity")\n    check = str(constraints["ck_aa_attendance_source_type"].sqltext)\n    assert "FORMAL_TEACHING" in check and "ADMIN_SPECIAL" in check and "IS NULL" in check\n\n    source = Path("alembic/versions/20260816_academic_int_c1_attendance.py").read_text(encoding="utf-8")\n    upper = source.upper()\n    assert 'down_revision = "20260816_acad_int_ac4"' in source\n    assert "UPDATE T_AA_ATTENDANCE_SESSION" not in upper\n    assert "DELETE FROM T_AA_ATTENDANCE_SESSION" not in upper\n    assert "NULLABLE=FALSE" not in upper\n\n\ndef test_int_c1_mysql_unique_and_source_vocabulary_are_real(db_mode):\n    db = get_sessionmaker()()\n    try:\n        inspector = inspect(db.bind)\n        columns = {c["name"]: c for c in inspector.get_columns("t_aa_attendance_session")}\n        for name in ("teaching_task_id", "occurrence_identity", "source_type", "source_reason", "source_evidence"):\n            assert columns[name]["nullable"] is True\n        uniques = {u["name"]: tuple(u["column_names"]) for u in inspector.get_unique_constraints("t_aa_attendance_session")}\n        assert uniques["uk_aa_attendance_occurrence"] == ("tenant_id", "occurrence_identity")\n        checks = {c["name"]: c["sqltext"] for c in inspector.get_check_constraints("t_aa_attendance_session")}\n        assert "ck_aa_attendance_source_type" in checks\n\n        tenant = 1000000000000008911\n        identity = "V1:TASK:8001:ITEM:9001:DATE:2026-03-02:SLOT:2"\n        db.add(_attendance(tenant_id=tenant, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity))\n        db.commit()\n\n        db.add(_attendance(tenant_id=tenant, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity))\n        with pytest.raises(IntegrityError) as duplicate:\n            db.commit()\n        assert _mysql_code(duplicate.value) == 1062\n        db.rollback()\n\n        # Cross-tenant same identity is independent; multiple NULL identities preserve legacy/special rows.\n        db.add_all([\n            _attendance(tenant_id=tenant + 1, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity),\n            _attendance(tenant_id=tenant, date="2026-03-03", slot=3, source_type="ADMIN_SPECIAL", occurrence=None),\n            _attendance(tenant_id=tenant, date="2026-03-04", slot=4, source_type=None, occurrence=None),\n        ])\n        db.commit()\n\n        db.add(_attendance(tenant_id=tenant, date="2026-03-05", slot=5, source_type="ADMIN_MANUAL", occurrence=None))\n        with pytest.raises(OperationalError) as invalid_source:\n            db.commit()\n        assert _mysql_code(invalid_source.value) == 3819\n        db.rollback()\n    finally:\n        db.close()\n\n\ndef test_int_c1_legacy_inventory_is_same_tenant_read_only_and_repeatable(db_mode):\n    db = get_sessionmaker()()\n    try:\n        tenant = 1000000000000008921\n        matched = _attendance(tenant_id=tenant, date="2026-04-01", slot=1, source_type=None, occurrence=None)\n        unresolved = _attendance(tenant_id=tenant, date="2026-04-02", slot=2, source_type=None, occurrence=None)\n        deleted = _attendance(tenant_id=tenant, date="2026-04-03", slot=3, source_type=None, occurrence=None, deleted=True)\n        modern = _attendance(tenant_id=tenant, date="2026-04-04", slot=4, source_type="FORMAL_TEACHING", occurrence="V1:MODERN:8921")\n        db.add_all([matched, unresolved, deleted, modern])\n        db.flush()\n        db.add_all([\n            AffairsAuditTrail(tenant_id=tenant, biz_type="AA_ATTENDANCE", biz_id=matched.id, action="CREATE", operator="int", detail="task=-;source=ADMIN_MANUAL;course=x"),\n            AffairsAuditTrail(tenant_id=tenant + 1, biz_type="AA_ATTENDANCE", biz_id=unresolved.id, action="CREATE", operator="neighbor", detail="source=ADMIN_MANUAL"),\n            AffairsAuditTrail(tenant_id=tenant, biz_type="AA_ATTENDANCE", biz_id=999999991, action="CREATE", operator="orphan", detail="source=ADMIN_MANUAL"),\n        ])\n        db.commit()\n\n        before = db.query(AaAttendanceSession).filter(AaAttendanceSession.tenant_id == tenant).count()\n        first = inventory_legacy_attendance_sources(db, tenant, sample_limit=10)\n        second = inventory_legacy_attendance_sources(db, tenant, sample_limit=10)\n        after = db.query(AaAttendanceSession).filter(AaAttendanceSession.tenant_id == tenant).count()\n\n        assert first == second\n        assert before == after == 4\n        assert first["legacyRows"] == 3\n        assert first["activeLegacyRows"] == 2\n        assert first["deletedLegacyRows"] == 1\n        assert first["manualAuditMatchedRows"] == 1\n        assert first["unresolvedRows"] == 2\n        assert first["orphanManualAuditRows"] == 1\n        assert unresolved.id in first["unresolvedSampleSessionIds"]\n        assert matched.id not in first["unresolvedSampleSessionIds"]\n        assert first["mutationPerformed"] is False\n    finally:\n        db.close()\n''', encoding='utf-8')
+          Expand only: all new columns remain nullable so unresolved legacy facts are never guessed.
+          The occurrence unique constraint spans soft-deleted history as well, preventing
+          delete-and-recreate from manufacturing a second formal attendance fact.
+          """
+          from __future__ import annotations
+
+          import sqlalchemy as sa
+          from alembic import op
+
+          revision = "20260816_acad_int_c1_att"
+          down_revision = "20260816_acad_int_ac4"
+          branch_labels = None
+          depends_on = None
+
+          TABLE = "t_aa_attendance_session"
+
+
+          def _require_mysql() -> None:
+              if op.get_bind().dialect.name != "mysql":
+                  raise RuntimeError("20260816_acad_int_c1_att requires MySQL")
+
+
+          def upgrade() -> None:
+              _require_mysql()
+              op.add_column(TABLE, sa.Column("teaching_task_id", sa.BigInteger(), nullable=True, comment="formal TeachingTask; special/legacy may be NULL"))
+              op.add_column(TABLE, sa.Column("occurrence_identity", sa.String(length=255), nullable=True, comment="canonical formal occurrence identity"))
+              op.add_column(TABLE, sa.Column("source_type", sa.String(length=30), nullable=True, comment="FORMAL_TEACHING/ADMIN_SPECIAL; legacy unresolved NULL"))
+              op.add_column(TABLE, sa.Column("source_reason", sa.String(length=500), nullable=True, comment="ADMIN_SPECIAL reason"))
+              op.add_column(TABLE, sa.Column("source_evidence", sa.Text(), nullable=True, comment="auditable source evidence snapshot"))
+              op.create_unique_constraint("uk_aa_attendance_occurrence", TABLE, ["tenant_id", "occurrence_identity"])
+              op.create_check_constraint("ck_aa_attendance_source_type", TABLE, "source_type IS NULL OR source_type IN ('FORMAL_TEACHING','ADMIN_SPECIAL')")
+              op.create_index("ix_aa_attendance_task", TABLE, ["tenant_id", "teaching_task_id"], unique=False)
+              op.create_index("ix_aa_attendance_source", TABLE, ["tenant_id", "source_type"], unique=False)
+
+
+          def downgrade() -> None:
+              _require_mysql()
+              op.drop_index("ix_aa_attendance_source", table_name=TABLE)
+              op.drop_index("ix_aa_attendance_task", table_name=TABLE)
+              op.drop_constraint("ck_aa_attendance_source_type", TABLE, type_="check")
+              op.drop_constraint("uk_aa_attendance_occurrence", TABLE, type_="unique")
+              op.drop_column(TABLE, "source_evidence")
+              op.drop_column(TABLE, "source_reason")
+              op.drop_column(TABLE, "source_type")
+              op.drop_column(TABLE, "occurrence_identity")
+              op.drop_column(TABLE, "teaching_task_id")
+          PY
+
+          cat > backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py <<'PY'
+          """Read-only INT inventory for legacy Attendance source governance."""
+          from __future__ import annotations
+
+          from sqlalchemy import func
+
+
+          def inventory_legacy_attendance_sources(db, tenant_id: int, *, sample_limit: int = 50) -> dict:
+              from app.models import AaAttendanceSession, AffairsAuditTrail
+
+              tid = int(tenant_id)
+              limit = max(1, min(int(sample_limit or 50), 200))
+              legacy = [
+                  AaAttendanceSession.tenant_id == tid,
+                  AaAttendanceSession.source_type.is_(None),
+              ]
+              manual_audit = [
+                  AffairsAuditTrail.tenant_id == tid,
+                  AffairsAuditTrail.biz_type == "AA_ATTENDANCE",
+                  AffairsAuditTrail.action == "CREATE",
+                  AffairsAuditTrail.biz_id.isnot(None),
+                  AffairsAuditTrail.detail.contains("source=ADMIN_MANUAL"),
+              ]
+
+              manual_ids = db.query(AffairsAuditTrail.biz_id).filter(*manual_audit).distinct().subquery()
+              total = int(db.query(func.count(AaAttendanceSession.id)).filter(*legacy).scalar() or 0)
+              active = int(db.query(func.count(AaAttendanceSession.id)).filter(
+                  *legacy, AaAttendanceSession.is_deleted.is_(False),
+              ).scalar() or 0)
+              matched = int(db.query(func.count(AaAttendanceSession.id)).filter(
+                  *legacy, AaAttendanceSession.id.in_(manual_ids),
+              ).scalar() or 0)
+
+              term_totals = dict(db.query(
+                  AaAttendanceSession.term_code, func.count(AaAttendanceSession.id),
+              ).filter(*legacy).group_by(AaAttendanceSession.term_code).all())
+              term_matched = dict(db.query(
+                  AaAttendanceSession.term_code, func.count(AaAttendanceSession.id),
+              ).filter(*legacy, AaAttendanceSession.id.in_(manual_ids)).group_by(AaAttendanceSession.term_code).all())
+              terms = []
+              for term_code in sorted(term_totals, key=lambda value: str(value or "")):
+                  count = int(term_totals[term_code] or 0)
+                  proven = int(term_matched.get(term_code, 0) or 0)
+                  terms.append({
+                      "termCode": term_code,
+                      "legacyRows": count,
+                      "manualAuditMatchedRows": proven,
+                      "unresolvedRows": count - proven,
+                  })
+
+              unresolved_ids = [int(row[0]) for row in db.query(AaAttendanceSession.id).filter(
+                  *legacy, ~AaAttendanceSession.id.in_(manual_ids),
+              ).order_by(AaAttendanceSession.id.asc()).limit(limit).all()]
+              orphan_audit_ids = [int(row[0]) for row in db.query(AffairsAuditTrail.biz_id).filter(
+                  *manual_audit,
+                  ~AffairsAuditTrail.biz_id.in_(
+                      db.query(AaAttendanceSession.id).filter(AaAttendanceSession.tenant_id == tid)
+                  ),
+              ).distinct().order_by(AffairsAuditTrail.biz_id.asc()).limit(limit).all()]
+
+              return {
+                  "tenantId": str(tid),
+                  "legacyRows": total,
+                  "activeLegacyRows": active,
+                  "deletedLegacyRows": total - active,
+                  "manualAuditMatchedRows": matched,
+                  "unresolvedRows": total - matched,
+                  "orphanManualAuditRows": len(orphan_audit_ids),
+                  "unresolvedSampleSessionIds": unresolved_ids,
+                  "orphanManualAuditSampleBizIds": orphan_audit_ids,
+                  "terms": terms,
+                  "mutationPerformed": False,
+              }
+          PY
+
+          cat > backend/tests/test_academic_int_c1_attendance_schema_mysql.py <<'PY'
+          """INT C-C1 Attendance expand schema, uniqueness, vocabulary and legacy inventory."""
+          from __future__ import annotations
+
+          from pathlib import Path
+
+          import pytest
+          from sqlalchemy import inspect
+          from sqlalchemy.exc import IntegrityError, OperationalError
+
+          from app.db.session import get_sessionmaker
+          from app.models import AaAttendanceSession, AffairsAuditTrail
+          from app.modules.academic_affairs.services.academic_affairs_attendance_migration_inventory import (
+              inventory_legacy_attendance_sources,
+          )
+
+
+          def _mysql_code(exc: Exception) -> int | None:
+              original = getattr(exc, "orig", None)
+              args = getattr(original, "args", ())
+              return int(args[0]) if args and isinstance(args[0], int) else None
+
+
+          def _attendance(*, tenant_id: int, date: str, slot: int, source_type=None, occurrence=None, deleted=False):
+              return AaAttendanceSession(
+                  tenant_id=tenant_id,
+                  class_id=7001,
+                  teaching_task_id=8001 if source_type == "FORMAL_TEACHING" else None,
+                  occurrence_identity=occurrence,
+                  source_type=source_type,
+                  source_reason="管理员补录证据齐全" if source_type == "ADMIN_SPECIAL" else None,
+                  source_evidence="ticket:INT-C1" if source_type == "ADMIN_SPECIAL" else None,
+                  course_name="INT C-C1",
+                  term_code="2026-1",
+                  teacher_key="INT-T1",
+                  session_date=date,
+                  slot_no=slot,
+                  roster_json="[]",
+                  total_count=0,
+                  present_count=0,
+                  absent_count=0,
+                  status="DRAFT",
+                  is_deleted=deleted,
+              )
+
+
+          def test_int_c1_schema_contract_is_expand_only_and_matches_frozen_handoff():
+              columns = AaAttendanceSession.__table__.c
+              for name in ("teaching_task_id", "occurrence_identity", "source_type", "source_reason", "source_evidence"):
+                  assert columns[name].nullable is True
+              assert columns["occurrence_identity"].type.length == 255
+              assert columns["source_type"].type.length == 30
+              constraints = {c.name: c for c in AaAttendanceSession.__table__.constraints if c.name}
+              assert tuple(constraints["uk_aa_attendance_occurrence"].columns.keys()) == ("tenant_id", "occurrence_identity")
+              check = str(constraints["ck_aa_attendance_source_type"].sqltext)
+              assert "FORMAL_TEACHING" in check and "ADMIN_SPECIAL" in check and "IS NULL" in check
+              source = Path("alembic/versions/20260816_academic_int_c1_attendance.py").read_text(encoding="utf-8")
+              upper = source.upper()
+              assert 'down_revision = "20260816_acad_int_ac4"' in source
+              assert "UPDATE T_AA_ATTENDANCE_SESSION" not in upper
+              assert "DELETE FROM T_AA_ATTENDANCE_SESSION" not in upper
+              assert "NULLABLE=FALSE" not in upper
+
+
+          def test_int_c1_mysql_unique_and_source_vocabulary_are_real(db_mode):
+              db = get_sessionmaker()()
+              try:
+                  inspector = inspect(db.bind)
+                  columns = {c["name"]: c for c in inspector.get_columns("t_aa_attendance_session")}
+                  for name in ("teaching_task_id", "occurrence_identity", "source_type", "source_reason", "source_evidence"):
+                      assert columns[name]["nullable"] is True
+                  uniques = {u["name"]: tuple(u["column_names"]) for u in inspector.get_unique_constraints("t_aa_attendance_session")}
+                  assert uniques["uk_aa_attendance_occurrence"] == ("tenant_id", "occurrence_identity")
+                  checks = {c["name"]: c["sqltext"] for c in inspector.get_check_constraints("t_aa_attendance_session")}
+                  assert "ck_aa_attendance_source_type" in checks
+
+                  tenant = 1000000000000008911
+                  identity = "V1:TASK:8001:ITEM:9001:DATE:2026-03-02:SLOT:2"
+                  db.add(_attendance(tenant_id=tenant, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity))
+                  db.commit()
+                  db.add(_attendance(tenant_id=tenant, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity))
+                  with pytest.raises(IntegrityError) as duplicate:
+                      db.commit()
+                  assert _mysql_code(duplicate.value) == 1062
+                  db.rollback()
+
+                  db.add_all([
+                      _attendance(tenant_id=tenant + 1, date="2026-03-02", slot=2, source_type="FORMAL_TEACHING", occurrence=identity),
+                      _attendance(tenant_id=tenant, date="2026-03-03", slot=3, source_type="ADMIN_SPECIAL", occurrence=None),
+                      _attendance(tenant_id=tenant, date="2026-03-04", slot=4, source_type=None, occurrence=None),
+                  ])
+                  db.commit()
+                  db.add(_attendance(tenant_id=tenant, date="2026-03-05", slot=5, source_type="ADMIN_MANUAL", occurrence=None))
+                  with pytest.raises(OperationalError) as invalid_source:
+                      db.commit()
+                  assert _mysql_code(invalid_source.value) == 3819
+                  db.rollback()
+              finally:
+                  db.close()
+
+
+          def test_int_c1_legacy_inventory_is_same_tenant_read_only_and_repeatable(db_mode):
+              db = get_sessionmaker()()
+              try:
+                  tenant = 1000000000000008921
+                  matched = _attendance(tenant_id=tenant, date="2026-04-01", slot=1)
+                  unresolved = _attendance(tenant_id=tenant, date="2026-04-02", slot=2)
+                  deleted = _attendance(tenant_id=tenant, date="2026-04-03", slot=3, deleted=True)
+                  modern = _attendance(tenant_id=tenant, date="2026-04-04", slot=4, source_type="FORMAL_TEACHING", occurrence="V1:MODERN:8921")
+                  db.add_all([matched, unresolved, deleted, modern])
+                  db.flush()
+                  db.add_all([
+                      AffairsAuditTrail(tenant_id=tenant, biz_type="AA_ATTENDANCE", biz_id=matched.id, action="CREATE", operator="int", detail="task=-;source=ADMIN_MANUAL;course=x"),
+                      AffairsAuditTrail(tenant_id=tenant + 1, biz_type="AA_ATTENDANCE", biz_id=unresolved.id, action="CREATE", operator="neighbor", detail="source=ADMIN_MANUAL"),
+                      AffairsAuditTrail(tenant_id=tenant, biz_type="AA_ATTENDANCE", biz_id=999999991, action="CREATE", operator="orphan", detail="source=ADMIN_MANUAL"),
+                  ])
+                  db.commit()
+
+                  before = db.query(AaAttendanceSession).filter(AaAttendanceSession.tenant_id == tenant).count()
+                  first = inventory_legacy_attendance_sources(db, tenant, sample_limit=10)
+                  second = inventory_legacy_attendance_sources(db, tenant, sample_limit=10)
+                  after = db.query(AaAttendanceSession).filter(AaAttendanceSession.tenant_id == tenant).count()
+                  assert first == second
+                  assert before == after == 4
+                  assert first["legacyRows"] == 3
+                  assert first["activeLegacyRows"] == 2
+                  assert first["deletedLegacyRows"] == 1
+                  assert first["manualAuditMatchedRows"] == 1
+                  assert first["unresolvedRows"] == 2
+                  assert first["orphanManualAuditRows"] == 1
+                  assert unresolved.id in first["unresolvedSampleSessionIds"]
+                  assert matched.id not in first["unresolvedSampleSessionIds"]
+                  assert first["mutationPerformed"] is False
+              finally:
+                  db.close()
           PY
 
       - name: Audit exact generated scope
