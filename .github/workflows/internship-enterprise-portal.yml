@@ -1,0 +1,84 @@
+name: Internship Enterprise Portal
+
+on:
+  pull_request:
+    paths:
+      - "enterprise-portal/**"
+      - ".github/workflows/internship-enterprise-portal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enterprise-portal-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  targeted:
+    name: A02 targeted test + lint + build + browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: enterprise-portal
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact A02 head
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+        working-directory: .
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: enterprise-portal/package-lock.json
+      - name: Install locked enterprise portal dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Capture production-only dependency audit truth
+        timeout-minutes: 3
+        run: npm audit --omit=dev --json > audit-production.json || true
+      - name: Validate production audit report completeness
+        run: node scripts/check-production-audit-report.mjs audit-production.json
+      - name: Enforce production high/critical dependency policy
+        run: >-
+          node ../scripts/check/check-npm-production-audit.mjs
+          audit-production.json
+          enterprise-portal
+          ../.github/security/npm-production-audit-waivers.json
+      - name: Capture full dependency inventory for follow-up
+        if: always()
+        run: npm audit --json > audit-full.json || true
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a02-enterprise-portal-npm-audit
+          path: |
+            enterprise-portal/audit-production.json
+            enterprise-portal/audit-full.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: A02 authority and UX contract tests
+        run: npm test
+      - name: Enterprise portal lint
+        run: npm run lint
+      - name: Enterprise portal production build
+        run: npm run build
+      - name: Scan fixed demo credentials
+        run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+      - name: Install Chromium headless shell
+        timeout-minutes: 8
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: A02 targeted browser evidence
+        run: npm run test:e2e
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a02-enterprise-portal-browser-evidence
+          path: |
+            enterprise-portal/test-results
+            enterprise-portal/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

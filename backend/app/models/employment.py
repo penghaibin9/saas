@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -107,6 +107,14 @@ class EmpCompany(PKMixin, TenantMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime)
     archived_by: Mapped[str | None] = mapped_column(String(100))
+    # E4 企业 Portal 公开展示资料；学校准入/黑名单/资质字段仍由上方 canonical 字段控制。
+    logo_file_id: Mapped[str | None] = mapped_column(String(64))
+    cover_file_id: Mapped[str | None] = mapped_column(String(64))
+    short_name: Mapped[str | None] = mapped_column(String(100))
+    short_intro: Mapped[str | None] = mapped_column(String(500))
+    website: Mapped[str | None] = mapped_column(String(300))
+    main_business: Mapped[str | None] = mapped_column(Text)
+    established_year: Mapped[int | None] = mapped_column(Integer)
 
 
 class InternshipEnterpriseContact(PKMixin, TenantMixin, CommonMixin, Base):
