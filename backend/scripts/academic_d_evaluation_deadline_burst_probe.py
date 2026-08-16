@@ -44,6 +44,46 @@ def _verify_task_from_answer_facts(eval_task_id: int) -> dict:
         set_tenant(None)
 
 
+def _reset_statement_digests() -> None:
+    """Reset MySQL digest counters after fixture setup so profiling focuses on D-W3 scenarios."""
+    from app.db.session import get_sessionmaker
+
+    db = get_sessionmaker()()
+    try:
+        db.execute(text("TRUNCATE TABLE performance_schema.events_statements_summary_by_digest"))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _statement_digest_evidence(limit: int = 20) -> list[dict]:
+    """Return normalized, parameter-free MySQL statement digests ranked by total DB time."""
+    from app.db.session import get_sessionmaker
+
+    limit = max(1, min(int(limit), 50))
+    db = get_sessionmaker()()
+    try:
+        rows = db.execute(text(
+            "SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT, AVG_TIMER_WAIT, MAX_TIMER_WAIT "
+            "FROM performance_schema.events_statements_summary_by_digest "
+            "WHERE SCHEMA_NAME = DATABASE() AND DIGEST_TEXT IS NOT NULL "
+            f"ORDER BY SUM_TIMER_WAIT DESC LIMIT {limit}"
+        )).all()
+        output = []
+        for digest_text, count_star, sum_wait, avg_wait, max_wait in rows:
+            output.append({
+                "digest": " ".join(str(digest_text or "").split())[:1200],
+                "count": int(count_star or 0),
+                # Performance Schema statement timers are picoseconds; 1 ms = 1e9 ps.
+                "totalMs": round(float(sum_wait or 0) / 1_000_000_000.0, 2),
+                "avgMs": round(float(avg_wait or 0) / 1_000_000_000.0, 3),
+                "maxMs": round(float(max_wait or 0) / 1_000_000_000.0, 2),
+            })
+        return output
+    finally:
+        db.close()
+
+
 def _run_deadline_burst(term_id: int, teaching_task_ids: list[int], student_ids: list[int]) -> dict:
     """Exercise 200 simultaneous submissions spread across 20 formal evaluation tasks."""
     selected_tasks = teaching_task_ids[:20]
@@ -134,6 +174,7 @@ def main() -> int:
     term_id = seeded["termId"]
     students = seeded["studentIds"]
     tasks = seeded["teachingTaskIds"]
+    _reset_statement_digests()
     scenarios = [
         probe._run_same_task("same-task-50", 50, term_id, tasks[0], students),
         probe._run_same_task("same-task-100", 100, term_id, tasks[0], students),
@@ -143,7 +184,7 @@ def main() -> int:
         probe._run_duplicate_race(term_id, tasks[0], students[0]),
     ]
     report = {
-        "schema": "academic-d-evaluation-concurrency/v3",
+        "schema": "academic-d-evaluation-concurrency/v4",
         "tenantId": str(probe.TID),
         "database": "mysql8",
         "setupAuthority": "public evaluation create/generate/publish/open + formal LOCKED TeachingRoster",
@@ -154,6 +195,7 @@ def main() -> int:
         "closedBatchProjection": "AaEvaluationTask.submitted_count reconciled under close/score batch UPDATE lock",
         "roleTaskLockProtocol": "EvaluationTask UPDATE for SELF/PEER/SUPERVISOR",
         "anonymousTokenStorage": "answers_json HMAC token LIKE lookup",
+        "statementDigests": _statement_digest_evidence(),
         "scenarios": scenarios,
         "correctnessPassed": all(row["correct"] for row in scenarios),
     }
