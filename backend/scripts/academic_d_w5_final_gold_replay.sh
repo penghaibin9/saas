@@ -20,17 +20,25 @@ CONTRACT_INVENTORY=/tmp/academic-d-w5-contract-inventory.txt
 EVIDENCE=/tmp/academic-d-w5-evidence.txt
 JUNIT=/tmp/academic-d-w5-targeted.xml
 ALEMBIC_CURRENT=/tmp/academic-d-w5-alembic-current.txt
+MIGRATED_EVIDENCE=/tmp/academic-d-w5-migrated-tenant.txt
+MIGRATED_WORKTREE=/tmp/academic-d-w5-main-worktree
+REPO_ROOT="$(pwd)"
 
 SNAPSHOT_UTC="not_reached"
 CURRENT_LAYER=""
 W5_PHASE="EXACT_D_CHECK"
 CLEAN_SCHEMA_PROVEN=false
+MIGRATED_TENANT_SCHEMA_PROVEN=false
 TARGETED_CONTRACTS_PROVEN=false
+MAIN_ALEMBIC_VERSION=""
+INTEGRATED_ALEMBIC_VERSION=""
+MIGRATED_PROBE_DIGEST=""
 
 : > "$HEAD_MATRIX"
 : > "$MERGE_LEDGER"
 : > "$CONTRACT_INVENTORY"
 : > "$ALEMBIC_CURRENT"
+: > "$MIGRATED_EVIDENCE"
 
 write_evidence() {
   local rc="$1"
@@ -52,7 +60,11 @@ b_commit=${B_SHA:-}
 c_commit=${C_SHA:-}
 int_commit=${INT_SHA:-}
 clean_tenant_schema_proven=$CLEAN_SCHEMA_PROVEN
+migrated_tenant_schema_proven=$MIGRATED_TENANT_SCHEMA_PROVEN
 migrated_tenant_contracts_proven=$TARGETED_CONTRACTS_PROVEN
+main_alembic_version=$MAIN_ALEMBIC_VERSION
+integrated_alembic_version=$INTEGRATED_ALEMBIC_VERSION
+migrated_probe_digest=$MIGRATED_PROBE_DIGEST
 permission_negative_contract_included=true
 datascope_negative_contract_included=true
 cross_tenant_sentinel_included=true
@@ -69,7 +81,12 @@ EOF
   sha256sum -c "${EVIDENCE}.sha256"
 }
 
-trap 'rc=$?; trap - EXIT; set +e; write_evidence "$rc"; exit "$rc"' EXIT
+cleanup_worktree() {
+  git -C "$REPO_ROOT" worktree remove --force "$MIGRATED_WORKTREE" >/dev/null 2>&1 || true
+  git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true
+}
+
+trap 'rc=$?; trap - EXIT; set +e; write_evidence "$rc"; cleanup_worktree; exit "$rc"' EXIT
 
 actual_d="$(git rev-parse HEAD)"
 test "$actual_d" = "$EXACT_D_SHA"
@@ -152,6 +169,70 @@ test "$(alembic heads | grep -c '(head)')" -eq 1
 alembic upgrade head
 alembic current | tee "$ALEMBIC_CURRENT"
 CLEAN_SCHEMA_PROVEN=true
+
+# Migrated-tenant Gold must prove an already-upgraded current-main database survives
+# the integrated A/B/C/D/INT migration lineage with its pre-existing bytes intact.
+W5_PHASE="MIGRATED_TENANT_MAIN_BASELINE"
+MIGRATED_DB="academic_d_w5_migrated"
+MIGRATED_URL="mysql+pymysql://root:root@127.0.0.1:3306/${MIGRATED_DB}?charset=utf8mb4"
+mysql -h127.0.0.1 -uroot -proot -e "
+  DROP DATABASE IF EXISTS ${MIGRATED_DB};
+  CREATE DATABASE ${MIGRATED_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+"
+cd "$REPO_ROOT"
+cleanup_worktree
+git worktree add --detach "$MIGRATED_WORKTREE" "$MAIN_SHA"
+(
+  cd "$MIGRATED_WORKTREE/backend"
+  test "$(alembic heads | grep -c '(head)')" -eq 1
+  DATABASE_URL="$MIGRATED_URL" TEST_DATABASE_URL="$MIGRATED_URL" alembic upgrade head
+)
+MAIN_ALEMBIC_VERSION="$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT GROUP_CONCAT(version_num ORDER BY version_num SEPARATOR ',') FROM ${MIGRATED_DB}.alembic_version")"
+test -n "$MAIN_ALEMBIC_VERSION"
+
+mysql -h127.0.0.1 -uroot -proot "$MIGRATED_DB" <<'SQL'
+CREATE TABLE t_d_w5_migrated_tenant_probe (
+  id BIGINT PRIMARY KEY,
+  tenant_key VARCHAR(64) NOT NULL,
+  payload VARBINARY(128) NOT NULL
+) ENGINE=InnoDB;
+INSERT INTO t_d_w5_migrated_tenant_probe(id, tenant_key, payload)
+VALUES
+  (1, 'existing-school-a', UNHEX(SHA2('academic-d-w5-existing-a', 256))),
+  (2, 'existing-school-b', UNHEX(SHA2('academic-d-w5-existing-b', 256)));
+SQL
+MIGRATED_PROBE_DIGEST="$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT SHA2(GROUP_CONCAT(CONCAT(id, ':', tenant_key, ':', HEX(payload)) ORDER BY id SEPARATOR '|'), 256) FROM ${MIGRATED_DB}.t_d_w5_migrated_tenant_probe")"
+test -n "$MIGRATED_PROBE_DIGEST"
+
+W5_PHASE="MIGRATED_TENANT_INTEGRATED_UPGRADE"
+cd "$REPO_ROOT/backend"
+test "$(alembic heads | grep -c '(head)')" -eq 1
+DATABASE_URL="$MIGRATED_URL" TEST_DATABASE_URL="$MIGRATED_URL" alembic upgrade head
+INTEGRATED_ALEMBIC_VERSION="$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT GROUP_CONCAT(version_num ORDER BY version_num SEPARATOR ',') FROM ${MIGRATED_DB}.alembic_version")"
+test -n "$INTEGRATED_ALEMBIC_VERSION"
+AFTER_PROBE_DIGEST="$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT SHA2(GROUP_CONCAT(CONCAT(id, ':', tenant_key, ':', HEX(payload)) ORDER BY id SEPARATOR '|'), 256) FROM ${MIGRATED_DB}.t_d_w5_migrated_tenant_probe")"
+test "$AFTER_PROBE_DIGEST" = "$MIGRATED_PROBE_DIGEST"
+test "$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT COUNT(*) FROM ${MIGRATED_DB}.t_d_w5_migrated_tenant_probe")" = "2"
+test "$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${MIGRATED_DB}' AND TABLE_NAME='t_aa_program_course' AND COLUMN_NAME='formation_mode'")" = "1"
+test "$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${MIGRATED_DB}' AND TABLE_NAME='t_aa_teaching_task' AND COLUMN_NAME='formation_mode'")" = "1"
+test "$(mysql -h127.0.0.1 -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${MIGRATED_DB}' AND TABLE_NAME='t_aa_teaching_task_batch' AND COLUMN_NAME='editable_scope_key'")" = "1"
+cat > "$MIGRATED_EVIDENCE" <<EOF
+main_commit=$MAIN_SHA
+main_alembic_version=$MAIN_ALEMBIC_VERSION
+integrated_alembic_version=$INTEGRATED_ALEMBIC_VERSION
+probe_rows=2
+probe_digest_before=$MIGRATED_PROBE_DIGEST
+probe_digest_after=$AFTER_PROBE_DIGEST
+probe_bytes_preserved=true
+formation_mode_program_course_present=true
+formation_mode_teaching_task_present=true
+editable_scope_key_present=true
+migrated_tenant_schema_proven=true
+EOF
+sha256sum "$MIGRATED_EVIDENCE" > "${MIGRATED_EVIDENCE}.sha256"
+sha256sum -c "${MIGRATED_EVIDENCE}.sha256"
+MIGRATED_TENANT_SCHEMA_PROVEN=true
+cleanup_worktree
 
 W5_PHASE="CONTRACT_INVENTORY"
 files=(

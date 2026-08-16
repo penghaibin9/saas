@@ -36,7 +36,11 @@ def _replay_evidence(**overrides):
         "w5_phase": "PRE_GOLD_REPLAY_COMPLETE",
         "replay_success": "true",
         "clean_tenant_schema_proven": "true",
+        "migrated_tenant_schema_proven": "true",
         "migrated_tenant_contracts_proven": "true",
+        "main_alembic_version": "main-head",
+        "integrated_alembic_version": "integrated-head",
+        "migrated_probe_digest": "a" * 64,
         "upstream_contract_heads_frozen": "false",
         "final_browser_gold_proven_on_w5_head": "false",
     }
@@ -72,11 +76,24 @@ def test_pre_gold_can_be_ready_without_claiming_final_gold():
         evidence=_replay_evidence(),
     )
     assert matrix["localReplayReady"] is True
+    assert matrix["localRequirements"]["migratedTenantSchema"] is True
     assert matrix["externalSameHeadReady"] is True
     assert matrix["preGoldReady"] is True
     assert matrix["finalGold"] is False
+    assert matrix["migrationEvidence"]["mainAlembicVersion"] == "main-head"
     assert "upstream_contract_heads_not_frozen" in matrix["blockers"]
     assert "integrated_final_browser_gold_not_proven" in matrix["blockers"]
+
+
+def test_migrated_tenant_schema_is_a_hard_pre_gold_requirement():
+    matrix = MODULE.build_matrix(
+        sha="d-head",
+        runs=_all_success_runs(),
+        evidence=_replay_evidence(migrated_tenant_schema_proven=False),
+    )
+    assert matrix["localReplayReady"] is False
+    assert matrix["preGoldReady"] is False
+    assert "local_requirement:migratedTenantSchema:false" in matrix["blockers"]
 
 
 def test_final_gold_requires_every_explicit_final_condition():
@@ -101,6 +118,7 @@ def test_failed_replay_records_phase_layer_and_blocks_pre_gold():
     evidence = _replay_evidence(
         replay_success=False,
         clean_tenant_schema_proven=False,
+        migrated_tenant_schema_proven=False,
         migrated_tenant_contracts_proven=False,
         w5_phase="MERGE_INT",
         failed_layer="INT",

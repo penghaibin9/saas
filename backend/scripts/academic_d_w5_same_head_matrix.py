@@ -109,14 +109,13 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
         selected.get(AUXILIARY_BROWSER_WORKFLOW),
     )
 
-    local_replay_ready = all(
-        _as_bool(evidence.get(key))
-        for key in (
-            "replay_success",
-            "clean_tenant_schema_proven",
-            "migrated_tenant_contracts_proven",
-        )
-    )
+    local_requirements = {
+        "replaySuccess": _as_bool(evidence.get("replay_success")),
+        "cleanTenantSchema": _as_bool(evidence.get("clean_tenant_schema_proven")),
+        "migratedTenantSchema": _as_bool(evidence.get("migrated_tenant_schema_proven")),
+        "migratedTenantContracts": _as_bool(evidence.get("migrated_tenant_contracts_proven")),
+    }
+    local_replay_ready = all(local_requirements.values())
     external_same_head_ready = not api_error and all(item["ready"] for item in required.values())
     pre_gold_ready = local_replay_ready and external_same_head_ready
 
@@ -131,6 +130,9 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
         phase = evidence.get("w5_phase") or "UNKNOWN"
         layer = evidence.get("failed_layer") or ""
         blockers.append(f"pre_gold_replay_not_green:phase={phase}:layer={layer}")
+        for key, ready in local_requirements.items():
+            if not ready:
+                blockers.append(f"local_requirement:{key}:false")
     for name, item in required.items():
         if not item["ready"]:
             blockers.append(f"same_head_workflow:{name}:{item['state']}")
@@ -140,11 +142,11 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
         blockers.append("integrated_final_browser_gold_not_proven")
 
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "sourceSha": sha,
         "w5Phase": evidence.get("w5_phase") or "UNKNOWN",
         "failedLayer": evidence.get("failed_layer") or "",
-        "replaySuccess": _as_bool(evidence.get("replay_success")),
+        "localRequirements": local_requirements,
         "localReplayReady": local_replay_ready,
         "requiredSameHeadWorkflows": required,
         "auxiliaryRawHeadBrowser": browser,
@@ -155,6 +157,11 @@ def build_matrix(*, sha: str, runs: Iterable[dict[str, Any]], evidence: dict[str
         "finalGold": final_gold,
         "blockers": blockers,
         "actionsApiError": api_error,
+        "migrationEvidence": {
+            "mainAlembicVersion": evidence.get("main_alembic_version") or "",
+            "integratedAlembicVersion": evidence.get("integrated_alembic_version") or "",
+            "probeDigest": evidence.get("migrated_probe_digest") or "",
+        },
     }
 
 
