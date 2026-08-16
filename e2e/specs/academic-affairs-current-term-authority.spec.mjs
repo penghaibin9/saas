@@ -51,8 +51,12 @@ async function reloadWithBrowserSession(page) {
   await page.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
 }
 
-function termRow(page, termName) {
-  return page.locator('.aa-current-item').filter({ hasText: termName }).first()
+function renderedTermLabel(term) {
+  return `${term.yearCode} 第 ${term.termNo} 学期`
+}
+
+function termRow(page, term) {
+  return page.locator('.aa-current-item').filter({ hasText: renderedTermLabel(term) }).first()
 }
 
 async function createPublishedTerm(api, { year, termName, teachingWeeks }) {
@@ -164,7 +168,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
       expect(legacyCurrent?.currentAuthority).toBe('AA_TERM_COMPAT')
     }
 
-    const legacyName = legacyCurrent.termName || `${legacyCurrent.yearCode} 第 ${legacyCurrent.termNo} 学期`
+    const legacyName = legacyCurrent.termName || renderedTermLabel(legacyCurrent)
 
     // Publishing a second low-year term makes the legacy base a real non-current PUBLISHED row,
     // giving the browser a visible "设为当前" action to exercise.
@@ -178,10 +182,10 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await openAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await expect(page.getByRole('heading', { name: '当前学期' }).first()).toBeVisible()
     await expect(page.getByText('暂保留教务当前学期兼容切换', { exact: false })).toBeVisible()
-    await expect(termRow(page, governanceName)).toBeVisible()
+    await expect(termRow(page, governanceTerm)).toBeVisible()
 
     // Formal current switch under test: visible button -> shared confirmation component -> real POST.
-    const legacyRow = termRow(page, legacyName)
+    const legacyRow = termRow(page, legacyCurrent)
     await expect(legacyRow).toBeVisible()
     const setCurrent = legacyRow.getByRole('button', { name: '设为当前' })
     await expect(setCurrent).toBeEnabled()
@@ -204,14 +208,14 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     expect(switchedBody.code).toBe(0)
 
     await expect(page.locator('.aa-current-card__sub')).toHaveText(legacyName)
-    await expect(termRow(page, legacyName).getByText('当前学期', { exact: true })).toBeVisible()
+    await expect(termRow(page, legacyCurrent).getByText('当前学期', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'a-w1-current-term-legacy-after-visible-click')
 
     // Full document refresh reconstructs auth from the real HttpOnly browser session and rereads
     // the current term from MySQL; in-memory-only success cannot pass this assertion.
     await reloadWithBrowserSession(page)
     await expect(page.locator('.aa-current-card__sub')).toHaveText(legacyName)
-    await expect(termRow(page, legacyName).getByText('当前学期', { exact: true })).toBeVisible()
+    await expect(termRow(page, legacyCurrent).getByText('当前学期', { exact: true })).toBeVisible()
 
     const activated = await activateGovernance(api, governanceTerm.termId)
     expect(activated.governanceStatus).toBe('ACTIVE')
@@ -221,7 +225,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await expect(page.getByText('全校统一治理已启用', { exact: true })).toBeVisible()
     await expect(page.getByText(/教务侧只读当前结论/)).toBeVisible()
 
-    const oldRow = termRow(page, legacyName)
+    const oldRow = termRow(page, legacyCurrent)
     await expect(oldRow).toBeVisible()
     await expect(oldRow.getByRole('button', { name: '设为当前' })).toHaveCount(0)
     await expect(oldRow.getByText('统一治理切换', { exact: true })).toBeVisible()
