@@ -1,14 +1,20 @@
 """A-W3/INT read-only inventory for editable TeachingTaskBatch scope conflicts.
 
-This module deliberately owns no schema and performs no repair.  It gives the
+This module deliberately owns no schema and performs no repair. It gives the
 future INT migration an executable preflight before adding a database unique
 constraint for the invariant:
 
     tenant + term + management scope -> at most one editable batch
 
-Both DRAFT and RETURNED are editable states.  Historical duplicates are
+Both DRAFT and RETURNED are editable states. Historical duplicates are
 reported fail-closed and must be reconciled explicitly; this service never
 chooses a winner or mutates a batch.
+
+MySQL unique indexes allow multiple NULL values. Therefore the future unique
+constraint must not rely on nullable ``college_id`` to distinguish school
+scope. Editable rows use a canonical non-null ``editable_scope_key`` and
+terminal rows keep that key NULL, allowing historical terminal batches while
+still making the editable school scope genuinely unique.
 """
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ from sqlalchemy import select
 _EDITABLE_BATCH_STATUSES = ("DRAFT", "RETURNED")
 _DEFAULT_SAMPLE_LIMIT = 20
 _MAX_SAMPLE_LIMIT = 100
+_EDITABLE_SCOPE_KEY_VERSION = "V1"
 
 
 def _positive_tenant_id(value) -> int:
@@ -26,6 +33,27 @@ def _positive_tenant_id(value) -> int:
     if tenant_id <= 0:
         raise ValueError("tenant_id must be a positive integer")
     return tenant_id
+
+
+def _positive_scope_id(value, *, name: str) -> int:
+    identifier = int(value or 0)
+    if identifier <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return identifier
+
+
+def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
+    """Return the exact non-null key reserved for an editable management scope.
+
+    ``tenant_id`` intentionally stays outside the string because the future DB
+    constraint is ``UNIQUE(tenant_id, editable_scope_key)``. School scope uses
+    an explicit token instead of SQL NULL so MySQL cannot admit duplicates.
+    """
+    term_id = _positive_scope_id(term_id, name="term_id")
+    if college_id is None:
+        return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:SCHOOL"
+    college_id = _positive_scope_id(college_id, name="college_id")
+    return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:COLLEGE:{college_id}"
 
 
 def _sample_limit(value) -> int:
@@ -101,6 +129,7 @@ def inventory_editable_batch_scope_conflicts(db, tenant_id: int, *, sample_limit
             "termId": str(term_id),
             "collegeId": str(college_id) if college_id is not None else "",
             "scope": f"COLLEGE:{college_id}" if college_id is not None else "SCHOOL",
+            "editableScopeKey": canonical_editable_scope_key(term_id, college_id),
             "editableBatchCount": len(batches),
             "batchIds": [str(batch_id) for batch_id, _status in sample],
             "batchStatuses": [status for _batch_id, status in sample],
@@ -109,6 +138,7 @@ def inventory_editable_batch_scope_conflicts(db, tenant_id: int, *, sample_limit
 
     return {
         "tenantId": str(tenant_id),
+        "scopeKeyVersion": _EDITABLE_SCOPE_KEY_VERSION,
         "editableBatchCount": len(rows),
         "conflictScopeCount": len(conflicts),
         "conflictBatchCount": conflict_batch_count,
