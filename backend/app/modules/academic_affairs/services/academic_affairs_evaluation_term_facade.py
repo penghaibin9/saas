@@ -29,8 +29,19 @@ def _guard_term(db, term_id):
     guard_term_writable(db, int(term_id))
 
 
-def _writable_batch(db, batch_id):
-    batch = _legacy._get_batch(db, int(batch_id))
+def _writable_batch(db, batch_id, *, lock: bool = False):
+    if lock:
+        from app.models import AaEvaluationBatch
+
+        batch = db.query(AaEvaluationBatch).filter(
+            AaEvaluationBatch.id == int(batch_id),
+            AaEvaluationBatch.tenant_id == _legacy._tid(),
+            AaEvaluationBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("评教批次不存在")
+    else:
+        batch = _legacy._get_batch(db, int(batch_id))
     _guard_term(db, batch.term_id)
     return batch
 
