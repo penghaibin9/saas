@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_task_core_service as core
@@ -153,7 +154,7 @@ def generate_batch_tx(db, body, user) -> dict:
         )).all()
         for binding in bindings:
             if binding.class_id:
-                target_classes = [db.get(SchoolClass, int(binding.class_id))]
+                target_classes = [tenant_get(db, SchoolClass, int(binding.class_id), tenant_id=_tid())]
             else:
                 target_classes = db.scalars(select(SchoolClass).where(
                     SchoolClass.tenant_id == _tid(),
