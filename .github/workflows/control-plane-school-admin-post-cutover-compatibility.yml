@@ -102,9 +102,9 @@ jobs:
           assert s['usedUndefined'] == 0
           assert s['usedLegacyPattern'] == 0
           assert s['b8BaseConcreteExact'] == 449
-          assert s['b8PostCutoverCompatibilityExact'] == 144
-          assert s['b8ConcreteExact'] == 593
-          assert s['catalogExact'] == 657
+          assert s['b8PostCutoverCompatibilityExact'] == 148
+          assert s['b8ConcreteExact'] == 597
+          assert s['catalogExact'] == 661
           assert all(not c.startswith(('platform.', 'enterprise.')) and c != '*' for c in data['postCutoverCompatibilityCodes'])
           print(json.dumps(s, ensure_ascii=False, sort_keys=True))
           PY
