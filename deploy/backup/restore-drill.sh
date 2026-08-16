@@ -316,7 +316,8 @@ local_file_object_count=$local_file_object_count
 local_file_object_hashed_count=$local_file_object_hashed_count
 recovery_host=$(hostname)
 recovery_operator=${RECOVERY_OPERATOR:-${USER:-unknown}}
-source_commit=${GITHUB_SHA:-unknown}
+source_commit=${RESTORE_SOURCE_COMMIT:-${GITHUB_SHA:-unknown}}
+workflow_trigger_sha=${GITHUB_SHA:-unknown}
 workflow_run_id=${GITHUB_RUN_ID:-manual}
 completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EVIDENCE

@@ -82,8 +82,13 @@ jobs:
       MIN_RESTORED_LOCAL_FILE_OBJECTS: '1'
       MIN_RESTORED_HASHED_FILE_OBJECTS: '1'
       RESTORE_EVIDENCE_FILE: /tmp/restore-drill-evidence.txt
+      RESTORE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact restore head checkout
+        run: test "$(git rev-parse HEAD)" = "$RESTORE_SOURCE_COMMIT"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -281,6 +286,8 @@ jobs:
       - name: Verify recovery evidence integrity
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RESTORE_SOURCE_COMMIT"
+          grep -Fqx "source_commit=$RESTORE_SOURCE_COMMIT" "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^local_file_object_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^local_file_object_hashed_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
