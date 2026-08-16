@@ -88,21 +88,11 @@ jobs:
           pip install -r requirements.txt
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
-      - name: Seed tenant and academic-admin account
+      - name: Seed tenant foundation
         working-directory: backend
         run: |
           set -euo pipefail
           python scripts/e2e_seed_playwright_tenants.py
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
-      - name: Seed W3 authoritative schedule fixture
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python scripts/e2e_seed_academic_b_selection.py
-          python scripts/e2e_seed_academic_b_w3_schedule.py
-          test -s ../e2e/academic-b-w3-fixture.json
       - name: Start backend
         run: |
           set -euo pipefail
@@ -116,6 +106,20 @@ jobs:
           done
           cat ../e2e/runtime-logs/backend.log
           exit 1
+      - name: Bootstrap and verify academic-admin account
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+      - name: Seed W3 authoritative schedule fixture
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w3_schedule.py
+          test -s ../e2e/academic-b-w3-fixture.json
       - name: Install, production-build and start staff PC
         run: |
           set -euo pipefail
