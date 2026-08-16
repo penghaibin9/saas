@@ -31,6 +31,8 @@ CLEAN_SCHEMA_PROVEN=false
 MIGRATED_TENANT_SCHEMA_PROVEN=false
 TARGETED_CONTRACTS_PROVEN=false
 PERMISSION_NEGATIVE_PROVEN=false
+DATASCOPE_NEGATIVE_PROVEN=false
+CROSS_TENANT_SENTINEL_PROVEN=false
 MAIN_ALEMBIC_VERSION=""
 INTEGRATED_ALEMBIC_VERSION=""
 MIGRATED_PROBE_DIGEST=""
@@ -67,8 +69,8 @@ main_alembic_version=$MAIN_ALEMBIC_VERSION
 integrated_alembic_version=$INTEGRATED_ALEMBIC_VERSION
 migrated_probe_digest=$MIGRATED_PROBE_DIGEST
 permission_negative_contract_proven=$PERMISSION_NEGATIVE_PROVEN
-datascope_negative_contract_included=true
-cross_tenant_sentinel_included=true
+datascope_negative_contract_proven=$DATASCOPE_NEGATIVE_PROVEN
+cross_tenant_sentinel_proven=$CROSS_TENANT_SENTINEL_PROVEN
 r11_contract_included=true
 twenty_k_proven_on_w5_head=false
 outbox_recovery_proven_on_w5_head=false
@@ -244,6 +246,7 @@ files=(
   tests/test_aa_attendance_published_occurrence_contract.py
   tests/test_aa_graduation_d_w0_scope_guard.py
   tests/test_aa_graduation_d_w5_permission_negative.py
+  tests/test_aa_graduation_d_w5_datascope_negative.py
   tests/test_aa_archive_d_w1_authority_regressions.py
   tests/test_aa_semester_pilot_r11.py
   tests/test_aa_main_permission_middleware_compat.py
@@ -257,5 +260,7 @@ pytest -q -p no:warnings \
   --maxfail=1 \
   --junitxml="$JUNIT"
 PERMISSION_NEGATIVE_PROVEN=true
+DATASCOPE_NEGATIVE_PROVEN=true
+CROSS_TENANT_SENTINEL_PROVEN=true
 TARGETED_CONTRACTS_PROVEN=true
 W5_PHASE="PRE_GOLD_REPLAY_COMPLETE"
