@@ -136,18 +136,34 @@ def build_program_import_receipt(
         items = [dict(item) for item in (evidence.get("items") or ())]
         if len(items) != program_count:
             raise ValueError("Program reconciliation item count mismatch")
-        if any(not bool(item.get("hashMatch")) for item in items):
-            raise ValueError("Program reconciliation receipt requires every definition hash to match")
-        relationship_facts = [
-            {
-                "programKey": str(item.get("programKey") or ""),
-                "programId": str(item.get("programId") or ""),
-                "action": str(item.get("action") or "").upper(),
-                "definitionHash": str(item.get("definitionHash") or ""),
+
+        item_action_counts = {"CREATE": 0, "REUSE": 0}
+        relationship_facts = []
+        for item in items:
+            program_key = str(item.get("programKey") or "").strip()
+            program_id = str(item.get("programId") or "").strip()
+            action = str(item.get("action") or "").strip().upper()
+            definition_hash = str(item.get("definitionHash") or "").strip().lower()
+            reread_hash = str(item.get("rereadDefinitionHash") or "").strip().lower()
+            if not program_key or not program_id:
+                raise ValueError("Program reconciliation receipt item requires programKey/programId")
+            if action not in item_action_counts:
+                raise ValueError(f"Program reconciliation receipt contains unsupported action: {action}")
+            if not _SHA256_RE.fullmatch(definition_hash) or not _SHA256_RE.fullmatch(reread_hash):
+                raise ValueError("Program reconciliation receipt requires SHA-256 definition hashes")
+            if definition_hash != reread_hash or not bool(item.get("hashMatch")):
+                raise ValueError("Program reconciliation receipt requires every definition hash to match")
+            item_action_counts[action] += 1
+            relationship_facts.append({
+                "programKey": program_key,
+                "programId": program_id,
+                "action": action,
+                "definitionHash": definition_hash,
                 "prevProgramId": str((item.get("relationship") or {}).get("prevProgramId") or ""),
-            }
-            for item in items
-        ]
+            })
+        if item_action_counts["CREATE"] != imported or item_action_counts["REUSE"] != reused:
+            raise ValueError("Program reconciliation item actions do not match imported/reused counts")
+
         reconciliation_hash = _sha256(sorted(
             relationship_facts,
             key=lambda item: (item["programKey"], item["programId"]),
@@ -209,13 +225,27 @@ def build_program_import_receipt(
         items = [dict(item) for item in (evidence.get("items") or ())]
         if len(items) != binding_count:
             raise ValueError("Program binding reconciliation item count mismatch")
-        if any(
-            not bool(item.get("activeRelationshipMatch"))
-            or not bool(item.get("supersedeRelationshipMatch"))
-            or not bool(item.get("targetStatusMatch"))
-            for item in items
-        ):
-            raise ValueError("Program binding receipt requires every relationship reread to match")
+
+        item_action_counts = {"CREATE": 0, "REUSE": 0}
+        for item in items:
+            program_key = str(item.get("programKey") or "").strip()
+            program_id = str(item.get("programId") or "").strip()
+            scope_key = str(item.get("scopeKey") or "").strip()
+            action = str(item.get("action") or "").strip().upper()
+            if not program_key or not program_id or not scope_key:
+                raise ValueError("Program binding receipt item requires programKey/programId/scopeKey")
+            if action not in item_action_counts:
+                raise ValueError(f"Program binding receipt contains unsupported action: {action}")
+            if (
+                not bool(item.get("activeRelationshipMatch"))
+                or not bool(item.get("supersedeRelationshipMatch"))
+                or not bool(item.get("targetStatusMatch"))
+            ):
+                raise ValueError("Program binding receipt requires every relationship reread to match")
+            item_action_counts[action] += 1
+        if item_action_counts["CREATE"] != created or item_action_counts["REUSE"] != reused:
+            raise ValueError("Program binding receipt item actions do not match created/reused counts")
+
         replay_noop = all_reuse
         return {
             "contractVersion": "program-import-receipt-v1",
