@@ -1,18 +1,8 @@
 name: Academic B W2 Authority Consumers
+# B-W2 is frozen at its recorded exact-head evidence. Later waves run their own targeted gates.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/academic-b-schedule-selection]
-    paths:
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_authority_consumer.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_core_service.py'
-      - 'backend/tests/test_aa_selection_authority_consumer.py'
-      - 'backend/tests/test_aa_selection.py'
-      - 'backend/tests/test_aa_selection_canonical_service.py'
-      - 'backend/tests/test_aa_selection_student_guard.py'
-      - '.github/workflows/academic-b-w2-authority-consumers.yml'
 
 permissions:
   contents: read
