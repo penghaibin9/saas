@@ -265,6 +265,47 @@ def todos(user: dict) -> dict:
             "scopeMode": scope["mode"], "errors": errors}
 
 
+def affairs_academic_evaluation_my_results(user: dict) -> dict:
+    """跨批次聚合本人已发布评教结果；内部调用严格遵守 D-W3 100/页上限并完整翻页。"""
+    u = _require_teacher(user)
+    if not _impl.db_enabled():
+        return {"list": [], "total": 0}
+
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
+
+    page_size = 100
+    items = []
+    batch_page = 1
+    while True:
+        batches, batch_total = eval_svc.list_batches(
+            u, status=None, page=batch_page, page_size=page_size
+        )
+        for batch in batches:
+            if batch["status"] not in ("RESULT_READY", "ARCHIVED"):
+                continue
+            result_page = 1
+            while True:
+                rows, result_total = eval_svc.list_results(
+                    u,
+                    int(batch["batchId"]),
+                    mine=True,
+                    page=result_page,
+                    page_size=page_size,
+                )
+                for row in rows:
+                    item = dict(row)
+                    item["batchId"] = batch["batchId"]
+                    item["batchName"] = batch["batchName"]
+                    items.append(item)
+                if not rows or result_page * page_size >= int(result_total or 0):
+                    break
+                result_page += 1
+        if not batches or batch_page * page_size >= int(batch_total or 0):
+            break
+        batch_page += 1
+    return {"list": items, "total": len(items)}
+
+
 # 保存原入口（模块重载时不把门面自身保存成 original），再把实现模块引用到安全函数。
 if not hasattr(_impl, "_original_resolve_teacher_scope"):
     _impl._original_resolve_teacher_scope = _impl.resolve_teacher_scope
@@ -278,6 +319,7 @@ _impl.overview = overview
 _impl.todos = todos
 _impl._total = _total
 _impl._safe_list = _safe_list
+_impl.affairs_academic_evaluation_my_results = affairs_academic_evaluation_my_results
 
 # 保持原模块的全部公开/私有属性兼容，既有 Router 和测试无需改 import。
 for _name in dir(_impl):

@@ -111,7 +111,7 @@ def test_evaluation_batch_and_result_lists_are_true_db_pages(client):
 def test_evaluation_stats_use_sql_aggregates_not_table_materialization(client):
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import AaEvaluationBatch, AaEvaluationResult, AaEvaluationTask
+    from app.models import AaEvaluationBatch, AaEvaluationRecord, AaEvaluationResult, AaEvaluationTask
 
     set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
@@ -150,30 +150,55 @@ def test_evaluation_stats_use_sql_aggregates_not_table_materialization(client):
             published=True,
             is_deleted=True,
         ))
+        student_submitted_task = AaEvaluationTask(
+            tenant_id=TID,
+            batch_id=batch.id,
+            teaching_task_id=930000,
+            teacher_key="dw3_stats_teacher_0",
+            evaluator_type="STUDENT",
+            submitted_count=20,
+            status="PENDING",
+        )
+        student_empty_task = AaEvaluationTask(
+            tenant_id=TID,
+            batch_id=batch.id,
+            teaching_task_id=930001,
+            teacher_key="dw3_stats_teacher_1",
+            evaluator_type="STUDENT",
+            submitted_count=0,
+            status="PENDING",
+        )
+        supervisor_submitted_task = AaEvaluationTask(
+            tenant_id=TID,
+            batch_id=batch.id,
+            teaching_task_id=930002,
+            teacher_key="dw3_stats_teacher_2",
+            evaluator_type="SUPERVISOR",
+            submitted_count=1,
+            status="SUBMITTED",
+        )
+        db.add_all([student_submitted_task, student_empty_task, supervisor_submitted_task])
+        db.flush()
+        # submitted_count is only a backward-compatible closed-batch projection. Participation
+        # statistics must follow active answer facts, so seed the authoritative records explicitly.
         db.add_all([
-            AaEvaluationTask(
+            AaEvaluationRecord(
                 tenant_id=TID,
                 batch_id=batch.id,
-                teaching_task_id=930000,
+                task_id=student_submitted_task.id,
+                teacher_key=student_submitted_task.teacher_key,
                 evaluator_type="STUDENT",
-                submitted_count=20,
-                status="PENDING",
+                answers_json="{}",
+                objective_score=95,
             ),
-            AaEvaluationTask(
+            AaEvaluationRecord(
                 tenant_id=TID,
                 batch_id=batch.id,
-                teaching_task_id=930001,
-                evaluator_type="STUDENT",
-                submitted_count=0,
-                status="PENDING",
-            ),
-            AaEvaluationTask(
-                tenant_id=TID,
-                batch_id=batch.id,
-                teaching_task_id=930002,
+                task_id=supervisor_submitted_task.id,
+                teacher_key=supervisor_submitted_task.teacher_key,
                 evaluator_type="SUPERVISOR",
-                submitted_count=1,
-                status="SUBMITTED",
+                answers_json="{}",
+                objective_score=85,
             ),
         ])
         db.commit()

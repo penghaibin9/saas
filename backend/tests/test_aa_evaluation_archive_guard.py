@@ -62,7 +62,7 @@ def test_public_evaluation_and_archive_services_point_to_final_layers():
         "academic_affairs_evaluation_public_service"
     )
     assert services.academic_affairs_evaluation_service.review_appeal.__module__.endswith(
-        "academic_affairs_evaluation_term_facade"
+        "academic_affairs_evaluation_public_service"
     )
 
 

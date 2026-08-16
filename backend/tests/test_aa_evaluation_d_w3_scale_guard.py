@@ -120,8 +120,9 @@ def test_close_score_is_constant_query_and_ignores_soft_deleted_answers(client):
 
     assert response.status_code == 200, response.text
     assert response.json()["data"]["status"] == "RESULT_READY"
-    assert len(statements) <= 4, (
-        "close-score must stay constant-query: batch + tasks + score aggregate + result prefetch; "
+    assert len(statements) <= 5, (
+        "close-score must stay constant-query: batch + tasks + authoritative submission-count "
+        "aggregate + score aggregate + result prefetch; "
         f"actual evaluation SELECTs={len(statements)}"
     )
 
