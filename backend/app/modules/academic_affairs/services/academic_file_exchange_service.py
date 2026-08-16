@@ -5,7 +5,7 @@
 - 任务详情在文件 CLEAN/AVAILABLE 后推进 PARSING → VALIDATED/VALIDATION_FAILED；
 - 预检只持久化摘要与脱敏错误，原始 rows 不进入任务 JSON；
 - 确认只接受 jobId + expectedVersion，并重新读取同一 FileObject、复算 rowDigest、重新预检；
-- 学籍、成绩、排课写入继续委托原领域事务，公共层负责租约、文件安全和任务生命周期；
+- 学籍、成绩、排课、课程库写入继续委托原领域事务，公共层负责租约、文件安全和任务生命周期；
 - 导出生成 FileObject + ExportJob，支持过期、撤销和一次性下载票据。
 """
 from __future__ import annotations
@@ -29,6 +29,7 @@ ACADEMIC_MODULE_CODE = "ACADEMIC_AFFAIRS"
 ACADEMIC_ROSTER_IMPORT = "ACADEMIC_ROSTER"
 ACADEMIC_GRADE_IMPORT = "ACADEMIC_GRADE"
 ACADEMIC_SCHEDULE_IMPORT = "ACADEMIC_SCHEDULE"
+ACADEMIC_COURSE_CATALOG_IMPORT = "ACADEMIC_COURSE_CATALOG"
 ACADEMIC_ROSTER_EXPORT = "ACADEMIC_ROSTER"
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 
@@ -117,8 +118,17 @@ def create_academic_import_job(
     from app.models.file import FileObject
 
     import_type = str(import_type or "").upper()
-    if import_type not in {ACADEMIC_ROSTER_IMPORT, ACADEMIC_GRADE_IMPORT, ACADEMIC_SCHEDULE_IMPORT}:
+    if import_type not in {
+        ACADEMIC_ROSTER_IMPORT,
+        ACADEMIC_GRADE_IMPORT,
+        ACADEMIC_SCHEDULE_IMPORT,
+        ACADEMIC_COURSE_CATALOG_IMPORT,
+    }:
         raise AppException("VALIDATION_ERROR", "不支持的教务导入类型")
+    template_version = "v1"
+    if import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from .academic_affairs_school_setup_import_contract import COURSE_TEMPLATE_VERSION
+        template_version = COURSE_TEMPLATE_VERSION
     db = get_sessionmaker()()
     try:
         file_row = db.scalars(select(FileObject).where(
@@ -140,7 +150,7 @@ def create_academic_import_job(
             source_file_id=int(source_file_id),
             adapter_type=jobs.IMPORT_ADAPTER_EXCEL,
             adapter_ref=f"AA-{import_type}-{uuid.uuid4().hex}",
-            template_version="v1",
+            template_version=template_version,
             status="SCANNING",
             total_rows=0,
             valid_rows=0,
@@ -314,6 +324,13 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         rows = schedule.sanitize_import_rows(rows)
         # 真正跑一遍排课冲突检测器（与确认导入同一 _apply_import_rows），不再假装零错误。
         return rows, schedule.import_dry_run(batch_id, user, rows)
+    if import_row.import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from .academic_affairs_school_setup_file_exchange_spec import parse_and_validate_course_catalog
+        return parse_and_validate_course_catalog(
+            source_path,
+            user=user,
+            reader=_read_xlsx_path,
+        )
     raise AppException("DATA_CONFLICT", "未知教务导入类型")
 
 
@@ -501,6 +518,9 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
         from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
         atomic = str(context.get("importMode") or "ATOMIC").strip().upper() != "PARTIAL"
         result = schedule.import_items(int(context.get("batchId") or 0), user, rows, atomic=atomic)
+    elif import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from . import academic_affairs_school_setup_course_confirm_service as course_catalog
+        result = course_catalog.confirm_course_catalog_import(rows, user)
     else:
         raise AppException("DATA_CONFLICT", "未知教务导入类型")
     if not isinstance(result, dict):
