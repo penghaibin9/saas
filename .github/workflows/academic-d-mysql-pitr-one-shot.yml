@@ -1,0 +1,204 @@
+name: Academic D MySQL PITR One Shot
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "deploy/backup/pitr-drill.sh"
+      - ".github/workflows/academic-d-mysql-pitr-one-shot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-d-mysql-pitr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-pitr:
+    name: Real MySQL 8 binlog point-in-time recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3307"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: academic_d_pitr_drill
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3307/academic_d_pitr_drill?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3307/academic_d_pitr_drill?charset=utf8mb4
+      FIELD_ENCRYPTION_KEY: academic-d-pitr-field-key-20260816
+      JWT_SECRET: academic-d-pitr-jwt-secret-20260816
+      MOCK_LOGIN_ENABLED: "false"
+      MAX_PITR_SECONDS: "900"
+      PITR_EVIDENCE_FILE: /tmp/academic-d-pitr-evidence.txt
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install frozen backend and MySQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Validate PITR script safety contract
+        run: |
+          set -euo pipefail
+          bash -n deploy/backup/pitr-drill.sh
+          grep -Fq 'PITR drill refuses non-local' deploy/backup/pitr-drill.sh
+          grep -Fq 'PITR drill database must end with _pitr_drill' deploy/backup/pitr-drill.sh
+          grep -Fq 'production_binlog_archival_proven=false' deploy/backup/pitr-drill.sh
+
+      - name: Start isolated MySQL 8 with explicit ROW binlog
+        run: |
+          set -euo pipefail
+          docker run -d --name academic-d-pitr-mysql \
+            -e MYSQL_ROOT_PASSWORD=root \
+            -p 3307:3306 \
+            mysql:8.0 \
+            --server-id=147 \
+            --log-bin=mysql-bin \
+            --binlog-format=ROW \
+            --binlog-row-image=FULL \
+            --gtid-mode=OFF \
+            --enforce-gtid-consistency=OFF
+          for i in $(seq 1 60); do
+            if MYSQL_PWD=root mysql --protocol=tcp -h127.0.0.1 -P3307 -uroot -Nse 'SELECT 1' >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs academic-d-pitr-mysql
+          exit 1
+
+      - name: Build exact-head schema and PITR baseline
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic upgrade head
+          mysql --protocol=tcp -h127.0.0.1 -P3307 -uroot -proot "$DB_NAME" <<'SQL'
+          CREATE TABLE t_d_w4_pitr_probe (
+            id BIGINT PRIMARY KEY,
+            value_text VARCHAR(80) NOT NULL,
+            updated_at DATETIME(6) NOT NULL
+          ) ENGINE=InnoDB;
+          INSERT INTO t_d_w4_pitr_probe(id, value_text, updated_at)
+          VALUES (1, 'BASELINE', UTC_TIMESTAMP(6));
+          SQL
+          EXPECTED_ALEMBIC="$(mysql --protocol=tcp -h127.0.0.1 -P3307 -uroot -proot -Nse "SELECT version_num FROM ${DB_NAME}.alembic_version LIMIT 1")"
+          test -n "$EXPECTED_ALEMBIC"
+          echo "EXPECTED_ALEMBIC=$EXPECTED_ALEMBIC" >> "$GITHUB_ENV"
+
+          BASE_DUMP=/tmp/academic-d-pitr-base.sql.gz
+          mysqldump --protocol=tcp -h127.0.0.1 -P3307 -uroot -proot \
+            --single-transaction --quick --routines --triggers \
+            --no-tablespaces --set-gtid-purged=OFF \
+            "$DB_NAME" | gzip -9 > "$BASE_DUMP"
+          test -s "$BASE_DUMP"
+          sha256sum "$BASE_DUMP" > "${BASE_DUMP}.sha256"
+          echo "BASE_DUMP=$BASE_DUMP" >> "$GITHUB_ENV"
+
+      - name: Record base coordinate then create target and post-target corruption
+        run: |
+          set -euo pipefail
+          MYSQL=(mysql --protocol=tcp -h127.0.0.1 -P3307 -uroot -proot)
+          test "$("${MYSQL[@]}" -Nse 'SELECT @@GLOBAL.log_bin')" = "1"
+          test "$("${MYSQL[@]}" -Nse 'SELECT @@GLOBAL.binlog_format')" = "ROW"
+
+          "${MYSQL[@]}" -e "FLUSH BINARY LOGS"
+          read -r BINLOG_FILE START_POSITION < <("${MYSQL[@]}" -Nse 'SHOW MASTER STATUS' | awk '{print $1, $2}')
+          test -n "$BINLOG_FILE"
+          test "${START_POSITION:-0}" -ge 4
+
+          "${MYSQL[@]}" "$DB_NAME" <<'SQL'
+          UPDATE t_d_w4_pitr_probe
+             SET value_text='GOOD_AT_TARGET', updated_at=UTC_TIMESTAMP(6)
+           WHERE id=1;
+          INSERT INTO t_d_w4_pitr_probe(id, value_text, updated_at)
+          VALUES (2, 'GOOD_SECOND_ROW', UTC_TIMESTAMP(6));
+          SQL
+          TARGET_TIME="$("${MYSQL[@]}" -Nse 'SELECT DATE_FORMAT(UTC_TIMESTAMP(6), "%Y-%m-%dT%H:%i:%s.%fZ")')"
+          read -r TARGET_FILE TARGET_POSITION < <("${MYSQL[@]}" -Nse 'SHOW MASTER STATUS' | awk '{print $1, $2}')
+          test "$TARGET_FILE" = "$BINLOG_FILE"
+
+          TARGET_DIGEST="$("${MYSQL[@]}" -Nse "SELECT SHA2(GROUP_CONCAT(CONCAT(id, ':', value_text) ORDER BY id SEPARATOR '|'), 256) FROM ${DB_NAME}.t_d_w4_pitr_probe")"
+          test -n "$TARGET_DIGEST"
+
+          "${MYSQL[@]}" "$DB_NAME" <<'SQL'
+          DELETE FROM t_d_w4_pitr_probe WHERE id=2;
+          UPDATE t_d_w4_pitr_probe
+             SET value_text='CORRUPTED_AFTER_TARGET', updated_at=UTC_TIMESTAMP(6)
+           WHERE id=1;
+          INSERT INTO t_d_w4_pitr_probe(id, value_text, updated_at)
+          VALUES (99, 'MUST_NOT_SURVIVE_PITR', UTC_TIMESTAMP(6));
+          SQL
+          read -r FINAL_FILE FINAL_POSITION < <("${MYSQL[@]}" -Nse 'SHOW MASTER STATUS' | awk '{print $1, $2}')
+          test "$FINAL_FILE" = "$BINLOG_FILE"
+          test "$FINAL_POSITION" -gt "$TARGET_POSITION"
+
+          {
+            echo "BINLOG_FILE=$BINLOG_FILE"
+            echo "START_POSITION=$START_POSITION"
+            echo "TARGET_POSITION=$TARGET_POSITION"
+            echo "TARGET_TIME=$TARGET_TIME"
+            echo "TARGET_DIGEST=$TARGET_DIGEST"
+            echo "FINAL_POSITION=$FINAL_POSITION"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore exact target position from base plus binlog
+        run: |
+          set -euo pipefail
+          bash deploy/backup/pitr-drill.sh \
+            "$BASE_DUMP" \
+            "$DB_NAME" \
+            "$BINLOG_FILE" \
+            "$START_POSITION" \
+            "$TARGET_POSITION"
+
+      - name: Verify target state, schema and excluded post-target writes
+        run: |
+          set -euo pipefail
+          MYSQL=(mysql --protocol=tcp -h127.0.0.1 -P3307 -uroot -proot)
+          ACTUAL_ALEMBIC="$("${MYSQL[@]}" -Nse "SELECT version_num FROM ${DB_NAME}.alembic_version LIMIT 1")"
+          test "$ACTUAL_ALEMBIC" = "$EXPECTED_ALEMBIC"
+          ACTUAL_DIGEST="$("${MYSQL[@]}" -Nse "SELECT SHA2(GROUP_CONCAT(CONCAT(id, ':', value_text) ORDER BY id SEPARATOR '|'), 256) FROM ${DB_NAME}.t_d_w4_pitr_probe")"
+          test "$ACTUAL_DIGEST" = "$TARGET_DIGEST"
+          test "$("${MYSQL[@]}" -Nse "SELECT COUNT(*) FROM ${DB_NAME}.t_d_w4_pitr_probe WHERE value_text='CORRUPTED_AFTER_TARGET' OR id=99")" = "0"
+          test "$("${MYSQL[@]}" -Nse "SELECT COUNT(*) FROM ${DB_NAME}.t_d_w4_pitr_probe")" = "2"
+          {
+            echo "target_time_utc=$TARGET_TIME"
+            echo "final_position=$FINAL_POSITION"
+            echo "expected_digest=$TARGET_DIGEST"
+            echo "actual_digest=$ACTUAL_DIGEST"
+            echo "alembic_version=$ACTUAL_ALEMBIC"
+            echo "post_target_writes_excluded=true"
+          } >> "$PITR_EVIDENCE_FILE"
+          cd "$(dirname "$PITR_EVIDENCE_FILE")"
+          sha256sum "$(basename "$PITR_EVIDENCE_FILE")" > "$(basename "$PITR_EVIDENCE_FILE").sha256"
+          sha256sum -c "$(basename "$PITR_EVIDENCE_FILE").sha256"
+
+      - name: Upload D-W4 PITR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-mysql-pitr-${{ github.run_id }}
+          path: |
+            /tmp/academic-d-pitr-evidence.txt
+            /tmp/academic-d-pitr-evidence.txt.sha256
+          if-no-files-found: warn
+          retention-days: 30
