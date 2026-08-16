@@ -106,15 +106,21 @@ async function lifecycle(page, actionLabel, apiFragment) {
 
 async function miniappLogin(page) {
   await page.goto(`${MINIAPP_BASE}/#/pages/login/student/index`)
-  await page.getByPlaceholder('学号 / 手机号').fill(config.student.username)
-  await page.getByPlaceholder('密码').fill(config.student.password)
-  const agreement = page.locator('.agreement').first()
+  const authCard = page.locator('.auth-card')
+  await expect(authCard).toBeVisible({ timeout: 20_000 })
+  const fields = authCard.getByRole('textbox')
+  await expect(fields.nth(0)).toBeVisible()
+  await expect(fields.nth(1)).toBeVisible()
+  await fields.nth(0).fill(config.student.username)
+  await fields.nth(1).fill(config.student.password)
+  const agreement = authCard.locator('.agreement__box').first()
   await expect(agreement).toBeVisible()
   await agreement.click()
+  await expect(agreement).toHaveClass(/\bon\b/)
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/auth/login') && response.request().method() === 'POST'
   )
-  await page.getByRole('button', { name: '进入学生首页' }).click()
+  await authCard.locator('.account-button').first().click()
   const response = await loginResponse
   expect(response.ok(), `miniapp login HTTP ${response.status()}`).toBeTruthy()
   await page.waitForURL(/pages\/student\/home\/index/, { timeout: 60_000 })
@@ -172,8 +178,9 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const studentLogin = new StudentLoginPage(student, config.studentBaseUrl)
     await studentLogin.login(config.student)
     await student.goto(`${config.studentBaseUrl}/academic/selection`)
-    await expect(student.getByText(fixture.ready.batchName, { exact: true })).toBeVisible({ timeout: 20_000 })
-    const firstRow = student.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
+    const studentBatch = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
+    await expect(studentBatch).toBeVisible({ timeout: 20_000 })
+    const firstRow = studentBatch.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
     await expect(firstRow).toBeVisible()
     const portalPreflight = student.waitForResponse((response) =>
       response.url().includes('/portal/academic/course-selection/preflight') && response.request().method() === 'POST'
@@ -187,7 +194,9 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expect(firstRow).toContainText('本人已选', { timeout: 15_000 })
     await screenshot(student, testInfo, 'w1-student-pc-selected-1440x900')
     await student.reload()
-    const firstAfterRefresh = student.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
+    const studentBatchAfterRefresh = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
+    await expect(studentBatchAfterRefresh).toBeVisible({ timeout: 20_000 })
+    const firstAfterRefresh = studentBatchAfterRefresh.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
     await expect(firstAfterRefresh).toContainText('本人已选', { timeout: 20_000 })
     await studentContext.close()
 
@@ -195,8 +204,9 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const mini = await miniContext.newPage()
     await miniappLogin(mini)
     await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
-    await expect(mini.getByText(fixture.ready.batchName, { exact: true })).toBeVisible({ timeout: 20_000 })
-    const secondCard = mini.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
+    const miniGroup = mini.locator('.sl__group').filter({ hasText: fixture.ready.batchName }).first()
+    await expect(miniGroup).toBeVisible({ timeout: 20_000 })
+    const secondCard = miniGroup.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
     await expect(secondCard).toBeVisible()
     const miniPreflight = mini.waitForResponse((response) =>
       response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
@@ -204,13 +214,15 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const miniEnroll = mini.waitForResponse((response) =>
       response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
     )
-    await secondCard.getByRole('button', { name: '选课', exact: true }).click()
+    await secondCard.locator('.sl__btn').filter({ hasText: '选课' }).first().click()
     expect((await miniPreflight).ok()).toBeTruthy()
     expect((await miniEnroll).ok()).toBeTruthy()
     await expect(secondCard).toContainText('已选', { timeout: 15_000 })
     await screenshot(mini, testInfo, 'w1-miniapp-selected-390x844')
     await mini.reload()
-    const secondAfterRefresh = mini.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
+    const miniGroupAfterRefresh = mini.locator('.sl__group').filter({ hasText: fixture.ready.batchName }).first()
+    await expect(miniGroupAfterRefresh).toBeVisible({ timeout: 20_000 })
+    const secondAfterRefresh = miniGroupAfterRefresh.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
     await expect(secondAfterRefresh).toContainText('已选', { timeout: 20_000 })
     await miniContext.close()
   })
