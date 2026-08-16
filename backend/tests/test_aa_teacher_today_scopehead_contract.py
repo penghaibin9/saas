@@ -227,7 +227,11 @@ def test_teacher_schedule_projection_consumes_scopehead_not_latest_published(db_
 
     result = today.teacher_schedule_projection(_user())
     assert result["hasData"] is True
-    assert result["issues"] == []
+    assert len(result["issues"]) == 1
+    issue = result["issues"][0]
+    assert issue["courseName"] == "非Authority最近发布课程"
+    assert issue["status"] == "NOT_SCHEDULED"
+    assert "当前正式课表中不存在" in issue["message"]
     assert [row["scheduleItemId"] for row in result["items"]] == [str(active_item.id)]
     row = result["items"][0]
     assert row["activeBatchId"] == str(active_batch.id)
