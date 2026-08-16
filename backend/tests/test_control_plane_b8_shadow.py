@@ -26,7 +26,7 @@ def test_b8_contract_freezes_four_resolvers_and_tenant_only_shadow():
 def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes():
     catalog = load_permission_catalog()
     extension = catalog["b8ConcreteCatalog"]
-    assert extension["count"] == 578
+    assert extension["count"] == 579
     assert runtime_wildcard_probe_codes() == {"*"}
     for code in (
         "academicAffairs.grade.view",
@@ -37,6 +37,7 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
         "workflow.task.view",
         "academicAffairs.term.view",
         "academicAffairs.term.manage",
+        "student.import",
     ):
         meta = permission_meta(code)
         assert meta is not None
@@ -55,6 +56,7 @@ def test_active_tenant_universe_is_complete_school_assignable_only():
     assert "academicAffairs.grade.view" in codes
     assert "studentAffairs.risk.handle" in codes
     assert "systemAdmin.role.view" in codes
+    assert "student.import" in codes
 
 
 def test_b8_publishes_immutable_explicit_tenant_templates_then_shadow_is_zero(db_mode):

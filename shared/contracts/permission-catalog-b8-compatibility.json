@@ -132,6 +132,7 @@
     "internship.student.export",
     "internship.student.manage",
     "internship.visit.plan.manage",
-    "internship.visit.plan.view"
+    "internship.visit.plan.view",
+    "student.import"
   ]
 }
