@@ -317,7 +317,7 @@ def build_teacher_template() -> bytes:
     _style_header(ws, TEACHER_HEADERS, TEACHER_REQUIRED_HEADERS, fill,
                   [20, 16, 24, 20, 30, 22, 28])
     ws.column_dimensions["A"].number_format = "@"
-    scope = DataValidation(type="list", formula1='"SCHOOL,COLLEGE,CLASS,ADVISOR"', allow_blank=True)
+    scope = DataValidation(type="list", formula1='"SCHOOL,COLLEGE,MAJOR,CLASS,ADVISOR"', allow_blank=True)
     ws.add_data_validation(scope)
     scope.add(f"F2:F{MAX_ROWS + 1}")
 
@@ -325,6 +325,7 @@ def build_teacher_template() -> bytes:
         "只允许上传本模板生成的 .xlsx 文件，不支持 CSV、旧版 .xls 或启用宏的 .xlsm。",
         "本模板只导入教师。学生请使用「学生导入与账号开通」的专用模板，两者不可混用。",
         "预设角色编码必填；多个角色用中文/英文逗号、分号或竖线分隔，可选值见「教师预设角色」页。",
+        "学院/专业管理员分别使用 COLLEGE / MAJOR 数据范围，并填写对应学院/专业名称。",
         "辅导员必须填写 CLASS 或 ADVISOR 数据范围类型及对应的数据范围引用（班级名称）。",
         "工号请设置为文本格式，学校内必须唯一；工号被学生或其它账号占用时会整批阻断。",
         "导入将创建登录账号并生成一次性初始密码，请在结果页及时下载凭据回执。",
