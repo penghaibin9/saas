@@ -19,7 +19,6 @@ from app.main import app
 from app.models import (
     AaAttendanceSession,
     AaCourse,
-    AaRosterConsumerSnapshot,
     AaScheduleBatch,
     AaScheduleItem,
     AaTeachingClass,
@@ -32,6 +31,7 @@ from app.models import (
     SchoolClass,
     StudentProfile,
 )
+from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
 from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as schedule_truth
 
 
@@ -63,7 +63,7 @@ def _ok(response, label: str) -> dict:
 
 
 def _seed_authority() -> dict:
-    # Seed only immutable/current authority facts. Attendance actions below never call a service directly.
+    # Seed only current authority facts. Attendance actions below never call a service directly.
     set_tenant({"tenantId": str(TID)})
     set_current_user({
         "userId": "seed-cw1-route",
