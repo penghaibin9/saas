@@ -27,6 +27,9 @@ def test_attendance_class_options_reuses_canonical_task_execution_guard():
     from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance
     from app.modules.academic_affairs.services import mobile_academic_affairs_facade as facade
 
+    assert attendance.ATTENDANCE_TASK_STATUSES == frozenset({
+        "TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY",
+    })
     assert attendance.attendance_task_executable("TEACHER_CONFIRMED") is True
     assert attendance.attendance_task_executable("COLLEGE_REVIEW") is True
     assert attendance.attendance_task_executable("APPROVED") is True
@@ -35,7 +38,8 @@ def test_attendance_class_options_reuses_canonical_task_execution_guard():
     assert attendance.attendance_task_executable("PENDING_ASSIGN") is False
 
     source = inspect.getsource(facade.teacher_attendance_class_options)
-    assert "attendance_task_executable" in source
+    assert "ATTENDANCE_TASK_STATUSES" in source
+    assert "AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES))" in source
     assert 'status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"])' not in source
 '''
 path.write_text(text, encoding="utf-8")
