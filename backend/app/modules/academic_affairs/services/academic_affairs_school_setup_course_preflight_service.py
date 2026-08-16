@@ -28,6 +28,12 @@ from .academic_affairs_school_setup_import_contract import RECONCILIATION_REJECT
 from .academic_affairs_school_setup_import_adapter import normalize_course_import_row
 from .academic_affairs_school_setup_import_preflight import course_catalog_preflight
 
+# The frozen course-catalog-v1 header map cannot currently express these two
+# optional Course fields. Do not manufacture same-key conflicts from facts the
+# uploaded template never asserted. When the template contract explicitly adds
+# these columns, remove them from this projection in the same atomic change.
+_NON_TEMPLATE_COMPARE_FIELDS = frozenset({"courseNameEn", "description"})
+
 
 def _reject(
     *,
@@ -71,6 +77,15 @@ def _prerequisite_codes(value: object, *, business_key: str) -> list[str]:
     return [item.strip().upper() for item in parsed if item.strip()]
 
 
+def _template_asserted_item(item: Mapping[str, object]) -> dict:
+    projected = dict(item)
+    payload = dict(projected.get("payload") or {})
+    for field in _NON_TEMPLATE_COMPARE_FIELDS:
+        payload.pop(field, None)
+    projected["payload"] = payload
+    return projected
+
+
 def _existing_course_snapshot(course) -> dict:
     business_key = f"{str(course.course_code or '').strip().upper()}@v{int(course.version or 0)}"
     return {
@@ -82,7 +97,6 @@ def _existing_course_snapshot(course) -> dict:
         "payload": {
             "courseCode": str(course.course_code or "").strip().upper(),
             "courseName": course.course_name,
-            "courseNameEn": course.course_name_en,
             "category": course.category,
             "nature": course.nature,
             "credit": float(course.credit or 0),
@@ -95,7 +109,6 @@ def _existing_course_snapshot(course) -> dict:
             "ownerCollegeId": int(course.owner_college_id) if course.owner_college_id else None,
             "ownerTeacherId": int(course.owner_teacher_id) if course.owner_teacher_id else None,
             "isCore": bool(course.is_core),
-            "description": course.description,
             "prerequisiteCodes": _prerequisite_codes(
                 course.prerequisite_codes_json,
                 business_key=business_key,
@@ -170,7 +183,9 @@ def course_catalog_dry_run(rows: list[Mapping[str, object]], user: dict) -> dict
 
     for row_no, raw in enumerate(source_rows, start=2):
         try:
-            normalized.append(normalize_course_import_row(raw, row_no=row_no))
+            normalized.append(_template_asserted_item(
+                normalize_course_import_row(raw, row_no=row_no)
+            ))
         except ValueError as exc:
             item, error = _reject(
                 row_no=row_no,
