@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (EmpCompany, InternshipApplication, InternshipAuditTrail, InternshipPosition,
                         InternshipRecord, StudentProfile)
 from app.modules.internship.services import internship_student_service as student_svc
@@ -142,11 +143,11 @@ def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
 
 def _row(db, app: InternshipApplication, rec=None, stu=None, *,
          pos=None, company=None, preloaded: bool = False) -> dict:
-    rec = rec or db.get(InternshipRecord, app.record_id)
-    stu = stu or db.get(StudentProfile, app.student_id)
+    rec = rec or tenant_get(db, InternshipRecord, app.record_id, tenant_id=app.tenant_id)
+    stu = stu or tenant_get(db, StudentProfile, app.student_id, tenant_id=app.tenant_id)
     if not preloaded:
-        pos = db.get(InternshipPosition, app.position_id) if app.position_id else None
-        company = db.get(EmpCompany, pos.company_id) if pos else None
+        pos = tenant_get(db, InternshipPosition, app.position_id, tenant_id=app.tenant_id) if app.position_id else None
+        company = tenant_get(db, EmpCompany, pos.company_id, tenant_id=app.tenant_id) if pos else None
     return {
         "id": str(app.id), "recordId": str(app.record_id), "studentId": str(app.student_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -515,7 +516,8 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
         _trail(db, app.id, "APPROVE", {"applicationType": app.application_type}, user)
         db.commit()
         app = _get_legacy_application(db, app_id)
-        rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
+        rec = tenant_get(db, InternshipRecord, app.record_id, tenant_id=app.tenant_id)
+        stu = tenant_get(db, StudentProfile, app.student_id, tenant_id=app.tenant_id)
         out = _row(db, app, rec, stu)
         out["version"] = new_ver
         return out
