@@ -94,9 +94,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: |
-            miniapp/package-lock.json
-            e2e/package-lock.json
+          cache-dependency-path: miniapp/package-lock.json
 
       - name: Fast C-W2 browser preflight
         run: |
@@ -156,7 +154,7 @@ jobs:
       - name: Install Playwright Chromium
         working-directory: e2e
         run: |
-          npm ci
+          npm install
           npx playwright install --with-deps chromium
 
       - name: Run C-W2 exact browser seal
