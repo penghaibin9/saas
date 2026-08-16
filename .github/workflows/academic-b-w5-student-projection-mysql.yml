@@ -10,6 +10,7 @@ on:
       - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py
       - backend/tests/test_aa_selection_student_projection_contract.py
       - backend/tests/test_aa_selection_student_projection_mysql.py
+      - backend/tests/test_aa_selection_student_projection_states_mysql.py
       - backend/tests/test_aa_selection_read_production_contract.py
       - .github/workflows/academic-b-w5-student-projection-mysql.yml
   workflow_dispatch:
@@ -84,6 +85,7 @@ jobs:
           pytest -q -p no:warnings \
             tests/test_aa_selection_read_production_contract.py \
             tests/test_aa_selection_student_projection_mysql.py \
+            tests/test_aa_selection_student_projection_states_mysql.py \
             --maxfail=1 \
             --junitxml=w5-projection-junit.xml
       - name: Upload W5 projection JUnit evidence
