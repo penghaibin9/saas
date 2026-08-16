@@ -22,7 +22,7 @@ test('ordinary teacher attendance creation requires a complete formal occurrence
   assert.doesNotMatch(page, /sessionTypes:\s*\[[^\]]*ADMIN_SPECIAL/)
 })
 
-test('exact occurrence deep-link never silently falls back to the first teaching task', () => {
+test('exact occurrence deep-link is consumed once and never silently falls back', () => {
   assert.match(page, /onLoad\(options = \{\}\)\s*\{[\s\S]*this\.routeSeed = this\.parseOccurrenceSeed\(options\)[\s\S]*this\.loadTasks\(\)/)
   assert.match(page, /parseOccurrenceSeed\(options = \{\}\)/)
   assert.match(page, /const anySeed = Boolean\(taskIdRaw \|\| sessionDate \|\| slotRaw\)/)
@@ -31,6 +31,9 @@ test('exact occurrence deep-link never silently falls back to the first teaching
   assert.match(page, /this\.taskOptions\.findIndex\(\(task\) => String\(task\.teachingTaskId\) === seed\.teachingTaskId\)/)
   assert.match(page, /this\.taskSelectionInvalid = true[\s\S]*this\.applyTask\(null\)[\s\S]*toast\('该正式课次不在本人当前可点名教学任务范围内'/)
   assert.match(page, /this\.taskSelectionInvalid = false[\s\S]*this\.taskIndex = index[\s\S]*this\.form\.sessionDate = seed\.sessionDate[\s\S]*this\.form\.slotNo = seed\.slotNo/)
+  assert.match(page, /applyOccurrenceSeed\(\)\s*\{[\s\S]*if \(!seed\)\s*\{[\s\S]*this\.taskIndex = 0[\s\S]*this\.applyTask\(this\.taskOptions\[0\]\)[\s\S]*return/)
+  assert.doesNotMatch(page, /if \(!seed\)\s*\{[\s\S]{0,160}this\.applyOccurrenceSeed\(\)/)
+  assert.match(page, /loadTasks\(\)\s*\{[\s\S]*teacherApi\.getAttendanceClassOptions\(\)[\s\S]*this\.applyOccurrenceSeed\(\)[\s\S]*\.catch/)
   assert.match(page, /onTaskPick\(event\)\s*\{[\s\S]*this\.routeSeed = null[\s\S]*this\.taskSelectionInvalid = false/)
   assert.doesNotMatch(page, /onLoad\(\) \{ this\.load\(\); this\.loadTasks\(\) \}/)
 })

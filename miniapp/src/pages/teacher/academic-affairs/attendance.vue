@@ -159,7 +159,8 @@ export default {
       const seed = this.routeSeed
       if (!seed) {
         this.taskSelectionInvalid = false
-        this.applyOccurrenceSeed()
+        this.taskIndex = 0
+        this.applyTask(this.taskOptions[0])
         return
       }
 
@@ -214,8 +215,7 @@ export default {
       teacherApi.getAttendanceClassOptions().then((data) => {
         this.taskOptions = ((data && data.items) || []).filter((task) =>
           ALLOWED_TASK_STATUSES.has(String(task.taskStatus || '').toUpperCase()))
-        this.taskIndex = 0
-        this.applyTask(this.taskOptions[0])
+        this.applyOccurrenceSeed()
       }).catch(() => {
         this.taskOptions = []
         this.taskSelectionInvalid = Boolean(this.routeSeed)
