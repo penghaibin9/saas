@@ -568,18 +568,7 @@ def resolve_formal_occurrence(
     if not selected_head:
         _conflict("正式课次无法回链当前 ScopeHead，数据冲突")
 
-    task_teacher = str(getattr(task, "teacher_key", "") or "").strip()
-    item_teacher = str(getattr(item, "teacher_key", "") or "").strip()
-    if not task_teacher or not item_teacher or task_teacher != item_teacher:
-        _conflict("正式课表教师身份与教学任务不一致")
-    task_class = int(getattr(task, "class_id", 0) or 0)
-    item_class = int(getattr(item, "class_id", 0) or 0)
-    if task_class and item_class and task_class != item_class:
-        _conflict("正式课表班级身份与教学任务不一致")
-    task_course = int(getattr(task, "course_id", 0) or 0)
-    item_course = int(getattr(item, "course_id", 0) or 0)
-    if task_course and item_course and task_course != item_course:
-        _conflict("正式课表课程身份与教学任务不一致")
+    item_teacher, item_class = _validate_task_item_identity(task, item)
 
     published_at = getattr(selected_head, "published_at", None)
     return {
