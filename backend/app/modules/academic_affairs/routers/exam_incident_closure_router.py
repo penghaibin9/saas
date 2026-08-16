@@ -4,6 +4,10 @@
 普通 ``/exam/rooms/{roomId}/seats`` 继续服务编排工作区；正式座位表/门贴/准考证必须走
 ``/exam/rooms/{roomId}/formal-print``，由 C-W3 formal print provider 校验发布状态、冻结名单
 与持久化座位全集，禁止把编排草稿伪装成正式文件。
+
+本模块加载时只安装 C-W3 发布通知 guard：它包装 legacy ``_notify_publish``，让原学生通知继续
+原样执行，并在同事务把当前 canonical 监考行投递给真实教师账号；发布状态机和监考 Assignment
+仍由既有 exam facade 唯一持有。
 """
 from __future__ import annotations
 
@@ -16,6 +20,9 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_exam_service as service
 from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
+from app.modules.academic_affairs.services import academic_affairs_exam_publish_delivery_guard as publish_delivery_guard
+
+publish_delivery_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务正式扩展"])
 
