@@ -71,45 +71,71 @@ def test_non_student_cannot_submit_student_evaluation():
     assert exc.value.http_status == 403
 
 
+class _LockQuery:
+    def __init__(self, result):
+        self.result = result
+
+    def filter(self, *_args):
+        return self
+
+    def with_for_update(self, *_args, **_kwargs):
+        return self
+
+    def first(self):
+        return self.result
+
+
+class _LockDb:
+    def __init__(self, results):
+        self.results = list(results)
+
+    def query(self, *_args):
+        return _LockQuery(self.results.pop(0))
+
+
 def test_student_must_belong_to_current_official_roster(monkeypatch):
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
-    from app.modules.academic_affairs.services import academic_affairs_roster_consumer_service as roster_service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
     from app.services import mobile_student_identity_facade
 
+    profile = SimpleNamespace(id=7)
+    roster = {
+        "teachingClassId": "20",
+        "rosterVersionId": "10",
+        "memberCount": 2,
+    }
+    task = SimpleNamespace(id=3, teaching_task_id=4)
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    monkeypatch.setattr(
-        mobile_student_identity_facade,
-        "resolve_student",
-        lambda _db, _user: SimpleNamespace(id=7),
-    )
-    monkeypatch.setattr(
-        roster_service,
-        "resolve_versioned_roster",
-        lambda _db, _task_id: {"studentIds": [8, 9], "memberCount": 2},
-    )
+    monkeypatch.setattr(mobile_student_identity_facade, "resolve_student", lambda _db, _user: profile)
+    monkeypatch.setattr(roster_guard, "resolve_submit_roster", lambda _db, _task_id: roster)
 
+    resolved_profile, resolved_roster, _token = service._student_submission_context(
+        object(),
+        {"userType": "STUDENT", "currentRoleCode": "STUDENT"},
+        task,
+    )
+    assert resolved_profile is profile
+    assert resolved_roster is roster
+
+    db = _LockDb([SimpleNamespace(id=20), None])
     with pytest.raises(AppException) as exc:
-        service._student_submission_context(
-            object(),
-            {"userType": "STUDENT", "currentRoleCode": "STUDENT"},
-            SimpleNamespace(id=3, teaching_task_id=4),
-        )
+        service._lock_student_roster_member(db, task, profile, roster)
 
     assert exc.value.http_status == 403
-    assert "不在该课程正式教学班名单" in exc.value.message
+    assert "不在该课程当前正式教学班名单" in exc.value.message
 
 
 def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
-    from app.modules.academic_affairs.services import academic_affairs_roster_consumer_service as roster_service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
     from app.services import mobile_student_identity_facade
 
     profile = SimpleNamespace(id=7, student_no="S0007", real_name="张三")
-    roster = {"studentIds": [7, 8], "memberCount": 2, "rosterVersionId": "10"}
+    roster = {"teachingClassId": "20", "memberCount": 2, "rosterVersionId": "10"}
     monkeypatch.setattr(service, "_tid", lambda: 1)
     monkeypatch.setattr(mobile_student_identity_facade, "resolve_student", lambda _db, _user: profile)
-    monkeypatch.setattr(roster_service, "resolve_versioned_roster", lambda _db, _task_id: roster)
+    monkeypatch.setattr(roster_guard, "resolve_submit_roster", lambda _db, _task_id: roster)
 
     resolved_profile, resolved_roster, token = service._student_submission_context(
         object(),
@@ -122,6 +148,22 @@ def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     assert len(token) == 64
     assert profile.student_no not in token
     assert profile.real_name not in token
+
+
+def test_student_submit_roster_guard_does_not_materialize_whole_roster():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = (
+        root / "app/modules/academic_affairs/services/academic_affairs_evaluation_submit_roster_guard.py"
+    ).read_text(encoding="utf-8")
+
+    assert "resolve_versioned_roster" not in source
+    assert "ensure_teaching_class_for_task" not in source
+    assert "studentIds" not in source
+    assert "AaTeachingClassRosterVersion" in source
+    assert "AaSelectionBatch.id.desc()" in source
+    assert "SELECTION_LOCK" in source
 
 
 def test_student_audit_and_lock_contract_remain_fail_closed():

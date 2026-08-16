@@ -24,6 +24,13 @@ from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
 from . import academic_affairs_evaluation_public_service as academic_affairs_evaluation_service
+
+# D-W3：评教提交热路径只消费当前不可变名单版本 + 当前成员事实；完整名单 materialize/hash
+# 继续留给真正冻结整班快照的消费者，避免 200 并发每人重复扫描整班名单。
+from . import academic_affairs_evaluation_submit_roster_guard
+
+academic_affairs_evaluation_submit_roster_guard.install(academic_affairs_evaluation_service)
+
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
 from . import academic_affairs_selection_round_facade as academic_affairs_selection_round_service
 from . import academic_affairs_scheduling_public_service as academic_affairs_scheduling_service
