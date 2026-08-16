@@ -1,0 +1,110 @@
+name: Academic B W1 Preflight Race Fix
+
+on:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths: ['.github/workflows/academic-b-w1-preflight-race-fix.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-b-w1-preflight-race-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply exact preflight race patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "      preflight: null, preflightLoading: false,",
+                  "      preflight: null, preflightLoading: false, preflightRequestSeq: 0,",
+              ),
+              (
+                  '''    async refreshPreflight() {
+      const action = this.lifecycleAction(this.current && this.current.status)
+      if (!this.current || !action) { this.preflight = null; return null }
+      this.preflightLoading = true
+      const res = await api.batchPreflight(this.current.batchId, action)
+      this.preflightLoading = false
+      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
+      return this.preflight
+    },''',
+                  '''    async refreshPreflight() {
+      const batchId = this.current && this.current.batchId
+      const status = this.current && this.current.status
+      const action = this.lifecycleAction(status)
+      if (!batchId || !action) {
+        this.preflightRequestSeq += 1
+        this.preflight = null
+        this.preflightLoading = false
+        return null
+      }
+      const requestSeq = ++this.preflightRequestSeq
+      this.preflightLoading = true
+      const res = await api.batchPreflight(batchId, action)
+      if (
+        requestSeq !== this.preflightRequestSeq ||
+        !this.current ||
+        this.current.batchId !== batchId ||
+        this.current.status !== status
+      ) return null
+      this.preflightLoading = false
+      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
+      return this.preflight
+    },''',
+              ),
+              (
+                  "        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }",
+                  "        if (res.code === 0) { toast.success(label + '成功'); this.preflightRequestSeq += 1; this.preflight = null; this.current = res.data; await this.load(); await this.refreshDetail(); await this.refreshPreflight() }",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one patch target, got {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          grep -F 'preflightRequestSeq' frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue
+      - name: Production build staff PC
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Self-clean and commit verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/academic-b-w1-preflight-race-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue
+          git diff --cached --check
+          git commit -m 'fix(academic-b): discard stale lifecycle preflight responses'
+          git push origin HEAD:agent/academic-b-schedule-selection
