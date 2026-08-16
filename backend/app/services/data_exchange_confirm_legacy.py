@@ -140,7 +140,10 @@ def confirm_import_job(
             result = migration.confirm(adapter_ref)
             return _finish(job_id, lease, result, user)
         if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
-            "ACADEMIC_ROSTER", "ACADEMIC_GRADE", "ACADEMIC_SCHEDULE",
+            "ACADEMIC_ROSTER",
+            "ACADEMIC_GRADE",
+            "ACADEMIC_SCHEDULE",
+            "ACADEMIC_COURSE_CATALOG",
         }:
             from app.modules.academic_affairs.services import academic_file_exchange_service as academic
             result = academic.confirm_academic_import(job_id, lease=lease, user=user)
