@@ -22,6 +22,7 @@ from app.services import file_service
 from app.services import identity_import_file_service as batch_service
 from app.services import system_implementation_service as implementation
 from app.services.file_scan_service import assert_file_ready_for_business
+from app.services.identity_import_path_parser import parse_mixed_identity_xlsx_path
 from app.services.storage import get_backend
 
 BIZ_TYPE = "DATA_IMPORT_SOURCE"
@@ -99,7 +100,7 @@ def _existing_validated_batch(*, user: dict, sha256: str) -> dict | None:
 def validate(file_id: str, *, user: dict) -> dict:
     project = _project()
     row = assert_file_ready_for_business(file_id, user=user, biz_type=BIZ_TYPE)
-    sha256 = str(getattr(row, "sha256", "") or "").strip()
+    sha256 = str(getattr(row, "sha256", "") or "").strip().lower()
     existing = _existing_validated_batch(user=user, sha256=sha256) if sha256 else None
     if existing is not None:
         return {
@@ -113,10 +114,16 @@ def validate(file_id: str, *, user: dict) -> dict:
     if local_path is None or not local_path.exists():
         raise AppException("DATA_NOT_FOUND", "实施导入源文件不存在或已被清理", http_status=404)
 
-    parsed = batch_service.parse_xlsx(
-        local_path.read_bytes(),
-        str(getattr(row, "file_name", "") or "implementation-identity.xlsx"),
-    )
+    filename = str(getattr(row, "file_name", "") or "implementation-identity.xlsx")
+    parsed = parse_mixed_identity_xlsx_path(local_path, filename)
+    parsed_sha256 = str(parsed.get("fileSha256") or "").strip().lower()
+    if sha256 and parsed_sha256 != sha256:
+        raise AppException(
+            "DATA_CONFLICT",
+            "实施导入源文件完整性校验失败，请重新上传",
+            http_status=409,
+        )
+
     from app.services.identity_import_service import preview_identity_import
 
     payload = {
