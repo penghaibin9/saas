@@ -4,8 +4,9 @@ This owner stops before shared File Exchange dispatch and before any Program
 writer. It composes the frozen source/reference/definition/binding classifiers
 while enforcing the read order and exact lookup keys a later DB bridge must use:
 
-source-only -> affairs scope -> Major -> SchoolClass(binding only) -> exact Course
-versions -> Program series/version -> REUSE child definitions -> ACTIVE bindings.
+source-only -> affairs scope -> Major -> SchoolClass(binding phase only) -> exact
+Course versions -> Program series/version -> REUSE child definitions -> ACTIVE
+bindings.
 
 The module opens no session, performs no writes, and accepts injected loaders so
 targeted tests can prove malformed source rows cause zero DB work and valid rows
@@ -15,7 +16,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 
-from .academic_affairs_school_setup_import_contract import RECONCILIATION_REUSE
+from .academic_affairs_school_setup_import_contract import (
+    PROGRAM_GROUP_BINDING,
+    RECONCILIATION_REUSE,
+)
 from .academic_affairs_school_setup_program_binding_policy import (
     PHASE_BINDING,
     PHASE_DEFINITION,
@@ -45,6 +49,18 @@ def _phase(value: object) -> str:
     if phase not in {PHASE_DEFINITION, PHASE_BINDING}:
         raise ValueError("phase must be DEFINITION or BINDING")
     return phase
+
+
+def _phase_source_error(business_code: str, message: str, how_to_resolve: str) -> dict:
+    return {
+        "row": 0,
+        "logicalGroup": PROGRAM_GROUP_BINDING,
+        "programKey": "",
+        "businessCode": business_code,
+        "message": message,
+        "evidence": {},
+        "howToResolve": how_to_resolve,
+    }
 
 
 def _result(
@@ -87,15 +103,11 @@ def run_program_import_preflight(
     load_program_status_by_id: ProgramStatusLoader,
     load_active_binding_snapshots: KeySnapshotLoader,
 ) -> dict:
-    """Run all local Program preflight stages without owning DB/session lifecycle.
+    """Run local Program preflight without owning DB/session lifecycle.
 
-    Every snapshot loader except the affairs-scope resolver receives the exact
-    bounded keys it is allowed to query. Loader invocation remains lazy:
-    - source blockers call no loader at all;
-    - SchoolClass is loaded only for exact CLASS ids present in source;
-    - child definitions are loaded only for exact REUSE program ids;
-    - Program status / ACTIVE bindings are loaded only during BINDING phase after
-      reference + definition reconciliation are green.
+    DEFINITION deliberately defers the complete binding relationship, including
+    SchoolClass lookup. BINDING re-runs source/reference checks and reads current
+    class/status/ACTIVE-binding facts immediately before binding confirmation.
     """
     resolved_phase = _phase(phase)
     rows = [dict(row) for row in normalized_rows]
@@ -109,6 +121,23 @@ def run_program_import_preflight(
             errors=source.get("errors") or (),
         )
 
+    binding_rows = [
+        row for row in rows
+        if str(row.get("logicalGroup") or "").strip().upper() == PROGRAM_GROUP_BINDING
+    ]
+    if resolved_phase == PHASE_BINDING and not binding_rows:
+        error = _phase_source_error(
+            "PROGRAM_BINDING_SOURCE_EMPTY",
+            "BINDING phase 没有任何适用范围定义，禁止执行空绑定确认",
+            "在“适用范围”工作表填写至少一条 MAJOR_GRADE 或 CLASS 绑定后重新预检",
+        )
+        return _result(
+            stage="SOURCE",
+            safe=False,
+            source=source,
+            errors=[error],
+        )
+
     request_keys = plan_program_snapshot_requests(rows)
     allowed_major_ids = load_allowed_major_ids()
     major_snapshots = [
@@ -116,7 +145,7 @@ def run_program_import_preflight(
     ]
     class_snapshots = (
         [dict(row) for row in load_class_snapshots(request_keys["classIds"])]
-        if request_keys["classIds"]
+        if resolved_phase == PHASE_BINDING and request_keys["classIds"]
         else []
     )
     course_snapshots = [
@@ -126,8 +155,14 @@ def run_program_import_preflight(
         dict(row) for row in load_program_snapshots(request_keys["seriesKeys"])
     ]
 
+    # Definition confirmation deliberately excludes binding rows from reference
+    # validation. Their current class/scope facts are revalidated in BINDING.
+    reference_rows = rows if resolved_phase == PHASE_BINDING else [
+        row for row in rows
+        if str(row.get("logicalGroup") or "").strip().upper() != PROGRAM_GROUP_BINDING
+    ]
     reference = program_import_reference_preflight(
-        rows,
+        reference_rows,
         major_snapshots=major_snapshots,
         class_snapshots=class_snapshots,
         course_snapshots=course_snapshots,
