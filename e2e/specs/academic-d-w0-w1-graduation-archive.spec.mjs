@@ -110,13 +110,24 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const abnormal = listFrom(results).find((row) => row.overall === 'SYSTEM_ABNORMAL')
     expect(abnormal, JSON.stringify(results)).toBeTruthy()
 
-    await expectApiOk(await browserApi(
+    const forbiddenCollegeReview = await browserApi(
       page,
       token,
       'POST',
       `/academic-affairs/graduation-results/${abnormal.resultId}/college-review`,
       { action: 'APPROVE', note: 'D-W0真实浏览器异常终审阻断验证' }
-    ), 'move abnormal result to academic review')
+    )
+    expect(forbiddenCollegeReview.status, JSON.stringify(forbiddenCollegeReview.json)).toBe(409)
+    expect(String(forbiddenCollegeReview.json?.message || '')).toMatch(/正式毕业评估仍异常|必需证据不完整|治理阻断项|重新预审/)
+
+    const unchanged = await expectApiOk(await browserApi(
+      page,
+      token,
+      'GET',
+      `/academic-affairs/graduation-results/${abnormal.resultId}`
+    ), 'reread D-W0 result after blocked college approval')
+    expect(unchanged.overall, JSON.stringify(unchanged)).toBe('SYSTEM_ABNORMAL')
+    expect(unchanged.status, JSON.stringify(unchanged)).toBe('SYSTEM_ABNORMAL')
 
     const forbiddenFinal = await browserApi(
       page,
@@ -126,22 +137,23 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
       { conclusion: 'GRADUATED', confirm: true }
     )
     expect(forbiddenFinal.status, JSON.stringify(forbiddenFinal.json)).toBe(409)
-    expect(String(forbiddenFinal.json?.message || '')).toMatch(/SYSTEM_ABNORMAL|阻断|重新预审/)
+    expect(String(forbiddenFinal.json?.message || '')).toMatch(/仅学院初审通过|禁止.*终审|终审/)
 
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/graduation/audit-console?tab=final&batchId=${batch.batchId}`)
+    await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/graduation/audit-console?tab=results&batchId=${batch.batchId}`)
     await dismissPageGuide(page)
-    await expect(page.getByText('毕业资格终审', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('系统异常 · 先治理阻断项', { exact: true }).first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: '教务终审' })).toHaveCount(0)
+    await expect(page.getByText('审核结果', { exact: true }).first()).toBeVisible()
+    const abnormalIdentity = abnormal.realName || abnormal.studentId
+    const abnormalRow = page.locator('tr').filter({ hasText: abnormalIdentity }).filter({ hasText: '系统异常' }).first()
+    await expect(abnormalRow).toBeVisible({ timeout: 10000 })
+    await expect(abnormalRow).toContainText('系统异常')
+    await abnormalRow.getByRole('button', { name: '详情 / 处理' }).click()
+    await expect(page.getByText('预审结果详情（十项）', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '确认终审并写学籍' })).toHaveCount(0)
 
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1280, 720)
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1440, 900)
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1920, 1080)
-
-    await page.getByRole('button', { name: '查看阻断证据' }).first().click()
-    await expect(page.getByText(/普通教务终审不可用审核备注覆盖评估结论/)).toBeVisible()
-    await expect(page.getByRole('button', { name: '确认终审并写学籍' })).toHaveCount(0)
   })
 
   test('W1 real Term API drives UNKNOWN and NOT_APPLICABLE UI without boolean false-green', async ({ page }, testInfo) => {
@@ -257,7 +269,6 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(naCard).toContainText('不适用')
     await expect(naCard).toContainText('GRADUATION_NOT_APPLICABLE')
     await expect(naCard).not.toContainText('待治理')
-
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1280, 720, naCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1440, 900, naCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-not-applicable', 1920, 1080, naCard)
