@@ -28,6 +28,29 @@ def test_inventory_statement_is_single_tenant_scoped_editable_batch_read():
     assert "t_aa_teaching_class_member" not in sql
 
 
+def test_editable_scope_key_is_non_null_and_stable_for_school_and_college_scopes():
+    service = _service()
+    assert service.canonical_editable_scope_key(202601, None) == "V1:TERM:202601:SCHOOL"
+    assert service.canonical_editable_scope_key(202601, None) == service.canonical_editable_scope_key(202601, None)
+    assert service.canonical_editable_scope_key(202601, 17) == "V1:TERM:202601:COLLEGE:17"
+    assert service.canonical_editable_scope_key(202601, 17) != service.canonical_editable_scope_key(202601, 18)
+    assert service.canonical_editable_scope_key(202601, None) != service.canonical_editable_scope_key(202601, 17)
+
+
+@pytest.mark.parametrize(
+    ("term_id", "college_id", "message"),
+    [
+        (0, None, "term_id"),
+        (-1, 17, "term_id"),
+        (202601, 0, "college_id"),
+        (202601, -2, "college_id"),
+    ],
+)
+def test_editable_scope_key_rejects_non_positive_identifiers(term_id, college_id, message):
+    with pytest.raises(ValueError, match=message):
+        _service().canonical_editable_scope_key(term_id, college_id)
+
+
 class _Result:
     def __init__(self, rows):
         self._rows = list(rows)
@@ -64,6 +87,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
 
     assert db.execute_calls == 1
     assert result["tenantId"] == "1000000000000000001"
+    assert result["scopeKeyVersion"] == "V1"
     assert result["editableBatchCount"] == 6
     assert result["conflictScopeCount"] == 2
     assert result["conflictBatchCount"] == 5
@@ -74,6 +98,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
         "termId": "202601",
         "collegeId": "",
         "scope": "SCHOOL",
+        "editableScopeKey": "V1:TERM:202601:SCHOOL",
         "editableBatchCount": 2,
         "batchIds": ["1001", "1002"],
         "batchStatuses": ["DRAFT", "RETURNED"],
@@ -83,6 +108,7 @@ def test_inventory_reports_duplicate_school_and_college_scopes_without_guessing_
         "termId": "202601",
         "collegeId": "17",
         "scope": "COLLEGE:17",
+        "editableScopeKey": "V1:TERM:202601:COLLEGE:17",
         "editableBatchCount": 3,
         "batchIds": ["1101", "1102"],
         "batchStatuses": ["DRAFT", "RETURNED"],
@@ -97,6 +123,7 @@ def test_inventory_clean_scope_is_migration_safe():
         (2201, 202602, 17, "DRAFT"),
     ])
     result = _service().inventory_editable_batch_scope_conflicts(db, 1000000000000000001)
+    assert result["scopeKeyVersion"] == "V1"
     assert result["conflictScopeCount"] == 0
     assert result["conflictBatchCount"] == 0
     assert result["migrationPreflightSafe"] is True
