@@ -67,9 +67,9 @@ def _selection_course_admission(selection_course_id: int):
     deadline = monotonic() + _SELECTION_ADMISSION_TIMEOUT_SECONDS
     if not stripe.acquire(timeout=_SELECTION_ADMISSION_TIMEOUT_SECONDS):
         raise AppException(
-            "SELECTION_BUSY",
+            "RATE_LIMITED",
             "当前课程选课请求繁忙，请稍后重试",
-            details={"selectionCourseId": str(course_id)},
+            details={"businessCode": "SELECTION_BUSY", "selectionCourseId": str(course_id)},
             http_status=429,
         )
     process_acquired = False
@@ -78,9 +78,9 @@ def _selection_course_admission(selection_course_id: int):
         process_acquired = _SELECTION_ENROLL_PROCESS_GATE.acquire(timeout=remaining)
         if not process_acquired:
             raise AppException(
-                "SELECTION_BUSY",
+                "RATE_LIMITED",
                 "当前选课请求繁忙，请稍后重试",
-                details={"selectionCourseId": str(course_id)},
+                details={"businessCode": "SELECTION_BUSY", "selectionCourseId": str(course_id)},
                 http_status=429,
             )
         yield
