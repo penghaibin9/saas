@@ -21,7 +21,6 @@ from sqlalchemy import select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
-from . import academic_affairs_grade_service as grade_service
 from . import academic_affairs_selection_core_service as _core
 from . import academic_affairs_selection_roster_projection_service as roster_projection
 from . import academic_affairs_teaching_class_service as teaching_class_service
@@ -71,27 +70,10 @@ def _load_student(db):
 
 
 def _passed_course_codes(db, student) -> set[str]:
-    from app.models import AcademicGrade, AcademicStudent
+    """只消费 EffectiveGrade 正式投影；Selection 不再直知成绩存储模型。"""
+    from .academic_affairs_selection_authority_consumer import passed_course_codes
 
-    academic_student = db.query(AcademicStudent).filter(
-        AcademicStudent.tenant_id == _core._tid(),
-        AcademicStudent.student_id == int(student.id),
-        AcademicStudent.is_deleted.is_(False),
-    ).first()
-    if not academic_student:
-        return set()
-    rows = db.query(AcademicGrade).filter(
-        AcademicGrade.tenant_id == _core._tid(),
-        AcademicGrade.acad_student_id == academic_student.id,
-        AcademicGrade.record_status == "ACTIVE",
-        AcademicGrade.is_deleted.is_(False),
-    ).all()
-    return {
-        str(row.course_code or "").strip().upper()
-        for row in grade_service.effective_grade_rows(rows)
-        if str(row.pass_status or "").upper() == "PASSED"
-        and str(row.course_code or "").strip()
-    }
+    return passed_course_codes(int(student.id), get_current_user_ctx() or {})
 
 
 def _load_prerequisite_codes(course) -> set[str]:

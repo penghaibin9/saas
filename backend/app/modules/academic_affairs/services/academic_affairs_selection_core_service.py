@@ -431,29 +431,17 @@ def student_courses(user, batch_id=None):
 
 
 def _passed_course_names(db, student):
-    """学生已通过(PASSED)的课程名集合（用于④先修/⑧重修判定）。"""
-    from app.models import AcademicGrade, AcademicStudent
-    acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
-                                            AcademicStudent.student_id == student.id).first()
-    if not acad:
-        return set()
-    rows = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
-                                          AcademicGrade.acad_student_id == acad.id,
-                                          AcademicGrade.pass_status == "PASSED",
-                                          AcademicGrade.record_status == "ACTIVE").all()
-    return {r.course_name for r in rows}
+    """历史兼容入口只消费 EffectiveGrade 投影，不再直读成绩存储。"""
+    from .academic_affairs_selection_authority_consumer import passed_course_names
+
+    return passed_course_names(int(student.id), get_current_user_ctx() or {})
 
 
 def _task_slots(db, teaching_task_id):
-    """教学任务在已发布课表中的时段（供⑤课表冲突检测）。"""
-    from app.models import AaScheduleItem
-    if not teaching_task_id:
-        return []
-    rows = db.query(AaScheduleItem).filter(AaScheduleItem.tenant_id == _tid(),
-                                           AaScheduleItem.task_id == teaching_task_id,
-                                           AaScheduleItem.status == "EFFECTIVE",
-                                           AaScheduleItem.is_deleted.is_(False)).all()
-    return [(i.weekday, i.slot_no, i.start_week, i.end_week, i.week_parity) for i in rows]
+    """教学任务冲突只消费 ScopeHead 当前正式课表，不回退历史 EFFECTIVE 行。"""
+    from .academic_affairs_selection_authority_consumer import task_slots
+
+    return task_slots(db, teaching_task_id)
 
 
 def _record_conflict_reject(db, batch, course, student, msg):

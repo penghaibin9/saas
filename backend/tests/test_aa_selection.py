@@ -110,9 +110,11 @@ def _ensure_term():
 
 
 def _ready_tasks(ids, *, with_conflict_slots=False):
-    """名单锁定与冲突判断必须回链同学期的正式 READY 教学任务。"""
+    """名单锁定与冲突判断必须回链同学期 READY 教学任务和 ScopeHead 当前正式课表。"""
+    from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
+    from app.models import AaCourse, AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
+    from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as schedule_truth
 
     db = get_sessionmaker()()
     term_id = _ensure_term()
@@ -138,12 +140,24 @@ def _ready_tasks(ids, *, with_conflict_slots=False):
         db.add(task); db.flush()
         tasks.append(task)
     if with_conflict_slots:
+        schedule_batch = AaScheduleBatch(
+            tenant_id=TID, term_id=int(term_id), college_id=int(ids["college"]),
+            batch_name=f"选课回归正式课表-{seq}", status="PUBLISHED",
+        )
+        db.add(schedule_batch); db.flush()
         for task, course in zip(tasks, (c1, c2)):
             db.add(AaScheduleItem(
-                tenant_id=TID, batch_id=1, task_id=task.id, course_id=course.id,
+                tenant_id=TID, batch_id=schedule_batch.id, task_id=task.id, course_id=course.id,
                 course_name=course.course_name, weekday=1, slot_no=1,
                 start_week=1, end_week=18, week_parity="ALL", status="EFFECTIVE",
             ))
+        set_tenant({"tenantId": str(TID)})
+        head = schedule_truth.lock_scope_head(
+            db, int(term_id), "COLLEGE", int(ids["college"]),
+        )
+        schedule_truth.promote_to_active(db, schedule_batch, head)
+        schedule_batch.status = "PUBLISHED"
+        ids["schedule_batch"] = int(schedule_batch.id)
     task_ids = tuple(int(task.id) for task in tasks)
     db.commit(); db.close()
     return task_ids
@@ -439,6 +453,7 @@ def test_s16_selection_result_merged_into_schedule(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     tt1_id, _tt2_id = _ready_tasks(ids, with_conflict_slots=True)
+    schedule_batch_id = ids["schedule_batch"]
     bid = _new_batch(client, admin, "结果批次")
     add = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
                       json={"courseId": str(ids["course1"]), "teachingTaskId": str(tt1_id),
@@ -451,7 +466,7 @@ def test_s16_selection_result_merged_into_schedule(client, db_mode):
     assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
                        json={"selectionCourseId": str(sc1)}).status_code == 200
 
-    before_lock = client.get(f"{BASE}/schedule-batches/1/student-view", headers=admin,
+    before_lock = client.get(f"{BASE}/schedule-batches/{schedule_batch_id}/student-view", headers=admin,
                              params={"studentId": str(ids["s1"])}).json()
     assert not any(it["source"] == "ENROLLED" for it in before_lock["data"]["items"])
 
@@ -459,7 +474,7 @@ def test_s16_selection_result_merged_into_schedule(client, db_mode):
     locked = client.post(f"{BASE}/selection/batches/{bid}/lock", headers=admin)
     assert locked.status_code == 200, locked.text
 
-    same_batch = client.get(f"{BASE}/schedule-batches/1/student-view", headers=admin,
+    same_batch = client.get(f"{BASE}/schedule-batches/{schedule_batch_id}/student-view", headers=admin,
                             params={"studentId": str(ids["s1"])}).json()
     enrolled = [it for it in same_batch["data"]["items"] if it["source"] == "ENROLLED"]
     assert len(enrolled) == 1 and enrolled[0]["courseName"] == "职业素养选修"

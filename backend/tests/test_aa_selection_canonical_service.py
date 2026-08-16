@@ -75,17 +75,22 @@ def test_legacy_selection_facades_only_reexport_canonical_services():
     assert round_compatibility.draw_round is rounds.draw_round
 
 
-def test_selection_source_uses_course_code_and_effective_grades_not_course_name():
+def test_selection_source_uses_course_code_and_effective_grade_consumer():
     source = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
+    core = (SERVICES / "academic_affairs_selection_core_service.py").read_text(encoding="utf-8")
 
-    assert "grade_service.effective_grade_rows(rows)" in source
+    assert "academic_affairs_selection_authority_consumer import passed_course_codes" in source
+    assert "academic_affairs_selection_authority_consumer import passed_course_names" in core
     assert "source_course = catalog_by_id[int(course.course_id)]" in source
     assert "target_code = str(source_course.course_code" in source
     assert "_load_prerequisite_codes(source_course)" in source
     assert "target_code in passed_codes" in source
     assert "该课程已修读通过，不可重复选课" in source
-    assert "AcademicGrade.course_name ==" not in source
-    assert "course_name in passed" not in source
+    assert "AcademicGrade" not in source
+    assert "AcademicStudent" not in source
+    assert "AcademicGrade" not in core
+    assert "AcademicStudent" not in core
+    assert "grade_service.effective_grade_rows(rows)" not in source
 
 
 def test_locked_adjustment_uses_exact_r9_consumers_and_new_roster_version():
@@ -105,18 +110,20 @@ def test_locked_adjustment_uses_exact_r9_consumers_and_new_roster_version():
     assert "AaSelectionRecord(" not in source[source.index("def adjust_record(user, record_id, reason)"):]
 
 
-def test_lock_batch_validates_then_atomically_projects_roster():
+def test_lock_batch_reuses_preflight_validation_then_atomically_projects_roster():
     source = (SERVICES / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
 
-    validate = "validation = validate_selection_lock(db, batch)"
+    preflight = 'preflight = batch_preflight_svc.require_batch_action(db, batch, "LOCK")'
+    validate = 'validation = preflight.get("_rosterValidation") or validate_selection_lock(db, batch)'
     project = "apply_locked_roster_projection(db, validation)"
+    assert preflight in source
     assert validate in source
     assert 'if not validation.get("valid")' in source
     assert '"选课名单校验未通过"' in source
     assert project in source
     assert "batch.status = _base._BATCH_LOCKED" in source
     assert "return _base._core._batch_dto(batch)" in source
-    assert source.index(validate) < source.index(project)
+    assert source.index(preflight) < source.index(validate) < source.index(project)
 
 
 def test_round_draw_does_not_use_python_hash():
