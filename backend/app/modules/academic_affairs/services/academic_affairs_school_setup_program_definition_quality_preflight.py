@@ -14,6 +14,7 @@ Rules:
   Program governance behavior, but does not silently satisfy a course module;
 - actual credit below total or below a configured module target is a blocker;
 - actual total above target is a warning, matching current governance semantics;
+- evidence is anchored to MAIN or CREDIT_REQUIREMENT workbook rows;
 - no database access or writes live here.
 """
 from __future__ import annotations
@@ -62,12 +63,16 @@ def _course_credit_index(rows: Iterable[Mapping[str, object]]) -> dict[str, Deci
 def _issue(
     *,
     program_key: str,
+    row: int,
+    logical_group: str,
     code: str,
     message: str,
     evidence: Mapping[str, object],
     how_to_resolve: str,
 ) -> dict:
     return {
+        "row": int(row),
+        "logicalGroup": logical_group,
         "programKey": program_key,
         "businessCode": code,
         "message": message,
@@ -101,10 +106,11 @@ def program_definition_quality_preflight(
         ]
         if len(mains) != 1:
             raise ValueError(f"quality preflight requires exactly one MAIN row: {program_key}")
-        main = dict(mains[0].get("payload") or {})
+        main_row = mains[0]
+        main = dict(main_row.get("payload") or {})
         total_target = _decimal(main.get("totalCredits") or 0)
 
-        target_by_module: dict[str, Decimal] = {}
+        target_by_module: dict[str, tuple[Decimal, int]] = {}
         for row in program_rows:
             if str(row.get("logicalGroup") or "").strip().upper() != PROGRAM_GROUP_CREDIT_REQUIREMENT:
                 continue
@@ -114,7 +120,10 @@ def program_definition_quality_preflight(
                 raise ValueError(f"quality preflight credit requirement missing module: {program_key}")
             if module in target_by_module:
                 raise ValueError(f"quality preflight duplicate module target: {program_key}:{module}")
-            target_by_module[module] = _decimal(payload.get("creditTarget") or 0)
+            target_by_module[module] = (
+                _decimal(payload.get("creditTarget") or 0),
+                int(row.get("rowNo") or 0),
+            )
 
         actual_by_module: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         course_credit_total = Decimal("0")
@@ -145,6 +154,8 @@ def program_definition_quality_preflight(
         if actual_total < total_target:
             errors.append(_issue(
                 program_key=program_key,
+                row=int(main_row.get("rowNo") or 0),
+                logical_group=PROGRAM_GROUP_MAIN,
                 code="PROGRAM_ACTUAL_CREDIT_INSUFFICIENT",
                 message="课程与实践学分合计未达到培养方案毕业总学分，禁止写入明知无法提交的方案定义",
                 evidence={
@@ -158,6 +169,8 @@ def program_definition_quality_preflight(
         elif actual_total > total_target:
             warnings.append(_issue(
                 program_key=program_key,
+                row=int(main_row.get("rowNo") or 0),
+                logical_group=PROGRAM_GROUP_MAIN,
                 code="PROGRAM_ACTUAL_CREDIT_EXCEEDED",
                 message="课程与实践学分合计超过培养方案毕业总学分，请确认是否存在选修冗余",
                 evidence={
@@ -167,11 +180,13 @@ def program_definition_quality_preflight(
                 how_to_resolve="确认超出部分是否为允许的选修冗余；如不是，请调整课程/实践或毕业总学分",
             ))
 
-        for module, target in sorted(target_by_module.items()):
+        for module, (target, target_row_no) in sorted(target_by_module.items()):
             actual = actual_by_module.get(module, Decimal("0"))
             if actual < target:
                 errors.append(_issue(
                     program_key=program_key,
+                    row=target_row_no,
+                    logical_group=PROGRAM_GROUP_CREDIT_REQUIREMENT,
                     code="PROGRAM_MODULE_CREDIT_INSUFFICIENT",
                     message="课程模块实际学分未达到配置的模块目标学分",
                     evidence={
@@ -193,13 +208,17 @@ def program_definition_quality_preflight(
                 for module in sorted(actual_by_module)
             },
             "moduleTargetCredits": {
-                module: str(target_by_module[module])
+                module: str(target_by_module[module][0])
                 for module in sorted(target_by_module)
             },
         })
 
-    errors.sort(key=lambda item: (item["programKey"], item["businessCode"], repr(item["evidence"])))
-    warnings.sort(key=lambda item: (item["programKey"], item["businessCode"], repr(item["evidence"])))
+    errors.sort(key=lambda item: (
+        item["programKey"], item["logicalGroup"], item["row"], item["businessCode"], repr(item["evidence"])
+    ))
+    warnings.sort(key=lambda item: (
+        item["programKey"], item["logicalGroup"], item["row"], item["businessCode"], repr(item["evidence"])
+    ))
     return {
         "definitionQualitySafe": not errors,
         "programMetrics": metrics,
