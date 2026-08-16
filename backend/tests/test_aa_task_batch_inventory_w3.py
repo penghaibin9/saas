@@ -38,6 +38,25 @@ def test_editable_scope_key_is_non_null_and_stable_for_school_and_college_scopes
 
 
 @pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("DRAFT", "V1:TERM:202601:SCHOOL"),
+        ("returned", "V1:TERM:202601:SCHOOL"),
+        ("COLLEGE_CONFIRMED", None),
+        ("APPROVED", None),
+        ("ARCHIVED", None),
+    ],
+)
+def test_writer_scope_key_semantics_reserve_only_editable_states(status, expected):
+    assert _service().editable_scope_key_for_status(202601, None, status) == expected
+
+
+def test_writer_scope_key_semantics_fail_closed_for_unknown_status():
+    with pytest.raises(ValueError, match="unsupported teaching task batch status"):
+        _service().editable_scope_key_for_status(202601, None, "READY")
+
+
+@pytest.mark.parametrize(
     ("term_id", "college_id", "message"),
     [
         (0, None, "term_id"),
