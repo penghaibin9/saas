@@ -23,10 +23,13 @@ def test_conflict_audit_helper_never_commits_and_commands_own_single_commit():
     reject_at = legacy.index("_record_conflict_reject")
     assert "db.commit()" in legacy[reject_at:reject_at + 220]
 
-    final_source = inspect.getsource(final.student_enroll)
-    assert final_source.count("_record_conflict_reject") == 1
-    reject_at = final_source.index("_record_conflict_reject")
-    assert "db.commit()" in final_source[reject_at:reject_at + 240]
+    wrapper_source = inspect.getsource(final.student_enroll)
+    assert "_selection_course_admission" in wrapper_source
+    assert "_student_enroll_guarded" in wrapper_source
+    guarded_source = inspect.getsource(final._student_enroll_guarded)
+    assert guarded_source.count("_record_conflict_reject") == 1
+    reject_at = guarded_source.index("_record_conflict_reject")
+    assert "db.commit()" in guarded_source[reject_at:reject_at + 240]
 
 
 def test_mobile_preflight_delegates_canonical_final_service_without_rule_copy():

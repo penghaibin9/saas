@@ -8,6 +8,7 @@ import pytest
 from app.core.exceptions import AppException
 from app.modules.academic_affairs.services import academic_affairs_selection_core_service as core
 from app.modules.academic_affairs.services import academic_affairs_selection_service as service
+from app.modules.academic_affairs.services import academic_affairs_selection_final_service as final
 
 
 def _student():
@@ -38,21 +39,24 @@ def test_w1_validator_is_pure_and_conflict_reject_is_owned_by_command_exit():
     assert ".commit(" not in validator
     assert "_record_conflict_reject" not in validator
 
-    final_source = inspect.getsource(__import__(
-        "app.modules.academic_affairs.services.academic_affairs_selection_final_service",
-        fromlist=["student_enroll"],
-    ).student_enroll)
-    assert final_source.count("_record_conflict_reject") == 1
+    wrapper_source = inspect.getsource(final.student_enroll)
+    assert "_selection_course_admission" in wrapper_source
+    assert "_student_enroll_guarded" in wrapper_source
+    guarded_source = inspect.getsource(final._student_enroll_guarded)
+    assert guarded_source.count("_record_conflict_reject") == 1
+    reject_at = guarded_source.index("_record_conflict_reject")
+    assert "db.commit()" in guarded_source[reject_at:reject_at + 240]
 
 
 def test_w1_preflight_source_has_no_mutation_audit_or_commit():
-    final = __import__(
-        "app.modules.academic_affairs.services.academic_affairs_selection_final_service",
-        fromlist=["student_preflight"],
-    )
     source = inspect.getsource(final.student_preflight)
     forbidden = ["db.commit(", "db.add(", ".update(", "_audit(", "_record_conflict_reject"]
     for token in forbidden:
         assert token not in source, token
-    assert "_validate_enroll(" in source
-    assert "decisionTrace" in source
+    assert "_evaluate_student_course(" in source
+
+    evaluator = inspect.getsource(final._evaluate_student_course)
+    for token in forbidden:
+        assert token not in evaluator, token
+    assert "_base._validate_enroll(" in evaluator
+    assert '"decisionTrace"' in evaluator
