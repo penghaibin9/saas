@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const viewUrl = new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue', import.meta.url)
+const constantsUrl = new URL('../src/modules/academicAffairs/constants/grade-graduation.js', import.meta.url)
 
 test('Stage D 毕业审核首屏只使用现有五个批次事实给出办理优先级', async () => {
   const source = await readFile(viewUrl, 'utf8')
@@ -42,6 +43,13 @@ test('Stage D 毕业审核保留学院初审、不可逆终审、费用 UNKNOWN 
     "涉学籍终态，不可在本页撤销",
     "GRAD_FAIL_GROUPS"
   ]) assert.ok(source.includes(token), `missing graduation truth guard: ${token}`)
+})
+
+test('D-W0 ARCHIVE 展示必须指向学工归档语义而非迎新归档', async () => {
+  const source = await readFile(constantsUrl, 'utf8')
+  assert.match(source, /ARCHIVE:\s*'学工归档'/)
+  assert.doesNotMatch(source, /ARCHIVE:\s*'迎新归档'/)
+  assert.match(source, /十一项供数/)
 })
 
 test('Stage D 毕业审核详情与首屏均有响应式商业化收口', async () => {
