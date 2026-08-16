@@ -1,0 +1,162 @@
+name: Academic INT C-C1 Soft Delete Guard Targeted
+
+on:
+  push:
+    branches:
+      - integration/academic-school-gold
+    paths:
+      - .github/workflows/academic-int-c1-soft-delete-guard-targeted.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-int-c1-soft-delete-guard
+  cancel-in-progress: false
+
+jobs:
+  c1-soft-delete-guard:
+    name: C-C1 soft-deleted formal occurrence guard / fresh MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: int_c1_soft_root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pint_c1_soft_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:int_c1_soft_root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:int_c1_soft_root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: int_c1_soft_root
+      DB_NAME: student_lifecycle_test
+      JWT_SECRET: academic-int-c1-soft-delete-not-production
+      JWT_SECRET_KEY: academic-int-c1-soft-delete-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+    steps:
+      - name: Checkout exact INT trigger head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert backfill green parent and current main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "0339ac9af93274202240a0cf417b20ae61b571f2"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "457dc8821876b8e1b67e0fb5911a9eec33e37616"
+          grep -F 'backfill_proven_legacy_admin_sources' backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py
+          grep -F 'source_type=source_type' backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+
+      - name: Fetch pinned soft-delete staging
+        run: |
+          set -euo pipefail
+          git fetch origin tmp/academic-int-c1-soft-delete-guard-staging --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "b3c41c4a259053e8cd79f4bae84fdc4437ce174d"
+          git show FETCH_HEAD:.tmp/academic-int-c1-soft-delete-guard/materialize.py > /tmp/materialize_soft_guard.py
+          python -m py_compile /tmp/materialize_soft_guard.py
+
+      - name: Materialize exact two-file candidate
+        run: |
+          set -euo pipefail
+          python /tmp/materialize_soft_guard.py
+          python -m py_compile \
+            backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+            backend/tests/test_aa_attendance_published_occurrence_contract.py
+
+      - name: Audit exact soft-delete scope
+        run: |
+          set -euo pipefail
+          git diff --check
+          cat > /tmp/expected.txt <<'EOF'
+          backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+          backend/tests/test_aa_attendance_published_occurrence_contract.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          git status --porcelain=v1 | sed 's/^...//' | sort > /tmp/actual.txt
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend and migrate fresh MySQL
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          test "$(alembic heads | tr -d '\r')" = "20260816_acad_int_c1_att (head)"
+
+      - name: Run only duplicate/source/occurrence contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_aa_attendance_published_occurrence_contract.py \
+            tests/test_aa_attendance_occurrence_concurrency.py \
+            tests/test_aa_attendance_admin_special_contract.py \
+            tests/test_aa_attendance_warning_source_contract.py \
+            tests/test_academic_int_c1_attendance_backfill_mysql.py \
+            --maxfail=1 \
+            --junitxml=/tmp/c1-soft-delete-junit.xml
+
+      - name: Prove DB contract is still not prematurely tightened
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from sqlalchemy import inspect
+          from app.db.session import get_sessionmaker
+          db = get_sessionmaker()()
+          try:
+              i = inspect(db.bind)
+              uniques = {u['name'] for u in i.get_unique_constraints('t_aa_attendance_session')}
+              checks = {c['name'] for c in i.get_check_constraints('t_aa_attendance_session')}
+              assert 'uk_aa_attendance_occurrence' not in uniques
+              assert 'ck_aa_attendance_source_type' not in checks
+          finally:
+              db.close()
+          PY
+
+      - name: Atomic fast-forward soft-delete guard into INT
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- $(cat /tmp/expected.txt)
+          git diff --cached --check
+          git commit -m "fix(academic-int): block soft-deleted attendance recreation"
+          git fetch origin integration/academic-school-gold main --no-tags
+          test "$(git rev-parse origin/integration/academic-school-gold)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "457dc8821876b8e1b67e0fb5911a9eec33e37616"
+          git push origin HEAD:integration/academic-school-gold
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-int-c1-soft-delete-${{ github.run_id }}
+          path: /tmp/c1-soft-delete-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove temporary soft-delete staging branch
+        if: success()
+        continue-on-error: true
+        run: git push origin --delete tmp/academic-int-c1-soft-delete-guard-staging
