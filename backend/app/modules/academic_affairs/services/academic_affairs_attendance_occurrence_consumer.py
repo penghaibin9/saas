@@ -131,6 +131,72 @@ def _active_heads(db, *, term_id: int, college_id, lock: bool):
     return heads
 
 
+def _lock_and_validate_selected_item(db, item, task, *, lock: bool):
+    """Re-read the selected EFFECTIVE item with a write-safe lock order.
+
+    Schedule-change finalization mutates the change row before the schedule item. For linked
+    ADJUST/MAKEUP items we therefore lock ``AaScheduleChange`` first, then the exact item.
+    Ordinary items lock only themselves. This prevents stale CHANGED origins from crossing an
+    attendance write and avoids reversing the finalizer's change->item lock direction.
+    """
+    from app.models import AaScheduleChange, AaScheduleItem
+
+    change = None
+    change_id = int(getattr(item, "change_id", 0) or 0)
+    if change_id:
+        change_query = db.query(AaScheduleChange).filter(
+            AaScheduleChange.id == change_id,
+            AaScheduleChange.tenant_id == _tid(),
+            AaScheduleChange.is_deleted.is_(False),
+        )
+        if lock:
+            change_query = change_query.with_for_update()
+        change = change_query.first()
+        if not change:
+            _conflict("正式课次回链的调停课单不存在或已删除")
+        if str(getattr(change, "status", "") or "").upper() != "APPLIED":
+            _conflict("调停课尚未正式生效（APPLIED），不能作为课堂考勤课次")
+        change_type = str(getattr(change, "change_type", "") or "").upper()
+        if change_type not in {"ADJUST", "MAKEUP"}:
+            _conflict("EFFECTIVE 课表项回链了非调课/补课生效单，数据冲突")
+        if int(getattr(change, "new_item_id", 0) or 0) != int(item.id):
+            _conflict("调停课生效单 newItemId 与正式课次不一致")
+        if int(getattr(change, "task_id", 0) or 0) != int(task.id):
+            _conflict("调停课生效单教学任务与正式课次不一致")
+        if int(getattr(change, "batch_id", 0) or 0) != int(item.batch_id):
+            _conflict("调停课生效单课表批次与正式课次不一致")
+        if int(getattr(change, "origin_item_id", 0) or 0) == int(item.id):
+            _conflict("调停课新课次错误回链原课表项，数据冲突")
+
+    if lock:
+        locked = db.query(AaScheduleItem).filter(
+            AaScheduleItem.id == int(item.id),
+            AaScheduleItem.tenant_id == _tid(),
+            AaScheduleItem.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not locked:
+            _conflict("正式课次在考勤事务中已失效或删除")
+        if str(getattr(locked, "status", "") or "").upper() != "EFFECTIVE":
+            _conflict("正式课次已被调停课替换/停止，不能继续创建考勤")
+        if int(getattr(locked, "task_id", 0) or 0) != int(task.id):
+            _conflict("正式课次教学任务在考勤事务中发生变化")
+        if int(getattr(locked, "batch_id", 0) or 0) != int(item.batch_id):
+            _conflict("正式课次课表批次在考勤事务中发生变化")
+        if int(getattr(locked, "change_id", 0) or 0) != change_id:
+            _conflict("正式课次调停课回链在考勤事务中发生变化")
+        item = locked
+
+    evidence = None
+    if change:
+        applied_at = getattr(change, "applied_at", None)
+        evidence = {
+            "changeId": str(change.id),
+            "changeType": str(change.change_type or "").upper(),
+            "changeAppliedAt": applied_at.isoformat() if applied_at else None,
+        }
+    return item, evidence
+
+
 def resolve_formal_occurrence(
     db,
     task,
@@ -187,6 +253,9 @@ def resolve_formal_occurrence(
     if published_ids != set(active_ids):
         _conflict("ScopeHead 指向的正式课表批次状态异常，不能创建考勤")
 
+    # Initial candidate discovery is intentionally non-locking. The exact selected row is
+    # re-read below with a current locking read; linked schedule changes lock change->item,
+    # matching the finalizer and preventing a deadlock-prone item->change inversion.
     item_query = db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _tid(),
         AaScheduleItem.batch_id.in_(active_ids),
@@ -194,8 +263,6 @@ def resolve_formal_occurrence(
         AaScheduleItem.status == "EFFECTIVE",
         AaScheduleItem.is_deleted.is_(False),
     )
-    if lock:
-        item_query = item_query.with_for_update()
     task_items = item_query.all()
     containing_batch_ids = {int(row.batch_id) for row in task_items}
     if len(containing_batch_ids) > 1:
@@ -231,6 +298,9 @@ def resolve_formal_occurrence(
         _conflict("同一正式课次命中多条 EFFECTIVE 课表项，数据冲突")
 
     item = candidates[0]
+    item, change_evidence = _lock_and_validate_selected_item(
+        db, item, task, lock=lock,
+    )
     selected_head = next(
         (head for head in heads if int(head.active_batch_id or 0) == int(item.batch_id)),
         None,
@@ -272,4 +342,7 @@ def resolve_formal_occurrence(
         "weekParity": str(getattr(item, "week_parity", None) or "ALL").upper(),
         "teacherKey": item_teacher,
         "classId": str(item_class) if item_class else None,
+        "changeId": change_evidence["changeId"] if change_evidence else None,
+        "changeType": change_evidence["changeType"] if change_evidence else None,
+        "changeAppliedAt": change_evidence["changeAppliedAt"] if change_evidence else None,
     }
