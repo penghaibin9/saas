@@ -27,21 +27,24 @@ _NON_EDITABLE_BATCH_STATUSES = ("COLLEGE_CONFIRMED", "APPROVED", "ARCHIVED")
 _BATCH_STATUSES = frozenset((*_EDITABLE_BATCH_STATUSES, *_NON_EDITABLE_BATCH_STATUSES))
 _DEFAULT_SAMPLE_LIMIT = 20
 _MAX_SAMPLE_LIMIT = 100
+_MAX_SIGNED_BIGINT = 9223372036854775807
 _EDITABLE_SCOPE_KEY_VERSION = "V1"
+_EDITABLE_SCOPE_KEY_MAX_LENGTH = 64
+
+
+def _positive_bigint(value, *, name: str) -> int:
+    identifier = int(value or 0)
+    if identifier <= 0 or identifier > _MAX_SIGNED_BIGINT:
+        raise ValueError(f"{name} must be a positive integer within signed BIGINT range")
+    return identifier
 
 
 def _positive_tenant_id(value) -> int:
-    tenant_id = int(value or 0)
-    if tenant_id <= 0:
-        raise ValueError("tenant_id must be a positive integer")
-    return tenant_id
+    return _positive_bigint(value, name="tenant_id")
 
 
 def _positive_scope_id(value, *, name: str) -> int:
-    identifier = int(value or 0)
-    if identifier <= 0:
-        raise ValueError(f"{name} must be a positive integer")
-    return identifier
+    return _positive_bigint(value, name=name)
 
 
 def _validated_scope_ids(term_id: int, college_id: int | None) -> tuple[int, int | None]:
@@ -57,11 +60,18 @@ def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
     ``tenant_id`` intentionally stays outside the string because the future DB
     constraint is ``UNIQUE(tenant_id, editable_scope_key)``. School scope uses
     an explicit token instead of SQL NULL so MySQL cannot admit duplicates.
+    ``String(64)`` is sufficient for V1 even when both ids are max signed
+    BIGINT values; reject future format growth before it can truncate in MySQL.
     """
     term_id, college_id = _validated_scope_ids(term_id, college_id)
-    if college_id is None:
-        return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:SCHOOL"
-    return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:COLLEGE:{college_id}"
+    key = (
+        f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:SCHOOL"
+        if college_id is None
+        else f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:COLLEGE:{college_id}"
+    )
+    if len(key) > _EDITABLE_SCOPE_KEY_MAX_LENGTH:
+        raise ValueError("editable_scope_key exceeds canonical storage length")
+    return key
 
 
 def editable_scope_key_for_status(term_id: int, college_id: int | None, status: str) -> str | None:
@@ -164,6 +174,7 @@ def inventory_editable_batch_scope_conflicts(db, tenant_id: int, *, sample_limit
     return {
         "tenantId": str(tenant_id),
         "scopeKeyVersion": _EDITABLE_SCOPE_KEY_VERSION,
+        "editableScopeKeyMaxLength": _EDITABLE_SCOPE_KEY_MAX_LENGTH,
         "editableBatchCount": len(rows),
         "conflictScopeCount": len(conflicts),
         "conflictBatchCount": conflict_batch_count,
