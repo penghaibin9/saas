@@ -180,7 +180,7 @@ def test_stable_student_id_uses_id_only_identity_projection(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    db = _LockDb([SimpleNamespace(id=7)])
+    db = _LockDb([(7,)])
 
     profile = service._resolve_student(
         db,
