@@ -28,6 +28,11 @@ test('ordinary attendance chooses a server-projected formal schedule pattern ins
   assert.match(page, /if \(this\.creating \|\| !this\.form\.teachingTaskId \|\| !this\.form\.sessionDate \|\| !this\.hasValidSlot\) return/)
 })
 
+test('teacher miniapp accepts every canonical executable attendance task state', () => {
+  assert.match(page, /const ALLOWED_TASK_STATUSES = new Set\(\['TEACHER_CONFIRMED', 'COLLEGE_REVIEW', 'APPROVED', 'READY'\]\)/)
+  assert.match(page, /\.filter\(\(task\) => ALLOWED_TASK_STATUSES\.has\(String\(task\.taskStatus \|\| ''\)\.toUpperCase\(\)\)\)/)
+})
+
 test('create submits the selected schedule item as an optimistic occurrence identity', () => {
   assert.match(page, /form: \{[^\n]*scheduleItemId: ''/)
   assert.match(page, /scheduleItemId: this\.form\.scheduleItemId \|\| undefined/)

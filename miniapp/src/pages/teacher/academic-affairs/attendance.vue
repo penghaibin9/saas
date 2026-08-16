@@ -108,7 +108,7 @@ const STATUS_OPTS = [
   { value: 'ABSENT', label: '缺勤' },
   { value: 'LEAVE', label: '请假' }
 ]
-const ALLOWED_TASK_STATUSES = new Set(['TEACHER_CONFIRMED', 'COLLEGE_REVIEW', 'APPROVED'])
+const ALLOWED_TASK_STATUSES = new Set(['TEACHER_CONFIRMED', 'COLLEGE_REVIEW', 'APPROVED', 'READY'])
 
 export default {
   data() {
