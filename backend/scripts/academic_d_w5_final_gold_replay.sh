@@ -21,9 +21,60 @@ EVIDENCE=/tmp/academic-d-w5-evidence.txt
 JUNIT=/tmp/academic-d-w5-targeted.xml
 ALEMBIC_CURRENT=/tmp/academic-d-w5-alembic-current.txt
 
+SNAPSHOT_UTC="not_reached"
+CURRENT_LAYER=""
+W5_PHASE="EXACT_D_CHECK"
+CLEAN_SCHEMA_PROVEN=false
+TARGETED_CONTRACTS_PROVEN=false
+
+: > "$HEAD_MATRIX"
+: > "$MERGE_LEDGER"
+: > "$CONTRACT_INVENTORY"
+: > "$ALEMBIC_CURRENT"
+
+write_evidence() {
+  local rc="$1"
+  local replay_success=false
+  if [[ "$rc" -eq 0 ]]; then
+    replay_success=true
+  fi
+  cat > "$EVIDENCE" <<EOF
+w5_phase=$W5_PHASE
+exit_code=$rc
+replay_success=$replay_success
+failed_layer=$CURRENT_LAYER
+snapshot_mode=JOB_START_FETCH
+snapshot_utc=$SNAPSHOT_UTC
+d_source_commit=$EXACT_D_SHA
+main_commit=${MAIN_SHA:-}
+a_commit=${A_SHA:-}
+b_commit=${B_SHA:-}
+c_commit=${C_SHA:-}
+int_commit=${INT_SHA:-}
+clean_tenant_schema_proven=$CLEAN_SCHEMA_PROVEN
+migrated_tenant_contracts_proven=$TARGETED_CONTRACTS_PROVEN
+permission_negative_contract_included=true
+datascope_negative_contract_included=true
+cross_tenant_sentinel_included=true
+r11_contract_included=true
+twenty_k_proven_on_w5_head=false
+outbox_recovery_proven_on_w5_head=false
+mysql_pitr_proven_on_w5_head=false
+fileobject_restore_proven_on_w5_head=false
+final_browser_gold_proven_on_w5_head=false
+upstream_contract_heads_frozen=false
+w5_final_gold=false
+EOF
+  sha256sum "$EVIDENCE" > "${EVIDENCE}.sha256"
+  sha256sum -c "${EVIDENCE}.sha256"
+}
+
+trap 'rc=$?; trap - EXIT; set +e; write_evidence "$rc"; exit "$rc"' EXIT
+
 actual_d="$(git rev-parse HEAD)"
 test "$actual_d" = "$EXACT_D_SHA"
 
+W5_PHASE="SNAPSHOT_FETCH"
 git fetch --no-tags origin \
   "+refs/heads/main:refs/remotes/origin/main" \
   "+refs/heads/agent/academic-a-semester-core:refs/remotes/origin/agent/academic-a-semester-core" \
@@ -31,8 +82,8 @@ git fetch --no-tags origin \
   "+refs/heads/agent/academic-c-teaching-execution:refs/remotes/origin/agent/academic-c-teaching-execution" \
   "+refs/heads/integration/academic-school-gold:refs/remotes/origin/integration/academic-school-gold"
 
-# PRE-GOLD is allowed to consume a single immutable snapshot of active A/B/C/INT heads.
-# Final Gold will replace this with frozen contract pins after all upstream lines stop moving.
+# PRE-GOLD consumes one immutable snapshot of active A/B/C/INT heads.
+# Final Gold replaces this with frozen contract pins after upstream construction stops moving.
 MAIN_SHA="$(git rev-parse origin/main)"
 A_SHA="$(git rev-parse origin/agent/academic-a-semester-core)"
 B_SHA="$(git rev-parse origin/agent/academic-b-schedule-selection)"
@@ -65,11 +116,12 @@ cat "$HEAD_MATRIX"
 git config user.name "academic-d-w5-final-gold"
 git config user.email "academic-d-w5-final-gold@invalid.local"
 git switch --detach "$MAIN_SHA"
-: > "$MERGE_LEDGER"
 
 merge_layer() {
   local layer="$1"
   local sha="$2"
+  CURRENT_LAYER="$layer"
+  W5_PHASE="MERGE_${layer}"
   echo "[merge] $layer $sha" | tee -a "$MERGE_LEDGER"
   if ! git merge --no-ff --no-edit "$sha"; then
     echo "[conflicts] $layer" | tee -a "$MERGE_LEDGER"
@@ -85,11 +137,13 @@ merge_layer B "$B_SHA"
 merge_layer C "$C_SHA"
 merge_layer D "$EXACT_D_SHA"
 merge_layer INT "$INT_SHA"
+CURRENT_LAYER=""
 
 test -z "$(git status --porcelain)"
 
 cd backend
 
+W5_PHASE="CLEAN_SCHEMA"
 mysql -h127.0.0.1 -uroot -proot -e '
   DROP DATABASE IF EXISTS student_lifecycle_test;
   CREATE DATABASE student_lifecycle_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -97,7 +151,9 @@ mysql -h127.0.0.1 -uroot -proot -e '
 test "$(alembic heads | grep -c '(head)')" -eq 1
 alembic upgrade head
 alembic current | tee "$ALEMBIC_CURRENT"
+CLEAN_SCHEMA_PROVEN=true
 
+W5_PHASE="CONTRACT_INVENTORY"
 files=(
   tests/test_aa_school_setup_program_post_confirm_pipeline_int.py
   tests/test_academic_int_ac4_schema_mysql.py
@@ -112,34 +168,10 @@ files=(
 printf '%s\n' "${files[@]}" | tee "$CONTRACT_INVENTORY"
 for file in "${files[@]}"; do test -f "$file"; done
 
+W5_PHASE="TARGETED_CONTRACTS"
 pytest -q -p no:warnings \
   "${files[@]}" \
   --maxfail=1 \
   --junitxml="$JUNIT"
-
-cat > "$EVIDENCE" <<EOF
-w5_phase=PRE_GOLD_REPLAY
-snapshot_mode=JOB_START_FETCH
-snapshot_utc=$SNAPSHOT_UTC
-d_source_commit=$EXACT_D_SHA
-main_commit=$MAIN_SHA
-a_commit=$A_SHA
-b_commit=$B_SHA
-c_commit=$C_SHA
-int_commit=$INT_SHA
-clean_tenant_schema_proven=true
-migrated_tenant_contracts_proven=true
-permission_negative_contract_included=true
-datascope_negative_contract_included=true
-cross_tenant_sentinel_included=true
-r11_contract_included=true
-twenty_k_proven_on_w5_head=false
-outbox_recovery_proven_on_w5_head=false
-mysql_pitr_proven_on_w5_head=false
-fileobject_restore_proven_on_w5_head=false
-final_browser_gold_proven_on_w5_head=false
-upstream_contract_heads_frozen=false
-w5_final_gold=false
-EOF
-sha256sum "$EVIDENCE" > "${EVIDENCE}.sha256"
-sha256sum -c "${EVIDENCE}.sha256"
+TARGETED_CONTRACTS_PROVEN=true
+W5_PHASE="PRE_GOLD_REPLAY_COMPLETE"
