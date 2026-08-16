@@ -111,7 +111,12 @@ def _predecessor_snapshot(course) -> dict:
     }
 
 
-def _load_predecessors(db, normalized: list[dict], action_by_row: dict[tuple[int, str], dict]) -> dict[tuple[str, int], object]:
+def _index_predecessors(
+    locked_course_rows: list[object],
+    normalized: list[dict],
+    action_by_row: dict[tuple[int, str], dict],
+) -> dict[tuple[str, int], object]:
+    """Index predecessor rows already locked by confirm preflight; never query again."""
     wanted: set[tuple[str, int]] = set()
     for item in normalized:
         action = action_by_row[(int(item["rowNo"]), str(item["businessKey"]))]
@@ -121,21 +126,9 @@ def _load_predecessors(db, normalized: list[dict], action_by_row: dict[tuple[int
     if not wanted:
         return {}
 
-    from app.models import AaCourse
-
-    codes = sorted({code for code, _version in wanted})
-    versions = sorted({version for _code, version in wanted})
-    rows = db.scalars(
-        select(AaCourse).where(
-            AaCourse.tenant_id == _tid(),
-            AaCourse.course_code.in_(codes),
-            AaCourse.version.in_(versions),
-            AaCourse.is_deleted.is_(False),
-        ).order_by(AaCourse.course_code, AaCourse.version, AaCourse.id).with_for_update()
-    ).all()
     indexed = {
         (str(row.course_code or "").strip().upper(), int(row.version or 0)): row
-        for row in rows
+        for row in locked_course_rows
         if (str(row.course_code or "").strip().upper(), int(row.version or 0)) in wanted
     }
     missing = sorted(wanted - set(indexed))
@@ -230,7 +223,12 @@ def _expected_facts(projection: Mapping[str, object]) -> dict:
     }
 
 
-def _reread_reconciliation(db, normalized: list[dict], preview: Mapping[str, object], created: list[tuple[object, dict, dict]]) -> tuple[list[dict], list[int]]:
+def _reread_reconciliation(
+    db,
+    normalized: list[dict],
+    preview: Mapping[str, object],
+    created: list[tuple[object, dict, dict]],
+) -> tuple[list[dict], list[int]]:
     """Re-read every source stable key inside the same transaction.
 
     A bounded query covers CREATE and REUSE rows. CREATE rows additionally prove
@@ -311,7 +309,14 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
 
     with session() as db:
         try:
-            preview = _course_catalog_dry_run_with_db(source_rows, user, db, lock_rows=True)
+            locked_course_rows: list[object] = []
+            preview = _course_catalog_dry_run_with_db(
+                source_rows,
+                user,
+                db,
+                lock_rows=True,
+                locked_course_rows_out=locked_course_rows,
+            )
             if int(preview.get("invalidRows") or 0) != 0:
                 raise AppException(
                     "DATA_CONFLICT",
@@ -343,7 +348,7 @@ def confirm_course_catalog_import(rows: list[Mapping[str, object]], user: dict) 
                     http_status=409,
                 )
 
-            predecessors = _load_predecessors(db, normalized, action_by_row)
+            predecessors = _index_predecessors(locked_course_rows, normalized, action_by_row)
             from app.models import AaCourse
 
             created: list[tuple[object, dict, dict]] = []
