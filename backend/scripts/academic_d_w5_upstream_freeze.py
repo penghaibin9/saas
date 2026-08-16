@@ -45,20 +45,34 @@ _FREEZE_TOKENS = (
     "CONTRACT FREEZE",
     "FREEZE COMPLETED",
 )
+_CLAUSE_BOUNDARIES = "\n。.!?！？；;"
 
 
 def _normalize(text: object) -> str:
-    return re.sub(r"\s+", " ", str(text or "")).strip()
+    # Preserve newlines because owner freeze assertions are commonly line-scoped in PR bodies.
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in str(text or "").splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _clause(body: str, start: int, end: int) -> str:
+    left = -1
+    for boundary in _CLAUSE_BOUNDARIES:
+        left = max(left, body.rfind(boundary, 0, start))
+    right_candidates = [
+        position
+        for boundary in _CLAUSE_BOUNDARIES
+        if (position := body.find(boundary, end)) >= 0
+    ]
+    right = min(right_candidates) if right_candidates else len(body)
+    return body[left + 1:right].strip()
 
 
 def _contract_frozen(body: str, code: str) -> bool:
-    """Require the contract code and an explicit freeze assertion in local context."""
+    """Require the contract code and an explicit freeze assertion in the same clause."""
     upper = body.upper()
     code_upper = code.upper()
     for match in re.finditer(re.escape(code_upper), upper):
-        start = max(0, match.start() - 220)
-        end = min(len(body), match.end() + 220)
-        context = body[start:end]
+        context = _clause(body, match.start(), match.end())
         context_upper = context.upper()
         if any(token in context_upper for token in _FREEZE_TOKENS if token.isascii()):
             return True
