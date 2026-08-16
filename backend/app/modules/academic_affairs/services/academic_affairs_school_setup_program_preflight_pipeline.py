@@ -10,7 +10,7 @@ bindings.
 
 The module opens no session, performs no writes, and accepts injected loaders so
 targeted tests can prove malformed source rows cause zero DB work and valid rows
-never authorize an unbounded lookup.
+never authorize or consume an unbounded lookup.
 """
 from __future__ import annotations
 
@@ -36,6 +36,15 @@ from .academic_affairs_school_setup_program_reference_preflight import (
 )
 from .academic_affairs_school_setup_program_snapshot_request_plan import (
     plan_program_snapshot_requests,
+)
+from .academic_affairs_school_setup_program_snapshot_response_guard import (
+    guard_active_binding_snapshots,
+    guard_class_snapshots,
+    guard_course_snapshots,
+    guard_definition_snapshots,
+    guard_major_snapshots,
+    guard_program_snapshots,
+    guard_program_status_by_id,
 )
 
 ScopeLoader = Callable[[], set[int] | None]
@@ -108,6 +117,7 @@ def run_program_import_preflight(
     DEFINITION deliberately defers the complete binding relationship, including
     SchoolClass lookup. BINDING re-runs source/reference checks and reads current
     class/status/ACTIVE-binding facts immediately before binding confirmation.
+    Every loader response is checked against its exact request before use.
     """
     resolved_phase = _phase(phase)
     rows = [dict(row) for row in normalized_rows]
@@ -140,20 +150,26 @@ def run_program_import_preflight(
 
     request_keys = plan_program_snapshot_requests(rows)
     allowed_major_ids = load_allowed_major_ids()
-    major_snapshots = [
-        dict(row) for row in load_major_snapshots(request_keys["majorIds"])
-    ]
+    major_snapshots = guard_major_snapshots(
+        load_major_snapshots(request_keys["majorIds"]),
+        request_keys["majorIds"],
+    )
     class_snapshots = (
-        [dict(row) for row in load_class_snapshots(request_keys["classIds"])]
+        guard_class_snapshots(
+            load_class_snapshots(request_keys["classIds"]),
+            request_keys["classIds"],
+        )
         if resolved_phase == PHASE_BINDING and request_keys["classIds"]
         else []
     )
-    course_snapshots = [
-        dict(row) for row in load_course_snapshots(request_keys["courseKeys"])
-    ]
-    program_snapshots = [
-        dict(row) for row in load_program_snapshots(request_keys["seriesKeys"])
-    ]
+    course_snapshots = guard_course_snapshots(
+        load_course_snapshots(request_keys["courseKeys"]),
+        request_keys["courseKeys"],
+    )
+    program_snapshots = guard_program_snapshots(
+        load_program_snapshots(request_keys["seriesKeys"]),
+        request_keys["seriesKeys"],
+    )
 
     # Definition confirmation deliberately excludes binding rows from reference
     # validation. Their current class/scope facts are revalidated in BINDING.
@@ -191,7 +207,10 @@ def run_program_import_preflight(
         )
     }))
     existing_definition_rows = (
-        [dict(row) for row in load_existing_definition_rows(reuse_program_ids)]
+        guard_definition_snapshots(
+            load_existing_definition_rows(reuse_program_ids),
+            reuse_program_ids,
+        )
         if reuse_program_ids
         else []
     )
@@ -226,11 +245,14 @@ def run_program_import_preflight(
             for action in final_actions
             if str(action.get("programId") or "").strip()
         }))
-        program_status_by_id = dict(load_program_status_by_id(target_program_ids))
-        active_binding_snapshots = [
-            dict(row)
-            for row in load_active_binding_snapshots(request_keys["bindingScopeKeys"])
-        ]
+        program_status_by_id = guard_program_status_by_id(
+            load_program_status_by_id(target_program_ids),
+            target_program_ids,
+        )
+        active_binding_snapshots = guard_active_binding_snapshots(
+            load_active_binding_snapshots(request_keys["bindingScopeKeys"]),
+            request_keys["bindingScopeKeys"],
+        )
         binding = classify_program_binding_phase(
             rows,
             final_actions,
