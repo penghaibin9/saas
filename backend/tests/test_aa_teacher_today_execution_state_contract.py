@@ -51,6 +51,52 @@ def test_attendance_state_never_picks_one_of_duplicate_formal_sessions():
     assert conflict["attendanceSessionId"] is None
 
 
+def test_action_state_never_offers_create_for_existing_or_unready_occurrence():
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_execution_state_service as state
+
+    row = {
+        "attendanceExecutable": True,
+        "attendanceRoute": "/pages/teacher/academic-affairs/attendance?teachingTaskId=1&sessionDate=2026-03-02&slotNo=2&scheduleItemId=9",
+        "attendanceBlockReason": "",
+    }
+    ready = {"rosterReady": True, "rosterIssue": ""}
+
+    create = state._action_state(
+        row,
+        ready,
+        {"attendanceState": "NOT_STARTED", "attendanceSessionId": None, "attendanceIssue": ""},
+    )
+    assert create["attendanceAction"] == "CREATE"
+    assert create["attendanceRoute"] == row["attendanceRoute"]
+
+    existing = state._action_state(
+        row,
+        ready,
+        {"attendanceState": "DRAFT", "attendanceSessionId": "301", "attendanceIssue": ""},
+    )
+    assert existing["attendanceAction"] == "OPEN_EXISTING"
+    assert existing["attendanceRoute"] is None
+    assert "已有考勤场次" in existing["attendanceBlockReason"]
+
+    blocked_roster = state._action_state(
+        row,
+        {"rosterReady": False, "rosterIssue": "正式教学名单尚未锁定"},
+        {"attendanceState": "NOT_STARTED", "attendanceSessionId": None, "attendanceIssue": ""},
+    )
+    assert blocked_roster["attendanceAction"] == "BLOCKED_ROSTER"
+    assert blocked_roster["attendanceRoute"] is None
+    assert blocked_roster["attendanceActionLabel"] == "名单未就绪"
+
+    conflict = state._action_state(
+        row,
+        ready,
+        {"attendanceState": "CONFLICT", "attendanceSessionId": None, "attendanceIssue": "重复场次"},
+    )
+    assert conflict["attendanceAction"] == "CONFLICT"
+    assert conflict["attendanceRoute"] is None
+    assert conflict["attendanceBlockReason"] == "重复场次"
+
+
 def test_execution_state_projection_is_strictly_read_only_and_batched():
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_execution_state_service as state
 

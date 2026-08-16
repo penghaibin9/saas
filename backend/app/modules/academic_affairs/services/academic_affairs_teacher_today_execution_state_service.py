@@ -97,6 +97,46 @@ def _attendance_state(rows) -> dict:
     }
 
 
+def _action_state(row: dict, roster_state: dict, attendance_state: dict) -> dict:
+    """Turn read facts into a safe Teacher Today action without granting write authority."""
+    if attendance_state.get("attendanceState") == "CONFLICT":
+        return {
+            "attendanceAction": "CONFLICT",
+            "attendanceActionLabel": "考勤数据冲突",
+            "attendanceRoute": None,
+            "attendanceBlockReason": attendance_state.get("attendanceIssue") or "同一正式课次存在多个考勤场次",
+        }
+    if attendance_state.get("attendanceSessionId"):
+        status = str(attendance_state.get("attendanceState") or "").upper()
+        return {
+            "attendanceAction": "OPEN_EXISTING",
+            "attendanceActionLabel": "继续点名" if status == "DRAFT" else "查看考勤",
+            # C-W2 next slice will replace this temporary block with an exact sessionId deep-link.
+            "attendanceRoute": None,
+            "attendanceBlockReason": "该课次已有考勤场次，请从课堂考勤列表继续处理",
+        }
+    if not roster_state.get("rosterReady"):
+        return {
+            "attendanceAction": "BLOCKED_ROSTER",
+            "attendanceActionLabel": "名单未就绪",
+            "attendanceRoute": None,
+            "attendanceBlockReason": roster_state.get("rosterIssue") or "正式教学名单尚未就绪",
+        }
+    if not row.get("attendanceExecutable"):
+        return {
+            "attendanceAction": "BLOCKED_TASK",
+            "attendanceActionLabel": "待任务确认",
+            "attendanceRoute": None,
+            "attendanceBlockReason": row.get("attendanceBlockReason") or "教学任务尚未进入可点名状态",
+        }
+    return {
+        "attendanceAction": "CREATE",
+        "attendanceActionLabel": "去点名",
+        "attendanceRoute": row.get("attendanceRoute"),
+        "attendanceBlockReason": "",
+    }
+
+
 def enrich_today_execution_state(db, items: list[dict]) -> list[dict]:
     """Batch-enrich current Teacher Today rows without materializing missing facts."""
     from app.models import (
@@ -205,5 +245,6 @@ def enrich_today_execution_state(db, items: list[dict]) -> list[dict]:
             int(row.get("slotNo") or 0),
         )
         attendance_state = _attendance_state(sessions_by_key.get(attendance_key, []))
-        output.append({**row, **roster_state, **attendance_state})
+        action_state = _action_state(row, roster_state, attendance_state)
+        output.append({**row, **roster_state, **attendance_state, **action_state})
     return output
