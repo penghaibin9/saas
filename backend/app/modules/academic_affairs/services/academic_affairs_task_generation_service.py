@@ -118,6 +118,28 @@ def _resolve_binding_for_class(db, program, binding, school_class):
     )
 
 
+def _draft_batch_conditions(batch_model, term_id: int, college_id: int | None):
+    """Return the exact management scope for a reusable DRAFT task batch.
+
+    ``college_id`` is the generation/management scope, not the course owner.
+    School-wide generation must therefore reuse only a school-wide (NULL)
+    draft; otherwise it can accidentally attach new tasks to an arbitrary
+    college draft from the same term.
+    """
+    conditions = [
+        batch_model.tenant_id == _tid(),
+        batch_model.term_id == int(term_id),
+        batch_model.status == "DRAFT",
+        batch_model.is_deleted.is_(False),
+    ]
+    conditions.append(
+        batch_model.college_id == int(college_id)
+        if college_id is not None
+        else batch_model.college_id.is_(None)
+    )
+    return conditions
+
+
 def generate_batch_tx(db, body, user) -> dict:
     term_id = int(body.termId)
     college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
@@ -142,14 +164,7 @@ def generate_batch_tx(db, body, user) -> dict:
         else:
             raise AppException("VALIDATION_ERROR", "请指定学院后再生成教学任务")
 
-    conditions = [
-        AaTeachingTaskBatch.tenant_id == _tid(),
-        AaTeachingTaskBatch.term_id == term_id,
-        AaTeachingTaskBatch.status == "DRAFT",
-        AaTeachingTaskBatch.is_deleted.is_(False),
-    ]
-    if college_id:
-        conditions.append(AaTeachingTaskBatch.college_id == college_id)
+    conditions = _draft_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
     batch = db.scalars(select(AaTeachingTaskBatch).where(*conditions)).first()
     if not batch:
         batch = AaTeachingTaskBatch(
