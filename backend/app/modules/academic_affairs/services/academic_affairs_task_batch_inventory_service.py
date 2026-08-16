@@ -1,0 +1,117 @@
+"""A-W3/INT read-only inventory for editable TeachingTaskBatch scope conflicts.
+
+This module deliberately owns no schema and performs no repair.  It gives the
+future INT migration an executable preflight before adding a database unique
+constraint for the invariant:
+
+    tenant + term + management scope -> at most one editable batch
+
+Both DRAFT and RETURNED are editable states.  Historical duplicates are
+reported fail-closed and must be reconciled explicitly; this service never
+chooses a winner or mutates a batch.
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+
+from sqlalchemy import select
+
+_EDITABLE_BATCH_STATUSES = ("DRAFT", "RETURNED")
+_DEFAULT_SAMPLE_LIMIT = 20
+_MAX_SAMPLE_LIMIT = 100
+
+
+def _positive_tenant_id(value) -> int:
+    tenant_id = int(value or 0)
+    if tenant_id <= 0:
+        raise ValueError("tenant_id must be a positive integer")
+    return tenant_id
+
+
+def _sample_limit(value) -> int:
+    limit = int(value or _DEFAULT_SAMPLE_LIMIT)
+    return max(1, min(limit, _MAX_SAMPLE_LIMIT))
+
+
+def editable_batch_inventory_statement(tenant_id: int):
+    """Return the single bounded-surface read statement used by the inventory."""
+    from app.models import AaTeachingTaskBatch
+
+    tenant_id = _positive_tenant_id(tenant_id)
+    return (
+        select(
+            AaTeachingTaskBatch.id,
+            AaTeachingTaskBatch.term_id,
+            AaTeachingTaskBatch.college_id,
+            AaTeachingTaskBatch.status,
+        )
+        .where(
+            AaTeachingTaskBatch.tenant_id == tenant_id,
+            AaTeachingTaskBatch.status.in_(_EDITABLE_BATCH_STATUSES),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        )
+        .order_by(
+            AaTeachingTaskBatch.term_id.asc(),
+            AaTeachingTaskBatch.college_id.asc(),
+            AaTeachingTaskBatch.id.asc(),
+        )
+    )
+
+
+def _row_value(row, name: str, index: int):
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None and name in mapping:
+        return mapping[name]
+    if hasattr(row, name):
+        return getattr(row, name)
+    return row[index]
+
+
+def inventory_editable_batch_scope_conflicts(db, tenant_id: int, *, sample_limit: int = 20) -> dict:
+    """Inventory duplicate editable scopes with one tenant-scoped read query.
+
+    The result is intentionally migration-oriented: it returns counts plus
+    bounded batch-id/status samples, but never returns student/teacher data and
+    never calls ``add``/``flush``/``commit``.
+    """
+    tenant_id = _positive_tenant_id(tenant_id)
+    limit = _sample_limit(sample_limit)
+    rows = db.execute(editable_batch_inventory_statement(tenant_id)).all()
+
+    grouped: dict[tuple[int, int | None], list[tuple[int, str]]] = defaultdict(list)
+    for row in rows:
+        batch_id = int(_row_value(row, "id", 0))
+        term_id = int(_row_value(row, "term_id", 1))
+        college_raw = _row_value(row, "college_id", 2)
+        college_id = int(college_raw) if college_raw is not None else None
+        status = str(_row_value(row, "status", 3) or "").strip().upper()
+        grouped[(term_id, college_id)].append((batch_id, status))
+
+    conflicts = []
+    conflict_batch_count = 0
+    for (term_id, college_id), batches in sorted(
+        grouped.items(),
+        key=lambda item: (item[0][0], -1 if item[0][1] is None else item[0][1]),
+    ):
+        if len(batches) <= 1:
+            continue
+        conflict_batch_count += len(batches)
+        sample = batches[:limit]
+        conflicts.append({
+            "termId": str(term_id),
+            "collegeId": str(college_id) if college_id is not None else "",
+            "scope": f"COLLEGE:{college_id}" if college_id is not None else "SCHOOL",
+            "editableBatchCount": len(batches),
+            "batchIds": [str(batch_id) for batch_id, _status in sample],
+            "batchStatuses": [status for _batch_id, status in sample],
+            "sampleTruncated": len(batches) > len(sample),
+        })
+
+    return {
+        "tenantId": str(tenant_id),
+        "editableBatchCount": len(rows),
+        "conflictScopeCount": len(conflicts),
+        "conflictBatchCount": conflict_batch_count,
+        "migrationPreflightSafe": not conflicts,
+        "conflicts": conflicts,
+    }
