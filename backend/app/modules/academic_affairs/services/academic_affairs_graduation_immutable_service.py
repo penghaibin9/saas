@@ -49,6 +49,9 @@ def _strict_overall(items: list[dict]) -> str:
     required_unknown_blockers.add("ARCHIVE")
     if not rows or not required_unknown_blockers:
         return "SYSTEM_ABNORMAL"
+    present_codes = {str(item.get("item") or "").upper() for item in rows}
+    if not required_unknown_blockers.issubset(present_codes):
+        return "SYSTEM_ABNORMAL"
     for item in rows:
         code = str(item.get("item") or "").upper()
         result = str(item.get("result") or "").upper()
