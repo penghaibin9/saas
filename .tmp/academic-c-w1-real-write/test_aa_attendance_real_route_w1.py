@@ -30,12 +30,14 @@ from app.models import (
     AaTerm,
     SchoolClass,
     StudentProfile,
+    Tenant,
 )
 from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
 from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as schedule_truth
 
 
 TID = 1000000000000007311
+TENANT_CODE = "cw1-route-school"
 BASE = "/api/v1/mobile/teacher/academic/attendance"
 TEACHER_KEY = "CW1-ROUTE-T1"
 
@@ -48,7 +50,7 @@ def _headers() -> dict:
         "userType": "TEACHER",
         "currentRoleCode": "ACADEMIC_TEACHER",
         "clientType": "MP",
-        "tid": str(TID),
+        "tid": TENANT_CODE,
         "tenantId": str(TID),
         "activeContextId": "ctx_CW1-ROUTE-T1",
     }
@@ -63,8 +65,10 @@ def _ok(response, label: str) -> dict:
 
 
 def _seed_authority() -> dict:
-    # Seed only current authority facts. Attendance actions below never call a service directly.
-    set_tenant({"tenantId": str(TID)})
+    # Seed the real tenant registry row as well as current academic authority facts.
+    # POST routes traverse the production tenant lifecycle write guard; omitting t_tenant
+    # would only prove that the guard correctly fails closed, not the attendance route.
+    set_tenant({"tenantId": str(TID), "tenantCode": TENANT_CODE, "status": "ACTIVE"})
     set_current_user({
         "userId": "seed-cw1-route",
         "loginName": "seed-cw1-route",
@@ -74,6 +78,14 @@ def _seed_authority() -> dict:
     })
     db = get_sessionmaker()()
     try:
+        db.add(Tenant(
+            id=TID,
+            tenant_code=TENANT_CODE,
+            school_name="C-W1路由验收学校",
+            status="ACTIVE",
+        ))
+        db.flush()
+
         school_class = SchoolClass(
             tenant_id=TID,
             major_id=1,
