@@ -16,6 +16,7 @@ on:
       - "backend/app/services/sandbox_school_academic_quality_seed.py"
       - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
       - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
+      - "backend/scripts/academic_d_w5_final_gold_replay.sh"
       - "backend/tests/test_aa_evaluation.py"
       - "backend/tests/test_aa_evaluation_student_anonymity.py"
       - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
@@ -191,3 +192,32 @@ jobs:
             backend/test-results/academic-d-evaluation-concurrency.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Run D-W5 A -> B -> C -> D -> INT pre-Gold replay
+        env:
+          MAIN_SHA: 4b706f392bd4213edcf4fbf81e4c292f90028c12
+          A_SHA: a85324f42de675ab3d8178afa8c83517e6d049c7
+          B_SHA: 101517c434c67b824153df732af3eedfb81fa639
+          C_SHA: 36e5f15ba987261f9db6a509f53dba2a0ac55d01
+          INT_SHA: c2bc328e51f337629655156b96a6e8fe5130637a
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_D_SHA"
+          bash backend/scripts/academic_d_w5_final_gold_replay.sh
+
+      - name: Upload D-W5 pre-Gold evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-w5-pre-gold-${{ github.run_id }}
+          path: |
+            /tmp/academic-d-w5-head-matrix.txt
+            /tmp/academic-d-w5-merge-ledger.txt
+            /tmp/academic-d-w5-alembic-current.txt
+            /tmp/academic-d-w5-contract-inventory.txt
+            /tmp/academic-d-w5-targeted.xml
+            /tmp/academic-d-w5-evidence.txt
+            /tmp/academic-d-w5-evidence.txt.sha256
+          if-no-files-found: warn
+          retention-days: 30
