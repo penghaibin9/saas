@@ -60,6 +60,21 @@ def test_stage_payload_hash_changes_when_evidence_changes():
     assert first["evidenceHash"] != blocked["evidenceHash"]
 
 
+def test_r11_archive_stage_uses_canonical_four_state_blocking_contract():
+    from app.modules.academic_affairs.services.academic_affairs_semester_pilot_service import (
+        _archive_blocking_domain_codes,
+    )
+
+    domains = {
+        "SCHEDULE": {"result": "PASS", "present": True, "blockingCount": 0},
+        "GRADUATION": {"result": "NOT_APPLICABLE", "present": False, "blockingCount": 0},
+        "EXAM": {"result": "BLOCKED", "present": False, "blockingCount": 2},
+        "GRADE": {"result": "UNKNOWN", "present": False, "blockingCount": 1},
+    }
+    assert _archive_blocking_domain_codes(domains) == ["EXAM", "GRADE"]
+    assert _archive_blocking_domain_codes([]) == ["ARCHIVE_DOMAIN_PAYLOAD_INVALID"]
+
+
 def test_r11_has_exact_six_ordered_real_stages():
     from app.modules.academic_affairs.services.academic_affairs_semester_pilot_service import _STAGE_ORDER
 
