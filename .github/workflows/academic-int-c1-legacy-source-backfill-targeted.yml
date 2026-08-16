@@ -1,0 +1,160 @@
+name: Academic INT C-C1 Legacy Source Backfill Targeted
+
+on:
+  push:
+    branches:
+      - integration/academic-school-gold
+    paths:
+      - .github/workflows/academic-int-c1-legacy-source-backfill-targeted.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-int-c1-legacy-source-backfill
+  cancel-in-progress: false
+
+jobs:
+  c1-legacy-source-backfill:
+    name: C-C1 proven legacy source backfill / fresh MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: int_c1_backfill_root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pint_c1_backfill_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:int_c1_backfill_root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:int_c1_backfill_root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: int_c1_backfill_root
+      DB_NAME: student_lifecycle_test
+      JWT_SECRET: academic-int-c1-backfill-not-production
+      JWT_SECRET_KEY: academic-int-c1-backfill-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+    steps:
+      - name: Checkout exact INT trigger head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert dual-write green parent and current main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "457dc8821876b8e1b67e0fb5911a9eec33e37616"
+          grep -F 'revision = "20260816_acad_int_c1_att"' backend/alembic/versions/20260816_academic_int_c1_attendance.py
+          grep -F 'occurrenceIdentity' backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py
+          grep -F 'source_type = source_type' backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+
+      - name: Fetch pinned backfill staging
+        run: |
+          set -euo pipefail
+          git fetch origin tmp/academic-int-c1-backfill-staging --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "6f5f7ee47901a5c182165cdf418318b6121c7625"
+
+      - name: Materialize exact three-file candidate
+        run: |
+          set -euo pipefail
+          git checkout FETCH_HEAD -- \
+            backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py \
+            backend/scripts/academic_int_c1_attendance_backfill.py \
+            backend/tests/test_academic_int_c1_attendance_backfill_mysql.py
+          python -m py_compile \
+            backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py \
+            backend/scripts/academic_int_c1_attendance_backfill.py \
+            backend/tests/test_academic_int_c1_attendance_backfill_mysql.py
+
+      - name: Audit exact backfill scope
+        run: |
+          set -euo pipefail
+          git diff --check
+          cat > /tmp/expected.txt <<'EOF'
+          backend/app/modules/academic_affairs/services/academic_affairs_attendance_migration_inventory.py
+          backend/scripts/academic_int_c1_attendance_backfill.py
+          backend/tests/test_academic_int_c1_attendance_backfill_mysql.py
+          EOF
+          sort -o /tmp/expected.txt /tmp/expected.txt
+          git status --porcelain=v1 | sed 's/^...//' | sort > /tmp/actual.txt
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend and migrate fresh MySQL
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          test "$(alembic heads | tr -d '\r')" = "20260816_acad_int_c1_att (head)"
+
+      - name: Run only legacy governance and affected source contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_academic_int_c1_attendance_backfill_mysql.py \
+            tests/test_academic_int_c1_attendance_schema_mysql.py \
+            tests/test_aa_attendance_admin_special_contract.py \
+            tests/test_aa_attendance_warning_source_contract.py \
+            --maxfail=1 \
+            --junitxml=/tmp/c1-backfill-junit.xml
+
+      - name: Prove operator command defaults to dry-run
+        working-directory: backend
+        run: |
+          python scripts/academic_int_c1_attendance_backfill.py \
+            --tenant-id 1000000000000008999 \
+            --sample-limit 5 \
+            > /tmp/c1-backfill-dry-run.json
+          grep -F '"mode": "DRY_RUN"' /tmp/c1-backfill-dry-run.json
+          grep -F '"commitPerformed": false' /tmp/c1-backfill-dry-run.json
+
+      - name: Atomic fast-forward backfill governance into INT
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- $(cat /tmp/expected.txt)
+          git diff --cached --check
+          git commit -m "feat(academic-int): govern legacy attendance source backfill"
+          git fetch origin integration/academic-school-gold main --no-tags
+          test "$(git rev-parse origin/integration/academic-school-gold)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "457dc8821876b8e1b67e0fb5911a9eec33e37616"
+          git push origin HEAD:integration/academic-school-gold
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-int-c1-legacy-source-backfill-${{ github.run_id }}
+          path: |
+            /tmp/c1-backfill-junit.xml
+            /tmp/c1-backfill-dry-run.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove temporary backfill staging branch
+        if: success()
+        continue-on-error: true
+        run: git push origin --delete tmp/academic-int-c1-backfill-staging
