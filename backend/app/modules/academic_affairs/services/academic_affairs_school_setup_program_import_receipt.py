@@ -95,6 +95,8 @@ def build_program_import_receipt(
     total_rows, valid_rows, invalid_rows = _preview_counts(preview)
     if invalid_rows:
         raise ValueError("successful Program receipt cannot contain invalid preview rows")
+    if total_rows <= 0:
+        raise ValueError("successful Program receipt requires at least one validated source row")
     write_count = _non_negative_int(mutation_write_count, field="mutation_write_count")
 
     phase = str(reconciliation.get("phase") or "").strip().upper()
@@ -123,13 +125,15 @@ def build_program_import_receipt(
             evidence.get("programCount") or 0,
             field="reconciliation.programCount",
         )
+        if program_count <= 0:
+            raise ValueError("successful DEFINITION receipt requires at least one Program")
         if imported + reused + rejected + conflicts != program_count:
             raise ValueError("Program reconciliation counts do not add up")
         if rejected or conflicts:
             raise ValueError("successful Program reconciliation cannot contain reject/conflict counts")
         if write_count < imported:
             raise ValueError("Program CREATE reconciliation cannot report fewer domain mutations than imported Programs")
-        all_reuse = bool(program_count > 0 and imported == 0 and reused == program_count)
+        all_reuse = imported == 0 and reused == program_count
         if all_reuse and write_count != 0:
             raise ValueError("REUSE-only Program reconciliation must have zero domain mutations")
 
@@ -139,6 +143,8 @@ def build_program_import_receipt(
 
         item_action_counts = {"CREATE": 0, "REUSE": 0}
         relationship_facts = []
+        seen_program_keys: set[str] = set()
+        seen_program_ids: set[str] = set()
         for item in items:
             program_key = str(item.get("programKey") or "").strip()
             program_id = str(item.get("programId") or "").strip()
@@ -147,6 +153,12 @@ def build_program_import_receipt(
             reread_hash = str(item.get("rereadDefinitionHash") or "").strip().lower()
             if not program_key or not program_id:
                 raise ValueError("Program reconciliation receipt item requires programKey/programId")
+            if program_key in seen_program_keys:
+                raise ValueError(f"Program reconciliation receipt contains duplicate programKey: {program_key}")
+            if program_id in seen_program_ids:
+                raise ValueError(f"Program reconciliation receipt contains duplicate programId: {program_id}")
+            seen_program_keys.add(program_key)
+            seen_program_ids.add(program_id)
             if action not in item_action_counts:
                 raise ValueError(f"Program reconciliation receipt contains unsupported action: {action}")
             if not _SHA256_RE.fullmatch(definition_hash) or not _SHA256_RE.fullmatch(reread_hash):
@@ -168,7 +180,6 @@ def build_program_import_receipt(
             relationship_facts,
             key=lambda item: (item["programKey"], item["programId"]),
         ))
-        replay_noop = all_reuse
         return {
             "contractVersion": "program-import-receipt-v1",
             "phase": PHASE_DEFINITION,
@@ -191,7 +202,7 @@ def build_program_import_receipt(
                 "replayPolicy": "REVALIDATE_THEN_STABLE_KEY_REUSE",
                 "stableKeyReconciliation": True,
                 "fullDefinitionHashReconciliation": True,
-                "replayNoOp": replay_noop,
+                "replayNoOp": all_reuse,
             },
         }
 
@@ -212,11 +223,13 @@ def build_program_import_receipt(
             evidence.get("bindingCount") or 0,
             field="reconciliation.bindingCount",
         )
+        if binding_count <= 0:
+            raise ValueError("successful BINDING receipt requires at least one binding")
         if created + reused != binding_count:
             raise ValueError("Program binding reconciliation counts do not add up")
         if write_count < created:
             raise ValueError("Program binding CREATE reconciliation cannot report fewer domain mutations than created bindings")
-        all_reuse = bool(binding_count > 0 and created == 0 and reused == binding_count)
+        all_reuse = created == 0 and reused == binding_count
         if all_reuse and write_count != 0:
             raise ValueError("REUSE-only Program binding reconciliation must have zero domain mutations")
         relationship_hash = str(evidence.get("activeRelationshipHash") or "").strip().lower()
@@ -227,6 +240,7 @@ def build_program_import_receipt(
             raise ValueError("Program binding reconciliation item count mismatch")
 
         item_action_counts = {"CREATE": 0, "REUSE": 0}
+        seen_scope_keys: set[str] = set()
         for item in items:
             program_key = str(item.get("programKey") or "").strip()
             program_id = str(item.get("programId") or "").strip()
@@ -234,6 +248,9 @@ def build_program_import_receipt(
             action = str(item.get("action") or "").strip().upper()
             if not program_key or not program_id or not scope_key:
                 raise ValueError("Program binding receipt item requires programKey/programId/scopeKey")
+            if scope_key in seen_scope_keys:
+                raise ValueError(f"Program binding receipt contains duplicate scopeKey: {scope_key}")
+            seen_scope_keys.add(scope_key)
             if action not in item_action_counts:
                 raise ValueError(f"Program binding receipt contains unsupported action: {action}")
             if (
@@ -246,7 +263,6 @@ def build_program_import_receipt(
         if item_action_counts["CREATE"] != created or item_action_counts["REUSE"] != reused:
             raise ValueError("Program binding receipt item actions do not match created/reused counts")
 
-        replay_noop = all_reuse
         return {
             "contractVersion": "program-import-receipt-v1",
             "phase": PHASE_BINDING,
@@ -267,7 +283,7 @@ def build_program_import_receipt(
                 "replayPolicy": "REVALIDATE_THEN_STABLE_KEY_REUSE",
                 "stableKeyReconciliation": True,
                 "fullDefinitionHashReconciliation": True,
-                "replayNoOp": replay_noop,
+                "replayNoOp": all_reuse,
             },
         }
 
