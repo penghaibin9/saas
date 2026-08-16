@@ -7,6 +7,8 @@ on:
     paths:
       - 'backend/app/modules/system_admin/routers/data_exchange_router.py'
       - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/services/identity_import_file_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
       - 'backend/app/services/identity_import_scan_orchestrator.py'
       - 'backend/app/services/identity_import_staging_service.py'
       - 'backend/app/services/file_scan_*.py'
@@ -15,6 +17,7 @@ on:
       - 'backend/app/workers/identity_import_worker.py'
       - 'backend/tests/test_file_identity_import_scan.py'
       - 'backend/tests/test_control_plane_i4_dual_template_staging.py'
+      - 'backend/tests/test_identity_import_major_scope.py'
       - 'backend/tests/file_scan_mysql_acceptance.py'
       - 'backend/scripts/check_control_plane_i4_20k_identity.py'
       - '.github/workflows/control-plane-i4-identity-production-gold.yml'
@@ -23,6 +26,8 @@ on:
     paths:
       - 'backend/app/modules/system_admin/routers/data_exchange_router.py'
       - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'
+      - 'backend/app/services/identity_import_file_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
       - 'backend/app/services/identity_import_scan_orchestrator.py'
       - 'backend/app/services/identity_import_staging_service.py'
       - 'backend/app/services/file_scan_*.py'
@@ -31,6 +36,7 @@ on:
       - 'backend/app/workers/identity_import_worker.py'
       - 'backend/tests/test_file_identity_import_scan.py'
       - 'backend/tests/test_control_plane_i4_dual_template_staging.py'
+      - 'backend/tests/test_identity_import_major_scope.py'
       - 'backend/tests/file_scan_mysql_acceptance.py'
       - 'backend/scripts/check_control_plane_i4_20k_identity.py'
       - '.github/workflows/control-plane-i4-identity-production-gold.yml'
@@ -158,13 +164,14 @@ jobs:
       - name: Real MySQL and real ClamAV file acceptance
         working-directory: backend
         run: python tests/file_scan_mysql_acceptance.py
-      - name: Identity scan-worker and dual-template contracts
+      - name: Identity scan-worker, templates and MAJOR scope contracts
         working-directory: backend
         run: |
           pytest -q \
             tests/test_file_identity_import_scan.py \
             tests/test_control_plane_i4_dual_template_staging.py \
             tests/test_control_plane_i4_preflight.py \
+            tests/test_identity_import_major_scope.py \
             --disable-warnings
       - name: Real 20K canonical onboarding scale proof
         working-directory: backend
