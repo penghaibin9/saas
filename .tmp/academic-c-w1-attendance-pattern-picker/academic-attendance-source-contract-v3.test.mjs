@@ -19,7 +19,7 @@ test('ordinary attendance chooses a server-projected formal schedule pattern ins
   assert.match(page, /formalPatterns\(\)\s*\{[\s\S]*selectedTask[\s\S]*formalSchedulePatterns/)
   assert.match(page, /formalPatternLabels\(\)\s*\{[\s\S]*第\$\{pattern\.slotNo\}节/)
   assert.match(page, /selectedPattern\(\)\s*\{[\s\S]*patternIndex/)
-  assert.match(page, /hasValidSlot\(\)\s*\{[\s\S]*selectedPattern[\s\S]*pattern\.slotNo/)
+  assert.match(page, /hasValidSlot\(\)\s*\{[\s\S]*selectedPattern[\s\S]*scheduleItemId = Number\(this\.form\.scheduleItemId\)[\s\S]*scheduleItemId > 0[\s\S]*String\(pattern\.scheduleItemId \|\| ''\) === String\(this\.form\.scheduleItemId \|\| ''\)/)
   assert.match(page, /onPatternPick\(event\)\s*\{[\s\S]*this\.patternIndex[\s\S]*this\.form\.slotNo = pattern \? String\(pattern\.slotNo\) : ''[\s\S]*this\.form\.scheduleItemId = pattern \? String\(pattern\.scheduleItemId \|\| ''\) : ''/)
   assert.match(page, /formalOccurrenceReady/)
   assert.match(page, /formalScheduleIssue/)
