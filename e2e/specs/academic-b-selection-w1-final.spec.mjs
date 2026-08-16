@@ -84,6 +84,34 @@ async function expectNoStalePreflight(page) {
   await expect(page.locator('.aasel-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
 }
 
+async function installErrorToastAudit(page) {
+  await page.evaluate(() => {
+    if (window.__academicBW1ToastObserver) window.__academicBW1ToastObserver.disconnect()
+    window.__academicBW1ErrorToasts = []
+    const collect = () => {
+      document.querySelectorAll('.app-toast__item.is-error .app-toast__text').forEach((node) => {
+        const text = String(node.textContent || '').trim()
+        if (text) window.__academicBW1ErrorToasts.push(text)
+      })
+    }
+    const observer = new MutationObserver(collect)
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class']
+    })
+    window.__academicBW1ToastObserver = observer
+    collect()
+  })
+}
+
+async function expectNoErrorToast(page, stage) {
+  await page.waitForTimeout(750)
+  const errors = await page.evaluate(() => Array.from(new Set(window.__academicBW1ErrorToasts || [])))
+  expect(errors, `${stage} emitted error toast(s): ${JSON.stringify(errors)}`).toEqual([])
+}
+
 async function lifecycle(page, actionLabel, apiFragment) {
   const preflight = page.waitForResponse((response) =>
     response.url().includes('/selection/batches/') &&
@@ -154,19 +182,24 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expect(staff.locator('.app-confirm-dialog')).toHaveCount(0)
     await screenshot(staff, testInfo, 'w1-admin-preflight-blocked-1440x900')
 
+    await installErrorToastAudit(staff)
     await selectBatch(staff, fixture.ready.batchName)
     await lifecycle(staff, '发布', `/selection/batches/${fixture.ready.batchId}/publish`)
     await expectBatchStatus(staff, '已发布')
+    await expectNoErrorToast(staff, 'publish ready batch')
     await lifecycle(staff, '开选', `/selection/batches/${fixture.ready.batchId}/open`)
     await expectBatchStatus(staff, '选课中')
     await expectNoStalePreflight(staff)
+    await expectNoErrorToast(staff, 'open ready batch')
     await screenshot(staff, testInfo, 'w1-admin-open-success-1440x900')
 
     await staff.reload()
     await dismissGuide(staff)
+    await installErrorToastAudit(staff)
     await selectBatch(staff, fixture.ready.batchName)
     await expectBatchStatus(staff, '选课中')
     await expectNoStalePreflight(staff)
+    await expectNoErrorToast(staff, 'refresh persisted batch')
     await staffContext.close()
 
     const reloginContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
@@ -174,9 +207,11 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await loginAcademicAdmin(relogin)
     await relogin.goto(`${config.staffBaseUrl}/admin/academic-affairs/selection`)
     await dismissGuide(relogin)
+    await installErrorToastAudit(relogin)
     await selectBatch(relogin, fixture.ready.batchName)
     await expectBatchStatus(relogin, '选课中')
     await expectNoStalePreflight(relogin)
+    await expectNoErrorToast(relogin, 'relogin persisted batch')
     await screenshot(relogin, testInfo, 'w1-admin-relogin-persisted-1280x720')
     await reloginContext.close()
 
