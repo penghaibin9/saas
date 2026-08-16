@@ -272,7 +272,6 @@ def close_and_score(user, bid):
             result.level = _legacy._level(composite if composite is not None else student_average)
 
         batch.status = _legacy._B_RESULT
-        batch.result_published_at = datetime.utcnow()
         _legacy._audit(db, batch.id, "EVAL_BATCH_SCORE", f"多来源核算 {len(aggregate)} 门结果")
         db.commit()
         return _legacy._batch_dto(batch)
