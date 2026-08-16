@@ -18,6 +18,11 @@ jobs:
     name: Program series dirty-data inventory contract
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      # The repository-wide conftest refuses to collect without an explicit
+      # MySQL test URL.  This inventory suite is pure and never requests db_mode,
+      # so no connection is opened; the URL only preserves the MySQL-only guard.
+      TEST_DATABASE_URL: mysql+pymysql://root:inventory-not-used@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
     steps:
       - name: Checkout exact INT head
         uses: actions/checkout@v4
